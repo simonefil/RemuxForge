@@ -8,51 +8,45 @@ using System.Runtime.InteropServices;
 namespace MergeLanguageTracks
 {
     /// <summary>
-    /// Individua o scarica l'eseguibile ffmpeg.
-    /// Controlla prima la cartella tools, poi il PATH di sistema, e scarica come ultima risorsa.
+    /// Individua o scarica l'eseguibile ffmpeg
     /// </summary>
     public class FfmpegProvider
     {
-        #region Variabili di classe
+        #region Costanti
 
         /// <summary>
-        /// Cartella dove sono memorizzati/scaricati i tool.
-        /// </summary>
-        private string _toolsFolder;
-
-        /// <summary>
-        /// Percorso risolto di ffmpeg.
-        /// </summary>
-        private string _ffmpegPath;
-
-        /// <summary>
-        /// URL download Windows x64 per ffmpeg release essentials.
+        /// URL download Windows x64
         /// </summary>
         private const string WINDOWS_X64_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
 
         /// <summary>
-        /// URL download Linux x64 per ffmpeg build statica.
+        /// URL download Linux x64
         /// </summary>
         private const string LINUX_X64_URL = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz";
 
         /// <summary>
-        /// URL download Linux arm64 per ffmpeg build statica.
+        /// URL download Linux arm64
         /// </summary>
         private const string LINUX_ARM64_URL = "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz";
 
         /// <summary>
-        /// URL download macOS per ffmpeg (universal binary x64/arm64).
+        /// URL download macOS universal binary
         /// </summary>
         private const string MACOS_FFMPEG_URL = "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip";
 
         #endregion
 
-        #region Proprieta
+        #region Variabili di classe
 
         /// <summary>
-        /// Ottiene il percorso risolto dell'eseguibile ffmpeg.
+        /// Cartella dei tool scaricati
         /// </summary>
-        public string FfmpegPath { get { return this._ffmpegPath; } }
+        private string _toolsFolder;
+
+        /// <summary>
+        /// Percorso risolto di ffmpeg
+        /// </summary>
+        private string _ffmpegPath;
 
         #endregion
 
@@ -61,7 +55,7 @@ namespace MergeLanguageTracks
         /// <summary>
         /// Costruttore
         /// </summary>
-        /// <param name="toolsFolder">La cartella dove il binario ffmpeg deve essere individuato o scaricato.</param>
+        /// <param name="toolsFolder">Cartella di destinazione dei tool</param>
         public FfmpegProvider(string toolsFolder)
         {
             this._toolsFolder = toolsFolder;
@@ -73,18 +67,18 @@ namespace MergeLanguageTracks
         #region Metodi pubblici
 
         /// <summary>
-        /// Individua ffmpeg, scaricandolo se necessario.
+        /// Individua ffmpeg, scaricandolo se necessario
         /// </summary>
-        /// <returns>True se ffmpeg e' stato trovato o scaricato con successo.</returns>
+        /// <returns>True se ffmpeg e' stato trovato o scaricato</returns>
         public bool Resolve()
         {
             bool resolved = false;
             string exeExt = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ".exe" : "";
             string ffmpegName = "ffmpeg" + exeExt;
+            string toolsFfmpeg = Path.Combine(this._toolsFolder, ffmpegName);
+            string pathFfmpeg = "";
 
             // Controlla prima la cartella tools
-            string toolsFfmpeg = Path.Combine(this._toolsFolder, ffmpegName);
-
             if (File.Exists(toolsFfmpeg))
             {
                 this._ffmpegPath = toolsFfmpeg;
@@ -93,7 +87,7 @@ namespace MergeLanguageTracks
             else
             {
                 // Controlla il PATH di sistema
-                string pathFfmpeg = FindInPath(ffmpegName);
+                pathFfmpeg = FindInPath(ffmpegName);
 
                 if (pathFfmpeg.Length > 0)
                 {
@@ -102,7 +96,7 @@ namespace MergeLanguageTracks
                 }
                 else
                 {
-                    // Scarica ffmpeg per la piattaforma corrente
+                    // Scarica per la piattaforma corrente
                     resolved = this.DownloadForCurrentPlatform(toolsFfmpeg);
                 }
             }
@@ -115,27 +109,23 @@ namespace MergeLanguageTracks
         #region Metodi privati
 
         /// <summary>
-        /// Determina la piattaforma corrente e avvia il download appropriato.
+        /// Determina la piattaforma e avvia il download appropriato
         /// </summary>
-        /// <param name="ffmpegDest">Percorso destinazione per ffmpeg.</param>
-        /// <returns>True se download ed estrazione hanno avuto successo.</returns>
+        /// <param name="ffmpegDest">Percorso di destinazione dell'eseguibile</param>
+        /// <returns>True se il download e' riuscito</returns>
         private bool DownloadForCurrentPlatform(string ffmpegDest)
         {
             bool success = false;
-
-            // Determina OS e architettura
             bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
             bool isLinux = RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
             bool isMacOS = RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
             bool isArm64 = RuntimeInformation.OSArchitecture == Architecture.Arm64;
             bool isX64 = RuntimeInformation.OSArchitecture == Architecture.X64;
-
-            // Log piattaforma rilevata
             string archName = isArm64 ? "arm64" : (isX64 ? "x64" : RuntimeInformation.OSArchitecture.ToString());
             string osName = isWindows ? "Windows" : (isLinux ? "Linux" : (isMacOS ? "macOS" : "Unknown"));
+
             ConsoleHelper.WriteDarkGray("  Piattaforma rilevata: " + osName + " " + archName);
 
-            // Assicura che la cartella tools esista
             if (!Directory.Exists(this._toolsFolder))
             {
                 Directory.CreateDirectory(this._toolsFolder);
@@ -155,7 +145,6 @@ namespace MergeLanguageTracks
             }
             else if (isMacOS)
             {
-                // macOS usa universal binary, funziona sia su x64 che arm64
                 success = this.DownloadMacOS(ffmpegDest);
             }
             else
@@ -169,31 +158,30 @@ namespace MergeLanguageTracks
         }
 
         /// <summary>
-        /// Cerca nel PATH di sistema il nome eseguibile specificato.
+        /// Cerca ffmpeg nel PATH di sistema
         /// </summary>
-        /// <param name="executableName">Il nome dell'eseguibile da trovare.</param>
-        /// <returns>Il percorso completo se trovato, o stringa vuota.</returns>
+        /// <param name="executableName">Nome dell'eseguibile da cercare</param>
+        /// <returns>Percorso completo dell'eseguibile, stringa vuota se non trovato</returns>
         private static string FindInPath(string executableName)
         {
             string result = "";
             string pathEnv = Environment.GetEnvironmentVariable("PATH");
-
-            if (pathEnv == null)
-            {
-                return result;
-            }
-
-            // Dividi PATH per il separatore specifico della piattaforma
             char separator = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ';' : ':';
-            string[] paths = pathEnv.Split(separator);
+            string[] paths = null;
+            string candidate = "";
 
-            for (int i = 0; i < paths.Length; i++)
+            if (pathEnv != null)
             {
-                string candidate = Path.Combine(paths[i], executableName);
-                if (File.Exists(candidate))
+                paths = pathEnv.Split(separator);
+
+                for (int i = 0; i < paths.Length; i++)
                 {
-                    result = candidate;
-                    break;
+                    candidate = Path.Combine(paths[i], executableName);
+                    if (File.Exists(candidate))
+                    {
+                        result = candidate;
+                        break;
+                    }
                 }
             }
 
@@ -201,48 +189,42 @@ namespace MergeLanguageTracks
         }
 
         /// <summary>
-        /// Scarica ed estrae ffmpeg su Windows dall'archivio zip gyan.dev.
+        /// Scarica ed estrae ffmpeg su Windows
         /// </summary>
-        /// <param name="ffmpegDest">Percorso destinazione per ffmpeg.exe.</param>
-        /// <returns>True se completato con successo.</returns>
+        /// <param name="ffmpegDest">Percorso di destinazione dell'eseguibile</param>
+        /// <returns>True se il download e l'estrazione sono riusciti</returns>
         private bool DownloadWindows(string ffmpegDest)
         {
             bool success = false;
             string zipPath = Path.Combine(this._toolsFolder, "ffmpeg.zip");
             string extractPath = Path.Combine(this._toolsFolder, "ffmpeg_temp");
             WebClient webClient = null;
+            string foundFfmpeg = "";
 
             try
             {
                 ConsoleHelper.WriteYellow("\n  Download ffmpeg per Windows x64...");
                 ConsoleHelper.WriteDarkGray("  URL: " + WINDOWS_X64_URL);
 
-                // Scarica il file zip
                 webClient = new WebClient();
                 webClient.DownloadFile(WINDOWS_X64_URL, zipPath);
 
                 ConsoleHelper.WriteDarkGray("  Estrazione in corso...");
 
-                // Pulisci directory estrazione precedente se esiste
                 if (Directory.Exists(extractPath))
                 {
                     Directory.Delete(extractPath, true);
                 }
 
-                // Estrai lo zip
                 ZipFile.ExtractToDirectory(zipPath, extractPath);
 
-                // Trova ffmpeg.exe nei file estratti
-                string foundFfmpeg = FindFileRecursive(extractPath, "ffmpeg.exe");
+                foundFfmpeg = FindFileRecursive(extractPath, "ffmpeg.exe");
 
                 if (foundFfmpeg.Length > 0)
                 {
-                    // Copia nella root della cartella tools
                     File.Copy(foundFfmpeg, ffmpegDest, true);
-
                     this._ffmpegPath = ffmpegDest;
                     success = true;
-
                     ConsoleHelper.WriteGreen("  ffmpeg scaricato in: " + this._toolsFolder);
                 }
                 else
@@ -252,19 +234,13 @@ namespace MergeLanguageTracks
             }
             catch (Exception ex)
             {
+                // Download o estrazione fallita
                 ConsoleHelper.WriteWarning("Impossibile scaricare ffmpeg: " + ex.Message);
                 ConsoleHelper.WriteYellow("  Scaricalo manualmente da https://www.gyan.dev/ffmpeg/builds/");
             }
             finally
             {
-                // Dispose webclient
-                if (webClient != null)
-                {
-                    webClient.Dispose();
-                    webClient = null;
-                }
-
-                // Pulisci file temporanei
+                if (webClient != null) { webClient.Dispose(); webClient = null; }
                 CleanupTempFiles(zipPath, extractPath);
             }
 
@@ -272,83 +248,72 @@ namespace MergeLanguageTracks
         }
 
         /// <summary>
-        /// Scarica ed estrae ffmpeg su Linux.
+        /// Scarica ed estrae ffmpeg su Linux
         /// </summary>
-        /// <param name="ffmpegDest">Percorso destinazione per ffmpeg.</param>
-        /// <param name="downloadUrl">URL di download per l'architettura specifica.</param>
-        /// <param name="archName">Nome architettura per logging.</param>
-        /// <returns>True se completato con successo.</returns>
+        /// <param name="ffmpegDest">Percorso di destinazione dell'eseguibile</param>
+        /// <param name="downloadUrl">URL di download dell'archivio</param>
+        /// <param name="archName">Nome dell'architettura</param>
+        /// <returns>True se il download e l'estrazione sono riusciti</returns>
         private bool DownloadLinux(string ffmpegDest, string downloadUrl, string archName)
         {
             bool success = false;
             string tarPath = Path.Combine(this._toolsFolder, "ffmpeg.tar.xz");
             string extractPath = Path.Combine(this._toolsFolder, "ffmpeg_temp");
             WebClient webClient = null;
+            int tarExitCode = 0;
+            string foundFfmpeg = "";
 
             try
             {
                 ConsoleHelper.WriteYellow("\n  Download ffmpeg per Linux " + archName + "...");
                 ConsoleHelper.WriteDarkGray("  URL: " + downloadUrl);
 
-                // Scarica il file tar.xz
                 webClient = new WebClient();
                 webClient.DownloadFile(downloadUrl, tarPath);
 
                 ConsoleHelper.WriteDarkGray("  Estrazione in corso...");
 
-                // Pulisci directory estrazione precedente
                 if (Directory.Exists(extractPath))
                 {
                     Directory.Delete(extractPath, true);
                 }
                 Directory.CreateDirectory(extractPath);
 
-                // Usa tar per estrarre
-                int tarExitCode = RunCommand("tar", "xf \"" + tarPath + "\" -C \"" + extractPath + "\"");
+                tarExitCode = RunCommand("tar", "xf \"" + tarPath + "\" -C \"" + extractPath + "\"");
 
                 if (tarExitCode != 0)
                 {
                     ConsoleHelper.WriteRed("  Errore durante l'estrazione (tar exit code: " + tarExitCode + ")");
                     ConsoleHelper.WriteYellow("  Assicurati che tar e xz-utils siano installati");
-                    return false;
-                }
-
-                // Trova ffmpeg estratto
-                string foundFfmpeg = FindFileRecursive(extractPath, "ffmpeg");
-
-                if (foundFfmpeg.Length > 0)
-                {
-                    File.Copy(foundFfmpeg, ffmpegDest, true);
-
-                    // Rendi eseguibile
-                    RunCommand("chmod", "+x \"" + ffmpegDest + "\"");
-
-                    this._ffmpegPath = ffmpegDest;
-                    success = true;
-
-                    ConsoleHelper.WriteGreen("  ffmpeg scaricato in: " + this._toolsFolder);
                 }
                 else
                 {
-                    ConsoleHelper.WriteRed("  Impossibile trovare ffmpeg nell'archivio");
+                    foundFfmpeg = FindFileRecursive(extractPath, "ffmpeg");
+
+                    if (foundFfmpeg.Length > 0)
+                    {
+                        File.Copy(foundFfmpeg, ffmpegDest, true);
+                        RunCommand("chmod", "+x \"" + ffmpegDest + "\"");
+                        this._ffmpegPath = ffmpegDest;
+                        success = true;
+                        ConsoleHelper.WriteGreen("  ffmpeg scaricato in: " + this._toolsFolder);
+                    }
+                    else
+                    {
+                        ConsoleHelper.WriteRed("  Impossibile trovare ffmpeg nell'archivio");
+                    }
                 }
             }
             catch (Exception ex)
             {
+                // Download o estrazione fallita
                 ConsoleHelper.WriteWarning("Impossibile scaricare ffmpeg: " + ex.Message);
                 ConsoleHelper.WriteYellow("  Scaricalo manualmente da https://johnvansickle.com/ffmpeg/");
                 ConsoleHelper.WriteYellow("  Oppure installa con: sudo apt install ffmpeg");
             }
             finally
             {
-                // Dispose webclient
-                if (webClient != null)
-                {
-                    webClient.Dispose();
-                    webClient = null;
-                }
-
-                // Pulisci file temporanei
+                if (webClient != null) { webClient.Dispose(); webClient = null; }
                 CleanupTempFiles(tarPath, extractPath);
             }
 
@@ -356,22 +321,22 @@ namespace MergeLanguageTracks
         }
 
         /// <summary>
-        /// Scarica ffmpeg su macOS.
+        /// Scarica ffmpeg su macOS
         /// </summary>
-        /// <param name="ffmpegDest">Percorso destinazione per ffmpeg.</param>
-        /// <returns>True se completato con successo.</returns>
+        /// <param name="ffmpegDest">Percorso di destinazione dell'eseguibile</param>
+        /// <returns>True se il download e l'estrazione sono riusciti</returns>
         private bool DownloadMacOS(string ffmpegDest)
         {
             bool success = false;
             string ffmpegZipPath = Path.Combine(this._toolsFolder, "ffmpeg.zip");
             string extractPath = Path.Combine(this._toolsFolder, "ffmpeg_temp");
             WebClient webClient = null;
+            string foundFfmpeg = "";
 
             try
             {
                 ConsoleHelper.WriteYellow("\n  Download ffmpeg per macOS (universal binary)...");
 
-                // Assicura directory temp esista
                 if (Directory.Exists(extractPath))
                 {
                     Directory.Delete(extractPath, true);
@@ -380,29 +345,20 @@ namespace MergeLanguageTracks
 
                 webClient = new WebClient();
 
-                // Scarica ffmpeg
                 ConsoleHelper.WriteDarkGray("  Download ffmpeg da: " + MACOS_FFMPEG_URL);
                 webClient.DownloadFile(MACOS_FFMPEG_URL, ffmpegZipPath);
 
                 ConsoleHelper.WriteDarkGray("  Estrazione in corso...");
-
-                // Estrai ffmpeg
                 ZipFile.ExtractToDirectory(ffmpegZipPath, extractPath);
-                string foundFfmpeg = FindFileRecursive(extractPath, "ffmpeg");
+                foundFfmpeg = FindFileRecursive(extractPath, "ffmpeg");
 
                 if (foundFfmpeg.Length > 0)
                 {
                     File.Copy(foundFfmpeg, ffmpegDest, true);
-
-                    // Rendi eseguibile
                     RunCommand("chmod", "+x \"" + ffmpegDest + "\"");
-
-                    // Rimuovi attributo quarantine (Gatekeeper) se presente
                     RunCommand("xattr", "-d com.apple.quarantine \"" + ffmpegDest + "\"");
-
                     this._ffmpegPath = ffmpegDest;
                     success = true;
-
                     ConsoleHelper.WriteGreen("  ffmpeg scaricato in: " + this._toolsFolder);
                 }
                 else
@@ -412,20 +368,14 @@ namespace MergeLanguageTracks
             }
             catch (Exception ex)
             {
+                // Download o estrazione fallita
                 ConsoleHelper.WriteWarning("Impossibile scaricare ffmpeg: " + ex.Message);
                 ConsoleHelper.WriteYellow("  Scaricalo manualmente da https://evermeet.cx/ffmpeg/");
                 ConsoleHelper.WriteYellow("  Oppure installa con: brew install ffmpeg");
             }
             finally
             {
-                // Dispose webclient
-                if (webClient != null)
-                {
-                    webClient.Dispose();
-                    webClient = null;
-                }
-
-                // Pulisci file temporanei
+                if (webClient != null) { webClient.Dispose(); webClient = null; }
                 CleanupTempFiles(ffmpegZipPath, extractPath);
             }
 
@@ -433,11 +383,11 @@ namespace MergeLanguageTracks
         }
 
         /// <summary>
-        /// Esegue un comando shell e restituisce l'exit code.
+        /// Esegue un comando shell e restituisce l'exit code
         /// </summary>
-        /// <param name="command">Il comando da eseguire.</param>
-        /// <param name="arguments">Gli argomenti del comando.</param>
-        /// <returns>L'exit code del processo.</returns>
+        /// <param name="command">Comando da eseguire</param>
+        /// <param name="arguments">Argomenti del comando</param>
+        /// <returns>Exit code del processo, -1 in caso di errore</returns>
         private static int RunCommand(string command, string arguments)
         {
             int exitCode = -1;
@@ -458,27 +408,24 @@ namespace MergeLanguageTracks
             }
             catch
             {
-                // Ignora errori, ritorna -1
+                // Comando non trovato o non eseguibile
             }
             finally
             {
-                if (proc != null)
-                {
-                    proc.Dispose();
-                    proc = null;
-                }
+                if (proc != null) { proc.Dispose(); proc = null; }
             }
 
             return exitCode;
         }
 
         /// <summary>
-        /// Pulisce file e directory temporanei.
+        /// Pulisce file e directory temporanei
         /// </summary>
-        /// <param name="filePath">Percorso file da eliminare (puo' essere null).</param>
-        /// <param name="directoryPath">Percorso directory da eliminare (puo' essere null).</param>
+        /// <param name="filePath">Percorso del file temporaneo da eliminare</param>
+        /// <param name="directoryPath">Percorso della directory temporanea da eliminare</param>
         private static void CleanupTempFiles(string filePath, string directoryPath)
         {
+            // Errori cleanup ignorati, file temporanei non critici
             if (filePath != null && File.Exists(filePath))
             {
                 try { File.Delete(filePath); } catch { }
@@ -490,17 +437,18 @@ namespace MergeLanguageTracks
         }
 
         /// <summary>
-        /// Cerca ricorsivamente in un albero di directory un file con il nome dato.
+        /// Cerca ricorsivamente un file per nome in un albero di directory
         /// </summary>
-        /// <param name="directory">La directory root da cercare.</param>
-        /// <param name="fileName">Il nome file da cercare.</param>
-        /// <returns>Il percorso completo del file trovato, o stringa vuota.</returns>
+        /// <param name="directory">Directory di partenza della ricerca</param>
+        /// <param name="fileName">Nome del file da cercare</param>
+        /// <returns>Percorso completo del file, stringa vuota se non trovato</returns>
         private static string FindFileRecursive(string directory, string fileName)
         {
             string result = "";
+            string[] files = Directory.GetFiles(directory);
+            string[] subdirs = null;
 
             // Controlla file nella directory corrente
-            string[] files = Directory.GetFiles(directory);
             for (int i = 0; i < files.Length; i++)
             {
                 if (Path.GetFileName(files[i]).Equals(fileName, StringComparison.OrdinalIgnoreCase))
@@ -513,7 +461,7 @@ namespace MergeLanguageTracks
             // Se non trovato, cerca nelle sottodirectory
             if (result.Length == 0)
             {
-                string[] subdirs = Directory.GetDirectories(directory);
+                subdirs = Directory.GetDirectories(directory);
                 for (int i = 0; i < subdirs.Length; i++)
                 {
                     result = FindFileRecursive(subdirs[i], fileName);
@@ -526,6 +474,15 @@ namespace MergeLanguageTracks
 
             return result;
         }
+
+        #endregion
+
+        #region Proprieta
+
+        /// <summary>
+        /// Percorso risolto dell'eseguibile ffmpeg
+        /// </summary>
+        public string FfmpegPath { get { return this._ffmpegPath; } }
 
         #endregion
     }

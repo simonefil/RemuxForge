@@ -9,10 +9,337 @@ namespace MergeLanguageTracks
 {
     internal class Program
     {
+        #region Classi interne
+
+        /// <summary>
+        /// Contesto servizi e configurazione per elaborazione file
+        /// </summary>
+        private class ProcessingContext
+        {
+            /// <summary>
+            /// Servizio mkvmerge
+            /// </summary>
+            public MkvToolsService Service;
+
+            /// <summary>
+            /// Servizio frame-sync
+            /// </summary>
+            public FrameSyncService FrameSyncService;
+
+            /// <summary>
+            /// Statistiche elaborazione
+            /// </summary>
+            public ProcessingStats Stats;
+
+            /// <summary>
+            /// Lista record elaborazione
+            /// </summary>
+            public List<FileProcessingRecord> Records;
+
+            /// <summary>
+            /// Opzioni riga di comando
+            /// </summary>
+            public Options Opts;
+
+            /// <summary>
+            /// Pattern codec per filtro tracce lingua
+            /// </summary>
+            public string[] CodecPatterns;
+
+            /// <summary>
+            /// Pattern codec per filtro tracce audio sorgente
+            /// </summary>
+            public string[] SourceAudioCodecPatterns;
+
+            /// <summary>
+            /// Se filtrare le tracce audio sorgente
+            /// </summary>
+            public bool FilterSourceAudio;
+
+            /// <summary>
+            /// Se filtrare i sottotitoli sorgente
+            /// </summary>
+            public bool FilterSourceSubs;
+
+            /// <summary>
+            /// Percorso ffmpeg risolto
+            /// </summary>
+            public string FfmpegPath;
+        }
+
+        /// <summary>
+        /// Stato mutabile durante elaborazione di un singolo file
+        /// </summary>
+        private class ProcessingState
+        {
+            /// <summary>
+            /// Delay audio effettivo in ms
+            /// </summary>
+            public int EffectiveAudioDelay;
+
+            /// <summary>
+            /// Delay sottotitoli effettivo in ms
+            /// </summary>
+            public int EffectiveSubDelay;
+
+            /// <summary>
+            /// Fattore stretch per mkvmerge
+            /// </summary>
+            public string StretchFactor;
+
+            /// <summary>
+            /// Se correzione velocita' attiva
+            /// </summary>
+            public bool SpeedCorrectionActive;
+        }
+
+        #endregion
+
+        #region Entry point
+
+        /// <summary>
+        /// Entry point
+        /// </summary>
+        /// <param name="args">Argomenti riga di comando</param>
+        /// <returns>Codice uscita: 0 successo, 1 errore</returns>
+        static int Main(string[] args)
+        {
+            bool done = false;
+            int exitCode = 0;
+            Options opts = null;
+            string[] codecPatterns = null;
+            MkvToolsService tempService = null;
+            FrameSyncService frameSyncService = null;
+            FfmpegProvider ffmpegProvider = null;
+            string resolvedFfmpegPath = "";
+            ProcessingContext ctx = null;
+            string extList = "";
+            List<string> sourceFiles = null;
+            List<string> languageFiles = null;
+            Dictionary<string, string> languageIndex = null;
+            string langFileName = "";
+            string langEpisodeId = "";
+
+            // Nessun argomento: avvia TUI interattiva
+            if (args.Length == 0)
+            {
+                TuiApp tuiApp = new TuiApp();
+                tuiApp.Run();
+                done = true;
+            }
+
+            // Parsing argomenti
+            if (!done)
+            {
+                opts = Options.Parse(args);
+                if (opts.ErrorMessage.Length > 0)
+                {
+                    ConsoleHelper.WriteRed("Errore: " + opts.ErrorMessage);
+                    ConsoleHelper.WriteDarkGray("Usa -h per vedere tutte le opzioni.");
+                    exitCode = 1;
+                    done = true;
+                }
+            }
+
+            // Help
+            if (!done && opts.Help)
+            {
+                PrintHelp();
+                done = true;
+            }
+
+            // Normalizzazione percorsi e validazione
+            if (!done)
+            {
+                NormalizeOptionsPaths(opts);
+                if (!ValidateOptions(opts))
+                {
+                    exitCode = 1;
+                    done = true;
+                }
+            }
+
+            // Creazione cartella destinazione
+            if (!done && !opts.Overwrite && !Directory.Exists(opts.DestinationFolder))
+            {
+                ConsoleHelper.WriteYellow("Creazione cartella destinazione: " + opts.DestinationFolder);
+                Directory.CreateDirectory(opts.DestinationFolder);
+            }
+
+            // Risoluzione pattern codec per filtro tracce lingua
+            if (!done && opts.AudioCodec.Count > 0)
+            {
+                codecPatterns = ResolveCodecPatterns(opts.AudioCodec);
+            }
+
+            // Verifica mkvmerge
+            if (!done)
+            {
+                tempService = new MkvToolsService(opts.MkvMergePath);
+                if (!tempService.VerifyMkvMerge())
+                {
+                    ConsoleHelper.WriteRed("mkvmerge non trovato. Installa MKVToolNix o specifica -mkv");
+                    exitCode = 1;
+                    done = true;
+                }
+                else
+                {
+                    ConsoleHelper.WriteGreen("Trovato mkvmerge: " + opts.MkvMergePath);
+                }
+            }
+
+            // Inizializzazione frame-sync
+            if (!done && opts.FrameSync)
+            {
+                ffmpegProvider = new FfmpegProvider(opts.ToolsFolder);
+                if (!ffmpegProvider.Resolve())
+                {
+                    ConsoleHelper.WriteRed("ffmpeg non trovato e impossibile scaricarlo. Installalo manualmente.");
+                    exitCode = 1;
+                    done = true;
+                }
+                else
+                {
+                    ConsoleHelper.WriteGreen("Trovato ffmpeg: " + ffmpegProvider.FfmpegPath);
+                    resolvedFfmpegPath = ffmpegProvider.FfmpegPath;
+                    frameSyncService = new FrameSyncService(resolvedFfmpegPath);
+                }
+            }
+
+            // Elaborazione file
+            if (!done)
+            {
+                // Crea contesto elaborazione
+                ctx = new ProcessingContext();
+                ctx.Service = new MkvToolsService(opts.MkvMergePath);
+                ctx.FrameSyncService = frameSyncService;
+                ctx.Stats = new ProcessingStats();
+                ctx.Records = new List<FileProcessingRecord>();
+                ctx.Opts = opts;
+                ctx.CodecPatterns = codecPatterns;
+                ctx.FfmpegPath = resolvedFfmpegPath;
+
+                // Risoluzione pattern codec per filtro tracce audio sorgente
+                if (opts.KeepSourceAudioCodec.Count > 0)
+                {
+                    ctx.SourceAudioCodecPatterns = ResolveCodecPatterns(opts.KeepSourceAudioCodec);
+                }
+
+                // Flag filtraggio tracce sorgente
+                ctx.FilterSourceAudio = (opts.KeepSourceAudioLangs.Count > 0 || opts.KeepSourceAudioCodec.Count > 0);
+                ctx.FilterSourceSubs = (opts.KeepSourceSubtitleLangs.Count > 0);
+
+                // Banner
+                ConsoleHelper.WriteCyan("\n========================================");
+                ConsoleHelper.WriteCyan("  MKV Language Track Merger");
+                ConsoleHelper.WriteCyan("========================================\n");
+
+                // Configurazione
+                PrintConfiguration(opts, codecPatterns);
+
+                // Trova file sorgente
+                extList = string.Join(", ", opts.FileExtensions);
+                sourceFiles = FindVideoFiles(opts.SourceFolder, opts.FileExtensions, opts.Recursive);
+                ConsoleHelper.WriteGreen("Trovati " + sourceFiles.Count + " file sorgente (" + extList + ")\n");
+
+                // Costruisci indice file lingua
+                ConsoleHelper.WriteYellow("Indicizzazione cartella lingua...");
+                languageFiles = FindVideoFiles(opts.LanguageFolder, opts.FileExtensions, opts.Recursive);
+                languageIndex = new Dictionary<string, string>();
+
+                for (int i = 0; i < languageFiles.Count; i++)
+                {
+                    langFileName = Path.GetFileName(languageFiles[i]);
+                    langEpisodeId = GetEpisodeIdentifier(langFileName, opts.MatchPattern);
+                    if (langEpisodeId.Length > 0)
+                    {
+                        languageIndex[langEpisodeId] = languageFiles[i];
+                    }
+                }
+
+                ConsoleHelper.WriteGreen("Indicizzati " + languageIndex.Count + " file lingua\n");
+
+                // Elabora ogni file sorgente
+                for (int i = 0; i < sourceFiles.Count; i++)
+                {
+                    ProcessFile(sourceFiles[i], languageIndex, ctx);
+                }
+
+                // Report e riepilogo
+                PrintDetailedReport(ctx.Records, ctx.Opts.DryRun);
+                PrintSummary(ctx.Stats);
+            }
+
+            return exitCode;
+        }
+
+        #endregion
+
         #region Metodi privati
 
         /// <summary>
-        /// Stampa il testo di aiuto completo in italiano, corrispondente alla versione PowerShell.
+        /// Normalizza percorsi opzioni e applica default
+        /// </summary>
+        /// <param name="opts">Opzioni da normalizzare</param>
+        private static void NormalizeOptionsPaths(Options opts)
+        {
+            string appDir = "";
+
+            // Normalizza percorsi
+            if (opts.SourceFolder.Length > 0)
+            {
+                opts.SourceFolder = NormalizePath(opts.SourceFolder);
+            }
+            if (opts.LanguageFolder.Length > 0)
+            {
+                opts.LanguageFolder = NormalizePath(opts.LanguageFolder);
+            }
+            if (opts.DestinationFolder.Length > 0)
+            {
+                opts.DestinationFolder = NormalizePath(opts.DestinationFolder);
+            }
+
+            // Modalita' singola sorgente: se -l non specificato, usa -s come lingua
+            if (opts.LanguageFolder.Length == 0 && opts.SourceFolder.Length > 0)
+            {
+                opts.LanguageFolder = opts.SourceFolder;
+            }
+
+            // Cartella tools di default
+            if (opts.ToolsFolder.Length == 0)
+            {
+                appDir = AppContext.BaseDirectory;
+                opts.ToolsFolder = Path.Combine(appDir, "tools");
+            }
+        }
+
+        /// <summary>
+        /// Risolve una lista di nomi codec nei rispettivi pattern di matching
+        /// </summary>
+        /// <param name="codecs">Lista nomi codec</param>
+        /// <returns>Array di pattern codec risolti</returns>
+        private static string[] ResolveCodecPatterns(List<string> codecs)
+        {
+            List<string> allPatterns = new List<string>();
+            string[] patterns = null;
+
+            for (int c = 0; c < codecs.Count; c++)
+            {
+                patterns = CodecMapping.GetCodecPatterns(codecs[c]);
+                for (int p = 0; p < patterns.Length; p++)
+                {
+                    if (!allPatterns.Contains(patterns[p]))
+                    {
+                        allPatterns.Add(patterns[p]);
+                    }
+                }
+            }
+
+            return allPatterns.ToArray();
+        }
+
+        /// <summary>
+        /// Stampa il testo di aiuto completo
         /// </summary>
         private static void PrintHelp()
         {
@@ -20,7 +347,7 @@ namespace MergeLanguageTracks
 USAGE: MergeLanguageTracks [OPTIONS]
 
 Unisce tracce audio e sottotitoli da file MKV in lingue diverse.
-Supporta sincronizzazione automatica tramite audio fingerprinting.
+Supporta sincronizzazione automatica tramite confronto visivo frame.
 
 OPZIONI OBBLIGATORIE:
   -s,   --source <path>          Cartella con i file MKV sorgente
@@ -35,10 +362,12 @@ OPZIONI OUTPUT (mutuamente esclusive, una obbligatoria):
   -o,   --overwrite              Sovrascrive i file sorgente
 
 OPZIONI SYNC:
-  -as,  --auto-sync              Abilita sync automatico (audio fingerprinting)
-  -ad,  --audio-delay <ms>       Delay manuale audio in ms (sommato ad auto se -as)
+  -fs,  --framesync              Abilita sync tramite confronto visivo frame
+  -ad,  --audio-delay <ms>       Delay manuale audio in ms (sommato a frame-sync se -fs)
   -sd,  --subtitle-delay <ms>    Delay manuale sottotitoli in ms
-  -at,  --analysis-time <sec>    Durata analisi audio in secondi (default: 300 = 5 min)
+
+  NOTA: La correzione velocita' (es. PAL 25fps vs NTSC 23.976fps) e'
+        automatica e non richiede opzioni. Necessita di ffmpeg
 
 OPZIONI FILTRO:
   -ac,  --audio-codec <codec>    Importa solo audio con codec specifico (es: E-AC-3 oppure DTS,E-AC-3)
@@ -100,23 +429,23 @@ CODEC AUDIO (per -ac):
         LPCM, WAV      -> PCM
 
 ESEMPI:
-  # Unisci tracce italiane con auto-sync
-  MergeLanguageTracks -s ""D:\EN"" -l ""D:\IT"" -t ita -d ""D:\Out"" -as
+  # Unisci tracce italiane con frame-sync
+  MergeLanguageTracks -s ""D:\EN"" -l ""D:\IT"" -t ita -d ""D:\Out"" -fs
 
   # Dry run (mostra cosa farebbe senza eseguire)
-  MergeLanguageTracks -s ""D:\EN"" -l ""D:\IT"" -t ita -d ""D:\Out"" -as -n
+  MergeLanguageTracks -s ""D:\EN"" -l ""D:\IT"" -t ita -d ""D:\Out"" -fs -n
 
   # Solo audio E-AC-3 italiano
-  MergeLanguageTracks -s ""D:\EN"" -l ""D:\IT"" -t ita -ac ""E-AC-3"" -d ""D:\Out"" -as
+  MergeLanguageTracks -s ""D:\EN"" -l ""D:\IT"" -t ita -ac ""E-AC-3"" -d ""D:\Out"" -fs
 
   # Importa audio DTS o E-AC-3 italiano
-  MergeLanguageTracks -s ""D:\EN"" -l ""D:\IT"" -t ita -ac ""DTS,E-AC-3"" -d ""D:\Out"" -as
+  MergeLanguageTracks -s ""D:\EN"" -l ""D:\IT"" -t ita -ac ""DTS,E-AC-3"" -d ""D:\Out"" -fs
 
   # Solo sottotitoli (no audio)
-  MergeLanguageTracks -s ""D:\EN"" -l ""D:\IT"" -t ita -so -d ""D:\Out"" -as
+  MergeLanguageTracks -s ""D:\EN"" -l ""D:\IT"" -t ita -so -d ""D:\Out"" -fs
 
   # Sovrascrive i file sorgente (no cartella destinazione)
-  MergeLanguageTracks -s ""D:\EN"" -l ""D:\IT"" -t ita -o -as
+  MergeLanguageTracks -s ""D:\EN"" -l ""D:\IT"" -t ita -o -fs
 
   # Mantieni solo eng/jpn audio e eng sub dal sorgente
   MergeLanguageTracks -s ""D:\EN"" -l ""D:\IT"" -t ita -ksa eng,jpn -kss eng -d ""D:\Out""
@@ -131,7 +460,7 @@ ESEMPI:
   MergeLanguageTracks -s ""D:\EN"" -l ""D:\IT"" -t ita -m ""(\d+)x(\d+)"" -d ""D:\Out""
 
   # Cerca anche file MP4 e AVI oltre a MKV
-  MergeLanguageTracks -s ""D:\EN"" -l ""D:\IT"" -t ita -ext mkv,mp4,avi -d ""D:\Out"" -as
+  MergeLanguageTracks -s ""D:\EN"" -l ""D:\IT"" -t ita -ext mkv,mp4,avi -d ""D:\Out"" -fs
 
   # Singola sorgente: applica delay 960ms alle tracce ita, mantieni jpn+eng audio e eng+jpn sub
   MergeLanguageTracks -s ""D:\Serie"" -t ita -ksa jpn,eng -kss eng,jpn -ad 960 -sd 960 -o
@@ -143,22 +472,27 @@ CODICI LINGUA (ISO 639-2):
 
 REQUISITI:
   - MKVToolNix (mkvmerge) nel PATH
-  - ffmpeg per AutoSync (scaricato automaticamente se mancante)
+  - ffmpeg per frame-sync (scaricato automaticamente se mancante)
 
 NOTE:
-  AutoSync analizza i primi 5 min di audio (configurabile con -at), rileva silenzi
-  e picchi di volume, e trova l'offset ottimale. Funziona anche con lingue diverse
-  perche' musica, effetti sonori e silenzi sono identici tra versioni doppiate.
-  Precisione: ~1ms (ricerca in 3 fasi: 500ms -> 10ms -> 1ms)
+  Correzione velocita' (stretch): rileva automaticamente differenze FPS tra
+  sorgente e lingua (es. PAL 25fps vs NTSC 23.976fps). Corregge tramite
+  mkvmerge --sync senza ricodifica. Richiede ffmpeg per la verifica.
+
+  Frame-sync: rileva i tagli scena nei frame grayscale 320x240 e li confronta
+  tra sorgente e lingua per trovare il delay. Verifica a 9 punti distribuiti
+  nel video con retry adattivo. Copre offset fino a +-60 secondi.
+
+  Entrambe le funzionalita' richiedono ffmpeg (scaricato automaticamente).
 ";
             Console.WriteLine(helpText);
         }
 
         /// <summary>
-        /// Normalizza un percorso file system risolvendolo alla forma assoluta completa
+        /// Normalizza un percorso alla forma assoluta
         /// </summary>
-        /// <param name="path">Il percorso da normalizzare.</param>
-        /// <returns>Il percorso assoluto normalizzato.</returns>
+        /// <param name="path">Percorso da normalizzare</param>
+        /// <returns>Percorso assoluto normalizzato</returns>
         private static string NormalizePath(string path)
         {
             string result = path;
@@ -173,11 +507,11 @@ NOTE:
         }
 
         /// <summary>
-        /// Estrae l'identificatore episodio da un nome file usando il pattern regex di match.
+        /// Estrae l'identificatore episodio da un nome file
         /// </summary>
-        /// <param name="fileName">Il nome file da cui estrarre.</param>
-        /// <param name="pattern">Il pattern regex con gruppi di cattura.</param>
-        /// <returns>La stringa identificatore episodio, o stringa vuota se nessun match.</returns>
+        /// <param name="fileName">Nome file da cui estrarre</param>
+        /// <param name="pattern">Pattern regex con gruppi di cattura</param>
+        /// <returns>Identificatore episodio o stringa vuota</returns>
         private static string GetEpisodeIdentifier(string fileName, string pattern)
         {
             string result = "";
@@ -210,10 +544,10 @@ NOTE:
         }
 
         /// <summary>
-        /// Formatta un valore di ritardo in millisecondi per la visualizzazione, includendo il prefisso segno.
+        /// Formatta un delay in millisecondi con segno
         /// </summary>
-        /// <param name="delayMs">Il ritardo in millisecondi.</param>
-        /// <returns>Una stringa formattata come "+500ms", "-200ms" o "0ms".</returns>
+        /// <param name="delayMs">Ritardo in millisecondi</param>
+        /// <returns>Stringa formattata con segno</returns>
         private static string FormatDelay(int delayMs)
         {
             string result = "0ms";
@@ -231,10 +565,10 @@ NOTE:
         }
 
         /// <summary>
-        /// Formatta le informazioni traccia per output console leggibile.
+        /// Formatta le informazioni traccia per output console
         /// </summary>
-        /// <param name="tracks">La lista di tracce da formattare.</param>
-        /// <returns>Una stringa formattata multilinea.</returns>
+        /// <param name="tracks">Lista tracce da formattare</param>
+        /// <returns>Stringa formattata multilinea</returns>
         private static string FormatTrackInfo(List<TrackInfo> tracks)
         {
             string result = "  Nessuna";
@@ -259,10 +593,10 @@ NOTE:
         }
 
         /// <summary>
-        /// Formatta una lista di ID traccia come stringa separata da virgole.
+        /// Formatta una lista di ID traccia separati da virgola
         /// </summary>
-        /// <param name="trackIds">La lista di ID traccia.</param>
-        /// <returns>Una stringa formattata come "1, 2, 3" o "Nessuna".</returns>
+        /// <param name="trackIds">Lista ID traccia</param>
+        /// <returns>Stringa separata da virgola o "Nessuna"</returns>
         private static string FormatTrackIdList(List<int> trackIds)
         {
             string result = "Nessuna";
@@ -285,12 +619,12 @@ NOTE:
         }
 
         /// <summary>
-        /// Raccoglie ricorsivamente tutti i file video da una directory, opzionalmente cercando nelle sottocartelle.
+        /// Raccoglie tutti i file video da una directory
         /// </summary>
-        /// <param name="folder">La cartella root da cercare.</param>
-        /// <param name="extensions">Lista di estensioni da cercare (senza punto).</param>
-        /// <param name="recursive">Se includere le sottodirectory.</param>
-        /// <returns>Una lista di percorsi completi ai file trovati.</returns>
+        /// <param name="folder">Cartella dove cercare</param>
+        /// <param name="extensions">Lista estensioni senza punto</param>
+        /// <param name="recursive">Se cercare nelle sottocartelle</param>
+        /// <returns>Lista percorsi completi ai file trovati</returns>
         private static List<string> FindVideoFiles(string folder, List<string> extensions, bool recursive)
         {
             List<string> files = new List<string>();
@@ -311,151 +645,133 @@ NOTE:
         }
 
         /// <summary>
-        /// Valida tutte le opzioni richieste ed esce con errore se qualcuna non e' valida.
+        /// Valida tutte le opzioni richieste
         /// </summary>
-        /// <param name="opts">Le opzioni parsate da validare.</param>
-        /// <returns>True se tutte le validazioni passano.</returns>
+        /// <param name="opts">Opzioni da validare</param>
+        /// <returns>True se tutte le validazioni passano</returns>
         private static bool ValidateOptions(Options opts)
         {
             bool valid = true;
+            Regex langRegex = new Regex(@"^[a-z]{2,3}$");
 
             // Verifica parametri obbligatori
             if (opts.SourceFolder.Length == 0 || opts.TargetLanguage.Count == 0)
             {
                 ConsoleHelper.WriteRed("Errore: parametri obbligatori mancanti.");
-                ConsoleHelper.WriteYellow("Uso: MergeLanguageTracks -s <source> [-l <lang>] -t <lingua> [-d <dest> | -o] [-as] [-n]");
+                ConsoleHelper.WriteYellow("Uso: MergeLanguageTracks -s <source> [-l <lang>] -t <lingua> [-d <dest> | -o] [-fs] [-n]");
                 ConsoleHelper.WriteDarkGray("     Usa -h per vedere tutte le opzioni.");
                 valid = false;
-                return valid;
             }
 
             // Valida esistenza cartella sorgente
-            if (!Directory.Exists(opts.SourceFolder))
+            if (valid && !Directory.Exists(opts.SourceFolder))
             {
                 ConsoleHelper.WriteRed("Errore: cartella sorgente non trovata: " + opts.SourceFolder);
                 valid = false;
-                return valid;
             }
 
             // Valida esistenza cartella lingua
-            if (!Directory.Exists(opts.LanguageFolder))
+            if (valid && !Directory.Exists(opts.LanguageFolder))
             {
                 ConsoleHelper.WriteRed("Errore: cartella lingua non trovata: " + opts.LanguageFolder);
                 valid = false;
-                return valid;
             }
 
             // Valida formato codice lingua
-            Regex langRegex = new Regex(@"^[a-z]{2,3}$");
-            for (int i = 0; i < opts.TargetLanguage.Count; i++)
+            if (valid)
             {
-                if (!langRegex.IsMatch(opts.TargetLanguage[i].ToLower()))
+                for (int i = 0; i < opts.TargetLanguage.Count && valid; i++)
                 {
-                    ConsoleHelper.WriteRed("Errore: lingua non valida '" + opts.TargetLanguage[i] + "'. Usa codice ISO 639-2 (es: ita, eng, jpn)");
-                    valid = false;
-                    return valid;
+                    if (!langRegex.IsMatch(opts.TargetLanguage[i].ToLower()))
+                    {
+                        ConsoleHelper.WriteRed("Errore: lingua non valida '" + opts.TargetLanguage[i] + "'. Usa codice ISO 639-2 (es: ita, eng, jpn)");
+                        valid = false;
+                    }
                 }
             }
 
             // Valida lingue target contro lista ISO 639-2
-            for (int i = 0; i < opts.TargetLanguage.Count; i++)
+            if (valid)
             {
-                if (!LanguageValidator.IsValid(opts.TargetLanguage[i]))
+                valid = ValidateLanguageList(opts.TargetLanguage, "", true);
+            }
+
+            // Valida KeepSourceAudioLangs
+            if (valid)
+            {
+                valid = ValidateLanguageList(opts.KeepSourceAudioLangs, "-ksa", false);
+            }
+
+            // Valida KeepSourceSubtitleLangs
+            if (valid)
+            {
+                valid = ValidateLanguageList(opts.KeepSourceSubtitleLangs, "-kss", false);
+            }
+
+            // Valida codec audio sorgente se specificato
+            if (valid)
+            {
+                valid = ValidateCodecList(opts.KeepSourceAudioCodec, "-ksac");
+            }
+
+            // Valida mutua esclusione SubOnly e AudioOnly
+            if (valid && opts.SubOnly && opts.AudioOnly)
+            {
+                ConsoleHelper.WriteRed("Errore: -so e -ao non possono essere usati insieme.");
+                valid = false;
+            }
+
+            // Valida modalita' output: -o e -d sono mutuamente esclusive
+            if (valid && opts.Overwrite && opts.DestinationFolder.Length > 0)
+            {
+                ConsoleHelper.WriteRed("Errore: -o (--overwrite) e -d (--destination) non possono essere usati insieme.");
+                valid = false;
+            }
+
+            // Almeno uno tra -o e -d deve essere specificato
+            if (valid && !opts.Overwrite && opts.DestinationFolder.Length == 0)
+            {
+                ConsoleHelper.WriteRed("Errore: specificare -d <cartella> oppure -o per sovrascrivere i sorgente.");
+                valid = false;
+            }
+
+            // Valida codec audio se specificato
+            if (valid)
+            {
+                valid = ValidateCodecList(opts.AudioCodec, "-ac");
+            }
+
+            return valid;
+        }
+
+        /// <summary>
+        /// Valida una lista di codici lingua ISO 639-2 con suggerimenti in caso di errore
+        /// </summary>
+        /// <param name="langs">Lista lingue da validare</param>
+        /// <param name="fieldName">Nome parametro per messaggio errore (es: "-ksa"), vuoto per target</param>
+        /// <param name="showGenericHelp">Se mostrare help generico quando non ci sono suggerimenti</param>
+        /// <returns>True se tutte le lingue sono valide</returns>
+        private static bool ValidateLanguageList(List<string> langs, string fieldName, bool showGenericHelp)
+        {
+            bool valid = true;
+            List<string> suggestions = null;
+            string suffix = fieldName.Length > 0 ? " in " + fieldName : "";
+
+            for (int i = 0; i < langs.Count && valid; i++)
+            {
+                if (!LanguageValidator.IsValid(langs[i]))
                 {
-                    ConsoleHelper.WriteRed("Errore: lingua '" + opts.TargetLanguage[i] + "' non riconosciuta.");
-                    List<string> suggestions = LanguageValidator.GetSimilar(opts.TargetLanguage[i], 3);
+                    ConsoleHelper.WriteRed("Errore: lingua '" + langs[i] + "'" + suffix + " non riconosciuta.");
+                    suggestions = LanguageValidator.GetSimilar(langs[i], 3);
                     if (suggestions.Count > 0)
                     {
                         ConsoleHelper.WriteYellow("Forse intendevi: " + string.Join(", ", suggestions) + "?");
                     }
-                    else
+                    else if (showGenericHelp)
                     {
                         ConsoleHelper.WriteYellow("Usa codici ISO 639-2 (es: ita, eng, jpn, ger, fra, spa)");
                     }
                     valid = false;
-                    return valid;
-                }
-            }
-
-            // Valida KeepSourceAudioLangs
-            for (int i = 0; i < opts.KeepSourceAudioLangs.Count; i++)
-            {
-                if (!LanguageValidator.IsValid(opts.KeepSourceAudioLangs[i]))
-                {
-                    ConsoleHelper.WriteRed("Errore: lingua '" + opts.KeepSourceAudioLangs[i] + "' in -ksa non riconosciuta.");
-                    List<string> suggestions = LanguageValidator.GetSimilar(opts.KeepSourceAudioLangs[i], 3);
-                    if (suggestions.Count > 0)
-                    {
-                        ConsoleHelper.WriteYellow("Forse intendevi: " + string.Join(", ", suggestions) + "?");
-                    }
-                    valid = false;
-                    return valid;
-                }
-            }
-
-            // Valida KeepSourceSubtitleLangs
-            for (int i = 0; i < opts.KeepSourceSubtitleLangs.Count; i++)
-            {
-                if (!LanguageValidator.IsValid(opts.KeepSourceSubtitleLangs[i]))
-                {
-                    ConsoleHelper.WriteRed("Errore: lingua '" + opts.KeepSourceSubtitleLangs[i] + "' in -kss non riconosciuta.");
-                    List<string> suggestions = LanguageValidator.GetSimilar(opts.KeepSourceSubtitleLangs[i], 3);
-                    if (suggestions.Count > 0)
-                    {
-                        ConsoleHelper.WriteYellow("Forse intendevi: " + string.Join(", ", suggestions) + "?");
-                    }
-                    valid = false;
-                    return valid;
-                }
-            }
-
-            // Valida codec audio sorgente se specificato
-            for (int i = 0; i < opts.KeepSourceAudioCodec.Count; i++)
-            {
-                string[] patterns = CodecMapping.GetCodecPatterns(opts.KeepSourceAudioCodec[i]);
-                if (patterns == null)
-                {
-                    ConsoleHelper.WriteRed("Errore: codec '" + opts.KeepSourceAudioCodec[i] + "' in -ksac non riconosciuto.");
-                    ConsoleHelper.WriteYellow("Codec validi: " + CodecMapping.GetAllCodecNames());
-                    valid = false;
-                    return valid;
-                }
-            }
-
-            // Valida mutua esclusione SubOnly e AudioOnly
-            if (opts.SubOnly && opts.AudioOnly)
-            {
-                ConsoleHelper.WriteRed("Errore: -so e -ao non possono essere usati insieme.");
-                valid = false;
-                return valid;
-            }
-
-            // Valida modalita' output: -o e -d sono mutuamente esclusive
-            if (opts.Overwrite && opts.DestinationFolder.Length > 0)
-            {
-                ConsoleHelper.WriteRed("Errore: -o (--overwrite) e -d (--destination) non possono essere usati insieme.");
-                valid = false;
-                return valid;
-            }
-
-            // Almeno uno tra -o e -d deve essere specificato
-            if (!opts.Overwrite && opts.DestinationFolder.Length == 0)
-            {
-                ConsoleHelper.WriteRed("Errore: specificare -d <cartella> oppure -o per sovrascrivere i sorgente.");
-                valid = false;
-                return valid;
-            }
-
-            // Valida codec audio se specificato
-            for (int i = 0; i < opts.AudioCodec.Count; i++)
-            {
-                string[] acPatterns = CodecMapping.GetCodecPatterns(opts.AudioCodec[i]);
-                if (acPatterns == null)
-                {
-                    ConsoleHelper.WriteRed("Errore: codec '" + opts.AudioCodec[i] + "' in -ac non riconosciuto.");
-                    ConsoleHelper.WriteYellow("Codec validi: " + CodecMapping.GetAllCodecNames());
-                    valid = false;
-                    return valid;
                 }
             }
 
@@ -463,10 +779,35 @@ NOTE:
         }
 
         /// <summary>
-        /// Stampa il riepilogo configurazione corrente sulla console.
+        /// Valida una lista di nomi codec contro il mapping codec
         /// </summary>
-        /// <param name="opts">Le opzioni parsate e validate.</param>
-        /// <param name="codecPatterns">Pattern codec risolti, o null se nessun filtro codec.</param>
+        /// <param name="codecs">Lista codec da validare</param>
+        /// <param name="fieldName">Nome parametro per messaggio errore (es: "-ac")</param>
+        /// <returns>True se tutti i codec sono validi</returns>
+        private static bool ValidateCodecList(List<string> codecs, string fieldName)
+        {
+            bool valid = true;
+            string[] patterns = null;
+
+            for (int i = 0; i < codecs.Count && valid; i++)
+            {
+                patterns = CodecMapping.GetCodecPatterns(codecs[i]);
+                if (patterns == null)
+                {
+                    ConsoleHelper.WriteRed("Errore: codec '" + codecs[i] + "' in " + fieldName + " non riconosciuto.");
+                    ConsoleHelper.WriteYellow("Codec validi: " + CodecMapping.GetAllCodecNames());
+                    valid = false;
+                }
+            }
+
+            return valid;
+        }
+
+        /// <summary>
+        /// Stampa il riepilogo configurazione corrente
+        /// </summary>
+        /// <param name="opts">Opzioni validate</param>
+        /// <param name="codecPatterns">Pattern codec risolti o null</param>
         private static void PrintConfiguration(Options opts, string[] codecPatterns)
         {
             ConsoleHelper.WriteYellow("Configurazione:");
@@ -493,12 +834,12 @@ NOTE:
             }
 
             // Mostra configurazione sync
-            if (opts.AutoSync)
+            if (opts.FrameSync)
             {
-                ConsoleHelper.WriteGreen("  Auto-sync:           ATTIVO (audio fingerprint)");
+                ConsoleHelper.WriteGreen("  Frame-sync:          ATTIVO");
                 if (opts.AudioDelay != 0 || opts.SubtitleDelay != 0)
                 {
-                    ConsoleHelper.WriteDarkYellow("  Offset manuale:      Audio " + FormatDelay(opts.AudioDelay) + ", Sub " + FormatDelay(opts.SubtitleDelay) + " (sommato ad auto)");
+                    ConsoleHelper.WriteDarkYellow("  Offset manuale:      Audio " + FormatDelay(opts.AudioDelay) + ", Sub " + FormatDelay(opts.SubtitleDelay) + " (sommato a frame-sync)");
                 }
             }
             else
@@ -539,10 +880,10 @@ NOTE:
         }
 
         /// <summary>
-        /// Estrae le lingue uniche delle tracce audio da una lista di tracce.
+        /// Estrae le lingue uniche delle tracce audio
         /// </summary>
-        /// <param name="tracks">Lista di tracce.</param>
-        /// <returns>Lista di codici lingua unici.</returns>
+        /// <param name="tracks">Lista tracce</param>
+        /// <returns>Lista codici lingua unici</returns>
         private static List<string> GetAudioLanguages(List<TrackInfo> tracks)
         {
             List<string> langs = new List<string>();
@@ -566,10 +907,10 @@ NOTE:
         }
 
         /// <summary>
-        /// Estrae le lingue uniche delle tracce sottotitoli da una lista di tracce.
+        /// Estrae le lingue uniche delle tracce sottotitoli
         /// </summary>
-        /// <param name="tracks">Lista di tracce.</param>
-        /// <returns>Lista di codici lingua unici.</returns>
+        /// <param name="tracks">Lista tracce</param>
+        /// <returns>Lista codici lingua unici</returns>
         private static List<string> GetSubtitleLanguages(List<TrackInfo> tracks)
         {
             List<string> langs = new List<string>();
@@ -593,10 +934,10 @@ NOTE:
         }
 
         /// <summary>
-        /// Stampa il report dettagliato con tabelle per source, lang e result.
+        /// Stampa il report dettagliato con tabelle
         /// </summary>
-        /// <param name="records">Lista dei record di elaborazione.</param>
-        /// <param name="isDryRun">Se in modalita' dry run.</param>
+        /// <param name="records">Lista record elaborazione</param>
+        /// <param name="isDryRun">Se in modalita' dry run</param>
         private static void PrintDetailedReport(List<FileProcessingRecord> records, bool isDryRun)
         {
             // Filtra solo i record elaborati con successo (o dry run)
@@ -609,11 +950,8 @@ NOTE:
                 }
             }
 
-            if (validRecords.Count == 0)
+            if (validRecords.Count > 0)
             {
-                return;
-            }
-
             ConsoleHelper.WriteCyan("\n========================================");
             ConsoleHelper.WriteCyan("  Report Dettagliato");
             ConsoleHelper.WriteCyan("========================================\n");
@@ -648,7 +986,7 @@ NOTE:
 
             // Tabella 3: Result Files
             ConsoleHelper.WriteYellow("RESULT FILES:");
-            ConsoleHelper.WritePlain("  " + PadRight("Episode", 12) + PadRight("Audio", 15) + PadRight("Subtitles", 15) + PadRight("Size", 10) + PadRight("Delay", 12) + PadRight("FFmpeg", 10) + PadRight("AutoSync", 10) + PadRight("Merge", 10));
+            ConsoleHelper.WritePlain("  " + PadRight("Episode", 12) + PadRight("Audio", 15) + PadRight("Subtitles", 15) + PadRight("Size", 10) + PadRight("Delay", 12) + PadRight("FrmSync", 10) + PadRight("Speed", 10) + PadRight("Merge", 10));
             ConsoleHelper.WriteDarkGray("  " + new string('-', 94));
 
             for (int i = 0; i < validRecords.Count; i++)
@@ -656,38 +994,45 @@ NOTE:
                 FileProcessingRecord r = validRecords[i];
                 string sizeStr = isDryRun ? "N/A" : FileProcessingRecord.FormatSize(r.ResultSize);
                 string delayStr = FormatDelay(r.AudioDelayApplied);
-                string ffmpegStr = r.FfmpegTimeMs > 0 ? r.FfmpegTimeMs + "ms" : "-";
-                string autoSyncStr = r.AutoSyncTimeMs > 0 ? r.AutoSyncTimeMs + "ms" : "-";
+                string frameSyncStr = r.FrameSyncTimeMs > 0 ? r.FrameSyncTimeMs + "ms" : "-";
+                string speedStr = r.SpeedCorrectionTimeMs > 0 ? r.SpeedCorrectionTimeMs + "ms" : "-";
                 string mergeStr = r.MergeTimeMs > 0 ? r.MergeTimeMs + "ms" : (isDryRun ? "N/A" : "-");
 
-                string line = "  " + PadRight(r.EpisodeId, 12) + PadRight(FileProcessingRecord.FormatLangs(r.ResultAudioLangs), 15) + PadRight(FileProcessingRecord.FormatLangs(r.ResultSubLangs), 15) + PadRight(sizeStr, 10) + PadRight(delayStr, 12) + PadRight(ffmpegStr, 10) + PadRight(autoSyncStr, 10) + PadRight(mergeStr, 10);
+                string line = "  " + PadRight(r.EpisodeId, 12) + PadRight(FileProcessingRecord.FormatLangs(r.ResultAudioLangs), 15) + PadRight(FileProcessingRecord.FormatLangs(r.ResultSubLangs), 15) + PadRight(sizeStr, 10) + PadRight(delayStr, 12) + PadRight(frameSyncStr, 10) + PadRight(speedStr, 10) + PadRight(mergeStr, 10);
                 ConsoleHelper.WritePlain(line);
             }
 
             Console.WriteLine();
+            }
         }
 
         /// <summary>
-        /// Pad a destra una stringa per allineamento tabellare.
+        /// Pad a destra una stringa per allineamento tabellare
         /// </summary>
-        /// <param name="text">Testo da allineare.</param>
-        /// <param name="width">Larghezza totale.</param>
-        /// <returns>Stringa con padding.</returns>
+        /// <param name="text">Testo da allineare</param>
+        /// <param name="width">Larghezza totale</param>
+        /// <returns>Stringa con padding</returns>
         private static string PadRight(string text, int width)
         {
+            string result = "";
+
             if (text.Length >= width)
             {
-                return text.Substring(0, width - 1) + " ";
+                result = text.Substring(0, width - 1) + " ";
             }
-            return text + new string(' ', width - text.Length);
+            else
+            {
+                result = text + new string(' ', width - text.Length);
+            }
+
+            return result;
         }
 
         /// <summary>
-        /// Stampa il riepilogo elaborazione finale con statistiche colorate.
+        /// Stampa il riepilogo elaborazione finale
         /// </summary>
-        /// <param name="stats">Statistiche elaborazione.</param>
-        /// <param name="autoSync">Se auto-sync era abilitato.</param>
-        private static void PrintSummary(ProcessingStats stats, bool autoSync)
+        /// <param name="stats">Statistiche elaborazione</param>
+        private static void PrintSummary(ProcessingStats stats)
         {
             ConsoleHelper.WriteCyan("\n========================================");
             ConsoleHelper.WriteCyan("  Riepilogo");
@@ -697,16 +1042,9 @@ NOTE:
             ConsoleHelper.WriteYellow("  Senza match:   " + stats.NoMatch);
             ConsoleHelper.WriteYellow("  Senza tracce:  " + stats.NoTracks);
 
-            if (autoSync)
+            if (stats.SyncFailed > 0)
             {
-                if (stats.SyncFailed > 0)
-                {
-                    ConsoleHelper.WriteYellow("  Sync falliti:  " + stats.SyncFailed);
-                }
-                else
-                {
-                    ConsoleHelper.WriteGreen("  Sync falliti:  " + stats.SyncFailed);
-                }
+                ConsoleHelper.WriteYellow("  Sync falliti:  " + stats.SyncFailed);
             }
 
             if (stats.Errors > 0)
@@ -722,153 +1060,356 @@ NOTE:
         }
 
         /// <summary>
-        /// Elabora un singolo file sorgente.
+        /// Elabora un singolo file sorgente
         /// </summary>
-        /// <param name="sourceFilePath">Percorso completo al file MKV sorgente.</param>
-        /// <param name="languageIndex">Dizionario che mappa ID episodio a percorsi file lingua.</param>
-        /// <param name="opts">Le opzioni parsate.</param>
-        /// <param name="service">L'istanza del servizio MKV tools.</param>
-        /// <param name="syncService">L'istanza del servizio audio sync, o null se auto-sync non abilitato.</param>
-        /// <param name="stats">Statistiche elaborazione.</param>
-        /// <param name="records">Lista record per report dettagliato.</param>
-        /// <param name="codecPatterns">Pattern codec risolti per il filtraggio, o null.</param>
-        /// <param name="filterSourceAudio">Se le tracce audio sorgente devono essere filtrate.</param>
-        /// <param name="filterSourceSubs">Se le tracce sottotitoli sorgente devono essere filtrate.</param>
-        private static void ProcessFile(string sourceFilePath, Dictionary<string, string> languageIndex, Options opts, MkvToolsService service, AudioSyncService syncService, ProcessingStats stats, List<FileProcessingRecord> records, string[] codecPatterns, string[] sourceAudioCodecPatterns, bool filterSourceAudio, bool filterSourceSubs)
+        /// <param name="sourceFilePath">Percorso file MKV sorgente</param>
+        /// <param name="languageIndex">Indice episodeId -> percorso file lingua</param>
+        /// <param name="ctx">Contesto elaborazione</param>
+        private static void ProcessFile(string sourceFilePath, Dictionary<string, string> languageIndex, ProcessingContext ctx)
         {
             string sourceFileName = Path.GetFileName(sourceFilePath);
+            FileProcessingRecord record = new FileProcessingRecord();
+            FileInfo sourceFileInfo = new FileInfo(sourceFilePath);
+            string episodeId = "";
+            string languageFilePath = "";
+            FileInfo langFileInfo = null;
+            MkvFileInfo sourceInfo = null;
+            MkvFileInfo langInfo = null;
+            List<TrackInfo> sourceTracks = null;
+            List<TrackInfo> langTracks = null;
+            ProcessingState state = new ProcessingState();
+            List<int> sourceAudioIds = new List<int>();
+            List<int> sourceSubIds = new List<int>();
+            List<TrackInfo> audioTracks = null;
+            List<TrackInfo> subtitleTracks = null;
+            string tempOutput = "";
+            string finalOutput = "";
+            List<string> mergeArgs = null;
+            bool done = false;
+
+            // Inizializza stato delay con valori opzioni
+            state.EffectiveAudioDelay = ctx.Opts.AudioDelay;
+            state.EffectiveSubDelay = ctx.Opts.SubtitleDelay;
+            state.StretchFactor = "";
+            state.SpeedCorrectionActive = false;
 
             // Crea record per questo file
-            FileProcessingRecord record = new FileProcessingRecord();
             record.SourceFileName = sourceFileName;
-
-            // Ottieni dimensione file sorgente
-            FileInfo sourceFileInfo = new FileInfo(sourceFilePath);
             record.SourceSize = sourceFileInfo.Length;
 
             ConsoleHelper.WriteDarkGray("----------------------------------------");
             ConsoleHelper.WriteWhite("Elaborazione: " + sourceFileName);
 
             // Estrai identificatore episodio
-            string episodeId = GetEpisodeIdentifier(sourceFileName, opts.MatchPattern);
+            episodeId = GetEpisodeIdentifier(sourceFileName, ctx.Opts.MatchPattern);
 
             if (episodeId.Length == 0)
             {
                 ConsoleHelper.WriteYellow("  [SKIP] Impossibile estrarre ID episodio dal nome file");
                 record.SkipReason = "No episode ID";
-                records.Add(record);
-                stats.Skipped++;
-                return;
+                ctx.Records.Add(record);
+                ctx.Stats.Skipped++;
+                done = true;
             }
 
-            record.EpisodeId = episodeId;
-            ConsoleHelper.WriteDarkGray("  ID Episodio: " + episodeId);
-
-            // Trova file lingua corrispondente
-            if (!languageIndex.ContainsKey(episodeId))
+            // Cerca file lingua corrispondente
+            if (!done)
             {
-                ConsoleHelper.WriteYellow("  [SKIP] Nessun file lingua corrispondente");
-                record.SkipReason = "No match";
-                records.Add(record);
-                stats.NoMatch++;
-                return;
+                record.EpisodeId = episodeId;
+                ConsoleHelper.WriteDarkGray("  ID Episodio: " + episodeId);
+
+                if (!languageIndex.ContainsKey(episodeId))
+                {
+                    ConsoleHelper.WriteYellow("  [SKIP] Nessun file lingua corrispondente");
+                    record.SkipReason = "No match";
+                    ctx.Records.Add(record);
+                    ctx.Stats.NoMatch++;
+                    done = true;
+                }
             }
-
-            string languageFilePath = languageIndex[episodeId];
-            record.LangFileName = Path.GetFileName(languageFilePath);
-
-            // Ottieni dimensione file lingua
-            FileInfo langFileInfo = new FileInfo(languageFilePath);
-            record.LangSize = langFileInfo.Length;
-
-            ConsoleHelper.WriteDarkCyan("  Match: " + Path.GetFileName(languageFilePath));
 
             // Ottieni info tracce per entrambi i file
-            List<TrackInfo> sourceTracks = service.GetTrackInfo(sourceFilePath);
-            List<TrackInfo> langTracks = service.GetTrackInfo(languageFilePath);
-
-            // Popola lingue sorgente nel record
-            record.SourceAudioLangs = GetAudioLanguages(sourceTracks);
-            record.SourceSubLangs = GetSubtitleLanguages(sourceTracks);
-
-            // Popola lingue lingua nel record
-            record.LangAudioLangs = GetAudioLanguages(langTracks);
-            record.LangSubLangs = GetSubtitleLanguages(langTracks);
-
-            if (langTracks == null)
+            if (!done)
             {
-                ConsoleHelper.WriteRed("  [ERRORE] Impossibile leggere info tracce file lingua");
-                record.SkipReason = "Track read error";
-                records.Add(record);
-                stats.Errors++;
-                return;
+                languageFilePath = languageIndex[episodeId];
+                record.LangFileName = Path.GetFileName(languageFilePath);
+
+                langFileInfo = new FileInfo(languageFilePath);
+                record.LangSize = langFileInfo.Length;
+
+                ConsoleHelper.WriteDarkCyan("  Match: " + Path.GetFileName(languageFilePath));
+
+                sourceInfo = ctx.Service.GetFileInfo(sourceFilePath);
+                langInfo = ctx.Service.GetFileInfo(languageFilePath);
+                sourceTracks = (sourceInfo != null) ? sourceInfo.Tracks : null;
+                langTracks = (langInfo != null) ? langInfo.Tracks : null;
+
+                record.SourceAudioLangs = GetAudioLanguages(sourceTracks);
+                record.SourceSubLangs = GetSubtitleLanguages(sourceTracks);
+                record.LangAudioLangs = GetAudioLanguages(langTracks);
+                record.LangSubLangs = GetSubtitleLanguages(langTracks);
+
+                if (langTracks == null)
+                {
+                    ConsoleHelper.WriteRed("  [ERRORE] Impossibile leggere info tracce file lingua");
+                    record.SkipReason = "Track read error";
+                    ctx.Records.Add(record);
+                    ctx.Stats.Errors++;
+                    done = true;
+                }
             }
 
-            // Calcola ritardi effettivi
-            int effectiveAudioDelay = opts.AudioDelay;
-            int effectiveSubDelay = opts.SubtitleDelay;
-
-            // Calcolo auto-sync
-            if (opts.AutoSync && syncService != null)
+            // Rilevamento e correzione mismatch velocita'
+            if (!done && sourceInfo != null && langInfo != null)
             {
-                ConsoleHelper.WriteCyan("\n  [AUTO-SYNC] Modalita': Audio fingerprinting (silenzi + picchi)");
+                done = !HandleSpeedCorrection(record, sourceFilePath, languageFilePath, sourceInfo, langInfo, ctx, state);
+            }
 
-                int autoOffset = syncService.ComputeAutoSyncOffset(sourceFilePath, languageFilePath, sourceTracks, opts.TargetLanguage, service.IsLanguageInList, opts.AnalysisTime);
-
-                // Recupera tempi misurati dal servizio
-                record.FfmpegTimeMs = syncService.FfmpegTimeMs;
-                record.AutoSyncTimeMs = syncService.AutoSyncTimeMs;
-
-                if (autoOffset != int.MinValue)
-                {
-                    ConsoleHelper.WriteGreen("  [AUTO-SYNC] Offset rilevato: " + FormatDelay(autoOffset) + " (FFmpeg: " + record.FfmpegTimeMs + "ms, Sync: " + record.AutoSyncTimeMs + "ms)");
-
-                    // Somma offset manuale con offset auto
-                    effectiveAudioDelay = autoOffset + opts.AudioDelay;
-                    effectiveSubDelay = autoOffset + opts.SubtitleDelay;
-
-                    if (opts.AudioDelay != 0 || opts.SubtitleDelay != 0)
-                    {
-                        ConsoleHelper.WriteDarkYellow("  [AUTO-SYNC] Offset finale (auto + manuale): Audio " + FormatDelay(effectiveAudioDelay) + ", Sub " + FormatDelay(effectiveSubDelay));
-                    }
-                }
-                else
-                {
-                    ConsoleHelper.WriteYellow("  [AUTO-SYNC] Impossibile calcolare offset, uso valori manuali");
-                    stats.SyncFailed++;
-                }
+            // Frame-sync solo se non in modalita' correzione velocita'
+            if (!done && !state.SpeedCorrectionActive && ctx.Opts.FrameSync && ctx.FrameSyncService != null)
+            {
+                done = !HandleFrameSync(record, sourceFilePath, languageFilePath, ctx, state);
             }
 
             // Ottieni ID tracce sorgente da mantenere
-            List<int> sourceAudioIds = new List<int>();
-            List<int> sourceSubIds = new List<int>();
-
-            if (sourceTracks != null)
+            if (!done && sourceTracks != null)
             {
-                if (filterSourceAudio)
+                if (ctx.FilterSourceAudio)
                 {
-                    sourceAudioIds = service.GetSourceTrackIds(sourceTracks, "audio", opts.KeepSourceAudioLangs, sourceAudioCodecPatterns);
+                    sourceAudioIds = ctx.Service.GetSourceTrackIds(sourceTracks, "audio", ctx.Opts.KeepSourceAudioLangs, ctx.SourceAudioCodecPatterns);
                     ConsoleHelper.WriteDarkYellow("\n  Audio sorgente da mantenere: " + FormatTrackIdList(sourceAudioIds));
                 }
-                if (filterSourceSubs)
+                if (ctx.FilterSourceSubs)
                 {
-                    sourceSubIds = service.GetSourceTrackIds(sourceTracks, "subtitles", opts.KeepSourceSubtitleLangs, null);
+                    sourceSubIds = ctx.Service.GetSourceTrackIds(sourceTracks, "subtitles", ctx.Opts.KeepSourceSubtitleLangs, null);
                     ConsoleHelper.WriteDarkYellow("  Sub sorgente da mantenere:   " + FormatTrackIdList(sourceSubIds));
                 }
             }
 
-            // Raccogli tracce dal file lingua per tutte le lingue target
-            List<TrackInfo> audioTracks = new List<TrackInfo>();
-            List<TrackInfo> subtitleTracks = new List<TrackInfo>();
-
-            for (int t = 0; t < opts.TargetLanguage.Count; t++)
+            // Raccogli tracce lingua
+            if (!done)
             {
-                string tl = opts.TargetLanguage[t];
+                done = !CollectLanguageTracks(record, langTracks, ctx, out audioTracks, out subtitleTracks);
+            }
+
+            // Costruisci output, esegui merge e registra risultato
+            if (!done)
+            {
+                DetermineOutputPath(sourceFilePath, ctx, out tempOutput, out finalOutput);
+
+                // Costruisci richiesta merge
+                MergeRequest mergeReq = new MergeRequest();
+                mergeReq.SourceFile = sourceFilePath;
+                mergeReq.LanguageFile = languageFilePath;
+                mergeReq.OutputFile = tempOutput;
+                mergeReq.SourceAudioIds = sourceAudioIds;
+                mergeReq.SourceSubIds = sourceSubIds;
+                mergeReq.LangAudioTracks = audioTracks;
+                mergeReq.LangSubTracks = subtitleTracks;
+                mergeReq.AudioDelayMs = state.EffectiveAudioDelay;
+                mergeReq.SubDelayMs = state.EffectiveSubDelay;
+                mergeReq.FilterSourceAudio = ctx.FilterSourceAudio;
+                mergeReq.FilterSourceSubs = ctx.FilterSourceSubs;
+                mergeReq.StretchFactor = state.StretchFactor;
+                mergeArgs = ctx.Service.BuildMergeArguments(mergeReq);
+
+                ConsoleHelper.WriteDarkGray("\n  Output: " + finalOutput);
+                if (state.SpeedCorrectionActive)
+                {
+                    ConsoleHelper.WriteDarkGray("  Delay applicato: Audio " + FormatDelay(state.EffectiveAudioDelay) + ", Sub " + FormatDelay(state.EffectiveSubDelay) + ", stretch: " + state.StretchFactor);
+                }
+                else
+                {
+                    ConsoleHelper.WriteDarkGray("  Delay applicato: Audio " + FormatDelay(state.EffectiveAudioDelay) + ", Sub " + FormatDelay(state.EffectiveSubDelay));
+                }
+
+                record.AudioDelayApplied = state.EffectiveAudioDelay;
+                record.SubDelayApplied = state.EffectiveSubDelay;
+                record.ResultFileName = Path.GetFileName(finalOutput);
+
+                CalculateResultLanguages(record, sourceTracks, sourceAudioIds, audioTracks, subtitleTracks, ctx);
+                ExecuteAndRecord(record, ctx, mergeArgs, tempOutput, finalOutput);
+            }
+        }
+
+        /// <summary>
+        /// Gestisce rilevamento e correzione mismatch velocita'
+        /// </summary>
+        /// <param name="record">Record elaborazione corrente</param>
+        /// <param name="sourceFilePath">Percorso file sorgente</param>
+        /// <param name="languageFilePath">Percorso file lingua</param>
+        /// <param name="sourceInfo">Info file sorgente</param>
+        /// <param name="langInfo">Info file lingua</param>
+        /// <param name="ctx">Contesto elaborazione</param>
+        /// <param name="state">Stato mutabile elaborazione</param>
+        /// <returns>true se elaborazione puo' continuare, false se fallita</returns>
+        private static bool HandleSpeedCorrection(FileProcessingRecord record, string sourceFilePath, string languageFilePath, MkvFileInfo sourceInfo, MkvFileInfo langInfo, ProcessingContext ctx, ProcessingState state)
+        {
+            bool result = true;
+            double detectedSourceFps = 0.0;
+            double detectedLangFps = 0.0;
+            bool speedMismatch = false;
+            string ffmpegPath = "";
+            FfmpegProvider ffmpegProvider = null;
+            long sourceDefaultDuration = 0;
+            long langDefaultDuration = 0;
+            int sourceDurationMs = 0;
+            SpeedCorrectionService speedService = null;
+            bool speedOk = false;
+
+            speedMismatch = SpeedCorrectionService.DetectSpeedMismatch(sourceInfo, langInfo, out detectedSourceFps, out detectedLangFps);
+
+            if (speedMismatch)
+            {
+                ConsoleHelper.WriteCyan("\n  [SPEED] Mismatch velocita' rilevato: source " + detectedSourceFps.ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + "fps, lang " + detectedLangFps.ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + "fps");
+
+                // Risolvi ffmpeg se non ancora disponibile
+                ffmpegPath = ctx.FfmpegPath;
+                if (ffmpegPath.Length == 0)
+                {
+                    ConsoleHelper.WriteDarkYellow("  [SPEED] Risoluzione ffmpeg per frame matching...");
+                    ffmpegProvider = new FfmpegProvider(ctx.Opts.ToolsFolder);
+                    if (ffmpegProvider.Resolve())
+                    {
+                        ffmpegPath = ffmpegProvider.FfmpegPath;
+                        ConsoleHelper.WriteGreen("  [SPEED] ffmpeg trovato: " + ffmpegPath);
+                    }
+                    else
+                    {
+                        ConsoleHelper.WriteWarning("  [SPEED] ffmpeg non disponibile, correzione velocita' saltata");
+                    }
+                }
+
+                if (ffmpegPath.Length > 0)
+                {
+                    // Trova default_duration per tracce video
+                    for (int t = 0; t < sourceInfo.Tracks.Count; t++)
+                    {
+                        if (string.Equals(sourceInfo.Tracks[t].Type, "video", StringComparison.OrdinalIgnoreCase) && sourceInfo.Tracks[t].DefaultDurationNs > 0)
+                        {
+                            sourceDefaultDuration = sourceInfo.Tracks[t].DefaultDurationNs;
+                            break;
+                        }
+                    }
+                    for (int t = 0; t < langInfo.Tracks.Count; t++)
+                    {
+                        if (string.Equals(langInfo.Tracks[t].Type, "video", StringComparison.OrdinalIgnoreCase) && langInfo.Tracks[t].DefaultDurationNs > 0)
+                        {
+                            langDefaultDuration = langInfo.Tracks[t].DefaultDurationNs;
+                            break;
+                        }
+                    }
+
+                    // Durata sorgente in ms dal container
+                    sourceDurationMs = (int)(sourceInfo.ContainerDurationNs / 1000000);
+
+                    speedService = new SpeedCorrectionService(ffmpegPath);
+                    speedOk = speedService.FindDelayAndVerify(sourceFilePath, languageFilePath, sourceDefaultDuration, langDefaultDuration, sourceDurationMs);
+
+                    record.SpeedCorrectionTimeMs = speedService.ExecutionTimeMs;
+
+                    if (speedOk)
+                    {
+                        state.StretchFactor = speedService.StretchFactor;
+                        state.EffectiveAudioDelay = speedService.SyncDelayMs + ctx.Opts.AudioDelay;
+                        state.EffectiveSubDelay = speedService.SyncDelayMs + ctx.Opts.SubtitleDelay;
+                        state.SpeedCorrectionActive = true;
+
+                        record.SpeedCorrectionApplied = true;
+                        record.StretchFactor = speedService.StretchFactor;
+
+                        ConsoleHelper.WriteGreen("  [SPEED] Correzione applicata: delay iniziale=" + speedService.InitialDelayMs + "ms, sync delay=" + speedService.SyncDelayMs + "ms, stretch=" + state.StretchFactor + " (tempo: " + speedService.ExecutionTimeMs + "ms)");
+                        ConsoleHelper.WriteDarkGray("  [SPEED] Verifica: " + speedService.GetDetailSummary());
+                    }
+                    else
+                    {
+                        ConsoleHelper.WriteRed("  [SPEED] Correzione velocita' fallita, file saltato");
+                        record.SkipReason = "Speed correction fallita";
+                        record.Success = false;
+                        ctx.Records.Add(record);
+                        ctx.Stats.SyncFailed++;
+                        result = false;
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Gestisce sincronizzazione frame-sync
+        /// </summary>
+        /// <param name="record">Record elaborazione corrente</param>
+        /// <param name="sourceFilePath">Percorso file sorgente</param>
+        /// <param name="languageFilePath">Percorso file lingua</param>
+        /// <param name="ctx">Contesto elaborazione</param>
+        /// <param name="state">Stato mutabile elaborazione</param>
+        /// <returns>true se elaborazione puo' continuare, false se fallita</returns>
+        private static bool HandleFrameSync(FileProcessingRecord record, string sourceFilePath, string languageFilePath, ProcessingContext ctx, ProcessingState state)
+        {
+            bool result = true;
+            int frameSyncOffset = 0;
+
+            ConsoleHelper.WriteCyan("\n  [FRAME-SYNC] Sincronizzazione tramite confronto visivo...");
+
+            frameSyncOffset = ctx.FrameSyncService.RefineOffset(sourceFilePath, languageFilePath);
+            record.FrameSyncTimeMs = ctx.FrameSyncService.FrameSyncTimeMs;
+
+            if (frameSyncOffset != int.MinValue)
+            {
+                ConsoleHelper.WriteGreen("  [FRAME-SYNC] Offset: " + FormatDelay(frameSyncOffset) + " (tempo: " + ctx.FrameSyncService.FrameSyncTimeMs + "ms)");
+                ConsoleHelper.WriteDarkGray("  [FRAME-SYNC] Dettaglio: " + ctx.FrameSyncService.GetDetailSummary());
+
+                // Calcola delay effettivi con offset frame-sync
+                state.EffectiveAudioDelay = frameSyncOffset + ctx.Opts.AudioDelay;
+                state.EffectiveSubDelay = frameSyncOffset + ctx.Opts.SubtitleDelay;
+
+                if (ctx.Opts.AudioDelay != 0 || ctx.Opts.SubtitleDelay != 0)
+                {
+                    ConsoleHelper.WriteDarkYellow("  [FRAME-SYNC] Offset finale (sync + manuale): Audio " + FormatDelay(state.EffectiveAudioDelay) + ", Sub " + FormatDelay(state.EffectiveSubDelay));
+                }
+            }
+            else
+            {
+                ConsoleHelper.WriteRed("  [FRAME-SYNC] Sincronizzazione fallita");
+                ctx.Stats.SyncFailed++;
+                record.SkipReason = "Frame sync fallito";
+                record.Success = false;
+                ctx.Records.Add(record);
+                result = false;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Raccoglie tracce audio e sottotitoli dal file lingua
+        /// </summary>
+        /// <param name="record">Record elaborazione corrente</param>
+        /// <param name="langTracks">Lista tracce file lingua</param>
+        /// <param name="ctx">Contesto elaborazione</param>
+        /// <param name="audioTracks">Tracce audio trovate</param>
+        /// <param name="subtitleTracks">Tracce sottotitoli trovate</param>
+        /// <returns>true se almeno una traccia trovata, false altrimenti</returns>
+        private static bool CollectLanguageTracks(FileProcessingRecord record, List<TrackInfo> langTracks, ProcessingContext ctx, out List<TrackInfo> audioTracks, out List<TrackInfo> subtitleTracks)
+        {
+            bool result = true;
+            string tl = "";
+            List<TrackInfo> foundAudio = null;
+            List<TrackInfo> foundSubs = null;
+            string codecSuffix = "";
+
+            audioTracks = new List<TrackInfo>();
+            subtitleTracks = new List<TrackInfo>();
+
+            for (int t = 0; t < ctx.Opts.TargetLanguage.Count; t++)
+            {
+                tl = ctx.Opts.TargetLanguage[t];
 
                 // Tracce audio (a meno che SubOnly)
-                if (!opts.SubOnly)
+                if (!ctx.Opts.SubOnly)
                 {
-                    List<TrackInfo> foundAudio = service.GetFilteredTracks(langTracks, tl, "audio", codecPatterns);
+                    foundAudio = ctx.Service.GetFilteredTracks(langTracks, tl, "audio", ctx.CodecPatterns);
                     for (int a = 0; a < foundAudio.Count; a++)
                     {
                         audioTracks.Add(foundAudio[a]);
@@ -876,9 +1417,9 @@ NOTE:
                 }
 
                 // Tracce sottotitoli (a meno che AudioOnly)
-                if (!opts.AudioOnly)
+                if (!ctx.Opts.AudioOnly)
                 {
-                    List<TrackInfo> foundSubs = service.GetFilteredTracks(langTracks, tl, "subtitles", null);
+                    foundSubs = ctx.Service.GetFilteredTracks(langTracks, tl, "subtitles", null);
                     for (int s = 0; s < foundSubs.Count; s++)
                     {
                         subtitleTracks.Add(foundSubs[s]);
@@ -887,11 +1428,11 @@ NOTE:
             }
 
             // Mostra tracce trovate
-            string codecSuffix = (opts.AudioCodec.Count > 0) ? " / " + string.Join(",", opts.AudioCodec) : "";
-            ConsoleHelper.WriteMagenta("\n  Audio file lingua (" + string.Join(",", opts.TargetLanguage) + codecSuffix + "):");
+            codecSuffix = (ctx.Opts.AudioCodec.Count > 0) ? " / " + string.Join(",", ctx.Opts.AudioCodec) : "";
+            ConsoleHelper.WriteMagenta("\n  Audio file lingua (" + string.Join(",", ctx.Opts.TargetLanguage) + codecSuffix + "):");
             ConsoleHelper.WritePlain(FormatTrackInfo(audioTracks));
 
-            ConsoleHelper.WriteMagenta("\n  Sottotitoli file lingua (" + string.Join(",", opts.TargetLanguage) + "):");
+            ConsoleHelper.WriteMagenta("\n  Sottotitoli file lingua (" + string.Join(",", ctx.Opts.TargetLanguage) + "):");
             ConsoleHelper.WritePlain(FormatTrackInfo(subtitleTracks));
 
             // Salta se nessuna traccia trovata
@@ -899,57 +1440,75 @@ NOTE:
             {
                 ConsoleHelper.WriteYellow("\n  [SKIP] Nessuna traccia corrispondente trovata");
                 record.SkipReason = "No matching tracks";
-                records.Add(record);
-                stats.NoTracks++;
-                return;
+                ctx.Records.Add(record);
+                ctx.Stats.NoTracks++;
+                result = false;
             }
 
-            // Determina percorso output
-            string tempOutput = "";
-            string finalOutput = "";
+            return result;
+        }
 
-            if (opts.Overwrite)
+        /// <summary>
+        /// Determina percorso output temporaneo e finale
+        /// </summary>
+        /// <param name="sourceFilePath">Percorso file sorgente</param>
+        /// <param name="ctx">Contesto elaborazione</param>
+        /// <param name="tempOutput">Percorso output temporaneo</param>
+        /// <param name="finalOutput">Percorso output finale</param>
+        private static void DetermineOutputPath(string sourceFilePath, ProcessingContext ctx, out string tempOutput, out string finalOutput)
+        {
+            string sourceDir = "";
+            string sourceNameNoExt = "";
+            string normalizedSource = "";
+            string normalizedFolder = "";
+            string relativePath = "";
+            string destDir = "";
+
+            if (ctx.Opts.Overwrite)
             {
                 // Usa file temp, poi sostituisci originale
-                string sourceDir = Path.GetDirectoryName(sourceFilePath);
-                string sourceNameNoExt = Path.GetFileNameWithoutExtension(sourceFilePath);
+                sourceDir = Path.GetDirectoryName(sourceFilePath);
+                sourceNameNoExt = Path.GetFileNameWithoutExtension(sourceFilePath);
                 tempOutput = Path.Combine(sourceDir, sourceNameNoExt + "_TEMP.mkv");
                 finalOutput = sourceFilePath;
             }
             else
             {
                 // Modalita' Destination: preserva struttura directory
-                string normalizedSource = NormalizePath(sourceFilePath);
-                string normalizedFolder = NormalizePath(opts.SourceFolder);
-                string relativePath = normalizedSource.Substring(normalizedFolder.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                finalOutput = Path.Combine(opts.DestinationFolder, relativePath);
+                normalizedSource = NormalizePath(sourceFilePath);
+                normalizedFolder = NormalizePath(ctx.Opts.SourceFolder);
+                relativePath = normalizedSource.Substring(normalizedFolder.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                finalOutput = Path.Combine(ctx.Opts.DestinationFolder, relativePath);
                 tempOutput = finalOutput;
 
                 // Crea sottodirectory destinazione se necessario
-                string destDir = Path.GetDirectoryName(finalOutput);
+                destDir = Path.GetDirectoryName(finalOutput);
                 if (!Directory.Exists(destDir))
                 {
                     Directory.CreateDirectory(destDir);
                 }
             }
+        }
 
-            // Costruisci argomenti merge
-            List<string> mergeArgs = service.BuildMergeArguments(sourceFilePath, languageFilePath, tempOutput, sourceAudioIds, sourceSubIds, audioTracks, subtitleTracks, effectiveAudioDelay, effectiveSubDelay, filterSourceAudio, filterSourceSubs);
-
-            ConsoleHelper.WriteDarkGray("\n  Output: " + finalOutput);
-            ConsoleHelper.WriteDarkGray("  Delay applicato: Audio " + FormatDelay(effectiveAudioDelay) + ", Sub " + FormatDelay(effectiveSubDelay));
-
-            // Popola record con info risultato previste
-            record.AudioDelayApplied = effectiveAudioDelay;
-            record.SubDelayApplied = effectiveSubDelay;
-            record.ResultFileName = Path.GetFileName(finalOutput);
-
-            // Calcola lingue risultato (source filtrate + lang importate)
+        /// <summary>
+        /// Calcola le lingue audio e sottotitoli del file risultante
+        /// </summary>
+        /// <param name="record">Record elaborazione corrente</param>
+        /// <param name="sourceTracks">Tracce file sorgente</param>
+        /// <param name="sourceAudioIds">ID tracce audio sorgente da mantenere</param>
+        /// <param name="audioTracks">Tracce audio importate</param>
+        /// <param name="subtitleTracks">Tracce sottotitoli importate</param>
+        /// <param name="ctx">Contesto elaborazione</param>
+        private static void CalculateResultLanguages(FileProcessingRecord record, List<TrackInfo> sourceTracks, List<int> sourceAudioIds, List<TrackInfo> audioTracks, List<TrackInfo> subtitleTracks, ProcessingContext ctx)
+        {
             List<string> resultAudioLangs = new List<string>();
             List<string> resultSubLangs = new List<string>();
+            string lang = "";
+            string srcLang = "";
+            bool keepThis = false;
 
-            // Audio dal sorgente: deriva le lingue dalle tracce effettivamente selezionate
-            if (!filterSourceAudio)
+            // Audio dal sorgente
+            if (!ctx.FilterSourceAudio)
             {
                 for (int i = 0; i < record.SourceAudioLangs.Count; i++)
                 {
@@ -972,7 +1531,7 @@ NOTE:
                     {
                         continue;
                     }
-                    string lang = sourceTracks[i].Language.Length > 0 ? sourceTracks[i].Language : "und";
+                    lang = sourceTracks[i].Language.Length > 0 ? sourceTracks[i].Language : "und";
                     if (!resultAudioLangs.Contains(lang))
                     {
                         resultAudioLangs.Add(lang);
@@ -983,15 +1542,15 @@ NOTE:
             // Audio importate dal file lingua
             for (int i = 0; i < audioTracks.Count; i++)
             {
-                string lang = audioTracks[i].Language.Length > 0 ? audioTracks[i].Language : "und";
+                lang = audioTracks[i].Language.Length > 0 ? audioTracks[i].Language : "und";
                 if (!resultAudioLangs.Contains(lang))
                 {
                     resultAudioLangs.Add(lang);
                 }
             }
 
-            // Sottotitoli dal sorgente (se non filtrati, tutti; se filtrati, solo quelli che esistono E sono in KeepSourceSubtitleLangs)
-            if (!filterSourceSubs)
+            // Sottotitoli dal sorgente
+            if (!ctx.FilterSourceSubs)
             {
                 for (int i = 0; i < record.SourceSubLangs.Count; i++)
                 {
@@ -1003,14 +1562,14 @@ NOTE:
             }
             else
             {
-                // Aggiungi solo le lingue che esistono nel sorgente E sono nella lista keep
+                // Aggiungi solo le lingue nel sorgente che sono nella lista keep
                 for (int i = 0; i < record.SourceSubLangs.Count; i++)
                 {
-                    string srcLang = record.SourceSubLangs[i];
-                    bool keepThis = false;
-                    for (int k = 0; k < opts.KeepSourceSubtitleLangs.Count; k++)
+                    srcLang = record.SourceSubLangs[i];
+                    keepThis = false;
+                    for (int k = 0; k < ctx.Opts.KeepSourceSubtitleLangs.Count; k++)
                     {
-                        if (string.Equals(srcLang, opts.KeepSourceSubtitleLangs[k], StringComparison.OrdinalIgnoreCase))
+                        if (string.Equals(srcLang, ctx.Opts.KeepSourceSubtitleLangs[k], StringComparison.OrdinalIgnoreCase))
                         {
                             keepThis = true;
                             break;
@@ -1026,7 +1585,7 @@ NOTE:
             // Sottotitoli importati dal file lingua
             for (int i = 0; i < subtitleTracks.Count; i++)
             {
-                string lang = subtitleTracks[i].Language.Length > 0 ? subtitleTracks[i].Language : "und";
+                lang = subtitleTracks[i].Language.Length > 0 ? subtitleTracks[i].Language : "und";
                 if (!resultSubLangs.Contains(lang))
                 {
                     resultSubLangs.Add(lang);
@@ -1035,40 +1594,54 @@ NOTE:
 
             record.ResultAudioLangs = resultAudioLangs;
             record.ResultSubLangs = resultSubLangs;
+        }
 
-            // Esegui o visualizza comando
-            if (opts.DryRun)
+        /// <summary>
+        /// Esegue merge o dry-run e registra risultato
+        /// </summary>
+        /// <param name="record">Record elaborazione corrente</param>
+        /// <param name="ctx">Contesto elaborazione</param>
+        /// <param name="mergeArgs">Argomenti merge</param>
+        /// <param name="tempOutput">Percorso output temporaneo</param>
+        /// <param name="finalOutput">Percorso output finale</param>
+        private static void ExecuteAndRecord(FileProcessingRecord record, ProcessingContext ctx, List<string> mergeArgs, string tempOutput, string finalOutput)
+        {
+            Stopwatch mergeStopwatch = null;
+            string mergeOutput = "";
+            int mergeExitCode = 0;
+            FileInfo resultFileInfo = null;
+
+            if (ctx.Opts.DryRun)
             {
                 ConsoleHelper.WriteCyan("\n  [DRY-RUN] Comando che verrebbe eseguito:");
-                ConsoleHelper.WriteDarkGray("  " + service.FormatMergeCommand(mergeArgs));
+                ConsoleHelper.WriteDarkGray("  " + ctx.Service.FormatMergeCommand(mergeArgs));
 
                 // In dry run segna come success per includerlo nel report
                 record.Success = true;
-                records.Add(record);
+                ctx.Records.Add(record);
             }
             else
             {
                 ConsoleHelper.WriteYellow("\n  Unione in corso...");
 
                 // Misura tempo merge
-                Stopwatch mergeStopwatch = new Stopwatch();
+                mergeStopwatch = new Stopwatch();
                 mergeStopwatch.Start();
 
-                string mergeOutput = "";
-                int exitCode = service.ExecuteMerge(mergeArgs, out mergeOutput);
+                mergeExitCode = ctx.Service.ExecuteMerge(mergeArgs, out mergeOutput);
 
                 mergeStopwatch.Stop();
                 record.MergeTimeMs = mergeStopwatch.ElapsedMilliseconds;
 
                 // Exit code 0 e 1 sono entrambi considerati successo da mkvmerge
-                if (exitCode == 0 || exitCode == 1)
+                if (mergeExitCode == 0 || mergeExitCode == 1)
                 {
                     ConsoleHelper.WriteGreen("  [OK] Unione completata");
 
                     // Gestisci modalita' overwrite: sostituisci originale
-                    if (opts.Overwrite)
+                    if (ctx.Opts.Overwrite)
                     {
-                        File.Delete(sourceFilePath);
+                        File.Delete(finalOutput);
                         File.Move(tempOutput, finalOutput);
                         ConsoleHelper.WriteGreen("  [OK] File originale sostituito");
                     }
@@ -1076,17 +1649,17 @@ NOTE:
                     // Ottieni dimensione file risultato
                     if (File.Exists(finalOutput))
                     {
-                        FileInfo resultFileInfo = new FileInfo(finalOutput);
+                        resultFileInfo = new FileInfo(finalOutput);
                         record.ResultSize = resultFileInfo.Length;
                     }
 
                     record.Success = true;
-                    records.Add(record);
-                    stats.Processed++;
+                    ctx.Records.Add(record);
+                    ctx.Stats.Processed++;
                 }
                 else
                 {
-                    ConsoleHelper.WriteRed("  [ERRORE] mkvmerge fallito con codice " + exitCode);
+                    ConsoleHelper.WriteRed("  [ERRORE] mkvmerge fallito con codice " + mergeExitCode);
                     if (mergeOutput.Length > 0)
                     {
                         ConsoleHelper.WriteDarkRed("  Output: " + mergeOutput);
@@ -1095,201 +1668,15 @@ NOTE:
                     // Pulisci output temp fallito
                     if (File.Exists(tempOutput))
                     {
+                        // Cleanup best-effort, errore ignorato
                         try { File.Delete(tempOutput); } catch { }
                     }
 
-                    record.SkipReason = "Merge failed: " + exitCode;
-                    records.Add(record);
-                    stats.Errors++;
+                    record.SkipReason = "Merge failed: " + mergeExitCode;
+                    ctx.Records.Add(record);
+                    ctx.Stats.Errors++;
                 }
             }
-        }
-
-        #endregion
-
-        #region Entry point
-
-        /// <summary>
-        /// Main
-        /// </summary>
-        /// <param name="args">Argomenti da riga di comando.</param>
-        /// <returns>Codice uscita: 0 per successo, 1 per errore.</returns>
-        static int Main(string[] args)
-        {
-            int exitCode = 0;
-
-            // Parsa argomenti da riga di comando
-            Options opts = Options.Parse(args);
-
-            // Controlla errori di parsing
-            if (opts.ErrorMessage.Length > 0)
-            {
-                ConsoleHelper.WriteRed("Errore: " + opts.ErrorMessage);
-                ConsoleHelper.WriteDarkGray("Usa -h per vedere tutte le opzioni.");
-                return 1;
-            }
-
-            // Gestisci richiesta help
-            if (opts.Help || args.Length == 0)
-            {
-                PrintHelp();
-                return 0;
-            }
-
-            // Normalizza percorsi
-            if (opts.SourceFolder.Length > 0)
-            {
-                opts.SourceFolder = NormalizePath(opts.SourceFolder);
-            }
-            if (opts.LanguageFolder.Length > 0)
-            {
-                opts.LanguageFolder = NormalizePath(opts.LanguageFolder);
-            }
-            if (opts.DestinationFolder.Length > 0)
-            {
-                opts.DestinationFolder = NormalizePath(opts.DestinationFolder);
-            }
-
-            // Modalita' singola sorgente: se -l non specificato, usa -s come lingua
-            if (opts.LanguageFolder.Length == 0 && opts.SourceFolder.Length > 0)
-            {
-                opts.LanguageFolder = opts.SourceFolder;
-            }
-
-            // Determina cartella tools
-            if (opts.ToolsFolder.Length == 0)
-            {
-                string appDir = AppContext.BaseDirectory;
-                opts.ToolsFolder = Path.Combine(appDir, "tools");
-            }
-
-            // Valida tutte le opzioni
-            if (!ValidateOptions(opts))
-            {
-                return 1;
-            }
-
-            // Crea cartella destinazione se necessario
-            if (!opts.Overwrite && !Directory.Exists(opts.DestinationFolder))
-            {
-                ConsoleHelper.WriteYellow("Creazione cartella destinazione: " + opts.DestinationFolder);
-                Directory.CreateDirectory(opts.DestinationFolder);
-            }
-
-            // Risolvi pattern codec per filtro tracce lingua importate
-            string[] codecPatterns = null;
-            if (opts.AudioCodec.Count > 0)
-            {
-                List<string> allCodecPatterns = new List<string>();
-                for (int c = 0; c < opts.AudioCodec.Count; c++)
-                {
-                    string[] patterns = CodecMapping.GetCodecPatterns(opts.AudioCodec[c]);
-                    for (int p = 0; p < patterns.Length; p++)
-                    {
-                        if (!allCodecPatterns.Contains(patterns[p]))
-                        {
-                            allCodecPatterns.Add(patterns[p]);
-                        }
-                    }
-                }
-                codecPatterns = allCodecPatterns.ToArray();
-            }
-
-            // Verifica mkvmerge
-            MkvToolsService tempService = new MkvToolsService(opts.MkvMergePath);
-            if (!tempService.VerifyMkvMerge())
-            {
-                ConsoleHelper.WriteRed("mkvmerge non trovato. Installa MKVToolNix o specifica -mkv");
-                return 1;
-            }
-            ConsoleHelper.WriteGreen("Trovato mkvmerge: " + opts.MkvMergePath);
-
-            // Inizializza servizio audio sync se auto-sync e' abilitato
-            AudioSyncService syncService = null;
-            if (opts.AutoSync)
-            {
-                FfmpegProvider ffmpegProvider = new FfmpegProvider(opts.ToolsFolder);
-                if (!ffmpegProvider.Resolve())
-                {
-                    ConsoleHelper.WriteRed("ffmpeg non trovato e impossibile scaricarlo. Installalo manualmente.");
-                    return 1;
-                }
-                ConsoleHelper.WriteGreen("Trovato ffmpeg: " + ffmpegProvider.FfmpegPath);
-                syncService = new AudioSyncService(ffmpegProvider.FfmpegPath);
-            }
-
-            // Crea il servizio principale, le statistiche e la lista record
-            MkvToolsService service = new MkvToolsService(opts.MkvMergePath);
-            ProcessingStats stats = new ProcessingStats();
-            List<FileProcessingRecord> records = new List<FileProcessingRecord>();
-
-            // Stampa banner
-            ConsoleHelper.WriteCyan("\n========================================");
-            ConsoleHelper.WriteCyan("  MKV Language Track Merger");
-            ConsoleHelper.WriteCyan("========================================\n");
-
-            // Stampa configurazione
-            PrintConfiguration(opts, codecPatterns);
-
-            // Risolvi pattern codec per filtro tracce audio sorgente
-            string[] sourceAudioCodecPatterns = null;
-            if (opts.KeepSourceAudioCodec.Count > 0)
-            {
-                // Unisci tutti i pattern codec in un unico array
-                List<string> allPatterns = new List<string>();
-                for (int c = 0; c < opts.KeepSourceAudioCodec.Count; c++)
-                {
-                    string[] patterns = CodecMapping.GetCodecPatterns(opts.KeepSourceAudioCodec[c]);
-                    for (int p = 0; p < patterns.Length; p++)
-                    {
-                        if (!allPatterns.Contains(patterns[p]))
-                        {
-                            allPatterns.Add(patterns[p]);
-                        }
-                    }
-                }
-                sourceAudioCodecPatterns = allPatterns.ToArray();
-            }
-
-            // Determina flag filtraggio tracce sorgente
-            bool filterSourceAudio = (opts.KeepSourceAudioLangs.Count > 0 || opts.KeepSourceAudioCodec.Count > 0);
-            bool filterSourceSubs = (opts.KeepSourceSubtitleLangs.Count > 0);
-
-            // Trova tutti i file sorgente
-            string extList = string.Join(", ", opts.FileExtensions);
-            List<string> sourceFiles = FindVideoFiles(opts.SourceFolder, opts.FileExtensions, opts.Recursive);
-            ConsoleHelper.WriteGreen("Trovati " + sourceFiles.Count + " file sorgente (" + extList + ")\n");
-
-            // Costruisci indice file lingua
-            ConsoleHelper.WriteYellow("Indicizzazione cartella lingua...");
-            List<string> languageFiles = FindVideoFiles(opts.LanguageFolder, opts.FileExtensions, opts.Recursive);
-            Dictionary<string, string> languageIndex = new Dictionary<string, string>();
-
-            for (int i = 0; i < languageFiles.Count; i++)
-            {
-                string langFileName = Path.GetFileName(languageFiles[i]);
-                string langEpisodeId = GetEpisodeIdentifier(langFileName, opts.MatchPattern);
-                if (langEpisodeId.Length > 0)
-                {
-                    languageIndex[langEpisodeId] = languageFiles[i];
-                }
-            }
-
-            ConsoleHelper.WriteGreen("Indicizzati " + languageIndex.Count + " file lingua\n");
-
-            // Elabora ogni file sorgente
-            for (int i = 0; i < sourceFiles.Count; i++)
-            {
-                ProcessFile(sourceFiles[i], languageIndex, opts, service, syncService, stats, records, codecPatterns, sourceAudioCodecPatterns, filterSourceAudio, filterSourceSubs);
-            }
-
-            // Stampa report dettagliato
-            PrintDetailedReport(records, opts.DryRun);
-
-            // Stampa riepilogo
-            PrintSummary(stats, opts.AutoSync);
-
-            return exitCode;
         }
 
         #endregion

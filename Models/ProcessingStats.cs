@@ -2,6 +2,23 @@ namespace MergeLanguageTracks
 {
     public class ProcessingStats
     {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public ProcessingStats()
+        {
+            this.Processed = 0;
+            this.Skipped = 0;
+            this.NoMatch = 0;
+            this.NoTracks = 0;
+            this.SyncFailed = 0;
+            this.Errors = 0;
+        }
+
+        #endregion
+
         #region Proprieta
 
         /// <summary>
@@ -25,7 +42,7 @@ namespace MergeLanguageTracks
         public int NoTracks { get; set; }
 
         /// <summary>
-        /// Numero di file con auto-sync fallito.
+        /// Numero di file con sync fallito.
         /// </summary>
         public int SyncFailed { get; set; }
 
@@ -33,23 +50,6 @@ namespace MergeLanguageTracks
         /// Numero di file con errori.
         /// </summary>
         public int Errors { get; set; }
-
-        #endregion
-
-        #region Costruttore
-
-        /// <summary>
-        /// Costruttore
-        /// </summary>
-        public ProcessingStats()
-        {
-            this.Processed = 0;
-            this.Skipped = 0;
-            this.NoMatch = 0;
-            this.NoTracks = 0;
-            this.SyncFailed = 0;
-            this.Errors = 0;
-        }
 
         #endregion
     }

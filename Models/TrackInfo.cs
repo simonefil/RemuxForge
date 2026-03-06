@@ -2,6 +2,24 @@ namespace MergeLanguageTracks
 {
     public class TrackInfo
     {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public TrackInfo()
+        {
+            this.Id = 0;
+            this.Type = "";
+            this.Codec = "";
+            this.Language = "";
+            this.LanguageIetf = "";
+            this.Name = "";
+            this.DefaultDurationNs = 0;
+        }
+
+        #endregion
+
         #region Proprieta
 
         /// <summary>
@@ -34,22 +52,10 @@ namespace MergeLanguageTracks
         /// </summary>
         public string Name { get; set; }
 
-        #endregion
-
-        #region Costruttore
-
         /// <summary>
-        /// Costruttore
+        /// Durata predefinita in nanosecondi per frame della traccia video
         /// </summary>
-        public TrackInfo()
-        {
-            this.Id = 0;
-            this.Type = "";
-            this.Codec = "";
-            this.Language = "";
-            this.LanguageIetf = "";
-            this.Name = "";
-        }
+        public long DefaultDurationNs { get; set; }
 
         #endregion
     }

@@ -4,20 +4,12 @@ namespace MergeLanguageTracks
 {
     public static class ConsoleHelper
     {
-        #region Metodi privati
+        #region Variabili statiche
 
         /// <summary>
-        /// Scrive testo con il colore specificato e ripristina il colore originale.
+        /// Callback per redirect output verso TUI o buffer
         /// </summary>
-        /// <param name="text">Il testo da scrivere.</param>
-        /// <param name="color">Il colore di primo piano da usare.</param>
-        private static void WriteColored(string text, ConsoleColor color)
-        {
-            ConsoleColor original = Console.ForegroundColor;
-            Console.ForegroundColor = color;
-            Console.WriteLine(text);
-            Console.ForegroundColor = original;
-        }
+        private static Action<string, ConsoleColor> s_logCallback;
 
         #endregion
 
@@ -119,7 +111,14 @@ namespace MergeLanguageTracks
         /// <param name="text">Il testo da scrivere.</param>
         public static void WritePlain(string text)
         {
-            Console.WriteLine(text);
+            if (s_logCallback != null)
+            {
+                s_logCallback(text, ConsoleColor.Gray);
+            }
+            else
+            {
+                Console.WriteLine(text);
+            }
         }
 
         /// <summary>
@@ -129,6 +128,47 @@ namespace MergeLanguageTracks
         public static void WriteWarning(string text)
         {
             WriteColored("ATTENZIONE: " + text, ConsoleColor.Yellow);
+        }
+
+        /// <summary>
+        /// Imposta un callback per il redirect dell'output
+        /// </summary>
+        /// <param name="callback">Callback che riceve testo e colore</param>
+        public static void SetLogCallback(Action<string, ConsoleColor> callback)
+        {
+            s_logCallback = callback;
+        }
+
+        /// <summary>
+        /// Rimuove il callback di redirect e ripristina l'output su console
+        /// </summary>
+        public static void ClearLogCallback()
+        {
+            s_logCallback = null;
+        }
+
+        #endregion
+
+        #region Metodi privati
+
+        /// <summary>
+        /// Scrive testo con il colore specificato e ripristina il colore originale
+        /// </summary>
+        /// <param name="text">Il testo da scrivere.</param>
+        /// <param name="color">Il colore di primo piano da usare.</param>
+        private static void WriteColored(string text, ConsoleColor color)
+        {
+            if (s_logCallback != null)
+            {
+                s_logCallback(text, color);
+            }
+            else
+            {
+                ConsoleColor original = Console.ForegroundColor;
+                Console.ForegroundColor = color;
+                Console.WriteLine(text);
+                Console.ForegroundColor = original;
+            }
         }
 
         #endregion

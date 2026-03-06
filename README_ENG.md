@@ -1,62 +1,172 @@
 # MergeLanguageTracks
 
-Cross-platform console application to merge audio tracks and subtitles from MKV files in different languages.
+Cross-platform application to merge audio tracks and subtitles from MKV files in different languages. Available in CLI mode and with a TUI graphical interface.
 
 ## What is it for?
 
 It allows you to combine audio tracks and subtitles from MKV files of different releases, useful when you have a version with superior video quality but want to integrate audio or subtitles from another version.
 
-The application automatically processes entire seasons, matching corresponding episodes and applying automatic synchronization to compensate for possible editing differences between releases.
+The application automatically processes entire seasons, matching corresponding episodes and applying automatic synchronization to compensate for possible editing or speed differences between releases.
 
-## Typical Use Cases
+## Usage Modes
+
+### TUI (Graphical Interface)
+
+Launching the application without parameters opens the graphical interface based on Terminal.Gui.
+
+The interface is organized in three panels: episode table, selected episode detail, real-time log. Menu bar at the top, status bar with shortcut keys at the bottom.
+
+![Main interface (Nord theme)](images/nord.png)
+
+**Menu:**
+
+- **File**: Configuration (F2), Exit (Ctrl+Q)
+- **Actions**: Scan files (F5), Analyze selected (F6), Analyze all (F7), Skip/Unskip (F8), Process selected (F9), Process all (F10)
+- **Theme**: change graphical theme
+- **Help**: Info and help (F1)
+
+**Shortcut keys:**
+
+| Key | Action |
+|-----|--------|
+| F1 | Help |
+| F2 | Open configuration |
+| F5 | Scan folders and match episodes |
+| F6 | Analyze selected episode |
+| F7 | Analyze all pending episodes |
+| F8 | Skip/Unskip selected episode |
+| F9 | Merge selected episode |
+| F10 | Merge all analyzed episodes |
+| Enter | Edit manual delay for episode |
+| Ctrl+Q | Exit |
+
+**Configuration (F2):**
+
+The configuration dialog groups all options:
+
+![Configuration dialog](images/config.png)
+
+- **Folders**: Source, Language, Destination, with browse button for each. Checkbox for overwrite source and recursive search.
+- **Language and Tracks**: Target language, Audio codec, Keep source audio/codec/sub, Subtitles only, Audio only.
+- **Synchronization**: Frame-sync (checkbox), Audio delay (ms), Sub delay (ms).
+- **Advanced**: Match pattern (regex), File extensions, Tools folder, mkvmerge path.
+
+**Themes:**
+
+8 themes available from the Theme menu:
+
+| Nord (default) | DOS Blue |
+|:-:|:-:|
+| ![Nord](images/nord.png) | ![DOS Blue](images/dos.png) |
+
+| Matrix | Cyberpunk |
+|:-:|:-:|
+| ![Matrix](images/matrix.png) | ![Cyberpunk](images/cyberpunk.png) |
+
+| Solarized Dark | Solarized Light |
+|:-:|:-:|
+| ![Solarized Dark](images/solarized-dark.png) | ![Solarized Light](images/solarized-light.png) |
+
+| Cybergum | Everforest |
+|:-:|:-:|
+| ![Cybergum](images/cybergum.png) | ![Everforest](images/everforest.png) |
+
+### CLI (Command Line)
+
+For scriptable and automated processing.
+
+```bash
+MergeLanguageTracks -s "D:\Series.ENG" -l "D:\Series.ITA" -t ita -d "D:\Output" -fs
+```
+
+## Synchronization
+
+The application offers two automatic synchronization systems, both based on visual analysis of video frames via ffmpeg.
+
+### Speed Correction (Automatic)
+
+This is common with European TV series and movies: the Italian release is at 25fps (PAL standard) while the American one is at 23.976fps (NTSC). The audio is slightly faster in one of the two versions and a simple merge would produce a desync that worsens over time.
+
+The application automatically detects this situation by comparing the FPS of both files and corrects it without any options needed. The correction is done entirely in mkvmerge via time-stretching, without audio re-encoding.
+
+**How it works:**
+
+1. Compares the speed of both files by reading video track information via mkvmerge. If the difference is negligible (less than 0.1%) it does nothing
+2. Extracts initial video frames from both files via ffmpeg and converts them to low-resolution grayscale images for fast comparison
+3. Identifies "scene cuts" in both files, i.e. points where the image changes abruptly (editing cut, shot change). These cuts are identical in both versions regardless of language
+4. Matches cuts between source and language to calculate the initial delay. Since the two files have different speeds, the delay is not constant: it grows over time. The algorithm compensates for this "drift" in the calculation
+5. Verifies the result at 9 points distributed along the entire video (at 10%, 20%, ... 90% of the duration). At each point it extracts a short segment, finds scene cuts and confirms the calculated delay is correct. If a point fails, it retries with a longer segment. At least 5 valid points out of 9 are required
+6. Calculates the correction factor and applies it via mkvmerge to the imported audio and subtitle tracks, without touching the video and without re-encoding
+
+### Frame-Sync (Optional)
+
+When source and language have the same FPS but audio or subtitle tracks are not temporally aligned (longer intro, seconds of black, different credits at the beginning), a fixed offset is needed to realign them. Frame-sync automatically calculates this delay.
+
+Enabled with **-fs** from CLI or from the checkbox in TUI configuration.
+
+**How it works:**
+
+1. Extracts initial video frames from both files (2 minutes from source, 3 from language) and converts them to low-resolution grayscale images
+2. Identifies scene cuts (shot changes) in both files
+3. For each possible pair of cuts between source and language, calculates what the delay would be if those two cuts corresponded to the same moment in the video
+4. Uses a "voting" system: the delay that receives the most coherent votes is selected as a candidate. If many cuts suggest the same offset, the probability of it being correct is high
+5. Verifies the candidate by comparing the "visual signature" around the cuts: if frames before and after the cut are similar between source and language (same scene), the match is confirmed
+6. Confirms the result at 9 points distributed along the video (10%, 20%, ... 90%). For each point it extracts a short segment, finds local scene cuts and verifies the delay is consistent. If a point fails, it retries with a longer segment. At least 5 valid points out of 9 are required
+
+**When Frame-Sync is needed and when not:**
+
+- **Not needed** if both versions are identical except for the audio language (same encode, same cut). Direct merge works
+- **Not needed** if the difference is only in speed (23.976 vs 25 fps). The automatic correction handles this case
+- **Needed** when there's a fixed offset between the two versions: longer intro, seconds of black, different cut at the beginning
+- **Does not work** if differences are mid-episode (scenes cut or added in the middle). In that case no constant delay can correct the misalignment
+
+**Manual delay:**
+
+The parameters **-ad** and **-sd** specify an offset in milliseconds that is **added** to the frame-sync or speed correction result. In the TUI it's possible to set different delays per episode via Enter.
+
+## Use Cases
 
 **1. Add Italian dubbing to an English release**
 
-You have a US/UK release with excellent video and want to add Italian audio from an ITA release.
-
 ```bash
-MergeLanguageTracks -s "D:\Series.ENG" -l "D:\Series.ITA" -t ita -d "D:\Output" -as
+MergeLanguageTracks -s "D:\Series.ENG" -l "D:\Series.ITA" -t ita -d "D:\Output" -fs
 ```
 
 **2. Overwrite the source files**
 
-If you don't want a separate output folder, use **-o** to directly overwrite the source files. Useful when you already have a backup or are working on copies.
-
 ```bash
-MergeLanguageTracks -s "D:\Series.ENG" -l "D:\Series.ITA" -t ita -o -as
+MergeLanguageTracks -s "D:\Series.ENG" -l "D:\Series.ITA" -t ita -o -fs
 ```
 
 **3. Replace a lossy track with a lossless one**
 
-The file already has Italian audio but it's a lossy AC3. You found a release with Italian DTS-HD MA and want to replace it.
+The file already has Italian AC3 lossy. You want to replace it with DTS-HD MA from another release.
 
 ```bash
-MergeLanguageTracks -s "D:\Series" -l "D:\Series.ITA.HDMA" -t ita -ac "DTS-HD MA" -ksa eng,jpn -d "D:\Output" -as
+MergeLanguageTracks -s "D:\Series" -l "D:\Series.ITA.HDMA" -t ita -ac "DTS-HD MA" -ksa eng,jpn -d "D:\Output" -fs
 ```
 
-With **-ksa eng,jpn** you keep only English and Japanese from the source, discarding the lossy Italian. With **-ac "DTS-HD MA"** you only take the lossless track from the Italian release.
+With **-ksa eng,jpn** you keep only English and Japanese from the source. With **-ac "DTS-HD MA"** you only take the lossless track from the Italian release.
 
 **4. Multilanguage remux from different releases**
 
-Start from the US Blu-ray (best encode) and add audio from European releases. Each step takes the previous output as source.
+Each step takes the previous output as source.
 
 ```bash
-MergeLanguageTracks -s "D:\Movie.US" -l "D:\Movie.ITA" -t ita -d "D:\Temp1" -as
-MergeLanguageTracks -s "D:\Temp1" -l "D:\Movie.FRA" -t fra -d "D:\Temp2" -as
-MergeLanguageTracks -s "D:\Temp2" -l "D:\Movie.GER" -t ger -d "D:\Output" -as
+MergeLanguageTracks -s "D:\Movie.US" -l "D:\Movie.ITA" -t ita -d "D:\Temp1" -fs
+MergeLanguageTracks -s "D:\Temp1" -l "D:\Movie.FRA" -t fra -d "D:\Temp2" -fs
+MergeLanguageTracks -s "D:\Temp2" -l "D:\Movie.GER" -t ger -d "D:\Output" -fs
 ```
 
 **5. Anime with non-standard naming**
 
-Many fansubs use the format "- 05" instead of S01E05. With **-m** you specify a custom regex for matching. Here you only take subtitles because the fansub has better subs but worse video.
+Many fansubs use "- 05" instead of S01E05. With **-m** you specify a custom regex. With **-so** you take only subtitles.
 
 ```bash
-MergeLanguageTracks -s "D:\Anime.BD" -l "D:\Anime.Fansub" -t ita -m "- (\d+)" -so -d "D:\Output" -as
+MergeLanguageTracks -s "D:\Anime.BD" -l "D:\Anime.Fansub" -t ita -m "- (\d+)" -so -d "D:\Output" -fs
 ```
 
 **6. Daily show with dates in the filename**
-
-For shows with date-based naming (e.g. Show.2024.03.15.mkv), the pattern captures year, month and day as the episode ID.
 
 ```bash
 MergeLanguageTracks -s "D:\Show.US" -l "D:\Show.ITA" -t ita -m "(\d{4})\.(\d{2})\.(\d{2})" -d "D:\Output"
@@ -64,103 +174,61 @@ MergeLanguageTracks -s "D:\Show.US" -l "D:\Show.ITA" -t ita -m "(\d{4})\.(\d{2})
 
 **7. Filter subtitles from the source**
 
-The source file has 10 subtitle tracks in languages you don't need. With **-kss** you keep only the ones you want from the source, while with **-t** you import the missing ones from the language release.
+The source has 10 subtitle tracks in useless languages. With **-kss** you keep only the ones you want.
 
 ```bash
-MergeLanguageTracks -s "D:\Series.ENG" -l "D:\Series.ITA" -t ita -so -kss eng -d "D:\Output" -as
+MergeLanguageTracks -s "D:\Series.ENG" -l "D:\Series.ITA" -t ita -so -kss eng -d "D:\Output" -fs
 ```
 
 **8. Anime: keep only Japanese audio and import eng+ita**
 
-You have a Japanese BD with dual audio (jpn+eng) and many subtitles. You want to keep only the Japanese audio, discard all existing subs, and import English and Italian audio and subtitles from a multilanguage release. The trick **-kss und** discards all subtitles from the source because no track has language "und".
+The trick **-kss und** discards all subtitles from the source because no track has language "und".
 
 ```bash
-MergeLanguageTracks -s "D:\Anime.BD.JPN" -l "D:\Anime.ITA" -t eng,ita -ksa jpn -kss und -d "D:\Output" -as
+MergeLanguageTracks -s "D:\Anime.BD.JPN" -l "D:\Anime.ITA" -t eng,ita -ksa jpn -kss und -d "D:\Output" -fs
 ```
 
 **9. Dry run on a complex configuration**
 
-Before launching a complex merge on an entire season, verify with **-n** that the matching works and the tracks are correct.
+With **-n** verify matching and tracks without executing.
 
 ```bash
-MergeLanguageTracks -s "D:\Series.ENG" -l "D:\Series.ITA" -t ita -ac "E-AC-3" -ksa eng -kss eng -d "D:\Output" -as -at 600 -n
+MergeLanguageTracks -s "D:\Series.ENG" -l "D:\Series.ITA" -t ita -ac "E-AC-3" -ksa eng -kss eng -d "D:\Output" -fs -n
 ```
 
 **10. Keep only DTS tracks from the source**
 
-The source file has multiple audio tracks in different codecs (AC3, DTS, TrueHD). You want to keep only the DTS tracks regardless of language.
-
 ```bash
-MergeLanguageTracks -s "D:\Series.ENG" -l "D:\Series.ITA" -t ita -ksac DTS -d "D:\Output" -as
+MergeLanguageTracks -s "D:\Series.ENG" -l "D:\Series.ITA" -t ita -ksac DTS -d "D:\Output" -fs
 ```
 
 **11. Keep only English lossless audio from the source**
 
-By combining **-ksa** and **-ksac**, you keep from the source only tracks matching both criteria: English language AND DTS-HD MA or TrueHD codec.
+By combining **-ksa** and **-ksac**, you keep only tracks matching both criteria.
 
 ```bash
-MergeLanguageTracks -s "D:\Series.ENG" -l "D:\Series.ITA" -t ita -ksa eng -ksac "DTS-HDMA,TrueHD" -d "D:\Output" -as
+MergeLanguageTracks -s "D:\Series.ENG" -l "D:\Series.ITA" -t ita -ksa eng -ksac "DTS-HDMA,TrueHD" -d "D:\Output" -fs
 ```
 
 **12. Import multiple codecs from the language file**
 
-The language file has both E-AC-3 and DTS Italian tracks. You want to import both.
-
 ```bash
-MergeLanguageTracks -s "D:\Series.ENG" -l "D:\Series.ITA" -t ita -ac "E-AC-3,DTS" -d "D:\Output" -as
+MergeLanguageTracks -s "D:\Series.ENG" -l "D:\Series.ITA" -t ita -ac "E-AC-3,DTS" -d "D:\Output" -fs
 ```
 
 **13. Single source: apply delay and filter tracks**
 
-You have a season with audio in multiple languages (jpn, eng, ita) and the subtitles are out of sync by 960ms. Without needing a second folder, you work directly on the original files: the Italian tracks are re-imported with the delay applied, keeping only the languages you want.
+Without **-l**, the application uses the source folder as language too. Allows remuxing with filters and delays without a separate release.
 
 ```bash
 MergeLanguageTracks -s "D:\Series" -t ita -ksa jpn,eng -kss eng,jpn -ad 960 -sd 960 -o
 ```
 
-When **-l** is not specified, the application uses the source folder as the language folder too. The file is used both as the base and as the source of tracks to import, allowing you to remux with filters and delays without a separate release.
+## Report
 
-## How AutoSync Works
+At the end of processing a summary report is displayed. In TUI mode the detail is visible in the side panel for each episode.
 
-Often releases in different languages have different cuts: longer intros, deleted scenes, different credits. If you do a direct merge, the audio goes out of sync.
-
-AutoSync solves this problem by analyzing the audio of both files and automatically calculating the necessary delay.
-
-**The principle is simple:**
-
-Even though the dubbing is in different languages, the background soundtrack (music, effects, explosions, silences) is identical. The application compares these audio "markers" to find the correct offset.
-
-**How it works technically:**
-
-1. Extracts the first 5 minutes of audio from both files (configurable with **-at**)
-2. Analyzes the audio looking for:
-   - Silence starts and ends (e.g. pauses between scenes)
-   - Sudden volume peaks (explosions, hits, music starting)
-3. Compares patterns between source and language
-4. Searches for the offset that matches the most markers possible
-5. Uses 3 search phases for millisecond precision:
-   - Phase 1: coarse search (-60s to +60s, step 500ms)
-   - Phase 2: fine search (+/-2s from result, step 10ms)
-   - Phase 3: ultra-fine search (+/-100ms, step 1ms)
-
-**Works for subtitles too!**
-
-If you only import subs (**-so**), the application still uses audio to calculate the sync. It takes any audio track from the source file and one from the language file, compares them, and applies the calculated delay to the subtitles.
-
-It doesn't matter what language the audio used for comparison is: the music and effects are always the same.
-
-**When it does NOT work well:**
-
-- Files with completely different audio (e.g. theatrical version vs director's cut with remade scenes)
-- Very short files (< 2-3 minutes) where there aren't enough markers
-- Audio with very few silences and variations (rare, but it happens)
-- Episodes with cut scenes (not at the beginning)
-
-In these cases you'll see a "Low confidence" warning and it's recommended to verify manually or use manual delay.
-
-## Detailed Report
-
-At the end of processing, a report with 3 tables is displayed:
+From CLI the report shows 3 tables:
 
 ```
 ========================================
@@ -171,25 +239,22 @@ SOURCE FILES:
   Episode     Audio               Subtitles           Size
   ----------------------------------------------------------------
   01_05       eng,jpn             eng                 4.2 GB
-  01_06       eng,jpn             eng                 4.1 GB
 
 LANGUAGE FILES:
   Episode     Audio               Subtitles           Size
   ----------------------------------------------------------------
   01_05       ita                 ita                 2.1 GB
-  01_06       ita                 ita                 2.0 GB
 
 RESULT FILES:
-  Episode     Audio          Subtitles      Size      Delay       FFmpeg    AutoSync  Merge
-  --------------------------------------------------------------------------------------------
-  01_05       eng,jpn,ita    eng,ita        4.3 GB    +150ms      6850ms    45ms      12500ms
-  01_06       eng,jpn,ita    eng,ita        4.2 GB    +145ms      6920ms    42ms      11800ms
+  Episode     Audio          Subtitles      Size      Delay       FrmSync   Speed     Merge
+  ------------------------------------------------------------------------------------------
+  01_05       eng,jpn,ita    eng,ita        4.3 GB    +150ms      -         1250ms    12500ms
 ```
 
 **Result Files columns:**
 - **Delay**: offset applied to imported tracks
-- **FFmpeg**: audio extraction/analysis time (I/O bound)
-- **AutoSync**: offset calculation time (CPU bound)
+- **FrmSync**: frame-sync processing time (if active, otherwise "-")
+- **Speed**: speed correction processing time (if active, otherwise "-")
 - **Merge**: mkvmerge execution time
 
 In dry run mode, Size and Merge show "N/A" because the merge is not executed.
@@ -202,33 +267,46 @@ When you specify **-ac** or **-ksac** to filter codecs, the matching is **EXACT*
 
 If a file has both DTS (core) and DTS-HD MA, and you write **-ac "DTS"**, it takes ONLY the DTS core, not the DTS-HD. If you want DTS-HD Master Audio, you must write **-ac "DTS-HDMA"**. If you want both, write **-ac "DTS,DTS-HDMA"**.
 
+Codec names are case-insensitive. If a codec is not recognized with direct lookup, a match without hyphens, spaces and colons is attempted.
+
 **Dolby:**
 
-- **AC-3** (alias: AC3, DD) - Dolby Digital, the classic lossy 5.1
-- **E-AC-3** (alias: EAC3, DD+, DDP) - Dolby Digital Plus, used for lossy Atmos on streaming
-- **TrueHD** - Dolby TrueHD, lossless, used for Atmos on Blu-ray
-- **MLP** - The internal container of TrueHD (rarely needs to be specified)
+| Codec | Accepted Aliases | Description |
+|-------|-----------------|-------------|
+| AC-3 | AC3, DD | Dolby Digital, the classic lossy 5.1 |
+| E-AC-3 | EAC3, DD+, DDP | Dolby Digital Plus, used for lossy Atmos on streaming |
+| TrueHD | TRUEHD | Dolby TrueHD, lossless, used for Atmos on Blu-ray |
+| MLP | | Meridian Lossless Packing (TrueHD base) |
+| ATMOS | | Special alias: matches both TrueHD and E-AC-3 |
 
 **DTS:**
 
-- **DTS** - DTS Core/Digital Surround only (the base lossy 5.1)
-- **DTS-HD MA** (alias: DTS-HDMA) - DTS-HD Master Audio, lossless
-- **DTS-HD HR** (alias: DTS-HDHR) - DTS-HD High Resolution, lossy but better than core
-- **DTS-ES** - DTS Extended Surround (6.1)
-- **DTS:X** (alias: DTSX) - Object-based, extension of DTS-HD MA
+| Codec | Accepted Aliases | Description |
+|-------|-----------------|-------------|
+| DTS | | DTS Core/Digital Surround only (does NOT match DTS-HD) |
+| DTS-HD | | Matches both DTS-HD Master Audio and DTS-HD High Resolution |
+| DTS-HD MA | DTS-HDMA | DTS-HD Master Audio, lossless |
+| DTS-HD HR | DTS-HDHR | DTS-HD High Resolution |
+| DTS-ES | | DTS Extended Surround (6.1) |
+| DTS:X | DTSX | Object-based, extension of DTS-HD MA |
 
 **Lossless:**
 
-- **FLAC** - The classic open source lossless
-- **PCM** (alias: LPCM, WAV) - Raw uncompressed audio
-- **ALAC** - Apple Lossless (rare in remuxes)
+| Codec | Accepted Aliases | Description |
+|-------|-----------------|-------------|
+| FLAC | | Free Lossless Audio Codec |
+| PCM | LPCM, WAV | Raw uncompressed audio |
+| ALAC | | Apple Lossless |
 
 **Lossy:**
 
-- **AAC** - Common on streaming and webrips
-- **MP3** - Rare nowadays
-- **Opus** - Used in WebM, excellent quality at low bitrate
-- **Vorbis** - Ogg Vorbis
+| Codec | Accepted Aliases | Description |
+|-------|-----------------|-------------|
+| AAC | HE-AAC | Advanced Audio Coding |
+| MP3 | | MPEG Audio Layer 3 |
+| MP2 | | MPEG Audio Layer 2 |
+| Opus | OPUS | Opus (WebM) |
+| Vorbis | VORBIS | Ogg Vorbis |
 
 ## Language Codes
 
@@ -246,35 +324,37 @@ Language codes are ISO 639-2 (3 letters). The most common ones:
 - **kor** - Korean
 - **und** - Undefined (unspecified language)
 
-If you mistype a code, the application suggests the correct one:
+If you mistype a code, the application suggests the correct one via the LanguageValidator:
 
 ```
-Error: language 'italian' not recognized.
+Language 'italian' not recognized.
 Did you mean: ita?
 ```
 
 ## Requirements
 
-- [MKVToolNix](https://mkvtoolnix.download/) installed (mkvmerge must be in PATH)
-- ffmpeg for AutoSync - if you don't have it, it will be downloaded automatically to the **tools/** folder
+- [MKVToolNix](https://mkvtoolnix.download/) installed (mkvmerge must be in PATH or specified with **-mkv**)
+- ffmpeg for frame-sync and speed correction (automatically downloaded to the tools folder if missing)
+- UTF-8 locale on Linux (required for filenames with non-ASCII characters)
 
-**Supported platforms:**
+**Supported platforms** (from csproj RuntimeIdentifiers):
 
 - Windows (x64)
-- Linux (x64)
+- Linux (x64, ARM64)
 - macOS (x64, ARM64)
 
 ## Build
 
-Requires .NET 8.0 SDK.
+Requires .NET 10 SDK. The project uses Terminal.Gui 2.0.0-develop.5118.
 
 ```bash
 # Build for the current platform
 dotnet build -c Release
 
-# Publish as standalone executable
+# Publish as standalone executable (single file, compressed)
 dotnet publish -c Release -r win-x64 --self-contained true
 dotnet publish -c Release -r linux-x64 --self-contained true
+dotnet publish -c Release -r linux-arm64 --self-contained true
 dotnet publish -c Release -r osx-x64 --self-contained true
 dotnet publish -c Release -r osx-arm64 --self-contained true
 ```
@@ -286,13 +366,13 @@ dotnet publish -c Release -r osx-arm64 --self-contained true
 | Short | Long | Description |
 |-------|------|-------------|
 | -s | --source | Folder with source MKV files |
-| -t | --target-language | Language code of the tracks to import (e.g.: ita) |
+| -t | --target-language | Language code of tracks to import (e.g.: ita). Separate with comma for multiple languages: ita,eng |
 
 ### Source
 
 | Short | Long | Description |
 |-------|------|-------------|
-| -l | --language | Folder with MKV files to take tracks from. If omitted, uses the source folder (single source mode) |
+| -l | --language | Folder with MKV files to take tracks from. If omitted, uses the source folder |
 
 ### Output (mutually exclusive, one required)
 
@@ -305,57 +385,51 @@ dotnet publish -c Release -r osx-arm64 --self-contained true
 
 | Short | Long | Description |
 |-------|------|-------------|
-| -as | --auto-sync | Automatically calculate the delay |
-| -ad | --audio-delay | Manual delay in ms for audio (added to auto-sync if active) |
+| -fs | --framesync | Synchronization via visual frame comparison (scene-cut) |
+| -ad | --audio-delay | Manual delay in ms for audio (added to frame-sync/speed if active) |
 | -sd | --subtitle-delay | Manual delay in ms for subtitles |
-| -at | --analysis-time | Audio analysis duration in seconds (default: 300 = 5 min) |
+
+Speed correction (stretch) is always automatic and requires no parameters.
 
 ### Filters
 
 | Short | Long | Description |
 |-------|------|-------------|
-| -ac | --audio-codec | Audio codec to import from the language file. Separate with comma: DTS,E-AC-3 |
-| -so | --sub-only | Only import subtitles, ignore audio |
-| -ao | --audio-only | Only import audio, ignore subtitles |
+| -ac | --audio-codec | Audio codec to import from language file. Separate with comma: DTS,E-AC-3 |
+| -so | --sub-only | Import only subtitles, ignore audio |
+| -ao | --audio-only | Import only audio, ignore subtitles |
 | -ksa | --keep-source-audio | Audio languages to KEEP in the source (others are removed) |
 | -ksac | --keep-source-audio-codec | Audio codecs to KEEP in the source. Separate with comma: DTS,TrueHD |
 | -kss | --keep-source-subs | Subtitle languages to KEEP in the source |
 
 ### Matching
 
-| Short | Long | Description |
-|-------|------|-------------|
-| -m | --match-pattern | Regex for episode matching. Default: S([0-9]+)E([0-9]+) |
-| -r | --recursive | Search in subfolders (default: true) |
-| -ext | --extensions | File extensions to search for (default: mkv). Separate with comma: mkv,mp4,avi |
+| Short | Long | Description | Default |
+|-------|------|-------------|---------|
+| -m | --match-pattern | Regex for episode matching | S(\d+)E(\d+) |
+| -r | --recursive | Search in subfolders | active |
+| -ext | --extensions | File extensions to search for. Separate with comma: mkv,mp4,avi | mkv |
 
 ### Common Regex Patterns
 
-The application uses captured groups from the regex to match files. Each group in parentheses is concatenated to create the unique episode ID.
+The application uses captured groups from the regex to match files. Each group in parentheses is concatenated with "_" to create the unique episode ID.
 
 | Format | Example File | Pattern |
 |--------|--------------|---------|
-| Standard | Series.S01E05.mkv | S([0-9]+)E([0-9]+) |
-| With dot | Series.S01.E05.mkv | S([0-9]+)\.E([0-9]+) |
-| Format 1x05 | Series.1x05.mkv | ([0-9]+)x([0-9]+) |
-| Episode only | Anime - 05.mkv | - ([0-9]+) |
-| 3-digit episode | Anime - 005.mkv | - ([0-9]{3}) |
-| Daily show | Show.2024.01.15.mkv | ([0-9]{4})\.([0-9]{2})\.([0-9]{2}) |
+| Standard | Series.S01E05.mkv | S(\d+)E(\d+) |
+| With dot | Series.S01.E05.mkv | S(\d+)\.E(\d+) |
+| Format 1x05 | Series.1x05.mkv | (\d+)x(\d+) |
+| Episode only | Anime - 05.mkv | - (\d+) |
+| 3-digit episode | Anime - 005.mkv | - (\d{3}) |
+| Daily show | Show.2024.01.15.mkv | (\d{4})\.(\d{2})\.(\d{2}) |
 
-**How it works:** The pattern **S([0-9]+)E([0-9]+)** captures two groups (season and episode). For "S01E05" it creates the ID "01_05". Source and language files with the same ID are matched together.
+**How it works:** The pattern **S(\d+)E(\d+)** captures two groups (season and episode). For "S01E05" it creates the ID "01_05". Source and language files with the same ID are matched together.
 
 ### Other
 
-| Short | Long | Description |
-|-------|------|-------------|
-| -n | --dry-run | Show what it would do without executing |
-| -h | --help | Show built-in help |
-| -mkv | --mkvmerge-path | Custom path to mkvmerge |
-| -tools | --tools-folder | Folder for downloaded ffmpeg |
-
-**Notes:**
-
-- All parameters are case-insensitive
-- Supports both short (-s) and long (--source) format
-- Supports UNC network paths (\\\\server\\share\\...)
-- The default pattern S(\d+)E(\d+) matches names like "Series.S01E05.720p.mkv"
+| Short | Long | Description | Default |
+|-------|------|-------------|---------|
+| -n | --dry-run | Show what it would do without executing | |
+| -h | --help | Show built-in help | |
+| -mkv | --mkvmerge-path | Custom path to mkvmerge | mkvmerge (searches PATH) |
+| -tools | --tools-folder | Folder for downloaded ffmpeg | |

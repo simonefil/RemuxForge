@@ -9,8 +9,7 @@ namespace MergeLanguageTracks
         #region Variabili di classe
 
         /// <summary>
-        /// Mappa i nomi codec forniti dall'utente (maiuscolo) a un array di stringhe codec esatte mkvmerge.
-        /// Piu' alias possono puntare allo stesso pattern codec.
+        /// Mappa nomi codec utente a stringhe codec esatte mkvmerge
         /// </summary>
         private static readonly Dictionary<string, string[]> s_codecMap = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {

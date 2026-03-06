@@ -101,8 +101,7 @@ namespace MergeLanguageTracks
         };
 
         /// <summary>
-        /// Mappa i nomi comuni delle lingue in inglese e italiano ai loro codici ISO 639-2.
-        /// Usata per fornire suggerimenti utili quando viene inserito un codice non valido.
+        /// Mappa nomi comuni delle lingue ai codici ISO 639-2
         /// </summary>
         private static readonly Dictionary<string, string> s_commonNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -143,7 +142,7 @@ namespace MergeLanguageTracks
         };
 
         /// <summary>
-        /// Lista ordinata di tutti i codici lingua validi, usata per ricerca basata su prefisso.
+        /// Lista ordinata di tutti i codici lingua validi
         /// </summary>
         private static readonly List<string> s_sortedLanguages;
 
