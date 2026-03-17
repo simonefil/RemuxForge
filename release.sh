@@ -15,8 +15,6 @@ NOTES="$2"
 PROJECT="MergeLanguageTracks.csproj"
 ARTIFACTS_DIR="release-artifacts"
 PUBLISH_DIR="publish"
-
-# Estrai versione dal tag (rimuovi prefisso "v" se presente)
 VERSION="${TAG#v}"
 
 RIDS=("win-x64" "linux-x64" "linux-arm64" "osx-x64" "osx-arm64")
@@ -29,8 +27,14 @@ confirm_step() {
     fi
 }
 
+cleanup() {
+    rm -rf "$PUBLISH_DIR" "$ARTIFACTS_DIR"
+}
+
+trap cleanup EXIT
+
 # Clean previous builds
-rm -rf "$PUBLISH_DIR" "$ARTIFACTS_DIR"
+cleanup
 mkdir -p "$ARTIFACTS_DIR"
 
 # Build all targets
@@ -45,7 +49,6 @@ for rid in "${RIDS[@]}"; do
         -p:Version="$VERSION" \
         -o "$PUBLISH_DIR/$rid"
 
-    # Zip the binary
     cd "$PUBLISH_DIR/$rid"
     zip -r "../../$ARTIFACTS_DIR/MergeLanguageTracks-$rid.zip" .
     cd ../..
@@ -56,15 +59,24 @@ done
 # Create and push tag
 confirm_step "Create git tag $TAG and push?"
 echo "Creating tag $TAG..."
-git tag "$TAG"
-git push origin "$TAG"
+if ! git tag "$TAG"; then
+    echo "Failed to create tag (already exists?)"
+    exit 1
+fi
+if ! git push origin "$TAG"; then
+    echo "Failed to push tag, removing local tag..."
+    git tag -d "$TAG"
+    exit 1
+fi
 
 # Create GitHub release
 confirm_step "Create GitHub release with artifacts?"
 echo "Creating GitHub release..."
-gh release create "$TAG" "$ARTIFACTS_DIR"/*.zip --title "$TAG" --notes "$NOTES"
-
-# Cleanup
-rm -rf "$PUBLISH_DIR" "$ARTIFACTS_DIR"
+if ! gh release create "$TAG" "$ARTIFACTS_DIR"/*.zip --title "$TAG" --notes "$NOTES"; then
+    echo "Failed to create release, removing tag..."
+    git push origin --delete "$TAG"
+    git tag -d "$TAG"
+    exit 1
+fi
 
 echo "Release $TAG published successfully."

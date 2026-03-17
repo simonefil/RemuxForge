@@ -11,8 +11,6 @@ $ErrorActionPreference = "Stop"
 $project = "MergeLanguageTracks.csproj"
 $artifactsDir = "release-artifacts"
 $publishDir = "publish"
-
-# Estrai versione dal tag (rimuovi prefisso "v" se presente)
 $version = $Tag -replace "^v", ""
 
 $rids = @(
@@ -32,9 +30,13 @@ function Confirm-Step {
     }
 }
 
+function Cleanup {
+    if (Test-Path $publishDir) { Remove-Item $publishDir -Recurse -Force }
+    if (Test-Path $artifactsDir) { Remove-Item $artifactsDir -Recurse -Force }
+}
+
 # Clean previous builds
-if (Test-Path $publishDir) { Remove-Item $publishDir -Recurse -Force }
-if (Test-Path $artifactsDir) { Remove-Item $artifactsDir -Recurse -Force }
+Cleanup
 New-Item -ItemType Directory -Path $artifactsDir | Out-Null
 
 # Build all targets
@@ -51,10 +53,10 @@ foreach ($rid in $rids) {
 
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Build failed for $rid" -ForegroundColor Red
+        Cleanup
         exit 1
     }
 
-    # Zip the binary
     $zipName = "$artifactsDir\MergeLanguageTracks-$rid.zip"
     Compress-Archive -Path "$publishDir\$rid\*" -DestinationPath $zipName
     Write-Host "$rid done." -ForegroundColor Green
@@ -64,16 +66,31 @@ foreach ($rid in $rids) {
 Confirm-Step "Create git tag $Tag and push?"
 Write-Host "Creating tag $Tag..." -ForegroundColor Cyan
 git tag $Tag
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to create tag (already exists?)" -ForegroundColor Red
+    Cleanup
+    exit 1
+}
 git push origin $Tag
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to push tag, removing local tag..." -ForegroundColor Red
+    git tag -d $Tag
+    Cleanup
+    exit 1
+}
 
 # Create GitHub release
 Confirm-Step "Create GitHub release with artifacts?"
 Write-Host "Creating GitHub release..." -ForegroundColor Cyan
 $files = (Get-ChildItem $artifactsDir -Filter *.zip).FullName
 gh release create $Tag $files --title $Tag --notes $Notes
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to create release, removing tag..." -ForegroundColor Red
+    git push origin --delete $Tag
+    git tag -d $Tag
+    Cleanup
+    exit 1
+}
 
-# Cleanup
-Remove-Item $publishDir -Recurse -Force
-Remove-Item $artifactsDir -Recurse -Force
-
+Cleanup
 Write-Host "Release $Tag published successfully." -ForegroundColor Green
