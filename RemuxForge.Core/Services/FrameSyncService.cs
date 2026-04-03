@@ -145,19 +145,21 @@ namespace RemuxForge.Core
                     frameIntervalMs = 1;
                 }
 
-                // Rileva fps del file lingua per normalizzazione
+                // Rileva fps del file lingua per log informativo
                 if (this.GetVideoInfo(languageFile, out langDurationMs, out langFps))
                 {
                     fpsRatio = langFps / fps;
 
-                    // Se fps lang differisce di piu' del 2% dal source, normalizza estrazione al fps source
-                    // Soglia 2% per catturare PAL/NTSC (25 vs 23.976 = 4.08%)
+                    // Log se fps lang differisce di piu' del 2% dal source
                     if (Math.Abs(fpsRatio - 1.0) > 0.02)
                     {
-                        langTargetFps = fps;
-                        ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Notice, "  FPS diversi: source=" + fps.ToString("F3", CultureInfo.InvariantCulture) + ", lang=" + langFps.ToString("F3", CultureInfo.InvariantCulture) + " - normalizzazione lang a " + fps.ToString("F3", CultureInfo.InvariantCulture) + "fps");
+                        ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Notice, "  FPS diversi: source=" + fps.ToString("F3", CultureInfo.InvariantCulture) + ", lang=" + langFps.ToString("F3", CultureInfo.InvariantCulture) + " - normalizzazione a " + fps.ToString("F3", CultureInfo.InvariantCulture) + "fps");
                     }
                 }
+
+                // Normalizza sempre entrambi i file al fps source per garantire output CFR
+                // Senza normalizzazione, file VFR producono indici frame non mappabili a timestamp
+                langTargetFps = fps;
 
                 ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, "  Durata: " + (durationMs / 1000) + "s, FPS: " + fps.ToString("F3", CultureInfo.InvariantCulture) + ", intervallo frame: " + frameIntervalMs + "ms, core: " + Environment.ProcessorCount);
 
@@ -349,8 +351,9 @@ namespace RemuxForge.Core
 
             ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, "  Estrazione frame (source " + this._sourceDurationSec + "s, lang " + this._langDurationSec + "s)...");
 
-            // Estrae segmenti in parallelo
-            Thread sourceThread = new Thread(() => { sourceFrames = this.ExtractSegment(sourceFileCopy, this._sourceStartSec * 1000, this._sourceDurationSec, 0); });
+            // Estrae segmenti in parallelo (fps forzato per garantire output CFR)
+            double fpsCopy = fps;
+            Thread sourceThread = new Thread(() => { sourceFrames = this.ExtractSegment(sourceFileCopy, this._sourceStartSec * 1000, this._sourceDurationSec, fpsCopy); });
             double langTargetFpsCopy = langTargetFps;
             Thread langThread = new Thread(() => { langFrames = this.ExtractSegment(langFileCopy, 0, this._langDurationSec, langTargetFpsCopy); });
             sourceThread.Start();
@@ -839,9 +842,10 @@ namespace RemuxForge.Core
             sourceStartMsCopy = sourceStartMs;
             langStartMsCopy = langStartMs;
 
-            // Estrae i due segmenti in parallelo
+            // Estrae i due segmenti in parallelo (fps forzato per garantire output CFR)
+            double fpsCopy = fps;
             double langFpsCopy = langTargetFps;
-            Thread sourceThread = new Thread(() => { sourceFrames = this.ExtractSegment(sourceFileCopy, sourceStartMsCopy, sourceDurationSec, 0); });
+            Thread sourceThread = new Thread(() => { sourceFrames = this.ExtractSegment(sourceFileCopy, sourceStartMsCopy, sourceDurationSec, fpsCopy); });
             Thread langThread = new Thread(() => { langFrames = this.ExtractSegment(langFileCopy, langStartMsCopy, langDurationSec, langFpsCopy); });
             sourceThread.Start();
             langThread.Start();
