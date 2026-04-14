@@ -145,6 +145,11 @@ namespace RemuxForge.Core
         /// </summary>
         protected bool _cropLangTo43;
 
+        /// <summary>
+        /// Abilita accelerazione hardware ffmpeg (-hwaccel auto)
+        /// </summary>
+        protected bool _useHwaccel;
+
         #endregion
 
         #region Costruttore
@@ -183,6 +188,7 @@ namespace RemuxForge.Core
             this._verifyLangRetrySec = cfg.VerifyLangRetrySec;
             this._cropSourceTo43 = false;
             this._cropLangTo43 = false;
+            this._useHwaccel = AppSettingsService.Instance.Settings.Advanced.Ffmpeg.HardwareAcceleration;
         }
 
         #endregion
@@ -262,8 +268,11 @@ namespace RemuxForge.Core
                 process.StartInfo.FileName = this._ffmpegPath;
                 process.StartInfo.ArgumentList.Add("-nostdin");
                 process.StartInfo.ArgumentList.Add("-hide_banner");
-                process.StartInfo.ArgumentList.Add("-hwaccel");
-                process.StartInfo.ArgumentList.Add("auto");
+                if (this._useHwaccel)
+                {
+                    process.StartInfo.ArgumentList.Add("-hwaccel");
+                    process.StartInfo.ArgumentList.Add("auto");
+                }
                 process.StartInfo.ArgumentList.Add("-ss");
                 process.StartInfo.ArgumentList.Add(startFormatted);
                 process.StartInfo.ArgumentList.Add("-i");

@@ -452,6 +452,7 @@ namespace RemuxForge.Core
             if (this._model.Advanced.FrameSync == null) { this._model.Advanced.FrameSync = new FrameSyncConfig(); }
             if (this._model.Advanced.DeepAnalysis == null) { this._model.Advanced.DeepAnalysis = new DeepAnalysisConfig(); }
             if (this._model.Advanced.TrackSplit == null) { this._model.Advanced.TrackSplit = new TrackSplitConfig(); }
+            if (this._model.Advanced.Ffmpeg == null) { this._model.Advanced.Ffmpeg = new FfmpegConfig(); }
 
             // Assicura array DeepAnalysis non null
             if (this._model.Advanced.DeepAnalysis.ProbeMultiMarginsSec == null) { this._model.Advanced.DeepAnalysis.ProbeMultiMarginsSec = new List<double> { 5.0, 15.0, 25.0 }; }

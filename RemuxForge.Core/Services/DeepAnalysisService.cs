@@ -395,8 +395,11 @@ namespace RemuxForge.Core
                 process.StartInfo.FileName = this._ffmpegPath;
                 process.StartInfo.ArgumentList.Add("-nostdin");
                 process.StartInfo.ArgumentList.Add("-hide_banner");
-                process.StartInfo.ArgumentList.Add("-hwaccel");
-                process.StartInfo.ArgumentList.Add("auto");
+                if (this._useHwaccel)
+                {
+                    process.StartInfo.ArgumentList.Add("-hwaccel");
+                    process.StartInfo.ArgumentList.Add("auto");
+                }
                 process.StartInfo.ArgumentList.Add("-i");
                 process.StartInfo.ArgumentList.Add(filePath);
                 process.StartInfo.ArgumentList.Add("-vf");

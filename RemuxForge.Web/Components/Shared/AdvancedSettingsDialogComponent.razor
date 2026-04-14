@@ -240,6 +240,14 @@
                 </div>
             </details>
 
+            @* Sezione Ffmpeg *@
+            <details>
+                <summary class="form-section">Ffmpeg</summary>
+                <div class="form-row">
+                    <span class="tui-toggle" @onclick="() => _ffHardwareAcceleration = !_ffHardwareAcceleration">@(_ffHardwareAcceleration ? "[X]" : "[ ]") Hardware Acceleration</span>
+                </div>
+            </details>
+
         </div>
         @if (_validationError.Length > 0)
         {
@@ -544,6 +552,15 @@
 
     #endregion
 
+    #region Ffmpeg
+
+    /// <summary>
+    /// Accelerazione hardware ffmpeg
+    /// </summary>
+    private bool _ffHardwareAcceleration = false;
+
+    #endregion
+
     /// <summary>
     /// Messaggio errore validazione
     /// </summary>
@@ -634,6 +651,9 @@
 
         // TrackSplit — interi
         _tsFfmpegTimeoutMs = adv.TrackSplit.FfmpegTimeoutMs.ToString();
+
+        // Ffmpeg — booleani
+        _ffHardwareAcceleration = adv.Ffmpeg.HardwareAcceleration;
     }
 
     /// <summary>
@@ -722,6 +742,9 @@
 
         // Parsing TrackSplit — interi
         if (int.TryParse(_tsFfmpegTimeoutMs, out intVal)) { adv.TrackSplit.FfmpegTimeoutMs = intVal; }
+
+        // Parsing Ffmpeg — booleani
+        adv.Ffmpeg.HardwareAcceleration = _ffHardwareAcceleration;
 
         _validationError = "";
         AppSettingsService.Instance.Save();

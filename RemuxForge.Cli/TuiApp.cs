@@ -3208,13 +3208,14 @@ namespace RemuxForge.Cli
             Button btnFrameSync = new Button() { Text = "Frame Sync", X = Pos.Center(), Y = 5, SchemeName = "Dialog" };
             Button btnDeepAnal = new Button() { Text = "Deep Analysis", X = Pos.Center(), Y = 7, SchemeName = "Dialog" };
             Button btnTrackSplit = new Button() { Text = "Track Split", X = Pos.Center(), Y = 9, SchemeName = "Dialog" };
+            Button btnFfmpeg = new Button() { Text = "Ffmpeg", X = Pos.Center(), Y = 11, SchemeName = "Dialog" };
             Button btnClose = new Button() { Text = "Chiudi", IsDefault = true, SchemeName = "Dialog" };
 
             Dialog dialog = new Dialog()
             {
                 Title = " Impostazioni Avanzate ",
                 Width = 40,
-                Height = 16,
+                Height = 18,
                 BorderStyle = LineStyle.Double,
                 SchemeName = "Dialog"
             };
@@ -3226,9 +3227,10 @@ namespace RemuxForge.Cli
             btnFrameSync.Accepting += (object sender, CommandEventArgs e) => { this._app.RequestStop(); e.Handled = true; this.ShowAdvancedFrameSyncDialog(); };
             btnDeepAnal.Accepting += (object sender, CommandEventArgs e) => { this._app.RequestStop(); e.Handled = true; this.ShowAdvancedDeepAnalysisDialog(); };
             btnTrackSplit.Accepting += (object sender, CommandEventArgs e) => { this._app.RequestStop(); e.Handled = true; this.ShowAdvancedTrackSplitDialog(); };
+            btnFfmpeg.Accepting += (object sender, CommandEventArgs e) => { this._app.RequestStop(); e.Handled = true; this.ShowAdvancedFfmpegDialog(); };
             btnClose.Accepting += (object sender, CommandEventArgs e) => { this._app.RequestStop(); e.Handled = true; };
 
-            dialog.Add(btnVideoSync, btnSpeedCorr, btnFrameSync, btnDeepAnal, btnTrackSplit);
+            dialog.Add(btnVideoSync, btnSpeedCorr, btnFrameSync, btnDeepAnal, btnTrackSplit, btnFfmpeg);
 
             // Esegui dialog modale
             this._app.Run(dialog);
@@ -4050,6 +4052,78 @@ namespace RemuxForge.Cli
                 else
                 {
                     this.AppendLog("Errore salvataggio impostazioni Track Split");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Mostra il dialog per modifica parametri avanzati Ffmpeg
+        /// </summary>
+        private void ShowAdvancedFfmpegDialog()
+        {
+            bool accepted = false;
+            bool resetDefaults = false;
+            int y = 0;
+            FfmpegConfig cfg = AppSettingsService.Instance.Settings.Advanced.Ffmpeg;
+
+            // Pulsanti dialog
+            Button btnOk = new Button() { Text = "OK", IsDefault = true, SchemeName = "Dialog" };
+            Button btnReset = new Button() { Text = "Reset Default", SchemeName = "Dialog" };
+            Button btnCancel = new Button() { Text = "Annulla", SchemeName = "Dialog" };
+
+            Dialog dialog = new Dialog()
+            {
+                Title = " Ffmpeg ",
+                Width = 65,
+                Height = 10,
+                BorderStyle = LineStyle.Double,
+                SchemeName = "Dialog"
+            };
+            dialog.AddButton(btnOk);
+            dialog.AddButton(btnReset);
+            dialog.AddButton(btnCancel);
+
+            btnOk.Accepting += (object sender, CommandEventArgs e) => { accepted = true; this._app.RequestStop(); e.Handled = true; };
+            btnReset.Accepting += (object sender, CommandEventArgs e) => { resetDefaults = true; this._app.RequestStop(); e.Handled = true; };
+            btnCancel.Accepting += (object sender, CommandEventArgs e) => { this._app.RequestStop(); e.Handled = true; };
+
+            // --- Intestazione ---
+            Label lblHeader = new Label() { Text = "== Parametri Ffmpeg ==", X = 1, Y = y, SchemeName = "Highlight" };
+            y++;
+
+            // --- Campi ---
+            bool[] hwAccelState = null;
+            Button cbHwAccel = this.CreateToggleLabel("Hardware Acceleration", cfg.HardwareAcceleration, 1, y, "Dialog", out hwAccelState);
+
+            dialog.Add(lblHeader, cbHwAccel);
+
+            // Esegui dialog modale
+            this._app.Run(dialog);
+            dialog.Dispose();
+
+            // Gestione reset default
+            if (resetDefaults)
+            {
+                AppSettingsService.Instance.Settings.Advanced.Ffmpeg = new FfmpegConfig();
+                AppSettingsService.Instance.Save();
+                this.AppendLog("Ffmpeg: valori di default ripristinati");
+                this.ShowAdvancedFfmpegDialog();
+                return;
+            }
+
+            if (accepted)
+            {
+                // Salva valore checkbox
+                cfg.HardwareAcceleration = hwAccelState[0];
+
+                // Salva impostazioni
+                if (AppSettingsService.Instance.Save())
+                {
+                    this.AppendLog("Impostazioni avanzate Ffmpeg salvate");
+                }
+                else
+                {
+                    this.AppendLog("Errore salvataggio impostazioni Ffmpeg");
                 }
             }
         }

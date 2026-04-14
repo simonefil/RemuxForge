@@ -426,6 +426,33 @@ namespace RemuxForge.Core
     }
 
     /// <summary>
+    /// Configurazione parametri ffmpeg (accelerazione hardware)
+    /// </summary>
+    public class FfmpegConfig
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore con valori di default
+        /// </summary>
+        public FfmpegConfig()
+        {
+            this.HardwareAcceleration = false;
+        }
+
+        #endregion
+
+        #region Proprieta
+
+        /// <summary>
+        /// Abilita accelerazione hardware ffmpeg (-hwaccel auto)
+        /// </summary>
+        public bool HardwareAcceleration { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
     /// Contenitore configurazione avanzata con tutte le sotto-sezioni
     /// </summary>
     public class AdvancedConfig
@@ -442,6 +469,7 @@ namespace RemuxForge.Core
             this.FrameSync = new FrameSyncConfig();
             this.DeepAnalysis = new DeepAnalysisConfig();
             this.TrackSplit = new TrackSplitConfig();
+            this.Ffmpeg = new FfmpegConfig();
         }
 
         #endregion
@@ -472,6 +500,11 @@ namespace RemuxForge.Core
         /// Parametri track split
         /// </summary>
         public TrackSplitConfig TrackSplit { get; set; }
+
+        /// <summary>
+        /// Parametri ffmpeg
+        /// </summary>
+        public FfmpegConfig Ffmpeg { get; set; }
 
         #endregion
     }

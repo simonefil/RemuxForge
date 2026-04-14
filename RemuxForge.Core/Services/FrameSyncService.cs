@@ -767,7 +767,12 @@ namespace RemuxForge.Core
             try
             {
                 // Esegue ffmpeg per leggere solo le info dell'header
-                args = "-nostdin -hide_banner -hwaccel auto -i \"" + filePath + "\"";
+                args = "-nostdin -hide_banner";
+                if (this._useHwaccel)
+                {
+                    args = args + " -hwaccel auto";
+                }
+                args = args + " -i \"" + filePath + "\"";
 
                 process = new Process();
                 process.StartInfo.FileName = this._ffmpegPath;
