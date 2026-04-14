@@ -368,6 +368,7 @@ namespace RemuxForge.Core
                     if (success && this._opts.FrameSync && this._ffmpegPath.Length > 0)
                     {
                         this._frameSyncService = new FrameSyncService(this._ffmpegPath);
+                        this._frameSyncService.SetCropFlags(this._opts.CropSourceTo43, this._opts.CropLangTo43);
                     }
 
                     // Log impostazioni conversione se attiva
@@ -645,22 +646,6 @@ namespace RemuxForge.Core
                         }
                     }
 
-                    // Verifica VFR: se uno dei file ha frame rate variabile, la correzione non e' affidabile
-                    if (ffmpegPath.Length > 0)
-                    {
-                        string ffprobePath = SpeedCorrectionService.GetFfprobePath(ffmpegPath);
-                        if (ffprobePath.Length > 0)
-                        {
-                            bool sourceVfr = SpeedCorrectionService.IsVariableFrameRate(ffprobePath, record.SourceFilePath);
-                            bool langVfr = SpeedCorrectionService.IsVariableFrameRate(ffprobePath, record.LangFilePath);
-                            if (sourceVfr || langVfr)
-                            {
-                                ConsoleHelper.Write(LogSection.Speed, LogLevel.Warning, "  File VFR rilevato, correzione velocita' saltata (default_duration non affidabile)");
-                                speedMismatch = false;
-                            }
-                        }
-                    }
-
                     if (speedMismatch && ffmpegPath.Length > 0)
                     {
                         // Trova default_duration per tracce video
@@ -671,6 +656,7 @@ namespace RemuxForge.Core
                         sourceDurationMs = (int)(sourceInfo.ContainerDurationNs / 1000000);
 
                         speedService = new SpeedCorrectionService(ffmpegPath);
+                        speedService.SetCropFlags(this._opts.CropSourceTo43, this._opts.CropLangTo43);
                         speedOk = speedService.FindDelayAndVerify(record.SourceFilePath, record.LangFilePath, sourceDefaultDuration, langDefaultDuration, sourceDurationMs);
 
                         record.SpeedCorrectionTimeMs = speedService.ExecutionTimeMs;
@@ -750,6 +736,7 @@ namespace RemuxForge.Core
                         long effectiveLangDuration = softTelecine ? sourceDefaultDuration : langDefaultDuration;
 
                         DeepAnalysisService deepService = new DeepAnalysisService(ffmpegPath);
+                        deepService.SetCropFlags(this._opts.CropSourceTo43, this._opts.CropLangTo43);
                         EditMap editMap = deepService.Analyze(record.SourceFilePath, record.LangFilePath, sourceDefaultDuration, effectiveLangDuration, sourceDurationMs);
 
                         record.DeepAnalysisTimeMs = deepService.AnalysisTimeMs;
@@ -824,6 +811,7 @@ namespace RemuxForge.Core
                     if (ffmpegPath.Length > 0 && sourceDefaultDuration > 0 && langDefaultDuration > 0)
                     {
                         speedService = new SpeedCorrectionService(ffmpegPath);
+                        speedService.SetCropFlags(this._opts.CropSourceTo43, this._opts.CropLangTo43);
                         speedOk = speedService.FindDelayAndVerify(record.SourceFilePath, record.LangFilePath, sourceDefaultDuration, langDefaultDuration, sourceDurationMs);
 
                         record.SpeedCorrectionTimeMs = speedService.ExecutionTimeMs;

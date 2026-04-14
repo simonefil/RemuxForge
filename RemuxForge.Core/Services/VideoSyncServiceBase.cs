@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 
 namespace RemuxForge.Core
@@ -12,6 +14,15 @@ namespace RemuxForge.Core
     /// </summary>
     public abstract class VideoSyncServiceBase
     {
+        #region Variabili statiche
+
+        /// <summary>
+        /// Regex per parsing pts_time dalle righe showinfo nello stderr ffmpeg
+        /// </summary>
+        private static readonly Regex s_ptsTimeRegex = new Regex(@"pts_time:(\-?\d+(?:\.\d+)?)", RegexOptions.Compiled);
+
+        #endregion
+
         #region Variabili di classe
 
         /// <summary>
@@ -124,6 +135,16 @@ namespace RemuxForge.Core
         /// </summary>
         private LogSection _logSection;
 
+        /// <summary>
+        /// Croppa i frame del file sorgente a 4:3 centrato (rimuove pillarbox)
+        /// </summary>
+        protected bool _cropSourceTo43;
+
+        /// <summary>
+        /// Croppa i frame del file lingua a 4:3 centrato (rimuove pillarbox)
+        /// </summary>
+        protected bool _cropLangTo43;
+
         #endregion
 
         #region Costruttore
@@ -160,6 +181,23 @@ namespace RemuxForge.Core
             this._verifyLangDurationSec = cfg.VerifyLangDurationSec;
             this._verifySourceRetrySec = cfg.VerifySourceRetrySec;
             this._verifyLangRetrySec = cfg.VerifyLangRetrySec;
+            this._cropSourceTo43 = false;
+            this._cropLangTo43 = false;
+        }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Imposta i flag di crop 4:3 per la rimozione di pillarbox sui frame estratti
+        /// </summary>
+        /// <param name="cropSource">Abilita crop 4:3 sui frame estratti dal file sorgente</param>
+        /// <param name="cropLang">Abilita crop 4:3 sui frame estratti dal file lingua</param>
+        public void SetCropFlags(bool cropSource, bool cropLang)
+        {
+            this._cropSourceTo43 = cropSource;
+            this._cropLangTo43 = cropLang;
         }
 
         #endregion
@@ -167,35 +205,57 @@ namespace RemuxForge.Core
         #region Metodi protetti
 
         /// <summary>
-        /// Estrae frame di un segmento video come byte array grayscale
+        /// Estrae frame di un segmento video come byte array grayscale.
+        /// Ritorna timestamps assoluti reali (ms nel file sorgente) parsati da ffmpeg showinfo,
+        /// rendendo il matching robusto anche su file VFR
         /// </summary>
         /// <param name="filePath">Percorso file video</param>
         /// <param name="startMs">Inizio estrazione in millisecondi</param>
         /// <param name="durationSec">Durata estrazione in secondi</param>
-        /// <param name="targetFps">FPS target per normalizzazione (0 = usa fps nativo del file)</param>
-        /// <returns>Lista di frame grayscale come byte array</returns>
-        protected List<byte[]> ExtractSegment(string filePath, int startMs, double durationSec, double targetFps)
+        /// <param name="targetFps">FPS target per normalizzazione (0 = passthrough senza decimazione)</param>
+        /// <param name="cropTo43">Se true, croppa il frame a 4:3 centrato prima dello scale (rimuove pillarbox)</param>
+        /// <param name="frames">Lista frame grayscale estratti (output)</param>
+        /// <param name="timestampsMs">Array di timestamp assoluti in ms, uno per frame estratto (output)</param>
+        protected void ExtractSegment(string filePath, int startMs, double durationSec, double targetFps, bool cropTo43, out List<byte[]> frames, out double[] timestampsMs)
         {
-            List<byte[]> frames = new List<byte[]>();
+            frames = new List<byte[]>();
+            timestampsMs = new double[0];
             Process process = null;
             double startSec = 0.0;
+            double endSec = 0.0;
             string startFormatted = "";
-            string durationFormatted = "";
+            string endFormatted = "";
             string resolution = "";
-            string fpsFilter = "";
+            string filterChain = "";
             Stream stdoutStream = null;
             bool reading = true;
             byte[] frameData = null;
             int totalRead = 0;
             int bytesRead = 0;
+            StringBuilder stderrBuffer = new StringBuilder();
+            Thread errThread = null;
+            string stderrText = "";
+            MatchCollection ptsMatches = null;
+            List<double> tsList = new List<double>();
+            double ptsSec = 0.0;
+            int minCount = 0;
+            bool useFpsFilter = false;
 
             try
             {
-                // Formatta timestamp e durata
+                // Formatta timestamp inizio e fine (assoluto)
+                // Usiamo -to (end time assoluto) invece di -t (durata) perche' con -copyts
+                // ffmpeg interpreta -t rispetto al PTS sorgente preservato e taglia subito
                 startSec = startMs / 1000.0;
+                endSec = startSec + durationSec;
                 startFormatted = startSec.ToString("F3", CultureInfo.InvariantCulture);
-                durationFormatted = durationSec.ToString("F3", CultureInfo.InvariantCulture);
+                endFormatted = endSec.ToString("F3", CultureInfo.InvariantCulture);
                 resolution = this._frameWidth + "x" + this._frameHeight;
+
+                // fps filter applicato quando viene richiesto un target fps (scan coarse a memoria limitata)
+                // Il filtro fps resampla correttamente anche su sorgente VFR producendo griglia regolare
+                // Passthrough usato solo quando targetFps=0 (verify a finestra corta, frame esatti)
+                useFpsFilter = targetFps > 0.0;
 
                 // Comando ffmpeg per estrazione raw grayscale via pipe
                 process = new Process();
@@ -208,16 +268,52 @@ namespace RemuxForge.Core
                 process.StartInfo.ArgumentList.Add(startFormatted);
                 process.StartInfo.ArgumentList.Add("-i");
                 process.StartInfo.ArgumentList.Add(filePath);
-                process.StartInfo.ArgumentList.Add("-t");
-                process.StartInfo.ArgumentList.Add(durationFormatted);
-
-                // Filtro fps per normalizzare frame rate diversi (telecine, HFR, etc.)
-                if (targetFps > 0.0)
+                // copyts preserva i PTS sorgente nell'output, cosi' showinfo riporta il tempo reale
+                process.StartInfo.ArgumentList.Add("-copyts");
+                // -to con end time assoluto per troncare l'output (compatibile con -copyts)
+                process.StartInfo.ArgumentList.Add("-to");
+                process.StartInfo.ArgumentList.Add(endFormatted);
+                // fps_mode: vfr con fps filter (evita frame duplicati con -copyts),
+                // passthrough senza fps filter
+                process.StartInfo.ArgumentList.Add("-fps_mode");
+                if (useFpsFilter)
                 {
-                    fpsFilter = "fps=fps=" + targetFps.ToString("F6", CultureInfo.InvariantCulture);
-                    process.StartInfo.ArgumentList.Add("-vf");
-                    process.StartInfo.ArgumentList.Add(fpsFilter);
+                    process.StartInfo.ArgumentList.Add("vfr");
                 }
+                else
+                {
+                    process.StartInfo.ArgumentList.Add("passthrough");
+                }
+
+                // Filter chain: fps (se CFR + normalizzazione) + crop (pillarbox) + showinfo (timestamps)
+                // Ordine: crop PRIMA dello scale -s, showinfo ultimo per tracciare i frame finali
+                if (useFpsFilter)
+                {
+                    filterChain = "fps=fps=" + targetFps.ToString("F6", CultureInfo.InvariantCulture);
+                }
+                if (cropTo43)
+                {
+                    // Crop centrato a 4:3: larghezza = altezza * 4/3, altezza invariata
+                    if (filterChain.Length > 0)
+                    {
+                        filterChain = filterChain + ",crop=ih*4/3:ih";
+                    }
+                    else
+                    {
+                        filterChain = "crop=ih*4/3:ih";
+                    }
+                }
+                // showinfo stampa pts_time di ogni frame su stderr
+                if (filterChain.Length > 0)
+                {
+                    filterChain = filterChain + ",showinfo";
+                }
+                else
+                {
+                    filterChain = "showinfo";
+                }
+                process.StartInfo.ArgumentList.Add("-vf");
+                process.StartInfo.ArgumentList.Add(filterChain);
 
                 process.StartInfo.ArgumentList.Add("-s");
                 process.StartInfo.ArgumentList.Add(resolution);
@@ -232,11 +328,14 @@ namespace RemuxForge.Core
                 process.StartInfo.CreateNoWindow = true;
                 process.Start();
 
-                // Svuota stderr in thread separato
+                // Cattura stderr in thread separato per parsing pts_time dopo la lettura
                 // Catch silenzioso intenzionale: pipe puo' chiudersi se il processo termina
-                Thread errThread = new Thread(() =>
+                errThread = new Thread(() =>
                 {
-                    try { process.StandardError.ReadToEnd(); }
+                    try
+                    {
+                        stderrBuffer.Append(process.StandardError.ReadToEnd());
+                    }
                     catch { }
                 });
                 errThread.Start();
@@ -270,6 +369,32 @@ namespace RemuxForge.Core
 
                 errThread.Join();
                 process.WaitForExit();
+
+                // Parsing pts_time di ogni frame da stderr showinfo
+                // Formato riga: "[Parsed_showinfo_N @ ...] n:X pts:Y pts_time:Z.ZZZZZZ ..."
+                stderrText = stderrBuffer.ToString();
+                ptsMatches = s_ptsTimeRegex.Matches(stderrText);
+                for (int i = 0; i < ptsMatches.Count; i++)
+                {
+                    if (double.TryParse(ptsMatches[i].Groups[1].Value, NumberStyles.Any, CultureInfo.InvariantCulture, out ptsSec))
+                    {
+                        tsList.Add(ptsSec * 1000.0);
+                    }
+                }
+
+                // Allinea count: se frame e timestamp differiscono tronca al minimo
+                // (puo' succedere con output troncato dello stderr)
+                minCount = Math.Min(frames.Count, tsList.Count);
+                if (minCount < frames.Count)
+                {
+                    frames.RemoveRange(minCount, frames.Count - minCount);
+                }
+                if (minCount < tsList.Count)
+                {
+                    tsList.RemoveRange(minCount, tsList.Count - minCount);
+                }
+
+                timestampsMs = tsList.ToArray();
             }
             catch (Exception ex)
             {
@@ -279,8 +404,56 @@ namespace RemuxForge.Core
             {
                 if (process != null) { process.Dispose(); process = null; }
             }
+        }
 
-            return frames;
+        /// <summary>
+        /// Ricerca binaria dell'indice del timestamp piu' vicino al target
+        /// </summary>
+        /// <param name="timestampsMs">Array di timestamp ordinato in modo crescente</param>
+        /// <param name="targetMs">Timestamp target da cercare</param>
+        /// <returns>Indice del timestamp piu' vicino, -1 se array vuoto</returns>
+        protected static int NearestTimestampIndex(double[] timestampsMs, double targetMs)
+        {
+            int result = -1;
+            int low = 0;
+            int high = 0;
+            int mid = 0;
+            double leftDist = 0.0;
+            double rightDist = 0.0;
+
+            if (timestampsMs != null && timestampsMs.Length > 0)
+            {
+                low = 0;
+                high = timestampsMs.Length - 1;
+
+                // Binary search per il primo indice con timestamp >= target
+                while (low < high)
+                {
+                    mid = (low + high) / 2;
+                    if (timestampsMs[mid] < targetMs)
+                    {
+                        low = mid + 1;
+                    }
+                    else
+                    {
+                        high = mid;
+                    }
+                }
+
+                // Confronta con indice precedente per scegliere il piu' vicino
+                result = low;
+                if (low > 0)
+                {
+                    leftDist = Math.Abs(timestampsMs[low - 1] - targetMs);
+                    rightDist = Math.Abs(timestampsMs[low] - targetMs);
+                    if (leftDist < rightDist)
+                    {
+                        result = low - 1;
+                    }
+                }
+            }
+
+            return result;
         }
 
         /// <summary>

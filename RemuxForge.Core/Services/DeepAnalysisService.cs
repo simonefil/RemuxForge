@@ -910,9 +910,19 @@ namespace RemuxForge.Core
             int maxIdx = 0;
             int consecutiveLow = 0;
             int dipStartIdx = -1;
+            List<byte[]> srcFrames = null;
+            double[] sourceTimestampsMs = null;
+            List<byte[]> langFrames = null;
+            double[] langTimestampsMs = null;
+            double frameIntervalMs = 1000.0 / this._denseScanFps;
+            double toleranceMs = frameIntervalMs * 2.0;
+            double srcRelMs = 0.0;
+            double targetLangMs = 0.0;
+            int nearestIdx = 0;
+            double nearestDistMs = 0.0;
 
-            // Estrai frame source
-            List<byte[]> srcFrames = this.ExtractSegment(sourceFile, (int)(regionStart * 1000), duration, this._denseScanFps);
+            // Estrai frame source con timestamps reali
+            this.ExtractSegment(sourceFile, (int)(regionStart * 1000), duration, this._denseScanFps, this._cropSourceTo43, out srcFrames, out sourceTimestampsMs);
             if (srcFrames.Count < 4)
             {
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Warning, "    FindDips: estrazione source fallita (" + srcFrames.Count + " frame su " + duration.ToString("F0", CultureInfo.InvariantCulture) + "s attesi)");
@@ -924,21 +934,42 @@ namespace RemuxForge.Core
             if (Math.Abs(inverseRatio - 1.0) > 0.0001) { langStart = langStart * inverseRatio; }
             if (langStart < 0.0) { langStart = 0.0; }
 
-            // Estrai frame lang
-            List<byte[]> langFrames = this.ExtractSegment(langFile, (int)(langStart * 1000), duration, this._denseScanFps);
+            // Estrai frame lang con timestamps reali
+            this.ExtractSegment(langFile, (int)(langStart * 1000), duration, this._denseScanFps, this._cropLangTo43, out langFrames, out langTimestampsMs);
 
-            maxIdx = Math.Min(srcFrames.Count, langFrames.Count);
-            if (maxIdx < 4)
+            if (langFrames.Count < 4 || langTimestampsMs.Length < 4)
             {
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Warning, "    FindDips: estrazione lang fallita (" + langFrames.Count + " frame su " + duration.ToString("F0", CultureInfo.InvariantCulture) + "s attesi)");
                 return dips;
             }
 
-            // Calcola SSIM per ogni coppia
+            maxIdx = srcFrames.Count;
+
+            // Calcola SSIM abbinando ogni frame source al frame lang piu' vicino per tempo relativo.
+            // Robusto a VFR: usa i timestamps reali da showinfo invece di assumere indici allineati.
+            // Dove il lang non copre il tempo target (fuori range o troppo distante) marca come low SSIM.
             double[] ssimValues = new double[maxIdx];
             for (int i = 0; i < maxIdx; i++)
             {
-                ssimValues[i] = this.ComputeSsim(srcFrames[i], langFrames[i]);
+                srcRelMs = sourceTimestampsMs[i] - sourceTimestampsMs[0];
+                targetLangMs = langTimestampsMs[0] + srcRelMs;
+                nearestIdx = NearestTimestampIndex(langTimestampsMs, targetLangMs);
+                if (nearestIdx < 0)
+                {
+                    ssimValues[i] = 0.0;
+                }
+                else
+                {
+                    nearestDistMs = Math.Abs(langTimestampsMs[nearestIdx] - targetLangMs);
+                    if (nearestDistMs > toleranceMs)
+                    {
+                        ssimValues[i] = 0.0;
+                    }
+                    else
+                    {
+                        ssimValues[i] = this.ComputeSsim(srcFrames[i], langFrames[nearestIdx]);
+                    }
+                }
             }
 
             // Cerca cluster di frame con SSIM sotto soglia restrittiva
@@ -953,7 +984,8 @@ namespace RemuxForge.Core
 
                     if (consecutiveLow >= this._denseScanMinDipFrames)
                     {
-                        double dipSrc = regionStart + ((double)dipStartIdx / this._denseScanFps);
+                        // Posizione reale del dip dal pts del frame sorgente (non da fps assunto)
+                        double dipSrc = sourceTimestampsMs[dipStartIdx] / 1000.0;
                         dips.Add(dipSrc);
 
                         // Salta avanti per non trovare lo stesso dip piu' volte
@@ -997,14 +1029,20 @@ namespace RemuxForge.Core
             double candidateOffsetMs = 0.0;
             double candidateOffsetSec = 0.0;
             double langPos = 0.0;
-            int pairs = 0;
-            double totalSsim = 0.0;
             double avgSsim = 0.0;
+            List<byte[]> preFilterSrc = null;
+            double[] preFilterSrcTs = null;
+            List<byte[]> preFilterLang = null;
+            double[] preFilterLangTs = null;
+            List<byte[]> srcFrames = null;
+            double[] srcFramesTs = null;
+            List<byte[]> langFrames = null;
+            double[] langFramesTs = null;
 
             // Pre-filtro veloce: testa l'offset corrente al primo punto di probe
             // Se SSIM >= soglia, l'offset corrente funziona ancora => falso positivo
             probePointSrc = dipSrcSec + this._probeMultiMarginsSec[0];
-            List<byte[]> preFilterSrc = this.ExtractSegment(sourceFile, (int)(probePointSrc * 1000), this._offsetProbeDurationSec, 0.0);
+            this.ExtractSegment(sourceFile, (int)(probePointSrc * 1000), this._offsetProbeDurationSec, 0.0, this._cropSourceTo43, out preFilterSrc, out preFilterSrcTs);
             if (preFilterSrc.Count >= 2)
             {
                 double currentOffsetSec = currentOffsetMs / 1000.0;
@@ -1013,16 +1051,10 @@ namespace RemuxForge.Core
 
                 if (langPos >= 0.0)
                 {
-                    List<byte[]> preFilterLang = this.ExtractSegment(langFile, (int)(langPos * 1000), this._offsetProbeDurationSec, 0.0);
+                    this.ExtractSegment(langFile, (int)(langPos * 1000), this._offsetProbeDurationSec, 0.0, this._cropLangTo43, out preFilterLang, out preFilterLangTs);
                     if (preFilterLang.Count >= 2)
                     {
-                        pairs = Math.Min(preFilterSrc.Count, preFilterLang.Count);
-                        totalSsim = 0.0;
-                        for (int f = 0; f < pairs; f++)
-                        {
-                            totalSsim += this.ComputeSsim(preFilterSrc[f], preFilterLang[f]);
-                        }
-                        avgSsim = totalSsim / pairs;
+                        avgSsim = this.ComputeTimestampMatchedSsim(preFilterSrc, preFilterSrcTs, preFilterLang, preFilterLangTs);
 
                         // Offset corrente funziona ancora: falso positivo, esci subito
                         if (avgSsim >= this._offsetProbeMinSsim) { return result; }
@@ -1038,7 +1070,7 @@ namespace RemuxForge.Core
                 bestDelta = 0;
 
                 // Estrai frame source al punto di probe
-                List<byte[]> srcFrames = this.ExtractSegment(sourceFile, (int)(probePointSrc * 1000), this._offsetProbeDurationSec, 0.0);
+                this.ExtractSegment(sourceFile, (int)(probePointSrc * 1000), this._offsetProbeDurationSec, 0.0, this._cropSourceTo43, out srcFrames, out srcFramesTs);
                 if (srcFrames.Count < 2) { continue; }
 
                 // Testa ogni offset candidato
@@ -1053,17 +1085,11 @@ namespace RemuxForge.Core
                     if (langPos < 0.0) { continue; }
 
                     // Estrai frame lang
-                    List<byte[]> langFrames = this.ExtractSegment(langFile, (int)(langPos * 1000), this._offsetProbeDurationSec, 0.0);
+                    this.ExtractSegment(langFile, (int)(langPos * 1000), this._offsetProbeDurationSec, 0.0, this._cropLangTo43, out langFrames, out langFramesTs);
                     if (langFrames.Count < 2) { continue; }
 
-                    // Calcola SSIM medio sulle coppie
-                    pairs = Math.Min(srcFrames.Count, langFrames.Count);
-                    totalSsim = 0.0;
-                    for (int f = 0; f < pairs; f++)
-                    {
-                        totalSsim += this.ComputeSsim(srcFrames[f], langFrames[f]);
-                    }
-                    avgSsim = totalSsim / pairs;
+                    // SSIM medio con matching per tempo relativo (robusto a VFR)
+                    avgSsim = this.ComputeTimestampMatchedSsim(srcFrames, srcFramesTs, langFrames, langFramesTs);
 
                     if (avgSsim > bestSsim)
                     {
@@ -1096,6 +1122,57 @@ namespace RemuxForge.Core
             if (consistent)
             {
                 result = currentOffsetMs + consensusDelta;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Calcola SSIM medio tra due set di frame abbinando per tempo relativo (primo frame src vs primo frame lang).
+        /// Per ogni frame source, trova il frame lang il cui tempo relativo differisce di meno rispetto al target.
+        /// Robusto a file VFR dove gli indici non sono allineati
+        /// </summary>
+        /// <param name="srcFrames">Lista frame source</param>
+        /// <param name="srcTimestampsMs">Timestamps source in ms</param>
+        /// <param name="langFrames">Lista frame lang</param>
+        /// <param name="langTimestampsMs">Timestamps lang in ms</param>
+        /// <returns>SSIM medio, 0.0 se nessun match valido</returns>
+        private double ComputeTimestampMatchedSsim(List<byte[]> srcFrames, double[] srcTimestampsMs, List<byte[]> langFrames, double[] langTimestampsMs)
+        {
+            double result = 0.0;
+            double totalSsim = 0.0;
+            int validPairs = 0;
+            double srcRelMs = 0.0;
+            double targetLangMs = 0.0;
+            int nearestIdx = 0;
+            double nearestDistMs = 0.0;
+            double toleranceMs = 0.0;
+
+            // Tolleranza generosa: mezzo secondo (tipicamente > 10 frame a 23.976fps)
+            toleranceMs = 500.0;
+
+            if (srcFrames.Count == 0 || langFrames.Count == 0 || srcTimestampsMs.Length == 0 || langTimestampsMs.Length == 0)
+            {
+                return result;
+            }
+
+            for (int i = 0; i < srcFrames.Count && i < srcTimestampsMs.Length; i++)
+            {
+                srcRelMs = srcTimestampsMs[i] - srcTimestampsMs[0];
+                targetLangMs = langTimestampsMs[0] + srcRelMs;
+                nearestIdx = NearestTimestampIndex(langTimestampsMs, targetLangMs);
+                if (nearestIdx < 0 || nearestIdx >= langFrames.Count) { continue; }
+
+                nearestDistMs = Math.Abs(langTimestampsMs[nearestIdx] - targetLangMs);
+                if (nearestDistMs > toleranceMs) { continue; }
+
+                totalSsim += this.ComputeSsim(srcFrames[i], langFrames[nearestIdx]);
+                validPairs++;
+            }
+
+            if (validPairs > 0)
+            {
+                result = totalSsim / validPairs;
             }
 
             return result;
@@ -1209,9 +1286,19 @@ namespace RemuxForge.Core
             int dipStartIdx = -1;
             double minSsim = double.MaxValue;
             int minIdx = 0;
+            List<byte[]> srcFrames = null;
+            double[] sourceTimestampsMs = null;
+            List<byte[]> langOldFrames = null;
+            double[] langTimestampsMs = null;
+            double frameIntervalMs = 1000.0 / this._denseScanFps;
+            double toleranceMs = frameIntervalMs * 2.0;
+            double srcRelMs = 0.0;
+            double targetLangMs = 0.0;
+            int nearestIdx = 0;
+            double nearestDistMs = 0.0;
 
             // Estrai frame source a fps fisso per l'intera regione
-            List<byte[]> srcFrames = this.ExtractSegment(sourceFile, (int)(searchStartSrc * 1000), duration, this._denseScanFps);
+            this.ExtractSegment(sourceFile, (int)(searchStartSrc * 1000), duration, this._denseScanFps, this._cropSourceTo43, out srcFrames, out sourceTimestampsMs);
             if (srcFrames.Count < 4)
             {
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Warning, "    DenseScan: estrazione source fallita (" + srcFrames.Count + " frame su " + duration.ToString("F0", CultureInfo.InvariantCulture) + "s attesi)");
@@ -1224,22 +1311,41 @@ namespace RemuxForge.Core
             if (langStartOld < 0.0) { langStartOld = 0.0; }
 
             // Estrai frame lang col vecchio offset alla stessa fps
-            List<byte[]> langOldFrames = this.ExtractSegment(langFile, (int)(langStartOld * 1000), duration, this._denseScanFps);
+            this.ExtractSegment(langFile, (int)(langStartOld * 1000), duration, this._denseScanFps, this._cropLangTo43, out langOldFrames, out langTimestampsMs);
 
-            maxIdx = Math.Min(srcFrames.Count, langOldFrames.Count);
-            if (maxIdx < 4)
+            if (langOldFrames.Count < 4 || langTimestampsMs.Length < 4)
             {
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Warning, "    DenseScan: estrazione lang fallita (" + langOldFrames.Count + " frame su " + duration.ToString("F0", CultureInfo.InvariantCulture) + "s attesi)");
                 return result;
             }
 
+            maxIdx = srcFrames.Count;
             ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione densa: " + maxIdx + " frame a " + this._denseScanFps.ToString("F0", CultureInfo.InvariantCulture) + "fps su " + duration.ToString("F0", CultureInfo.InvariantCulture) + "s");
 
-            // Calcola SSIM per ogni coppia
+            // Calcola SSIM abbinando ogni frame source al frame lang piu' vicino per tempo relativo
+            // (robusto a VFR: usa timestamps reali da showinfo invece di assumere indici allineati)
             double[] ssimValues = new double[maxIdx];
             for (int i = 0; i < maxIdx; i++)
             {
-                ssimValues[i] = this.ComputeSsim(srcFrames[i], langOldFrames[i]);
+                srcRelMs = sourceTimestampsMs[i] - sourceTimestampsMs[0];
+                targetLangMs = langTimestampsMs[0] + srcRelMs;
+                nearestIdx = NearestTimestampIndex(langTimestampsMs, targetLangMs);
+                if (nearestIdx < 0 || nearestIdx >= langOldFrames.Count)
+                {
+                    ssimValues[i] = 0.0;
+                }
+                else
+                {
+                    nearestDistMs = Math.Abs(langTimestampsMs[nearestIdx] - targetLangMs);
+                    if (nearestDistMs > toleranceMs)
+                    {
+                        ssimValues[i] = 0.0;
+                    }
+                    else
+                    {
+                        ssimValues[i] = this.ComputeSsim(srcFrames[i], langOldFrames[nearestIdx]);
+                    }
+                }
             }
 
             // Cerca primo cluster di frame con SSIM sotto soglia
@@ -1252,7 +1358,8 @@ namespace RemuxForge.Core
 
                     if (consecutiveLow >= this._denseScanMinDipFrames)
                     {
-                        result = searchStartSrc + ((double)dipStartIdx / this._denseScanFps);
+                        // Posizione reale dal pts del frame sorgente (non da fps assunto)
+                        result = sourceTimestampsMs[dipStartIdx] / 1000.0;
                         ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione densa: dip a src " + result.ToString("F1", CultureInfo.InvariantCulture) + "s (frame " + dipStartIdx + "/" + maxIdx + ", " + consecutiveLow + " frame SSIM<" + this._denseScanSsimThreshold.ToString("F1", CultureInfo.InvariantCulture) + ")");
                         return result;
                     }
@@ -1273,7 +1380,7 @@ namespace RemuxForge.Core
                     minIdx = i;
                 }
             }
-            result = searchStartSrc + ((double)minIdx / this._denseScanFps);
+            result = sourceTimestampsMs[minIdx] / 1000.0;
             ConsoleHelper.Write(LogSection.Deep, LogLevel.Warning, "    Scansione densa: nessun dip netto, uso minimo SSIM=" + minSsim.ToString("F4", CultureInfo.InvariantCulture) + " a src " + result.ToString("F1", CultureInfo.InvariantCulture) + "s");
 
             return result;
@@ -1297,14 +1404,22 @@ namespace RemuxForge.Core
             double scanStart = approximateSrc - this._linearScanWindowSec;
             if (scanStart < 0.0) { scanStart = 0.0; }
             double scanDuration = this._linearScanWindowSec * 2.0;
+            List<byte[]> srcFrames = null;
+            double[] sourceTimestampsMs = null;
+            List<byte[]> langOldFrames = null;
+            double[] langOldTimestampsMs = null;
+            List<byte[]> langNewFrames = null;
+            double[] langNewTimestampsMs = null;
+            double toleranceMs = 0.0;
+            double srcRelMs = 0.0;
+            double targetLangOldMs = 0.0;
+            int nearestOldIdx = 0;
+            double nearestOldDistMs = 0.0;
+            double ssimOld = 0.0;
 
-            // Estrai frame source a fps nativo nella finestra
-            List<byte[]> srcFrames = this.ExtractSegment(sourceFile, (int)(scanStart * 1000), scanDuration, 0.0);
-            if (srcFrames.Count < 4) { return result; }
-
-            // Stima fps
-            double estimatedFps = srcFrames.Count / scanDuration;
-            if (estimatedFps < 1.0) { estimatedFps = 25.0; }
+            // Estrai frame source a fps nativo nella finestra (passthrough)
+            this.ExtractSegment(sourceFile, (int)(scanStart * 1000), scanDuration, 0.0, this._cropSourceTo43, out srcFrames, out sourceTimestampsMs);
+            if (srcFrames.Count < 4 || sourceTimestampsMs.Length < 4) { return result; }
 
             // Posizione lang col vecchio offset
             double langStartOld = scanStart - oldOffsetSec;
@@ -1316,21 +1431,33 @@ namespace RemuxForge.Core
             if (Math.Abs(inverseRatio - 1.0) > 0.0001) { langStartNew = langStartNew * inverseRatio; }
             if (langStartNew < 0.0) { langStartNew = 0.0; }
 
-            // Estrai frame lang con entrambi gli offset
-            List<byte[]> langOldFrames = this.ExtractSegment(langFile, (int)(langStartOld * 1000), scanDuration, 0.0);
-            List<byte[]> langNewFrames = this.ExtractSegment(langFile, (int)(langStartNew * 1000), scanDuration, 0.0);
+            // Estrai frame lang con entrambi gli offset (passthrough)
+            this.ExtractSegment(langFile, (int)(langStartOld * 1000), scanDuration, 0.0, this._cropLangTo43, out langOldFrames, out langOldTimestampsMs);
+            this.ExtractSegment(langFile, (int)(langStartNew * 1000), scanDuration, 0.0, this._cropLangTo43, out langNewFrames, out langNewTimestampsMs);
 
-            int maxIdx = Math.Min(srcFrames.Count, Math.Min(langOldFrames.Count, langNewFrames.Count));
-            if (maxIdx < 4) { return result; }
+            if (langOldFrames.Count < 4 || langOldTimestampsMs.Length < 4) { return result; }
+
+            int maxIdx = srcFrames.Count;
+
+            // Tolleranza ampia: scanDuration lo fps nativo puo' variare; uso 100ms
+            toleranceMs = 100.0;
 
             // Scorri e trova il primo frame dove old offset smette di funzionare
-            // (SSIM_old < 0.5) per almeno this._linearScanConfirmFrames consecutivi
+            // (SSIM_old < 0.5) per almeno this._linearScanConfirmFrames consecutivi.
+            // Matching per tempo relativo: robusto a VFR
             int consecutiveBad = 0;
             int crossoverIdx = -1;
 
             for (int i = 0; i < maxIdx; i++)
             {
-                double ssimOld = this.ComputeSsim(srcFrames[i], langOldFrames[i]);
+                srcRelMs = sourceTimestampsMs[i] - sourceTimestampsMs[0];
+                targetLangOldMs = langOldTimestampsMs[0] + srcRelMs;
+                nearestOldIdx = NearestTimestampIndex(langOldTimestampsMs, targetLangOldMs);
+                if (nearestOldIdx < 0 || nearestOldIdx >= langOldFrames.Count) { continue; }
+                nearestOldDistMs = Math.Abs(langOldTimestampsMs[nearestOldIdx] - targetLangOldMs);
+                if (nearestOldDistMs > toleranceMs) { continue; }
+
+                ssimOld = this.ComputeSsim(srcFrames[i], langOldFrames[nearestOldIdx]);
 
                 if (ssimOld < 0.5)
                 {
@@ -1342,7 +1469,8 @@ namespace RemuxForge.Core
 
                     if (consecutiveBad >= this._linearScanConfirmFrames)
                     {
-                        result = scanStart + (crossoverIdx / estimatedFps);
+                        // Posizione reale dal pts del frame sorgente
+                        result = sourceTimestampsMs[crossoverIdx] / 1000.0;
                         ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione lineare: crossover confermato a src " + result.ToString("F2", CultureInfo.InvariantCulture) + "s (" + consecutiveBad + " frame old<0.5)");
                         return result;
                     }
@@ -1385,16 +1513,26 @@ namespace RemuxForge.Core
             double offsetSec = 0.0;
             double langPointMs = 0.0;
             List<byte[]> srcFrames = null;
+            double[] srcFramesTs = null;
             List<byte[]> langFrames = null;
+            double[] langFramesTs = null;
             double mse = 0.0;
             double maxMse = 0.0;
             double dynamicThreshold = 0.0;
             List<double> allMse = new List<double>();
+            double srcRelMs = 0.0;
+            double targetLangMs = 0.0;
+            int nearestIdx = 0;
+            double nearestDistMs = 0.0;
+            double toleranceMs = 0.0;
 
             baselineMse = 0.0;
 
             // Calcola step tra punti di verifica
             stepMs = sourceDurationMs / (double)(this._globalVerifyPoints + 1);
+
+            // Tolleranza matching: 2 intervalli di frame a coarse fps
+            toleranceMs = (1000.0 / this._coarseFps) * 2.0;
 
             // Prima passata: raccolta MSE di tutti i punti
             for (int p = 1; p <= this._globalVerifyPoints; p++)
@@ -1413,24 +1551,35 @@ namespace RemuxForge.Core
 
                 if (langPointMs < 0.0) { continue; }
 
-                // Estrai pochi frame per confronto rapido
-                srcFrames = this.ExtractSegment(sourceFile, (int)srcPointMs, 2, this._coarseFps);
-                langFrames = this.ExtractSegment(langFile, (int)langPointMs, 2, this._coarseFps);
+                // Estrai pochi frame per confronto rapido con timestamps reali
+                this.ExtractSegment(sourceFile, (int)srcPointMs, 2, this._coarseFps, this._cropSourceTo43, out srcFrames, out srcFramesTs);
+                this.ExtractSegment(langFile, (int)langPointMs, 2, this._coarseFps, this._cropLangTo43, out langFrames, out langFramesTs);
 
-                if (srcFrames.Count > 0 && langFrames.Count > 0)
+                if (srcFrames.Count > 0 && langFrames.Count > 0 && srcFramesTs.Length > 0 && langFramesTs.Length > 0)
                 {
-                    // Minimo MSE tra le coppie di frame (evita artefatti da tagli scena)
-                    int verifyPairs = Math.Min(srcFrames.Count, langFrames.Count);
+                    // Minimo MSE tra coppie di frame abbinate per tempo relativo.
+                    // Robusto a VFR: evita il match indice-based che decimerebbe arbitrariamente i frame
                     mse = double.MaxValue;
-                    for (int vf = 0; vf < verifyPairs; vf++)
+                    for (int vf = 0; vf < srcFrames.Count && vf < srcFramesTs.Length; vf++)
                     {
-                        double vMse = this.ComputeMse(srcFrames[vf], langFrames[vf]);
+                        srcRelMs = srcFramesTs[vf] - srcFramesTs[0];
+                        targetLangMs = langFramesTs[0] + srcRelMs;
+                        nearestIdx = NearestTimestampIndex(langFramesTs, targetLangMs);
+                        if (nearestIdx < 0 || nearestIdx >= langFrames.Count) { continue; }
+                        nearestDistMs = Math.Abs(langFramesTs[nearestIdx] - targetLangMs);
+                        if (nearestDistMs > toleranceMs) { continue; }
+
+                        double vMse = this.ComputeMse(srcFrames[vf], langFrames[nearestIdx]);
                         if (vMse < mse) { mse = vMse; }
                     }
-                    allMse.Add(mse);
-                    totalMse += mse;
 
-                    if (mse > maxMse) { maxMse = mse; }
+                    if (mse < double.MaxValue)
+                    {
+                        allMse.Add(mse);
+                        totalMse += mse;
+
+                        if (mse > maxMse) { maxMse = mse; }
+                    }
                 }
             }
 

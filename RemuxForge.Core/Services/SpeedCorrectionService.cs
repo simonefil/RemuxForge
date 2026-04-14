@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using System.IO;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
@@ -178,117 +176,6 @@ namespace RemuxForge.Core
         }
 
         /// <summary>
-        /// Determina il percorso di ffprobe a partire dal percorso di ffmpeg
-        /// </summary>
-        /// <param name="ffmpegPath">Percorso dell'eseguibile ffmpeg</param>
-        /// <returns>Percorso di ffprobe, stringa vuota se non trovato</returns>
-        public static string GetFfprobePath(string ffmpegPath)
-        {
-            string result = "";
-            string exeExt = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ".exe" : "";
-            string ffprobeCandidate = "";
-            string directory = "";
-
-            if (ffmpegPath.Length > 0)
-            {
-                directory = Path.GetDirectoryName(ffmpegPath);
-                ffprobeCandidate = Path.Combine(directory, "ffprobe" + exeExt);
-
-                if (File.Exists(ffprobeCandidate))
-                {
-                    result = ffprobeCandidate;
-                }
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Rileva se un file video ha frame rate variabile confrontando r_frame_rate e avg_frame_rate via ffprobe
-        /// </summary>
-        /// <param name="ffprobePath">Percorso dell'eseguibile ffprobe</param>
-        /// <param name="filePath">Percorso del file video da analizzare</param>
-        /// <returns>True se il file ha VFR</returns>
-        public static bool IsVariableFrameRate(string ffprobePath, string filePath)
-        {
-            bool isVfr = false;
-            Process proc = null;
-            string output = "";
-            string[] parts = null;
-            string rFrameRateStr = "";
-            string avgFrameRateStr = "";
-            double rFrameRate = 0.0;
-            double avgFrameRate = 0.0;
-            double ratio = 0.0;
-
-            try
-            {
-                // Esegue ffprobe per ottenere r_frame_rate e avg_frame_rate della prima traccia video
-                proc = new Process();
-                proc.StartInfo.FileName = ffprobePath;
-                proc.StartInfo.ArgumentList.Add("-v");
-                proc.StartInfo.ArgumentList.Add("quiet");
-                proc.StartInfo.ArgumentList.Add("-select_streams");
-                proc.StartInfo.ArgumentList.Add("v:0");
-                proc.StartInfo.ArgumentList.Add("-show_entries");
-                proc.StartInfo.ArgumentList.Add("stream=r_frame_rate,avg_frame_rate");
-                proc.StartInfo.ArgumentList.Add("-of");
-                proc.StartInfo.ArgumentList.Add("csv=p=0");
-                proc.StartInfo.ArgumentList.Add(filePath);
-                proc.StartInfo.UseShellExecute = false;
-                proc.StartInfo.CreateNoWindow = true;
-                proc.StartInfo.RedirectStandardOutput = true;
-                proc.StartInfo.RedirectStandardError = true;
-                proc.Start();
-
-                // Drain stderr su thread separato per evitare deadlock
-                Thread stderrThread = new Thread(() => { proc.StandardError.ReadToEnd(); });
-                stderrThread.Start();
-                output = proc.StandardOutput.ReadToEnd().Trim();
-                stderrThread.Join();
-                proc.WaitForExit();
-
-                if (proc.ExitCode == 0 && output.Length > 0)
-                {
-                    // Output formato CSV: "r_frame_rate,avg_frame_rate" es. "24000/1001,23.976024"
-                    parts = output.Split(',');
-
-                    if (parts.Length >= 2)
-                    {
-                        rFrameRateStr = parts[0].Trim();
-                        avgFrameRateStr = parts[1].Trim();
-
-                        rFrameRate = ParseFrameRate(rFrameRateStr);
-                        avgFrameRate = ParseFrameRate(avgFrameRateStr);
-
-                        // Se entrambi validi, confronta
-                        if (rFrameRate > 0.0 && avgFrameRate > 0.0)
-                        {
-                            ratio = rFrameRate / avgFrameRate;
-
-                            // Se il rapporto differisce di piu' dell'1% si considera VFR
-                            if (Math.Abs(ratio - 1.0) > 0.01)
-                            {
-                                isVfr = true;
-                                ConsoleHelper.Write(LogSection.Speed, LogLevel.Notice, "  VFR rilevato: r_frame_rate=" + rFrameRate.ToString("F3", CultureInfo.InvariantCulture) + ", avg_frame_rate=" + avgFrameRate.ToString("F3", CultureInfo.InvariantCulture));
-                            }
-                        }
-                    }
-                }
-            }
-            catch
-            {
-                // ffprobe non disponibile o errore, non blocca il flusso
-            }
-            finally
-            {
-                if (proc != null) { proc.Dispose(); proc = null; }
-            }
-
-            return isVfr;
-        }
-
-        /// <summary>
         /// Cerca delay iniziale e verifica correzione a 9 punti
         /// </summary>
         public bool FindDelayAndVerify(string sourceFile, string languageFile, long sourceDefaultDurationNs, long langDefaultDurationNs, int sourceDurationMs)
@@ -320,6 +207,9 @@ namespace RemuxForge.Core
 
             // Cerca delay iniziale tramite scene-cut voting
             initialDelay = this.FindInitialDelay(sourceFile, languageFile);
+
+            // Libera memoria frame FindInitialDelay prima della verifica a 9 punti
+            GC.Collect();
 
             if (initialDelay != int.MinValue)
             {
@@ -400,10 +290,12 @@ namespace RemuxForge.Core
             int result = int.MinValue;
             List<byte[]> sourceFrames = null;
             List<byte[]> langFrames = null;
+            double[] sourceTimestampsMs = null;
+            double[] langTimestampsMs = null;
             string sourceFileCopy = sourceFile;
             string langFileCopy = languageFile;
             double sourceFrameIntervalMs = 1000.0 / this._sourceFps;
-            double langFrameIntervalMs = 1000.0 / this._langFps;
+            double nearestTolMs = 3.0 * sourceFrameIntervalMs;
             List<int> sourceCutsRaw = null;
             List<int> langCutsRaw = null;
             List<int> validSourceCuts = new List<int>();
@@ -425,10 +317,9 @@ namespace RemuxForge.Core
             double srcCutMs = 0.0;
             double driftComponent = 0.0;
             double expectedLangCutMs = 0.0;
-            int expectedLangFrame = 0;
             int nearestLangCutIdx = -1;
-            int nearestDist = 0;
-            int dist = 0;
+            double nearestDistMs = 0.0;
+            double distMs = 0.0;
             int sigStartSrc = 0;
             int sigStartLng = 0;
             double ssim = 0.0;
@@ -436,8 +327,24 @@ namespace RemuxForge.Core
             ConsoleHelper.Write(LogSection.Speed, LogLevel.Debug, "  Estrazione frame per ricerca delay (source " + this._sourceDurationSec + "s, lang " + this._langDurationSec + "s)...");
 
             // Estrae segmenti in parallelo a fps nativo
-            Thread sourceThread = new Thread(() => { sourceFrames = this.ExtractSegment(sourceFileCopy, this._sourceStartSec * 1000, this._sourceDurationSec, 0); });
-            Thread langThread = new Thread(() => { langFrames = this.ExtractSegment(langFileCopy, 0, this._langDurationSec, 0); });
+            bool cropSrcCopy = this._cropSourceTo43;
+            bool cropLngCopy = this._cropLangTo43;
+            Thread sourceThread = new Thread(() =>
+            {
+                List<byte[]> f;
+                double[] t;
+                this.ExtractSegment(sourceFileCopy, this._sourceStartSec * 1000, this._sourceDurationSec, 0, cropSrcCopy, out f, out t);
+                sourceFrames = f;
+                sourceTimestampsMs = t;
+            });
+            Thread langThread = new Thread(() =>
+            {
+                List<byte[]> f;
+                double[] t;
+                this.ExtractSegment(langFileCopy, 0, this._langDurationSec, 0, cropLngCopy, out f, out t);
+                langFrames = f;
+                langTimestampsMs = t;
+            });
             sourceThread.Start();
             langThread.Start();
             sourceThread.Join();
@@ -489,12 +396,12 @@ namespace RemuxForge.Core
 
                     for (int s = 0; s < srcCutCount; s++)
                     {
-                        srcCutMs = (this._sourceStartSec * 1000.0) + (validSourceCuts[s] * sourceFrameIntervalMs);
+                        srcCutMs = sourceTimestampsMs[validSourceCuts[s]];
                         driftComponent = srcCutMs * (this._inverseRatio - 1.0);
 
                         for (int l = 0; l < lngCutCount; l++)
                         {
-                            double lngCutMs = validLangCuts[l] * langFrameIntervalMs;
+                            double lngCutMs = langTimestampsMs[validLangCuts[l]];
                             // Rimuove componente drift per isolare il delay iniziale
                             candidates[candidateIdx] = (lngCutMs - srcCutMs) - driftComponent;
                             candidateIdx++;
@@ -529,28 +436,27 @@ namespace RemuxForge.Core
                     // Verifica MSE: per ogni taglio source trova il taglio lang atteso e confronta firma
                     for (int s = 0; s < srcCutCount; s++)
                     {
-                        srcCutMs = (this._sourceStartSec * 1000.0) + (validSourceCuts[s] * sourceFrameIntervalMs);
+                        srcCutMs = sourceTimestampsMs[validSourceCuts[s]];
                         driftComponent = srcCutMs * (this._inverseRatio - 1.0);
 
                         // Posizione attesa del taglio lang: srcCutMs * _inverseRatio + winningDelay
                         expectedLangCutMs = srcCutMs + winningDelay + driftComponent;
-                        expectedLangFrame = (int)Math.Round(expectedLangCutMs / langFrameIntervalMs);
 
-                        // Cerca il taglio lang piu' vicino alla posizione attesa
+                        // Cerca il taglio lang piu' vicino alla posizione attesa (distanza in ms)
                         nearestLangCutIdx = -1;
-                        nearestDist = int.MaxValue;
+                        nearestDistMs = double.MaxValue;
                         for (int l = 0; l < lngCutCount; l++)
                         {
-                            dist = Math.Abs(validLangCuts[l] - expectedLangFrame);
-                            if (dist < nearestDist)
+                            distMs = Math.Abs(langTimestampsMs[validLangCuts[l]] - expectedLangCutMs);
+                            if (distMs < nearestDistMs)
                             {
-                                nearestDist = dist;
+                                nearestDistMs = distMs;
                                 nearestLangCutIdx = l;
                             }
                         }
 
                         // Verifica solo se taglio lang entro 3 frame dalla posizione attesa
-                        if (nearestLangCutIdx >= 0 && nearestDist <= 3)
+                        if (nearestLangCutIdx >= 0 && nearestDistMs <= nearestTolMs)
                         {
                             sigStartSrc = validSourceCuts[s] - this._cutHalfWindow;
                             sigStartLng = validLangCuts[nearestLangCutIdx] - this._cutHalfWindow;
@@ -562,7 +468,7 @@ namespace RemuxForge.Core
                                 if (ssim >= this._ssimThreshold && ssim <= this._ssimMaxThreshold)
                                 {
                                     // Calcola langDelay verificato
-                                    double actualLngMs = validLangCuts[nearestLangCutIdx] * langFrameIntervalMs;
+                                    double actualLngMs = langTimestampsMs[validLangCuts[nearestLangCutIdx]];
                                     double actualDelay = (actualLngMs - srcCutMs) - driftComponent;
                                     verifiedDelays.Add(actualDelay);
                                 }
@@ -582,26 +488,25 @@ namespace RemuxForge.Core
 
                         for (int s = 0; s < srcCutCount; s++)
                         {
-                            srcCutMs = (this._sourceStartSec * 1000.0) + (validSourceCuts[s] * sourceFrameIntervalMs);
+                            srcCutMs = sourceTimestampsMs[validSourceCuts[s]];
                             driftComponent = srcCutMs * (this._inverseRatio - 1.0);
                             expectedLangCutMs = srcCutMs + winningDelay + driftComponent;
-                            expectedLangFrame = (int)Math.Round(expectedLangCutMs / langFrameIntervalMs);
 
-                            // Cerca il taglio lang piu' vicino alla posizione attesa
+                            // Cerca il taglio lang piu' vicino alla posizione attesa (distanza in ms)
                             nearestLangCutIdx = -1;
-                            nearestDist = int.MaxValue;
+                            nearestDistMs = double.MaxValue;
                             for (int l = 0; l < lngCutCount; l++)
                             {
-                                dist = Math.Abs(validLangCuts[l] - expectedLangFrame);
-                                if (dist < nearestDist)
+                                distMs = Math.Abs(langTimestampsMs[validLangCuts[l]] - expectedLangCutMs);
+                                if (distMs < nearestDistMs)
                                 {
-                                    nearestDist = dist;
+                                    nearestDistMs = distMs;
                                     nearestLangCutIdx = l;
                                 }
                             }
 
                             // Verifica solo se taglio lang entro 3 frame dalla posizione attesa
-                            if (nearestLangCutIdx >= 0 && nearestDist <= 3)
+                            if (nearestLangCutIdx >= 0 && nearestDistMs <= nearestTolMs)
                             {
                                 double[] srcFingerprint = this.ComputeTemporalFingerprint(sourceFrames, validSourceCuts[s]);
                                 double[] lngFingerprint = this.ComputeTemporalFingerprint(langFrames, validLangCuts[nearestLangCutIdx]);
@@ -612,7 +517,7 @@ namespace RemuxForge.Core
 
                                     if (correlation >= this._fingerprintCorrelationThreshold)
                                     {
-                                        double actualLngMs = validLangCuts[nearestLangCutIdx] * langFrameIntervalMs;
+                                        double actualLngMs = langTimestampsMs[validLangCuts[nearestLangCutIdx]];
                                         double actualDelay = (actualLngMs - srcCutMs) - driftComponent;
                                         verifiedDelays.Add(actualDelay);
                                     }
@@ -671,7 +576,7 @@ namespace RemuxForge.Core
             bool success = false;
             int validCount = 0;
             double sourceFrameIntervalMs = 1000.0 / this._sourceFps;
-            int threadCount = Environment.ProcessorCount;
+            int threadCount = 4;
             string srcFile = sourceFile;
             string lngFile = languageFile;
             int percentage = 0;
@@ -679,7 +584,7 @@ namespace RemuxForge.Core
             int offsetError = 0;
             int retryCount = 0;
 
-            // Limita a 9 thread massimo
+            // Limita ai punti disponibili
             if (threadCount > this._numCheckPoints)
             {
                 threadCount = this._numCheckPoints;
@@ -739,20 +644,39 @@ namespace RemuxForge.Core
             {
                 ConsoleHelper.Write(LogSection.Speed, LogLevel.Debug, "  Retry " + retryCount + " punti con finestra allargata (" + this._verifySourceRetrySec + "s/" + this._verifyLangRetrySec + "s)...");
 
-                Thread[] retryWorkers = new Thread[retryCount];
-                int retryIdx = 0;
-
+                // Raccoglie indici dei punti falliti
+                List<int> failedPoints = new List<int>();
                 for (int p = 0; p < this._numCheckPoints; p++)
                 {
                     if (!this._verifyPointValid[p])
                     {
-                        int pointIndex = p;
-                        int pct = (p + 1) * 10;
-                        int sourceTimestampMs = (int)((long)sourceDurationMs * pct / 100);
-                        int expOffset = initialDelayMs + (int)Math.Round(sourceTimestampMs * (this._inverseRatio - 1.0));
+                        failedPoints.Add(p);
+                    }
+                }
 
-                        retryWorkers[retryIdx] = new Thread(() =>
+                // Limita thread retry a 4 (ogni ffmpeg usa gia' auto-threading)
+                int retryThreadCount = 4;
+                if (retryThreadCount > failedPoints.Count)
+                {
+                    retryThreadCount = failedPoints.Count;
+                }
+
+                Thread[] retryWorkers = new Thread[retryThreadCount];
+                List<int> failedPointsCopy = failedPoints;
+
+                for (int w = 0; w < retryThreadCount; w++)
+                {
+                    int workerIndex = w;
+
+                    retryWorkers[w] = new Thread(() =>
+                    {
+                        for (int f = workerIndex; f < failedPointsCopy.Count; f += retryThreadCount)
                         {
+                            int pointIndex = failedPointsCopy[f];
+                            int pct = (pointIndex + 1) * 10;
+                            int sourceTimestampMs = (int)((long)sourceDurationMs * pct / 100);
+                            int expOffset = initialDelayMs + (int)Math.Round(sourceTimestampMs * (this._inverseRatio - 1.0));
+
                             double ssim = 0.0;
                             int actualOffset = this.VerifyAtPoint(srcFile, lngFile, sourceTimestampMs, expOffset, this._verifySourceRetrySec, this._verifyLangRetrySec, out ssim);
 
@@ -767,15 +691,14 @@ namespace RemuxForge.Core
                                     this._verifyPointValid[pointIndex] = true;
                                 }
                             }
-                        });
+                        }
+                    });
 
-                        retryWorkers[retryIdx].Start();
-                        retryIdx++;
-                    }
+                    retryWorkers[w].Start();
                 }
 
                 // Attende completamento retry
-                for (int r = 0; r < retryCount; r++)
+                for (int r = 0; r < retryThreadCount; r++)
                 {
                     retryWorkers[r].Join();
                 }
@@ -834,7 +757,7 @@ namespace RemuxForge.Core
             bestSsim = 0.0;
             int resultOffset = int.MinValue;
             double sourceFrameIntervalMs = 1000.0 / this._sourceFps;
-            double langFrameIntervalMs = 1000.0 / this._langFps;
+            double nearestTolMs = 3.0 * sourceFrameIntervalMs;
             int halfSourceMs = (sourceDurationSec * 1000) / 2;
             int sourceStartMs = sourceTimestampMs - halfSourceMs;
             int langCenter = sourceTimestampMs + expectedOffset;
@@ -842,6 +765,8 @@ namespace RemuxForge.Core
             int langStartMs = langCenter - halfLangMs;
             List<byte[]> sourceFrames = null;
             List<byte[]> langFrames = null;
+            double[] sourceTimestampsMs = null;
+            double[] langTimestampsMs = null;
             string sourceFileCopy = sourceFile;
             string langFileCopy = languageFile;
             int sourceStartMsCopy = 0;
@@ -856,10 +781,9 @@ namespace RemuxForge.Core
             double medianOffset = 0.0;
             double srcCutMs = 0.0;
             double expectedLangCutMs = 0.0;
-            int expectedLangFrame = 0;
             int nearestLangCutIdx = -1;
-            int nearestDist = 0;
-            int dist = 0;
+            double nearestDistMs = 0.0;
+            double distMs = 0.0;
             int sigStartSrc = 0;
             int sigStartLng = 0;
             double ssim = 0.0;
@@ -878,8 +802,24 @@ namespace RemuxForge.Core
             langStartMsCopy = langStartMs;
 
             // Estrae i due segmenti in parallelo a fps nativo
-            Thread sourceThread = new Thread(() => { sourceFrames = this.ExtractSegment(sourceFileCopy, sourceStartMsCopy, sourceDurationSec, 0); });
-            Thread langThread = new Thread(() => { langFrames = this.ExtractSegment(langFileCopy, langStartMsCopy, langDurationSec, 0); });
+            bool cropSrcCopy = this._cropSourceTo43;
+            bool cropLngCopy = this._cropLangTo43;
+            Thread sourceThread = new Thread(() =>
+            {
+                List<byte[]> f;
+                double[] t;
+                this.ExtractSegment(sourceFileCopy, sourceStartMsCopy, sourceDurationSec, 0, cropSrcCopy, out f, out t);
+                sourceFrames = f;
+                sourceTimestampsMs = t;
+            });
+            Thread langThread = new Thread(() =>
+            {
+                List<byte[]> f;
+                double[] t;
+                this.ExtractSegment(langFileCopy, langStartMsCopy, langDurationSec, 0, cropLngCopy, out f, out t);
+                langFrames = f;
+                langTimestampsMs = t;
+            });
             sourceThread.Start();
             langThread.Start();
             sourceThread.Join();
@@ -914,28 +854,27 @@ namespace RemuxForge.Core
                 // Per ogni taglio source, cerca il taglio lang atteso e verifica MSE
                 for (int s = 0; s < srcCutCount; s++)
                 {
-                    // Posizione assoluta del taglio source
-                    srcCutMs = sourceStartMs + (validSourceCuts[s] * sourceFrameIntervalMs);
+                    // Posizione assoluta del taglio source (timestamp reale dal showinfo)
+                    srcCutMs = sourceTimestampsMs[validSourceCuts[s]];
 
                     // Posizione attesa del taglio lang (basata su expectedOffset)
                     expectedLangCutMs = srcCutMs + expectedOffset;
-                    expectedLangFrame = (int)Math.Round((expectedLangCutMs - langStartMs) / langFrameIntervalMs);
 
-                    // Cerca il taglio lang piu' vicino
+                    // Cerca il taglio lang piu' vicino (distanza in ms)
                     nearestLangCutIdx = -1;
-                    nearestDist = int.MaxValue;
+                    nearestDistMs = double.MaxValue;
                     for (int l = 0; l < lngCutCount; l++)
                     {
-                        dist = Math.Abs(validLangCuts[l] - expectedLangFrame);
-                        if (dist < nearestDist)
+                        distMs = Math.Abs(langTimestampsMs[validLangCuts[l]] - expectedLangCutMs);
+                        if (distMs < nearestDistMs)
                         {
-                            nearestDist = dist;
+                            nearestDistMs = distMs;
                             nearestLangCutIdx = l;
                         }
                     }
 
                     // Verifica solo se taglio lang entro 3 frame dalla posizione attesa
-                    if (nearestLangCutIdx >= 0 && nearestDist <= 3)
+                    if (nearestLangCutIdx >= 0 && nearestDistMs <= nearestTolMs)
                     {
                         sigStartSrc = validSourceCuts[s] - this._cutHalfWindow;
                         sigStartLng = validLangCuts[nearestLangCutIdx] - this._cutHalfWindow;
@@ -947,7 +886,7 @@ namespace RemuxForge.Core
                             if (ssim >= this._ssimThreshold && ssim <= this._ssimMaxThreshold)
                             {
                                 // Offset grezzo al punto del taglio
-                                double actualLngMs = langStartMs + (validLangCuts[nearestLangCutIdx] * langFrameIntervalMs);
+                                double actualLngMs = langTimestampsMs[validLangCuts[nearestLangCutIdx]];
                                 double rawOffset = actualLngMs - srcCutMs;
 
                                 // Normalizza rimuovendo il drift relativo al centro della finestra
@@ -970,23 +909,22 @@ namespace RemuxForge.Core
                 {
                     for (int s = 0; s < srcCutCount; s++)
                     {
-                        srcCutMs = sourceStartMs + (validSourceCuts[s] * sourceFrameIntervalMs);
+                        srcCutMs = sourceTimestampsMs[validSourceCuts[s]];
                         expectedLangCutMs = srcCutMs + expectedOffset;
-                        expectedLangFrame = (int)Math.Round((expectedLangCutMs - langStartMs) / langFrameIntervalMs);
 
                         nearestLangCutIdx = -1;
-                        nearestDist = int.MaxValue;
+                        nearestDistMs = double.MaxValue;
                         for (int l = 0; l < lngCutCount; l++)
                         {
-                            dist = Math.Abs(validLangCuts[l] - expectedLangFrame);
-                            if (dist < nearestDist)
+                            distMs = Math.Abs(langTimestampsMs[validLangCuts[l]] - expectedLangCutMs);
+                            if (distMs < nearestDistMs)
                             {
-                                nearestDist = dist;
+                                nearestDistMs = distMs;
                                 nearestLangCutIdx = l;
                             }
                         }
 
-                        if (nearestLangCutIdx >= 0 && nearestDist <= 3)
+                        if (nearestLangCutIdx >= 0 && nearestDistMs <= nearestTolMs)
                         {
                             double[] srcFp = this.ComputeTemporalFingerprint(sourceFrames, validSourceCuts[s]);
                             double[] lngFp = this.ComputeTemporalFingerprint(langFrames, validLangCuts[nearestLangCutIdx]);
@@ -997,7 +935,7 @@ namespace RemuxForge.Core
 
                                 if (correlation >= this._fingerprintCorrelationThreshold)
                                 {
-                                    double actualLngMs = langStartMs + (validLangCuts[nearestLangCutIdx] * langFrameIntervalMs);
+                                    double actualLngMs = langTimestampsMs[validLangCuts[nearestLangCutIdx]];
                                     double rawOffset = actualLngMs - srcCutMs;
 
                                     driftDelta = (srcCutMs - sourceTimestampMs) * (this._inverseRatio - 1.0);
@@ -1024,39 +962,6 @@ namespace RemuxForge.Core
             }
 
             return resultOffset;
-        }
-
-        /// <summary>
-        /// Parsa un valore frame rate che puo' essere frazionario (es. "24000/1001") o decimale (es. "23.976024")
-        /// </summary>
-        /// <param name="value">Stringa frame rate</param>
-        /// <returns>Valore fps numerico, 0.0 se non parsabile</returns>
-        private static double ParseFrameRate(string value)
-        {
-            double result = 0.0;
-            string[] fractionParts = null;
-            double numerator = 0.0;
-            double denominator = 0.0;
-
-            if (value.Contains("/"))
-            {
-                // Formato frazionario es. "24000/1001"
-                fractionParts = value.Split('/');
-                if (fractionParts.Length == 2)
-                {
-                    if (double.TryParse(fractionParts[0], NumberStyles.Any, CultureInfo.InvariantCulture, out numerator) && double.TryParse(fractionParts[1], NumberStyles.Any, CultureInfo.InvariantCulture, out denominator) && denominator > 0.0)
-                    {
-                        result = numerator / denominator;
-                    }
-                }
-            }
-            else
-            {
-                // Formato decimale es. "23.976024"
-                double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out result);
-            }
-
-            return result;
         }
 
         #endregion

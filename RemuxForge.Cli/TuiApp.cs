@@ -1888,6 +1888,14 @@ namespace RemuxForge.Cli
             Button cbDeepAnalysis = this.CreateToggleLabel("Deep analysis (analisi completa)", this._opts.DeepAnalysis, 1, y, "Dialog", out stDeepAnalysis);
             y++;
 
+            bool[] stCropSourceTo43;
+            Button cbCropSourceTo43 = this.CreateToggleLabel("Crop source to 4:3 (pillarbox)", this._opts.CropSourceTo43, 1, y, "Dialog", out stCropSourceTo43);
+            y++;
+
+            bool[] stCropLangTo43;
+            Button cbCropLangTo43 = this.CreateToggleLabel("Crop lang to 4:3 (pillarbox)", this._opts.CropLangTo43, 1, y, "Dialog", out stCropLangTo43);
+            y++;
+
             // Mutua esclusione tra frame-sync e deep analysis
             cbFrameSync.Accepting += (sender, e) =>
             {
@@ -1986,7 +1994,7 @@ namespace RemuxForge.Cli
             dialog.Add(
                 lblSection1, lblSource, tfSource, btnBrowseSource, lblLang, tfLang, btnBrowseLang, lblDest, tfDest, btnBrowseDest, cbOverwrite, cbRecursive,
                 lblSection2, lblTarget, tfTarget, lblCodec, tfCodec, lblKsa, tfKsa, lblKsac, tfKsac, lblKss, tfKss, cbSubOnly, cbAudioOnly,
-                lblSection3, cbSpeedCorrection, cbFrameSync, cbDeepAnalysis, lblAudioDelay, tfAudioDelay, lblMs2, lblSubDelay, tfSubDelay, lblMs3,
+                lblSection3, cbSpeedCorrection, cbFrameSync, cbDeepAnalysis, cbCropSourceTo43, cbCropLangTo43, lblAudioDelay, tfAudioDelay, lblMs2, lblSubDelay, tfSubDelay, lblMs3,
                 lblSection4, lblPattern, tfPattern, lblExt, tfExt,
                 lblSection5, lblConvert, ddConvert, cbRenameTracks, lblEncProfile, ddEncProfile
             );
@@ -2016,6 +2024,8 @@ namespace RemuxForge.Cli
                 this._opts.SpeedCorrection = stSpeedCorrection[0];
                 this._opts.FrameSync = stFrameSync[0];
                 this._opts.DeepAnalysis = stDeepAnalysis[0];
+                this._opts.CropSourceTo43 = stCropSourceTo43[0];
+                this._opts.CropLangTo43 = stCropLangTo43[0];
 
                 int.TryParse(tfAudioDelay.Text, out audioDelay);
                 this._opts.AudioDelay = audioDelay;

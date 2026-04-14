@@ -26,6 +26,8 @@ namespace RemuxForge.Core
             this.SpeedCorrection = true;
             this.FrameSync = false;
             this.DeepAnalysis = false;
+            this.CropSourceTo43 = false;
+            this.CropLangTo43 = false;
             this.AudioCodec = new List<string>();
             this.SubOnly = false;
             this.AudioOnly = false;
@@ -89,6 +91,18 @@ namespace RemuxForge.Core
                 if (key == "da" || key == "deep-analysis")
                 {
                     options.DeepAnalysis = true;
+                    i++;
+                    continue;
+                }
+                if (key == "cs43" || key == "crop-source-43")
+                {
+                    options.CropSourceTo43 = true;
+                    i++;
+                    continue;
+                }
+                if (key == "cl43" || key == "crop-lang-43")
+                {
+                    options.CropLangTo43 = true;
                     i++;
                     continue;
                 }
@@ -342,6 +356,16 @@ namespace RemuxForge.Core
         /// Indica se la deep analysis e' abilitata (-da, --deep-analysis). Mutuamente esclusiva con FrameSync
         /// </summary>
         public bool DeepAnalysis { get; set; }
+
+        /// <summary>
+        /// Croppa i frame estratti dal file sorgente a 4:3 centrato per rimuovere pillarbox (-cs43, --crop-source-43)
+        /// </summary>
+        public bool CropSourceTo43 { get; set; }
+
+        /// <summary>
+        /// Croppa i frame estratti dal file lingua a 4:3 centrato per rimuovere pillarbox (-cl43, --crop-lang-43)
+        /// </summary>
+        public bool CropLangTo43 { get; set; }
 
         /// <summary>
         /// Lista di codec audio da importare (-ac, --audio-codec). Solo le tracce con questi codec verranno importate

@@ -65,6 +65,12 @@
                 <span class="tui-toggle" @onclick="ToggleDeepAnalysis">@(_deepAnalysis ? "[X]" : "[ ]") Deep analysis (analisi completa)</span>
             </div>
             <div class="form-row">
+                <span class="tui-toggle" @onclick="() => _cropSourceTo43 = !_cropSourceTo43">@(_cropSourceTo43 ? "[X]" : "[ ]") Crop source to 4:3 (pillarbox)</span>
+            </div>
+            <div class="form-row">
+                <span class="tui-toggle" @onclick="() => _cropLangTo43 = !_cropLangTo43">@(_cropLangTo43 ? "[X]" : "[ ]") Crop lang to 4:3 (pillarbox)</span>
+            </div>
+            <div class="form-row">
                 <span class="form-label">Delay audio:</span>
                 <input class="form-input" style="width: 8ch;" @bind="_audioDelay" /> <span style="margin-left: 0.5ch;">ms</span>
             </div>
@@ -230,6 +236,16 @@
     private bool _deepAnalysis = false;
 
     /// <summary>
+    /// Flag crop a 4:3 sui frame sorgente (rimuove pillarbox)
+    /// </summary>
+    private bool _cropSourceTo43 = false;
+
+    /// <summary>
+    /// Flag crop a 4:3 sui frame lingua (rimuove pillarbox)
+    /// </summary>
+    private bool _cropLangTo43 = false;
+
+    /// <summary>
     /// Delay audio in ms (stringa per binding input)
     /// </summary>
     private string _audioDelay = "0";
@@ -286,6 +302,8 @@
             _speedCorrection = Options.SpeedCorrection;
             _frameSync = Options.FrameSync;
             _deepAnalysis = Options.DeepAnalysis;
+            _cropSourceTo43 = Options.CropSourceTo43;
+            _cropLangTo43 = Options.CropLangTo43;
             _audioDelay = Options.AudioDelay.ToString();
             _subDelay = Options.SubtitleDelay.ToString();
             _matchPattern = Options.MatchPattern;
@@ -330,6 +348,8 @@
         opts.SpeedCorrection = _speedCorrection;
         opts.FrameSync = _frameSync;
         opts.DeepAnalysis = _deepAnalysis;
+        opts.CropSourceTo43 = _cropSourceTo43;
+        opts.CropLangTo43 = _cropLangTo43;
 
         int.TryParse(_audioDelay, out audioDelay);
         opts.AudioDelay = audioDelay;
