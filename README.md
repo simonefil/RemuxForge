@@ -864,3 +864,7 @@ dotnet publish RemuxForge.Web -c Release -r osx-arm64 --self-contained true
 ```bash
 docker build -t remuxforge .
 ```
+
+## Buy me a coffee!
+
+[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/simonefil)
