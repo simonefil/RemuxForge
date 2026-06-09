@@ -27,7 +27,7 @@ namespace RemuxForge.Core.Subtitles
             int setEnd;
 
             // Il formato SUP/PGS e' una sequenza di display-set terminati da segment type 0x80
-            while (pos + 13 <= data.Length)
+            while (pos + PgsSubtitleUtils.SUP_PACKET_HEADER_SIZE <= data.Length)
             {
                 setStart = pos;
                 if (!this.TryFindDisplaySetEnd(data, setStart, out setEnd))
@@ -57,7 +57,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="data">Buffer SUP</param>
         /// <param name="start">Offset iniziale display-set</param>
         /// <param name="end">Offset subito dopo il display-set</param>
-        /// <returns>True se il display-set e' completo</returns>
+        /// <returns>True se il display-set è completo</returns>
         private bool TryFindDisplaySetEnd(byte[] data, int start, out int end)
         {
             int pos = start;
@@ -65,16 +65,16 @@ namespace RemuxForge.Core.Subtitles
             int segmentType;
             end = start;
 
-            while (pos + 13 <= data.Length)
+            while (pos + PgsSubtitleUtils.SUP_PACKET_HEADER_SIZE <= data.Length)
             {
-                if (!this.TryGetPacketLength(data, pos, out packetLength))
+                if (!PgsSubtitleUtils.TryGetPacketLength(data, pos, out packetLength))
                 {
                     return false;
                 }
 
                 segmentType = data[pos + 10];
                 pos += packetLength;
-                if (segmentType == 0x80)
+                if (segmentType == PgsSubtitleUtils.SEGMENT_END)
                 {
                     end = pos;
                     return true;
@@ -92,10 +92,10 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="end">Offset finale display-set</param>
         /// <param name="editMap">Edit map da applicare</param>
         /// <param name="output">Stream output</param>
-        /// <returns>True se il display-set e' valido</returns>
+        /// <returns>True se il display-set è valido</returns>
         private bool WriteMappedDisplaySet(byte[] data, int start, int end, EditMap editMap, MemoryStream output)
         {
-            long firstPtsMs = (long)Math.Round(this.ReadUInt32BigEndian(data, start + 2) / 90.0);
+            long firstPtsMs = (long)Math.Round(PgsSubtitleUtils.ReadUInt32BigEndian(data, start + 2) / 90.0);
             long mappedFirstPtsMs = SubtitleTimelineMapper.MapPacketTimestamp(firstPtsMs, editMap);
             long deltaMs;
             int pos = start;
@@ -111,7 +111,7 @@ namespace RemuxForge.Core.Subtitles
             deltaMs = mappedFirstPtsMs - firstPtsMs;
             while (pos < end)
             {
-                if (!this.TryGetPacketLength(data, pos, out packetLength) || pos + packetLength > end)
+                if (!PgsSubtitleUtils.TryGetPacketLength(data, pos, out packetLength) || pos + packetLength > end)
                 {
                     return false;
                 }
@@ -128,27 +128,6 @@ namespace RemuxForge.Core.Subtitles
         }
 
         /// <summary>
-        /// Legge e valida la lunghezza di un packet SUP
-        /// </summary>
-        /// <param name="data">Buffer SUP</param>
-        /// <param name="pos">Offset packet</param>
-        /// <param name="packetLength">Lunghezza packet completa</param>
-        /// <returns>True se il packet e' valido</returns>
-        private bool TryGetPacketLength(byte[] data, int pos, out int packetLength)
-        {
-            int size;
-            packetLength = 0;
-            if (pos + 13 > data.Length || data[pos] != (byte)'P' || data[pos + 1] != (byte)'G')
-            {
-                return false;
-            }
-
-            size = (data[pos + 11] << 8) | data[pos + 12];
-            packetLength = 13 + size;
-            return pos + packetLength <= data.Length;
-        }
-
-        /// <summary>
         /// Applica un delta in millisecondi a un timestamp packet
         /// </summary>
         /// <param name="packet">Packet SUP</param>
@@ -156,39 +135,14 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="deltaMs">Delta in millisecondi</param>
         private void OffsetPacketTimestamp(byte[] packet, int offset, long deltaMs)
         {
-            long timestampMs = (long)Math.Round(this.ReadUInt32BigEndian(packet, offset) / 90.0);
+            long timestampMs = (long)Math.Round(PgsSubtitleUtils.ReadUInt32BigEndian(packet, offset) / 90.0);
             long mappedMs = timestampMs + deltaMs;
             if (mappedMs < 0)
             {
                 mappedMs = 0;
             }
 
-            this.WriteUInt32BigEndian(packet, offset, (uint)Math.Round(mappedMs * 90.0));
-        }
-
-        /// <summary>
-        /// Legge un intero unsigned 32 bit big-endian
-        /// </summary>
-        /// <param name="data">Buffer dati</param>
-        /// <param name="offset">Offset lettura</param>
-        /// <returns>Valore letto</returns>
-        private uint ReadUInt32BigEndian(byte[] data, int offset)
-        {
-            return (uint)((data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3]);
-        }
-
-        /// <summary>
-        /// Scrive un intero unsigned 32 bit big-endian
-        /// </summary>
-        /// <param name="data">Buffer dati</param>
-        /// <param name="offset">Offset scrittura</param>
-        /// <param name="value">Valore da scrivere</param>
-        private void WriteUInt32BigEndian(byte[] data, int offset, uint value)
-        {
-            data[offset] = (byte)((value >> 24) & 0xff);
-            data[offset + 1] = (byte)((value >> 16) & 0xff);
-            data[offset + 2] = (byte)((value >> 8) & 0xff);
-            data[offset + 3] = (byte)(value & 0xff);
+            PgsSubtitleUtils.WriteUInt32BigEndian(packet, offset, (uint)Math.Round(mappedMs * 90.0));
         }
 
         #endregion

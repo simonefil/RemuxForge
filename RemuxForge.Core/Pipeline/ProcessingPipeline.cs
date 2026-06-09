@@ -5,6 +5,7 @@ using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Subtitles;
 using RemuxForge.Core.Tools;
 using System;
 using System.Collections.Generic;
@@ -440,10 +441,6 @@ namespace RemuxForge.Core.Pipeline
                 if (!done && !this._opts.DryRun && record.Status == FileStatus.Done && this._opts.AudioRenameScope != "disabled" && finalOutput.Length > 0)
                 {
                     this.ApplyFinalAudioTrackNames(record, finalOutput);
-                    if (record.Status == FileStatus.Error)
-                    {
-                        done = true;
-                    }
                 }
             }
             finally
@@ -538,8 +535,7 @@ namespace RemuxForge.Core.Pipeline
             {
                 EncodingProfile profile = AppSettingsService.Instance.GetProfile(opts.EncodingProfileName);
                 string encDetail;
-                if (profile != null) { encDetail = AppText.F("web.pipeline.step.encodingVideoProfile", profile.Codec, profile.RateMode, profile.CrfQp); }
-                else { encDetail = AppText.F("web.pipeline.step.encodingVideoName", opts.EncodingProfileName); }
+                encDetail = profile != null ? AppText.F("web.pipeline.step.encodingVideoProfile", profile.Codec, profile.RateMode, profile.CrfQp) : AppText.F("web.pipeline.step.encodingVideoName", opts.EncodingProfileName);
                 steps.Add(encDetail);
             }
 
@@ -564,7 +560,7 @@ namespace RemuxForge.Core.Pipeline
         {
             List<string> steps = new List<string>();
             string sourceKind = AppText.T("web.pipeline.sourceKind.source");
-            string modeDetail = "";
+            string modeDetail;
 
             if (opts.Split.SourcePath.Length > 0)
             {
@@ -574,14 +570,9 @@ namespace RemuxForge.Core.Pipeline
 
             steps.Add(AppText.F("web.pipeline.step.splitScanInput", sourceKind));
             steps.Add(AppText.T("web.pipeline.step.extractChapters"));
-            if (opts.Split.SourceRaw.Length > 0)
-            {
-                steps.Add(AppText.T("web.pipeline.step.extractPtsRaw"));
-            }
-            else
-            {
-                steps.Add(AppText.T("web.pipeline.step.extractPtsInput"));
-            }
+            steps.Add(opts.Split.SourceRaw.Length > 0
+                ? AppText.T("web.pipeline.step.extractPtsRaw")
+                : AppText.T("web.pipeline.step.extractPtsInput"));
             steps.Add(AppText.T("web.pipeline.step.countVerifyFrames"));
 
             if (opts.Split.Pattern.Length > 0) { modeDetail = AppText.T("web.pipeline.mode.chapterPattern"); }
@@ -758,6 +749,19 @@ namespace RemuxForge.Core.Pipeline
                 else if (!done && record.Status == FileStatus.Error)
                 {
                     done = true;
+                }
+
+                // Subtitle canvas rewrite: lavora dopo DeepAnalysis per rispettare eventuali cut PGS gia' applicati.
+                if (!done && this._opts.SubtitleCanvasRewrite)
+                {
+                    SubtitleCanvasRewriteService subtitleCanvasService = new SubtitleCanvasRewriteService(this._toolPathResolver);
+                    subtitleCanvasService.ProcessImportedSubtitles(
+                        record,
+                        subtitleTracks,
+                        processedLangSubTracks,
+                        this._opts,
+                        this._ffmpegPath,
+                        AppSettingsService.Instance.GetTempFolder());
                 }
 
                 // Costruzione e esecuzione merge
@@ -1218,11 +1222,6 @@ namespace RemuxForge.Core.Pipeline
         #endregion
 
         #region Proprieta
-
-        /// <summary>
-        /// Opzioni correnti di configurazione
-        /// </summary>
-        public Options CurrentOptions { get { return this._opts; } }
 
         /// <summary>
         /// Pattern codec risolti per filtro tracce lingua importate

@@ -28,7 +28,7 @@ namespace RemuxForge.Core.Tools
         public ToolPathResolverService(string configFolder)
         {
             this._configFolder = configFolder;
-            if (this._configFolder == null || this._configFolder.Length == 0)
+            if (string.IsNullOrEmpty(this._configFolder))
             {
                 this._configFolder = AppSettingsService.Instance.ConfigFolder;
             }
@@ -59,7 +59,7 @@ namespace RemuxForge.Core.Tools
         /// Indica se un path mkvmerge punta a un eseguibile CLI valido
         /// </summary>
         /// <param name="path">Percorso da verificare</param>
-        /// <returns>True se il path e' utilizzabile come mkvmerge</returns>
+        /// <returns>True se il path è utilizzabile come mkvmerge</returns>
         public bool IsMkvMergeExecutablePath(string path)
         {
             return MkvMergeProvider.IsExecutablePath(path);
@@ -116,7 +116,7 @@ namespace RemuxForge.Core.Tools
         /// Indica se un path mediainfo punta a un eseguibile CLI valido
         /// </summary>
         /// <param name="path">Percorso da verificare</param>
-        /// <returns>True se il path e' un eseguibile CLI</returns>
+        /// <returns>True se il path è un eseguibile CLI</returns>
         public bool IsMediaInfoCliPath(string path)
         {
             return MediaInfoProvider.IsCliExecutablePath(path);
@@ -201,10 +201,10 @@ namespace RemuxForge.Core.Tools
         /// </summary>
         private static string ResolveConfiguredOrPath(string toolName, string configuredPath)
         {
-            string result = "";
+            string result;
             string executableName = toolName + GetExecutableExtension();
 
-            if (configuredPath != null && configuredPath.Length > 0 && File.Exists(configuredPath))
+            if (!string.IsNullOrEmpty(configuredPath) && File.Exists(configuredPath))
             {
                 result = configuredPath;
             }
@@ -245,10 +245,10 @@ namespace RemuxForge.Core.Tools
             string folder;
             string candidate;
 
-            if (siblingPath != null && siblingPath.Length > 0)
+            if (!string.IsNullOrEmpty(siblingPath))
             {
                 folder = Path.GetDirectoryName(siblingPath);
-                if (folder != null && folder.Length > 0)
+                if (!string.IsNullOrEmpty(folder))
                 {
                     candidate = Path.Combine(folder, toolName + GetExecutableExtension());
                     if (File.Exists(candidate))

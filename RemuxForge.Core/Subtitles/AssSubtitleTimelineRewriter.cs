@@ -115,7 +115,7 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         /// <param name="value">Timestamp ASS/SSA</param>
         /// <param name="ms">Millisecondi risultanti</param>
-        /// <returns>True se il timestamp e' valido</returns>
+        /// <returns>True se il timestamp è valido</returns>
         private bool TryParseTimestamp(string value, out long ms)
         {
             string[] parts = value.Split(new char[] { ':', '.' });

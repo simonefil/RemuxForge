@@ -111,7 +111,7 @@ namespace RemuxForge.Web.Services
             }
 
             // Collega eventi pipeline
-            this._pipeline.OnLogMessage += (section, level, text) =>
+            this._pipeline.OnLogMessage += (section, _, text) =>
             {
                 // Formatta testo con prefisso sezione
                 string prefix = ConsoleHelper.FormatSectionPrefix(section);
@@ -119,7 +119,7 @@ namespace RemuxForge.Web.Services
                 this.AppendLog(formatted);
             };
 
-            this._pipeline.OnFileUpdated += record =>
+            this._pipeline.OnFileUpdated += _ =>
             {
                 this.OnRecordsChanged?.Invoke();
             };
@@ -147,7 +147,7 @@ namespace RemuxForge.Web.Services
             bool result = false;
             bool scanInputsChanged;
             bool processingOptionsChanged;
-            int resetCount = 0;
+            int resetCount;
             Options previousOptions;
             errorMessage = "";
 
@@ -201,14 +201,10 @@ namespace RemuxForge.Web.Services
                     {
                         resetCount = this.ResetAnalyzedRecordsAfterConfigChange();
                     }
-                    if (resetCount > 0)
-                    {
-                        this.AppendLog(AppText.F("web.merge.configAppliedAnalysisReset", resetCount));
-                    }
-                    else
-                    {
-                        this.AppendLog(AppText.T("web.merge.configApplied"));
-                    }
+
+                    this.AppendLog(resetCount > 0
+                        ? AppText.F("web.merge.configAppliedAnalysisReset", resetCount)
+                        : AppText.T("web.merge.configApplied"));
                 }
                 else
                 {
@@ -811,6 +807,7 @@ namespace RemuxForge.Web.Services
                 previousOptions.AudioOnly != newOptions.AudioOnly ||
                 previousOptions.FrameSync != newOptions.FrameSync ||
                 previousOptions.DeepAnalysis != newOptions.DeepAnalysis ||
+                previousOptions.SubtitleCanvasRewrite != newOptions.SubtitleCanvasRewrite ||
                 previousOptions.AudioDelay != newOptions.AudioDelay ||
                 previousOptions.SubtitleDelay != newOptions.SubtitleDelay ||
                 previousOptions.AudioSourceFillThresholdMs != newOptions.AudioSourceFillThresholdMs ||

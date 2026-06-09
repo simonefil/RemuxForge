@@ -239,7 +239,7 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         /// <param name="value">Timestamp IDX</param>
         /// <param name="ms">Millisecondi risultanti</param>
-        /// <returns>True se il timestamp e' valido</returns>
+        /// <returns>True se il timestamp è valido</returns>
         private bool TryParseTimestamp(string value, out long ms)
         {
             string[] parts = value.Split(new char[] { ':', '.' });
@@ -294,7 +294,7 @@ namespace RemuxForge.Core.Subtitles
         /// Indica se il carattere appartiene a un valore esadecimale filepos
         /// </summary>
         /// <param name="value">Carattere da verificare</param>
-        /// <returns>True se e' esadecimale</returns>
+        /// <returns>True se è esadecimale</returns>
         private bool IsHexChar(char value)
         {
             return (value >= '0' && value <= '9') || (value >= 'a' && value <= 'f') || (value >= 'A' && value <= 'F');

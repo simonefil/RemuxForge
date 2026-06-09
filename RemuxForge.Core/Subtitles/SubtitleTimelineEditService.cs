@@ -43,6 +43,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="tempFolder">Cartella temporanea</param>
         /// <param name="timeoutMs">Timeout operazioni esterne</param>
         /// <param name="mkvMergePath">Percorso mkvmerge gia' risolto dalla pipeline</param>
+        /// <param name="toolPathResolver">Resolver strumenti esterni</param>
         public SubtitleTimelineEditService(string ffmpegPath, string tempFolder, int timeoutMs, string mkvMergePath = "", ToolPathResolverService toolPathResolver = null)
         {
             this._ffmpegPath = ffmpegPath;

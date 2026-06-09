@@ -12,7 +12,7 @@ using System.Collections.Generic;
 namespace RemuxForge.Core.Pipeline
 {
     /// <summary>
-    /// Coordinator analisi pipeline: metadati, speed correction, deep-analysis e frame-sync
+    /// Coordinator analisi pipeline: metadata, speed correction, deep-analysis e frame-sync
     /// </summary>
     public class PipelineAnalysisCoordinator
     {
@@ -50,6 +50,7 @@ namespace RemuxForge.Core.Pipeline
         /// <param name="clearLogRedirect">Callback reset log record</param>
         /// <param name="fileUpdated">Callback aggiornamento record</param>
         /// <param name="buildMergeCommand">Callback costruzione comando merge</param>
+        /// <param name="toolPathResolver">Resolver strumenti esterni</param>
         public PipelineAnalysisCoordinator(Options opts, bool needsMerge, string ffmpegPath, FrameSyncService frameSyncService, PipelineTrackMapper trackMapper, PipelineDiagnosticsWriter diagnosticsWriter, Func<string, MkvFileInfo> fileInfoProvider, Action<FileProcessingRecord> setupLogRedirect, Action clearLogRedirect, Action<FileProcessingRecord> fileUpdated, Action<FileProcessingRecord> buildMergeCommand, ToolPathResolverService toolPathResolver = null)
         {
             this._opts = opts;
@@ -613,7 +614,7 @@ namespace RemuxForge.Core.Pipeline
 
             if (!done)
             {
-                done = this.MarkAnalyzedAndFinalize(
+                this.MarkAnalyzedAndFinalize(
                     record,
                     syncOffset,
                     true,

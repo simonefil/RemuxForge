@@ -277,13 +277,9 @@ namespace RemuxForge.Core.Configuration
         /// <returns>True se la traccia puo' essere convertita</returns>
         public static bool IsConvertibleLossless(TrackInfo track, string targetFormat)
         {
-            bool result = false;
-            if (IsLosslessCodec(track.Codec) &&
-                !IsSpatialCodec(track) &&
-                !(string.Equals(track.Codec, "FLAC", StringComparison.OrdinalIgnoreCase) && string.Equals(targetFormat, "flac", StringComparison.OrdinalIgnoreCase)))
-            {
-                result = true;
-            }
+            bool result = IsLosslessCodec(track.Codec) &&
+                          !IsSpatialCodec(track) &&
+                          !(string.Equals(track.Codec, "FLAC", StringComparison.OrdinalIgnoreCase) && string.Equals(targetFormat, "flac", StringComparison.OrdinalIgnoreCase));
 
             return result;
         }

@@ -16,7 +16,6 @@ namespace RemuxForge.Core.Analysis.Diagnostics
         /// </summary>
         /// <param name="folderName">Nome cartella diagnositica</param>
         /// <param name="episodeId">Id episodio</param>
-        /// <param name="suffix">Suffisso file compreso di estensione</param>
         /// <returns>Path completo del file</returns>
         protected string BuildDiagnosticsBasePath(string folderName, string episodeId)
         {

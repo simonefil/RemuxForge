@@ -41,6 +41,7 @@ namespace RemuxForge.Core.Models
             this.DeepAnalysisDiagnostics = false;
             this.AnalysisCropSourcePx = "";
             this.AnalysisCropLanguagePx = "";
+            this.SubtitleCanvasRewrite = false;
             this.AudioCodec = new List<string>();
             this.SubOnly = false;
             this.AudioOnly = false;
@@ -92,17 +93,17 @@ namespace RemuxForge.Core.Models
         public const string SPEED_CORRECTION_MANUAL = "manual";
 
         /// <summary>
-        /// Modalita' audio source fill: inizio file
+        /// Modalità audio source fill: inizio file
         /// </summary>
         public const string AUDIO_SOURCE_FILL_START = "start";
 
         /// <summary>
-        /// Modalita' audio source fill: fine file
+        /// Modalità audio source fill: fine file
         /// </summary>
         public const string AUDIO_SOURCE_FILL_END = "end";
 
         /// <summary>
-        /// Modalita' audio source fill: INSERT_SILENCE DeepAnalysis
+        /// Modalità audio source fill: INSERT_SILENCE DeepAnalysis
         /// </summary>
         public const string AUDIO_SOURCE_FILL_INSERT_SILENCE = "insert-silence";
 
@@ -143,14 +144,7 @@ namespace RemuxForge.Core.Models
 
                 if (!handled)
                 {
-                    if (options.Mode == MODE_SPLIT)
-                    {
-                        handled = HandleSplitArgument(options, args, ref i, key);
-                    }
-                    else
-                    {
-                        handled = HandleRemuxArgument(options, args, ref i, key);
-                    }
+                    handled = options.Mode == MODE_SPLIT ? HandleSplitArgument(options, args, ref i, key) : HandleRemuxArgument(options, args, ref i, key);
                 }
 
                 if (!handled && options.ErrorMessage.Length == 0)
@@ -388,6 +382,11 @@ namespace RemuxForge.Core.Models
             else if (key == "no-speed-correction")
             {
                 options.SpeedCorrectionMode = SPEED_CORRECTION_OFF;
+                i++;
+            }
+            else if (key == "subtitle-canvas-rewrite" || key == "sub-canvas-rewrite")
+            {
+                options.SubtitleCanvasRewrite = true;
                 i++;
             }
             else if (!RequireValue(args, i, options))
@@ -910,7 +909,7 @@ namespace RemuxForge.Core.Models
         public bool AudioSourceFillInsertSilence { get; set; }
 
         /// <summary>
-        /// Modalita' speed correction: off, auto, manual
+        /// Modalità speed correction: off, auto, manual
         /// </summary>
         public string SpeedCorrectionMode { get; set; }
 
@@ -948,6 +947,11 @@ namespace RemuxForge.Core.Models
         /// Crop manuale lingua per frame di analisi visuale, formato L:R:T:B in pixel
         /// </summary>
         public string AnalysisCropLanguagePx { get; set; }
+
+        /// <summary>
+        /// Riscrive canvas e coordinate dei sottotitoli bitmap importati quando possibile
+        /// </summary>
+        public bool SubtitleCanvasRewrite { get; set; }
 
         /// <summary>
         /// Lista di codec audio da importare (-ac, --audio-codec). Solo le tracce con questi codec verranno importate

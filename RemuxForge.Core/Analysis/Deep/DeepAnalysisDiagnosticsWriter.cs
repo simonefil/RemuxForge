@@ -3,7 +3,6 @@ using RemuxForge.Core.Analysis.Speed;
 using RemuxForge.Core.Models;
 using System;
 using System.Globalization;
-using System.IO;
 
 namespace RemuxForge.Core.Analysis.Deep
 {

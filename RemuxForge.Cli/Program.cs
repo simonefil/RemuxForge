@@ -291,6 +291,10 @@ namespace RemuxForge.Cli
             {
                 ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.analysisCrop", FormatAnalysisCrop(opts.AnalysisCropSourcePx), FormatAnalysisCrop(opts.AnalysisCropLanguagePx)));
             }
+            if (opts.SubtitleCanvasRewrite)
+            {
+                ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.T("cli.config.subtitleCanvasRewrite"));
+            }
 
             if (opts.DeepAnalysis)
             {
@@ -393,7 +397,7 @@ namespace RemuxForge.Cli
         /// Stampa il report dettagliato con tabelle
         /// </summary>
         /// <param name="records">Lista record elaborazione</param>
-        /// <param name="isDryRun">Se in modalita' dry run</param>
+        /// <param name="isDryRun">Se in modalità dry run</param>
         private static void PrintDetailedReport(List<FileProcessingRecord> records, bool isDryRun)
         {
             // Filtra solo i record elaborati con successo (o dry run)
@@ -483,14 +487,8 @@ namespace RemuxForge.Cli
                 ConsoleHelper.Write(LogSection.Report, LogLevel.Info, AppText.F("cli.report.syncFailed", stats.SyncFailed));
             }
 
-            if (stats.Errors > 0)
-            {
-                ConsoleHelper.Write(LogSection.Report, LogLevel.Error, AppText.F("cli.report.errors", stats.Errors));
-            }
-            else
-            {
-                ConsoleHelper.Write(LogSection.Report, LogLevel.Success, AppText.F("cli.report.errors", stats.Errors));
-            }
+            ConsoleHelper.Write(LogSection.Report, stats.Errors > 0 ? LogLevel.Error : LogLevel.Success,
+                AppText.F("cli.report.errors", stats.Errors));
 
             Console.WriteLine();
         }

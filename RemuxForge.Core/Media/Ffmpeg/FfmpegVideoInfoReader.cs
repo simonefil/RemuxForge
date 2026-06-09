@@ -173,14 +173,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
 
             // Il blocco termina all'inizio dello stream successivo, se presente
             nextStream = output.IndexOf("Stream #", videoIndex + 1, StringComparison.OrdinalIgnoreCase);
-            if (nextStream > streamStart)
-            {
-                result = output.Substring(streamStart, nextStream - streamStart);
-            }
-            else
-            {
-                result = output.Substring(streamStart);
-            }
+            result = nextStream > streamStart ? output.Substring(streamStart, nextStream - streamStart) : output.Substring(streamStart);
 
             return result;
         }

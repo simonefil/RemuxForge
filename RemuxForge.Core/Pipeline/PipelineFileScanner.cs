@@ -118,14 +118,7 @@ namespace RemuxForge.Core.Pipeline
                 }
                 else
                 {
-                    if (episodeId.Length > 0)
-                    {
-                        record.EpisodeId = episodeId;
-                    }
-                    else
-                    {
-                        record.EpisodeId = sourceFileName;
-                    }
+                    record.EpisodeId = episodeId.Length > 0 ? episodeId : sourceFileName;
                 }
 
                 record.Status = FileStatus.Pending;

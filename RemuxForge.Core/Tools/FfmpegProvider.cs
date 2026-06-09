@@ -69,28 +69,6 @@ namespace RemuxForge.Core.Tools
         #region Metodi pubblici
 
         /// <summary>
-        /// Individua ffmpeg, scaricandolo se necessario
-        /// Ordine: AppSettings → cartella tools → posizioni note → PATH → download
-        /// </summary>
-        /// <returns>True se ffmpeg e' stato trovato o scaricato</returns>
-        public bool Resolve()
-        {
-            return this.Resolve(true, true, false);
-        }
-
-        /// <summary>
-        /// Individua ffmpeg nel sistema
-        /// Ordine: AppSettings → cartella tools → posizioni note → PATH → download (opzionale)
-        /// </summary>
-        /// <param name="autoSave">Se true, salva il percorso trovato in AppSettings</param>
-        /// <param name="allowDownload">Se true, tenta il download se non trovato localmente</param>
-        /// <returns>True se ffmpeg e' stato trovato o scaricato</returns>
-        public bool Resolve(bool autoSave, bool allowDownload)
-        {
-            return this.Resolve(autoSave, allowDownload, false);
-        }
-
-        /// <summary>
         /// Individua ffmpeg nel sistema con eventuale requisito libsoxr per il binario gestito
         /// </summary>
         /// <param name="autoSave">Se true, salva il percorso trovato in AppSettings</param>
@@ -271,7 +249,7 @@ namespace RemuxForge.Core.Tools
             }
             else if (isMacOS)
             {
-                success = this.DownloadMacOS(ffmpegDest);
+                success = this.DownloadMacOS();
             }
             else
             {
@@ -435,9 +413,8 @@ namespace RemuxForge.Core.Tools
         /// <summary>
         /// Segnala che il download automatico ffmpeg non e' supportato su macOS
         /// </summary>
-        /// <param name="ffmpegDest">Percorso di destinazione dell'eseguibile</param>
         /// <returns>Sempre false: usare Homebrew o path manuale</returns>
-        private bool DownloadMacOS(string ffmpegDest)
+        private bool DownloadMacOS()
         {
             ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Warning, "  Download automatico ffmpeg disabilitato su macOS");
             ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, "  Installa ffmpeg con Homebrew: brew install ffmpeg");

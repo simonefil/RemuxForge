@@ -169,7 +169,8 @@ namespace RemuxForge.Core.Analysis.Deep
                 unsupportedGapEndSrc = regions[r + 1].SupportStartSrcSec;
                 if (timelineMode && unsupportedGapStartSrc > 0.0 && unsupportedGapEndSrc > unsupportedGapStartSrc && (unsupportedGapEndSrc - unsupportedGapStartSrc) > (searchEndSrc - searchStartSrc))
                 {
-                    searchStartSrc = Math.Max(regions[r].StartSrcSec, unsupportedGapEndSrc);
+                    searchStartSrc = newOffsetSec < oldOffsetSec ? Math.Max(regions[r].StartSrcSec, unsupportedGapStartSrc - Math.Max(10.0, (durationMs / 1000.0) + 2.0)) : Math.Max(regions[r].StartSrcSec, unsupportedGapEndSrc);
+
                     searchEndSrc = unsupportedGapEndSrc + 90.0;
                     if (searchEndSrc > regions[r + 1].EndSrcSec) { searchEndSrc = regions[r + 1].EndSrcSec; }
                 }
@@ -265,14 +266,7 @@ namespace RemuxForge.Core.Analysis.Deep
                     langTimestampMs = (int)Math.Round(langTimestampMs * inverseRatio);
                 }
 
-                if (newOffsetSec > oldOffsetSec)
-                {
-                    operationType = EditOperation.INSERT_SILENCE;
-                }
-                else
-                {
-                    operationType = EditOperation.CUT_SEGMENT;
-                }
+                operationType = newOffsetSec > oldOffsetSec ? EditOperation.INSERT_SILENCE : EditOperation.CUT_SEGMENT;
 
                 // L'operazione viene aggiunta prima della verifica per mantenere diagnostica completa e poi rimossa se non valida
                 EditOperation op = new EditOperation();
@@ -296,7 +290,8 @@ namespace RemuxForge.Core.Analysis.Deep
                 for (int c = 0; c < transition.Candidates.Count; c++)
                 {
                     if (Math.Abs(transition.Candidates[c].SourceSec - bestCrossover) <= 0.05 &&
-                        string.Equals(transition.Candidates[c].Decision, "accepted-strong-differential", StringComparison.Ordinal) &&
+                        (string.Equals(transition.Candidates[c].Decision, "accepted-strong-differential", StringComparison.Ordinal) ||
+                        string.Equals(transition.Candidates[c].Decision, "accepted-timeline-cut-boundary", StringComparison.Ordinal)) &&
                         !transition.Candidates[c].AudioRejected)
                     {
                         strongDifferentialAccepted = true;

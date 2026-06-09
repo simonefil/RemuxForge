@@ -185,7 +185,7 @@ namespace RemuxForge.Web.Services
             this.SetBusy(true, AppText.T("web.progress.split"));
             this._stopRequested = false;
             ProcessRunner.SetStopRequestedCallback(this.IsStopRequested);
-            ConsoleHelper.SetLogCallback((section, level, text) =>
+            ConsoleHelper.SetLogCallback((section, _, text) =>
             {
                 string prefix = ConsoleHelper.FormatSectionPrefix(section);
                 this.AppendLog(prefix.Length > 0 ? prefix + text : text);

@@ -114,7 +114,7 @@ namespace RemuxForge.Core.Tools
         /// Verifica che il path punti alla CLI e non al bundle grafico macOS
         /// </summary>
         /// <param name="path">Percorso da verificare</param>
-        /// <returns>True se il path e' utilizzabile come CLI</returns>
+        /// <returns>True se il path è utilizzabile come CLI</returns>
         public static bool IsCliExecutablePath(string path)
         {
             bool result = false;

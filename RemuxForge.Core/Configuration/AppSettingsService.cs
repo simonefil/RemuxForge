@@ -189,13 +189,9 @@ namespace RemuxForge.Core.Configuration
             try
             {
                 json = File.ReadAllText(this._configFilePath);
-                this._model = JsonSerializer.Deserialize<AppSettingsModel>(json, options);
 
                 // Se deserializzazione restituisce null, ricrea model default
-                if (this._model == null)
-                {
-                    this._model = new AppSettingsModel();
-                }
+                this._model = JsonSerializer.Deserialize<AppSettingsModel>(json, options) ?? new AppSettingsModel();
 
                 this.MigrateSubtitleEditConfig(json);
 

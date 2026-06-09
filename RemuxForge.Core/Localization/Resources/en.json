@@ -42,6 +42,7 @@
     "        --stretch-factor <f>     Manual stretch factor, e.g. 25025/24000",
     "        --analysis-crop-source-px <L:R:T:B>",
     "        --analysis-crop-lang-px <L:R:T:B>",
+    "        --subtitle-canvas-rewrite Rewrite canvas/coordinates for imported bitmap subtitles when possible",
     "  -ad,  --audio-delay <ms>       Manual audio delay in ms",
     "  -sd,  --subtitle-delay <ms>    Manual subtitle delay in ms",
     "",
@@ -110,6 +111,7 @@
   "cli.config.speedCorrection": "  Speed correction:  {0}",
   "cli.config.manualStretch": "  Manual stretch:    {0}",
   "cli.config.analysisCrop": "  Analysis crop:     source={0}, lang={1}",
+  "cli.config.subtitleCanvasRewrite": "  Subtitle canvas:   rewrite enabled",
   "cli.config.deepActive": "  Deep analysis:     ACTIVE",
   "cli.config.manualOffsetDeep": "  Manual offset:     Audio {0}, Sub {1} (added to Deep Analysis)",
   "cli.config.frameSyncActive": "  Frame-sync:        ACTIVE",
@@ -595,6 +597,7 @@
   "web.config.toggle.audioOnly": "Audio only",
   "web.config.toggle.frameSync": "Frame-sync (visual comparison)",
   "web.config.toggle.deepAnalysis": "Deep analysis (full analysis)",
+  "web.config.toggle.subtitleCanvasRewrite": "Rewrite bitmap sub canvas",
   "web.config.toggle.start": "Start",
   "web.config.toggle.end": "End",
   "web.config.toggle.insertSilence": "Insert silence",
@@ -948,6 +951,11 @@
     "Manual crop applied only to Language frames used for visual matching.",
     "",
     "Format: L:R:T:B in pixels on the original frame before scaling. Empty or 0:0:0:0 disables it. Does not crop the final output."
+  ],
+  "web.config.help.remux.subCanvas.title": "Sub canvas",
+  "web.config.help.remux.subCanvas.text": [
+    "Optional. Rewrites canvas and coordinates for imported bitmap subtitles when visual crop requires realignment.",
+    "This version only applies to PGS and is ignored when the transformation is not safe."
   ],
   "web.config.help.remux.audioDelay.title": "Audio delay",
   "web.config.help.remux.audioDelay.text": "Manual offset in milliseconds added to the automatic synchronization result.",

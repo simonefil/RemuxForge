@@ -448,7 +448,7 @@ namespace RemuxForge.Core.Audio
             result.Silence = new byte[result.Envelope.Length];
             result.SilenceRun = new double[result.Envelope.Length];
 
-            this.NormalizeInPlace(result.Envelope, out _, out _);
+            this.NormalizeInPlace(result.Envelope);
 
             for (int i = 0; i < envelope.Count; i++)
             {
@@ -464,10 +464,10 @@ namespace RemuxForge.Core.Audio
                 }
             }
 
-            this.NormalizeInPlace(result.Onset, out _, out _);
-            this.NormalizeInPlace(result.Derivative, out _, out _);
+            this.NormalizeInPlace(result.Onset);
+            this.NormalizeInPlace(result.Derivative);
             this.BuildSilenceRunFeature(result.Silence, result.SilenceRun);
-            this.NormalizeInPlace(result.SilenceRun, out _, out _);
+            this.NormalizeInPlace(result.SilenceRun);
 
             return result;
         }
@@ -508,12 +508,12 @@ namespace RemuxForge.Core.Audio
         /// <summary>
         /// Normalizza un array con z-score e clipping
         /// </summary>
-        private void NormalizeInPlace(double[] values, out double mean, out double std)
+        private void NormalizeInPlace(double[] values)
         {
             double sum = 0.0;
             double variance = 0.0;
-            mean = 0.0;
-            std = 1.0;
+            double mean;
+            double std;
 
             if (values == null || values.Length == 0)
             {

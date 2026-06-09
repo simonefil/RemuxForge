@@ -179,6 +179,9 @@
                 <input class="form-input" style="width: 18ch;" @bind="_analysisCropLanguagePx" placeholder="L:R:T:B" @onfocus="@(() => SetFieldHelp("remux.cropLang"))" @onmouseenter="@(() => SetFieldHelp("remux.cropLang"))" />
             </div>
             <div class="form-row">
+                <span class="ui-toggle" @onclick="() => _subtitleCanvasRewrite = !_subtitleCanvasRewrite" @onmouseenter="@(() => SetFieldHelp("remux.subCanvas"))">@(_subtitleCanvasRewrite ? "[X]" : "[ ]") @AppText.T("web.config.toggle.subtitleCanvasRewrite")</span>
+            </div>
+            <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.audioDelay")</span>
                 <input class="form-input" style="width: 8ch;" @bind="_audioDelay" @onfocus="@(() => SetFieldHelp("remux.audioDelay"))" @onmouseenter="@(() => SetFieldHelp("remux.audioDelay"))" /> <span style="margin-left: 0.5ch;">ms</span>
             </div>
@@ -479,6 +482,11 @@
     private string _analysisCropLanguagePx = "";
 
     /// <summary>
+    /// Riscrittura canvas sottotitoli bitmap importati
+    /// </summary>
+    private bool _subtitleCanvasRewrite;
+
+    /// <summary>
     /// Delay audio in ms (stringa per binding input)
     /// </summary>
     private string _audioDelay = "0";
@@ -674,6 +682,7 @@
             _deepAnalysis = Options.DeepAnalysis;
             _analysisCropSourcePx = Options.AnalysisCropSourcePx;
             _analysisCropLanguagePx = Options.AnalysisCropLanguagePx;
+            _subtitleCanvasRewrite = Options.SubtitleCanvasRewrite;
             _audioDelay = Options.AudioDelay.ToString();
             _subDelay = Options.SubtitleDelay.ToString();
             _audioSourceFillEnabled = Options.AudioSourceFillThresholdMs > 0 ||
@@ -769,6 +778,7 @@
         opts.DeepAnalysis = _deepAnalysis;
         opts.AnalysisCropSourcePx = Options.NormalizeAnalysisCropPx(_analysisCropSourcePx);
         opts.AnalysisCropLanguagePx = Options.NormalizeAnalysisCropPx(_analysisCropLanguagePx);
+        opts.SubtitleCanvasRewrite = _subtitleCanvasRewrite;
 
         int.TryParse(_audioDelay, out audioDelay);
         opts.AudioDelay = audioDelay;

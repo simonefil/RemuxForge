@@ -72,14 +72,6 @@ namespace RemuxForge.Core.Media
         /// <summary>
         /// Prepara il profilo crop del file usando campioni distribuiti sulla durata completa
         /// </summary>
-        public void PrepareFile(string filePath, int durationMs, bool geometryCropToFourThree)
-        {
-            this.PrepareFile(filePath, durationMs, geometryCropToFourThree, "");
-        }
-
-        /// <summary>
-        /// Prepara il profilo crop del file usando campioni distribuiti sulla durata completa
-        /// </summary>
         public void PrepareFile(string filePath, int durationMs, bool geometryCropToFourThree, string manualCropPx)
         {
             BorderCropProfile profile;
@@ -112,14 +104,6 @@ namespace RemuxForge.Core.Media
             {
                 ConsoleHelper.Write(this._logSection, LogLevel.Debug, "  Auto-crop globale (" + this.GetLogFileName(filePath) + "): nessun bordo stabile");
             }
-        }
-
-        /// <summary>
-        /// Applica ai frame il profilo crop gia' calcolato sul file completo
-        /// </summary>
-        public void Normalize(string filePath, List<byte[]> frames)
-        {
-            this.Normalize(filePath, false, "", frames);
         }
 
         /// <summary>

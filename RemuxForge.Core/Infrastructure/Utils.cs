@@ -222,37 +222,6 @@ namespace RemuxForge.Core.Infrastructure
         }
 
         /// <summary>
-        /// Formatta una lista di tracce importate con indicazione conversione
-        /// Es: "1: ita AC-3 5.1 -> FLAC" oppure "2: eng DTS-HD MA 7.1"
-        /// </summary>
-        /// <param name="tracks">Lista tracce importate</param>
-        /// <param name="convertFormat">Formato conversione (flac, opus) o vuoto</param>
-        /// <returns>Stringa formattata o "-" se vuota</returns>
-        public static string FormatImportedTrackList(List<TrackInfo> tracks, string convertFormat)
-        {
-            string result = "-";
-
-            if (tracks != null && tracks.Count > 0)
-            {
-                StringBuilder sb = new StringBuilder();
-                for (int i = 0; i < tracks.Count; i++)
-                {
-                    if (i > 0) { sb.Append(" | "); }
-                    sb.Append(FormatTrackCompact(tracks[i]));
-
-                    // Indica conversione se il formato e' specificato e la traccia e' lossless convertibile
-                    if (convertFormat.Length > 0 && CodecMapping.IsConvertibleLossless(tracks[i], convertFormat))
-                    {
-                        sb.Append(" -> ").Append(convertFormat.ToUpper());
-                    }
-                }
-                result = sb.ToString();
-            }
-
-            return result;
-        }
-
-        /// <summary>
         /// Formatta una lista di tracce importate con indicazione processing coerente con le opzioni audio
         /// </summary>
         /// <param name="tracks">Lista tracce importate</param>

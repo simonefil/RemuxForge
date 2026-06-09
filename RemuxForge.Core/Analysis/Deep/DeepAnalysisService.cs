@@ -139,6 +139,7 @@ namespace RemuxForge.Core.Analysis.Deep
         /// Costruttore
         /// </summary>
         /// <param name="ffmpegPath">Percorso eseguibile ffmpeg</param>
+        /// <param name="toolPathResolver">Risolutore percorsi tool esterni</param>
         public DeepAnalysisService(string ffmpegPath, ToolPathResolverService toolPathResolver = null) : base(ffmpegPath, LogSection.Deep)
         {
             this._daConfig = AppSettingsService.Instance.Settings.Advanced.DeepAnalysis;
@@ -268,7 +269,7 @@ namespace RemuxForge.Core.Analysis.Deep
             }
 
             regions = timelineMap.Regions;
-            this.TryRecoverUnsupportedTailGap(sourceFile, langFile, sourceDurationMs, inverseRatio, regions, timelineMap);
+            this.RecoverUnsupportedTailGap(sourceFile, langFile, sourceDurationMs, inverseRatio, regions, timelineMap);
             this.ApplyInitialVisualGuard(sourceFile, langFile, sourceDurationMs, regions, inverseRatio, out visualStartOffsetMs, out visualStartEndSec, out visualStartMse, out visualStartSecondMse);
 
             acceptedAnchors = timelineMap.Diagnostic.AcceptedAnchorCount;
@@ -599,9 +600,8 @@ namespace RemuxForge.Core.Analysis.Deep
         /// <summary>
         /// Recupera gap di coda quando la timeline estende l'ultimo plateau oltre l'ultimo supporto visuale.
         /// </summary>
-        private bool TryRecoverUnsupportedTailGap(string sourceFile, string langFile, int sourceDurationMs, double inverseRatio, List<OffsetRegion> regions, DeepTimelineMapResult timelineMap)
+        private void RecoverUnsupportedTailGap(string sourceFile, string langFile, int sourceDurationMs, double inverseRatio, List<OffsetRegion> regions, DeepTimelineMapResult timelineMap)
         {
-            bool result = false;
             OffsetRegion lastRegion;
             OffsetRegion tailRegion;
             double sourceDurationSec = sourceDurationMs / 1000.0;
@@ -619,20 +619,20 @@ namespace RemuxForge.Core.Analysis.Deep
 
             if (regions == null || regions.Count == 0 || sourceDurationMs <= 0 || Math.Abs(inverseRatio) < 0.000001)
             {
-                return result;
+                return;
             }
 
             lastRegion = regions[regions.Count - 1];
             unsupportedTailSec = sourceDurationSec - lastRegion.SupportEndSrcSec;
             if (unsupportedTailSec < TAIL_GAP_MIN_UNSUPPORTED_SEC)
             {
-                return result;
+                return;
             }
 
             langDurationMs = this.ResolveMediaDurationMs(langFile);
             if (langDurationMs <= 0)
             {
-                return result;
+                return;
             }
 
             stretchRatio = 1.0 / inverseRatio;
@@ -640,38 +640,38 @@ namespace RemuxForge.Core.Analysis.Deep
             deltaMs = expectedTailOffsetMs - (int)Math.Round(lastRegion.OffsetMs);
             if (deltaMs < TAIL_GAP_MIN_DELTA_MS)
             {
-                return result;
+                return;
             }
 
             if (!this.TryFindTailGapCrossover(sourceFile, langFile, lastRegion, sourceDurationSec, lastRegion.OffsetMs / 1000.0, expectedTailOffsetMs / 1000.0, inverseRatio, out postGapSupportSec))
             {
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Tail gap recovery non conclusivo: coda non supportata " + unsupportedTailSec.ToString("F0", CultureInfo.InvariantCulture) + "s, delta atteso " + deltaMs.ToString(CultureInfo.InvariantCulture) + "ms");
-                return result;
+                return;
             }
 
             if (!this.TryEstimateTailGapPostOffset(sourceFile, langFile, postGapSupportSec, expectedTailOffsetMs / 1000.0, inverseRatio, out recoveredTailOffsetSec))
             {
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Tail gap recovery non conclusivo: offset locale post-gap non stimabile");
-                return result;
+                return;
             }
 
             recoveredTailOffsetMs = (int)Math.Round(recoveredTailOffsetSec * 1000.0);
             recoveredDeltaMs = recoveredTailOffsetMs - (int)Math.Round(lastRegion.OffsetMs);
             if (recoveredDeltaMs < TAIL_GAP_MIN_DELTA_MS)
             {
-                return result;
+                return;
             }
 
             if (!this.TryFindTailGapFrameBoundary(sourceFile, langFile, lastRegion.OffsetMs / 1000.0, recoveredTailOffsetSec, inverseRatio, postGapSupportSec, recoveredDeltaMs / 1000.0, sourceDurationSec, out frameBoundarySec))
             {
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Tail gap recovery non conclusivo: boundary frame-perfect non trovato attorno a " + (postGapSupportSec - (recoveredDeltaMs / 1000.0)).ToString("F1", CultureInfo.InvariantCulture) + "s");
-                return result;
+                return;
             }
 
             crossoverSec = frameBoundarySec;
             if (crossoverSec <= lastRegion.StartSrcSec + 1.0 || crossoverSec >= sourceDurationSec - 1.0)
             {
-                return result;
+                return;
             }
 
             lastRegion.EndSrcSec = crossoverSec;
@@ -698,8 +698,6 @@ namespace RemuxForge.Core.Analysis.Deep
             }
 
             ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Tail gap recovery: coda non supportata " + unsupportedTailSec.ToString("F0", CultureInfo.InvariantCulture) + "s, offset " + lastRegion.OffsetMs.ToString(CultureInfo.InvariantCulture) + "ms -> " + recoveredTailOffsetMs.ToString(CultureInfo.InvariantCulture) + "ms da " + crossoverSec.ToString("F3", CultureInfo.InvariantCulture) + "s (boundary frame, supporto " + postGapSupportSec.ToString("F1", CultureInfo.InvariantCulture) + "s, atteso " + expectedTailOffsetMs.ToString(CultureInfo.InvariantCulture) + "ms)");
-            result = true;
-            return result;
         }
 
         /// <summary>
@@ -1485,6 +1483,11 @@ namespace RemuxForge.Core.Analysis.Deep
                 return result;
             }
 
+            if (offsetDirection == 0)
+            {
+                return result;
+            }
+
             if (Math.Abs(inverseRatio - 1.0) > 0.0001)
             {
                 langStartOld = langStartOld * inverseRatio;
@@ -1493,6 +1496,10 @@ namespace RemuxForge.Core.Analysis.Deep
 
             if (langStartOld < 0.0) { langStartOld = 0.0; }
             if (langStartNew < 0.0) { langStartNew = 0.0; }
+
+            /*
+             * Estrazione frame e scoring dei due offset candidati
+             */
 
             // Estrae frame nativi per non perdere i PTS reali nei source VFR
             this.ExtractDeepSegment(sourceFile, (int)(searchStartSrc * 1000), duration, 0.0, this._geometryCropSourceToFourThree, this._analysisCropSourcePx, out srcFrames, out sourceTimestampsMs);
@@ -1555,6 +1562,10 @@ namespace RemuxForge.Core.Analysis.Deep
                 changed[i] = i == 0 || this.ComputeSsim(srcFrames[i - 1], srcFrames[i]) < duplicateSsim;
             }
 
+            /*
+             * Candidati: old deve vincere prima, new deve vincere dopo
+             */
+
             // Cerca punti dove il vecchio offset domina prima e il nuovo offset domina dopo
             for (int i = minSideFrames; i < maxIdx - minSideFrames; i++)
             {
@@ -1603,6 +1614,10 @@ namespace RemuxForge.Core.Analysis.Deep
 
             if (offsetDirection > 0)
             {
+                /*
+                 * Ramo INSERT: boundary MSE robusto e verifica locale
+                 */
+
                 // INSERT: prima prova un boundary MSE robusto, utile quando SSIM satura su frame statici
                 List<KeyValuePair<int, double>> insertCandidates = new List<KeyValuePair<int, double>>(candidates);
                 double mseInsertResult = -1.0;
@@ -1615,18 +1630,20 @@ namespace RemuxForge.Core.Analysis.Deep
                 double insertRunTieMargin = 5.0;
                 double insertRunPreferredBoundaryMargin = 1500.0;
                 double longInsertTargetSec = transition != null && transition.BreakpointSrcSec > 0.0 ? transition.BreakpointSrcSec : (searchStartSrc + (duration / 2.0));
-                insertCandidates.Sort(delegate (KeyValuePair<int, double> left, KeyValuePair<int, double> right)
-                {
-                    return right.Value.CompareTo(left.Value);
-                });
+                insertCandidates.Sort((left, right) => right.Value.CompareTo(left.Value));
 
+                // Valuta prima i candidati con differenziale MSE piu' forte: sono i piu' stabili
+                // quando SSIM resta alto su pose statiche, fade o frame quasi identici.
                 for (int c = 0; c < insertCandidates.Count; c++)
                 {
                     int candidateIdx = insertCandidates[c].Key;
                     int boundaryIdx = candidateIdx;
-                    DeepAnalysisLocalVerificationDiagnostic candidateVerification = null;
+                    DeepAnalysisLocalVerificationDiagnostic candidateVerification;
                     DeepAnalysisTransitionCandidateDiagnostic candidateDiagnostic = null;
                     bool candidateRejected;
+
+                    // Sposta il candidato sul primo frame vicino dove il nuovo offset diventa almeno
+                    // competitivo e c'e' movimento reale nel source.
                     for (int i = candidateIdx; i < maxIdx && i < candidateIdx + 120; i++)
                     {
                         if (valid[i] && motionScores[i] >= motionThreshold && oldMseScores[i] >= newMseScores[i])
@@ -1652,6 +1669,8 @@ namespace RemuxForge.Core.Analysis.Deep
                         }
                     }
 
+                    // Se il boundary cade in nero/fade, risale finche' il nuovo offset rimane nettamente migliore:
+                    // l'edit deve partire all'inizio del tratto source-only, non al primo frame luminoso.
                     if (meanScores[boundaryIdx] <= darkFrameMean)
                     {
                         int rewindIdx = boundaryIdx;
@@ -1680,12 +1699,11 @@ namespace RemuxForge.Core.Analysis.Deep
                             }
                         }
 
-                        if (rewindIdx != boundaryIdx)
-                        {
-                            boundaryIdx = rewindIdx;
-                        }
+                        boundaryIdx = rewindIdx;
                     }
 
+                    // Un MSE quasi perfetto spesso identifica contenuto gia' agganciato dopo il gap:
+                    // risale al primo frame della stessa run perfetta, se esiste.
                     if (newMseScores[boundaryIdx] <= 100.0)
                     {
                         int contentStartIdx = boundaryIdx;
@@ -1708,12 +1726,10 @@ namespace RemuxForge.Core.Analysis.Deep
                             }
                         }
 
-                        if (contentStartIdx != boundaryIdx)
-                        {
-                            boundaryIdx = contentStartIdx;
-                        }
+                        boundaryIdx = contentStartIdx;
                     }
 
+                    // Risale la run new-dominante evitando di attraversare frame dove old torna chiaramente migliore.
                     if (oldMseScores[boundaryIdx] - newMseScores[boundaryIdx] >= insertRunMseMargin)
                     {
                         int runStartIdx = boundaryIdx;
@@ -1734,17 +1750,16 @@ namespace RemuxForge.Core.Analysis.Deep
                             if (newAdvantage >= insertRunMseMargin || (newMseScores[i] <= oldMseScores[i] * 0.98 && newAdvantage >= insertRunTieMargin))
                             {
                                 runStartIdx = i;
-                                continue;
                             }
                         }
 
-                        if (runStartIdx != boundaryIdx)
-                        {
-                            boundaryIdx = runStartIdx;
-                        }
+                        boundaryIdx = runStartIdx;
                     }
 
                     result = sourceTimestampsMs[boundaryIdx] / 1000.0;
+
+                    // Le transizioni INSERT lunghe possono essere confermate globalmente dalla timeline:
+                    // in diagnostica restano visibili ma non pagano la verifica locale audio/video.
                     if (transition != null && transition.Candidates.Count < candidateDiagnosticsLimit && longInsertTransition)
                     {
                         transition.Candidates.Add(new DeepAnalysisTransitionCandidateDiagnostic
@@ -1760,6 +1775,10 @@ namespace RemuxForge.Core.Analysis.Deep
                             Decision = "insert-mse-unverified-large-delta"
                         });
                     }
+
+                    // Per delta piccoli invece il boundary MSE deve superare la verifica locale.
+                    // Se fallisce ma il differenziale e' molto forte, accetta solo se old vince subito prima
+                    // e new ha abbastanza voti subito dopo.
                     if (!longInsertTransition)
                     {
                         candidateVerification = this.VerifyTransitionLocal(sourceFile, langFile, result, oldOffsetSec, newOffsetSec, inverseRatio);
@@ -1842,6 +1861,8 @@ namespace RemuxForge.Core.Analysis.Deep
                     break;
                 }
 
+                // Se il boundary MSE e' vicino al breakpoint di una INSERT lunga, e' gia' il punto operativo.
+                // Il passaggio SSIM successivo rischierebbe di spostarsi sul contenuto visibile dopo il gap.
                 if (mseInsertResult >= 0.0 && longInsertTransition && Math.Abs(mseInsertResult - longInsertTargetSec) <= 2.0)
                 {
                     double insertDurationSec = Math.Abs(newOffsetSec - oldOffsetSec);
@@ -1863,6 +1884,10 @@ namespace RemuxForge.Core.Analysis.Deep
                     return mseInsertResult;
                 }
 
+                /*
+                 * Ramo INSERT: fallback SSIM su frame realmente cambiati
+                 */
+
                 // Secondo passaggio INSERT: usa solo frame cambiati e richiede voti SSIM coerenti dopo il boundary
                 for (int i = 0; i < maxIdx; i++)
                 {
@@ -1872,6 +1897,7 @@ namespace RemuxForge.Core.Analysis.Deep
                     int beforeOldVotes = 0;
                     int beforeEvidence = 0;
 
+                    // Il frame candidato deve gia' favorire new sia in SSIM sia in MSE.
                     if (!valid[i] || newScores[i] < minNewSsim || newScores[i] <= oldScores[i] || newMseScores[i] > oldMseScores[i] * 1.02)
                     {
                         continue;
@@ -1882,6 +1908,7 @@ namespace RemuxForge.Core.Analysis.Deep
                         continue;
                     }
 
+                    // Dopo il boundary servono piu' voti new che old, altrimenti e' un match isolato.
                     for (int j = i; j < maxIdx && sourceTimestampsMs[j] - sourceTimestampsMs[i] <= afterWindowMs; j++)
                     {
                         if (!valid[j] || (j > i && !changed[j] && meanScores[j] > darkFrameMean))
@@ -1904,6 +1931,7 @@ namespace RemuxForge.Core.Analysis.Deep
                         continue;
                     }
 
+                    // Prima del boundary non deve esserci gia' evidenza forte per new, altrimenti il punto e' tardivo.
                     for (int j = i - 1; j >= 0 && sourceTimestampsMs[i] - sourceTimestampsMs[j] <= beforeWindowMs; j--)
                     {
                         if (!valid[j] || (!changed[j] && meanScores[j] > darkFrameMean))
@@ -1934,6 +1962,8 @@ namespace RemuxForge.Core.Analysis.Deep
                     }
 
                     int ssimBoundaryIdx = i;
+
+                    // Anche per SSIM, se il match cade in nero/fade prova a risalire dentro la stessa run.
                     if (meanScores[ssimBoundaryIdx] <= darkFrameMean)
                     {
                         double rewindWindowMs = Math.Max(1000.0, Math.Abs(newOffsetSec - oldOffsetSec) * 1000.0 + 500.0);
@@ -1963,6 +1993,9 @@ namespace RemuxForge.Core.Analysis.Deep
                     }
 
                     result = sourceTimestampsMs[ssimBoundaryIdx] / 1000.0;
+
+                    // Le INSERT lunghe tengono il candidato SSIM come diagnostica deferibile; quelle corte
+                    // richiedono comunque verifica locale prima di produrre un edit.
                     if (transition != null && transition.Candidates.Count < candidateDiagnosticsLimit && longInsertTransition)
                     {
                         transition.Candidates.Add(new DeepAnalysisTransitionCandidateDiagnostic
@@ -2042,145 +2075,202 @@ namespace RemuxForge.Core.Analysis.Deep
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Warning, "    Scansione differenziale: non conclusiva");
                 return result;
             }
-            else
+            /*
+             * Ramo CUT: candidati MSE con validazione locale limitata
+             */
+
+            // CUT: scorre i candidati MSE e valida solo una quota limitata di boundary locali
+            int verifiedCutCandidates = 0;
+            double strongMotionThreshold = 10000.0;
+            double strongDifferentialScore = 100.0;
+            double cutRewindMargin = 5.0;
+            for (int c = 0; c < candidates.Count; c++)
             {
-                // CUT: scorre i candidati MSE e valida solo una quota limitata di boundary locali
-                int verifiedCutCandidates = 0;
-                double strongMotionThreshold = 10000.0;
-                double strongDifferentialScore = 100.0;
-                double cutRewindMargin = 5.0;
-                for (int c = 0; c < candidates.Count; c++)
+                int candidateIdx = candidates[c].Key;
+                int boundaryIdx = candidateIdx;
+                DeepAnalysisLocalVerificationDiagnostic candidateVerification;
+                DeepAnalysisTransitionCandidateDiagnostic candidateDiagnostic = null;
+                bool candidateRejected;
+                bool candidateLocalVerifiedOrDeferred;
+                bool strongDifferentialCut;
+                bool timelineCutStrongBoundary;
+                bool timelineCutOldBeforeEvidence;
+                bool timelineCutForwardOldDominates;
+                bool timelineCutBoundaryAccepted = false;
+
+                // Parte dal candidato differenziale e cerca poco avanti il primo frame con motion
+                // sufficiente e vantaggio MSE stabile per il nuovo offset.
+                for (int i = candidateIdx; i < maxIdx && i < candidateIdx + 120; i++)
                 {
-                    int candidateIdx = candidates[c].Key;
-                    int boundaryIdx = candidateIdx;
-                    DeepAnalysisLocalVerificationDiagnostic candidateVerification = null;
-                    DeepAnalysisTransitionCandidateDiagnostic candidateDiagnostic = null;
-                    bool candidateRejected;
-                    bool strongDifferentialCut;
-                    for (int i = candidateIdx; i < maxIdx && i < candidateIdx + 120; i++)
+                    if (valid[i] && motionScores[i] >= motionThreshold && oldMseScores[i] - newMseScores[i] >= cutSwitchMseMargin)
                     {
-                        if (valid[i] && motionScores[i] >= motionThreshold && oldMseScores[i] - newMseScores[i] >= cutSwitchMseMargin)
+                        boundaryIdx = i;
+                        break;
+                    }
+                }
+
+                if (oldMseScores[boundaryIdx] - newMseScores[boundaryIdx] >= cutSwitchMseMargin)
+                {
+                    // Nei CUT il primo frame utile puo' precedere il frame con contrasto piu' forte:
+                    // risale la run new-dominante senza attraversare un frame dove il vecchio offset torna corretto.
+                    int rewindIdx = boundaryIdx;
+                    double rewindWindowMs = Math.Max(1000.0, Math.Abs(newOffsetSec - oldOffsetSec) * 1000.0 + 500.0);
+                    for (int i = boundaryIdx - 1; i >= 0 && sourceTimestampsMs[boundaryIdx] - sourceTimestampsMs[i] <= rewindWindowMs; i--)
+                    {
+                        if (!valid[i])
                         {
-                            boundaryIdx = i;
+                            continue;
+                        }
+
+                        double newAdvantage = oldMseScores[i] - newMseScores[i];
+                        if (oldMseScores[i] <= newMseScores[i] * 0.98 && -newAdvantage >= cutRewindMargin)
+                        {
+                            break;
+                        }
+
+                        if (newAdvantage >= cutSwitchMseMargin || (newMseScores[i] <= oldMseScores[i] * 0.98 && newAdvantage >= cutRewindMargin))
+                        {
+                            rewindIdx = i;
+                            continue;
+                        }
+
+                        if (motionScores[i] >= motionThreshold)
+                        {
                             break;
                         }
                     }
 
-                    if (oldMseScores[boundaryIdx] - newMseScores[boundaryIdx] >= cutSwitchMseMargin)
+                    boundaryIdx = rewindIdx;
+                }
+
+                result = sourceTimestampsMs[boundaryIdx] / 1000.0;
+                if (Math.Abs(newOffsetSec - oldOffsetSec) > 1.5 && verifiedCutCandidates >= 30)
+                {
+                    // Su CUT grandi evita una scansione locale troppo costosa: oltre i primi candidati
+                    // forti lascia fallire il differenziale e passare ai fallback superiori.
+                    break;
+                }
+
+                verifiedCutCandidates++;
+
+                // La verifica locale confronta audio/video prima e dopo il boundary proposto.
+                // Se fallisce, il candidato puo' sopravvivere solo con evidenza visuale molto forte.
+                candidateVerification = this.VerifyTransitionLocal(sourceFile, langFile, result, oldOffsetSec, newOffsetSec, inverseRatio);
+                if (collectCutDiagnostics && transition.Candidates.Count < candidateDiagnosticsLimit)
+                {
+                    candidateDiagnostic = new DeepAnalysisTransitionCandidateDiagnostic
                     {
-                        // Nei CUT il primo frame utile puo' precedere il frame con contrasto piu' forte:
-                        // risale la run new-dominante senza attraversare un frame dove il vecchio offset torna corretto.
-                        int rewindIdx = boundaryIdx;
-                        double rewindWindowMs = Math.Max(1000.0, Math.Abs(newOffsetSec - oldOffsetSec) * 1000.0 + 500.0);
-                        for (int i = boundaryIdx - 1; i >= 0 && sourceTimestampsMs[boundaryIdx] - sourceTimestampsMs[i] <= rewindWindowMs; i--)
-                        {
-                            if (!valid[i])
-                            {
-                                continue;
-                            }
+                        SourceSec = result,
+                        Score = candidates[c].Value,
+                        MotionMse = motionScores[boundaryIdx],
+                        OldMse = oldMseScores[boundaryIdx],
+                        NewMse = newMseScores[boundaryIdx],
+                        Verified = candidateVerification != null && candidateVerification.Verified,
+                        CanDeferToGlobalVerification = candidateVerification != null && candidateVerification.CanDeferToGlobalVerification,
+                        AudioRejected = candidateVerification != null && candidateVerification.AudioRejected,
+                        Decision = candidateVerification == null || (!candidateVerification.Verified && !candidateVerification.CanDeferToGlobalVerification) ? "rejected-local" : "accepted-local"
+                    };
+                    transition.Candidates.Add(candidateDiagnostic);
+                }
+                candidateRejected = candidateVerification == null || (!candidateVerification.Verified && !candidateVerification.CanDeferToGlobalVerification);
+                candidateLocalVerifiedOrDeferred = candidateVerification != null && (candidateVerification.Verified || candidateVerification.CanDeferToGlobalVerification);
+                timelineCutOldBeforeEvidence = false;
+                // Se la finestra forward conferma ancora il vecchio offset, non promuove un boundary timeline anticipato.
+                timelineCutForwardOldDominates = candidateVerification != null &&
+                    candidateVerification.ForwardNewMse > candidateVerification.ForwardOldMse * 1.25 &&
+                    candidateVerification.ForwardNewMse - candidateVerification.ForwardOldMse >= cutRewindMargin;
 
-                            double newAdvantage = oldMseScores[i] - newMseScores[i];
-                            if (oldMseScores[i] <= newMseScores[i] * 0.98 && -newAdvantage >= cutRewindMargin)
-                            {
-                                break;
-                            }
-
-                            if (newAdvantage >= cutSwitchMseMargin || (newMseScores[i] <= oldMseScores[i] * 0.98 && newAdvantage >= cutRewindMargin))
-                            {
-                                rewindIdx = i;
-                                continue;
-                            }
-
-                            if (motionScores[i] >= motionThreshold)
-                            {
-                                break;
-                            }
-                        }
-
-                        if (rewindIdx != boundaryIdx)
-                        {
-                            boundaryIdx = rewindIdx;
-                        }
-                    }
-
-                    result = sourceTimestampsMs[boundaryIdx] / 1000.0;
-                    if (Math.Abs(newOffsetSec - oldOffsetSec) > 1.5 && verifiedCutCandidates >= 30)
+                // In timeline map un CUT vero deve mostrare old migliore poco prima del boundary:
+                // e' la guardia che distingue un cambio offset reale da un candidato anticipato.
+                if (this._currentAnalysisUsesTimelineMap && offsetDirection < 0)
+                {
+                    double oldBeforeWindowMs = Math.Max(1000.0, Math.Abs(newOffsetSec - oldOffsetSec) * 1000.0 + 500.0);
+                    for (int i = boundaryIdx - 1; i >= 0 && sourceTimestampsMs[boundaryIdx] - sourceTimestampsMs[i] <= oldBeforeWindowMs; i--)
                     {
-                        break;
-                    }
-
-                    if (Math.Abs(newOffsetSec - oldOffsetSec) <= 1.5 || verifiedCutCandidates < 30)
-                    {
-                        verifiedCutCandidates++;
-                        candidateVerification = this.VerifyTransitionLocal(sourceFile, langFile, result, oldOffsetSec, newOffsetSec, inverseRatio);
-                        if (collectCutDiagnostics && transition.Candidates.Count < candidateDiagnosticsLimit)
-                        {
-                            candidateDiagnostic = new DeepAnalysisTransitionCandidateDiagnostic
-                            {
-                                SourceSec = result,
-                                Score = candidates[c].Value,
-                                MotionMse = motionScores[boundaryIdx],
-                                OldMse = oldMseScores[boundaryIdx],
-                                NewMse = newMseScores[boundaryIdx],
-                                Verified = candidateVerification != null && candidateVerification.Verified,
-                                CanDeferToGlobalVerification = candidateVerification != null && candidateVerification.CanDeferToGlobalVerification,
-                                AudioRejected = candidateVerification != null && candidateVerification.AudioRejected,
-                                Decision = candidateVerification == null || (!candidateVerification.Verified && !candidateVerification.CanDeferToGlobalVerification) ? "rejected-local" : "accepted-local"
-                            };
-                            transition.Candidates.Add(candidateDiagnostic);
-                        }
-                        candidateRejected = candidateVerification == null || (!candidateVerification.Verified && !candidateVerification.CanDeferToGlobalVerification);
-                        strongDifferentialCut = collectCutDiagnostics &&
-                            candidates[c].Value >= strongDifferentialScore &&
-                            oldMseScores[boundaryIdx] - newMseScores[boundaryIdx] >= cutSwitchMseMargin &&
-                            (candidateVerification == null || !candidateVerification.AudioRejected);
-                        if (candidateRejected && !strongDifferentialCut)
+                        if (!valid[i])
                         {
                             continue;
                         }
-                        if (candidateRejected && strongDifferentialCut && candidateDiagnostic != null)
+
+                        if (oldMseScores[i] <= newMseScores[i] * 0.98 && newMseScores[i] - oldMseScores[i] >= cutRewindMargin)
                         {
-                            candidateDiagnostic.Decision = "accepted-strong-differential";
+                            timelineCutOldBeforeEvidence = true;
+                            break;
                         }
                     }
-
-                    if (duration > 60.0 && Math.Abs(newOffsetSec - oldOffsetSec) <= 1.5 && boundaryIdx >= 0 && boundaryIdx < motionScores.Length)
-                    {
-                        for (int i = boundaryIdx + 1; i < maxIdx; i++)
-                        {
-                            if (!valid[i] || motionScores[i] < strongMotionThreshold)
-                            {
-                                continue;
-                            }
-
-                            double motionBoundary = sourceTimestampsMs[i] / 1000.0;
-                            DeepAnalysisLocalVerificationDiagnostic motionVerification = this.VerifyTransitionLocal(sourceFile, langFile, motionBoundary, oldOffsetSec, newOffsetSec, inverseRatio);
-                            if (motionVerification != null && motionVerification.Verified)
-                            {
-                                if (collectCutDiagnostics && transition.Candidates.Count < candidateDiagnosticsLimit)
-                                {
-                                    transition.Candidates.Add(new DeepAnalysisTransitionCandidateDiagnostic
-                                    {
-                                        SourceSec = motionBoundary,
-                                        Score = candidates[c].Value,
-                                        MotionMse = motionScores[i],
-                                        OldMse = oldMseScores[i],
-                                        NewMse = newMseScores[i],
-                                        Verified = motionVerification.Verified,
-                                        CanDeferToGlobalVerification = motionVerification.CanDeferToGlobalVerification,
-                                        AudioRejected = motionVerification.AudioRejected,
-                                        Decision = "accepted-strong-motion"
-                                    });
-                                }
-                                ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: boundary spostato su motion forte a src " + motionBoundary.ToString("F3", CultureInfo.InvariantCulture) + "s (motion=" + motionScores[i].ToString("F1", CultureInfo.InvariantCulture) + ")");
-                                return motionBoundary;
-                            }
-                        }
-                    }
-
-                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: boundary video a src " + result.ToString("F3", CultureInfo.InvariantCulture) + "s (score=" + candidates[c].Value.ToString("F1", CultureInfo.InvariantCulture) + ")");
-                    return result;
                 }
+
+                // strongDifferentialCut e' il bypass visuale generico; timelineCutStrongBoundary e'
+                // piu' restrittivo e vale solo quando la timeline conferma il pattern old->new.
+                strongDifferentialCut = collectCutDiagnostics &&
+                    candidates[c].Value >= strongDifferentialScore &&
+                    oldMseScores[boundaryIdx] - newMseScores[boundaryIdx] >= cutSwitchMseMargin &&
+                    (candidateVerification == null || !candidateVerification.AudioRejected);
+                timelineCutStrongBoundary = this._currentAnalysisUsesTimelineMap &&
+                    offsetDirection < 0 &&
+                    timelineCutOldBeforeEvidence &&
+                    !timelineCutForwardOldDominates &&
+                    oldMseScores[boundaryIdx] - newMseScores[boundaryIdx] >= 1000.0 &&
+                    (candidateVerification == null || !candidateVerification.AudioRejected);
+                if (candidateRejected && !strongDifferentialCut && !timelineCutStrongBoundary)
+                {
+                    continue;
+                }
+
+                // Se il candidato e' accettato solo da timeline map, impedisce il successivo
+                // spostamento automatico su motion forte: quel fallback lo renderebbe tardivo.
+                if (candidateRejected && (strongDifferentialCut || timelineCutStrongBoundary))
+                {
+                    timelineCutBoundaryAccepted = timelineCutStrongBoundary;
+                }
+                if (candidateRejected && strongDifferentialCut && candidateDiagnostic != null)
+                {
+                    candidateDiagnostic.Decision = "accepted-strong-differential";
+                }
+                if (candidateRejected && timelineCutStrongBoundary && candidateDiagnostic != null)
+                {
+                    candidateDiagnostic.CanDeferToGlobalVerification = true;
+                    candidateDiagnostic.Decision = "accepted-timeline-cut-boundary";
+                }
+
+                if (duration > 60.0 && Math.Abs(newOffsetSec - oldOffsetSec) <= 1.5 && boundaryIdx >= 0 && boundaryIdx < motionScores.Length && !(this._currentAnalysisUsesTimelineMap && offsetDirection < 0 && (candidateLocalVerifiedOrDeferred || timelineCutBoundaryAccepted)))
+                {
+                    // Nei CUT lunghi con boundary debole prova l'ultimo spostamento su motion forte,
+                    // ma non scavalca candidati timeline gia' verificati o deferibili.
+                    for (int i = boundaryIdx + 1; i < maxIdx; i++)
+                    {
+                        if (!valid[i] || motionScores[i] < strongMotionThreshold)
+                        {
+                            continue;
+                        }
+
+                        double motionBoundary = sourceTimestampsMs[i] / 1000.0;
+                        DeepAnalysisLocalVerificationDiagnostic motionVerification = this.VerifyTransitionLocal(sourceFile, langFile, motionBoundary, oldOffsetSec, newOffsetSec, inverseRatio);
+                        if (motionVerification != null && motionVerification.Verified)
+                        {
+                            if (collectCutDiagnostics && transition.Candidates.Count < candidateDiagnosticsLimit)
+                            {
+                                transition.Candidates.Add(new DeepAnalysisTransitionCandidateDiagnostic
+                                {
+                                    SourceSec = motionBoundary,
+                                    Score = candidates[c].Value,
+                                    MotionMse = motionScores[i],
+                                    OldMse = oldMseScores[i],
+                                    NewMse = newMseScores[i],
+                                    Verified = motionVerification.Verified,
+                                    CanDeferToGlobalVerification = motionVerification.CanDeferToGlobalVerification,
+                                    AudioRejected = motionVerification.AudioRejected,
+                                    Decision = "accepted-strong-motion"
+                                });
+                            }
+                            ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: boundary spostato su motion forte a src " + motionBoundary.ToString("F3", CultureInfo.InvariantCulture) + "s (motion=" + motionScores[i].ToString("F1", CultureInfo.InvariantCulture) + ")");
+                            return motionBoundary;
+                        }
+                    }
+                }
+
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: boundary video a src " + result.ToString("F3", CultureInfo.InvariantCulture) + "s (score=" + candidates[c].Value.ToString("F1", CultureInfo.InvariantCulture) + ")");
+                return result;
             }
 
             ConsoleHelper.Write(LogSection.Deep, LogLevel.Warning, "    Scansione differenziale: non conclusiva");
@@ -2363,6 +2453,7 @@ namespace RemuxForge.Core.Analysis.Deep
             double offsetDeltaSec = newOffsetSec - oldOffsetSec;
             double transitionDurationSec = Math.Abs(offsetDeltaSec);
             bool insertSilenceTransition = this._currentAnalysisUsesTimelineMap && offsetDeltaSec > 0.0;
+            bool timelineCutTransition = this._currentAnalysisUsesTimelineMap && offsetDeltaSec < 0.0;
             double beforeSrcSec = crossoverSrcSec - 1.5;
             double afterSrcSec = crossoverSrcSec + 1.5;
             double forwardSrcSec = crossoverSrcSec + Math.Max(4.0, transitionDurationSec + 2.0);
@@ -2377,6 +2468,7 @@ namespace RemuxForge.Core.Analysis.Deep
             bool postVisualConsistent;
             bool beforeSsimStable;
             bool beforeSsimStrictStable;
+            bool beforeTimelineCutIndeterminate;
             bool beforeMseStable;
             bool afterSsimImproved;
             bool forwardSsimImproved;
@@ -2387,6 +2479,7 @@ namespace RemuxForge.Core.Analysis.Deep
             bool postSsimRejects;
             bool postSsimAvailable;
             bool ssimPostCanDefer;
+            bool ssimForwardCanDefer;
             bool msePostCanDefer;
             bool mseForwardCanDefer;
             bool mseIndeterminateCanDefer;
@@ -2394,6 +2487,16 @@ namespace RemuxForge.Core.Analysis.Deep
             bool mseVisualVerified;
             bool mseAfterNotWorse;
             bool mseForwardImproved;
+            bool beforeSsimNewBetter;
+            bool timelineCutLocalBeforeNewBetter;
+            bool timelineCutLateGuardNewBetter;
+            bool timelineCutBoundaryCanDefer;
+            bool timelineCutAfterNotBlocking;
+            double timelineCutLateGuardSrcSec;
+            double timelineCutLateGuardOldMse;
+            double timelineCutLateGuardOldSsim;
+            double timelineCutLateGuardNewMse;
+            double timelineCutLateGuardNewSsim;
             double afterForwardOldTotal;
             double afterForwardNewTotal;
             double afterForwardImprovementRatio;
@@ -2464,6 +2567,7 @@ namespace RemuxForge.Core.Analysis.Deep
             beforeSsimStable = result.BeforeOldSsim + LOCAL_SSIM_TIE_MARGIN >= result.BeforeNewSsim;
             beforeSsimStrictStable = result.BeforeOldSsim + 0.001 >= result.BeforeNewSsim;
             beforeMseStable = result.BeforeOldMse <= result.BeforeNewMse * 1.02;
+            beforeSsimNewBetter = result.BeforeNewSsim > result.BeforeOldSsim + LOCAL_SSIM_CLEAR_MARGIN;
             afterSsimImproved = result.AfterNewSsim > result.AfterOldSsim + LOCAL_SSIM_CLEAR_MARGIN;
             forwardSsimImproved = result.ForwardNewSsim > result.ForwardOldSsim + LOCAL_SSIM_CLEAR_MARGIN;
             afterSsimNotWorse = result.AfterNewSsim + LOCAL_SSIM_TIE_MARGIN >= result.AfterOldSsim;
@@ -2473,6 +2577,21 @@ namespace RemuxForge.Core.Analysis.Deep
             postSsimAvailable = result.AfterOldSsim > 0.0 && result.AfterNewSsim > 0.0 && result.ForwardOldSsim > 0.0 && result.ForwardNewSsim > 0.0;
             postSsimRejects = postSsimAvailable && !afterSsimNotWorse && !forwardSsimNotWorse;
             this.VerifyAudioTransitionLocal(sourceFile, langFile, crossoverSrcSec, oldOffsetSec, newOffsetSec, inverseRatio, result);
+            if (timelineCutTransition && !result.AudioVerified)
+            {
+                timelineCutLocalBeforeNewBetter = beforeSsimNewBetter || result.BeforeNewMse < result.BeforeOldMse * 0.75;
+                timelineCutLateGuardSrcSec = crossoverSrcSec - Math.Max(LOCAL_TIMELINE_CUT_FORWARD_SEC, transitionDurationSec + 2.0);
+                if (timelineCutLateGuardSrcSec < 0.0) { timelineCutLateGuardSrcSec = 0.0; }
+                this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, timelineCutLateGuardSrcSec, oldOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out timelineCutLateGuardOldMse, out timelineCutLateGuardOldSsim);
+                this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, timelineCutLateGuardSrcSec, newOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out timelineCutLateGuardNewMse, out timelineCutLateGuardNewSsim);
+                timelineCutLateGuardNewBetter = timelineCutLateGuardNewSsim > timelineCutLateGuardOldSsim + LOCAL_SSIM_CLEAR_MARGIN || timelineCutLateGuardNewMse < timelineCutLateGuardOldMse * 0.75;
+                if (timelineCutLocalBeforeNewBetter || timelineCutLateGuardNewBetter)
+                {
+                    result.Verified = false;
+                    result.CanDeferToGlobalVerification = false;
+                    return result;
+                }
+            }
 
             // SSIM decide quando il segnale e' chiaro; MSE resta fallback quando SSIM e' saturo o quasi pari
             if (this._currentAnalysisUsesTimelineMap)
@@ -2498,12 +2617,16 @@ namespace RemuxForge.Core.Analysis.Deep
                 }
                 else
                 {
-                    beforeStable = transitionDurationSec > 1.5 || (beforeSsimStrictStable && beforeMseStable) || result.BeforeOldMse <= result.BeforeNewMse * 0.90;
+                    beforeTimelineCutIndeterminate = timelineCutTransition && Math.Abs(result.BeforeNewSsim - result.BeforeOldSsim) <= LOCAL_SSIM_TIE_MARGIN && result.BeforeNewMse <= result.BeforeOldMse * 1.02;
+                    beforeStable = transitionDurationSec > 1.5 || beforeTimelineCutIndeterminate || (beforeSsimStrictStable && beforeMseStable) || result.BeforeOldMse <= result.BeforeNewMse * 0.90;
                     afterForwardOldTotal = this.SumValidMse(result.AfterOldMse, result.ForwardOldMse, double.MaxValue);
                     afterForwardNewTotal = this.SumValidMse(result.AfterNewMse, result.ForwardNewMse, double.MaxValue);
                     afterForwardImprovementRatio = this.ComputeSafeImprovementRatio(afterForwardOldTotal, afterForwardNewTotal);
                     postVisualConsistent = result.AfterNewMse <= result.AfterOldMse * 1.02 && result.ForwardNewMse <= result.ForwardOldMse * 1.02 && result.ImprovementRatio >= 1.10;
+                    timelineCutAfterNotBlocking = result.AfterNewSsim <= 0.0 || afterSsimNotWorse || result.AfterNewMse <= result.AfterOldMse * 1.10;
+                    timelineCutBoundaryCanDefer = timelineCutTransition && transitionDurationSec >= 0.5 && beforeStable && timelineCutAfterNotBlocking && !postSsimRejects;
                     ssimPostCanDefer = transitionDurationSec >= 0.5 && beforeStable && postSsimConsistent;
+                    ssimForwardCanDefer = transitionDurationSec >= 0.5 && timelineCutTransition && beforeStable && timelineCutAfterNotBlocking && forwardSsimImproved;
                     mseForwardCanDefer = beforeStable && result.ForwardImprovementRatio >= LOCAL_FORWARD_STRONG_RATIO && afterForwardImprovementRatio >= 1.10;
                     mseVisualPostCanDefer = transitionDurationSec >= 0.5 && beforeStable && postVisualConsistent;
                     msePostCanDefer = mseForwardCanDefer || mseVisualPostCanDefer;
@@ -2511,7 +2634,7 @@ namespace RemuxForge.Core.Analysis.Deep
                     mseForwardImproved = result.ForwardNewMse < result.ForwardOldMse && afterForwardImprovementRatio >= 1.10;
                     mseVisualVerified = mseAfterNotWorse && mseForwardImproved;
                     visualVerified = beforeStable && (postSsimStrong || mseVisualVerified);
-                    result.CanDeferToGlobalVerification = !result.AudioRejected && (result.AudioVerified || visualVerified || (!postSsimRejects && (ssimPostCanDefer || msePostCanDefer)));
+                    result.CanDeferToGlobalVerification = !result.AudioRejected && (result.AudioVerified || visualVerified || (!postSsimRejects && (ssimPostCanDefer || ssimForwardCanDefer || msePostCanDefer || timelineCutBoundaryCanDefer)));
                     result.Verified = !result.AudioRejected && (visualVerified || result.AudioVerified);
                 }
             }

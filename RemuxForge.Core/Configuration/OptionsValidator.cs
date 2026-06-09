@@ -68,7 +68,7 @@ namespace RemuxForge.Core.Configuration
             }
 
             ValidateSpeedCorrection(options, result);
-            ValidateAudioProcessing(options, needsMerge, result);
+            ValidateAudioProcessing(options, result);
             ValidateAudioSourceFill(options, needsMerge, result);
             ValidateAnalysisCrop(options, result);
             ValidateRegex(options.MatchPattern, result);
@@ -175,7 +175,7 @@ namespace RemuxForge.Core.Configuration
         /// <summary>
         /// Valida opzioni del processing audio
         /// </summary>
-        private static void ValidateAudioProcessing(Options options, bool needsMerge, OptionsValidationResult result)
+        private static void ValidateAudioProcessing(Options options, OptionsValidationResult result)
         {
             if (!IsValidAudioFormat(options.AudioFormat))
             {
@@ -246,17 +246,12 @@ namespace RemuxForge.Core.Configuration
         /// <param name="result">Risultato validazione da aggiornare</param>
         private static void ValidateAnalysisCrop(Options options, OptionsValidationResult result)
         {
-            int left;
-            int right;
-            int top;
-            int bottom;
-
-            if (!Options.TryParseAnalysisCropPx(options.AnalysisCropSourcePx, out left, out right, out top, out bottom))
+            if (!Options.TryParseAnalysisCropPx(options.AnalysisCropSourcePx, out _, out _, out _, out _))
             {
                 result.AddError(AppText.T("validation.invalidAnalysisCropSource"));
             }
 
-            if (!Options.TryParseAnalysisCropPx(options.AnalysisCropLanguagePx, out left, out right, out top, out bottom))
+            if (!Options.TryParseAnalysisCropPx(options.AnalysisCropLanguagePx, out _, out _, out _, out _))
             {
                 result.AddError(AppText.T("validation.invalidAnalysisCropLang"));
             }
@@ -408,7 +403,7 @@ namespace RemuxForge.Core.Configuration
         {
             int modes = 0;
             bool sourceIsFolder = false;
-            bool sourceIsFile = false;
+            bool sourceIsFile;
 
             ValidateExtensions(options, result);
 

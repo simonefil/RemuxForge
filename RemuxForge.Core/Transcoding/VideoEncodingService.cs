@@ -420,14 +420,7 @@ namespace RemuxForge.Core.Transcoding
             {
                 // SVT-AV1: "0 - VQ (Psychovisual)" -> "0"
                 int dashIdx = tune.IndexOf(" - ", StringComparison.Ordinal);
-                if (dashIdx >= 0)
-                {
-                    result = tune.Substring(0, dashIdx).Trim();
-                }
-                else
-                {
-                    result = tune;
-                }
+                result = dashIdx >= 0 ? tune.Substring(0, dashIdx).Trim() : tune;
             }
             else
             {

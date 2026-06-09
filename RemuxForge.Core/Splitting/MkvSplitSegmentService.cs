@@ -243,7 +243,6 @@ namespace RemuxForge.Core.Splitting
                 s = !string.IsNullOrEmpty(args.TrimStart) ? args.TrimStart.Trim() : "0";
                 e = !string.IsNullOrEmpty(args.TrimEnd) ? args.TrimEnd.Trim() : "END";
                 args.Ranges = s + "-" + e;
-                return;
             }
         }
 
@@ -540,18 +539,17 @@ namespace RemuxForge.Core.Splitting
             string template;
 
             // Rendering del template custom o del default della modalita
-            template = !string.IsNullOrEmpty(args.OutputTemplate) ? args.OutputTemplate : DefaultTemplate(mode, args);
+            template = !string.IsNullOrEmpty(args.OutputTemplate) ? args.OutputTemplate : DefaultTemplate(mode);
             foreach (MkvSplitSegment s in segments)
             {
-                s.File = SanitizeFilename(RenderTemplate(template, s, args, mode, inputFile));
+                s.File = SanitizeFilename(RenderTemplate(template, s, inputFile));
             }
         }
 
         /// <summary>Ritorna il template di default per la modalità.</summary>
         /// <param name="mode">Modalità di split.</param>
-        /// <param name="args">Argomenti CLI per determinare il naming.</param>
         /// <returns>Template di default per la modalità.</returns>
-        private static string DefaultTemplate(MkvSplitMode mode, MkvSplitOptions args)
+        private static string DefaultTemplate(MkvSplitMode mode)
         {
             switch (mode)
             {
@@ -564,11 +562,9 @@ namespace RemuxForge.Core.Splitting
         /// <summary>Renderizza un template Python-style con variabili {n}, {n+offset}, {source_name}, {start}, {end}, {chapter_name}.</summary>
         /// <param name="template">Template string da renderizzare.</param>
         /// <param name="seg">Segmento corrente per il rendering delle variabili.</param>
-        /// <param name="args">Argomenti CLI parsati.</param>
-        /// <param name="mode">Modalità di split effettiva.</param>
         /// <param name="inputFile">File di input (serve per {source_name}).</param>
         /// <returns>Stringa renderizzata.</returns>
-        private static string RenderTemplate(string template, MkvSplitSegment seg, MkvSplitOptions args, MkvSplitMode mode, string inputFile)
+        private static string RenderTemplate(string template, MkvSplitSegment seg, string inputFile)
         {
             string sourceName;
             string chapterName;
@@ -690,7 +686,6 @@ namespace RemuxForge.Core.Splitting
                 {
                     width = width.Substring(1);
                 }
-                w = 0;
                 int.TryParse(width, NumberStyles.Integer, CultureInfo.InvariantCulture, out w);
                 return value.ToString("D" + w.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
             }
@@ -743,16 +738,20 @@ namespace RemuxForge.Core.Splitting
                 s = seg.StartFrame;
                 if (frameMap[s].Key) { continue; }
 
-                // Ricerca del keyframe prima e dopo rispetto allo start corrente
-                before = s > 0 ? FindKeyframe(frameMap, s - 1, true) : (int?)null;
-                after = s + 1 < frameMap.Count ? FindKeyframe(frameMap, s + 1, false) : (int?)null;
-
                 // Scelta del nuovo start in base alla strategia
-                if (mode == MkvSplitSnapMode.Before) { newS = before; }
-                else if (mode == MkvSplitSnapMode.After) { newS = after; }
+                if (mode == MkvSplitSnapMode.Before)
+                {
+                    newS = s > 0 ? FindKeyframe(frameMap, s - 1, true) : null;
+                }
+                else if (mode == MkvSplitSnapMode.After)
+                {
+                    newS = s + 1 < frameMap.Count ? FindKeyframe(frameMap, s + 1, false) : null;
+                }
                 else
                 {
                     // Nearest: il più vicino in distanza di frame
+                    before = s > 0 ? FindKeyframe(frameMap, s - 1, true) : null;
+                    after = s + 1 < frameMap.Count ? FindKeyframe(frameMap, s + 1, false) : null;
                     if (before == null) { newS = after; }
                     else if (after == null) { newS = before; }
                     else { newS = (s - before.Value) <= (after.Value - s) ? before : after; }

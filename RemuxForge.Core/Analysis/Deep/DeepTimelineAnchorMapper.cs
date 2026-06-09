@@ -192,6 +192,7 @@ namespace RemuxForge.Core.Analysis.Deep
         /// <param name="langFile">File lingua</param>
         /// <param name="sourceDurationSec">Durata source</param>
         /// <param name="searchRadiusMs">Raggio ricerca</param>
+        /// <param name="inverseRatio">Rapporto inverso speed correction</param>
         /// <param name="diagnostic">Diagnostica timeline da aggiornare</param>
         /// <returns>True se la scansione visuale e' stata avviata</returns>
         private bool BuildVisualAnchors(string sourceFile, string langFile, double sourceDurationSec, int searchRadiusMs, double inverseRatio, DeepAnalysisTimelineMapDiagnostic diagnostic)
@@ -227,6 +228,7 @@ namespace RemuxForge.Core.Analysis.Deep
         /// <param name="langFile">File lingua</param>
         /// <param name="sourceDurationSec">Durata source</param>
         /// <param name="searchRadiusMs">Raggio ricerca</param>
+        /// <param name="inverseRatio">Rapporto inverso speed correction</param>
         /// <param name="diagnostic">Diagnostica timeline da aggiornare</param>
         private void DensifyVisualTransitionAnchors(string sourceFile, string langFile, double sourceDurationSec, int searchRadiusMs, double inverseRatio, DeepAnalysisTimelineMapDiagnostic diagnostic)
         {
@@ -288,10 +290,7 @@ namespace RemuxForge.Core.Analysis.Deep
             centers.Sort();
             denseAnchors = this.BuildVisualAnchorsParallel(sourceFile, langFile, centers, searchRadiusMs, inverseRatio, "anchor video dense non conclusivo");
             diagnostic.Anchors.AddRange(denseAnchors);
-            diagnostic.Anchors.Sort(delegate (DeepAnalysisTimelineAnchorDiagnostic left, DeepAnalysisTimelineAnchorDiagnostic right)
-            {
-                return left.SourceCenterSec.CompareTo(right.SourceCenterSec);
-            });
+            diagnostic.Anchors.Sort((left, right) => left.SourceCenterSec.CompareTo(right.SourceCenterSec));
         }
 
         /// <summary>
@@ -301,6 +300,7 @@ namespace RemuxForge.Core.Analysis.Deep
         /// <param name="langFile">File lingua</param>
         /// <param name="centers">Centri source da analizzare</param>
         /// <param name="searchRadiusMs">Raggio ricerca</param>
+        /// <param name="inverseRatio">Rapporto inverso speed correction</param>
         /// <param name="rejectReason">Motivo da assegnare agli anchor non conclusivi</param>
         /// <returns>Array anchor ordinato come i centri in input</returns>
         private DeepAnalysisTimelineAnchorDiagnostic[] BuildVisualAnchorsParallel(string sourceFile, string langFile, List<double> centers, int searchRadiusMs, double inverseRatio, string rejectReason)

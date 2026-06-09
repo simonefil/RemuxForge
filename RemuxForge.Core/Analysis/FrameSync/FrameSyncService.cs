@@ -1494,6 +1494,8 @@ namespace RemuxForge.Core.Analysis.FrameSync
             bestDescriptorVotes = 0;
             verifiedDelays.Clear();
 
+            // Primo passaggio: associa ogni cut source al cut language piu' vicino previsto
+            // dall'offset candidato, poi verifica il contenuto visuale attorno al taglio.
             for (int s = 0; s < validSourceCuts.Count; s++)
             {
                 srcCutMs = sourceTimestampsMs[validSourceCuts[s]];
@@ -1512,6 +1514,8 @@ namespace RemuxForge.Core.Analysis.FrameSync
                         descriptorVotes = 0;
                         bestLocalShift = 0;
 
+                        // Compensa piccoli errori di quantizzazione/PTS provando il cut language
+                        // con uno shift locale di pochi frame.
                         for (int shift = -2; shift <= 2; shift++)
                         {
                             int shiftedSigStartLng = sigStartLng + shift;
@@ -1531,6 +1535,8 @@ namespace RemuxForge.Core.Analysis.FrameSync
                             localVisualScore = this._candidateScorer.ComputeVisualCandidateScore(localSsim, localBlurCorrelation, localEdgeCorrelation, localBlockCorrelation, localMotionCorrelation, localHashSimilarity);
                             localDescriptorVotes = this._candidateScorer.CountDescriptorVotes(localSsim, localBlurCorrelation, localEdgeCorrelation, localBlockCorrelation, localMotionCorrelation, localHashSimilarity);
 
+                            // Preferisce lo score visuale migliore; a score quasi pari sceglie il match
+                            // con piu' descriptor concordanti, piu' robusto su frame statici o compressi.
                             if (localVisualScore > visualScore || (localDescriptorVotes > descriptorVotes && Math.Abs(localVisualScore - visualScore) < 0.02))
                             {
                                 blurCorrelation = localBlurCorrelation;
@@ -1544,6 +1550,8 @@ namespace RemuxForge.Core.Analysis.FrameSync
                             }
                         }
 
+                        // Un cut entra nel set verificato solo se abbastanza descriptor concordano.
+                        // Il delay salvato usa il timestamp reale del cut shiftato, non il candidato teorico.
                         if (descriptorVotes >= this._fsConfig.MinDescriptorVotes)
                         {
                             double actualLngMs = langTimestampsMs[validLangCuts[nearestLangCutIdx]];
@@ -1590,6 +1598,8 @@ namespace RemuxForge.Core.Analysis.FrameSync
 
             if (verifiedCount < this._vsConfig.MinSceneCuts)
             {
+                // Fallback: se i descriptor visuali non danno abbastanza cut validi,
+                // usa fingerprint temporali meno selettivi ma ancora ancorati ai cut.
                 verifiedDelays.Clear();
                 bestScore = 0.0;
                 bestBlurScore = 0.0;
@@ -1633,9 +1643,13 @@ namespace RemuxForge.Core.Analysis.FrameSync
 
             if (verifiedDelays.Count >= this._vsConfig.MinSceneCuts)
             {
+                // L'offset finale del candidato e' la mediana dei delay verificati:
+                // riduce l'impatto di un singolo cut sbagliato o di un PTS locale rumoroso.
                 verifiedDelays.Sort();
                 medianDelay = verifiedDelays[verifiedDelays.Count / 2];
 
+                // La mediana viene accettata solo se abbastanza delay cadono entro un frame:
+                // senza questa coerenza il candidato e' temporalmente instabile.
                 for (int i = 0; i < verifiedDelays.Count; i++)
                 {
                     if (Math.Abs(verifiedDelays[i] - medianDelay) <= frameIntervalMs)
@@ -1882,13 +1896,6 @@ namespace RemuxForge.Core.Analysis.FrameSync
 
             return cache[cutIndex];
         }
-
-
-
-
-
-
-
 
         /// <summary>
         /// Verifica un checkpoint con ricerca locale visuale quando i cut non bastano
@@ -2576,7 +2583,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         /// </summary>
         private bool IsCheckpointOffsetNearInitial(int resultOffset, int baseOffset, double frameIntervalMs)
         {
-            bool result = false;
+            bool result;
             int driftMs = Math.Abs(resultOffset - baseOffset);
             int toleranceMs = (int)Math.Round(frameIntervalMs * this._fsConfig.InitialCheckpointDriftPenaltyFrames);
 

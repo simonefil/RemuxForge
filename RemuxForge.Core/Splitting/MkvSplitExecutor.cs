@@ -226,11 +226,6 @@ namespace RemuxForge.Core.Splitting
 
         #region Pipeline fast (ffmpeg seek + stream copy)
 
-        /// <summary>Fast path con snap attivo: mkvmerge --split parts per default, ffmpeg stream copy solo se il file ha audio FLAC.</summary>
-        /// <param name="seg">Segmento da produrre.</param>
-        /// <param name="inputFile">File MKV originale.</param>
-        /// <param name="outputFile">File MKV di output.</param>
-        /// <param name="tempDir">Directory temporanea dedicata al segmento.</param>
         /// <summary>Fast path: mkvmerge --split parts per default, ffmpeg stream copy solo se il file ha audio FLAC. Se VFR applica timecodes v2.</summary>
         /// <param name="seg">Segmento da elaborare.</param>
         /// <param name="inputFile">File MKV di input.</param>

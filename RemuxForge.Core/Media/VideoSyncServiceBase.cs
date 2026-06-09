@@ -143,24 +143,6 @@ namespace RemuxForge.Core.Media
         #region Metodi protetti
 
         /// <summary>
-        /// Estrae frame di un segmento video come byte array grayscale
-        /// Ritorna timestamps assoluti reali (ms nel file sorgente) parsati da ffmpeg showinfo,
-        /// rendendo il matching robusto anche su file VFR
-        /// </summary>
-        /// <param name="filePath">Percorso file video</param>
-        /// <param name="startMs">Inizio estrazione in millisecondi</param>
-        /// <param name="durationSec">Durata estrazione in secondi</param>
-        /// <param name="targetFps">FPS target per normalizzazione (0 = passthrough senza decimazione)</param>
-        /// <param name="geometryCropToFourThree">Se true, croppa il frame a 4:3 centrato prima dello scale (rimuove pillarbox)</param>
-        /// <param name="frames">Lista frame grayscale estratti (output)</param>
-        /// <param name="timestampsMs">Array di timestamp assoluti in ms, uno per frame estratto (output)</param>
-        protected void ExtractSegment(string filePath, int startMs, double durationSec, double targetFps, bool geometryCropToFourThree, out List<byte[]> frames, out double[] timestampsMs)
-        {
-            string manualCropPx = this.ResolveManualAnalysisCrop(filePath);
-            this.ExtractSegment(filePath, startMs, durationSec, targetFps, geometryCropToFourThree, manualCropPx, out frames, out timestampsMs);
-        }
-
-        /// <summary>
         /// Estrae frame di un segmento video applicando un eventuale crop manuale di analisi
         /// </summary>
         /// <param name="filePath">Percorso file video</param>
@@ -451,19 +433,6 @@ namespace RemuxForge.Core.Media
             }
 
             return result;
-        }
-
-        /// <summary>
-        /// Rileva bordi neri stabili nel segmento e normalizza i frame croppando e riscalando
-        /// alla risoluzione di analisi. Esegue lavoro solo se il crop rilevato e' significativo
-        /// </summary>
-        /// <param name="filePath">Percorso file, usato come chiave cache profilo</param>
-        /// <param name="frames">Frame grayscale da normalizzare in-place</param>
-        protected void NormalizeBlackBorders(string filePath, List<byte[]> frames)
-        {
-            string manualCropPx = this.ResolveManualAnalysisCrop(filePath);
-            bool geometryCropToFourThree = this.UseGeometryCrop(false, manualCropPx);
-            this.NormalizeBlackBorders(filePath, geometryCropToFourThree, manualCropPx, frames);
         }
 
         /// <summary>

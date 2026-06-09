@@ -68,14 +68,6 @@ namespace RemuxForge.Core.Media.Ffmpeg
         #region Metodi pubblici
 
         /// <summary>
-        /// Estrae frame di un segmento video come byte array grayscale
-        /// </summary>
-        public void ExtractSegment(string filePath, int startMs, double durationSec, double targetFps, bool geometryCropToFourThree, out List<byte[]> frames, out double[] timestampsMs)
-        {
-            this.ExtractSegment(filePath, startMs, durationSec, targetFps, geometryCropToFourThree, "", out frames, out timestampsMs);
-        }
-
-        /// <summary>
         /// Estrae frame di un segmento video applicando un eventuale crop manuale prima dello scale
         /// </summary>
         public void ExtractSegment(string filePath, int startMs, double durationSec, double targetFps, bool geometryCropToFourThree, string manualCropPx, out List<byte[]> frames, out double[] timestampsMs)
@@ -92,8 +84,6 @@ namespace RemuxForge.Core.Media.Ffmpeg
             int frameSize = this._videoSyncConfig.FrameWidth * this._videoSyncConfig.FrameHeight;
             List<byte[]> extractedFrames = frames;
             List<string> args = new List<string>();
-            byte[] frameData;
-            int totalRead = 0;
             string stderrText;
             MatchCollection ptsMatches;
             List<double> tsList = new List<double>();
@@ -119,7 +109,6 @@ namespace RemuxForge.Core.Media.Ffmpeg
                     args.Clear();
                     extractedFrames.Clear();
                     tsList.Clear();
-                    totalRead = 0;
 
                     args.Add("-nostdin");
                     args.Add("-hide_banner");
@@ -145,25 +134,8 @@ namespace RemuxForge.Core.Media.Ffmpeg
                     args.Add("rawvideo");
                     args.Add("-");
 
-                    frameData = new byte[frameSize];
-                    processResult = ProcessRunner.RunBinaryStdout(this._ffmpegPath, args.ToArray(), (buffer, bytesRead) =>
-                    {
-                        int offset = 0;
-                        while (offset < bytesRead)
-                        {
-                            int copyCount = Math.Min(frameSize - totalRead, bytesRead - offset);
-                            Array.Copy(buffer, offset, frameData, totalRead, copyCount);
-                            totalRead += copyCount;
-                            offset += copyCount;
-
-                            if (totalRead == frameSize)
-                            {
-                                extractedFrames.Add(frameData);
-                                frameData = new byte[frameSize];
-                                totalRead = 0;
-                            }
-                        }
-                    }, timeoutMs);
+                    RawFrameStdoutState stdoutState = new RawFrameStdoutState(frameSize, extractedFrames);
+                    processResult = ProcessRunner.RunBinaryStdout(this._ffmpegPath, args.ToArray(), stdoutState.Append, timeoutMs);
 
                     stderrText = processResult.Stderr;
                     ptsMatches = s_ptsTimeRegex.Matches(stderrText);
@@ -319,6 +291,57 @@ namespace RemuxForge.Core.Media.Ffmpeg
                 ":" + left.ToString(CultureInfo.InvariantCulture) +
                 ":" + top.ToString(CultureInfo.InvariantCulture);
             return true;
+        }
+
+        #endregion
+
+        #region Classi private
+
+        /// <summary>
+        /// Stato mutabile usato dalla callback stdout per ricostruire frame raw completi
+        /// </summary>
+        private class RawFrameStdoutState
+        {
+            private readonly int _frameSize;
+
+            private readonly List<byte[]> _frames;
+
+            private byte[] _frameData;
+
+            private int _totalRead;
+
+            /// <summary>
+            /// Crea lo stato per frame raw di dimensione fissa
+            /// </summary>
+            public RawFrameStdoutState(int frameSize, List<byte[]> frames)
+            {
+                this._frameSize = frameSize;
+                this._frames = frames;
+                this._frameData = new byte[frameSize];
+                this._totalRead = 0;
+            }
+
+            /// <summary>
+            /// Accoda un chunk stdout e produce frame completi quando il buffer e' pieno
+            /// </summary>
+            public void Append(byte[] buffer, int bytesRead)
+            {
+                int offset = 0;
+                while (offset < bytesRead)
+                {
+                    int copyCount = Math.Min(this._frameSize - this._totalRead, bytesRead - offset);
+                    Array.Copy(buffer, offset, this._frameData, this._totalRead, copyCount);
+                    this._totalRead += copyCount;
+                    offset += copyCount;
+
+                    if (this._totalRead == this._frameSize)
+                    {
+                        this._frames.Add(this._frameData);
+                        this._frameData = new byte[this._frameSize];
+                        this._totalRead = 0;
+                    }
+                }
+            }
         }
 
         #endregion

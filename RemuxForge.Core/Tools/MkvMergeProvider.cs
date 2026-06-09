@@ -92,7 +92,7 @@ namespace RemuxForge.Core.Tools
         {
             bool result = false;
 
-            if (path == null || path.Length == 0 || !File.Exists(path))
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
             {
                 return result;
             }

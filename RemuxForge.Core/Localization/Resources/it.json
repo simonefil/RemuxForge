@@ -42,6 +42,7 @@
     "        --stretch-factor <f>     Stretch manuale, es. 25025/24000",
     "        --analysis-crop-source-px <L:R:T:B>",
     "        --analysis-crop-lang-px <L:R:T:B>",
+    "        --subtitle-canvas-rewrite Corregge canvas/coordinate dei sottotitoli bitmap importati quando possibile",
     "  -ad,  --audio-delay <ms>       Delay audio manuale in ms",
     "  -sd,  --subtitle-delay <ms>    Delay sottotitoli manuale in ms",
     "",
@@ -110,6 +111,7 @@
   "cli.config.speedCorrection": "  Speed correction:  {0}",
   "cli.config.manualStretch": "  Stretch manuale:   {0}",
   "cli.config.analysisCrop": "  Crop analisi:      source={0}, lang={1}",
+  "cli.config.subtitleCanvasRewrite": "  Canvas sub:        rewrite attivo",
   "cli.config.deepActive": "  Deep analysis:     ATTIVO",
   "cli.config.manualOffsetDeep": "  Offset manuale:    Audio {0}, Sub {1} (sommato a Deep Analysis)",
   "cli.config.frameSyncActive": "  Frame-sync:        ATTIVO",
@@ -595,6 +597,7 @@
   "web.config.toggle.audioOnly": "Solo audio",
   "web.config.toggle.frameSync": "Frame-sync (confronto visivo)",
   "web.config.toggle.deepAnalysis": "Deep analysis (analisi completa)",
+  "web.config.toggle.subtitleCanvasRewrite": "Rewrite canvas sub bitmap",
   "web.config.toggle.start": "Inizio",
   "web.config.toggle.end": "Fine",
   "web.config.toggle.insertSilence": "Insert silence",
@@ -948,6 +951,11 @@
     "Crop manuale applicato solo ai frame Lingua usati per matching visuale.",
     "",
     "Formato: L:R:T:B in pixel sul frame originale prima dello scale. Vuoto o 0:0:0:0 disabilita. Non croppa l'output finale."
+  ],
+  "web.config.help.remux.subCanvas.title": "Canvas sub",
+  "web.config.help.remux.subCanvas.text": [
+    "Opzionale. Riscrive canvas e coordinate dei sottotitoli bitmap importati quando il crop visuale richiede un riallineamento.",
+    "In questa versione si applica solo ai PGS e viene ignorato se la trasformazione non e' sicura."
   ],
   "web.config.help.remux.audioDelay.title": "Delay audio",
   "web.config.help.remux.audioDelay.text": "Offset manuale in millisecondi sommato al risultato della sincronizzazione automatica.",

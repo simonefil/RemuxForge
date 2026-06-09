@@ -1,6 +1,5 @@
 using RemuxForge.Core.Analysis.Diagnostics;
 using RemuxForge.Core.Analysis.Speed;
-using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Models;
 using System;
 using System.Globalization;
