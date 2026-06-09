@@ -138,6 +138,7 @@ Main remux options:
 | `-da` | `--deep-analysis` | Build a cut/insert map for edited releases |
 | | `--speed-correction` | `off`, `auto`, `manual` |
 | | `--stretch-factor` | Manual speed factor, for example `25025/24000` |
+| | `--subtitle-canvas-rewrite` | Rewrite imported bitmap subtitle canvas/coordinates when analysis geometry allows it |
 | `-ac` | `--audio-codec` | Import only matching audio codecs |
 | `-so` | `--sub-only` | Import subtitles only |
 | `-ao` | `--audio-only` | Import audio only |
