@@ -2488,6 +2488,7 @@ namespace RemuxForge.Core.Analysis.Deep
             bool mseAfterNotWorse;
             bool mseForwardImproved;
             bool beforeSsimNewBetter;
+            bool timelineCutBeforeSsimStable;
             bool timelineCutLocalBeforeNewBetter;
             bool timelineCutLateGuardNewBetter;
             bool timelineCutBoundaryCanDefer;
@@ -2532,12 +2533,12 @@ namespace RemuxForge.Core.Analysis.Deep
             result.ForwardSrcSec = forwardSrcSec;
 
             // Calcola SSIM e MSE sugli stessi campioni per confrontare vecchio e nuovo offset senza doppie estrazioni
-            this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, beforeSrcSec, oldOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out beforeOldMse, out beforeOldSsim);
-            this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, beforeSrcSec, newOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out beforeNewMse, out beforeNewSsim);
-            this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, afterSrcSec, oldOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out afterOldMse, out afterOldSsim);
-            this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, afterSrcSec, newOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out afterNewMse, out afterNewSsim);
-            this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, forwardSrcSec, oldOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out forwardOldMse, out forwardOldSsim);
-            this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, forwardSrcSec, newOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out forwardNewMse, out forwardNewSsim);
+            this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, beforeSrcSec, oldOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out beforeOldMse, out beforeOldSsim, result.VisualSamples, "before", "old");
+            this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, beforeSrcSec, newOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out beforeNewMse, out beforeNewSsim, result.VisualSamples, "before", "new");
+            this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, afterSrcSec, oldOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out afterOldMse, out afterOldSsim, result.VisualSamples, "after", "old");
+            this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, afterSrcSec, newOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out afterNewMse, out afterNewSsim, result.VisualSamples, "after", "new");
+            this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, forwardSrcSec, oldOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out forwardOldMse, out forwardOldSsim, result.VisualSamples, "forward", "old");
+            this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, forwardSrcSec, newOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out forwardNewMse, out forwardNewSsim, result.VisualSamples, "forward", "new");
             result.BeforeOldMse = beforeOldMse;
             result.BeforeNewMse = beforeNewMse;
             result.AfterOldMse = afterOldMse;
@@ -2566,6 +2567,7 @@ namespace RemuxForge.Core.Analysis.Deep
             result.ForwardImprovementRatio = this.ComputeSafeImprovementRatio(result.ForwardOldMse, result.ForwardNewMse);
             beforeSsimStable = result.BeforeOldSsim + LOCAL_SSIM_TIE_MARGIN >= result.BeforeNewSsim;
             beforeSsimStrictStable = result.BeforeOldSsim + 0.001 >= result.BeforeNewSsim;
+            timelineCutBeforeSsimStable = timelineCutTransition && beforeSsimStrictStable && result.BeforeOldSsim >= 0.90 && result.BeforeOldSsim > result.BeforeNewSsim + LOCAL_SSIM_CLEAR_MARGIN;
             beforeMseStable = result.BeforeOldMse <= result.BeforeNewMse * 1.02;
             beforeSsimNewBetter = result.BeforeNewSsim > result.BeforeOldSsim + LOCAL_SSIM_CLEAR_MARGIN;
             afterSsimImproved = result.AfterNewSsim > result.AfterOldSsim + LOCAL_SSIM_CLEAR_MARGIN;
@@ -2579,11 +2581,11 @@ namespace RemuxForge.Core.Analysis.Deep
             this.VerifyAudioTransitionLocal(sourceFile, langFile, crossoverSrcSec, oldOffsetSec, newOffsetSec, inverseRatio, result);
             if (timelineCutTransition && !result.AudioVerified)
             {
-                timelineCutLocalBeforeNewBetter = beforeSsimNewBetter || result.BeforeNewMse < result.BeforeOldMse * 0.75;
+                timelineCutLocalBeforeNewBetter = beforeSsimNewBetter || (!timelineCutBeforeSsimStable && result.BeforeNewMse < result.BeforeOldMse * 0.75);
                 timelineCutLateGuardSrcSec = crossoverSrcSec - Math.Max(LOCAL_TIMELINE_CUT_FORWARD_SEC, transitionDurationSec + 2.0);
                 if (timelineCutLateGuardSrcSec < 0.0) { timelineCutLateGuardSrcSec = 0.0; }
-                this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, timelineCutLateGuardSrcSec, oldOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out timelineCutLateGuardOldMse, out timelineCutLateGuardOldSsim);
-                this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, timelineCutLateGuardSrcSec, newOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out timelineCutLateGuardNewMse, out timelineCutLateGuardNewSsim);
+                this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, timelineCutLateGuardSrcSec, oldOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out timelineCutLateGuardOldMse, out timelineCutLateGuardOldSsim, result.VisualSamples, "lateGuard", "old");
+                this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, timelineCutLateGuardSrcSec, newOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out timelineCutLateGuardNewMse, out timelineCutLateGuardNewSsim, result.VisualSamples, "lateGuard", "new");
                 timelineCutLateGuardNewBetter = timelineCutLateGuardNewSsim > timelineCutLateGuardOldSsim + LOCAL_SSIM_CLEAR_MARGIN || timelineCutLateGuardNewMse < timelineCutLateGuardOldMse * 0.75;
                 if (timelineCutLocalBeforeNewBetter || timelineCutLateGuardNewBetter)
                 {
@@ -2618,7 +2620,7 @@ namespace RemuxForge.Core.Analysis.Deep
                 else
                 {
                     beforeTimelineCutIndeterminate = timelineCutTransition && Math.Abs(result.BeforeNewSsim - result.BeforeOldSsim) <= LOCAL_SSIM_TIE_MARGIN && result.BeforeNewMse <= result.BeforeOldMse * 1.02;
-                    beforeStable = transitionDurationSec > 1.5 || beforeTimelineCutIndeterminate || (beforeSsimStrictStable && beforeMseStable) || result.BeforeOldMse <= result.BeforeNewMse * 0.90;
+                    beforeStable = transitionDurationSec > 1.5 || timelineCutBeforeSsimStable || beforeTimelineCutIndeterminate || (beforeSsimStrictStable && beforeMseStable) || result.BeforeOldMse <= result.BeforeNewMse * 0.90;
                     afterForwardOldTotal = this.SumValidMse(result.AfterOldMse, result.ForwardOldMse, double.MaxValue);
                     afterForwardNewTotal = this.SumValidMse(result.AfterNewMse, result.ForwardNewMse, double.MaxValue);
                     afterForwardImprovementRatio = this.ComputeSafeImprovementRatio(afterForwardOldTotal, afterForwardNewTotal);

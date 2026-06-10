@@ -462,6 +462,14 @@ namespace RemuxForge.Core.Models
     public class DeepAnalysisLocalVerificationDiagnostic
     {
         /// <summary>
+        /// Costruttore
+        /// </summary>
+        public DeepAnalysisLocalVerificationDiagnostic()
+        {
+            this.VisualSamples = new List<DeepAnalysisLocalVisualScoreSampleDiagnostic>();
+        }
+
+        /// <summary>
         /// True se la verifica locale e' passata
         /// </summary>
         public bool Verified { get; set; }
@@ -569,6 +577,74 @@ namespace RemuxForge.Core.Models
         /// True se la transizione puo' essere demandata alla verifica globale
         /// </summary>
         public bool CanDeferToGlobalVerification { get; set; }
+        /// <summary>
+        /// Coppie frame effettivamente confrontate dalla verifica visuale locale
+        /// </summary>
+        public List<DeepAnalysisLocalVisualScoreSampleDiagnostic> VisualSamples { get; set; }
+    }
+
+    /// <summary>
+    /// Coppia frame usata per uno score visuale locale
+    /// </summary>
+    public class DeepAnalysisLocalVisualScoreSampleDiagnostic
+    {
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public DeepAnalysisLocalVisualScoreSampleDiagnostic()
+        {
+            this.PointName = "";
+            this.OffsetName = "";
+        }
+
+        /// <summary>
+        /// Nome del punto locale verificato
+        /// </summary>
+        public string PointName { get; set; }
+        /// <summary>
+        /// Nome offset verificato
+        /// </summary>
+        public string OffsetName { get; set; }
+        /// <summary>
+        /// Inizio finestra source richiesta
+        /// </summary>
+        public double RequestedSourceStartSec { get; set; }
+        /// <summary>
+        /// Inizio finestra language richiesta
+        /// </summary>
+        public double RequestedLanguageStartSec { get; set; }
+        /// <summary>
+        /// Timestamp reale frame source
+        /// </summary>
+        public double SourceTimestampSec { get; set; }
+        /// <summary>
+        /// Timestamp language atteso dall'offset assoluto
+        /// </summary>
+        public double OffsetLanguageTimestampSec { get; set; }
+        /// <summary>
+        /// Timestamp language target usato dal matching locale
+        /// </summary>
+        public double TargetLanguageTimestampSec { get; set; }
+        /// <summary>
+        /// Timestamp reale frame language matchato
+        /// </summary>
+        public double MatchedLanguageTimestampSec { get; set; }
+        /// <summary>
+        /// Differenza tra frame language matchato e timestamp atteso dall'offset
+        /// </summary>
+        public double OffsetMatchDeltaMs { get; set; }
+        /// <summary>
+        /// Distanza tra frame language matchato e target locale
+        /// </summary>
+        public double MatchDistanceMs { get; set; }
+        /// <summary>
+        /// MSE calcolato sulla coppia
+        /// </summary>
+        public double Mse { get; set; }
+        /// <summary>
+        /// SSIM calcolato sulla coppia
+        /// </summary>
+        public double Ssim { get; set; }
     }
 
     /// <summary>

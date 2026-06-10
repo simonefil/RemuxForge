@@ -475,17 +475,20 @@ namespace RemuxForge.Core.Analysis.Deep
         /// <param name="mse">MSE migliore trovato</param>
         /// <param name="ssim">SSIM migliore trovato</param>
         /// <returns>True se almeno un confronto valido e' stato eseguito</returns>
-        public bool TryComputeLocalVisualScoreAt(string sourceFile, string langFile, double srcSec, double offsetSec, double inverseRatio, double coarseFps, bool geometryCropSourceToFourThree, bool geometryCropLanguageToFourThree, out double mse, out double ssim)
+        public bool TryComputeLocalVisualScoreAt(string sourceFile, string langFile, double srcSec, double offsetSec, double inverseRatio, double coarseFps, bool geometryCropSourceToFourThree, bool geometryCropLanguageToFourThree, out double mse, out double ssim, List<DeepAnalysisLocalVisualScoreSampleDiagnostic> samples = null, string pointName = "", string offsetName = "")
         {
             bool result = false;
             int srcMs = (int)Math.Round(srcSec * 1000.0);
             double langMs = (srcSec - offsetSec) * 1000.0;
+            double frameIntervalMs = 1000.0 / Math.Max(coarseFps, 1.0);
+            double toleranceMs = frameIntervalMs * 2.0;
+            double languagePaddingMs = toleranceMs;
+            double langExtractStartMs;
+            double langExtractDurationSec;
             List<byte[]> srcFrames;
             double[] srcFramesTs;
             List<byte[]> langFrames;
             double[] langFramesTs;
-            double toleranceMs = (1000.0 / Math.Max(coarseFps, 1.0)) * 2.0;
-            double srcRelMs;
             double targetLangMs;
             int nearestIdx;
             double nearestDistMs;
@@ -503,8 +506,15 @@ namespace RemuxForge.Core.Analysis.Deep
                 return result;
             }
 
+            langExtractStartMs = langMs - languagePaddingMs;
+            if (langExtractStartMs < 0.0)
+            {
+                langExtractStartMs = 0.0;
+            }
+
+            langExtractDurationSec = 2.0 + ((langMs - langExtractStartMs) / 1000.0) + (languagePaddingMs / 1000.0);
             this._extractor(sourceFile, srcMs, 2.0, coarseFps, geometryCropSourceToFourThree, out srcFrames, out srcFramesTs);
-            this._extractor(langFile, (int)Math.Round(langMs), 2.0, coarseFps, geometryCropLanguageToFourThree, out langFrames, out langFramesTs);
+            this._extractor(langFile, (int)Math.Round(langExtractStartMs), langExtractDurationSec, coarseFps, geometryCropLanguageToFourThree, out langFrames, out langFramesTs);
 
             if (srcFrames.Count == 0 || langFrames.Count == 0 || srcFramesTs.Length == 0 || langFramesTs.Length == 0)
             {
@@ -513,8 +523,12 @@ namespace RemuxForge.Core.Analysis.Deep
 
             for (int i = 0; i < srcFrames.Count && i < srcFramesTs.Length; i++)
             {
-                srcRelMs = srcFramesTs[i] - srcFramesTs[0];
-                targetLangMs = langFramesTs[0] + srcRelMs;
+                targetLangMs = srcFramesTs[i] - (offsetSec * 1000.0);
+                if (Math.Abs(inverseRatio - 1.0) > 0.0001)
+                {
+                    targetLangMs = targetLangMs * inverseRatio;
+                }
+
                 nearestIdx = this.NearestTimestampIndex(langFramesTs, targetLangMs);
                 if (nearestIdx < 0 || nearestIdx >= langFrames.Count)
                 {
@@ -537,6 +551,25 @@ namespace RemuxForge.Core.Analysis.Deep
                 if (currentSsim > ssim)
                 {
                     ssim = currentSsim;
+                }
+
+                if (samples != null)
+                {
+                    samples.Add(new DeepAnalysisLocalVisualScoreSampleDiagnostic
+                    {
+                        PointName = pointName,
+                        OffsetName = offsetName,
+                        RequestedSourceStartSec = srcMs / 1000.0,
+                        RequestedLanguageStartSec = langExtractStartMs / 1000.0,
+                        SourceTimestampSec = srcFramesTs[i] / 1000.0,
+                        OffsetLanguageTimestampSec = targetLangMs / 1000.0,
+                        TargetLanguageTimestampSec = targetLangMs / 1000.0,
+                        MatchedLanguageTimestampSec = langFramesTs[nearestIdx] / 1000.0,
+                        OffsetMatchDeltaMs = langFramesTs[nearestIdx] - targetLangMs,
+                        MatchDistanceMs = nearestDistMs,
+                        Mse = currentMse,
+                        Ssim = currentSsim
+                    });
                 }
 
                 result = true;
@@ -564,15 +597,18 @@ namespace RemuxForge.Core.Analysis.Deep
             double offsetSec;
             double srcPointSec;
             double langPointMs;
+            double frameIntervalMs = 1000.0 / Math.Max(coarseFps, 1.0);
+            double toleranceMs = frameIntervalMs * 2.0;
+            double languagePaddingMs = toleranceMs;
+            double langExtractStartMs;
+            double langExtractDurationSec;
             List<byte[]> srcFrames;
             double[] srcFramesTs;
             List<byte[]> langFrames;
             double[] langFramesTs;
-            double srcRelMs;
             double targetLangMs;
             int nearestIdx;
             double nearestDistMs;
-            double toleranceMs = (1000.0 / coarseFps) * 2.0;
 
             mse = double.MaxValue;
             srcPointSec = srcPointMs / 1000.0;
@@ -597,8 +633,15 @@ namespace RemuxForge.Core.Analysis.Deep
                 return result;
             }
 
+            langExtractStartMs = langPointMs - languagePaddingMs;
+            if (langExtractStartMs < 0.0)
+            {
+                langExtractStartMs = 0.0;
+            }
+
+            langExtractDurationSec = 2.0 + ((langPointMs - langExtractStartMs) / 1000.0) + (languagePaddingMs / 1000.0);
             this._extractor(sourceFile, (int)srcPointMs, 2, coarseFps, geometryCropSourceToFourThree, out srcFrames, out srcFramesTs);
-            this._extractor(langFile, (int)langPointMs, 2, coarseFps, geometryCropLanguageToFourThree, out langFrames, out langFramesTs);
+            this._extractor(langFile, (int)langExtractStartMs, langExtractDurationSec, coarseFps, geometryCropLanguageToFourThree, out langFrames, out langFramesTs);
 
             if (srcFrames.Count == 0 || langFrames.Count == 0 || srcFramesTs.Length == 0 || langFramesTs.Length == 0)
             {
@@ -607,9 +650,13 @@ namespace RemuxForge.Core.Analysis.Deep
 
             for (int vf = 0; vf < srcFrames.Count && vf < srcFramesTs.Length; vf++)
             {
-                // Usa il miglior frame entro tolleranza, non necessariamente il primo indice
-                srcRelMs = srcFramesTs[vf] - srcFramesTs[0];
-                targetLangMs = langFramesTs[0] + srcRelMs;
+                // Usa il frame language piu' vicino al timestamp assoluto previsto dall'offset.
+                targetLangMs = srcFramesTs[vf] - (offsetSec * 1000.0);
+                if (Math.Abs(inverseRatio - 1.0) > 0.0001)
+                {
+                    targetLangMs = targetLangMs * inverseRatio;
+                }
+
                 nearestIdx = this.NearestTimestampIndex(langFramesTs, targetLangMs);
                 if (nearestIdx < 0 || nearestIdx >= langFrames.Count) { continue; }
                 nearestDistMs = Math.Abs(langFramesTs[nearestIdx] - targetLangMs);
