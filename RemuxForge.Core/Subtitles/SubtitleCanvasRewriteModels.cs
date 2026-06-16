@@ -1,19 +1,21 @@
+using System;
+
 namespace RemuxForge.Core.Subtitles
 {
     /// <summary>
     /// Piano di riscrittura canvas/coordinate per sottotitoli PGS
     /// </summary>
-    internal class PgsCanvasRewritePlan
+    internal class PgsSubtitleCanvasRewritePlan
     {
         #region Costruttore
 
         /// <summary>
         /// Costruttore
         /// </summary>
-        public PgsCanvasRewritePlan()
+        /// <param name="transform">Trasformazione geometrica</param>
+        public PgsSubtitleCanvasRewritePlan(SubtitleCanvasTransform transform)
         {
-            this.SourceCropMode = "";
-            this.LanguageCropMode = "";
+            this.Transform = transform ?? throw new ArgumentNullException(nameof(transform));
         }
 
         #endregion
@@ -21,121 +23,16 @@ namespace RemuxForge.Core.Subtitles
         #region Proprieta
 
         /// <summary>
-        /// Larghezza canvas originale del sottotitolo importato
+        /// Trasformazione geometrica del piano
         /// </summary>
-        public int InputCanvasWidth { get; set; }
+        public SubtitleCanvasTransform Transform { get; private set; }
 
         /// <summary>
-        /// Altezza canvas originale del sottotitolo importato
+        /// True se il piano richiede decoding/scaling/encoding delle bitmap ODS
         /// </summary>
-        public int InputCanvasHeight { get; set; }
-
-        /// <summary>
-        /// Larghezza canvas finale attesa dal video sorgente/output
-        /// </summary>
-        public int OutputCanvasWidth { get; set; }
-
-        /// <summary>
-        /// Altezza canvas finale attesa dal video sorgente/output
-        /// </summary>
-        public int OutputCanvasHeight { get; set; }
-
-        /// <summary>
-        /// Crop sinistro applicato al video lingua
-        /// </summary>
-        public int InputCropLeft { get; set; }
-
-        /// <summary>
-        /// Crop destro applicato al video lingua
-        /// </summary>
-        public int InputCropRight { get; set; }
-
-        /// <summary>
-        /// Crop superiore applicato al video lingua
-        /// </summary>
-        public int InputCropTop { get; set; }
-
-        /// <summary>
-        /// Crop inferiore applicato al video lingua
-        /// </summary>
-        public int InputCropBottom { get; set; }
-
-        /// <summary>
-        /// Crop sinistro applicato al video sorgente
-        /// </summary>
-        public int OutputCropLeft { get; set; }
-
-        /// <summary>
-        /// Crop destro applicato al video sorgente
-        /// </summary>
-        public int OutputCropRight { get; set; }
-
-        /// <summary>
-        /// Crop superiore applicato al video sorgente
-        /// </summary>
-        public int OutputCropTop { get; set; }
-
-        /// <summary>
-        /// Crop inferiore applicato al video sorgente
-        /// </summary>
-        public int OutputCropBottom { get; set; }
-
-        /// <summary>
-        /// Modalita' crop rilevata per il sorgente
-        /// </summary>
-        public string SourceCropMode { get; set; }
-
-        /// <summary>
-        /// Modalita' crop rilevata per il file lingua
-        /// </summary>
-        public string LanguageCropMode { get; set; }
-
-        /// <summary>
-        /// Offset X da applicare alle coordinate PGS
-        /// </summary>
-        public int OffsetX
+        public bool RequiresBitmapScaling
         {
-            get { return this.OutputCropLeft - this.InputCropLeft; }
-        }
-
-        /// <summary>
-        /// Offset Y da applicare alle coordinate PGS
-        /// </summary>
-        public int OffsetY
-        {
-            get { return this.OutputCropTop - this.InputCropTop; }
-        }
-
-        /// <summary>
-        /// Larghezza area attiva lingua dopo crop
-        /// </summary>
-        public int InputActiveWidth
-        {
-            get { return this.InputCanvasWidth - this.InputCropLeft - this.InputCropRight; }
-        }
-
-        /// <summary>
-        /// Altezza area attiva lingua dopo crop
-        /// </summary>
-        public int InputActiveHeight
-        {
-            get { return this.InputCanvasHeight - this.InputCropTop - this.InputCropBottom; }
-        }
-
-        /// <summary>
-        /// Larghezza area attiva source dopo crop
-        /// </summary>
-        public int OutputActiveWidth
-        {
-            get { return this.OutputCanvasWidth - this.OutputCropLeft - this.OutputCropRight; }
-        }
-
-        /// <summary>
-        /// Altezza area attiva source dopo crop
-        /// </summary>
-        public int OutputActiveHeight
-        {
-            get { return this.OutputCanvasHeight - this.OutputCropTop - this.OutputCropBottom; }
+            get { return this.Transform.RequiresBitmapScaling; }
         }
 
         #endregion
@@ -144,14 +41,14 @@ namespace RemuxForge.Core.Subtitles
     /// <summary>
     /// Report sintetico della riscrittura PGS
     /// </summary>
-    internal class PgsCanvasRewriteReport
+    internal class PgsSubtitleCanvasRewriteReport
     {
         #region Costruttore
 
         /// <summary>
         /// Costruttore
         /// </summary>
-        public PgsCanvasRewriteReport()
+        public PgsSubtitleCanvasRewriteReport()
         {
             this.ErrorMessage = "";
         }
@@ -159,6 +56,11 @@ namespace RemuxForge.Core.Subtitles
         #endregion
 
         #region Proprieta
+
+        /// <summary>
+        /// Messaggio errore per fallback
+        /// </summary>
+        public string ErrorMessage { get; set; }
 
         /// <summary>
         /// Display-set letti
@@ -181,9 +83,49 @@ namespace RemuxForge.Core.Subtitles
         public int ObjectCoordinatesRewritten { get; set; }
 
         /// <summary>
+        /// Campi crop oggetto PCS riscritti
+        /// </summary>
+        public int ObjectCropFieldsRewritten { get; set; }
+
+        /// <summary>
         /// Window definition riscritte
         /// </summary>
         public int WindowDefinitionsRewritten { get; set; }
+
+        /// <summary>
+        /// Bitmap oggetto decodificate
+        /// </summary>
+        public int ObjectBitmapsDecoded { get; set; }
+
+        /// <summary>
+        /// Bitmap oggetto scalate
+        /// </summary>
+        public int ObjectBitmapsScaled { get; set; }
+
+        /// <summary>
+        /// Bitmap oggetto ricodificate
+        /// </summary>
+        public int ObjectBitmapsEncoded { get; set; }
+
+        /// <summary>
+        /// Segmenti ODS riscritti
+        /// </summary>
+        public int OdsSegmentsRewritten { get; set; }
+
+        /// <summary>
+        /// Segmenti ODS prodotti in frammenti multipli
+        /// </summary>
+        public int OdsSegmentsFragmented { get; set; }
+
+        /// <summary>
+        /// Warning decoder RLE
+        /// </summary>
+        public int DecodeWarnings { get; set; }
+
+        /// <summary>
+        /// Warning scaling bitmap
+        /// </summary>
+        public int ScaleWarnings { get; set; }
 
         /// <summary>
         /// Display-set corretti con clamp locale nel canvas finale
@@ -209,11 +151,6 @@ namespace RemuxForge.Core.Subtitles
         /// Clamp massimo verso il basso applicato a un display-set
         /// </summary>
         public int MaxClampDownPx { get; set; }
-
-        /// <summary>
-        /// Messaggio errore per fallback
-        /// </summary>
-        public string ErrorMessage { get; set; }
 
         #endregion
     }

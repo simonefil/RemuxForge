@@ -14,6 +14,10 @@ namespace RemuxForge.Core.Subtitles
         /// <summary>
         /// Applica cut/insert a un cue sottotitolo, splittandolo o rimuovendolo quando necessario
         /// </summary>
+        /// <param name="startMs">Inizio cue nella timeline lingua originale</param>
+        /// <param name="endMs">Fine cue nella timeline lingua originale</param>
+        /// <param name="editMap">EditMap da applicare</param>
+        /// <returns>Intervalli cue risultanti nella timeline editata</returns>
         public static List<SubtitleCueInterval> ApplyOperationsToCue(long startMs, long endMs, EditMap editMap)
         {
             List<SubtitleCueInterval> result = new List<SubtitleCueInterval>();
@@ -29,6 +33,7 @@ namespace RemuxForge.Core.Subtitles
                 long operationStartMs = op.LangTimestampMs + cumulativeShiftMs;
                 long durationMs = op.DurationMs;
 
+                // I cut possono spezzare il cue in due intervalli o eliminarlo interamente
                 if (string.Equals(op.Type, EditOperation.CUT_SEGMENT, StringComparison.Ordinal))
                 {
                     ApplyCutToIntervals(result, operationStartMs, durationMs);
@@ -36,6 +41,7 @@ namespace RemuxForge.Core.Subtitles
                 }
                 else if (string.Equals(op.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal))
                 {
+                    // Gli insert spostano solo gli intervalli successivi al punto di inserimento
                     ApplyInsertToIntervals(result, operationStartMs, durationMs);
                     cumulativeShiftMs += durationMs;
                 }
@@ -48,6 +54,9 @@ namespace RemuxForge.Core.Subtitles
         /// <summary>
         /// Mappa un timestamp singolo sulla timeline editata. Ritorna -1 se cade dentro un taglio
         /// </summary>
+        /// <param name="timestampMs">Timestamp nella timeline lingua originale</param>
+        /// <param name="editMap">EditMap da applicare</param>
+        /// <returns>Timestamp mappato, oppure -1 se rimosso da un cut</returns>
         public static long MapPacketTimestamp(long timestampMs, EditMap editMap)
         {
             long result = timestampMs;
@@ -58,6 +67,7 @@ namespace RemuxForge.Core.Subtitles
                 long operationStartMs = op.LangTimestampMs + cumulativeShiftMs;
                 long durationMs = op.DurationMs;
 
+                // Un timestamp dentro un cut non deve piu' essere muxato
                 if (string.Equals(op.Type, EditOperation.CUT_SEGMENT, StringComparison.Ordinal))
                 {
                     if (result >= operationStartMs && result < operationStartMs + durationMs)
@@ -72,6 +82,7 @@ namespace RemuxForge.Core.Subtitles
                 }
                 else if (string.Equals(op.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal))
                 {
+                    // Gli insert non invalidano il timestamp, lo traslano se e' successivo
                     if (result >= operationStartMs)
                     {
                         result += durationMs;

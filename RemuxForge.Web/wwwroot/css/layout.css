@@ -131,6 +131,13 @@ textarea {
     -webkit-user-select: text;
 }
 
+.log-panel pre {
+    margin: 0;
+    cursor: text;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
 .detail-content,
 .detail-content * {
     user-select: text;

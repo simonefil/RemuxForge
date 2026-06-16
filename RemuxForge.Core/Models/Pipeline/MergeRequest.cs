@@ -126,7 +126,7 @@ namespace RemuxForge.Core.Models
         public Dictionary<int, string> ConvertedLangTracks { get; set; }
 
         /// <summary>
-        /// Mappa trackId lingua sub -> percorso file sub pre-processato dalla deep analysis
+        /// Mappa trackId lingua sub -> percorso file sub processato dalla timeline edit o dal canvas rewrite
         /// Le tracce in questa mappa vengono aggiunte come input separati in mkvmerge
         /// </summary>
         public Dictionary<int, string> ProcessedLangSubTracks { get; set; }

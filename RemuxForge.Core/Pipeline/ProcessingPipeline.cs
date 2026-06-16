@@ -751,7 +751,7 @@ namespace RemuxForge.Core.Pipeline
                     done = true;
                 }
 
-                // Subtitle canvas rewrite: lavora dopo DeepAnalysis per rispettare eventuali cut PGS gia' applicati.
+                // Subtitle canvas rewrite: lavora dopo il timeline edit per rispettare eventuali cut/insert gia' applicati.
                 if (!done && this._opts.SubtitleCanvasRewrite)
                 {
                     SubtitleCanvasRewriteService subtitleCanvasService = new SubtitleCanvasRewriteService(this._toolPathResolver);
@@ -836,7 +836,7 @@ namespace RemuxForge.Core.Pipeline
                 // Cleanup file convertiti temporanei
                 foreach (KeyValuePair<int, string> kvp in convertedSourceTracks) { FileHelper.DeleteTempFile(kvp.Value); }
                 foreach (KeyValuePair<int, string> kvp in convertedLangTracks) { FileHelper.DeleteTempFile(kvp.Value); }
-                foreach (KeyValuePair<int, string> kvp in processedLangSubTracks) { FileHelper.DeleteTempFile(kvp.Value); }
+                foreach (KeyValuePair<int, string> kvp in processedLangSubTracks) { this.DeleteProcessedSubtitleFile(kvp.Value); }
             }
 
             return finalOutput;
@@ -1099,6 +1099,24 @@ namespace RemuxForge.Core.Pipeline
             if (this.OnLogMessage != null)
             {
                 this.OnLogMessage(section, level, text);
+            }
+        }
+
+        /// <summary>
+        /// Cancella un sottotitolo processato e gli eventuali sidecar muxabili
+        /// </summary>
+        /// <param name="filePath">Percorso file principale</param>
+        private void DeleteProcessedSubtitleFile(string filePath)
+        {
+            if (string.IsNullOrEmpty(filePath))
+            {
+                return;
+            }
+
+            FileHelper.DeleteTempFile(filePath);
+            if (string.Equals(Path.GetExtension(filePath), ".idx", StringComparison.OrdinalIgnoreCase))
+            {
+                FileHelper.DeleteTempFile(Path.ChangeExtension(filePath, ".sub"));
             }
         }
 

@@ -389,162 +389,191 @@ namespace RemuxForge.Core.Models
                 options.SubtitleCanvasRewrite = true;
                 i++;
             }
-            else if (!RequireValue(args, i, options))
+            else if (IsRemuxValueArgument(key))
             {
-                handled = true;
-            }
-            else
-            {
-                value = args[i + 1];
-                if (key == "s" || key == "source")
+                if (RequireValue(args, i, options))
                 {
-                    options.SourceFolder = value;
-                }
-                else if (key == "l" || key == "language")
-                {
-                    options.LanguageFolder = value;
-                }
-                else if (key == "t" || key == "target-language")
-                {
-                    ParseCsvToList(value, options.TargetLanguage);
-                }
-                else if (key == "m" || key == "match-pattern")
-                {
-                    options.MatchPattern = value;
-                }
-                else if (key == "d" || key == "destination")
-                {
-                    options.DestinationFolder = value;
-                }
-                else if (key == "ad" || key == "audio-delay")
-                {
-                    if (!int.TryParse(value, out delay))
+                    value = args[i + 1];
+                    if (key == "s" || key == "source")
                     {
-                        options.ErrorMessage = AppText.F("options.invalidIntValue", "audio-delay", value);
+                        options.SourceFolder = value;
                     }
-                    options.AudioDelay = delay;
-                }
-                else if (key == "sd" || key == "subtitle-delay")
-                {
-                    if (!int.TryParse(value, out delay))
+                    else if (key == "l" || key == "language")
                     {
-                        options.ErrorMessage = AppText.F("options.invalidIntValue", "subtitle-delay", value);
+                        options.LanguageFolder = value;
                     }
-                    options.SubtitleDelay = delay;
-                }
-                else if (key == "audio-source-fill-threshold-ms")
-                {
-                    if (!int.TryParse(value, out delay))
+                    else if (key == "t" || key == "target-language")
                     {
-                        options.ErrorMessage = AppText.F("options.invalidIntValue", "audio-source-fill-threshold-ms", value);
+                        ParseCsvToList(value, options.TargetLanguage);
                     }
-                    options.AudioSourceFillThresholdMs = delay;
-                }
-                else if (key == "audio-source-fill-language")
-                {
-                    options.AudioSourceFillLanguage = value.Trim();
-                }
-                else if (key == "audio-source-fill-modes")
-                {
-                    ParseAudioSourceFillModes(value, options);
-                }
-                else if (key == "speed-correction")
-                {
-                    options.SpeedCorrectionMode = NormalizeSpeedCorrectionMode(value);
-                    if (options.SpeedCorrectionMode.Length == 0)
+                    else if (key == "m" || key == "match-pattern")
                     {
-                        options.ErrorMessage = AppText.F("options.invalidSpeedCorrection", value);
+                        options.MatchPattern = value;
                     }
-                }
-                else if (key == "stretch-factor")
-                {
-                    options.ManualStretchFactor = value.Trim();
-                    options.SpeedCorrectionMode = SPEED_CORRECTION_MANUAL;
-                }
-                else if (key == "analysis-crop-source-px" || key == "analysis-crop-source")
-                {
-                    options.AnalysisCropSourcePx = NormalizeAnalysisCropPx(value);
-                }
-                else if (key == "analysis-crop-lang-px" || key == "analysis-crop-language-px" || key == "analysis-crop-lang" || key == "analysis-crop-language")
-                {
-                    options.AnalysisCropLanguagePx = NormalizeAnalysisCropPx(value);
-                }
-                else if (key == "ac" || key == "audio-codec")
-                {
-                    ParseCsvToList(value, options.AudioCodec);
-                }
-                else if (key == "ksa" || key == "keep-source-audio")
-                {
-                    ParseCsvToList(value, options.KeepSourceAudioLangs);
-                }
-                else if (key == "ksac" || key == "keep-source-audio-codec")
-                {
-                    ParseCsvToList(value, options.KeepSourceAudioCodec);
-                }
-                else if (key == "kss" || key == "keep-source-subs")
-                {
-                    ParseCsvToList(value, options.KeepSourceSubtitleLangs);
-                }
-                else if (key == "audio-format")
-                {
-                    audioFormat = value.Trim().ToLowerInvariant();
-                    if (audioFormat == "flac" || audioFormat == "lpcm" || audioFormat == "aac" || audioFormat == "opus")
+                    else if (key == "d" || key == "destination")
                     {
-                        options.AudioFormat = audioFormat;
-                        if (options.AudioProcessingScope == "disabled")
+                        options.DestinationFolder = value;
+                    }
+                    else if (key == "ad" || key == "audio-delay")
+                    {
+                        if (!int.TryParse(value, out delay))
                         {
-                            options.AudioProcessingScope = "all";
+                            options.ErrorMessage = AppText.F("options.invalidIntValue", "audio-delay", value);
+                        }
+                        options.AudioDelay = delay;
+                    }
+                    else if (key == "sd" || key == "subtitle-delay")
+                    {
+                        if (!int.TryParse(value, out delay))
+                        {
+                            options.ErrorMessage = AppText.F("options.invalidIntValue", "subtitle-delay", value);
+                        }
+                        options.SubtitleDelay = delay;
+                    }
+                    else if (key == "audio-source-fill-threshold-ms")
+                    {
+                        if (!int.TryParse(value, out delay))
+                        {
+                            options.ErrorMessage = AppText.F("options.invalidIntValue", "audio-source-fill-threshold-ms", value);
+                        }
+                        options.AudioSourceFillThresholdMs = delay;
+                    }
+                    else if (key == "audio-source-fill-language")
+                    {
+                        options.AudioSourceFillLanguage = value.Trim();
+                    }
+                    else if (key == "audio-source-fill-modes")
+                    {
+                        ParseAudioSourceFillModes(value, options);
+                    }
+                    else if (key == "speed-correction")
+                    {
+                        options.SpeedCorrectionMode = NormalizeSpeedCorrectionMode(value);
+                        if (options.SpeedCorrectionMode.Length == 0)
+                        {
+                            options.ErrorMessage = AppText.F("options.invalidSpeedCorrection", value);
                         }
                     }
-                    else
+                    else if (key == "stretch-factor")
                     {
-                        options.ErrorMessage = AppText.F("options.invalidAudioFormat", value);
+                        options.ManualStretchFactor = value.Trim();
+                        options.SpeedCorrectionMode = SPEED_CORRECTION_MANUAL;
                     }
-                }
-                else if (key == "audio-scope")
-                {
-                    options.AudioProcessingScope = NormalizeScope(value);
-                    if (options.AudioProcessingScope.Length == 0)
+                    else if (key == "analysis-crop-source-px" || key == "analysis-crop-source")
                     {
-                        options.ErrorMessage = AppText.F("options.invalidAudioScope", value);
+                        options.AnalysisCropSourcePx = NormalizeAnalysisCropPx(value);
                     }
-                }
-                else if (key == "audio-peak-target-db")
-                {
-                    if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out peakTargetDb))
+                    else if (key == "analysis-crop-lang-px" || key == "analysis-crop-language-px" || key == "analysis-crop-lang" || key == "analysis-crop-language")
                     {
-                        options.ErrorMessage = AppText.F("options.invalidIntValue", "audio-peak-target-db", value);
+                        options.AnalysisCropLanguagePx = NormalizeAnalysisCropPx(value);
                     }
-                    options.AudioPeakTargetDb = peakTargetDb;
-                }
-                else if (key == "audio-rename-scope")
-                {
-                    options.AudioRenameScope = NormalizeScope(value);
-                    if (options.AudioRenameScope.Length == 0)
+                    else if (key == "ac" || key == "audio-codec")
                     {
-                        options.ErrorMessage = AppText.F("options.invalidAudioRenameScope", value);
+                        ParseCsvToList(value, options.AudioCodec);
                     }
-                }
-                else if (key == "mkv" || key == "mkvmerge-path")
-                {
-                    options.MkvMergePath = value;
-                }
-                else if (key == "ep" || key == "encoding-profile")
-                {
-                    options.EncodingProfileName = value;
-                }
-                else
-                {
-                    handled = false;
-                }
-
-                if (handled)
-                {
+                    else if (key == "ksa" || key == "keep-source-audio")
+                    {
+                        ParseCsvToList(value, options.KeepSourceAudioLangs);
+                    }
+                    else if (key == "ksac" || key == "keep-source-audio-codec")
+                    {
+                        ParseCsvToList(value, options.KeepSourceAudioCodec);
+                    }
+                    else if (key == "kss" || key == "keep-source-subs")
+                    {
+                        ParseCsvToList(value, options.KeepSourceSubtitleLangs);
+                    }
+                    else if (key == "audio-format")
+                    {
+                        audioFormat = value.Trim().ToLowerInvariant();
+                        if (audioFormat == "flac" || audioFormat == "lpcm" || audioFormat == "aac" || audioFormat == "opus")
+                        {
+                            options.AudioFormat = audioFormat;
+                            if (options.AudioProcessingScope == "disabled")
+                            {
+                                options.AudioProcessingScope = "all";
+                            }
+                        }
+                        else
+                        {
+                            options.ErrorMessage = AppText.F("options.invalidAudioFormat", value);
+                        }
+                    }
+                    else if (key == "audio-scope")
+                    {
+                        options.AudioProcessingScope = NormalizeScope(value);
+                        if (options.AudioProcessingScope.Length == 0)
+                        {
+                            options.ErrorMessage = AppText.F("options.invalidAudioScope", value);
+                        }
+                    }
+                    else if (key == "audio-peak-target-db")
+                    {
+                        if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out peakTargetDb))
+                        {
+                            options.ErrorMessage = AppText.F("options.invalidIntValue", "audio-peak-target-db", value);
+                        }
+                        options.AudioPeakTargetDb = peakTargetDb;
+                    }
+                    else if (key == "audio-rename-scope")
+                    {
+                        options.AudioRenameScope = NormalizeScope(value);
+                        if (options.AudioRenameScope.Length == 0)
+                        {
+                            options.ErrorMessage = AppText.F("options.invalidAudioRenameScope", value);
+                        }
+                    }
+                    else if (key == "mkv" || key == "mkvmerge-path")
+                    {
+                        options.MkvMergePath = value;
+                    }
+                    else if (key == "ep" || key == "encoding-profile")
+                    {
+                        options.EncodingProfileName = value;
+                    }
                     i += 2;
                 }
             }
+            else
+            {
+                handled = false;
+            }
 
             return handled;
+        }
+
+        /// <summary>
+        /// Indica se un argomento remux richiede un valore
+        /// </summary>
+        /// <param name="key">Chiave normalizzata</param>
+        /// <returns>True se la chiave e' una option remux con valore</returns>
+        private static bool IsRemuxValueArgument(string key)
+        {
+            return key == "s" || key == "source" ||
+                key == "l" || key == "language" ||
+                key == "t" || key == "target-language" ||
+                key == "m" || key == "match-pattern" ||
+                key == "d" || key == "destination" ||
+                key == "ad" || key == "audio-delay" ||
+                key == "sd" || key == "subtitle-delay" ||
+                key == "audio-source-fill-threshold-ms" ||
+                key == "audio-source-fill-language" ||
+                key == "audio-source-fill-modes" ||
+                key == "speed-correction" ||
+                key == "stretch-factor" ||
+                key == "analysis-crop-source-px" || key == "analysis-crop-source" ||
+                key == "analysis-crop-lang-px" || key == "analysis-crop-language-px" ||
+                key == "analysis-crop-lang" || key == "analysis-crop-language" ||
+                key == "ac" || key == "audio-codec" ||
+                key == "ksa" || key == "keep-source-audio" ||
+                key == "ksac" || key == "keep-source-audio-codec" ||
+                key == "kss" || key == "keep-source-subs" ||
+                key == "audio-format" ||
+                key == "audio-scope" ||
+                key == "audio-peak-target-db" ||
+                key == "audio-rename-scope" ||
+                key == "mkv" || key == "mkvmerge-path" ||
+                key == "ep" || key == "encoding-profile";
         }
 
         /// <summary>
@@ -589,71 +618,86 @@ namespace RemuxForge.Core.Models
                 options.Split.Force = true;
                 i++;
             }
-            else if (!RequireValue(args, i, options))
+            else if (IsSplitValueArgument(key))
             {
-                handled = true;
-            }
-            else
-            {
-                value = args[i + 1];
-                if (key == "s" || key == "source")
+                if (RequireValue(args, i, options))
                 {
-                    options.SourceFolder = value;
-                    options.Split.SourcePath = value;
-                }
-                else if (key == "source-raw")
-                {
-                    options.Split.SourceRaw = value;
-                }
-                else if (key == "d" || key == "destination" || key == "o" || key == "output-dir")
-                {
-                    options.DestinationFolder = value;
-                    options.Split.OutputDir = value;
-                }
-                else if (key == "pattern")
-                {
-                    options.Split.Pattern = value;
-                }
-                else if (key == "ranges")
-                {
-                    options.Split.Ranges = value;
-                }
-                else if (key == "split-at")
-                {
-                    options.Split.SplitAt = value;
-                }
-                else if (key == "trim-start")
-                {
-                    options.Split.TrimStart = value;
-                }
-                else if (key == "trim-end")
-                {
-                    options.Split.TrimEnd = value;
-                }
-                else if (key == "output-template")
-                {
-                    options.Split.OutputTemplate = value;
-                }
-                else if (key == "snap")
-                {
-                    options.Split.Snap = ParseSnapMode(value, options);
-                }
-                else if (key == "log")
-                {
-                    options.Split.Log = value;
-                }
-                else
-                {
-                    handled = false;
-                }
-
-                if (handled)
-                {
+                    value = args[i + 1];
+                    if (key == "s" || key == "source")
+                    {
+                        options.SourceFolder = value;
+                        options.Split.SourcePath = value;
+                    }
+                    else if (key == "source-raw")
+                    {
+                        options.Split.SourceRaw = value;
+                    }
+                    else if (key == "d" || key == "destination" || key == "o" || key == "output-dir")
+                    {
+                        options.DestinationFolder = value;
+                        options.Split.OutputDir = value;
+                    }
+                    else if (key == "pattern")
+                    {
+                        options.Split.Pattern = value;
+                    }
+                    else if (key == "ranges")
+                    {
+                        options.Split.Ranges = value;
+                    }
+                    else if (key == "split-at")
+                    {
+                        options.Split.SplitAt = value;
+                    }
+                    else if (key == "trim-start")
+                    {
+                        options.Split.TrimStart = value;
+                    }
+                    else if (key == "trim-end")
+                    {
+                        options.Split.TrimEnd = value;
+                    }
+                    else if (key == "output-template")
+                    {
+                        options.Split.OutputTemplate = value;
+                    }
+                    else if (key == "snap")
+                    {
+                        options.Split.Snap = ParseSnapMode(value, options);
+                    }
+                    else if (key == "log")
+                    {
+                        options.Split.Log = value;
+                    }
                     i += 2;
                 }
             }
+            else
+            {
+                handled = false;
+            }
 
             return handled;
+        }
+
+        /// <summary>
+        /// Indica se un argomento split richiede un valore
+        /// </summary>
+        /// <param name="key">Chiave normalizzata</param>
+        /// <returns>True se la chiave e' una option split con valore</returns>
+        private static bool IsSplitValueArgument(string key)
+        {
+            return key == "s" || key == "source" ||
+                key == "source-raw" ||
+                key == "d" || key == "destination" || key == "o" || key == "output-dir" ||
+                key == "pattern" ||
+                key == "ranges" ||
+                key == "split-at" ||
+                key == "trim-start" ||
+                key == "trim-end" ||
+                key == "output-template" ||
+                key == "snap" ||
+                key == "log";
         }
 
         /// <summary>
@@ -949,7 +993,7 @@ namespace RemuxForge.Core.Models
         public string AnalysisCropLanguagePx { get; set; }
 
         /// <summary>
-        /// Riscrive canvas e coordinate dei sottotitoli bitmap importati quando possibile
+        /// Riscrive canvas e coordinate dei sottotitoli importati quando possibile
         /// </summary>
         public bool SubtitleCanvasRewrite { get; set; }
 

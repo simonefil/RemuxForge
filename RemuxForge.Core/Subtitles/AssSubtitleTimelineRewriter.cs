@@ -30,12 +30,14 @@ namespace RemuxForge.Core.Subtitles
             int startIndex = 1;
             int endIndex = 2;
             int fieldCount = 0;
+
             // La sezione Events contiene formato campi e righe Dialogue da riscrivere
             for (int i = 0; i < lines.Length; i++)
             {
                 line = lines[i];
                 trimmed = line.Trim();
 
+                // Fuori da [Events] il file viene preservato byte-to-line senza interpretare sezioni non sottotitolo
                 if (string.Equals(trimmed, "[Events]", StringComparison.OrdinalIgnoreCase))
                 {
                     inEvents = true;
@@ -48,6 +50,7 @@ namespace RemuxForge.Core.Subtitles
                     inEvents = false;
                 }
 
+                // ASS permette ordine campi dinamico: Start/End vanno risolti dalla Format corrente
                 if (inEvents && trimmed.StartsWith("Format:", StringComparison.OrdinalIgnoreCase))
                 {
                     this.ResolveFormat(trimmed.Substring(7), out startIndex, out endIndex, out fieldCount);
@@ -55,6 +58,7 @@ namespace RemuxForge.Core.Subtitles
                     continue;
                 }
 
+                // Solo i Dialogue sono renderizzati e quindi vengono mappati sulla timeline editata
                 if (inEvents && trimmed.StartsWith("Dialogue:", StringComparison.OrdinalIgnoreCase))
                 {
                     this.AppendRewrittenDialogue(result, line, startIndex, endIndex, fieldCount, editMap);
@@ -151,6 +155,7 @@ namespace RemuxForge.Core.Subtitles
             long m;
             long s;
             long centi;
+            
             // Clamp difensivo: gli eventi ASS non possono iniziare prima di zero
             if (ms < 0)
             {

@@ -66,6 +66,9 @@ export function captureKeyboard(dotNetRef) {
             || key === 'Home' || key === 'End' || key === 'PageUp' || key === 'PageDown';
         var isSpecial = key === 'Escape' || key === 'Enter' || key === 'Delete' || key === ' ' || key === 'Alt';
         var isCtrlShortcut = ctrl && key.toLowerCase() === 'a';
+        if (isCtrlShortcut && isTextSelectionAllowed(e.target)) {
+            return;
+        }
         if (!isFKey && !isNavigation && !isSpecial && !isCtrlShortcut && !alt) {
             return;
         }
@@ -189,27 +192,35 @@ function setupSelectionGuard() {
 }
 
 function isTextSelectionAllowed(target) {
-    if (!target || !target.closest) {
+    var element = normalizeSelectionNode(target);
+    if (!element || !element.closest) {
         return false;
     }
 
-    return target.closest('.log-panel') !== null
-        || target.closest('.detail-content') !== null
-        || target.closest('input, textarea, select, [contenteditable="true"]') !== null;
+    return element.closest('.log-panel') !== null
+        || element.closest('.detail-content') !== null
+        || element.closest('input, textarea, select, [contenteditable="true"]') !== null;
 }
 
 function isSelectionAllowed(selection) {
-    var node = selection.anchorNode;
-    if (!node) {
+    var anchor = normalizeSelectionNode(selection.anchorNode);
+    var focus = normalizeSelectionNode(selection.focusNode);
+    if (!anchor && !focus) {
         return true;
     }
-    if (node.nodeType !== Node.ELEMENT_NODE) {
-        node = node.parentElement;
+
+    return isTextSelectionAllowed(anchor) || isTextSelectionAllowed(focus);
+}
+
+function normalizeSelectionNode(node) {
+    if (!node) {
+        return null;
     }
-    return node && node.closest
-        && (node.closest('.log-panel') !== null
-            || node.closest('.detail-content') !== null
-            || node.closest('input, textarea, select, [contenteditable="true"]') !== null);
+    if (node.nodeType === Node.ELEMENT_NODE) {
+        return node;
+    }
+
+    return node.parentElement;
 }
 
 function clearTextSelection() {

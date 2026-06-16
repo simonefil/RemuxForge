@@ -42,7 +42,7 @@
     "        --stretch-factor <f>     Manual stretch factor, e.g. 25025/24000",
     "        --analysis-crop-source-px <L:R:T:B>",
     "        --analysis-crop-lang-px <L:R:T:B>",
-    "        --subtitle-canvas-rewrite Rewrite canvas/coordinates for imported bitmap subtitles when possible",
+    "        --subtitle-canvas-rewrite Rewrite imported PGS, ASS/SSA, VobSub geometry",
     "  -ad,  --audio-delay <ms>       Manual audio delay in ms",
     "  -sd,  --subtitle-delay <ms>    Manual subtitle delay in ms",
     "",
@@ -597,7 +597,7 @@
   "web.config.toggle.audioOnly": "Audio only",
   "web.config.toggle.frameSync": "Frame-sync (visual comparison)",
   "web.config.toggle.deepAnalysis": "Deep analysis (full analysis)",
-  "web.config.toggle.subtitleCanvasRewrite": "Rewrite bitmap sub canvas",
+  "web.config.toggle.subtitleCanvasRewrite": "Rewrite subtitle canvas",
   "web.config.toggle.start": "Start",
   "web.config.toggle.end": "End",
   "web.config.toggle.insertSilence": "Insert silence",
@@ -954,8 +954,8 @@
   ],
   "web.config.help.remux.subCanvas.title": "Sub canvas",
   "web.config.help.remux.subCanvas.text": [
-    "Optional. Rewrites canvas and coordinates for imported bitmap subtitles when visual crop requires realignment.",
-    "This version only applies to PGS and is ignored when the transformation is not safe."
+    "Optional. Rewrites canvas and coordinates for imported subtitles when resolution, display area or crop differs.",
+    "Applies to PGS, ASS/SSA and VobSub when analysis geometry makes the transformation safe."
   ],
   "web.config.help.remux.audioDelay.title": "Audio delay",
   "web.config.help.remux.audioDelay.text": "Manual offset in milliseconds added to the automatic synchronization result.",

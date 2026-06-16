@@ -138,7 +138,7 @@ Main remux options:
 | `-da` | `--deep-analysis` | Build a cut/insert map for edited releases |
 | | `--speed-correction` | `off`, `auto`, `manual` |
 | | `--stretch-factor` | Manual speed factor, for example `25025/24000` |
-| | `--subtitle-canvas-rewrite` | Rewrite imported bitmap subtitle canvas/coordinates when analysis geometry allows it |
+| | `--subtitle-canvas-rewrite` | Rewrite imported PGS, ASS/SSA and VobSub subtitle geometry when analysis allows it |
 | `-ac` | `--audio-codec` | Import only matching audio codecs |
 | `-so` | `--sub-only` | Import subtitles only |
 | `-ao` | `--audio-only` | Import audio only |
@@ -148,6 +148,8 @@ Main remux options:
 | | `--audio-format` | `flac`, `lpcm`, `aac`, `opus` |
 | | `--audio-scope` | `disabled`, `lang`, `all` |
 | `-ep` | `--encoding-profile` | Post-merge video encoding profile |
+
+Subtitle canvas rewrite is opt-in. It uses geometry from Frame-sync or Deep Analysis to realign imported PGS, ASS/SSA and VobSub subtitles when source and language video geometry differs, including different canvas/display resolutions and different crop or active-area aspect ratios. Unsupported or unsafe cases are left unchanged with a warning. See [Synchronization](https://github.com/simonefil/RemuxForge/wiki/Synchronization#subtitle-canvas-rewrite).
 
 Main split options:
 

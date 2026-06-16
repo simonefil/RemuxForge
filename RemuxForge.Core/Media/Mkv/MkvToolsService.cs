@@ -417,7 +417,7 @@ namespace RemuxForge.Core.Media.Mkv
                     mkvArgs.Add("-A");
                 }
 
-                // Tracce sottotitoli lingua (esclude quelle pre-processate da deep analysis)
+                // Tracce sottotitoli lingua: esclude quelle sostituite da timeline edit o canvas rewrite
                 for (int i = 0; i < req.LangSubTracks.Count; i++)
                 {
                     if (hasProcessedSubs && req.ProcessedLangSubTracks.ContainsKey(req.LangSubTracks[i].Id))
@@ -493,7 +493,7 @@ namespace RemuxForge.Core.Media.Mkv
                     }
                 }
 
-                // Sottotitoli pre-processati da deep analysis: aggiunti come input separati con delay
+                // Sottotitoli processati: aggiunti come input separati con delay/stretch e metadati originali
                 if (hasProcessedSubs)
                 {
                     for (int i = 0; i < req.LangSubTracks.Count; i++)

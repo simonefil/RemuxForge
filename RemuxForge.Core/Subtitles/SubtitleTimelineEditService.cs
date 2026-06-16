@@ -16,16 +16,25 @@ namespace RemuxForge.Core.Subtitles
     {
         #region Variabili di classe
 
-        private string _ffmpegPath;
+        /// <summary>
+        /// Percorso ffmpeg usato per estrazione/riscrittura testuale
+        /// </summary>
+        private readonly string _ffmpegPath;
 
-        private string _tempFolder;
+        /// <summary>
+        /// Cartella temporanea per file sottotitolo estratti o riscritti
+        /// </summary>
+        private readonly string _tempFolder;
 
-        private int _timeoutMs;
+        /// <summary>
+        /// Timeout dei processi esterni
+        /// </summary>
+        private readonly int _timeoutMs;
 
         /// <summary>
         /// Percorso mkvmerge effettivamente usato dalla pipeline
         /// </summary>
-        private string _mkvMergePath;
+        private readonly string _mkvMergePath;
 
         /// <summary>
         /// Risolutore centralizzato per i tool path
@@ -324,7 +333,12 @@ namespace RemuxForge.Core.Subtitles
         private bool IsAssCodec(string codec)
         {
             string c = codec != null ? codec.ToLowerInvariant() : "";
-            return c.Contains("substationalpha") || c.Contains("s_text/ass") || c.Contains("s_text/ssa") || c == "ass" || c == "ssa";
+            return c.Contains("substation alpha") ||
+                c.Contains("substationalpha") ||
+                c.Contains("s_text/ass") ||
+                c.Contains("s_text/ssa") ||
+                c == "ass" ||
+                c == "ssa";
         }
 
         /// <summary>

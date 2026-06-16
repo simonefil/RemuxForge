@@ -107,6 +107,8 @@ namespace RemuxForge.Core.Audio
                 return result;
             }
 
+            this.LogAudioProcessingPlan(request, jobs);
+
             maxParallel = Math.Min(4, Environment.ProcessorCount);
             if (maxParallel < 1) { maxParallel = 1; }
 
@@ -232,12 +234,12 @@ namespace RemuxForge.Core.Audio
             else if (!CodecMapping.RequiresGenericAudioRender(job.Track, request.Options))
             {
                 result.Success = true;
-                ConsoleHelper.Write(LogSection.Conv, LogLevel.Notice, "  Audio track " + job.Track.Id + " gia' in formato " + request.Options.AudioFormat.ToUpperInvariant() + ", processing saltato");
+                ConsoleHelper.Write(LogSection.Conv, LogLevel.Notice, "  " + this.FormatAudioTrackLabel(job.IsSource, job.Track) + " gia' in formato " + request.Options.AudioFormat.ToUpperInvariant() + ", processing saltato");
                 return result;
             }
             else
             {
-                if (!this.ProcessSimple(request, job.IsSource ? request.SourceFilePath : request.LanguageFilePath, job.Track, outputFile, result))
+                if (!this.ProcessSimple(request, job.IsSource ? request.SourceFilePath : request.LanguageFilePath, job.Track, this.FormatAudioTrackLabel(job.IsSource, job.Track), outputFile, result))
                 {
                     return result;
                 }
@@ -246,7 +248,7 @@ namespace RemuxForge.Core.Audio
             result.OutputFile = outputFile;
             result.OutputInfo = this.ResolveOutputInfo(outputFile, job.Track, request.Options);
             result.Success = true;
-            ConsoleHelper.Write(LogSection.Conv, LogLevel.Success, "  Audio track " + job.Track.Id + " -> " + request.Options.AudioFormat.ToUpperInvariant() + " (" + Path.GetFileName(outputFile) + ")");
+            ConsoleHelper.Write(LogSection.Conv, LogLevel.Success, "  " + this.FormatAudioTrackLabel(job.IsSource, job.Track) + " -> " + request.Options.AudioFormat.ToUpperInvariant() + " (" + Path.GetFileName(outputFile) + ")");
             return result;
         }
 
@@ -256,16 +258,17 @@ namespace RemuxForge.Core.Audio
         /// <param name="request">Richiesta audio corrente</param>
         /// <param name="inputFile">File di input</param>
         /// <param name="track">Traccia da processare</param>
+        /// <param name="trackLabel">Etichetta traccia da usare nei log</param>
         /// <param name="outputFile">File audio temporaneo finale</param>
         /// <param name="result">Risultato della traccia</param>
         /// <returns>True se ffmpeg ha prodotto il file finale</returns>
-        private bool ProcessSimple(AudioProcessingRequest request, string inputFile, TrackInfo track, string outputFile, AudioTrackProcessResult result)
+        private bool ProcessSimple(AudioProcessingRequest request, string inputFile, TrackInfo track, string trackLabel, string outputFile, AudioTrackProcessResult result)
         {
             List<string> args;
             string tempFile;
             double gainDb;
 
-            ConsoleHelper.Write(LogSection.Conv, LogLevel.Notice, "  Processing audio track " + track.Id + " (" + track.Codec + " " + track.Channels + "ch)");
+            ConsoleHelper.Write(LogSection.Conv, LogLevel.Notice, "  Processing " + trackLabel);
 
             if (request.Options.AudioPeakNormalize)
             {
@@ -316,7 +319,7 @@ namespace RemuxForge.Core.Audio
             string tempFile;
             double gainDb;
 
-            ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Deep audio render track " + track.Id + ": " + request.LangEditMap.Operations.Count + " operazioni");
+            ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Deep audio render " + this.FormatAudioTrackLabel(false, track) + ": " + request.LangEditMap.Operations.Count + " operazioni");
 
             if (request.Options.AudioPeakNormalize)
             {
@@ -362,7 +365,7 @@ namespace RemuxForge.Core.Audio
             double gainDb;
             bool actualSourceFill = this.HasActualSourceFill(plan, request.Options);
 
-            ConsoleHelper.Write(LogSection.Conv, LogLevel.Notice, "  Audio source fill lang track " + langTrack.Id + " da source track " + sourceTrack.Id);
+            ConsoleHelper.Write(LogSection.Conv, LogLevel.Notice, "  Audio source fill " + this.FormatAudioTrackLabel(false, langTrack) + " da " + this.FormatAudioTrackLabel(true, sourceTrack));
 
             if (request.Options.AudioPeakNormalize && actualSourceFill)
             {
@@ -1405,6 +1408,75 @@ namespace RemuxForge.Core.Audio
             }
 
             return fileInfo != null && fileInfo.ContainerDurationNs > 0 ? (int)Math.Round(fileInfo.ContainerDurationNs / 1000000.0) : 0;
+        }
+
+        /// <summary>
+        /// Scrive nel log il piano audio effettivo prima del render parallelo
+        /// </summary>
+        /// <param name="request">Richiesta audio corrente</param>
+        /// <param name="jobs">Job audio generati dalla richiesta</param>
+        private void LogAudioProcessingPlan(AudioProcessingRequest request, List<AudioTrackJob> jobs)
+        {
+            string target;
+            string downsample;
+            string normalize;
+            bool generic;
+            bool render;
+
+            target = request.Options.AudioFormat.ToUpperInvariant();
+            downsample = request.Options.AudioDownsample24To16 ? "si" : "no";
+            normalize = request.Options.AudioPeakNormalize ? request.Options.AudioPeakTargetDb.ToString("F2", CultureInfo.InvariantCulture) + " dB" : "no";
+
+            ConsoleHelper.Write(LogSection.Conv, LogLevel.Debug, "  Audio request: format=" + target + ", scope=" + request.Options.AudioProcessingScope + ", normalize=" + normalize + ", 24to16=" + downsample + ", jobs=" + jobs.Count);
+            for (int i = 0; i < jobs.Count; i++)
+            {
+                generic = jobs[i].GenericProcessing;
+                render = generic && CodecMapping.RequiresGenericAudioRender(jobs[i].Track, request.Options);
+                ConsoleHelper.Write(LogSection.Conv, LogLevel.Debug, "    " + this.FormatAudioTrackLabel(jobs[i].IsSource, jobs[i].Track) + ", generic=" + (generic ? "si" : "no") + ", render=" + (render ? "si" : "no"));
+            }
+        }
+
+        /// <summary>
+        /// Formatta una traccia audio per log distinguendo source e lang
+        /// </summary>
+        /// <param name="isSource">True se la traccia arriva dal file source</param>
+        /// <param name="track">Traccia audio da formattare</param>
+        /// <returns>Etichetta traccia completa</returns>
+        private string FormatAudioTrackLabel(bool isSource, TrackInfo track)
+        {
+            string origin = isSource ? "SRC" : "LANG";
+            return origin + " audio track " + track.Id + " [" + this.FormatAudioTrackDetails(track) + "]";
+        }
+
+        /// <summary>
+        /// Formatta i metadati principali di una traccia audio per log
+        /// </summary>
+        /// <param name="track">Traccia audio da formattare</param>
+        /// <returns>Dettaglio compatto lingua/codec/canali/bitrate tecnico</returns>
+        private string FormatAudioTrackDetails(TrackInfo track)
+        {
+            string language;
+            string channels;
+            string result;
+
+            language = track.Language.Length > 0 ? track.Language : "und";
+            channels = AudioChannelHelper.FormatChannels(track.Channels);
+            result = language + " " + track.Codec;
+
+            if (channels.Length > 0)
+            {
+                result += " " + channels;
+            }
+            if (track.BitsPerSample > 0)
+            {
+                result += " " + track.BitsPerSample + "bit";
+            }
+            if (track.SamplingFrequency > 0)
+            {
+                result += " " + (track.SamplingFrequency / 1000.0).ToString("0.#", CultureInfo.InvariantCulture) + "kHz";
+            }
+
+            return result;
         }
 
         /// <summary>

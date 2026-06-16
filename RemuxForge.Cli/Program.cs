@@ -37,7 +37,7 @@ namespace RemuxForge.Cli
             }
 
             // Inizializza AppSettings e cartella .remux-forge prima di tutto
-            AppSettingsService.Instance.Initialize();
+            _ = AppSettingsService.Instance.Initialize();
             AppText.Initialize(FindLanguageArgument(args), AppSettingsService.Instance.Settings.Ui.Language);
             ProcessingPipeline pipeline = null;
             List<FileProcessingRecord> records;
