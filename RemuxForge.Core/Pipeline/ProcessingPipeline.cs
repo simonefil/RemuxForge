@@ -115,6 +115,11 @@ namespace RemuxForge.Core.Pipeline
         /// </summary>
         private PipelineMergePreviewBuilder _mergePreviewBuilder;
 
+        /// <summary>
+        /// Builder richieste audio condiviso da preview e processing
+        /// </summary>
+        private PipelineAudioProcessingRequestBuilder _audioRequestBuilder;
+
         #endregion
 
         #region Costruttore
@@ -142,6 +147,7 @@ namespace RemuxForge.Core.Pipeline
             this._outputManager = new PipelineOutputManager();
             this._deepEditApplier = new PipelineDeepEditApplier();
             this._mergePreviewBuilder = new PipelineMergePreviewBuilder(this._trackMapper, this._outputManager);
+            this._audioRequestBuilder = new PipelineAudioProcessingRequestBuilder();
             this._toolPathResolver = new ToolPathResolverService(AppSettingsService.Instance.ConfigFolder);
         }
 
@@ -366,7 +372,7 @@ namespace RemuxForge.Core.Pipeline
         /// <param name="record">Record del file</param>
         public void BuildMergeCommand(FileProcessingRecord record)
         {
-            this._mergePreviewBuilder.Build(record, this._opts, this._mkvService, this.GetCachedFileInfo, this._needsMerge, this._needsRemux, this._filterSourceAudio, this._filterSourceSubs, this._codecPatterns, this._sourceAudioCodecPatterns);
+            this._mergePreviewBuilder.Build(record, this._opts, this._mkvService, this.GetCachedFileInfo, this._needsMerge, this._needsRemux, this._filterSourceAudio, this._filterSourceSubs, this._codecPatterns, this._sourceAudioCodecPatterns, this._ffmpegPath);
         }
 
         /// <summary>
@@ -617,6 +623,43 @@ namespace RemuxForge.Core.Pipeline
         }
 
         /// <summary>
+        /// Garantisce che il merge mantenga anche le tracce source non renderizzate quando almeno una source viene processata
+        /// </summary>
+        /// <param name="sourceTracks">Tracce file sorgente</param>
+        /// <param name="sourceAudioIds">ID audio sorgente da aggiornare</param>
+        /// <param name="convertedSourceTracks">Tracce source processate come file separati</param>
+        private void EnsureSourceAudioIdsForProcessedTracks(List<TrackInfo> sourceTracks, List<int> sourceAudioIds, Dictionary<int, string> convertedSourceTracks)
+        {
+            if (convertedSourceTracks == null || convertedSourceTracks.Count == 0)
+            {
+                return;
+            }
+
+            if (!this._filterSourceAudio && sourceTracks != null)
+            {
+                /*
+                 * SOURCE AUDIO NON FILTRATO
+                 */
+                for (int i = 0; i < sourceTracks.Count; i++)
+                {
+                    if (string.Equals(sourceTracks[i].Type, "audio", StringComparison.OrdinalIgnoreCase) && !sourceAudioIds.Contains(sourceTracks[i].Id))
+                    {
+                        sourceAudioIds.Add(sourceTracks[i].Id);
+                    }
+                }
+                return;
+            }
+
+            foreach (int sourceTrackId in convertedSourceTracks.Keys)
+            {
+                if (!sourceAudioIds.Contains(sourceTrackId))
+                {
+                    sourceAudioIds.Add(sourceTrackId);
+                }
+            }
+        }
+
+        /// <summary>
         /// Esegue la fase remux: filtro tracce, raccolta lingua, conversione, merge
         /// </summary>
         /// <param name="record">Record del file</param>
@@ -689,7 +732,7 @@ namespace RemuxForge.Core.Pipeline
                     this._opts.AudioSourceFillThresholdMs > 0 ||
                     (record.DeepAnalysisApplied && record.DeepAnalysisMap != null && record.DeepAnalysisMap.Operations.Count > 0 && !this._opts.SubOnly)))
                 {
-                    AudioProcessingRequest audioRequest = this.BuildAudioProcessingRequest(record, sourceInfo, langInfo, sourceTracks, sourceAudioIds, audioTracks, effectiveAudioDelay);
+                    AudioProcessingRequest audioRequest = this._audioRequestBuilder.Build(record, this._opts, sourceInfo, langInfo, sourceTracks, sourceAudioIds, audioTracks, this._needsMerge, this._filterSourceAudio, effectiveAudioDelay);
                     if (this._opts.AudioFormat.Length == 0 && (audioRequest.SourceTracksToProcess.Count > 0 || audioRequest.LangTracksToProcess.Count > 0))
                     {
                         record.ErrorMessage = "Processing audio richiesto ma formato audio non impostato";
@@ -698,20 +741,21 @@ namespace RemuxForge.Core.Pipeline
                     }
                     else if (this._opts.DryRun)
                     {
-                        this.AddDryRunAudioPlaceholders(audioRequest, convertedSourceTracks, convertedLangTracks, processedSourceAudioInfo, processedLangAudioInfo);
+                        AudioProcessingPlan audioPlan = this.BuildAudioProcessingPlan(audioRequest, true);
+                        AudioProcessingDryRunHelper.AddPlaceholders(audioPlan, this._opts, convertedSourceTracks, convertedLangTracks, processedSourceAudioInfo, processedLangAudioInfo, audioDelayBypassedLangIds);
+                        if (audioDelayBypassedLangIds.Count > 0)
+                        {
+                            effectiveAudioDelay = 0;
+                            record.AudioDelayApplied = effectiveAudioDelay;
+                        }
                         if (convertedSourceTracks.Count > 0)
                         {
-                            foreach (int sourceTrackId in convertedSourceTracks.Keys)
-                            {
-                                if (!sourceAudioIds.Contains(sourceTrackId))
-                                {
-                                    sourceAudioIds.Add(sourceTrackId);
-                                }
-                            }
+                            this.EnsureSourceAudioIdsForProcessedTracks(sourceTracks, sourceAudioIds, convertedSourceTracks);
                         }
                     }
                     else
                     {
+                        audioRequest.Plan = this.BuildAudioProcessingPlan(audioRequest, true);
                         AudioProcessingService audioService = new AudioProcessingService(this._ffmpegPath, AppSettingsService.Instance.GetTempFolder(), this._mkvService);
                         AudioProcessingResult audioResult = audioService.Process(audioRequest);
                         if (audioResult.Success)
@@ -726,13 +770,7 @@ namespace RemuxForge.Core.Pipeline
 
                             if (convertedSourceTracks.Count > 0)
                             {
-                                foreach (int sourceTrackId in convertedSourceTracks.Keys)
-                                {
-                                    if (!sourceAudioIds.Contains(sourceTrackId))
-                                    {
-                                        sourceAudioIds.Add(sourceTrackId);
-                                    }
-                                }
+                                this.EnsureSourceAudioIdsForProcessedTracks(sourceTracks, sourceAudioIds, convertedSourceTracks);
                             }
                         }
                         else
@@ -899,176 +937,17 @@ namespace RemuxForge.Core.Pipeline
         }
 
         /// <summary>
-        /// Costruisce la richiesta audio usando solo tracce che finiranno nel file di output
-        /// </summary>
-        private AudioProcessingRequest BuildAudioProcessingRequest(FileProcessingRecord record, MkvFileInfo sourceInfo, MkvFileInfo langInfo, List<TrackInfo> sourceTracks, List<int> sourceAudioIds, List<TrackInfo> audioTracks, int effectiveAudioDelay)
-        {
-            AudioProcessingRequest request = new AudioProcessingRequest();
-            List<TrackInfo> finalSourceAudioTracks = this.ResolveFinalSourceAudioTracks(sourceTracks, sourceAudioIds);
-            bool deepAudioRequired = record.DeepAnalysisApplied && record.DeepAnalysisMap != null && record.DeepAnalysisMap.Operations.Count > 0 && !this._opts.SubOnly;
-            bool sourceFillRequired = this._opts.AudioSourceFillThresholdMs > 0;
-
-            request.Record = record;
-            request.Options = this._opts;
-            request.SourceFilePath = record.SourceFilePath;
-            request.LanguageFilePath = this._needsMerge ? record.LangFilePath : "";
-            request.SourceInfo = sourceInfo;
-            request.LangInfo = langInfo;
-            request.LangEditMap = record.DeepAnalysisMap;
-            request.EffectiveAudioDelayMs = effectiveAudioDelay;
-
-            if (this._opts.AudioProcessingScope == "all")
-            {
-                for (int i = 0; i < finalSourceAudioTracks.Count; i++)
-                {
-                    request.SourceTracksToProcess.Add(finalSourceAudioTracks[i]);
-                    request.GenericSourceTrackIds.Add(finalSourceAudioTracks[i].Id);
-                }
-                for (int i = 0; i < audioTracks.Count; i++)
-                {
-                    request.LangTracksToProcess.Add(audioTracks[i]);
-                    request.GenericLangTrackIds.Add(audioTracks[i].Id);
-                }
-            }
-            else if (this._opts.AudioProcessingScope == "lang")
-            {
-                if (this._needsMerge)
-                {
-                    for (int i = 0; i < audioTracks.Count; i++)
-                    {
-                        request.LangTracksToProcess.Add(audioTracks[i]);
-                        request.GenericLangTrackIds.Add(audioTracks[i].Id);
-                    }
-                }
-                else
-                {
-                    for (int i = 0; i < finalSourceAudioTracks.Count; i++)
-                    {
-                        request.SourceTracksToProcess.Add(finalSourceAudioTracks[i]);
-                        request.GenericSourceTrackIds.Add(finalSourceAudioTracks[i].Id);
-                    }
-                }
-            }
-
-            if (deepAudioRequired || sourceFillRequired)
-            {
-                for (int i = 0; i < audioTracks.Count; i++)
-                {
-                    bool containsTrack = false;
-                    for (int trackIndex = 0; trackIndex < request.LangTracksToProcess.Count; trackIndex++)
-                    {
-                        if (request.LangTracksToProcess[trackIndex].Id == audioTracks[i].Id)
-                        {
-                            containsTrack = true;
-                            break;
-                        }
-                    }
-
-                    if (!containsTrack)
-                    {
-                        request.LangTracksToProcess.Add(audioTracks[i]);
-                    }
-                }
-            }
-
-            return request;
-        }
-
-        /// <summary>
-        /// In dry-run crea placeholder audio senza eseguire ffmpeg
-        /// </summary>
-        private void AddDryRunAudioPlaceholders(AudioProcessingRequest request, Dictionary<int, string> convertedSourceTracks, Dictionary<int, string> convertedLangTracks, Dictionary<int, TrackInfo> processedSourceAudioInfo, Dictionary<int, TrackInfo> processedLangAudioInfo)
-        {
-            for (int i = 0; i < request.SourceTracksToProcess.Count; i++)
-            {
-                TrackInfo track = request.SourceTracksToProcess[i];
-                if (request.GenericSourceTrackIds.Contains(track.Id) && !CodecMapping.RequiresGenericAudioRender(track, request.Options))
-                {
-                    continue;
-                }
-
-                convertedSourceTracks[track.Id] = "<processed-audio:source-track-" + track.Id + ">";
-                processedSourceAudioInfo[track.Id] = this.CloneAudioInfoForDryRun(track, request.Options.AudioFormat);
-            }
-
-            for (int i = 0; i < request.LangTracksToProcess.Count; i++)
-            {
-                TrackInfo track = request.LangTracksToProcess[i];
-                if (request.GenericLangTrackIds.Contains(track.Id) &&
-                    !CodecMapping.RequiresGenericAudioRender(track, request.Options) &&
-                    !this.HasForcedDryRunLangAudioProcessing(request))
-                {
-                    continue;
-                }
-
-                convertedLangTracks[track.Id] = "<processed-audio:lang-track-" + track.Id + ">";
-                processedLangAudioInfo[track.Id] = this.CloneAudioInfoForDryRun(track, request.Options.AudioFormat);
-            }
-        }
-
-        /// <summary>
-        /// True se dry-run deve mostrare un render lang non generico
+        /// Calcola e salva sul record il piano audio per preview e dry-run
         /// </summary>
         /// <param name="request">Richiesta audio corrente</param>
-        /// <returns>True se deep analysis o source fill possono richiedere un render lang</returns>
-        private bool HasForcedDryRunLangAudioProcessing(AudioProcessingRequest request)
+        /// <param name="probeMissingDurations">True per usare ffmpeg quando mancano durate metadata</param>
+        /// <returns>Piano audio calcolato</returns>
+        private AudioProcessingPlan BuildAudioProcessingPlan(AudioProcessingRequest request, bool probeMissingDurations)
         {
-            bool deepAudioRequired = request.LangEditMap != null &&
-                request.LangEditMap.Operations != null &&
-                request.LangEditMap.Operations.Count > 0 &&
-                !request.Options.SubOnly;
-
-            return deepAudioRequired || request.Options.AudioSourceFillThresholdMs > 0;
-        }
-
-        /// <summary>
-        /// Crea metadati audio stimati per preview dry-run
-        /// </summary>
-        private TrackInfo CloneAudioInfoForDryRun(TrackInfo source, string audioFormat)
-        {
-            TrackInfo result = new TrackInfo();
-            result.Id = source.Id;
-            result.Type = source.Type;
-            result.Codec = audioFormat.ToUpperInvariant();
-            result.Language = source.Language;
-            result.LanguageIetf = source.LanguageIetf;
-            result.Name = source.Name;
-            result.DefaultTrack = source.DefaultTrack;
-            result.ForcedTrack = source.ForcedTrack;
-            result.DefaultDurationNs = source.DefaultDurationNs;
-            result.VideoFrameCount = source.VideoFrameCount;
-            result.TrackDurationNs = source.TrackDurationNs;
-            result.Channels = source.Channels;
-            result.BitsPerSample = this._opts.AudioDownsample24To16 ? 16 : source.BitsPerSample;
-            result.SamplingFrequency = source.SamplingFrequency;
-            result.Bitrate = source.Bitrate;
-            return result;
-        }
-
-        /// <summary>
-        /// Risolve le tracce audio sorgente che saranno presenti nell'output
-        /// </summary>
-        private List<TrackInfo> ResolveFinalSourceAudioTracks(List<TrackInfo> sourceTracks, List<int> sourceAudioIds)
-        {
-            List<TrackInfo> result = new List<TrackInfo>();
-            if (sourceTracks == null)
-            {
-                return result;
-            }
-
-            for (int i = 0; i < sourceTracks.Count; i++)
-            {
-                if (!string.Equals(sourceTracks[i].Type, "audio", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-                if (this._filterSourceAudio && !sourceAudioIds.Contains(sourceTracks[i].Id))
-                {
-                    continue;
-                }
-                result.Add(sourceTracks[i]);
-            }
-
+            AudioProcessingPlanner planner = new AudioProcessingPlanner(this._mkvService, this._ffmpegPath);
+            AudioProcessingPlan result = planner.BuildPlan(request, probeMissingDurations);
+            request.Plan = result;
+            request.Record.AudioProcessingPreview = result;
             return result;
         }
 

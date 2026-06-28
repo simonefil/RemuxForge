@@ -1,3 +1,4 @@
+using RemuxForge.Core.Audio;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
@@ -921,6 +922,7 @@ namespace RemuxForge.Web.Services
             record.DeepAnalysisMap = null;
             record.DeepAnalysisTimeMs = 0;
             record.DeepAnalysisApplied = false;
+            record.AudioProcessingPreview = null;
 
             if (this._options.TargetLanguage.Count == 0 || record.LangFilePath.Length > 0)
             {
@@ -1042,7 +1044,83 @@ namespace RemuxForge.Web.Services
             result.DeepAnalysisMap = record.DeepAnalysisMap;
             result.DeepAnalysisTimeMs = record.DeepAnalysisTimeMs;
             result.DeepAnalysisApplied = record.DeepAnalysisApplied;
+            result.AudioProcessingPreview = this.CloneAudioProcessingPlan(record.AudioProcessingPreview);
 
+            return result;
+        }
+
+        /// <summary>
+        /// Clona il piano audio preview evitando condivisione delle liste mutabili
+        /// </summary>
+        /// <param name="source">Piano audio originale</param>
+        /// <returns>Copia del piano o null</returns>
+        private AudioProcessingPlan CloneAudioProcessingPlan(AudioProcessingPlan source)
+        {
+            AudioProcessingPlan result;
+            if (source == null)
+            {
+                return null;
+            }
+
+            result = new AudioProcessingPlan();
+            for (int i = 0; i < source.SourceTracks.Count; i++)
+            {
+                result.SourceTracks.Add(this.CloneAudioTrackProcessingPlan(source.SourceTracks[i]));
+            }
+            for (int i = 0; i < source.LangTracks.Count; i++)
+            {
+                result.LangTracks.Add(this.CloneAudioTrackProcessingPlan(source.LangTracks[i]));
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Clona il piano di una traccia audio
+        /// </summary>
+        /// <param name="source">Piano traccia originale</param>
+        /// <returns>Copia del piano traccia</returns>
+        private AudioTrackProcessingPlan CloneAudioTrackProcessingPlan(AudioTrackProcessingPlan source)
+        {
+            AudioTrackProcessingPlan result = new AudioTrackProcessingPlan();
+            result.IsSource = source.IsSource;
+            result.Track = source.Track;
+            result.GenericProcessing = source.GenericProcessing;
+            result.GenericRenderRequired = source.GenericRenderRequired;
+            result.DeepEditRender = source.DeepEditRender;
+            result.SourceFillConfigured = source.SourceFillConfigured;
+            result.SourceFillHasWork = source.SourceFillHasWork;
+            result.ActualSourceFill = source.ActualSourceFill;
+            result.RenderRequired = source.RenderRequired;
+            result.BypassAudioDelay = source.BypassAudioDelay;
+            result.SourceFillTrack = source.SourceFillTrack;
+            result.SourceFillPlan = this.CloneAudioSourceFillPlan(source.SourceFillPlan);
+            result.ErrorMessage = source.ErrorMessage;
+            return result;
+        }
+
+        /// <summary>
+        /// Clona il dettaglio source-fill del piano audio
+        /// </summary>
+        /// <param name="source">Piano source-fill originale</param>
+        /// <returns>Copia del piano source-fill o null</returns>
+        private AudioSourceFillPlan CloneAudioSourceFillPlan(AudioSourceFillPlan source)
+        {
+            AudioSourceFillPlan result;
+            if (source == null)
+            {
+                return null;
+            }
+
+            result = new AudioSourceFillPlan();
+            result.StartFillMs = source.StartFillMs;
+            result.EndFillMs = source.EndFillMs;
+            result.SourceDurationMs = source.SourceDurationMs;
+            result.StretchRatio = source.StretchRatio;
+            result.LangTempo = source.LangTempo;
+            result.InitialSilenceMs = source.InitialSilenceMs;
+            result.InitialTrimMs = source.InitialTrimMs;
+            result.InsertOperations = new List<EditOperation>(source.InsertOperations);
             return result;
         }
 

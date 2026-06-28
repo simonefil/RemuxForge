@@ -47,11 +47,12 @@ namespace RemuxForge.Core.Models
 
         /// <summary>
         /// Durata dell'operazione in millisecondi
+        /// Espressa sempre nella timeline originale del lang, prima di eventuale stretch mkvmerge
         /// </summary>
         public int DurationMs { get; set; }
 
         /// <summary>
-        /// Timestamp corrispondente nel source in millisecondi, per log e debug
+        /// Timestamp corrispondente nel source/finale in millisecondi, per log, debug e source-fill
         /// </summary>
         public int SourceTimestampMs { get; set; }
 

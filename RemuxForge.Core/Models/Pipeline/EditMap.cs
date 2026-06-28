@@ -29,7 +29,7 @@ namespace RemuxForge.Core.Models
         #region Proprieta
 
         /// <summary>
-        /// Delay iniziale in ms (offset del primo segmento)
+        /// Delay iniziale in ms da applicare al mux, separato dagli edit iniziali materializzati in Operations
         /// </summary>
         public int InitialDelayMs { get; set; }
 

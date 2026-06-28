@@ -1,6 +1,9 @@
+using RemuxForge.Core.Audio;
+using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
@@ -88,14 +91,9 @@ namespace RemuxForge.Web.Services
         {
             bool filterAudio;
             bool filterSub;
-            bool hasMerge;
-            bool forceImportedAudioProcessing;
             sb.Append('\n').Append(AppText.T("web.detail.sourceTracks")).Append('\n');
             sb.Append(AppText.F("web.detail.audioLine", Utils.FormatTrackList(record.SourceAudioTracks))).Append('\n');
             sb.Append(AppText.F("web.detail.subLine", Utils.FormatTrackList(record.SourceSubTracks))).Append('\n');
-
-            hasMerge = record.LangFilePath.Length > 0;
-            forceImportedAudioProcessing = this.HasForcedImportedAudioProcessing(record, options);
 
             if (record.KeptSourceAudioIds.Count > 0 || record.KeptSourceSubIds.Count > 0)
             {
@@ -107,7 +105,7 @@ namespace RemuxForge.Web.Services
             if (record.ImportedAudioTracks.Count > 0 || record.ImportedSubTracks.Count > 0)
             {
                 sb.Append('\n').Append(AppText.T("web.detail.importTracks")).Append('\n');
-                sb.Append(AppText.F("web.detail.audioLine", Utils.FormatImportedTrackList(record.ImportedAudioTracks, options, forceImportedAudioProcessing))).Append('\n');
+                sb.Append(AppText.F("web.detail.audioLine", this.FormatImportedAudioTrackList(record.ImportedAudioTracks, record.AudioProcessingPreview, options))).Append('\n');
                 sb.Append(AppText.F("web.detail.subLine", Utils.FormatTrackList(record.ImportedSubTracks))).Append('\n');
             }
 
@@ -116,32 +114,275 @@ namespace RemuxForge.Web.Services
             if (record.ImportedAudioTracks.Count > 0 || record.ImportedSubTracks.Count > 0 || filterAudio || filterSub)
             {
                 sb.Append('\n').Append(AppText.T("web.detail.finalResult")).Append('\n');
-                sb.Append(AppText.F("web.detail.audioLine", Utils.FormatResultTrackList(record.SourceAudioTracks, record.KeptSourceAudioIds, record.ImportedAudioTracks, options, filterAudio, hasMerge, forceImportedAudioProcessing))).Append('\n');
+                sb.Append(AppText.F("web.detail.audioLine", this.FormatResultAudioTrackList(record, options, filterAudio))).Append('\n');
                 sb.Append(AppText.F("web.detail.subLine", Utils.FormatResultTrackList(record.SourceSubTracks, record.KeptSourceSubIds, record.ImportedSubTracks, "", filterSub))).Append('\n');
+            }
+
+            this.AppendAudioProcessingPreview(sb, record, options);
+        }
+
+        /// <summary>
+        /// Formatta tracce audio importate con piano processing effettivo
+        /// </summary>
+        private string FormatImportedAudioTrackList(List<TrackInfo> tracks, AudioProcessingPlan plan, Options options)
+        {
+            StringBuilder sb = new StringBuilder();
+
+            if (tracks == null || tracks.Count == 0)
+            {
+                return "-";
+            }
+
+            for (int i = 0; i < tracks.Count; i++)
+            {
+                if (i > 0) { sb.Append(" | "); }
+                sb.Append(this.FormatAudioTrackWithPlan(tracks[i], plan != null ? plan.FindLangTrack(tracks[i].Id) : null, options));
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Formatta il risultato audio finale con piano processing effettivo
+        /// </summary>
+        private string FormatResultAudioTrackList(FileProcessingRecord record, Options options, bool filterAudio)
+        {
+            StringBuilder sb = new StringBuilder();
+            int count = 0;
+
+            if (record.SourceAudioTracks != null)
+            {
+                for (int i = 0; i < record.SourceAudioTracks.Count; i++)
+                {
+                    if (filterAudio && !record.KeptSourceAudioIds.Contains(record.SourceAudioTracks[i].Id))
+                    {
+                        continue;
+                    }
+
+                    if (count > 0) { sb.Append(" | "); }
+                    sb.Append(this.FormatAudioTrackWithPlan(record.SourceAudioTracks[i], record.AudioProcessingPreview != null ? record.AudioProcessingPreview.FindSourceTrack(record.SourceAudioTracks[i].Id) : null, options));
+                    count++;
+                }
+            }
+
+            if (record.ImportedAudioTracks != null)
+            {
+                for (int i = 0; i < record.ImportedAudioTracks.Count; i++)
+                {
+                    if (count > 0) { sb.Append(" | "); }
+                    sb.Append(this.FormatAudioTrackWithPlan(record.ImportedAudioTracks[i], record.AudioProcessingPreview != null ? record.AudioProcessingPreview.FindLangTrack(record.ImportedAudioTracks[i].Id) : null, options));
+                    count++;
+                }
+            }
+
+            return count > 0 ? sb.ToString() : "-";
+        }
+
+        /// <summary>
+        /// Formatta una traccia audio con suffisso processing se previsto
+        /// </summary>
+        private string FormatAudioTrackWithPlan(TrackInfo track, AudioTrackProcessingPlan plan, Options options)
+        {
+            string result = Utils.FormatTrackCompact(track);
+            string summary = this.FormatAudioProcessingSummary(plan, options, false);
+
+            if (summary.Length > 0)
+            {
+                result += " -> " + summary;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Aggiunge dettaglio operativo del piano audio
+        /// </summary>
+        private void AppendAudioProcessingPreview(StringBuilder sb, FileProcessingRecord record, Options options)
+        {
+            List<AudioTrackProcessingPlan> tracks;
+            if (record.AudioProcessingPreview == null)
+            {
+                return;
+            }
+
+            tracks = record.AudioProcessingPreview.GetAllTracks();
+            if (tracks.Count == 0)
+            {
+                return;
+            }
+
+            sb.Append('\n').Append(AppText.T("web.detail.audioProcessing")).Append('\n');
+            for (int i = 0; i < tracks.Count; i++)
+            {
+                string origin = tracks[i].IsSource ? "SRC" : "LANG";
+                string summary = this.FormatAudioProcessingSummary(tracks[i], options, true);
+                sb.Append(AppText.F("web.detail.audioProcessingTrackLine", origin, tracks[i].Track.Id, summary.Length > 0 ? summary : AppText.T("web.detail.audioNoRender"))).Append('\n');
             }
         }
 
         /// <summary>
-        /// True se deep analysis o source fill possono forzare render audio sulle tracce importate
+        /// Formatta il motivo operativo di una traccia audio
         /// </summary>
-        /// <param name="record">Record selezionato</param>
-        /// <param name="options">Opzioni correnti</param>
-        /// <returns>True se il processing importato non e' solo conversione generica</returns>
-        private bool HasForcedImportedAudioProcessing(FileProcessingRecord record, Options options)
+        private string FormatAudioProcessingSummary(AudioTrackProcessingPlan plan, Options options, bool includeSkip)
         {
-            bool deepAudioRequired;
+            List<string> parts = new List<string>();
+            string target;
 
-            if (options == null || options.AudioFormat.Length == 0)
+            if (plan == null || options == null)
             {
-                return false;
+                return "";
+            }
+            if (plan.ErrorMessage.Length > 0)
+            {
+                return AppText.F("web.detail.audioError", plan.ErrorMessage);
             }
 
-            deepAudioRequired = record.DeepAnalysisApplied &&
-                record.DeepAnalysisMap != null &&
-                record.DeepAnalysisMap.Operations.Count > 0 &&
-                !options.SubOnly;
+            target = options.AudioFormat.Length > 0 ? options.AudioFormat.ToUpperInvariant() : "";
+            if (plan.RenderRequired && target.Length > 0)
+            {
+                parts.Add(target);
+            }
 
-            return deepAudioRequired || options.AudioSourceFillThresholdMs > 0;
+            if (plan.SourceFillHasWork)
+            {
+                parts.Add(this.FormatSourceFillSummary(plan, options));
+            }
+            else if (plan.DeepEditRender)
+            {
+                parts.Add(AppText.T("web.detail.audioDeepEditMap"));
+            }
+            else if (plan.GenericRenderRequired)
+            {
+                this.AddGenericAudioReasons(parts, plan, options);
+            }
+            else if (includeSkip && plan.SourceFillConfigured)
+            {
+                parts.Add(AppText.T("web.detail.audioSourceFillNoWork"));
+            }
+            else if (includeSkip)
+            {
+                parts.Add(plan.GenericProcessing ? AppText.T("web.detail.audioSkipCompatible") : AppText.T("web.detail.audioSkipOutsideScope"));
+            }
+
+            if (plan.BypassAudioDelay)
+            {
+                parts.Add(AppText.T("web.detail.audioDelayMaterialized"));
+            }
+            if (plan.RenderRequired && !plan.GenericRenderRequired)
+            {
+                this.AddRenderPostProcessingReasons(parts, plan, options);
+            }
+
+            return string.Join(", ", parts);
+        }
+
+        /// <summary>
+        /// Aggiunge motivi del processing audio generico
+        /// </summary>
+        private void AddGenericAudioReasons(List<string> parts, AudioTrackProcessingPlan plan, Options options)
+        {
+            bool hasReason = false;
+
+            if (!CodecMapping.IsTargetAudioFormat(plan.Track, options.AudioFormat))
+            {
+                parts.Add(AppText.T("web.detail.audioCodecConversion"));
+                hasReason = true;
+            }
+            if (options.AudioDownsample24To16 && (plan.Track.BitsPerSample <= 0 || plan.Track.BitsPerSample > 16))
+            {
+                parts.Add("24->16 bit");
+                hasReason = true;
+            }
+            if (options.AudioPeakNormalize)
+            {
+                parts.Add(AppText.F("web.detail.audioNormalize", options.AudioPeakTargetDb.ToString("F2", CultureInfo.InvariantCulture)));
+                hasReason = true;
+            }
+            if (!hasReason)
+            {
+                parts.Add(AppText.T("web.detail.audioGenericProcessing"));
+            }
+        }
+
+        /// <summary>
+        /// Aggiunge post-processing comune ai render deep/source-fill
+        /// </summary>
+        private void AddRenderPostProcessingReasons(List<string> parts, AudioTrackProcessingPlan plan, Options options)
+        {
+            if (options.AudioDownsample24To16 && (plan.Track.BitsPerSample <= 0 || plan.Track.BitsPerSample > 16))
+            {
+                parts.Add("24->16 bit");
+            }
+            if (options.AudioPeakNormalize)
+            {
+                if (plan.ActualSourceFill)
+                {
+                    parts.Add(AppText.F("web.detail.audioPreNormalizeSourceLang", options.AudioPeakTargetDb.ToString("F2", CultureInfo.InvariantCulture)));
+                }
+                else
+                {
+                    parts.Add(AppText.F("web.detail.audioNormalize", options.AudioPeakTargetDb.ToString("F2", CultureInfo.InvariantCulture)));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Formatta riepilogo source-fill della traccia
+        /// </summary>
+        private string FormatSourceFillSummary(AudioTrackProcessingPlan plan, Options options)
+        {
+            List<string> parts = new List<string>();
+            AudioSourceFillPlan sourceFillPlan = plan.SourceFillPlan;
+            int insertSourceCount = 0;
+            int insertSourceMs = 0;
+
+            if (sourceFillPlan == null)
+            {
+                return AppText.T("web.detail.audioSourceFill");
+            }
+
+            parts.Add(plan.ActualSourceFill ? AppText.T("web.detail.audioSourceFill") : AppText.T("web.detail.audioSourceFillTimelineRender"));
+            if (sourceFillPlan.StartFillMs > 0)
+            {
+                parts.Add(AppText.F("web.detail.audioSourceFillStart", this.FormatDurationSeconds(sourceFillPlan.StartFillMs)));
+            }
+            if (sourceFillPlan.EndFillMs > 0)
+            {
+                parts.Add(AppText.F("web.detail.audioSourceFillEnd", this.FormatDurationSeconds(sourceFillPlan.EndFillMs)));
+            }
+            if (sourceFillPlan.InsertOperations != null)
+            {
+                for (int i = 0; i < sourceFillPlan.InsertOperations.Count; i++)
+                {
+                    EditOperation operation = sourceFillPlan.InsertOperations[i];
+                    int renderedOperationMs = EditMapTimelineHelper.LanguageDurationToRenderedDurationMs(operation.DurationMs, sourceFillPlan.StretchRatio);
+                    if (string.Equals(operation.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal) &&
+                        options.AudioSourceFillInsertSilence &&
+                        renderedOperationMs > options.AudioSourceFillThresholdMs)
+                    {
+                        insertSourceCount++;
+                        insertSourceMs += renderedOperationMs;
+                    }
+                }
+            }
+            if (insertSourceCount > 0)
+            {
+                parts.Add(AppText.F("web.detail.audioSourceFillInsertSource", insertSourceCount, this.FormatDurationSeconds(insertSourceMs)));
+            }
+            else if (sourceFillPlan.InsertOperations != null && sourceFillPlan.InsertOperations.Count > 0)
+            {
+                parts.Add(AppText.F("web.detail.audioEditOps", sourceFillPlan.InsertOperations.Count));
+            }
+
+            return string.Join(", ", parts);
+        }
+
+        /// <summary>
+        /// Formatta una durata breve in secondi
+        /// </summary>
+        private string FormatDurationSeconds(int durationMs)
+        {
+            return (durationMs / 1000.0).ToString("F3", CultureInfo.InvariantCulture) + "s";
         }
 
         /// <summary>

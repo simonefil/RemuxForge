@@ -122,6 +122,7 @@ namespace RemuxForge.Core.Analysis.Deep
             double unsupportedGapStartSrc;
             double unsupportedGapEndSrc;
             bool strongDifferentialAccepted;
+            int operationDurationMs;
             double effectiveOffsetSec = regions.Count > 0 ? regions[0].OffsetMs / 1000.0 : 0.0;
             DeepAnalysisTransitionDiagnostic transition;
             List<double> acceptedOffsetBeforeSec = new List<double>();
@@ -267,12 +268,13 @@ namespace RemuxForge.Core.Analysis.Deep
                 }
 
                 operationType = newOffsetSec > oldOffsetSec ? EditOperation.INSERT_SILENCE : EditOperation.CUT_SEGMENT;
+                operationDurationMs = EditMapTimelineHelper.SourceDurationToLanguageDurationMs(durationMs, inverseRatio);
 
                 // L'operazione viene aggiunta prima della verifica per mantenere diagnostica completa e poi rimossa se non valida
                 EditOperation op = new EditOperation();
                 op.Type = operationType;
                 op.LangTimestampMs = langTimestampMs;
-                op.DurationMs = durationMs;
+                op.DurationMs = operationDurationMs;
                 op.SourceTimestampMs = sourceTimestampMs;
                 operations.Add(op);
 
@@ -349,8 +351,8 @@ namespace RemuxForge.Core.Analysis.Deep
                 if (timelineMode && operations.Count >= 2 && acceptedTransitions.Count > 0)
                 {
                     EditOperation previousOp = operations[operations.Count - 2];
-                    int previousDeltaMs = string.Equals(previousOp.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal) ? previousOp.DurationMs : -previousOp.DurationMs;
-                    int currentDeltaMs = string.Equals(op.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal) ? op.DurationMs : -op.DurationMs;
+                    int previousDeltaMs = EditMapTimelineHelper.GetSourceOperationDeltaMs(previousOp, inverseRatio);
+                    int currentDeltaMs = string.Equals(op.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal) ? durationMs : -durationMs;
                     int residualDeltaMs = previousDeltaMs + currentDeltaMs;
 
                     if (Math.Sign(previousDeltaMs) != Math.Sign(currentDeltaMs) &&
@@ -378,7 +380,7 @@ namespace RemuxForge.Core.Analysis.Deep
                     }
                 }
 
-                ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  Transizione " + (r + 1) + ": " + operationType + " @ lang " + (langTimestampMs / 1000.0).ToString("F1", CultureInfo.InvariantCulture) + "s, durata " + durationMs + "ms (crossover src " + bestCrossover.ToString("F2", CultureInfo.InvariantCulture) + "s)");
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  Transizione " + (r + 1) + ": " + operationType + " @ lang " + (langTimestampMs / 1000.0).ToString("F1", CultureInfo.InvariantCulture) + "s, durata lang " + operationDurationMs + "ms/source " + durationMs + "ms (crossover src " + bestCrossover.ToString("F2", CultureInfo.InvariantCulture) + "s)");
                 acceptedOffsetBeforeSec.Add(oldOffsetSec);
                 acceptedTransitions.Add(transition);
                 effectiveOffsetSec = newOffsetSec;
@@ -386,6 +388,10 @@ namespace RemuxForge.Core.Analysis.Deep
 
             return operations;
         }
+
+        #endregion
+
+        #region Metodi privati
 
         #endregion
     }

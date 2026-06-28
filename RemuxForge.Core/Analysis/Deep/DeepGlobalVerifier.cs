@@ -43,7 +43,19 @@ namespace RemuxForge.Core.Analysis.Deep
         /// <summary>
         /// Verifica che l'EditMap risultante produca match visuali coerenti lungo tutto il file
         /// </summary>
-        public bool Verify(string sourceFile, string langFile, List<OffsetRegion> regions, List<EditOperation> operations, double inverseRatio, int sourceDurationMs, bool geometryCropSourceToFourThree, bool geometryCropLanguageToFourThree, out double baselineMse, out DeepAnalysisGlobalVerificationDiagnostic verification)
+        /// <param name="sourceFile">File source</param>
+        /// <param name="langFile">File lang</param>
+        /// <param name="regions">Regioni offset rilevate</param>
+        /// <param name="operations">Operazioni EditMap espresse sulla timeline lang</param>
+        /// <param name="inverseRatio">Rapporto inverso speed correction</param>
+        /// <param name="initialDelayMs">Delay iniziale realmente applicato al mux</param>
+        /// <param name="sourceDurationMs">Durata source in millisecondi</param>
+        /// <param name="geometryCropSourceToFourThree">True se il source viene croppato per match visuale 4:3</param>
+        /// <param name="geometryCropLanguageToFourThree">True se il lang viene croppato per match visuale 4:3</param>
+        /// <param name="baselineMse">MSE medio verificato</param>
+        /// <param name="verification">Diagnostica verifica globale</param>
+        /// <returns>True se la mappa supera la verifica globale</returns>
+        public bool Verify(string sourceFile, string langFile, List<OffsetRegion> regions, List<EditOperation> operations, double inverseRatio, int initialDelayMs, int sourceDurationMs, bool geometryCropSourceToFourThree, bool geometryCropLanguageToFourThree, out double baselineMse, out DeepAnalysisGlobalVerificationDiagnostic verification)
         {
             bool verified;
             int validPoints = 0;
@@ -59,7 +71,7 @@ namespace RemuxForge.Core.Analysis.Deep
             List<OffsetRegion> verificationRegions;
             baselineMse = 0.0;
             verification = new DeepAnalysisGlobalVerificationDiagnostic();
-            verificationRegions = this.BuildOperationalRegions(regions, operations, sourceDurationMs);
+            verificationRegions = this.BuildOperationalRegions(regions, operations, inverseRatio, initialDelayMs, sourceDurationMs);
             stepMs = sourceDurationMs / (double)(this._deepAnalysisConfig.GlobalVerifyPoints + 1);
             pointMse = new double[this._deepAnalysisConfig.GlobalVerifyPoints + 1];
             pointValid = new bool[this._deepAnalysisConfig.GlobalVerifyPoints + 1];
@@ -130,10 +142,16 @@ namespace RemuxForge.Core.Analysis.Deep
         /// <summary>
         /// Costruisce le regioni realmente applicate dall'EditMap finale
         /// </summary>
-        private List<OffsetRegion> BuildOperationalRegions(List<OffsetRegion> regions, List<EditOperation> operations, int sourceDurationMs)
+        /// <param name="regions">Regioni offset rilevate dalla timeline</param>
+        /// <param name="operations">Operazioni EditMap espresse sulla timeline lang</param>
+        /// <param name="inverseRatio">Rapporto inverso speed correction</param>
+        /// <param name="initialDelayMs">Delay iniziale realmente applicato</param>
+        /// <param name="sourceDurationMs">Durata source in millisecondi</param>
+        /// <returns>Regioni offset simulate dopo l'applicazione dell'EditMap</returns>
+        private List<OffsetRegion> BuildOperationalRegions(List<OffsetRegion> regions, List<EditOperation> operations, double inverseRatio, int initialDelayMs, int sourceDurationMs)
         {
             List<OffsetRegion> result = new List<OffsetRegion>();
-            double currentOffsetMs = regions != null && regions.Count > 0 ? regions[0].OffsetMs : 0.0;
+            double currentOffsetMs = initialDelayMs;
             double currentStartSec = 0.0;
             double sourceDurationSec = sourceDurationMs / 1000.0;
 
@@ -160,14 +178,7 @@ namespace RemuxForge.Core.Analysis.Deep
                     result.Add(region);
                 }
 
-                if (string.Equals(operations[i].Type, EditOperation.CUT_SEGMENT, System.StringComparison.Ordinal))
-                {
-                    currentOffsetMs -= operations[i].DurationMs;
-                }
-                else if (string.Equals(operations[i].Type, EditOperation.INSERT_SILENCE, System.StringComparison.Ordinal))
-                {
-                    currentOffsetMs += operations[i].DurationMs;
-                }
+                currentOffsetMs += EditMapTimelineHelper.GetSourceOperationDeltaMs(operations[i], inverseRatio);
 
                 currentStartSec = operationSrcSec;
             }

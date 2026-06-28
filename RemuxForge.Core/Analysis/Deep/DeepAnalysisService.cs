@@ -56,6 +56,8 @@ namespace RemuxForge.Core.Analysis.Deep
         private const int TAIL_GAP_FRAME_MIN_VOTES = 4;
         private const double TAIL_GAP_FRAME_MATCH_SSIM = 0.72;
         private const double TAIL_GAP_FRAME_MISMATCH_SSIM = 0.55;
+        private const int INITIAL_DELAY_DIRECT_OFFSET_MAX_MS = 1000;
+        private const int INITIAL_EDIT_MIN_DURATION_MS = 100;
 
         #endregion
 
@@ -196,6 +198,9 @@ namespace RemuxForge.Core.Analysis.Deep
             double visualStartEndSec;
             double visualStartMse;
             double visualStartSecondMse;
+            bool visualStartConfirmed;
+            bool leadingInitialEditCreated;
+            int initialDelayMs;
             string mkvMergePath;
             stopwatch.Start();
             this._lastAnalysisMap = null;
@@ -270,16 +275,16 @@ namespace RemuxForge.Core.Analysis.Deep
 
             regions = timelineMap.Regions;
             this.RecoverUnsupportedTailGap(sourceFile, langFile, sourceDurationMs, inverseRatio, regions, timelineMap);
-            this.ApplyInitialVisualGuard(sourceFile, langFile, sourceDurationMs, regions, inverseRatio, out visualStartOffsetMs, out visualStartEndSec, out visualStartMse, out visualStartSecondMse);
+            this.ApplyInitialVisualGuard(sourceFile, langFile, sourceDurationMs, regions, inverseRatio, out visualStartOffsetMs, out visualStartEndSec, out visualStartMse, out visualStartSecondMse, out visualStartConfirmed);
 
             acceptedAnchors = timelineMap.Diagnostic.AcceptedAnchorCount;
             initialAlignment = new DeepAnalysisInitialAlignmentDiagnostic();
-            initialAlignment.SceneCandidateAvailable = visualStartOffsetMs != int.MinValue;
-            initialAlignment.SceneOffsetMs = visualStartOffsetMs != int.MinValue ? visualStartOffsetMs : 0;
-            initialAlignment.SceneVotes = visualStartOffsetMs != int.MinValue ? (int)Math.Round(visualStartEndSec) : 0;
-            initialAlignment.SelectedSource = visualStartOffsetMs != int.MinValue ? "timeline+visual-start-guard" : "timeline";
+            initialAlignment.SceneCandidateAvailable = visualStartConfirmed;
+            initialAlignment.SceneOffsetMs = visualStartConfirmed ? visualStartOffsetMs : 0;
+            initialAlignment.SceneVotes = visualStartConfirmed ? (int)Math.Round(visualStartEndSec) : 0;
+            initialAlignment.SelectedSource = visualStartConfirmed ? "timeline+visual-start-guard" : "timeline";
             initialAlignment.SelectedOffsetMs = (int)Math.Round(regions[0].OffsetMs);
-            initialAlignment.DecisionReason = visualStartOffsetMs != int.MinValue ? "timeline-first vincolata dal match video iniziale (mse=" + visualStartMse.ToString("F1", CultureInfo.InvariantCulture) + ", second=" + visualStartSecondMse.ToString("F1", CultureInfo.InvariantCulture) + ")" : "timeline-first video anchor map";
+            initialAlignment.DecisionReason = visualStartConfirmed ? "timeline-first vincolata dal match video iniziale (mse=" + visualStartMse.ToString("F1", CultureInfo.InvariantCulture) + ", second=" + visualStartSecondMse.ToString("F1", CultureInfo.InvariantCulture) + ")" : "timeline-first video anchor map";
             diagnostics.InitialAlignment = initialAlignment;
             diagnostics.Regions = new List<DeepAnalysisRegionDiagnostic>();
             for (int i = 0; i < regions.Count; i++)
@@ -308,12 +313,18 @@ namespace RemuxForge.Core.Analysis.Deep
                 this.StoreFailedAnalysis(stopwatch, diagnostics, stretchFactor, regions, operations, baselineMse);
                 return result;
             }
+            initialDelayMs = this.ResolveInitialDelayAndLeadingOperation(regions, operations, inverseRatio, visualStartConfirmed, out leadingInitialEditCreated);
+            if (leadingInitialEditCreated)
+            {
+                diagnostics.InitialAlignment.SelectedOffsetMs = initialDelayMs;
+                diagnostics.InitialAlignment.DecisionReason = diagnostics.InitialAlignment.DecisionReason + "; offset primo plateau convertito in operazione iniziale";
+            }
 
             // Fase 4: Verifica globale
             ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, "  Fase 4: Verifica globale...");
             ConsoleHelper.Progress(LogSection.Deep, 82, "Deep: verifica globale");
             phaseStartMs = stopwatch.ElapsedMilliseconds;
-            verified = this._globalVerifier.Verify(sourceFile, langFile, regions, operations, inverseRatio, sourceDurationMs, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out baselineMse, out globalVerification);
+            verified = this._globalVerifier.Verify(sourceFile, langFile, regions, operations, inverseRatio, initialDelayMs, sourceDurationMs, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out baselineMse, out globalVerification);
             diagnostics.Timing.GlobalVerifyMs = stopwatch.ElapsedMilliseconds - phaseStartMs;
             diagnostics.GlobalVerification = globalVerification;
 
@@ -330,7 +341,7 @@ namespace RemuxForge.Core.Analysis.Deep
             diagnostics.Timing.TotalMs = this._analysisTimeMs;
 
             result = new EditMap();
-            result.InitialDelayMs = (int)Math.Round(regions[0].OffsetMs);
+            result.InitialDelayMs = initialDelayMs;
             result.StretchFactor = stretchFactor;
             result.Operations = operations;
             result.AnalysisTimeMs = this._analysisTimeMs;
@@ -361,6 +372,60 @@ namespace RemuxForge.Core.Analysis.Deep
         #endregion
 
         #region Metodi privati — Fase 2: Timeline
+
+        /// <summary>
+        /// Decide se il primo offset e' un vero delay mux o un edit iniziale da materializzare nella timeline lang.
+        /// </summary>
+        /// <param name="regions">Regioni offset rilevate</param>
+        /// <param name="operations">Operazioni EditMap gia' raffinate</param>
+        /// <param name="inverseRatio">Rapporto inverso speed correction</param>
+        /// <param name="visualStartConfirmed">True se lo start guard visuale ha confermato l'offset iniziale</param>
+        /// <param name="leadingInitialEditCreated">True se e' stata aggiunta una operazione iniziale</param>
+        /// <returns>Delay iniziale da applicare con mkvmerge</returns>
+        private int ResolveInitialDelayAndLeadingOperation(List<OffsetRegion> regions, List<EditOperation> operations, double inverseRatio, bool visualStartConfirmed, out bool leadingInitialEditCreated)
+        {
+            int initialOffsetMs;
+            int leadingDurationMs;
+            EditOperation leadingOperation;
+            leadingInitialEditCreated = false;
+
+            if (regions == null || regions.Count == 0)
+            {
+                return 0;
+            }
+
+            initialOffsetMs = (int)Math.Round(regions[0].OffsetMs);
+            if (Math.Abs(initialOffsetMs) <= INITIAL_DELAY_DIRECT_OFFSET_MAX_MS)
+            {
+                return initialOffsetMs;
+            }
+
+            if (visualStartConfirmed || operations == null || operations.Count == 0)
+            {
+                return initialOffsetMs;
+            }
+
+            leadingDurationMs = EditMapTimelineHelper.SourceDurationToLanguageDurationMs(Math.Abs(initialOffsetMs), inverseRatio);
+            if (leadingDurationMs < INITIAL_EDIT_MIN_DURATION_MS)
+            {
+                return initialOffsetMs;
+            }
+
+            /*
+             * Il primo plateau puo' essere il primo contenuto comune dopo un edit iniziale.
+             * In quel caso usarlo come delay mux sposta anche cue e audio precedenti.
+             */
+            leadingOperation = new EditOperation();
+            leadingOperation.Type = initialOffsetMs > 0 ? EditOperation.INSERT_SILENCE : EditOperation.CUT_SEGMENT;
+            leadingOperation.LangTimestampMs = 0;
+            leadingOperation.DurationMs = leadingDurationMs;
+            leadingOperation.SourceTimestampMs = 0;
+            operations.Insert(0, leadingOperation);
+            leadingInitialEditCreated = true;
+
+            ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Initial offset " + initialOffsetMs.ToString(CultureInfo.InvariantCulture) + "ms convertito in " + leadingOperation.Type + " iniziale da " + leadingDurationMs.ToString(CultureInfo.InvariantCulture) + "ms lang");
+            return 0;
+        }
 
         /// <summary>
         /// Rileva stretch globale da parametro manuale o default duration delle tracce video
@@ -425,7 +490,17 @@ namespace RemuxForge.Core.Analysis.Deep
         /// <summary>
         /// Impedisce alla timeline video di estendere all'inizio un plateau non confermato dal contenuto
         /// </summary>
-        private void ApplyInitialVisualGuard(string sourceFile, string langFile, int sourceDurationMs, List<OffsetRegion> regions, double inverseRatio, out int visualStartOffsetMs, out double visualStartEndSec, out double visualStartMse, out double visualStartSecondMse)
+        /// <param name="sourceFile">File source</param>
+        /// <param name="langFile">File lang</param>
+        /// <param name="sourceDurationMs">Durata source in millisecondi</param>
+        /// <param name="regions">Regioni offset rilevate</param>
+        /// <param name="inverseRatio">Rapporto inverso speed correction</param>
+        /// <param name="visualStartOffsetMs">Offset iniziale stimato dalla guardia visuale</param>
+        /// <param name="visualStartEndSec">Fine finestra visuale confermata</param>
+        /// <param name="visualStartMse">MSE migliore della guardia visuale</param>
+        /// <param name="visualStartSecondMse">Secondo MSE migliore della guardia visuale</param>
+        /// <param name="visualStartConfirmed">True se la guardia visuale conferma l'offset iniziale</param>
+        private void ApplyInitialVisualGuard(string sourceFile, string langFile, int sourceDurationMs, List<OffsetRegion> regions, double inverseRatio, out int visualStartOffsetMs, out double visualStartEndSec, out double visualStartMse, out double visualStartSecondMse, out bool visualStartConfirmed)
         {
             int timelineOffsetMs;
             double visualStartLocalSecondMse;
@@ -437,6 +512,7 @@ namespace RemuxForge.Core.Analysis.Deep
             visualStartEndSec = 0.0;
             visualStartMse = 0.0;
             visualStartSecondMse = 0.0;
+            visualStartConfirmed = false;
 
             if (regions == null || regions.Count == 0 || sourceDurationSec < 90.0)
             {
@@ -452,7 +528,8 @@ namespace RemuxForge.Core.Analysis.Deep
 
             if (Math.Abs(timelineOffsetMs - visualStartOffsetMs) <= 1000)
             {
-                visualStartOffsetMs = int.MinValue;
+                visualStartOffsetMs = timelineOffsetMs;
+                visualStartConfirmed = true;
                 return;
             }
 
@@ -471,6 +548,7 @@ namespace RemuxForge.Core.Analysis.Deep
             }
 
             ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Start guard: timeline initial " + timelineOffsetMs.ToString(CultureInfo.InvariantCulture) + "ms corretto a " + visualStartOffsetMs.ToString(CultureInfo.InvariantCulture) + "ms sui primi " + visualStartEndSec.ToString("F0", CultureInfo.InvariantCulture) + "s");
+            visualStartConfirmed = true;
             this.PrependInitialGuardRegion(regions, visualStartOffsetMs, visualStartEndSec, sourceDurationSec);
         }
 

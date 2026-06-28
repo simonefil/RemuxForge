@@ -1,3 +1,4 @@
+using RemuxForge.Core.Audio;
 using System.Collections.Generic;
 
 namespace RemuxForge.Core.Models
@@ -61,6 +62,7 @@ namespace RemuxForge.Core.Models
             this.DeepAnalysisTimeMs = 0;
             this.DeepAnalysisApplied = false;
             this.FrameSyncResult = null;
+            this.AudioProcessingPreview = null;
         }
 
         #endregion
@@ -301,6 +303,11 @@ namespace RemuxForge.Core.Models
         /// Indica se la deep analysis e' stata eseguita con successo
         /// </summary>
         public bool DeepAnalysisApplied { get; set; }
+
+        /// <summary>
+        /// Piano audio usato da preview dettaglio e dry-run, null se non calcolato
+        /// </summary>
+        public AudioProcessingPlan AudioProcessingPreview { get; set; }
 
         #endregion
     }
