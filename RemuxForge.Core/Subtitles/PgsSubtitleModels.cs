@@ -9,6 +9,16 @@ namespace RemuxForge.Core.Subtitles
     internal sealed record PgsSubtitleBitmap(int Width, int Height, byte[] Pixels);
 
     /// <summary>
+    /// Entry palette PGS PDS
+    /// </summary>
+    /// <param name="Index">Indice palette</param>
+    /// <param name="Y">Luminanza</param>
+    /// <param name="Cr">Color difference red</param>
+    /// <param name="Cb">Color difference blue</param>
+    /// <param name="Alpha">Opacita'</param>
+    internal readonly record struct PgsPaletteEntry(byte Index, byte Y, byte Cr, byte Cb, byte Alpha);
+
+    /// <summary>
     /// Definizione completa di un oggetto PGS ODS
     /// </summary>
     /// <param name="ObjectId">Identificativo oggetto PGS</param>

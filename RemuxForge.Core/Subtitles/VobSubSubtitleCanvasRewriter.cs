@@ -114,7 +114,7 @@ namespace RemuxForge.Core.Subtitles
                 // Ogni entry IDX punta all'inizio di un blocco SUB; la prossima entry ne determina la fine
                 block = new byte[nextFilePosition - entry.FilePosition];
                 Array.Copy(subData, (int)entry.FilePosition, block, 0, block.Length);
-                if (!VobSubSubtitleUtils.TryRewriteSubtitleBlock(block, context.Transform, out rewrittenBlock, out areas, out decoded, out scaled, out encoded, out errorMessage))
+                if (!VobSubSubtitleUtils.TryRewriteSubtitleBlock(block, context.Transform, document.Palette, out rewrittenBlock, out areas, out decoded, out scaled, out encoded, out errorMessage))
                 {
                     result.ErrorMessage = errorMessage;
                     return false;

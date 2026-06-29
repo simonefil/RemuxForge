@@ -164,6 +164,11 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         public int Height { get; private set; }
 
+        /// <summary>
+        /// Palette IDX a 16 colori RGB, se presente
+        /// </summary>
+        public int[] Palette { get; private set; }
+
         #endregion
 
         #region Metodi privati
@@ -179,6 +184,7 @@ namespace RemuxForge.Core.Subtitles
             for (int i = 0; i < this._lines.Count; i++)
             {
                 this.TryParseSize(this._lines[i]);
+                this.TryParsePalette(this._lines[i]);
                 if (VobSubSubtitleUtils.TryParseEntryLine(this._lines[i], out timestampMs, out filePosition))
                 {
                     this.Entries.Add(new VobSubIndexEntry(i, timestampMs, filePosition));
@@ -211,6 +217,45 @@ namespace RemuxForge.Core.Subtitles
                 this.Width = width;
                 this.Height = height;
             }
+        }
+
+        /// <summary>
+        /// Parse riga palette IDX
+        /// </summary>
+        /// <param name="line">Riga IDX da analizzare</param>
+        private void TryParsePalette(string line)
+        {
+            int colonIndex;
+            string value;
+            string[] parts;
+            int[] palette;
+            int rgb;
+
+            colonIndex = line.IndexOf(':');
+            if (colonIndex < 0 || !line.Substring(0, colonIndex).Trim().Equals("palette", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            value = line.Substring(colonIndex + 1).Trim();
+            parts = value.Split(',');
+            if (parts.Length < 16)
+            {
+                return;
+            }
+
+            palette = new int[16];
+            for (int i = 0; i < 16; i++)
+            {
+                if (!int.TryParse(parts[i].Trim(), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out rgb))
+                {
+                    return;
+                }
+
+                palette[i] = rgb & 0xffffff;
+            }
+
+            this.Palette = palette;
         }
 
         /// <summary>
