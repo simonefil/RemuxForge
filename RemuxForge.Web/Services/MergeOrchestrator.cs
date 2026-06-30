@@ -151,6 +151,9 @@ namespace RemuxForge.Web.Services
             int resetCount;
             Options previousOptions;
             errorMessage = "";
+            resetCount = 0;
+            scanInputsChanged = false;
+            processingOptionsChanged = false;
 
             if (opts == null)
             {
@@ -169,12 +172,11 @@ namespace RemuxForge.Web.Services
                 previousOptions = this._options;
                 scanInputsChanged = this.ScanInputsChanged(previousOptions, opts);
                 processingOptionsChanged = scanInputsChanged || this.ProcessingOptionsChanged(previousOptions, opts);
-                this._options = opts;
             }
 
             if (opts.SourceFolder.Length > 0)
             {
-                result = this._pipeline.Initialize(this._options);
+                result = this._pipeline.Initialize(opts);
                 if (!result)
                 {
                     errorMessage = AppText.T("web.merge.configNotApplicable");
@@ -191,6 +193,7 @@ namespace RemuxForge.Web.Services
                 {
                     lock (this._lock)
                     {
+                        this._options = opts;
                         this._records.Clear();
                         this._selectedIndex = -1;
                     }
@@ -200,6 +203,7 @@ namespace RemuxForge.Web.Services
                 {
                     lock (this._lock)
                     {
+                        this._options = opts;
                         resetCount = this.ResetAnalyzedRecordsAfterConfigChange();
                     }
 
@@ -209,6 +213,11 @@ namespace RemuxForge.Web.Services
                 }
                 else
                 {
+                    lock (this._lock)
+                    {
+                        this._options = opts;
+                    }
+
                     this.AppendLog(AppText.T("web.merge.configApplied"));
                 }
                 this.OnRecordsChanged?.Invoke();
@@ -963,12 +972,9 @@ namespace RemuxForge.Web.Services
         /// <param name="busy">Stato busy</param>
         private void SetBusy(bool busy)
         {
-            if (busy)
+            lock (this._lock)
             {
-                lock (this._lock)
-                {
-                    this._stopRequested = false;
-                }
+                this._stopRequested = false;
             }
 
             this._isBusy = busy;

@@ -342,6 +342,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         private void SetBusy(bool busy, string operation)
         {
+            this._stopRequested = false;
             this._isBusy = busy;
             this._progress.IsActive = busy;
             this._progress.Operation = operation;
