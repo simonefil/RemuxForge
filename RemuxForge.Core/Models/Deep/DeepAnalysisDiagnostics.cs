@@ -419,9 +419,22 @@ namespace RemuxForge.Core.Models
     public class DeepAnalysisTransitionCandidateDiagnostic
     {
         /// <summary>
+        /// Costruttore
+        /// </summary>
+        public DeepAnalysisTransitionCandidateDiagnostic()
+        {
+            this.Decision = "";
+            this.DarkBoundaryDecision = "";
+        }
+
+        /// <summary>
         /// Timestamp source del candidato
         /// </summary>
         public double SourceSec { get; set; }
+        /// <summary>
+        /// Timestamp source originale prima di eventuali correzioni dark boundary
+        /// </summary>
+        public double OriginalSourceSec { get; set; }
         /// <summary>
         /// Score differenziale usato per ordinare o filtrare il candidato
         /// </summary>
@@ -454,6 +467,26 @@ namespace RemuxForge.Core.Models
         /// Motivo sintetico del risultato candidato
         /// </summary>
         public string Decision { get; set; }
+        /// <summary>
+        /// True se il boundary e' stato riportato all'inizio di una run dark comune
+        /// </summary>
+        public bool DarkBoundaryRewritten { get; set; }
+        /// <summary>
+        /// Shift applicato al boundary in millisecondi
+        /// </summary>
+        public double DarkBoundaryShiftMs { get; set; }
+        /// <summary>
+        /// Decisione diagnostica della correzione dark boundary
+        /// </summary>
+        public string DarkBoundaryDecision { get; set; }
+        /// <summary>
+        /// Numero frame validi nella run dark comune
+        /// </summary>
+        public int DarkBoundaryRunFrames { get; set; }
+        /// <summary>
+        /// Ratio dark dell'intervallo source/lang validato
+        /// </summary>
+        public double DarkBoundaryIntervalDarkRatio { get; set; }
     }
 
     /// <summary>
