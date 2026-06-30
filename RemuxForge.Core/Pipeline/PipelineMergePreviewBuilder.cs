@@ -125,7 +125,6 @@ namespace RemuxForge.Core.Pipeline
                     mergeReq.FilterSourceSubs = filterSourceSubs;
                     mergeReq.StretchFactor = stretchFactor;
                     mergeReq.AudioFormat = options.AudioFormat;
-                    mergeReq.AudioRenameScope = options.AudioRenameScope;
                     mergeReq.SourceTitle = (sourceInfo != null) ? sourceInfo.ContainerTitle : "";
                     mergeReq.ConvertedSourceTracks = convertedSourceTracks;
                     mergeReq.ConvertedLangTracks = convertedLangTracks;

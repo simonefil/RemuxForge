@@ -24,7 +24,6 @@ namespace RemuxForge.Core.Models
             this.LangSubTracks = new List<TrackInfo>();
             this.StretchFactor = "";
             this.AudioFormat = "";
-            this.AudioRenameScope = "disabled";
             this.ConvertedSourceTracks = new Dictionary<int, string>();
             this.ConvertedLangTracks = new Dictionary<int, string>();
             this.ProcessedLangSubTracks = new Dictionary<int, string>();
@@ -107,11 +106,6 @@ namespace RemuxForge.Core.Models
         /// Formato audio processato o stringa vuota se nessuna conversione
         /// </summary>
         public string AudioFormat { get; set; }
-
-        /// <summary>
-        /// Scope rinomina audio finale: disabled, lang, all
-        /// </summary>
-        public string AudioRenameScope { get; set; }
 
         /// <summary>
         /// Mappa trackId sorgente -> percorso file audio convertito. Le tracce in questa mappa

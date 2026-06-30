@@ -198,7 +198,7 @@ namespace RemuxForge.Core.Pipeline
             // Determina modalita' operative
             this._needsMerge = (this._opts.TargetLanguage.Count > 0);
             this._needsFilter = (this._opts.KeepSourceAudioLangs.Count > 0 || this._opts.KeepSourceAudioCodec.Count > 0 || this._opts.KeepSourceSubtitleLangs.Count > 0);
-            this._needsRemux = (this._needsMerge || this._needsFilter || this._opts.AudioFormat.Length > 0 || this._opts.AudioRenameScope != "disabled");
+            this._needsRemux = (this._needsMerge || this._needsFilter || this._opts.AudioFormat.Length > 0);
             this._needsEncode = (this._opts.EncodingProfileName.Length > 0);
 
             // Modalita' singola sorgente per merge
@@ -443,11 +443,6 @@ namespace RemuxForge.Core.Pipeline
                     this._outputManager.RunEncodingAndRecord(record, finalOutput, this._opts, this._ffmpegPath, this.OnFileUpdated);
                 }
 
-                // Rinomina finale dopo merge/encoding, usando l'ordine reale delle tracce nel file scritto
-                if (!done && !this._opts.DryRun && record.Status == FileStatus.Done && this._opts.AudioRenameScope != "disabled" && finalOutput.Length > 0)
-                {
-                    this.ApplyFinalAudioTrackNames(record, finalOutput);
-                }
             }
             finally
             {
@@ -812,14 +807,9 @@ namespace RemuxForge.Core.Pipeline
                     mergeReq.LanguageFile = this._needsMerge ? record.LangFilePath : "";
                     mergeReq.OutputFile = tempOutput;
                     mergeReq.SourceAudioIds = sourceAudioIds;
-                    // Se nessun filtro attivo, passa tutte le tracce audio source per rename
                     if (sourceAudioIds.Count > 0)
                     {
                         mergeReq.SourceAudioTracks = this._trackMapper.FilterTracksByIds(sourceTracks, sourceAudioIds);
-                    }
-                    else if (this._opts.AudioRenameScope == "all" && sourceTracks != null)
-                    {
-                        mergeReq.SourceAudioTracks = this._trackMapper.FilterTracksByType(sourceTracks, "audio");
                     }
                     mergeReq.SourceSubIds = sourceSubIds;
                     mergeReq.LangAudioTracks = audioTracks;
@@ -830,7 +820,6 @@ namespace RemuxForge.Core.Pipeline
                     mergeReq.FilterSourceSubs = this._filterSourceSubs;
                     mergeReq.StretchFactor = stretchFactor;
                     mergeReq.AudioFormat = this._opts.AudioFormat;
-                    mergeReq.AudioRenameScope = this._opts.AudioRenameScope;
                     mergeReq.SourceTitle = (sourceInfo != null) ? sourceInfo.ContainerTitle : "";
                     mergeReq.ConvertedSourceTracks = convertedSourceTracks;
                     mergeReq.ConvertedLangTracks = convertedLangTracks;
@@ -917,23 +906,6 @@ namespace RemuxForge.Core.Pipeline
             }
 
             return finalOutput;
-        }
-
-        /// <summary>
-        /// Applica la rinomina audio sul file finale tramite mkvpropedit
-        /// </summary>
-        private void ApplyFinalAudioTrackNames(FileProcessingRecord record, string finalOutput)
-        {
-            string mkvPropEditPath;
-            string errorMessage;
-
-            mkvPropEditPath = this._toolPathResolver.ResolveMkvPropEditPath(this._opts.MkvMergePath, true);
-            if (!this._mkvService.ApplyFinalAudioTrackNames(finalOutput, this._opts.AudioRenameScope, this._opts.TargetLanguage, mkvPropEditPath, out errorMessage))
-            {
-                ConsoleHelper.Write(LogSection.Merge, LogLevel.Error, "  " + errorMessage);
-                record.ErrorMessage = errorMessage;
-                record.Status = FileStatus.Error;
-            }
         }
 
         /// <summary>

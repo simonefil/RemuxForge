@@ -333,11 +333,6 @@ namespace RemuxForge.Cli
                     ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.normalization", opts.AudioPeakTargetDb.ToString(System.Globalization.CultureInfo.InvariantCulture)));
                 }
             }
-            if (opts.AudioRenameScope != "disabled")
-            {
-                ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.audioRename", opts.AudioRenameScope));
-            }
-
             // Mostra flag filtro
             if (opts.SubOnly)
             {

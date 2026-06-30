@@ -57,7 +57,6 @@ namespace RemuxForge.Core.Models
             this.AudioDownsample24To16 = false;
             this.AudioPeakNormalize = false;
             this.AudioPeakTargetDb = -1.0;
-            this.AudioRenameScope = "disabled";
             this.ErrorMessage = "";
             this.EncodingProfileName = "";
             this.Split = new MkvSplitOptions();
@@ -515,14 +514,6 @@ namespace RemuxForge.Core.Models
                         }
                         options.AudioPeakTargetDb = peakTargetDb;
                     }
-                    else if (key == "audio-rename-scope")
-                    {
-                        options.AudioRenameScope = NormalizeScope(value);
-                        if (options.AudioRenameScope.Length == 0)
-                        {
-                            options.ErrorMessage = AppText.F("options.invalidAudioRenameScope", value);
-                        }
-                    }
                     else if (key == "mkv" || key == "mkvmerge-path")
                     {
                         options.MkvMergePath = value;
@@ -571,7 +562,6 @@ namespace RemuxForge.Core.Models
                 key == "audio-format" ||
                 key == "audio-scope" ||
                 key == "audio-peak-target-db" ||
-                key == "audio-rename-scope" ||
                 key == "mkv" || key == "mkvmerge-path" ||
                 key == "ep" || key == "encoding-profile";
         }
@@ -1056,11 +1046,6 @@ namespace RemuxForge.Core.Models
         /// Target dB per peak normalization
         /// </summary>
         public double AudioPeakTargetDb { get; set; }
-
-        /// <summary>
-        /// Scope rinomina audio finale: disabled, lang, all
-        /// </summary>
-        public string AudioRenameScope { get; set; }
 
         /// <summary>
         /// Indica se cercare ricorsivamente nelle sottocartelle (-r, --recursive). Default: true

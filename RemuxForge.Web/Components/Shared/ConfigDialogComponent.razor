@@ -267,15 +267,6 @@
                 }
             </div>
             }
-            <div class="form-row">
-                <span class="form-label">@AppText.T("web.config.label.audioRename")</span>
-                <select class="form-input" style="width: 14ch;" @bind="_audioRenameScope" @onfocus="@(() => SetFieldHelp("remux.rename"))" @onmouseenter="@(() => SetFieldHelp("remux.rename"))">
-                    <option value="disabled">@AppText.T("web.common.no")</option>
-                    <option value="lang">Lang</option>
-                    <option value="all">@AppText.T("web.config.option.all")</option>
-                </select>
-            </div>
-
             @* Post-Processing video *@
             <div class="form-section">@AppText.T("web.config.section.videoPost")</div>
             <div class="form-row">
@@ -562,11 +553,6 @@
     private string _audioPeakTargetDb = "-1.0";
 
     /// <summary>
-    /// Scope rinomina audio
-    /// </summary>
-    private string _audioRenameScope = "disabled";
-
-    /// <summary>
     /// Nome profilo encoding selezionato, vuoto = nessuno
     /// </summary>
     private string _encodingProfile = "";
@@ -703,7 +689,6 @@
             _audioDownsample24To16 = Options.AudioDownsample24To16;
             _audioPeakNormalize = Options.AudioPeakNormalize;
             _audioPeakTargetDb = Options.AudioPeakTargetDb.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            _audioRenameScope = Options.AudioRenameScope;
 
             _encodingProfile = Options.EncodingProfileName;
 
@@ -814,7 +799,6 @@
             audioPeakTargetDb = -1.0;
         }
         opts.AudioPeakTargetDb = audioPeakTargetDb;
-        opts.AudioRenameScope = _audioRenameScope;
 
         // Path mkvmerge da AppSettings (gestito nel dialog Percorsi tool)
         opts.MkvMergePath = AppSettingsService.Instance.Settings.Tools.MkvMergePath.Length > 0 ? AppSettingsService.Instance.Settings.Tools.MkvMergePath : "mkvmerge";

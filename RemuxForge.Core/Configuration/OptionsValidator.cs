@@ -49,7 +49,7 @@ namespace RemuxForge.Core.Configuration
 
             needsMerge = options.TargetLanguage.Count > 0;
             needsFilter = options.KeepSourceAudioLangs.Count > 0 || options.KeepSourceAudioCodec.Count > 0 || options.KeepSourceSubtitleLangs.Count > 0;
-            needsRemux = needsMerge || needsFilter || options.AudioFormat.Length > 0 || options.AudioRenameScope != "disabled";
+            needsRemux = needsMerge || needsFilter || options.AudioFormat.Length > 0;
             needsEncode = options.EncodingProfileName.Length > 0;
 
             if (options.FrameSync && options.DeepAnalysis)
@@ -185,11 +185,6 @@ namespace RemuxForge.Core.Configuration
             if (!IsValidScope(options.AudioProcessingScope))
             {
                 result.AddError(AppText.F("options.invalidAudioScope", options.AudioProcessingScope));
-            }
-
-            if (!IsValidScope(options.AudioRenameScope))
-            {
-                result.AddError(AppText.F("options.invalidAudioRenameScope", options.AudioRenameScope));
             }
 
             if (options.AudioFormat.Length == 0 && options.AudioProcessingScope != "disabled")
