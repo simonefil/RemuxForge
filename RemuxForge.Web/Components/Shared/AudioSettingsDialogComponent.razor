@@ -49,6 +49,23 @@
             <div class="form-row" style="color: var(--foreground2);">
                 @AppText.T("web.common.range"): @AppSettingsModel.AAC_BITRATE_MIN-@AppSettingsModel.AAC_BITRATE_MAX kbps
             </div>
+
+            <div class="form-section">@AppText.T("web.audioSettings.ac3Section")</div>
+            <div class="form-row">
+                <span class="form-label">@AppText.T("web.audioSettings.mono")</span>
+                <input class="form-input" style="width: 8ch;" @bind="_ac3Mono" />
+            </div>
+            <div class="form-row">
+                <span class="form-label">@AppText.T("web.audioSettings.stereo")</span>
+                <input class="form-input" style="width: 8ch;" @bind="_ac3Stereo" />
+            </div>
+            <div class="form-row">
+                <span class="form-label">@AppText.T("web.audioSettings.ac3Surround51")</span>
+                <input class="form-input" style="width: 8ch;" @bind="_ac3S51" />
+            </div>
+            <div class="form-row" style="color: var(--foreground2);">
+                @AppText.T("web.audioSettings.validBitrates"): @System.String.Join(", ", AppSettingsModel.AC3_VALID_BITRATES_KBPS) kbps
+            </div>
         </div>
         @if (_validationError.Length > 0)
         {
@@ -113,6 +130,21 @@
     private string _aacS71 = "";
 
     /// <summary>
+    /// Bitrate AC-3 mono
+    /// </summary>
+    private string _ac3Mono = "";
+
+    /// <summary>
+    /// Bitrate AC-3 stereo
+    /// </summary>
+    private string _ac3Stereo = "";
+
+    /// <summary>
+    /// Bitrate AC-3 surround 5.1
+    /// </summary>
+    private string _ac3S51 = "";
+
+    /// <summary>
     /// Messaggio errore validazione
     /// </summary>
     private string _validationError = "";
@@ -131,6 +163,9 @@
         _aacStereo = AppSettingsService.Instance.Settings.Aac.Bitrate.Stereo.ToString();
         _aacS51 = AppSettingsService.Instance.Settings.Aac.Bitrate.Surround51.ToString();
         _aacS71 = AppSettingsService.Instance.Settings.Aac.Bitrate.Surround71.ToString();
+        _ac3Mono = AppSettingsService.Instance.Settings.Ac3.Bitrate.Mono.ToString();
+        _ac3Stereo = AppSettingsService.Instance.Settings.Ac3.Bitrate.Stereo.ToString();
+        _ac3S51 = AppSettingsService.Instance.Settings.Ac3.Bitrate.Surround51.ToString();
     }
 
     /// <summary>
@@ -150,6 +185,9 @@
         if (int.TryParse(_aacStereo, out val)) { AppSettingsService.Instance.Settings.Aac.Bitrate.Stereo = val; }
         if (int.TryParse(_aacS51, out val)) { AppSettingsService.Instance.Settings.Aac.Bitrate.Surround51 = val; }
         if (int.TryParse(_aacS71, out val)) { AppSettingsService.Instance.Settings.Aac.Bitrate.Surround71 = val; }
+        if (int.TryParse(_ac3Mono, out val)) { AppSettingsService.Instance.Settings.Ac3.Bitrate.Mono = val; }
+        if (int.TryParse(_ac3Stereo, out val)) { AppSettingsService.Instance.Settings.Ac3.Bitrate.Stereo = val; }
+        if (int.TryParse(_ac3S51, out val)) { AppSettingsService.Instance.Settings.Ac3.Bitrate.Surround51 = val; }
 
         // Valida
         string errorMessage;

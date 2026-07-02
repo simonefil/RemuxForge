@@ -240,7 +240,7 @@ namespace RemuxForge.Core.Configuration
         }
 
         /// <summary>
-        /// Valida le impostazioni audio (FLAC, Opus e AAC)
+        /// Valida le impostazioni audio (FLAC, Opus, AAC e AC-3)
         /// </summary>
         /// <param name="errorMessage">Messaggio di errore, vuoto se valido</param>
         /// <returns>True se tutti i valori audio sono validi</returns>
@@ -248,6 +248,8 @@ namespace RemuxForge.Core.Configuration
         {
             List<string> errors = new List<string>();
             bool result;
+            string validAc3Bitrates;
+
             // Validazione FLAC compression level
             if (this._model.Flac.CompressionLevel < AppSettingsModel.FLAC_COMPRESSION_MIN || this._model.Flac.CompressionLevel > AppSettingsModel.FLAC_COMPRESSION_MAX)
             {
@@ -300,6 +302,20 @@ namespace RemuxForge.Core.Configuration
             if (this._model.Aac.Bitrate.Surround71 < AppSettingsModel.AAC_BITRATE_MIN || this._model.Aac.Bitrate.Surround71 > AppSettingsModel.AAC_BITRATE_MAX)
             {
                 errors.Add(AppText.F("settings.validation.rangeKbps", "AAC bitrate Surround 7.1", AppSettingsModel.AAC_BITRATE_MIN, AppSettingsModel.AAC_BITRATE_MAX));
+            }
+
+            validAc3Bitrates = string.Join(", ", AppSettingsModel.AC3_VALID_BITRATES_KBPS);
+            if (!this.IsValidAc3Bitrate(this._model.Ac3.Bitrate.Mono))
+            {
+                errors.Add(AppText.F("settings.validation.ac3Bitrate", "AC-3 bitrate Mono", validAc3Bitrates));
+            }
+            if (!this.IsValidAc3Bitrate(this._model.Ac3.Bitrate.Stereo))
+            {
+                errors.Add(AppText.F("settings.validation.ac3Bitrate", "AC-3 bitrate Stereo", validAc3Bitrates));
+            }
+            if (!this.IsValidAc3Bitrate(this._model.Ac3.Bitrate.Surround51))
+            {
+                errors.Add(AppText.F("settings.validation.ac3Bitrate", "AC-3 bitrate Surround 5.1", validAc3Bitrates));
             }
 
             // Componi messaggio errore
@@ -453,6 +469,31 @@ namespace RemuxForge.Core.Configuration
         }
 
         /// <summary>
+        /// Restituisce il bitrate AC-3 appropriato in base al numero di canali
+        /// </summary>
+        /// <param name="channels">Numero di canali audio sorgente</param>
+        /// <returns>Bitrate in kbps</returns>
+        public int GetAc3BitrateForChannels(int channels)
+        {
+            int bitrate;
+
+            if (channels <= 1)
+            {
+                bitrate = this._model.Ac3.Bitrate.Mono;
+            }
+            else if (channels <= 2)
+            {
+                bitrate = this._model.Ac3.Bitrate.Stereo;
+            }
+            else
+            {
+                bitrate = this._model.Ac3.Bitrate.Surround51;
+            }
+
+            return bitrate;
+        }
+
+        /// <summary>
         /// Restituisce un profilo di encoding per nome
         /// </summary>
         /// <param name="name">Nome del profilo</param>
@@ -487,6 +528,8 @@ namespace RemuxForge.Core.Configuration
             if (this._model.Opus.Bitrate == null) { this._model.Opus.Bitrate = new OpusBitrateConfig(); }
             if (this._model.Aac == null) { this._model.Aac = new AacConfig(); }
             if (this._model.Aac.Bitrate == null) { this._model.Aac.Bitrate = new AacBitrateConfig(); }
+            if (this._model.Ac3 == null) { this._model.Ac3 = new Ac3Config(); }
+            if (this._model.Ac3.Bitrate == null) { this._model.Ac3.Bitrate = new Ac3BitrateConfig(); }
             if (this._model.Ui == null) { this._model.Ui = new UiConfig(); }
             if (this._model.EncodingProfiles == null) { this._model.EncodingProfiles = new List<EncodingProfile>(); }
 
@@ -577,6 +620,11 @@ namespace RemuxForge.Core.Configuration
             this._model.Aac.Bitrate.Stereo = this.ClampAacBitrate(this._model.Aac.Bitrate.Stereo);
             this._model.Aac.Bitrate.Surround51 = this.ClampAacBitrate(this._model.Aac.Bitrate.Surround51);
             this._model.Aac.Bitrate.Surround71 = this.ClampAacBitrate(this._model.Aac.Bitrate.Surround71);
+
+            // Clamp AC-3 bitrate su valori discreti validi
+            this._model.Ac3.Bitrate.Mono = this.ClampAc3Bitrate(this._model.Ac3.Bitrate.Mono);
+            this._model.Ac3.Bitrate.Stereo = this.ClampAc3Bitrate(this._model.Ac3.Bitrate.Stereo);
+            this._model.Ac3.Bitrate.Surround51 = this.ClampAc3Bitrate(this._model.Ac3.Bitrate.Surround51);
 
             // Validazione tema: se non e' tra quelli validi, reset a "nord"
             bool themeValid = false;
@@ -744,6 +792,46 @@ namespace RemuxForge.Core.Configuration
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Verifica se un bitrate AC-3 è tra quelli previsti dallo standard
+        /// </summary>
+        /// <param name="value">Bitrate in kbps da verificare</param>
+        /// <returns>True se il bitrate è valido</returns>
+        private bool IsValidAc3Bitrate(int value)
+        {
+            for (int i = 0; i < AppSettingsModel.AC3_VALID_BITRATES_KBPS.Length; i++)
+            {
+                if (AppSettingsModel.AC3_VALID_BITRATES_KBPS[i] == value)
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Limita un bitrate AC-3 al valore valido più vicino
+        /// </summary>
+        /// <param name="value">Bitrate in kbps da limitare</param>
+        /// <returns>Bitrate AC-3 valido più vicino</returns>
+        private int ClampAc3Bitrate(int value)
+        {
+            int nearest = AppSettingsModel.AC3_VALID_BITRATES_KBPS[0];
+            int nearestDelta = Math.Abs(value - nearest);
+
+            for (int i = 1; i < AppSettingsModel.AC3_VALID_BITRATES_KBPS.Length; i++)
+            {
+                int candidate = AppSettingsModel.AC3_VALID_BITRATES_KBPS[i];
+                int delta = Math.Abs(value - candidate);
+                if (delta < nearestDelta)
+                {
+                    nearest = candidate;
+                    nearestDelta = delta;
+                }
+            }
+
+            return nearest;
         }
 
         /// <summary>

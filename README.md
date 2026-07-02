@@ -153,7 +153,7 @@ Main remux options:
 | `-ksa` | `--keep-source-audio` | Keep only these source audio languages |
 | `-ksac` | `--keep-source-audio-codec` | Keep only these source audio codecs |
 | `-kss` | `--keep-source-subs` | Keep only these source subtitle languages |
-| | `--audio-format` | `flac`, `lpcm`, `aac`, `opus` |
+| | `--audio-format` | `flac`, `lpcm`, `aac`, `opus`, `ac3` |
 | | `--audio-scope` | `disabled`, `lang`, `all` |
 | `-ep` | `--encoding-profile` | Post-merge video encoding profile |
 

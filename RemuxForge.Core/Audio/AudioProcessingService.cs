@@ -231,7 +231,7 @@ namespace RemuxForge.Core.Audio
             else if (trackPlan != null && !trackPlan.GenericRenderRequired)
             {
                 result.Success = true;
-                ConsoleHelper.Write(LogSection.Conv, LogLevel.Notice, "  " + this.FormatAudioTrackLabel(job.IsSource, job.Track) + " gia' in formato " + request.Options.AudioFormat.ToUpperInvariant() + ", processing saltato");
+                ConsoleHelper.Write(LogSection.Conv, LogLevel.Notice, "  " + this.FormatAudioTrackLabel(job.IsSource, job.Track) + " già in formato " + Utils.FormatAudioFormat(request.Options.AudioFormat) + ", processing saltato");
                 return result;
             }
             else
@@ -245,7 +245,7 @@ namespace RemuxForge.Core.Audio
             result.OutputFile = outputFile;
             result.OutputInfo = this.ResolveOutputInfo(outputFile, job.Track, request.Options);
             result.Success = true;
-            ConsoleHelper.Write(LogSection.Conv, LogLevel.Success, "  " + this.FormatAudioTrackLabel(job.IsSource, job.Track) + " -> " + request.Options.AudioFormat.ToUpperInvariant() + " (" + Path.GetFileName(outputFile) + ")");
+            ConsoleHelper.Write(LogSection.Conv, LogLevel.Success, "  " + this.FormatAudioTrackLabel(job.IsSource, job.Track) + " -> " + Utils.FormatAudioFormat(request.Options.AudioFormat) + " (" + Path.GetFileName(outputFile) + ")");
             return result;
         }
 
@@ -294,7 +294,7 @@ namespace RemuxForge.Core.Audio
                 args.Add("-map");
                 args.Add("0:" + track.Id);
                 args.Add("-af");
-                args.Add(this.BuildPostFilter(request.Options, false));
+                args.Add(this.BuildPostFilter(track, request.Options, false));
                 this.AddCodecArgs(args, track, request.Options);
                 args.Add(outputFile);
             }
@@ -491,7 +491,7 @@ namespace RemuxForge.Core.Audio
             args.Add("-map");
             args.Add("0:" + track.Id);
             args.Add("-af");
-            args.Add(this.BuildPostFilter(request.Options, true));
+            args.Add(this.BuildPostFilter(track, request.Options, true));
             this.AddPeakTempCodecArgs(args, request.Options);
             args.Add(tempFile);
 
@@ -658,7 +658,7 @@ namespace RemuxForge.Core.Audio
                     }
                     else
                     {
-                        // Qui lo stretch e' gia' materializzato dal filtro, quindi il silenzio deve durare quanto l'output.
+                        // Qui lo stretch è già materializzato dal filtro, quindi il silenzio deve durare quanto l'output.
                         segments.Add(new AudioFilterSegment(1, langTrackId, 0, sourceOperationDurationMs, true));
                     }
                     currentLangMs = operation.LangTimestampMs;
@@ -683,7 +683,7 @@ namespace RemuxForge.Core.Audio
         /// <summary>
         /// Costruisce il filtro concat comune a EditMap e source fill
         /// </summary>
-        /// <param name="segments">Segmenti audio gia' ordinati in timeline di output</param>
+        /// <param name="segments">Segmenti audio già ordinati in timeline di output</param>
         /// <param name="track">Traccia usata per layout e sample rate finale</param>
         /// <param name="options">Opzioni correnti</param>
         /// <param name="forPeakTemp">True se il filtro produce PCM temporaneo per peak</param>
@@ -700,7 +700,7 @@ namespace RemuxForge.Core.Audio
         {
             string filter = "";
             string concatInputs = "";
-            string layout = AudioChannelHelper.GetChannelLayout(track.Channels);
+            string layout = options.AudioFormat == "ac3" ? AudioChannelHelper.GetAc3ChannelLayout(track.Channels) : AudioChannelHelper.GetChannelLayout(track.Channels);
             string sampleRate = (track.SamplingFrequency > 0 ? track.SamplingFrequency : 48000).ToString(CultureInfo.InvariantCulture);
 
             for (int i = 0; i < segments.Count; i++)
@@ -734,7 +734,7 @@ namespace RemuxForge.Core.Audio
             {
                 filter += ",atrim=start=" + (initialTrimMs / 1000.0).ToString("F3", CultureInfo.InvariantCulture) + ",asetpts=PTS-STARTPTS";
             }
-            string post = this.BuildPostFilter(options, forPeakTemp);
+            string post = this.BuildPostFilter(track, options, forPeakTemp);
             if (post.Length > 0)
             {
                 filter += "," + post;
@@ -746,16 +746,23 @@ namespace RemuxForge.Core.Audio
         /// <summary>
         /// Costruisce il post-filtro audio comune per formato interno e dither
         /// </summary>
+        /// <param name="track">Traccia audio usata per risolvere layout e sample rate target</param>
         /// <param name="options">Opzioni correnti</param>
         /// <param name="forPeakTemp">True se il filtro produce PCM temporaneo per peak</param>
         /// <returns>Filtro audio da appendere alla catena ffmpeg</returns>
-        private string BuildPostFilter(Options options, bool forPeakTemp)
+        private string BuildPostFilter(TrackInfo track, Options options, bool forPeakTemp)
         {
             string filter = "aformat=sample_fmts=flt";
+            int channels = track != null ? track.Channels : 0;
+
+            if (options.AudioFormat == "ac3")
+            {
+                filter += ":sample_rates=" + this.ResolveAc3SampleRate(track).ToString(CultureInfo.InvariantCulture) + ":channel_layouts=" + AudioChannelHelper.GetAc3ChannelLayout(channels);
+            }
 
             if (options.AudioDownsample24To16 && (forPeakTemp || !options.AudioPeakNormalize))
             {
-                // Con peak normalize il downsample avviene nel temp, cosi' il peak viene misurato dopo dither
+                // Con peak normalize il downsample avviene nel temp, così il peak viene misurato dopo dither
                 filter += ",aresample=resampler=soxr:precision=28:dither_method=shibata:osf=s16";
             }
 
@@ -812,6 +819,37 @@ namespace RemuxForge.Core.Audio
                     args.Add("1");
                 }
             }
+            else if (format == "ac3")
+            {
+                args.Add("-c:a");
+                args.Add("ac3");
+                args.Add("-b:a");
+                args.Add(AppSettingsService.Instance.GetAc3BitrateForChannels(track.Channels).ToString(CultureInfo.InvariantCulture) + "k");
+                args.Add("-ar");
+                args.Add(this.ResolveAc3SampleRate(track).ToString(CultureInfo.InvariantCulture));
+                args.Add("-ac");
+                args.Add(AudioChannelHelper.GetAc3ChannelCount(track.Channels).ToString(CultureInfo.InvariantCulture));
+                args.Add("-channel_layout");
+                args.Add(AudioChannelHelper.GetAc3ChannelLayout(track.Channels));
+            }
+        }
+
+        /// <summary>
+        /// Risolve il sample rate finale supportato dall'encoder AC-3
+        /// </summary>
+        /// <param name="track">Traccia audio sorgente</param>
+        /// <returns>Sample rate AC-3 in Hz</returns>
+        private int ResolveAc3SampleRate(TrackInfo track)
+        {
+            int sampleRate = track != null ? track.SamplingFrequency : 0;
+            int result;
+
+            if (sampleRate == 32000 || sampleRate == 44100 || sampleRate == 48000)
+                result = sampleRate;
+            else
+                result = 48000;
+
+            return result;
         }
 
         /// <summary>
@@ -826,7 +864,7 @@ namespace RemuxForge.Core.Audio
         }
 
         /// <summary>
-        /// Inserisce il codec PCM temporaneo prima del file di output gia' presente negli argomenti
+        /// Inserisce il codec PCM temporaneo prima del file di output già presente negli argomenti
         /// </summary>
         /// <param name="args">Lista argomenti ffmpeg da modificare</param>
         /// <param name="options">Opzioni correnti</param>
@@ -1057,6 +1095,7 @@ namespace RemuxForge.Core.Audio
         {
             TrackInfo result = this.CloneTrack(fallback);
             MkvFileInfo info = this._mkvToolsService.GetFileInfo(outputFile);
+            bool outputInfoFound = false;
 
             if (info != null && info.Tracks != null)
             {
@@ -1065,6 +1104,7 @@ namespace RemuxForge.Core.Audio
                     if (string.Equals(info.Tracks[i].Type, "audio", StringComparison.OrdinalIgnoreCase))
                     {
                         result = info.Tracks[i];
+                        outputInfoFound = true;
                         break;
                     }
                 }
@@ -1073,6 +1113,16 @@ namespace RemuxForge.Core.Audio
             if (result.Codec.Length == 0)
             {
                 result.Codec = options.AudioFormat;
+            }
+            if (options.AudioFormat == "ac3")
+            {
+                result.Codec = "AC-3";
+                if (!outputInfoFound)
+                {
+                    result.Channels = AudioChannelHelper.GetAc3ChannelCount(fallback.Channels);
+                    result.SamplingFrequency = this.ResolveAc3SampleRate(fallback);
+                    result.Bitrate = AppSettingsService.Instance.GetAc3BitrateForChannels(fallback.Channels) * 1000;
+                }
             }
             if (options.AudioDownsample24To16)
             {
@@ -1146,7 +1196,7 @@ namespace RemuxForge.Core.Audio
             bool render;
             string reason;
 
-            target = request.Options.AudioFormat.ToUpperInvariant();
+            target = Utils.FormatAudioFormat(request.Options.AudioFormat);
             downsample = request.Options.AudioDownsample24To16 ? "si" : "no";
             normalize = request.Options.AudioPeakNormalize ? request.Options.AudioPeakTargetDb.ToString("F2", CultureInfo.InvariantCulture) + " dB" : "no";
 
@@ -1257,6 +1307,7 @@ namespace RemuxForge.Core.Audio
             else if (format == "lpcm") { extension = ".wav"; }
             else if (format == "aac") { extension = ".m4a"; }
             else if (format == "opus") { extension = ".ogg"; }
+            else if (format == "ac3") { extension = ".ac3"; }
 
             return Path.Combine(this._tempFolder, "audio_" + prefix + "_" + label + "_t" + track.Id + "_" + Guid.NewGuid().ToString("N").Substring(0, 8) + extension);
         }

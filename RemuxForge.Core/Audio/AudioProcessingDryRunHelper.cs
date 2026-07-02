@@ -1,3 +1,5 @@
+using RemuxForge.Core.Configuration;
+using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Models;
 using System.Collections.Generic;
 
@@ -84,9 +86,11 @@ namespace RemuxForge.Core.Audio
         private static TrackInfo CloneAudioInfoForDryRun(TrackInfo source, Options options)
         {
             TrackInfo result = new TrackInfo();
+            int ac3SampleRate;
+
             result.Id = source.Id;
             result.Type = source.Type;
-            result.Codec = options.AudioFormat.ToUpperInvariant();
+            result.Codec = Utils.FormatAudioFormat(options.AudioFormat);
             result.Language = source.Language;
             result.LanguageIetf = source.LanguageIetf;
             result.Name = source.Name;
@@ -99,6 +103,16 @@ namespace RemuxForge.Core.Audio
             result.BitsPerSample = options.AudioDownsample24To16 ? 16 : source.BitsPerSample;
             result.SamplingFrequency = source.SamplingFrequency;
             result.Bitrate = source.Bitrate;
+            if (options.AudioFormat == "ac3")
+            {
+                ac3SampleRate = source.SamplingFrequency;
+                if (ac3SampleRate != 32000 && ac3SampleRate != 44100 && ac3SampleRate != 48000)
+                    ac3SampleRate = 48000;
+
+                result.Channels = AudioChannelHelper.GetAc3ChannelCount(source.Channels);
+                result.SamplingFrequency = ac3SampleRate;
+                result.Bitrate = AppSettingsService.Instance.GetAc3BitrateForChannels(source.Channels) * 1000;
+            }
             return result;
         }
 

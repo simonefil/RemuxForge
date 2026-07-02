@@ -99,6 +99,42 @@ namespace RemuxForge.Core.Configuration
         }
 
         /// <summary>
+        /// Determina il layout canali finale supportato dall'encoder AC-3
+        /// </summary>
+        /// <param name="channels">Numero canali sorgente</param>
+        /// <returns>Layout FFmpeg compatibile con AC-3</returns>
+        public static string GetAc3ChannelLayout(int channels)
+        {
+            string layout;
+
+            if (channels > 6)
+                layout = "5.1";
+            else
+                layout = GetChannelLayout(channels);
+
+            return layout;
+        }
+
+        /// <summary>
+        /// Determina il numero canali finale supportato dall'encoder AC-3
+        /// </summary>
+        /// <param name="channels">Numero canali sorgente</param>
+        /// <returns>Numero canali finale per AC-3</returns>
+        public static int GetAc3ChannelCount(int channels)
+        {
+            int result;
+
+            if (channels <= 1)
+                result = 1;
+            else if (channels > 6)
+                result = 6;
+            else
+                result = channels;
+
+            return result;
+        }
+
+        /// <summary>
         /// Formatta il layout canali in formato numerico per display (1.0, 2.0, 5.1, 7.1)
         /// </summary>
         /// <param name="channels">Numero canali audio</param>

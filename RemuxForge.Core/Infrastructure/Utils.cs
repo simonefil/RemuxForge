@@ -61,6 +61,24 @@ namespace RemuxForge.Core.Infrastructure
         }
 
         /// <summary>
+        /// Formatta un formato audio interno per display
+        /// </summary>
+        /// <param name="audioFormat">Formato audio interno</param>
+        /// <returns>Formato audio leggibile</returns>
+        public static string FormatAudioFormat(string audioFormat)
+        {
+            string value = audioFormat != null ? audioFormat.Trim() : "";
+            string result;
+
+            if (string.Equals(value, "ac3", StringComparison.OrdinalIgnoreCase))
+                result = "AC-3";
+            else
+                result = value.ToUpperInvariant();
+
+            return result;
+        }
+
+        /// <summary>
         /// Formatta un delay in millisecondi con segno
         /// </summary>
         /// <param name="delayMs">Delay in millisecondi</param>
@@ -242,7 +260,7 @@ namespace RemuxForge.Core.Infrastructure
 
                     if (ShouldDisplayAudioProcessing(tracks[i], options, false, true, forceProcessing))
                     {
-                        sb.Append(" -> ").Append(options.AudioFormat.ToUpperInvariant());
+                        sb.Append(" -> ").Append(FormatAudioFormat(options.AudioFormat));
                     }
                 }
                 result = sb.ToString();
@@ -357,7 +375,7 @@ namespace RemuxForge.Core.Infrastructure
 
                     if (ShouldDisplayAudioProcessing(sourceTracks[i], options, true, hasMerge, false))
                     {
-                        sb.Append(" -> ").Append(options.AudioFormat.ToUpperInvariant());
+                        sb.Append(" -> ").Append(FormatAudioFormat(options.AudioFormat));
                     }
                     count++;
                 }
@@ -372,7 +390,7 @@ namespace RemuxForge.Core.Infrastructure
 
                     if (ShouldDisplayAudioProcessing(importedTracks[i], options, false, hasMerge, forceImportedProcessing))
                     {
-                        sb.Append(" -> ").Append(options.AudioFormat.ToUpperInvariant());
+                        sb.Append(" -> ").Append(FormatAudioFormat(options.AudioFormat));
                     }
                     count++;
                 }

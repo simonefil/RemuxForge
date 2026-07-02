@@ -285,7 +285,7 @@ namespace RemuxForge.Core.Models
         public List<TrackInfo> ImportedSubTracks { get; set; }
 
         /// <summary>
-        /// Formato conversione audio per display (flac, opus, vuoto se nessuna)
+        /// Formato conversione audio per display, vuoto se nessuna
         /// </summary>
         public string DisplayAudioFormat { get; set; }
 

@@ -302,7 +302,7 @@ namespace RemuxForge.Core.Pipeline
                     // Log impostazioni conversione se attiva
                     if (success && this._opts.AudioFormat.Length > 0)
                     {
-                        this.Log(LogSection.Config, LogLevel.Phase, "Processing audio attivo: " + this._opts.AudioFormat.ToUpper() + " (" + this._opts.AudioProcessingScope + ")");
+                        this.Log(LogSection.Config, LogLevel.Phase, "Processing audio attivo: " + Utils.FormatAudioFormat(this._opts.AudioFormat) + " (" + this._opts.AudioProcessingScope + ")");
                         if (string.Equals(this._opts.AudioFormat, "flac", StringComparison.OrdinalIgnoreCase))
                         {
                             this.Log(LogSection.Config, LogLevel.Debug, "  FLAC compression level: " + AppSettingsService.Instance.Settings.Flac.CompressionLevel);
@@ -314,6 +314,10 @@ namespace RemuxForge.Core.Pipeline
                         else if (string.Equals(this._opts.AudioFormat, "opus", StringComparison.OrdinalIgnoreCase))
                         {
                             this.Log(LogSection.Config, LogLevel.Debug, "  Opus bitrate: mono=" + AppSettingsService.Instance.Settings.Opus.Bitrate.Mono + "k, stereo=" + AppSettingsService.Instance.Settings.Opus.Bitrate.Stereo + "k, 5.1=" + AppSettingsService.Instance.Settings.Opus.Bitrate.Surround51 + "k, 7.1=" + AppSettingsService.Instance.Settings.Opus.Bitrate.Surround71 + "k");
+                        }
+                        else if (string.Equals(this._opts.AudioFormat, "ac3", StringComparison.OrdinalIgnoreCase))
+                        {
+                            this.Log(LogSection.Config, LogLevel.Debug, "  AC-3 bitrate: mono=" + AppSettingsService.Instance.Settings.Ac3.Bitrate.Mono + "k, stereo=" + AppSettingsService.Instance.Settings.Ac3.Bitrate.Stereo + "k, 5.1=" + AppSettingsService.Instance.Settings.Ac3.Bitrate.Surround51 + "k");
                         }
                     }
 
@@ -515,7 +519,7 @@ namespace RemuxForge.Core.Pipeline
 
             if (needsConvert)
             {
-                steps.Add(AppText.F("web.pipeline.step.processingAudio", opts.AudioFormat.ToUpperInvariant()));
+                steps.Add(AppText.F("web.pipeline.step.processingAudio", Utils.FormatAudioFormat(opts.AudioFormat)));
             }
 
             if (needsAudioSourceFill)
@@ -839,7 +843,7 @@ namespace RemuxForge.Core.Pipeline
                     record.KeptSourceSubIds = sourceSubIds;
                     record.ImportedAudioTracks = audioTracks;
                     record.ImportedSubTracks = subtitleTracks;
-                    record.DisplayAudioFormat = this._opts.AudioFormat;
+                    record.DisplayAudioFormat = Utils.FormatAudioFormat(this._opts.AudioFormat);
 
                     // Calcola lingue risultato
                     this.PopulateResultLanguages(record, sourceTracks, sourceAudioIds, audioTracks, subtitleTracks);

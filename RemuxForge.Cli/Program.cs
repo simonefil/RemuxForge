@@ -437,7 +437,7 @@ namespace RemuxForge.Cli
             }
             if (opts.AudioFormat.Length > 0)
             {
-                ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.audioFormat", opts.AudioFormat.ToUpperInvariant(), opts.AudioProcessingScope));
+                ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.audioFormat", Utils.FormatAudioFormat(opts.AudioFormat), opts.AudioProcessingScope));
                 if (opts.AudioDownsample24To16)
                 {
                     ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.T("cli.config.audio24To16"));

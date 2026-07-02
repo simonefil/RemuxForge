@@ -1,4 +1,5 @@
 using RemuxForge.Core.Audio;
+using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
 using System;
@@ -103,7 +104,7 @@ namespace RemuxForge.Core.Pipeline
                 record.KeptSourceSubIds = sourceSubIds;
                 record.ImportedAudioTracks = audioTracks;
                 record.ImportedSubTracks = subtitleTracks;
-                record.DisplayAudioFormat = options.AudioFormat;
+                record.DisplayAudioFormat = Utils.FormatAudioFormat(options.AudioFormat);
 
                 if (hasWork)
                 {

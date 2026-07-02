@@ -237,6 +237,72 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
+    /// Configurazione bitrate AC-3 per gruppo canali supportato
+    /// </summary>
+    public class Ac3BitrateConfig
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore con valori di default ad alta qualità
+        /// </summary>
+        public Ac3BitrateConfig()
+        {
+            this.Mono = 192;
+            this.Stereo = 384;
+            this.Surround51 = 640;
+        }
+
+        #endregion
+
+        #region Proprieta
+
+        /// <summary>
+        /// Bitrate mono in kbps
+        /// </summary>
+        public int Mono { get; set; }
+
+        /// <summary>
+        /// Bitrate stereo in kbps
+        /// </summary>
+        public int Stereo { get; set; }
+
+        /// <summary>
+        /// Bitrate surround 5.1 in kbps, usato anche per downmix da layout superiori
+        /// </summary>
+        public int Surround51 { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Configurazione codec AC-3
+    /// </summary>
+    public class Ac3Config
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore con valori di default
+        /// </summary>
+        public Ac3Config()
+        {
+            this.Bitrate = new Ac3BitrateConfig();
+        }
+
+        #endregion
+
+        #region Proprieta
+
+        /// <summary>
+        /// Bitrate per gruppo canali
+        /// </summary>
+        public Ac3BitrateConfig Bitrate { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
     /// Configurazione interfaccia utente
     /// </summary>
     public class UiConfig
@@ -313,6 +379,11 @@ namespace RemuxForge.Core.Models
         public const int AAC_BITRATE_MAX = 1536;
 
         /// <summary>
+        /// Bitrate AC-3 validi in kbps secondo A/52
+        /// </summary>
+        public static readonly int[] AC3_VALID_BITRATES_KBPS = new int[] { 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 448, 512, 576, 640 };
+
+        /// <summary>
         /// Temi validi
         /// </summary>
         public static readonly string[] VALID_THEMES = { "dark", "nord", "dos-blue", "matrix", "cyberpunk", "solarized-dark", "solarized-light", "cybergum", "everforest" };
@@ -330,6 +401,7 @@ namespace RemuxForge.Core.Models
             this.Flac = new FlacConfig();
             this.Opus = new OpusConfig();
             this.Aac = new AacConfig();
+            this.Ac3 = new Ac3Config();
             this.Ui = new UiConfig();
             this.EncodingProfiles = new List<EncodingProfile>();
             this.Advanced = new AdvancedConfig();
@@ -358,6 +430,11 @@ namespace RemuxForge.Core.Models
         /// Configurazione codec AAC
         /// </summary>
         public AacConfig Aac { get; set; }
+
+        /// <summary>
+        /// Configurazione codec AC-3
+        /// </summary>
+        public Ac3Config Ac3 { get; set; }
 
         /// <summary>
         /// Configurazione interfaccia utente

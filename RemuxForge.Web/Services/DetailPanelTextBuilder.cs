@@ -237,7 +237,7 @@ namespace RemuxForge.Web.Services
                 return AppText.F("web.detail.audioError", plan.ErrorMessage);
             }
 
-            target = options.AudioFormat.Length > 0 ? options.AudioFormat.ToUpperInvariant() : "";
+            target = options.AudioFormat.Length > 0 ? Utils.FormatAudioFormat(options.AudioFormat) : "";
             if (plan.RenderRequired && target.Length > 0)
             {
                 parts.Add(target);

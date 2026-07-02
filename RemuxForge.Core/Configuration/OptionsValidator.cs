@@ -292,7 +292,7 @@ namespace RemuxForge.Core.Configuration
         /// </summary>
         private static bool IsValidAudioFormat(string value)
         {
-            return value == "" || value == "flac" || value == "lpcm" || value == "aac" || value == "opus";
+            return value == "" || value == "flac" || value == "lpcm" || value == "aac" || value == "opus" || value == "ac3";
         }
 
         /// <summary>

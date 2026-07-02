@@ -283,7 +283,7 @@ namespace RemuxForge.Core.Configuration
         /// Verifica se la traccia è già nel formato audio target
         /// </summary>
         /// <param name="track">Traccia da verificare</param>
-        /// <param name="targetFormat">Formato target flac/lpcm/aac/opus</param>
+        /// <param name="targetFormat">Formato target flac/lpcm/aac/opus/ac3</param>
         /// <returns>True se il codec della traccia corrisponde al formato target</returns>
         public static bool IsTargetAudioFormat(TrackInfo track, string targetFormat)
         {
@@ -312,6 +312,10 @@ namespace RemuxForge.Core.Configuration
             {
                 result = string.Equals(track.Codec, "Opus", StringComparison.OrdinalIgnoreCase);
             }
+            else if (format == "ac3")
+            {
+                result = string.Equals(track.Codec, "AC-3", StringComparison.OrdinalIgnoreCase);
+            }
 
             return result;
         }
@@ -320,7 +324,7 @@ namespace RemuxForge.Core.Configuration
         /// Verifica se una traccia è lossless e convertibile (lossless ma non spaziale)
         /// </summary>
         /// <param name="track">Traccia da verificare</param>
-        /// <param name="targetFormat">Formato target (flac/opus). Se flac, FLAC sorgente non viene convertito</param>
+        /// <param name="targetFormat">Formato target. Se flac, FLAC sorgente non viene convertito</param>
         /// <returns>True se la traccia può essere convertita</returns>
         public static bool IsConvertibleLossless(TrackInfo track, string targetFormat)
         {

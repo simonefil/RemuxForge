@@ -579,7 +579,7 @@ namespace RemuxForge.Core.Models
                     else if (key == "audio-format")
                     {
                         audioFormat = value.Trim().ToLowerInvariant();
-                        if (audioFormat == "flac" || audioFormat == "lpcm" || audioFormat == "aac" || audioFormat == "opus")
+                        if (audioFormat == "flac" || audioFormat == "lpcm" || audioFormat == "aac" || audioFormat == "opus" || audioFormat == "ac3")
                         {
                             options.AudioFormat = audioFormat;
                             if (options.AudioProcessingScope == "disabled")
@@ -1117,7 +1117,7 @@ namespace RemuxForge.Core.Models
         public string MkvMergePath { get; set; }
 
         /// <summary>
-        /// Formato audio finale per tracce processate. Valori: flac, lpcm, aac, opus o vuoto
+        /// Formato audio finale per tracce processate. Valori: flac, lpcm, aac, opus, ac3 o vuoto
         /// </summary>
         public string AudioFormat { get; set; }
 
