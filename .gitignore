@@ -63,6 +63,9 @@ project.lock.json
 project.fragment.lock.json
 artifacts/
 
+# Local test project
+RemuxForge.Tests/
+
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
 

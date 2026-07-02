@@ -13,6 +13,7 @@
 /* Application styles */
 @import 'layout.css';
 @import 'components.css';
+@import 'renamer.css';
 
 /* Global overrides */
 html, body {

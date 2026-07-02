@@ -1,0 +1,213 @@
+<table class="metadata-detail-track-table">
+    <colgroup>
+        <col class="metadata-track-col-selector" />
+        <col class="metadata-track-col-type" />
+        <col class="metadata-track-col-language" />
+        <col class="metadata-track-col-format" />
+        <col class="metadata-track-col-title" />
+        <col class="metadata-track-col-size" />
+        <col class="metadata-track-col-extra" />
+    </colgroup>
+    <thead>
+        <tr>
+            <th>@AppText.T("web.metadata.detail.selector")</th>
+            <th>@AppText.T("web.metadata.detail.type")</th>
+            <th>@AppText.T("web.metadata.detail.languageHeader")</th>
+            <th>@AppText.T("web.metadata.detail.format")</th>
+            <th>@AppText.T("web.metadata.detail.title")</th>
+            <th>@AppText.T("web.metadata.detail.sizeHeader")</th>
+            <th>@AppText.T("web.metadata.detail.extra")</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (MkvMetadataTrackInfo track in GetTracks())
+        {
+            string rowClass = IsTrackRemoved(track.TrackSelector) ? "metadata-diff-removed" : "";
+            <tr class="@rowClass">
+                <td>@track.TrackSelector</td>
+                <td>@track.TrackKind</td>
+                <td class="@GetFieldClass(track.TrackSelector, GetDomainFieldKey(track, "language"))">@FormatValue(track.Language)</td>
+                <td>@FormatValue(track.Format)</td>
+                <td class="@GetFieldClass(track.TrackSelector, GetDomainFieldKey(track, "title"))">@FormatValue(track.Title)</td>
+                <td>@FormatSize(track.StreamSize)</td>
+                <td>@BuildExtra(track)</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    [Parameter] public MkvMetadataRecord Record { get; set; }
+    [Parameter] public bool Simulated { get; set; }
+
+    private List<MkvMetadataTrackInfo> GetTracks()
+    {
+        MkvMetadataFileInfo info = GetInfo();
+        return info != null && info.Tracks != null ? info.Tracks : new List<MkvMetadataTrackInfo>();
+    }
+
+    private MkvMetadataFileInfo GetInfo()
+    {
+        if (Record == null)
+        {
+            return new MkvMetadataFileInfo();
+        }
+
+        if (Simulated)
+        {
+            return Record.FileInfo != null ? Record.FileInfo : new MkvMetadataFileInfo();
+        }
+
+        return Record.OriginalFileInfo != null && Record.OriginalFileInfo.Tracks != null && Record.OriginalFileInfo.Tracks.Count > 0
+            ? Record.OriginalFileInfo
+            : Record.FileInfo != null ? Record.FileInfo : new MkvMetadataFileInfo();
+    }
+
+    private string GetFieldClass(string trackSelector, string fieldKey)
+    {
+        MkvMetadataChange change = FindLastChange(trackSelector, fieldKey);
+        if (!Simulated || change == null)
+        {
+            return "";
+        }
+
+        if (change.BeforeValue.Length == 0 && change.AfterValue.Length > 0)
+        {
+            return "metadata-diff-added";
+        }
+
+        if (change.BeforeValue.Length > 0 && change.AfterValue.Length == 0)
+        {
+            return "metadata-diff-removed";
+        }
+
+        return "metadata-diff-modified";
+    }
+
+    private MkvMetadataChange FindLastChange(string trackSelector, string fieldKey)
+    {
+        MkvMetadataChange result = null;
+        if (Record == null || Record.Changes == null)
+        {
+            return result;
+        }
+
+        for (int i = 0; i < Record.Changes.Count; i++)
+        {
+            if (Record.Changes[i].TrackSelector == trackSelector && Record.Changes[i].FieldKey == fieldKey)
+            {
+                result = Record.Changes[i];
+            }
+        }
+
+        return result;
+    }
+
+    private bool IsTrackRemoved(string trackSelector)
+    {
+        if (!Simulated || Record == null || Record.Changes == null)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < Record.Changes.Count; i++)
+        {
+            if (Record.Changes[i].OperationType == MkvMetadataOperationType.RemoveTrack && Record.Changes[i].TrackSelector == trackSelector)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string BuildExtra(MkvMetadataTrackInfo track)
+    {
+        string width = GetValue(track.Fields, "video_width");
+        string height = GetValue(track.Fields, "video_height");
+        string channels = GetValue(track.Fields, "audio_channels_label");
+        string bitDepth = GetValue(track.Fields, "audio_bitdepth");
+        string sampleRate = GetValue(track.Fields, "audio_sampling_rate_khz");
+        string forced = GetValue(track.Fields, GetDomainFieldKey(track, "forced"));
+        string result = "";
+
+        if (track.TrackKind == "video")
+        {
+            if (width.Length > 0 && height.Length > 0) { result = width + "x" + height; }
+            AddPart(ref result, GetValue(track.Fields, "video_hdr_format"));
+            AddPart(ref result, GetValue(track.Fields, "video_fps"));
+        }
+        else if (track.TrackKind == "audio")
+        {
+            AddPart(ref result, channels);
+            if (bitDepth.Length > 0 || sampleRate.Length > 0)
+            {
+                AddPart(ref result, bitDepth + "bit/" + sampleRate + "kHz");
+            }
+        }
+        else if (track.TrackKind == "subtitles")
+        {
+            AddPart(ref result, GetValue(track.Fields, "subtitle_format"));
+            if (forced == "true")
+            {
+                AddPart(ref result, AppText.T("web.metadata.detail.forced"));
+            }
+        }
+
+        return result.Length > 0 ? result : "-";
+    }
+
+    private static string GetDomainFieldKey(MkvMetadataTrackInfo track, string suffix)
+    {
+        if (track != null && track.TrackKind == "video")
+        {
+            return "video_" + suffix;
+        }
+        if (track != null && track.TrackKind == "audio")
+        {
+            return "audio_" + suffix;
+        }
+        if (track != null && track.TrackKind == "subtitles")
+        {
+            return "subtitle_" + suffix;
+        }
+
+        return suffix;
+    }
+
+    private static void AddPart(ref string value, string part)
+    {
+        if (part == null || part.Length == 0)
+        {
+            return;
+        }
+
+        if (value.Length > 0)
+        {
+            value += " ";
+        }
+
+        value += part;
+    }
+
+    private static string GetValue(Dictionary<string, string> values, string key)
+    {
+        string result;
+        if (values != null && values.TryGetValue(key, out result))
+        {
+            return result != null ? result : "";
+        }
+
+        return "";
+    }
+
+    private static string FormatValue(string value)
+    {
+        return value != null && value.Length > 0 ? value : "-";
+    }
+
+    private static string FormatSize(long size)
+    {
+        return size > 0 ? Utils.FormatSize(size) : "-";
+    }
+}

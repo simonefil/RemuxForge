@@ -27,6 +27,24 @@ namespace RemuxForge.Core.Configuration
         };
 
         /// <summary>
+        /// Token MediaInfo che identificano formati audio lossless
+        /// </summary>
+        private static readonly string[] s_losslessMediaInfoTokens = new string[]
+        {
+            "ALAC",
+            "APE",
+            "DTS XLL",
+            "DTS-HD MA",
+            "DTS-HD Master",
+            "FLAC",
+            "LPCM",
+            "MLP",
+            "PCM",
+            "TrueHD",
+            "WavPack"
+        };
+
+        /// <summary>
         /// Mappa nomi codec utente a stringhe codec esatte mkvmerge
         /// </summary>
         private static readonly Dictionary<string, string[]> s_codecMap = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
@@ -139,10 +157,10 @@ namespace RemuxForge.Core.Configuration
         }
 
         /// <summary>
-        /// Verifica se un codec e' lossless (candidato a conversione)
+        /// Verifica se un codec è lossless (candidato a conversione)
         /// </summary>
         /// <param name="trackCodec">Stringa codec dalla traccia MKV</param>
-        /// <returns>True se il codec e' lossless</returns>
+        /// <returns>True se il codec è lossless</returns>
         public static bool IsLosslessCodec(string trackCodec)
         {
             bool result = false;
@@ -159,10 +177,39 @@ namespace RemuxForge.Core.Configuration
         }
 
         /// <summary>
-        /// Verifica se una traccia e' Atmos o DTS:X (codec con metadati spaziali, non convertibile)
+        /// Determina se un formato audio MediaInfo è lossy, lossless o sconosciuto
+        /// </summary>
+        /// <param name="format">Formato audio MediaInfo</param>
+        /// <param name="compressionMode">Compression mode MediaInfo</param>
+        /// <returns>lossless, lossy o unknown</returns>
+        public static string DetectAudioQuality(string format, string compressionMode)
+        {
+            string formatText = format != null ? format.Trim() : "";
+            string modeText = compressionMode != null ? compressionMode.Trim() : "";
+
+            if (modeText.IndexOf("lossless", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "lossless";
+
+            if (modeText.IndexOf("lossy", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "lossy";
+
+            for (int i = 0; i < s_losslessMediaInfoTokens.Length; i++)
+            {
+                if (formatText.IndexOf(s_losslessMediaInfoTokens[i], StringComparison.OrdinalIgnoreCase) >= 0)
+                    return "lossless";
+            }
+
+            if (formatText.Length > 0)
+                return "lossy";
+
+            return "unknown";
+        }
+
+        /// <summary>
+        /// Verifica se una traccia è Atmos o DTS:X (codec con metadati spaziali, non convertibile)
         /// </summary>
         /// <param name="track">Traccia da verificare</param>
-        /// <returns>True se la traccia e' TrueHD Atmos o DTS:X</returns>
+        /// <returns>True se la traccia è TrueHD Atmos o DTS:X</returns>
         public static bool IsSpatialCodec(TrackInfo track)
         {
             bool result = false;
@@ -178,7 +225,7 @@ namespace RemuxForge.Core.Configuration
             nameText = track.Name != null ? track.Name : "";
             combined = codecText + " " + nameText;
 
-            // DTS:X: codec gia' distinto in mkvmerge
+            // DTS:X: codec già distinto in mkvmerge
             if (combined.IndexOf("DTS:X", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 result = true;
@@ -233,7 +280,7 @@ namespace RemuxForge.Core.Configuration
         }
 
         /// <summary>
-        /// Verifica se la traccia e' gia' nel formato audio target
+        /// Verifica se la traccia è già nel formato audio target
         /// </summary>
         /// <param name="track">Traccia da verificare</param>
         /// <param name="targetFormat">Formato target flac/lpcm/aac/opus</param>
@@ -270,11 +317,11 @@ namespace RemuxForge.Core.Configuration
         }
 
         /// <summary>
-        /// Verifica se una traccia e' lossless e convertibile (lossless ma non spaziale)
+        /// Verifica se una traccia è lossless e convertibile (lossless ma non spaziale)
         /// </summary>
         /// <param name="track">Traccia da verificare</param>
         /// <param name="targetFormat">Formato target (flac/opus). Se flac, FLAC sorgente non viene convertito</param>
-        /// <returns>True se la traccia puo' essere convertita</returns>
+        /// <returns>True se la traccia può essere convertita</returns>
         public static bool IsConvertibleLossless(TrackInfo track, string targetFormat)
         {
             bool result = IsLosslessCodec(track.Codec) &&

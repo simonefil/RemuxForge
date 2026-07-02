@@ -120,6 +120,7 @@ namespace RemuxForge.Web
             // Registra servizi
             builder.Services.AddSingleton<MergeOrchestrator>();
             builder.Services.AddSingleton<SplitOrchestrator>();
+            builder.Services.AddSingleton<MetadataOrchestrator>();
             builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 
             WebApplication app = builder.Build();

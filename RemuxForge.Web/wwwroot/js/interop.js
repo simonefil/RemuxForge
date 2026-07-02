@@ -1,3 +1,5 @@
+var initializedWindowDragElements = new WeakSet();
+
 // Keyboard capture - filtra tasti e inoltra a .NET
 export function captureKeyboard(dotNetRef) {
     // Rimuovi handler precedente se presente
@@ -32,7 +34,8 @@ export function captureKeyboard(dotNetRef) {
         var alt = e.altKey;
         var tagName = document.activeElement ? document.activeElement.tagName : '';
         var activeElement = document.activeElement;
-        var blockingDialogOpen = hasBlockingDialogOpen();
+        var modalDialogOpen = hasModalDialogOpen();
+        var renamerOpen = hasRenamerOpen();
 
         if (activeElement && activeElement.classList && isPseudoControl(activeElement) && (key === 'Enter' || key === ' ')) {
             e.preventDefault();
@@ -40,7 +43,7 @@ export function captureKeyboard(dotNetRef) {
             return;
         }
 
-        if (blockingDialogOpen) {
+        if (modalDialogOpen) {
             if (key === 'Escape') {
                 e.preventDefault();
                 dotNetRef.invokeMethodAsync('OnKeyDown', key, ctrl, shift, alt);
@@ -48,12 +51,19 @@ export function captureKeyboard(dotNetRef) {
             return;
         }
 
-        // Se un campo editabile ha focus, gestisci solo Tab e Escape
+        if (renamerOpen) {
+            return;
+        }
+
+        var isFKey = key.startsWith('F') && key.length <= 3 && !isNaN(key.substring(1));
+        var isMetadataClearShortcut = ctrl && key.toLowerCase() === 'l';
+
+        // Se un campo editabile ha focus, lascia passare solo i comandi UI espliciti
         if (isEditableElement(activeElement, tagName)) {
             if (key === 'Tab' && document.activeElement.classList.contains('path-bar-input')) {
                 e.preventDefault();
             }
-            if (key === 'Escape') {
+            if (key === 'Escape' || isFKey || isMetadataClearShortcut) {
                 e.preventDefault();
                 dotNetRef.invokeMethodAsync('OnKeyDown', key, ctrl, shift, alt);
             }
@@ -61,11 +71,10 @@ export function captureKeyboard(dotNetRef) {
         }
 
         // Filtra: invia solo tasti usati dalla UI per evitare scroll browser durante navigazione tabella/menu
-        var isFKey = key.startsWith('F') && key.length <= 3 && !isNaN(key.substring(1));
         var isNavigation = key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight'
             || key === 'Home' || key === 'End' || key === 'PageUp' || key === 'PageDown';
         var isSpecial = key === 'Escape' || key === 'Enter' || key === 'Delete' || key === ' ' || key === 'Alt';
-        var isCtrlShortcut = ctrl && key.toLowerCase() === 'a';
+        var isCtrlShortcut = ctrl && (key.toLowerCase() === 'a' || key.toLowerCase() === 'l');
         if (isCtrlShortcut && isTextSelectionAllowed(e.target)) {
             return;
         }
@@ -100,6 +109,14 @@ export function scrollEpisodeRowIntoView(index) {
 // Porta una riga split in vista senza delegare lo scroll alle frecce del browser
 export function scrollSplitRowIntoView(index) {
     var row = document.querySelector('[data-split-row-index="' + index + '"]');
+    if (row) {
+        row.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+}
+
+// Porta una riga metadata in vista senza delegare lo scroll alle frecce del browser
+export function scrollMetadataRowIntoView(index) {
+    var row = document.querySelector('[data-metadata-row-index="' + index + '"]');
     if (row) {
         row.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
@@ -155,8 +172,12 @@ function isEditableElement(element, tagName) {
     return element.isContentEditable === true;
 }
 
-function hasBlockingDialogOpen() {
+function hasModalDialogOpen() {
     return document.querySelector('.dialog-overlay.visible') !== null;
+}
+
+function hasRenamerOpen() {
+    return document.querySelector('.renamer-window.visible') !== null;
 }
 
 function getNormalizedKey(e) {
@@ -262,4 +283,68 @@ export function scrollLogToBottom() {
     if (el) {
         el.scrollTop = el.scrollHeight;
     }
+}
+
+// Inizializza drag e resize per finestre flottanti
+export function initWindowDrag(windowId, titlebarId, resizeHandleId) {
+    var win = document.getElementById(windowId);
+    var titlebar = document.getElementById(titlebarId);
+    var resizeHandle = document.getElementById(resizeHandleId);
+    if (!win || !titlebar) {
+        return;
+    }
+    if (initializedWindowDragElements.has(win)) {
+        return;
+    }
+    initializedWindowDragElements.add(win);
+
+    var isDragging = false;
+    var isResizing = false;
+    var dragOffsetX = 0;
+    var dragOffsetY = 0;
+
+    titlebar.addEventListener('mousedown', function (e) {
+        isDragging = true;
+        dragOffsetX = e.clientX - win.offsetLeft;
+        dragOffsetY = e.clientY - win.offsetTop;
+        e.preventDefault();
+    });
+
+    if (resizeHandle) {
+        resizeHandle.addEventListener('mousedown', function (e) {
+            isResizing = true;
+            e.preventDefault();
+            e.stopPropagation();
+        });
+    }
+
+    document.addEventListener('mousemove', function (e) {
+        if (isDragging) {
+            var newX = e.clientX - dragOffsetX;
+            var newY = e.clientY - dragOffsetY;
+
+            newX = Math.max(0, Math.min(newX, window.innerWidth - 50));
+            newY = Math.max(0, Math.min(newY, window.innerHeight - 50));
+
+            win.style.left = newX + 'px';
+            win.style.top = newY + 'px';
+        }
+
+        if (isResizing) {
+            var newWidth = e.clientX - win.offsetLeft;
+            var newHeight = e.clientY - win.offsetTop;
+
+            newWidth = Math.max(300, newWidth);
+            newHeight = Math.max(150, newHeight);
+
+            win.style.width = newWidth + 'px';
+            win.style.height = newHeight + 'px';
+            window.dispatchEvent(new Event('resize'));
+        }
+    });
+
+    document.addEventListener('mouseup', function () {
+        isDragging = false;
+        isResizing = false;
+    });
 }

@@ -136,6 +136,21 @@
     [Parameter] public EventCallback OnShowConfig { get; set; }
 
     /// <summary>
+    /// Evento mostra preset metadata
+    /// </summary>
+    [Parameter] public EventCallback OnShowPreset { get; set; }
+
+    /// <summary>
+    /// Evento clear metadata
+    /// </summary>
+    [Parameter] public EventCallback OnClear { get; set; }
+
+    /// <summary>
+    /// Evento rinomina metadata
+    /// </summary>
+    [Parameter] public EventCallback OnRename { get; set; }
+
+    /// <summary>
     /// Evento mostra percorsi tool
     /// </summary>
     [Parameter] public EventCallback OnShowToolPaths { get; set; }
@@ -215,7 +230,56 @@
     /// </summary>
     protected override void OnParametersSet()
     {
-        if (this.CurrentMode == RemuxForge.Core.Models.Options.MODE_SPLIT)
+        if (this.CurrentMode == RemuxForge.Core.Models.Options.MODE_METADATA)
+        {
+            this._menus = new List<MenuDef>
+            {
+                new MenuDef { Label = AppText.T("web.menu.file"), Mnemonic = AppText.T("web.menu.file.mnemonic"), Items = new List<MenuItemDef>
+                {
+                    new MenuItemDef { Label = AppText.T("web.menu.metadata.inputPath"), Shortcut = "F2", Callback = () => OnShowConfig.InvokeAsync() },
+                    new MenuItemDef { Label = AppText.T("web.menu.metadata.clear"), Shortcut = "Ctrl+L", Callback = () => OnClear.InvokeAsync() },
+                    new MenuItemDef { Label = AppText.T("web.menu.metadata.loadPreset"), Shortcut = "F3", Callback = () => OnShowPreset.InvokeAsync() },
+                }},
+                new MenuDef { Label = AppText.T("web.menu.actions"), Mnemonic = AppText.T("web.menu.actions.mnemonic"), Items = new List<MenuItemDef>
+                {
+                    new MenuItemDef { Label = AppText.T("web.menu.metadata.scanInput"), Shortcut = "F5", Callback = () => OnScan.InvokeAsync() },
+                    new MenuItemDef { Label = AppText.T("web.menu.metadata.analyze"), Shortcut = "F6", Callback = () => OnAnalyzeAll.InvokeAsync() },
+                    new MenuItemDef { Label = AppText.T("web.menu.metadata.applySelected"), Shortcut = "F9", Callback = () => OnMergeSelected.InvokeAsync() },
+                    new MenuItemDef { Label = AppText.T("web.menu.metadata.applyAll"), Shortcut = "F10", Callback = () => OnMergeAll.InvokeAsync() },
+                    new MenuItemDef { Label = AppText.T("web.menu.metadata.advancedRename"), Shortcut = "F11", Callback = () => OnRename.InvokeAsync() },
+                    new MenuItemDef { Label = AppText.T("web.menu.stop"), Shortcut = "F12", Callback = () => OnStop.InvokeAsync() },
+                }},
+                new MenuDef { Label = AppText.T("web.menu.settings"), Mnemonic = AppText.T("web.menu.settings.mnemonic"), Items = new List<MenuItemDef>
+                {
+                    new MenuItemDef { Label = AppText.T("web.menu.toolPaths"), Shortcut = "", Callback = () => OnShowToolPaths.InvokeAsync() },
+                }},
+                new MenuDef { Label = AppText.T("web.menu.view"), Mnemonic = AppText.T("web.menu.view.mnemonic"), Items = new List<MenuItemDef>
+                {
+                    new MenuItemDef { Label = AppText.T("web.menu.metadata.pipeline"), Shortcut = "", Callback = () => OnShowPreset.InvokeAsync() },
+                }},
+                new MenuDef { Label = AppText.T("web.menu.theme"), Mnemonic = AppText.T("web.menu.theme.mnemonic"), Items = new List<MenuItemDef>
+                {
+                    new MenuItemDef { Label = "Nord", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("nord") },
+                    new MenuItemDef { Label = "DOS Blue", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("dos-blue") },
+                    new MenuItemDef { Label = "Matrix", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("matrix") },
+                    new MenuItemDef { Label = "Cyberpunk", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("cyberpunk") },
+                    new MenuItemDef { Label = "Solarized Dark", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("solarized-dark") },
+                    new MenuItemDef { Label = "Solarized Light", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("solarized-light") },
+                    new MenuItemDef { Label = "Cybergum", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("cybergum") },
+                    new MenuItemDef { Label = "Everforest", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("everforest") },
+                }},
+                new MenuDef { Label = AppText.T("web.menu.language"), Mnemonic = AppText.T("web.menu.language.mnemonic"), Items = new List<MenuItemDef>
+                {
+                    new MenuItemDef { Label = FormatLanguageLabel(AppText.T("web.language.english"), AppText.LANG_EN), Shortcut = "", Callback = () => OnLanguageChanged.InvokeAsync(AppText.LANG_EN) },
+                    new MenuItemDef { Label = FormatLanguageLabel(AppText.T("web.language.italian"), AppText.LANG_IT), Shortcut = "", Callback = () => OnLanguageChanged.InvokeAsync(AppText.LANG_IT) },
+                }},
+                new MenuDef { Label = AppText.T("web.menu.help"), Mnemonic = AppText.T("web.menu.help.mnemonic"), Items = new List<MenuItemDef>
+                {
+                    new MenuItemDef { Label = AppText.T("web.menu.info"), Shortcut = "", Callback = () => OnShowInfo.InvokeAsync() },
+                }},
+            };
+        }
+        else if (this.CurrentMode == RemuxForge.Core.Models.Options.MODE_SPLIT)
         {
             this._menus = new List<MenuDef>
             {

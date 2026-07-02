@@ -1,6 +1,7 @@
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
+using RemuxForge.Core.Metadata;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Pipeline;
 using RemuxForge.Core.Splitting;
@@ -101,6 +102,12 @@ namespace RemuxForge.Cli
                     ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("cli.splitError", ex.Message));
                     exitCode = 1;
                 }
+                done = true;
+            }
+
+            if (!done && opts.Mode == Options.MODE_METADATA)
+            {
+                exitCode = ExecuteMetadata(opts);
                 done = true;
             }
 
@@ -241,6 +248,113 @@ namespace RemuxForge.Cli
             }
 
             return stats;
+        }
+
+        /// <summary>
+        /// Esegue modalita' metadata da CLI tramite preset JSON
+        /// </summary>
+        /// <param name="opts">Opzioni</param>
+        /// <returns>Exit code</returns>
+        private static int ExecuteMetadata(Options opts)
+        {
+            int exitCode = 0;
+            string mediaInfoPath;
+            string mkvMergePath;
+            string mkvPropEditPath;
+            string mkvExtractPath;
+
+            try
+            {
+                MetadataPresetService presetService = new MetadataPresetService(AppSettingsService.Instance.ConfigFolder);
+                MkvMetadataPreset preset = presetService.Load(opts.Metadata.PresetPath);
+                MkvMetadataPresetValidationResult validation = MetadataPresetService.Validate(preset);
+                if (!validation.IsValid)
+                {
+                    ConsoleHelper.Write(LogSection.Config, LogLevel.Error, validation.ErrorMessage);
+                    return 1;
+                }
+
+                mediaInfoPath = AppSettingsService.Instance.Settings.Tools.MediaInfoPath;
+                if (mediaInfoPath == null || mediaInfoPath.Length == 0)
+                {
+                    mediaInfoPath = "mediainfo";
+                }
+
+                MetadataMediaInfoReader reader = new MetadataMediaInfoReader(mediaInfoPath);
+                MetadataFileScanner scanner = new MetadataFileScanner(reader);
+                List<MkvMetadataRecord> records = scanner.Scan(opts.Metadata.SourcePath, opts.Metadata.Recursive);
+                MetadataPipelineEvaluator evaluator = new MetadataPipelineEvaluator();
+
+                mkvMergePath = AppSettingsService.Instance.Settings.Tools.MkvMergePath;
+                mkvPropEditPath = AppSettingsService.Instance.Settings.Tools.MkvPropEditPath;
+                mkvExtractPath = AppSettingsService.Instance.Settings.Tools.MkvExtractPath;
+                MetadataExecutionService executor = new MetadataExecutionService(mkvMergePath, mkvPropEditPath, mkvExtractPath);
+
+                for (int i = 0; i < records.Count; i++)
+                {
+                    executor.PopulateExistingTags(records[i]);
+                    evaluator.AnalyzeRecord(records[i], preset, opts.Metadata.OutputPolicy);
+                }
+
+                ValidateMetadataOutputTargets(records, opts.Metadata);
+
+                ConsoleHelper.Write(LogSection.General, LogLevel.Success, AppText.F("cli.metadata.scanned", records.Count));
+                ConsoleHelper.Write(LogSection.General, LogLevel.Info, AppText.F("cli.metadata.presetLoaded", preset.Name));
+
+                for (int i = 0; i < records.Count; i++)
+                {
+                    MkvMetadataExecutionResult result = executor.Execute(records[i], opts.Metadata);
+                    if (result.ExitCode == 0)
+                    {
+                        ConsoleHelper.Write(LogSection.General, LogLevel.Success, AppText.F("cli.metadata.ok", records[i].InputFile));
+                    }
+                    else
+                    {
+                        ConsoleHelper.Write(LogSection.General, LogLevel.Error, AppText.F("cli.metadata.recordError", result.ErrorMessage));
+                        exitCode = 1;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.Write(LogSection.General, LogLevel.Error, AppText.F("cli.metadata.error", ex.Message));
+                exitCode = 1;
+            }
+
+            return exitCode;
+        }
+
+        /// <summary>
+        /// Valida collisioni output metadata
+        /// </summary>
+        private static void ValidateMetadataOutputTargets(List<MkvMetadataRecord> records, MkvMetadataOptions options)
+        {
+            Dictionary<string, string> targets = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            if (options.OutputPolicy != MkvMetadataOutputPolicy.OutputPath)
+            {
+                return;
+            }
+
+            for (int i = 0; i < records.Count; i++)
+            {
+                if (records[i].ExecutionMode == MkvMetadataExecutionMode.NoOp)
+                {
+                    continue;
+                }
+
+                string outputFile = MetadataExecutionService.BuildOutputFile(records[i], options);
+                if (targets.ContainsKey(outputFile))
+                {
+                    throw new InvalidOperationException(AppText.F("metadata.error.outputCollision", outputFile));
+                }
+                if (System.IO.File.Exists(outputFile))
+                {
+                    throw new InvalidOperationException(AppText.F("metadata.error.outputExists", outputFile));
+                }
+
+                targets[outputFile] = records[i].InputFile;
+            }
         }
 
         /// <summary>

@@ -60,6 +60,7 @@ namespace RemuxForge.Core.Models
             this.ErrorMessage = "";
             this.EncodingProfileName = "";
             this.Split = new MkvSplitOptions();
+            this.Metadata = new MkvMetadataOptions();
         }
 
         #endregion
@@ -75,6 +76,11 @@ namespace RemuxForge.Core.Models
         /// Modalita' split
         /// </summary>
         public const string MODE_SPLIT = "split";
+
+        /// <summary>
+        /// Modalita' metadata
+        /// </summary>
+        public const string MODE_METADATA = "metadata";
 
         /// <summary>
         /// Speed correction disabilitata
@@ -143,7 +149,7 @@ namespace RemuxForge.Core.Models
 
                 if (!handled)
                 {
-                    handled = options.Mode == MODE_SPLIT ? HandleSplitArgument(options, args, ref i, key) : HandleRemuxArgument(options, args, ref i, key);
+                    handled = HandleModeArgument(options, args, ref i, key);
                 }
 
                 if (!handled && options.ErrorMessage.Length == 0)
@@ -248,7 +254,7 @@ namespace RemuxForge.Core.Models
             {
                 options.ErrorMessage = AppText.T("options.missingMode");
             }
-            else if (mode != MODE_REMUX && mode != MODE_SPLIT)
+            else if (mode != MODE_REMUX && mode != MODE_SPLIT && mode != MODE_METADATA)
             {
                 options.ErrorMessage = AppText.F("options.invalidMode", mode);
             }
@@ -256,6 +262,24 @@ namespace RemuxForge.Core.Models
             {
                 options.Mode = mode;
             }
+        }
+
+        /// <summary>
+        /// Smista argomenti specifici della modalita'
+        /// </summary>
+        private static bool HandleModeArgument(Options options, string[] args, ref int i, string key)
+        {
+            if (options.Mode == MODE_SPLIT)
+            {
+                return HandleSplitArgument(options, args, ref i, key);
+            }
+
+            if (options.Mode == MODE_METADATA)
+            {
+                return HandleMetadataArgument(options, args, ref i, key);
+            }
+
+            return HandleRemuxArgument(options, args, ref i, key);
         }
 
         /// <summary>
@@ -281,16 +305,19 @@ namespace RemuxForge.Core.Models
             {
                 options.DryRun = true;
                 options.Split.DryRun = true;
+                options.Metadata.DryRun = true;
                 i++;
             }
             else if (key == "r" || key == "recursive")
             {
                 options.Recursive = true;
+                options.Metadata.Recursive = true;
                 i++;
             }
             else if (key == "nr" || key == "no-recursive")
             {
                 options.Recursive = false;
+                options.Metadata.Recursive = false;
                 i++;
             }
             else if (key == "ext" || key == "extensions")
@@ -320,6 +347,73 @@ namespace RemuxForge.Core.Models
             }
 
             return handled;
+        }
+
+        /// <summary>
+        /// Gestisce argomenti metadata
+        /// </summary>
+        private static bool HandleMetadataArgument(Options options, string[] args, ref int i, string key)
+        {
+            bool handled = true;
+            string value;
+
+            if (key == "o" || key == "overwrite")
+            {
+                options.Overwrite = true;
+                options.Metadata.OutputPolicy = MkvMetadataOutputPolicy.Overwrite;
+                i++;
+            }
+            else if (key == "preserve-folder-structure")
+            {
+                options.Metadata.PreserveFolderStructure = true;
+                i++;
+            }
+            else if (key == "no-preserve-folder-structure")
+            {
+                options.Metadata.PreserveFolderStructure = false;
+                i++;
+            }
+            else if (IsMetadataValueArgument(key))
+            {
+                if (RequireValue(args, i, options))
+                {
+                    value = args[i + 1];
+                    if (key == "s" || key == "source")
+                    {
+                        options.SourceFolder = value;
+                        options.Metadata.SourcePath = value;
+                    }
+                    else if (key == "preset")
+                    {
+                        options.Metadata.PresetPath = value;
+                    }
+                    else if (key == "d" || key == "destination" || key == "output-dir")
+                    {
+                        options.DestinationFolder = value;
+                        options.Metadata.OutputDir = value;
+                        options.Metadata.OutputPolicy = MkvMetadataOutputPolicy.OutputPath;
+                    }
+                    i += 2;
+                }
+            }
+            else
+            {
+                handled = false;
+            }
+
+            options.Metadata.Recursive = options.Recursive;
+            options.Metadata.DryRun = options.DryRun;
+            return handled;
+        }
+
+        /// <summary>
+        /// Indica se un argomento metadata richiede un valore
+        /// </summary>
+        private static bool IsMetadataValueArgument(string key)
+        {
+            return key == "s" || key == "source" ||
+                key == "preset" ||
+                key == "d" || key == "destination" || key == "output-dir";
         }
 
         /// <summary>
@@ -863,7 +957,7 @@ namespace RemuxForge.Core.Models
         #region Proprieta
 
         /// <summary>
-        /// Modalita' operativa obbligatoria: remux o split
+        /// Modalita' operativa obbligatoria: remux, split o metadata
         /// </summary>
         public string Mode { get; set; }
 
@@ -1076,6 +1170,11 @@ namespace RemuxForge.Core.Models
         /// Opzioni specifiche della modalita' split
         /// </summary>
         public MkvSplitOptions Split { get; set; }
+
+        /// <summary>
+        /// Opzioni specifiche della modalita' metadata
+        /// </summary>
+        public MkvMetadataOptions Metadata { get; set; }
 
         #endregion
     }

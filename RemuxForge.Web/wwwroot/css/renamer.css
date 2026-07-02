@@ -1,0 +1,363 @@
+/* Renamer floating window styles */
+.renamer-window {
+    display: none;
+    position: fixed;
+    left: 5vw;
+    top: 5vh;
+    width: 90vw;
+    height: 90vh;
+    z-index: 2000;
+    background-color: var(--background0);
+    border: 1px solid var(--foreground2);
+    box-shadow: 2px 2px 0 var(--background3);
+    flex-direction: column;
+    min-width: 60ch;
+    min-height: 20lh;
+}
+
+.renamer-window.visible {
+    display: flex;
+}
+
+.renamer-titlebar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: var(--foreground0);
+    color: var(--background0);
+    padding: 0 1ch;
+    line-height: 1lh;
+    cursor: move;
+    user-select: none;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--foreground2);
+}
+
+.renamer-close {
+    cursor: pointer;
+    color: var(--background0);
+    background: none;
+    border: none;
+    font-family: var(--font-family);
+    font-size: var(--font-size);
+    padding: 0 0.5ch;
+    height: 1lh;
+    line-height: 1lh;
+}
+
+.renamer-close:hover {
+    background-color: var(--background2);
+    color: var(--foreground0);
+}
+
+.renamer-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.renamer-file-list {
+    flex: 6;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-width: 0;
+    border-right: 1px solid var(--foreground2);
+}
+
+.renamer-file-list table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.renamer-file-list table:before,
+.renamer-file-list table tr th:before,
+.renamer-file-list table tr th:after,
+.renamer-file-list table tr td:before,
+.renamer-file-list table tr td:after {
+    display: none;
+}
+
+.renamer-file-list table :first-child > tr:first-child > td,
+.renamer-file-list table :first-child > tr:first-child > th {
+    padding-top: 0;
+}
+
+.renamer-file-list table tr th,
+.renamer-file-list table tr td {
+    padding-bottom: 0;
+}
+
+.renamer-file-list th {
+    text-align: left;
+    background-color: var(--background1);
+    position: sticky;
+    top: 0;
+    padding: 0 1ch;
+    line-height: 1lh;
+    border-bottom: 1px solid var(--foreground2);
+}
+
+.renamer-file-list td {
+    padding: 0 1ch;
+    line-height: 1lh;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.renamer-file-list tr:hover {
+    background-color: var(--background1);
+}
+
+.renamer-file-list tr.conflict td:nth-child(2) {
+    color: red;
+}
+
+.renamer-file-list tr.error td:nth-child(2) {
+    color: var(--foreground2);
+    text-decoration: line-through;
+}
+
+.renamer-file-list tr.changed td:nth-child(1) {
+    text-decoration: line-through;
+    color: var(--foreground2);
+}
+
+.renamer-file-list tr.changed td:nth-child(2) {
+    color: var(--accent, #88c0d0);
+}
+
+.renamer-config {
+    flex: 4;
+    overflow-y: auto;
+    padding: 0 1ch;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.renamer-method-selector {
+    display: flex;
+    gap: 1ch;
+    align-items: center;
+    line-height: 2lh;
+    flex-shrink: 0;
+}
+
+.renamer-method-selector select {
+    flex: 1;
+    min-width: 20ch;
+    background-color: var(--background1);
+    color: var(--foreground0);
+    border: 1px solid var(--foreground2);
+    font-family: var(--font-family);
+    font-size: var(--font-size);
+    line-height: 1lh;
+}
+
+.renamer-params {
+    flex-shrink: 0;
+    padding-bottom: 1lh;
+    border-bottom: 1px solid var(--foreground2);
+}
+
+.renamer-params label {
+    display: flex;
+    align-items: center;
+    gap: 1ch;
+    line-height: 1.5lh;
+}
+
+.renamer-params label > span:first-child {
+    min-width: 10ch;
+    flex-shrink: 0;
+}
+
+.renamer-params input[type="text"],
+.renamer-params input[type="number"] {
+    background-color: var(--background1);
+    color: var(--foreground0);
+    border: 1px solid var(--foreground2);
+    font-family: var(--font-family);
+    font-size: var(--font-size);
+    padding: 0 0.5ch;
+    line-height: 1lh;
+    flex: 1;
+    min-width: 0;
+}
+
+.renamer-params select {
+    flex: 1;
+    min-width: 18ch;
+    background-color: var(--background1);
+    color: var(--foreground0);
+    border: 1px solid var(--foreground2);
+    font-family: var(--font-family);
+    font-size: var(--font-size);
+    line-height: 1lh;
+}
+
+.renamer-params label.renamer-checkbox-row {
+    padding-left: 11ch;
+}
+
+.renamer-params label.renamer-checkbox-row > span {
+    min-width: 0;
+}
+
+.renamer-params input[type="checkbox"] {
+    flex: 0 0 auto;
+    margin: 0;
+}
+
+.renamer-params-error {
+    color: red;
+    line-height: 1lh;
+}
+
+.renamer-tag-help {
+    color: var(--foreground2);
+    line-height: 1.2lh;
+    font-size: 0.9em;
+}
+
+.renamer-stack-header {
+    line-height: 2lh;
+    flex-shrink: 0;
+}
+
+.renamer-stack {
+    flex: 1;
+    min-height: 3lh;
+    overflow-y: auto;
+    border: 1px solid var(--foreground2);
+}
+
+.renamer-stack-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 1ch;
+    line-height: 1lh;
+    gap: 1ch;
+}
+
+.renamer-stack-item:hover,
+.renamer-stack-item.selected {
+    background-color: var(--background2);
+}
+
+.renamer-stack-item-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+
+.renamer-stack-item-actions {
+    display: flex;
+    gap: 0.5ch;
+    flex-shrink: 0;
+}
+
+.renamer-stack-item-actions button {
+    background: none;
+    background-image: none;
+    color: var(--foreground2);
+    border: none;
+    padding: 0 0.5ch;
+    font-family: var(--font-family);
+    font-size: var(--font-size);
+    cursor: pointer;
+    line-height: 1lh;
+}
+
+.renamer-stack-item-actions button:hover {
+    color: var(--foreground0);
+    background-color: var(--background1);
+}
+
+.renamer-statusbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: var(--background1);
+    padding: 0 1ch;
+    line-height: 1lh;
+    border-top: 1px solid var(--foreground2);
+    flex-shrink: 0;
+}
+
+.renamer-statusbar-actions {
+    display: flex;
+    gap: 1ch;
+}
+
+.renamer-statusbar button,
+.renamer-config button.renamer-add-btn {
+    background: none;
+    background-image: none;
+    color: var(--foreground0);
+    border: none;
+    padding: 0;
+    height: 1lh;
+    line-height: 1lh;
+    font-family: var(--font-family);
+    font-size: var(--font-size);
+    cursor: pointer;
+}
+
+.renamer-statusbar button::before,
+.renamer-config button.renamer-add-btn::before {
+    content: "[ ";
+    color: var(--foreground2);
+}
+
+.renamer-statusbar button::after,
+.renamer-config button.renamer-add-btn::after {
+    content: " ]";
+    color: var(--foreground2);
+}
+
+.renamer-statusbar button:hover,
+.renamer-config button.renamer-add-btn:hover {
+    background-color: var(--foreground0);
+    color: var(--background0);
+}
+
+.renamer-statusbar button:hover::before,
+.renamer-statusbar button:hover::after,
+.renamer-config button.renamer-add-btn:hover::before,
+.renamer-config button.renamer-add-btn:hover::after {
+    color: var(--background0);
+}
+
+.renamer-statusbar button:disabled {
+    color: var(--foreground2);
+    cursor: not-allowed;
+}
+
+.renamer-statusbar button:disabled:hover {
+    background: none;
+    color: var(--foreground2);
+}
+
+.renamer-statusbar button:disabled::before,
+.renamer-statusbar button:disabled::after {
+    color: var(--foreground2);
+}
+
+.renamer-resize-handle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 2ch;
+    height: 1lh;
+    cursor: nwse-resize;
+    text-align: right;
+    color: var(--foreground2);
+    user-select: none;
+    line-height: 1lh;
+}

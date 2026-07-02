@@ -1,9 +1,11 @@
 # ![icon](icons/icon-48.png) RemuxForge
 
-RemuxForge is a cross-platform MKV utility for two technical workflows:
+RemuxForge is a cross-platform MKV utility for technical MKV workflows:
 
 - **Remux**: import audio tracks and subtitles from another MKV release, with optional speed correction, frame-sync or Deep Analysis for edited releases.
 - **Split**: cut HEVC/AVC MKV files into frame-perfect segments while preserving VFR timing, chapters, audio and subtitles.
+- **Metadata**: batch-edit MKV container, track metadata and managed Matroska tags through reusable rule presets, with separate analysis and apply steps.
+- **Bulk Rename**: preview and apply batch filename changes from the Metadata WebUI, using stacked rename methods.
 
 It ships as a scriptable CLI and as a WebUI for local browsers or headless servers.
 
@@ -98,7 +100,7 @@ Environment variables:
 General form:
 
 ```bash
-RemuxForge.Cli --mode remux|split [options]
+RemuxForge.Cli --mode remux|split|metadata [options]
 ```
 
 Remux example:
@@ -113,15 +115,21 @@ Split example:
 RemuxForge.Cli --mode split --source "disc1.mkv" --pattern "5,5,5,6" --output-dir "D:\Output"
 ```
 
+Metadata example:
+
+```bash
+RemuxForge.Cli --mode metadata --source "D:\Series" --preset "D:\Presets\anime-audio-titles.json" --output-dir "D:\Output" --recursive
+```
+
 Common options:
 
 | Short | Long | Description |
 |-------|------|-------------|
-| | `--mode` | Required. `remux` or `split` |
-| `-s` | `--source` | Source folder for remux, source MKV/folder for split |
+| | `--mode` | Required. `remux`, `split` or `metadata` |
+| `-s` | `--source` | Source folder for remux, source MKV/folder for split or metadata |
 | `-r` | `--recursive` | Search subfolders |
 | `-nr` | `--no-recursive` | Disable subfolder search |
-| `-ext` | `--extensions` | File extensions to scan, default `mkv` |
+| `-ext` | `--extensions` | File extensions to scan for remux/split, default `mkv`. Metadata mode is `.mkv` only |
 | `-n` | `--dry-run` | Print planned actions without writing files |
 | `-h` | `--help` | Show built-in help |
 | | `--lang` | UI/CLI language: `en` or `it` |
@@ -167,6 +175,17 @@ Main split options:
 | `--snap off|before|after|nearest` | Move start to a keyframe instead of re-encoding the first GOP |
 | `--force` | Overwrite existing output files |
 
+Metadata options:
+
+| Long | Description |
+|------|-------------|
+| `--preset <json>` | Required JSON preset created by the WebUI Metadata preset editor |
+| `--source <path>` | MKV file or folder. Metadata mode currently processes `.mkv` only |
+| `--output-dir <path>` | Write modified files to a separate folder |
+| `--preserve-folder-structure` | Keep relative folders under output dir |
+| `--no-preserve-folder-structure` | Flatten output dir |
+| `--overwrite` | Modify source files in place |
+
 See the [CLI Reference](https://github.com/simonefil/RemuxForge/wiki/CLI-Reference) for the complete option list.
 
 ## Documentation
@@ -177,6 +196,8 @@ See the [CLI Reference](https://github.com/simonefil/RemuxForge/wiki/CLI-Referen
 - [CLI Guide](https://github.com/simonefil/RemuxForge/wiki/CLI-Guide)
 - [Remux Guide](https://github.com/simonefil/RemuxForge/wiki/Remux-Guide)
 - [Split Guide](https://github.com/simonefil/RemuxForge/wiki/Split-Guide)
+- [Bulk Rename Guide](https://github.com/simonefil/RemuxForge/wiki/Bulk-Rename-Guide)
+- [Metadata Edit Guide](https://github.com/simonefil/RemuxForge/wiki/Metadata-Edit-Guide)
 - [CLI Reference](https://github.com/simonefil/RemuxForge/wiki/CLI-Reference)
 
 ## Build from Source

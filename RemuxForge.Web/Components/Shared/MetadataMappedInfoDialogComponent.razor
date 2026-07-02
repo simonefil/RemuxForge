@@ -1,0 +1,987 @@
+<div class="dialog-overlay visible" @onclick="OnClose">
+    <div class="dialog-box dialog-fullscreen metadata-mapped-dialog-box" @onclick:stopPropagation="true">
+        <div class="dialog-title">@GetTitle()</div>
+        <div class="dialog-body metadata-mapped-dialog-body">
+            <div class="metadata-mapped-content">
+                @if (Record == null)
+                {
+                    <div class="empty-detail">@AppText.T("web.dashboard.noFileSelected")</div>
+                }
+                else
+                {
+                    MkvMetadataFileInfo info = GetInfo();
+                    List<MkvMetadataTrackInfo> videoTracks = GetTracksByKind("video");
+                    List<MkvMetadataTrackInfo> audioTracks = GetTracksByKind("audio");
+                    List<MkvMetadataTrackInfo> textTracks = GetTracksByKind("subtitles");
+
+                    <div class="metadata-sheet-stack">
+                        <div class="metadata-sheet-selectors">
+                            <div class="metadata-sheet-selector-row">
+                                <span class="metadata-sheet-selector-label">@AppText.T("web.metadata.mapped.containerStream")</span>
+                                <select class="form-input metadata-sheet-select" value="@CONTAINER_SELECTOR" @onfocus="ActivateContainerTags" @onchange="ChangeContainerSelection">
+                                    <option value="@CONTAINER_SELECTOR">@BuildContainerOptionLabel(info)</option>
+                                </select>
+                            </div>
+
+                            @if (videoTracks.Count > 0)
+                            {
+                                <div class="metadata-sheet-selector-row">
+                                    <span class="metadata-sheet-selector-label">@AppText.T("web.metadata.mapped.videoStream")</span>
+                                    <select class="form-input metadata-sheet-select" value="@_selectedVideoSelector" @onfocus="ActivateVideoTags" @onchange="ChangeVideoSelection">
+                                        @for (int i = 0; i < videoTracks.Count; i++)
+                                        {
+                                            MkvMetadataTrackInfo track = videoTracks[i];
+                                            <option value="@GetSheetTrackSelector(track)">@BuildTrackOptionLabel(track)</option>
+                                        }
+                                    </select>
+                                </div>
+                            }
+
+                            @if (audioTracks.Count > 0)
+                            {
+                                <div class="metadata-sheet-selector-row">
+                                    <span class="metadata-sheet-selector-label">@AppText.T("web.metadata.mapped.audioStream")</span>
+                                    <select class="form-input metadata-sheet-select" value="@_selectedAudioSelector" @onfocus="ActivateAudioTags" @onchange="ChangeAudioSelection">
+                                        @for (int i = 0; i < audioTracks.Count; i++)
+                                        {
+                                            MkvMetadataTrackInfo track = audioTracks[i];
+                                            <option value="@GetSheetTrackSelector(track)">@BuildTrackOptionLabel(track)</option>
+                                        }
+                                    </select>
+                                </div>
+                            }
+
+                            @if (textTracks.Count > 0)
+                            {
+                                <div class="metadata-sheet-selector-row">
+                                    <span class="metadata-sheet-selector-label">@AppText.T("web.metadata.mapped.textStream")</span>
+                                    <select class="form-input metadata-sheet-select" value="@_selectedTextSelector" @onfocus="ActivateTextTags" @onchange="ChangeTextSelection">
+                                        @for (int i = 0; i < textTracks.Count; i++)
+                                        {
+                                            MkvMetadataTrackInfo track = textTracks[i];
+                                            <option value="@GetSheetTrackSelector(track)">@BuildTrackOptionLabel(track)</option>
+                                        }
+                                    </select>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="metadata-sheet-block">
+                            <div class="metadata-sheet-section-title">@AppText.T("web.metadata.mapped.fields") - @GetActiveTagContextLabel()</div>
+                            @FieldSheet(GetActiveMetadataRows(), AppText.T("web.metadata.mapped.noFields"))
+                        </div>
+
+                        <div class="metadata-sheet-block">
+                            <div class="metadata-sheet-section-title">@AppText.T("web.metadata.mapped.tags") - @GetActiveTagContextLabel()</div>
+                            @FieldSheet(GetActiveTagRows(), AppText.T("web.metadata.mapped.noTags"))
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @if (Simulated)
+            {
+                <div class="metadata-mapped-helper">
+                    <div class="config-help-title">@_helpTitle</div>
+                    <div class="config-help-text">@_helpText</div>
+                </div>
+            }
+        </div>
+        <div class="dialog-footer">
+            <button @onclick="OnClose">@AppText.T("web.common.close")</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private const string CONTAINER_SELECTOR = "container";
+
+    [Parameter] public MkvMetadataRecord Record { get; set; }
+    [Parameter] public bool Simulated { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private string _helpTitle = "";
+    private string _helpText = "";
+    private string _selectedVideoSelector = "";
+    private string _selectedAudioSelector = "";
+    private string _selectedTextSelector = "";
+    private string _activeTagSelector = CONTAINER_SELECTOR;
+
+    protected override void OnParametersSet()
+    {
+        this._helpTitle = AppText.T("web.metadata.mapped.helperTitle");
+        this._helpText = AppText.T("web.metadata.mapped.helperText");
+        this.EnsureSelections();
+    }
+
+    private string GetTitle()
+    {
+        string fileName = Record != null ? System.IO.Path.GetFileName(Record.InputFile) : "";
+        return Simulated
+            ? AppText.F("web.metadata.mapped.simulatedTitle", fileName)
+            : AppText.F("web.metadata.mapped.currentTitle", fileName);
+    }
+
+    private MkvMetadataFileInfo GetInfo()
+    {
+        if (Record == null)
+        {
+            return new MkvMetadataFileInfo();
+        }
+
+        if (Simulated)
+        {
+            return Record.FileInfo != null ? Record.FileInfo : new MkvMetadataFileInfo();
+        }
+
+        return Record.OriginalFileInfo != null && Record.OriginalFileInfo.Tracks != null && Record.OriginalFileInfo.Tracks.Count > 0
+            ? Record.OriginalFileInfo
+            : Record.FileInfo != null ? Record.FileInfo : new MkvMetadataFileInfo();
+    }
+
+    private MkvMetadataFileInfo GetBeforeInfo()
+    {
+        if (Record == null)
+        {
+            return new MkvMetadataFileInfo();
+        }
+
+        return Record.OriginalFileInfo != null ? Record.OriginalFileInfo : new MkvMetadataFileInfo();
+    }
+
+    private void EnsureSelections()
+    {
+        this.EnsureTrackSelection(ref this._selectedVideoSelector, "video");
+        this.EnsureTrackSelection(ref this._selectedAudioSelector, "audio");
+        this.EnsureTrackSelection(ref this._selectedTextSelector, "subtitles");
+
+        if (!this.IsActiveTagSelectorValid(this._activeTagSelector))
+        {
+            this._activeTagSelector = CONTAINER_SELECTOR;
+        }
+    }
+
+    private void EnsureTrackSelection(ref string selector, string trackKind)
+    {
+        if (selector.Length > 0 && this.FindTrackBySelector(selector) != null)
+        {
+            return;
+        }
+
+        List<MkvMetadataTrackInfo> tracks = this.GetTracksByKind(trackKind);
+        selector = tracks.Count > 0 ? GetSheetTrackSelector(tracks[0]) : "";
+    }
+
+    private bool IsActiveTagSelectorValid(string selector)
+    {
+        if (selector == CONTAINER_SELECTOR)
+        {
+            return true;
+        }
+
+        return selector.Length > 0 && this.FindTrackBySelector(selector) != null;
+    }
+
+    private List<MkvMetadataTrackInfo> GetTracksByKind(string trackKind)
+    {
+        List<MkvMetadataTrackInfo> result = new List<MkvMetadataTrackInfo>();
+        MkvMetadataFileInfo info = this.GetInfo();
+        MkvMetadataFileInfo before = this.GetBeforeInfo();
+
+        this.AddTracksByKind(result, info.Tracks, trackKind);
+        if (Simulated)
+        {
+            this.AddTracksByKind(result, before.Tracks, trackKind);
+        }
+
+        result.Sort(CompareTracks);
+        return result;
+    }
+
+    private void AddTracksByKind(List<MkvMetadataTrackInfo> result, List<MkvMetadataTrackInfo> tracks, string trackKind)
+    {
+        if (tracks == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < tracks.Count; i++)
+        {
+            MkvMetadataTrackInfo track = tracks[i];
+            if (track == null || track.TrackKind != trackKind || this.ContainsTrack(result, GetSheetTrackSelector(track)))
+            {
+                continue;
+            }
+
+            result.Add(track);
+        }
+    }
+
+    private bool ContainsTrack(List<MkvMetadataTrackInfo> tracks, string selector)
+    {
+        for (int i = 0; i < tracks.Count; i++)
+        {
+            if (GetSheetTrackSelector(tracks[i]) == selector)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static int CompareTracks(MkvMetadataTrackInfo left, MkvMetadataTrackInfo right)
+    {
+        int leftIndex = left != null ? left.TypeIndex : 0;
+        int rightIndex = right != null ? right.TypeIndex : 0;
+        if (leftIndex > 0 && rightIndex > 0 && leftIndex != rightIndex)
+        {
+            return leftIndex.CompareTo(rightIndex);
+        }
+
+        int leftOrder = left != null ? left.StreamOrder : 0;
+        int rightOrder = right != null ? right.StreamOrder : 0;
+        return leftOrder.CompareTo(rightOrder);
+    }
+
+    private List<MetadataMappedSheetRow> GetContainerRows()
+    {
+        List<MetadataMappedSheetRow> rows = new List<MetadataMappedSheetRow>();
+        this.AddFieldRows(rows, null, MetadataFieldSector.File);
+        this.AddFieldRows(rows, null, MetadataFieldSector.Container);
+        return rows;
+    }
+
+    private List<MetadataMappedSheetRow> GetTrackRows(MkvMetadataTrackInfo track)
+    {
+        List<MetadataMappedSheetRow> rows = new List<MetadataMappedSheetRow>();
+        if (track == null)
+        {
+            return rows;
+        }
+
+        if (track.TrackKind == "video")
+        {
+            this.AddFieldRows(rows, track, MetadataFieldSector.Video);
+        }
+        else if (track.TrackKind == "audio")
+        {
+            this.AddFieldRows(rows, track, MetadataFieldSector.Audio);
+        }
+        else if (track.TrackKind == "subtitles")
+        {
+            this.AddFieldRows(rows, track, MetadataFieldSector.Subtitle);
+        }
+
+        return rows;
+    }
+
+    private List<MetadataMappedSheetRow> GetActiveTagRows()
+    {
+        MkvMetadataTrackInfo track = this._activeTagSelector == CONTAINER_SELECTOR ? null : this.FindTrackBySelector(this._activeTagSelector);
+        return this.GetTagRows(track);
+    }
+
+    private List<MetadataMappedSheetRow> GetActiveMetadataRows()
+    {
+        if (this._activeTagSelector == CONTAINER_SELECTOR)
+        {
+            return this.GetContainerRows();
+        }
+
+        return this.GetTrackRows(this.FindTrackBySelector(this._activeTagSelector));
+    }
+
+    private List<MetadataMappedSheetRow> GetTagRows(MkvMetadataTrackInfo track)
+    {
+        List<MetadataMappedSheetRow> rows = new List<MetadataMappedSheetRow>();
+        List<string> tags = this.GetTagKeys(track);
+        for (int i = 0; i < tags.Count; i++)
+        {
+            rows.Add(this.CreateTagRow(track, tags[i]));
+        }
+
+        return rows;
+    }
+
+    private void AddFieldRows(List<MetadataMappedSheetRow> rows, MkvMetadataTrackInfo track, MetadataFieldSector sector)
+    {
+        List<MetadataFieldDefinition> fields = MetadataFieldRegistry.GetAll();
+        for (int i = 0; i < fields.Count; i++)
+        {
+            MetadataFieldDefinition field = fields[i];
+            if (!field.IsReadable || field.Sector != sector)
+            {
+                continue;
+            }
+
+            rows.Add(this.CreateFieldRow(track, field));
+        }
+    }
+
+    private MetadataMappedSheetRow CreateFieldRow(MkvMetadataTrackInfo track, MetadataFieldDefinition field)
+    {
+        MetadataMappedSheetRow row = new MetadataMappedSheetRow();
+        row.Token = "[" + field.Key + "]";
+        row.Label = field.Label;
+        row.FieldKey = field.Key;
+        row.Sector = field.Sector;
+        row.Track = track;
+        row.IsTag = false;
+        return row;
+    }
+
+    private MetadataMappedSheetRow CreateTagRow(MkvMetadataTrackInfo track, string tagKey)
+    {
+        MetadataMappedSheetRow row = new MetadataMappedSheetRow();
+        row.Token = "[tag:" + tagKey + "]";
+        row.Label = AppText.F("web.metadata.mapped.tagLabel", tagKey);
+        row.FieldKey = tagKey;
+        row.Track = track;
+        row.IsTag = true;
+        return row;
+    }
+
+    private RenderFragment FieldSheet(List<MetadataMappedSheetRow> rows, string emptyText)
+    {
+        List<MetadataMappedSheetDisplayRow> displayRows = this.BuildDisplayRows(rows);
+
+        return @<div class="metadata-sheet-table-wrap">
+            @if (displayRows.Count == 0)
+            {
+                <div class="metadata-sheet-empty">@emptyText</div>
+            }
+            else
+            {
+                <table class="metadata-mapped-sheet-table">
+                    <tbody>
+                        @for (int r = 0; r < displayRows.Count; r++)
+                        {
+                            MetadataMappedSheetRow row = displayRows[r].Row;
+                            MetadataMappedSheetCell cell = displayRows[r].Cell;
+                            <tr class="@cell.RowCssClass">
+                                <td class="metadata-sheet-field-cell">@row.Label</td>
+                                <td class="metadata-sheet-token-cell">@row.Token</td>
+                                <td class="metadata-sheet-separator">:</td>
+                                <td class="metadata-sheet-value-cell @cell.CssClass" @onmouseenter="@(() => SetCellHelp(cell))">@FormatSheetValue(cell)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>;
+    }
+
+    private List<MetadataMappedSheetDisplayRow> BuildDisplayRows(List<MetadataMappedSheetRow> rows)
+    {
+        List<MetadataMappedSheetDisplayRow> result = new List<MetadataMappedSheetDisplayRow>();
+        if (rows == null)
+        {
+            return result;
+        }
+
+        for (int i = 0; i < rows.Count; i++)
+        {
+            MetadataMappedSheetCell cell = this.BuildCell(rows[i]);
+            if (!this.ShouldDisplayCell(cell))
+            {
+                continue;
+            }
+
+            MetadataMappedSheetDisplayRow displayRow = new MetadataMappedSheetDisplayRow();
+            displayRow.Row = rows[i];
+            displayRow.Cell = cell;
+            result.Add(displayRow);
+        }
+
+        return result;
+    }
+
+    private bool ShouldDisplayCell(MetadataMappedSheetCell cell)
+    {
+        if (cell == null)
+        {
+            return false;
+        }
+
+        if (cell.Value != null && cell.Value.Length > 0)
+        {
+            return true;
+        }
+
+        return Simulated && cell.HasFieldChange;
+    }
+
+    private MetadataMappedSheetCell BuildCell(MetadataMappedSheetRow row)
+    {
+        MetadataMappedSheetCell cell = new MetadataMappedSheetCell();
+        string trackSelector = GetSheetTrackSelector(row.Track);
+        string before;
+        string current;
+        List<MkvMetadataChange> changes;
+
+        cell.Token = row.Token;
+        cell.Label = row.Label;
+
+        if (row.IsTag)
+        {
+            current = row.Track == null ? GetValue(this.GetInfo().Tags, row.FieldKey) : GetValue(row.Track.Tags, row.FieldKey);
+            before = row.Track == null ? GetValue(this.GetBeforeInfo().Tags, row.FieldKey) : GetValue(this.FindBeforeTrack(row.Track)?.Tags, row.FieldKey);
+        }
+        else if (row.Track == null)
+        {
+            current = GetValue(this.GetInfo().Fields, row.FieldKey);
+            before = GetValue(this.GetBeforeInfo().Fields, row.FieldKey);
+        }
+        else
+        {
+            current = GetValue(row.Track.Fields, row.FieldKey);
+            before = GetValue(this.FindBeforeTrack(row.Track)?.Fields, row.FieldKey);
+        }
+
+        cell.Value = current != null ? current : "";
+
+        if (this.IsTrackRemoved(trackSelector))
+        {
+            cell.CssClass = "metadata-diff-removed";
+            cell.RowCssClass = "metadata-diff-removed";
+            cell.HelpText = this.BuildRemoveTrackHelp(trackSelector);
+            cell.IsTrackRemoved = true;
+            return cell;
+        }
+
+        changes = this.GetChanges(trackSelector, row.FieldKey, row.IsTag);
+        cell.HasFieldChange = Simulated && changes.Count > 0;
+        cell.CssClass = Simulated ? this.GetChangeClass(changes, before, current) : "";
+        cell.HelpText = this.BuildChangeHelp(trackSelector, row.FieldKey, row.IsTag);
+        return cell;
+    }
+
+    private List<string> GetTagKeys(MkvMetadataTrackInfo track)
+    {
+        List<string> result = new List<string>();
+        MkvMetadataTrackInfo beforeTrack = this.FindBeforeTrack(track);
+        string trackSelector = GetSheetTrackSelector(track);
+
+        AddTagKeys(result, track == null ? this.GetInfo().Tags : track.Tags);
+        AddTagKeys(result, track == null ? this.GetBeforeInfo().Tags : beforeTrack != null ? beforeTrack.Tags : null);
+
+        if (Record != null && Record.Changes != null)
+        {
+            for (int i = 0; i < Record.Changes.Count; i++)
+            {
+                if (IsTagOperation(Record.Changes[i].OperationType) && Record.Changes[i].TrackSelector == trackSelector)
+                {
+                    AddKey(result, Record.Changes[i].FieldKey);
+                }
+            }
+        }
+
+        result.Sort(StringComparer.OrdinalIgnoreCase);
+        return result;
+    }
+
+    private static void AddTagKeys(List<string> keys, Dictionary<string, string> tags)
+    {
+        if (tags == null)
+        {
+            return;
+        }
+
+        foreach (KeyValuePair<string, string> pair in tags)
+        {
+            AddKey(keys, pair.Key);
+        }
+    }
+
+    private static void AddKey(List<string> keys, string key)
+    {
+        string value = key != null ? key.Trim() : "";
+        if (value.Length == 0)
+        {
+            return;
+        }
+
+        for (int i = 0; i < keys.Count; i++)
+        {
+            if (string.Equals(keys[i], value, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+        }
+
+        keys.Add(value);
+    }
+
+    private string GetChangeClass(string trackSelector, string fieldKey, string before, string after, bool isTag)
+    {
+        return this.GetChangeClass(this.GetChanges(trackSelector, fieldKey, isTag), before, after);
+    }
+
+    private string GetChangeClass(List<MkvMetadataChange> changes, string before, string after)
+    {
+        if (!Simulated || changes == null || changes.Count == 0)
+        {
+            return "";
+        }
+
+        if ((before == null || before.Length == 0) && after != null && after.Length > 0)
+        {
+            return "metadata-diff-added";
+        }
+
+        if (before != null && before.Length > 0 && (after == null || after.Length == 0))
+        {
+            return "metadata-diff-removed";
+        }
+
+        return "metadata-diff-modified";
+    }
+
+    private List<MkvMetadataChange> GetChanges(string trackSelector, string fieldKey, bool isTag)
+    {
+        List<MkvMetadataChange> result = new List<MkvMetadataChange>();
+        string selector = trackSelector != null ? trackSelector : "";
+        if (Record == null || Record.Changes == null)
+        {
+            return result;
+        }
+
+        for (int i = 0; i < Record.Changes.Count; i++)
+        {
+            MkvMetadataChange change = Record.Changes[i];
+            if (change.TrackSelector == selector && change.FieldKey == fieldKey)
+            {
+                result.Add(change);
+            }
+        }
+
+        return result;
+    }
+
+    private bool IsTrackRemoved(string trackSelector)
+    {
+        string selector = trackSelector != null ? trackSelector : "";
+        if (!Simulated || selector.Length == 0 || Record == null || Record.Changes == null)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < Record.Changes.Count; i++)
+        {
+            if (Record.Changes[i].OperationType == MkvMetadataOperationType.RemoveTrack && Record.Changes[i].TrackSelector == selector)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private string BuildChangeHelp(string trackSelector, string fieldKey, bool isTag)
+    {
+        List<MkvMetadataChange> changes = this.GetChanges(trackSelector, fieldKey, isTag);
+        if (changes.Count == 0)
+        {
+            return AppText.T("web.metadata.mapped.noChangeHelp");
+        }
+
+        System.Text.StringBuilder sb = new System.Text.StringBuilder();
+        for (int i = 0; i < changes.Count; i++)
+        {
+            MkvMetadataChange change = changes[i];
+            sb.Append(i + 1).Append(". ").Append(change.RuleDescription).Append('\n');
+            sb.Append("   ").Append(AppText.T("web.metadata.mapped.before")).Append(' ').Append(FormatMappedValue(change.BeforeValue)).Append('\n');
+            sb.Append("   ").Append(AppText.T("web.metadata.mapped.after")).Append(' ').Append(FormatMappedValue(change.AfterValue)).Append('\n');
+            if (change.Message.Length > 0)
+            {
+                sb.Append("   ").Append(change.Message).Append('\n');
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private string BuildRemoveTrackHelp(string trackSelector)
+    {
+        if (Record == null || Record.Changes == null)
+        {
+            return AppText.T("web.metadata.mapped.noChangeHelp");
+        }
+
+        for (int i = 0; i < Record.Changes.Count; i++)
+        {
+            MkvMetadataChange change = Record.Changes[i];
+            if (change.OperationType == MkvMetadataOperationType.RemoveTrack && change.TrackSelector == trackSelector)
+            {
+                return AppText.F("web.metadata.mapped.removedBy", change.RuleDescription);
+            }
+        }
+
+        return AppText.T("web.metadata.mapped.noChangeHelp");
+    }
+
+    private void SetCellHelp(MetadataMappedSheetCell cell)
+    {
+        if (!Simulated || cell == null || cell.CssClass.Length == 0)
+        {
+            return;
+        }
+
+        this._helpTitle = cell.Token + " - " + cell.Label;
+        this._helpText = cell.HelpText;
+    }
+
+    private void ActivateContainerTags()
+    {
+        this._activeTagSelector = CONTAINER_SELECTOR;
+    }
+
+    private void ActivateVideoTags()
+    {
+        this.ActivateTrackTags(this._selectedVideoSelector);
+    }
+
+    private void ActivateAudioTags()
+    {
+        this.ActivateTrackTags(this._selectedAudioSelector);
+    }
+
+    private void ActivateTextTags()
+    {
+        this.ActivateTrackTags(this._selectedTextSelector);
+    }
+
+    private void ActivateTrackTags(string selector)
+    {
+        if (selector.Length > 0)
+        {
+            this._activeTagSelector = selector;
+        }
+    }
+
+    private void ChangeContainerSelection(ChangeEventArgs args)
+    {
+        this._activeTagSelector = CONTAINER_SELECTOR;
+    }
+
+    private void ChangeVideoSelection(ChangeEventArgs args)
+    {
+        this._selectedVideoSelector = args.Value != null ? args.Value.ToString() : "";
+        this.ActivateTrackTags(this._selectedVideoSelector);
+    }
+
+    private void ChangeAudioSelection(ChangeEventArgs args)
+    {
+        this._selectedAudioSelector = args.Value != null ? args.Value.ToString() : "";
+        this.ActivateTrackTags(this._selectedAudioSelector);
+    }
+
+    private void ChangeTextSelection(ChangeEventArgs args)
+    {
+        this._selectedTextSelector = args.Value != null ? args.Value.ToString() : "";
+        this.ActivateTrackTags(this._selectedTextSelector);
+    }
+
+    private string GetActiveTagContextLabel()
+    {
+        if (this._activeTagSelector == CONTAINER_SELECTOR)
+        {
+            return AppText.T("web.metadata.mapped.container");
+        }
+
+        MkvMetadataTrackInfo track = this.FindTrackBySelector(this._activeTagSelector);
+        return track != null ? this.BuildTrackOptionLabel(track) : AppText.T("web.metadata.mapped.container");
+    }
+
+    private MkvMetadataTrackInfo FindTrackBySelector(string selector)
+    {
+        MkvMetadataTrackInfo track;
+
+        track = this.FindTrackBySelector(this.GetInfo().Tracks, selector);
+        if (track != null)
+        {
+            return track;
+        }
+
+        return this.FindTrackBySelector(this.GetBeforeInfo().Tracks, selector);
+    }
+
+    private MkvMetadataTrackInfo FindTrackBySelector(List<MkvMetadataTrackInfo> tracks, string selector)
+    {
+        string value = selector != null ? selector : "";
+        if (tracks == null || value.Length == 0)
+        {
+            return null;
+        }
+
+        for (int i = 0; i < tracks.Count; i++)
+        {
+            if (GetSheetTrackSelector(tracks[i]) == value)
+            {
+                return tracks[i];
+            }
+        }
+
+        return null;
+    }
+
+    private MkvMetadataTrackInfo FindBeforeTrack(MkvMetadataTrackInfo track)
+    {
+        MkvMetadataFileInfo before = this.GetBeforeInfo();
+        string selector = GetSheetTrackSelector(track);
+        if (track == null || selector.Length == 0)
+        {
+            return null;
+        }
+
+        if (before.Tracks != null)
+        {
+            for (int i = 0; i < before.Tracks.Count; i++)
+            {
+                if (before.Tracks[i].TrackSelector == selector)
+                {
+                    return before.Tracks[i];
+                }
+            }
+        }
+
+        if (before.OtherStreams != null)
+        {
+            for (int i = 0; i < before.OtherStreams.Count; i++)
+            {
+                if (before.OtherStreams[i].StreamOrder == track.StreamOrder && before.OtherStreams[i].MediaInfoType == track.MediaInfoType)
+                {
+                    return before.OtherStreams[i];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private string BuildContainerOptionLabel(MkvMetadataFileInfo info)
+    {
+        string result = AppText.T("web.metadata.mapped.container");
+        string format = GetValue(info.Fields, "general_format");
+        string size = info.FileSize > 0 ? Utils.FormatSize(info.FileSize) : "";
+
+        AddOptionPart(ref result, format);
+        AddOptionPart(ref result, size);
+        return result;
+    }
+
+    private string BuildTrackOptionLabel(MkvMetadataTrackInfo track)
+    {
+        string result = BuildSheetTrackTitle(track);
+
+        if (track == null)
+        {
+            return result;
+        }
+
+        if (track.TrackKind == "video")
+        {
+            AddOptionPart(ref result, GetBestValue(track, "video_format", track.Format));
+            AddOptionPart(ref result, BuildResolutionLabel(track));
+            AddOptionPart(ref result, BuildFpsLabel(track));
+        }
+        else if (track.TrackKind == "audio")
+        {
+            AddOptionPart(ref result, GetBestValue(track, "audio_language", track.Language));
+            AddOptionPart(ref result, GetBestValue(track, "audio_format", track.Format));
+            AddOptionPart(ref result, GetValue(track.Fields, "audio_channels_label"));
+            AddOptionPart(ref result, BuildAudioRateLabel(track));
+        }
+        else if (track.TrackKind == "subtitles")
+        {
+            AddOptionPart(ref result, GetBestValue(track, "subtitle_language", track.Language));
+            AddOptionPart(ref result, GetBestValue(track, "subtitle_format", track.Format));
+            AddOptionPart(ref result, GetBestValue(track, "subtitle_title", track.Title));
+        }
+
+        if (this.IsTrackRemoved(GetSheetTrackSelector(track)))
+        {
+            AddOptionPart(ref result, AppText.T("web.metadata.mapped.removedOption"));
+        }
+
+        return result;
+    }
+
+    private static string BuildResolutionLabel(MkvMetadataTrackInfo track)
+    {
+        string width = GetValue(track.Fields, "video_width");
+        string height = GetValue(track.Fields, "video_height");
+        return width.Length > 0 && height.Length > 0 ? width + "x" + height : "";
+    }
+
+    private static string BuildFpsLabel(MkvMetadataTrackInfo track)
+    {
+        string fps = GetValue(track.Fields, "video_fps");
+        return fps.Length > 0 ? fps + " fps" : "";
+    }
+
+    private static string BuildAudioRateLabel(MkvMetadataTrackInfo track)
+    {
+        string bitDepth = GetValue(track.Fields, "audio_bitdepth");
+        string sampleRate = GetValue(track.Fields, "audio_sampling_rate_khz");
+        if (bitDepth.Length == 0 && sampleRate.Length == 0)
+        {
+            return "";
+        }
+
+        return bitDepth + "bit/" + sampleRate + "kHz";
+    }
+
+    private static string GetBestValue(MkvMetadataTrackInfo track, string fieldKey, string fallback)
+    {
+        string value = GetValue(track.Fields, fieldKey);
+        return value.Length > 0 ? value : fallback != null ? fallback : "";
+    }
+
+    private static void AddOptionPart(ref string value, string part)
+    {
+        if (part == null || part.Length == 0)
+        {
+            return;
+        }
+
+        value += " - " + part;
+    }
+
+    private static bool IsTagOperation(MkvMetadataOperationType type)
+    {
+        return type == MkvMetadataOperationType.SetTagField ||
+            type == MkvMetadataOperationType.ClearTagField ||
+            type == MkvMetadataOperationType.ClearTags ||
+            type == MkvMetadataOperationType.AddOrUpdateTrackStatisticsTags ||
+            type == MkvMetadataOperationType.DeleteTrackStatisticsTags;
+    }
+
+    private static string GetValue(Dictionary<string, string> values, string key)
+    {
+        string result;
+        if (values != null && values.TryGetValue(key, out result))
+        {
+            return result != null ? result : "";
+        }
+
+        return "";
+    }
+
+    private static string FormatMappedValue(string value)
+    {
+        return value != null && value.Length > 0 ? value : AppText.T("web.metadata.mapped.empty");
+    }
+
+    private static string FormatSheetValue(MetadataMappedSheetCell cell)
+    {
+        if (cell == null)
+        {
+            return "";
+        }
+
+        if (cell.Value != null && cell.Value.Length > 0)
+        {
+            return cell.Value;
+        }
+
+        return cell.CssClass.Length > 0 ? AppText.T("web.metadata.mapped.empty") : "";
+    }
+
+    private static string BuildSheetTrackTitle(MkvMetadataTrackInfo track)
+    {
+        string type;
+
+        if (track == null)
+        {
+            return "";
+        }
+
+        if (track.TrackKind == "video") { type = AppText.T("web.metadata.mapped.video"); }
+        else if (track.TrackKind == "audio") { type = AppText.T("web.metadata.mapped.audio"); }
+        else if (track.TrackKind == "subtitles") { type = AppText.T("web.metadata.mapped.text"); }
+        else { type = track.MediaInfoType != null && track.MediaInfoType.Length > 0 ? track.MediaInfoType : track.TrackKind; }
+
+        if (track.TypeIndex > 0)
+        {
+            return type + " #" + track.TypeIndex.ToString();
+        }
+
+        if (track.StreamOrder > 0)
+        {
+            return type + " #" + track.StreamOrder.ToString();
+        }
+
+        return type;
+    }
+
+    private static string GetSheetTrackSelector(MkvMetadataTrackInfo track)
+    {
+        if (track == null)
+        {
+            return "";
+        }
+
+        if (track.TrackSelector != null && track.TrackSelector.Length > 0)
+        {
+            return track.TrackSelector;
+        }
+
+        return "stream:" + track.StreamOrder.ToString();
+    }
+
+    private class MetadataMappedSheetRow
+    {
+        public MetadataMappedSheetRow()
+        {
+            this.Token = "";
+            this.Label = "";
+            this.FieldKey = "";
+            this.Track = null;
+        }
+
+        public string Token { get; set; }
+        public string Label { get; set; }
+        public string FieldKey { get; set; }
+        public MetadataFieldSector Sector { get; set; }
+        public MkvMetadataTrackInfo Track { get; set; }
+        public bool IsTag { get; set; }
+    }
+
+    private class MetadataMappedSheetCell
+    {
+        public MetadataMappedSheetCell()
+        {
+            this.Token = "";
+            this.Label = "";
+            this.Value = "";
+            this.CssClass = "";
+            this.RowCssClass = "";
+            this.HelpText = "";
+            this.HasFieldChange = false;
+            this.IsTrackRemoved = false;
+        }
+
+        public string Token { get; set; }
+        public string Label { get; set; }
+        public string Value { get; set; }
+        public string CssClass { get; set; }
+        public string RowCssClass { get; set; }
+        public string HelpText { get; set; }
+        public bool HasFieldChange { get; set; }
+        public bool IsTrackRemoved { get; set; }
+    }
+
+    private class MetadataMappedSheetDisplayRow
+    {
+        public MetadataMappedSheetDisplayRow()
+        {
+            this.Row = null;
+            this.Cell = null;
+        }
+
+        public MetadataMappedSheetRow Row { get; set; }
+        public MetadataMappedSheetCell Cell { get; set; }
+    }
+}

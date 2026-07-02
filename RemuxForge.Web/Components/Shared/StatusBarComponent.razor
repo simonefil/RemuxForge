@@ -1,19 +1,34 @@
 <div class="status-bar">
-    <span class="cmd-key" @onclick="OnShowConfig"><span class="key-label">F2</span>@AppText.T("web.status.config")</span>
-    <span class="cmd-key" @onclick="OnScan"><span class="key-label">F5</span>@AppText.T("web.status.scan")</span>
-    @if (CurrentMode == Options.MODE_SPLIT)
+    @if (CurrentMode == Options.MODE_METADATA)
     {
-        <span class="cmd-key" @onclick="OnMergeAll"><span class="key-label">F10</span>@AppText.T("web.status.splitAll")</span>
+        <span class="cmd-key" @onclick="OnShowConfig"><span class="key-label">F2</span>@AppText.T("web.status.metadata.path")</span>
+        <span class="cmd-key" @onclick="OnShowPreset"><span class="key-label">F3</span>@AppText.T("web.status.metadata.preset")</span>
+        <span class="cmd-key" @onclick="OnScan"><span class="key-label">F5</span>@AppText.T("web.status.scan")</span>
+        <span class="cmd-key" @onclick="OnAnalyzeAll"><span class="key-label">F6</span>@AppText.T("web.status.metadata.analyze")</span>
+        <span class="cmd-key" @onclick="OnMergeSelected"><span class="key-label">F9</span>@AppText.T("web.status.metadata.apply")</span>
+        <span class="cmd-key" @onclick="OnMergeAll"><span class="key-label">F10</span>@AppText.T("web.status.all")</span>
+        <span class="cmd-key" @onclick="OnRename"><span class="key-label">F11</span>@AppText.T("web.status.metadata.rename")</span>
+        <span class="cmd-key" @onclick="OnStop"><span class="key-label">F12</span>@AppText.T("web.status.stop")</span>
+        <span class="cmd-key" @onclick="OnClear"><span class="key-label">Ctrl+L</span>@AppText.T("web.status.metadata.clear")</span>
     }
     else
     {
-        <span class="cmd-key" @onclick="OnAnalyzeSelected"><span class="key-label">F6</span>@AppText.T("web.status.analyze")</span>
-        <span class="cmd-key" @onclick="OnAnalyzeAll"><span class="key-label">F7</span>@AppText.T("web.status.all")</span>
-        <span class="cmd-key" @onclick="OnSkip"><span class="key-label">F8</span>@AppText.T("web.status.skip")</span>
-        <span class="cmd-key" @onclick="OnMergeSelected"><span class="key-label">F9</span>@AppText.T("web.status.process")</span>
-        <span class="cmd-key" @onclick="OnMergeAll"><span class="key-label">F10</span>@AppText.T("web.status.all")</span>
+        <span class="cmd-key" @onclick="OnShowConfig"><span class="key-label">F2</span>@AppText.T("web.status.config")</span>
+        <span class="cmd-key" @onclick="OnScan"><span class="key-label">F5</span>@AppText.T("web.status.scan")</span>
+        @if (CurrentMode == Options.MODE_SPLIT)
+        {
+            <span class="cmd-key" @onclick="OnMergeAll"><span class="key-label">F10</span>@AppText.T("web.status.splitAll")</span>
+        }
+        else
+        {
+            <span class="cmd-key" @onclick="OnAnalyzeSelected"><span class="key-label">F6</span>@AppText.T("web.status.analyze")</span>
+            <span class="cmd-key" @onclick="OnAnalyzeAll"><span class="key-label">F7</span>@AppText.T("web.status.all")</span>
+            <span class="cmd-key" @onclick="OnSkip"><span class="key-label">F8</span>@AppText.T("web.status.skip")</span>
+            <span class="cmd-key" @onclick="OnMergeSelected"><span class="key-label">F9</span>@AppText.T("web.status.process")</span>
+            <span class="cmd-key" @onclick="OnMergeAll"><span class="key-label">F10</span>@AppText.T("web.status.all")</span>
+        }
+        <span class="cmd-key" @onclick="OnStop"><span class="key-label">F12</span>@AppText.T("web.status.stop")</span>
     }
-    <span class="cmd-key" @onclick="OnStop"><span class="key-label">F12</span>@AppText.T("web.status.stop")</span>
 </div>
 
 @code {
@@ -56,6 +71,21 @@
     /// Evento mostra configurazione
     /// </summary>
     [Parameter] public EventCallback OnShowConfig { get; set; }
+
+    /// <summary>
+    /// Evento mostra preset metadata
+    /// </summary>
+    [Parameter] public EventCallback OnShowPreset { get; set; }
+
+    /// <summary>
+    /// Evento clear metadata
+    /// </summary>
+    [Parameter] public EventCallback OnClear { get; set; }
+
+    /// <summary>
+    /// Evento rinomina metadata
+    /// </summary>
+    [Parameter] public EventCallback OnRename { get; set; }
 
     /// <summary>
     /// Modalita' corrente

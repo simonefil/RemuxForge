@@ -593,7 +593,7 @@ namespace RemuxForge.Core.Configuration
                 this._model.Ui.Theme = "nord";
             }
 
-            if (this._model.Ui.LastMode != Options.MODE_REMUX && this._model.Ui.LastMode != Options.MODE_SPLIT)
+            if (this._model.Ui.LastMode != Options.MODE_REMUX && this._model.Ui.LastMode != Options.MODE_SPLIT && this._model.Ui.LastMode != Options.MODE_METADATA)
             {
                 this._model.Ui.LastMode = Options.MODE_REMUX;
             }

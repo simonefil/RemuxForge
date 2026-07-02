@@ -35,7 +35,7 @@ namespace RemuxForge.Core.Configuration
                 return result;
             }
 
-            if (options.Mode != Options.MODE_REMUX && options.Mode != Options.MODE_SPLIT)
+            if (options.Mode != Options.MODE_REMUX && options.Mode != Options.MODE_SPLIT && options.Mode != Options.MODE_METADATA)
             {
                 result.AddError(AppText.T("validation.missingInvalidMode"));
                 return result;
@@ -44,6 +44,12 @@ namespace RemuxForge.Core.Configuration
             if (options.Mode == Options.MODE_SPLIT)
             {
                 ValidateSplitOptions(options, requireSourceFolder, validateFolderExists, result);
+                return result;
+            }
+
+            if (options.Mode == Options.MODE_METADATA)
+            {
+                ValidateMetadataOptions(options, requireSourceFolder, validateFolderExists, result);
                 return result;
             }
 
@@ -88,6 +94,69 @@ namespace RemuxForge.Core.Configuration
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Valida opzioni della modalita' metadata
+        /// </summary>
+        /// <param name="options">Opzioni da validare</param>
+        /// <param name="requireSourceFolder">True se source e' obbligatorio</param>
+        /// <param name="validateFolderExists">True se controllare esistenza su disco</param>
+        /// <param name="result">Risultato validazione da aggiornare</param>
+        private static void ValidateMetadataOptions(Options options, bool requireSourceFolder, bool validateFolderExists, OptionsValidationResult result)
+        {
+            bool sourceIsFile;
+            bool sourceIsFolder;
+
+            if (options.Metadata == null)
+            {
+                result.AddError(AppText.T("metadata.validation.invalidConfig"));
+                return;
+            }
+
+            options.Metadata.SourcePath = options.Metadata.SourcePath.Length > 0 ? options.Metadata.SourcePath : options.SourceFolder;
+            options.Metadata.OutputDir = options.Metadata.OutputDir.Length > 0 ? options.Metadata.OutputDir : options.DestinationFolder;
+            options.Metadata.Recursive = options.Recursive;
+            options.Metadata.DryRun = options.DryRun;
+
+            if (requireSourceFolder && options.Metadata.SourcePath.Length == 0)
+            {
+                result.AddError(AppText.T("validation.sourceRequired"));
+            }
+
+            if (requireSourceFolder && options.Metadata.PresetPath.Length == 0)
+            {
+                result.AddError(AppText.T("metadata.validation.presetRequired"));
+            }
+
+            if (validateFolderExists && options.Metadata.SourcePath.Length > 0)
+            {
+                sourceIsFile = File.Exists(options.Metadata.SourcePath);
+                sourceIsFolder = Directory.Exists(options.Metadata.SourcePath);
+                if (!sourceIsFile && !sourceIsFolder)
+                {
+                    result.AddError(AppText.F("metadata.validation.inputNotFound", options.Metadata.SourcePath));
+                }
+                else if (sourceIsFile && !string.Equals(Path.GetExtension(options.Metadata.SourcePath), ".mkv", StringComparison.OrdinalIgnoreCase))
+                {
+                    result.AddError(AppText.T("metadata.validation.onlyMkv"));
+                }
+            }
+
+            if (validateFolderExists && options.Metadata.PresetPath.Length > 0 && !File.Exists(options.Metadata.PresetPath))
+            {
+                result.AddError(AppText.F("metadata.validation.presetNotFound", options.Metadata.PresetPath));
+            }
+
+            if (options.Metadata.OutputPolicy == MkvMetadataOutputPolicy.OutputPath && options.Metadata.OutputDir.Length == 0)
+            {
+                result.AddError(AppText.T("metadata.validation.outputPathRequired"));
+            }
+
+            if (validateFolderExists && options.Metadata.OutputPolicy == MkvMetadataOutputPolicy.OutputPath && options.Metadata.OutputDir.Length > 0 && !Directory.Exists(options.Metadata.OutputDir))
+            {
+                result.AddError(AppText.F("metadata.validation.outputFolderNotFound", options.Metadata.OutputDir));
+            }
         }
 
         #endregion

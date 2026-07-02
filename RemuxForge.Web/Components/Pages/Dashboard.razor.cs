@@ -1,9 +1,12 @@
 using RemuxForge.Core.Configuration;
+using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
+using RemuxForge.Core.Metadata;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Tools;
 using RemuxForge.Web.Components.Shared;
+using RemuxForge.Web.Services;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using System;
@@ -40,6 +43,16 @@ namespace RemuxForge.Web.Components.Pages
         private List<MkvSplitRecord> _splitRecords;
 
         /// <summary>
+        /// Lista record metadata correnti
+        /// </summary>
+        private List<MkvMetadataRecord> _metadataRecords;
+
+        /// <summary>
+        /// Lista preset metadata disponibili
+        /// </summary>
+        private List<string> _metadataPresetFiles;
+
+        /// <summary>
         /// Record selezionato per il pannello dettaglio
         /// </summary>
         private FileProcessingRecord _selectedRecord;
@@ -50,7 +63,12 @@ namespace RemuxForge.Web.Components.Pages
         private MkvSplitRecord _selectedSplitRecord;
 
         /// <summary>
-        /// Indici episodi selezionati in modalita' multi-select
+        /// Record metadata selezionato
+        /// </summary>
+        private MkvMetadataRecord _selectedMetadataRecord;
+
+        /// <summary>
+        /// Indici episodi selezionati in modalità multi-select
         /// </summary>
         private List<int> _selectedIndices;
 
@@ -70,7 +88,7 @@ namespace RemuxForge.Web.Components.Pages
         private string _currentLanguage;
 
         /// <summary>
-        /// Modalita' corrente UI
+        /// Modalità corrente UI
         /// </summary>
         private string _currentMode;
 
@@ -78,6 +96,51 @@ namespace RemuxForge.Web.Components.Pages
         /// Flag: mostra dialog configurazione
         /// </summary>
         private bool _showConfig;
+
+        /// <summary>
+        /// Flag: mostra dialog preset metadata
+        /// </summary>
+        private bool _showMetadataPreset;
+
+        /// <summary>
+        /// Flag: mostra browser path metadata
+        /// </summary>
+        private bool _showMetadataPathBrowse;
+
+        /// <summary>
+        /// Campo metadata in modifica tramite browser path
+        /// </summary>
+        private int _metadataBrowseFieldIndex;
+
+        /// <summary>
+        /// Percorso iniziale browser path metadata
+        /// </summary>
+        private string _metadataBrowseInitialPath;
+
+        /// <summary>
+        /// True se il browser metadata deve mostrare i file
+        /// </summary>
+        private bool _metadataBrowseShowFiles;
+
+        /// <summary>
+        /// True se il browser metadata permette la selezione della cartella corrente
+        /// </summary>
+        private bool _metadataBrowseAllowCurrentFolderSelection;
+
+        /// <summary>
+        /// Flag: mostra dettaglio metadata mappato
+        /// </summary>
+        private bool _showMetadataMappedInfo;
+
+        /// <summary>
+        /// True se il dettaglio mappato deve mostrare la simulazione
+        /// </summary>
+        private bool _metadataMappedInfoSimulated;
+
+        /// <summary>
+        /// Flag: mostra finestra rename metadata
+        /// </summary>
+        private bool _showMetadataRename;
 
         /// <summary>
         /// Flag: mostra dialog percorsi tool
@@ -190,11 +253,20 @@ namespace RemuxForge.Web.Components.Pages
                 this._currentLanguage = AppText.LANG_EN;
             }
             this._currentMode = AppSettingsService.Instance.Settings.Ui.LastMode;
-            if (this._currentMode != Options.MODE_REMUX && this._currentMode != Options.MODE_SPLIT)
+            if (this._currentMode != Options.MODE_REMUX && this._currentMode != Options.MODE_SPLIT && this._currentMode != Options.MODE_METADATA)
             {
                 this._currentMode = Options.MODE_REMUX;
             }
             this._showConfig = false;
+            this._showMetadataPreset = false;
+            this._showMetadataPathBrowse = false;
+            this._metadataBrowseFieldIndex = -1;
+            this._metadataBrowseInitialPath = "";
+            this._metadataBrowseShowFiles = false;
+            this._metadataBrowseAllowCurrentFolderSelection = true;
+            this._showMetadataMappedInfo = false;
+            this._metadataMappedInfoSimulated = false;
+            this._showMetadataRename = false;
             this._showToolPaths = false;
             this._showAudioSettings = false;
             this._showAdvancedSettings = false;
@@ -215,8 +287,11 @@ namespace RemuxForge.Web.Components.Pages
             // Carica stato corrente dall'orchestratore
             this._records = this.Orchestrator.GetRecords();
             this._splitRecords = this.SplitOrchestrator.GetRecords();
+            this._metadataRecords = this.MetadataOrchestrator.GetRecords();
+            this._metadataPresetFiles = this.MetadataOrchestrator.GetPresetFiles();
             this.SyncSelectedFromOrchestrator();
             this.SyncSelectedFromSplitOrchestrator();
+            this.SyncSelectedFromMetadataOrchestrator();
 
             // Sottoscrivi eventi orchestratore
             this.Orchestrator.OnLog += this.HandleLog;
@@ -225,6 +300,9 @@ namespace RemuxForge.Web.Components.Pages
             this.SplitOrchestrator.OnLog += this.HandleLog;
             this.SplitOrchestrator.OnRecordsChanged += this.HandleSplitRecordsChanged;
             this.SplitOrchestrator.OnProgressChanged += this.HandleProgressChanged;
+            this.MetadataOrchestrator.OnLog += this.HandleLog;
+            this.MetadataOrchestrator.OnRecordsChanged += this.HandleMetadataRecordsChanged;
+            this.MetadataOrchestrator.OnProgressChanged += this.HandleProgressChanged;
         }
 
         /// <summary>
@@ -264,6 +342,9 @@ namespace RemuxForge.Web.Components.Pages
                 this.SplitOrchestrator.OnLog -= this.HandleLog;
                 this.SplitOrchestrator.OnRecordsChanged -= this.HandleSplitRecordsChanged;
                 this.SplitOrchestrator.OnProgressChanged -= this.HandleProgressChanged;
+                this.MetadataOrchestrator.OnLog -= this.HandleLog;
+                this.MetadataOrchestrator.OnRecordsChanged -= this.HandleMetadataRecordsChanged;
+                this.MetadataOrchestrator.OnProgressChanged -= this.HandleProgressChanged;
             }
 
             // Dispose riferimento .NET per JS interop
@@ -305,7 +386,7 @@ namespace RemuxForge.Web.Components.Pages
         /// <param name="message">Messaggio log</param>
         private void HandleLog(string message)
         {
-            // Il log e' gia' accumulato nell'orchestratore, forza solo il re-render
+            // Il log è già accumulato nell'orchestratore, forza solo il re-render
             this.InvokeAsync(() => this.StateHasChanged());
         }
 
@@ -332,6 +413,19 @@ namespace RemuxForge.Web.Components.Pages
             {
                 this._splitRecords = this.SplitOrchestrator.GetRecords();
                 this.SyncSelectedFromSplitOrchestrator();
+                this.StateHasChanged();
+            });
+        }
+
+        /// <summary>
+        /// Gestisce aggiornamento record metadata
+        /// </summary>
+        private void HandleMetadataRecordsChanged()
+        {
+            this.InvokeAsync(() =>
+            {
+                this._metadataRecords = this.MetadataOrchestrator.GetRecords();
+                this.SyncSelectedFromMetadataOrchestrator();
                 this.StateHasChanged();
             });
         }
@@ -389,6 +483,23 @@ namespace RemuxForge.Web.Components.Pages
                 else if (key == "Home") { this.SelectSplitRow(0); }
                 else if (key == "End") { this.SelectSplitRow(this._splitRecords.Count - 1); }
             }
+            else if (this._currentMode == Options.MODE_METADATA)
+            {
+                if (key == "F2") { this.ShowMetadataInputPicker(); }
+                else if (key == "F3") { this.ShowMetadataPreset(); }
+                else if (key == "F5") { this.DoScan(); }
+                else if (key == "F6") { this.DoAnalyzeAll(); }
+                else if (key == "F9") { this.DoMergeSelected(); }
+                else if (key == "F10") { this.DoMergeAll(); }
+                else if (key == "F11") { this.ShowMetadataRename(); }
+                else if (key == "F12") { this.DoStop(); }
+                else if (ctrl && string.Equals(key, "l", StringComparison.OrdinalIgnoreCase)) { this.DoClear(); }
+                else if (key == "Escape") { this.CloseAllDialogs(); }
+                else if (key == "ArrowUp") { this.MoveMetadataSelection(-1); }
+                else if (key == "ArrowDown") { this.MoveMetadataSelection(1); }
+                else if (key == "Home") { this.SelectMetadataRow(0); }
+                else if (key == "End") { this.SelectMetadataRow(this._metadataRecords.Count - 1); }
+            }
             else
             {
                 if (key == "F2") { this.ShowConfig(); }
@@ -438,6 +549,24 @@ namespace RemuxForge.Web.Components.Pages
             else
             {
                 this._selectedSplitRecord = null;
+            }
+        }
+
+        /// <summary>
+        /// Seleziona riga metadata
+        /// </summary>
+        /// <param name="index">Indice riga</param>
+        private void SelectMetadataRow(int index)
+        {
+            this.MetadataOrchestrator.SelectedIndex = index;
+            if (index >= 0 && index < this._metadataRecords.Count)
+            {
+                this._selectedMetadataRecord = this._metadataRecords[index];
+                this.ScrollMetadataRowIntoView(index);
+            }
+            else
+            {
+                this._selectedMetadataRecord = null;
             }
         }
 
@@ -589,6 +718,31 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
+        /// Muove selezione metadata con frecce
+        /// </summary>
+        /// <param name="delta">Spostamento relativo</param>
+        private void MoveMetadataSelection(int delta)
+        {
+            int currentIndex = this.MetadataOrchestrator.SelectedIndex;
+            int targetIndex;
+
+            if (this._metadataRecords.Count == 0)
+            {
+                return;
+            }
+
+            if (currentIndex < 0)
+            {
+                currentIndex = 0;
+            }
+
+            targetIndex = currentIndex + delta;
+            if (targetIndex < 0) { targetIndex = 0; }
+            if (targetIndex >= this._metadataRecords.Count) { targetIndex = this._metadataRecords.Count - 1; }
+            this.SelectMetadataRow(targetIndex);
+        }
+
+        /// <summary>
         /// Seleziona tutti gli episodi
         /// </summary>
         private void SelectAllRows()
@@ -650,7 +804,7 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
-        /// True se una riga e' nella selezione multi
+        /// True se una riga è nella selezione multi
         /// </summary>
         private bool IsRowSelected(int index)
         {
@@ -701,7 +855,7 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
-        /// Rimuove selezioni non piu' valide dopo refresh record
+        /// Rimuove selezioni non più valide dopo refresh record
         /// </summary>
         private void NormalizeSelection()
         {
@@ -720,11 +874,11 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
-        /// True se c'e' un dialog modale aperto che deve bloccare scorciatoie tabella
+        /// True se c'è un dialog modale aperto che deve bloccare scorciatoie tabella
         /// </summary>
         private bool IsBlockingDialogOpen()
         {
-            return this._showConfig || this._showToolPaths || this._showAudioSettings || this._showAdvancedSettings || this._showDelay || this._showEncodingProfiles || this._showPipeline || this._showInfo || this._showMediaInfo;
+            return this._showConfig || this._showMetadataPathBrowse || this._showMetadataPreset || this._showMetadataMappedInfo || this._showMetadataRename || this._showToolPaths || this._showAudioSettings || this._showAdvancedSettings || this._showDelay || this._showEncodingProfiles || this._showPipeline || this._showInfo || this._showMediaInfo;
         }
 
         /// <summary>
@@ -805,6 +959,27 @@ namespace RemuxForge.Web.Components.Pages
             try
             {
                 _ = this._jsModule.InvokeVoidAsync("scrollSplitRowIntoView", index);
+            }
+            catch
+            {
+                // Ignora errori JS se il circuito si sta chiudendo
+            }
+        }
+
+        /// <summary>
+        /// Scorre la riga metadata selezionata dentro la viewport tabella
+        /// </summary>
+        /// <param name="index">Indice riga</param>
+        private void ScrollMetadataRowIntoView(int index)
+        {
+            if (this._jsModule == null)
+            {
+                return;
+            }
+
+            try
+            {
+                _ = this._jsModule.InvokeVoidAsync("scrollMetadataRowIntoView", index);
             }
             catch
             {
@@ -983,17 +1158,249 @@ namespace RemuxForge.Web.Components.Pages
             }
         }
 
+        /// <summary>
+        /// Sincronizza record metadata selezionato
+        /// </summary>
+        private void SyncSelectedFromMetadataOrchestrator()
+        {
+            int index = this.MetadataOrchestrator.SelectedIndex;
+
+            if (index >= 0 && index < this._metadataRecords.Count)
+            {
+                this._selectedMetadataRecord = this._metadataRecords[index];
+            }
+            else
+            {
+                this._selectedMetadataRecord = null;
+            }
+        }
+
+        /// <summary>
+        /// Restituisce log della modalità corrente
+        /// </summary>
+        /// <returns>Log corrente</returns>
+        private string GetCurrentLogText()
+        {
+            if (this._currentMode == Options.MODE_SPLIT)
+            {
+                return this.SplitOrchestrator.LogText;
+            }
+
+            if (this._currentMode == Options.MODE_METADATA)
+            {
+                return this.MetadataOrchestrator.LogText;
+            }
+
+            return this.Orchestrator.LogText;
+        }
+
+        /// <summary>
+        /// Restituisce progress della modalità corrente
+        /// </summary>
+        /// <returns>Progress corrente</returns>
+        private ProcessingProgressState GetCurrentProgress()
+        {
+            if (this._currentMode == Options.MODE_SPLIT)
+            {
+                return this.SplitOrchestrator.Progress;
+            }
+
+            if (this._currentMode == Options.MODE_METADATA)
+            {
+                return this.MetadataOrchestrator.Progress;
+            }
+
+            return this.Orchestrator.Progress;
+        }
+
+        /// <summary>
+        /// Costruisce riepilogo tracce metadata
+        /// </summary>
+        /// <param name="record">Record metadata</param>
+        /// <returns>Riepilogo tracce</returns>
+        private string BuildMetadataTrackSummary(MkvMetadataRecord record)
+        {
+            int video = 0;
+            int audio = 0;
+            int subtitles = 0;
+
+            if (record == null || record.FileInfo == null || record.FileInfo.Tracks == null)
+            {
+                return "";
+            }
+
+            for (int i = 0; i < record.FileInfo.Tracks.Count; i++)
+            {
+                if (record.FileInfo.Tracks[i].TrackKind == "video") { video++; }
+                else if (record.FileInfo.Tracks[i].TrackKind == "audio") { audio++; }
+                else if (record.FileInfo.Tracks[i].TrackKind == "subtitles") { subtitles++; }
+            }
+
+            return video + "V " + audio + "A " + subtitles + "S";
+        }
+
+        /// <summary>
+        /// Costruisce riepilogo video metadata
+        /// </summary>
+        /// <param name="record">Record metadata</param>
+        /// <param name="simulated">True per stato simulato</param>
+        /// <returns>Riepilogo video</returns>
+        private string BuildMetadataVideoSummary(MkvMetadataRecord record, bool simulated)
+        {
+            MkvMetadataFileInfo info = GetMetadataInfo(record, simulated);
+            MkvMetadataTrackInfo video = null;
+
+            if (info == null || info.Tracks == null)
+            {
+                return "-";
+            }
+
+            for (int i = 0; i < info.Tracks.Count; i++)
+            {
+                if (info.Tracks[i].TrackKind == "video")
+                {
+                    video = info.Tracks[i];
+                    break;
+                }
+            }
+
+            if (video == null)
+            {
+                return "-";
+            }
+
+            return BuildMetadataTrackVideoSummary(video);
+        }
+
+        /// <summary>
+        /// Restituisce info metadata attuali o simulate
+        /// </summary>
+        /// <param name="record">Record metadata</param>
+        /// <param name="simulated">True per stato simulato</param>
+        /// <returns>Info metadata</returns>
+        private static MkvMetadataFileInfo GetMetadataInfo(MkvMetadataRecord record, bool simulated)
+        {
+            if (record == null)
+            {
+                return null;
+            }
+
+            if (simulated)
+            {
+                return record.FileInfo;
+            }
+
+            return record.OriginalFileInfo != null && record.OriginalFileInfo.Tracks != null && record.OriginalFileInfo.Tracks.Count > 0
+                ? record.OriginalFileInfo
+                : record.FileInfo;
+        }
+
+        /// <summary>
+        /// Costruisce riepilogo compatto della traccia video
+        /// </summary>
+        /// <param name="track">Traccia video</param>
+        /// <returns>Riepilogo</returns>
+        private static string BuildMetadataTrackVideoSummary(MkvMetadataTrackInfo track)
+        {
+            string result = GetMetadataFieldValue(track, "video_format");
+            string width = GetMetadataFieldValue(track, "video_width");
+            string height = GetMetadataFieldValue(track, "video_height");
+            string fps = GetMetadataFieldValue(track, "video_fps");
+            string bitDepth = GetMetadataFieldValue(track, "video_bitdepth");
+            string hdr = GetMetadataFieldValue(track, "video_hdr_format");
+
+            if (result.Length == 0) { result = track.Format; }
+            if (width.Length > 0 && height.Length > 0) { AddMetadataSummaryPart(ref result, width + "x" + height); }
+            if (fps.Length > 0) { AddMetadataSummaryPart(ref result, fps + "fps"); }
+            if (bitDepth.Length > 0) { AddMetadataSummaryPart(ref result, bitDepth + "bit"); }
+            if (hdr.Length > 0) { AddMetadataSummaryPart(ref result, hdr); }
+
+            return result.Length > 0 ? result : "-";
+        }
+
+        /// <summary>
+        /// Restituisce campo metadata da traccia
+        /// </summary>
+        private static string GetMetadataFieldValue(MkvMetadataTrackInfo track, string key)
+        {
+            string result;
+            if (track != null && track.Fields != null && track.Fields.TryGetValue(key, out result))
+            {
+                return result != null ? result : "";
+            }
+
+            return "";
+        }
+
+        /// <summary>
+        /// Aggiunge parte al riepilogo metadata
+        /// </summary>
+        private static void AddMetadataSummaryPart(ref string value, string part)
+        {
+            if (part == null || part.Length == 0)
+            {
+                return;
+            }
+
+            if (value.Length > 0)
+            {
+                value += " ";
+            }
+
+            value += part;
+        }
+
+        /// <summary>
+        /// Costruisce testo preview prima/dopo per una modifica metadata
+        /// </summary>
+        /// <param name="change">Modifica</param>
+        /// <returns>Testo preview</returns>
+        private string BuildMetadataChangeText(MkvMetadataChange change)
+        {
+            if (change == null)
+            {
+                return "";
+            }
+
+            if (change.FieldKey != null && change.FieldKey.Length > 0 &&
+                (change.OperationType == MkvMetadataOperationType.SetField ||
+                 change.OperationType == MkvMetadataOperationType.ClearField ||
+                 change.OperationType == MkvMetadataOperationType.SetExclusiveFlag ||
+                 change.OperationType == MkvMetadataOperationType.SetTagField ||
+                 change.OperationType == MkvMetadataOperationType.ClearTagField))
+            {
+                return change.FieldKey + ": " + FormatMetadataPreviewValue(change.BeforeValue) + " -> " + FormatMetadataPreviewValue(change.AfterValue);
+            }
+
+            return change.Message;
+        }
+
+        /// <summary>
+        /// Formatta valore preview metadata
+        /// </summary>
+        /// <param name="value">Valore</param>
+        /// <returns>Valore leggibile</returns>
+        private static string FormatMetadataPreviewValue(string value)
+        {
+            if (value == null || value.Length == 0)
+            {
+                return "''";
+            }
+
+            return "'" + value + "'";
+        }
+
         #endregion
 
         #region Azioni
 
         /// <summary>
-        /// Cambia modalita' UI e salva preferenza
+        /// Cambia modalità UI e salva preferenza
         /// </summary>
-        /// <param name="mode">Modalita' richiesta</param>
+        /// <param name="mode">Modalità richiesta</param>
         private void SwitchMode(string mode)
         {
-            if (mode != Options.MODE_REMUX && mode != Options.MODE_SPLIT)
+            if (mode != Options.MODE_REMUX && mode != Options.MODE_SPLIT && mode != Options.MODE_METADATA)
             {
                 return;
             }
@@ -1027,6 +1434,21 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private void DoScan()
         {
+            if (this._currentMode == Options.MODE_METADATA)
+            {
+                if (this.MetadataOrchestrator.CurrentOptions.Metadata.SourcePath.Length == 0)
+                {
+                    this.ShowMetadataInputPicker();
+                    return;
+                }
+
+                if (!this.MetadataOrchestrator.IsBusy)
+                {
+                    this.MetadataOrchestrator.Scan();
+                }
+                return;
+            }
+
             if (this._currentMode == Options.MODE_SPLIT)
             {
                 if (!this.ApplySplitConfig())
@@ -1057,6 +1479,12 @@ namespace RemuxForge.Web.Components.Pages
         private void DoAnalyzeSelected()
         {
             List<int> selectedIndices;
+            if (this._currentMode == Options.MODE_METADATA)
+            {
+                this.DoAnalyzeAll();
+                return;
+            }
+
             if (this._currentMode == Options.MODE_SPLIT)
             {
                 return;
@@ -1086,6 +1514,15 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private void DoAnalyzeAll()
         {
+            if (this._currentMode == Options.MODE_METADATA)
+            {
+                if (!this.MetadataOrchestrator.IsBusy)
+                {
+                    this.MetadataOrchestrator.AnalyzeAll();
+                }
+                return;
+            }
+
             if (this._currentMode == Options.MODE_SPLIT)
             {
                 return;
@@ -1107,6 +1544,11 @@ namespace RemuxForge.Web.Components.Pages
         private void DoToggleSkip()
         {
             List<int> selectedIndices;
+            if (this._currentMode == Options.MODE_METADATA)
+            {
+                return;
+            }
+
             if (this._currentMode == Options.MODE_SPLIT)
             {
                 return;
@@ -1133,6 +1575,15 @@ namespace RemuxForge.Web.Components.Pages
         private void DoMergeSelected()
         {
             List<int> selectedIndices;
+            if (this._currentMode == Options.MODE_METADATA)
+            {
+                if (!this.MetadataOrchestrator.IsBusy)
+                {
+                    this.MetadataOrchestrator.ApplySelected(this.MetadataOrchestrator.SelectedIndex);
+                }
+                return;
+            }
+
             if (this._currentMode == Options.MODE_SPLIT)
             {
                 this.DoMergeAll();
@@ -1163,6 +1614,15 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private void DoMergeAll()
         {
+            if (this._currentMode == Options.MODE_METADATA)
+            {
+                if (!this.MetadataOrchestrator.IsBusy)
+                {
+                    this.MetadataOrchestrator.ApplyAll();
+                }
+                return;
+            }
+
             if (this._currentMode == Options.MODE_SPLIT)
             {
                 if (!this.ApplySplitConfig())
@@ -1192,6 +1652,12 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private void DoStop()
         {
+            if (this._currentMode == Options.MODE_METADATA)
+            {
+                this.MetadataOrchestrator.Stop();
+                return;
+            }
+
             if (this._currentMode == Options.MODE_SPLIT)
             {
                 this.SplitOrchestrator.Stop();
@@ -1213,6 +1679,12 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private void ShowConfig()
         {
+            if (this._currentMode == Options.MODE_METADATA)
+            {
+                this.ShowMetadataInputPicker();
+                return;
+            }
+
             this._showConfig = true;
         }
 
@@ -1222,6 +1694,286 @@ namespace RemuxForge.Web.Components.Pages
         private void CloseConfig()
         {
             this._showConfig = false;
+        }
+
+        /// <summary>
+        /// Apre il picker input metadata
+        /// </summary>
+        private void ShowMetadataInputPicker()
+        {
+            this.BrowseMetadataPath(0, true, true);
+        }
+
+        /// <summary>
+        /// Mostra dialog preset metadata
+        /// </summary>
+        private void ShowMetadataPreset()
+        {
+            this._metadataPresetFiles = this.MetadataOrchestrator.GetPresetFiles();
+            this._showMetadataPreset = true;
+        }
+
+        /// <summary>
+        /// Chiude dialog preset metadata
+        /// </summary>
+        private void CloseMetadataPreset()
+        {
+            this._showMetadataPreset = false;
+            this._metadataPresetFiles = this.MetadataOrchestrator.GetPresetFiles();
+        }
+
+        /// <summary>
+        /// Mostra dettaglio metadata mappato
+        /// </summary>
+        /// <param name="simulated">True per dettaglio simulato</param>
+        private void ShowMetadataMappedInfo(bool simulated)
+        {
+            this._metadataMappedInfoSimulated = simulated;
+            this._showMetadataMappedInfo = true;
+        }
+
+        /// <summary>
+        /// Chiude dettaglio metadata mappato
+        /// </summary>
+        private void CloseMetadataMappedInfo()
+        {
+            this._showMetadataMappedInfo = false;
+        }
+
+        /// <summary>
+        /// Applica preset metadata selezionato
+        /// </summary>
+        /// <param name="presetPath">Percorso preset</param>
+        private void ApplyMetadataPreset(string presetPath)
+        {
+            Options opts = this.MetadataOrchestrator.CurrentOptions;
+            string errorMessage;
+
+            opts.Metadata.PresetPath = presetPath != null ? presetPath : "";
+            if (this.MetadataOrchestrator.ApplyOptions(opts, out errorMessage))
+            {
+                this._showMetadataPreset = false;
+                this._metadataPresetFiles = this.MetadataOrchestrator.GetPresetFiles();
+            }
+            else if (errorMessage.Length > 0)
+            {
+                this.MetadataOrchestrator.Log(errorMessage);
+            }
+        }
+
+        /// <summary>
+        /// Cambia preset metadata dal dropdown principale
+        /// </summary>
+        /// <param name="args">Evento change</param>
+        private void ChangeMetadataPreset(ChangeEventArgs args)
+        {
+            this.ApplyMetadataPreset(args.Value != null ? args.Value.ToString() : "");
+        }
+
+        /// <summary>
+        /// Cambia input metadata dalla toolbar
+        /// </summary>
+        /// <param name="args">Evento change</param>
+        private void ChangeMetadataSourcePath(ChangeEventArgs args)
+        {
+            MkvMetadataOptions metadata = this.GetMetadataOptions();
+            metadata.SourcePath = args.Value != null ? args.Value.ToString().Trim() : "";
+            this.ApplyMetadataRuntimeOptions(true);
+        }
+
+        /// <summary>
+        /// Cambia output metadata dalla toolbar
+        /// </summary>
+        /// <param name="args">Evento change</param>
+        private void ChangeMetadataOutputDir(ChangeEventArgs args)
+        {
+            MkvMetadataOptions metadata = this.GetMetadataOptions();
+            metadata.OutputDir = args.Value != null ? args.Value.ToString().Trim() : "";
+            this.ApplyMetadataRuntimeOptions(false);
+        }
+
+        /// <summary>
+        /// Cambia policy output metadata dalla toolbar
+        /// </summary>
+        /// <param name="args">Evento change</param>
+        private void ChangeMetadataOutputPolicy(ChangeEventArgs args)
+        {
+            MkvMetadataOptions metadata = this.GetMetadataOptions();
+            string value = args.Value != null ? args.Value.ToString() : "";
+            metadata.OutputPolicy = value == "output" ? MkvMetadataOutputPolicy.OutputPath : MkvMetadataOutputPolicy.Overwrite;
+            this.ApplyMetadataRuntimeOptions(false);
+        }
+
+        /// <summary>
+        /// Alterna scan ricorsivo metadata
+        /// </summary>
+        private void ToggleMetadataRecursive()
+        {
+            MkvMetadataOptions metadata = this.GetMetadataOptions();
+            metadata.Recursive = !metadata.Recursive;
+            this.ApplyMetadataRuntimeOptions(true);
+        }
+
+        /// <summary>
+        /// Alterna preservazione cartelle metadata
+        /// </summary>
+        private void ToggleMetadataPreserveFolderStructure()
+        {
+            MkvMetadataOptions metadata = this.GetMetadataOptions();
+            metadata.PreserveFolderStructure = !metadata.PreserveFolderStructure;
+            this.ApplyMetadataRuntimeOptions(false);
+        }
+
+        /// <summary>
+        /// Restituisce valore select policy output metadata
+        /// </summary>
+        /// <returns>Valore select policy</returns>
+        private string GetMetadataOutputPolicyValue()
+        {
+            return this.GetMetadataOptions().OutputPolicy == MkvMetadataOutputPolicy.OutputPath ? "output" : "overwrite";
+        }
+
+        /// <summary>
+        /// Apre browser path per input o output metadata
+        /// </summary>
+        /// <param name="fieldIndex">Indice campo: 0 input, 1 output</param>
+        /// <param name="showFiles">True per mostrare file</param>
+        /// <param name="allowCurrentFolderSelection">True per permettere cartella corrente</param>
+        private void BrowseMetadataPath(int fieldIndex, bool showFiles, bool allowCurrentFolderSelection)
+        {
+            MkvMetadataOptions metadata = this.GetMetadataOptions();
+
+            this._metadataBrowseFieldIndex = fieldIndex;
+            this._metadataBrowseShowFiles = showFiles;
+            this._metadataBrowseAllowCurrentFolderSelection = allowCurrentFolderSelection;
+            if (fieldIndex == 0)
+                this._metadataBrowseInitialPath = metadata.SourcePath;
+            else if (fieldIndex == 1)
+                this._metadataBrowseInitialPath = metadata.OutputDir.Length > 0 ? metadata.OutputDir : this.MetadataOrchestrator.CurrentOptions.DestinationFolder;
+            else
+                this._metadataBrowseInitialPath = "";
+
+            this._showMetadataPathBrowse = true;
+        }
+
+        /// <summary>
+        /// Chiude browser path metadata
+        /// </summary>
+        private void CloseMetadataPathBrowse()
+        {
+            this._showMetadataPathBrowse = false;
+        }
+
+        /// <summary>
+        /// Applica path selezionato dal browser metadata
+        /// </summary>
+        /// <param name="selectedPath">Percorso selezionato</param>
+        private void ApplyMetadataPathBrowse(string selectedPath)
+        {
+            this._showMetadataPathBrowse = false;
+            if (string.IsNullOrEmpty(selectedPath))
+                return;
+
+            MkvMetadataOptions metadata = this.GetMetadataOptions();
+            if (this._metadataBrowseFieldIndex == 0)
+            {
+                metadata.SourcePath = selectedPath;
+                this.ApplyMetadataRuntimeOptions(true);
+            }
+            else if (this._metadataBrowseFieldIndex == 1)
+            {
+                metadata.OutputPolicy = MkvMetadataOutputPolicy.OutputPath;
+                metadata.OutputDir = selectedPath;
+                this.ApplyMetadataRuntimeOptions(false);
+            }
+        }
+
+        /// <summary>
+        /// Restituisce opzioni metadata correnti garantendo istanza valida
+        /// </summary>
+        /// <returns>Opzioni metadata correnti</returns>
+        private MkvMetadataOptions GetMetadataOptions()
+        {
+            Options opts = this.MetadataOrchestrator.CurrentOptions;
+            if (opts.Metadata == null)
+                opts.Metadata = new MkvMetadataOptions();
+
+            return opts.Metadata;
+        }
+
+        /// <summary>
+        /// Applica opzioni runtime metadata modificate dalla toolbar
+        /// </summary>
+        /// <param name="clearRecords">True per svuotare record già scansionati</param>
+        private void ApplyMetadataRuntimeOptions(bool clearRecords)
+        {
+            Options opts = this.MetadataOrchestrator.CurrentOptions;
+            MkvMetadataOptions metadata = this.GetMetadataOptions();
+            string errorMessage;
+
+            metadata.SourcePath = metadata.SourcePath != null ? metadata.SourcePath.Trim() : "";
+            metadata.OutputDir = metadata.OutputDir != null ? metadata.OutputDir.Trim() : "";
+            metadata.DryRun = false;
+            opts.Mode = Options.MODE_METADATA;
+            opts.SourceFolder = metadata.SourcePath;
+            opts.DestinationFolder = metadata.OutputDir;
+            opts.Recursive = metadata.Recursive;
+            opts.DryRun = false;
+            opts.Overwrite = metadata.OutputPolicy == MkvMetadataOutputPolicy.Overwrite;
+
+            if (this.MetadataOrchestrator.ApplyOptions(opts, out errorMessage))
+            {
+                if (clearRecords)
+                    this.MetadataOrchestrator.Clear();
+            }
+            else if (errorMessage.Length > 0)
+            {
+                this.MetadataOrchestrator.Log(errorMessage);
+            }
+        }
+
+        /// <summary>
+        /// Clear modalità corrente
+        /// </summary>
+        private void DoClear()
+        {
+            if (this._currentMode == Options.MODE_METADATA)
+            {
+                this.MetadataOrchestrator.Clear();
+                this.ShowMetadataInputPicker();
+            }
+        }
+
+        /// <summary>
+        /// Mostra rinomina avanzata Metadata
+        /// </summary>
+        private void ShowMetadataRename()
+        {
+            if (this._currentMode == Options.MODE_METADATA)
+            {
+                if (this._metadataRecords.Count == 0)
+                {
+                    this.MetadataOrchestrator.Log(AppText.T("web.metadata.renameNoScannedFiles"));
+                    this.ShowMetadataInputPicker();
+                    return;
+                }
+
+                this._showMetadataRename = true;
+            }
+        }
+
+        /// <summary>
+        /// Chiude rinomina avanzata Metadata
+        /// </summary>
+        /// <param name="renamed">True se sono stati rinominati file</param>
+        private void CloseMetadataRename(bool renamed)
+        {
+            this._showMetadataRename = false;
+            if (renamed)
+            {
+                this.MetadataOrchestrator.Log(AppText.T("web.metadata.renameCompletedRefresh"));
+                this.MetadataOrchestrator.Scan();
+            }
         }
 
         /// <summary>
@@ -1377,6 +2129,10 @@ namespace RemuxForge.Web.Components.Pages
         private void CloseAllDialogs()
         {
             this._showConfig = false;
+            this._showMetadataPathBrowse = false;
+            this._showMetadataPreset = false;
+            this._showMetadataMappedInfo = false;
+            this._showMetadataRename = false;
             this._showToolPaths = false;
             this._showAudioSettings = false;
             this._showAdvancedSettings = false;

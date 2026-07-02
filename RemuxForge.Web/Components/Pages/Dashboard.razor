@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @inject MergeOrchestrator Orchestrator
 @inject SplitOrchestrator SplitOrchestrator
+@inject MetadataOrchestrator MetadataOrchestrator
 @implements IAsyncDisposable
 
 <div class="rf-layout">
@@ -16,6 +17,9 @@
                        OnMergeAll="DoMergeAll"
                        OnStop="DoStop"
                        OnShowConfig="ShowConfig"
+                       OnShowPreset="ShowMetadataPreset"
+                       OnClear="DoClear"
+                       OnRename="ShowMetadataRename"
                        OnShowToolPaths="ShowToolPaths"
                        OnShowAudioSettings="ShowAudioSettings"
                        OnShowAdvancedSettings="ShowAdvancedSettings"
@@ -32,10 +36,132 @@
         <button class="@(_currentMode == RemuxForge.Core.Models.Options.MODE_REMUX ? "active" : "")" @onclick="@(() => SwitchMode(RemuxForge.Core.Models.Options.MODE_REMUX))">Remux</button>
         <span class="mode-switch-separator">|</span>
         <button class="@(_currentMode == RemuxForge.Core.Models.Options.MODE_SPLIT ? "active" : "")" @onclick="@(() => SwitchMode(RemuxForge.Core.Models.Options.MODE_SPLIT))">Split</button>
+        <span class="mode-switch-separator">|</span>
+        <button class="@(_currentMode == RemuxForge.Core.Models.Options.MODE_METADATA ? "active" : "")" @onclick="@(() => SwitchMode(RemuxForge.Core.Models.Options.MODE_METADATA))">@AppText.T("web.metadata.title")</button>
     </div>
 
     @* Area Pannelli *@
-    @if (_currentMode == RemuxForge.Core.Models.Options.MODE_SPLIT)
+    @if (_currentMode == RemuxForge.Core.Models.Options.MODE_METADATA)
+    {
+        <div class="panels-area metadata-panels">
+            <div class="rf-panel">
+                <div class="rf-panel-title">@AppText.T("web.metadata.panel.files")</div>
+                <div class="rf-panel-body split-input-body">
+                    <div class="metadata-toolbar">
+                        <div class="metadata-toolbar-row metadata-toolbar-main-row">
+                            <div class="metadata-toolbar-field metadata-toolbar-preset-field">
+                                <span class="metadata-toolbar-label">@AppText.T("web.metadata.presetLabel")</span>
+                                <select class="form-input metadata-preset-select" value="@MetadataOrchestrator.CurrentOptions.Metadata.PresetPath" @onchange="ChangeMetadataPreset">
+                                    <option value="">@AppText.T("web.metadata.noPreset")</option>
+                                    @for (int p = 0; p < _metadataPresetFiles.Count; p++)
+                                    {
+                                        <option value="@_metadataPresetFiles[p]">@System.IO.Path.GetFileNameWithoutExtension(_metadataPresetFiles[p])</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="metadata-toolbar-field metadata-toolbar-path-field">
+                                <span class="metadata-toolbar-label">@AppText.T("web.metadata.toolbar.inputPath")</span>
+                                <span class="metadata-path-control">
+                                    <input class="form-input metadata-path-input" value="@MetadataOrchestrator.CurrentOptions.Metadata.SourcePath" @onchange="ChangeMetadataSourcePath" />
+                                    <span class="btn-browse metadata-toolbar-browse" @onclick="() => BrowseMetadataPath(0, true, true)">[ .. ]</span>
+                                </span>
+                            </div>
+                        </div>
+                        <div class="metadata-toolbar-row metadata-toolbar-options-row">
+                            <div class="metadata-toolbar-field metadata-toolbar-policy-field">
+                                <span class="metadata-toolbar-label">@AppText.T("web.metadata.toolbar.output")</span>
+                                <select class="form-input metadata-output-policy-select" value="@GetMetadataOutputPolicyValue()" @onchange="ChangeMetadataOutputPolicy">
+                                    <option value="overwrite">@AppText.T("web.metadata.toolbar.overwrite")</option>
+                                    <option value="output">@AppText.T("web.metadata.toolbar.outputPath")</option>
+                                </select>
+                            </div>
+                            <span class="ui-toggle metadata-toolbar-toggle" @onclick="ToggleMetadataRecursive">@(MetadataOrchestrator.CurrentOptions.Metadata.Recursive ? "[X]" : "[ ]") @AppText.T("web.metadata.toolbar.recursive")</span>
+                            @if (MetadataOrchestrator.CurrentOptions.Metadata.OutputPolicy == MkvMetadataOutputPolicy.OutputPath)
+                            {
+                                <span class="ui-toggle metadata-toolbar-toggle" @onclick="ToggleMetadataPreserveFolderStructure">@(MetadataOrchestrator.CurrentOptions.Metadata.PreserveFolderStructure ? "[X]" : "[ ]") @AppText.T("web.metadata.toolbar.preserveFolders")</span>
+                            }
+                        </div>
+                        @if (MetadataOrchestrator.CurrentOptions.Metadata.OutputPolicy == MkvMetadataOutputPolicy.OutputPath)
+                        {
+                            <div class="metadata-toolbar-row metadata-toolbar-output-row">
+                                <div class="metadata-toolbar-field metadata-toolbar-path-field">
+                                    <span class="metadata-toolbar-label">@AppText.T("web.metadata.toolbar.outputDir")</span>
+                                    <span class="metadata-path-control">
+                                        <input class="form-input metadata-path-input" value="@MetadataOrchestrator.CurrentOptions.Metadata.OutputDir" @onchange="ChangeMetadataOutputDir" />
+                                        <span class="btn-browse metadata-toolbar-browse" @onclick="() => BrowseMetadataPath(1, false, true)">[ .. ]</span>
+                                    </span>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    <table class="episode-table split-table metadata-table">
+                        <thead>
+                            <tr><th>@AppText.T("web.dashboard.file")</th><th>@AppText.T("web.metadata.tracks")</th><th>@AppText.T("web.metadata.analysis")</th><th>@AppText.T("web.metadata.mode")</th><th>@AppText.T("web.metadata.changesShort")</th></tr>
+                        </thead>
+                        <tbody>
+                            @for (int i = 0; i < _metadataRecords.Count; i++)
+                            {
+                                int idx = i;
+                                MkvMetadataRecord rec = _metadataRecords[i];
+                                <tr class="@(MetadataOrchestrator.SelectedIndex == idx ? "selected" : "")" data-metadata-row-index="@idx" @onclick="() => SelectMetadataRow(idx)">
+                                    <td>@System.IO.Path.GetFileName(rec.InputFile)</td>
+                                    <td>@BuildMetadataTrackSummary(rec)</td>
+                                    <td>@rec.AnalysisStatus</td>
+                                    <td>@rec.ExecutionMode</td>
+                                    <td>@rec.ChangeCount</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="rf-panel">
+                <div class="rf-panel-title">@AppText.T("web.metadata.panel.preview")</div>
+                <div class="rf-panel-body detail-content metadata-detail-content">
+                    @if (_selectedMetadataRecord == null)
+                    {
+                        <div class="empty-detail">@AppText.T("web.dashboard.noFileSelected")</div>
+                    }
+                    else
+                    {
+                        <div class="metadata-detail-section">
+                            <div class="metadata-detail-section-title">@AppText.T("web.metadata.detail.currentSection")</div>
+                            <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.dashboard.fileLabel")</span> <span class="metadata-detail-value">@_selectedMetadataRecord.InputFile</span></div>
+                            <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.dashboard.statusLabel")</span> <span class="metadata-detail-value">@_selectedMetadataRecord.Status</span></div>
+                            <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.detail.size")</span> <span class="metadata-detail-value">@Utils.FormatSize(_selectedMetadataRecord.FileSize)</span></div>
+                            <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.detail.video")</span> <span class="metadata-detail-value">@BuildMetadataVideoSummary(_selectedMetadataRecord, false)</span></div>
+                            <MetadataTrackSummaryTableComponent Record="@_selectedMetadataRecord" Simulated="false" />
+                            <button class="metadata-detail-button" @onclick="() => ShowMetadataMappedInfo(false)">@AppText.T("web.metadata.detail.openMappedInfo")</button>
+                        </div>
+
+                        <div class="metadata-detail-section metadata-detail-section-simulated">
+                            <div class="metadata-detail-section-title">@AppText.T("web.metadata.detail.simulatedSection")</div>
+                            @if (_selectedMetadataRecord.AnalysisStatus == MkvMetadataAnalysisStatus.Analyzed)
+                            {
+                                <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.rulesLabel")</span> <span class="metadata-detail-value">@_selectedMetadataRecord.MatchCount</span></div>
+                                <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.changesLabel")</span> <span class="metadata-detail-value">@_selectedMetadataRecord.ChangeCount</span></div>
+                                <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.executionLabel")</span> <span class="metadata-detail-value">@_selectedMetadataRecord.ExecutionMode</span></div>
+                                <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.outputLabel")</span> <span class="metadata-detail-value">@MetadataExecutionService.BuildOutputFile(_selectedMetadataRecord, MetadataOrchestrator.CurrentOptions.Metadata)</span></div>
+                                <MetadataTrackSummaryTableComponent Record="@_selectedMetadataRecord" Simulated="true" />
+                                <button class="metadata-detail-button" @onclick="() => ShowMetadataMappedInfo(true)">@AppText.T("web.metadata.detail.openSimulationDetail")</button>
+                                <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.commandLabel")</span></div>
+                                <pre class="metadata-command-preview">@(_selectedMetadataRecord.CommandPreview.Length > 0 ? _selectedMetadataRecord.CommandPreview : AppText.T("web.metadata.noop"))</pre>
+                            }
+                            else
+                            {
+                                <div>@AppText.T("web.metadata.detail.notAnalyzed")</div>
+                            }
+                            @if (_selectedMetadataRecord.ErrorMessage.Length > 0)
+                            {
+                                <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.dashboard.errorLabel")</span> <span class="metadata-detail-value">@_selectedMetadataRecord.ErrorMessage</span></div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+    else if (_currentMode == RemuxForge.Core.Models.Options.MODE_SPLIT)
     {
         <div class="panels-area">
             <div class="rf-panel">
@@ -92,10 +218,10 @@
     }
 
     @* Pannello Log *@
-    <LogPanelComponent LogText="@(_currentMode == RemuxForge.Core.Models.Options.MODE_SPLIT ? SplitOrchestrator.LogText : Orchestrator.LogText)" JsModule="@_jsModule" />
+    <LogPanelComponent LogText="@GetCurrentLogText()" JsModule="@_jsModule" />
 
     @* Avanzamento *@
-    <ProgressPanelComponent Progress="@(_currentMode == RemuxForge.Core.Models.Options.MODE_SPLIT ? SplitOrchestrator.Progress : Orchestrator.Progress)" />
+    <ProgressPanelComponent Progress="@GetCurrentProgress()" />
 
     @* Barra di Stato *@
     <StatusBarComponent OnScan="DoScan"
@@ -106,6 +232,9 @@
                          OnMergeAll="DoMergeAll"
                          OnStop="DoStop"
                          OnShowConfig="ShowConfig"
+                         OnShowPreset="ShowMetadataPreset"
+                         OnClear="DoClear"
+                         OnRename="ShowMetadataRename"
                          CurrentMode="@_currentMode" />
 </div>
 
@@ -115,6 +244,38 @@
     <ConfigDialogComponent Options="@(_currentMode == RemuxForge.Core.Models.Options.MODE_SPLIT ? SplitOrchestrator.CurrentOptions : Orchestrator.CurrentOptions)"
                             OnClose="CloseConfig"
                             OnApply="ApplyConfig" />
+}
+
+@* Dialog Preset Metadata *@
+@if (_showMetadataPreset)
+{
+    <MetadataPresetDialogComponent Options="@MetadataOrchestrator.CurrentOptions"
+                                   Records="@_metadataRecords"
+                                   OnClose="CloseMetadataPreset"
+                                   OnPresetSelected="ApplyMetadataPreset" />
+}
+
+@if (_showMetadataMappedInfo)
+{
+    <MetadataMappedInfoDialogComponent Record="@_selectedMetadataRecord"
+                                       Simulated="@_metadataMappedInfoSimulated"
+                                       OnClose="CloseMetadataMappedInfo" />
+}
+
+@* Dialog Rename Metadata *@
+@if (_showMetadataRename)
+{
+    <MetadataRenamerDialogComponent Records="@_metadataRecords"
+                                    OnClose="CloseMetadataRename" />
+}
+
+@if (_showMetadataPathBrowse)
+{
+    <FolderBrowserDialog InitialPath="@_metadataBrowseInitialPath"
+                         ShowFiles="@_metadataBrowseShowFiles"
+                         AllowCurrentFolderSelection="@_metadataBrowseAllowCurrentFolderSelection"
+                         OnClose="CloseMetadataPathBrowse"
+                         OnSelect="ApplyMetadataPathBrowse" />
 }
 
 @* Dialog Percorsi Tool *@

@@ -1,0 +1,548 @@
+@inject IJSRuntime JSRuntime
+
+<div id="metadata-renamer-window" class="renamer-window visible">
+    <div class="renamer-titlebar" id="metadata-renamer-titlebar">
+        <span>@AppText.T("web.rename.title")</span>
+        <button class="renamer-close" @onclick="this.HandleClose" title="@AppText.T("web.common.close")">X</button>
+    </div>
+
+    <div class="renamer-body">
+        <div class="renamer-file-list">
+            <table>
+                <thead>
+                    <tr>
+                        <th>@AppText.T("web.rename.originalName")</th>
+                        <th>@AppText.T("web.rename.newName")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (int idx = 0; idx < this._previewItems.Count; idx++)
+                    {
+                        RenamePreviewItem item = this._previewItems[idx];
+                        string rowClass = "";
+                        if (item.HasConflict)
+                        {
+                            rowClass = "conflict";
+                        }
+                        else if (item.HasError)
+                        {
+                            rowClass = "error";
+                        }
+                        else if (item.OriginalName != item.NewName)
+                        {
+                            rowClass = "changed";
+                        }
+                        <tr class="@rowClass">
+                            <td title="@item.OriginalName">@item.OriginalName</td>
+                            <td title="@(item.ErrorMessage.Length > 0 ? item.ErrorMessage : item.NewName)">@item.NewName</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="renamer-config">
+            <div class="renamer-method-selector">
+                <span>@AppText.T("web.rename.methodLabel")</span>
+                <select @bind="this._selectedMethodType" @bind:after="this.HandleMethodTypeChanged">
+                    <option value="@RenameMethodType.Replace">@GetRenameMethodTypeLabel(RenameMethodType.Replace)</option>
+                    <option value="@RenameMethodType.Add">@GetRenameMethodTypeLabel(RenameMethodType.Add)</option>
+                    <option value="@RenameMethodType.Remove">@GetRenameMethodTypeLabel(RenameMethodType.Remove)</option>
+                    <option value="@RenameMethodType.NewCase">@GetRenameMethodTypeLabel(RenameMethodType.NewCase)</option>
+                    <option value="@RenameMethodType.NewName">@GetRenameMethodTypeLabel(RenameMethodType.NewName)</option>
+                    <option value="@RenameMethodType.Trim">@GetRenameMethodTypeLabel(RenameMethodType.Trim)</option>
+                </select>
+                <button class="renamer-add-btn" @onclick="this.HandleAddMethod">@AppText.T("web.rename.add")</button>
+            </div>
+
+            <div class="renamer-params">
+                @if (!string.IsNullOrEmpty(this._paramsError))
+                {
+                    <div class="renamer-params-error">@this._paramsError</div>
+                }
+
+                @if (this._selectedMethodType == RenameMethodType.Replace)
+                {
+                    <label>
+                        <span>@AppText.T("web.rename.searchLabel")</span>
+                        <input type="text" @bind="this._editingMethod.SearchText" @bind:event="oninput" @bind:after="this.RecalculatePreview" />
+                    </label>
+                    <label>
+                        <span>@AppText.T("web.rename.replaceLabel")</span>
+                        <input type="text" @bind="this._editingMethod.ReplaceText" @bind:event="oninput" @bind:after="this.RecalculatePreview" />
+                    </label>
+                    <label class="renamer-checkbox-row">
+                        <input type="checkbox" @bind="this._editingMethod.CaseSensitive" @bind:after="this.RecalculatePreview" />
+                        <span>@AppText.T("web.rename.caseSensitive")</span>
+                    </label>
+                    <label class="renamer-checkbox-row">
+                        <input type="checkbox" @bind="this._editingMethod.UseRegex" @bind:after="this.RecalculatePreview" />
+                        <span>@AppText.T("web.rename.useRegex")</span>
+                    </label>
+                }
+                else if (this._selectedMethodType == RenameMethodType.Add)
+                {
+                    <label>
+                        <span>@AppText.T("web.rename.textLabel")</span>
+                        <input type="text" @bind="this._editingMethod.InsertText" @bind:event="oninput" @bind:after="this.RecalculatePreview" />
+                    </label>
+                    <label>
+                        <span>@AppText.T("web.rename.positionLabel")</span>
+                        <input type="number" @bind="this._editingMethod.InsertPosition" @bind:after="this.RecalculatePreview" />
+                    </label>
+                    <label class="renamer-checkbox-row">
+                        <input type="checkbox" @bind="this._editingMethod.FromEnd" @bind:after="this.RecalculatePreview" />
+                        <span>@AppText.T("web.rename.fromEnd")</span>
+                    </label>
+                }
+                else if (this._selectedMethodType == RenameMethodType.Remove)
+                {
+                    <label>
+                        <span>@AppText.T("web.rename.modeLabel")</span>
+                        <select @bind="this._editingMethod.RemoveByPattern" @bind:after="this.RecalculatePreview">
+                            <option value="false">@AppText.T("web.rename.byPosition")</option>
+                            <option value="true">@AppText.T("web.rename.byPattern")</option>
+                        </select>
+                    </label>
+
+                    @if (!this._editingMethod.RemoveByPattern)
+                    {
+                        <label>
+                            <span>@AppText.T("web.rename.startLabel")</span>
+                            <input type="number" @bind="this._editingMethod.RemoveStartIndex" @bind:after="this.RecalculatePreview" />
+                        </label>
+                        <label>
+                            <span>@AppText.T("web.rename.countLabel")</span>
+                            <input type="number" @bind="this._editingMethod.RemoveCount" @bind:after="this.RecalculatePreview" />
+                        </label>
+                        <label class="renamer-checkbox-row">
+                            <input type="checkbox" @bind="this._editingMethod.RemoveFromEnd" @bind:after="this.RecalculatePreview" />
+                            <span>@AppText.T("web.rename.fromEnd")</span>
+                        </label>
+                    }
+                    else
+                    {
+                        <label>
+                            <span>@AppText.T("web.rename.patternLabel")</span>
+                            <input type="text" @bind="this._editingMethod.RemovePattern" @bind:event="oninput" @bind:after="this.RecalculatePreview" />
+                        </label>
+                        <label class="renamer-checkbox-row">
+                            <input type="checkbox" @bind="this._editingMethod.RemovePatternCaseSensitive" @bind:after="this.RecalculatePreview" />
+                            <span>@AppText.T("web.rename.caseSensitive")</span>
+                        </label>
+                        <label class="renamer-checkbox-row">
+                            <input type="checkbox" @bind="this._editingMethod.RemovePatternUseRegex" @bind:after="this.RecalculatePreview" />
+                            <span>@AppText.T("web.rename.useRegex")</span>
+                        </label>
+                    }
+                }
+                else if (this._selectedMethodType == RenameMethodType.NewCase)
+                {
+                    <label>
+                        <span>@AppText.T("web.rename.modeLabel")</span>
+                        <select @bind="this._editingMethod.CaseMode" @bind:after="this.RecalculatePreview">
+                            <option value="0">@AppText.T("web.rename.case.lowercase")</option>
+                            <option value="1">@AppText.T("web.rename.case.uppercase")</option>
+                            <option value="2">@AppText.T("web.rename.case.title")</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span>@AppText.T("web.rename.scopeLabel")</span>
+                        <select @bind="this._editingMethod.CaseScope" @bind:after="this.RecalculatePreview">
+                            <option value="0">@AppText.T("web.rename.scope.nameOnly")</option>
+                            <option value="1">@AppText.T("web.rename.scope.extensionOnly")</option>
+                            <option value="2">@AppText.T("web.rename.scope.fullName")</option>
+                        </select>
+                    </label>
+                }
+                else if (this._selectedMethodType == RenameMethodType.NewName)
+                {
+                    <label>
+                        <span>@AppText.T("web.rename.patternLabel")</span>
+                        <input type="text" @bind="this._editingMethod.NamePattern" @bind:event="oninput" @bind:after="this.RecalculatePreview" />
+                    </label>
+                    <div class="renamer-tag-help">
+                        @AppText.T("web.rename.tagsLabel") &lt;Name&gt; &lt;Ext&gt; &lt;Folder&gt;
+                        &lt;Inc:start:step:pad&gt;
+                        &lt;Date:format&gt;
+                        &lt;Rand:min:max&gt;
+                    </div>
+                }
+                else if (this._selectedMethodType == RenameMethodType.Trim)
+                {
+                    <label>
+                        <span>@AppText.T("web.rename.charsLabel")</span>
+                        <input type="text" @bind="this._editingMethod.TrimCharacters" @bind:event="oninput" @bind:after="this.RecalculatePreview" />
+                    </label>
+                    <label>
+                        <span>@AppText.T("web.rename.locationLabel")</span>
+                        <select @bind="this._editingMethod.TrimLocation" @bind:after="this.RecalculatePreview">
+                            <option value="0">@AppText.T("web.rename.location.start")</option>
+                            <option value="1">@AppText.T("web.rename.location.end")</option>
+                            <option value="2">@AppText.T("web.rename.location.both")</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span>@AppText.T("web.rename.scopeLabel")</span>
+                        <select @bind="this._editingMethod.TrimScope" @bind:after="this.RecalculatePreview">
+                            <option value="0">@AppText.T("web.rename.scope.nameOnly")</option>
+                            <option value="1">@AppText.T("web.rename.scope.extensionOnly")</option>
+                            <option value="2">@AppText.T("web.rename.scope.fullName")</option>
+                        </select>
+                    </label>
+                }
+            </div>
+
+            <div class="renamer-stack-header">@AppText.F("web.rename.methodsHeader", this._methodStack.Count)</div>
+
+            <div class="renamer-stack">
+                @for (int idx = 0; idx < this._methodStack.Count; idx++)
+                {
+                    int i = idx;
+                    RenameMethod method = this._methodStack[i];
+                    <div class="renamer-stack-item">
+                        <span class="renamer-stack-item-name" title="@method.GetDisplayName()">@method.GetDisplayName()</span>
+                        <div class="renamer-stack-item-actions">
+                            @if (i > 0)
+                            {
+                                <button @onclick="() => this.HandleMoveUp(i)" title="@AppText.T("web.rename.moveUp")">^</button>
+                            }
+                            @if (i < this._methodStack.Count - 1)
+                            {
+                                <button @onclick="() => this.HandleMoveDown(i)" title="@AppText.T("web.rename.moveDown")">v</button>
+                            }
+                            <button @onclick="() => this.HandleRemoveMethod(i)" title="@AppText.T("web.rename.remove")">x</button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="renamer-statusbar">
+        <span>@this._statusText</span>
+        <div class="renamer-statusbar-actions">
+            <button @onclick="this.HandleRename" disabled="@(!this.CanRename())">@AppText.T("web.rename.rename")</button>
+            <button @onclick="this.HandleClose">@AppText.T("web.common.cancel")</button>
+        </div>
+    </div>
+
+    <div class="renamer-resize-handle" id="metadata-renamer-resize-handle">/</div>
+</div>
+
+@code {
+    /// <summary>
+    /// Record metadata correnti
+    /// </summary>
+    [Parameter] public List<MkvMetadataRecord> Records { get; set; }
+
+    /// <summary>
+    /// Evento chiusura con flag rename eseguito
+    /// </summary>
+    [Parameter] public EventCallback<bool> OnClose { get; set; }
+
+    private List<RenameFileEntry> _entries;
+    private List<RenameMethod> _methodStack;
+    private List<RenamePreviewItem> _previewItems;
+    private RenameMethod _editingMethod;
+    private RenameMethodType _selectedMethodType;
+    private string _paramsError;
+    private string _statusText;
+    private IJSObjectReference _interopModule;
+    private bool _didRename;
+
+    /// <summary>
+    /// Inizializza stato finestra
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        this._entries = this.BuildEntries();
+        this._methodStack = new List<RenameMethod>();
+        this._previewItems = new List<RenamePreviewItem>();
+        this._editingMethod = new RenameMethod();
+        this._selectedMethodType = RenameMethodType.Replace;
+        this._paramsError = "";
+        this._statusText = "";
+        this._didRename = false;
+        this.RecalculatePreview();
+    }
+
+    /// <summary>
+    /// Inizializza drag/resize dopo il render
+    /// </summary>
+    /// <param name="firstRender">True se primo render</param>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            this._interopModule = await this.JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/interop.js");
+            await this._interopModule.InvokeVoidAsync("initWindowDrag", "metadata-renamer-window", "metadata-renamer-titlebar", "metadata-renamer-resize-handle");
+        }
+    }
+
+    private static string GetRenameMethodTypeLabel(RenameMethodType methodType)
+    {
+        return AppText.T("web.rename.method." + methodType.ToString());
+    }
+
+    private List<RenameFileEntry> BuildEntries()
+    {
+        List<RenameFileEntry> entries = new List<RenameFileEntry>();
+        if (this.Records == null)
+        {
+            return entries;
+        }
+
+        for (int i = 0; i < this.Records.Count; i++)
+        {
+            MkvMetadataRecord record = this.Records[i];
+            if (record == null || record.InputFile.Length == 0)
+            {
+                continue;
+            }
+
+            RenameFileEntry entry = new RenameFileEntry();
+            entry.FullPath = record.InputFile;
+            entry.Name = System.IO.Path.GetFileName(record.InputFile);
+            entry.LastModified = System.IO.File.Exists(record.InputFile) ? System.IO.File.GetLastWriteTime(record.InputFile) : DateTime.MinValue;
+            entries.Add(entry);
+        }
+
+        return entries;
+    }
+
+    private void HandleMethodTypeChanged()
+    {
+        this._editingMethod = new RenameMethod();
+        this._paramsError = "";
+        this.RecalculatePreview();
+    }
+
+    private void RecalculatePreview()
+    {
+        List<RenameMethod> previewStack = new List<RenameMethod>(this._methodStack);
+
+        if (this.HasEditingMethodInput())
+        {
+            RenameMethod editCopy = this._editingMethod.Clone();
+            editCopy.MethodType = this._selectedMethodType;
+            previewStack.Add(editCopy);
+        }
+
+        this._previewItems = RenameEngine.GeneratePreview(this._entries, previewStack);
+        this._paramsError = this.ValidateEditingMethod();
+        this.UpdateStatusText();
+    }
+
+    private bool HasEditingMethodInput()
+    {
+        bool result = false;
+
+        if (this._selectedMethodType == RenameMethodType.Replace)
+        {
+            result = !string.IsNullOrEmpty(this._editingMethod.SearchText);
+        }
+        else if (this._selectedMethodType == RenameMethodType.Add)
+        {
+            result = !string.IsNullOrEmpty(this._editingMethod.InsertText);
+        }
+        else if (this._selectedMethodType == RenameMethodType.Remove)
+        {
+            if (this._editingMethod.RemoveByPattern)
+            {
+                result = !string.IsNullOrEmpty(this._editingMethod.RemovePattern);
+            }
+            else
+            {
+                result = this._editingMethod.RemoveCount > 0;
+            }
+        }
+        else if (this._selectedMethodType == RenameMethodType.NewCase)
+        {
+            result = true;
+        }
+        else if (this._selectedMethodType == RenameMethodType.NewName)
+        {
+            result = !string.IsNullOrEmpty(this._editingMethod.NamePattern);
+        }
+        else if (this._selectedMethodType == RenameMethodType.Trim)
+        {
+            result = !string.IsNullOrEmpty(this._editingMethod.TrimCharacters);
+        }
+
+        return result;
+    }
+
+    private string ValidateEditingMethod()
+    {
+        string error = "";
+
+        if (this._selectedMethodType == RenameMethodType.Replace && this._editingMethod.UseRegex && !string.IsNullOrEmpty(this._editingMethod.SearchText))
+        {
+            try
+            {
+                System.Text.RegularExpressions.Regex.Match("", this._editingMethod.SearchText);
+            }
+            catch (ArgumentException ex)
+            {
+                error = AppText.F("web.rename.invalidRegex", ex.Message);
+            }
+        }
+        else if (this._selectedMethodType == RenameMethodType.Remove && this._editingMethod.RemoveByPattern && this._editingMethod.RemovePatternUseRegex && !string.IsNullOrEmpty(this._editingMethod.RemovePattern))
+        {
+            try
+            {
+                System.Text.RegularExpressions.Regex.Match("", this._editingMethod.RemovePattern);
+            }
+            catch (ArgumentException ex)
+            {
+                error = AppText.F("web.rename.invalidRegex", ex.Message);
+            }
+        }
+
+        return error;
+    }
+
+    private void UpdateStatusText()
+    {
+        int fileCount = this._previewItems.Count;
+        int conflictCount = 0;
+        int errorCount = 0;
+        int changedCount = 0;
+
+        for (int i = 0; i < this._previewItems.Count; i++)
+        {
+            if (this._previewItems[i].HasConflict)
+            {
+                conflictCount++;
+            }
+            if (this._previewItems[i].HasError)
+            {
+                errorCount++;
+            }
+            if (this._previewItems[i].OriginalName != this._previewItems[i].NewName)
+            {
+                changedCount++;
+            }
+        }
+
+        this._statusText = AppText.F("web.rename.statusBase", fileCount, changedCount);
+        if (conflictCount > 0)
+        {
+            this._statusText = this._statusText + AppText.F("web.rename.statusConflictsSuffix", conflictCount);
+        }
+        if (errorCount > 0)
+        {
+            this._statusText = this._statusText + AppText.F("web.rename.statusErrorsSuffix", errorCount);
+        }
+    }
+
+    private bool CanRename()
+    {
+        if (this._methodStack.Count == 0)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < this._previewItems.Count; i++)
+        {
+            if (this._previewItems[i].HasConflict || this._previewItems[i].HasError)
+            {
+                return false;
+            }
+        }
+
+        for (int i = 0; i < this._previewItems.Count; i++)
+        {
+            if (this._previewItems[i].OriginalName != this._previewItems[i].NewName)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void HandleAddMethod()
+    {
+        if (!this.HasEditingMethodInput())
+        {
+            return;
+        }
+
+        string error = this.ValidateEditingMethod();
+        if (!string.IsNullOrEmpty(error))
+        {
+            this._paramsError = error;
+            return;
+        }
+
+        RenameMethod method = this._editingMethod.Clone();
+        method.MethodType = this._selectedMethodType;
+        this._methodStack.Add(method);
+
+        this._editingMethod = new RenameMethod();
+        this._paramsError = "";
+        this._previewItems = RenameEngine.GeneratePreview(this._entries, this._methodStack);
+        this.UpdateStatusText();
+    }
+
+    private void HandleRemoveMethod(int index)
+    {
+        if (index >= 0 && index < this._methodStack.Count)
+        {
+            this._methodStack.RemoveAt(index);
+            this.RecalculatePreview();
+        }
+    }
+
+    private void HandleMoveUp(int index)
+    {
+        if (index > 0 && index < this._methodStack.Count)
+        {
+            RenameMethod temp = this._methodStack[index];
+            this._methodStack[index] = this._methodStack[index - 1];
+            this._methodStack[index - 1] = temp;
+            this.RecalculatePreview();
+        }
+    }
+
+    private void HandleMoveDown(int index)
+    {
+        if (index >= 0 && index < this._methodStack.Count - 1)
+        {
+            RenameMethod temp = this._methodStack[index];
+            this._methodStack[index] = this._methodStack[index + 1];
+            this._methodStack[index + 1] = temp;
+            this.RecalculatePreview();
+        }
+    }
+
+    private async Task HandleRename()
+    {
+        if (!this.CanRename())
+        {
+            return;
+        }
+
+        this._previewItems = RenameEngine.GeneratePreview(this._entries, this._methodStack);
+
+        RenameExecutionService service = new RenameExecutionService();
+        RenameExecutionResult result = service.Execute(this._previewItems);
+        if (result.Success)
+        {
+            this._didRename = result.SuccessCount > 0;
+            this._statusText = AppText.F("web.rename.renamedFiles", result.SuccessCount);
+            await this.OnClose.InvokeAsync(this._didRename);
+        }
+        else
+        {
+            this._statusText = AppText.F("web.rename.errorStatus", result.ErrorMessage);
+        }
+    }
+
+    private async Task HandleClose()
+    {
+        await this.OnClose.InvokeAsync(this._didRename);
+    }
+}
