@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Text.Json;
 using System.Xml.Linq;
 
 namespace RemuxForge.Core.Metadata
@@ -91,13 +92,13 @@ namespace RemuxForge.Core.Metadata
             {
                 if (record.ExecutionMode == MkvMetadataExecutionMode.PropEdit)
                 {
-                    result.CommandText = this.ApplyPropEdit(record.InputFile, record.Changes, null);
+                    result.CommandText = this.ApplyPropEdit(record.InputFile, record.Changes, null, null, null);
                 }
                 else if (record.ExecutionMode == MkvMetadataExecutionMode.CopyPropEdit)
                 {
                     EnsureParentFolder(targetFile);
                     File.Copy(record.InputFile, targetFile, true);
-                    result.CommandText = this.ApplyPropEdit(targetFile, record.Changes, null);
+                    result.CommandText = this.ApplyPropEdit(targetFile, record.Changes, null, null, null);
                 }
                 else if (record.ExecutionMode == MkvMetadataExecutionMode.MkvMerge)
                 {
@@ -217,6 +218,8 @@ namespace RemuxForge.Core.Metadata
             List<string> args;
             ProcessResult processResult;
             List<string> removedSelectors = new List<string>();
+            Dictionary<string, string> selectorMap;
+            Dictionary<string, string> trackUidMap;
 
             // Usa un file temporaneo per overwrite, così l'originale viene sostituito solo a operazione completata
             if (options == null || options.OutputPolicy == MkvMetadataOutputPolicy.Overwrite)
@@ -240,6 +243,7 @@ namespace RemuxForge.Core.Metadata
             }
 
             // Esegue prima il remux, poi applica eventuali modifiche metadata rimaste sul file prodotto
+            selectorMap = BuildTrackSelectorMap(record.FileInfo.Tracks, removedSelectors);
             args = this.BuildRemuxArguments(record.InputFile, remuxOutput, removedSelectors);
             commandText = FormatCommand(this._mkvMergePath, args);
             processResult = ProcessRunner.Run(this._mkvMergePath, args.ToArray());
@@ -249,7 +253,8 @@ namespace RemuxForge.Core.Metadata
                 throw new InvalidOperationException(AppText.F("metadata.execution.mkvmergeFailed", LastErrorLine(processResult.Stderr.Length > 0 ? processResult.Stderr : processResult.Stdout)));
             }
 
-            string propEditCommand = this.ApplyPropEdit(remuxOutput, record.Changes, removedSelectors);
+            trackUidMap = this.BuildTrackUidMap(remuxOutput, record.FileInfo.Tracks, selectorMap);
+            string propEditCommand = this.ApplyPropEdit(remuxOutput, record.Changes, removedSelectors, selectorMap, trackUidMap);
             if (propEditCommand != "mkvpropedit: NoOp")
                 commandText += Environment.NewLine + propEditCommand;
 
@@ -262,13 +267,14 @@ namespace RemuxForge.Core.Metadata
         /// <summary>
         /// Applica proprietà, tag e statistiche traccia tramite mkvpropedit
         /// </summary>
-        private string ApplyPropEdit(string filePath, List<MkvMetadataChange> changes, List<string> removedSelectors)
+        private string ApplyPropEdit(string filePath, List<MkvMetadataChange> changes, List<string> removedSelectors, Dictionary<string, string> selectorMap, Dictionary<string, string> trackUidMap)
         {
             List<string> args = new List<string>();
             List<string> tempFiles = new List<string>();
             List<MkvMetadataChange> tagChanges = new List<MkvMetadataChange>();
             bool addStatisticsTags = false;
             bool deleteStatisticsTags = false;
+            string editSelector;
             args.Add(filePath);
 
             try
@@ -311,8 +317,12 @@ namespace RemuxForge.Core.Metadata
                     if (change.MkvPropEditProperty.Length == 0)
                         continue;
 
+                    editSelector = ResolveRemuxedSelector(change.TrackSelector, selectorMap);
+                    if (change.TrackSelector.Length > 0 && editSelector.Length == 0)
+                        continue;
+
                     args.Add("--edit");
-                    args.Add(change.TrackSelector.Length > 0 ? change.TrackSelector : "info");
+                    args.Add(editSelector.Length > 0 ? editSelector : "info");
 
                     if (change.OperationType == MkvMetadataOperationType.ClearField)
                     {
@@ -332,7 +342,7 @@ namespace RemuxForge.Core.Metadata
                 // I tag MKV vanno riscritti tramite un singolo file XML temporaneo
                 if (tagChanges.Count > 0)
                 {
-                    string tagFile = this.BuildTagsXmlFile(filePath, tagChanges);
+                    string tagFile = this.BuildTagsXmlFile(filePath, tagChanges, trackUidMap);
                     tempFiles.Add(tagFile);
                     args.Add("--tags");
                     args.Add("all:" + tagFile);
@@ -449,6 +459,228 @@ namespace RemuxForge.Core.Metadata
         }
 
         /// <summary>
+        /// Costruisce la mappa tra selector originali e selector del file dopo remux
+        /// </summary>
+        /// <param name="tracks">Tracce del modello analizzato</param>
+        /// <param name="removedSelectors">Selector rimossi dal remux</param>
+        /// <returns>Mappa selector originale -> selector dopo remux</returns>
+        private static Dictionary<string, string> BuildTrackSelectorMap(List<MkvMetadataTrackInfo> tracks, List<string> removedSelectors)
+        {
+            Dictionary<string, string> result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            int videoIndex = 0;
+            int audioIndex = 0;
+            int subtitleIndex = 0;
+
+            if (tracks == null)
+                return result;
+
+            for (int i = 0; i < tracks.Count; i++)
+            {
+                MkvMetadataTrackInfo track = tracks[i];
+                string sourceSelector = track.TrackSelector != null ? track.TrackSelector : "";
+                if (sourceSelector.Length == 0)
+                    continue;
+
+                if (removedSelectors != null && removedSelectors.Contains(sourceSelector))
+                    continue;
+
+                if (track.TrackKind == "video")
+                {
+                    videoIndex++;
+                    result[sourceSelector] = "track:v" + videoIndex.ToString(CultureInfo.InvariantCulture);
+                }
+                else if (track.TrackKind == "audio")
+                {
+                    audioIndex++;
+                    result[sourceSelector] = "track:a" + audioIndex.ToString(CultureInfo.InvariantCulture);
+                }
+                else if (track.TrackKind == "subtitles")
+                {
+                    subtitleIndex++;
+                    result[sourceSelector] = "track:s" + subtitleIndex.ToString(CultureInfo.InvariantCulture);
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Risolve il selector valido per il file remuxato
+        /// </summary>
+        /// <param name="selector">Selector originale della modifica</param>
+        /// <param name="selectorMap">Mappa selector post-remux o null</param>
+        /// <returns>Selector da usare con mkvpropedit o stringa vuota se la traccia non esiste più</returns>
+        private static string ResolveRemuxedSelector(string selector, Dictionary<string, string> selectorMap)
+        {
+            string text = selector != null ? selector : "";
+            string mapped;
+
+            if (text.Length == 0)
+                return "";
+
+            if (selectorMap == null)
+                return text;
+
+            if (selectorMap.TryGetValue(text, out mapped))
+                return mapped;
+
+            return "";
+        }
+
+        /// <summary>
+        /// Risolve il TrackUID valido per il file remuxato
+        /// </summary>
+        /// <param name="trackUid">TrackUID originale della modifica</param>
+        /// <param name="trackUidMap">Mappa TrackUID post-remux o null</param>
+        /// <returns>TrackUID da usare nel file XML tags</returns>
+        private static string ResolveRemuxedTrackUid(string trackUid, Dictionary<string, string> trackUidMap)
+        {
+            string text = trackUid != null ? trackUid.Trim() : "";
+            string mapped;
+
+            if (text.Length == 0)
+                return "";
+
+            if (trackUidMap == null)
+                return text;
+
+            if (trackUidMap.TryGetValue(text, out mapped))
+                return mapped;
+
+            return text;
+        }
+
+        /// <summary>
+        /// Costruisce la mappa tra TrackUID originali e TrackUID prodotti dal remux
+        /// </summary>
+        /// <param name="remuxedFile">File remuxato da leggere con mkvmerge</param>
+        /// <param name="tracks">Tracce del modello analizzato</param>
+        /// <param name="selectorMap">Mappa selector originale -> selector dopo remux</param>
+        /// <returns>Mappa TrackUID originale -> TrackUID dopo remux</returns>
+        private Dictionary<string, string> BuildTrackUidMap(string remuxedFile, List<MkvMetadataTrackInfo> tracks, Dictionary<string, string> selectorMap)
+        {
+            Dictionary<string, string> result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, string> selectorToUid = this.ReadTrackUidsBySelector(remuxedFile);
+
+            if (tracks == null)
+                return result;
+
+            for (int i = 0; i < tracks.Count; i++)
+            {
+                MkvMetadataTrackInfo track = tracks[i];
+                string oldUid = track.TrackUniqueId != null ? track.TrackUniqueId.Trim() : "";
+                string newSelector = ResolveRemuxedSelector(track.TrackSelector, selectorMap);
+                string newUid;
+
+                if (oldUid.Length == 0 || newSelector.Length == 0)
+                    continue;
+
+                if (selectorToUid.TryGetValue(newSelector, out newUid) && newUid.Length > 0)
+                    result[oldUid] = newUid;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Legge i TrackUID del file corrente indicizzati per selector logico
+        /// </summary>
+        /// <param name="filePath">File MKV da leggere</param>
+        /// <returns>Mappa selector -> TrackUID</returns>
+        private Dictionary<string, string> ReadTrackUidsBySelector(string filePath)
+        {
+            Dictionary<string, string> result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            ProcessResult processResult;
+            JsonDocument document = null;
+            JsonElement tracksElement;
+            int videoIndex = 0;
+            int audioIndex = 0;
+            int subtitleIndex = 0;
+
+            processResult = ProcessRunner.Run(this._mkvMergePath, new string[] { "-J", filePath });
+            if (processResult.ExitCode != 0 || processResult.Stdout.Trim().Length == 0)
+                return result;
+
+            try
+            {
+                document = JsonDocument.Parse(processResult.Stdout);
+                if (!document.RootElement.TryGetProperty("tracks", out tracksElement) || tracksElement.ValueKind != JsonValueKind.Array)
+                    return result;
+
+                foreach (JsonElement trackElement in tracksElement.EnumerateArray())
+                {
+                    string type = GetJsonString(trackElement, "type");
+                    string selector = "";
+
+                    if (type == "video")
+                    {
+                        videoIndex++;
+                        selector = "track:v" + videoIndex.ToString(CultureInfo.InvariantCulture);
+                    }
+                    else if (type == "audio")
+                    {
+                        audioIndex++;
+                        selector = "track:a" + audioIndex.ToString(CultureInfo.InvariantCulture);
+                    }
+                    else if (type == "subtitles")
+                    {
+                        subtitleIndex++;
+                        selector = "track:s" + subtitleIndex.ToString(CultureInfo.InvariantCulture);
+                    }
+
+                    if (selector.Length > 0)
+                        result[selector] = GetJsonPropertyString(trackElement, "properties", "uid");
+                }
+            }
+            finally
+            {
+                if (document != null)
+                    document.Dispose();
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Legge una proprietà stringa da un elemento JSON
+        /// </summary>
+        /// <param name="element">Elemento JSON</param>
+        /// <param name="propertyName">Nome proprietà</param>
+        /// <returns>Valore proprietà o stringa vuota</returns>
+        private static string GetJsonString(JsonElement element, string propertyName)
+        {
+            JsonElement valueElement;
+            if (element.TryGetProperty(propertyName, out valueElement))
+                return valueElement.ToString();
+
+            return "";
+        }
+
+        /// <summary>
+        /// Legge una proprietà stringa da un oggetto JSON annidato
+        /// </summary>
+        /// <param name="element">Elemento JSON</param>
+        /// <param name="objectName">Nome oggetto annidato</param>
+        /// <param name="propertyName">Nome proprietà</param>
+        /// <returns>Valore proprietà o stringa vuota</returns>
+        private static string GetJsonPropertyString(JsonElement element, string objectName, string propertyName)
+        {
+            JsonElement objectElement;
+            JsonElement valueElement;
+
+            if (!element.TryGetProperty(objectName, out objectElement))
+                return "";
+
+            if (objectElement.ValueKind != JsonValueKind.Object)
+                return "";
+
+            if (objectElement.TryGetProperty(propertyName, out valueElement))
+                return valueElement.ToString();
+
+            return "";
+        }
+
+        /// <summary>
         /// Crea la cartella parent del file quando necessaria
         /// </summary>
         private static void EnsureParentFolder(string filePath)
@@ -511,7 +743,7 @@ namespace RemuxForge.Core.Metadata
         /// <summary>
         /// Scrive un file XML tags temporaneo con le modifiche richieste
         /// </summary>
-        private string BuildTagsXmlFile(string filePath, List<MkvMetadataChange> tagChanges)
+        private string BuildTagsXmlFile(string filePath, List<MkvMetadataChange> tagChanges, Dictionary<string, string> trackUidMap)
         {
             XDocument document = this.LoadExistingTags(filePath);
             string tempFile = Path.Combine(Path.GetTempPath(), "remuxforge-tags-" + Guid.NewGuid().ToString("N") + ".xml");
@@ -521,7 +753,7 @@ namespace RemuxForge.Core.Metadata
 
             for (int i = 0; i < tagChanges.Count; i++)
             {
-                this.ApplyTagChange(document, tagChanges[i]);
+                this.ApplyTagChange(document, tagChanges[i], trackUidMap);
             }
 
             document.Save(tempFile);
@@ -624,9 +856,9 @@ namespace RemuxForge.Core.Metadata
         /// <summary>
         /// Applica una modifica tag all'XML MKV
         /// </summary>
-        private void ApplyTagChange(XDocument document, MkvMetadataChange change)
+        private void ApplyTagChange(XDocument document, MkvMetadataChange change, Dictionary<string, string> trackUidMap)
         {
-            XElement tag = this.FindOrCreateTargetTag(document, change);
+            XElement tag = this.FindOrCreateTargetTag(document, change, trackUidMap);
 
             if (change.OperationType == MkvMetadataOperationType.SetTagField)
             {
@@ -648,10 +880,10 @@ namespace RemuxForge.Core.Metadata
         /// <summary>
         /// Trova o crea il nodo Tag container/traccia destinatario della modifica
         /// </summary>
-        private XElement FindOrCreateTargetTag(XDocument document, MkvMetadataChange change)
+        private XElement FindOrCreateTargetTag(XDocument document, MkvMetadataChange change, Dictionary<string, string> trackUidMap)
         {
             XElement root = document.Root;
-            string trackUid = change.TrackUniqueId != null ? change.TrackUniqueId.Trim() : "";
+            string trackUid = ResolveRemuxedTrackUid(change.TrackUniqueId, trackUidMap);
 
             if (root == null)
             {
