@@ -472,7 +472,7 @@ namespace RemuxForge.Core.Metadata
             {
                 result.AddError(AppText.F("metadata.preset.unknownConditionField", path, condition.FieldKey));
             }
-            else if (!IsFieldCompatible(field, scope))
+            else if (!MetadataScopeHelper.IsFieldReadableInScope(field, scope))
             {
                 result.AddError(AppText.F("metadata.preset.conditionScopeMismatch", path, condition.FieldKey, scope));
             }
@@ -504,7 +504,7 @@ namespace RemuxForge.Core.Metadata
             {
                 result.AddError(AppText.F("metadata.preset.unknownConditionField", path, condition.FieldKey));
             }
-            else if (!IsTrackFieldCompatible(field, scope) || field.ValueType == MetadataFieldValueType.Boolean)
+            else if (!MetadataScopeHelper.IsTrackFieldInScope(field, scope) || field.ValueType == MetadataFieldValueType.Boolean)
             {
                 result.AddError(AppText.F("metadata.preset.conditionScopeMismatch", path, condition.FieldKey, scope));
             }
@@ -660,48 +660,6 @@ namespace RemuxForge.Core.Metadata
                 key = key.Substring(key.IndexOf(".", StringComparison.Ordinal) + 1);
 
             return MetadataFieldRegistry.TryGet(key, out field);
-        }
-
-        /// <summary>
-        /// Indica se un campo è compatibile con lo scope della regola
-        /// </summary>
-        /// <param name="field">Campo metadata</param>
-        /// <param name="scope">Scope target della regola</param>
-        /// <returns>Vero se il campo è compatibile</returns>
-        private static bool IsFieldCompatible(MetadataFieldDefinition field, MkvMetadataTargetScope scope)
-        {
-            if (field == null)
-                return false;
-
-            if (field.Sector == MetadataFieldSector.File || field.Sector == MetadataFieldSector.Container)
-                return true;
-
-            return IsTrackFieldCompatible(field, scope);
-        }
-
-        /// <summary>
-        /// Indica se un campo traccia è compatibile con lo scope della regola
-        /// </summary>
-        /// <param name="field">Campo metadata</param>
-        /// <param name="scope">Scope target della regola</param>
-        /// <returns>Vero se il campo traccia è compatibile</returns>
-        private static bool IsTrackFieldCompatible(MetadataFieldDefinition field, MkvMetadataTargetScope scope)
-        {
-            MetadataFieldSector expectedSector;
-
-            if (field == null || scope == MkvMetadataTargetScope.Container)
-                return false;
-
-            if (scope == MkvMetadataTargetScope.Video)
-                expectedSector = MetadataFieldSector.Video;
-            else if (scope == MkvMetadataTargetScope.Audio)
-                expectedSector = MetadataFieldSector.Audio;
-            else if (scope == MkvMetadataTargetScope.Subtitle)
-                expectedSector = MetadataFieldSector.Subtitle;
-            else
-                return false;
-
-            return field.Sector == expectedSector;
         }
 
         #endregion

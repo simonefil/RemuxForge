@@ -325,7 +325,6 @@
         row.Token = "[" + field.Key + "]";
         row.Label = field.Label;
         row.FieldKey = field.Key;
-        row.Sector = field.Sector;
         row.Track = track;
         row.IsTag = false;
         return row;
@@ -450,10 +449,10 @@
             return cell;
         }
 
-        changes = this.GetChanges(trackSelector, row.FieldKey, row.IsTag);
+        changes = this.GetChanges(trackSelector, row.FieldKey);
         cell.HasFieldChange = Simulated && changes.Count > 0;
         cell.CssClass = Simulated ? this.GetChangeClass(changes, before, current) : "";
-        cell.HelpText = this.BuildChangeHelp(trackSelector, row.FieldKey, row.IsTag);
+        cell.HelpText = this.BuildChangeHelp(trackSelector, row.FieldKey);
         return cell;
     }
 
@@ -513,11 +512,6 @@
         keys.Add(value);
     }
 
-    private string GetChangeClass(string trackSelector, string fieldKey, string before, string after, bool isTag)
-    {
-        return this.GetChangeClass(this.GetChanges(trackSelector, fieldKey, isTag), before, after);
-    }
-
     private string GetChangeClass(List<MkvMetadataChange> changes, string before, string after)
     {
         if (!Simulated || changes == null || changes.Count == 0)
@@ -538,7 +532,7 @@
         return "metadata-diff-modified";
     }
 
-    private List<MkvMetadataChange> GetChanges(string trackSelector, string fieldKey, bool isTag)
+    private List<MkvMetadataChange> GetChanges(string trackSelector, string fieldKey)
     {
         List<MkvMetadataChange> result = new List<MkvMetadataChange>();
         string selector = trackSelector != null ? trackSelector : "";
@@ -578,9 +572,9 @@
         return false;
     }
 
-    private string BuildChangeHelp(string trackSelector, string fieldKey, bool isTag)
+    private string BuildChangeHelp(string trackSelector, string fieldKey)
     {
-        List<MkvMetadataChange> changes = this.GetChanges(trackSelector, fieldKey, isTag);
+        List<MkvMetadataChange> changes = this.GetChanges(trackSelector, fieldKey);
         if (changes.Count == 0)
         {
             return AppText.T("web.metadata.mapped.noChangeHelp");
@@ -660,7 +654,7 @@
         }
     }
 
-    private void ChangeContainerSelection(ChangeEventArgs args)
+    private void ChangeContainerSelection()
     {
         this._activeTagSelector = CONTAINER_SELECTOR;
     }
@@ -830,7 +824,12 @@
             return "";
         }
 
-        return bitDepth + "bit/" + sampleRate + "kHz";
+        if (bitDepth.Length > 0 && sampleRate.Length > 0)
+        {
+            return bitDepth + "bit/" + sampleRate + "kHz";
+        }
+
+        return bitDepth.Length > 0 ? bitDepth + "bit" : sampleRate + "kHz";
     }
 
     private static string GetBestValue(MkvMetadataTrackInfo track, string fieldKey, string fallback)
@@ -944,7 +943,6 @@
         public string Token { get; set; }
         public string Label { get; set; }
         public string FieldKey { get; set; }
-        public MetadataFieldSector Sector { get; set; }
         public MkvMetadataTrackInfo Track { get; set; }
         public bool IsTag { get; set; }
     }

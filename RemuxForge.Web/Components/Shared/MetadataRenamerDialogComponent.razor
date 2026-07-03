@@ -1,4 +1,5 @@
 @inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
 
 <div id="metadata-renamer-window" class="renamer-window visible">
     <div class="renamer-titlebar" id="metadata-renamer-titlebar">
@@ -232,6 +233,21 @@
 
 @code {
     /// <summary>
+    /// Id finestra flottante
+    /// </summary>
+    private const string WINDOW_ID = "metadata-renamer-window";
+
+    /// <summary>
+    /// Id barra titolo trascinabile
+    /// </summary>
+    private const string TITLEBAR_ID = "metadata-renamer-titlebar";
+
+    /// <summary>
+    /// Id handle resize
+    /// </summary>
+    private const string RESIZE_HANDLE_ID = "metadata-renamer-resize-handle";
+
+    /// <summary>
     /// Record metadata correnti
     /// </summary>
     [Parameter] public List<MkvMetadataRecord> Records { get; set; }
@@ -276,8 +292,16 @@
         if (firstRender)
         {
             this._interopModule = await this.JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/interop.js");
-            await this._interopModule.InvokeVoidAsync("initWindowDrag", "metadata-renamer-window", "metadata-renamer-titlebar", "metadata-renamer-resize-handle");
+            await this._interopModule.InvokeVoidAsync("initWindowDrag", WINDOW_ID, TITLEBAR_ID, RESIZE_HANDLE_ID);
         }
+    }
+
+    /// <summary>
+    /// Rilascia risorse JS della finestra
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        await this.DisposeInteropAsync();
     }
 
     private static string GetRenameMethodTypeLabel(RenameMethodType methodType)
@@ -533,6 +557,7 @@
         {
             this._didRename = result.SuccessCount > 0;
             this._statusText = AppText.F("web.rename.renamedFiles", result.SuccessCount);
+            await this.DisposeInteropAsync();
             await this.OnClose.InvokeAsync(this._didRename);
         }
         else
@@ -543,6 +568,29 @@
 
     private async Task HandleClose()
     {
+        await this.DisposeInteropAsync();
         await this.OnClose.InvokeAsync(this._didRename);
+    }
+
+    /// <summary>
+    /// Rimuove listener JS e libera il modulo interop
+    /// </summary>
+    private async ValueTask DisposeInteropAsync()
+    {
+        if (this._interopModule == null)
+            return;
+
+        try
+        {
+            await this._interopModule.InvokeVoidAsync("disposeWindowDrag", WINDOW_ID);
+            await this._interopModule.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        finally
+        {
+            this._interopModule = null;
+        }
     }
 }

@@ -48,7 +48,7 @@
                             <div class="metadata-rule-list-item @(idx == _selectedRuleIndex ? "selected" : "")" @onclick="() => SelectRule(idx)">
                                 <div class="metadata-rule-list-name">
                                     <span>@((idx + 1).ToString())</span>
-                                    <strong>@GetScopeLabel(rule.TargetScope)</strong>
+                                    <strong>@MetadataPresetUiHelper.GetScopeLabel(rule.TargetScope)</strong>
                                     <span>@GetRuleListDescription(rule)</span>
                                 </div>
                                 <div class="metadata-rule-list-actions">
@@ -78,9 +78,9 @@
                             <div class="form-row">
                                 <span class="form-label">@AppText.T("web.metadata.presetDialog.scopeLabel")</span>
                                 <select class="form-input metadata-rule-scope-select" value="@SelectedRule.TargetScope" @onchange="ChangeSelectedRuleScope" @onfocus='@(() => SetFieldHelp("scope"))' @onmouseenter='@(() => SetFieldHelp("scope"))'>
-                                    @foreach (MkvMetadataTargetScope scope in GetScopeOptions())
+                                    @foreach (MkvMetadataTargetScope scope in MetadataPresetUiHelper.GetScopeOptions())
                                     {
-                                        <option value="@scope">@GetScopeLabel(scope)</option>
+                                        <option value="@scope">@MetadataPresetUiHelper.GetScopeLabel(scope)</option>
                                     }
                                 </select>
                             </div>
@@ -93,324 +93,7 @@
                         <div class="metadata-rule-section">
                             <div class="form-section">@AppText.T("web.metadata.presetDialog.sectionWhen")</div>
                             <div class="metadata-rule-section-caption">@AppText.T("web.metadata.presetDialog.whenAllCaption")</div>
-                            <div class="metadata-condition-stack">
-                                @for (int i = 0; i < SelectedRule.When.All.Count; i++)
-                                {
-                                    int nodeIndex = i;
-                                    MkvMetadataRuleConditionNode node = SelectedRule.When.All[nodeIndex];
-                                    EnsureNode(node);
-
-                                    <div class="metadata-sentence-card @(node.NodeType == MkvMetadataRuleConditionNodeType.AlternativeAny ? "metadata-alternative-card" : "")">
-                                        @if (node.NodeType == MkvMetadataRuleConditionNodeType.AlternativeAny)
-                                        {
-                                            <div class="metadata-sentence-card-title">@AppText.T("web.metadata.presetDialog.alternativeTitle")</div>
-                                            <div class="metadata-rule-section-caption">@AppText.T("web.metadata.presetDialog.alternativeCaption")</div>
-                                            <div class="metadata-condition-stack metadata-condition-stack-nested">
-                                                @for (int j = 0; j < node.Alternative.Any.Count; j++)
-                                                {
-                                                    int childIndex = j;
-                                                    MkvMetadataRuleConditionNode child = node.Alternative.Any[childIndex];
-                                                    EnsureNode(child);
-
-                                                    <div class="metadata-sentence-card metadata-sentence-card-nested">
-                                                        @if (child.NodeType == MkvMetadataRuleConditionNodeType.TrackComparison)
-                                                        {
-                                                            MkvMetadataTrackComparisonCondition condition = child.TrackComparison;
-                                                            EnsureTrackComparisonCondition(condition);
-                                                            <div class="metadata-sentence-row">
-                                                                <span class="metadata-sentence-kind">@AppText.T("web.metadata.presetDialog.trackComparisonShort")</span>
-                                                                <select class="form-input metadata-sentence-field" value="@condition.FieldKey" @onchange="@((ChangeEventArgs e) => ChangeTrackComparisonField(condition, GetChangeValue(e)))" @onfocus='@(() => SetFieldHelp("trackComparison"))' @onmouseenter='@(() => SetFieldHelp("trackComparison"))'>
-                                                                    @foreach (MetadataFieldDefinition field in GetTrackComparableFields())
-                                                                    {
-                                                                        <option value="@field.Key">@field.Label</option>
-                                                                    }
-                                                                </select>
-                                                                <select class="form-input metadata-sentence-operator" value="@condition.Relation" @onchange="@((ChangeEventArgs e) => ChangeTrackComparisonRelation(condition, GetChangeValue(e)))" @onfocus='@(() => SetFieldHelp("trackComparison"))' @onmouseenter='@(() => SetFieldHelp("trackComparison"))'>
-                                                                    @foreach (MkvMetadataTrackComparisonRelation relation in GetTrackComparisonRelations(condition.FieldKey))
-                                                                    {
-                                                                        <option value="@relation">@GetTrackComparisonRelationLabel(relation)</option>
-                                                                    }
-                                                                </select>
-                                                                @if (condition.Relation == MkvMetadataTrackComparisonRelation.Rank)
-                                                                {
-                                                                    <input type="number" min="1" class="form-input metadata-rank-input" @bind="condition.Rank" />
-                                                                }
-                                                                <select class="form-input metadata-sentence-group" @bind="condition.Group" @onfocus='@(() => SetFieldHelp("trackGroup"))' @onmouseenter='@(() => SetFieldHelp("trackGroup"))'>
-                                                                    @foreach (MkvMetadataTrackGroup group in GetTrackGroupOptions())
-                                                                    {
-                                                                        <option value="@group">@GetTrackGroupLabel(group)</option>
-                                                                    }
-                                                                </select>
-                                                                <div class="metadata-node-actions">
-                                                                    <button @onclick="() => MoveNode(node.Alternative.Any, childIndex, -1)" disabled="@(childIndex == 0)">^</button>
-                                                                    <button @onclick="() => MoveNode(node.Alternative.Any, childIndex, 1)" disabled="@(childIndex >= node.Alternative.Any.Count - 1)">v</button>
-                                                                    <button @onclick="() => RemoveNode(node.Alternative.Any, childIndex)">x</button>
-                                                                </div>
-                                                            </div>
-                                                        }
-                                                        else if (child.NodeType == MkvMetadataRuleConditionNodeType.TrackGroupCount)
-                                                        {
-                                                            MkvMetadataTrackGroupCountCondition condition = child.TrackGroupCount;
-                                                            <div class="metadata-sentence-row">
-                                                                <span class="metadata-sentence-kind">@AppText.T("web.metadata.presetDialog.trackCountPrefix")</span>
-                                                                <select class="form-input metadata-sentence-group" @bind="condition.Group" @onfocus='@(() => SetFieldHelp("trackGroupCount"))' @onmouseenter='@(() => SetFieldHelp("trackGroupCount"))'>
-                                                                    @foreach (MkvMetadataTrackGroup group in GetTrackGroupOptions())
-                                                                    {
-                                                                        <option value="@group">@GetTrackGroupLabel(group)</option>
-                                                                    }
-                                                                </select>
-                                                                <select class="form-input metadata-sentence-operator" @bind="condition.Operator">
-                                                                    @foreach (MkvMetadataConditionOperator op in GetNumericOperatorOptions(false))
-                                                                    {
-                                                                        <option value="@op">@GetConditionOperatorLabel(op)</option>
-                                                                    }
-                                                                </select>
-                                                                <input type="number" min="0" class="form-input metadata-rank-input" @bind="condition.Value" />
-                                                                <div class="metadata-node-actions">
-                                                                    <button @onclick="() => MoveNode(node.Alternative.Any, childIndex, -1)" disabled="@(childIndex == 0)">^</button>
-                                                                    <button @onclick="() => MoveNode(node.Alternative.Any, childIndex, 1)" disabled="@(childIndex >= node.Alternative.Any.Count - 1)">v</button>
-                                                                    <button @onclick="() => RemoveNode(node.Alternative.Any, childIndex)">x</button>
-                                                                </div>
-                                                            </div>
-                                                        }
-                                                        else
-                                                        {
-                                                            MkvMetadataFieldCondition condition = child.Field;
-                                                            EnsureFieldCondition(condition);
-                                                            <div class="metadata-sentence-row">
-                                                                <select class="form-input metadata-sentence-field" value="@condition.FieldKey" @onchange="@((ChangeEventArgs e) => ChangeFieldConditionField(condition, GetChangeValue(e)))" @onfocus='@(() => ActivateFieldCondition(condition))' @onmouseenter='@(() => SetFieldHelp("conditionField"))'>
-                                                                    @foreach (MetadataFieldDefinition field in GetReadableFieldsForCondition())
-                                                                    {
-                                                                        <option value="@field.Key">@field.Label</option>
-                                                                    }
-                                                                </select>
-                                                                <select class="form-input metadata-sentence-operator" value="@condition.Operator" @onchange="@((ChangeEventArgs e) => ChangeFieldConditionOperator(condition, GetChangeValue(e)))" @onfocus='@(() => ActivateFieldCondition(condition))' @onmouseenter='@(() => SetFieldHelp("conditionOperator"))'>
-                                                                    @foreach (MkvMetadataConditionOperator op in GetFieldOperatorOptions(condition))
-                                                                    {
-                                                                        <option value="@op">@GetConditionOperatorLabel(op)</option>
-                                                                    }
-                                                                </select>
-                                                                @if (OperatorNeedsValue(condition.Operator))
-                                                                {
-                                                                    @if (condition.Operator == MkvMetadataConditionOperator.InList || condition.Operator == MkvMetadataConditionOperator.NotInList)
-                                                                    {
-                                                                        <div class="metadata-chip-editor">
-                                                                            @for (int k = 0; k < condition.Values.Count; k++)
-                                                                            {
-                                                                                int valueIndex = k;
-                                                                                <span class="metadata-chip">
-                                                                                    <input value="@condition.Values[valueIndex]" @oninput="@((ChangeEventArgs e) => ChangeListValue(condition, valueIndex, GetChangeValue(e)))" @onfocus='@(() => ActivateFieldCondition(condition))' />
-                                                                                    <button @onclick="() => RemoveListValue(condition, valueIndex)">x</button>
-                                                                                </span>
-                                                                            }
-                                                                            <button @onclick="() => AddListValue(condition)">+</button>
-                                                                        </div>
-                                                                    }
-                                                                    else if (condition.Operator == MkvMetadataConditionOperator.Between || condition.Operator == MkvMetadataConditionOperator.NotBetween)
-                                                                    {
-                                                                        <div class="metadata-range-editor">
-                                                                            <input class="form-input" type="@GetInputType(condition.FieldKey)" value="@condition.FromValue" @oninput="@((ChangeEventArgs e) => condition.FromValue = GetChangeValue(e))" @onfocus='@(() => ActivateFieldCondition(condition))' />
-                                                                            <span>@AppText.T("web.metadata.presetDialog.rangeTo")</span>
-                                                                            <input class="form-input" type="@GetInputType(condition.FieldKey)" value="@condition.ToValue" @oninput="@((ChangeEventArgs e) => condition.ToValue = GetChangeValue(e))" @onfocus='@(() => ActivateFieldCondition(condition))' />
-                                                                            @if (ShouldShowUnit(condition))
-                                                                            {
-                                                                                <select class="form-input metadata-rule-select-unit" @bind="condition.Unit" @onfocus='@(() => SetFieldHelp("conditionUnit"))' @onmouseenter='@(() => SetFieldHelp("conditionUnit"))'>
-                                                                                    @foreach (string unit in GetUnits(condition.FieldKey))
-                                                                                    {
-                                                                                        <option value="@unit">@(unit.Length == 0 ? AppText.T("web.metadata.unit.none") : unit)</option>
-                                                                                    }
-                                                                                </select>
-                                                                            }
-                                                                        </div>
-                                                                    }
-                                                                    else
-                                                                    {
-                                                                        <div class="metadata-value-editor">
-                                                                            <input class="form-input" type="@GetInputType(condition.FieldKey)" value="@condition.Value" @oninput="@((ChangeEventArgs e) => condition.Value = GetChangeValue(e))" @onfocus='@(() => ActivateFieldCondition(condition))' @onmouseenter='@(() => SetFieldHelp("conditionValue"))' />
-                                                                            @if (ShouldShowUnit(condition))
-                                                                            {
-                                                                                <select class="form-input metadata-rule-select-unit" @bind="condition.Unit" @onfocus='@(() => SetFieldHelp("conditionUnit"))' @onmouseenter='@(() => SetFieldHelp("conditionUnit"))'>
-                                                                                    @foreach (string unit in GetUnits(condition.FieldKey))
-                                                                                    {
-                                                                                        <option value="@unit">@(unit.Length == 0 ? AppText.T("web.metadata.unit.none") : unit)</option>
-                                                                                    }
-                                                                                </select>
-                                                                            }
-                                                                        </div>
-                                                                    }
-                                                                }
-                                                                else
-                                                                {
-                                                                    <span class="metadata-sentence-placeholder"></span>
-                                                                }
-                                                                <div class="metadata-node-actions">
-                                                                    <button @onclick="() => MoveNode(node.Alternative.Any, childIndex, -1)" disabled="@(childIndex == 0)">^</button>
-                                                                    <button @onclick="() => MoveNode(node.Alternative.Any, childIndex, 1)" disabled="@(childIndex >= node.Alternative.Any.Count - 1)">v</button>
-                                                                    <button @onclick="() => RemoveNode(node.Alternative.Any, childIndex)">x</button>
-                                                                </div>
-                                                            </div>
-                                                        }
-                                                    </div>
-                                                }
-                                            </div>
-                                            <div class="metadata-rule-button-row">
-                                                <button @onclick="() => AddAlternativeFieldCondition(node)">@AppText.T("web.metadata.presetDialog.addCondition")</button>
-                                                @if (CanUseTrackConditions())
-                                                {
-                                                    <button @onclick="() => AddAlternativeTrackComparison(node)">@AppText.T("web.metadata.presetDialog.addTrackComparisonSentence")</button>
-                                                    <button @onclick="() => AddAlternativeTrackCount(node)">@AppText.T("web.metadata.presetDialog.addTrackCount")</button>
-                                                }
-                                            </div>
-                                        }
-                                        else if (node.NodeType == MkvMetadataRuleConditionNodeType.TrackComparison)
-                                        {
-                                            MkvMetadataTrackComparisonCondition condition = node.TrackComparison;
-                                            EnsureTrackComparisonCondition(condition);
-                                            <div class="metadata-sentence-row">
-                                                <span class="metadata-sentence-kind">@AppText.T("web.metadata.presetDialog.trackComparisonShort")</span>
-                                                <select class="form-input metadata-sentence-field" value="@condition.FieldKey" @onchange="@((ChangeEventArgs e) => ChangeTrackComparisonField(condition, GetChangeValue(e)))" @onfocus='@(() => SetFieldHelp("trackComparison"))' @onmouseenter='@(() => SetFieldHelp("trackComparison"))'>
-                                                    @foreach (MetadataFieldDefinition field in GetTrackComparableFields())
-                                                    {
-                                                        <option value="@field.Key">@field.Label</option>
-                                                    }
-                                                </select>
-                                                <select class="form-input metadata-sentence-operator" value="@condition.Relation" @onchange="@((ChangeEventArgs e) => ChangeTrackComparisonRelation(condition, GetChangeValue(e)))" @onfocus='@(() => SetFieldHelp("trackComparison"))' @onmouseenter='@(() => SetFieldHelp("trackComparison"))'>
-                                                    @foreach (MkvMetadataTrackComparisonRelation relation in GetTrackComparisonRelations(condition.FieldKey))
-                                                    {
-                                                        <option value="@relation">@GetTrackComparisonRelationLabel(relation)</option>
-                                                    }
-                                                </select>
-                                                @if (condition.Relation == MkvMetadataTrackComparisonRelation.Rank)
-                                                {
-                                                    <input type="number" min="1" class="form-input metadata-rank-input" @bind="condition.Rank" />
-                                                }
-                                                <select class="form-input metadata-sentence-group" @bind="condition.Group" @onfocus='@(() => SetFieldHelp("trackGroup"))' @onmouseenter='@(() => SetFieldHelp("trackGroup"))'>
-                                                    @foreach (MkvMetadataTrackGroup group in GetTrackGroupOptions())
-                                                    {
-                                                        <option value="@group">@GetTrackGroupLabel(group)</option>
-                                                    }
-                                                </select>
-                                                <div class="metadata-node-actions">
-                                                    <button @onclick="() => MoveNode(SelectedRule.When.All, nodeIndex, -1)" disabled="@(nodeIndex == 0)">^</button>
-                                                    <button @onclick="() => MoveNode(SelectedRule.When.All, nodeIndex, 1)" disabled="@(nodeIndex >= SelectedRule.When.All.Count - 1)">v</button>
-                                                    <button @onclick="() => RemoveNode(SelectedRule.When.All, nodeIndex)">x</button>
-                                                </div>
-                                            </div>
-                                        }
-                                        else if (node.NodeType == MkvMetadataRuleConditionNodeType.TrackGroupCount)
-                                        {
-                                            MkvMetadataTrackGroupCountCondition condition = node.TrackGroupCount;
-                                            <div class="metadata-sentence-row">
-                                                <span class="metadata-sentence-kind">@AppText.T("web.metadata.presetDialog.trackCountPrefix")</span>
-                                                <select class="form-input metadata-sentence-group" @bind="condition.Group" @onfocus='@(() => SetFieldHelp("trackGroupCount"))' @onmouseenter='@(() => SetFieldHelp("trackGroupCount"))'>
-                                                    @foreach (MkvMetadataTrackGroup group in GetTrackGroupOptions())
-                                                    {
-                                                        <option value="@group">@GetTrackGroupLabel(group)</option>
-                                                    }
-                                                </select>
-                                                <select class="form-input metadata-sentence-operator" @bind="condition.Operator">
-                                                    @foreach (MkvMetadataConditionOperator op in GetNumericOperatorOptions(false))
-                                                    {
-                                                        <option value="@op">@GetConditionOperatorLabel(op)</option>
-                                                    }
-                                                </select>
-                                                <input type="number" min="0" class="form-input metadata-rank-input" @bind="condition.Value" />
-                                                <div class="metadata-node-actions">
-                                                    <button @onclick="() => MoveNode(SelectedRule.When.All, nodeIndex, -1)" disabled="@(nodeIndex == 0)">^</button>
-                                                    <button @onclick="() => MoveNode(SelectedRule.When.All, nodeIndex, 1)" disabled="@(nodeIndex >= SelectedRule.When.All.Count - 1)">v</button>
-                                                    <button @onclick="() => RemoveNode(SelectedRule.When.All, nodeIndex)">x</button>
-                                                </div>
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            MkvMetadataFieldCondition condition = node.Field;
-                                            EnsureFieldCondition(condition);
-                                            <div class="metadata-sentence-row">
-                                                <select class="form-input metadata-sentence-field" value="@condition.FieldKey" @onchange="@((ChangeEventArgs e) => ChangeFieldConditionField(condition, GetChangeValue(e)))" @onfocus='@(() => ActivateFieldCondition(condition))' @onmouseenter='@(() => SetFieldHelp("conditionField"))'>
-                                                    @foreach (MetadataFieldDefinition field in GetReadableFieldsForCondition())
-                                                    {
-                                                        <option value="@field.Key">@field.Label</option>
-                                                    }
-                                                </select>
-                                                <select class="form-input metadata-sentence-operator" value="@condition.Operator" @onchange="@((ChangeEventArgs e) => ChangeFieldConditionOperator(condition, GetChangeValue(e)))" @onfocus='@(() => ActivateFieldCondition(condition))' @onmouseenter='@(() => SetFieldHelp("conditionOperator"))'>
-                                                    @foreach (MkvMetadataConditionOperator op in GetFieldOperatorOptions(condition))
-                                                    {
-                                                        <option value="@op">@GetConditionOperatorLabel(op)</option>
-                                                    }
-                                                </select>
-                                                @if (OperatorNeedsValue(condition.Operator))
-                                                {
-                                                    @if (condition.Operator == MkvMetadataConditionOperator.InList || condition.Operator == MkvMetadataConditionOperator.NotInList)
-                                                    {
-                                                        <div class="metadata-chip-editor">
-                                                            @for (int j = 0; j < condition.Values.Count; j++)
-                                                            {
-                                                                int valueIndex = j;
-                                                                <span class="metadata-chip">
-                                                                    <input value="@condition.Values[valueIndex]" @oninput="@((ChangeEventArgs e) => ChangeListValue(condition, valueIndex, GetChangeValue(e)))" @onfocus='@(() => ActivateFieldCondition(condition))' />
-                                                                    <button @onclick="() => RemoveListValue(condition, valueIndex)">x</button>
-                                                                </span>
-                                                            }
-                                                            <button @onclick="() => AddListValue(condition)">+</button>
-                                                        </div>
-                                                    }
-                                                    else if (condition.Operator == MkvMetadataConditionOperator.Between || condition.Operator == MkvMetadataConditionOperator.NotBetween)
-                                                    {
-                                                        <div class="metadata-range-editor">
-                                                            <input class="form-input" type="@GetInputType(condition.FieldKey)" value="@condition.FromValue" @oninput="@((ChangeEventArgs e) => condition.FromValue = GetChangeValue(e))" @onfocus='@(() => ActivateFieldCondition(condition))' />
-                                                            <span>@AppText.T("web.metadata.presetDialog.rangeTo")</span>
-                                                            <input class="form-input" type="@GetInputType(condition.FieldKey)" value="@condition.ToValue" @oninput="@((ChangeEventArgs e) => condition.ToValue = GetChangeValue(e))" @onfocus='@(() => ActivateFieldCondition(condition))' />
-                                                            @if (ShouldShowUnit(condition))
-                                                            {
-                                                                <select class="form-input metadata-rule-select-unit" @bind="condition.Unit" @onfocus='@(() => SetFieldHelp("conditionUnit"))' @onmouseenter='@(() => SetFieldHelp("conditionUnit"))'>
-                                                                    @foreach (string unit in GetUnits(condition.FieldKey))
-                                                                    {
-                                                                        <option value="@unit">@(unit.Length == 0 ? AppText.T("web.metadata.unit.none") : unit)</option>
-                                                                    }
-                                                                </select>
-                                                            }
-                                                        </div>
-                                                    }
-                                                    else
-                                                    {
-                                                        <div class="metadata-value-editor">
-                                                            <input class="form-input" type="@GetInputType(condition.FieldKey)" value="@condition.Value" @oninput="@((ChangeEventArgs e) => condition.Value = GetChangeValue(e))" @onfocus='@(() => ActivateFieldCondition(condition))' @onmouseenter='@(() => SetFieldHelp("conditionValue"))' />
-                                                            @if (ShouldShowUnit(condition))
-                                                            {
-                                                                <select class="form-input metadata-rule-select-unit" @bind="condition.Unit" @onfocus='@(() => SetFieldHelp("conditionUnit"))' @onmouseenter='@(() => SetFieldHelp("conditionUnit"))'>
-                                                                    @foreach (string unit in GetUnits(condition.FieldKey))
-                                                                    {
-                                                                        <option value="@unit">@(unit.Length == 0 ? AppText.T("web.metadata.unit.none") : unit)</option>
-                                                                    }
-                                                                </select>
-                                                            }
-                                                        </div>
-                                                    }
-                                                }
-                                                else
-                                                {
-                                                    <span class="metadata-sentence-placeholder"></span>
-                                                }
-                                                <div class="metadata-node-actions">
-                                                    <button @onclick="() => MoveNode(SelectedRule.When.All, nodeIndex, -1)" disabled="@(nodeIndex == 0)">^</button>
-                                                    <button @onclick="() => MoveNode(SelectedRule.When.All, nodeIndex, 1)" disabled="@(nodeIndex >= SelectedRule.When.All.Count - 1)">v</button>
-                                                    <button @onclick="() => RemoveNode(SelectedRule.When.All, nodeIndex)">x</button>
-                                                </div>
-                                            </div>
-                                        }
-                                    </div>
-                                }
-                            </div>
-                            <div class="metadata-rule-button-row">
-                                <button @onclick="AddFieldCondition">@AppText.T("web.metadata.presetDialog.addCondition")</button>
-                                @if (CanUseTrackConditions())
-                                {
-                                    <button @onclick="AddTrackComparison">@AppText.T("web.metadata.presetDialog.addTrackComparisonSentence")</button>
-                                    <button @onclick="AddTrackCount">@AppText.T("web.metadata.presetDialog.addTrackCount")</button>
-                                }
-                                <button @onclick="AddAlternative">@AppText.T("web.metadata.presetDialog.addAlternative")</button>
-                            </div>
+                            <MetadataConditionListComponent Rule="SelectedRule" Nodes="SelectedRule.When.All" OnFieldActivated="ActivateFieldCondition" OnHelpChanged="SetFieldHelp" />
                         </div>
 
                         <div class="metadata-rule-section">
@@ -420,20 +103,19 @@
                                 {
                                     int operationIndex = i;
                                     MkvMetadataOperation operation = SelectedRule.Operations[operationIndex];
-                                    EnsureOperation(operation);
 
                                     <div class="metadata-sentence-card">
                                         <div class="metadata-sentence-row">
                                             <select class="form-input metadata-sentence-operator" value="@operation.Type" @onchange="@((ChangeEventArgs e) => ChangeOperationType(operation, GetChangeValue(e)))" @onfocus='@(() => SetFieldHelp("operationType"))' @onmouseenter='@(() => SetFieldHelp("operationType"))'>
-                                                @foreach (MkvMetadataOperationType type in GetOperationTypeOptions())
+                                                @foreach (MkvMetadataOperationType type in MetadataPresetUiHelper.GetOperationTypeOptions(SelectedRule.TargetScope))
                                                 {
-                                                    <option value="@type">@GetOperationTypeLabel(type)</option>
+                                                    <option value="@type">@MetadataPresetUiHelper.GetOperationTypeLabel(type)</option>
                                                 }
                                             </select>
                                             @if (operation.Type == MkvMetadataOperationType.SetField || operation.Type == MkvMetadataOperationType.ClearField)
                                             {
                                                 <select class="form-input metadata-sentence-field" @bind="operation.FieldKey" @onfocus='@(() => SetFieldHelp("operationField"))' @onmouseenter='@(() => SetFieldHelp("operationField"))'>
-                                                    @foreach (MetadataFieldDefinition field in GetEditableFields(operation))
+                                                    @foreach (MetadataFieldDefinition field in MetadataPresetUiHelper.GetEditableFields(SelectedRule.TargetScope, operation, _showAdvancedFields))
                                                     {
                                                         <option value="@field.Key">@field.Label</option>
                                                     }
@@ -442,15 +124,15 @@
                                             else if (operation.Type == MkvMetadataOperationType.SetExclusiveFlag)
                                             {
                                                 <select class="form-input metadata-sentence-field" @bind="operation.FieldKey" @onfocus='@(() => SetFieldHelp("operationField"))' @onmouseenter='@(() => SetFieldHelp("operationField"))'>
-                                                    @foreach (MetadataFieldDefinition field in GetEditableFields(operation))
+                                                    @foreach (MetadataFieldDefinition field in MetadataPresetUiHelper.GetEditableFields(SelectedRule.TargetScope, operation, _showAdvancedFields))
                                                     {
                                                         <option value="@field.Key">@field.Label</option>
                                                     }
                                                 </select>
                                                 <select class="form-input metadata-sentence-group" @bind="operation.ExclusiveGroup" @onfocus='@(() => SetFieldHelp("exclusiveGroup"))' @onmouseenter='@(() => SetFieldHelp("exclusiveGroup"))'>
-                                                    @foreach (MkvMetadataExclusiveGroup group in GetExclusiveGroupOptions())
+                                                    @foreach (MkvMetadataExclusiveGroup group in MetadataPresetUiHelper.GetExclusiveGroupOptions())
                                                     {
-                                                        <option value="@group">@GetExclusiveGroupLabel(group)</option>
+                                                        <option value="@group">@MetadataPresetUiHelper.GetExclusiveGroupLabel(group)</option>
                                                     }
                                                 </select>
                                             }
@@ -464,7 +146,7 @@
                                                         <option value="@MkvMetadataTagTarget.AllTracks">@AppText.T("web.metadata.tagTarget.AllTracks")</option>
                                                     </select>
                                                     <select class="form-input metadata-rule-select-medium" @bind="operation.TagKey" @onfocus='@(() => SetFieldHelp("tagKey"))' @onmouseenter='@(() => SetFieldHelp("tagKey"))'>
-                                                        @foreach (string tag in TagNames)
+                                                        @foreach (string tag in MetadataPresetUiHelper.GetTagNames())
                                                         {
                                                             <option value="@tag">@tag</option>
                                                         }
@@ -506,30 +188,6 @@
                 <aside class="metadata-rule-context-pane">
                     <div class="config-help-title">@_fieldHelpTitle</div>
                     <div class="config-help-text">@_fieldHelpText</div>
-
-                    <div class="config-help-section">@AppText.T("web.metadata.presetDialog.mediaInfoContextTitle")</div>
-                    @{
-                        MkvMetadataRecord sample = GetSampleRecord();
-                    }
-                    @if (sample == null || sample.FileInfo == null)
-                    {
-                        <div class="config-help-text">@AppText.T("web.metadata.presetDialog.mediaInfoContextEmpty")</div>
-                    }
-                    else
-                    {
-                        <div class="metadata-context-media">
-                            <div class="metadata-context-file">@System.IO.Path.GetFileName(sample.InputFile)</div>
-                            <div>@AppText.T("web.metadata.scope.container"): @DisplayValue(sample.FileInfo.ContainerTitle)</div>
-                            @foreach (MkvMetadataTrackInfo track in GetContextTracks(sample))
-                            {
-                                <div class="metadata-context-track">
-                                    <div>@track.TrackSelector @track.TrackKind @DisplayValue(track.Language) @DisplayValue(track.Format)</div>
-                                    <div>@AppText.T("web.metadata.detail.size"): @Utils.FormatSize(track.StreamSize)</div>
-                                    <div>@AppText.T("web.metadata.presetDialog.titleFieldLabel"): @DisplayValue(track.Title)</div>
-                                </div>
-                            }
-                        </div>
-                    }
 
                     <div class="config-help-section">@AppText.T("web.metadata.presetDialog.tokenBrowserTitle")</div>
                     <input class="form-input metadata-token-filter" @bind="_tokenBrowserFilter" @bind:event="oninput" placeholder="@AppText.T("web.metadata.presetDialog.tokenFilterPlaceholder")" />
@@ -655,16 +313,6 @@
         }
     }
 
-    private List<string> TagNames
-    {
-        get
-        {
-            List<string> result = MetadataTagRegistry.GetEditableTagNames();
-            result.Sort(StringComparer.CurrentCultureIgnoreCase);
-            return result;
-        }
-    }
-
     private void NewPreset()
     {
         this._preset = new MkvMetadataPreset();
@@ -770,7 +418,7 @@
     {
         MkvMetadataRule rule = new MkvMetadataRule();
         rule.Description = AppText.T("web.metadata.presetDialog.defaultRuleDescription");
-        EnsureRule(rule);
+        MetadataPresetUiHelper.EnsureRule(rule, this._showAdvancedFields);
         this._preset.Rules.Add(rule);
         this._selectedRuleIndex = this._preset.Rules.Count - 1;
     }
@@ -834,65 +482,17 @@
         if (Enum.TryParse(GetChangeValue(e), out parsed))
         {
             SelectedRule.TargetScope = parsed;
-            EnsureRule(SelectedRule);
+            MetadataPresetUiHelper.EnsureRule(SelectedRule, this._showAdvancedFields);
         }
-    }
-
-    private void AddFieldCondition()
-    {
-        if (SelectedRule == null) { return; }
-        SelectedRule.When.All.Add(CreateFieldConditionNode());
-    }
-
-    private void AddTrackComparison()
-    {
-        if (SelectedRule == null || !CanUseTrackConditions()) { return; }
-        SelectedRule.When.All.Add(CreateTrackComparisonNode());
-    }
-
-    private void AddTrackCount()
-    {
-        if (SelectedRule == null || !CanUseTrackConditions()) { return; }
-        SelectedRule.When.All.Add(CreateTrackGroupCountNode());
-    }
-
-    private void AddAlternative()
-    {
-        if (SelectedRule == null) { return; }
-        MkvMetadataRuleConditionNode node = new MkvMetadataRuleConditionNode();
-        node.NodeType = MkvMetadataRuleConditionNodeType.AlternativeAny;
-        node.Field = null;
-        node.Alternative = new MkvMetadataAlternativeAnyBlock();
-        node.Alternative.Any.Add(CreateFieldConditionNode());
-        SelectedRule.When.All.Add(node);
-    }
-
-    private void AddAlternativeFieldCondition(MkvMetadataRuleConditionNode alternative)
-    {
-        if (alternative == null) { return; }
-        if (alternative.Alternative == null) { alternative.Alternative = new MkvMetadataAlternativeAnyBlock(); }
-        alternative.Alternative.Any.Add(CreateFieldConditionNode());
-    }
-
-    private void AddAlternativeTrackComparison(MkvMetadataRuleConditionNode alternative)
-    {
-        if (alternative == null || !CanUseTrackConditions()) { return; }
-        if (alternative.Alternative == null) { alternative.Alternative = new MkvMetadataAlternativeAnyBlock(); }
-        alternative.Alternative.Any.Add(CreateTrackComparisonNode());
-    }
-
-    private void AddAlternativeTrackCount(MkvMetadataRuleConditionNode alternative)
-    {
-        if (alternative == null || !CanUseTrackConditions()) { return; }
-        if (alternative.Alternative == null) { alternative.Alternative = new MkvMetadataAlternativeAnyBlock(); }
-        alternative.Alternative.Any.Add(CreateTrackGroupCountNode());
     }
 
     private void AddOperation()
     {
-        if (SelectedRule == null) { return; }
+        if (SelectedRule == null)
+            return;
+
         MkvMetadataOperation operation = new MkvMetadataOperation();
-        EnsureOperation(operation);
+        MetadataPresetUiHelper.EnsureOperation(SelectedRule.TargetScope, operation, this._showAdvancedFields);
         SelectedRule.Operations.Add(operation);
     }
 
@@ -917,250 +517,21 @@
         }
     }
 
-    private void MoveNode(List<MkvMetadataRuleConditionNode> nodes, int index, int delta)
-    {
-        int target = index + delta;
-        if (nodes == null || index < 0 || index >= nodes.Count || target < 0 || target >= nodes.Count)
-        {
-            return;
-        }
-
-        MkvMetadataRuleConditionNode node = nodes[index];
-        nodes.RemoveAt(index);
-        nodes.Insert(target, node);
-    }
-
-    private void RemoveNode(List<MkvMetadataRuleConditionNode> nodes, int index)
-    {
-        if (nodes != null && index >= 0 && index < nodes.Count)
-        {
-            nodes.RemoveAt(index);
-        }
-    }
-
-    private MkvMetadataRuleConditionNode CreateFieldConditionNode()
-    {
-        MkvMetadataRuleConditionNode node = new MkvMetadataRuleConditionNode();
-        node.NodeType = MkvMetadataRuleConditionNodeType.Field;
-        node.Field = new MkvMetadataFieldCondition();
-        node.Field.FieldKey = GetDefaultFieldConditionField();
-        return node;
-    }
-
-    private MkvMetadataRuleConditionNode CreateTrackComparisonNode()
-    {
-        MkvMetadataRuleConditionNode node = new MkvMetadataRuleConditionNode();
-        node.NodeType = MkvMetadataRuleConditionNodeType.TrackComparison;
-        node.Field = null;
-        node.TrackComparison = new MkvMetadataTrackComparisonCondition();
-        node.TrackComparison.FieldKey = GetDefaultTrackComparisonField();
-        return node;
-    }
-
-    private MkvMetadataRuleConditionNode CreateTrackGroupCountNode()
-    {
-        MkvMetadataRuleConditionNode node = new MkvMetadataRuleConditionNode();
-        node.NodeType = MkvMetadataRuleConditionNodeType.TrackGroupCount;
-        node.Field = null;
-        node.TrackGroupCount = new MkvMetadataTrackGroupCountCondition();
-        return node;
-    }
-
     private void NormalizePresetModel()
     {
-        if (this._preset.Rules == null)
-        {
-            this._preset.Rules = new List<MkvMetadataRule>();
-        }
-
-        for (int i = 0; i < this._preset.Rules.Count; i++)
-        {
-            EnsureRule(this._preset.Rules[i]);
-        }
-    }
-
-    private void EnsureRule(MkvMetadataRule rule)
-    {
-        if (rule == null) { return; }
-        if (rule.Description == null) { rule.Description = ""; }
-        if (rule.When == null) { rule.When = new MkvMetadataRuleWhen(); }
-        if (rule.When.All == null) { rule.When.All = new List<MkvMetadataRuleConditionNode>(); }
-        for (int i = 0; i < rule.When.All.Count; i++)
-        {
-            EnsureNode(rule.When.All[i]);
-        }
-        if (rule.Operations == null) { rule.Operations = new List<MkvMetadataOperation>(); }
-        for (int i = 0; i < rule.Operations.Count; i++)
-        {
-            EnsureOperation(rule.Operations[i]);
-        }
-    }
-
-    private void EnsureNode(MkvMetadataRuleConditionNode node)
-    {
-        if (node == null) { return; }
-        if (node.NodeType == MkvMetadataRuleConditionNodeType.Field)
-        {
-            if (node.Field == null) { node.Field = new MkvMetadataFieldCondition(); }
-            node.TrackComparison = null;
-            node.TrackGroupCount = null;
-            node.Alternative = null;
-            EnsureFieldCondition(node.Field);
-        }
-        else if (node.NodeType == MkvMetadataRuleConditionNodeType.TrackComparison)
-        {
-            if (node.TrackComparison == null) { node.TrackComparison = new MkvMetadataTrackComparisonCondition(); }
-            node.Field = null;
-            node.TrackGroupCount = null;
-            node.Alternative = null;
-            EnsureTrackComparisonCondition(node.TrackComparison);
-        }
-        else if (node.NodeType == MkvMetadataRuleConditionNodeType.TrackGroupCount)
-        {
-            if (node.TrackGroupCount == null) { node.TrackGroupCount = new MkvMetadataTrackGroupCountCondition(); }
-            node.Field = null;
-            node.TrackComparison = null;
-            node.Alternative = null;
-        }
-        else if (node.NodeType == MkvMetadataRuleConditionNodeType.AlternativeAny)
-        {
-            if (node.Alternative == null) { node.Alternative = new MkvMetadataAlternativeAnyBlock(); }
-            if (node.Alternative.Any == null) { node.Alternative.Any = new List<MkvMetadataRuleConditionNode>(); }
-            node.Field = null;
-            node.TrackComparison = null;
-            node.TrackGroupCount = null;
-            for (int i = 0; i < node.Alternative.Any.Count; i++)
-            {
-                EnsureNode(node.Alternative.Any[i]);
-            }
-        }
-    }
-
-    private void EnsureFieldCondition(MkvMetadataFieldCondition condition)
-    {
-        if (condition == null) { return; }
-        if (condition.FieldKey == null || !ContainsField(GetReadableFieldsForCondition(), condition.FieldKey))
-        {
-            condition.FieldKey = GetDefaultFieldConditionField();
-        }
-        if (condition.Value == null) { condition.Value = ""; }
-        if (condition.Values == null) { condition.Values = new List<string>(); }
-        if (condition.FromValue == null) { condition.FromValue = ""; }
-        if (condition.ToValue == null) { condition.ToValue = ""; }
-        if (condition.Unit == null) { condition.Unit = ""; }
-        if (!ContainsOperator(GetFieldOperatorOptions(condition), condition.Operator))
-        {
-            condition.Operator = GetFieldOperatorOptions(condition)[0];
-        }
-    }
-
-    private void EnsureTrackComparisonCondition(MkvMetadataTrackComparisonCondition condition)
-    {
-        if (condition == null) { return; }
-        if (condition.FieldKey == null || !ContainsField(GetTrackComparableFields(), condition.FieldKey))
-        {
-            condition.FieldKey = GetDefaultTrackComparisonField();
-        }
-        if (!ContainsTrackComparisonRelation(GetTrackComparisonRelations(condition.FieldKey), condition.Relation))
-        {
-            condition.Relation = GetTrackComparisonRelations(condition.FieldKey)[0];
-        }
-        if (condition.Rank <= 0)
-        {
-            condition.Rank = 1;
-        }
-    }
-
-    private void EnsureOperation(MkvMetadataOperation operation)
-    {
-        if (operation == null) { return; }
-        if (!ContainsOperationType(GetOperationTypeOptions(), operation.Type))
-        {
-            operation.Type = MkvMetadataOperationType.SetField;
-        }
-        if (operation.FieldKey == null) { operation.FieldKey = ""; }
-        if (operation.Value == null) { operation.Value = ""; }
-        if (operation.TagKey == null) { operation.TagKey = ""; }
-        if (operation.TagKey.Length == 0 && TagNames.Count > 0)
-        {
-            operation.TagKey = TagNames[0];
-        }
-        if ((operation.Type == MkvMetadataOperationType.SetField || operation.Type == MkvMetadataOperationType.ClearField || operation.Type == MkvMetadataOperationType.SetExclusiveFlag) &&
-            !ContainsField(GetEditableFields(operation), operation.FieldKey))
-        {
-            List<MetadataFieldDefinition> fields = GetEditableFields(operation);
-            operation.FieldKey = fields.Count > 0 ? fields[0].Key : "";
-        }
-    }
-
-    private void ChangeFieldConditionField(MkvMetadataFieldCondition condition, string value)
-    {
-        if (condition == null) { return; }
-        condition.FieldKey = value != null ? value : "";
-        EnsureFieldCondition(condition);
-    }
-
-    private void ChangeFieldConditionOperator(MkvMetadataFieldCondition condition, string value)
-    {
-        MkvMetadataConditionOperator parsed;
-        if (condition == null) { return; }
-        if (Enum.TryParse(value, out parsed))
-        {
-            condition.Operator = parsed;
-            EnsureFieldCondition(condition);
-        }
-    }
-
-    private void ChangeTrackComparisonField(MkvMetadataTrackComparisonCondition condition, string value)
-    {
-        if (condition == null) { return; }
-        condition.FieldKey = value != null ? value : "";
-        EnsureTrackComparisonCondition(condition);
-    }
-
-    private void ChangeTrackComparisonRelation(MkvMetadataTrackComparisonCondition condition, string value)
-    {
-        MkvMetadataTrackComparisonRelation parsed;
-        if (condition == null) { return; }
-        if (Enum.TryParse(value, out parsed))
-        {
-            condition.Relation = parsed;
-            EnsureTrackComparisonCondition(condition);
-        }
+        MetadataPresetUiHelper.EnsurePreset(this._preset, this._showAdvancedFields);
     }
 
     private void ChangeOperationType(MkvMetadataOperation operation, string value)
     {
         MkvMetadataOperationType parsed;
-        if (operation == null) { return; }
+        if (operation == null || SelectedRule == null)
+            return;
+
         if (Enum.TryParse(value, out parsed))
         {
             operation.Type = parsed;
-            EnsureOperation(operation);
-        }
-    }
-
-    private void AddListValue(MkvMetadataFieldCondition condition)
-    {
-        if (condition != null)
-        {
-            condition.Values.Add("");
-        }
-    }
-
-    private void RemoveListValue(MkvMetadataFieldCondition condition, int index)
-    {
-        if (condition != null && index >= 0 && index < condition.Values.Count)
-        {
-            condition.Values.RemoveAt(index);
-        }
-    }
-
-    private void ChangeListValue(MkvMetadataFieldCondition condition, int index, string value)
-    {
-        if (condition != null && index >= 0 && index < condition.Values.Count)
-        {
-            condition.Values[index] = value != null ? value : "";
+            MetadataPresetUiHelper.EnsureOperation(SelectedRule.TargetScope, operation, this._showAdvancedFields);
         }
     }
 
@@ -1253,109 +624,18 @@
         this._functionExampleItem = null;
     }
 
-    private List<MetadataFieldDefinition> GetReadableFieldsForCondition()
-    {
-        List<MetadataFieldDefinition> all = MetadataFieldRegistry.GetAll();
-        List<MetadataFieldDefinition> result = new List<MetadataFieldDefinition>();
-        MkvMetadataTargetScope scope = SelectedRule != null ? SelectedRule.TargetScope : MkvMetadataTargetScope.Audio;
-        for (int i = 0; i < all.Count; i++)
-        {
-            if (!all[i].IsReadable) { continue; }
-            if (all[i].Sector == MetadataFieldSector.File || all[i].Sector == MetadataFieldSector.Container || IsSectorForScope(all[i].Sector, scope))
-            {
-                result.Add(all[i]);
-            }
-        }
-
-        SortFieldsByLabel(result);
-        return result;
-    }
-
-    private List<MetadataFieldDefinition> GetTrackComparableFields()
-    {
-        List<MetadataFieldDefinition> fields = GetReadableFieldsForCondition();
-        List<MetadataFieldDefinition> result = new List<MetadataFieldDefinition>();
-        MkvMetadataTargetScope scope = SelectedRule != null ? SelectedRule.TargetScope : MkvMetadataTargetScope.Audio;
-        for (int i = 0; i < fields.Count; i++)
-        {
-            if (IsSectorForScope(fields[i].Sector, scope) && fields[i].ValueType != MetadataFieldValueType.Boolean)
-            {
-                result.Add(fields[i]);
-            }
-        }
-
-        SortFieldsByLabel(result);
-        return result;
-    }
-
-    private List<MetadataFieldDefinition> GetEditableFields(MkvMetadataOperation operation)
-    {
-        List<MetadataFieldDefinition> fields = MetadataFieldRegistry.GetEditable(SelectedRule != null ? SelectedRule.TargetScope : MkvMetadataTargetScope.Audio, this._showAdvancedFields);
-        List<MetadataFieldDefinition> result = new List<MetadataFieldDefinition>();
-        for (int i = 0; i < fields.Count; i++)
-        {
-            if (operation.Type == MkvMetadataOperationType.ClearField && !fields[i].IsClearable) { continue; }
-            if (operation.Type == MkvMetadataOperationType.SetExclusiveFlag && fields[i].ValueType != MetadataFieldValueType.Boolean) { continue; }
-            result.Add(fields[i]);
-        }
-
-        SortFieldsByLabel(result);
-        return result;
-    }
-
-    private List<MkvMetadataConditionOperator> GetFieldOperatorOptions(MkvMetadataFieldCondition condition)
-    {
-        MetadataFieldDefinition field;
-        if (condition == null || !MetadataFieldRegistry.TryGet(condition.FieldKey, out field))
-        {
-            return GetTextOperatorOptions();
-        }
-        if (field.ValueType == MetadataFieldValueType.Boolean)
-        {
-            List<MkvMetadataConditionOperator> result = new List<MkvMetadataConditionOperator> { MkvMetadataConditionOperator.IsTrue, MkvMetadataConditionOperator.IsFalse };
-            SortConditionOperatorsByLabel(result);
-            return result;
-        }
-        if (IsNumericValueType(field.ValueType))
-        {
-            return GetNumericOperatorOptions(true);
-        }
-
-        return GetTextOperatorOptions();
-    }
-
-    private List<MkvMetadataOperationType> GetOperationTypeOptions()
-    {
-        List<MkvMetadataOperationType> result = new List<MkvMetadataOperationType>();
-        bool isContainer = SelectedRule == null || SelectedRule.TargetScope == MkvMetadataTargetScope.Container;
-
-        result.Add(MkvMetadataOperationType.SetField);
-        result.Add(MkvMetadataOperationType.ClearField);
-        if (!isContainer)
-        {
-            result.Add(MkvMetadataOperationType.SetExclusiveFlag);
-            result.Add(MkvMetadataOperationType.RemoveTrack);
-        }
-        result.Add(MkvMetadataOperationType.SetTagField);
-        result.Add(MkvMetadataOperationType.ClearTagField);
-        result.Add(MkvMetadataOperationType.ClearTags);
-        result.Add(MkvMetadataOperationType.AddOrUpdateTrackStatisticsTags);
-        result.Add(MkvMetadataOperationType.DeleteTrackStatisticsTags);
-        SortOperationTypesByLabel(result);
-        return result;
-    }
-
     private List<MetadataTokenBrowserItem> GetTokenBrowserItems()
     {
         List<MetadataTokenBrowserItem> result = new List<MetadataTokenBrowserItem>();
-        List<MetadataFieldDefinition> fields = GetReadableFieldsForCondition();
+        MkvMetadataTargetScope scope = SelectedRule != null ? SelectedRule.TargetScope : MkvMetadataTargetScope.Audio;
+        List<MetadataFieldDefinition> fields = MetadataPresetUiHelper.GetReadableFieldsForCondition(scope);
         string filter = this._tokenBrowserFilter != null ? this._tokenBrowserFilter.Trim() : "";
         for (int i = 0; i < fields.Count; i++)
         {
             string token = "[" + fields[i].Key + "]";
             if (filter.Length == 0 || ContainsIgnoreCase(token, filter) || ContainsIgnoreCase(fields[i].Label, filter))
             {
-                result.Add(new MetadataTokenBrowserItem { Token = token, Label = fields[i].Label, Description = GetSectorLabel(fields[i].Sector) });
+                result.Add(new MetadataTokenBrowserItem { Token = token, Label = fields[i].Label, Description = MetadataPresetUiHelper.GetSectorLabel(fields[i].Sector) });
             }
         }
 
@@ -1412,422 +692,9 @@
         });
     }
 
-    private List<MkvMetadataTrackInfo> GetContextTracks(MkvMetadataRecord record)
-    {
-        List<MkvMetadataTrackInfo> result = new List<MkvMetadataTrackInfo>();
-        MkvMetadataTargetScope scope = SelectedRule != null ? SelectedRule.TargetScope : MkvMetadataTargetScope.Audio;
-        if (record == null || record.FileInfo == null)
-        {
-            return result;
-        }
-
-        for (int i = 0; i < record.FileInfo.Tracks.Count; i++)
-        {
-            if (IsTrackScopeMatch(record.FileInfo.Tracks[i], scope))
-            {
-                result.Add(record.FileInfo.Tracks[i]);
-                if (result.Count >= 4)
-                {
-                    break;
-                }
-            }
-        }
-
-        return result;
-    }
-
-    private MkvMetadataRecord GetSampleRecord()
-    {
-        if (this.Records == null || this.Records.Count == 0)
-        {
-            return null;
-        }
-
-        for (int i = 0; i < this.Records.Count; i++)
-        {
-            if (this.Records[i] != null && this.Records[i].FileInfo != null && this.Records[i].FileInfo.FilePath.Length > 0)
-            {
-                return this.Records[i];
-            }
-        }
-
-        return this.Records[0];
-    }
-
-    private string GetDefaultFieldConditionField()
-    {
-        List<MetadataFieldDefinition> fields = GetReadableFieldsForCondition();
-        MkvMetadataTargetScope scope = SelectedRule != null ? SelectedRule.TargetScope : MkvMetadataTargetScope.Audio;
-        string preferred = scope == MkvMetadataTargetScope.Container ? "container_title" :
-            scope == MkvMetadataTargetScope.Video ? "video_format" :
-            scope == MkvMetadataTargetScope.Audio ? "audio_language" : "subtitle_language";
-
-        for (int i = 0; i < fields.Count; i++)
-        {
-            if (fields[i].Key == preferred)
-            {
-                return fields[i].Key;
-            }
-        }
-
-        return fields.Count > 0 ? fields[0].Key : "";
-    }
-
-    private string GetDefaultTrackComparisonField()
-    {
-        MkvMetadataTargetScope scope = SelectedRule != null ? SelectedRule.TargetScope : MkvMetadataTargetScope.Audio;
-        string preferred = scope == MkvMetadataTargetScope.Video ? "video_stream_size" :
-            scope == MkvMetadataTargetScope.Audio ? "audio_stream_size" : "subtitle_stream_size";
-        List<MetadataFieldDefinition> fields = GetTrackComparableFields();
-        for (int i = 0; i < fields.Count; i++)
-        {
-            if (fields[i].Key == preferred)
-            {
-                return fields[i].Key;
-            }
-        }
-
-        return fields.Count > 0 ? fields[0].Key : "";
-    }
-
-    private bool ShouldShowUnit(MkvMetadataFieldCondition condition)
-    {
-        MetadataFieldDefinition field;
-        return condition != null &&
-            MetadataFieldRegistry.TryGet(condition.FieldKey, out field) &&
-            (field.ValueType == MetadataFieldValueType.Bytes || field.ValueType == MetadataFieldValueType.Duration);
-    }
-
-    private List<string> GetUnits(string fieldKey)
-    {
-        MetadataFieldDefinition field;
-        List<string> result = new List<string>();
-        result.Add("");
-        if (!MetadataFieldRegistry.TryGet(fieldKey, out field))
-        {
-            return result;
-        }
-        if (field.ValueType == MetadataFieldValueType.Bytes)
-        {
-            result.Add("KB");
-            result.Add("MB");
-            result.Add("GB");
-            result.Add("KiB");
-            result.Add("MiB");
-            result.Add("GiB");
-        }
-        if (field.ValueType == MetadataFieldValueType.Duration)
-        {
-            result.Add("ms");
-            result.Add("s");
-            result.Add("min");
-            result.Add("h");
-        }
-
-        return result;
-    }
-
-    private bool CanUseTrackConditions()
-    {
-        return SelectedRule != null && SelectedRule.TargetScope != MkvMetadataTargetScope.Container;
-    }
-
-    private static bool IsSectorForScope(MetadataFieldSector sector, MkvMetadataTargetScope scope)
-    {
-        if (scope == MkvMetadataTargetScope.Video) { return sector == MetadataFieldSector.Video; }
-        if (scope == MkvMetadataTargetScope.Audio) { return sector == MetadataFieldSector.Audio; }
-        if (scope == MkvMetadataTargetScope.Subtitle) { return sector == MetadataFieldSector.Subtitle; }
-        return sector == MetadataFieldSector.Container || sector == MetadataFieldSector.File;
-    }
-
-    private static bool IsTrackScopeMatch(MkvMetadataTrackInfo track, MkvMetadataTargetScope scope)
-    {
-        if (track == null) { return false; }
-        if (scope == MkvMetadataTargetScope.Video) { return track.TrackKind == "video"; }
-        if (scope == MkvMetadataTargetScope.Audio) { return track.TrackKind == "audio"; }
-        if (scope == MkvMetadataTargetScope.Subtitle) { return track.TrackKind == "subtitles"; }
-        return false;
-    }
-
-    private static bool IsNumericValueType(MetadataFieldValueType valueType)
-    {
-        return valueType == MetadataFieldValueType.Integer ||
-            valueType == MetadataFieldValueType.Decimal ||
-            valueType == MetadataFieldValueType.Bytes ||
-            valueType == MetadataFieldValueType.Duration;
-    }
-
-    private static bool OperatorNeedsValue(MkvMetadataConditionOperator conditionOperator)
-    {
-        return conditionOperator != MkvMetadataConditionOperator.IsEmpty &&
-            conditionOperator != MkvMetadataConditionOperator.IsNotEmpty &&
-            conditionOperator != MkvMetadataConditionOperator.IsTrue &&
-            conditionOperator != MkvMetadataConditionOperator.IsFalse;
-    }
-
-    private static List<MkvMetadataConditionOperator> GetTextOperatorOptions()
-    {
-        List<MkvMetadataConditionOperator> result = new List<MkvMetadataConditionOperator>
-        {
-            MkvMetadataConditionOperator.Equals,
-            MkvMetadataConditionOperator.NotEquals,
-            MkvMetadataConditionOperator.Contains,
-            MkvMetadataConditionOperator.NotContains,
-            MkvMetadataConditionOperator.StartsWith,
-            MkvMetadataConditionOperator.EndsWith,
-            MkvMetadataConditionOperator.Regex,
-            MkvMetadataConditionOperator.NotRegex,
-            MkvMetadataConditionOperator.InList,
-            MkvMetadataConditionOperator.NotInList,
-            MkvMetadataConditionOperator.IsEmpty,
-            MkvMetadataConditionOperator.IsNotEmpty
-        };
-        SortConditionOperatorsByLabel(result);
-        return result;
-    }
-
-    private static List<MkvMetadataConditionOperator> GetNumericOperatorOptions(bool includeBetween)
-    {
-        List<MkvMetadataConditionOperator> result = new List<MkvMetadataConditionOperator>
-        {
-            MkvMetadataConditionOperator.Equals,
-            MkvMetadataConditionOperator.NotEquals,
-            MkvMetadataConditionOperator.GreaterThan,
-            MkvMetadataConditionOperator.GreaterOrEqual,
-            MkvMetadataConditionOperator.LessThan,
-            MkvMetadataConditionOperator.LessOrEqual
-        };
-        if (includeBetween)
-        {
-            result.Add(MkvMetadataConditionOperator.Between);
-            result.Add(MkvMetadataConditionOperator.NotBetween);
-        }
-        result.Add(MkvMetadataConditionOperator.IsEmpty);
-        result.Add(MkvMetadataConditionOperator.IsNotEmpty);
-        SortConditionOperatorsByLabel(result);
-        return result;
-    }
-
-    private static List<MkvMetadataTrackComparisonRelation> GetTrackComparisonRelations(string fieldKey)
-    {
-        MetadataFieldDefinition field;
-        if (MetadataFieldRegistry.TryGet(fieldKey, out field) && !IsNumericValueType(field.ValueType))
-        {
-            List<MkvMetadataTrackComparisonRelation> textResult = new List<MkvMetadataTrackComparisonRelation>
-            {
-                MkvMetadataTrackComparisonRelation.EqualsAny,
-                MkvMetadataTrackComparisonRelation.NotEqualsAll
-            };
-            SortTrackComparisonRelationsByLabel(textResult);
-            return textResult;
-        }
-
-        List<MkvMetadataTrackComparisonRelation> result = new List<MkvMetadataTrackComparisonRelation>
-        {
-            MkvMetadataTrackComparisonRelation.Largest,
-            MkvMetadataTrackComparisonRelation.Smallest,
-            MkvMetadataTrackComparisonRelation.GreaterThanAll,
-            MkvMetadataTrackComparisonRelation.GreaterOrEqualAll,
-            MkvMetadataTrackComparisonRelation.LessThanAll,
-            MkvMetadataTrackComparisonRelation.LessOrEqualAll,
-            MkvMetadataTrackComparisonRelation.Rank
-        };
-        SortTrackComparisonRelationsByLabel(result);
-        return result;
-    }
-
-    private static List<MkvMetadataTrackGroup> GetTrackGroupOptions()
-    {
-        List<MkvMetadataTrackGroup> result = new List<MkvMetadataTrackGroup>
-        {
-            MkvMetadataTrackGroup.SameLanguage,
-            MkvMetadataTrackGroup.SameFormat,
-            MkvMetadataTrackGroup.SameLanguageAndFormat,
-            MkvMetadataTrackGroup.AllInScope
-        };
-        SortTrackGroupsByLabel(result);
-        return result;
-    }
-
-    private static List<MkvMetadataExclusiveGroup> GetExclusiveGroupOptions()
-    {
-        List<MkvMetadataExclusiveGroup> result = new List<MkvMetadataExclusiveGroup>
-        {
-            MkvMetadataExclusiveGroup.SameLanguage,
-            MkvMetadataExclusiveGroup.SameFormat,
-            MkvMetadataExclusiveGroup.SameLanguageAndFormat,
-            MkvMetadataExclusiveGroup.AllInScope
-        };
-        SortExclusiveGroupsByLabel(result);
-        return result;
-    }
-
-    private static List<MkvMetadataTargetScope> GetScopeOptions()
-    {
-        List<MkvMetadataTargetScope> result = new List<MkvMetadataTargetScope>
-        {
-            MkvMetadataTargetScope.Container,
-            MkvMetadataTargetScope.Video,
-            MkvMetadataTargetScope.Audio,
-            MkvMetadataTargetScope.Subtitle
-        };
-        SortScopesByLabel(result);
-        return result;
-    }
-
-    private static void SortFieldsByLabel(List<MetadataFieldDefinition> fields)
-    {
-        fields.Sort((a, b) => string.Compare(a != null ? a.Label : "", b != null ? b.Label : "", StringComparison.CurrentCultureIgnoreCase));
-    }
-
-    private static void SortConditionOperatorsByLabel(List<MkvMetadataConditionOperator> operators)
-    {
-        operators.Sort((a, b) => string.Compare(GetConditionOperatorLabel(a), GetConditionOperatorLabel(b), StringComparison.CurrentCultureIgnoreCase));
-    }
-
-    private static void SortOperationTypesByLabel(List<MkvMetadataOperationType> operationTypes)
-    {
-        operationTypes.Sort((a, b) => string.Compare(GetOperationTypeLabel(a), GetOperationTypeLabel(b), StringComparison.CurrentCultureIgnoreCase));
-    }
-
-    private static void SortTrackComparisonRelationsByLabel(List<MkvMetadataTrackComparisonRelation> relations)
-    {
-        relations.Sort((a, b) => string.Compare(GetTrackComparisonRelationLabel(a), GetTrackComparisonRelationLabel(b), StringComparison.CurrentCultureIgnoreCase));
-    }
-
-    private static void SortTrackGroupsByLabel(List<MkvMetadataTrackGroup> groups)
-    {
-        groups.Sort((a, b) => string.Compare(GetTrackGroupLabel(a), GetTrackGroupLabel(b), StringComparison.CurrentCultureIgnoreCase));
-    }
-
-    private static void SortExclusiveGroupsByLabel(List<MkvMetadataExclusiveGroup> groups)
-    {
-        groups.Sort((a, b) => string.Compare(GetExclusiveGroupLabel(a), GetExclusiveGroupLabel(b), StringComparison.CurrentCultureIgnoreCase));
-    }
-
-    private static void SortScopesByLabel(List<MkvMetadataTargetScope> scopes)
-    {
-        scopes.Sort((a, b) => string.Compare(GetScopeLabel(a), GetScopeLabel(b), StringComparison.CurrentCultureIgnoreCase));
-    }
-
-    private static bool ContainsField(List<MetadataFieldDefinition> fields, string fieldKey)
-    {
-        for (int i = 0; i < fields.Count; i++)
-        {
-            if (fields[i].Key == fieldKey)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool ContainsOperator(List<MkvMetadataConditionOperator> operators, MkvMetadataConditionOperator value)
-    {
-        for (int i = 0; i < operators.Count; i++)
-        {
-            if (operators[i] == value)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool ContainsTrackComparisonRelation(List<MkvMetadataTrackComparisonRelation> relations, MkvMetadataTrackComparisonRelation value)
-    {
-        for (int i = 0; i < relations.Count; i++)
-        {
-            if (relations[i] == value)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool ContainsOperationType(List<MkvMetadataOperationType> operations, MkvMetadataOperationType value)
-    {
-        for (int i = 0; i < operations.Count; i++)
-        {
-            if (operations[i] == value)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static string GetInputType(string fieldKey)
-    {
-        MetadataFieldDefinition field;
-        if (!MetadataFieldRegistry.TryGet(fieldKey, out field))
-        {
-            return "text";
-        }
-        if (field.ValueType == MetadataFieldValueType.Integer || field.ValueType == MetadataFieldValueType.Decimal || field.ValueType == MetadataFieldValueType.Bytes || field.ValueType == MetadataFieldValueType.Duration)
-        {
-            return "number";
-        }
-        if (field.ValueType == MetadataFieldValueType.Date)
-        {
-            return "text";
-        }
-
-        return "text";
-    }
-
-    private static string GetScopeLabel(MkvMetadataTargetScope scope)
-    {
-        if (scope == MkvMetadataTargetScope.Container) { return AppText.T("web.metadata.scope.container"); }
-        if (scope == MkvMetadataTargetScope.Video) { return AppText.T("web.metadata.scope.video"); }
-        if (scope == MkvMetadataTargetScope.Audio) { return AppText.T("web.metadata.scope.audio"); }
-        if (scope == MkvMetadataTargetScope.Subtitle) { return AppText.T("web.metadata.scope.subtitle"); }
-        return scope.ToString();
-    }
-
-    private static string GetSectorLabel(MetadataFieldSector sector)
-    {
-        return AppText.T("web.metadata.fieldSector." + sector.ToString());
-    }
-
-    private static string GetConditionOperatorLabel(MkvMetadataConditionOperator op)
-    {
-        return AppText.T("web.metadata.conditionOperator." + op.ToString());
-    }
-
-    private static string GetOperationTypeLabel(MkvMetadataOperationType operationType)
-    {
-        return AppText.T("web.metadata.operation." + operationType.ToString());
-    }
-
-    private static string GetTrackComparisonRelationLabel(MkvMetadataTrackComparisonRelation relation)
-    {
-        return AppText.T("web.metadata.trackComparison." + relation.ToString());
-    }
-
-    private static string GetTrackGroupLabel(MkvMetadataTrackGroup group)
-    {
-        return AppText.T("web.metadata.trackGroup." + group.ToString());
-    }
-
-    private static string GetExclusiveGroupLabel(MkvMetadataExclusiveGroup group)
-    {
-        return AppText.T("web.metadata.exclusiveGroup." + group.ToString());
-    }
-
     private static string GetRuleListDescription(MkvMetadataRule rule)
     {
         return rule != null && rule.Description != null && rule.Description.Trim().Length > 0 ? rule.Description : AppText.T("web.metadata.presetDialog.ruleWithoutDescription");
-    }
-
-    private static string DisplayValue(string value)
-    {
-        return value != null && value.Length > 0 ? value : "-";
     }
 
     private static string AppendToken(string value, string token)

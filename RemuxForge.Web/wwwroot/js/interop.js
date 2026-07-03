@@ -1,4 +1,4 @@
-var initializedWindowDragElements = new WeakSet();
+var windowDragStates = new Map();
 
 // Keyboard capture - filtra tasti e inoltra a .NET
 export function captureKeyboard(dotNetRef) {
@@ -293,58 +293,89 @@ export function initWindowDrag(windowId, titlebarId, resizeHandleId) {
     if (!win || !titlebar) {
         return;
     }
-    if (initializedWindowDragElements.has(win)) {
+    if (windowDragStates.has(windowId)) {
         return;
     }
-    initializedWindowDragElements.add(win);
 
-    var isDragging = false;
-    var isResizing = false;
-    var dragOffsetX = 0;
-    var dragOffsetY = 0;
+    var state = {
+        isDragging: false,
+        isResizing: false,
+        dragOffsetX: 0,
+        dragOffsetY: 0,
+        titlebar: titlebar,
+        resizeHandle: resizeHandle,
+        handleTitleMouseDown: null,
+        handleResizeMouseDown: null,
+        handleDocumentMouseMove: null,
+        handleDocumentMouseUp: null
+    };
 
-    titlebar.addEventListener('mousedown', function (e) {
-        isDragging = true;
-        dragOffsetX = e.clientX - win.offsetLeft;
-        dragOffsetY = e.clientY - win.offsetTop;
+    state.handleTitleMouseDown = function (e) {
+        state.isDragging = true;
+        state.dragOffsetX = e.clientX - win.offsetLeft;
+        state.dragOffsetY = e.clientY - win.offsetTop;
         e.preventDefault();
-    });
+    };
 
-    if (resizeHandle) {
-        resizeHandle.addEventListener('mousedown', function (e) {
-            isResizing = true;
-            e.preventDefault();
-            e.stopPropagation();
-        });
-    }
+    state.handleResizeMouseDown = function (e) {
+        state.isResizing = true;
+        e.preventDefault();
+        e.stopPropagation();
+    };
 
-    document.addEventListener('mousemove', function (e) {
-        if (isDragging) {
-            var newX = e.clientX - dragOffsetX;
-            var newY = e.clientY - dragOffsetY;
-
+    state.handleDocumentMouseMove = function (e) {
+        if (state.isDragging) {
+            var newX = e.clientX - state.dragOffsetX;
+            var newY = e.clientY - state.dragOffsetY;
             newX = Math.max(0, Math.min(newX, window.innerWidth - 50));
             newY = Math.max(0, Math.min(newY, window.innerHeight - 50));
-
             win.style.left = newX + 'px';
             win.style.top = newY + 'px';
         }
 
-        if (isResizing) {
+        if (state.isResizing) {
             var newWidth = e.clientX - win.offsetLeft;
             var newHeight = e.clientY - win.offsetTop;
-
             newWidth = Math.max(300, newWidth);
             newHeight = Math.max(150, newHeight);
-
             win.style.width = newWidth + 'px';
             win.style.height = newHeight + 'px';
             window.dispatchEvent(new Event('resize'));
         }
-    });
+    };
 
-    document.addEventListener('mouseup', function () {
-        isDragging = false;
-        isResizing = false;
-    });
+    state.handleDocumentMouseUp = function () {
+        state.isDragging = false;
+        state.isResizing = false;
+    };
+
+    titlebar.addEventListener('mousedown', state.handleTitleMouseDown);
+    if (resizeHandle) {
+        resizeHandle.addEventListener('mousedown', state.handleResizeMouseDown);
+    }
+    document.addEventListener('mousemove', state.handleDocumentMouseMove);
+    document.addEventListener('mouseup', state.handleDocumentMouseUp);
+    windowDragStates.set(windowId, state);
+}
+
+// Rimuove drag e resize per una finestra flottante
+export function disposeWindowDrag(windowId) {
+    var state = windowDragStates.get(windowId);
+    if (!state) {
+        return;
+    }
+
+    if (state.titlebar && state.handleTitleMouseDown) {
+        state.titlebar.removeEventListener('mousedown', state.handleTitleMouseDown);
+    }
+    if (state.resizeHandle && state.handleResizeMouseDown) {
+        state.resizeHandle.removeEventListener('mousedown', state.handleResizeMouseDown);
+    }
+    if (state.handleDocumentMouseMove) {
+        document.removeEventListener('mousemove', state.handleDocumentMouseMove);
+    }
+    if (state.handleDocumentMouseUp) {
+        document.removeEventListener('mouseup', state.handleDocumentMouseUp);
+    }
+    windowDragStates.delete(windowId);
 }

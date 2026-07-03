@@ -12,6 +12,7 @@
 
 /* Application styles */
 @import 'layout.css';
+@import 'metadata.css';
 @import 'components.css';
 @import 'renamer.css';
 

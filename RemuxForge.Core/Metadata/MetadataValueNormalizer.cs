@@ -1,3 +1,4 @@
+using RemuxForge.Core.Models;
 using System;
 using System.Globalization;
 using System.Text;
@@ -121,6 +122,19 @@ namespace RemuxForge.Core.Metadata
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Indica se il tipo metadata è numerico o confrontabile come numero
+        /// </summary>
+        /// <param name="valueType">Tipo valore metadata</param>
+        /// <returns>Vero se il tipo è numerico</returns>
+        public static bool IsNumericValueType(MetadataFieldValueType valueType)
+        {
+            return valueType == MetadataFieldValueType.Integer ||
+                valueType == MetadataFieldValueType.Decimal ||
+                valueType == MetadataFieldValueType.Bytes ||
+                valueType == MetadataFieldValueType.Duration;
         }
 
         /// <summary>

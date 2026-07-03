@@ -1,0 +1,445 @@
+@using System.Threading.Tasks
+
+<div class="metadata-condition-stack @(Nested ? "metadata-condition-stack-nested" : "")">
+    @if (Nodes != null)
+    {
+        @for (int i = 0; i < Nodes.Count; i++)
+        {
+            int nodeIndex = i;
+            MkvMetadataRuleConditionNode node = Nodes[nodeIndex];
+
+            <div class="metadata-sentence-card @(node.NodeType == MkvMetadataRuleConditionNodeType.AlternativeAny ? "metadata-alternative-card" : "") @(Nested ? "metadata-sentence-card-nested" : "")">
+                @if (node.NodeType == MkvMetadataRuleConditionNodeType.AlternativeAny)
+                {
+                    <div class="metadata-alternative-header">
+                        <div>
+                            <div class="metadata-sentence-card-title">@AppText.T("web.metadata.presetDialog.alternativeTitle")</div>
+                            <div class="metadata-rule-section-caption">@AppText.T("web.metadata.presetDialog.alternativeCaption")</div>
+                        </div>
+                        @NodeActions(Nodes, nodeIndex)
+                    </div>
+                    <MetadataConditionListComponent Rule="Rule" Nodes="node.Alternative.Any" Nested="true" AllowAlternative="false" OnFieldActivated="OnFieldActivated" OnHelpChanged="OnHelpChanged" />
+                }
+                else if (node.NodeType == MkvMetadataRuleConditionNodeType.TrackComparison)
+                {
+                    MkvMetadataTrackComparisonCondition condition = node.TrackComparison;
+                    <div class="metadata-sentence-row">
+                        <span class="metadata-sentence-kind">@AppText.T("web.metadata.presetDialog.trackComparisonShort")</span>
+                        <select class="form-input metadata-sentence-field" value="@condition.FieldKey" @onchange="@((ChangeEventArgs e) => ChangeTrackComparisonField(condition, GetChangeValue(e)))" @onfocus='@(() => SetFieldHelp("trackComparison"))' @onmouseenter='@(() => SetFieldHelp("trackComparison"))'>
+                            @foreach (MetadataFieldDefinition field in MetadataPresetUiHelper.GetTrackComparableFields(Scope))
+                            {
+                                <option value="@field.Key">@field.Label</option>
+                            }
+                        </select>
+                        <select class="form-input metadata-sentence-operator" value="@condition.Relation" @onchange="@((ChangeEventArgs e) => ChangeTrackComparisonRelation(condition, GetChangeValue(e)))" @onfocus='@(() => SetFieldHelp("trackComparison"))' @onmouseenter='@(() => SetFieldHelp("trackComparison"))'>
+                            @foreach (MkvMetadataTrackComparisonRelation relation in MetadataPresetUiHelper.GetTrackComparisonRelations(condition.FieldKey))
+                            {
+                                <option value="@relation">@MetadataPresetUiHelper.GetTrackComparisonRelationLabel(relation)</option>
+                            }
+                        </select>
+                        @if (condition.Relation == MkvMetadataTrackComparisonRelation.Rank)
+                        {
+                            <input type="number" min="1" class="form-input metadata-rank-input" @bind="condition.Rank" />
+                        }
+                        <select class="form-input metadata-sentence-group" @bind="condition.Group" @onfocus='@(() => SetFieldHelp("trackGroup"))' @onmouseenter='@(() => SetFieldHelp("trackGroup"))'>
+                            @foreach (MkvMetadataTrackGroup group in MetadataPresetUiHelper.GetTrackGroupOptions())
+                            {
+                                <option value="@group">@MetadataPresetUiHelper.GetTrackGroupLabel(group)</option>
+                            }
+                        </select>
+                        @NodeActions(Nodes, nodeIndex)
+                    </div>
+                }
+                else if (node.NodeType == MkvMetadataRuleConditionNodeType.TrackGroupCount)
+                {
+                    MkvMetadataTrackGroupCountCondition condition = node.TrackGroupCount;
+                    <div class="metadata-sentence-row">
+                        <span class="metadata-sentence-kind">@AppText.T("web.metadata.presetDialog.trackCountPrefix")</span>
+                        <select class="form-input metadata-sentence-group" @bind="condition.Group" @onfocus='@(() => SetFieldHelp("trackGroupCount"))' @onmouseenter='@(() => SetFieldHelp("trackGroupCount"))'>
+                            @foreach (MkvMetadataTrackGroup group in MetadataPresetUiHelper.GetTrackGroupOptions())
+                            {
+                                <option value="@group">@MetadataPresetUiHelper.GetTrackGroupLabel(group)</option>
+                            }
+                        </select>
+                        <select class="form-input metadata-sentence-operator" @bind="condition.Operator">
+                            @foreach (MkvMetadataConditionOperator op in MetadataPresetUiHelper.GetNumericOperatorOptions(false))
+                            {
+                                <option value="@op">@MetadataPresetUiHelper.GetConditionOperatorLabel(op)</option>
+                            }
+                        </select>
+                        <input type="number" min="0" class="form-input metadata-rank-input" @bind="condition.Value" />
+                        @NodeActions(Nodes, nodeIndex)
+                    </div>
+                }
+                else
+                {
+                    MkvMetadataFieldCondition condition = node.Field;
+                    <div class="metadata-sentence-row">
+                        <select class="form-input metadata-sentence-field" value="@condition.FieldKey" @onchange="@((ChangeEventArgs e) => ChangeFieldConditionField(condition, GetChangeValue(e)))" @onfocus="@(() => ActivateFieldConditionAsync(condition))" @onmouseenter='@(() => SetFieldHelp("conditionField"))'>
+                            @foreach (MetadataFieldDefinition field in MetadataPresetUiHelper.GetReadableFieldsForCondition(Scope))
+                            {
+                                <option value="@field.Key">@field.Label</option>
+                            }
+                        </select>
+                        <select class="form-input metadata-sentence-operator" value="@condition.Operator" @onchange="@((ChangeEventArgs e) => ChangeFieldConditionOperator(condition, GetChangeValue(e)))" @onfocus="@(() => ActivateFieldConditionAsync(condition))" @onmouseenter='@(() => SetFieldHelp("conditionOperator"))'>
+                            @foreach (MkvMetadataConditionOperator op in MetadataPresetUiHelper.GetFieldOperatorOptions(condition.FieldKey))
+                            {
+                                <option value="@op">@MetadataPresetUiHelper.GetConditionOperatorLabel(op)</option>
+                            }
+                        </select>
+                        @if (MetadataPresetUiHelper.OperatorNeedsValue(condition.Operator))
+                        {
+                            @if (condition.Operator == MkvMetadataConditionOperator.InList || condition.Operator == MkvMetadataConditionOperator.NotInList)
+                            {
+                                <div class="metadata-chip-editor">
+                                    @for (int j = 0; j < condition.Values.Count; j++)
+                                    {
+                                        int valueIndex = j;
+                                        <span class="metadata-chip">
+                                            <input value="@condition.Values[valueIndex]" @oninput="@((ChangeEventArgs e) => ChangeListValue(condition, valueIndex, GetChangeValue(e)))" @onfocus="@(() => ActivateFieldConditionAsync(condition))" />
+                                            <button @onclick="() => RemoveListValue(condition, valueIndex)">x</button>
+                                        </span>
+                                    }
+                                    <button @onclick="() => AddListValue(condition)">+</button>
+                                </div>
+                            }
+                            else if (condition.Operator == MkvMetadataConditionOperator.Between || condition.Operator == MkvMetadataConditionOperator.NotBetween)
+                            {
+                                <div class="metadata-range-editor">
+                                    <input class="form-input" type="@MetadataPresetUiHelper.GetInputType(condition.FieldKey)" value="@condition.FromValue" @oninput="@((ChangeEventArgs e) => condition.FromValue = GetChangeValue(e))" @onfocus="@(() => ActivateFieldConditionAsync(condition))" />
+                                    <span>@AppText.T("web.metadata.presetDialog.rangeTo")</span>
+                                    <input class="form-input" type="@MetadataPresetUiHelper.GetInputType(condition.FieldKey)" value="@condition.ToValue" @oninput="@((ChangeEventArgs e) => condition.ToValue = GetChangeValue(e))" @onfocus="@(() => ActivateFieldConditionAsync(condition))" />
+                                    @UnitSelector(condition)
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="metadata-value-editor">
+                                    <input class="form-input" type="@MetadataPresetUiHelper.GetInputType(condition.FieldKey)" value="@condition.Value" @oninput="@((ChangeEventArgs e) => condition.Value = GetChangeValue(e))" @onfocus="@(() => ActivateFieldConditionAsync(condition))" @onmouseenter='@(() => SetFieldHelp("conditionValue"))' />
+                                    @UnitSelector(condition)
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <span class="metadata-sentence-placeholder"></span>
+                        }
+                        @NodeActions(Nodes, nodeIndex)
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+<div class="metadata-rule-button-row">
+    <button @onclick="AddFieldCondition">@AppText.T("web.metadata.presetDialog.addCondition")</button>
+    @if (MetadataPresetUiHelper.CanUseTrackConditions(Scope))
+    {
+        <button @onclick="AddTrackComparison">@AppText.T("web.metadata.presetDialog.addTrackComparisonSentence")</button>
+        <button @onclick="AddTrackCount">@AppText.T("web.metadata.presetDialog.addTrackCount")</button>
+    }
+    @if (AllowAlternative)
+    {
+        <button @onclick="AddAlternative">@AppText.T("web.metadata.presetDialog.addAlternative")</button>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Regola proprietaria delle condizioni
+    /// </summary>
+    [Parameter] public MkvMetadataRule Rule { get; set; }
+
+    /// <summary>
+    /// Nodi condizione da renderizzare
+    /// </summary>
+    [Parameter] public List<MkvMetadataRuleConditionNode> Nodes { get; set; }
+
+    /// <summary>
+    /// Indica se la lista è annidata dentro un blocco OR
+    /// </summary>
+    [Parameter] public bool Nested { get; set; }
+
+    /// <summary>
+    /// Indica se la lista può aggiungere blocchi OR
+    /// </summary>
+    [Parameter] public bool AllowAlternative { get; set; } = true;
+
+    /// <summary>
+    /// Evento attivazione campo condizione per il token browser
+    /// </summary>
+    [Parameter] public EventCallback<MkvMetadataFieldCondition> OnFieldActivated { get; set; }
+
+    /// <summary>
+    /// Evento cambio help contestuale
+    /// </summary>
+    [Parameter] public EventCallback<string> OnHelpChanged { get; set; }
+
+    /// <summary>
+    /// Ambito corrente della regola
+    /// </summary>
+    private MkvMetadataTargetScope Scope
+    {
+        get
+        {
+            return this.Rule != null ? this.Rule.TargetScope : MkvMetadataTargetScope.Audio;
+        }
+    }
+
+    /// <summary>
+    /// Normalizza i nodi prima del render
+    /// </summary>
+    protected override void OnParametersSet()
+    {
+        if (this.Nodes == null)
+            return;
+
+        for (int i = 0; i < this.Nodes.Count; i++)
+            MetadataPresetUiHelper.EnsureNode(this.Rule, this.Nodes[i]);
+    }
+
+    /// <summary>
+    /// Renderizza i controlli movimento/rimozione del nodo
+    /// </summary>
+    /// <param name="nodes">Lista proprietaria</param>
+    /// <param name="index">Indice nodo</param>
+    /// <returns>Markup azioni</returns>
+    private RenderFragment NodeActions(List<MkvMetadataRuleConditionNode> nodes, int index)
+    {
+        return @<div class="metadata-node-actions">
+            <button @onclick="() => this.MoveNode(nodes, index, -1)" disabled="@(index == 0)">^</button>
+            <button @onclick="() => this.MoveNode(nodes, index, 1)" disabled="@(nodes == null || index >= nodes.Count - 1)">v</button>
+            <button @onclick="() => this.RemoveNode(nodes, index)">x</button>
+        </div>;
+    }
+
+    /// <summary>
+    /// Renderizza il selettore unità quando richiesto dal campo
+    /// </summary>
+    /// <param name="condition">Condizione campo</param>
+    /// <returns>Markup selettore unità</returns>
+    private RenderFragment UnitSelector(MkvMetadataFieldCondition condition)
+    {
+        return @<text>
+            @if (MetadataPresetUiHelper.ShouldShowUnit(condition.FieldKey))
+            {
+                <select class="form-input metadata-rule-select-unit" @bind="condition.Unit" @onfocus='@(() => this.SetFieldHelp("conditionUnit"))' @onmouseenter='@(() => this.SetFieldHelp("conditionUnit"))'>
+                    @foreach (string unit in MetadataPresetUiHelper.GetUnits(condition.FieldKey))
+                    {
+                        <option value="@unit">@(unit.Length == 0 ? AppText.T("web.metadata.unit.none") : unit)</option>
+                    }
+                </select>
+            }
+        </text>;
+    }
+
+    /// <summary>
+    /// Aggiunge una condizione su campo
+    /// </summary>
+    private void AddFieldCondition()
+    {
+        this.AddNode(MetadataPresetUiHelper.CreateFieldConditionNode(this.Scope));
+    }
+
+    /// <summary>
+    /// Aggiunge una condizione confronto tracce
+    /// </summary>
+    private void AddTrackComparison()
+    {
+        if (!MetadataPresetUiHelper.CanUseTrackConditions(this.Scope))
+            return;
+
+        this.AddNode(MetadataPresetUiHelper.CreateTrackComparisonNode(this.Scope));
+    }
+
+    /// <summary>
+    /// Aggiunge una condizione conteggio tracce
+    /// </summary>
+    private void AddTrackCount()
+    {
+        if (!MetadataPresetUiHelper.CanUseTrackConditions(this.Scope))
+            return;
+
+        this.AddNode(MetadataPresetUiHelper.CreateTrackGroupCountNode());
+    }
+
+    /// <summary>
+    /// Aggiunge un blocco OR
+    /// </summary>
+    private void AddAlternative()
+    {
+        if (!this.AllowAlternative || this.Nodes == null)
+            return;
+
+        MkvMetadataRuleConditionNode node = new MkvMetadataRuleConditionNode();
+        node.NodeType = MkvMetadataRuleConditionNodeType.AlternativeAny;
+        node.Field = null;
+        node.Alternative = new MkvMetadataAlternativeAnyBlock();
+        node.Alternative.Any.Add(MetadataPresetUiHelper.CreateFieldConditionNode(this.Scope));
+        this.Nodes.Add(node);
+    }
+
+    /// <summary>
+    /// Aggiunge un nodo alla lista corrente
+    /// </summary>
+    /// <param name="node">Nodo da aggiungere</param>
+    private void AddNode(MkvMetadataRuleConditionNode node)
+    {
+        if (this.Nodes == null)
+            return;
+
+        this.Nodes.Add(node);
+    }
+
+    /// <summary>
+    /// Sposta un nodo
+    /// </summary>
+    /// <param name="nodes">Lista proprietaria</param>
+    /// <param name="index">Indice di partenza</param>
+    /// <param name="delta">Spostamento richiesto</param>
+    private void MoveNode(List<MkvMetadataRuleConditionNode> nodes, int index, int delta)
+    {
+        int target = index + delta;
+        if (nodes == null || index < 0 || index >= nodes.Count || target < 0 || target >= nodes.Count)
+            return;
+
+        MkvMetadataRuleConditionNode node = nodes[index];
+        nodes.RemoveAt(index);
+        nodes.Insert(target, node);
+    }
+
+    /// <summary>
+    /// Rimuove un nodo
+    /// </summary>
+    /// <param name="nodes">Lista proprietaria</param>
+    /// <param name="index">Indice nodo</param>
+    private void RemoveNode(List<MkvMetadataRuleConditionNode> nodes, int index)
+    {
+        if (nodes != null && index >= 0 && index < nodes.Count)
+            nodes.RemoveAt(index);
+    }
+
+    /// <summary>
+    /// Cambia il campo di una condizione campo
+    /// </summary>
+    /// <param name="condition">Condizione da aggiornare</param>
+    /// <param name="value">Nuova chiave campo</param>
+    private void ChangeFieldConditionField(MkvMetadataFieldCondition condition, string value)
+    {
+        if (condition == null)
+            return;
+
+        condition.FieldKey = value != null ? value : "";
+        MetadataPresetUiHelper.EnsureFieldCondition(this.Scope, condition);
+    }
+
+    /// <summary>
+    /// Cambia l'operatore di una condizione campo
+    /// </summary>
+    /// <param name="condition">Condizione da aggiornare</param>
+    /// <param name="value">Nuovo operatore</param>
+    private void ChangeFieldConditionOperator(MkvMetadataFieldCondition condition, string value)
+    {
+        MkvMetadataConditionOperator parsed;
+        if (condition == null)
+            return;
+        if (Enum.TryParse(value, out parsed))
+        {
+            condition.Operator = parsed;
+            MetadataPresetUiHelper.EnsureFieldCondition(this.Scope, condition);
+        }
+    }
+
+    /// <summary>
+    /// Cambia il campo di una condizione confronto tracce
+    /// </summary>
+    /// <param name="condition">Condizione da aggiornare</param>
+    /// <param name="value">Nuova chiave campo</param>
+    private void ChangeTrackComparisonField(MkvMetadataTrackComparisonCondition condition, string value)
+    {
+        if (condition == null)
+            return;
+
+        condition.FieldKey = value != null ? value : "";
+        MetadataPresetUiHelper.EnsureTrackComparisonCondition(this.Scope, condition);
+    }
+
+    /// <summary>
+    /// Cambia la relazione di una condizione confronto tracce
+    /// </summary>
+    /// <param name="condition">Condizione da aggiornare</param>
+    /// <param name="value">Nuova relazione</param>
+    private void ChangeTrackComparisonRelation(MkvMetadataTrackComparisonCondition condition, string value)
+    {
+        MkvMetadataTrackComparisonRelation parsed;
+        if (condition == null)
+            return;
+        if (Enum.TryParse(value, out parsed))
+        {
+            condition.Relation = parsed;
+            MetadataPresetUiHelper.EnsureTrackComparisonCondition(this.Scope, condition);
+        }
+    }
+
+    /// <summary>
+    /// Aggiunge un valore alla lista
+    /// </summary>
+    /// <param name="condition">Condizione lista</param>
+    private void AddListValue(MkvMetadataFieldCondition condition)
+    {
+        if (condition != null)
+            condition.Values.Add("");
+    }
+
+    /// <summary>
+    /// Rimuove un valore dalla lista
+    /// </summary>
+    /// <param name="condition">Condizione lista</param>
+    /// <param name="index">Indice valore</param>
+    private void RemoveListValue(MkvMetadataFieldCondition condition, int index)
+    {
+        if (condition != null && index >= 0 && index < condition.Values.Count)
+            condition.Values.RemoveAt(index);
+    }
+
+    /// <summary>
+    /// Cambia un valore della lista
+    /// </summary>
+    /// <param name="condition">Condizione lista</param>
+    /// <param name="index">Indice valore</param>
+    /// <param name="value">Nuovo valore</param>
+    private void ChangeListValue(MkvMetadataFieldCondition condition, int index, string value)
+    {
+        if (condition != null && index >= 0 && index < condition.Values.Count)
+            condition.Values[index] = value != null ? value : "";
+    }
+
+    /// <summary>
+    /// Notifica la condizione campo attiva
+    /// </summary>
+    /// <param name="condition">Condizione attiva</param>
+    private Task ActivateFieldConditionAsync(MkvMetadataFieldCondition condition)
+    {
+        return this.OnFieldActivated.InvokeAsync(condition);
+    }
+
+    /// <summary>
+    /// Cambia help contestuale
+    /// </summary>
+    /// <param name="key">Chiave help</param>
+    private Task SetFieldHelp(string key)
+    {
+        return this.OnHelpChanged.InvokeAsync(key);
+    }
+
+    /// <summary>
+    /// Estrae valore stringa da evento change/input
+    /// </summary>
+    /// <param name="e">Evento</param>
+    /// <returns>Valore stringa</returns>
+    private static string GetChangeValue(ChangeEventArgs e)
+    {
+        return e != null && e.Value != null ? e.Value.ToString() : "";
+    }
+}

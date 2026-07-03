@@ -144,8 +144,6 @@
                                 <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.outputLabel")</span> <span class="metadata-detail-value">@MetadataExecutionService.BuildOutputFile(_selectedMetadataRecord, MetadataOrchestrator.CurrentOptions.Metadata)</span></div>
                                 <MetadataTrackSummaryTableComponent Record="@_selectedMetadataRecord" Simulated="true" />
                                 <button class="metadata-detail-button" @onclick="() => ShowMetadataMappedInfo(true)">@AppText.T("web.metadata.detail.openSimulationDetail")</button>
-                                <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.commandLabel")</span></div>
-                                <pre class="metadata-command-preview">@(_selectedMetadataRecord.CommandPreview.Length > 0 ? _selectedMetadataRecord.CommandPreview : AppText.T("web.metadata.noop"))</pre>
                             }
                             else
                             {

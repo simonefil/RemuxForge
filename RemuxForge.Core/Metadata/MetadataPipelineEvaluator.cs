@@ -110,7 +110,7 @@ namespace RemuxForge.Core.Metadata
                 if (removedTracks.Contains(track))
                     continue;
 
-                if (ScopeFromTrack(track) != rule.TargetScope)
+                if (MetadataScopeHelper.ScopeFromTrack(track) != rule.TargetScope)
                     continue;
 
                 if (this.AreConditionsMatched(record, track, rule, removedTracks))
@@ -471,7 +471,7 @@ namespace RemuxForge.Core.Metadata
 
             if (!MetadataFieldRegistry.TryGet(operation.FieldKey, out field) ||
                 MetadataFieldRegistry.IsBlockedForWrite(operation.FieldKey) ||
-                !MetadataFieldRegistry.IsScopeCompatible(operation.FieldKey, track != null ? ScopeFromTrack(track) : MkvMetadataTargetScope.Container))
+                !MetadataFieldRegistry.IsScopeCompatible(operation.FieldKey, MetadataScopeHelper.ScopeFromTrack(track)))
             {
                 throw new InvalidOperationException(AppText.F("metadata.error.fieldNotWritable", operation.FieldKey));
             }
@@ -499,7 +499,7 @@ namespace RemuxForge.Core.Metadata
 
             if (!MetadataFieldRegistry.TryGet(operation.FieldKey, out field) ||
                 MetadataFieldRegistry.IsBlockedForWrite(operation.FieldKey) ||
-                !MetadataFieldRegistry.IsScopeCompatible(operation.FieldKey, track != null ? ScopeFromTrack(track) : MkvMetadataTargetScope.Container) ||
+                !MetadataFieldRegistry.IsScopeCompatible(operation.FieldKey, MetadataScopeHelper.ScopeFromTrack(track)) ||
                 !field.IsClearable)
             {
                 throw new InvalidOperationException(AppText.F("metadata.error.fieldNotClearable", operation.FieldKey));
@@ -526,7 +526,7 @@ namespace RemuxForge.Core.Metadata
 
             if (!MetadataFieldRegistry.TryGet(operation.FieldKey, out field) ||
                 MetadataFieldRegistry.IsBlockedForWrite(operation.FieldKey) ||
-                !MetadataFieldRegistry.IsScopeCompatible(operation.FieldKey, ScopeFromTrack(track)) ||
+                !MetadataFieldRegistry.IsScopeCompatible(operation.FieldKey, MetadataScopeHelper.ScopeFromTrack(track)) ||
                 field.ValueType != MetadataFieldValueType.Boolean)
             {
                 throw new InvalidOperationException(AppText.F("metadata.error.invalidExclusiveFlagField", operation.FieldKey));
@@ -713,7 +713,7 @@ namespace RemuxForge.Core.Metadata
             string before = FindCurrentTagValue(record, track, tagKey);
 
             change.RuleDescription = rule.Description;
-            change.Scope = track != null ? ScopeFromTrack(track) : MkvMetadataTargetScope.Container;
+            change.Scope = MetadataScopeHelper.ScopeFromTrack(track);
             change.TrackSelector = track != null ? track.TrackSelector : "";
             change.TrackKind = track != null ? track.TrackKind : "";
             change.TrackUniqueId = track != null ? track.TrackUniqueId : "";
@@ -817,7 +817,7 @@ namespace RemuxForge.Core.Metadata
 
             MkvMetadataChange change = new MkvMetadataChange();
             change.RuleDescription = rule.Description;
-            change.Scope = ScopeFromTrack(track);
+            change.Scope = MetadataScopeHelper.ScopeFromTrack(track);
             change.TrackSelector = track.TrackSelector;
             change.TrackKind = track.TrackKind;
             change.TrackUniqueId = track.TrackUniqueId;
@@ -912,7 +912,7 @@ namespace RemuxForge.Core.Metadata
         {
             MkvMetadataChange change = new MkvMetadataChange();
             change.RuleDescription = rule.Description;
-            change.Scope = track != null ? ScopeFromTrack(track) : MkvMetadataTargetScope.Container;
+            change.Scope = MetadataScopeHelper.ScopeFromTrack(track);
             change.TrackSelector = track != null ? track.TrackSelector : "";
             change.TrackKind = track != null ? track.TrackKind : "";
             change.TrackUniqueId = track != null ? track.TrackUniqueId : "";
@@ -1078,23 +1078,6 @@ namespace RemuxForge.Core.Metadata
                 trackGroup = MkvMetadataTrackGroup.SameLanguageAndFormat;
 
             return IsTrackGroupCandidate(current, other, trackGroup);
-        }
-
-        /// <summary>
-        /// Converte tipo traccia runtime nello scope metadata corrispondente
-        /// </summary>
-        /// <param name="track">Traccia metadata</param>
-        /// <returns>Scope metadata corrispondente</returns>
-        private static MkvMetadataTargetScope ScopeFromTrack(MkvMetadataTrackInfo track)
-        {
-            if (track.TrackKind == "video")
-                return MkvMetadataTargetScope.Video;
-            if (track.TrackKind == "audio")
-                return MkvMetadataTargetScope.Audio;
-            if (track.TrackKind == "subtitles")
-                return MkvMetadataTargetScope.Subtitle;
-
-            return MkvMetadataTargetScope.Container;
         }
 
         /// <summary>

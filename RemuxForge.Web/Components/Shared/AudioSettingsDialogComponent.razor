@@ -7,6 +7,9 @@
                 <span class="form-label">@AppText.T("web.audioSettings.compression")</span>
                 <input class="form-input" style="width: 6ch;" @bind="_flacCompression" />
             </div>
+            <div class="form-row" style="color: var(--foreground2);">
+                @AppText.T("web.common.range"): @AppSettingsModel.FLAC_COMPRESSION_MIN-@AppSettingsModel.FLAC_COMPRESSION_MAX
+            </div>
 
             <div class="form-section">@AppText.T("web.audioSettings.opusSection")</div>
             <div class="form-row">
@@ -60,7 +63,7 @@
                 <input class="form-input" style="width: 8ch;" @bind="_ac3Stereo" />
             </div>
             <div class="form-row">
-                <span class="form-label">@AppText.T("web.audioSettings.ac3Surround51")</span>
+                <span class="form-label">@AppText.T("web.audioSettings.surround51")</span>
                 <input class="form-input" style="width: 8ch;" @bind="_ac3S51" />
             </div>
             <div class="form-row" style="color: var(--foreground2);">
