@@ -557,7 +557,6 @@ namespace RemuxForge.Core.Configuration
             // Assicura array DeepAnalysis non null
             if (this._model.Advanced.DeepAnalysis.ProbeMultiMarginsSec == null) { this._model.Advanced.DeepAnalysis.ProbeMultiMarginsSec = new List<double> { 5.0, 15.0, 25.0 }; }
             if (this._model.Advanced.DeepAnalysis.OffsetProbeDeltas == null) { this._model.Advanced.DeepAnalysis.OffsetProbeDeltas = new List<int> { 1000, 2000, 3000, 4000, 5000, -1000, -2000, -3000, -4000, -5000 }; }
-            if (this._model.Advanced.DeepAnalysis.AudioFineTuneOperationTypes == null) { this._model.Advanced.DeepAnalysis.AudioFineTuneOperationTypes = "insert,cut"; }
         }
 
         /// <summary>
@@ -736,14 +735,6 @@ namespace RemuxForge.Core.Configuration
             da.InitialOffsetRangeSec = this.ClampInt(da.InitialOffsetRangeSec, 1, 3600);
             da.InitialOffsetStepSec = this.ClampDouble(da.InitialOffsetStepSec, 0.01, 60.0);
             da.InitialVotingCuts = this.ClampInt(da.InitialVotingCuts, 1, 10000);
-            if (da.AudioFineTuneOperationTypes == null || da.AudioFineTuneOperationTypes.Trim().Length == 0)
-            {
-                da.AudioFineTuneOperationTypes = "insert,cut";
-            }
-            da.AudioFineTuneWindowMs = this.ClampInt(da.AudioFineTuneWindowMs, 100, 30000);
-            da.AudioFineTuneEnvelopeWindowMs = this.ClampInt(da.AudioFineTuneEnvelopeWindowMs, 5, 500);
-            da.AudioFineTuneMinSilenceMs = this.ClampInt(da.AudioFineTuneMinSilenceMs, 25, 10000);
-            da.AudioFineTuneMaxShiftMs = this.ClampInt(da.AudioFineTuneMaxShiftMs, 100, 30000);
 
             // Sanitizzazione Advanced — SubtitleEdit
             SubtitleEditConfig subtitleEdit = this._model.Advanced.SubtitleEdit;

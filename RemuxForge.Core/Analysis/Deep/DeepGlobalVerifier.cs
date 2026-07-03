@@ -154,7 +154,6 @@ namespace RemuxForge.Core.Analysis.Deep
             double currentOffsetMs = initialDelayMs;
             double currentStartSec = 0.0;
             double sourceDurationSec = sourceDurationMs / 1000.0;
-            List<EditOperation> orderedOperations;
 
             if (operations == null || operations.Count == 0)
             {
@@ -166,11 +165,10 @@ namespace RemuxForge.Core.Analysis.Deep
                 return result;
             }
 
-            orderedOperations = new List<EditOperation>(operations);
-            orderedOperations.Sort((a, b) => this.ResolveVisualSourceTimestampMs(a).CompareTo(this.ResolveVisualSourceTimestampMs(b)));
-            for (int i = 0; i < orderedOperations.Count; i++)
+            operations.Sort((a, b) => a.SourceTimestampMs.CompareTo(b.SourceTimestampMs));
+            for (int i = 0; i < operations.Count; i++)
             {
-                double operationSrcSec = this.ResolveVisualSourceTimestampMs(orderedOperations[i]) / 1000.0;
+                double operationSrcSec = operations[i].SourceTimestampMs / 1000.0;
                 if (operationSrcSec > currentStartSec)
                 {
                     OffsetRegion region = new OffsetRegion();
@@ -180,7 +178,7 @@ namespace RemuxForge.Core.Analysis.Deep
                     result.Add(region);
                 }
 
-                currentOffsetMs += EditMapTimelineHelper.GetSourceOperationDeltaMs(orderedOperations[i], inverseRatio);
+                currentOffsetMs += EditMapTimelineHelper.GetSourceOperationDeltaMs(operations[i], inverseRatio);
 
                 currentStartSec = operationSrcSec;
             }
@@ -195,26 +193,6 @@ namespace RemuxForge.Core.Analysis.Deep
             }
 
             return result.Count > 0 ? result : regions;
-        }
-
-        /// <summary>
-        /// Restituisce il boundary source/video di una operazione
-        /// </summary>
-        /// <param name="operation">Operazione editmap</param>
-        /// <returns>Timestamp source video in millisecondi</returns>
-        private int ResolveVisualSourceTimestampMs(EditOperation operation)
-        {
-            if (operation == null)
-            {
-                return 0;
-            }
-
-            if (operation.VisualSourceTimestampMs > 0)
-            {
-                return operation.VisualSourceTimestampMs;
-            }
-
-            return operation.SourceTimestampMs;
         }
 
         #endregion

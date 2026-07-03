@@ -104,11 +104,6 @@ namespace RemuxForge.Core.Analysis.Deep
         private readonly DeepGlobalVerifier _globalVerifier;
 
         /// <summary>
-        /// Fine tuner audio post verifica globale
-        /// </summary>
-        private readonly DeepAudioOperationFineTuner _audioOperationFineTuner;
-
-        /// <summary>
         /// Risolutore centralizzato per mkvmerge e tool esterni
         /// </summary>
         private readonly ToolPathResolverService _toolPathResolver;
@@ -158,7 +153,6 @@ namespace RemuxForge.Core.Analysis.Deep
             this._visualFrameAnalyzer = new DeepVisualFrameAnalyzer(this._daConfig, this.ExtractDeepSegment, this.ComputeSsim, this.ComputeMse);
             this._transitionRefiner = new DeepTransitionRefiner(this.GetTransitionRefineRadiusSec, this.DifferentialScanCrossover, this._visualFrameAnalyzer, this.LinearScanConfirm, this.VerifyTransitionLocal);
             this._globalVerifier = new DeepGlobalVerifier(this._daConfig, this._vsConfig, this._visualFrameAnalyzer);
-            this._audioOperationFineTuner = new DeepAudioOperationFineTuner(this._daConfig, this._audioEnvelopeService);
             this._currentAnalysisUsesTimelineMap = false;
             this._currentTrackPolicy = new DeepAnalysisTrackPolicy();
             this._currentAnalysisSourceFile = "";
@@ -278,14 +272,6 @@ namespace RemuxForge.Core.Analysis.Deep
             {
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  Audio validator non disponibile: " + this._currentTrackPolicy.RejectReason);
             }
-            if (this._currentTrackPolicy.LanguageFineTuneAudioAvailable)
-            {
-                ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  Audio fine-tune: lang stream " + this._currentTrackPolicy.LanguageFineTuneAudioStreamIndex.ToString(CultureInfo.InvariantCulture) + (this._currentTrackPolicy.LanguageFineTuneTrackName != null && this._currentTrackPolicy.LanguageFineTuneTrackName.Length > 0 ? " (" + this._currentTrackPolicy.LanguageFineTuneTrackName + ")" : ""));
-            }
-            else
-            {
-                ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  Audio fine-tune non disponibile: " + this._currentTrackPolicy.LanguageFineTuneRejectReason);
-            }
 
             regions = timelineMap.Regions;
             this.RecoverUnsupportedTailGap(sourceFile, langFile, sourceDurationMs, inverseRatio, regions, timelineMap);
@@ -348,13 +334,6 @@ namespace RemuxForge.Core.Analysis.Deep
                 this.StoreFailedAnalysis(stopwatch, diagnostics, stretchFactor, regions, operations, baselineMse);
                 return result;
             }
-
-            // Fase 5: Fine tuning audio operativo
-            ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, "  Fase 5: Fine tuning audio...");
-            ConsoleHelper.Progress(LogSection.Deep, 86, "Deep: audio tune");
-            phaseStartMs = stopwatch.ElapsedMilliseconds;
-            this._audioOperationFineTuner.FineTune(langFile, operations, transitions, stretchRatio, initialDelayMs, this._currentTrackPolicy.LanguageFineTuneAudioAvailable, this._currentTrackPolicy.LanguageFineTuneAudioStreamIndex, this._currentTrackPolicy.LanguageFineTuneRejectReason);
-            diagnostics.Timing.AudioFineTuneMs = stopwatch.ElapsedMilliseconds - phaseStartMs;
 
             // Costruisci EditMap
             stopwatch.Stop();
@@ -441,7 +420,6 @@ namespace RemuxForge.Core.Analysis.Deep
             leadingOperation.LangTimestampMs = 0;
             leadingOperation.DurationMs = leadingDurationMs;
             leadingOperation.SourceTimestampMs = 0;
-            leadingOperation.VisualSourceTimestampMs = 0;
             operations.Insert(0, leadingOperation);
             leadingInitialEditCreated = true;
 

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 
 namespace RemuxForge.Core.Models
 {
@@ -127,83 +126,6 @@ namespace RemuxForge.Core.Models
             }
 
             return 0;
-        }
-
-        /// <summary>
-        /// Calcola il delta renderizzato prodotto dalle operazioni precedenti a un indice
-        /// </summary>
-        /// <param name="operations">Operazioni editmap ordinate</param>
-        /// <param name="operationIndex">Indice esclusivo dell'operazione corrente</param>
-        /// <param name="stretchRatio">Rapporto stretch applicato alla timeline lang</param>
-        /// <returns>Delta cumulativo in millisecondi renderizzati</returns>
-        public static int GetRenderedDeltaBeforeMs(List<EditOperation> operations, int operationIndex, double stretchRatio)
-        {
-            int result = 0;
-            int limit;
-            if (operations == null || operationIndex <= 0)
-            {
-                return result;
-            }
-
-            limit = operationIndex;
-            if (limit > operations.Count)
-            {
-                limit = operations.Count;
-            }
-
-            for (int i = 0; i < limit; i++)
-            {
-                result += GetRenderedOperationDeltaMs(operations[i], stretchRatio);
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Mappa un timestamp lang originale nella timeline renderizzata usando le operazioni precedenti
-        /// </summary>
-        /// <param name="languageTimestampMs">Timestamp nella timeline lang originale</param>
-        /// <param name="operations">Operazioni editmap ordinate</param>
-        /// <param name="operationIndex">Indice esclusivo dell'operazione corrente</param>
-        /// <param name="stretchRatio">Rapporto stretch applicato alla timeline lang</param>
-        /// <returns>Timestamp renderizzato in millisecondi</returns>
-        public static int LanguageTimestampToRenderedTimestampMs(int languageTimestampMs, List<EditOperation> operations, int operationIndex, double stretchRatio)
-        {
-            int renderedTimestampMs;
-            if (languageTimestampMs <= 0)
-            {
-                renderedTimestampMs = 0;
-            }
-            else
-            {
-                renderedTimestampMs = LanguageDurationToRenderedDurationMs(languageTimestampMs, stretchRatio);
-            }
-
-            return renderedTimestampMs + GetRenderedDeltaBeforeMs(operations, operationIndex, stretchRatio);
-        }
-
-        /// <summary>
-        /// Mappa un timestamp renderizzato nella timeline lang originale usando le operazioni precedenti
-        /// </summary>
-        /// <param name="renderedTimestampMs">Timestamp renderizzato in millisecondi</param>
-        /// <param name="operations">Operazioni editmap ordinate</param>
-        /// <param name="operationIndex">Indice esclusivo dell'operazione corrente</param>
-        /// <param name="stretchRatio">Rapporto stretch applicato alla timeline lang</param>
-        /// <returns>Timestamp lang originale in millisecondi</returns>
-        public static int RenderedTimestampToLanguageTimestampMs(int renderedTimestampMs, List<EditOperation> operations, int operationIndex, double stretchRatio)
-        {
-            int adjustedMs = renderedTimestampMs - GetRenderedDeltaBeforeMs(operations, operationIndex, stretchRatio);
-            if (adjustedMs <= 0)
-            {
-                return 0;
-            }
-
-            if (stretchRatio <= 0.0)
-            {
-                return adjustedMs;
-            }
-
-            return Math.Max(0, (int)Math.Round(adjustedMs / stretchRatio));
         }
 
         #endregion
