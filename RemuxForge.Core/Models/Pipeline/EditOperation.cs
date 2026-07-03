@@ -56,6 +56,11 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public int SourceTimestampMs { get; set; }
 
+        /// <summary>
+        /// Boundary source/video verificato dalla DeepAnalysis prima del fine tuning audio
+        /// </summary>
+        public int VisualSourceTimestampMs { get; set; }
+
         #endregion
     }
 }

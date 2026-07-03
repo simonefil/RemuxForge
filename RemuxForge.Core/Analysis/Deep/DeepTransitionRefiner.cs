@@ -276,6 +276,7 @@ namespace RemuxForge.Core.Analysis.Deep
                 op.LangTimestampMs = langTimestampMs;
                 op.DurationMs = operationDurationMs;
                 op.SourceTimestampMs = sourceTimestampMs;
+                op.VisualSourceTimestampMs = sourceTimestampMs;
                 operations.Add(op);
 
                 transition.Status = "Accepted";

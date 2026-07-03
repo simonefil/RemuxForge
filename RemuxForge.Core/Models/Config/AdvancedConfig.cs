@@ -431,6 +431,12 @@ namespace RemuxForge.Core.Models
             this.InitialOffsetRangeSec = 30;
             this.InitialOffsetStepSec = 0.5;
             this.InitialVotingCuts = 50;
+            this.AudioFineTuneEnabled = true;
+            this.AudioFineTuneOperationTypes = "insert,cut";
+            this.AudioFineTuneWindowMs = 3500;
+            this.AudioFineTuneEnvelopeWindowMs = 25;
+            this.AudioFineTuneMinSilenceMs = 150;
+            this.AudioFineTuneMaxShiftMs = 3500;
         }
 
         #endregion
@@ -556,6 +562,36 @@ namespace RemuxForge.Core.Models
         /// Numero di tagli scena per voting iniziale
         /// </summary>
         public int InitialVotingCuts { get; set; }
+
+        /// <summary>
+        /// Abilita fine tuning audio post verifica globale
+        /// </summary>
+        public bool AudioFineTuneEnabled { get; set; }
+
+        /// <summary>
+        /// Tipi operazione abilitati per fine tuning audio
+        /// </summary>
+        public string AudioFineTuneOperationTypes { get; set; }
+
+        /// <summary>
+        /// Finestra massima di ricerca fine tuning audio in millisecondi
+        /// </summary>
+        public int AudioFineTuneWindowMs { get; set; }
+
+        /// <summary>
+        /// Finestra envelope audio per fine tuning in millisecondi
+        /// </summary>
+        public int AudioFineTuneEnvelopeWindowMs { get; set; }
+
+        /// <summary>
+        /// Durata minima silenzio locale per accettare un boundary audio
+        /// </summary>
+        public int AudioFineTuneMinSilenceMs { get; set; }
+
+        /// <summary>
+        /// Shift massimo applicabile dal fine tuning audio in millisecondi
+        /// </summary>
+        public int AudioFineTuneMaxShiftMs { get; set; }
 
         #endregion
     }
