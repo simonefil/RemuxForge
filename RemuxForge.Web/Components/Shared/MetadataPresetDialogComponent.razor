@@ -85,14 +85,14 @@
                             </div>
                             <div class="metadata-rule-toggle-row">
                                 <span class="ui-toggle" @onclick="() => SelectedRule.Enabled = !SelectedRule.Enabled" @onmouseenter='@(() => SetFieldHelp("ruleEnabled"))'>@(SelectedRule.Enabled ? "[X]" : "[ ]") @AppText.T("web.metadata.presetDialog.enabled")</span>
-                                <span class="ui-toggle" @onclick="() => _showAdvancedFields = !_showAdvancedFields" @onmouseenter='@(() => SetFieldHelp("advancedFields"))'>@(_showAdvancedFields ? "[X]" : "[ ]") @AppText.T("web.metadata.presetDialog.advancedFields")</span>
+                                <span class="ui-toggle" @onclick="ToggleAdvancedFields" @onmouseenter='@(() => SetFieldHelp("advancedFields"))'>@(_showAdvancedFields ? "[X]" : "[ ]") @AppText.T("web.metadata.presetDialog.advancedFields")</span>
                             </div>
                         </div>
 
                         <div class="metadata-rule-section">
                             <div class="form-section">@AppText.T("web.metadata.presetDialog.sectionWhen")</div>
                             <div class="metadata-rule-section-caption">@AppText.T("web.metadata.presetDialog.whenAllCaption")</div>
-                            <MetadataConditionListComponent Rule="SelectedRule" Nodes="SelectedRule.When.All" OnFieldActivated="ActivateFieldCondition" OnHelpChanged="SetFieldHelp" />
+                            <MetadataConditionListComponent Rule="SelectedRule" Nodes="SelectedRule.When.All" IncludeAdvancedFields="_showAdvancedFields" OnFieldActivated="ActivateFieldCondition" OnHelpChanged="SetFieldHelp" OnTextEditRequested="OpenTextEditor" />
                         </div>
 
                         <div class="metadata-rule-section">
@@ -113,7 +113,7 @@
                                             </select>
                                             @if (operation.Type == MkvMetadataOperationType.SetField || operation.Type == MkvMetadataOperationType.ClearField)
                                             {
-                                                <select class="form-input metadata-sentence-field" @bind="operation.FieldKey" @onfocus='@(() => SetFieldHelp("operationField"))' @onmouseenter='@(() => SetFieldHelp("operationField"))'>
+                                                <select class="form-input metadata-sentence-field" @bind="operation.FieldKey" @onfocus="@(() => SetOperationFieldHelp(operation))" @onmouseenter="@(() => SetOperationFieldHelp(operation))">
                                                     @foreach (MetadataFieldDefinition field in MetadataPresetUiHelper.GetEditableFields(SelectedRule.TargetScope, operation, _showAdvancedFields))
                                                     {
                                                         <option value="@field.Key">@field.Label</option>
@@ -122,7 +122,7 @@
                                             }
                                             else if (operation.Type == MkvMetadataOperationType.SetExclusiveFlag)
                                             {
-                                                <select class="form-input metadata-sentence-field" @bind="operation.FieldKey" @onfocus='@(() => SetFieldHelp("operationField"))' @onmouseenter='@(() => SetFieldHelp("operationField"))'>
+                                                <select class="form-input metadata-sentence-field" @bind="operation.FieldKey" @onfocus="@(() => SetOperationFieldHelp(operation))" @onmouseenter="@(() => SetOperationFieldHelp(operation))">
                                                     @foreach (MetadataFieldDefinition field in MetadataPresetUiHelper.GetEditableFields(SelectedRule.TargetScope, operation, _showAdvancedFields))
                                                     {
                                                         <option value="@field.Key">@field.Label</option>
@@ -138,16 +138,16 @@
                                             else if (operation.Type == MkvMetadataOperationType.SetTagField || operation.Type == MkvMetadataOperationType.ClearTagField)
                                             {
                                                 <div class="metadata-operation-target">
-                                                    <select class="form-input metadata-rule-select-medium" @bind="operation.TagTarget" @onfocus='@(() => SetFieldHelp("tagTarget"))' @onmouseenter='@(() => SetFieldHelp("tagTarget"))'>
+                                                    <select class="form-input metadata-rule-select-medium" value="@operation.TagTarget" @onchange="@((ChangeEventArgs e) => ChangeOperationTagTarget(operation, GetChangeValue(e)))" @onfocus='@(() => SetFieldHelp("tagTarget"))' @onmouseenter='@(() => SetFieldHelp("tagTarget"))'>
                                                         <option value="@MkvMetadataTagTarget.Current">@AppText.T("web.metadata.tagTarget.Current")</option>
                                                         <option value="@MkvMetadataTagTarget.File">@AppText.T("web.metadata.tagTarget.File")</option>
                                                         <option value="@MkvMetadataTagTarget.CurrentTrack">@AppText.T("web.metadata.tagTarget.CurrentTrack")</option>
                                                         <option value="@MkvMetadataTagTarget.AllTracks">@AppText.T("web.metadata.tagTarget.AllTracks")</option>
                                                     </select>
-                                                    <select class="form-input metadata-rule-select-medium" @bind="operation.TagKey" @onfocus='@(() => SetFieldHelp("tagKey"))' @onmouseenter='@(() => SetFieldHelp("tagKey"))'>
-                                                        @foreach (string tag in MetadataPresetUiHelper.GetTagNames())
+                                                    <select class="form-input metadata-rule-select-medium" @bind="operation.TagKey" @onfocus="@(() => SetOperationTagHelp(operation))" @onmouseenter="@(() => SetOperationTagHelp(operation))">
+                                                        @foreach (MetadataTagDefinition tag in MetadataPresetUiHelper.GetEditableTags(SelectedRule.TargetScope, operation, _showAdvancedFields))
                                                         {
-                                                            <option value="@tag">@tag</option>
+                                                            <option value="@tag.Name">@tag.Label</option>
                                                         }
                                                     </select>
                                                 </div>
@@ -163,7 +163,7 @@
 
                                             @if (operation.Type == MkvMetadataOperationType.SetField || operation.Type == MkvMetadataOperationType.SetTagField)
                                             {
-                                                <input class="form-input metadata-operation-value" value="@operation.Value" @oninput="@((ChangeEventArgs e) => operation.Value = GetChangeValue(e))" @onfocus="() => ActivateOperation(operation)" @onmouseenter='@(() => SetFieldHelp("operationValue"))' />
+                                                <MetadataInputRendererComponent Schema="@GetOperationInputSchema(operation)" Value="@operation.Value" ValueChanged="@((string value) => operation.Value = value)" CssClass="form-input metadata-operation-value" OnFocus="@(() => ActivateOperation(operation))" OnMouseEnter="@(() => ActivateOperation(operation))" OnExpandedEditRequested="@(() => OpenOperationTextEditor(operation))" />
                                             }
                                             else
                                             {
@@ -203,10 +203,10 @@
                     <div class="config-help-section">@AppText.T("web.metadata.presetDialog.functionsTitle")</div>
                     <input class="form-input metadata-token-filter" @bind="_functionBrowserFilter" @bind:event="oninput" placeholder="@AppText.T("web.metadata.presetDialog.functionFilterPlaceholder")" />
                     <div class="metadata-token-browser">
-                        @foreach (MetadataFunctionBrowserItem item in GetFunctionBrowserItems())
+                        @foreach (MetadataCatalogFunctionItem item in GetFunctionBrowserItems())
                         {
                             <div class="metadata-function-row">
-                                <button class="metadata-token-button metadata-function-insert-button" title="@item.Description" @onclick="() => InsertFunction(item.Call)">
+                                <button class="metadata-token-button metadata-function-insert-button" title="@item.Description" @onclick="() => InsertFunction(item.Call)" @onmouseenter="@(() => SetFunctionHelp(item.Name))" @onfocus="@(() => SetFunctionHelp(item.Name))">
                                     <span class="metadata-token-value">@item.Call</span>
                                     <span class="metadata-token-label">@item.Description</span>
                                 </button>
@@ -245,6 +245,21 @@
                 </div>
                 <div class="dialog-footer">
                     <button @onclick="CloseFunctionExample">@AppText.T("web.common.close")</button>
+                </div>
+            </div>
+        </div>
+    }
+    @if (_textEditRequest != null)
+    {
+        <div class="metadata-text-editor-backdrop" @onclick="CancelTextEditor" @onclick:stopPropagation="true">
+            <div class="dialog-box metadata-text-editor-dialog" @onclick:stopPropagation="true">
+                <div class="dialog-title">@_textEditRequest.Title</div>
+                <div class="dialog-body metadata-text-editor-body">
+                    <textarea class="form-input metadata-text-editor-textarea" @bind="_textEditValue" @bind:event="oninput" autofocus></textarea>
+                </div>
+                <div class="dialog-footer">
+                    <button @onclick="ApplyTextEditor">@AppText.T("web.common.ok")</button>
+                    <button @onclick="CancelTextEditor">@AppText.T("web.common.cancel")</button>
                 </div>
             </div>
         </div>
@@ -315,7 +330,17 @@
     /// <summary>
     /// Funzione selezionata per esempio
     /// </summary>
-    private MetadataFunctionBrowserItem _functionExampleItem;
+    private MetadataCatalogFunctionItem _functionExampleItem;
+
+    /// <summary>
+    /// Richiesta editor testo espanso corrente
+    /// </summary>
+    private MetadataTextEditRequest _textEditRequest;
+
+    /// <summary>
+    /// Valore temporaneo editor testo espanso
+    /// </summary>
+    private string _textEditValue;
 
     /// <summary>
     /// Titolo help contestuale
@@ -352,6 +377,8 @@
         this._tokenBrowserFilter = "";
         this._functionBrowserFilter = "";
         this._functionExampleItem = null;
+        this._textEditRequest = null;
+        this._textEditValue = "";
         this._activeFieldCondition = null;
         this._activeOperation = null;
         this.SetFieldHelp("default");
@@ -390,9 +417,13 @@
         this._preset = new MkvMetadataPreset();
         this._preset.Name = "";
         this._preset.Description = "";
+        this._preset.ShowAdvancedFields = false;
         this._selectedRuleIndex = -1;
         this._selectedPresetFile = "";
         this._message = "";
+        this._showAdvancedFields = false;
+        this._textEditRequest = null;
+        this._textEditValue = "";
         this._activeFieldCondition = null;
         this._activeOperation = null;
     }
@@ -411,6 +442,7 @@
         try
         {
             this._preset = this._service.Load(this._selectedPresetFile);
+            this._showAdvancedFields = this._preset.ShowAdvancedFields || MetadataUiCatalog.PresetUsesAdvancedFields(this._preset);
             this.NormalizePresetModel();
             this._selectedRuleIndex = this._preset.Rules.Count > 0 ? 0 : -1;
             this._message = "";
@@ -461,6 +493,7 @@
         {
             this.NormalizePresetModel();
             this._preset.Description = "";
+            this._preset.ShowAdvancedFields = this._showAdvancedFields || MetadataUiCatalog.PresetUsesAdvancedFields(this._preset);
             this._service.Save(this._preset, filePath);
             this._selectedPresetFile = filePath;
             this._presetFiles = this._service.ListPresetFiles();
@@ -589,6 +622,24 @@
     }
 
     /// <summary>
+    /// Cambia stato del toggle campi avanzati
+    /// </summary>
+    private void ToggleAdvancedFields()
+    {
+        if (this._showAdvancedFields && MetadataUiCatalog.PresetUsesAdvancedFields(this._preset))
+        {
+            this._message = AppText.T("web.metadata.presetDialog.advancedCannotDisable");
+            return;
+        }
+
+        this._showAdvancedFields = !this._showAdvancedFields;
+        if (this._preset != null)
+            this._preset.ShowAdvancedFields = this._showAdvancedFields;
+
+        this.NormalizePresetModel();
+    }
+
+    /// <summary>
     /// Aggiunge un'operazione alla regola selezionata
     /// </summary>
     private void AddOperation()
@@ -632,6 +683,12 @@
     /// </summary>
     private void NormalizePresetModel()
     {
+        if (MetadataUiCatalog.PresetUsesAdvancedFields(this._preset))
+            this._showAdvancedFields = true;
+
+        if (this._preset != null)
+            this._preset.ShowAdvancedFields = this._showAdvancedFields;
+
         MetadataPresetUiHelper.EnsurePreset(this._preset, this._showAdvancedFields);
     }
 
@@ -654,6 +711,24 @@
     }
 
     /// <summary>
+    /// Cambia target tag di un'operazione
+    /// </summary>
+    /// <param name="operation">Operazione da aggiornare</param>
+    /// <param name="value">Nuovo target tag testuale</param>
+    private void ChangeOperationTagTarget(MkvMetadataOperation operation, string value)
+    {
+        MkvMetadataTagTarget parsed;
+        if (operation == null || this.SelectedRule == null)
+            return;
+
+        if (Enum.TryParse(value, out parsed))
+        {
+            operation.TagTarget = parsed;
+            MetadataPresetUiHelper.EnsureOperation(this.SelectedRule.TargetScope, operation, this._showAdvancedFields);
+        }
+    }
+
+    /// <summary>
     /// Imposta la condizione attiva per inserimento token/funzioni
     /// </summary>
     /// <param name="condition">Condizione attiva</param>
@@ -661,7 +736,7 @@
     {
         this._activeFieldCondition = condition;
         this._activeOperation = null;
-        this.SetFieldHelp("conditionValue");
+        this.SetHelpInfo(condition != null ? MetadataUiCatalog.GetFieldHelp(condition.FieldKey) : MetadataUiCatalog.GetPresetControlHelp("conditionValue"));
     }
 
     /// <summary>
@@ -672,7 +747,7 @@
     {
         this._activeOperation = operation;
         this._activeFieldCondition = null;
-        this.SetFieldHelp("operationValue");
+        this.SetOperationValueHelp(operation);
     }
 
     /// <summary>
@@ -743,12 +818,13 @@
     /// Mostra esempio funzione
     /// </summary>
     /// <param name="item">Funzione selezionata</param>
-    private void ShowFunctionExample(MetadataFunctionBrowserItem item)
+    private void ShowFunctionExample(MetadataCatalogFunctionItem item)
     {
         if (item == null)
             return;
 
         this._functionExampleItem = item;
+        this.SetFunctionHelp(item.Name);
     }
 
     /// <summary>
@@ -760,6 +836,67 @@
     }
 
     /// <summary>
+    /// Apre editor testo espanso per una operazione THEN
+    /// </summary>
+    /// <param name="operation">Operazione da modificare</param>
+    private void OpenOperationTextEditor(MkvMetadataOperation operation)
+    {
+        MetadataFieldDefinition field;
+        MetadataTagDefinition tag;
+        MetadataTextEditRequest request;
+        string label;
+
+        if (operation == null)
+            return;
+
+        this.ActivateOperation(operation);
+        label = operation.FieldKey;
+        if (operation.Type == MkvMetadataOperationType.SetTagField && MetadataTagRegistry.TryGet(operation.TagKey, out tag))
+            label = tag.Label;
+        else if (MetadataFieldRegistry.TryGet(operation.FieldKey, out field))
+            label = field.Label;
+
+        request = new MetadataTextEditRequest();
+        request.Title = AppText.F("web.metadata.presetDialog.textEditorOperationTitle", label);
+        request.Value = operation.Value;
+        request.Commit = value => operation.Value = value != null ? value : "";
+        this.OpenTextEditor(request);
+    }
+
+    /// <summary>
+    /// Apre editor testo espanso
+    /// </summary>
+    /// <param name="request">Richiesta editor</param>
+    private void OpenTextEditor(MetadataTextEditRequest request)
+    {
+        if (request == null)
+            return;
+
+        this._textEditRequest = request;
+        this._textEditValue = request.Value != null ? request.Value : "";
+    }
+
+    /// <summary>
+    /// Applica valore editor testo espanso
+    /// </summary>
+    private void ApplyTextEditor()
+    {
+        if (this._textEditRequest != null && this._textEditRequest.Commit != null)
+            this._textEditRequest.Commit(this._textEditValue != null ? this._textEditValue : "");
+
+        this.CancelTextEditor();
+    }
+
+    /// <summary>
+    /// Chiude editor testo espanso senza applicare
+    /// </summary>
+    private void CancelTextEditor()
+    {
+        this._textEditRequest = null;
+        this._textEditValue = "";
+    }
+
+    /// <summary>
     /// Costruisce le voci del browser token
     /// </summary>
     /// <returns>Token disponibili</returns>
@@ -767,14 +904,14 @@
     {
         List<MetadataTokenBrowserItem> result = new List<MetadataTokenBrowserItem>();
         MkvMetadataTargetScope scope = this.SelectedRule != null ? this.SelectedRule.TargetScope : MkvMetadataTargetScope.Audio;
-        List<MetadataFieldDefinition> fields = MetadataPresetUiHelper.GetReadableFieldsForCondition(scope);
+        List<MetadataCatalogFieldItem> fields = MetadataUiCatalog.GetTokenCatalog(scope, this._showAdvancedFields);
         string filter = this._tokenBrowserFilter != null ? this._tokenBrowserFilter.Trim() : "";
         for (int i = 0; i < fields.Count; i++)
         {
-            string token = "[" + fields[i].Key + "]";
+            string token = fields[i].Token;
             if (string.IsNullOrEmpty(filter) || ContainsIgnoreCase(token, filter) || ContainsIgnoreCase(fields[i].Label, filter))
             {
-                result.Add(new MetadataTokenBrowserItem { Token = token, Label = fields[i].Label, Description = MetadataPresetUiHelper.GetSectorLabel(fields[i].Sector) });
+                result.Add(new MetadataTokenBrowserItem { Token = token, Label = fields[i].Label, Description = fields[i].Description });
             }
         }
 
@@ -785,25 +922,15 @@
     /// Costruisce le voci del browser funzioni
     /// </summary>
     /// <returns>Funzioni disponibili</returns>
-    private List<MetadataFunctionBrowserItem> GetFunctionBrowserItems()
+    private List<MetadataCatalogFunctionItem> GetFunctionBrowserItems()
     {
-        List<MetadataFunctionBrowserItem> result = new List<MetadataFunctionBrowserItem>();
-        AddFunction(result, "Trim()", "Trim", "  ITA Full  ", "{[audio_title]:Trim()}", "ITA Full");
-        AddFunction(result, "TrimEnd(4)", "TrimEnd", "Bleach - 001.mkv", "{[file_name]:TrimEnd(4)}", "Bleach - 001");
-        AddFunction(result, "ToUpper()", "ToUpper", "ita", "{[audio_language]:ToUpper()}", "ITA");
-        AddFunction(result, "ToLower()", "ToLower", "ITA", "{[audio_language]:ToLower()}", "ita");
-        AddFunction(result, "Replace(old,new)", "Replace", "FLAC 2.0", "{[audio_title]:Replace(FLAC,LPCM)}", "LPCM 2.0");
-        AddFunction(result, "RegexReplace(pattern,replacement)", "RegexReplace", "Audio 01", "{[audio_title]:RegexReplace(\\d+,02)}", "Audio 02");
-        AddFunction(result, "Substring(0,3)", "Substring", "Italiano", "{[audio_language]:Substring(0,3)}", "Ita");
-        AddFunction(result, "Left(3)", "Left", "Italiano", "{[audio_language]:Left(3)}", "Ita");
-        AddFunction(result, "Right(3)", "Right", "Italiano", "{[audio_language]:Right(3)}", "ano");
-        AddFunction(result, "NormalizeSpaces()", "NormalizeSpaces", "ITA   Full", "{[subtitle_title]:NormalizeSpaces()}", "ITA Full");
+        List<MetadataCatalogFunctionItem> result = MetadataUiCatalog.GetFunctionCatalog();
 
         string filter = this._functionBrowserFilter != null ? this._functionBrowserFilter.Trim() : "";
         if (string.IsNullOrEmpty(filter))
             return result;
 
-        List<MetadataFunctionBrowserItem> filtered = new List<MetadataFunctionBrowserItem>();
+        List<MetadataCatalogFunctionItem> filtered = new List<MetadataCatalogFunctionItem>();
         for (int i = 0; i < result.Count; i++)
         {
             if (ContainsIgnoreCase(result[i].Call, filter) || ContainsIgnoreCase(result[i].Description, filter))
@@ -816,40 +943,73 @@
     }
 
     /// <summary>
-    /// Aggiunge una funzione senza note
+    /// Restituisce schema input per il valore di una operazione
     /// </summary>
-    /// <param name="result">Lista destinazione</param>
-    /// <param name="call">Chiamata funzione</param>
-    /// <param name="key">Chiave traduzione</param>
-    /// <param name="exampleInput">Input esempio</param>
-    /// <param name="exampleExpression">Espressione esempio</param>
-    /// <param name="exampleOutput">Output esempio</param>
-    private void AddFunction(List<MetadataFunctionBrowserItem> result, string call, string key, string exampleInput, string exampleExpression, string exampleOutput)
+    /// <param name="operation">Operazione corrente</param>
+    /// <returns>Schema input</returns>
+    private MetadataInputSchema GetOperationInputSchema(MkvMetadataOperation operation)
     {
-        this.AddFunction(result, call, key, exampleInput, exampleExpression, exampleOutput, "");
+        if (operation == null)
+            return new MetadataInputSchema();
+
+        if (operation.Type == MkvMetadataOperationType.SetTagField)
+            return MetadataPresetUiHelper.GetTagInputSchema(operation.TagKey, MetadataCatalogInputUsage.OperationValue);
+
+        return MetadataPresetUiHelper.GetFieldInputSchema(operation.FieldKey, MetadataCatalogInputUsage.OperationValue);
     }
 
     /// <summary>
-    /// Aggiunge una funzione al browser funzioni
+    /// Imposta help per il campo di una operazione
     /// </summary>
-    /// <param name="result">Lista destinazione</param>
-    /// <param name="call">Chiamata funzione</param>
-    /// <param name="key">Chiave traduzione</param>
-    /// <param name="exampleInput">Input esempio</param>
-    /// <param name="exampleExpression">Espressione esempio</param>
-    /// <param name="exampleOutput">Output esempio</param>
-    /// <param name="exampleNotes">Note esempio</param>
-    private void AddFunction(List<MetadataFunctionBrowserItem> result, string call, string key, string exampleInput, string exampleExpression, string exampleOutput, string exampleNotes)
+    /// <param name="operation">Operazione corrente</param>
+    private void SetOperationFieldHelp(MkvMetadataOperation operation)
     {
-        result.Add(new MetadataFunctionBrowserItem
+        this.SetHelpInfo(operation != null ? MetadataUiCatalog.GetFieldHelp(operation.FieldKey) : MetadataUiCatalog.GetPresetControlHelp("operationField"));
+    }
+
+    /// <summary>
+    /// Imposta help per il tag di una operazione
+    /// </summary>
+    /// <param name="operation">Operazione corrente</param>
+    private void SetOperationTagHelp(MkvMetadataOperation operation)
+    {
+        this.SetHelpInfo(operation != null ? MetadataUiCatalog.GetTagHelp(operation.TagKey) : MetadataUiCatalog.GetPresetControlHelp("tagKey"));
+    }
+
+    /// <summary>
+    /// Imposta help per il valore di una operazione
+    /// </summary>
+    /// <param name="operation">Operazione corrente</param>
+    private void SetOperationValueHelp(MkvMetadataOperation operation)
+    {
+        if (operation == null)
         {
-            Call = call,
-            Description = AppText.T("web.metadata.function." + key + ".description"),
-            ExampleInput = exampleInput,
-            ExampleExpression = exampleExpression,
-            ExampleOutput = exampleOutput,
-            ExampleNotes = exampleNotes != null ? exampleNotes : ""
-        });
+            this.SetHelpInfo(MetadataUiCatalog.GetPresetControlHelp("operationValue"));
+            return;
+        }
+
+        if (operation.Type == MkvMetadataOperationType.SetTagField)
+        {
+            this.SetHelpInfo(MetadataUiCatalog.GetTagHelp(operation.TagKey));
+            return;
+        }
+
+        if (operation.Type == MkvMetadataOperationType.SetField)
+        {
+            this.SetHelpInfo(MetadataUiCatalog.GetFieldHelp(operation.FieldKey));
+            return;
+        }
+
+        this.SetHelpInfo(MetadataUiCatalog.GetPresetControlHelp("operationValue"));
+    }
+
+    /// <summary>
+    /// Imposta help per una funzione expression
+    /// </summary>
+    /// <param name="functionName">Nome funzione</param>
+    private void SetFunctionHelp(string functionName)
+    {
+        this.SetHelpInfo(MetadataUiCatalog.GetFunctionHelp(functionName));
     }
 
     /// <summary>
@@ -952,8 +1112,20 @@
     /// <param name="key">Chiave help</param>
     private void SetFieldHelp(string key)
     {
-        this._fieldHelpTitle = AppText.T("web.metadata.presetDialog.help." + key + ".title");
-        this._fieldHelpText = AppText.T("web.metadata.presetDialog.help." + key + ".text");
+        this.SetHelpInfo(MetadataUiCatalog.GetPresetControlHelp(key));
+    }
+
+    /// <summary>
+    /// Imposta help contestuale da DTO Core
+    /// </summary>
+    /// <param name="help">Help da mostrare</param>
+    private void SetHelpInfo(MetadataHelpInfo help)
+    {
+        if (help == null)
+            help = MetadataUiCatalog.GetPresetControlHelp("default");
+
+        this._fieldHelpTitle = help.Title;
+        this._fieldHelpText = help.Text;
     }
 
     /// <summary>
@@ -1079,39 +1251,4 @@
         public string Description { get; set; }
     }
 
-    /// <summary>
-    /// Voce browser funzioni
-    /// </summary>
-    private class MetadataFunctionBrowserItem
-    {
-        /// <summary>
-        /// Chiamata funzione inseribile
-        /// </summary>
-        public string Call { get; set; }
-
-        /// <summary>
-        /// Descrizione funzione
-        /// </summary>
-        public string Description { get; set; }
-
-        /// <summary>
-        /// Input esempio
-        /// </summary>
-        public string ExampleInput { get; set; }
-
-        /// <summary>
-        /// Espressione esempio
-        /// </summary>
-        public string ExampleExpression { get; set; }
-
-        /// <summary>
-        /// Output esempio
-        /// </summary>
-        public string ExampleOutput { get; set; }
-
-        /// <summary>
-        /// Note esempio
-        /// </summary>
-        public string ExampleNotes { get; set; }
-    }
 }

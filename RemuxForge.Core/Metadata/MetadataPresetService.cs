@@ -19,7 +19,7 @@ namespace RemuxForge.Core.Metadata
         /// <summary>
         /// Versione schema preset metadata supportata
         /// </summary>
-        private const int CURRENT_SCHEMA_VERSION = 3;
+        private const int CURRENT_SCHEMA_VERSION = 4;
 
         #endregion
 
@@ -186,11 +186,14 @@ namespace RemuxForge.Core.Metadata
         /// <param name="preset">Preset da normalizzare</param>
         private static void NormalizePreset(MkvMetadataPreset preset)
         {
-            if (preset.Name == null)
+            if (string.IsNullOrEmpty(preset.Name))
                 preset.Name = "";
 
-            if (preset.Description == null)
+            if (string.IsNullOrEmpty(preset.Description))
                 preset.Description = "";
+
+            if (MetadataUiCatalog.PresetUsesAdvancedFields(preset))
+                preset.ShowAdvancedFields = true;
 
             if (preset.Rules == null)
                 preset.Rules = new List<MkvMetadataRule>();
@@ -210,7 +213,7 @@ namespace RemuxForge.Core.Metadata
             if (rule == null)
                 return;
 
-            if (rule.Description == null)
+            if (string.IsNullOrEmpty(rule.Description))
                 rule.Description = "";
 
             if (rule.When == null)
@@ -250,22 +253,22 @@ namespace RemuxForge.Core.Metadata
                     if (node.Field == null)
                         node.Field = new MkvMetadataFieldCondition();
 
-                    if (node.Field.FieldKey == null)
+                    if (string.IsNullOrEmpty(node.Field.FieldKey))
                         node.Field.FieldKey = "";
 
-                    if (node.Field.Value == null)
+                    if (string.IsNullOrEmpty(node.Field.Value))
                         node.Field.Value = "";
 
                     if (node.Field.Values == null)
                         node.Field.Values = new List<string>();
 
-                    if (node.Field.FromValue == null)
+                    if (string.IsNullOrEmpty(node.Field.FromValue))
                         node.Field.FromValue = "";
 
-                    if (node.Field.ToValue == null)
+                    if (string.IsNullOrEmpty(node.Field.ToValue))
                         node.Field.ToValue = "";
 
-                    if (node.Field.Unit == null)
+                    if (string.IsNullOrEmpty(node.Field.Unit))
                         node.Field.Unit = "";
 
                     node.TrackComparison = null;
@@ -277,7 +280,7 @@ namespace RemuxForge.Core.Metadata
                     if (node.TrackComparison == null)
                         node.TrackComparison = new MkvMetadataTrackComparisonCondition();
 
-                    if (node.TrackComparison.FieldKey == null)
+                    if (string.IsNullOrEmpty(node.TrackComparison.FieldKey))
                         node.TrackComparison.FieldKey = "";
 
                     node.Field = null;
@@ -325,13 +328,13 @@ namespace RemuxForge.Core.Metadata
             if (operation == null)
                 return;
 
-            if (operation.FieldKey == null)
+            if (string.IsNullOrEmpty(operation.FieldKey))
                 operation.FieldKey = "";
 
-            if (operation.Value == null)
+            if (string.IsNullOrEmpty(operation.Value))
                 operation.Value = "";
 
-            if (operation.TagKey == null)
+            if (string.IsNullOrEmpty(operation.TagKey))
                 operation.TagKey = "";
         }
 
@@ -618,8 +621,12 @@ namespace RemuxForge.Core.Metadata
 
             if (operation.Type == MkvMetadataOperationType.SetTagField || operation.Type == MkvMetadataOperationType.ClearTagField)
             {
-                if (!MetadataTagRegistry.IsAllowed(operation.TagKey))
-                    result.AddError(AppText.F("metadata.preset.unsupportedUiTag", ruleIndex, operationIndex, operation.TagKey));
+                MkvMetadataTargetScope tagScope = MetadataUiCatalog.GetTagTargetScope(rule.TargetScope, operation.TagTarget);
+                MetadataTagDefinition tag;
+                if (!MetadataTagRegistry.ValidateWritable(operation.TagKey, tagScope, out errorMessage))
+                    result.AddError(AppText.F("metadata.preset.operationError", ruleIndex, operationIndex, errorMessage));
+                else if (operation.Type == MkvMetadataOperationType.ClearTagField && MetadataTagRegistry.TryGet(operation.TagKey, out tag) && !tag.IsClearable)
+                    result.AddError(AppText.F("metadata.preset.operationError", ruleIndex, operationIndex, AppText.F("web.metadata.manualEdit.fieldNotClearable", tag.Label)));
             }
 
             if (operation.Type == MkvMetadataOperationType.ClearTags && !operation.ClearTagsConfirmed)

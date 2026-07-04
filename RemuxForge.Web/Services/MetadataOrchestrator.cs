@@ -505,8 +505,22 @@ namespace RemuxForge.Web.Services
 
                     if (change.OperationType == MkvMetadataOperationType.SetTagField || change.OperationType == MkvMetadataOperationType.ClearTagField)
                     {
-                        if (!MetadataTagRegistry.IsAllowed(change.FieldKey))
-                            throw new InvalidOperationException(AppText.F("web.metadata.manualEdit.tagNotAllowed", change.FieldKey));
+                        MetadataTagDefinition tag;
+                        string normalizedValue;
+                        string errorMessage;
+                        if (!MetadataTagRegistry.ValidateWritable(change.FieldKey, change.Scope, out errorMessage))
+                            throw new InvalidOperationException(errorMessage);
+
+                        if (change.OperationType == MkvMetadataOperationType.SetTagField)
+                        {
+                            if (!MetadataTagRegistry.TryGet(change.FieldKey, out tag))
+                                throw new InvalidOperationException(AppText.F("metadata.validation.tagNotWritable", change.FieldKey));
+
+                            if (!MetadataTagRegistry.ValidateWritableValue(change.FieldKey, change.Scope, change.AfterValue, tag.IsClearable, out normalizedValue, out errorMessage))
+                                throw new InvalidOperationException(errorMessage);
+
+                            change.AfterValue = normalizedValue;
+                        }
 
                         continue;
                     }
@@ -515,6 +529,7 @@ namespace RemuxForge.Web.Services
                     {
                         MetadataFieldDefinition field;
                         string errorMessage;
+                        string normalizedValue;
                         if (!MetadataFieldRegistry.TryGet(change.FieldKey, out field))
                             throw new InvalidOperationException(AppText.F("metadata.validation.unknownField", change.FieldKey));
 
@@ -523,6 +538,14 @@ namespace RemuxForge.Web.Services
 
                         if (change.OperationType == MkvMetadataOperationType.ClearField && !field.IsClearable)
                             throw new InvalidOperationException(AppText.F("web.metadata.manualEdit.fieldNotClearable", field.Label));
+
+                        if (change.OperationType == MkvMetadataOperationType.SetField)
+                        {
+                            if (!MetadataFieldRegistry.ValidateWritableValue(change.FieldKey, change.AfterValue, field.IsClearable, out normalizedValue, out errorMessage))
+                                throw new InvalidOperationException(errorMessage);
+
+                            change.AfterValue = normalizedValue;
+                        }
 
                         continue;
                     }

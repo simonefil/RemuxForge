@@ -40,7 +40,7 @@ namespace RemuxForge.Web.Services
             if (rule == null)
                 return;
 
-            if (rule.Description == null)
+            if (string.IsNullOrEmpty(rule.Description))
                 rule.Description = "";
             if (rule.When == null)
                 rule.When = new MkvMetadataRuleWhen();
@@ -48,7 +48,7 @@ namespace RemuxForge.Web.Services
                 rule.When.All = new List<MkvMetadataRuleConditionNode>();
 
             for (int i = 0; i < rule.When.All.Count; i++)
-                EnsureNode(rule, rule.When.All[i]);
+                EnsureNode(rule, rule.When.All[i], includeAdvancedFields);
 
             if (rule.Operations == null)
                 rule.Operations = new List<MkvMetadataOperation>();
@@ -62,7 +62,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         /// <param name="rule">Regola proprietaria</param>
         /// <param name="node">Nodo da normalizzare</param>
-        public static void EnsureNode(MkvMetadataRule rule, MkvMetadataRuleConditionNode node)
+        public static void EnsureNode(MkvMetadataRule rule, MkvMetadataRuleConditionNode node, bool includeAdvancedFields)
         {
             if (node == null)
                 return;
@@ -76,7 +76,7 @@ namespace RemuxForge.Web.Services
                 node.TrackComparison = null;
                 node.TrackGroupCount = null;
                 node.Alternative = null;
-                EnsureFieldCondition(scope, node.Field);
+                EnsureFieldCondition(scope, node.Field, includeAdvancedFields);
             }
             else if (node.NodeType == MkvMetadataRuleConditionNodeType.TrackComparison)
             {
@@ -86,7 +86,7 @@ namespace RemuxForge.Web.Services
                 node.Field = null;
                 node.TrackGroupCount = null;
                 node.Alternative = null;
-                EnsureTrackComparisonCondition(scope, node.TrackComparison);
+                EnsureTrackComparisonCondition(scope, node.TrackComparison, includeAdvancedFields);
             }
             else if (node.NodeType == MkvMetadataRuleConditionNodeType.TrackGroupCount)
             {
@@ -108,7 +108,7 @@ namespace RemuxForge.Web.Services
                 node.TrackComparison = null;
                 node.TrackGroupCount = null;
                 for (int i = 0; i < node.Alternative.Any.Count; i++)
-                    EnsureNode(rule, node.Alternative.Any[i]);
+                    EnsureNode(rule, node.Alternative.Any[i], includeAdvancedFields);
             }
         }
 
@@ -117,23 +117,23 @@ namespace RemuxForge.Web.Services
         /// </summary>
         /// <param name="scope">Ambito regola</param>
         /// <param name="condition">Condizione da normalizzare</param>
-        public static void EnsureFieldCondition(MkvMetadataTargetScope scope, MkvMetadataFieldCondition condition)
+        public static void EnsureFieldCondition(MkvMetadataTargetScope scope, MkvMetadataFieldCondition condition, bool includeAdvancedFields)
         {
             if (condition == null)
                 return;
 
-            if (condition.FieldKey == null || !ContainsField(GetReadableFieldsForCondition(scope), condition.FieldKey))
-                condition.FieldKey = GetDefaultFieldConditionField(scope);
+            if (string.IsNullOrEmpty(condition.FieldKey) || !ContainsField(GetReadableFieldsForCondition(scope, includeAdvancedFields), condition.FieldKey))
+                condition.FieldKey = GetDefaultFieldConditionField(scope, includeAdvancedFields);
 
-            if (condition.Value == null)
+            if (string.IsNullOrEmpty(condition.Value))
                 condition.Value = "";
             if (condition.Values == null)
                 condition.Values = new List<string>();
-            if (condition.FromValue == null)
+            if (string.IsNullOrEmpty(condition.FromValue))
                 condition.FromValue = "";
-            if (condition.ToValue == null)
+            if (string.IsNullOrEmpty(condition.ToValue))
                 condition.ToValue = "";
-            if (condition.Unit == null)
+            if (string.IsNullOrEmpty(condition.Unit))
                 condition.Unit = "";
 
             List<MkvMetadataConditionOperator> operators = GetFieldOperatorOptions(condition.FieldKey);
@@ -146,13 +146,13 @@ namespace RemuxForge.Web.Services
         /// </summary>
         /// <param name="scope">Ambito regola</param>
         /// <param name="condition">Condizione da normalizzare</param>
-        public static void EnsureTrackComparisonCondition(MkvMetadataTargetScope scope, MkvMetadataTrackComparisonCondition condition)
+        public static void EnsureTrackComparisonCondition(MkvMetadataTargetScope scope, MkvMetadataTrackComparisonCondition condition, bool includeAdvancedFields)
         {
             if (condition == null)
                 return;
 
-            if (condition.FieldKey == null || !ContainsField(GetTrackComparableFields(scope), condition.FieldKey))
-                condition.FieldKey = GetDefaultTrackComparisonField(scope);
+            if (string.IsNullOrEmpty(condition.FieldKey) || !ContainsField(GetTrackComparableFields(scope, includeAdvancedFields), condition.FieldKey))
+                condition.FieldKey = GetDefaultTrackComparisonField(scope, includeAdvancedFields);
 
             List<MkvMetadataTrackComparisonRelation> relations = GetTrackComparisonRelations(condition.FieldKey);
             if (!relations.Contains(condition.Relation))
@@ -176,16 +176,16 @@ namespace RemuxForge.Web.Services
             if (!operationTypes.Contains(operation.Type))
                 operation.Type = MkvMetadataOperationType.SetField;
 
-            if (operation.FieldKey == null)
+            if (string.IsNullOrEmpty(operation.FieldKey))
                 operation.FieldKey = "";
-            if (operation.Value == null)
+            if (string.IsNullOrEmpty(operation.Value))
                 operation.Value = "";
-            if (operation.TagKey == null)
+            if (string.IsNullOrEmpty(operation.TagKey))
                 operation.TagKey = "";
 
-            List<string> tagNames = GetTagNames();
-            if (string.IsNullOrEmpty(operation.TagKey) && tagNames.Count > 0)
-                operation.TagKey = tagNames[0];
+            List<MetadataTagDefinition> tags = GetEditableTags(scope, operation, includeAdvancedFields);
+            if ((operation.Type == MkvMetadataOperationType.SetTagField || operation.Type == MkvMetadataOperationType.ClearTagField) && !ContainsTag(tags, operation.TagKey))
+                operation.TagKey = tags.Count > 0 ? tags[0].Name : "";
 
             if (RequiresEditableField(operation.Type) && !ContainsField(GetEditableFields(scope, operation, includeAdvancedFields), operation.FieldKey))
             {
@@ -199,13 +199,13 @@ namespace RemuxForge.Web.Services
         /// </summary>
         /// <param name="scope">Ambito regola</param>
         /// <returns>Nodo condizione</returns>
-        public static MkvMetadataRuleConditionNode CreateFieldConditionNode(MkvMetadataTargetScope scope)
+        public static MkvMetadataRuleConditionNode CreateFieldConditionNode(MkvMetadataTargetScope scope, bool includeAdvancedFields)
         {
             MkvMetadataRuleConditionNode node = new MkvMetadataRuleConditionNode();
             node.NodeType = MkvMetadataRuleConditionNodeType.Field;
             node.Field = new MkvMetadataFieldCondition();
-            node.Field.FieldKey = GetDefaultFieldConditionField(scope);
-            EnsureFieldCondition(scope, node.Field);
+            node.Field.FieldKey = GetDefaultFieldConditionField(scope, includeAdvancedFields);
+            EnsureFieldCondition(scope, node.Field, includeAdvancedFields);
             return node;
         }
 
@@ -214,14 +214,14 @@ namespace RemuxForge.Web.Services
         /// </summary>
         /// <param name="scope">Ambito regola</param>
         /// <returns>Nodo condizione</returns>
-        public static MkvMetadataRuleConditionNode CreateTrackComparisonNode(MkvMetadataTargetScope scope)
+        public static MkvMetadataRuleConditionNode CreateTrackComparisonNode(MkvMetadataTargetScope scope, bool includeAdvancedFields)
         {
             MkvMetadataRuleConditionNode node = new MkvMetadataRuleConditionNode();
             node.NodeType = MkvMetadataRuleConditionNodeType.TrackComparison;
             node.Field = null;
             node.TrackComparison = new MkvMetadataTrackComparisonCondition();
-            node.TrackComparison.FieldKey = GetDefaultTrackComparisonField(scope);
-            EnsureTrackComparisonCondition(scope, node.TrackComparison);
+            node.TrackComparison.FieldKey = GetDefaultTrackComparisonField(scope, includeAdvancedFields);
+            EnsureTrackComparisonCondition(scope, node.TrackComparison, includeAdvancedFields);
             return node;
         }
 
@@ -243,21 +243,9 @@ namespace RemuxForge.Web.Services
         /// </summary>
         /// <param name="scope">Ambito regola</param>
         /// <returns>Campi leggibili</returns>
-        public static List<MetadataFieldDefinition> GetReadableFieldsForCondition(MkvMetadataTargetScope scope)
+        public static List<MetadataFieldDefinition> GetReadableFieldsForCondition(MkvMetadataTargetScope scope, bool includeAdvancedFields)
         {
-            List<MetadataFieldDefinition> all = MetadataFieldRegistry.GetAll();
-            List<MetadataFieldDefinition> result = new List<MetadataFieldDefinition>();
-            for (int i = 0; i < all.Count; i++)
-            {
-                if (!all[i].IsReadable)
-                    continue;
-
-                if (MetadataScopeHelper.IsFieldReadableInScope(all[i], scope))
-                    result.Add(all[i]);
-            }
-
-            SortByLabel(result, GetFieldLabel);
-            return result;
+            return MetadataUiCatalog.GetReadableFields(scope, includeAdvancedFields);
         }
 
         /// <summary>
@@ -265,18 +253,9 @@ namespace RemuxForge.Web.Services
         /// </summary>
         /// <param name="scope">Ambito regola</param>
         /// <returns>Campi confrontabili</returns>
-        public static List<MetadataFieldDefinition> GetTrackComparableFields(MkvMetadataTargetScope scope)
+        public static List<MetadataFieldDefinition> GetTrackComparableFields(MkvMetadataTargetScope scope, bool includeAdvancedFields)
         {
-            List<MetadataFieldDefinition> fields = GetReadableFieldsForCondition(scope);
-            List<MetadataFieldDefinition> result = new List<MetadataFieldDefinition>();
-            for (int i = 0; i < fields.Count; i++)
-            {
-                if (MetadataScopeHelper.IsTrackFieldInScope(fields[i], scope) && fields[i].ValueType != MetadataFieldValueType.Boolean)
-                    result.Add(fields[i]);
-            }
-
-            SortByLabel(result, GetFieldLabel);
-            return result;
+            return MetadataUiCatalog.GetTrackComparableFields(scope, includeAdvancedFields);
         }
 
         /// <summary>
@@ -288,21 +267,8 @@ namespace RemuxForge.Web.Services
         /// <returns>Campi editabili</returns>
         public static List<MetadataFieldDefinition> GetEditableFields(MkvMetadataTargetScope scope, MkvMetadataOperation operation, bool includeAdvancedFields)
         {
-            List<MetadataFieldDefinition> fields = MetadataFieldRegistry.GetEditable(scope, includeAdvancedFields);
-            List<MetadataFieldDefinition> result = new List<MetadataFieldDefinition>();
             MkvMetadataOperationType operationType = operation != null ? operation.Type : MkvMetadataOperationType.SetField;
-            for (int i = 0; i < fields.Count; i++)
-            {
-                if (operationType == MkvMetadataOperationType.ClearField && !fields[i].IsClearable)
-                    continue;
-                if (operationType == MkvMetadataOperationType.SetExclusiveFlag && fields[i].ValueType != MetadataFieldValueType.Boolean)
-                    continue;
-
-                result.Add(fields[i]);
-            }
-
-            SortByLabel(result, GetFieldLabel);
-            return result;
+            return MetadataUiCatalog.GetEditableFields(scope, operationType, includeAdvancedFields);
         }
 
         /// <summary>
@@ -312,19 +278,15 @@ namespace RemuxForge.Web.Services
         /// <returns>Operatori compatibili</returns>
         public static List<MkvMetadataConditionOperator> GetFieldOperatorOptions(string fieldKey)
         {
-            MetadataFieldDefinition field;
-            if (!MetadataFieldRegistry.TryGet(fieldKey, out field))
-                return GetTextOperatorOptions();
-            if (field.ValueType == MetadataFieldValueType.Boolean)
+            List<MetadataConditionOperatorItem> catalog = MetadataUiCatalog.GetConditionOperatorCatalog(fieldKey);
+            List<MkvMetadataConditionOperator> result = new List<MkvMetadataConditionOperator>();
+            for (int i = 0; i < catalog.Count; i++)
             {
-                List<MkvMetadataConditionOperator> result = new List<MkvMetadataConditionOperator> { MkvMetadataConditionOperator.IsTrue, MkvMetadataConditionOperator.IsFalse };
-                SortByLabel(result, GetConditionOperatorLabel);
-                return result;
+                result.Add(catalog[i].Operator);
             }
-            if (MetadataValueNormalizer.IsNumericValueType(field.ValueType))
-                return GetNumericOperatorOptions(true);
 
-            return GetTextOperatorOptions();
+            SortByLabel(result, GetConditionOperatorLabel);
+            return result;
         }
 
         /// <summary>
@@ -334,22 +296,7 @@ namespace RemuxForge.Web.Services
         /// <returns>Operatori numerici</returns>
         public static List<MkvMetadataConditionOperator> GetNumericOperatorOptions(bool includeBetween)
         {
-            List<MkvMetadataConditionOperator> result = new List<MkvMetadataConditionOperator>
-            {
-                MkvMetadataConditionOperator.Equals,
-                MkvMetadataConditionOperator.NotEquals,
-                MkvMetadataConditionOperator.GreaterThan,
-                MkvMetadataConditionOperator.GreaterOrEqual,
-                MkvMetadataConditionOperator.LessThan,
-                MkvMetadataConditionOperator.LessOrEqual
-            };
-            if (includeBetween)
-            {
-                result.Add(MkvMetadataConditionOperator.Between);
-                result.Add(MkvMetadataConditionOperator.NotBetween);
-            }
-            result.Add(MkvMetadataConditionOperator.IsEmpty);
-            result.Add(MkvMetadataConditionOperator.IsNotEmpty);
+            List<MkvMetadataConditionOperator> result = MetadataUiCatalog.GetNumericOperators(includeBetween);
             SortByLabel(result, GetConditionOperatorLabel);
             return result;
         }
@@ -361,28 +308,7 @@ namespace RemuxForge.Web.Services
         /// <returns>Relazioni disponibili</returns>
         public static List<MkvMetadataTrackComparisonRelation> GetTrackComparisonRelations(string fieldKey)
         {
-            MetadataFieldDefinition field;
-            if (MetadataFieldRegistry.TryGet(fieldKey, out field) && !MetadataValueNormalizer.IsNumericValueType(field.ValueType))
-            {
-                List<MkvMetadataTrackComparisonRelation> textResult = new List<MkvMetadataTrackComparisonRelation>
-                {
-                    MkvMetadataTrackComparisonRelation.EqualsAny,
-                    MkvMetadataTrackComparisonRelation.NotEqualsAll
-                };
-                SortByLabel(textResult, GetTrackComparisonRelationLabel);
-                return textResult;
-            }
-
-            List<MkvMetadataTrackComparisonRelation> result = new List<MkvMetadataTrackComparisonRelation>
-            {
-                MkvMetadataTrackComparisonRelation.Largest,
-                MkvMetadataTrackComparisonRelation.Smallest,
-                MkvMetadataTrackComparisonRelation.GreaterThanAll,
-                MkvMetadataTrackComparisonRelation.GreaterOrEqualAll,
-                MkvMetadataTrackComparisonRelation.LessThanAll,
-                MkvMetadataTrackComparisonRelation.LessOrEqualAll,
-                MkvMetadataTrackComparisonRelation.Rank
-            };
+            List<MkvMetadataTrackComparisonRelation> result = MetadataUiCatalog.GetTrackComparisonRelations(fieldKey);
             SortByLabel(result, GetTrackComparisonRelationLabel);
             return result;
         }
@@ -465,14 +391,38 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
-        /// Restituisce i tag editabili
+        /// Restituisce i tag editabili per una operazione
         /// </summary>
-        /// <returns>Nomi tag ordinati</returns>
-        public static List<string> GetTagNames()
+        /// <param name="scope">Ambito regola</param>
+        /// <param name="operation">Operazione corrente</param>
+        /// <param name="includeAdvancedFields">Indica se includere tag avanzati</param>
+        /// <returns>Tag editabili</returns>
+        public static List<MetadataTagDefinition> GetEditableTags(MkvMetadataTargetScope scope, MkvMetadataOperation operation, bool includeAdvancedFields)
         {
-            List<string> result = MetadataTagRegistry.GetEditableTagNames();
-            result.Sort(StringComparer.CurrentCultureIgnoreCase);
-            return result;
+            MkvMetadataTagTarget target = operation != null ? operation.TagTarget : MkvMetadataTagTarget.Current;
+            return MetadataUiCatalog.GetEditableTagsForOperation(scope, target, includeAdvancedFields);
+        }
+
+        /// <summary>
+        /// Restituisce schema input per un campo
+        /// </summary>
+        /// <param name="fieldKey">Chiave campo</param>
+        /// <param name="usage">Uso input</param>
+        /// <returns>Schema input</returns>
+        public static MetadataInputSchema GetFieldInputSchema(string fieldKey, MetadataCatalogInputUsage usage)
+        {
+            return MetadataUiCatalog.GetFieldInputSchema(fieldKey, usage);
+        }
+
+        /// <summary>
+        /// Restituisce schema input per un tag
+        /// </summary>
+        /// <param name="tagKey">Chiave tag</param>
+        /// <param name="usage">Uso input</param>
+        /// <returns>Schema input</returns>
+        public static MetadataInputSchema GetTagInputSchema(string tagKey, MetadataCatalogInputUsage usage)
+        {
+            return MetadataUiCatalog.GetTagInputSchema(tagKey, usage);
         }
 
         /// <summary>
@@ -482,73 +432,29 @@ namespace RemuxForge.Web.Services
         /// <returns>Vero se serve un valore</returns>
         public static bool OperatorNeedsValue(MkvMetadataConditionOperator conditionOperator)
         {
-            return conditionOperator != MkvMetadataConditionOperator.IsEmpty &&
-                conditionOperator != MkvMetadataConditionOperator.IsNotEmpty &&
-                conditionOperator != MkvMetadataConditionOperator.IsTrue &&
-                conditionOperator != MkvMetadataConditionOperator.IsFalse;
+            return MetadataUiCatalog.GetConditionOperatorInfo(conditionOperator).RequiresValue;
         }
 
         /// <summary>
-        /// Indica se il campo richiede selezione unità
+        /// Indica se una condizione richiede un intervallo
         /// </summary>
-        /// <param name="fieldKey">Chiave campo</param>
-        /// <returns>Vero se il campo usa unità</returns>
-        public static bool ShouldShowUnit(string fieldKey)
+        /// <param name="conditionOperator">Operatore condizione</param>
+        /// <returns>Vero se serve un range</returns>
+        public static bool OperatorNeedsRange(MkvMetadataConditionOperator conditionOperator)
         {
-            MetadataFieldDefinition field;
-            return MetadataFieldRegistry.TryGet(fieldKey, out field) && (field.ValueType == MetadataFieldValueType.Bytes || field.ValueType == MetadataFieldValueType.Duration);
+            return MetadataUiCatalog.GetConditionOperatorInfo(conditionOperator).RequiresRange;
         }
 
         /// <summary>
-        /// Restituisce le unità disponibili per un campo
+        /// Indica se una condizione richiede una lista
         /// </summary>
-        /// <param name="fieldKey">Chiave campo</param>
-        /// <returns>Unità disponibili</returns>
-        public static List<string> GetUnits(string fieldKey)
+        /// <param name="conditionOperator">Operatore condizione</param>
+        /// <returns>Vero se serve una lista</returns>
+        public static bool OperatorNeedsList(MkvMetadataConditionOperator conditionOperator)
         {
-            MetadataFieldDefinition field;
-            List<string> result = new List<string>();
-            result.Add("");
-            if (!MetadataFieldRegistry.TryGet(fieldKey, out field))
-                return result;
-
-            if (field.ValueType == MetadataFieldValueType.Bytes)
-            {
-                result.Add("KB");
-                result.Add("MB");
-                result.Add("GB");
-                result.Add("KiB");
-                result.Add("MiB");
-                result.Add("GiB");
-            }
-            if (field.ValueType == MetadataFieldValueType.Duration)
-            {
-                result.Add("ms");
-                result.Add("s");
-                result.Add("min");
-                result.Add("h");
-            }
-
-            return result;
+            return MetadataUiCatalog.GetConditionOperatorInfo(conditionOperator).RequiresList;
         }
 
-        /// <summary>
-        /// Restituisce il tipo input HTML adatto al campo
-        /// </summary>
-        /// <param name="fieldKey">Chiave campo</param>
-        /// <returns>Tipo input</returns>
-        public static string GetInputType(string fieldKey)
-        {
-            MetadataFieldDefinition field;
-            if (!MetadataFieldRegistry.TryGet(fieldKey, out field))
-                return "text";
-            if (MetadataValueNormalizer.IsNumericValueType(field.ValueType))
-                return "number";
-
-            return "text";
-        }
-
-        /// <summary>
         /// Indica se uno scope può usare condizioni tra tracce
         /// </summary>
         /// <param name="scope">Ambito regola</param>
@@ -558,12 +464,6 @@ namespace RemuxForge.Web.Services
             return scope != MkvMetadataTargetScope.Container;
         }
 
-        /// <summary>
-        /// Indica se una traccia appartiene allo scope
-        /// </summary>
-        /// <param name="track">Traccia</param>
-        /// <param name="scope">Ambito regola</param>
-        /// <returns>Vero se appartiene allo scope</returns>
         /// <summary>
         /// Restituisce label scope
         /// </summary>
@@ -648,38 +548,14 @@ namespace RemuxForge.Web.Services
         #region Metodi privati
 
         /// <summary>
-        /// Restituisce gli operatori testuali
-        /// </summary>
-        /// <returns>Operatori testuali</returns>
-        private static List<MkvMetadataConditionOperator> GetTextOperatorOptions()
-        {
-            List<MkvMetadataConditionOperator> result = new List<MkvMetadataConditionOperator>
-            {
-                MkvMetadataConditionOperator.Equals,
-                MkvMetadataConditionOperator.NotEquals,
-                MkvMetadataConditionOperator.Contains,
-                MkvMetadataConditionOperator.NotContains,
-                MkvMetadataConditionOperator.StartsWith,
-                MkvMetadataConditionOperator.EndsWith,
-                MkvMetadataConditionOperator.Regex,
-                MkvMetadataConditionOperator.NotRegex,
-                MkvMetadataConditionOperator.InList,
-                MkvMetadataConditionOperator.NotInList,
-                MkvMetadataConditionOperator.IsEmpty,
-                MkvMetadataConditionOperator.IsNotEmpty
-            };
-            SortByLabel(result, GetConditionOperatorLabel);
-            return result;
-        }
-
-        /// <summary>
         /// Restituisce il campo condizione predefinito per scope
         /// </summary>
         /// <param name="scope">Ambito regola</param>
+        /// <param name="includeAdvancedFields">Indica se includere campi avanzati</param>
         /// <returns>Chiave campo</returns>
-        private static string GetDefaultFieldConditionField(MkvMetadataTargetScope scope)
+        private static string GetDefaultFieldConditionField(MkvMetadataTargetScope scope, bool includeAdvancedFields)
         {
-            List<MetadataFieldDefinition> fields = GetReadableFieldsForCondition(scope);
+            List<MetadataFieldDefinition> fields = GetReadableFieldsForCondition(scope, includeAdvancedFields);
             string preferred = scope == MkvMetadataTargetScope.Container ? "container_title" :
                 scope == MkvMetadataTargetScope.Video ? "video_format" :
                 scope == MkvMetadataTargetScope.Audio ? "audio_language" : "subtitle_language";
@@ -697,10 +573,11 @@ namespace RemuxForge.Web.Services
         /// Restituisce il campo confronto tracce predefinito per scope
         /// </summary>
         /// <param name="scope">Ambito regola</param>
+        /// <param name="includeAdvancedFields">Indica se includere campi avanzati</param>
         /// <returns>Chiave campo</returns>
-        private static string GetDefaultTrackComparisonField(MkvMetadataTargetScope scope)
+        private static string GetDefaultTrackComparisonField(MkvMetadataTargetScope scope, bool includeAdvancedFields)
         {
-            List<MetadataFieldDefinition> fields = GetTrackComparableFields(scope);
+            List<MetadataFieldDefinition> fields = GetTrackComparableFields(scope, includeAdvancedFields);
             string preferred = scope == MkvMetadataTargetScope.Video ? "video_stream_size" :
                 scope == MkvMetadataTargetScope.Audio ? "audio_stream_size" : "subtitle_stream_size";
 
@@ -743,6 +620,23 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
+        /// Verifica se una lista contiene un tag
+        /// </summary>
+        /// <param name="tags">Lista tag</param>
+        /// <param name="tagName">Nome tag</param>
+        /// <returns>Vero se trovato</returns>
+        private static bool ContainsTag(List<MetadataTagDefinition> tags, string tagName)
+        {
+            for (int i = 0; i < tags.Count; i++)
+            {
+                if (string.Equals(tags[i].Name, tagName, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Ordina una lista usando una label
         /// </summary>
         /// <typeparam name="T">Tipo valore</typeparam>
@@ -751,16 +645,6 @@ namespace RemuxForge.Web.Services
         private static void SortByLabel<T>(List<T> items, Func<T, string> labelSelector)
         {
             items.Sort((a, b) => string.Compare(labelSelector(a), labelSelector(b), StringComparison.CurrentCultureIgnoreCase));
-        }
-
-        /// <summary>
-        /// Restituisce la label di un campo
-        /// </summary>
-        /// <param name="field">Campo</param>
-        /// <returns>Label campo</returns>
-        private static string GetFieldLabel(MetadataFieldDefinition field)
-        {
-            return field != null ? field.Label : "";
         }
 
         #endregion

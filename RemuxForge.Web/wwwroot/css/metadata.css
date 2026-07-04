@@ -882,7 +882,8 @@ tr.metadata-diff-removed > td {
     color: var(--foreground2);
 }
 
-.metadata-function-example-backdrop {
+.metadata-function-example-backdrop,
+.metadata-text-editor-backdrop {
     position: fixed;
     inset: 0;
     z-index: 1200;
@@ -898,9 +899,38 @@ tr.metadata-diff-removed > td {
     max-height: 72vh;
 }
 
+.metadata-text-editor-dialog {
+    width: min(112ch, 94vw);
+    min-width: 0;
+    max-width: 94vw;
+    max-height: 82vh;
+}
+
 .metadata-function-example-body {
     display: grid;
     gap: 0.5lh;
+}
+
+.metadata-text-editor-body {
+    display: grid;
+    gap: 0.5lh;
+    min-width: 0;
+    width: 100%;
+}
+
+.metadata-text-editor-textarea {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    min-height: 22lh;
+    height: 34vh;
+    resize: vertical;
+    white-space: pre-wrap;
+    box-sizing: border-box;
+    font-family: var(--font-family);
+    font-size: inherit;
+    line-height: inherit;
 }
 
 .metadata-function-example-name {

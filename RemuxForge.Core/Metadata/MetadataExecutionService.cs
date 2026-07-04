@@ -342,8 +342,15 @@ namespace RemuxForge.Core.Metadata
                     }
                     else
                     {
-                        // mkvpropedit accetta flag booleani come 1/0, non come true/false
-                        string propEditValue = MetadataValueNormalizer.NormalizeBoolean(change.AfterValue);
+                        MetadataFieldDefinition field;
+                        string propEditValue;
+                        string errorMessage;
+
+                        if (!MetadataFieldRegistry.TryGet(change.FieldKey, out field))
+                            throw new InvalidOperationException(AppText.F("metadata.validation.unknownField", change.FieldKey));
+
+                        if (!MetadataFieldRegistry.ValidateWritableValue(change.FieldKey, change.AfterValue, field.IsClearable, out propEditValue, out errorMessage))
+                            throw new InvalidOperationException(errorMessage);
 
                         args.Add("--set");
                         args.Add(change.MkvPropEditProperty + "=" + propEditValue);
@@ -838,14 +845,18 @@ namespace RemuxForge.Core.Metadata
         /// <summary>
         /// Trova la traccia del modello tramite TrackUID MKV
         /// </summary>
+        /// <param name="fileInfo">File metadata da interrogare</param>
+        /// <param name="trackUid">TrackUID MKV cercato</param>
+        /// <returns>Traccia corrispondente o null</returns>
         private static MkvMetadataTrackInfo FindTrackByUid(MkvMetadataFileInfo fileInfo, string trackUid)
         {
-            if (string.IsNullOrEmpty(trackUid) || string.IsNullOrEmpty(trackUid.Trim()))
+            string normalizedTrackUid = trackUid != null ? trackUid.Trim() : "";
+            if (string.IsNullOrEmpty(normalizedTrackUid))
                 return null;
 
             for (int i = 0; i < fileInfo.Tracks.Count; i++)
             {
-                if (string.Equals(fileInfo.Tracks[i].TrackUniqueId, trackUid.Trim(), StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(fileInfo.Tracks[i].TrackUniqueId, normalizedTrackUid, StringComparison.OrdinalIgnoreCase))
                     return fileInfo.Tracks[i];
             }
 
@@ -879,10 +890,20 @@ namespace RemuxForge.Core.Metadata
 
             if (change.OperationType == MkvMetadataOperationType.SetTagField)
             {
+                MetadataTagDefinition tagDefinition;
+                string tagValue;
+                string errorMessage;
+
+                if (!MetadataTagRegistry.TryGet(change.FieldKey, out tagDefinition))
+                    throw new InvalidOperationException(AppText.F("metadata.validation.tagNotWritable", change.FieldKey));
+
+                if (!MetadataTagRegistry.ValidateWritableValue(change.FieldKey, change.Scope, change.AfterValue, tagDefinition.IsClearable, out tagValue, out errorMessage))
+                    throw new InvalidOperationException(errorMessage);
+
                 RemoveSimpleTag(tag, change.FieldKey);
                 tag.Add(new XElement("Simple",
                     new XElement("Name", NormalizeTagName(change.FieldKey)),
-                    new XElement("String", change.AfterValue != null ? change.AfterValue : "")));
+                    new XElement("String", tagValue)));
             }
             else if (change.OperationType == MkvMetadataOperationType.ClearTagField)
             {

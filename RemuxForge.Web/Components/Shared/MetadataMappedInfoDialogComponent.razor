@@ -469,10 +469,21 @@
     private List<MetadataMappedSheetRow> GetTagRows(MkvMetadataTrackInfo track)
     {
         List<MetadataMappedSheetRow> rows = new List<MetadataMappedSheetRow>();
-        List<string> tags = this.Editable ? MetadataTagRegistry.GetEditableTagNames() : this.GetTagKeys(track);
-        for (int i = 0; i < tags.Count; i++)
+        if (this.Editable)
         {
-            rows.Add(this.CreateTagRow(track, tags[i]));
+            List<MetadataTagDefinition> tags = MetadataTagRegistry.GetEditable(MetadataScopeHelper.ScopeFromTrack(track), true);
+            for (int i = 0; i < tags.Count; i++)
+            {
+                rows.Add(this.CreateTagRow(track, tags[i].Name));
+            }
+        }
+        else
+        {
+            List<string> tags = this.GetTagKeys(track);
+            for (int i = 0; i < tags.Count; i++)
+            {
+                rows.Add(this.CreateTagRow(track, tags[i]));
+            }
         }
 
         return rows;
@@ -486,7 +497,8 @@
     /// <param name="sector">Settore campi</param>
     private void AddFieldRows(List<MetadataMappedSheetRow> rows, MkvMetadataTrackInfo track, MetadataFieldSector sector)
     {
-        List<MetadataFieldDefinition> fields = this.Editable ? MetadataFieldRegistry.GetEditable(GetScopeFromSector(sector), true) : MetadataFieldRegistry.GetAll();
+        MkvMetadataTargetScope scope = GetScopeFromSector(sector);
+        List<MetadataFieldDefinition> fields = this.Editable ? MetadataFieldRegistry.GetEditable(scope, true) : MetadataFieldRegistry.GetReadable(scope, true, false);
         for (int i = 0; i < fields.Count; i++)
         {
             MetadataFieldDefinition field = fields[i];
@@ -525,12 +537,18 @@
     /// <returns>Riga sheet</returns>
     private MetadataMappedSheetRow CreateTagRow(MkvMetadataTrackInfo track, string tagKey)
     {
+        MetadataTagDefinition tag;
         MetadataMappedSheetRow row = new MetadataMappedSheetRow();
         row.Token = "[tag:" + tagKey + "]";
         row.Label = AppText.F("web.metadata.mapped.tagLabel", tagKey);
         row.FieldKey = tagKey;
         row.Track = track;
         row.IsTag = true;
+        if (MetadataTagRegistry.TryGet(tagKey, out tag))
+        {
+            row.Label = tag.Label;
+        }
+
         return row;
     }
 
@@ -661,22 +679,24 @@
     /// <returns>Markup input</returns>
     private RenderFragment ManualEditInput(MetadataMappedSheetRow row, MetadataMappedSheetCell cell)
     {
-        MetadataFieldValueType valueType = row.FieldDefinition != null ? row.FieldDefinition.ValueType : MetadataFieldValueType.String;
+        MetadataInputSchema schema = this.GetManualEditInputSchema(row);
         string cssClass = "form-input metadata-manual-input" + (IsManualValueChanged(row, cell) ? " metadata-manual-input-changed" : "");
         string value = this.GetManualEditValue(row, cell);
-        string inputType = valueType == MetadataFieldValueType.Integer || valueType == MetadataFieldValueType.Decimal ? "number" : "text";
-        string inputStep = valueType == MetadataFieldValueType.Decimal ? "any" : valueType == MetadataFieldValueType.Integer ? "1" : "";
 
-        if (!row.IsTag && valueType == MetadataFieldValueType.Boolean)
-        {
-            return @<select class="@cssClass" value="@value" @onchange="@((ChangeEventArgs args) => ChangeManualEditValue(row, args))">
-                <option value=""></option>
-                <option value="true">true</option>
-                <option value="false">false</option>
-            </select>;
-        }
+        return @<MetadataInputRendererComponent Schema="@schema" Value="@value" ValueChanged="@((string nextValue) => ChangeManualEditValue(row, nextValue))" CssClass="@cssClass" />;
+    }
 
-        return @<input class="@cssClass" type="@inputType" step="@inputStep" value="@value" @onchange="@((ChangeEventArgs args) => ChangeManualEditValue(row, args))" />;
+    /// <summary>
+    /// Restituisce schema input per editing manuale
+    /// </summary>
+    /// <param name="row">Riga sheet</param>
+    /// <returns>Schema input</returns>
+    private MetadataInputSchema GetManualEditInputSchema(MetadataMappedSheetRow row)
+    {
+        if (row.IsTag)
+            return MetadataUiCatalog.GetTagInputSchema(row.FieldKey, MetadataCatalogInputUsage.ManualEdit);
+
+        return MetadataUiCatalog.GetFieldInputSchema(row.FieldKey, MetadataCatalogInputUsage.ManualEdit);
     }
 
     /// <summary>
@@ -703,9 +723,9 @@
     /// </summary>
     /// <param name="row">Riga sheet</param>
     /// <param name="args">Argomenti change</param>
-    private void ChangeManualEditValue(MetadataMappedSheetRow row, ChangeEventArgs args)
+    private void ChangeManualEditValue(MetadataMappedSheetRow row, string value)
     {
-        this._editValues[BuildEditKey(row)] = args.Value != null ? args.Value.ToString() : "";
+        this._editValues[BuildEditKey(row)] = value != null ? value : "";
         this._editMessage = "";
     }
 
@@ -780,29 +800,29 @@
 
             if (rowType == "tag")
             {
-                if (!MetadataTagRegistry.IsAllowed(fieldKey))
+                string errorMessage;
+                MkvMetadataTargetScope tagScope = MetadataScopeHelper.ScopeFromTrack(track);
+                MetadataTagDefinition tag;
+                if (!MetadataTagRegistry.ValidateWritable(fieldKey, tagScope, out errorMessage))
                 {
-                    this._editMessage = AppText.F("web.metadata.manualEdit.tagNotAllowed", fieldKey);
+                    this._editMessage = errorMessage;
                     return new List<MkvMetadataChange>();
                 }
 
-                if (track == null)
+                MetadataTagRegistry.TryGet(fieldKey, out tag);
+                if (string.IsNullOrEmpty(after) && !string.IsNullOrEmpty(before) && tag != null && !tag.IsClearable)
                 {
-                    change.Scope = MkvMetadataTargetScope.Container;
-                }
-                else if (track.TrackKind == "video")
-                {
-                    change.Scope = MkvMetadataTargetScope.Video;
-                }
-                else if (track.TrackKind == "audio")
-                {
-                    change.Scope = MkvMetadataTargetScope.Audio;
-                }
-                else if (track.TrackKind == "subtitles")
-                {
-                    change.Scope = MkvMetadataTargetScope.Subtitle;
+                    this._editMessage = AppText.F("web.metadata.manualEdit.fieldNotClearable", tag.Label);
+                    return new List<MkvMetadataChange>();
                 }
 
+                if (!string.IsNullOrEmpty(after) && !MetadataTagRegistry.ValidateWritableValue(fieldKey, tagScope, after, tag != null && tag.IsClearable, out after, out errorMessage))
+                {
+                    this._editMessage = errorMessage;
+                    return new List<MkvMetadataChange>();
+                }
+
+                change.Scope = tagScope;
                 change.OperationType = string.IsNullOrEmpty(after) ? MkvMetadataOperationType.ClearTagField : MkvMetadataOperationType.SetTagField;
                 changes.Add(change);
             }
@@ -825,6 +845,12 @@
                 if (string.IsNullOrEmpty(after) && !string.IsNullOrEmpty(before) && !field.IsClearable)
                 {
                     this._editMessage = AppText.F("web.metadata.manualEdit.fieldNotClearable", field.Label);
+                    return new List<MkvMetadataChange>();
+                }
+
+                if (!string.IsNullOrEmpty(after) && !MetadataFieldRegistry.ValidateWritableValue(fieldKey, after, field.IsClearable, out after, out errorMessage))
+                {
+                    this._editMessage = errorMessage;
                     return new List<MkvMetadataChange>();
                 }
 

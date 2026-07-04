@@ -126,9 +126,10 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public MkvMetadataPreset()
         {
-            this.SchemaVersion = 3;
+            this.SchemaVersion = 4;
             this.Name = "";
             this.Description = "";
+            this.ShowAdvancedFields = false;
             this.Rules = new List<MkvMetadataRule>();
         }
 
@@ -150,6 +151,11 @@ namespace RemuxForge.Core.Models
         /// Descrizione preset
         /// </summary>
         public string Description { get; set; }
+
+        /// <summary>
+        /// Preferenza editoriale per mostrare campi avanzati nel builder
+        /// </summary>
+        public bool ShowAdvancedFields { get; set; }
 
         /// <summary>
         /// Regole ordinate

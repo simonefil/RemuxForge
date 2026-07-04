@@ -27,6 +27,7 @@ namespace RemuxForge.Core.Models
         Duration,
         Bytes,
         Language,
+        LanguageIetf,
         Date
     }
 
@@ -52,6 +53,45 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
+    /// Visibilità UI campo metadata
+    /// </summary>
+    public enum MetadataFieldVisibility
+    {
+        Primary,
+        Advanced,
+        Technical,
+        Hidden
+    }
+
+    /// <summary>
+    /// Tipo input UI suggerito dal backend
+    /// </summary>
+    public enum MetadataFieldInputKind
+    {
+        Text,
+        Number,
+        Decimal,
+        Boolean,
+        Select,
+        LanguageSelect,
+        LanguageIetf,
+        SizeInput,
+        DurationInput,
+        DateInput
+    }
+
+    /// <summary>
+    /// Contesto d'uso di uno schema input metadata
+    /// </summary>
+    public enum MetadataCatalogInputUsage
+    {
+        ConditionValue,
+        OperationValue,
+        ManualEdit,
+        Sheet
+    }
+
+    /// <summary>
     /// Definizione campo metadata leggibile/editabile
     /// </summary>
     public class MetadataFieldDefinition
@@ -65,25 +105,30 @@ namespace RemuxForge.Core.Models
         {
             this.Key = "";
             this.Label = "";
+            this.Description = "";
             this.Sector = MetadataFieldSector.File;
             this.TargetScopes = new List<MkvMetadataTargetScope>();
             this.ValueType = MetadataFieldValueType.String;
+            this.InputKind = MetadataFieldInputKind.Text;
             this.Unit = "";
             this.IsReadable = true;
             this.IsEditable = false;
             this.IsClearable = false;
             this.RiskLevel = MetadataFieldRiskLevel.Normal;
             this.EditPolicy = MetadataFieldEditPolicy.ReadOnly;
+            this.Visibility = MetadataFieldVisibility.Primary;
             this.MediaInfoFieldNames = new List<string>();
             this.MkvPropEditProperty = "";
             this.MkvMergeArgument = "";
-            this.AllowedValues = new List<string>();
+            this.AllowedValues = new List<MetadataInputOption>();
+            this.HelpKey = "";
+            this.SortGroup = 0;
             this.RequiresRemux = false;
         }
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Chiave interna campo
@@ -94,6 +139,11 @@ namespace RemuxForge.Core.Models
         /// Etichetta UI
         /// </summary>
         public string Label { get; set; }
+
+        /// <summary>
+        /// Descrizione breve per help e browser token
+        /// </summary>
+        public string Description { get; set; }
 
         /// <summary>
         /// Settore campo
@@ -109,6 +159,11 @@ namespace RemuxForge.Core.Models
         /// Tipo valore
         /// </summary>
         public MetadataFieldValueType ValueType { get; set; }
+
+        /// <summary>
+        /// Tipo input UI suggerito
+        /// </summary>
+        public MetadataFieldInputKind InputKind { get; set; }
 
         /// <summary>
         /// Unità di misura
@@ -141,6 +196,11 @@ namespace RemuxForge.Core.Models
         public MetadataFieldEditPolicy EditPolicy { get; set; }
 
         /// <summary>
+        /// Visibilità UI
+        /// </summary>
+        public MetadataFieldVisibility Visibility { get; set; }
+
+        /// <summary>
         /// Nomi campi MediaInfo sorgente
         /// </summary>
         public List<string> MediaInfoFieldNames { get; set; }
@@ -158,12 +218,154 @@ namespace RemuxForge.Core.Models
         /// <summary>
         /// Valori consentiti
         /// </summary>
-        public List<string> AllowedValues { get; set; }
+        public List<MetadataInputOption> AllowedValues { get; set; }
+
+        /// <summary>
+        /// Chiave help specifica
+        /// </summary>
+        public string HelpKey { get; set; }
+
+        /// <summary>
+        /// Gruppo ordinamento UI
+        /// </summary>
+        public int SortGroup { get; set; }
 
         /// <summary>
         /// True se richiede remux
         /// </summary>
         public bool RequiresRemux { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Opzione selezionabile per input metadata
+    /// </summary>
+    public class MetadataInputOption
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public MetadataInputOption()
+        {
+            this.Value = "";
+            this.Label = "";
+            this.Description = "";
+        }
+
+        /// <summary>
+        /// Costruttore con valore e label
+        /// </summary>
+        /// <param name="value">Valore serializzato</param>
+        /// <param name="label">Label visualizzata</param>
+        public MetadataInputOption(string value, string label)
+        {
+            this.Value = value != null ? value : "";
+            this.Label = label != null ? label : "";
+            this.Description = "";
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Valore serializzato
+        /// </summary>
+        public string Value { get; set; }
+
+        /// <summary>
+        /// Label visualizzata
+        /// </summary>
+        public string Label { get; set; }
+
+        /// <summary>
+        /// Descrizione breve
+        /// </summary>
+        public string Description { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Schema input metadata consumabile dalla UI
+    /// </summary>
+    public class MetadataInputSchema
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public MetadataInputSchema()
+        {
+            this.InputKind = MetadataFieldInputKind.Text;
+            this.ValueType = MetadataFieldValueType.String;
+            this.HtmlInputType = "text";
+            this.Step = "";
+            this.Placeholder = "";
+            this.Unit = "";
+            this.Options = new List<MetadataInputOption>();
+            this.UnitOptions = new List<MetadataInputOption>();
+            this.SupportsExpression = false;
+            this.AllowsEmpty = true;
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Tipo input da renderizzare
+        /// </summary>
+        public MetadataFieldInputKind InputKind { get; set; }
+
+        /// <summary>
+        /// Tipo logico del valore
+        /// </summary>
+        public MetadataFieldValueType ValueType { get; set; }
+
+        /// <summary>
+        /// Tipo input HTML base
+        /// </summary>
+        public string HtmlInputType { get; set; }
+
+        /// <summary>
+        /// Step input numerico
+        /// </summary>
+        public string Step { get; set; }
+
+        /// <summary>
+        /// Placeholder visualizzato
+        /// </summary>
+        public string Placeholder { get; set; }
+
+        /// <summary>
+        /// Unità base del valore
+        /// </summary>
+        public string Unit { get; set; }
+
+        /// <summary>
+        /// Opzioni valore
+        /// </summary>
+        public List<MetadataInputOption> Options { get; set; }
+
+        /// <summary>
+        /// Opzioni unità
+        /// </summary>
+        public List<MetadataInputOption> UnitOptions { get; set; }
+
+        /// <summary>
+        /// True se il campo accetta token/funzioni
+        /// </summary>
+        public bool SupportsExpression { get; set; }
+
+        /// <summary>
+        /// True se il valore vuoto è consentito
+        /// </summary>
+        public bool AllowsEmpty { get; set; }
 
         #endregion
     }
@@ -206,7 +408,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Errori

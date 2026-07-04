@@ -178,6 +178,15 @@ namespace RemuxForge.Core.Configuration
         }
 
         /// <summary>
+        /// Restituisce tutti i codici lingua ISO 639-2 validi
+        /// </summary>
+        /// <returns>Lista ordinata dei codici lingua</returns>
+        public static List<string> GetAll()
+        {
+            return new List<string>(s_sortedLanguages);
+        }
+
+        /// <summary>
         /// Trova codici lingua simili all'input dato per suggerimenti user-friendly
         /// </summary>
         /// <param name="lang">Il codice lingua o nome non valido inserito dall'utente</param>

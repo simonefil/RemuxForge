@@ -18,7 +18,7 @@
                         </div>
                         @NodeActions(Nodes, nodeIndex)
                     </div>
-                    <MetadataConditionListComponent Rule="Rule" Nodes="node.Alternative.Any" Nested="true" AllowAlternative="false" OnFieldActivated="OnFieldActivated" OnHelpChanged="OnHelpChanged" />
+                    <MetadataConditionListComponent Rule="Rule" Nodes="node.Alternative.Any" Nested="true" AllowAlternative="false" IncludeAdvancedFields="IncludeAdvancedFields" OnFieldActivated="OnFieldActivated" OnHelpChanged="OnHelpChanged" OnTextEditRequested="OnTextEditRequested" />
                 }
                 else if (node.NodeType == MkvMetadataRuleConditionNodeType.TrackComparison)
                 {
@@ -26,7 +26,7 @@
                     <div class="metadata-sentence-row">
                         <span class="metadata-sentence-kind">@AppText.T("web.metadata.presetDialog.trackComparisonShort")</span>
                         <select class="form-input metadata-sentence-field" value="@condition.FieldKey" @onchange="@((ChangeEventArgs e) => ChangeTrackComparisonField(condition, GetChangeValue(e)))" @onfocus='@(() => SetFieldHelp("trackComparison"))' @onmouseenter='@(() => SetFieldHelp("trackComparison"))'>
-                            @foreach (MetadataFieldDefinition field in MetadataPresetUiHelper.GetTrackComparableFields(Scope))
+                            @foreach (MetadataFieldDefinition field in MetadataPresetUiHelper.GetTrackComparableFields(Scope, IncludeAdvancedFields))
                             {
                                 <option value="@field.Key">@field.Label</option>
                             }
@@ -75,8 +75,8 @@
                 {
                     MkvMetadataFieldCondition condition = node.Field;
                     <div class="metadata-sentence-row">
-                        <select class="form-input metadata-sentence-field" value="@condition.FieldKey" @onchange="@((ChangeEventArgs e) => ChangeFieldConditionField(condition, GetChangeValue(e)))" @onfocus="@(() => ActivateFieldConditionAsync(condition))" @onmouseenter='@(() => SetFieldHelp("conditionField"))'>
-                            @foreach (MetadataFieldDefinition field in MetadataPresetUiHelper.GetReadableFieldsForCondition(Scope))
+                        <select class="form-input metadata-sentence-field" value="@condition.FieldKey" @onchange="@((ChangeEventArgs e) => ChangeFieldConditionField(condition, GetChangeValue(e)))" @onfocus="@(() => ActivateFieldConditionAsync(condition))" @onmouseenter="@(() => ActivateFieldConditionAsync(condition))">
+                            @foreach (MetadataFieldDefinition field in MetadataPresetUiHelper.GetReadableFieldsForCondition(Scope, IncludeAdvancedFields))
                             {
                                 <option value="@field.Key">@field.Label</option>
                             }
@@ -89,33 +89,33 @@
                         </select>
                         @if (MetadataPresetUiHelper.OperatorNeedsValue(condition.Operator))
                         {
-                            @if (condition.Operator == MkvMetadataConditionOperator.InList || condition.Operator == MkvMetadataConditionOperator.NotInList)
+                            @if (MetadataPresetUiHelper.OperatorNeedsList(condition.Operator))
                             {
                                 <div class="metadata-chip-editor">
                                     @for (int j = 0; j < condition.Values.Count; j++)
                                     {
                                         int valueIndex = j;
                                         <span class="metadata-chip">
-                                            <input value="@condition.Values[valueIndex]" @oninput="@((ChangeEventArgs e) => ChangeListValue(condition, valueIndex, GetChangeValue(e)))" @onfocus="@(() => ActivateFieldConditionAsync(condition))" />
+                                            <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" Value="@condition.Values[valueIndex]" ValueChanged="@((string value) => ChangeListValue(condition, valueIndex, value))" CssClass="" OnFocus="@(() => ActivateFieldConditionAsync(condition))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.ListValue, valueIndex))" />
                                             <button @onclick="() => RemoveListValue(condition, valueIndex)">x</button>
                                         </span>
                                     }
                                     <button @onclick="() => AddListValue(condition)">+</button>
                                 </div>
                             }
-                            else if (condition.Operator == MkvMetadataConditionOperator.Between || condition.Operator == MkvMetadataConditionOperator.NotBetween)
+                            else if (MetadataPresetUiHelper.OperatorNeedsRange(condition.Operator))
                             {
                                 <div class="metadata-range-editor">
-                                    <input class="form-input" type="@MetadataPresetUiHelper.GetInputType(condition.FieldKey)" value="@condition.FromValue" @oninput="@((ChangeEventArgs e) => condition.FromValue = GetChangeValue(e))" @onfocus="@(() => ActivateFieldConditionAsync(condition))" />
+                                    <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" Value="@condition.FromValue" ValueChanged="@((string value) => condition.FromValue = value)" CssClass="form-input" OnFocus="@(() => ActivateFieldConditionAsync(condition))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.FromValue, -1))" />
                                     <span>@AppText.T("web.metadata.presetDialog.rangeTo")</span>
-                                    <input class="form-input" type="@MetadataPresetUiHelper.GetInputType(condition.FieldKey)" value="@condition.ToValue" @oninput="@((ChangeEventArgs e) => condition.ToValue = GetChangeValue(e))" @onfocus="@(() => ActivateFieldConditionAsync(condition))" />
+                                    <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" Value="@condition.ToValue" ValueChanged="@((string value) => condition.ToValue = value)" CssClass="form-input" OnFocus="@(() => ActivateFieldConditionAsync(condition))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.ToValue, -1))" />
                                     @UnitSelector(condition)
                                 </div>
                             }
                             else
                             {
                                 <div class="metadata-value-editor">
-                                    <input class="form-input" type="@MetadataPresetUiHelper.GetInputType(condition.FieldKey)" value="@condition.Value" @oninput="@((ChangeEventArgs e) => condition.Value = GetChangeValue(e))" @onfocus="@(() => ActivateFieldConditionAsync(condition))" @onmouseenter='@(() => SetFieldHelp("conditionValue"))' />
+                                    <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" Value="@condition.Value" ValueChanged="@((string value) => condition.Value = value)" CssClass="form-input" OnFocus="@(() => ActivateFieldConditionAsync(condition))" OnMouseEnter="@(() => SetFieldHelp("conditionValue"))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.Value, -1))" />
                                     @UnitSelector(condition)
                                 </div>
                             }
@@ -167,6 +167,11 @@
     [Parameter] public bool AllowAlternative { get; set; } = true;
 
     /// <summary>
+    /// Indica se includere campi avanzati
+    /// </summary>
+    [Parameter] public bool IncludeAdvancedFields { get; set; }
+
+    /// <summary>
     /// Evento attivazione campo condizione per il token browser
     /// </summary>
     [Parameter] public EventCallback<MkvMetadataFieldCondition> OnFieldActivated { get; set; }
@@ -175,6 +180,22 @@
     /// Evento cambio help contestuale
     /// </summary>
     [Parameter] public EventCallback<string> OnHelpChanged { get; set; }
+
+    /// <summary>
+    /// Evento richiesta editor testo espanso
+    /// </summary>
+    [Parameter] public EventCallback<MetadataTextEditRequest> OnTextEditRequested { get; set; }
+
+    /// <summary>
+    /// Target valore condizione per editor espanso
+    /// </summary>
+    private enum MetadataConditionTextTarget
+    {
+        Value,
+        FromValue,
+        ToValue,
+        ListValue
+    }
 
     /// <summary>
     /// Ambito corrente della regola
@@ -196,7 +217,7 @@
             return;
 
         for (int i = 0; i < this.Nodes.Count; i++)
-            MetadataPresetUiHelper.EnsureNode(this.Rule, this.Nodes[i]);
+            MetadataPresetUiHelper.EnsureNode(this.Rule, this.Nodes[i], this.IncludeAdvancedFields);
     }
 
     /// <summary>
@@ -222,12 +243,15 @@
     private RenderFragment UnitSelector(MkvMetadataFieldCondition condition)
     {
         return @<text>
-            @if (MetadataPresetUiHelper.ShouldShowUnit(condition.FieldKey))
+            @{
+                MetadataInputSchema schema = MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue);
+            }
+            @if (schema.UnitOptions.Count > 1)
             {
                 <select class="form-input metadata-rule-select-unit" @bind="condition.Unit" @onfocus='@(() => this.SetFieldHelp("conditionUnit"))' @onmouseenter='@(() => this.SetFieldHelp("conditionUnit"))'>
-                    @foreach (string unit in MetadataPresetUiHelper.GetUnits(condition.FieldKey))
+                    @foreach (MetadataInputOption unit in schema.UnitOptions)
                     {
-                        <option value="@unit">@(string.IsNullOrEmpty(unit) ? AppText.T("web.metadata.unit.none") : unit)</option>
+                        <option value="@unit.Value">@unit.Label</option>
                     }
                 </select>
             }
@@ -239,7 +263,7 @@
     /// </summary>
     private void AddFieldCondition()
     {
-        this.AddNode(MetadataPresetUiHelper.CreateFieldConditionNode(this.Scope));
+        this.AddNode(MetadataPresetUiHelper.CreateFieldConditionNode(this.Scope, this.IncludeAdvancedFields));
     }
 
     /// <summary>
@@ -250,7 +274,7 @@
         if (!MetadataPresetUiHelper.CanUseTrackConditions(this.Scope))
             return;
 
-        this.AddNode(MetadataPresetUiHelper.CreateTrackComparisonNode(this.Scope));
+        this.AddNode(MetadataPresetUiHelper.CreateTrackComparisonNode(this.Scope, this.IncludeAdvancedFields));
     }
 
     /// <summary>
@@ -276,7 +300,7 @@
         node.NodeType = MkvMetadataRuleConditionNodeType.AlternativeAny;
         node.Field = null;
         node.Alternative = new MkvMetadataAlternativeAnyBlock();
-        node.Alternative.Any.Add(MetadataPresetUiHelper.CreateFieldConditionNode(this.Scope));
+        node.Alternative.Any.Add(MetadataPresetUiHelper.CreateFieldConditionNode(this.Scope, this.IncludeAdvancedFields));
         this.Nodes.Add(node);
     }
 
@@ -331,7 +355,7 @@
             return;
 
         condition.FieldKey = value != null ? value : "";
-        MetadataPresetUiHelper.EnsureFieldCondition(this.Scope, condition);
+        MetadataPresetUiHelper.EnsureFieldCondition(this.Scope, condition, this.IncludeAdvancedFields);
     }
 
     /// <summary>
@@ -347,7 +371,7 @@
         if (Enum.TryParse(value, out parsed))
         {
             condition.Operator = parsed;
-            MetadataPresetUiHelper.EnsureFieldCondition(this.Scope, condition);
+            MetadataPresetUiHelper.EnsureFieldCondition(this.Scope, condition, this.IncludeAdvancedFields);
         }
     }
 
@@ -362,7 +386,7 @@
             return;
 
         condition.FieldKey = value != null ? value : "";
-        MetadataPresetUiHelper.EnsureTrackComparisonCondition(this.Scope, condition);
+        MetadataPresetUiHelper.EnsureTrackComparisonCondition(this.Scope, condition, this.IncludeAdvancedFields);
     }
 
     /// <summary>
@@ -378,7 +402,7 @@
         if (Enum.TryParse(value, out parsed))
         {
             condition.Relation = parsed;
-            MetadataPresetUiHelper.EnsureTrackComparisonCondition(this.Scope, condition);
+            MetadataPresetUiHelper.EnsureTrackComparisonCondition(this.Scope, condition, this.IncludeAdvancedFields);
         }
     }
 
@@ -413,6 +437,67 @@
     {
         if (condition != null && index >= 0 && index < condition.Values.Count)
             condition.Values[index] = value != null ? value : "";
+    }
+
+    /// <summary>
+    /// Richiede apertura editor testo espanso per una condizione
+    /// </summary>
+    /// <param name="condition">Condizione da modificare</param>
+    /// <param name="target">Campo valore da modificare</param>
+    /// <param name="index">Indice valore lista</param>
+    private Task RequestTextEditor(MkvMetadataFieldCondition condition, MetadataConditionTextTarget target, int index)
+    {
+        MetadataFieldDefinition field;
+        MetadataTextEditRequest request;
+        string fieldLabel;
+        string editorValue;
+
+        if (condition == null)
+            return Task.CompletedTask;
+
+        fieldLabel = condition.FieldKey;
+        if (MetadataFieldRegistry.TryGet(condition.FieldKey, out field))
+            fieldLabel = field.Label;
+
+        if (target == MetadataConditionTextTarget.FromValue)
+            editorValue = condition.FromValue != null ? condition.FromValue : "";
+        else if (target == MetadataConditionTextTarget.ToValue)
+            editorValue = condition.ToValue != null ? condition.ToValue : "";
+        else if (target == MetadataConditionTextTarget.ListValue && index >= 0 && index < condition.Values.Count)
+            editorValue = condition.Values[index] != null ? condition.Values[index] : "";
+        else
+            editorValue = condition.Value != null ? condition.Value : "";
+
+        request = new MetadataTextEditRequest();
+        request.Title = AppText.F("web.metadata.presetDialog.textEditorConditionTitle", fieldLabel);
+        request.Value = editorValue;
+        request.Commit = value =>
+        {
+            string nextValue = value != null ? value : "";
+
+            if (target == MetadataConditionTextTarget.FromValue)
+            {
+                condition.FromValue = nextValue;
+                return;
+            }
+
+            if (target == MetadataConditionTextTarget.ToValue)
+            {
+                condition.ToValue = nextValue;
+                return;
+            }
+
+            if (target == MetadataConditionTextTarget.ListValue)
+            {
+                if (index >= 0 && index < condition.Values.Count)
+                    condition.Values[index] = nextValue;
+
+                return;
+            }
+
+            condition.Value = nextValue;
+        };
+        return this.OnTextEditRequested.InvokeAsync(request);
     }
 
     /// <summary>

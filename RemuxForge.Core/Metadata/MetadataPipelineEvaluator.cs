@@ -466,6 +466,7 @@ namespace RemuxForge.Core.Metadata
         private void ApplySetField(MkvMetadataRecord record, MkvMetadataTrackInfo track, MkvMetadataRule rule, MkvMetadataOperation operation)
         {
             MetadataFieldDefinition field;
+            string errorMessage;
             string before;
             string after;
 
@@ -478,6 +479,9 @@ namespace RemuxForge.Core.Metadata
 
             before = this.GetFieldValue(record.FileInfo, track, operation.FieldKey);
             after = this._expressionEngine.Evaluate(operation.Value, record.FileInfo, track, record.OriginalFileInfo, this.FindOriginalTrack(record, track));
+            if (!MetadataFieldRegistry.ValidateWritableValue(operation.FieldKey, after, field.IsClearable, out after, out errorMessage))
+                throw new InvalidOperationException(errorMessage);
+
             if (before == after)
                 return;
 
@@ -710,10 +714,26 @@ namespace RemuxForge.Core.Metadata
         private static MkvMetadataChange CreateTagChange(MkvMetadataRecord record, MkvMetadataTrackInfo track, MkvMetadataRule rule, MkvMetadataOperation operation, string tagKey, string after)
         {
             MkvMetadataChange change = new MkvMetadataChange();
+            MetadataTagDefinition tag;
+            string errorMessage;
             string before = FindCurrentTagValue(record, track, tagKey);
+            MkvMetadataTargetScope scope = MetadataScopeHelper.ScopeFromTrack(track);
+
+            if (operation.Type == MkvMetadataOperationType.SetTagField)
+            {
+                if (!MetadataTagRegistry.TryGet(tagKey, out tag))
+                    throw new InvalidOperationException(AppText.F("metadata.validation.tagNotWritable", tagKey));
+
+                if (!MetadataTagRegistry.ValidateWritableValue(tagKey, scope, after, tag.IsClearable, out after, out errorMessage))
+                    throw new InvalidOperationException(errorMessage);
+            }
+            else if (operation.Type == MkvMetadataOperationType.ClearTagField && !MetadataTagRegistry.ValidateWritable(tagKey, scope, out errorMessage))
+            {
+                throw new InvalidOperationException(errorMessage);
+            }
 
             change.RuleDescription = rule.Description;
-            change.Scope = MetadataScopeHelper.ScopeFromTrack(track);
+            change.Scope = scope;
             change.TrackSelector = track != null ? track.TrackSelector : "";
             change.TrackKind = track != null ? track.TrackKind : "";
             change.TrackUniqueId = track != null ? track.TrackUniqueId : "";

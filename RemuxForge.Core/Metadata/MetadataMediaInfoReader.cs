@@ -156,29 +156,10 @@ namespace RemuxForge.Core.Metadata
         /// <param name="fileInfo">Info file da popolare</param>
         private static void PopulateGeneralFields(MkvMetadataFileInfo fileInfo)
         {
-            fileInfo.ContainerTitle = GetRaw(fileInfo.RawGeneral, "Title");
-            fileInfo.Fields["container_title"] = fileInfo.ContainerTitle;
-            fileInfo.Fields["container_movie"] = GetRaw(fileInfo.RawGeneral, "Movie");
-            fileInfo.Fields["container_collection"] = GetRaw(fileInfo.RawGeneral, "Collection");
-            fileInfo.Fields["container_season"] = GetRaw(fileInfo.RawGeneral, "Season");
-            fileInfo.Fields["container_part"] = GetRaw(fileInfo.RawGeneral, "Part");
-            fileInfo.Fields["container_date"] = GetRawFirst(fileInfo.RawGeneral, "Recorded_Date", "Encoded_Date");
-            fileInfo.Fields["segment_filename"] = GetRaw(fileInfo.RawGeneral, "SegmentFilename");
-            fileInfo.Fields["prev_filename"] = GetRaw(fileInfo.RawGeneral, "PreviousFilename");
-            fileInfo.Fields["next_filename"] = GetRaw(fileInfo.RawGeneral, "NextFilename");
-            fileInfo.Fields["muxing_application"] = GetRaw(fileInfo.RawGeneral, "Encoded_Application");
-            fileInfo.Fields["writing_application"] = GetRaw(fileInfo.RawGeneral, "Encoded_Library");
-            fileInfo.Fields["general_format"] = GetRaw(fileInfo.RawGeneral, "Format");
-            fileInfo.Fields["general_format_version"] = GetRaw(fileInfo.RawGeneral, "Format_Version");
-            fileInfo.Fields["general_duration"] = GetRaw(fileInfo.RawGeneral, "Duration");
-            fileInfo.Fields["general_overall_bitrate"] = GetRaw(fileInfo.RawGeneral, "OverallBitRate");
-            fileInfo.Fields["general_frame_rate"] = GetRaw(fileInfo.RawGeneral, "FrameRate");
-            fileInfo.Fields["general_frame_count"] = GetRaw(fileInfo.RawGeneral, "FrameCount");
-            fileInfo.Fields["encoded_application"] = GetRaw(fileInfo.RawGeneral, "Encoded_Application");
-            fileInfo.Fields["encoded_library"] = GetRaw(fileInfo.RawGeneral, "Encoded_Library");
-            fileInfo.Fields["tagged_application"] = GetRaw(fileInfo.RawGeneral, "Tagged_Application");
-            fileInfo.Fields["encoded_date"] = GetRaw(fileInfo.RawGeneral, "Encoded_Date");
-            fileInfo.Fields["tagged_date"] = GetRaw(fileInfo.RawGeneral, "Tagged_Date");
+            string containerTitle;
+
+            PopulateCatalogFields(fileInfo.Fields, fileInfo.RawGeneral, MetadataFieldSector.Container, null);
+            fileInfo.ContainerTitle = fileInfo.Fields.TryGetValue("container_title", out containerTitle) ? containerTitle : "";
         }
 
         /// <summary>
@@ -277,88 +258,8 @@ namespace RemuxForge.Core.Metadata
         /// <param name="track">Traccia video</param>
         private static void PopulateVideoFields(MkvMetadataTrackInfo track)
         {
-            track.Fields["video_title"] = track.Title;
-            track.Fields["video_language"] = track.Language;
-            track.Fields["video_language_ietf"] = track.LanguageIetf;
-            track.Fields["video_default"] = GetRawBoolean(track.RawFields, "Default", "Default/String");
-            track.Fields["video_forced"] = GetRawBoolean(track.RawFields, "Forced", "Forced/String");
-            track.Fields["video_enabled"] = GetRawBoolean(track.RawFields, "Enabled", "Enabled/String");
-            track.Fields["video_original"] = GetRawBoolean(track.RawFields, "Original", "Original/String");
-            track.Fields["video_codec_name"] = GetRawFirst(track.RawFields, "Codec", "Codec/String");
-            track.Fields["video_type"] = track.TrackKind;
-            track.Fields["video_stream_order"] = track.StreamOrder.ToString(CultureInfo.InvariantCulture);
-            track.Fields["video_index"] = track.TypeIndex.ToString(CultureInfo.InvariantCulture);
-            track.Fields["video_selector"] = track.TrackSelector;
-            track.Fields["video_id"] = track.TrackId.ToString(CultureInfo.InvariantCulture);
-            track.Fields["video_unique_id"] = track.TrackUniqueId;
-            track.Fields["video_format"] = track.Format;
-            track.Fields["video_codec_id"] = track.CodecId;
-            track.Fields["video_profile"] = GetRaw(track.RawFields, "Format_Profile");
-            track.Fields["video_level"] = GetRawFirst(track.RawFields, "Format_Level", "Format_Level/String");
-            track.Fields["video_tier"] = GetRaw(track.RawFields, "Format_Tier");
-            track.Fields["video_width"] = GetRaw(track.RawFields, "Width");
-            track.Fields["video_height"] = GetRaw(track.RawFields, "Height");
-            track.Fields["video_stored_width"] = GetRaw(track.RawFields, "Stored_Width");
-            track.Fields["video_stored_height"] = GetRaw(track.RawFields, "Stored_Height");
-            track.Fields["video_sampled_width"] = GetRaw(track.RawFields, "Sampled_Width");
-            track.Fields["video_sampled_height"] = GetRaw(track.RawFields, "Sampled_Height");
-            track.Fields["video_dar"] = GetRawFirst(track.RawFields, "DisplayAspectRatio", "DisplayAspectRatio/String");
-            track.Fields["video_par"] = GetRawFirst(track.RawFields, "PixelAspectRatio", "PixelAspectRatio/String");
-            track.Fields["video_active_width"] = GetRaw(track.RawFields, "Active_Width");
-            track.Fields["video_active_height"] = GetRaw(track.RawFields, "Active_Height");
-            track.Fields["video_active_dar"] = GetRaw(track.RawFields, "Active_DisplayAspectRatio");
-            track.Fields["video_rotation"] = GetRaw(track.RawFields, "Rotation");
-            track.Fields["video_pixel_width"] = track.Fields["video_width"];
-            track.Fields["video_pixel_height"] = track.Fields["video_height"];
-            track.Fields["video_display_width"] = GetRawFirst(track.RawFields, "DisplayWidth", "Display_Width");
-            track.Fields["video_display_height"] = GetRawFirst(track.RawFields, "DisplayHeight", "Display_Height");
-            track.Fields["video_display_unit"] = GetRaw(track.RawFields, "DisplayUnit");
-            track.Fields["video_crop_left"] = GetRaw(track.RawFields, "PixelCropLeft");
-            track.Fields["video_crop_top"] = GetRaw(track.RawFields, "PixelCropTop");
-            track.Fields["video_crop_right"] = GetRaw(track.RawFields, "PixelCropRight");
-            track.Fields["video_crop_bottom"] = GetRaw(track.RawFields, "PixelCropBottom");
-            track.Fields["video_hdr_format"] = GetRaw(track.RawFields, "HDR_Format");
-            track.Fields["video_hdr_profile"] = GetRaw(track.RawFields, "HDR_Format_Profile");
-            track.Fields["video_hdr_level"] = GetRaw(track.RawFields, "HDR_Format_Level");
-            track.Fields["video_hdr_settings"] = GetRaw(track.RawFields, "HDR_Format_Settings");
-            track.Fields["video_hdr_compatibility"] = GetRaw(track.RawFields, "HDR_Format_Compatibility");
-            track.Fields["video_frame_rate_mode"] = GetRaw(track.RawFields, "FrameRate_Mode");
-            track.Fields["video_fps"] = GetRaw(track.RawFields, "FrameRate");
-            track.Fields["video_fps_min"] = GetRaw(track.RawFields, "FrameRate_Minimum");
-            track.Fields["video_fps_nominal"] = GetRaw(track.RawFields, "FrameRate_Nominal");
-            track.Fields["video_fps_max"] = GetRaw(track.RawFields, "FrameRate_Maximum");
-            track.Fields["video_fps_original"] = GetRaw(track.RawFields, "FrameRate_Original");
-            track.Fields["video_color_space"] = GetRaw(track.RawFields, "ColorSpace");
-            track.Fields["video_bitdepth"] = GetRaw(track.RawFields, "BitDepth");
-            track.Fields["video_duration"] = GetRaw(track.RawFields, "Duration");
-            track.Fields["video_bitrate"] = GetRaw(track.RawFields, "BitRate");
-            track.Fields["video_bitrate_mode"] = GetRaw(track.RawFields, "BitRate_Mode");
-            track.Fields["video_stream_size"] = track.StreamSize.ToString(CultureInfo.InvariantCulture);
-            track.Fields["video_frame_count"] = GetRaw(track.RawFields, "FrameCount");
-            track.Fields["video_format_profile"] = GetRaw(track.RawFields, "Format_Profile");
-            track.Fields["video_format_level"] = GetRawFirst(track.RawFields, "Format_Level", "Format_Level/String");
-            track.Fields["video_chroma_subsampling"] = GetRaw(track.RawFields, "ChromaSubsampling");
-            track.Fields["video_color_bits"] = track.Fields["video_bitdepth"];
-            track.Fields["video_interlaced"] = GetRawFirst(track.RawFields, "ScanType", "Interlaced");
-            track.Fields["video_scan_type"] = track.Fields["video_interlaced"];
-            track.Fields["video_field_order"] = GetRaw(track.RawFields, "ScanOrder");
-            track.Fields["video_scan_order"] = track.Fields["video_field_order"];
-            track.Fields["video_stereo_mode"] = GetRaw(track.RawFields, "MultiView_Layout");
-            track.Fields["video_compression_mode"] = GetRaw(track.RawFields, "Compression_Mode");
-            track.Fields["video_bits_per_pixel_frame"] = GetRaw(track.RawFields, "Bits-(Pixel*Frame)");
-            track.Fields["video_chroma_position"] = GetRaw(track.RawFields, "ChromaSubsampling_Position");
-            track.Fields["video_color_range"] = GetRaw(track.RawFields, "colour_range");
-            track.Fields["video_color_matrix"] = GetRaw(track.RawFields, "matrix_coefficients");
-            track.Fields["video_color_primaries"] = GetRaw(track.RawFields, "colour_primaries");
-            track.Fields["video_primaries"] = track.Fields["video_color_primaries"];
-            track.Fields["video_transfer_characteristics"] = GetRaw(track.RawFields, "transfer_characteristics");
-            track.Fields["video_transfer"] = track.Fields["video_transfer_characteristics"];
-            track.Fields["video_matrix_coefficients"] = GetRaw(track.RawFields, "matrix_coefficients");
-            track.Fields["video_mastering_display_primaries"] = GetRaw(track.RawFields, "MasteringDisplay_ColorPrimaries");
-            track.Fields["video_mastering_display_luminance"] = GetRaw(track.RawFields, "MasteringDisplay_Luminance");
-            track.Fields["video_max_cll"] = GetRawFirst(track.RawFields, "MaxCLL", "Maximum_Content_Light_Level");
-            track.Fields["video_max_fall"] = GetRawFirst(track.RawFields, "MaxFALL", "Maximum_FrameAverage_Light_Level");
-            track.Fields["video_projection_type"] = GetRaw(track.RawFields, "ProjectionType");
+            Dictionary<string, string> computedValues = BuildTrackComputedValues(track, "video");
+            PopulateCatalogFields(track.Fields, track.RawFields, MetadataFieldSector.Video, computedValues);
         }
 
         /// <summary>
@@ -369,59 +270,13 @@ namespace RemuxForge.Core.Metadata
         {
             string channels = GetRawFirst(track.RawFields, "Channels", "Channel(s)");
             string samplingRate = GetRaw(track.RawFields, "SamplingRate");
-            string bitDepth = GetRaw(track.RawFields, "BitDepth");
             string compressionMode = GetRaw(track.RawFields, "Compression_Mode");
+            Dictionary<string, string> computedValues = BuildTrackComputedValues(track, "audio");
 
-            track.Fields["audio_format"] = track.Format;
-            track.Fields["audio_format_commercial"] = GetRawFirst(track.RawFields, "Format_Commercial", "Format/String");
-            track.Fields["audio_profile"] = GetRaw(track.RawFields, "Format_Profile");
-            track.Fields["audio_codec_id"] = track.CodecId;
-            track.Fields["audio_codec_description"] = GetRawFirst(track.RawFields, "CodecID_Description", "CodecID/Info");
-            track.Fields["audio_format_settings"] = GetRaw(track.RawFields, "Format_Settings");
-            track.Fields["audio_channels"] = channels;
-            track.Fields["audio_channels_label"] = AudioChannelHelper.FormatChannels(channels);
-            track.Fields["audio_channel_positions"] = GetRaw(track.RawFields, "ChannelPositions");
-            track.Fields["audio_sampling_rate"] = samplingRate;
-            track.Fields["audio_sampling_rate_khz"] = MetadataValueNormalizer.FormatSamplingRateKhz(samplingRate);
-            track.Fields["audio_sampling_count"] = GetRaw(track.RawFields, "SamplesCount");
-            track.Fields["audio_sampling_frequency"] = samplingRate;
-            track.Fields["audio_output_sampling_frequency"] = GetRawFirst(track.RawFields, "OutputSamplingRate", "Output_SamplingRate");
-            track.Fields["audio_bitdepth"] = bitDepth;
-            track.Fields["audio_bitdepth_detected"] = GetRaw(track.RawFields, "BitDepth_Detected");
-            track.Fields["audio_bitdepth_stored"] = GetRaw(track.RawFields, "BitDepth_Stored");
-            track.Fields["audio_bit_depth"] = bitDepth;
-            track.Fields["audio_emphasis"] = GetRaw(track.RawFields, "Emphasis");
-            track.Fields["audio_bitrate"] = GetRaw(track.RawFields, "BitRate");
-            track.Fields["audio_bitrate_mode"] = GetRaw(track.RawFields, "BitRate_Mode");
-            track.Fields["audio_compression_mode"] = compressionMode;
-            track.Fields["audio_duration"] = GetRaw(track.RawFields, "Duration");
-            track.Fields["audio_stream_size"] = track.StreamSize.ToString(CultureInfo.InvariantCulture);
-            track.Fields["audio_frame_count"] = GetRaw(track.RawFields, "FrameCount");
-            track.Fields["audio_format_profile"] = GetRaw(track.RawFields, "Format_Profile");
-            track.Fields["audio_channel_layout"] = GetRaw(track.RawFields, "ChannelLayout");
-            track.Fields["audio_delay"] = GetRawFirst(track.RawFields, "Delay", "Delay/String");
-            track.Fields["audio_video_delay"] = GetRawFirst(track.RawFields, "Video_Delay", "Video_Delay/String");
-            track.Fields["audio_replaygain_gain"] = GetRaw(track.RawFields, "ReplayGain_Gain");
-            track.Fields["audio_replaygain_peak"] = GetRaw(track.RawFields, "ReplayGain_Peak");
-            track.Fields["audio_service_kind"] = GetRaw(track.RawFields, "ServiceKind");
-            track.Fields["audio_quality"] = CodecMapping.DetectAudioQuality(track.Format, compressionMode);
-            track.Fields["audio_title"] = track.Title;
-            track.Fields["audio_language"] = track.Language;
-            track.Fields["audio_language_ietf"] = track.LanguageIetf;
-            track.Fields["audio_default"] = GetRawBoolean(track.RawFields, "Default", "Default/String");
-            track.Fields["audio_forced"] = GetRawBoolean(track.RawFields, "Forced", "Forced/String");
-            track.Fields["audio_enabled"] = GetRawBoolean(track.RawFields, "Enabled", "Enabled/String");
-            track.Fields["audio_commentary"] = GetRawBoolean(track.RawFields, "Commentary", "Commentary/String");
-            track.Fields["audio_hearing_impaired"] = GetRawBoolean(track.RawFields, "HearingImpaired", "HearingImpaired/String");
-            track.Fields["audio_visual_impaired"] = GetRawBoolean(track.RawFields, "VisualImpaired", "VisualImpaired/String");
-            track.Fields["audio_original"] = GetRawBoolean(track.RawFields, "Original", "Original/String");
-            track.Fields["audio_codec_name"] = GetRawFirst(track.RawFields, "Codec", "Codec/String");
-            track.Fields["audio_type"] = track.TrackKind;
-            track.Fields["audio_stream_order"] = track.StreamOrder.ToString(CultureInfo.InvariantCulture);
-            track.Fields["audio_index"] = track.TypeIndex.ToString(CultureInfo.InvariantCulture);
-            track.Fields["audio_selector"] = track.TrackSelector;
-            track.Fields["audio_id"] = track.TrackId.ToString(CultureInfo.InvariantCulture);
-            track.Fields["audio_unique_id"] = track.TrackUniqueId;
+            computedValues["audio_channels_label"] = AudioChannelHelper.FormatChannels(channels);
+            computedValues["audio_sampling_rate_khz"] = MetadataValueNormalizer.FormatSamplingRateKhz(samplingRate);
+            computedValues["audio_quality"] = CodecMapping.DetectAudioQuality(track.Format, compressionMode);
+            PopulateCatalogFields(track.Fields, track.RawFields, MetadataFieldSector.Audio, computedValues);
         }
 
         /// <summary>
@@ -430,44 +285,67 @@ namespace RemuxForge.Core.Metadata
         /// <param name="track">Traccia sottotitoli</param>
         private static void PopulateSubtitleFields(MkvMetadataTrackInfo track)
         {
-            track.Fields["subtitle_format"] = track.Format;
-            track.Fields["subtitle_format_commercial"] = GetRawFirst(track.RawFields, "Format_Commercial", "Format/String");
-            track.Fields["subtitle_codec_id"] = track.CodecId;
-            track.Fields["subtitle_codec_description"] = GetRawFirst(track.RawFields, "CodecID_Description", "CodecID/Info");
-            track.Fields["subtitle_muxing_mode"] = GetRaw(track.RawFields, "MuxingMode");
-            track.Fields["subtitle_stream_size"] = track.StreamSize.ToString(CultureInfo.InvariantCulture);
-            track.Fields["subtitle_element_count"] = GetRaw(track.RawFields, "ElementCount");
-            track.Fields["subtitle_duration"] = GetRaw(track.RawFields, "Duration");
-            track.Fields["subtitle_duration_start"] = GetRaw(track.RawFields, "Duration_Start");
-            track.Fields["subtitle_duration_end"] = GetRaw(track.RawFields, "Duration_End");
-            track.Fields["subtitle_bitrate"] = GetRaw(track.RawFields, "BitRate");
-            track.Fields["subtitle_width"] = GetRaw(track.RawFields, "Width");
-            track.Fields["subtitle_height"] = GetRaw(track.RawFields, "Height");
-            track.Fields["subtitle_dar"] = GetRawFirst(track.RawFields, "DisplayAspectRatio", "DisplayAspectRatio/String");
-            track.Fields["subtitle_frame_rate_mode"] = GetRaw(track.RawFields, "FrameRate_Mode");
-            track.Fields["subtitle_fps"] = GetRaw(track.RawFields, "FrameRate");
-            track.Fields["subtitle_frame_count"] = GetRaw(track.RawFields, "FrameCount");
-            track.Fields["subtitle_format_profile"] = GetRaw(track.RawFields, "Format_Profile");
-            track.Fields["subtitle_compression_mode"] = GetRaw(track.RawFields, "Compression_Mode");
-            track.Fields["subtitle_events_total"] = GetRaw(track.RawFields, "Events_Total");
-            track.Fields["subtitle_events_min_duration"] = GetRaw(track.RawFields, "Events_MinDuration");
-            track.Fields["subtitle_lines_count"] = GetRaw(track.RawFields, "Lines_Count");
-            track.Fields["subtitle_title"] = track.Title;
-            track.Fields["subtitle_language"] = track.Language;
-            track.Fields["subtitle_language_ietf"] = track.LanguageIetf;
-            track.Fields["subtitle_default"] = GetRawBoolean(track.RawFields, "Default", "Default/String");
-            track.Fields["subtitle_forced"] = GetRawBoolean(track.RawFields, "Forced", "Forced/String");
-            track.Fields["subtitle_enabled"] = GetRawBoolean(track.RawFields, "Enabled", "Enabled/String");
-            track.Fields["subtitle_hearing_impaired"] = GetRawBoolean(track.RawFields, "HearingImpaired", "HearingImpaired/String");
-            track.Fields["subtitle_text_descriptions"] = GetRawBoolean(track.RawFields, "TextDescriptions", "TextDescriptions/String");
-            track.Fields["subtitle_original"] = GetRawBoolean(track.RawFields, "Original", "Original/String");
-            track.Fields["subtitle_codec_name"] = GetRawFirst(track.RawFields, "Codec", "Codec/String");
-            track.Fields["subtitle_type"] = track.TrackKind;
-            track.Fields["subtitle_stream_order"] = track.StreamOrder.ToString(CultureInfo.InvariantCulture);
-            track.Fields["subtitle_index"] = track.TypeIndex.ToString(CultureInfo.InvariantCulture);
-            track.Fields["subtitle_selector"] = track.TrackSelector;
-            track.Fields["subtitle_id"] = track.TrackId.ToString(CultureInfo.InvariantCulture);
-            track.Fields["subtitle_unique_id"] = track.TrackUniqueId;
+            Dictionary<string, string> computedValues = BuildTrackComputedValues(track, "subtitle");
+            PopulateCatalogFields(track.Fields, track.RawFields, MetadataFieldSector.Subtitle, computedValues);
+        }
+
+        /// <summary>
+        /// Popola i campi definiti dal catalogo per un settore
+        /// </summary>
+        /// <param name="destination">Dizionario destinazione</param>
+        /// <param name="raw">Campi raw MediaInfo</param>
+        /// <param name="sector">Settore metadata da leggere</param>
+        /// <param name="computedValues">Valori derivati dal reader</param>
+        private static void PopulateCatalogFields(Dictionary<string, string> destination, Dictionary<string, string> raw, MetadataFieldSector sector, Dictionary<string, string> computedValues)
+        {
+            List<MetadataFieldDefinition> fields = MetadataFieldRegistry.GetAll();
+
+            for (int i = 0; i < fields.Count; i++)
+            {
+                MetadataFieldDefinition field = fields[i];
+                string value = "";
+                if (field.Sector != sector)
+                    continue;
+
+                if (computedValues != null && computedValues.TryGetValue(field.Key, out value))
+                {
+                    destination[field.Key] = value != null ? value : "";
+                    continue;
+                }
+
+                if (field.MediaInfoFieldNames == null || field.MediaInfoFieldNames.Count == 0)
+                    continue;
+
+                value = field.ValueType == MetadataFieldValueType.Boolean
+                    ? GetRawBoolean(raw, field.MediaInfoFieldNames.ToArray())
+                    : GetRawFirst(raw, field.MediaInfoFieldNames.ToArray());
+                if (!string.IsNullOrEmpty(value))
+                    destination[field.Key] = value;
+            }
+        }
+
+        /// <summary>
+        /// Costruisce i valori derivati comuni a tutte le tracce
+        /// </summary>
+        /// <param name="track">Traccia sorgente</param>
+        /// <param name="prefix">Prefisso campo metadata</param>
+        /// <returns>Valori derivati indicizzati per campo</returns>
+        private static Dictionary<string, string> BuildTrackComputedValues(MkvMetadataTrackInfo track, string prefix)
+        {
+            Dictionary<string, string> result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            result[prefix + "_title"] = track.Title;
+            result[prefix + "_language"] = track.Language;
+            result[prefix + "_language_ietf"] = track.LanguageIetf;
+            result[prefix + "_type"] = track.TrackKind;
+            result[prefix + "_stream_order"] = track.StreamOrder.ToString(CultureInfo.InvariantCulture);
+            result[prefix + "_index"] = track.TypeIndex.ToString(CultureInfo.InvariantCulture);
+            result[prefix + "_selector"] = track.TrackSelector;
+            result[prefix + "_id"] = track.TrackId.ToString(CultureInfo.InvariantCulture);
+            result[prefix + "_unique_id"] = track.TrackUniqueId;
+            result[prefix + "_format"] = track.Format;
+            result[prefix + "_codec_id"] = track.CodecId;
+            result[prefix + "_stream_size"] = track.StreamSize.ToString(CultureInfo.InvariantCulture);
+            return result;
         }
 
         /// <summary>

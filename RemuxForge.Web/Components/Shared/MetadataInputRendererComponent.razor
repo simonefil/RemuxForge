@@ -1,0 +1,158 @@
+@using System.Threading.Tasks
+
+@if (ShouldRenderSelect())
+{
+    <select class="@CssClass" value="@Value" @onchange="ChangeValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter">
+        @if (EffectiveSchema.AllowsEmpty)
+        {
+            <option value=""></option>
+        }
+        @foreach (MetadataInputOption option in EffectiveSchema.Options)
+        {
+            <option value="@option.Value">@option.Label</option>
+        }
+    </select>
+}
+else if (ShouldRenderDatalist())
+{
+    <input class="@CssClass" type="@EffectiveSchema.HtmlInputType" step="@EffectiveSchema.Step" list="@_listId" value="@Value" placeholder="@EffectiveSchema.Placeholder" @oninput="ChangeValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" @onkeydown="HandleKeyDown" />
+    <datalist id="@_listId">
+        @foreach (MetadataInputOption option in EffectiveSchema.Options)
+        {
+            <option value="@option.Value">@option.Label</option>
+        }
+    </datalist>
+}
+else
+{
+    <input class="@CssClass" type="@EffectiveSchema.HtmlInputType" step="@EffectiveSchema.Step" value="@Value" placeholder="@EffectiveSchema.Placeholder" @oninput="ChangeValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" @onkeydown="HandleKeyDown" />
+}
+
+@code {
+    /// <summary>
+    /// Schema input fornito dal catalogo Core
+    /// </summary>
+    [Parameter] public MetadataInputSchema Schema { get; set; }
+
+    /// <summary>
+    /// Valore corrente
+    /// </summary>
+    [Parameter] public string Value { get; set; }
+
+    /// <summary>
+    /// Evento cambio valore
+    /// </summary>
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    /// <summary>
+    /// Classe CSS input
+    /// </summary>
+    [Parameter] public string CssClass { get; set; } = "form-input";
+
+    /// <summary>
+    /// Evento focus
+    /// </summary>
+    [Parameter] public EventCallback OnFocus { get; set; }
+
+    /// <summary>
+    /// Evento hover
+    /// </summary>
+    [Parameter] public EventCallback OnMouseEnter { get; set; }
+
+    /// <summary>
+    /// Evento richiesta editor testo espanso
+    /// </summary>
+    [Parameter] public EventCallback OnExpandedEditRequested { get; set; }
+
+    /// <summary>
+    /// Identificativo datalist
+    /// </summary>
+    private readonly string _listId = "metadata-input-" + Guid.NewGuid().ToString("N");
+
+    /// <summary>
+    /// Schema effettivo con fallback testuale
+    /// </summary>
+    private MetadataInputSchema EffectiveSchema
+    {
+        get
+        {
+            return this.Schema != null ? this.Schema : new MetadataInputSchema();
+        }
+    }
+
+    /// <summary>
+    /// Indica se usare select chiusa
+    /// </summary>
+    /// <returns>Vero se serve select</returns>
+    private bool ShouldRenderSelect()
+    {
+        if (this.EffectiveSchema.SupportsExpression)
+            return false;
+
+        return this.EffectiveSchema.InputKind == MetadataFieldInputKind.Select ||
+            this.EffectiveSchema.InputKind == MetadataFieldInputKind.Boolean ||
+            this.EffectiveSchema.InputKind == MetadataFieldInputKind.LanguageSelect;
+    }
+
+    /// <summary>
+    /// Indica se usare input con datalist
+    /// </summary>
+    /// <returns>Vero se serve datalist</returns>
+    private bool ShouldRenderDatalist()
+    {
+        return this.EffectiveSchema.Options != null &&
+            this.EffectiveSchema.Options.Count > 0 &&
+            (this.EffectiveSchema.SupportsExpression ||
+                this.EffectiveSchema.InputKind == MetadataFieldInputKind.LanguageIetf);
+    }
+
+    /// <summary>
+    /// Indica se l'input corrente può usare l'editor testo espanso
+    /// </summary>
+    /// <returns>Vero se il valore è stringa semplice</returns>
+    private bool CanUseExpandedEditor()
+    {
+        if (!this.OnExpandedEditRequested.HasDelegate || this.ShouldRenderSelect())
+            return false;
+
+        return this.EffectiveSchema.ValueType == MetadataFieldValueType.String &&
+            this.EffectiveSchema.InputKind == MetadataFieldInputKind.Text;
+    }
+
+    /// <summary>
+    /// Propaga cambio valore
+    /// </summary>
+    /// <param name="args">Argomenti change/input</param>
+    private Task ChangeValue(ChangeEventArgs args)
+    {
+        return this.ValueChanged.InvokeAsync(args != null && args.Value != null ? args.Value.ToString() : "");
+    }
+
+    /// <summary>
+    /// Propaga focus
+    /// </summary>
+    private Task HandleFocus()
+    {
+        return this.OnFocus.InvokeAsync();
+    }
+
+    /// <summary>
+    /// Propaga hover
+    /// </summary>
+    private Task HandleMouseEnter()
+    {
+        return this.OnMouseEnter.InvokeAsync();
+    }
+
+    /// <summary>
+    /// Gestisce shortcut locali dell'input
+    /// </summary>
+    /// <param name="args">Argomenti tastiera</param>
+    private Task HandleKeyDown(KeyboardEventArgs args)
+    {
+        if (args != null && args.ShiftKey && string.Equals(args.Key, "F2", StringComparison.OrdinalIgnoreCase) && this.CanUseExpandedEditor())
+            return this.OnExpandedEditRequested.InvokeAsync();
+
+        return Task.CompletedTask;
+    }
+}

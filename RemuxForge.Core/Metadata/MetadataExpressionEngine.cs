@@ -282,27 +282,9 @@ namespace RemuxForge.Core.Metadata
             for (int i = 1; i < parts.Count; i++)
             {
                 string name;
-                bool isKnownFunction;
 
                 ParseFunction(parts[i], out name, out _);
-                isKnownFunction = false;
-                switch (name)
-                {
-                    case "Trim":
-                    case "TrimEnd":
-                    case "ToUpper":
-                    case "ToLower":
-                    case "Replace":
-                    case "RegexReplace":
-                    case "Substring":
-                    case "Left":
-                    case "Right":
-                    case "NormalizeSpaces":
-                        isKnownFunction = true;
-                        break;
-                }
-
-                if (!isKnownFunction)
+                if (!MetadataUiCatalog.IsKnownFunction(name))
                     errors.Add(AppText.F("metadata.expression.unknownFunctionAt", name, basePosition + FindExpressionPartPosition(expression, parts, i)));
             }
         }
