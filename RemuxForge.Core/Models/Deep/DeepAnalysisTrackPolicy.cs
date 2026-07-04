@@ -13,10 +13,13 @@ namespace RemuxForge.Core.Models
         public DeepAnalysisTrackPolicy()
         {
             this.AudioValidationAvailable = false;
+            this.LanguageFineTuneAudioAvailable = false;
             this.TrackLanguage = "";
             this.SourceTrackName = "";
             this.LanguageTrackName = "";
             this.RejectReason = "";
+            this.LanguageFineTuneRejectReason = "";
+            this.LanguageFineTuneTrackName = "";
         }
 
         #endregion
@@ -27,6 +30,11 @@ namespace RemuxForge.Core.Models
         /// True se esiste una coppia audio comune consentita dall'output
         /// </summary>
         public bool AudioValidationAvailable { get; set; }
+
+        /// <summary>
+        /// True se esiste una traccia audio language finale usabile per fine tuning audio
+        /// </summary>
+        public bool LanguageFineTuneAudioAvailable { get; set; }
 
         /// <summary>
         /// Lingua della coppia audio comune
@@ -44,6 +52,11 @@ namespace RemuxForge.Core.Models
         public int LanguageAudioStreamIndex { get; set; }
 
         /// <summary>
+        /// Indice ffmpeg della traccia audio language da usare per fine tuning
+        /// </summary>
+        public int LanguageFineTuneAudioStreamIndex { get; set; }
+
+        /// <summary>
         /// ID MKV della traccia audio source
         /// </summary>
         public int SourceTrackId { get; set; }
@@ -52,6 +65,11 @@ namespace RemuxForge.Core.Models
         /// ID MKV della traccia audio language
         /// </summary>
         public int LanguageTrackId { get; set; }
+
+        /// <summary>
+        /// ID MKV della traccia audio language da usare per fine tuning
+        /// </summary>
+        public int LanguageFineTuneTrackId { get; set; }
 
         /// <summary>
         /// Nome traccia audio source
@@ -64,9 +82,19 @@ namespace RemuxForge.Core.Models
         public string LanguageTrackName { get; set; }
 
         /// <summary>
+        /// Nome traccia audio language usata per fine tuning
+        /// </summary>
+        public string LanguageFineTuneTrackName { get; set; }
+
+        /// <summary>
         /// Motivo per cui la validazione audio non e' disponibile
         /// </summary>
         public string RejectReason { get; set; }
+
+        /// <summary>
+        /// Motivo per cui il fine tuning audio language non è disponibile
+        /// </summary>
+        public string LanguageFineTuneRejectReason { get; set; }
 
         #endregion
     }

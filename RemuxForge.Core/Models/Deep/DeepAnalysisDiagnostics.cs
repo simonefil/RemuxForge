@@ -332,6 +332,9 @@ namespace RemuxForge.Core.Models
             this.RejectReason = "";
             this.OperationType = "";
             this.RefineMethod = "";
+            this.AudioFineTuneStatus = "NotRun";
+            this.AudioFineTuneRejectReason = "";
+            this.AudioFineTuneBoundaryKind = "";
             this.Candidates = new List<DeepAnalysisTransitionCandidateDiagnostic>();
         }
 
@@ -403,6 +406,66 @@ namespace RemuxForge.Core.Models
         /// Durata operazione in millisecondi
         /// </summary>
         public int DurationMs { get; set; }
+        /// <summary>
+        /// Stato del fine tuning audio operativo
+        /// </summary>
+        public string AudioFineTuneStatus { get; set; }
+        /// <summary>
+        /// Motivo per cui il fine tuning audio non è stato applicato
+        /// </summary>
+        public string AudioFineTuneRejectReason { get; set; }
+        /// <summary>
+        /// Tipo di boundary audio selezionato
+        /// </summary>
+        public string AudioFineTuneBoundaryKind { get; set; }
+        /// <summary>
+        /// Confidenza del boundary audio selezionato
+        /// </summary>
+        public double AudioFineTuneConfidence { get; set; }
+        /// <summary>
+        /// Timestamp language originale prima del fine tuning
+        /// </summary>
+        public int AudioFineTuneOriginalLangTimestampMs { get; set; }
+        /// <summary>
+        /// Timestamp language dopo il fine tuning
+        /// </summary>
+        public int AudioFineTuneSnappedLangTimestampMs { get; set; }
+        /// <summary>
+        /// Timestamp source operativo prima del fine tuning
+        /// </summary>
+        public int AudioFineTuneOriginalSourceTimestampMs { get; set; }
+        /// <summary>
+        /// Timestamp source operativo dopo il fine tuning
+        /// </summary>
+        public int AudioFineTuneSnappedSourceTimestampMs { get; set; }
+        /// <summary>
+        /// Boundary source/video mantenuto per diagnostica e verifica visuale
+        /// </summary>
+        public int AudioFineTuneVisualSourceTimestampMs { get; set; }
+        /// <summary>
+        /// Timestamp renderizzato prima del fine tuning
+        /// </summary>
+        public int AudioFineTuneRenderedBeforeMs { get; set; }
+        /// <summary>
+        /// Timestamp renderizzato dopo il fine tuning
+        /// </summary>
+        public int AudioFineTuneRenderedAfterMs { get; set; }
+        /// <summary>
+        /// Shift applicato dal fine tuning audio in millisecondi renderizzati
+        /// </summary>
+        public int AudioFineTuneShiftMs { get; set; }
+        /// <summary>
+        /// Inizio finestra fine tuning audio in millisecondi renderizzati
+        /// </summary>
+        public int AudioFineTuneWindowStartMs { get; set; }
+        /// <summary>
+        /// Fine finestra fine tuning audio in millisecondi renderizzati
+        /// </summary>
+        public int AudioFineTuneWindowEndMs { get; set; }
+        /// <summary>
+        /// Delta cumulativo delle operazioni precedenti in millisecondi renderizzati
+        /// </summary>
+        public int AudioFineTuneCumulativeDeltaBeforeMs { get; set; }
         /// <summary>
         /// Verifica locale associata alla transizione
         /// </summary>
@@ -744,6 +807,10 @@ namespace RemuxForge.Core.Models
         /// Tempo verifica globale
         /// </summary>
         public long GlobalVerifyMs { get; set; }
+        /// <summary>
+        /// Tempo fine tuning audio operativo
+        /// </summary>
+        public long AudioFineTuneMs { get; set; }
     }
 
     /// <summary>

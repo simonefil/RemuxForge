@@ -707,12 +707,14 @@ namespace RemuxForge.Core.Pipeline
             if (sourceInfo == null || langInfo == null || sourceInfo.Tracks == null || langInfo.Tracks == null)
             {
                 result.RejectReason = "metadata audio non disponibili";
+                result.LanguageFineTuneRejectReason = "metadata audio language non disponibili";
                 return result;
             }
 
             if (this._opts.SubOnly)
             {
                 result.RejectReason = "sub-only: nessuna traccia language audio finale";
+                result.LanguageFineTuneRejectReason = "sub-only: nessuna traccia language audio finale";
                 return result;
             }
 
@@ -763,6 +765,19 @@ namespace RemuxForge.Core.Pipeline
                 languageAudio.Add(languageTrack);
             }
 
+            if (languageAudio.Count > 0)
+            {
+                languageTrack = languageAudio[0];
+                result.LanguageFineTuneAudioAvailable = true;
+                result.LanguageFineTuneTrackId = languageTrack.Id;
+                result.LanguageFineTuneTrackName = languageTrack.Name;
+                result.LanguageFineTuneAudioStreamIndex = this.GetAudioStreamIndex(langInfo.Tracks, languageTrack.Id);
+            }
+            else
+            {
+                result.LanguageFineTuneRejectReason = "nessuna traccia language audio finale";
+            }
+
             for (int s = 0; s < sourceAudio.Count && !result.AudioValidationAvailable; s++)
             {
                 sourceTrack = sourceAudio[s];
@@ -782,6 +797,13 @@ namespace RemuxForge.Core.Pipeline
                     result.LanguageTrackName = languageTrack.Name;
                     result.SourceAudioStreamIndex = this.GetAudioStreamIndex(sourceInfo.Tracks, sourceTrack.Id);
                     result.LanguageAudioStreamIndex = this.GetAudioStreamIndex(langInfo.Tracks, languageTrack.Id);
+                    if (!result.LanguageFineTuneAudioAvailable)
+                    {
+                        result.LanguageFineTuneAudioAvailable = true;
+                        result.LanguageFineTuneTrackId = languageTrack.Id;
+                        result.LanguageFineTuneTrackName = languageTrack.Name;
+                        result.LanguageFineTuneAudioStreamIndex = result.LanguageAudioStreamIndex;
+                    }
                     break;
                 }
             }
