@@ -20,7 +20,7 @@ namespace RemuxForge.Core.Metadata
         public static string NormalizeBoolean(string value)
         {
             string text = value != null ? value.Trim() : "";
-            if (text.Length == 0)
+            if (string.IsNullOrEmpty(text))
                 return "";
 
             if (string.Equals(text, "yes", StringComparison.OrdinalIgnoreCase) ||
@@ -149,7 +149,7 @@ namespace RemuxForge.Core.Metadata
             double number;
             double khz;
 
-            if (numberText.Length == 0 || !double.TryParse(numberText, NumberStyles.Float, CultureInfo.InvariantCulture, out number))
+            if (string.IsNullOrEmpty(numberText) || !double.TryParse(numberText, NumberStyles.Float, CultureInfo.InvariantCulture, out number))
                 return "";
 
             if (number <= 0)

@@ -33,7 +33,7 @@
                         <td>@Utils.FormatLangs(r.ResultAudioLangs)</td>
                         <td>@Utils.FormatLangs(r.ResultSubLangs)</td>
                         <td>@Utils.FormatDelay(r.AudioDelayApplied)</td>
-                        <td>@(r.StretchFactor.Length > 0 ? r.StretchFactor : "-")</td>
+                        <td>@(!string.IsNullOrEmpty(r.StretchFactor) ? r.StretchFactor : "-")</td>
                         <td>@(r.DeepAnalysisApplied && r.DeepAnalysisMap != null ? AppText.F("cli.report.deepOps", r.DeepAnalysisMap.Operations.Count) : "-")</td>
                         <td>@Utils.FormatSize(r.SourceSize)</td>
                     </tr>
@@ -94,7 +94,7 @@
     }
 
     /// <summary>
-    /// True se la riga e' selezionata
+    /// True se la riga è selezionata
     /// </summary>
     /// <param name="index">Indice riga</param>
     /// <returns>True se selezionata</returns>

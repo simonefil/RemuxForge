@@ -75,7 +75,7 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Legge la modalita' frame rate video tramite MediaInfo
+        /// Legge la modalità frame rate video tramite MediaInfo
         /// </summary>
         /// <param name="filePath">Percorso file</param>
         /// <returns>Valore MediaInfo FrameRate_Mode, stringa vuota se non disponibile</returns>
@@ -103,14 +103,14 @@ namespace RemuxForge.Core.Media
         /// Legge campi timing video principali tramite MediaInfo
         /// </summary>
         /// <param name="filePath">Percorso file</param>
-        /// <param name="frameRateMode">Modalita' frame rate</param>
+        /// <param name="frameRateMode">Modalità frame rate</param>
         /// <param name="frameRate">Frame rate nominale</param>
         /// <param name="originalFrameRate">Frame rate originale</param>
         /// <param name="frameCount">Numero frame</param>
         /// <param name="durationMs">Durata in millisecondi</param>
         /// <param name="minFrameRate">Frame rate minimo</param>
         /// <param name="maxFrameRate">Frame rate massimo</param>
-        /// <returns>True se almeno un campo utile e' stato letto</returns>
+        /// <returns>True se almeno un campo utile è stato letto</returns>
         public bool TryGetVideoTiming(string filePath, out string frameRateMode, out double frameRate, out double originalFrameRate, out long frameCount, out double durationMs, out double minFrameRate, out double maxFrameRate)
         {
             bool result = false;
@@ -143,7 +143,7 @@ namespace RemuxForge.Core.Media
                     _ = TryParseDouble(parts[4], out durationMs);
                     _ = TryParseDouble(parts[5], out minFrameRate);
                     _ = TryParseDouble(parts[6], out maxFrameRate);
-                    result = frameRateMode.Length > 0 || frameRate > 0.0 || frameCount > 0 || durationMs > 0.0;
+                    result = !string.IsNullOrEmpty(frameRateMode) || frameRate > 0.0 || frameCount > 0 || durationMs > 0.0;
                 }
             }
             catch (Exception ex)

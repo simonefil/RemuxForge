@@ -37,7 +37,7 @@
                      @onclick="() => InvokeItem(item)"
                      @onmouseenter="() => SetActiveItem(itemIndex)">
                     <span>@item.Label</span>
-                    @if (item.Shortcut.Length > 0)
+                    @if (!string.IsNullOrEmpty(item.Shortcut))
                     {
                         <span class="shortcut">@item.Shortcut</span>
                     }
@@ -151,6 +151,11 @@
     [Parameter] public EventCallback OnRename { get; set; }
 
     /// <summary>
+    /// Evento editor manuale metadata
+    /// </summary>
+    [Parameter] public EventCallback OnManualEdit { get; set; }
+
+    /// <summary>
     /// Evento mostra percorsi tool
     /// </summary>
     [Parameter] public EventCallback OnShowToolPaths { get; set; }
@@ -201,7 +206,7 @@
     [Parameter] public string CurrentLanguage { get; set; }
 
     /// <summary>
-    /// Modalita' corrente
+    /// Modalità corrente
     /// </summary>
     [Parameter] public string CurrentMode { get; set; }
 
@@ -221,7 +226,7 @@
     private List<MenuDef> _menus;
 
     /// <summary>
-    /// Posizioni orizzontali dei menu in unita' ch
+    /// Posizioni orizzontali dei menu in unità ch
     /// </summary>
     private List<int> _menuPositions;
 
@@ -242,6 +247,7 @@
                 }},
                 new MenuDef { Label = AppText.T("web.menu.actions"), Mnemonic = AppText.T("web.menu.actions.mnemonic"), Items = new List<MenuItemDef>
                 {
+                    new MenuItemDef { Label = AppText.T("web.menu.metadata.manualEdit"), Shortcut = "F4", Callback = () => OnManualEdit.InvokeAsync() },
                     new MenuItemDef { Label = AppText.T("web.menu.metadata.scanInput"), Shortcut = "F5", Callback = () => OnScan.InvokeAsync() },
                     new MenuItemDef { Label = AppText.T("web.menu.metadata.analyze"), Shortcut = "F6", Callback = () => OnAnalyzeAll.InvokeAsync() },
                     new MenuItemDef { Label = AppText.T("web.menu.metadata.applySelected"), Shortcut = "F9", Callback = () => OnMergeSelected.InvokeAsync() },
@@ -397,7 +403,7 @@
     /// <param name="ctrl">Flag Ctrl</param>
     /// <param name="shift">Flag Shift</param>
     /// <param name="alt">Flag Alt</param>
-    /// <returns>True se il tasto e' stato gestito dal menu</returns>
+    /// <returns>True se il tasto è stato gestito dal menu</returns>
     public bool HandleKeyboardKey(string key, bool ctrl, bool shift, bool alt)
     {
         bool result = false;
@@ -484,7 +490,7 @@
     }
 
     /// <summary>
-    /// Commuta menu al passaggio del mouse (solo se un menu e' gia' aperto)
+    /// Commuta menu al passaggio del mouse (solo se un menu è già aperto)
     /// </summary>
     /// <param name="index">Indice del menu</param>
     private void HoverMenu(int index)
@@ -540,8 +546,10 @@
     {
         int index = this._activeIndex + delta;
 
-        if (index < 0) { index = this._menus.Count - 1; }
-        if (index >= this._menus.Count) { index = 0; }
+        if (index < 0)
+            index = this._menus.Count - 1;
+        if (index >= this._menus.Count)
+            index = 0;
         this.OpenMenu(index);
     }
 
@@ -576,8 +584,10 @@
         do
         {
             index += delta;
-            if (index < 0) { index = items.Count - 1; }
-            if (index >= items.Count) { index = 0; }
+            if (index < 0)
+                index = items.Count - 1;
+            if (index >= items.Count)
+                index = 0;
             attempts++;
         }
         while (attempts <= items.Count && items[index].IsSeparator);

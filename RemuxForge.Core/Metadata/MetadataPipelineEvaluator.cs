@@ -47,7 +47,7 @@ namespace RemuxForge.Core.Metadata
             int matchCount = 0;
 
             // Riparte dallo snapshot originale per rendere deterministica ogni nuova analisi
-            if (record.OriginalFileInfo != null && record.OriginalFileInfo.FilePath.Length > 0)
+            if (record.OriginalFileInfo != null && !string.IsNullOrEmpty(record.OriginalFileInfo.FilePath))
                 record.FileInfo = MetadataModelCloner.CloneFileInfo(record.OriginalFileInfo);
 
             record.Changes.Clear();
@@ -358,7 +358,7 @@ namespace RemuxForge.Core.Metadata
             if (text.IndexOf('[', StringComparison.Ordinal) >= 0 || text.IndexOf('{', StringComparison.Ordinal) >= 0)
                 resolved = this._expressionEngine.Evaluate(text, record.FileInfo, track, record.OriginalFileInfo, this.FindOriginalTrack(record, track));
 
-            if (resolved.Trim().Length > 0 && suffix.Length > 0 && !MetadataValueNormalizer.HasExplicitUnit(resolved))
+            if (!string.IsNullOrEmpty(resolved.Trim()) && !string.IsNullOrEmpty(suffix) && !MetadataValueNormalizer.HasExplicitUnit(resolved))
                 return resolved + " " + suffix;
 
             return resolved;
@@ -506,7 +506,7 @@ namespace RemuxForge.Core.Metadata
             }
 
             before = this.GetFieldValue(record.FileInfo, track, operation.FieldKey);
-            if (before.Length == 0)
+            if (string.IsNullOrEmpty(before))
                 return;
 
             this.SetFieldValue(record.FileInfo, track, operation.FieldKey, "");
@@ -606,7 +606,7 @@ namespace RemuxForge.Core.Metadata
             string after = "";
             List<MkvMetadataTrackInfo> targetTracks;
 
-            if (operation.Type != MkvMetadataOperationType.ClearTags && tagKey.Length == 0)
+            if (operation.Type != MkvMetadataOperationType.ClearTags && string.IsNullOrEmpty(tagKey))
                 throw new InvalidOperationException(AppText.T("metadata.error.tagKeyRequired"));
 
             if (operation.Type == MkvMetadataOperationType.ClearTags && !operation.ClearTagsConfirmed)
@@ -753,7 +753,7 @@ namespace RemuxForge.Core.Metadata
             string value;
             string key = tagKey != null ? tagKey.Trim().ToUpperInvariant() : "";
 
-            if (key.Length == 0)
+            if (string.IsNullOrEmpty(key))
                 return "";
 
             tags = track != null ? track.Tags : record != null && record.FileInfo != null ? record.FileInfo.Tags : null;
@@ -776,11 +776,11 @@ namespace RemuxForge.Core.Metadata
             Dictionary<string, string> tags = track != null ? track.Tags : record.FileInfo.Tags;
             string key = tagKey != null ? tagKey.Trim().ToUpperInvariant() : "";
 
-            if (operation.Type == MkvMetadataOperationType.SetTagField && key.Length > 0)
+            if (operation.Type == MkvMetadataOperationType.SetTagField && !string.IsNullOrEmpty(key))
             {
                 tags[key] = after != null ? after : "";
             }
-            else if (operation.Type == MkvMetadataOperationType.ClearTagField && key.Length > 0)
+            else if (operation.Type == MkvMetadataOperationType.ClearTagField && !string.IsNullOrEmpty(key))
             {
                 tags.Remove(key);
             }
@@ -963,10 +963,10 @@ namespace RemuxForge.Core.Metadata
         private static bool Compare(string left, string right, MkvMetadataConditionOperator op)
         {
             if (op == MkvMetadataConditionOperator.IsEmpty)
-                return left == null || left.Trim().Length == 0;
+                return string.IsNullOrEmpty(left != null ? left.Trim() : null);
 
             if (op == MkvMetadataConditionOperator.IsNotEmpty)
-                return left != null && left.Trim().Length > 0;
+                return !string.IsNullOrEmpty(left != null ? left.Trim() : null);
 
             left = left != null ? left : "";
             right = right != null ? right : "";

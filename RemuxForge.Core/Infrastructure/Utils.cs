@@ -171,12 +171,12 @@ namespace RemuxForge.Core.Infrastructure
         public static string FormatTrackCompact(TrackInfo track)
         {
             StringBuilder sb = new StringBuilder();
-            string lang = track.Language.Length > 0 ? track.Language : "und";
+            string lang = !string.IsNullOrEmpty(track.Language) ? track.Language : "und";
             string channels = AudioChannelHelper.FormatChannels(track.Channels);
 
             sb.Append(track.Id).Append(": ").Append(lang).Append(" ").Append(track.Codec);
 
-            if (channels.Length > 0)
+            if (!string.IsNullOrEmpty(channels))
             {
                 sb.Append(" ").Append(channels);
             }
@@ -296,7 +296,7 @@ namespace RemuxForge.Core.Infrastructure
         /// <param name="keptIds">ID tracce sorgente mantenute</param>
         /// <param name="importedTracks">Tracce importate</param>
         /// <param name="convertFormat">Formato conversione o vuoto</param>
-        /// <param name="filterActive">True se il filtro sorgente e' attivo</param>
+        /// <param name="filterActive">True se il filtro sorgente è attivo</param>
         /// <returns>Stringa formattata del risultato</returns>
         public static string FormatResultTrackList(List<TrackInfo> sourceTracks, List<int> keptIds, List<TrackInfo> importedTracks, string convertFormat, bool filterActive)
         {
@@ -307,7 +307,7 @@ namespace RemuxForge.Core.Infrastructure
             {
                 for (int i = 0; i < sourceTracks.Count; i++)
                 {
-                    // Se il filtro e' attivo, mostra solo le tracce mantenute
+                    // Se il filtro è attivo, mostra solo le tracce mantenute
                     if (filterActive && !keptIds.Contains(sourceTracks[i].Id))
                     {
                         continue;
@@ -317,7 +317,7 @@ namespace RemuxForge.Core.Infrastructure
                     sb.Append(FormatTrackCompact(sourceTracks[i]));
 
                     // Indica conversione se applicabile anche a tracce sorgente
-                    if (convertFormat.Length > 0 && CodecMapping.IsConvertibleLossless(sourceTracks[i], convertFormat))
+                    if (!string.IsNullOrEmpty(convertFormat) && CodecMapping.IsConvertibleLossless(sourceTracks[i], convertFormat))
                     {
                         sb.Append(" -> ").Append(convertFormat.ToUpper());
                     }
@@ -333,7 +333,7 @@ namespace RemuxForge.Core.Infrastructure
                     if (count > 0) { sb.Append(" | "); }
                     sb.Append(FormatTrackCompact(importedTracks[i]));
 
-                    if (convertFormat.Length > 0 && CodecMapping.IsConvertibleLossless(importedTracks[i], convertFormat))
+                    if (!string.IsNullOrEmpty(convertFormat) && CodecMapping.IsConvertibleLossless(importedTracks[i], convertFormat))
                     {
                         sb.Append(" -> ").Append(convertFormat.ToUpper());
                     }
@@ -352,7 +352,7 @@ namespace RemuxForge.Core.Infrastructure
         /// <param name="keptIds">ID tracce sorgente mantenute</param>
         /// <param name="importedTracks">Tracce importate</param>
         /// <param name="options">Opzioni correnti</param>
-        /// <param name="filterActive">True se il filtro sorgente e' attivo</param>
+        /// <param name="filterActive">True se il filtro sorgente è attivo</param>
         /// <param name="hasMerge">True se il record importa tracce da un file lingua</param>
         /// <param name="forceImportedProcessing">True se deep/source-fill richiedono render sulle tracce importate</param>
         /// <returns>Stringa formattata del risultato</returns>
@@ -417,7 +417,7 @@ namespace RemuxForge.Core.Infrastructure
         {
             bool result = false;
 
-            if (track == null || options == null || options.AudioFormat.Length == 0 || CodecMapping.IsSpatialCodec(track))
+            if (track == null || options == null || string.IsNullOrEmpty(options.AudioFormat) || CodecMapping.IsSpatialCodec(track))
             {
                 return result;
             }

@@ -51,7 +51,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="ffmpegPath">Percorso ffmpeg</param>
         /// <param name="tempFolder">Cartella temporanea</param>
         /// <param name="timeoutMs">Timeout operazioni esterne</param>
-        /// <param name="mkvMergePath">Percorso mkvmerge gia' risolto dalla pipeline</param>
+        /// <param name="mkvMergePath">Percorso mkvmerge già risolto dalla pipeline</param>
         /// <param name="toolPathResolver">Resolver strumenti esterni</param>
         public SubtitleTimelineEditService(string ffmpegPath, string tempFolder, int timeoutMs, string mkvMergePath = "", ToolPathResolverService toolPathResolver = null)
         {
@@ -282,7 +282,7 @@ namespace RemuxForge.Core.Subtitles
         private bool ExtractWithMkvExtract(string langFile, int trackId, string outputFile)
         {
             string mkvExtractPath = this.ResolveMkvExtractPath();
-            if (mkvExtractPath.Length == 0)
+            if (string.IsNullOrEmpty(mkvExtractPath))
             {
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Warning, "  mkvextract non disponibile per sottotitoli bitmap");
                 return false;
@@ -306,7 +306,7 @@ namespace RemuxForge.Core.Subtitles
         private string ResolveMkvExtractPath()
         {
             string mkvMergePath = this._mkvMergePath;
-            if (mkvMergePath.Length == 0)
+            if (string.IsNullOrEmpty(mkvMergePath))
             {
                 mkvMergePath = this._toolPathResolver.ResolveMkvMergePath(false);
             }

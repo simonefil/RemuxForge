@@ -58,7 +58,7 @@ namespace RemuxForge.Core.Models
         public double DisplayAspect;
 
         /// <summary>
-        /// True se e' stato rilevato auto-crop bordi neri
+        /// True se è stato rilevato auto-crop bordi neri
         /// </summary>
         public bool HasBlackBorderCrop;
 

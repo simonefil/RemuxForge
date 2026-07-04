@@ -30,7 +30,7 @@
             </AdvancedSettingsSection>
 
         </div>
-        @if (_validationError.Length > 0)
+        @if (!string.IsNullOrEmpty(_validationError))
         {
             <div style="padding: 0.5em 1em; color: var(--color-error); white-space: pre-line;">@_validationError</div>
         }
@@ -50,26 +50,67 @@
 
     #region Campi VideoSync
 
+    /// <summary>
+    /// Larghezza frame VideoSync
+    /// </summary>
     private string _vsFrameWidth = "";
+
+    /// <summary>
+    /// Altezza frame VideoSync
+    /// </summary>
     private string _vsFrameHeight = "";
+
+    /// <summary>
+    /// Numero checkpoint VideoSync
+    /// </summary>
     private string _vsNumCheckPoints = "";
+
+    /// <summary>
+    /// Punti validi minimi VideoSync
+    /// </summary>
     private string _vsMinValidPoints = "";
 
     #endregion
 
     #region Campi FrameSync
 
+    /// <summary>
+    /// Durata sorgente FrameSync
+    /// </summary>
     private string _fsSourceDurationSec = "";
+
+    /// <summary>
+    /// Durata lingua FrameSync
+    /// </summary>
     private string _fsLangDurationSec = "";
+
+    /// <summary>
+    /// Punti validi minimi FrameSync
+    /// </summary>
     private string _fsMinValidPoints = "";
+
+    /// <summary>
+    /// Abilitazione audio globale FrameSync
+    /// </summary>
     private bool _fsAudioGlobalEnabled;
 
     #endregion
 
     #region Campi DeepAnalysis
 
+    /// <summary>
+    /// Timeout estrazione scene DeepAnalysis
+    /// </summary>
     private string _daSceneExtractTimeoutMs = "";
+
+    /// <summary>
+    /// Punti verifica globale DeepAnalysis
+    /// </summary>
     private string _daGlobalVerifyPoints = "";
+
+    /// <summary>
+    /// Rapporto minimo verifica globale DeepAnalysis
+    /// </summary>
     private string _daGlobalVerifyMinRatio = "";
 
     #endregion
@@ -102,7 +143,7 @@
     /// </summary>
     protected override void OnInitialized()
     {
-        LoadFields();
+        this.LoadFields();
     }
 
     /// <summary>
@@ -111,7 +152,7 @@
     private void LoadFields()
     {
         AdvancedConfig adv = AppSettingsService.Instance.Settings.Advanced;
-        LoadFieldsFrom(adv);
+        this.LoadFieldsFrom(adv);
     }
 
     /// <summary>
@@ -119,31 +160,31 @@
     /// </summary>
     private void LoadFieldsFrom(AdvancedConfig adv)
     {
-        // VideoSync — interi
-        _vsFrameWidth = adv.VideoSync.FrameWidth.ToString();
-        _vsFrameHeight = adv.VideoSync.FrameHeight.ToString();
-        _vsNumCheckPoints = adv.VideoSync.NumCheckPoints.ToString();
-        _vsMinValidPoints = adv.VideoSync.MinValidPoints.ToString();
+        // VideoSync: interi
+        this._vsFrameWidth = adv.VideoSync.FrameWidth.ToString();
+        this._vsFrameHeight = adv.VideoSync.FrameHeight.ToString();
+        this._vsNumCheckPoints = adv.VideoSync.NumCheckPoints.ToString();
+        this._vsMinValidPoints = adv.VideoSync.MinValidPoints.ToString();
 
-        // FrameSync — interi
-        _fsSourceDurationSec = adv.FrameSync.SourceDurationSec.ToString();
-        _fsLangDurationSec = adv.FrameSync.LangDurationSec.ToString();
-        _fsMinValidPoints = adv.FrameSync.MinValidPoints.ToString();
+        // FrameSync: interi
+        this._fsSourceDurationSec = adv.FrameSync.SourceDurationSec.ToString();
+        this._fsLangDurationSec = adv.FrameSync.LangDurationSec.ToString();
+        this._fsMinValidPoints = adv.FrameSync.MinValidPoints.ToString();
 
-        // FrameSync — booleani
-        _fsAudioGlobalEnabled = adv.FrameSync.AudioGlobalEnabled;
+        // FrameSync: booleani
+        this._fsAudioGlobalEnabled = adv.FrameSync.AudioGlobalEnabled;
 
-        _daGlobalVerifyMinRatio = adv.DeepAnalysis.GlobalVerifyMinRatio.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        this._daGlobalVerifyMinRatio = adv.DeepAnalysis.GlobalVerifyMinRatio.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-        // DeepAnalysis — interi
-        _daSceneExtractTimeoutMs = adv.DeepAnalysis.SceneExtractTimeoutMs.ToString();
-        _daGlobalVerifyPoints = adv.DeepAnalysis.GlobalVerifyPoints.ToString();
+        // DeepAnalysis: interi
+        this._daSceneExtractTimeoutMs = adv.DeepAnalysis.SceneExtractTimeoutMs.ToString();
+        this._daGlobalVerifyPoints = adv.DeepAnalysis.GlobalVerifyPoints.ToString();
 
-        // SubtitleEdit — interi
-        _subtitleEditFfmpegTimeoutMs = adv.SubtitleEdit.FfmpegTimeoutMs.ToString();
+        // SubtitleEdit: interi
+        this._subtitleEditFfmpegTimeoutMs = adv.SubtitleEdit.FfmpegTimeoutMs.ToString();
 
-        // Ffmpeg — booleani
-        _ffHardwareAcceleration = adv.Ffmpeg.HardwareAcceleration;
+        // Ffmpeg: booleani
+        this._ffHardwareAcceleration = adv.Ffmpeg.HardwareAcceleration;
     }
 
     /// <summary>
@@ -151,46 +192,61 @@
     /// </summary>
     private void Save()
     {
-        _validationError = "";
+        this._validationError = "";
         AdvancedConfig adv = AppSettingsService.Instance.Settings.Advanced;
         int intVal;
         double dblVal;
 
-        if (!ValidateAdvancedFields())
-        {
+        if (!this.ValidateAdvancedFields())
             return;
-        }
 
-        // Parsing VideoSync — interi
-        if (int.TryParse(_vsFrameWidth, out intVal)) { adv.VideoSync.FrameWidth = intVal; }
-        if (int.TryParse(_vsFrameHeight, out intVal)) { adv.VideoSync.FrameHeight = intVal; }
-        if (int.TryParse(_vsNumCheckPoints, out intVal)) { adv.VideoSync.NumCheckPoints = intVal; }
-        if (int.TryParse(_vsMinValidPoints, out intVal)) { adv.VideoSync.MinValidPoints = intVal; }
+        // Parsing VideoSync: interi
+        if (int.TryParse(this._vsFrameWidth, out intVal))
+            adv.VideoSync.FrameWidth = intVal;
 
-        // Parsing FrameSync — interi
-        if (int.TryParse(_fsSourceDurationSec, out intVal)) { adv.FrameSync.SourceDurationSec = intVal; }
-        if (int.TryParse(_fsLangDurationSec, out intVal)) { adv.FrameSync.LangDurationSec = intVal; }
-        if (int.TryParse(_fsMinValidPoints, out intVal)) { adv.FrameSync.MinValidPoints = intVal; }
+        if (int.TryParse(this._vsFrameHeight, out intVal))
+            adv.VideoSync.FrameHeight = intVal;
 
-        // Parsing FrameSync — booleani
-        adv.FrameSync.AudioGlobalEnabled = _fsAudioGlobalEnabled;
+        if (int.TryParse(this._vsNumCheckPoints, out intVal))
+            adv.VideoSync.NumCheckPoints = intVal;
 
-        // Parsing DeepAnalysis — double
-        if (double.TryParse(_daGlobalVerifyMinRatio, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out dblVal)) { adv.DeepAnalysis.GlobalVerifyMinRatio = dblVal; }
+        if (int.TryParse(this._vsMinValidPoints, out intVal))
+            adv.VideoSync.MinValidPoints = intVal;
 
-        // Parsing DeepAnalysis — interi
-        if (int.TryParse(_daSceneExtractTimeoutMs, out intVal)) { adv.DeepAnalysis.SceneExtractTimeoutMs = intVal; }
-        if (int.TryParse(_daGlobalVerifyPoints, out intVal)) { adv.DeepAnalysis.GlobalVerifyPoints = intVal; }
+        // Parsing FrameSync: interi
+        if (int.TryParse(this._fsSourceDurationSec, out intVal))
+            adv.FrameSync.SourceDurationSec = intVal;
 
-        // Parsing SubtitleEdit — interi
-        if (int.TryParse(_subtitleEditFfmpegTimeoutMs, out intVal)) { adv.SubtitleEdit.FfmpegTimeoutMs = intVal; }
+        if (int.TryParse(this._fsLangDurationSec, out intVal))
+            adv.FrameSync.LangDurationSec = intVal;
 
-        // Parsing Ffmpeg — booleani
-        adv.Ffmpeg.HardwareAcceleration = _ffHardwareAcceleration;
+        if (int.TryParse(this._fsMinValidPoints, out intVal))
+            adv.FrameSync.MinValidPoints = intVal;
 
-        _validationError = "";
+        // Parsing FrameSync: booleani
+        adv.FrameSync.AudioGlobalEnabled = this._fsAudioGlobalEnabled;
+
+        // Parsing DeepAnalysis: double
+        if (double.TryParse(this._daGlobalVerifyMinRatio, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out dblVal))
+            adv.DeepAnalysis.GlobalVerifyMinRatio = dblVal;
+
+        // Parsing DeepAnalysis: interi
+        if (int.TryParse(this._daSceneExtractTimeoutMs, out intVal))
+            adv.DeepAnalysis.SceneExtractTimeoutMs = intVal;
+
+        if (int.TryParse(this._daGlobalVerifyPoints, out intVal))
+            adv.DeepAnalysis.GlobalVerifyPoints = intVal;
+
+        // Parsing SubtitleEdit: interi
+        if (int.TryParse(this._subtitleEditFfmpegTimeoutMs, out intVal))
+            adv.SubtitleEdit.FfmpegTimeoutMs = intVal;
+
+        // Parsing Ffmpeg: booleani
+        adv.Ffmpeg.HardwareAcceleration = this._ffHardwareAcceleration;
+
+        this._validationError = "";
         AppSettingsService.Instance.Save();
-        OnClose.InvokeAsync();
+        this.OnClose.InvokeAsync();
     }
 
     /// <summary>
@@ -199,8 +255,8 @@
     private void ResetDefaults()
     {
         // Ricarica default nei campi; il salvataggio avviene solo con OK
-        _validationError = "";
-        LoadFieldsFrom(new AdvancedConfig());
+        this._validationError = "";
+        this.LoadFieldsFrom(new AdvancedConfig());
     }
 
     /// <summary>
@@ -210,24 +266,24 @@
     {
         List<string> errors = new List<string>();
 
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "VideoSync.FrameWidth", _vsFrameWidth, 64, 1920);
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "VideoSync.FrameHeight", _vsFrameHeight, 64, 1080);
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "VideoSync.NumCheckPoints", _vsNumCheckPoints, 1, 1000);
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "VideoSync.MinValidPoints", _vsMinValidPoints, 1, 1000);
+        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "VideoSync.FrameWidth", this._vsFrameWidth, 64, 1920);
+        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "VideoSync.FrameHeight", this._vsFrameHeight, 64, 1080);
+        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "VideoSync.NumCheckPoints", this._vsNumCheckPoints, 1, 1000);
+        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "VideoSync.MinValidPoints", this._vsMinValidPoints, 1, 1000);
 
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "FrameSync.SourceDurationSec", _fsSourceDurationSec, 1, 3600);
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "FrameSync.LangDurationSec", _fsLangDurationSec, 1, 3600);
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "FrameSync.MinValidPoints", _fsMinValidPoints, 1, 1000);
+        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "FrameSync.SourceDurationSec", this._fsSourceDurationSec, 1, 3600);
+        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "FrameSync.LangDurationSec", this._fsLangDurationSec, 1, 3600);
+        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "FrameSync.MinValidPoints", this._fsMinValidPoints, 1, 1000);
 
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "DeepAnalysis.SceneExtractTimeoutMs", _daSceneExtractTimeoutMs, 1000, 3600000);
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "DeepAnalysis.GlobalVerifyPoints", _daGlobalVerifyPoints, 1, 1000);
-        AdvancedSettingsFieldValidator.ValidateDoubleRange(errors, "DeepAnalysis.GlobalVerifyMinRatio", _daGlobalVerifyMinRatio, 0.0, 1.0);
+        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "DeepAnalysis.SceneExtractTimeoutMs", this._daSceneExtractTimeoutMs, 1000, 3600000);
+        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "DeepAnalysis.GlobalVerifyPoints", this._daGlobalVerifyPoints, 1, 1000);
+        AdvancedSettingsFieldValidator.ValidateDoubleRange(errors, "DeepAnalysis.GlobalVerifyMinRatio", this._daGlobalVerifyMinRatio, 0.0, 1.0);
 
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "SubtitleEdit.FfmpegTimeoutMs", _subtitleEditFfmpegTimeoutMs, 1000, 3600000);
+        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "SubtitleEdit.FfmpegTimeoutMs", this._subtitleEditFfmpegTimeoutMs, 1000, 3600000);
 
         if (errors.Count > 0)
         {
-            _validationError = string.Join("\n", errors);
+            this._validationError = string.Join("\n", errors);
             return false;
         }
 

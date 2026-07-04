@@ -18,8 +18,11 @@
     /// </summary>
     [Parameter] public EventCallback<bool> ValueChanged { get; set; }
 
+    /// <summary>
+    /// Commuta il valore corrente
+    /// </summary>
     private void Toggle()
     {
-        ValueChanged.InvokeAsync(!Value);
+        this.ValueChanged.InvokeAsync(!this.Value);
     }
 }

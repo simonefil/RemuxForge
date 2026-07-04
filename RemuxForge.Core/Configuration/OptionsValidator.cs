@@ -19,7 +19,7 @@ namespace RemuxForge.Core.Configuration
         /// Valida le opzioni
         /// </summary>
         /// <param name="options">Opzioni da validare</param>
-        /// <param name="requireSourceFolder">True se la sorgente e' obbligatoria</param>
+        /// <param name="requireSourceFolder">True se la sorgente è obbligatoria</param>
         /// <param name="validateFolderExists">True se validare l'esistenza delle cartelle</param>
         /// <returns>Risultato validazione</returns>
         public static OptionsValidationResult Validate(Options options, bool requireSourceFolder, bool validateFolderExists)
@@ -55,8 +55,8 @@ namespace RemuxForge.Core.Configuration
 
             needsMerge = options.TargetLanguage.Count > 0;
             needsFilter = options.KeepSourceAudioLangs.Count > 0 || options.KeepSourceAudioCodec.Count > 0 || options.KeepSourceSubtitleLangs.Count > 0;
-            needsRemux = needsMerge || needsFilter || options.AudioFormat.Length > 0;
-            needsEncode = options.EncodingProfileName.Length > 0;
+            needsRemux = needsMerge || needsFilter || !string.IsNullOrEmpty(options.AudioFormat);
+            needsEncode = !string.IsNullOrEmpty(options.EncodingProfileName);
 
             if (options.FrameSync && options.DeepAnalysis)
             {
@@ -68,7 +68,7 @@ namespace RemuxForge.Core.Configuration
                 result.AddError(AppText.T("validation.subOnlyAudioOnlyExclusive"));
             }
 
-            if (options.Overwrite && options.DestinationFolder.Length > 0)
+            if (options.Overwrite && !string.IsNullOrEmpty(options.DestinationFolder))
             {
                 result.AddError(AppText.T("validation.overwriteDestinationExclusive"));
             }
@@ -88,7 +88,7 @@ namespace RemuxForge.Core.Configuration
                 result.AddError(AppText.T("validation.noOperation"));
             }
 
-            if (requireSourceFolder && !options.Overwrite && options.DestinationFolder.Length == 0 && !(needsEncode && !needsRemux))
+            if (requireSourceFolder && !options.Overwrite && string.IsNullOrEmpty(options.DestinationFolder) && !(needsEncode && !needsRemux))
             {
                 result.AddError(AppText.T("validation.destinationOrOverwrite"));
             }
@@ -97,10 +97,10 @@ namespace RemuxForge.Core.Configuration
         }
 
         /// <summary>
-        /// Valida opzioni della modalita' metadata
+        /// Valida opzioni della modalità metadata
         /// </summary>
         /// <param name="options">Opzioni da validare</param>
-        /// <param name="requireSourceFolder">True se source e' obbligatorio</param>
+        /// <param name="requireSourceFolder">True se source è obbligatorio</param>
         /// <param name="validateFolderExists">True se controllare esistenza su disco</param>
         /// <param name="result">Risultato validazione da aggiornare</param>
         private static void ValidateMetadataOptions(Options options, bool requireSourceFolder, bool validateFolderExists, OptionsValidationResult result)
@@ -114,22 +114,22 @@ namespace RemuxForge.Core.Configuration
                 return;
             }
 
-            options.Metadata.SourcePath = options.Metadata.SourcePath.Length > 0 ? options.Metadata.SourcePath : options.SourceFolder;
-            options.Metadata.OutputDir = options.Metadata.OutputDir.Length > 0 ? options.Metadata.OutputDir : options.DestinationFolder;
+            options.Metadata.SourcePath = !string.IsNullOrEmpty(options.Metadata.SourcePath) ? options.Metadata.SourcePath : options.SourceFolder;
+            options.Metadata.OutputDir = !string.IsNullOrEmpty(options.Metadata.OutputDir) ? options.Metadata.OutputDir : options.DestinationFolder;
             options.Metadata.Recursive = options.Recursive;
             options.Metadata.DryRun = options.DryRun;
 
-            if (requireSourceFolder && options.Metadata.SourcePath.Length == 0)
+            if (requireSourceFolder && string.IsNullOrEmpty(options.Metadata.SourcePath))
             {
                 result.AddError(AppText.T("validation.sourceRequired"));
             }
 
-            if (requireSourceFolder && options.Metadata.PresetPath.Length == 0)
+            if (requireSourceFolder && string.IsNullOrEmpty(options.Metadata.PresetPath))
             {
                 result.AddError(AppText.T("metadata.validation.presetRequired"));
             }
 
-            if (validateFolderExists && options.Metadata.SourcePath.Length > 0)
+            if (validateFolderExists && !string.IsNullOrEmpty(options.Metadata.SourcePath))
             {
                 sourceIsFile = File.Exists(options.Metadata.SourcePath);
                 sourceIsFolder = Directory.Exists(options.Metadata.SourcePath);
@@ -143,17 +143,17 @@ namespace RemuxForge.Core.Configuration
                 }
             }
 
-            if (validateFolderExists && options.Metadata.PresetPath.Length > 0 && !File.Exists(options.Metadata.PresetPath))
+            if (validateFolderExists && !string.IsNullOrEmpty(options.Metadata.PresetPath) && !File.Exists(options.Metadata.PresetPath))
             {
                 result.AddError(AppText.F("metadata.validation.presetNotFound", options.Metadata.PresetPath));
             }
 
-            if (options.Metadata.OutputPolicy == MkvMetadataOutputPolicy.OutputPath && options.Metadata.OutputDir.Length == 0)
+            if (options.Metadata.OutputPolicy == MkvMetadataOutputPolicy.OutputPath && string.IsNullOrEmpty(options.Metadata.OutputDir))
             {
                 result.AddError(AppText.T("metadata.validation.outputPathRequired"));
             }
 
-            if (validateFolderExists && options.Metadata.OutputPolicy == MkvMetadataOutputPolicy.OutputPath && options.Metadata.OutputDir.Length > 0 && !Directory.Exists(options.Metadata.OutputDir))
+            if (validateFolderExists && options.Metadata.OutputPolicy == MkvMetadataOutputPolicy.OutputPath && !string.IsNullOrEmpty(options.Metadata.OutputDir) && !Directory.Exists(options.Metadata.OutputDir))
             {
                 result.AddError(AppText.F("metadata.validation.outputFolderNotFound", options.Metadata.OutputDir));
             }
@@ -164,7 +164,7 @@ namespace RemuxForge.Core.Configuration
         #region Metodi privati
 
         /// <summary>
-        /// Valida modalita' e parametro manuale della speed correction
+        /// Valida modalità e parametro manuale della speed correction
         /// </summary>
         /// <param name="options">Opzioni da validare</param>
         /// <param name="result">Risultato validazione da aggiornare</param>
@@ -181,7 +181,7 @@ namespace RemuxForge.Core.Configuration
             if (options.SpeedCorrectionMode == Options.SPEED_CORRECTION_MANUAL)
             {
                 // In manuale lo stretch deve essere esplicito: non si tenta inferenza automatica su VFR
-                if (options.ManualStretchFactor.Trim().Length == 0)
+                if (string.IsNullOrEmpty(options.ManualStretchFactor.Trim()))
                 {
                     result.AddError(AppText.T("validation.speedManualNeedsStretch"));
                 }
@@ -195,10 +195,13 @@ namespace RemuxForge.Core.Configuration
         /// <summary>
         /// Valida opzioni audio source fill
         /// </summary>
+        /// <param name="options">Opzioni da validare</param>
+        /// <param name="needsMerge">True se è richiesto merge da language</param>
+        /// <param name="result">Risultato validazione da aggiornare</param>
         private static void ValidateAudioSourceFill(Options options, bool needsMerge, OptionsValidationResult result)
         {
             bool anyMode = options.AudioSourceFillStart || options.AudioSourceFillEnd || options.AudioSourceFillInsertSilence;
-            bool active = anyMode || options.AudioSourceFillThresholdMs > 0 || options.AudioSourceFillLanguage.Length > 0;
+            bool active = anyMode || options.AudioSourceFillThresholdMs > 0 || !string.IsNullOrEmpty(options.AudioSourceFillLanguage);
 
             if (options.AudioSourceFillThresholdMs < 0)
             {
@@ -210,7 +213,7 @@ namespace RemuxForge.Core.Configuration
                 result.AddError(AppText.T("validation.sourceFillNeedsTargetLanguage"));
             }
 
-            if (active && (options.AudioFormat.Length == 0 || options.AudioProcessingScope == "disabled"))
+            if (active && (string.IsNullOrEmpty(options.AudioFormat) || options.AudioProcessingScope == "disabled"))
             {
                 result.AddError(AppText.T("validation.sourceFillNeedsAudio"));
             }
@@ -220,7 +223,7 @@ namespace RemuxForge.Core.Configuration
                 result.AddError(AppText.T("validation.sourceFillThresholdPositive"));
             }
 
-            if (active && options.AudioSourceFillLanguage.Length == 0)
+            if (active && string.IsNullOrEmpty(options.AudioSourceFillLanguage))
             {
                 result.AddError(AppText.T("validation.sourceFillLanguageRequired"));
             }
@@ -235,7 +238,7 @@ namespace RemuxForge.Core.Configuration
                 result.AddError(AppText.T("validation.sourceFillInsertSilenceNeedsDeep"));
             }
 
-            if (options.AudioSourceFillLanguage.Length > 0)
+            if (!string.IsNullOrEmpty(options.AudioSourceFillLanguage))
             {
                 ValidateLanguage("audio-source-fill-language", options.AudioSourceFillLanguage, result);
             }
@@ -256,17 +259,17 @@ namespace RemuxForge.Core.Configuration
                 result.AddError(AppText.F("options.invalidAudioScope", options.AudioProcessingScope));
             }
 
-            if (options.AudioFormat.Length == 0 && options.AudioProcessingScope != "disabled")
+            if (string.IsNullOrEmpty(options.AudioFormat) && options.AudioProcessingScope != "disabled")
             {
                 result.AddError(AppText.T("validation.audioScopeRequiresFormat"));
             }
 
-            if (options.AudioProcessingScope != "disabled" && options.AudioFormat.Length == 0)
+            if (options.AudioProcessingScope != "disabled" && string.IsNullOrEmpty(options.AudioFormat))
             {
                 result.AddError(AppText.T("validation.audioFormatRequiredWithScope"));
             }
 
-            if ((options.AudioPeakNormalize || options.AudioDownsample24To16) && (options.AudioFormat.Length == 0 || options.AudioProcessingScope == "disabled"))
+            if ((options.AudioPeakNormalize || options.AudioDownsample24To16) && (string.IsNullOrEmpty(options.AudioFormat) || options.AudioProcessingScope == "disabled"))
             {
                 result.AddError(AppText.T("validation.audioNormalizeNeedsFormat"));
             }
@@ -288,16 +291,20 @@ namespace RemuxForge.Core.Configuration
         }
 
         /// <summary>
-        /// Verifica se un formato audio e' valido
+        /// Verifica se un formato audio è valido
         /// </summary>
+        /// <param name="value">Formato audio</param>
+        /// <returns>True se valido</returns>
         private static bool IsValidAudioFormat(string value)
         {
-            return value == "" || value == "flac" || value == "lpcm" || value == "aac" || value == "opus" || value == "ac3";
+            return string.IsNullOrEmpty(value) || value == "flac" || value == "lpcm" || value == "aac" || value == "opus" || value == "ac3";
         }
 
         /// <summary>
-        /// Verifica se uno scope audio e' valido
+        /// Verifica se uno scope audio è valido
         /// </summary>
+        /// <param name="value">Scope audio</param>
+        /// <returns>True se valido</returns>
         private static bool IsValidScope(string value)
         {
             return value == "disabled" || value == "lang" || value == "all";
@@ -355,7 +362,7 @@ namespace RemuxForge.Core.Configuration
         /// Valida lingue target e filtri lingua
         /// </summary>
         /// <param name="options">Opzioni da validare</param>
-        /// <param name="needsMerge">True se e' richiesto merge da language</param>
+        /// <param name="needsMerge">True se è richiesto merge da language</param>
         /// <param name="result">Risultato validazione da aggiornare</param>
         private static void ValidateLanguages(Options options, bool needsMerge, OptionsValidationResult result)
         {
@@ -363,7 +370,7 @@ namespace RemuxForge.Core.Configuration
             {
                 for (int i = 0; i < options.TargetLanguage.Count; i++)
                 {
-                    // Le lingue target sono obbligatorie solo quando il merge e' effettivamente richiesto
+                    // Le lingue target sono obbligatorie solo quando il merge è effettivamente richiesto
                     ValidateLanguage(AppText.T("validation.labelTargetLanguage"), options.TargetLanguage[i], result);
                 }
             }
@@ -434,33 +441,33 @@ namespace RemuxForge.Core.Configuration
         /// Valida presenza ed esistenza delle cartelle operative
         /// </summary>
         /// <param name="options">Opzioni da validare</param>
-        /// <param name="requireSourceFolder">True se source e' obbligatoria</param>
+        /// <param name="requireSourceFolder">True se source è obbligatoria</param>
         /// <param name="validateFolderExists">True se controllare esistenza su disco</param>
         /// <param name="needsMerge">True se la cartella language serve al merge</param>
         /// <param name="result">Risultato validazione da aggiornare</param>
         private static void ValidateFolders(Options options, bool requireSourceFolder, bool validateFolderExists, bool needsMerge, OptionsValidationResult result)
         {
-            if (requireSourceFolder && options.SourceFolder.Length == 0)
+            if (requireSourceFolder && string.IsNullOrEmpty(options.SourceFolder))
             {
                 result.AddError(AppText.T("validation.sourceRequired"));
             }
 
-            if (validateFolderExists && options.SourceFolder.Length > 0 && !Directory.Exists(options.SourceFolder))
+            if (validateFolderExists && !string.IsNullOrEmpty(options.SourceFolder) && !Directory.Exists(options.SourceFolder))
             {
                 result.AddError(AppText.F("validation.sourceFolderNotFound", options.SourceFolder));
             }
 
-            if (validateFolderExists && needsMerge && options.LanguageFolder.Length > 0 && !Directory.Exists(options.LanguageFolder))
+            if (validateFolderExists && needsMerge && !string.IsNullOrEmpty(options.LanguageFolder) && !Directory.Exists(options.LanguageFolder))
             {
                 result.AddError(AppText.F("validation.languageFolderNotFound", options.LanguageFolder));
             }
         }
 
         /// <summary>
-        /// Valida opzioni della modalita' split
+        /// Valida opzioni della modalità split
         /// </summary>
         /// <param name="options">Opzioni da validare</param>
-        /// <param name="requireSourceFolder">True se source e' obbligatorio</param>
+        /// <param name="requireSourceFolder">True se source è obbligatorio</param>
         /// <param name="validateFolderExists">True se controllare esistenza su disco</param>
         /// <param name="result">Risultato validazione da aggiornare</param>
         private static void ValidateSplitOptions(Options options, bool requireSourceFolder, bool validateFolderExists, OptionsValidationResult result)
@@ -477,12 +484,12 @@ namespace RemuxForge.Core.Configuration
                 return;
             }
 
-            if (requireSourceFolder && options.Split.SourcePath.Length == 0)
+            if (requireSourceFolder && string.IsNullOrEmpty(options.Split.SourcePath))
             {
                 result.AddError(AppText.T("validation.sourceRequired"));
             }
 
-            if (options.Split.SourcePath.Length > 0)
+            if (!string.IsNullOrEmpty(options.Split.SourcePath))
             {
                 sourceIsFile = File.Exists(options.Split.SourcePath);
                 sourceIsFolder = Directory.Exists(options.Split.SourcePath);
@@ -493,11 +500,16 @@ namespace RemuxForge.Core.Configuration
                 }
             }
 
-            if (options.Split.Pattern.Length > 0) { modes++; }
-            if (options.Split.Ranges.Length > 0) { modes++; }
-            if (options.Split.SplitAt.Length > 0) { modes++; }
-            if (options.Split.TrimStart.Length > 0 || options.Split.TrimEnd.Length > 0) { modes++; }
-            if (options.Split.ChaptersEach) { modes++; }
+            if (!string.IsNullOrEmpty(options.Split.Pattern))
+                modes++;
+            if (!string.IsNullOrEmpty(options.Split.Ranges))
+                modes++;
+            if (!string.IsNullOrEmpty(options.Split.SplitAt))
+                modes++;
+            if (!string.IsNullOrEmpty(options.Split.TrimStart) || !string.IsNullOrEmpty(options.Split.TrimEnd))
+                modes++;
+            if (options.Split.ChaptersEach)
+                modes++;
 
             if (modes == 0)
             {
@@ -508,7 +520,7 @@ namespace RemuxForge.Core.Configuration
                 result.AddError(AppText.T("validation.splitModesExclusive"));
             }
 
-            if (sourceIsFolder && options.Split.SourceRaw.Length > 0)
+            if (sourceIsFolder && !string.IsNullOrEmpty(options.Split.SourceRaw))
             {
                 result.AddError(AppText.T("validation.sourceRawSingleFileOnly"));
             }
@@ -518,7 +530,7 @@ namespace RemuxForge.Core.Configuration
         /// Valida uno stretch factor manuale in forma decimale o frazione
         /// </summary>
         /// <param name="value">Valore testuale</param>
-        /// <returns>True se il valore e' positivo e parsabile</returns>
+        /// <returns>True se il valore è positivo e parsabile</returns>
         private static bool IsValidStretchFactor(string value)
         {
             bool result = false;
@@ -574,6 +586,7 @@ namespace RemuxForge.Core.Configuration
         /// <summary>
         /// Aggiunge un errore
         /// </summary>
+        /// <param name="text">Testo errore</param>
         public void AddError(string text)
         {
             this.Errors.Add(text);
@@ -582,6 +595,7 @@ namespace RemuxForge.Core.Configuration
         /// <summary>
         /// Aggiunge un warning
         /// </summary>
+        /// <param name="text">Testo warning</param>
         public void AddWarning(string text)
         {
             this.Warnings.Add(text);
@@ -589,14 +603,17 @@ namespace RemuxForge.Core.Configuration
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// True se non ci sono errori
         /// </summary>
         public bool IsValid
         {
-            get { return this.Errors.Count == 0; }
+            get
+            {
+                return this.Errors.Count == 0;
+            }
         }
 
         /// <summary>
@@ -614,7 +631,10 @@ namespace RemuxForge.Core.Configuration
         /// </summary>
         public string ErrorMessage
         {
-            get { return string.Join("\n", this.Errors); }
+            get
+            {
+                return string.Join("\n", this.Errors);
+            }
         }
 
         #endregion

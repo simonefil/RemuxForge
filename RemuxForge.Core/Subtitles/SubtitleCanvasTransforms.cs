@@ -332,7 +332,7 @@ namespace RemuxForge.Core.Subtitles
                 return;
             }
 
-            // Alcuni flussi hanno gia' WDS allineata al canvas output: preservala per evitare doppio scaling
+            // Alcuni flussi hanno già WDS allineata al canvas output: preservala per evitare doppio scaling
             if (x == 0 && y == 0 && width == this.OutputCanvasWidth && height == this.OutputCanvasHeight)
             {
                 newX = 0;

@@ -70,7 +70,7 @@
                 @AppText.T("web.audioSettings.validBitrates"): @System.String.Join(", ", AppSettingsModel.AC3_VALID_BITRATES_KBPS) kbps
             </div>
         </div>
-        @if (_validationError.Length > 0)
+        @if (!string.IsNullOrEmpty(_validationError))
         {
             <div style="padding: 0.5em 1em; color: var(--color-error); white-space: pre-line;">@_validationError</div>
         }
@@ -157,18 +157,18 @@
     /// </summary>
     protected override void OnInitialized()
     {
-        _flacCompression = AppSettingsService.Instance.Settings.Flac.CompressionLevel.ToString();
-        _opusMono = AppSettingsService.Instance.Settings.Opus.Bitrate.Mono.ToString();
-        _opusStereo = AppSettingsService.Instance.Settings.Opus.Bitrate.Stereo.ToString();
-        _opusS51 = AppSettingsService.Instance.Settings.Opus.Bitrate.Surround51.ToString();
-        _opusS71 = AppSettingsService.Instance.Settings.Opus.Bitrate.Surround71.ToString();
-        _aacMono = AppSettingsService.Instance.Settings.Aac.Bitrate.Mono.ToString();
-        _aacStereo = AppSettingsService.Instance.Settings.Aac.Bitrate.Stereo.ToString();
-        _aacS51 = AppSettingsService.Instance.Settings.Aac.Bitrate.Surround51.ToString();
-        _aacS71 = AppSettingsService.Instance.Settings.Aac.Bitrate.Surround71.ToString();
-        _ac3Mono = AppSettingsService.Instance.Settings.Ac3.Bitrate.Mono.ToString();
-        _ac3Stereo = AppSettingsService.Instance.Settings.Ac3.Bitrate.Stereo.ToString();
-        _ac3S51 = AppSettingsService.Instance.Settings.Ac3.Bitrate.Surround51.ToString();
+        this._flacCompression = AppSettingsService.Instance.Settings.Flac.CompressionLevel.ToString();
+        this._opusMono = AppSettingsService.Instance.Settings.Opus.Bitrate.Mono.ToString();
+        this._opusStereo = AppSettingsService.Instance.Settings.Opus.Bitrate.Stereo.ToString();
+        this._opusS51 = AppSettingsService.Instance.Settings.Opus.Bitrate.Surround51.ToString();
+        this._opusS71 = AppSettingsService.Instance.Settings.Opus.Bitrate.Surround71.ToString();
+        this._aacMono = AppSettingsService.Instance.Settings.Aac.Bitrate.Mono.ToString();
+        this._aacStereo = AppSettingsService.Instance.Settings.Aac.Bitrate.Stereo.ToString();
+        this._aacS51 = AppSettingsService.Instance.Settings.Aac.Bitrate.Surround51.ToString();
+        this._aacS71 = AppSettingsService.Instance.Settings.Aac.Bitrate.Surround71.ToString();
+        this._ac3Mono = AppSettingsService.Instance.Settings.Ac3.Bitrate.Mono.ToString();
+        this._ac3Stereo = AppSettingsService.Instance.Settings.Ac3.Bitrate.Stereo.ToString();
+        this._ac3S51 = AppSettingsService.Instance.Settings.Ac3.Bitrate.Surround51.ToString();
     }
 
     /// <summary>
@@ -177,31 +177,54 @@
     private void Save()
     {
         int val;
+        string errorMessage;
 
         // Parsing valori nel model
-        if (int.TryParse(_flacCompression, out val)) { AppSettingsService.Instance.Settings.Flac.CompressionLevel = val; }
-        if (int.TryParse(_opusMono, out val)) { AppSettingsService.Instance.Settings.Opus.Bitrate.Mono = val; }
-        if (int.TryParse(_opusStereo, out val)) { AppSettingsService.Instance.Settings.Opus.Bitrate.Stereo = val; }
-        if (int.TryParse(_opusS51, out val)) { AppSettingsService.Instance.Settings.Opus.Bitrate.Surround51 = val; }
-        if (int.TryParse(_opusS71, out val)) { AppSettingsService.Instance.Settings.Opus.Bitrate.Surround71 = val; }
-        if (int.TryParse(_aacMono, out val)) { AppSettingsService.Instance.Settings.Aac.Bitrate.Mono = val; }
-        if (int.TryParse(_aacStereo, out val)) { AppSettingsService.Instance.Settings.Aac.Bitrate.Stereo = val; }
-        if (int.TryParse(_aacS51, out val)) { AppSettingsService.Instance.Settings.Aac.Bitrate.Surround51 = val; }
-        if (int.TryParse(_aacS71, out val)) { AppSettingsService.Instance.Settings.Aac.Bitrate.Surround71 = val; }
-        if (int.TryParse(_ac3Mono, out val)) { AppSettingsService.Instance.Settings.Ac3.Bitrate.Mono = val; }
-        if (int.TryParse(_ac3Stereo, out val)) { AppSettingsService.Instance.Settings.Ac3.Bitrate.Stereo = val; }
-        if (int.TryParse(_ac3S51, out val)) { AppSettingsService.Instance.Settings.Ac3.Bitrate.Surround51 = val; }
+        if (int.TryParse(this._flacCompression, out val))
+            AppSettingsService.Instance.Settings.Flac.CompressionLevel = val;
+
+        if (int.TryParse(this._opusMono, out val))
+            AppSettingsService.Instance.Settings.Opus.Bitrate.Mono = val;
+
+        if (int.TryParse(this._opusStereo, out val))
+            AppSettingsService.Instance.Settings.Opus.Bitrate.Stereo = val;
+
+        if (int.TryParse(this._opusS51, out val))
+            AppSettingsService.Instance.Settings.Opus.Bitrate.Surround51 = val;
+
+        if (int.TryParse(this._opusS71, out val))
+            AppSettingsService.Instance.Settings.Opus.Bitrate.Surround71 = val;
+
+        if (int.TryParse(this._aacMono, out val))
+            AppSettingsService.Instance.Settings.Aac.Bitrate.Mono = val;
+
+        if (int.TryParse(this._aacStereo, out val))
+            AppSettingsService.Instance.Settings.Aac.Bitrate.Stereo = val;
+
+        if (int.TryParse(this._aacS51, out val))
+            AppSettingsService.Instance.Settings.Aac.Bitrate.Surround51 = val;
+
+        if (int.TryParse(this._aacS71, out val))
+            AppSettingsService.Instance.Settings.Aac.Bitrate.Surround71 = val;
+
+        if (int.TryParse(this._ac3Mono, out val))
+            AppSettingsService.Instance.Settings.Ac3.Bitrate.Mono = val;
+
+        if (int.TryParse(this._ac3Stereo, out val))
+            AppSettingsService.Instance.Settings.Ac3.Bitrate.Stereo = val;
+
+        if (int.TryParse(this._ac3S51, out val))
+            AppSettingsService.Instance.Settings.Ac3.Bitrate.Surround51 = val;
 
         // Valida
-        string errorMessage;
         if (!AppSettingsService.Instance.ValidateAudio(out errorMessage))
         {
-            _validationError = errorMessage;
+            this._validationError = errorMessage;
             return;
         }
 
-        _validationError = "";
+        this._validationError = "";
         AppSettingsService.Instance.Save();
-        OnClose.InvokeAsync();
+        this.OnClose.InvokeAsync();
     }
 }

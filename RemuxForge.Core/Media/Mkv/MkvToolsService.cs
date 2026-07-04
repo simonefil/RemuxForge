@@ -40,7 +40,7 @@ namespace RemuxForge.Core.Media.Mkv
         /// <summary>
         /// Verifica che mkvmerge sia accessibile e funzionante
         /// </summary>
-        /// <returns>True se mkvmerge e funzionante</returns>
+        /// <returns>True se mkvmerge è funzionante</returns>
         public bool VerifyMkvMerge()
         {
             bool result;
@@ -50,7 +50,7 @@ namespace RemuxForge.Core.Media.Mkv
                 // Esegue mkvmerge --version per confermare esistenza
                 ProcessResult procResult = ProcessRunner.Run(this._mkvMergePath, new string[] { "--version" });
                 string output = procResult.Stdout;
-                result = (output.Length > 0);
+                result = !string.IsNullOrEmpty(output);
             }
             catch
             {
@@ -85,7 +85,7 @@ namespace RemuxForge.Core.Media.Mkv
                 ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, "Impossibile leggere info file per: " + filePath);
             }
 
-            if (jsonOutput.Length > 0)
+            if (!string.IsNullOrEmpty(jsonOutput))
             {
                 try
                 {
@@ -107,8 +107,7 @@ namespace RemuxForge.Core.Media.Mkv
                             // Parsing titolo segmento
                             if (containerPropsEl.TryGetProperty("title", out JsonElement titleEl))
                             {
-                                result.ContainerTitle = titleEl.GetString();
-                                if (result.ContainerTitle == null) { result.ContainerTitle = ""; }
+                                result.ContainerTitle = titleEl.GetString() ?? "";
                             }
                         }
                     }
@@ -130,7 +129,8 @@ namespace RemuxForge.Core.Media.Mkv
                 }
                 finally
                 {
-                    if (doc != null) { doc.Dispose(); }
+                    if (doc != null)
+                        doc.Dispose();
                 }
             }
 
@@ -154,7 +154,7 @@ namespace RemuxForge.Core.Media.Mkv
                 return match;
             }
 
-            trackLanguage = track.Language.Length > 0 ? track.Language : "und";
+            trackLanguage = !string.IsNullOrEmpty(track.Language) ? track.Language : "und";
             requestedLanguage = language.Trim();
 
             // Verifica lingua ISO 639-2
@@ -163,7 +163,7 @@ namespace RemuxForge.Core.Media.Mkv
                 match = true;
             }
             // Verifica tag IETF
-            else if (track.LanguageIetf.Length > 0)
+            else if (!string.IsNullOrEmpty(track.LanguageIetf))
             {
                 if (track.LanguageIetf.StartsWith(requestedLanguage, StringComparison.OrdinalIgnoreCase) || string.Equals(track.LanguageIetf, requestedLanguage, StringComparison.OrdinalIgnoreCase))
                 {
@@ -303,7 +303,7 @@ namespace RemuxForge.Core.Media.Mkv
             {
                 for (int i = 0; i < req.SourceAudioIds.Count; i++)
                 {
-                    // Se la traccia e' stata convertita, non includerla dal file sorgente
+                    // Se la traccia è stata convertita, non includerla dal file sorgente
                     if (hasConvertedSource && req.ConvertedSourceTracks.ContainsKey(req.SourceAudioIds[i]))
                     {
                         continue;
@@ -392,12 +392,12 @@ namespace RemuxForge.Core.Media.Mkv
                     mkvArgs.Add(JoinInts(langAudioKeep));
 
                     // Applica delay e/o stretch alle tracce non convertite
-                    if (req.AudioDelayMs != 0 || req.StretchFactor.Length > 0)
+                    if (req.AudioDelayMs != 0 || !string.IsNullOrEmpty(req.StretchFactor))
                     {
                         for (int i = 0; i < langAudioKeep.Count; i++)
                         {
                             syncValue = langAudioKeep[i] + ":" + req.AudioDelayMs;
-                            if (req.StretchFactor.Length > 0)
+                            if (!string.IsNullOrEmpty(req.StretchFactor))
                             {
                                 syncValue = syncValue + "," + req.StretchFactor;
                             }
@@ -433,12 +433,12 @@ namespace RemuxForge.Core.Media.Mkv
                     mkvArgs.Add(JoinInts(langSubIds));
 
                     // Applica delay e/o stretch ai sottotitoli
-                    if (req.SubDelayMs != 0 || req.StretchFactor.Length > 0)
+                    if (req.SubDelayMs != 0 || !string.IsNullOrEmpty(req.StretchFactor))
                     {
                         for (int i = 0; i < langSubIds.Count; i++)
                         {
                             syncValue = langSubIds[i] + ":" + req.SubDelayMs;
-                            if (req.StretchFactor.Length > 0)
+                            if (!string.IsNullOrEmpty(req.StretchFactor))
                             {
                                 syncValue = syncValue + "," + req.StretchFactor;
                             }
@@ -470,10 +470,10 @@ namespace RemuxForge.Core.Media.Mkv
                             mkvArgs.Add("-S");
 
                             // Applica delay e/o stretch (trackId 0 nel file convertito)
-                            if (!bypassAudioDelay && (req.AudioDelayMs != 0 || req.StretchFactor.Length > 0))
+                            if (!bypassAudioDelay && (req.AudioDelayMs != 0 || !string.IsNullOrEmpty(req.StretchFactor)))
                             {
                                 syncValue = "0:" + req.AudioDelayMs;
-                                if (req.StretchFactor.Length > 0)
+                                if (!string.IsNullOrEmpty(req.StretchFactor))
                                 {
                                     syncValue = syncValue + "," + req.StretchFactor;
                                 }
@@ -506,10 +506,10 @@ namespace RemuxForge.Core.Media.Mkv
                             mkvArgs.Add("-A");
 
                             // Applica delay/stretch via mkvmerge anche ai sottotitoli standalone
-                            if (req.SubDelayMs != 0 || req.StretchFactor.Length > 0)
+                            if (req.SubDelayMs != 0 || !string.IsNullOrEmpty(req.StretchFactor))
                             {
                                 syncValue = "0:" + req.SubDelayMs;
-                                if (req.StretchFactor.Length > 0)
+                                if (!string.IsNullOrEmpty(req.StretchFactor))
                                 {
                                     syncValue = syncValue + "," + req.StretchFactor;
                                 }
@@ -568,7 +568,7 @@ namespace RemuxForge.Core.Media.Mkv
             ProcessResult result = ProcessRunner.Run(this._mkvMergePath, args.ToArray());
 
             sb.Append(result.Stdout);
-            if (result.Stderr.Length > 0)
+            if (!string.IsNullOrEmpty(result.Stderr))
             {
                 sb.Append(result.Stderr);
             }
@@ -804,12 +804,12 @@ namespace RemuxForge.Core.Media.Mkv
         private static void AddAudioLanguageMetadata(List<string> mkvArgs, TrackInfo origTrack)
         {
             // Lingua: usa IETF se disponibile, altrimenti ISO 639-2
-            if (origTrack.LanguageIetf.Length > 0)
+            if (!string.IsNullOrEmpty(origTrack.LanguageIetf))
             {
                 mkvArgs.Add("--language");
                 mkvArgs.Add("0:" + origTrack.LanguageIetf);
             }
-            else if (origTrack.Language.Length > 0)
+            else if (!string.IsNullOrEmpty(origTrack.Language))
             {
                 mkvArgs.Add("--language");
                 mkvArgs.Add("0:" + origTrack.Language);
@@ -824,18 +824,18 @@ namespace RemuxForge.Core.Media.Mkv
         private static void AddStandaloneSubtitleMetadata(List<string> mkvArgs, TrackInfo origTrack)
         {
             // Lingua: usa IETF se disponibile, altrimenti ISO 639-2
-            if (origTrack.LanguageIetf.Length > 0)
+            if (!string.IsNullOrEmpty(origTrack.LanguageIetf))
             {
                 mkvArgs.Add("--language");
                 mkvArgs.Add("0:" + origTrack.LanguageIetf);
             }
-            else if (origTrack.Language.Length > 0)
+            else if (!string.IsNullOrEmpty(origTrack.Language))
             {
                 mkvArgs.Add("--language");
                 mkvArgs.Add("0:" + origTrack.Language);
             }
 
-            if (origTrack.Name.Length > 0)
+            if (!string.IsNullOrEmpty(origTrack.Name))
             {
                 mkvArgs.Add("--track-name");
                 mkvArgs.Add("0:" + origTrack.Name);

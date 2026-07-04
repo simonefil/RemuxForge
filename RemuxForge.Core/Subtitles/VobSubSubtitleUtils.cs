@@ -60,7 +60,7 @@ namespace RemuxForge.Core.Subtitles
                 return false;
             }
 
-            // filepos e' esadecimale e puo' essere seguito da altri token non gestiti
+            // filepos è esadecimale e può essere seguito da altri token non gestiti
             filePosStart = filePosIndex + "filepos:".Length;
             while (filePosStart < line.Length && line[filePosStart] == ' ')
             {
@@ -139,7 +139,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="bitmapsScaled">Bitmap scalate</param>
         /// <param name="bitmapsEncoded">Bitmap ricodificate</param>
         /// <param name="errorMessage">Errore</param>
-        /// <returns>True se il blocco e' stato riscritto</returns>
+        /// <returns>True se il blocco è stato riscritto</returns>
         public static bool TryRewriteSubtitleBlock(
             byte[] block,
             SubtitleCanvasTransform transform,
@@ -241,7 +241,7 @@ namespace RemuxForge.Core.Subtitles
         /// Indica se il carattere appartiene a un valore esadecimale filepos
         /// </summary>
         /// <param name="value">Carattere da verificare</param>
-        /// <returns>True se il carattere e' esadecimale</returns>
+        /// <returns>True se il carattere è esadecimale</returns>
         private static bool IsHexChar(char value)
         {
             return (value >= '0' && value <= '9') || (value >= 'a' && value <= 'f') || (value >= 'A' && value <= 'F');
@@ -257,7 +257,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="block">Blocco SUB da analizzare</param>
         /// <param name="info">Informazioni SPU trovate</param>
         /// <param name="errorMessage">Errore in caso di blocco non trasformabile</param>
-        /// <returns>True se una SPU valida e' stata trovata</returns>
+        /// <returns>True se una SPU valida è stata trovata</returns>
         private static bool TryFindSpu(byte[] block, out VobSubSpuInfo info, out string errorMessage)
         {
             int maxScan = Math.Max(0, Math.Min(block.Length - 4, 4096));
@@ -274,7 +274,7 @@ namespace RemuxForge.Core.Subtitles
                 }
 
                 // Se il parser ha trovato una SPU parziale/non trasformabile non continua a cercare falsi positivi successivi
-                if (errorMessage.Length > 0)
+                if (!string.IsNullOrEmpty(errorMessage))
                 {
                     return false;
                 }
@@ -296,7 +296,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="bitmapsScaled">Numero bitmap scalate</param>
         /// <param name="bitmapsEncoded">Numero bitmap ricodificate</param>
         /// <param name="errorMessage">Errore in caso di rewrite fallito</param>
-        /// <returns>True se la SPU e' stata riscritta</returns>
+        /// <returns>True se la SPU è stata riscritta</returns>
         private static bool TryRewriteRawSpu(byte[] rawSpu, SubtitleCanvasTransform transform, int[] palette, out byte[] output, out int areasRewritten, out int bitmapsDecoded, out int bitmapsScaled, out int bitmapsEncoded, out string errorMessage)
         {
             VobSubSpuInfo info;
@@ -422,7 +422,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="payloadOffset">Offset payload SPU</param>
         /// <param name="diff">Delta lunghezza SPU</param>
         /// <param name="errorMessage">Errore in caso di PES non aggiornabile</param>
-        /// <returns>True se la lunghezza PES e' coerente o non necessaria</returns>
+        /// <returns>True se la lunghezza PES è coerente o non necessaria</returns>
         private static bool TryUpdateContainingPesLength(byte[] block, int payloadOffset, int diff, out string errorMessage)
         {
             int pesStart = -1;
@@ -446,14 +446,14 @@ namespace RemuxForge.Core.Subtitles
                 return true;
             }
 
-            // Lunghezza zero significa PES unbounded: non c'e' niente da aggiornare
+            // Lunghezza zero significa PES unbounded: non c'è niente da aggiornare
             length = ReadUInt16BigEndian(block, pesStart + 4);
             if (length == 0)
             {
                 return true;
             }
 
-            // La lunghezza PES resta a 16 bit, quindi un resize troppo grande non e' muxabile in sicurezza
+            // La lunghezza PES resta a 16 bit, quindi un resize troppo grande non è muxabile in sicurezza
             newLength = length + diff;
             if (newLength <= 0 || newLength > 0xffff)
             {
@@ -478,7 +478,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="info">Informazioni SPU lette</param>
         /// <param name="strict">True per errore esplicito sui comandi non supportati</param>
         /// <param name="errorMessage">Errore in caso di SPU non trasformabile</param>
-        /// <returns>True se la SPU e' valida e trasformabile</returns>
+        /// <returns>True se la SPU è valida e trasformabile</returns>
         private static bool TryParseSpu(byte[] data, int offset, int availableLength, out VobSubSpuInfo info, bool strict, out string errorMessage)
         {
             int spuSize;
@@ -547,7 +547,7 @@ namespace RemuxForge.Core.Subtitles
 
             errorMessage = "";
 
-            // Una SPU puo' contenere piu' command sequence concatenate tramite nextOffset
+            // Una SPU può contenere più command sequence concatenate tramite nextOffset
             while (currentOffset >= 4 && currentOffset < spuSize && guard < 64)
             {
                 guard++;
@@ -722,7 +722,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="info">Informazioni SPU parseate</param>
         /// <param name="bitmap">Bitmap decodificata</param>
         /// <param name="errorMessage">Errore in caso di decode fallito</param>
-        /// <returns>True se la bitmap e' stata decodificata</returns>
+        /// <returns>True se la bitmap è stata decodificata</returns>
         private static bool DecodeBitmap(byte[] rawSpu, VobSubSpuInfo info, out VobSubBitmap bitmap, out string errorMessage)
         {
             byte[] pixels = new byte[info.Width * info.Height];
@@ -818,7 +818,7 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         /// <param name="info">Informazioni SPU parseate</param>
         /// <param name="palette">Palette IDX RGB</param>
-        /// <returns>True se il resampling palette-aware e' applicabile</returns>
+        /// <returns>True se il resampling palette-aware è applicabile</returns>
         private static bool CanScaleWithPalette(VobSubSpuInfo info, int[] palette)
         {
             if (info == null || palette == null || palette.Length < 16 || !info.HasColorIndexes || !info.HasContrastValues)
@@ -1019,7 +1019,7 @@ namespace RemuxForge.Core.Subtitles
                 }
             }
 
-            // A parita' preferisce un indice non zero per non cancellare bordi sottili
+            // A parità preferisce un indice non zero per non cancellare bordi sottili
             for (int i = 0; i < weights.Length; i++)
             {
                 if (weights[i] > bestWeight || (Math.Abs(weights[i] - bestWeight) < 0.000001 && bestColor == 0 && i != 0))
@@ -1033,14 +1033,14 @@ namespace RemuxForge.Core.Subtitles
         }
 
         /// <summary>
-        /// Trova l'indice SPU piu' vicino al colore target
+        /// Trova l'indice SPU più vicino al colore target
         /// </summary>
         /// <param name="colors">Colori premoltiplicati</param>
         /// <param name="targetR">Rosso premoltiplicato target</param>
         /// <param name="targetG">Verde premoltiplicato target</param>
         /// <param name="targetB">Blu premoltiplicato target</param>
         /// <param name="targetAlpha">Alpha target</param>
-        /// <returns>Indice 2-bit piu' vicino</returns>
+        /// <returns>Indice 2-bit più vicino</returns>
         private static byte FindNearestVobSubIndex(VobSubResampleColor[] colors, double targetR, double targetG, double targetB, double targetAlpha)
         {
             int bestIndex = 0;
@@ -1091,7 +1091,7 @@ namespace RemuxForge.Core.Subtitles
                         runLength++;
                     }
 
-                    // L'ultimo run di riga puo' usare il codice fill-to-end del formato DVD SPU
+                    // L'ultimo run di riga può usare il codice fill-to-end del formato DVD SPU
                     while (runLength > 0)
                     {
                         nextColor = color;
@@ -1339,7 +1339,7 @@ namespace RemuxForge.Core.Subtitles
             /// <param name="red">Rosso</param>
             /// <param name="green">Verde</param>
             /// <param name="blue">Blu</param>
-            /// <param name="alpha">Opacita'</param>
+            /// <param name="alpha">Opacità</param>
             public VobSubResampleColor(double red, double green, double blue, double alpha)
             {
                 double alphaFactor = alpha / 255.0;
@@ -1492,7 +1492,7 @@ namespace RemuxForge.Core.Subtitles
             {
                 int value = (run << 2) | (color & 0x03);
 
-                // Sceglie la codifica piu' corta capace di rappresentare la lunghezza del run
+                // Sceglie la codifica più corta capace di rappresentare la lunghezza del run
                 if (run <= 3)
                 {
                     this.WriteCode(value, 1);

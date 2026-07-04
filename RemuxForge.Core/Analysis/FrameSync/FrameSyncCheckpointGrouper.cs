@@ -65,7 +65,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         }
 
         /// <summary>
-        /// Valuta se il primo passaggio checkpoint e' gia' sufficiente per saltare il retry
+        /// Valuta se il primo passaggio checkpoint è già sufficiente per saltare il retry
         /// </summary>
         public bool CanSkipRetry(int initialDelay, double fps, bool[] pointValid, int[] offsets, FrameSyncPointResult[] pointResults, double[] ssimValues, out int validCount, out int bestGroupCount, out double bestGroupScoreAverage)
         {

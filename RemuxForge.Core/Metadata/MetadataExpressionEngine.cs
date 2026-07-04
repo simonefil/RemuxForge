@@ -115,7 +115,7 @@ namespace RemuxForge.Core.Metadata
             if (fileInfo != null && fileInfo.Fields != null && fileInfo.Fields.TryGetValue(key, out value))
                 return value != null ? value : "";
 
-            if (key == "file_folder" && fileInfo != null && fileInfo.FilePath.Length > 0)
+            if (key == "file_folder" && fileInfo != null && !string.IsNullOrEmpty(fileInfo.FilePath))
                 return Path.GetDirectoryName(fileInfo.FilePath) ?? "";
 
             if (key == "file_relative_folder")
@@ -501,7 +501,7 @@ namespace RemuxForge.Core.Metadata
                 }
             }
 
-            if (current.Length > 0 || argsText.Length > 0)
+            if (current.Length > 0 || !string.IsNullOrEmpty(argsText))
                 result.Add(current.ToString().Trim());
 
             return result;

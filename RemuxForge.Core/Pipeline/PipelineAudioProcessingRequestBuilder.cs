@@ -124,7 +124,7 @@ namespace RemuxForge.Core.Pipeline
         /// </summary>
         /// <param name="sourceTracks">Tracce source</param>
         /// <param name="sourceAudioIds">ID audio source mantenuti</param>
-        /// <param name="filterSourceAudio">True se il filtro source audio e' attivo</param>
+        /// <param name="filterSourceAudio">True se il filtro source audio è attivo</param>
         /// <returns>Tracce source audio finali</returns>
         private List<TrackInfo> ResolveFinalSourceAudioTracks(List<TrackInfo> sourceTracks, List<int> sourceAudioIds, bool filterSourceAudio)
         {

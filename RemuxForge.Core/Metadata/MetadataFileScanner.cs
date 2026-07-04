@@ -50,7 +50,7 @@ namespace RemuxForge.Core.Metadata
             string source = sourcePath != null ? sourcePath.Trim() : "";
             string rootFolder;
 
-            if (source.Length == 0)
+            if (string.IsNullOrEmpty(source))
                 throw new InvalidOperationException(AppText.T("metadata.scanner.inputNotConfigured"));
 
             if (File.Exists(source))
@@ -182,7 +182,7 @@ namespace RemuxForge.Core.Metadata
         /// <returns>Cartella relativa, oppure stringa vuota</returns>
         private static string BuildRelativeFolder(string folder, string rootFolder)
         {
-            if (folder == null || rootFolder == null || rootFolder.Length == 0)
+            if (folder == null || string.IsNullOrEmpty(rootFolder))
                 return "";
 
             try

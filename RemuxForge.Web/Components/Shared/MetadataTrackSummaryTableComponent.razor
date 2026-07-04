@@ -37,90 +37,109 @@
 </table>
 
 @code {
+    /// <summary>
+    /// Record metadata da mostrare
+    /// </summary>
     [Parameter] public MkvMetadataRecord Record { get; set; }
+
+    /// <summary>
+    /// Indica se usare i dati simulati post analisi
+    /// </summary>
     [Parameter] public bool Simulated { get; set; }
 
+    /// <summary>
+    /// Restituisce le tracce da visualizzare
+    /// </summary>
+    /// <returns>Lista tracce</returns>
     private List<MkvMetadataTrackInfo> GetTracks()
     {
-        MkvMetadataFileInfo info = GetInfo();
+        MkvMetadataFileInfo info = this.GetInfo();
         return info != null && info.Tracks != null ? info.Tracks : new List<MkvMetadataTrackInfo>();
     }
 
+    /// <summary>
+    /// Restituisce il file info corrente o simulato
+    /// </summary>
+    /// <returns>Informazioni metadata del file</returns>
     private MkvMetadataFileInfo GetInfo()
     {
-        if (Record == null)
-        {
+        if (this.Record == null)
             return new MkvMetadataFileInfo();
-        }
 
-        if (Simulated)
-        {
-            return Record.FileInfo != null ? Record.FileInfo : new MkvMetadataFileInfo();
-        }
+        if (this.Simulated)
+            return this.Record.FileInfo != null ? this.Record.FileInfo : new MkvMetadataFileInfo();
 
-        return Record.OriginalFileInfo != null && Record.OriginalFileInfo.Tracks != null && Record.OriginalFileInfo.Tracks.Count > 0
-            ? Record.OriginalFileInfo
-            : Record.FileInfo != null ? Record.FileInfo : new MkvMetadataFileInfo();
+        return this.Record.OriginalFileInfo != null && this.Record.OriginalFileInfo.Tracks != null && this.Record.OriginalFileInfo.Tracks.Count > 0
+            ? this.Record.OriginalFileInfo
+            : this.Record.FileInfo != null ? this.Record.FileInfo : new MkvMetadataFileInfo();
     }
 
+    /// <summary>
+    /// Restituisce la classe CSS del campo in base alla modifica simulata
+    /// </summary>
+    /// <param name="trackSelector">Selettore traccia</param>
+    /// <param name="fieldKey">Chiave campo</param>
+    /// <returns>Classe CSS differenziale</returns>
     private string GetFieldClass(string trackSelector, string fieldKey)
     {
-        MkvMetadataChange change = FindLastChange(trackSelector, fieldKey);
-        if (!Simulated || change == null)
-        {
+        MkvMetadataChange change = this.FindLastChange(trackSelector, fieldKey);
+        if (!this.Simulated || change == null)
             return "";
-        }
 
-        if (change.BeforeValue.Length == 0 && change.AfterValue.Length > 0)
-        {
+        if (string.IsNullOrEmpty(change.BeforeValue) && !string.IsNullOrEmpty(change.AfterValue))
             return "metadata-diff-added";
-        }
 
-        if (change.BeforeValue.Length > 0 && change.AfterValue.Length == 0)
-        {
+        if (!string.IsNullOrEmpty(change.BeforeValue) && string.IsNullOrEmpty(change.AfterValue))
             return "metadata-diff-removed";
-        }
 
         return "metadata-diff-modified";
     }
 
+    /// <summary>
+    /// Cerca l'ultima modifica registrata per campo
+    /// </summary>
+    /// <param name="trackSelector">Selettore traccia</param>
+    /// <param name="fieldKey">Chiave campo</param>
+    /// <returns>Modifica trovata o null</returns>
     private MkvMetadataChange FindLastChange(string trackSelector, string fieldKey)
     {
         MkvMetadataChange result = null;
-        if (Record == null || Record.Changes == null)
-        {
+        if (this.Record == null || this.Record.Changes == null)
             return result;
-        }
 
-        for (int i = 0; i < Record.Changes.Count; i++)
+        for (int i = 0; i < this.Record.Changes.Count; i++)
         {
-            if (Record.Changes[i].TrackSelector == trackSelector && Record.Changes[i].FieldKey == fieldKey)
-            {
-                result = Record.Changes[i];
-            }
+            if (this.Record.Changes[i].TrackSelector == trackSelector && this.Record.Changes[i].FieldKey == fieldKey)
+                result = this.Record.Changes[i];
         }
 
         return result;
     }
 
+    /// <summary>
+    /// Verifica se la traccia risulta rimossa nella simulazione
+    /// </summary>
+    /// <param name="trackSelector">Selettore traccia</param>
+    /// <returns>True se rimossa</returns>
     private bool IsTrackRemoved(string trackSelector)
     {
-        if (!Simulated || Record == null || Record.Changes == null)
-        {
+        if (!this.Simulated || this.Record == null || this.Record.Changes == null)
             return false;
-        }
 
-        for (int i = 0; i < Record.Changes.Count; i++)
+        for (int i = 0; i < this.Record.Changes.Count; i++)
         {
-            if (Record.Changes[i].OperationType == MkvMetadataOperationType.RemoveTrack && Record.Changes[i].TrackSelector == trackSelector)
-            {
+            if (this.Record.Changes[i].OperationType == MkvMetadataOperationType.RemoveTrack && this.Record.Changes[i].TrackSelector == trackSelector)
                 return true;
-            }
         }
 
         return false;
     }
 
+    /// <summary>
+    /// Costruisce la colonna extra del riepilogo traccia
+    /// </summary>
+    /// <param name="track">Traccia metadata</param>
+    /// <returns>Testo riepilogo extra</returns>
     private static string BuildExtra(MkvMetadataTrackInfo track)
     {
         string width = GetValue(track.Fields, "video_width");
@@ -133,79 +152,93 @@
 
         if (track.TrackKind == "video")
         {
-            if (width.Length > 0 && height.Length > 0) { result = width + "x" + height; }
+            if (!string.IsNullOrEmpty(width) && !string.IsNullOrEmpty(height))
+                result = width + "x" + height;
             AddPart(ref result, GetValue(track.Fields, "video_hdr_format"));
             AddPart(ref result, GetValue(track.Fields, "video_fps"));
         }
         else if (track.TrackKind == "audio")
         {
             AddPart(ref result, channels);
-            if (bitDepth.Length > 0 || sampleRate.Length > 0)
-            {
+            if (!string.IsNullOrEmpty(bitDepth) || !string.IsNullOrEmpty(sampleRate))
                 AddPart(ref result, bitDepth + "bit/" + sampleRate + "kHz");
-            }
         }
         else if (track.TrackKind == "subtitles")
         {
             AddPart(ref result, GetValue(track.Fields, "subtitle_format"));
             if (forced == "true")
-            {
                 AddPart(ref result, AppText.T("web.metadata.detail.forced"));
-            }
         }
 
-        return result.Length > 0 ? result : "-";
+        return !string.IsNullOrEmpty(result) ? result : "-";
     }
 
+    /// <summary>
+    /// Costruisce la chiave campo specifica per dominio traccia
+    /// </summary>
+    /// <param name="track">Traccia metadata</param>
+    /// <param name="suffix">Suffisso campo</param>
+    /// <returns>Chiave campo specifica</returns>
     private static string GetDomainFieldKey(MkvMetadataTrackInfo track, string suffix)
     {
         if (track != null && track.TrackKind == "video")
-        {
             return "video_" + suffix;
-        }
+
         if (track != null && track.TrackKind == "audio")
-        {
             return "audio_" + suffix;
-        }
+
         if (track != null && track.TrackKind == "subtitles")
-        {
             return "subtitle_" + suffix;
-        }
 
         return suffix;
     }
 
+    /// <summary>
+    /// Aggiunge una parte testuale separata da spazio
+    /// </summary>
+    /// <param name="value">Valore aggregato</param>
+    /// <param name="part">Parte da aggiungere</param>
     private static void AddPart(ref string value, string part)
     {
-        if (part == null || part.Length == 0)
-        {
+        if (string.IsNullOrEmpty(part))
             return;
-        }
 
-        if (value.Length > 0)
-        {
+        if (!string.IsNullOrEmpty(value))
             value += " ";
-        }
 
         value += part;
     }
 
+    /// <summary>
+    /// Legge un valore dal dizionario campi
+    /// </summary>
+    /// <param name="values">Dizionario valori</param>
+    /// <param name="key">Chiave campo</param>
+    /// <returns>Valore letto o stringa vuota</returns>
     private static string GetValue(Dictionary<string, string> values, string key)
     {
         string result;
         if (values != null && values.TryGetValue(key, out result))
-        {
             return result != null ? result : "";
-        }
 
         return "";
     }
 
+    /// <summary>
+    /// Formatta un valore testuale vuoto
+    /// </summary>
+    /// <param name="value">Valore originale</param>
+    /// <returns>Valore visualizzabile</returns>
     private static string FormatValue(string value)
     {
-        return value != null && value.Length > 0 ? value : "-";
+        return !string.IsNullOrEmpty(value) ? value : "-";
     }
 
+    /// <summary>
+    /// Formatta dimensione stream
+    /// </summary>
+    /// <param name="size">Dimensione in byte</param>
+    /// <returns>Dimensione visualizzabile</returns>
     private static string FormatSize(long size)
     {
         return size > 0 ? Utils.FormatSize(size) : "-";

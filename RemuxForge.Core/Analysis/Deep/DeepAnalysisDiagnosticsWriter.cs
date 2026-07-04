@@ -169,7 +169,7 @@ namespace RemuxForge.Core.Analysis.Deep
             /// </summary>
             public string ErrorMessage { get; set; }
             /// <summary>
-            /// True se DeepAnalysis e' stata applicata
+            /// True se DeepAnalysis è stata applicata
             /// </summary>
             public bool DeepAnalysisApplied { get; set; }
             /// <summary>
@@ -177,7 +177,7 @@ namespace RemuxForge.Core.Analysis.Deep
             /// </summary>
             public long DeepAnalysisTimeMs { get; set; }
             /// <summary>
-            /// Modalita' speed correction
+            /// Modalità speed correction
             /// </summary>
             public string SpeedCorrectionMode { get; set; }
             /// <summary>
@@ -185,11 +185,11 @@ namespace RemuxForge.Core.Analysis.Deep
             /// </summary>
             public string ManualStretchFactor { get; set; }
             /// <summary>
-            /// Modalita' frame rate source
+            /// Modalità frame rate source
             /// </summary>
             public string SourceFrameRateMode { get; set; }
             /// <summary>
-            /// Modalita' frame rate language
+            /// Modalità frame rate language
             /// </summary>
             public string LanguageFrameRateMode { get; set; }
             /// <summary>

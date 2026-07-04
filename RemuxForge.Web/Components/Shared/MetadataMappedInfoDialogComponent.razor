@@ -1,7 +1,7 @@
 <div class="dialog-overlay visible" @onclick="OnClose">
     <div class="dialog-box dialog-fullscreen metadata-mapped-dialog-box" @onclick:stopPropagation="true">
         <div class="dialog-title">@GetTitle()</div>
-        <div class="dialog-body metadata-mapped-dialog-body">
+        <div class="dialog-body metadata-mapped-dialog-body @(Editable ? "metadata-mapped-dialog-body-editable" : "")">
             <div class="metadata-mapped-content">
                 @if (Record == null)
                 {
@@ -79,7 +79,7 @@
                 }
             </div>
 
-            @if (Simulated)
+            @if (Simulated && !Editable)
             {
                 <div class="metadata-mapped-helper">
                     <div class="config-help-title">@_helpTitle</div>
@@ -88,67 +88,182 @@
             }
         </div>
         <div class="dialog-footer">
+            @if (Editable)
+            {
+                <span class="metadata-manual-message">@_editMessage</span>
+                <button @onclick="ApplyManualEdit">@AppText.T("web.metadata.manualEdit.apply")</button>
+            }
             <button @onclick="OnClose">@AppText.T("web.common.close")</button>
         </div>
     </div>
 </div>
 
 @code {
+    /// <summary>
+    /// Selettore sintetico per i metadata container
+    /// </summary>
     private const string CONTAINER_SELECTOR = "container";
 
+    /// <summary>
+    /// Record metadata visualizzato
+    /// </summary>
     [Parameter] public MkvMetadataRecord Record { get; set; }
+
+    /// <summary>
+    /// Indica se mostrare il risultato simulato
+    /// </summary>
     [Parameter] public bool Simulated { get; set; }
+
+    /// <summary>
+    /// Indica se abilitare la modifica manuale
+    /// </summary>
+    [Parameter] public bool Editable { get; set; }
+
+    /// <summary>
+    /// Evento chiusura dialog
+    /// </summary>
     [Parameter] public EventCallback OnClose { get; set; }
 
+    /// <summary>
+    /// Evento applicazione modifiche manuali
+    /// </summary>
+    [Parameter] public EventCallback<List<MkvMetadataChange>> OnApply { get; set; }
+
+    /// <summary>
+    /// Titolo helper contestuale
+    /// </summary>
     private string _helpTitle = "";
+
+    /// <summary>
+    /// Testo helper contestuale
+    /// </summary>
     private string _helpText = "";
+
+    /// <summary>
+    /// File del record in editing manuale
+    /// </summary>
+    private string _editRecordPath = "";
+
+    /// <summary>
+    /// Messaggio stato editing manuale
+    /// </summary>
+    private string _editMessage = "";
+
+    /// <summary>
+    /// Selettore traccia video selezionata
+    /// </summary>
     private string _selectedVideoSelector = "";
+
+    /// <summary>
+    /// Selettore traccia audio selezionata
+    /// </summary>
     private string _selectedAudioSelector = "";
+
+    /// <summary>
+    /// Selettore traccia sottotitoli selezionata
+    /// </summary>
     private string _selectedTextSelector = "";
+
+    /// <summary>
+    /// Selettore contesto tag attivo
+    /// </summary>
     private string _activeTagSelector = CONTAINER_SELECTOR;
 
+    /// <summary>
+    /// Valori modificati manualmente indicizzati per riga
+    /// </summary>
+    private Dictionary<string, string> _editValues = new Dictionary<string, string>();
+
+    /// <summary>
+    /// Aggiorna stato derivato dai parametri
+    /// </summary>
     protected override void OnParametersSet()
     {
         this._helpTitle = AppText.T("web.metadata.mapped.helperTitle");
         this._helpText = AppText.T("web.metadata.mapped.helperText");
+        this.EnsureManualEditState();
         this.EnsureSelections();
     }
 
+    /// <summary>
+    /// Restituisce titolo dialog in base alla modalità
+    /// </summary>
+    /// <returns>Titolo localizzato</returns>
     private string GetTitle()
     {
-        string fileName = Record != null ? System.IO.Path.GetFileName(Record.InputFile) : "";
-        return Simulated
+        string fileName = this.Record != null ? System.IO.Path.GetFileName(this.Record.InputFile) : "";
+        if (this.Editable)
+        {
+            return AppText.F("web.metadata.manualEdit.title", fileName);
+        }
+
+        return this.Simulated
             ? AppText.F("web.metadata.mapped.simulatedTitle", fileName)
             : AppText.F("web.metadata.mapped.currentTitle", fileName);
     }
 
+    /// <summary>
+    /// Allinea lo stato di editing al record corrente
+    /// </summary>
+    private void EnsureManualEditState()
+    {
+        string recordPath = this.Record != null ? this.Record.InputFile : "";
+        if (!this.Editable)
+        {
+            this._editValues.Clear();
+            this._editRecordPath = "";
+            this._editMessage = "";
+            return;
+        }
+
+        if (this._editRecordPath == recordPath)
+        {
+            return;
+        }
+
+        this._editValues.Clear();
+        this._editRecordPath = recordPath;
+        this._editMessage = "";
+    }
+
+    /// <summary>
+    /// Restituisce il file info da mostrare
+    /// </summary>
+    /// <returns>File info corrente o simulato</returns>
     private MkvMetadataFileInfo GetInfo()
     {
-        if (Record == null)
+        if (this.Record == null)
         {
             return new MkvMetadataFileInfo();
         }
 
-        if (Simulated)
+        if (this.Simulated)
         {
-            return Record.FileInfo != null ? Record.FileInfo : new MkvMetadataFileInfo();
+            return this.Record.FileInfo != null ? this.Record.FileInfo : new MkvMetadataFileInfo();
         }
 
-        return Record.OriginalFileInfo != null && Record.OriginalFileInfo.Tracks != null && Record.OriginalFileInfo.Tracks.Count > 0
-            ? Record.OriginalFileInfo
-            : Record.FileInfo != null ? Record.FileInfo : new MkvMetadataFileInfo();
+        return this.Record.OriginalFileInfo != null && this.Record.OriginalFileInfo.Tracks != null && this.Record.OriginalFileInfo.Tracks.Count > 0
+            ? this.Record.OriginalFileInfo
+            : this.Record.FileInfo != null ? this.Record.FileInfo : new MkvMetadataFileInfo();
     }
 
+    /// <summary>
+    /// Restituisce il file info originale
+    /// </summary>
+    /// <returns>File info prima della simulazione</returns>
     private MkvMetadataFileInfo GetBeforeInfo()
     {
-        if (Record == null)
+        if (this.Record == null)
         {
             return new MkvMetadataFileInfo();
         }
 
-        return Record.OriginalFileInfo != null ? Record.OriginalFileInfo : new MkvMetadataFileInfo();
+        return this.Record.OriginalFileInfo != null ? this.Record.OriginalFileInfo : new MkvMetadataFileInfo();
     }
 
+    /// <summary>
+    /// Garantisce selezioni traccia e contesto tag valide
+    /// </summary>
     private void EnsureSelections()
     {
         this.EnsureTrackSelection(ref this._selectedVideoSelector, "video");
@@ -161,9 +276,14 @@
         }
     }
 
+    /// <summary>
+    /// Garantisce selezione valida per un tipo traccia
+    /// </summary>
+    /// <param name="selector">Selettore da validare</param>
+    /// <param name="trackKind">Tipo traccia</param>
     private void EnsureTrackSelection(ref string selector, string trackKind)
     {
-        if (selector.Length > 0 && this.FindTrackBySelector(selector) != null)
+        if (!string.IsNullOrEmpty(selector) && this.FindTrackBySelector(selector) != null)
         {
             return;
         }
@@ -172,6 +292,11 @@
         selector = tracks.Count > 0 ? GetSheetTrackSelector(tracks[0]) : "";
     }
 
+    /// <summary>
+    /// Verifica se il selettore tag attivo è valido
+    /// </summary>
+    /// <param name="selector">Selettore da verificare</param>
+    /// <returns>True se valido</returns>
     private bool IsActiveTagSelectorValid(string selector)
     {
         if (selector == CONTAINER_SELECTOR)
@@ -179,9 +304,14 @@
             return true;
         }
 
-        return selector.Length > 0 && this.FindTrackBySelector(selector) != null;
+        return !string.IsNullOrEmpty(selector) && this.FindTrackBySelector(selector) != null;
     }
 
+    /// <summary>
+    /// Restituisce tracce del tipo richiesto
+    /// </summary>
+    /// <param name="trackKind">Tipo traccia</param>
+    /// <returns>Tracce ordinate</returns>
     private List<MkvMetadataTrackInfo> GetTracksByKind(string trackKind)
     {
         List<MkvMetadataTrackInfo> result = new List<MkvMetadataTrackInfo>();
@@ -189,7 +319,7 @@
         MkvMetadataFileInfo before = this.GetBeforeInfo();
 
         this.AddTracksByKind(result, info.Tracks, trackKind);
-        if (Simulated)
+        if (this.Simulated)
         {
             this.AddTracksByKind(result, before.Tracks, trackKind);
         }
@@ -198,6 +328,12 @@
         return result;
     }
 
+    /// <summary>
+    /// Aggiunge tracce non duplicate per tipo
+    /// </summary>
+    /// <param name="result">Lista destinazione</param>
+    /// <param name="tracks">Tracce sorgente</param>
+    /// <param name="trackKind">Tipo traccia</param>
     private void AddTracksByKind(List<MkvMetadataTrackInfo> result, List<MkvMetadataTrackInfo> tracks, string trackKind)
     {
         if (tracks == null)
@@ -217,6 +353,12 @@
         }
     }
 
+    /// <summary>
+    /// Verifica se una traccia è già presente
+    /// </summary>
+    /// <param name="tracks">Tracce correnti</param>
+    /// <param name="selector">Selettore traccia</param>
+    /// <returns>True se presente</returns>
     private bool ContainsTrack(List<MkvMetadataTrackInfo> tracks, string selector)
     {
         for (int i = 0; i < tracks.Count; i++)
@@ -230,6 +372,12 @@
         return false;
     }
 
+    /// <summary>
+    /// Confronta due tracce per indice e ordine stream
+    /// </summary>
+    /// <param name="left">Traccia sinistra</param>
+    /// <param name="right">Traccia destra</param>
+    /// <returns>Risultato confronto</returns>
     private static int CompareTracks(MkvMetadataTrackInfo left, MkvMetadataTrackInfo right)
     {
         int leftIndex = left != null ? left.TypeIndex : 0;
@@ -244,14 +392,27 @@
         return leftOrder.CompareTo(rightOrder);
     }
 
+    /// <summary>
+    /// Costruisce righe metadata container
+    /// </summary>
+    /// <returns>Righe sheet container</returns>
     private List<MetadataMappedSheetRow> GetContainerRows()
     {
         List<MetadataMappedSheetRow> rows = new List<MetadataMappedSheetRow>();
-        this.AddFieldRows(rows, null, MetadataFieldSector.File);
+        if (!this.Editable)
+        {
+            this.AddFieldRows(rows, null, MetadataFieldSector.File);
+        }
+
         this.AddFieldRows(rows, null, MetadataFieldSector.Container);
         return rows;
     }
 
+    /// <summary>
+    /// Costruisce righe metadata per una traccia
+    /// </summary>
+    /// <param name="track">Traccia sorgente</param>
+    /// <returns>Righe sheet traccia</returns>
     private List<MetadataMappedSheetRow> GetTrackRows(MkvMetadataTrackInfo track)
     {
         List<MetadataMappedSheetRow> rows = new List<MetadataMappedSheetRow>();
@@ -276,12 +437,20 @@
         return rows;
     }
 
+    /// <summary>
+    /// Restituisce righe tag del contesto attivo
+    /// </summary>
+    /// <returns>Righe tag attive</returns>
     private List<MetadataMappedSheetRow> GetActiveTagRows()
     {
         MkvMetadataTrackInfo track = this._activeTagSelector == CONTAINER_SELECTOR ? null : this.FindTrackBySelector(this._activeTagSelector);
         return this.GetTagRows(track);
     }
 
+    /// <summary>
+    /// Restituisce righe metadata del contesto attivo
+    /// </summary>
+    /// <returns>Righe metadata attive</returns>
     private List<MetadataMappedSheetRow> GetActiveMetadataRows()
     {
         if (this._activeTagSelector == CONTAINER_SELECTOR)
@@ -292,10 +461,15 @@
         return this.GetTrackRows(this.FindTrackBySelector(this._activeTagSelector));
     }
 
+    /// <summary>
+    /// Costruisce righe tag per container o traccia
+    /// </summary>
+    /// <param name="track">Traccia sorgente o null per container</param>
+    /// <returns>Righe tag</returns>
     private List<MetadataMappedSheetRow> GetTagRows(MkvMetadataTrackInfo track)
     {
         List<MetadataMappedSheetRow> rows = new List<MetadataMappedSheetRow>();
-        List<string> tags = this.GetTagKeys(track);
+        List<string> tags = this.Editable ? MetadataTagRegistry.GetEditableTagNames() : this.GetTagKeys(track);
         for (int i = 0; i < tags.Count; i++)
         {
             rows.Add(this.CreateTagRow(track, tags[i]));
@@ -304,9 +478,15 @@
         return rows;
     }
 
+    /// <summary>
+    /// Aggiunge righe campo filtrate per settore
+    /// </summary>
+    /// <param name="rows">Lista destinazione</param>
+    /// <param name="track">Traccia sorgente o null per container</param>
+    /// <param name="sector">Settore campi</param>
     private void AddFieldRows(List<MetadataMappedSheetRow> rows, MkvMetadataTrackInfo track, MetadataFieldSector sector)
     {
-        List<MetadataFieldDefinition> fields = MetadataFieldRegistry.GetAll();
+        List<MetadataFieldDefinition> fields = this.Editable ? MetadataFieldRegistry.GetEditable(GetScopeFromSector(sector), true) : MetadataFieldRegistry.GetAll();
         for (int i = 0; i < fields.Count; i++)
         {
             MetadataFieldDefinition field = fields[i];
@@ -319,6 +499,12 @@
         }
     }
 
+    /// <summary>
+    /// Crea una riga campo metadata
+    /// </summary>
+    /// <param name="track">Traccia sorgente o null per container</param>
+    /// <param name="field">Definizione campo</param>
+    /// <returns>Riga sheet</returns>
     private MetadataMappedSheetRow CreateFieldRow(MkvMetadataTrackInfo track, MetadataFieldDefinition field)
     {
         MetadataMappedSheetRow row = new MetadataMappedSheetRow();
@@ -327,9 +513,16 @@
         row.FieldKey = field.Key;
         row.Track = track;
         row.IsTag = false;
+        row.FieldDefinition = field;
         return row;
     }
 
+    /// <summary>
+    /// Crea una riga tag metadata
+    /// </summary>
+    /// <param name="track">Traccia sorgente o null per container</param>
+    /// <param name="tagKey">Chiave tag</param>
+    /// <returns>Riga sheet</returns>
     private MetadataMappedSheetRow CreateTagRow(MkvMetadataTrackInfo track, string tagKey)
     {
         MetadataMappedSheetRow row = new MetadataMappedSheetRow();
@@ -341,6 +534,12 @@
         return row;
     }
 
+    /// <summary>
+    /// Renderizza una sheet metadata
+    /// </summary>
+    /// <param name="rows">Righe da renderizzare</param>
+    /// <param name="emptyText">Testo per lista vuota</param>
+    /// <returns>Markup sheet</returns>
     private RenderFragment FieldSheet(List<MetadataMappedSheetRow> rows, string emptyText)
     {
         List<MetadataMappedSheetDisplayRow> displayRows = this.BuildDisplayRows(rows);
@@ -353,7 +552,27 @@
             else
             {
                 <table class="metadata-mapped-sheet-table">
+                    @if (this.Editable)
+                    {
+                        <colgroup>
+                            <col class="metadata-manual-field-col" />
+                            <col class="metadata-manual-token-col" />
+                            <col class="metadata-manual-separator-col" />
+                            <col class="metadata-manual-current-col" />
+                            <col class="metadata-manual-new-col" />
+                        </colgroup>
+                    }
                     <tbody>
+                        @if (this.Editable)
+                        {
+                            <tr class="metadata-manual-header-row">
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                                <td class="metadata-manual-header-cell">@AppText.T("web.metadata.manualEdit.current")</td>
+                                <td class="metadata-manual-header-cell">@AppText.T("web.metadata.manualEdit.newValue")</td>
+                            </tr>
+                        }
                         @for (int r = 0; r < displayRows.Count; r++)
                         {
                             MetadataMappedSheetRow row = displayRows[r].Row;
@@ -362,7 +581,15 @@
                                 <td class="metadata-sheet-field-cell">@row.Label</td>
                                 <td class="metadata-sheet-token-cell">@row.Token</td>
                                 <td class="metadata-sheet-separator">:</td>
-                                <td class="metadata-sheet-value-cell @cell.CssClass" @onmouseenter="@(() => SetCellHelp(cell))">@FormatSheetValue(cell)</td>
+                                @if (this.Editable)
+                                {
+                                    <td class="metadata-sheet-value-cell metadata-manual-current-cell">@FormatSheetValue(cell)</td>
+                                    <td class="metadata-manual-edit-cell">@ManualEditInput(row, cell)</td>
+                                }
+                                else
+                                {
+                                    <td class="metadata-sheet-value-cell @cell.CssClass" @onmouseenter="@(() => SetCellHelp(cell))">@FormatSheetValue(cell)</td>
+                                }
                             </tr>
                         }
                     </tbody>
@@ -371,6 +598,11 @@
         </div>;
     }
 
+    /// <summary>
+    /// Costruisce righe visualizzabili filtrando valori vuoti
+    /// </summary>
+    /// <param name="rows">Righe sorgente</param>
+    /// <returns>Righe con cella calcolata</returns>
     private List<MetadataMappedSheetDisplayRow> BuildDisplayRows(List<MetadataMappedSheetRow> rows)
     {
         List<MetadataMappedSheetDisplayRow> result = new List<MetadataMappedSheetDisplayRow>();
@@ -396,6 +628,11 @@
         return result;
     }
 
+    /// <summary>
+    /// Verifica se una cella deve essere mostrata
+    /// </summary>
+    /// <param name="cell">Cella calcolata</param>
+    /// <returns>True se visualizzabile</returns>
     private bool ShouldDisplayCell(MetadataMappedSheetCell cell)
     {
         if (cell == null)
@@ -403,14 +640,271 @@
             return false;
         }
 
-        if (cell.Value != null && cell.Value.Length > 0)
+        if (this.Editable)
         {
             return true;
         }
 
-        return Simulated && cell.HasFieldChange;
+        if (!string.IsNullOrEmpty(cell.Value))
+        {
+            return true;
+        }
+
+        return this.Simulated && cell.HasFieldChange;
     }
 
+    /// <summary>
+    /// Renderizza input per editing manuale
+    /// </summary>
+    /// <param name="row">Riga sheet</param>
+    /// <param name="cell">Cella corrente</param>
+    /// <returns>Markup input</returns>
+    private RenderFragment ManualEditInput(MetadataMappedSheetRow row, MetadataMappedSheetCell cell)
+    {
+        MetadataFieldValueType valueType = row.FieldDefinition != null ? row.FieldDefinition.ValueType : MetadataFieldValueType.String;
+        string cssClass = "form-input metadata-manual-input" + (IsManualValueChanged(row, cell) ? " metadata-manual-input-changed" : "");
+        string value = this.GetManualEditValue(row, cell);
+        string inputType = valueType == MetadataFieldValueType.Integer || valueType == MetadataFieldValueType.Decimal ? "number" : "text";
+        string inputStep = valueType == MetadataFieldValueType.Decimal ? "any" : valueType == MetadataFieldValueType.Integer ? "1" : "";
+
+        if (!row.IsTag && valueType == MetadataFieldValueType.Boolean)
+        {
+            return @<select class="@cssClass" value="@value" @onchange="@((ChangeEventArgs args) => ChangeManualEditValue(row, args))">
+                <option value=""></option>
+                <option value="true">true</option>
+                <option value="false">false</option>
+            </select>;
+        }
+
+        return @<input class="@cssClass" type="@inputType" step="@inputStep" value="@value" @onchange="@((ChangeEventArgs args) => ChangeManualEditValue(row, args))" />;
+    }
+
+    /// <summary>
+    /// Restituisce valore manuale corrente
+    /// </summary>
+    /// <param name="row">Riga sheet</param>
+    /// <param name="cell">Cella corrente</param>
+    /// <returns>Valore manuale o valore corrente</returns>
+    private string GetManualEditValue(MetadataMappedSheetRow row, MetadataMappedSheetCell cell)
+    {
+        string key = BuildEditKey(row);
+        string value;
+
+        if (this._editValues.TryGetValue(key, out value))
+        {
+            return value != null ? value : "";
+        }
+
+        return cell != null && cell.Value != null ? cell.Value : "";
+    }
+
+    /// <summary>
+    /// Aggiorna un valore manuale
+    /// </summary>
+    /// <param name="row">Riga sheet</param>
+    /// <param name="args">Argomenti change</param>
+    private void ChangeManualEditValue(MetadataMappedSheetRow row, ChangeEventArgs args)
+    {
+        this._editValues[BuildEditKey(row)] = args.Value != null ? args.Value.ToString() : "";
+        this._editMessage = "";
+    }
+
+    /// <summary>
+    /// Verifica se il valore manuale differisce da quello corrente
+    /// </summary>
+    /// <param name="row">Riga sheet</param>
+    /// <param name="cell">Cella corrente</param>
+    /// <returns>True se modificato</returns>
+    private bool IsManualValueChanged(MetadataMappedSheetRow row, MetadataMappedSheetCell cell)
+    {
+        return !string.Equals(this.GetManualEditValue(row, cell), cell != null && cell.Value != null ? cell.Value : "", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Applica modifiche manuali validate
+    /// </summary>
+    private async System.Threading.Tasks.Task ApplyManualEdit()
+    {
+        List<MkvMetadataChange> changes = this.BuildManualChanges();
+        if (changes.Count == 0)
+        {
+            if (string.IsNullOrEmpty(this._editMessage))
+            {
+                this._editMessage = AppText.T("web.metadata.manualEdit.noChanges");
+            }
+
+            return;
+        }
+
+        await this.OnApply.InvokeAsync(changes);
+    }
+
+    /// <summary>
+    /// Costruisce le modifiche manuali da applicare
+    /// </summary>
+    /// <returns>Lista modifiche metadata</returns>
+    private List<MkvMetadataChange> BuildManualChanges()
+    {
+        List<MkvMetadataChange> changes = new List<MkvMetadataChange>();
+
+        foreach (KeyValuePair<string, string> pair in this._editValues)
+        {
+            string selector;
+            string rowType;
+            string fieldKey;
+            MkvMetadataTrackInfo track;
+            string before;
+            string after = pair.Value != null ? pair.Value : "";
+
+            if (!TryParseEditKey(pair.Key, out selector, out rowType, out fieldKey))
+            {
+                continue;
+            }
+
+            track = !string.IsNullOrEmpty(selector) ? this.FindTrackBySelector(selector) : null;
+            before = this.GetCurrentValueFromEditKey(pair.Key);
+            if (string.Equals(before, after, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            MkvMetadataChange change = new MkvMetadataChange();
+            change.RuleDescription = AppText.T("web.metadata.manualEdit.ruleDescription");
+            change.TrackSelector = selector;
+            change.TrackKind = track != null ? track.TrackKind : "";
+            change.TrackUniqueId = track != null ? track.TrackUniqueId : "";
+            change.FieldKey = fieldKey;
+            change.BeforeValue = before;
+            change.AfterValue = after;
+            change.RequiresRemux = false;
+
+            if (rowType == "tag")
+            {
+                if (!MetadataTagRegistry.IsAllowed(fieldKey))
+                {
+                    this._editMessage = AppText.F("web.metadata.manualEdit.tagNotAllowed", fieldKey);
+                    return new List<MkvMetadataChange>();
+                }
+
+                if (track == null)
+                {
+                    change.Scope = MkvMetadataTargetScope.Container;
+                }
+                else if (track.TrackKind == "video")
+                {
+                    change.Scope = MkvMetadataTargetScope.Video;
+                }
+                else if (track.TrackKind == "audio")
+                {
+                    change.Scope = MkvMetadataTargetScope.Audio;
+                }
+                else if (track.TrackKind == "subtitles")
+                {
+                    change.Scope = MkvMetadataTargetScope.Subtitle;
+                }
+
+                change.OperationType = string.IsNullOrEmpty(after) ? MkvMetadataOperationType.ClearTagField : MkvMetadataOperationType.SetTagField;
+                changes.Add(change);
+            }
+            else
+            {
+                MetadataFieldDefinition field;
+                string errorMessage = "";
+                if (!MetadataFieldRegistry.TryGet(fieldKey, out field))
+                {
+                    this._editMessage = AppText.F("metadata.validation.unknownField", fieldKey);
+                    return new List<MkvMetadataChange>();
+                }
+
+                if (!MetadataFieldRegistry.ValidateWritable(fieldKey, out errorMessage))
+                {
+                    this._editMessage = !string.IsNullOrEmpty(errorMessage) ? errorMessage : AppText.F("metadata.validation.unknownField", fieldKey);
+                    return new List<MkvMetadataChange>();
+                }
+
+                if (string.IsNullOrEmpty(after) && !string.IsNullOrEmpty(before) && !field.IsClearable)
+                {
+                    this._editMessage = AppText.F("web.metadata.manualEdit.fieldNotClearable", field.Label);
+                    return new List<MkvMetadataChange>();
+                }
+
+                change.Scope = GetScopeFromSector(field.Sector);
+                change.MkvPropEditProperty = field.MkvPropEditProperty;
+                change.OperationType = string.IsNullOrEmpty(after) ? MkvMetadataOperationType.ClearField : MkvMetadataOperationType.SetField;
+                changes.Add(change);
+            }
+        }
+
+        return changes;
+    }
+
+    /// <summary>
+    /// Legge il valore corrente per una chiave editing
+    /// </summary>
+    /// <param name="key">Chiave editing</param>
+    /// <returns>Valore corrente</returns>
+    private string GetCurrentValueFromEditKey(string key)
+    {
+        string selector;
+        string rowType;
+        string fieldKey;
+        MkvMetadataTrackInfo track;
+
+        if (!TryParseEditKey(key, out selector, out rowType, out fieldKey))
+        {
+            return "";
+        }
+
+        track = !string.IsNullOrEmpty(selector) ? this.FindTrackBySelector(selector) : null;
+        if (rowType == "tag")
+        {
+            return track == null ? GetValue(this.GetInfo().Tags, fieldKey) : GetValue(track.Tags, fieldKey);
+        }
+
+        return track == null ? GetValue(this.GetInfo().Fields, fieldKey) : GetValue(track.Fields, fieldKey);
+    }
+
+    /// <summary>
+    /// Decodifica una chiave editing
+    /// </summary>
+    /// <param name="key">Chiave serializzata</param>
+    /// <param name="selector">Selettore estratto</param>
+    /// <param name="rowType">Tipo riga estratto</param>
+    /// <param name="fieldKey">Chiave campo estratta</param>
+    /// <returns>True se valida</returns>
+    private static bool TryParseEditKey(string key, out string selector, out string rowType, out string fieldKey)
+    {
+        string[] parts = (key != null ? key : "").Split(new string[] { "||" }, StringSplitOptions.None);
+        selector = "";
+        rowType = "";
+        fieldKey = "";
+
+        if (parts.Length != 3)
+        {
+            return false;
+        }
+
+        selector = parts[0];
+        rowType = parts[1];
+        fieldKey = parts[2];
+        return !string.IsNullOrEmpty(rowType) && !string.IsNullOrEmpty(fieldKey);
+    }
+
+    /// <summary>
+    /// Costruisce chiave editing per una riga
+    /// </summary>
+    /// <param name="row">Riga sheet</param>
+    /// <returns>Chiave editing</returns>
+    private static string BuildEditKey(MetadataMappedSheetRow row)
+    {
+        return GetSheetTrackSelector(row.Track) + "||" + (row.IsTag ? "tag" : "field") + "||" + row.FieldKey;
+    }
+
+    /// <summary>
+    /// Costruisce la cella sheet per una riga
+    /// </summary>
+    /// <param name="row">Riga sheet</param>
+    /// <returns>Cella calcolata</returns>
     private MetadataMappedSheetCell BuildCell(MetadataMappedSheetRow row)
     {
         MetadataMappedSheetCell cell = new MetadataMappedSheetCell();
@@ -450,12 +944,17 @@
         }
 
         changes = this.GetChanges(trackSelector, row.FieldKey);
-        cell.HasFieldChange = Simulated && changes.Count > 0;
-        cell.CssClass = Simulated ? this.GetChangeClass(changes, before, current) : "";
+        cell.HasFieldChange = this.Simulated && changes.Count > 0;
+        cell.CssClass = this.Simulated ? this.GetChangeClass(changes, before, current) : "";
         cell.HelpText = this.BuildChangeHelp(trackSelector, row.FieldKey);
         return cell;
     }
 
+    /// <summary>
+    /// Restituisce chiavi tag presenti o simulate
+    /// </summary>
+    /// <param name="track">Traccia sorgente o null per container</param>
+    /// <returns>Chiavi tag ordinate</returns>
     private List<string> GetTagKeys(MkvMetadataTrackInfo track)
     {
         List<string> result = new List<string>();
@@ -465,13 +964,13 @@
         AddTagKeys(result, track == null ? this.GetInfo().Tags : track.Tags);
         AddTagKeys(result, track == null ? this.GetBeforeInfo().Tags : beforeTrack != null ? beforeTrack.Tags : null);
 
-        if (Record != null && Record.Changes != null)
+        if (this.Record != null && this.Record.Changes != null)
         {
-            for (int i = 0; i < Record.Changes.Count; i++)
+            for (int i = 0; i < this.Record.Changes.Count; i++)
             {
-                if (IsTagOperation(Record.Changes[i].OperationType) && Record.Changes[i].TrackSelector == trackSelector)
+                if (IsTagOperation(this.Record.Changes[i].OperationType) && this.Record.Changes[i].TrackSelector == trackSelector)
                 {
-                    AddKey(result, Record.Changes[i].FieldKey);
+                    AddKey(result, this.Record.Changes[i].FieldKey);
                 }
             }
         }
@@ -480,6 +979,11 @@
         return result;
     }
 
+    /// <summary>
+    /// Aggiunge chiavi tag da dizionario
+    /// </summary>
+    /// <param name="keys">Lista destinazione</param>
+    /// <param name="tags">Dizionario tag</param>
     private static void AddTagKeys(List<string> keys, Dictionary<string, string> tags)
     {
         if (tags == null)
@@ -493,13 +997,16 @@
         }
     }
 
+    /// <summary>
+    /// Aggiunge una chiave unica
+    /// </summary>
+    /// <param name="keys">Lista destinazione</param>
+    /// <param name="key">Chiave da aggiungere</param>
     private static void AddKey(List<string> keys, string key)
     {
         string value = key != null ? key.Trim() : "";
-        if (value.Length == 0)
-        {
+        if (string.IsNullOrEmpty(value))
             return;
-        }
 
         for (int i = 0; i < keys.Count; i++)
         {
@@ -512,38 +1019,43 @@
         keys.Add(value);
     }
 
+    /// <summary>
+    /// Restituisce classe CSS differenziale
+    /// </summary>
+    /// <param name="changes">Modifiche associate</param>
+    /// <param name="before">Valore prima</param>
+    /// <param name="after">Valore dopo</param>
+    /// <returns>Classe CSS</returns>
     private string GetChangeClass(List<MkvMetadataChange> changes, string before, string after)
     {
-        if (!Simulated || changes == null || changes.Count == 0)
-        {
+        if (!this.Simulated || changes == null || changes.Count == 0)
             return "";
-        }
 
-        if ((before == null || before.Length == 0) && after != null && after.Length > 0)
-        {
+        if (string.IsNullOrEmpty(before) && !string.IsNullOrEmpty(after))
             return "metadata-diff-added";
-        }
 
-        if (before != null && before.Length > 0 && (after == null || after.Length == 0))
-        {
+        if (!string.IsNullOrEmpty(before) && string.IsNullOrEmpty(after))
             return "metadata-diff-removed";
-        }
 
         return "metadata-diff-modified";
     }
 
+    /// <summary>
+    /// Restituisce modifiche associate a selettore e campo
+    /// </summary>
+    /// <param name="trackSelector">Selettore traccia</param>
+    /// <param name="fieldKey">Chiave campo</param>
+    /// <returns>Lista modifiche</returns>
     private List<MkvMetadataChange> GetChanges(string trackSelector, string fieldKey)
     {
         List<MkvMetadataChange> result = new List<MkvMetadataChange>();
         string selector = trackSelector != null ? trackSelector : "";
-        if (Record == null || Record.Changes == null)
-        {
+        if (this.Record == null || this.Record.Changes == null)
             return result;
-        }
 
-        for (int i = 0; i < Record.Changes.Count; i++)
+        for (int i = 0; i < this.Record.Changes.Count; i++)
         {
-            MkvMetadataChange change = Record.Changes[i];
+            MkvMetadataChange change = this.Record.Changes[i];
             if (change.TrackSelector == selector && change.FieldKey == fieldKey)
             {
                 result.Add(change);
@@ -553,25 +1065,32 @@
         return result;
     }
 
+    /// <summary>
+    /// Verifica se una traccia è rimossa nella simulazione
+    /// </summary>
+    /// <param name="trackSelector">Selettore traccia</param>
+    /// <returns>True se rimossa</returns>
     private bool IsTrackRemoved(string trackSelector)
     {
         string selector = trackSelector != null ? trackSelector : "";
-        if (!Simulated || selector.Length == 0 || Record == null || Record.Changes == null)
-        {
+        if (!this.Simulated || string.IsNullOrEmpty(selector) || this.Record == null || this.Record.Changes == null)
             return false;
-        }
 
-        for (int i = 0; i < Record.Changes.Count; i++)
+        for (int i = 0; i < this.Record.Changes.Count; i++)
         {
-            if (Record.Changes[i].OperationType == MkvMetadataOperationType.RemoveTrack && Record.Changes[i].TrackSelector == selector)
-            {
+            if (this.Record.Changes[i].OperationType == MkvMetadataOperationType.RemoveTrack && this.Record.Changes[i].TrackSelector == selector)
                 return true;
-            }
         }
 
         return false;
     }
 
+    /// <summary>
+    /// Costruisce testo helper per una modifica campo
+    /// </summary>
+    /// <param name="trackSelector">Selettore traccia</param>
+    /// <param name="fieldKey">Chiave campo</param>
+    /// <returns>Testo helper</returns>
     private string BuildChangeHelp(string trackSelector, string fieldKey)
     {
         List<MkvMetadataChange> changes = this.GetChanges(trackSelector, fieldKey);
@@ -587,25 +1106,26 @@
             sb.Append(i + 1).Append(". ").Append(change.RuleDescription).Append('\n');
             sb.Append("   ").Append(AppText.T("web.metadata.mapped.before")).Append(' ').Append(FormatMappedValue(change.BeforeValue)).Append('\n');
             sb.Append("   ").Append(AppText.T("web.metadata.mapped.after")).Append(' ').Append(FormatMappedValue(change.AfterValue)).Append('\n');
-            if (change.Message.Length > 0)
-            {
+            if (!string.IsNullOrEmpty(change.Message))
                 sb.Append("   ").Append(change.Message).Append('\n');
-            }
         }
 
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Costruisce testo helper per traccia rimossa
+    /// </summary>
+    /// <param name="trackSelector">Selettore traccia</param>
+    /// <returns>Testo helper</returns>
     private string BuildRemoveTrackHelp(string trackSelector)
     {
-        if (Record == null || Record.Changes == null)
-        {
+        if (this.Record == null || this.Record.Changes == null)
             return AppText.T("web.metadata.mapped.noChangeHelp");
-        }
 
-        for (int i = 0; i < Record.Changes.Count; i++)
+        for (int i = 0; i < this.Record.Changes.Count; i++)
         {
-            MkvMetadataChange change = Record.Changes[i];
+            MkvMetadataChange change = this.Record.Changes[i];
             if (change.OperationType == MkvMetadataOperationType.RemoveTrack && change.TrackSelector == trackSelector)
             {
                 return AppText.F("web.metadata.mapped.removedBy", change.RuleDescription);
@@ -615,68 +1135,103 @@
         return AppText.T("web.metadata.mapped.noChangeHelp");
     }
 
+    /// <summary>
+    /// Imposta helper contestuale della cella
+    /// </summary>
+    /// <param name="cell">Cella sorgente</param>
     private void SetCellHelp(MetadataMappedSheetCell cell)
     {
-        if (!Simulated || cell == null || cell.CssClass.Length == 0)
-        {
+        if (!this.Simulated || cell == null || string.IsNullOrEmpty(cell.CssClass))
             return;
-        }
 
         this._helpTitle = cell.Token + " - " + cell.Label;
         this._helpText = cell.HelpText;
     }
 
+    /// <summary>
+    /// Attiva i tag container
+    /// </summary>
     private void ActivateContainerTags()
     {
         this._activeTagSelector = CONTAINER_SELECTOR;
     }
 
+    /// <summary>
+    /// Attiva i tag della traccia video selezionata
+    /// </summary>
     private void ActivateVideoTags()
     {
         this.ActivateTrackTags(this._selectedVideoSelector);
     }
 
+    /// <summary>
+    /// Attiva i tag della traccia audio selezionata
+    /// </summary>
     private void ActivateAudioTags()
     {
         this.ActivateTrackTags(this._selectedAudioSelector);
     }
 
+    /// <summary>
+    /// Attiva i tag della traccia sottotitoli selezionata
+    /// </summary>
     private void ActivateTextTags()
     {
         this.ActivateTrackTags(this._selectedTextSelector);
     }
 
+    /// <summary>
+    /// Attiva i tag per un selettore traccia
+    /// </summary>
+    /// <param name="selector">Selettore traccia</param>
     private void ActivateTrackTags(string selector)
     {
-        if (selector.Length > 0)
-        {
+        if (!string.IsNullOrEmpty(selector))
             this._activeTagSelector = selector;
-        }
     }
 
+    /// <summary>
+    /// Cambia selezione sul container
+    /// </summary>
     private void ChangeContainerSelection()
     {
         this._activeTagSelector = CONTAINER_SELECTOR;
     }
 
+    /// <summary>
+    /// Cambia traccia video selezionata
+    /// </summary>
+    /// <param name="args">Argomenti change</param>
     private void ChangeVideoSelection(ChangeEventArgs args)
     {
         this._selectedVideoSelector = args.Value != null ? args.Value.ToString() : "";
         this.ActivateTrackTags(this._selectedVideoSelector);
     }
 
+    /// <summary>
+    /// Cambia traccia audio selezionata
+    /// </summary>
+    /// <param name="args">Argomenti change</param>
     private void ChangeAudioSelection(ChangeEventArgs args)
     {
         this._selectedAudioSelector = args.Value != null ? args.Value.ToString() : "";
         this.ActivateTrackTags(this._selectedAudioSelector);
     }
 
+    /// <summary>
+    /// Cambia traccia sottotitoli selezionata
+    /// </summary>
+    /// <param name="args">Argomenti change</param>
     private void ChangeTextSelection(ChangeEventArgs args)
     {
         this._selectedTextSelector = args.Value != null ? args.Value.ToString() : "";
         this.ActivateTrackTags(this._selectedTextSelector);
     }
 
+    /// <summary>
+    /// Restituisce etichetta del contesto tag attivo
+    /// </summary>
+    /// <returns>Etichetta contesto</returns>
     private string GetActiveTagContextLabel()
     {
         if (this._activeTagSelector == CONTAINER_SELECTOR)
@@ -688,6 +1243,11 @@
         return track != null ? this.BuildTrackOptionLabel(track) : AppText.T("web.metadata.mapped.container");
     }
 
+    /// <summary>
+    /// Cerca una traccia per selettore nei dati correnti e originali
+    /// </summary>
+    /// <param name="selector">Selettore traccia</param>
+    /// <returns>Traccia trovata o null</returns>
     private MkvMetadataTrackInfo FindTrackBySelector(string selector)
     {
         MkvMetadataTrackInfo track;
@@ -701,13 +1261,17 @@
         return this.FindTrackBySelector(this.GetBeforeInfo().Tracks, selector);
     }
 
+    /// <summary>
+    /// Cerca una traccia per selettore in una lista
+    /// </summary>
+    /// <param name="tracks">Lista tracce</param>
+    /// <param name="selector">Selettore traccia</param>
+    /// <returns>Traccia trovata o null</returns>
     private MkvMetadataTrackInfo FindTrackBySelector(List<MkvMetadataTrackInfo> tracks, string selector)
     {
         string value = selector != null ? selector : "";
-        if (tracks == null || value.Length == 0)
-        {
+        if (tracks == null || string.IsNullOrEmpty(value))
             return null;
-        }
 
         for (int i = 0; i < tracks.Count; i++)
         {
@@ -720,14 +1284,17 @@
         return null;
     }
 
+    /// <summary>
+    /// Cerca la traccia originale corrispondente
+    /// </summary>
+    /// <param name="track">Traccia corrente</param>
+    /// <returns>Traccia originale o null</returns>
     private MkvMetadataTrackInfo FindBeforeTrack(MkvMetadataTrackInfo track)
     {
         MkvMetadataFileInfo before = this.GetBeforeInfo();
         string selector = GetSheetTrackSelector(track);
-        if (track == null || selector.Length == 0)
-        {
+        if (track == null || string.IsNullOrEmpty(selector))
             return null;
-        }
 
         if (before.Tracks != null)
         {
@@ -754,6 +1321,11 @@
         return null;
     }
 
+    /// <summary>
+    /// Costruisce etichetta dropdown container
+    /// </summary>
+    /// <param name="info">File info sorgente</param>
+    /// <returns>Etichetta container</returns>
     private string BuildContainerOptionLabel(MkvMetadataFileInfo info)
     {
         string result = AppText.T("web.metadata.mapped.container");
@@ -765,6 +1337,11 @@
         return result;
     }
 
+    /// <summary>
+    /// Costruisce etichetta dropdown traccia
+    /// </summary>
+    /// <param name="track">Traccia sorgente</param>
+    /// <returns>Etichetta traccia</returns>
     private string BuildTrackOptionLabel(MkvMetadataTrackInfo track)
     {
         string result = BuildSheetTrackTitle(track);
@@ -802,52 +1379,78 @@
         return result;
     }
 
+    /// <summary>
+    /// Costruisce etichetta risoluzione video
+    /// </summary>
+    /// <param name="track">Traccia video</param>
+    /// <returns>Etichetta risoluzione</returns>
     private static string BuildResolutionLabel(MkvMetadataTrackInfo track)
     {
         string width = GetValue(track.Fields, "video_width");
         string height = GetValue(track.Fields, "video_height");
-        return width.Length > 0 && height.Length > 0 ? width + "x" + height : "";
+        return !string.IsNullOrEmpty(width) && !string.IsNullOrEmpty(height) ? width + "x" + height : "";
     }
 
+    /// <summary>
+    /// Costruisce etichetta framerate
+    /// </summary>
+    /// <param name="track">Traccia video</param>
+    /// <returns>Etichetta framerate</returns>
     private static string BuildFpsLabel(MkvMetadataTrackInfo track)
     {
         string fps = GetValue(track.Fields, "video_fps");
-        return fps.Length > 0 ? fps + " fps" : "";
+        return !string.IsNullOrEmpty(fps) ? fps + " fps" : "";
     }
 
+    /// <summary>
+    /// Costruisce etichetta profondità/campionamento audio
+    /// </summary>
+    /// <param name="track">Traccia audio</param>
+    /// <returns>Etichetta audio</returns>
     private static string BuildAudioRateLabel(MkvMetadataTrackInfo track)
     {
         string bitDepth = GetValue(track.Fields, "audio_bitdepth");
         string sampleRate = GetValue(track.Fields, "audio_sampling_rate_khz");
-        if (bitDepth.Length == 0 && sampleRate.Length == 0)
-        {
+        if (string.IsNullOrEmpty(bitDepth) && string.IsNullOrEmpty(sampleRate))
             return "";
-        }
 
-        if (bitDepth.Length > 0 && sampleRate.Length > 0)
-        {
+        if (!string.IsNullOrEmpty(bitDepth) && !string.IsNullOrEmpty(sampleRate))
             return bitDepth + "bit/" + sampleRate + "kHz";
-        }
 
-        return bitDepth.Length > 0 ? bitDepth + "bit" : sampleRate + "kHz";
+        return !string.IsNullOrEmpty(bitDepth) ? bitDepth + "bit" : sampleRate + "kHz";
     }
 
+    /// <summary>
+    /// Legge valore campo con fallback
+    /// </summary>
+    /// <param name="track">Traccia sorgente</param>
+    /// <param name="fieldKey">Chiave campo</param>
+    /// <param name="fallback">Fallback</param>
+    /// <returns>Valore migliore</returns>
     private static string GetBestValue(MkvMetadataTrackInfo track, string fieldKey, string fallback)
     {
         string value = GetValue(track.Fields, fieldKey);
-        return value.Length > 0 ? value : fallback != null ? fallback : "";
+        return !string.IsNullOrEmpty(value) ? value : fallback != null ? fallback : "";
     }
 
+    /// <summary>
+    /// Aggiunge parte a etichetta dropdown
+    /// </summary>
+    /// <param name="value">Etichetta corrente</param>
+    /// <param name="part">Parte da aggiungere</param>
     private static void AddOptionPart(ref string value, string part)
     {
-        if (part == null || part.Length == 0)
-        {
+        if (string.IsNullOrEmpty(part))
             return;
-        }
 
         value += " - " + part;
     }
 
+    /// <summary>
+    /// Verifica se un tipo operazione agisce sui tag
+    /// </summary>
+    /// <param name="type">Tipo operazione</param>
+    /// <returns>True se operazione tag</returns>
     private static bool IsTagOperation(MkvMetadataOperationType type)
     {
         return type == MkvMetadataOperationType.SetTagField ||
@@ -857,6 +1460,37 @@
             type == MkvMetadataOperationType.DeleteTrackStatisticsTags;
     }
 
+    /// <summary>
+    /// Converte settore campo in ambito metadata
+    /// </summary>
+    /// <param name="sector">Settore campo</param>
+    /// <returns>Ambito metadata</returns>
+    private static MkvMetadataTargetScope GetScopeFromSector(MetadataFieldSector sector)
+    {
+        if (sector == MetadataFieldSector.Video)
+        {
+            return MkvMetadataTargetScope.Video;
+        }
+
+        if (sector == MetadataFieldSector.Audio)
+        {
+            return MkvMetadataTargetScope.Audio;
+        }
+
+        if (sector == MetadataFieldSector.Subtitle)
+        {
+            return MkvMetadataTargetScope.Subtitle;
+        }
+
+        return MkvMetadataTargetScope.Container;
+    }
+
+    /// <summary>
+    /// Legge valore da dizionario
+    /// </summary>
+    /// <param name="values">Dizionario valori</param>
+    /// <param name="key">Chiave valore</param>
+    /// <returns>Valore o stringa vuota</returns>
     private static string GetValue(Dictionary<string, string> values, string key)
     {
         string result;
@@ -868,11 +1502,21 @@
         return "";
     }
 
+    /// <summary>
+    /// Formatta valore nel pannello helper
+    /// </summary>
+    /// <param name="value">Valore sorgente</param>
+    /// <returns>Valore visualizzabile</returns>
     private static string FormatMappedValue(string value)
     {
-        return value != null && value.Length > 0 ? value : AppText.T("web.metadata.mapped.empty");
+        return !string.IsNullOrEmpty(value) ? value : AppText.T("web.metadata.mapped.empty");
     }
 
+    /// <summary>
+    /// Formatta valore cella sheet
+    /// </summary>
+    /// <param name="cell">Cella sorgente</param>
+    /// <returns>Valore visualizzabile</returns>
     private static string FormatSheetValue(MetadataMappedSheetCell cell)
     {
         if (cell == null)
@@ -880,14 +1524,17 @@
             return "";
         }
 
-        if (cell.Value != null && cell.Value.Length > 0)
-        {
+        if (!string.IsNullOrEmpty(cell.Value))
             return cell.Value;
-        }
 
-        return cell.CssClass.Length > 0 ? AppText.T("web.metadata.mapped.empty") : "";
+        return !string.IsNullOrEmpty(cell.CssClass) ? AppText.T("web.metadata.mapped.empty") : "";
     }
 
+    /// <summary>
+    /// Costruisce titolo sintetico traccia
+    /// </summary>
+    /// <param name="track">Traccia sorgente</param>
+    /// <returns>Titolo traccia</returns>
     private static string BuildSheetTrackTitle(MkvMetadataTrackInfo track)
     {
         string type;
@@ -897,10 +1544,22 @@
             return "";
         }
 
-        if (track.TrackKind == "video") { type = AppText.T("web.metadata.mapped.video"); }
-        else if (track.TrackKind == "audio") { type = AppText.T("web.metadata.mapped.audio"); }
-        else if (track.TrackKind == "subtitles") { type = AppText.T("web.metadata.mapped.text"); }
-        else { type = track.MediaInfoType != null && track.MediaInfoType.Length > 0 ? track.MediaInfoType : track.TrackKind; }
+        if (track.TrackKind == "video")
+        {
+            type = AppText.T("web.metadata.mapped.video");
+        }
+        else if (track.TrackKind == "audio")
+        {
+            type = AppText.T("web.metadata.mapped.audio");
+        }
+        else if (track.TrackKind == "subtitles")
+        {
+            type = AppText.T("web.metadata.mapped.text");
+        }
+        else
+        {
+            type = !string.IsNullOrEmpty(track.MediaInfoType) ? track.MediaInfoType : track.TrackKind;
+        }
 
         if (track.TypeIndex > 0)
         {
@@ -915,6 +1574,11 @@
         return type;
     }
 
+    /// <summary>
+    /// Restituisce selettore sheet per una traccia
+    /// </summary>
+    /// <param name="track">Traccia sorgente</param>
+    /// <returns>Selettore traccia</returns>
     private static string GetSheetTrackSelector(MkvMetadataTrackInfo track)
     {
         if (track == null)
@@ -922,33 +1586,68 @@
             return "";
         }
 
-        if (track.TrackSelector != null && track.TrackSelector.Length > 0)
-        {
+        if (!string.IsNullOrEmpty(track.TrackSelector))
             return track.TrackSelector;
-        }
 
         return "stream:" + track.StreamOrder.ToString();
     }
 
+    /// <summary>
+    /// Riga logica della sheet metadata
+    /// </summary>
     private class MetadataMappedSheetRow
     {
+        /// <summary>
+        /// Inizializza riga vuota
+        /// </summary>
         public MetadataMappedSheetRow()
         {
             this.Token = "";
             this.Label = "";
             this.FieldKey = "";
             this.Track = null;
+            this.FieldDefinition = null;
         }
 
+        /// <summary>
+        /// Token campo
+        /// </summary>
         public string Token { get; set; }
+
+        /// <summary>
+        /// Etichetta campo
+        /// </summary>
         public string Label { get; set; }
+
+        /// <summary>
+        /// Chiave campo o tag
+        /// </summary>
         public string FieldKey { get; set; }
+
+        /// <summary>
+        /// Traccia associata o null per container
+        /// </summary>
         public MkvMetadataTrackInfo Track { get; set; }
+
+        /// <summary>
+        /// Definizione campo associata
+        /// </summary>
+        public MetadataFieldDefinition FieldDefinition { get; set; }
+
+        /// <summary>
+        /// Indica se la riga rappresenta un tag
+        /// </summary>
         public bool IsTag { get; set; }
     }
 
+    /// <summary>
+    /// Cella calcolata della sheet metadata
+    /// </summary>
     private class MetadataMappedSheetCell
     {
+        /// <summary>
+        /// Inizializza cella vuota
+        /// </summary>
         public MetadataMappedSheetCell()
         {
             this.Token = "";
@@ -961,25 +1660,69 @@
             this.IsTrackRemoved = false;
         }
 
+        /// <summary>
+        /// Token campo
+        /// </summary>
         public string Token { get; set; }
+
+        /// <summary>
+        /// Etichetta campo
+        /// </summary>
         public string Label { get; set; }
+
+        /// <summary>
+        /// Valore campo
+        /// </summary>
         public string Value { get; set; }
+
+        /// <summary>
+        /// Classe CSS della cella
+        /// </summary>
         public string CssClass { get; set; }
+
+        /// <summary>
+        /// Classe CSS della riga
+        /// </summary>
         public string RowCssClass { get; set; }
+
+        /// <summary>
+        /// Testo helper associato
+        /// </summary>
         public string HelpText { get; set; }
+
+        /// <summary>
+        /// Indica se il campo ha una modifica
+        /// </summary>
         public bool HasFieldChange { get; set; }
+
+        /// <summary>
+        /// Indica se la traccia risulta rimossa
+        /// </summary>
         public bool IsTrackRemoved { get; set; }
     }
 
+    /// <summary>
+    /// Coppia riga/cella pronta per render
+    /// </summary>
     private class MetadataMappedSheetDisplayRow
     {
+        /// <summary>
+        /// Inizializza display row vuota
+        /// </summary>
         public MetadataMappedSheetDisplayRow()
         {
             this.Row = null;
             this.Cell = null;
         }
 
+        /// <summary>
+        /// Riga sheet
+        /// </summary>
         public MetadataMappedSheetRow Row { get; set; }
+
+        /// <summary>
+        /// Cella calcolata
+        /// </summary>
         public MetadataMappedSheetCell Cell { get; set; }
     }
 }

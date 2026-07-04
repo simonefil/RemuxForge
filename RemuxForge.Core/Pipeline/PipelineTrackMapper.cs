@@ -121,7 +121,7 @@ namespace RemuxForge.Core.Pipeline
                     {
                         continue;
                     }
-                    lang = sourceTracks[i].Language.Length > 0 ? sourceTracks[i].Language : "und";
+                    lang = !string.IsNullOrEmpty(sourceTracks[i].Language) ? sourceTracks[i].Language : "und";
                     if (!resultAudioLangs.Contains(lang))
                     {
                         resultAudioLangs.Add(lang);
@@ -131,7 +131,7 @@ namespace RemuxForge.Core.Pipeline
 
             for (int i = 0; i < audioTracks.Count; i++)
             {
-                lang = audioTracks[i].Language.Length > 0 ? audioTracks[i].Language : "und";
+                lang = !string.IsNullOrEmpty(audioTracks[i].Language) ? audioTracks[i].Language : "und";
                 if (!resultAudioLangs.Contains(lang))
                 {
                     resultAudioLangs.Add(lang);
@@ -171,7 +171,7 @@ namespace RemuxForge.Core.Pipeline
 
             for (int i = 0; i < subtitleTracks.Count; i++)
             {
-                lang = subtitleTracks[i].Language.Length > 0 ? subtitleTracks[i].Language : "und";
+                lang = !string.IsNullOrEmpty(subtitleTracks[i].Language) ? subtitleTracks[i].Language : "und";
                 if (!resultSubLangs.Contains(lang))
                 {
                     resultSubLangs.Add(lang);
@@ -256,8 +256,8 @@ namespace RemuxForge.Core.Pipeline
                 {
                     if (string.Equals(tracks[i].Type, trackType, StringComparison.OrdinalIgnoreCase))
                     {
-                        // Matroska puo' omettere la lingua: in quel caso usiamo il codice standard und
-                        string lang = tracks[i].Language.Length > 0 ? tracks[i].Language : "und";
+                        // Matroska può omettere la lingua: in quel caso usiamo il codice standard und
+                        string lang = !string.IsNullOrEmpty(tracks[i].Language) ? tracks[i].Language : "und";
                         if (!langs.Contains(lang))
                         {
                             langs.Add(lang);

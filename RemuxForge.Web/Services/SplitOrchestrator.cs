@@ -11,20 +11,55 @@ using System.Threading;
 namespace RemuxForge.Web.Services
 {
     /// <summary>
-    /// Orchestratore WebUI per modalita' split
+    /// Orchestratore WebUI per modalità split
     /// </summary>
     public class SplitOrchestrator
     {
         #region Variabili di classe
 
+        /// <summary>
+        /// Opzioni split correnti
+        /// </summary>
         private Options _options;
+
+        /// <summary>
+        /// Record split correnti
+        /// </summary>
         private List<MkvSplitRecord> _records;
+
+        /// <summary>
+        /// Lock per accesso thread-safe allo stato
+        /// </summary>
         private object _lock;
+
+        /// <summary>
+        /// Stato avanzamento corrente
+        /// </summary>
         private ProcessingProgressState _progress;
+
+        /// <summary>
+        /// True se è in corso un'operazione
+        /// </summary>
         private volatile bool _isBusy;
+
+        /// <summary>
+        /// True se è stato richiesto stop cooperativo
+        /// </summary>
         private volatile bool _stopRequested;
+
+        /// <summary>
+        /// Testo log accumulato
+        /// </summary>
         private string _logText;
+
+        /// <summary>
+        /// Indice record selezionato
+        /// </summary>
         private int _selectedIndex;
+
+        /// <summary>
+        /// Limite massimo log in caratteri
+        /// </summary>
         private const int LOG_MAX_LENGTH = 500000;
 
         #endregion
@@ -99,7 +134,9 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void Scan()
         {
-            if (this._isBusy) { return; }
+            if (this._isBusy)
+                return;
+
             Thread thread = new Thread(this.ScanWorker);
             thread.IsBackground = true;
             thread.Start();
@@ -110,7 +147,9 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void SplitAll()
         {
-            if (this._isBusy) { return; }
+            if (this._isBusy)
+                return;
+
             Thread thread = new Thread(this.SplitAllWorker);
             thread.IsBackground = true;
             thread.Start();
@@ -188,7 +227,7 @@ namespace RemuxForge.Web.Services
             ConsoleHelper.SetLogCallback((section, _, text) =>
             {
                 string prefix = ConsoleHelper.FormatSectionPrefix(section);
-                this.AppendLog(prefix.Length > 0 ? prefix + text : text);
+                this.AppendLog(!string.IsNullOrEmpty(prefix) ? prefix + text : text);
             });
 
             try
@@ -258,7 +297,7 @@ namespace RemuxForge.Web.Services
             List<MkvSplitRecord> result = new List<MkvSplitRecord>();
             string source = this._options.Split.SourcePath;
             SearchOption searchOption = this._options.Recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-            if (source.Length == 0)
+            if (string.IsNullOrEmpty(source))
             {
                 throw new InvalidOperationException(AppText.T("web.split.configureSource"));
             }
@@ -378,26 +417,66 @@ namespace RemuxForge.Web.Services
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
-        /// <summary>Opzioni correnti</summary>
-        public Options CurrentOptions { get { return this._options; } }
-
-        /// <summary>Log corrente</summary>
-        public string LogText { get { return this._logText; } }
-
-        /// <summary>Progress corrente</summary>
-        public ProcessingProgressState Progress { get { return this._progress.Clone(); } }
-
-        /// <summary>Indice selezionato</summary>
-        public int SelectedIndex
+        /// <summary>
+        /// Opzioni correnti
+        /// </summary>
+        public Options CurrentOptions
         {
-            get { return this._selectedIndex; }
-            set { this._selectedIndex = value; }
+            get
+            {
+                return this._options;
+            }
         }
 
-        /// <summary>True se busy</summary>
-        public bool IsBusy { get { return this._isBusy; } }
+        /// <summary>
+        /// Log corrente
+        /// </summary>
+        public string LogText
+        {
+            get
+            {
+                return this._logText;
+            }
+        }
+
+        /// <summary>
+        /// Progress corrente
+        /// </summary>
+        public ProcessingProgressState Progress
+        {
+            get
+            {
+                return this._progress.Clone();
+            }
+        }
+
+        /// <summary>
+        /// Indice selezionato
+        /// </summary>
+        public int SelectedIndex
+        {
+            get
+            {
+                return this._selectedIndex;
+            }
+            set
+            {
+                this._selectedIndex = value;
+            }
+        }
+
+        /// <summary>
+        /// True se busy
+        /// </summary>
+        public bool IsBusy
+        {
+            get
+            {
+                return this._isBusy;
+            }
+        }
 
         #endregion
     }

@@ -84,7 +84,7 @@ namespace RemuxForge.Core.Models
         public double SceneCutThreshold { get; set; }
 
         /// <summary>
-        /// Meta' della finestra di frame intorno a un taglio scena
+        /// Metà della finestra di frame intorno a un taglio scena
         /// </summary>
         public int CutHalfWindow { get; set; }
 
@@ -132,7 +132,7 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
-    /// Configurazione parametri correzione velocita' (SpeedCorrectionService)
+    /// Configurazione parametri correzione velocità (SpeedCorrectionService)
     /// </summary>
     public class SpeedCorrectionConfig
     {
@@ -283,7 +283,7 @@ namespace RemuxForge.Core.Models
         public double MinBlurredCorrelation { get; set; }
 
         /// <summary>
-        /// Similarita' minima hash percettivo per voto descriptor
+        /// Similarità minima hash percettivo per voto descriptor
         /// </summary>
         public double MinHashSimilarity { get; set; }
 
@@ -318,7 +318,7 @@ namespace RemuxForge.Core.Models
         public int InitialCheckpointDriftPenaltyFrames { get; set; }
 
         /// <summary>
-        /// Delta initial/checkpoint in frame oltre cui il risultato e' troppo sospetto
+        /// Delta initial/checkpoint in frame oltre cui il risultato è troppo sospetto
         /// </summary>
         public int InitialCheckpointDriftRejectFrames { get; set; }
 
@@ -333,12 +333,12 @@ namespace RemuxForge.Core.Models
         public double CheckpointMinMargin { get; set; }
 
         /// <summary>
-        /// Varianza sotto cui un segmento e' considerato statico/piatto
+        /// Varianza sotto cui un segmento è considerato statico/piatto
         /// </summary>
         public double StaticSegmentVarianceThreshold { get; set; }
 
         /// <summary>
-        /// Rapporto pixel scuri sopra cui un segmento e' considerato nero
+        /// Rapporto pixel scuri sopra cui un segmento è considerato nero
         /// </summary>
         public double BlackFrameRatioThreshold { get; set; }
 
@@ -686,7 +686,7 @@ namespace RemuxForge.Core.Models
         public VideoSyncConfig VideoSync { get; set; }
 
         /// <summary>
-        /// Parametri correzione velocita'
+        /// Parametri correzione velocità
         /// </summary>
         public SpeedCorrectionConfig SpeedCorrection { get; set; }
 

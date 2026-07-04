@@ -62,7 +62,7 @@ namespace RemuxForge.Core.Metadata
                 throw new FileNotFoundException(AppText.T("metadata.reader.fileNotFound"), filePath);
 
             processResult = ProcessRunner.Run(this._mediaInfoPath, new string[] { "--Output=JSON", filePath }, MEDIAINFO_JSON_TIMEOUT_MS);
-            if (processResult.ExitCode != 0 || processResult.Stdout.Trim().Length == 0)
+            if (processResult.ExitCode != 0 || string.IsNullOrEmpty(processResult.Stdout.Trim()))
                 throw new InvalidOperationException(AppText.F("metadata.reader.invalidJson", processResult.Stderr));
 
             try
@@ -116,7 +116,7 @@ namespace RemuxForge.Core.Metadata
                 {
                     streamOrder++;
                     MkvMetadataTrackInfo track = ParseTrack(type, raw, streamOrder, ref videoIndex, ref audioIndex, ref subtitleIndex);
-                    if (track.TrackKind.Length > 0)
+                    if (!string.IsNullOrEmpty(track.TrackKind))
                         result.Tracks.Add(track);
                     else
                         result.OtherStreams.Add(ParseOtherStream(type, raw, streamOrder));
@@ -536,7 +536,7 @@ namespace RemuxForge.Core.Metadata
             for (int i = 0; i < keys.Length; i++)
             {
                 value = GetRaw(raw, keys[i]);
-                if (value.Trim().Length > 0)
+                if (!string.IsNullOrEmpty(value.Trim()))
                     return value;
             }
 

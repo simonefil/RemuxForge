@@ -16,7 +16,7 @@ namespace RemuxForge.Core.Subtitles
         /// Indica se il rewriter gestisce la traccia
         /// </summary>
         /// <param name="track">Traccia sottotitoli</param>
-        /// <returns>True se il codec e' VobSub</returns>
+        /// <returns>True se il codec è VobSub</returns>
         public bool CanHandle(TrackInfo track)
         {
             string codec = track != null && track.Codec != null ? track.Codec.ToLowerInvariant() : "";
@@ -78,7 +78,7 @@ namespace RemuxForge.Core.Subtitles
             document = VobSubIndexDocument.Load(inputFile);
             subData = File.ReadAllBytes(inputSub);
 
-            // IDX guida il taglio dei blocchi SUB: senza entry timestamp/filepos non si puo' ricostruire la coppia
+            // IDX guida il taglio dei blocchi SUB: senza entry timestamp/filepos non si può ricostruire la coppia
             if (document.Entries.Count == 0)
             {
                 result.ErrorMessage = "IDX VobSub senza entry";
@@ -153,7 +153,7 @@ namespace RemuxForge.Core.Subtitles
             VobSubIndexDocument document;
             FileInfo subInfo;
 
-            // La traccia VobSub e' sempre coppia IDX/SUB: entrambi i file devono esistere
+            // La traccia VobSub è sempre coppia IDX/SUB: entrambi i file devono esistere
             if (!File.Exists(outputFile) || !File.Exists(subFile))
             {
                 return false;

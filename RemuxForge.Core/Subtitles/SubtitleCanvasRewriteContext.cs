@@ -40,12 +40,12 @@ namespace RemuxForge.Core.Subtitles
         public SubtitleCanvasTransform Transform { get; set; }
 
         /// <summary>
-        /// Modalita' crop rilevata per il sorgente
+        /// Modalità crop rilevata per il sorgente
         /// </summary>
         public string SourceCropMode { get; set; }
 
         /// <summary>
-        /// Modalita' crop rilevata per il file lingua
+        /// Modalità crop rilevata per il file lingua
         /// </summary>
         public string LanguageCropMode { get; set; }
 

@@ -26,7 +26,7 @@ namespace RemuxForge.Core.Metadata
         }
 
         /// <summary>
-        /// Verifica se un tag e' gestito dalla UI
+        /// Verifica se un tag è gestito dalla UI
         /// </summary>
         /// <param name="tagName">Nome tag</param>
         /// <returns>True se consentito</returns>

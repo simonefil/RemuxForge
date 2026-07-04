@@ -74,7 +74,7 @@ namespace RemuxForge.Core.Models
         public double DisplayAspect { get; set; }
 
         /// <summary>
-        /// True se e' stato rilevato autocrop bordi neri
+        /// True se è stato rilevato autocrop bordi neri
         /// </summary>
         public bool HasBlackBorderCrop { get; set; }
 
@@ -109,7 +109,7 @@ namespace RemuxForge.Core.Models
         public string ManualAnalysisCropPx { get; set; }
 
         /// <summary>
-        /// Descrizione modalita' crop applicata
+        /// Descrizione modalità crop applicata
         /// </summary>
         public string CropMode { get; set; }
 

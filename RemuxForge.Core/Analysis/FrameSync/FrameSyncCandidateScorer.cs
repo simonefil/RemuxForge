@@ -39,7 +39,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         #region Metodi pubblici
 
         /// <summary>
-        /// Calcola uno score normalizzato per un candidato gia' verificato
+        /// Calcola uno score normalizzato per un candidato già verificato
         /// </summary>
         public double ComputeCandidateScore(double temporalScore, double matchScore, double blurScore, double edgeScore, double blockScore, double motionScore, double hashScore)
         {

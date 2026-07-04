@@ -43,15 +43,15 @@ namespace RemuxForge.Core.Localization
         public static void Initialize(string cliLanguage, string configLanguage)
         {
             string language = NormalizeLanguage(cliLanguage);
-            if (language.Length == 0)
+            if (string.IsNullOrEmpty(language))
             {
                 language = NormalizeLanguage(Environment.GetEnvironmentVariable(LANG_ENV_VAR));
             }
-            if (language.Length == 0)
+            if (string.IsNullOrEmpty(language))
             {
                 language = NormalizeLanguage(configLanguage);
             }
-            if (language.Length == 0)
+            if (string.IsNullOrEmpty(language))
             {
                 language = LANG_EN;
             }

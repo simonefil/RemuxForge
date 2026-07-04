@@ -1,8 +1,6 @@
 using RemuxForge.Core.Configuration;
-using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
-using RemuxForge.Core.Metadata;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Tools;
 using RemuxForge.Web.Components.Shared;
@@ -133,6 +131,11 @@ namespace RemuxForge.Web.Components.Pages
         private bool _showMetadataMappedInfo;
 
         /// <summary>
+        /// Flag: mostra editor manuale metadata
+        /// </summary>
+        private bool _showMetadataManualEdit;
+
+        /// <summary>
         /// True se il dettaglio mappato deve mostrare la simulazione
         /// </summary>
         private bool _metadataMappedInfoSimulated;
@@ -239,7 +242,7 @@ namespace RemuxForge.Web.Components.Pages
 
         #endregion
 
-        #region Lifecycle
+        #region Ciclo di vita
 
         /// <summary>
         /// Inizializzazione componente
@@ -248,15 +251,13 @@ namespace RemuxForge.Web.Components.Pages
         {
             this._currentTheme = AppSettingsService.Instance.Settings.Ui.Theme;
             this._currentLanguage = AppText.NormalizeLanguage(AppSettingsService.Instance.Settings.Ui.Language);
-            if (this._currentLanguage.Length == 0)
-            {
+            if (string.IsNullOrEmpty(this._currentLanguage))
                 this._currentLanguage = AppText.LANG_EN;
-            }
+
             this._currentMode = AppSettingsService.Instance.Settings.Ui.LastMode;
             if (this._currentMode != Options.MODE_REMUX && this._currentMode != Options.MODE_SPLIT && this._currentMode != Options.MODE_METADATA)
-            {
                 this._currentMode = Options.MODE_REMUX;
-            }
+
             this._showConfig = false;
             this._showMetadataPreset = false;
             this._showMetadataPathBrowse = false;
@@ -265,6 +266,7 @@ namespace RemuxForge.Web.Components.Pages
             this._metadataBrowseShowFiles = false;
             this._metadataBrowseAllowCurrentFolderSelection = true;
             this._showMetadataMappedInfo = false;
+            this._showMetadataManualEdit = false;
             this._metadataMappedInfoSimulated = false;
             this._showMetadataRename = false;
             this._showToolPaths = false;
@@ -309,7 +311,7 @@ namespace RemuxForge.Web.Components.Pages
         /// Importa modulo JS e inizializza tastiera e tema dopo il primo render
         /// </summary>
         /// <param name="firstRender">True se primo render</param>
-        protected override async System.Threading.Tasks.Task OnAfterRenderAsync(bool firstRender)
+        protected override async Task OnAfterRenderAsync(bool firstRender)
         {
             if (firstRender)
             {
@@ -349,9 +351,7 @@ namespace RemuxForge.Web.Components.Pages
 
             // Dispose riferimento .NET per JS interop
             if (this._dotNetRef != null)
-            {
                 this._dotNetRef.Dispose();
-            }
 
             // Rilascia handler tastiera e dispose modulo JS
             if (this._jsModule != null)
@@ -473,53 +473,96 @@ namespace RemuxForge.Web.Components.Pages
 
             if (this._currentMode == Options.MODE_SPLIT)
             {
-                if (key == "F2") { this.ShowConfig(); }
-                else if (key == "F5") { this.DoScan(); }
-                else if (key == "F10") { this.DoMergeAll(); }
-                else if (key == "F12") { this.DoStop(); }
-                else if (key == "Escape") { this.CloseAllDialogs(); }
-                else if (key == "ArrowUp") { this.MoveSplitSelection(-1); }
-                else if (key == "ArrowDown") { this.MoveSplitSelection(1); }
-                else if (key == "Home") { this.SelectSplitRow(0); }
-                else if (key == "End") { this.SelectSplitRow(this._splitRecords.Count - 1); }
+                if (key == "F2")
+                    this.ShowConfig();
+                else if (key == "F5")
+                    this.DoScan();
+                else if (key == "F10")
+                    this.DoMergeAll();
+                else if (key == "F12")
+                    this.DoStop();
+                else if (key == "Escape")
+                    this.CloseAllDialogs();
+                else if (key == "ArrowUp")
+                    this.MoveSplitSelection(-1);
+                else if (key == "ArrowDown")
+                    this.MoveSplitSelection(1);
+                else if (key == "Home")
+                    this.SelectSplitRow(0);
+                else if (key == "End")
+                    this.SelectSplitRow(this._splitRecords.Count - 1);
             }
             else if (this._currentMode == Options.MODE_METADATA)
             {
-                if (key == "F2") { this.ShowMetadataInputPicker(); }
-                else if (key == "F3") { this.ShowMetadataPreset(); }
-                else if (key == "F5") { this.DoScan(); }
-                else if (key == "F6") { this.DoAnalyzeAll(); }
-                else if (key == "F9") { this.DoMergeSelected(); }
-                else if (key == "F10") { this.DoMergeAll(); }
-                else if (key == "F11") { this.ShowMetadataRename(); }
-                else if (key == "F12") { this.DoStop(); }
-                else if (ctrl && string.Equals(key, "l", StringComparison.OrdinalIgnoreCase)) { this.DoClear(); }
-                else if (key == "Escape") { this.CloseAllDialogs(); }
-                else if (key == "ArrowUp") { this.MoveMetadataSelection(-1); }
-                else if (key == "ArrowDown") { this.MoveMetadataSelection(1); }
-                else if (key == "Home") { this.SelectMetadataRow(0); }
-                else if (key == "End") { this.SelectMetadataRow(this._metadataRecords.Count - 1); }
+                if (key == "F2")
+                    this.ShowMetadataInputPicker();
+                else if (key == "F3")
+                    this.ShowMetadataPreset();
+                else if (key == "F4")
+                    this.ShowMetadataManualEdit();
+                else if (key == "F5")
+                    this.DoScan();
+                else if (key == "F6")
+                    this.DoAnalyzeAll();
+                else if (key == "F9")
+                    this.DoMergeSelected();
+                else if (key == "F10")
+                    this.DoMergeAll();
+                else if (key == "F11")
+                    this.ShowMetadataRename();
+                else if (key == "F12")
+                    this.DoStop();
+                else if (ctrl && string.Equals(key, "l", StringComparison.OrdinalIgnoreCase))
+                    this.DoClear();
+                else if (key == "Escape")
+                    this.CloseAllDialogs();
+                else if (key == "ArrowUp")
+                    this.MoveMetadataSelection(-1);
+                else if (key == "ArrowDown")
+                    this.MoveMetadataSelection(1);
+                else if (key == "Home")
+                    this.SelectMetadataRow(0);
+                else if (key == "End")
+                    this.SelectMetadataRow(this._metadataRecords.Count - 1);
             }
             else
             {
-                if (key == "F2") { this.ShowConfig(); }
-                else if (key == "F5") { this.DoScan(); }
-                else if (key == "F6") { this.DoAnalyzeSelected(); }
-                else if (key == "F7") { this.DoAnalyzeAll(); }
-                else if (key == "F8") { this.DoToggleSkip(); }
-                else if (key == "F9") { this.DoMergeSelected(); }
-                else if (key == "F10") { this.DoMergeAll(); }
-                else if (key == "F12") { this.DoStop(); }
-                else if (key == "Enter") { this.ShowContextMenuForSelected(); }
-                else if (key == "Escape") { this.CloseAllDialogs(); }
-                else if (ctrl && string.Equals(key, "a", StringComparison.OrdinalIgnoreCase)) { this.SelectAllRows(); }
-                else if (key == "ArrowUp") { this.MoveSelection(-1, shift, ctrl); }
-                else if (key == "ArrowDown") { this.MoveSelection(1, shift, ctrl); }
-                else if (key == "Home") { this.SelectIndexFromKeyboard(0, shift, ctrl); }
-                else if (key == "End") { this.SelectIndexFromKeyboard(this._records.Count - 1, shift, ctrl); }
-                else if (key == "PageUp") { this.MoveSelection(-10, shift, ctrl); }
-                else if (key == "PageDown") { this.MoveSelection(10, shift, ctrl); }
-                else if (key == " ") { this.ToggleFocusedSelection(); }
+                if (key == "F2")
+                    this.ShowConfig();
+                else if (key == "F5")
+                    this.DoScan();
+                else if (key == "F6")
+                    this.DoAnalyzeSelected();
+                else if (key == "F7")
+                    this.DoAnalyzeAll();
+                else if (key == "F8")
+                    this.DoToggleSkip();
+                else if (key == "F9")
+                    this.DoMergeSelected();
+                else if (key == "F10")
+                    this.DoMergeAll();
+                else if (key == "F12")
+                    this.DoStop();
+                else if (key == "Enter")
+                    this.ShowContextMenuForSelected();
+                else if (key == "Escape")
+                    this.CloseAllDialogs();
+                else if (ctrl && string.Equals(key, "a", StringComparison.OrdinalIgnoreCase))
+                    this.SelectAllRows();
+                else if (key == "ArrowUp")
+                    this.MoveSelection(-1, shift, ctrl);
+                else if (key == "ArrowDown")
+                    this.MoveSelection(1, shift, ctrl);
+                else if (key == "Home")
+                    this.SelectIndexFromKeyboard(0, shift, ctrl);
+                else if (key == "End")
+                    this.SelectIndexFromKeyboard(this._records.Count - 1, shift, ctrl);
+                else if (key == "PageUp")
+                    this.MoveSelection(-10, shift, ctrl);
+                else if (key == "PageDown")
+                    this.MoveSelection(10, shift, ctrl);
+                else if (key == " ")
+                    this.ToggleFocusedSelection();
             }
 
             this.StateHasChanged();
@@ -579,21 +622,15 @@ namespace RemuxForge.Web.Components.Pages
         private void ApplyRowSelection(int index, bool ctrl, bool shift)
         {
             if (index < 0 || index >= this._records.Count)
-            {
                 return;
-            }
 
             if (shift)
             {
                 if (this._selectionAnchorIndex < 0 || this._selectionAnchorIndex >= this._records.Count)
-                {
                     this._selectionAnchorIndex = this.Orchestrator.SelectedIndex >= 0 ? this.Orchestrator.SelectedIndex : index;
-                }
 
                 if (!ctrl)
-                {
                     this._selectedIndices.Clear();
-                }
 
                 this.AddSelectionRange(this._selectionAnchorIndex, index);
             }
@@ -652,9 +689,7 @@ namespace RemuxForge.Web.Components.Pages
             int targetIndex;
 
             if (this._records.Count == 0)
-            {
                 return;
-            }
 
             if (currentIndex < 0)
             {
@@ -676,12 +711,13 @@ namespace RemuxForge.Web.Components.Pages
             int targetIndex = index;
 
             if (this._records.Count == 0)
-            {
                 return;
-            }
 
-            if (targetIndex < 0) { targetIndex = 0; }
-            if (targetIndex >= this._records.Count) { targetIndex = this._records.Count - 1; }
+            if (targetIndex < 0)
+                targetIndex = 0;
+
+            if (targetIndex >= this._records.Count)
+                targetIndex = this._records.Count - 1;
 
             if (ctrl && !shift)
             {
@@ -702,9 +738,7 @@ namespace RemuxForge.Web.Components.Pages
             int targetIndex;
 
             if (this._splitRecords.Count == 0)
-            {
                 return;
-            }
 
             if (currentIndex < 0)
             {
@@ -712,8 +746,12 @@ namespace RemuxForge.Web.Components.Pages
             }
 
             targetIndex = currentIndex + delta;
-            if (targetIndex < 0) { targetIndex = 0; }
-            if (targetIndex >= this._splitRecords.Count) { targetIndex = this._splitRecords.Count - 1; }
+            if (targetIndex < 0)
+                targetIndex = 0;
+
+            if (targetIndex >= this._splitRecords.Count)
+                targetIndex = this._splitRecords.Count - 1;
+
             this.SelectSplitRow(targetIndex);
         }
 
@@ -727,9 +765,7 @@ namespace RemuxForge.Web.Components.Pages
             int targetIndex;
 
             if (this._metadataRecords.Count == 0)
-            {
                 return;
-            }
 
             if (currentIndex < 0)
             {
@@ -737,8 +773,12 @@ namespace RemuxForge.Web.Components.Pages
             }
 
             targetIndex = currentIndex + delta;
-            if (targetIndex < 0) { targetIndex = 0; }
-            if (targetIndex >= this._metadataRecords.Count) { targetIndex = this._metadataRecords.Count - 1; }
+            if (targetIndex < 0)
+                targetIndex = 0;
+
+            if (targetIndex >= this._metadataRecords.Count)
+                targetIndex = this._metadataRecords.Count - 1;
+
             this.SelectMetadataRow(targetIndex);
         }
 
@@ -767,9 +807,7 @@ namespace RemuxForge.Web.Components.Pages
         {
             int index = this.Orchestrator.SelectedIndex;
             if (index < 0 || index >= this._records.Count)
-            {
                 return;
-            }
 
             if (this.IsRowSelected(index))
             {
@@ -795,9 +833,7 @@ namespace RemuxForge.Web.Components.Pages
             for (int i = first; i <= last; i++)
             {
                 if (!this.IsRowSelected(i))
-                {
                     this._selectedIndices.Add(i);
-                }
             }
 
             this.SortSelectedIndices();
@@ -862,15 +898,11 @@ namespace RemuxForge.Web.Components.Pages
             for (int i = this._selectedIndices.Count - 1; i >= 0; i--)
             {
                 if (this._selectedIndices[i] < 0 || this._selectedIndices[i] >= this._records.Count)
-                {
                     this._selectedIndices.RemoveAt(i);
-                }
             }
 
             if (this._selectionAnchorIndex >= this._records.Count)
-            {
                 this._selectionAnchorIndex = this._records.Count - 1;
-            }
         }
 
         /// <summary>
@@ -878,7 +910,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private bool IsBlockingDialogOpen()
         {
-            return this._showConfig || this._showMetadataPathBrowse || this._showMetadataPreset || this._showMetadataMappedInfo || this._showMetadataRename || this._showToolPaths || this._showAudioSettings || this._showAdvancedSettings || this._showDelay || this._showEncodingProfiles || this._showPipeline || this._showInfo || this._showMediaInfo;
+            return this._showConfig || this._showMetadataPathBrowse || this._showMetadataPreset || this._showMetadataMappedInfo || this._showMetadataManualEdit || this._showMetadataRename || this._showToolPaths || this._showAudioSettings || this._showAdvancedSettings || this._showDelay || this._showEncodingProfiles || this._showPipeline || this._showInfo || this._showMediaInfo;
         }
 
         /// <summary>
@@ -900,7 +932,8 @@ namespace RemuxForge.Web.Components.Pages
                 if (this._contextMenuItems.Count > 0)
                 {
                     this._contextMenuSelectedIndex++;
-                    if (this._contextMenuSelectedIndex >= this._contextMenuItems.Count) { this._contextMenuSelectedIndex = 0; }
+                    if (this._contextMenuSelectedIndex >= this._contextMenuItems.Count)
+                        this._contextMenuSelectedIndex = 0;
                 }
 
                 result = true;
@@ -910,7 +943,8 @@ namespace RemuxForge.Web.Components.Pages
                 if (this._contextMenuItems.Count > 0)
                 {
                     this._contextMenuSelectedIndex--;
-                    if (this._contextMenuSelectedIndex < 0) { this._contextMenuSelectedIndex = this._contextMenuItems.Count - 1; }
+                    if (this._contextMenuSelectedIndex < 0)
+                        this._contextMenuSelectedIndex = this._contextMenuItems.Count - 1;
                 }
 
                 result = true;
@@ -931,9 +965,7 @@ namespace RemuxForge.Web.Components.Pages
         private void ScrollEpisodeRowIntoView(int index)
         {
             if (this._jsModule == null)
-            {
                 return;
-            }
 
             try
             {
@@ -952,9 +984,7 @@ namespace RemuxForge.Web.Components.Pages
         private void ScrollSplitRowIntoView(int index)
         {
             if (this._jsModule == null)
-            {
                 return;
-            }
 
             try
             {
@@ -973,9 +1003,7 @@ namespace RemuxForge.Web.Components.Pages
         private void ScrollMetadataRowIntoView(int index)
         {
             if (this._jsModule == null)
-            {
                 return;
-            }
 
             try
             {
@@ -1002,7 +1030,8 @@ namespace RemuxForge.Web.Components.Pages
                 this.SetFocusedRow(args.Index);
             }
 
-            if (this._selectedRecord == null) { return; }
+            if (this._selectedRecord == null)
+                return;
 
             this._contextMenuX = args.X;
             this._contextMenuY = args.Y;
@@ -1016,7 +1045,8 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private void ShowContextMenuForSelected()
         {
-            if (this._selectedRecord == null) { return; }
+            if (this._selectedRecord == null)
+                return;
 
             // Da tastiera: posiziona al centro dello schermo
             this._contextMenuX = 400;
@@ -1032,10 +1062,13 @@ namespace RemuxForge.Web.Components.Pages
         /// <param name="record">Record episodio</param>
         private void BuildContextMenu(FileProcessingRecord record)
         {
-            // Verifica disponibilita' mediainfo
-            bool mediaInfoAvailable = (AppSettingsService.Instance.Settings.Tools.MediaInfoPath.Length > 0
-                && System.IO.File.Exists(AppSettingsService.Instance.Settings.Tools.MediaInfoPath)
-                && MediaInfoProvider.IsCliExecutablePath(AppSettingsService.Instance.Settings.Tools.MediaInfoPath));
+            string mediaInfoPath = AppSettingsService.Instance.Settings.Tools.MediaInfoPath;
+            bool mediaInfoAvailable;
+
+            // Verifica disponibilità mediainfo
+            mediaInfoAvailable = !string.IsNullOrEmpty(mediaInfoPath) &&
+                System.IO.File.Exists(mediaInfoPath) &&
+                MediaInfoProvider.IsCliExecutablePath(mediaInfoPath);
 
             this._contextMenuItems = new List<string>();
             this._contextMenuActions = new List<Action>();
@@ -1049,24 +1082,24 @@ namespace RemuxForge.Web.Components.Pages
             });
 
             // MediaInfo sorgente
-            if (mediaInfoAvailable && record.SourceFilePath.Length > 0 && System.IO.File.Exists(record.SourceFilePath))
+            if (mediaInfoAvailable && !string.IsNullOrEmpty(record.SourceFilePath) && System.IO.File.Exists(record.SourceFilePath))
             {
                 this._contextMenuItems.Add(AppText.T("web.context.mediaInfoSource"));
-                this._contextMenuActions.Add(() => { this.OpenMediaInfo(record.SourceFilePath, AppText.F("web.mediaInfo.sourceTitle", record.SourceFileName)); });
+                this._contextMenuActions.Add(() => this.OpenMediaInfo(record.SourceFilePath, AppText.F("web.mediaInfo.sourceTitle", record.SourceFileName)));
             }
 
             // MediaInfo lingua
-            if (mediaInfoAvailable && record.LangFilePath.Length > 0 && System.IO.File.Exists(record.LangFilePath))
+            if (mediaInfoAvailable && !string.IsNullOrEmpty(record.LangFilePath) && System.IO.File.Exists(record.LangFilePath))
             {
                 this._contextMenuItems.Add(AppText.T("web.context.mediaInfoLanguage"));
-                this._contextMenuActions.Add(() => { this.OpenMediaInfo(record.LangFilePath, AppText.F("web.mediaInfo.languageTitle", record.LangFileName)); });
+                this._contextMenuActions.Add(() => this.OpenMediaInfo(record.LangFilePath, AppText.F("web.mediaInfo.languageTitle", record.LangFileName)));
             }
 
             // MediaInfo risultato
-            if (mediaInfoAvailable && record.ResultFilePath.Length > 0 && System.IO.File.Exists(record.ResultFilePath))
+            if (mediaInfoAvailable && !string.IsNullOrEmpty(record.ResultFilePath) && System.IO.File.Exists(record.ResultFilePath))
             {
                 this._contextMenuItems.Add(AppText.T("web.context.mediaInfoResult"));
-                this._contextMenuActions.Add(() => { this.OpenMediaInfo(record.ResultFilePath, AppText.F("web.mediaInfo.resultTitle", record.ResultFileName)); });
+                this._contextMenuActions.Add(() => this.OpenMediaInfo(record.ResultFilePath, AppText.F("web.mediaInfo.resultTitle", record.ResultFileName)));
             }
         }
 
@@ -1079,9 +1112,7 @@ namespace RemuxForge.Web.Components.Pages
             this._showContextMenu = false;
 
             if (index >= 0 && index < this._contextMenuActions.Count)
-            {
                 this._contextMenuActions[index]();
-            }
         }
 
         /// <summary>
@@ -1182,14 +1213,10 @@ namespace RemuxForge.Web.Components.Pages
         private string GetCurrentLogText()
         {
             if (this._currentMode == Options.MODE_SPLIT)
-            {
                 return this.SplitOrchestrator.LogText;
-            }
 
             if (this._currentMode == Options.MODE_METADATA)
-            {
                 return this.MetadataOrchestrator.LogText;
-            }
 
             return this.Orchestrator.LogText;
         }
@@ -1201,14 +1228,10 @@ namespace RemuxForge.Web.Components.Pages
         private ProcessingProgressState GetCurrentProgress()
         {
             if (this._currentMode == Options.MODE_SPLIT)
-            {
                 return this.SplitOrchestrator.Progress;
-            }
 
             if (this._currentMode == Options.MODE_METADATA)
-            {
                 return this.MetadataOrchestrator.Progress;
-            }
 
             return this.Orchestrator.Progress;
         }
@@ -1225,15 +1248,16 @@ namespace RemuxForge.Web.Components.Pages
             int subtitles = 0;
 
             if (record == null || record.FileInfo == null || record.FileInfo.Tracks == null)
-            {
                 return "";
-            }
 
             for (int i = 0; i < record.FileInfo.Tracks.Count; i++)
             {
-                if (record.FileInfo.Tracks[i].TrackKind == "video") { video++; }
-                else if (record.FileInfo.Tracks[i].TrackKind == "audio") { audio++; }
-                else if (record.FileInfo.Tracks[i].TrackKind == "subtitles") { subtitles++; }
+                if (record.FileInfo.Tracks[i].TrackKind == "video")
+                    video++;
+                else if (record.FileInfo.Tracks[i].TrackKind == "audio")
+                    audio++;
+                else if (record.FileInfo.Tracks[i].TrackKind == "subtitles")
+                    subtitles++;
             }
 
             return video + "V " + audio + "A " + subtitles + "S";
@@ -1251,9 +1275,7 @@ namespace RemuxForge.Web.Components.Pages
             MkvMetadataTrackInfo video = null;
 
             if (info == null || info.Tracks == null)
-            {
                 return "-";
-            }
 
             for (int i = 0; i < info.Tracks.Count; i++)
             {
@@ -1265,9 +1287,7 @@ namespace RemuxForge.Web.Components.Pages
             }
 
             if (video == null)
-            {
                 return "-";
-            }
 
             return BuildMetadataTrackVideoSummary(video);
         }
@@ -1281,14 +1301,10 @@ namespace RemuxForge.Web.Components.Pages
         private static MkvMetadataFileInfo GetMetadataInfo(MkvMetadataRecord record, bool simulated)
         {
             if (record == null)
-            {
                 return null;
-            }
 
             if (simulated)
-            {
                 return record.FileInfo;
-            }
 
             return record.OriginalFileInfo != null && record.OriginalFileInfo.Tracks != null && record.OriginalFileInfo.Tracks.Count > 0
                 ? record.OriginalFileInfo
@@ -1309,25 +1325,35 @@ namespace RemuxForge.Web.Components.Pages
             string bitDepth = GetMetadataFieldValue(track, "video_bitdepth");
             string hdr = GetMetadataFieldValue(track, "video_hdr_format");
 
-            if (result.Length == 0) { result = track.Format; }
-            if (width.Length > 0 && height.Length > 0) { AddMetadataSummaryPart(ref result, width + "x" + height); }
-            if (fps.Length > 0) { AddMetadataSummaryPart(ref result, fps + "fps"); }
-            if (bitDepth.Length > 0) { AddMetadataSummaryPart(ref result, bitDepth + "bit"); }
-            if (hdr.Length > 0) { AddMetadataSummaryPart(ref result, hdr); }
+            if (string.IsNullOrEmpty(result))
+                result = track.Format;
 
-            return result.Length > 0 ? result : "-";
+            if (!string.IsNullOrEmpty(width) && !string.IsNullOrEmpty(height))
+                AddMetadataSummaryPart(ref result, width + "x" + height);
+
+            if (!string.IsNullOrEmpty(fps))
+                AddMetadataSummaryPart(ref result, fps + "fps");
+
+            if (!string.IsNullOrEmpty(bitDepth))
+                AddMetadataSummaryPart(ref result, bitDepth + "bit");
+
+            if (!string.IsNullOrEmpty(hdr))
+                AddMetadataSummaryPart(ref result, hdr);
+
+            return !string.IsNullOrEmpty(result) ? result : "-";
         }
 
         /// <summary>
         /// Restituisce campo metadata da traccia
         /// </summary>
+        /// <param name="track">Traccia metadata</param>
+        /// <param name="key">Chiave campo</param>
+        /// <returns>Valore campo, vuoto se assente</returns>
         private static string GetMetadataFieldValue(MkvMetadataTrackInfo track, string key)
         {
             string result;
             if (track != null && track.Fields != null && track.Fields.TryGetValue(key, out result))
-            {
                 return result != null ? result : "";
-            }
 
             return "";
         }
@@ -1335,14 +1361,14 @@ namespace RemuxForge.Web.Components.Pages
         /// <summary>
         /// Aggiunge parte al riepilogo metadata
         /// </summary>
+        /// <param name="value">Riepilogo corrente</param>
+        /// <param name="part">Parte da aggiungere</param>
         private static void AddMetadataSummaryPart(ref string value, string part)
         {
-            if (part == null || part.Length == 0)
-            {
+            if (string.IsNullOrEmpty(part))
                 return;
-            }
 
-            if (value.Length > 0)
+            if (!string.IsNullOrEmpty(value))
             {
                 value += " ";
             }
@@ -1358,11 +1384,9 @@ namespace RemuxForge.Web.Components.Pages
         private string BuildMetadataChangeText(MkvMetadataChange change)
         {
             if (change == null)
-            {
                 return "";
-            }
 
-            if (change.FieldKey != null && change.FieldKey.Length > 0 &&
+            if (!string.IsNullOrEmpty(change.FieldKey) &&
                 (change.OperationType == MkvMetadataOperationType.SetField ||
                  change.OperationType == MkvMetadataOperationType.ClearField ||
                  change.OperationType == MkvMetadataOperationType.SetExclusiveFlag ||
@@ -1382,10 +1406,8 @@ namespace RemuxForge.Web.Components.Pages
         /// <returns>Valore leggibile</returns>
         private static string FormatMetadataPreviewValue(string value)
         {
-            if (value == null || value.Length == 0)
-            {
+            if (string.IsNullOrEmpty(value))
                 return "''";
-            }
 
             return "'" + value + "'";
         }
@@ -1401,9 +1423,7 @@ namespace RemuxForge.Web.Components.Pages
         private void SwitchMode(string mode)
         {
             if (mode != Options.MODE_REMUX && mode != Options.MODE_SPLIT && mode != Options.MODE_METADATA)
-            {
                 return;
-            }
 
             this._currentMode = mode;
             AppSettingsService.Instance.Settings.Ui.LastMode = mode;
@@ -1419,7 +1439,7 @@ namespace RemuxForge.Web.Components.Pages
             Options opts = this.SplitOrchestrator.CurrentOptions;
             opts.Mode = Options.MODE_SPLIT;
             opts.Split.SourcePath = opts.SourceFolder;
-            if (!this.SplitOrchestrator.ApplyOptions(opts, out errorMessage) && errorMessage.Length > 0)
+            if (!this.SplitOrchestrator.ApplyOptions(opts, out errorMessage) && !string.IsNullOrEmpty(errorMessage))
             {
                 this.SplitOrchestrator.Log(errorMessage);
                 this.StateHasChanged();
@@ -1436,7 +1456,7 @@ namespace RemuxForge.Web.Components.Pages
         {
             if (this._currentMode == Options.MODE_METADATA)
             {
-                if (this.MetadataOrchestrator.CurrentOptions.Metadata.SourcePath.Length == 0)
+                if (string.IsNullOrEmpty(this.MetadataOrchestrator.CurrentOptions.Metadata.SourcePath))
                 {
                     this.ShowMetadataInputPicker();
                     return;
@@ -1452,9 +1472,7 @@ namespace RemuxForge.Web.Components.Pages
             if (this._currentMode == Options.MODE_SPLIT)
             {
                 if (!this.ApplySplitConfig())
-                {
                     return;
-                }
 
                 if (!this.SplitOrchestrator.IsBusy)
                 {
@@ -1486,9 +1504,7 @@ namespace RemuxForge.Web.Components.Pages
             }
 
             if (this._currentMode == Options.MODE_SPLIT)
-            {
                 return;
-            }
 
             selectedIndices = this.GetActionSelectionIndices();
             if (!this.Orchestrator.IsBusy && selectedIndices.Count > 1)
@@ -1524,9 +1540,7 @@ namespace RemuxForge.Web.Components.Pages
             }
 
             if (this._currentMode == Options.MODE_SPLIT)
-            {
                 return;
-            }
 
             if (!this.Orchestrator.IsBusy)
             {
@@ -1545,14 +1559,10 @@ namespace RemuxForge.Web.Components.Pages
         {
             List<int> selectedIndices;
             if (this._currentMode == Options.MODE_METADATA)
-            {
                 return;
-            }
 
             if (this._currentMode == Options.MODE_SPLIT)
-            {
                 return;
-            }
 
             selectedIndices = this.GetActionSelectionIndices();
             if (selectedIndices.Count > 1)
@@ -1626,9 +1636,7 @@ namespace RemuxForge.Web.Components.Pages
             if (this._currentMode == Options.MODE_SPLIT)
             {
                 if (!this.ApplySplitConfig())
-                {
                     return;
-                }
 
                 if (!this.SplitOrchestrator.IsBusy)
                 {
@@ -1741,6 +1749,44 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
+        /// Mostra editor manuale metadata per il file selezionato
+        /// </summary>
+        private void ShowMetadataManualEdit()
+        {
+            if (this._currentMode != Options.MODE_METADATA)
+                return;
+
+            if (this._selectedMetadataRecord == null)
+            {
+                this.MetadataOrchestrator.Log(AppText.T("web.dashboard.noFileSelected"));
+                return;
+            }
+
+            this.MetadataOrchestrator.PopulateSelectedTags(this.MetadataOrchestrator.SelectedIndex);
+            this._metadataRecords = this.MetadataOrchestrator.GetRecords();
+            this.SyncSelectedFromMetadataOrchestrator();
+            this._showMetadataManualEdit = true;
+        }
+
+        /// <summary>
+        /// Chiude editor manuale metadata
+        /// </summary>
+        private void CloseMetadataManualEdit()
+        {
+            this._showMetadataManualEdit = false;
+        }
+
+        /// <summary>
+        /// Applica modifiche manuali metadata
+        /// </summary>
+        /// <param name="changes">Modifiche manuali</param>
+        private void ApplyMetadataManualEdit(List<MkvMetadataChange> changes)
+        {
+            this._showMetadataManualEdit = false;
+            this.MetadataOrchestrator.ApplyManualChanges(this.MetadataOrchestrator.SelectedIndex, changes);
+        }
+
+        /// <summary>
         /// Applica preset metadata selezionato
         /// </summary>
         /// <param name="presetPath">Percorso preset</param>
@@ -1755,7 +1801,7 @@ namespace RemuxForge.Web.Components.Pages
                 this._showMetadataPreset = false;
                 this._metadataPresetFiles = this.MetadataOrchestrator.GetPresetFiles();
             }
-            else if (errorMessage.Length > 0)
+            else if (!string.IsNullOrEmpty(errorMessage))
             {
                 this.MetadataOrchestrator.Log(errorMessage);
             }
@@ -1849,7 +1895,7 @@ namespace RemuxForge.Web.Components.Pages
             if (fieldIndex == 0)
                 this._metadataBrowseInitialPath = metadata.SourcePath;
             else if (fieldIndex == 1)
-                this._metadataBrowseInitialPath = metadata.OutputDir.Length > 0 ? metadata.OutputDir : this.MetadataOrchestrator.CurrentOptions.DestinationFolder;
+                this._metadataBrowseInitialPath = !string.IsNullOrEmpty(metadata.OutputDir) ? metadata.OutputDir : this.MetadataOrchestrator.CurrentOptions.DestinationFolder;
             else
                 this._metadataBrowseInitialPath = "";
 
@@ -1926,7 +1972,7 @@ namespace RemuxForge.Web.Components.Pages
                 if (clearRecords)
                     this.MetadataOrchestrator.Clear();
             }
-            else if (errorMessage.Length > 0)
+            else if (!string.IsNullOrEmpty(errorMessage))
             {
                 this.MetadataOrchestrator.Log(errorMessage);
             }
@@ -1990,7 +2036,7 @@ namespace RemuxForge.Web.Components.Pages
                 {
                     this._showConfig = false;
                 }
-                else if (errorMessage.Length > 0)
+                else if (!string.IsNullOrEmpty(errorMessage))
                 {
                     this.SplitOrchestrator.Log(errorMessage);
                 }
@@ -1999,7 +2045,7 @@ namespace RemuxForge.Web.Components.Pages
             {
                 this._showConfig = false;
             }
-            else if (errorMessage.Length > 0)
+            else if (!string.IsNullOrEmpty(errorMessage))
             {
                 this.Orchestrator.Log(errorMessage);
             }
@@ -2070,9 +2116,7 @@ namespace RemuxForge.Web.Components.Pages
             this._showDelay = false;
 
             if (this.Orchestrator.SelectedIndex >= 0)
-            {
                 this.Orchestrator.UpdateDelay(this.Orchestrator.SelectedIndex, delays.Item1, delays.Item2);
-            }
         }
 
         /// <summary>
@@ -2132,6 +2176,7 @@ namespace RemuxForge.Web.Components.Pages
             this._showMetadataPathBrowse = false;
             this._showMetadataPreset = false;
             this._showMetadataMappedInfo = false;
+            this._showMetadataManualEdit = false;
             this._showMetadataRename = false;
             this._showToolPaths = false;
             this._showAudioSettings = false;
@@ -2176,10 +2221,8 @@ namespace RemuxForge.Web.Components.Pages
         private void ChangeLanguage(string language)
         {
             string normalizedLanguage = AppText.NormalizeLanguage(language);
-            if (normalizedLanguage.Length == 0)
-            {
+            if (string.IsNullOrEmpty(normalizedLanguage))
                 return;
-            }
 
             this._currentLanguage = normalizedLanguage;
 

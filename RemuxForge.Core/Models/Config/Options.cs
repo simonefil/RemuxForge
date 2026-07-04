@@ -48,7 +48,7 @@ namespace RemuxForge.Core.Models
             this.KeepSourceAudioLangs = new List<string>();
             this.KeepSourceAudioCodec = new List<string>();
             this.KeepSourceSubtitleLangs = new List<string>();
-            this.MkvMergePath = (AppSettingsService.Instance.Settings.Tools.MkvMergePath.Length > 0) ? AppSettingsService.Instance.Settings.Tools.MkvMergePath : "mkvmerge";
+            this.MkvMergePath = !string.IsNullOrEmpty(AppSettingsService.Instance.Settings.Tools.MkvMergePath) ? AppSettingsService.Instance.Settings.Tools.MkvMergePath : "mkvmerge";
             this.Recursive = true;
             this.DryRun = false;
             this.FileExtensions = new List<string> { "mkv" };
@@ -68,17 +68,17 @@ namespace RemuxForge.Core.Models
         #region Costanti
 
         /// <summary>
-        /// Modalita' remux
+        /// Modalità remux
         /// </summary>
         public const string MODE_REMUX = "remux";
 
         /// <summary>
-        /// Modalita' split
+        /// Modalità split
         /// </summary>
         public const string MODE_SPLIT = "split";
 
         /// <summary>
-        /// Modalita' metadata
+        /// Modalità metadata
         /// </summary>
         public const string MODE_METADATA = "metadata";
 
@@ -142,7 +142,7 @@ namespace RemuxForge.Core.Models
 
             DetectMode(args, options);
 
-            while (i < args.Length && options.ErrorMessage.Length == 0)
+            while (i < args.Length && string.IsNullOrEmpty(options.ErrorMessage))
             {
                 key = NormalizeKey(args[i]);
                 handled = HandleCommonArgument(options, args, ref i, key);
@@ -152,7 +152,7 @@ namespace RemuxForge.Core.Models
                     handled = HandleModeArgument(options, args, ref i, key);
                 }
 
-                if (!handled && options.ErrorMessage.Length == 0)
+                if (!handled && string.IsNullOrEmpty(options.ErrorMessage))
                 {
                     options.ErrorMessage = AppText.F("options.unknownParameter", key);
                 }
@@ -169,7 +169,7 @@ namespace RemuxForge.Core.Models
         /// <param name="right">Pixel da tagliare a destra</param>
         /// <param name="top">Pixel da tagliare in alto</param>
         /// <param name="bottom">Pixel da tagliare in basso</param>
-        /// <returns>True se il valore e' vuoto o valido</returns>
+        /// <returns>True se il valore è vuoto o valido</returns>
         public static bool TryParseAnalysisCropPx(string value, out int left, out int right, out int top, out int bottom)
         {
             bool result = true;
@@ -181,7 +181,7 @@ namespace RemuxForge.Core.Models
             top = 0;
             bottom = 0;
 
-            if (trimmed.Length == 0)
+            if (string.IsNullOrEmpty(trimmed))
             {
                 return result;
             }
@@ -250,7 +250,7 @@ namespace RemuxForge.Core.Models
                 }
             }
 
-            if (mode.Length == 0)
+            if (string.IsNullOrEmpty(mode))
             {
                 options.ErrorMessage = AppText.T("options.missingMode");
             }
@@ -265,7 +265,7 @@ namespace RemuxForge.Core.Models
         }
 
         /// <summary>
-        /// Smista argomenti specifici della modalita'
+        /// Smista argomenti specifici della modalità
         /// </summary>
         private static bool HandleModeArgument(Options options, string[] args, ref int i, string key)
         {
@@ -334,7 +334,7 @@ namespace RemuxForge.Core.Models
                 if (RequireValue(args, i, options))
                 {
                     options.Language = AppText.NormalizeLanguage(args[i + 1]);
-                    if (options.Language.Length == 0)
+                    if (string.IsNullOrEmpty(options.Language))
                     {
                         options.ErrorMessage = AppText.F("options.invalidLanguage", args[i + 1]);
                     }
@@ -542,7 +542,7 @@ namespace RemuxForge.Core.Models
                     else if (key == "speed-correction")
                     {
                         options.SpeedCorrectionMode = NormalizeSpeedCorrectionMode(value);
-                        if (options.SpeedCorrectionMode.Length == 0)
+                        if (string.IsNullOrEmpty(options.SpeedCorrectionMode))
                         {
                             options.ErrorMessage = AppText.F("options.invalidSpeedCorrection", value);
                         }
@@ -595,7 +595,7 @@ namespace RemuxForge.Core.Models
                     else if (key == "audio-scope")
                     {
                         options.AudioProcessingScope = NormalizeScope(value);
-                        if (options.AudioProcessingScope.Length == 0)
+                        if (string.IsNullOrEmpty(options.AudioProcessingScope))
                         {
                             options.ErrorMessage = AppText.F("options.invalidAudioScope", value);
                         }
@@ -631,7 +631,7 @@ namespace RemuxForge.Core.Models
         /// Indica se un argomento remux richiede un valore
         /// </summary>
         /// <param name="key">Chiave normalizzata</param>
-        /// <returns>True se la chiave e' una option remux con valore</returns>
+        /// <returns>True se la chiave è una option remux con valore</returns>
         private static bool IsRemuxValueArgument(string key)
         {
             return key == "s" || key == "source" ||
@@ -768,7 +768,7 @@ namespace RemuxForge.Core.Models
         /// Indica se un argomento split richiede un valore
         /// </summary>
         /// <param name="key">Chiave normalizzata</param>
-        /// <returns>True se la chiave e' una option split con valore</returns>
+        /// <returns>True se la chiave è una option split con valore</returns>
         private static bool IsSplitValueArgument(string key)
         {
             return key == "s" || key == "source" ||
@@ -785,7 +785,7 @@ namespace RemuxForge.Core.Models
         }
 
         /// <summary>
-        /// Verifica se un argomento valore e' presente
+        /// Verifica se un argomento valore è presente
         /// </summary>
         private static bool RequireValue(string[] args, int i, Options options)
         {
@@ -837,7 +837,7 @@ namespace RemuxForge.Core.Models
             for (int j = 0; j < parts.Length; j++)
             {
                 trimmed = parts[j].Trim();
-                if (trimmed.Length > 0)
+                if (!string.IsNullOrEmpty(trimmed))
                 {
                     target.Add(trimmed);
                 }
@@ -845,9 +845,9 @@ namespace RemuxForge.Core.Models
         }
 
         /// <summary>
-        /// Parsa modalita' audio source fill
+        /// Parsa modalità audio source fill
         /// </summary>
-        /// <param name="value">Lista CSV modalita'</param>
+        /// <param name="value">Lista CSV modalità</param>
         /// <param name="options">Opzioni da aggiornare</param>
         private static void ParseAudioSourceFillModes(string value, Options options)
         {
@@ -855,7 +855,7 @@ namespace RemuxForge.Core.Models
             for (int i = 0; i < parts.Length; i++)
             {
                 string mode = parts[i].Trim().ToLowerInvariant();
-                if (mode.Length == 0)
+                if (string.IsNullOrEmpty(mode))
                 {
                     continue;
                 }
@@ -889,7 +889,7 @@ namespace RemuxForge.Core.Models
             for (int j = 0; j < parts.Length; j++)
             {
                 trimmed = parts[j].Trim().TrimStart('.');
-                if (trimmed.Length > 0)
+                if (!string.IsNullOrEmpty(trimmed))
                 {
                     target.Add(trimmed);
                 }
@@ -897,7 +897,7 @@ namespace RemuxForge.Core.Models
         }
 
         /// <summary>
-        /// Normalizza la modalita' speed correction
+        /// Normalizza la modalità speed correction
         /// </summary>
         private static string NormalizeSpeedCorrectionMode(string value)
         {
@@ -921,7 +921,7 @@ namespace RemuxForge.Core.Models
         }
 
         /// <summary>
-        /// Parsa modalita' snap split
+        /// Parsa modalità snap split
         /// </summary>
         private static MkvSplitSnapMode ParseSnapMode(string value, Options options)
         {
@@ -957,7 +957,7 @@ namespace RemuxForge.Core.Models
         #region Proprieta
 
         /// <summary>
-        /// Modalita' operativa obbligatoria: remux, split o metadata
+        /// Modalità operativa obbligatoria: remux, split o metadata
         /// </summary>
         public string Mode { get; set; }
 
@@ -967,7 +967,7 @@ namespace RemuxForge.Core.Models
         public string Language { get; set; }
 
         /// <summary>
-        /// Indica se e' stato richiesto il messaggio di aiuto (-h, --help)
+        /// Indica se è stato richiesto il messaggio di aiuto (-h, --help)
         /// </summary>
         public bool Help { get; set; }
 
@@ -992,7 +992,7 @@ namespace RemuxForge.Core.Models
         public string MatchPattern { get; set; }
 
         /// <summary>
-        /// Modalita' overwrite: sovrascrive i file sorgente (-o, --overwrite). Default: false
+        /// Modalità overwrite: sovrascrive i file sorgente (-o, --overwrite). Default: false
         /// </summary>
         public bool Overwrite { get; set; }
 
@@ -1047,7 +1047,7 @@ namespace RemuxForge.Core.Models
         public string ManualStretchFactor { get; set; }
 
         /// <summary>
-        /// Indica se il raffinamento frame sync e' abilitato (-fs, --framesync)
+        /// Indica se il raffinamento frame sync è abilitato (-fs, --framesync)
         /// </summary>
         public bool FrameSync { get; set; }
 
@@ -1057,7 +1057,7 @@ namespace RemuxForge.Core.Models
         public bool FrameSyncDiagnostics { get; set; }
 
         /// <summary>
-        /// Indica se la deep analysis e' abilitata (-da, --deep-analysis). Mutuamente esclusiva con FrameSync
+        /// Indica se la deep analysis è abilitata (-da, --deep-analysis). Mutuamente esclusiva con FrameSync
         /// </summary>
         public bool DeepAnalysis { get; set; }
 
@@ -1147,7 +1147,7 @@ namespace RemuxForge.Core.Models
         public bool Recursive { get; set; }
 
         /// <summary>
-        /// Modalita' dry run: mostra cosa verrebbe fatto senza eseguire (-n, --dry-run)
+        /// Modalità dry run: mostra cosa verrebbe fatto senza eseguire (-n, --dry-run)
         /// </summary>
         public bool DryRun { get; set; }
 
@@ -1167,12 +1167,12 @@ namespace RemuxForge.Core.Models
         public string EncodingProfileName { get; set; }
 
         /// <summary>
-        /// Opzioni specifiche della modalita' split
+        /// Opzioni specifiche della modalità split
         /// </summary>
         public MkvSplitOptions Split { get; set; }
 
         /// <summary>
-        /// Opzioni specifiche della modalita' metadata
+        /// Opzioni specifiche della modalità metadata
         /// </summary>
         public MkvMetadataOptions Metadata { get; set; }
 

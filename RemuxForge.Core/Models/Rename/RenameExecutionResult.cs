@@ -26,7 +26,7 @@ namespace RemuxForge.Core.Models
         #region Proprieta
 
         /// <summary>
-        /// True se l'esecuzione e' riuscita
+        /// True se l'esecuzione è riuscita
         /// </summary>
         public bool Success { get; set; }
 

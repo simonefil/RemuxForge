@@ -1,7 +1,7 @@
 namespace RemuxForge.Core.Models
 {
     /// <summary>
-    /// Livello di severita' di un messaggio di log
+    /// Livello di severità di un messaggio di log
     /// </summary>
     public enum LogLevel
     {

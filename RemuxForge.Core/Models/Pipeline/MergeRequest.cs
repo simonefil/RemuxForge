@@ -126,7 +126,7 @@ namespace RemuxForge.Core.Models
         public Dictionary<int, string> ProcessedLangSubTracks { get; set; }
 
         /// <summary>
-        /// ID tracce lang per cui il delay audio e' stato sostituito da audio source fill
+        /// ID tracce lang per cui il delay audio è stato sostituito da audio source fill
         /// </summary>
         public HashSet<int> AudioDelayBypassedLangIds { get; set; }
 

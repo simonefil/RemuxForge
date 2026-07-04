@@ -211,7 +211,7 @@ namespace RemuxForge.Core.Infrastructure
                         string line;
                         while ((line = stderrReader.ReadLine()) != null)
                         {
-                            if (onStderrLine != null && line.Length > 0)
+                            if (onStderrLine != null && !string.IsNullOrEmpty(line))
                             {
                                 onStderrLine(line);
                             }
@@ -513,7 +513,7 @@ namespace RemuxForge.Core.Infrastructure
                 result.Stderr = stderr.ToString();
                 if (!completed)
                 {
-                    if (result.Stderr.Length > 0)
+                    if (!string.IsNullOrEmpty(result.Stderr))
                     {
                         result.Stderr = result.Stderr + Environment.NewLine;
                     }
@@ -558,7 +558,7 @@ namespace RemuxForge.Core.Infrastructure
                     for (int j = 0; j < subArgs.Length; j++)
                     {
                         string trimmed = subArgs[j].Trim();
-                        if (trimmed.Length > 0)
+                        if (!string.IsNullOrEmpty(trimmed))
                         {
                             result.Add(trimmed);
                         }
@@ -619,7 +619,7 @@ namespace RemuxForge.Core.Infrastructure
         }
 
         /// <summary>
-        /// True se lo stop cooperativo e' richiesto
+        /// True se lo stop cooperativo è richiesto
         /// </summary>
         private static bool IsStopRequested()
         {

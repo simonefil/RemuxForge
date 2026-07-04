@@ -112,7 +112,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         #region Metodi privati
 
         /// <summary>
-        /// Costruisce un segmento cache riusabile se l'estrazione e' valida
+        /// Costruisce un segmento cache riusabile se l'estrazione è valida
         /// </summary>
         private CachedExtractSegment BuildCachedExtractSegment(FrameExtractProfile profile, List<byte[]> frames, double[] timestampsMs)
         {
@@ -165,7 +165,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         }
 
         /// <summary>
-        /// Prova a soddisfare un'estrazione usando un segmento gia' in memoria
+        /// Prova a soddisfare un'estrazione usando un segmento già in memoria
         /// </summary>
         private bool TryExtractFromCachedSegment(FrameExtractProfile profile, out List<byte[]> frames, out double[] timestampsMs)
         {

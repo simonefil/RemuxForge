@@ -41,7 +41,7 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Rileva tagli di scena tramite MSE tra frame consecutivi con soglia piu' permissiva
+        /// Rileva tagli di scena tramite MSE tra frame consecutivi con soglia più permissiva
         /// </summary>
         public List<int> DetectRelaxed(List<byte[]> frames)
         {
@@ -142,7 +142,7 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Calcola la mediana di un array gia' ordinato
+        /// Calcola la mediana di un array già ordinato
         /// </summary>
         private double ComputeMedianSorted(double[] values)
         {

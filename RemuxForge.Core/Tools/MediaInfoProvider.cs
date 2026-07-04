@@ -27,14 +27,14 @@ namespace RemuxForge.Core.Tools
         /// Ordine: AppSettings → posizioni note → PATH
         /// </summary>
         /// <param name="autoSave">Se true, salva il percorso trovato in AppSettings</param>
-        /// <returns>True se mediainfo e' stato trovato</returns>
+        /// <returns>True se mediainfo è stato trovato</returns>
         public bool Resolve(bool autoSave)
         {
             bool resolved = false;
             string miName = "mediainfo" + GetExecutableExtension();
             string found;
             // Controlla percorso salvato in AppSettings
-            if (AppSettingsService.Instance.Settings.Tools.MediaInfoPath.Length > 0
+            if (!string.IsNullOrEmpty(AppSettingsService.Instance.Settings.Tools.MediaInfoPath)
                 && File.Exists(AppSettingsService.Instance.Settings.Tools.MediaInfoPath)
                 && IsCliExecutablePath(AppSettingsService.Instance.Settings.Tools.MediaInfoPath))
             {
@@ -46,7 +46,7 @@ namespace RemuxForge.Core.Tools
             if (!resolved && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 found = SearchInPaths(miName, this.GetWellKnownPaths());
-                if (found.Length > 0)
+                if (!string.IsNullOrEmpty(found))
                 {
                     this._resolvedPath = found;
                     resolved = true;
@@ -57,7 +57,7 @@ namespace RemuxForge.Core.Tools
             if (!resolved)
             {
                 found = FindInSystemPath(miName);
-                if (found.Length > 0)
+                if (!string.IsNullOrEmpty(found))
                 {
                     this._resolvedPath = found;
                     resolved = true;
@@ -134,7 +134,7 @@ namespace RemuxForge.Core.Tools
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Percorso risolto dell'eseguibile mediainfo

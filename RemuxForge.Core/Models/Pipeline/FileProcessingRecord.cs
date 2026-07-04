@@ -160,12 +160,12 @@ namespace RemuxForge.Core.Models
         public long MergeTimeMs { get; set; }
 
         /// <summary>
-        /// Indica se l'elaborazione e' stata completata con successo
+        /// Indica se l'elaborazione è stata completata con successo
         /// </summary>
         public bool Success { get; set; }
 
         /// <summary>
-        /// Tempo di esecuzione correzione velocita' in millisecondi
+        /// Tempo di esecuzione correzione velocità in millisecondi
         /// </summary>
         public long SpeedCorrectionTimeMs { get; set; }
 
@@ -175,7 +175,7 @@ namespace RemuxForge.Core.Models
         public string StretchFactor { get; set; }
 
         /// <summary>
-        /// Indica se la correzione velocita' e' stata applicata
+        /// Indica se la correzione velocità è stata applicata
         /// </summary>
         public bool SpeedCorrectionApplied { get; set; }
 
@@ -205,7 +205,7 @@ namespace RemuxForge.Core.Models
         public List<string> AnalysisLog { get; set; }
 
         /// <summary>
-        /// Messaggio di errore se l'elaborazione e' fallita
+        /// Messaggio di errore se l'elaborazione è fallita
         /// </summary>
         public string ErrorMessage { get; set; }
 
@@ -300,7 +300,7 @@ namespace RemuxForge.Core.Models
         public long DeepAnalysisTimeMs { get; set; }
 
         /// <summary>
-        /// Indica se la deep analysis e' stata eseguita con successo
+        /// Indica se la deep analysis è stata eseguita con successo
         /// </summary>
         public bool DeepAnalysisApplied { get; set; }
 

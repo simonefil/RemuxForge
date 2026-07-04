@@ -453,7 +453,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
             public int SubtitleDelayApplied { get; set; }
 
             /// <summary>
-            /// Modalita' speed correction usata
+            /// Modalità speed correction usata
             /// </summary>
             public string SpeedCorrectionMode { get; set; }
 
@@ -463,12 +463,12 @@ namespace RemuxForge.Core.Analysis.FrameSync
             public string ManualStretchFactor { get; set; }
 
             /// <summary>
-            /// Modalita' frame rate source
+            /// Modalità frame rate source
             /// </summary>
             public string SourceFrameRateMode { get; set; }
 
             /// <summary>
-            /// Modalita' frame rate language
+            /// Modalità frame rate language
             /// </summary>
             public string LanguageFrameRateMode { get; set; }
 

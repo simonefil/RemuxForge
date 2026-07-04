@@ -110,7 +110,7 @@ namespace RemuxForge.Core.Models
         public double LanguageBlackRatio { get; set; }
 
         /// <summary>
-        /// True se il checkpoint e' accettato
+        /// True se il checkpoint è accettato
         /// </summary>
         public bool Accepted { get; set; }
 

@@ -19,6 +19,7 @@
                        OnShowConfig="ShowConfig"
                        OnShowPreset="ShowMetadataPreset"
                        OnClear="DoClear"
+                       OnManualEdit="ShowMetadataManualEdit"
                        OnRename="ShowMetadataRename"
                        OnShowToolPaths="ShowToolPaths"
                        OnShowAudioSettings="ShowAudioSettings"
@@ -149,7 +150,7 @@
                             {
                                 <div>@AppText.T("web.metadata.detail.notAnalyzed")</div>
                             }
-                            @if (_selectedMetadataRecord.ErrorMessage.Length > 0)
+                            @if (!string.IsNullOrEmpty(_selectedMetadataRecord.ErrorMessage))
                             {
                                 <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.dashboard.errorLabel")</span> <span class="metadata-detail-value">@_selectedMetadataRecord.ErrorMessage</span></div>
                             }
@@ -194,7 +195,7 @@
                     {
                         <div><span class="detail-label">@AppText.T("web.dashboard.fileLabel")</span> @_selectedSplitRecord.InputFile</div>
                         <div><span class="detail-label">@AppText.T("web.dashboard.statusLabel")</span> @_selectedSplitRecord.Status</div>
-                        @if (_selectedSplitRecord.ErrorMessage.Length > 0)
+                        @if (!string.IsNullOrEmpty(_selectedSplitRecord.ErrorMessage))
                         {
                             <div><span class="detail-label">@AppText.T("web.dashboard.errorLabel")</span> @_selectedSplitRecord.ErrorMessage</div>
                         }
@@ -232,6 +233,7 @@
                          OnShowConfig="ShowConfig"
                          OnShowPreset="ShowMetadataPreset"
                          OnClear="DoClear"
+                         OnManualEdit="ShowMetadataManualEdit"
                          OnRename="ShowMetadataRename"
                          CurrentMode="@_currentMode" />
 </div>
@@ -249,8 +251,7 @@
 {
     <MetadataPresetDialogComponent Options="@MetadataOrchestrator.CurrentOptions"
                                    Records="@_metadataRecords"
-                                   OnClose="CloseMetadataPreset"
-                                   OnPresetSelected="ApplyMetadataPreset" />
+                                   OnClose="CloseMetadataPreset" />
 }
 
 @if (_showMetadataMappedInfo)
@@ -258,6 +259,14 @@
     <MetadataMappedInfoDialogComponent Record="@_selectedMetadataRecord"
                                        Simulated="@_metadataMappedInfoSimulated"
                                        OnClose="CloseMetadataMappedInfo" />
+}
+
+@if (_showMetadataManualEdit)
+{
+    <MetadataMappedInfoDialogComponent Record="@_selectedMetadataRecord"
+                                       Editable="true"
+                                       OnClose="CloseMetadataManualEdit"
+                                       OnApply="ApplyMetadataManualEdit" />
 }
 
 @* Dialog Rename Metadata *@

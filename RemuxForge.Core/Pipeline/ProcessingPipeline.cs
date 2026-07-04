@@ -182,27 +182,27 @@ namespace RemuxForge.Core.Pipeline
             this._opts = opts;
 
             // Normalizza percorsi
-            if (this._opts.SourceFolder.Length > 0)
+            if (!string.IsNullOrEmpty(this._opts.SourceFolder))
             {
                 this._opts.SourceFolder = this.NormalizePath(this._opts.SourceFolder);
             }
-            if (this._opts.LanguageFolder.Length > 0)
+            if (!string.IsNullOrEmpty(this._opts.LanguageFolder))
             {
                 this._opts.LanguageFolder = this.NormalizePath(this._opts.LanguageFolder);
             }
-            if (this._opts.DestinationFolder.Length > 0)
+            if (!string.IsNullOrEmpty(this._opts.DestinationFolder))
             {
                 this._opts.DestinationFolder = this.NormalizePath(this._opts.DestinationFolder);
             }
 
-            // Determina modalita' operative
+            // Determina modalità operative
             this._needsMerge = (this._opts.TargetLanguage.Count > 0);
             this._needsFilter = (this._opts.KeepSourceAudioLangs.Count > 0 || this._opts.KeepSourceAudioCodec.Count > 0 || this._opts.KeepSourceSubtitleLangs.Count > 0);
-            this._needsRemux = (this._needsMerge || this._needsFilter || this._opts.AudioFormat.Length > 0);
-            this._needsEncode = (this._opts.EncodingProfileName.Length > 0);
+            this._needsRemux = (this._needsMerge || this._needsFilter || !string.IsNullOrEmpty(this._opts.AudioFormat));
+            this._needsEncode = !string.IsNullOrEmpty(this._opts.EncodingProfileName);
 
-            // Modalita' singola sorgente per merge
-            if (this._needsMerge && this._opts.LanguageFolder.Length == 0 && this._opts.SourceFolder.Length > 0)
+            // Modalità singola sorgente per merge
+            if (this._needsMerge && string.IsNullOrEmpty(this._opts.LanguageFolder) && !string.IsNullOrEmpty(this._opts.SourceFolder))
             {
                 this._opts.LanguageFolder = this._opts.SourceFolder;
             }
@@ -222,7 +222,7 @@ namespace RemuxForge.Core.Pipeline
             }
 
             success = true;
-            if (success && !this._opts.Overwrite && this._opts.DestinationFolder.Length == 0 && this._needsEncode && !this._needsRemux)
+            if (success && !this._opts.Overwrite && string.IsNullOrEmpty(this._opts.DestinationFolder) && this._needsEncode && !this._needsRemux)
             {
                 this._opts.Overwrite = true;
                 this.Log(LogSection.Config, LogLevel.Info, "Encode-only: sovrascrivi sorgente (overwrite implicito)");
@@ -245,11 +245,11 @@ namespace RemuxForge.Core.Pipeline
                 this._filterSourceAudio = (this._opts.KeepSourceAudioLangs.Count > 0 || this._opts.KeepSourceAudioCodec.Count > 0);
                 this._filterSourceSubs = (this._opts.KeepSourceSubtitleLangs.Count > 0);
 
-                // Risolvi mkvmerge se manca, e' relativo o il path salvato non e' un CLI valido
-                if (this._opts.MkvMergePath.Length == 0 || this._opts.MkvMergePath == "mkvmerge" || !this._toolPathResolver.IsMkvMergeExecutablePath(this._opts.MkvMergePath))
+                // Risolvi mkvmerge se manca, è relativo o il path salvato non è un CLI valido
+                if (string.IsNullOrEmpty(this._opts.MkvMergePath) || this._opts.MkvMergePath == "mkvmerge" || !this._toolPathResolver.IsMkvMergeExecutablePath(this._opts.MkvMergePath))
                 {
                     string resolvedMkvPath = this._toolPathResolver.ResolveMkvMergePath(true);
-                    if (resolvedMkvPath.Length > 0)
+                    if (!string.IsNullOrEmpty(resolvedMkvPath))
                     {
                         this._opts.MkvMergePath = resolvedMkvPath;
                     }
@@ -269,38 +269,38 @@ namespace RemuxForge.Core.Pipeline
 
                     // Risolvi ffmpeg (tentato sempre per supportare speed correction automatica)
                     this._ffmpegPath = this._toolPathResolver.ResolveFfmpegPath(true, true, !this._opts.DryRun && this._opts.AudioDownsample24To16);
-                    if (this._ffmpegPath.Length > 0)
+                    if (!string.IsNullOrEmpty(this._ffmpegPath))
                     {
                         this.Log(LogSection.Config, LogLevel.Success, "Trovato ffmpeg: " + this._ffmpegPath);
                         string ffmpegVersion = FfmpegProvider.ReadVersionLine(this._ffmpegPath);
-                        if (ffmpegVersion.Length > 0)
+                        if (!string.IsNullOrEmpty(ffmpegVersion))
                         {
                             this.Log(LogSection.Config, LogLevel.Debug, "  " + ffmpegVersion);
                         }
                     }
-                    else if (this._opts.FrameSync || this._opts.DeepAnalysis || (!this._opts.DryRun && this._opts.AudioFormat.Length > 0) || this._opts.EncodingProfileName.Length > 0 || (!this._opts.DryRun && this._opts.AudioSourceFillThresholdMs > 0))
+                    else if (this._opts.FrameSync || this._opts.DeepAnalysis || (!this._opts.DryRun && !string.IsNullOrEmpty(this._opts.AudioFormat)) || !string.IsNullOrEmpty(this._opts.EncodingProfileName) || (!this._opts.DryRun && this._opts.AudioSourceFillThresholdMs > 0))
                     {
                         // ffmpeg richiesto per analisi sync, conversione audio, audio source fill o encoding video
-                        string reason = this._opts.FrameSync ? "frame-sync" : (this._opts.DeepAnalysis ? "deep analysis" : (this._opts.AudioSourceFillThresholdMs > 0 ? "audio source fill" : (this._opts.EncodingProfileName.Length > 0 ? "encoding video" : "processing audio")));
+                        string reason = this._opts.FrameSync ? "frame-sync" : (this._opts.DeepAnalysis ? "deep analysis" : (this._opts.AudioSourceFillThresholdMs > 0 ? "audio source fill" : (!string.IsNullOrEmpty(this._opts.EncodingProfileName) ? "encoding video" : "processing audio")));
                         this.Log(LogSection.Config, LogLevel.Error, "ffmpeg non trovato e impossibile scaricarlo. Necessario per " + reason);
                         success = false;
                     }
 
-                    if (success && !this._opts.DryRun && this._opts.AudioDownsample24To16 && this._ffmpegPath.Length > 0 && !FfmpegProvider.SupportsLibSoxr(this._ffmpegPath))
+                    if (success && !this._opts.DryRun && this._opts.AudioDownsample24To16 && !string.IsNullOrEmpty(this._ffmpegPath) && !FfmpegProvider.SupportsLibSoxr(this._ffmpegPath))
                     {
                         this.Log(LogSection.Config, LogLevel.Error, "ffmpeg non supporta libsoxr: 24bit -> 16bit richiede una build con --enable-libsoxr");
                         success = false;
                     }
 
                     // Crea servizio frame-sync
-                    if (success && this._opts.FrameSync && this._ffmpegPath.Length > 0)
+                    if (success && this._opts.FrameSync && !string.IsNullOrEmpty(this._ffmpegPath))
                     {
                         this._frameSyncService = new FrameSyncService(this._ffmpegPath);
                         this._frameSyncService.SetAnalysisCrop(this._opts.AnalysisCropSourcePx, this._opts.AnalysisCropLanguagePx);
                     }
 
                     // Log impostazioni conversione se attiva
-                    if (success && this._opts.AudioFormat.Length > 0)
+                    if (success && !string.IsNullOrEmpty(this._opts.AudioFormat))
                     {
                         this.Log(LogSection.Config, LogLevel.Phase, "Processing audio attivo: " + Utils.FormatAudioFormat(this._opts.AudioFormat) + " (" + this._opts.AudioProcessingScope + ")");
                         if (string.Equals(this._opts.AudioFormat, "flac", StringComparison.OrdinalIgnoreCase))
@@ -327,7 +327,7 @@ namespace RemuxForge.Core.Pipeline
                     }
 
                     // Log profilo encoding video se attivo
-                    if (success && this._opts.EncodingProfileName.Length > 0)
+                    if (success && !string.IsNullOrEmpty(this._opts.EncodingProfileName))
                     {
                         EncodingProfile encProfile = AppSettingsService.Instance.GetProfile(this._opts.EncodingProfileName);
                         if (encProfile != null)
@@ -360,7 +360,7 @@ namespace RemuxForge.Core.Pipeline
         }
 
         /// <summary>
-        /// Analizza un singolo file: rilevamento velocita' e frame-sync
+        /// Analizza un singolo file: rilevamento velocità e frame-sync
         /// </summary>
         /// <param name="record">Record del file da analizzare</param>
         public void AnalyzeFile(FileProcessingRecord record)
@@ -442,7 +442,7 @@ namespace RemuxForge.Core.Pipeline
 
                 // Fase encoding video
                 // Entra se: remux completato (Done) oppure encode-only (Processing), mai in dry-run
-                if (!done && !this._opts.DryRun && (record.Status == FileStatus.Done || record.Status == FileStatus.Processing) && this._needsEncode && this._ffmpegPath.Length > 0)
+                if (!done && !this._opts.DryRun && (record.Status == FileStatus.Done || record.Status == FileStatus.Processing) && this._needsEncode && !string.IsNullOrEmpty(this._ffmpegPath))
                 {
                     this._outputManager.RunEncodingAndRecord(record, finalOutput, this._opts, this._ffmpegPath, this.OnFileUpdated);
                 }
@@ -497,10 +497,10 @@ namespace RemuxForge.Core.Pipeline
 
             bool needsMerge = (opts.TargetLanguage.Count > 0);
             bool needsFilter = (opts.KeepSourceAudioLangs.Count > 0 || opts.KeepSourceAudioCodec.Count > 0 || opts.KeepSourceSubtitleLangs.Count > 0);
-            bool needsConvert = (opts.AudioFormat.Length > 0);
+            bool needsConvert = !string.IsNullOrEmpty(opts.AudioFormat);
             bool needsAudioSourceFill = opts.AudioSourceFillThresholdMs > 0;
             bool needsRemux = (needsMerge || needsFilter || needsConvert || needsAudioSourceFill);
-            bool needsEncode = (opts.EncodingProfileName.Length > 0);
+            bool needsEncode = !string.IsNullOrEmpty(opts.EncodingProfileName);
 
             steps.Add(AppText.T("web.pipeline.step.scanSource"));
 
@@ -512,8 +512,10 @@ namespace RemuxForge.Core.Pipeline
             if (needsMerge)
             {
                 string analyzeDetail = AppText.T("web.pipeline.step.analysis");
-                if (opts.DeepAnalysis) { analyzeDetail = AppText.T("web.pipeline.step.analysisDeep"); }
-                else if (opts.FrameSync) { analyzeDetail = AppText.T("web.pipeline.step.analysisFrameSync"); }
+                if (opts.DeepAnalysis)
+                    analyzeDetail = AppText.T("web.pipeline.step.analysisDeep");
+                else if (opts.FrameSync)
+                    analyzeDetail = AppText.T("web.pipeline.step.analysisFrameSync");
                 steps.Add(analyzeDetail);
             }
 
@@ -530,9 +532,12 @@ namespace RemuxForge.Core.Pipeline
             if (needsRemux)
             {
                 string remuxDetail = AppText.T("web.pipeline.step.remux");
-                if (needsMerge && needsFilter) { remuxDetail = AppText.T("web.pipeline.step.remuxMergeFilter"); }
-                else if (needsMerge) { remuxDetail = AppText.T("web.pipeline.step.remuxMergeTracks"); }
-                else if (needsFilter) { remuxDetail = AppText.T("web.pipeline.step.remuxFilterSource"); }
+                if (needsMerge && needsFilter)
+                    remuxDetail = AppText.T("web.pipeline.step.remuxMergeFilter");
+                else if (needsMerge)
+                    remuxDetail = AppText.T("web.pipeline.step.remuxMergeTracks");
+                else if (needsFilter)
+                    remuxDetail = AppText.T("web.pipeline.step.remuxFilterSource");
                 steps.Add(remuxDetail);
             }
 
@@ -567,25 +572,33 @@ namespace RemuxForge.Core.Pipeline
             string sourceKind = AppText.T("web.pipeline.sourceKind.source");
             string modeDetail;
 
-            if (opts.Split.SourcePath.Length > 0)
+            if (!string.IsNullOrEmpty(opts.Split.SourcePath))
             {
-                if (Directory.Exists(opts.Split.SourcePath)) { sourceKind = AppText.T("web.pipeline.sourceKind.sourceFolder"); }
-                else if (File.Exists(opts.Split.SourcePath)) { sourceKind = AppText.T("web.pipeline.sourceKind.sourceFile"); }
+                if (Directory.Exists(opts.Split.SourcePath))
+                    sourceKind = AppText.T("web.pipeline.sourceKind.sourceFolder");
+                else if (File.Exists(opts.Split.SourcePath))
+                    sourceKind = AppText.T("web.pipeline.sourceKind.sourceFile");
             }
 
             steps.Add(AppText.F("web.pipeline.step.splitScanInput", sourceKind));
             steps.Add(AppText.T("web.pipeline.step.extractChapters"));
-            steps.Add(opts.Split.SourceRaw.Length > 0
+            steps.Add(!string.IsNullOrEmpty(opts.Split.SourceRaw)
                 ? AppText.T("web.pipeline.step.extractPtsRaw")
                 : AppText.T("web.pipeline.step.extractPtsInput"));
             steps.Add(AppText.T("web.pipeline.step.countVerifyFrames"));
 
-            if (opts.Split.Pattern.Length > 0) { modeDetail = AppText.T("web.pipeline.mode.chapterPattern"); }
-            else if (opts.Split.Ranges.Length > 0) { modeDetail = AppText.T("web.pipeline.mode.explicitRanges"); }
-            else if (opts.Split.SplitAt.Length > 0) { modeDetail = AppText.T("web.pipeline.mode.splitAt"); }
-            else if (opts.Split.TrimStart.Length > 0 || opts.Split.TrimEnd.Length > 0) { modeDetail = AppText.T("web.pipeline.mode.trim"); }
-            else if (opts.Split.ChaptersEach) { modeDetail = AppText.T("web.pipeline.mode.chaptersEach"); }
-            else { modeDetail = AppText.T("web.pipeline.mode.notConfigured"); }
+            if (!string.IsNullOrEmpty(opts.Split.Pattern))
+                modeDetail = AppText.T("web.pipeline.mode.chapterPattern");
+            else if (!string.IsNullOrEmpty(opts.Split.Ranges))
+                modeDetail = AppText.T("web.pipeline.mode.explicitRanges");
+            else if (!string.IsNullOrEmpty(opts.Split.SplitAt))
+                modeDetail = AppText.T("web.pipeline.mode.splitAt");
+            else if (!string.IsNullOrEmpty(opts.Split.TrimStart) || !string.IsNullOrEmpty(opts.Split.TrimEnd))
+                modeDetail = AppText.T("web.pipeline.mode.trim");
+            else if (opts.Split.ChaptersEach)
+                modeDetail = AppText.T("web.pipeline.mode.chaptersEach");
+            else
+                modeDetail = AppText.T("web.pipeline.mode.notConfigured");
             steps.Add(AppText.F("web.pipeline.step.buildSegments", modeDetail));
 
             if (opts.Split.DryRun || opts.DryRun)
@@ -595,7 +608,7 @@ namespace RemuxForge.Core.Pipeline
             }
 
             steps.Add(AppText.T("web.pipeline.step.readVideoCodec"));
-            if (opts.Split.Snap != MkvSplitSnapMode.Off && opts.Split.SourceRaw.Length == 0)
+            if (opts.Split.Snap != MkvSplitSnapMode.Off && string.IsNullOrEmpty(opts.Split.SourceRaw))
             {
                 steps.Add(AppText.F("web.pipeline.step.fastSnap", opts.Split.Snap.ToString().ToLowerInvariant()));
             }
@@ -732,7 +745,7 @@ namespace RemuxForge.Core.Pipeline
                     (record.DeepAnalysisApplied && record.DeepAnalysisMap != null && record.DeepAnalysisMap.Operations.Count > 0 && !this._opts.SubOnly)))
                 {
                     AudioProcessingRequest audioRequest = this._audioRequestBuilder.Build(record, this._opts, sourceInfo, langInfo, sourceTracks, sourceAudioIds, audioTracks, this._needsMerge, this._filterSourceAudio, effectiveAudioDelay);
-                    if (this._opts.AudioFormat.Length == 0 && (audioRequest.SourceTracksToProcess.Count > 0 || audioRequest.LangTracksToProcess.Count > 0))
+                    if (string.IsNullOrEmpty(this._opts.AudioFormat) && (audioRequest.SourceTracksToProcess.Count > 0 || audioRequest.LangTracksToProcess.Count > 0))
                     {
                         record.ErrorMessage = "Processing audio richiesto ma formato audio non impostato";
                         record.Status = FileStatus.Error;
@@ -788,7 +801,7 @@ namespace RemuxForge.Core.Pipeline
                     done = true;
                 }
 
-                // Subtitle canvas rewrite: lavora dopo il timeline edit per rispettare eventuali cut/insert gia' applicati.
+                // Subtitle canvas rewrite: lavora dopo il timeline edit per rispettare eventuali cut/insert già applicati.
                 if (!done && this._opts.SubtitleCanvasRewrite)
                 {
                     SubtitleCanvasRewriteService subtitleCanvasService = new SubtitleCanvasRewriteService(this._toolPathResolver);
@@ -853,7 +866,8 @@ namespace RemuxForge.Core.Pipeline
                     if (this._needsMerge)
                     {
                         delayInfo = "  Delay: Audio " + Utils.FormatDelay(effectiveAudioDelay) + ", Sub " + Utils.FormatDelay(effectiveSubDelay);
-                        if (stretchFactor.Length > 0) { delayInfo += ", stretch: " + stretchFactor; }
+                        if (!string.IsNullOrEmpty(stretchFactor))
+                            delayInfo += ", stretch: " + stretchFactor;
                         ConsoleHelper.Write(LogSection.Merge, LogLevel.Debug, delayInfo);
                     }
 
@@ -865,9 +879,12 @@ namespace RemuxForge.Core.Pipeline
             finally
             {
                 // Cleanup file convertiti temporanei
-                foreach (KeyValuePair<int, string> kvp in convertedSourceTracks) { FileHelper.DeleteTempFile(kvp.Value); }
-                foreach (KeyValuePair<int, string> kvp in convertedLangTracks) { FileHelper.DeleteTempFile(kvp.Value); }
-                foreach (KeyValuePair<int, string> kvp in processedLangSubTracks) { this.DeleteProcessedSubtitleFile(kvp.Value); }
+                foreach (KeyValuePair<int, string> kvp in convertedSourceTracks)
+                    FileHelper.DeleteTempFile(kvp.Value);
+                foreach (KeyValuePair<int, string> kvp in convertedLangTracks)
+                    FileHelper.DeleteTempFile(kvp.Value);
+                foreach (KeyValuePair<int, string> kvp in processedLangSubTracks)
+                    this.DeleteProcessedSubtitleFile(kvp.Value);
             }
 
             return finalOutput;
@@ -947,7 +964,7 @@ namespace RemuxForge.Core.Pipeline
         /// Invia un messaggio di log tramite l'evento OnLogMessage
         /// </summary>
         /// <param name="section">Sezione operativa del messaggio</param>
-        /// <param name="level">Livello di severita'</param>
+        /// <param name="level">Livello di severità</param>
         /// <param name="text">Testo del messaggio</param>
         private void Log(LogSection section, LogLevel level, string text)
         {
@@ -984,7 +1001,7 @@ namespace RemuxForge.Core.Pipeline
         {
             string result = path;
 
-            if (path.Length > 0)
+            if (!string.IsNullOrEmpty(path))
             {
                 result = Path.GetFullPath(path);
                 result = result.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
@@ -1094,12 +1111,18 @@ namespace RemuxForge.Core.Pipeline
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Pattern codec risolti per filtro tracce lingua importate
         /// </summary>
-        public string[] CodecPatterns { get { return this._codecPatterns; } }
+        public string[] CodecPatterns
+        {
+            get
+            {
+                return this._codecPatterns;
+            }
+        }
 
         #endregion
     }

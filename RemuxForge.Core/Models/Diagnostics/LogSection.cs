@@ -16,7 +16,7 @@ namespace RemuxForge.Core.Models
         Config,
 
         /// <summary>
-        /// Correzione velocita' (SpeedCorrectionService)
+        /// Correzione velocità (SpeedCorrectionService)
         /// </summary>
         Speed,
 

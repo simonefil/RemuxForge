@@ -179,7 +179,7 @@ namespace RemuxForge.Core.Analysis.Deep
         /// <param name="langDefaultDurationNs">Default duration traccia video lang in nanosecondi</param>
         /// <param name="sourceDurationMs">Durata container source in millisecondi</param>
         /// <param name="manualStretchFactor">Stretch factor manuale, vuoto se assente</param>
-        /// <param name="allowAutoStretch">True per consentire stretch automatico da metadata gia' validati</param>
+        /// <param name="allowAutoStretch">True per consentire stretch automatico da metadata già validati</param>
         /// <param name="trackPolicy">Policy delle tracce audio ammesse come validazione</param>
         /// <returns>EditMap con operazioni di edit, null se analisi fallita</returns>
         public EditMap Analyze(string sourceFile, string langFile, long sourceDefaultDurationNs, long langDefaultDurationNs, int sourceDurationMs, string manualStretchFactor, bool allowAutoStretch, DeepAnalysisTrackPolicy trackPolicy)
@@ -244,7 +244,7 @@ namespace RemuxForge.Core.Analysis.Deep
             ConsoleHelper.Progress(LogSection.Deep, 25, "Deep: timeline");
             phaseStartMs = stopwatch.ElapsedMilliseconds;
             mkvMergePath = this._toolPathResolver.ResolveMkvMergePath(false);
-            if (mkvMergePath.Length == 0)
+            if (string.IsNullOrEmpty(mkvMergePath))
             {
                 mkvMergePath = AppSettingsService.Instance.Settings.Tools.MkvMergePath;
             }
@@ -280,7 +280,7 @@ namespace RemuxForge.Core.Analysis.Deep
             }
             if (this._currentTrackPolicy.LanguageFineTuneAudioAvailable)
             {
-                ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  Audio fine-tune: lang stream " + this._currentTrackPolicy.LanguageFineTuneAudioStreamIndex.ToString(CultureInfo.InvariantCulture) + (this._currentTrackPolicy.LanguageFineTuneTrackName != null && this._currentTrackPolicy.LanguageFineTuneTrackName.Length > 0 ? " (" + this._currentTrackPolicy.LanguageFineTuneTrackName + ")" : ""));
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  Audio fine-tune: lang stream " + this._currentTrackPolicy.LanguageFineTuneAudioStreamIndex.ToString(CultureInfo.InvariantCulture) + (!string.IsNullOrEmpty(this._currentTrackPolicy.LanguageFineTuneTrackName) ? " (" + this._currentTrackPolicy.LanguageFineTuneTrackName + ")" : ""));
             }
             else
             {
@@ -395,13 +395,13 @@ namespace RemuxForge.Core.Analysis.Deep
         #region Metodi privati — Fase 2: Timeline
 
         /// <summary>
-        /// Decide se il primo offset e' un vero delay mux o un edit iniziale da materializzare nella timeline lang.
+        /// Decide se il primo offset è un vero delay mux o un edit iniziale da materializzare nella timeline lang.
         /// </summary>
         /// <param name="regions">Regioni offset rilevate</param>
-        /// <param name="operations">Operazioni EditMap gia' raffinate</param>
+        /// <param name="operations">Operazioni EditMap già raffinate</param>
         /// <param name="inverseRatio">Rapporto inverso speed correction</param>
         /// <param name="visualStartConfirmed">True se lo start guard visuale ha confermato l'offset iniziale</param>
-        /// <param name="leadingInitialEditCreated">True se e' stata aggiunta una operazione iniziale</param>
+        /// <param name="leadingInitialEditCreated">True se è stata aggiunta una operazione iniziale</param>
         /// <returns>Delay iniziale da applicare con mkvmerge</returns>
         private int ResolveInitialDelayAndLeadingOperation(List<OffsetRegion> regions, List<EditOperation> operations, double inverseRatio, bool visualStartConfirmed, out bool leadingInitialEditCreated)
         {
@@ -433,7 +433,7 @@ namespace RemuxForge.Core.Analysis.Deep
             }
 
             /*
-             * Il primo plateau puo' essere il primo contenuto comune dopo un edit iniziale.
+             * Il primo plateau può essere il primo contenuto comune dopo un edit iniziale.
              * In quel caso usarlo come delay mux sposta anche cue e audio precedenti.
              */
             leadingOperation = new EditOperation();
@@ -455,11 +455,11 @@ namespace RemuxForge.Core.Analysis.Deep
         /// <param name="sourceDefaultDurationNs">Default duration source in nanosecondi</param>
         /// <param name="langDefaultDurationNs">Default duration lang in nanosecondi</param>
         /// <param name="manualStretchFactor">Stretch manuale richiesto</param>
-        /// <param name="allowAutoStretch">True se puo' usare metadata video</param>
+        /// <param name="allowAutoStretch">True se può usare metadata video</param>
         /// <param name="stretchRatio">Ratio stretch source/lang</param>
         /// <param name="inverseRatio">Ratio inverso da applicare al language</param>
         /// <param name="stretchFactor">Fattore stretch normalizzato per mkvmerge</param>
-        /// <returns>True se lo stretch e' valido</returns>
+        /// <returns>True se lo stretch è valido</returns>
         private bool DetectStretch(long sourceDefaultDurationNs, long langDefaultDurationNs, string manualStretchFactor, bool allowAutoStretch, out double stretchRatio, out double inverseRatio, out string stretchFactor)
         {
             double sourceFps;
@@ -470,7 +470,7 @@ namespace RemuxForge.Core.Analysis.Deep
             inverseRatio = 1.0;
             stretchFactor = "";
 
-            if (manualStretchFactor != null && manualStretchFactor.Trim().Length > 0)
+            if (!string.IsNullOrEmpty(manualStretchFactor != null ? manualStretchFactor.Trim() : null))
             {
                 if (!SpeedCorrectionService.TryParseStretchFactor(manualStretchFactor, out stretchRatio, out normalizedManualFactor))
                 {
@@ -564,7 +564,7 @@ namespace RemuxForge.Core.Analysis.Deep
 
             if (visualStartBorderCandidate && (visualStartMse > INITIAL_VISUAL_GUARD_STRONG_MSE || double.IsPositiveInfinity(visualStartLocalSecondMse) || ((visualStartLocalSecondMse - visualStartMse) / Math.Max(visualStartLocalSecondMse, 1.0)) < INITIAL_VISUAL_GUARD_BORDER_MARGIN))
             {
-                ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Start guard scartato: candidate=" + visualStartOffsetMs.ToString(CultureInfo.InvariantCulture) + "ms e' sul bordo language (mse=" + visualStartMse.ToString("F1", CultureInfo.InvariantCulture) + ", localSecond=" + visualStartLocalSecondMse.ToString("F1", CultureInfo.InvariantCulture) + ")");
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Start guard scartato: candidate=" + visualStartOffsetMs.ToString(CultureInfo.InvariantCulture) + "ms è sul bordo language (mse=" + visualStartMse.ToString("F1", CultureInfo.InvariantCulture) + ", localSecond=" + visualStartLocalSecondMse.ToString("F1", CultureInfo.InvariantCulture) + ")");
                 visualStartOffsetMs = int.MinValue;
                 return;
             }
@@ -1022,7 +1022,7 @@ namespace RemuxForge.Core.Analysis.Deep
         }
 
         /// <summary>
-        /// Conta frame source che non combaciano piu' col vecchio offset.
+        /// Conta frame source che non combaciano più col vecchio offset.
         /// </summary>
         private int CountTailGapOldMismatches(List<byte[]> sourceFrames, double[] sourceTimestampsMs, List<byte[]> langFrames, double[] langTimestampsMs, int startIndex, int endIndex, double offsetSec, double inverseRatio, double toleranceMs)
         {
@@ -1182,7 +1182,7 @@ namespace RemuxForge.Core.Analysis.Deep
             }
 
             processResult = ProcessRunner.Run(this._ffmpegPath, new string[] { "-hide_banner", "-i", filePath });
-            return this.ParseFfmpegDurationMs(processResult.Stderr.Length > 0 ? processResult.Stderr : processResult.Stdout);
+            return this.ParseFfmpegDurationMs(!string.IsNullOrEmpty(processResult.Stderr) ? processResult.Stderr : processResult.Stdout);
         }
 
         /// <summary>
@@ -1626,7 +1626,7 @@ namespace RemuxForge.Core.Analysis.Deep
             oldMseScores = new double[maxIdx];
             newMseScores = new double[maxIdx];
 
-            // Allinea ogni frame source al frame lang piu' vicino per ciascun offset candidato
+            // Allinea ogni frame source al frame lang più vicino per ciascun offset candidato
             for (int i = 0; i < maxIdx; i++)
             {
                 targetOldMs = sourceTimestampsMs[i] - (oldOffsetSec * 1000.0);
@@ -1733,7 +1733,7 @@ namespace RemuxForge.Core.Analysis.Deep
                 double longInsertTargetSec = transition != null && transition.BreakpointSrcSec > 0.0 ? transition.BreakpointSrcSec : (searchStartSrc + (duration / 2.0));
                 insertCandidates.Sort((left, right) => right.Value.CompareTo(left.Value));
 
-                // Valuta prima i candidati con differenziale MSE piu' forte: sono i piu' stabili
+                // Valuta prima i candidati con differenziale MSE più forte: sono i più stabili
                 // quando SSIM resta alto su pose statiche, fade o frame quasi identici.
                 for (int c = 0; c < insertCandidates.Count; c++)
                 {
@@ -1744,7 +1744,7 @@ namespace RemuxForge.Core.Analysis.Deep
                     bool candidateRejected;
 
                     // Sposta il candidato sul primo frame vicino dove il nuovo offset diventa almeno
-                    // competitivo e c'e' movimento reale nel source.
+                    // competitivo e c'è movimento reale nel source.
                     for (int i = candidateIdx; i < maxIdx && i < candidateIdx + 120; i++)
                     {
                         if (valid[i] && motionScores[i] >= motionThreshold && oldMseScores[i] >= newMseScores[i])
@@ -1803,7 +1803,7 @@ namespace RemuxForge.Core.Analysis.Deep
                         boundaryIdx = rewindIdx;
                     }
 
-                    // Un MSE quasi perfetto spesso identifica contenuto gia' agganciato dopo il gap:
+                    // Un MSE quasi perfetto spesso identifica contenuto già agganciato dopo il gap:
                     // risale al primo frame della stessa run perfetta, se esiste.
                     if (newMseScores[boundaryIdx] <= 100.0)
                     {
@@ -1920,7 +1920,7 @@ namespace RemuxForge.Core.Analysis.Deep
                     }
 
                     // Per delta piccoli invece il boundary MSE deve superare la verifica locale.
-                    // Se fallisce ma il differenziale e' molto forte, accetta solo se old vince subito prima
+                    // Se fallisce ma il differenziale è molto forte, accetta solo se old vince subito prima
                     // e new ha abbastanza voti subito dopo.
                     if (!longInsertTransition)
                     {
@@ -2010,7 +2010,7 @@ namespace RemuxForge.Core.Analysis.Deep
                     break;
                 }
 
-                // Se il boundary MSE e' vicino al breakpoint di una INSERT lunga, e' gia' il punto operativo.
+                // Se il boundary MSE è vicino al breakpoint di una INSERT lunga, è già il punto operativo.
                 // Il passaggio SSIM successivo rischierebbe di spostarsi sul contenuto visibile dopo il gap.
                 if (mseInsertResult >= 0.0 && longInsertTransition && Math.Abs(mseInsertResult - longInsertTargetSec) <= 2.0)
                 {
@@ -2027,8 +2027,8 @@ namespace RemuxForge.Core.Analysis.Deep
                         }
                     }
 
-                    // Nei gap INSERT lunghi il punto operativo e' l'inizio dello stacco nero/fade source-only:
-                    // un match SSIM piu' tardo sul contenuto non deve sostituire un boundary MSE vicino al breakpoint timeline.
+                    // Nei gap INSERT lunghi il punto operativo è l'inizio dello stacco nero/fade source-only:
+                    // un match SSIM più tardo sul contenuto non deve sostituire un boundary MSE vicino al breakpoint timeline.
                     ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: uso boundary MSE insert lungo a src " + mseInsertResult.ToString("F3", CultureInfo.InvariantCulture) + "s (score=" + mseInsertScore.ToString("F1", CultureInfo.InvariantCulture) + ")");
                     return mseInsertResult;
                 }
@@ -2046,7 +2046,7 @@ namespace RemuxForge.Core.Analysis.Deep
                     int beforeOldVotes = 0;
                     int beforeEvidence = 0;
 
-                    // Il frame candidato deve gia' favorire new sia in SSIM sia in MSE.
+                    // Il frame candidato deve già favorire new sia in SSIM sia in MSE.
                     if (!valid[i] || newScores[i] < minNewSsim || newScores[i] <= oldScores[i] || newMseScores[i] > oldMseScores[i] * 1.02)
                     {
                         continue;
@@ -2057,7 +2057,7 @@ namespace RemuxForge.Core.Analysis.Deep
                         continue;
                     }
 
-                    // Dopo il boundary servono piu' voti new che old, altrimenti e' un match isolato.
+                    // Dopo il boundary servono più voti new che old, altrimenti è un match isolato.
                     for (int j = i; j < maxIdx && sourceTimestampsMs[j] - sourceTimestampsMs[i] <= afterWindowMs; j++)
                     {
                         if (!valid[j] || (j > i && !changed[j] && meanScores[j] > darkFrameMean))
@@ -2080,7 +2080,7 @@ namespace RemuxForge.Core.Analysis.Deep
                         continue;
                     }
 
-                    // Prima del boundary non deve esserci gia' evidenza forte per new, altrimenti il punto e' tardivo.
+                    // Prima del boundary non deve esserci già evidenza forte per new, altrimenti il punto è tardivo.
                     for (int j = i - 1; j >= 0 && sourceTimestampsMs[i] - sourceTimestampsMs[j] <= beforeWindowMs; j--)
                     {
                         if (!valid[j] || (!changed[j] && meanScores[j] > darkFrameMean))
@@ -2239,8 +2239,8 @@ namespace RemuxForge.Core.Analysis.Deep
                         mseInsertResult <= result &&
                         result - mseInsertResult <= 3.0)
                     {
-                        // Usa il primo boundary MSE solo quando il cambio e' netto: in fade/logo ambigui SSIM
-                        // puo' trovare un frame quasi perfetto piu' avanti e non va scavalcato da un vantaggio debole.
+                        // Usa il primo boundary MSE solo quando il cambio è netto: in fade/logo ambigui SSIM
+                        // può trovare un frame quasi perfetto più avanti e non va scavalcato da un vantaggio debole.
                         ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: uso boundary MSE insert a src " + mseInsertResult.ToString("F3", CultureInfo.InvariantCulture) + "s (score=" + mseInsertScore.ToString("F1", CultureInfo.InvariantCulture) + ")");
                         return mseInsertResult;
                     }
@@ -2308,7 +2308,7 @@ namespace RemuxForge.Core.Analysis.Deep
 
                 if (oldMseScores[boundaryIdx] - newMseScores[boundaryIdx] >= cutSwitchMseMargin)
                 {
-                    // Nei CUT il primo frame utile puo' precedere il frame con contrasto piu' forte:
+                    // Nei CUT il primo frame utile può precedere il frame con contrasto più forte:
                     // risale la run new-dominante senza attraversare un frame dove il vecchio offset torna corretto.
                     int rewindIdx = boundaryIdx;
                     double rewindWindowMs = Math.Max(1000.0, Math.Abs(newOffsetSec - oldOffsetSec) * 1000.0 + 500.0);
@@ -2387,7 +2387,7 @@ namespace RemuxForge.Core.Analysis.Deep
                 verifiedCutCandidates++;
 
                 // La verifica locale confronta audio/video prima e dopo il boundary proposto.
-                // Se fallisce, il candidato puo' sopravvivere solo con evidenza visuale molto forte.
+                // Se fallisce, il candidato può sopravvivere solo con evidenza visuale molto forte.
                 candidateVerification = this.VerifyTransitionLocal(sourceFile, langFile, result, oldOffsetSec, newOffsetSec, inverseRatio);
                 if (collectCutDiagnostics && transition.Candidates.Count < candidateDiagnosticsLimit)
                 {
@@ -2420,7 +2420,7 @@ namespace RemuxForge.Core.Analysis.Deep
                     candidateVerification.ForwardNewMse - candidateVerification.ForwardOldMse >= cutRewindMargin;
 
                 // In timeline map un CUT vero deve mostrare old migliore poco prima del boundary:
-                // e' la guardia che distingue un cambio offset reale da un candidato anticipato.
+                // è la guardia che distingue un cambio offset reale da un candidato anticipato.
                 if (this._currentAnalysisUsesTimelineMap && offsetDirection < 0)
                 {
                     double oldBeforeWindowMs = Math.Max(1000.0, Math.Abs(newOffsetSec - oldOffsetSec) * 1000.0 + 500.0);
@@ -2439,8 +2439,8 @@ namespace RemuxForge.Core.Analysis.Deep
                     }
                 }
 
-                // strongDifferentialCut e' il bypass visuale generico; timelineCutStrongBoundary e'
-                // piu' restrittivo e vale solo quando la timeline conferma il pattern old->new.
+                // strongDifferentialCut è il bypass visuale generico; timelineCutStrongBoundary è
+                // più restrittivo e vale solo quando la timeline conferma il pattern old->new.
                 strongDifferentialCut = collectCutDiagnostics &&
                     candidates[c].Value >= strongDifferentialScore &&
                     oldMseScores[boundaryIdx] - newMseScores[boundaryIdx] >= cutSwitchMseMargin &&
@@ -2456,7 +2456,7 @@ namespace RemuxForge.Core.Analysis.Deep
                     continue;
                 }
 
-                // Se il candidato e' accettato solo da timeline map, impedisce il successivo
+                // Se il candidato è accettato solo da timeline map, impedisce il successivo
                 // spostamento automatico su motion forte: quel fallback lo renderebbe tardivo.
                 if (candidateRejected && (strongDifferentialCut || timelineCutStrongBoundary))
                 {
@@ -2475,7 +2475,7 @@ namespace RemuxForge.Core.Analysis.Deep
                 if (duration > 60.0 && Math.Abs(newOffsetSec - oldOffsetSec) <= 1.5 && boundaryIdx >= 0 && boundaryIdx < motionScores.Length && !(this._currentAnalysisUsesTimelineMap && offsetDirection < 0 && (candidateLocalVerifiedOrDeferred || timelineCutBoundaryAccepted)))
                 {
                     // Nei CUT lunghi con boundary debole prova l'ultimo spostamento su motion forte,
-                    // ma non scavalca candidati timeline gia' verificati o deferibili.
+                    // ma non scavalca candidati timeline già verificati o deferibili.
                     for (int i = boundaryIdx + 1; i < maxIdx; i++)
                     {
                         if (!valid[i] || motionScores[i] < strongMotionThreshold)
@@ -2894,7 +2894,7 @@ namespace RemuxForge.Core.Analysis.Deep
 
             int maxIdx = srcFrames.Count;
 
-            // Tolleranza ampia: scanDuration lo fps nativo puo' variare; uso 100ms
+            // Tolleranza ampia: scanDuration lo fps nativo può variare; uso 100ms
             toleranceMs = 100.0;
 
             // Scorri e trova il primo frame dove old offset smette di funzionare
@@ -3049,7 +3049,7 @@ namespace RemuxForge.Core.Analysis.Deep
             double forwardNewSsim;
             if (this._currentAnalysisUsesTimelineMap && offsetDeltaSec < 0.0)
             {
-                // Nei CUT timeline il frame immediatamente prima puo' cadere in una zona ambigua: il veto old-before va misurato piu' indietro
+                // Nei CUT timeline il frame immediatamente prima può cadere in una zona ambigua: il veto old-before va misurato più indietro
                 beforeSrcSec = crossoverSrcSec - Math.Max(4.0, transitionDurationSec + 2.0);
                 forwardSrcSec = crossoverSrcSec + Math.Max(LOCAL_TIMELINE_CUT_FORWARD_SEC, transitionDurationSec + 2.0);
             }
@@ -3057,7 +3057,7 @@ namespace RemuxForge.Core.Analysis.Deep
             if (beforeSrcSec < 0.0) { beforeSrcSec = 0.0; }
             if (insertSilenceTransition)
             {
-                // In INSERT_SILENCE il crossover e' il punto operativo: il nuovo offset diventa verificabile solo dopo la durata inserita
+                // In INSERT_SILENCE il crossover è il punto operativo: il nuovo offset diventa verificabile solo dopo la durata inserita
                 afterSrcSec = crossoverSrcSec + transitionDurationSec + 2.0;
                 forwardSrcSec = crossoverSrcSec + transitionDurationSec + Math.Max(8.0, transitionDurationSec + 2.0);
             }
@@ -3129,7 +3129,7 @@ namespace RemuxForge.Core.Analysis.Deep
                 }
             }
 
-            // SSIM decide quando il segnale e' chiaro; MSE resta fallback quando SSIM e' saturo o quasi pari
+            // SSIM decide quando il segnale è chiaro; MSE resta fallback quando SSIM è saturo o quasi pari
             if (this._currentAnalysisUsesTimelineMap)
             {
                 if (insertSilenceTransition)

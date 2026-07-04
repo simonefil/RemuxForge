@@ -13,7 +13,7 @@ using System.Threading;
 namespace RemuxForge.Core.Analysis.Speed
 {
     /// <summary>
-    /// Rilevamento e correzione differenze di velocita' tra sorgente e lingua
+    /// Rilevamento e correzione differenze di velocità tra sorgente e lingua
     /// </summary>
     public class SpeedCorrectionService : VideoSyncServiceBase
     {
@@ -75,7 +75,7 @@ namespace RemuxForge.Core.Analysis.Speed
         private readonly double[] _verifySsimValues;
 
         /// <summary>
-        /// Validita' di ciascun punto di verifica
+        /// Validità di ciascun punto di verifica
         /// </summary>
         private readonly bool[] _verifyPointValid;
 
@@ -109,7 +109,7 @@ namespace RemuxForge.Core.Analysis.Speed
         #region Metodi pubblici
 
         /// <summary>
-        /// Rileva mismatch di velocita' usando timing validato MediaInfo/default_duration
+        /// Rileva mismatch di velocità usando timing validato MediaInfo/default_duration
         /// </summary>
         public static bool DetectSpeedMismatch(MkvFileInfo sourceInfo, MkvFileInfo langInfo, VideoTimingInfo sourceTiming, VideoTimingInfo langTiming, out double sourceFps, out double langFps, out bool vfrSuspect)
         {
@@ -137,7 +137,7 @@ namespace RemuxForge.Core.Analysis.Speed
                 }
             }
 
-            // Cerca default_duration per tracce video, gia' validato quando VideoTimingInfo e' disponibile
+            // Cerca default_duration per tracce video, già validato quando VideoTimingInfo è disponibile
             sourceDefaultDuration = Utils.GetVideoDefaultDuration(sourceInfo.Tracks);
             langDefaultDuration = Utils.GetVideoDefaultDuration(langInfo.Tracks);
             vfrSuspect = sourceDefaultDuration <= 0 || langDefaultDuration <= 0;
@@ -155,7 +155,7 @@ namespace RemuxForge.Core.Analysis.Speed
                     langFps = 1000000000.0 / langDefaultDuration;
 
                     // Verifica durata container per escludere soft telecine
-                    // Se le durate sono quasi uguali nonostante FPS diversi, non e' un vero speed mismatch
+                    // Se le durate sono quasi uguali nonostante FPS diversi, non è un vero speed mismatch
                     if (sourceInfo.ContainerDurationNs > 0 && langInfo.ContainerDurationNs > 0)
                     {
                         durationRatio = (double)sourceInfo.ContainerDurationNs / langInfo.ContainerDurationNs;
@@ -242,12 +242,12 @@ namespace RemuxForge.Core.Analysis.Speed
             langMode = "";
             reason = "";
 
-            if (mediaInfoPath.Length == 0 || !System.IO.File.Exists(mediaInfoPath))
+            if (string.IsNullOrEmpty(mediaInfoPath) || !System.IO.File.Exists(mediaInfoPath))
             {
                 mediaInfoPath = new ToolPathResolverService(AppSettingsService.Instance.ConfigFolder).ResolveMediaInfoPath(false);
             }
 
-            if (mediaInfoPath.Length == 0 || !System.IO.File.Exists(mediaInfoPath))
+            if (string.IsNullOrEmpty(mediaInfoPath) || !System.IO.File.Exists(mediaInfoPath))
             {
                 if (TryGetFrameRateModeFromFfprobe(sourceFile, out sourceMode) &&
                     TryGetFrameRateModeFromFfprobe(languageFile, out langMode))
@@ -264,7 +264,7 @@ namespace RemuxForge.Core.Analysis.Speed
             sourceMode = service.GetVideoFrameRateMode(sourceFile);
             langMode = service.GetVideoFrameRateMode(languageFile);
 
-            if (sourceMode.Length == 0 || langMode.Length == 0)
+            if (string.IsNullOrEmpty(sourceMode) || string.IsNullOrEmpty(langMode))
             {
                 if (TryGetFrameRateModeFromFfprobe(sourceFile, out sourceMode) &&
                     TryGetFrameRateModeFromFfprobe(languageFile, out langMode))
@@ -395,7 +395,7 @@ namespace RemuxForge.Core.Analysis.Speed
                 this._verifyPointValid[i] = false;
             }
 
-            if (manualStretchFactor != null && manualStretchFactor.Trim().Length > 0)
+            if (!string.IsNullOrEmpty(manualStretchFactor != null ? manualStretchFactor.Trim() : null))
             {
                 if (!TryParseStretchFactor(manualStretchFactor, out stretchRatio, out normalizedManualFactor))
                 {
@@ -569,7 +569,7 @@ namespace RemuxForge.Core.Analysis.Speed
         #region Metodi privati
 
         /// <summary>
-        /// Risolve l'intervallo frame sorgente evitando tolleranze infinite in modalita' manuale/VFR
+        /// Risolve l'intervallo frame sorgente evitando tolleranze infinite in modalità manuale/VFR
         /// </summary>
         /// <param name="timestampsMs">Timestamp frame da cui stimare l'intervallo, opzionali</param>
         /// <returns>Intervallo frame in millisecondi</returns>
@@ -612,7 +612,7 @@ namespace RemuxForge.Core.Analysis.Speed
         /// </summary>
         /// <param name="timestampsMs">Timestamp frame in millisecondi</param>
         /// <param name="intervalMs">Intervallo stimato</param>
-        /// <returns>True se la stima e' disponibile</returns>
+        /// <returns>True se la stima è disponibile</returns>
         private bool TryEstimateFrameIntervalMs(double[] timestampsMs, out double intervalMs)
         {
             bool result = false;
@@ -790,9 +790,9 @@ namespace RemuxForge.Core.Analysis.Speed
                         }
                     }
 
-                    // Ordina e trova i cluster piu' densi (sliding window di 3 frame sorgente)
-                    // Sul VFR il cluster piu' denso puo' essere un falso positivo: si verificano piu'
-                    // candidati, mantenendo fail-safe se nessuno e' confermato dai tagli reali
+                    // Ordina e trova i cluster più densi (sliding window di 3 frame sorgente)
+                    // Sul VFR il cluster più denso può essere un falso positivo: si verificano più
+                    // candidati, mantenendo fail-safe se nessuno è confermato dai tagli reali
                     double votingWindow = sourceFrameIntervalMs * 3.0;
                     Array.Sort(candidates);
                     bestClusterCount = 0;
@@ -876,7 +876,7 @@ namespace RemuxForge.Core.Analysis.Speed
                             // Posizione attesa del taglio lang: srcCutMs * _inverseRatio + winningDelay
                             expectedLangCutMs = srcCutMs + winningDelay + driftComponent;
 
-                            // Cerca il taglio lang piu' vicino alla posizione attesa (distanza in ms)
+                            // Cerca il taglio lang più vicino alla posizione attesa (distanza in ms)
                             nearestLangCutIdx = -1;
                             nearestDistMs = double.MaxValue;
                             for (int l = 0; l < lngCutCount; l++)
@@ -913,7 +913,7 @@ namespace RemuxForge.Core.Analysis.Speed
                         verifiedCount = verifiedDelays.Count;
 
                         // Fallback: se SSIM insufficiente, ritenta con fingerprint temporale
-                        // Il fingerprint confronta pattern di variazione inter-frame ed e' fps-indipendente
+                        // Il fingerprint confronta pattern di variazione inter-frame ed è fps-indipendente
                         if (verifiedCount < this._vsConfig.MinSceneCuts)
                         {
                             ConsoleHelper.Write(LogSection.Speed, LogLevel.Notice, "  SSIM insufficiente, fallback a fingerprint temporale...");
@@ -926,7 +926,7 @@ namespace RemuxForge.Core.Analysis.Speed
                                 driftComponent = srcCutMs * (this._inverseRatio - 1.0);
                                 expectedLangCutMs = srcCutMs + winningDelay + driftComponent;
 
-                                // Cerca il taglio lang piu' vicino alla posizione attesa (distanza in ms)
+                                // Cerca il taglio lang più vicino alla posizione attesa (distanza in ms)
                                 nearestLangCutIdx = -1;
                                 nearestDistMs = double.MaxValue;
                                 for (int l = 0; l < lngCutCount; l++)
@@ -1002,7 +1002,7 @@ namespace RemuxForge.Core.Analysis.Speed
         }
 
         /// <summary>
-        /// Verifica correzione velocita' a 9 punti con scene-cut matching parallelo
+        /// Verifica correzione velocità a 9 punti con scene-cut matching parallelo
         /// </summary>
         private bool VerifyCorrection(string sourceFile, string languageFile, int sourceDurationMs, int initialDelayMs)
         {
@@ -1088,7 +1088,7 @@ namespace RemuxForge.Core.Analysis.Speed
                     }
                 }
 
-                // Limita thread retry a 4 (ogni ffmpeg usa gia' auto-threading)
+                // Limita thread retry a 4 (ogni ffmpeg usa già auto-threading)
                 int retryThreadCount = 4;
                 if (retryThreadCount > failedPoints.Count)
                 {
@@ -1296,7 +1296,7 @@ namespace RemuxForge.Core.Analysis.Speed
                     // Posizione attesa del taglio lang (basata su expectedOffset)
                     expectedLangCutMs = srcCutMs + expectedOffset;
 
-                    // Cerca il taglio lang piu' vicino (distanza in ms)
+                    // Cerca il taglio lang più vicino (distanza in ms)
                     nearestLangCutIdx = -1;
                     nearestDistMs = double.MaxValue;
                     for (int l = 0; l < lngCutCount; l++)
@@ -1326,7 +1326,7 @@ namespace RemuxForge.Core.Analysis.Speed
                                 double rawOffset = actualLngMs - srcCutMs;
 
                                 // Normalizza rimuovendo il drift relativo al centro della finestra
-                                // Cosi' tutti gli offset sono riferiti a sourceTimestampMs
+                                // Così tutti gli offset sono riferiti a sourceTimestampMs
                                 driftDelta = (srcCutMs - sourceTimestampMs) * (this._inverseRatio - 1.0);
                                 cutOffsets.Add(rawOffset - driftDelta);
 
@@ -1470,7 +1470,7 @@ namespace RemuxForge.Core.Analysis.Speed
         public double[] VerifySsimValues { get { return this._verifySsimValues; } }
 
         /// <summary>
-        /// Validita' di ciascun punto di verifica
+        /// Validità di ciascun punto di verifica
         /// </summary>
         public bool[] VerifyPointValid { get { return this._verifyPointValid; } }
 

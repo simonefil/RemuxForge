@@ -89,7 +89,7 @@ namespace RemuxForge.Core.Metadata
             MkvMetadataPreset preset;
             JsonSerializerOptions options;
 
-            if (filePath == null || filePath.Trim().Length == 0)
+            if (string.IsNullOrEmpty(filePath != null ? filePath.Trim() : null))
                 throw new ArgumentException(AppText.T("metadata.preset.emptyPath"), nameof(filePath));
 
             json = File.ReadAllText(filePath);
@@ -347,7 +347,7 @@ namespace RemuxForge.Core.Metadata
             for (int i = 0; i < rules.Count; i++)
             {
                 ValidateRule(rules[i], i, result);
-                if (rules[i] != null && rules[i].Description != null && rules[i].Description.Trim().Length > 0)
+                if (rules[i] != null && !string.IsNullOrEmpty(rules[i].Description != null ? rules[i].Description.Trim() : null))
                 {
                     string key = rules[i].Description.Trim();
                     if (descriptions.ContainsKey(key))
@@ -376,7 +376,7 @@ namespace RemuxForge.Core.Metadata
                 return;
             }
 
-            if (rule.Description == null || rule.Description.Trim().Length == 0)
+            if (string.IsNullOrEmpty(rule.Description != null ? rule.Description.Trim() : null))
                 result.AddError(AppText.F("metadata.preset.missingRuleDescription", index));
 
             if (rule.When != null && rule.When.All != null)
@@ -464,7 +464,7 @@ namespace RemuxForge.Core.Metadata
                 return;
             }
 
-            if (condition.FieldKey == null || condition.FieldKey.Trim().Length == 0)
+            if (string.IsNullOrEmpty(condition.FieldKey != null ? condition.FieldKey.Trim() : null))
             {
                 result.AddError(AppText.F("metadata.preset.missingConditionField", path));
             }
@@ -496,7 +496,7 @@ namespace RemuxForge.Core.Metadata
                 return;
             }
 
-            if (condition == null || condition.FieldKey == null || condition.FieldKey.Trim().Length == 0)
+            if (condition == null || string.IsNullOrEmpty(condition.FieldKey != null ? condition.FieldKey.Trim() : null))
             {
                 result.AddError(AppText.F("metadata.preset.missingConditionField", path));
             }
@@ -552,7 +552,7 @@ namespace RemuxForge.Core.Metadata
 
                 case MkvMetadataConditionOperator.Between:
                 case MkvMetadataConditionOperator.NotBetween:
-                    if ((condition.FromValue == null || condition.FromValue.Trim().Length == 0) || (condition.ToValue == null || condition.ToValue.Trim().Length == 0))
+                    if (string.IsNullOrEmpty(condition.FromValue != null ? condition.FromValue.Trim() : null) || string.IsNullOrEmpty(condition.ToValue != null ? condition.ToValue.Trim() : null))
                         result.AddError(AppText.F("metadata.preset.rangeNeedsValues", path));
 
                     AddExpressionErrors(expressionEngine.Validate(condition.FromValue), path + ".from", result);

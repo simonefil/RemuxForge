@@ -224,7 +224,7 @@ namespace RemuxForge.Core.Subtitles
 
             errorMessage = "";
 
-            // Scorre il display-set prima del rewrite ODS: la palette puo' precedere gli oggetti da scalare
+            // Scorre il display-set prima del rewrite ODS: la palette può precedere gli oggetti da scalare
             while (pos < end && TryGetPacketLength(data, pos, out packetLength) && pos + packetLength <= end)
             {
                 if (data[pos + 10] == SEGMENT_PALETTE)
@@ -563,7 +563,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="packetStart">Offset packet PDS</param>
         /// <param name="palette">Palette da aggiornare</param>
         /// <param name="errorMessage">Errore di parsing</param>
-        /// <returns>True se il segmento PDS e' valido</returns>
+        /// <returns>True se il segmento PDS è valido</returns>
         private static bool ReadPaletteSegment(byte[] data, int packetStart, Dictionary<byte, PgsPaletteEntry> palette, out string errorMessage)
         {
             int segmentLength = ReadUInt16BigEndian(data, packetStart + 11);
@@ -606,7 +606,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="partials">Oggetti parziali in assembly</param>
         /// <param name="objects">Oggetti completi raccolti</param>
         /// <param name="report">Report aggiornato durante la lettura</param>
-        /// <returns>True se il segmento e' stato letto</returns>
+        /// <returns>True se il segmento è stato letto</returns>
         private static bool ReadObjectSegment(
             byte[] data,
             int packetStart,
@@ -625,7 +625,7 @@ namespace RemuxForge.Core.Subtitles
             int dataOffset;
             int dataLength;
 
-            // Valida header segmento e legge identita'/flag ODS
+            // Valida header segmento e legge identità/flag ODS
             if (segmentLength < 4 || payload + segmentLength > data.Length)
             {
                 report.ErrorMessage = "ODS PGS troppo corto";
@@ -650,7 +650,7 @@ namespace RemuxForge.Core.Subtitles
                 dataLength = segmentLength - ODS_FIRST_PAYLOAD_HEADER_SIZE;
             }
 
-            // Frammento successivo: prosegue un oggetto gia' aperto con stessa versione
+            // Frammento successivo: prosegue un oggetto già aperto con stessa versione
             else
             {
                 if (!partials.TryGetValue(objectId, out state))
@@ -705,7 +705,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="partials">Oggetti parziali in assembly</param>
         /// <param name="state">Stato oggetto inizializzato</param>
         /// <param name="report">Report aggiornato durante la lettura</param>
-        /// <returns>True se il primo frammento e' valido</returns>
+        /// <returns>True se il primo frammento è valido</returns>
         private static bool StartObject(byte[] data, int packetStart, int segmentLength, int payload, int objectId, int version, Dictionary<int, PgsObjectAssemblyState> partials, out PgsObjectAssemblyState state, PgsSubtitleCanvasRewriteReport report)
         {
             int objectDataLength;
@@ -761,7 +761,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="dataOffset">Offset dati RLE da copiare</param>
         /// <param name="dataLength">Numero byte RLE da copiare</param>
         /// <param name="report">Report aggiornato durante la lettura</param>
-        /// <returns>True se il payload e' stato aggiunto</returns>
+        /// <returns>True se il payload è stato aggiunto</returns>
         private static bool AppendObjectData(PgsObjectAssemblyState state, byte[] data, int dataOffset, int dataLength, PgsSubtitleCanvasRewriteReport report)
         {
             if (dataLength < 0 || dataOffset + dataLength > data.Length)
@@ -786,7 +786,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="state">Stato oggetto in assembly</param>
         /// <param name="objects">Oggetti completi raccolti</param>
         /// <param name="report">Report aggiornato durante la lettura</param>
-        /// <returns>True se l'oggetto e' completo</returns>
+        /// <returns>True se l'oggetto è completo</returns>
         private static bool CompleteObject(PgsObjectAssemblyState state, Dictionary<int, PgsObjectDefinition> objects, PgsSubtitleCanvasRewriteReport report)
         {
             PgsObjectDefinition result;
@@ -893,7 +893,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="color">Indice palette da scrivere</param>
         /// <param name="warnings">Warning non fatali aggiornati</param>
         /// <param name="errorMessage">Errore in caso di run invalido</param>
-        /// <returns>True se il run e' stato scritto</returns>
+        /// <returns>True se il run è stato scritto</returns>
         private static bool WriteDecodedRun(byte[] pixels, int width, int height, ref int x, ref int y, int runLength, int color, ref int warnings, out string errorMessage)
         {
             errorMessage = "";
@@ -1021,7 +1021,7 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         /// <param name="input">Bitmap input</param>
         /// <param name="palette">Palette PDS corrente</param>
-        /// <returns>True se il resize palette-aware e' applicabile</returns>
+        /// <returns>True se il resize palette-aware è applicabile</returns>
         private static bool CanScaleWithPalette(PgsSubtitleBitmap input, Dictionary<byte, PgsPaletteEntry> palette)
         {
             bool[] used = new bool[256];
@@ -1031,7 +1031,7 @@ namespace RemuxForge.Core.Subtitles
                 return false;
             }
 
-            // L'indice 0 e' trattato come trasparente anche se alcuni stream non lo dichiarano nel PDS
+            // L'indice 0 è trattato come trasparente anche se alcuni stream non lo dichiarano nel PDS
             for (int i = 0; i < input.Pixels.Length; i++)
             {
                 used[input.Pixels[i]] = true;
@@ -1181,7 +1181,7 @@ namespace RemuxForge.Core.Subtitles
         }
 
         /// <summary>
-        /// Trova l'indice palette piu' vicino al colore premoltiplicato target
+        /// Trova l'indice palette più vicino al colore premoltiplicato target
         /// </summary>
         /// <param name="used">Indici palette ammessi</param>
         /// <param name="colors">Colori palette premoltiplicati</param>
@@ -1189,13 +1189,13 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="targetCr">Cr premoltiplicato target</param>
         /// <param name="targetCb">Cb premoltiplicato target</param>
         /// <param name="targetAlpha">Alpha target</param>
-        /// <returns>Indice palette piu' vicino</returns>
+        /// <returns>Indice palette più vicino</returns>
         private static byte FindNearestPgsPaletteIndex(bool[] used, PgsResampleColor[] colors, double targetY, double targetCr, double targetCb, double targetAlpha)
         {
             int bestIndex = 0;
             double bestDistance = double.MaxValue;
 
-            // La distanza pesa alpha piu' dei crominance: sui bordi e' l'opacita' che preserva l'antialiasing
+            // La distanza pesa alpha più dei crominance: sui bordi è l'opacità che preserva l'antialiasing
             for (int i = 0; i < used.Length; i++)
             {
                 if (!used[i])
@@ -1232,7 +1232,7 @@ namespace RemuxForge.Core.Subtitles
             int sourceX;
             int sourceY;
 
-            // Mappa ogni pixel output sul pixel sorgente piu' vicino
+            // Mappa ogni pixel output sul pixel sorgente più vicino
             for (int y = 0; y < outputHeight; y++)
             {
                 sourceY = Math.Min(input.Height - 1, (int)(((y + 0.5) * input.Height) / outputHeight));
@@ -1275,7 +1275,7 @@ namespace RemuxForge.Core.Subtitles
                     xEnd = Math.Max(xStart + 1, (int)Math.Ceiling((x + 1) * input.Width / (double)outputWidth));
                     xEnd = Math.Min(xEnd, input.Width);
 
-                    // Sceglie l'indice palette piu' presente nell'area sorgente
+                    // Sceglie l'indice palette più presente nell'area sorgente
                     output[(y * outputWidth) + x] = SelectMajorityColor(input, xStart, xEnd, yStart, yEnd, counts);
                 }
             }
@@ -1337,7 +1337,7 @@ namespace RemuxForge.Core.Subtitles
             /// <param name="y">Luminanza</param>
             /// <param name="cr">Color difference red</param>
             /// <param name="cb">Color difference blue</param>
-            /// <param name="alpha">Opacita'</param>
+            /// <param name="alpha">Opacità</param>
             public PgsResampleColor(double y, double cr, double cb, double alpha)
             {
                 double alphaFactor = alpha / 255.0;

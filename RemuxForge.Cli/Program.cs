@@ -54,7 +54,7 @@ namespace RemuxForge.Cli
             if (!done)
             {
                 opts = Options.Parse(args);
-                if (opts.ErrorMessage.Length > 0)
+                if (!string.IsNullOrEmpty(opts.ErrorMessage))
                 {
                     ConsoleHelper.Write(LogSection.Config, LogLevel.Error, AppText.F("cli.error", opts.ErrorMessage));
                     ConsoleHelper.Write(LogSection.Config, LogLevel.Debug, AppText.T("cli.helpHint"));
@@ -177,7 +177,7 @@ namespace RemuxForge.Cli
         #region Metodi privati
 
         /// <summary>
-        /// Legge --lang prima del parsing opzioni completo, cosi' anche help ed errori iniziali usano la lingua richiesta
+        /// Legge --lang prima del parsing opzioni completo, così anche help ed errori iniziali usano la lingua richiesta
         /// </summary>
         /// <param name="args">Argomenti CLI</param>
         /// <returns>Lingua richiesta o vuoto</returns>
@@ -251,7 +251,7 @@ namespace RemuxForge.Cli
         }
 
         /// <summary>
-        /// Esegue modalita' metadata da CLI tramite preset JSON
+        /// Esegue modalità metadata da CLI tramite preset JSON
         /// </summary>
         /// <param name="opts">Opzioni</param>
         /// <returns>Exit code</returns>
@@ -275,7 +275,7 @@ namespace RemuxForge.Cli
                 }
 
                 mediaInfoPath = AppSettingsService.Instance.Settings.Tools.MediaInfoPath;
-                if (mediaInfoPath == null || mediaInfoPath.Length == 0)
+                if (string.IsNullOrEmpty(mediaInfoPath))
                 {
                     mediaInfoPath = "mediainfo";
                 }
@@ -397,11 +397,11 @@ namespace RemuxForge.Cli
 
             // Mostra configurazione sync
             ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.speedCorrection", opts.SpeedCorrectionMode));
-            if (opts.ManualStretchFactor.Length > 0)
+            if (!string.IsNullOrEmpty(opts.ManualStretchFactor))
             {
                 ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.manualStretch", opts.ManualStretchFactor));
             }
-            if (opts.AnalysisCropSourcePx.Length > 0 || opts.AnalysisCropLanguagePx.Length > 0)
+            if (!string.IsNullOrEmpty(opts.AnalysisCropSourcePx) || !string.IsNullOrEmpty(opts.AnalysisCropLanguagePx))
             {
                 ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.analysisCrop", FormatAnalysisCrop(opts.AnalysisCropSourcePx), FormatAnalysisCrop(opts.AnalysisCropLanguagePx)));
             }
@@ -435,7 +435,7 @@ namespace RemuxForge.Cli
             {
                 ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.audioSourceFill", opts.AudioSourceFillThresholdMs, opts.AudioSourceFillLanguage, FormatAudioSourceFillModes(opts)));
             }
-            if (opts.AudioFormat.Length > 0)
+            if (!string.IsNullOrEmpty(opts.AudioFormat))
             {
                 ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.audioFormat", Utils.FormatAudioFormat(opts.AudioFormat), opts.AudioProcessingScope));
                 if (opts.AudioDownsample24To16)
@@ -479,10 +479,10 @@ namespace RemuxForge.Cli
         }
 
         /// <summary>
-        /// Formatta le modalita' audio source fill attive
+        /// Formatta le modalità audio source fill attive
         /// </summary>
         /// <param name="opts">Opzioni correnti</param>
-        /// <returns>Lista modalita' in formato leggibile</returns>
+        /// <returns>Lista modalità in formato leggibile</returns>
         private static string FormatAudioSourceFillModes(Options opts)
         {
             List<string> modes = new List<string>();
@@ -499,7 +499,7 @@ namespace RemuxForge.Cli
         /// <returns>Crop o off</returns>
         private static string FormatAnalysisCrop(string cropPx)
         {
-            return cropPx.Length > 0 ? cropPx : AppText.T("cli.off");
+            return !string.IsNullOrEmpty(cropPx) ? cropPx : AppText.T("cli.off");
         }
 
         /// <summary>
@@ -513,7 +513,7 @@ namespace RemuxForge.Cli
             List<FileProcessingRecord> validRecords = new List<FileProcessingRecord>();
             for (int i = 0; i < records.Count; i++)
             {
-                if (records[i].Success || (isDryRun && records[i].LangFileName.Length > 0))
+                if (records[i].Success || (isDryRun && !string.IsNullOrEmpty(records[i].LangFileName)))
                 {
                     validRecords.Add(records[i]);
                 }

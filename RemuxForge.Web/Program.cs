@@ -65,7 +65,7 @@ namespace RemuxForge.Web
             // Auto-find tool (mkvmerge, ffmpeg, mediainfo)
             bool toolsChanged = false;
             mkvMergePath = toolPathResolver.ResolveMkvMergePath(false);
-            if (mkvMergePath.Length > 0)
+            if (!string.IsNullOrEmpty(mkvMergePath))
             {
                 if (!string.Equals(AppSettingsService.Instance.Settings.Tools.MkvMergePath, mkvMergePath, System.StringComparison.Ordinal))
                 {
@@ -75,35 +75,35 @@ namespace RemuxForge.Web
             }
 
             mkvExtractPath = toolPathResolver.ResolveMkvExtractPath(mkvMergePath, false);
-            if (mkvExtractPath.Length > 0 && !string.Equals(AppSettingsService.Instance.Settings.Tools.MkvExtractPath, mkvExtractPath, System.StringComparison.Ordinal))
+            if (!string.IsNullOrEmpty(mkvExtractPath) && !string.Equals(AppSettingsService.Instance.Settings.Tools.MkvExtractPath, mkvExtractPath, System.StringComparison.Ordinal))
             {
                 AppSettingsService.Instance.Settings.Tools.MkvExtractPath = mkvExtractPath;
                 toolsChanged = true;
             }
 
             mkvPropEditPath = toolPathResolver.ResolveMkvPropEditPath(mkvMergePath, false);
-            if (mkvPropEditPath.Length > 0 && !string.Equals(AppSettingsService.Instance.Settings.Tools.MkvPropEditPath, mkvPropEditPath, System.StringComparison.Ordinal))
+            if (!string.IsNullOrEmpty(mkvPropEditPath) && !string.Equals(AppSettingsService.Instance.Settings.Tools.MkvPropEditPath, mkvPropEditPath, System.StringComparison.Ordinal))
             {
                 AppSettingsService.Instance.Settings.Tools.MkvPropEditPath = mkvPropEditPath;
                 toolsChanged = true;
             }
 
             ffmpegPath = toolPathResolver.ResolveFfmpegPath(false, false);
-            if (ffmpegPath.Length > 0 && !string.Equals(AppSettingsService.Instance.Settings.Tools.FfmpegPath, ffmpegPath, System.StringComparison.Ordinal))
+            if (!string.IsNullOrEmpty(ffmpegPath) && !string.Equals(AppSettingsService.Instance.Settings.Tools.FfmpegPath, ffmpegPath, System.StringComparison.Ordinal))
             {
                 AppSettingsService.Instance.Settings.Tools.FfmpegPath = ffmpegPath;
                 toolsChanged = true;
             }
 
             ffprobePath = toolPathResolver.ResolveFfprobePath(ffmpegPath, false);
-            if (ffprobePath.Length > 0 && !string.Equals(AppSettingsService.Instance.Settings.Tools.FfprobePath, ffprobePath, System.StringComparison.Ordinal))
+            if (!string.IsNullOrEmpty(ffprobePath) && !string.Equals(AppSettingsService.Instance.Settings.Tools.FfprobePath, ffprobePath, System.StringComparison.Ordinal))
             {
                 AppSettingsService.Instance.Settings.Tools.FfprobePath = ffprobePath;
                 toolsChanged = true;
             }
 
             mediaInfoPath = toolPathResolver.ResolveMediaInfoPath(false);
-            if (mediaInfoPath.Length > 0 && !string.Equals(AppSettingsService.Instance.Settings.Tools.MediaInfoPath, mediaInfoPath, System.StringComparison.Ordinal))
+            if (!string.IsNullOrEmpty(mediaInfoPath) && !string.Equals(AppSettingsService.Instance.Settings.Tools.MediaInfoPath, mediaInfoPath, System.StringComparison.Ordinal))
             {
                 AppSettingsService.Instance.Settings.Tools.MediaInfoPath = mediaInfoPath;
                 toolsChanged = true;

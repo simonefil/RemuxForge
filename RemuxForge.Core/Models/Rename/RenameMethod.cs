@@ -62,7 +62,7 @@ namespace RemuxForge.Core.Models
         public bool CaseSensitive { get; set; }
 
         /// <summary>
-        /// True se SearchText e' una regex
+        /// True se SearchText è una regex
         /// </summary>
         public bool UseRegex { get; set; }
 
@@ -112,12 +112,12 @@ namespace RemuxForge.Core.Models
         public bool RemovePatternCaseSensitive { get; set; }
 
         /// <summary>
-        /// True se RemovePattern e' una regex
+        /// True se RemovePattern è una regex
         /// </summary>
         public bool RemovePatternUseRegex { get; set; }
 
         /// <summary>
-        /// Modalita' case: 0=lowercase, 1=UPPERCASE, 2=Title Case
+        /// Modalità case: 0=lowercase, 1=UPPERCASE, 2=Title Case
         /// </summary>
         public int CaseMode { get; set; }
 

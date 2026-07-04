@@ -122,7 +122,7 @@ namespace RemuxForge.Core.Analysis.Deep
             double[] ssimValues = new double[maxIdx];
             for (int i = 0; i < maxIdx; i++)
             {
-                // Con VFR il frame equivalente non e' lo stesso indice: si usa il timestamp piu' vicino
+                // Con VFR il frame equivalente non è lo stesso indice: si usa il timestamp più vicino
                 srcRelMs = sourceTimestampsMs[i] - sourceTimestampsMs[0];
                 targetLangMs = langTimestampsMs[0] + srcRelMs;
                 nearestIdx = this.NearestTimestampIndex(langTimestampsMs, targetLangMs);
@@ -250,7 +250,7 @@ namespace RemuxForge.Core.Analysis.Deep
             double targetLangMs;
             int nearestIdx;
             double nearestDistMs;
-            // La scansione densa confronta source con il vecchio offset per trovare dove la similarita' crolla
+            // La scansione densa confronta source con il vecchio offset per trovare dove la similarità crolla
             this._extractor(sourceFile, (int)(searchStartSrc * 1000), duration, this._config.DenseScanFps, geometryCropSourceToFourThree, out srcFrames, out sourceTimestampsMs);
             if (srcFrames.Count < 4)
             {
@@ -276,7 +276,7 @@ namespace RemuxForge.Core.Analysis.Deep
             double[] ssimValues = new double[maxIdx];
             for (int i = 0; i < maxIdx; i++)
             {
-                // Anche qui il confronto e' timestamp-based per non confondere VFR con disallineamento
+                // Anche qui il confronto è timestamp-based per non confondere VFR con disallineamento
                 srcRelMs = sourceTimestampsMs[i] - sourceTimestampsMs[0];
                 targetLangMs = langTimestampsMs[0] + srcRelMs;
                 nearestIdx = this.NearestTimestampIndex(langTimestampsMs, targetLangMs);
@@ -320,7 +320,7 @@ namespace RemuxForge.Core.Analysis.Deep
                 }
             }
 
-            // Fallback diagnostico: se non c'e' dip netto, usa il minimo SSIM ma lo segnala come warning
+            // Fallback diagnostico: se non c'è dip netto, usa il minimo SSIM ma lo segnala come warning
             for (int i = 0; i < maxIdx; i++)
             {
                 if (ssimValues[i] < minSsim)
@@ -404,7 +404,7 @@ namespace RemuxForge.Core.Analysis.Deep
             oldRunDurations = this.BuildRepeatedFrameRunDurations(langOldFrames, langOldTimestampsMs);
             newRunDurations = this.BuildRepeatedFrameRunDurations(langNewFrames, langNewTimestampsMs);
 
-            // Un crossover e' accettato quando il nuovo offset spiega meglio piu' run consecutivi
+            // Un crossover è accettato quando il nuovo offset spiega meglio più run consecutivi
             for (int i = 0; i < sourceTimestampsMs.Length; i++)
             {
                 if (sourceRunDurations[i] < minRunMs)
@@ -474,7 +474,7 @@ namespace RemuxForge.Core.Analysis.Deep
         /// <param name="geometryCropLanguageToFourThree">Normalizzazione geometrica 4:3 lingua</param>
         /// <param name="mse">MSE migliore trovato</param>
         /// <param name="ssim">SSIM migliore trovato</param>
-        /// <returns>True se almeno un confronto valido e' stato eseguito</returns>
+        /// <returns>True se almeno un confronto valido è stato eseguito</returns>
         public bool TryComputeLocalVisualScoreAt(string sourceFile, string langFile, double srcSec, double offsetSec, double inverseRatio, double coarseFps, bool geometryCropSourceToFourThree, bool geometryCropLanguageToFourThree, out double mse, out double ssim, List<DeepAnalysisLocalVisualScoreSampleDiagnostic> samples = null, string pointName = "", string offsetName = "")
         {
             bool result = false;
@@ -590,7 +590,7 @@ namespace RemuxForge.Core.Analysis.Deep
         /// <param name="geometryCropSourceToFourThree">Normalizzazione geometrica 4:3 source</param>
         /// <param name="geometryCropLanguageToFourThree">Normalizzazione geometrica 4:3 lingua</param>
         /// <param name="mse">MSE migliore trovato</param>
-        /// <returns>True se almeno un confronto valido e' stato eseguito</returns>
+        /// <returns>True se almeno un confronto valido è stato eseguito</returns>
         public bool TryComputeGlobalPointMse(string sourceFile, string langFile, List<OffsetRegion> regions, double srcPointMs, double inverseRatio, double coarseFps, bool geometryCropSourceToFourThree, bool geometryCropLanguageToFourThree, out double mse)
         {
             bool result = false;
@@ -650,7 +650,7 @@ namespace RemuxForge.Core.Analysis.Deep
 
             for (int vf = 0; vf < srcFrames.Count && vf < srcFramesTs.Length; vf++)
             {
-                // Usa il frame language piu' vicino al timestamp assoluto previsto dall'offset.
+                // Usa il frame language più vicino al timestamp assoluto previsto dall'offset.
                 targetLangMs = srcFramesTs[vf] - (offsetSec * 1000.0);
                 if (Math.Abs(inverseRatio - 1.0) > 0.0001)
                 {
@@ -738,11 +738,11 @@ namespace RemuxForge.Core.Analysis.Deep
         }
 
         /// <summary>
-        /// Trova con ricerca binaria l'indice del timestamp piu' vicino
+        /// Trova con ricerca binaria l'indice del timestamp più vicino
         /// </summary>
         /// <param name="timestampsMs">Timestamp ordinati</param>
         /// <param name="targetMs">Timestamp target</param>
-        /// <returns>Indice piu' vicino, oppure -1</returns>
+        /// <returns>Indice più vicino, oppure -1</returns>
         private int NearestTimestampIndex(double[] timestampsMs, double targetMs)
         {
             int result = -1;
@@ -760,7 +760,7 @@ namespace RemuxForge.Core.Analysis.Deep
             high = timestampsMs.Length - 1;
             while (low <= high)
             {
-                // Ricerca binaria standard: l'array timestamp e' monotono per costruzione ffmpeg
+                // Ricerca binaria standard: l'array timestamp è monotono per costruzione ffmpeg
                 mid = low + ((high - low) / 2);
                 if (timestampsMs[mid] < targetMs)
                 {

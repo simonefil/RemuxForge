@@ -107,7 +107,7 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Applica ai frame il profilo crop gia' calcolato per crop geometrico/manuale
+        /// Applica ai frame il profilo crop già calcolato per crop geometrico/manuale
         /// </summary>
         public void Normalize(string filePath, bool geometryCropToFourThree, string manualCropPx, List<byte[]> frames)
         {
@@ -150,7 +150,7 @@ namespace RemuxForge.Core.Media
             List<byte[]> frames;
             if (actualDurationMs <= 0)
             {
-                // La durata puo' mancare in alcuni percorsi: la leggiamo solo quando serve davvero
+                // La durata può mancare in alcuni percorsi: la leggiamo solo quando serve davvero
                 FfmpegVideoInfoReader reader = new FfmpegVideoInfoReader(this._ffmpegPath, this._ffmpegConfig, this._logSection);
                 reader.TryRead(filePath, out actualDurationMs, out _);
             }
@@ -164,7 +164,7 @@ namespace RemuxForge.Core.Media
 
             for (int i = 0; i < percentages.Length; i++)
             {
-                // Ogni campione e' centrato sulla percentuale scelta, con clamp agli estremi del file
+                // Ogni campione è centrato sulla percentuale scelta, con clamp agli estremi del file
                 int centerMs = (int)((long)actualDurationMs * percentages[i] / 100);
                 int startMs = centerMs - (SAMPLE_DURATION_MS / 2);
                 if (startMs < 0) { startMs = 0; }
@@ -184,7 +184,7 @@ namespace RemuxForge.Core.Media
         /// <summary>
         /// Costruisce il profilo crop solo se i bordi sono stabili su tutti i campioni globali
         /// </summary>
-        /// <param name="frames">Frame campione gia' estratti</param>
+        /// <param name="frames">Frame campione già estratti</param>
         /// <returns>Profilo crop, disabilitato se i bordi non sono affidabili</returns>
         private BorderCropProfile BuildProfile(List<byte[]> frames)
         {
@@ -200,7 +200,7 @@ namespace RemuxForge.Core.Media
                 return profile;
             }
 
-            // Ogni lato e' valutato indipendentemente: non assumiamo bordi simmetrici
+            // Ogni lato è valutato indipendentemente: non assumiamo bordi simmetrici
             leftMargin = this.DetectVerticalSideMargin(frames, true, width, height);
             rightMargin = this.DetectVerticalSideMargin(frames, false, width, height);
             topMargin = this.DetectHorizontalSideMargin(frames, true, width, height);
@@ -243,7 +243,7 @@ namespace RemuxForge.Core.Media
                 lineMargins = new List<int>();
                 for (int i = 0; i < scanYs.Length; i++)
                 {
-                    // Il minimo tra righe e campioni e' il bordo nero garantito, quindi evita over-crop su scene scure.
+                    // Il minimo tra righe e campioni è il bordo nero garantito, quindi evita over-crop su scene scure.
                     lineMargins.Add(this.MeasureVerticalRawMargin(frames[f], leftSide, width, scanYs[i], maxMargin));
                 }
 
@@ -273,7 +273,7 @@ namespace RemuxForge.Core.Media
                 lineMargins = new List<int>();
                 for (int i = 0; i < scanXs.Length; i++)
                 {
-                    // Il minimo tra colonne e campioni e' il bordo nero garantito, quindi evita over-crop su scene scure.
+                    // Il minimo tra colonne e campioni è il bordo nero garantito, quindi evita over-crop su scene scure.
                     lineMargins.Add(this.MeasureHorizontalRawMargin(frames[f], topSide, width, height, scanXs[i], maxMargin));
                 }
 
@@ -345,7 +345,7 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Restituisce il minimo positivo tra misure valide: e' il crop nero garantito.
+        /// Restituisce il minimo positivo tra misure valide: è il crop nero garantito.
         /// </summary>
         /// <param name="margins">Misure raccolte</param>
         /// <returns>Minimo stabile, oppure 0 se almeno una misura non conferma il bordo</returns>

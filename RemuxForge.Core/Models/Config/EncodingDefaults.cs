@@ -17,10 +17,10 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Modalita' rate control
+        #region Modalità rate control
 
         /// <summary>
-        /// Modalita' rate control per x264/x265
+        /// Modalità rate control per x264/x265
         /// </summary>
         public static readonly string[] RATE_MODES_X26X = new string[]
         {
@@ -28,7 +28,7 @@ namespace RemuxForge.Core.Models
         };
 
         /// <summary>
-        /// Modalita' rate control per svtav1
+        /// Modalità rate control per svtav1
         /// </summary>
         public static readonly string[] RATE_MODES_SVTAV1 = new string[]
         {
@@ -284,10 +284,10 @@ namespace RemuxForge.Core.Models
         }
 
         /// <summary>
-        /// Restituisce le modalita' rate control per il codec specificato
+        /// Restituisce le modalità rate control per il codec specificato
         /// </summary>
         /// <param name="codec">Nome codec</param>
-        /// <returns>Array di modalita'</returns>
+        /// <returns>Array di modalità</returns>
         public static string[] GetRateModes(string codec)
         {
             string[] result = RATE_MODES_X26X;
@@ -374,7 +374,7 @@ namespace RemuxForge.Core.Models
         }
 
         /// <summary>
-        /// Indica se il codec supporta multi-pass in modalita' bitrate
+        /// Indica se il codec supporta multi-pass in modalità bitrate
         /// </summary>
         /// <param name="codec">Nome codec</param>
         /// <returns>True se supporta multi-pass</returns>

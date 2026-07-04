@@ -67,7 +67,7 @@ namespace RemuxForge.Core.Subtitles
                 long operationStartMs = op.LangTimestampMs + cumulativeShiftMs;
                 long durationMs = op.DurationMs;
 
-                // Un timestamp dentro un cut non deve piu' essere muxato
+                // Un timestamp dentro un cut non deve più essere muxato
                 if (string.Equals(op.Type, EditOperation.CUT_SEGMENT, StringComparison.Ordinal))
                 {
                     if (result >= operationStartMs && result < operationStartMs + durationMs)
@@ -82,7 +82,7 @@ namespace RemuxForge.Core.Subtitles
                 }
                 else if (string.Equals(op.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal))
                 {
-                    // Gli insert non invalidano il timestamp, lo traslano se e' successivo
+                    // Gli insert non invalidano il timestamp, lo traslano se è successivo
                     if (result >= operationStartMs)
                     {
                         result += durationMs;
@@ -99,7 +99,7 @@ namespace RemuxForge.Core.Subtitles
         #region Metodi privati
 
         /// <summary>
-        /// Applica un taglio a tutti gli intervalli cue gia' normalizzati sulla timeline corrente
+        /// Applica un taglio a tutti gli intervalli cue già normalizzati sulla timeline corrente
         /// </summary>
         /// <param name="intervals">Intervalli da modificare in-place</param>
         /// <param name="cutStartMs">Inizio taglio sulla timeline corrente</param>

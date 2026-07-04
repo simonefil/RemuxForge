@@ -288,7 +288,7 @@ namespace RemuxForge.Core.Subtitles
             byte[] packet;
             string errorMessage;
 
-            // Nuova epoch: gli ODS precedenti non sono piu' referenziabili
+            // Nuova epoch: gli ODS precedenti non sono più referenziabili
             if (this.IsEpochStart(data, start, end))
             {
                 epochObjects.Clear();
@@ -481,7 +481,7 @@ namespace RemuxForge.Core.Subtitles
             outputWidth = plan.Transform.MapObjectWidth(definition.Width);
             outputHeight = plan.Transform.MapObjectHeight(definition.Height);
 
-            // Scala in spazio palette-aware quando il PDS e' disponibile, mantenendo invariati i segmenti palette originali
+            // Scala in spazio palette-aware quando il PDS è disponibile, mantenendo invariati i segmenti palette originali
             scaledBitmap = PgsSubtitleUtils.ScaleBitmap(bitmap, outputWidth, outputHeight, epochPalette, out scaleWarnings);
             report.ObjectBitmapsScaled++;
             report.ScaleWarnings += scaleWarnings;
@@ -520,7 +520,7 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         /// <param name="packet">Packet ODS originale</param>
         /// <param name="displayObjects">Oggetti del display-set corrente</param>
-        /// <param name="writtenScaledObjects">Object id gia' scritti in output</param>
+        /// <param name="writtenScaledObjects">Object id già scritti in output</param>
         /// <param name="output">Stream output SUP</param>
         /// <param name="report">Report aggiornato</param>
         /// <returns>True se i packet scalati sono stati scritti</returns>
@@ -539,7 +539,7 @@ namespace RemuxForge.Core.Subtitles
 
             objectId = PgsSubtitleUtils.ReadUInt16BigEndian(packet, PgsSubtitleUtils.SUP_PACKET_HEADER_SIZE);
 
-            // Gli ODS frammentati arrivano in piu' packet, ma il nuovo oggetto va scritto una sola volta
+            // Gli ODS frammentati arrivano in più packet, ma il nuovo oggetto va scritto una sola volta
             if (writtenScaledObjects.Contains(objectId))
             {
                 return true;
@@ -551,7 +551,7 @@ namespace RemuxForge.Core.Subtitles
                 return false;
             }
 
-            // Produce uno o piu' packet ODS in base alla dimensione RLE ricodificata
+            // Produce uno o più packet ODS in base alla dimensione RLE ricodificata
             if (!PgsSubtitleUtils.BuildObjectDefinitionPackets(definition, out packets, out errorMessage))
             {
                 report.ErrorMessage = errorMessage;
@@ -587,7 +587,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="objectSizes">Dimensioni oggetto note</param>
         /// <param name="report">Report aggiornato</param>
         /// <param name="adjustment">Delta locale risolto per il display-set</param>
-        /// <returns>True se il delta locale e' applicabile</returns>
+        /// <returns>True se il delta locale è applicabile</returns>
         private bool TryResolveDisplaySetAdjustment(byte[] data, int start, int end, PgsSubtitleCanvasRewritePlan plan, Dictionary<int, PgsObjectSize> objectSizes, PgsSubtitleCanvasRewriteReport report, out PgsDisplaySetAdjustment adjustment)
         {
             PgsDisplaySetBounds bounds;
@@ -595,7 +595,7 @@ namespace RemuxForge.Core.Subtitles
             int deltaY = 0;
             adjustment = new PgsDisplaySetAdjustment();
 
-            // Prima prova con i bounds degli oggetti PCS, cioe' quelli realmente renderizzati
+            // Prima prova con i bounds degli oggetti PCS, cioè quelli realmente renderizzati
             if (!this.TryCollectDisplaySetBounds(data, start, end, plan, objectSizes, report, out bounds))
             {
                 return false;
@@ -615,7 +615,7 @@ namespace RemuxForge.Core.Subtitles
                 }
             }
 
-            // Se la bounding box e' piu' grande del canvas finale non esiste un clamp valido
+            // Se la bounding box è più grande del canvas finale non esiste un clamp valido
             if (bounds.Width > plan.Transform.OutputCanvasWidth || bounds.Height > plan.Transform.OutputCanvasHeight)
             {
                 report.ErrorMessage = "bounding box PCS fuori canvas: " + bounds.Width + "x" + bounds.Height;
@@ -669,7 +669,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="plan">Piano canvas/coordinate</param>
         /// <param name="report">Report aggiornato</param>
         /// <param name="bounds">Bounds WDS raccolti</param>
-        /// <returns>True se la raccolta e' riuscita</returns>
+        /// <returns>True se la raccolta è riuscita</returns>
         private bool TryCollectWdsBounds(byte[] data, int start, int end, PgsSubtitleCanvasRewritePlan plan, PgsSubtitleCanvasRewriteReport report, out PgsDisplaySetBounds bounds)
         {
             int pos = start;
@@ -689,7 +689,7 @@ namespace RemuxForge.Core.Subtitles
 
             bounds = new PgsDisplaySetBounds();
 
-            // Scorre tutte le WDS e accumula le finestre gia' trasformate nel canvas finale
+            // Scorre tutte le WDS e accumula le finestre già trasformate nel canvas finale
             while (pos < end && PgsSubtitleUtils.TryGetPacketLength(data, pos, out packetLength) && pos + packetLength <= end)
             {
                 if (data[pos + 10] == PgsSubtitleUtils.SEGMENT_WINDOW)
@@ -740,7 +740,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="objectSizes">Dimensioni oggetto note</param>
         /// <param name="report">Report aggiornato</param>
         /// <param name="bounds">Bounds PCS raccolti</param>
-        /// <returns>True se la raccolta e' riuscita</returns>
+        /// <returns>True se la raccolta è riuscita</returns>
         private bool TryCollectDisplaySetBounds(byte[] data, int start, int end, PgsSubtitleCanvasRewritePlan plan, Dictionary<int, PgsObjectSize> objectSizes, PgsSubtitleCanvasRewriteReport report, out PgsDisplaySetBounds bounds)
         {
             int pos = start;
@@ -758,7 +758,7 @@ namespace RemuxForge.Core.Subtitles
 
             bounds = new PgsDisplaySetBounds();
 
-            // Scorre i PCS e accumula i bounds degli oggetti gia' trasformati
+            // Scorre i PCS e accumula i bounds degli oggetti già trasformati
             while (pos < end && PgsSubtitleUtils.TryGetPacketLength(data, pos, out packetLength) && pos + packetLength <= end)
             {
                 if (data[pos + 10] == PgsSubtitleUtils.SEGMENT_PRESENTATION)
@@ -789,7 +789,7 @@ namespace RemuxForge.Core.Subtitles
                         y = plan.Transform.MapObjectY(PgsSubtitleUtils.ReadUInt16BigEndian(data, objectPos + 6));
                         hasObjectSize = objectSizes.TryGetValue(objectId, out objectSize);
 
-                        // Se la dimensione ODS non e' nota, valida almeno la coordinata puntuale
+                        // Se la dimensione ODS non è nota, valida almeno la coordinata puntuale
                         if (hasObjectSize)
                         {
                             bounds.Include(x, y, x + objectSize.Width, y + objectSize.Height);
@@ -926,7 +926,7 @@ namespace RemuxForge.Core.Subtitles
                     return false;
                 }
 
-                // Applica coordinate globali piu' eventuale clamp locale del display-set
+                // Applica coordinate globali più eventuale clamp locale del display-set
                 PgsSubtitleUtils.WriteUInt16BigEndian(packet, pos + 4, newX);
                 PgsSubtitleUtils.WriteUInt16BigEndian(packet, pos + 6, newY);
                 report.ObjectCoordinatesRewritten++;
@@ -1042,7 +1042,7 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         /// <param name="x">Coordinata X oggetto</param>
         /// <param name="y">Coordinata Y oggetto</param>
-        /// <param name="hasSize">True se la dimensione oggetto e' nota</param>
+        /// <param name="hasSize">True se la dimensione oggetto è nota</param>
         /// <param name="size">Dimensione oggetto nota</param>
         /// <param name="plan">Piano canvas/coordinate</param>
         /// <param name="report">Report aggiornato</param>

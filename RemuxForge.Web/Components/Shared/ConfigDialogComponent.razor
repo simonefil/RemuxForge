@@ -214,7 +214,7 @@
                     <option value="ac3">AC-3</option>
                 </select>
             </div>
-            @if (_audioFormat.Length > 0)
+            @if (!string.IsNullOrEmpty(_audioFormat))
             {
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.audioScope")@(_audioSourceFillEnabled ? "*" : ""):</span>
@@ -225,13 +225,13 @@
                 </select>
             </div>
             }
-            @if (_audioFormat.Length > 0)
+            @if (!string.IsNullOrEmpty(_audioFormat))
             {
                 <div class="form-row">
                     <span class="ui-toggle" @onclick="ToggleAudioSourceFill" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFill"))">@(_audioSourceFillEnabled ? "[X]" : "[ ]") @AppText.T("web.config.toggle.audioSourceFill")</span>
                 </div>
             }
-            @if (_audioFormat.Length > 0 && _audioSourceFillEnabled)
+            @if (!string.IsNullOrEmpty(_audioFormat) && _audioSourceFillEnabled)
             {
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.thresholdRequired")</span>
@@ -257,7 +257,7 @@
                 <span class="ui-toggle" @onclick="() => _audioDownsample24To16 = !_audioDownsample24To16" @onmouseenter="@(() => SetFieldHelp("remux.audio24"))">@(_audioDownsample24To16 ? "[X]" : "[ ]") @AppText.T("web.config.toggle.audio24")</span>
             </div>
             }
-            @if (_audioFormat.Length > 0 && _audioProcessingScope != "disabled")
+            @if (!string.IsNullOrEmpty(_audioFormat) && _audioProcessingScope != "disabled")
             {
             <div class="form-row">
                 <span class="ui-toggle" @onclick="() => _audioPeakNormalize = !_audioPeakNormalize" @onmouseenter="@(() => SetFieldHelp("remux.audioNormalize"))">@(_audioPeakNormalize ? "[X]" : "[ ]") @AppText.T("web.config.toggle.normalization")</span>
@@ -287,7 +287,7 @@
                 <div class="config-help-text">@_fieldHelpText</div>
             </div>
         </div>
-        @if (_validationError.Length > 0)
+        @if (!string.IsNullOrEmpty(_validationError))
         {
             <div style="padding: 0.5em 1em; color: var(--color-error); white-space: pre-line;">@_validationError</div>
         }
@@ -369,7 +369,7 @@
     private bool _browseShowFiles;
 
     /// <summary>
-    /// Flag: il dialog browse puo' confermare la cartella corrente
+    /// Flag: il dialog browse può confermare la cartella corrente
     /// </summary>
     private bool _browseAllowCurrentFolderSelection = true;
 
@@ -379,7 +379,7 @@
     private int _browseFieldIndex = -1;
 
     /// <summary>
-    /// Flag: configurazione modalita' split
+    /// Flag: configurazione modalità split
     /// </summary>
     private bool _isSplitMode;
 
@@ -444,7 +444,7 @@
     private bool _audioOnly;
 
     /// <summary>
-    /// Modalita' speed correction
+    /// Modalità speed correction
     /// </summary>
     private string _speedCorrectionMode = Options.SPEED_CORRECTION_OFF;
 
@@ -579,7 +579,7 @@
     private string _splitPattern = "";
 
     /// <summary>
-    /// Modalita' di taglio split selezionata
+    /// Modalità di taglio split selezionata
     /// </summary>
     private string _splitCutMode = "";
 
@@ -673,7 +673,7 @@
             _audioDelay = Options.AudioDelay.ToString();
             _subDelay = Options.SubtitleDelay.ToString();
             _audioSourceFillEnabled = Options.AudioSourceFillThresholdMs > 0 ||
-                Options.AudioSourceFillLanguage.Length > 0 ||
+                !string.IsNullOrEmpty(Options.AudioSourceFillLanguage) ||
                 Options.AudioSourceFillStart ||
                 Options.AudioSourceFillEnd ||
                 Options.AudioSourceFillInsertSilence;
@@ -695,7 +695,7 @@
 
             if (_isSplitMode)
             {
-                _splitSource = Options.SourceFolder.Length > 0 ? Options.SourceFolder : Options.Split.SourcePath;
+                _splitSource = !string.IsNullOrEmpty(Options.SourceFolder) ? Options.SourceFolder : Options.Split.SourcePath;
                 _splitSourceRaw = Options.Split.SourceRaw;
                 _splitOutputDir = Options.Split.OutputDir;
                 _splitPattern = Options.Split.Pattern;
@@ -738,9 +738,7 @@
         }
 
         if (!ValidateInput())
-        {
             return;
-        }
 
         opts.Mode = Options.MODE_REMUX;
         opts.SourceFolder = _sourceFolder;
@@ -788,13 +786,14 @@
         for (int i = 0; i < parts.Length; i++)
         {
             trimmed = parts[i].Trim().TrimStart('.');
-            if (trimmed.Length > 0) { opts.FileExtensions.Add(trimmed); }
+            if (!string.IsNullOrEmpty(trimmed))
+                opts.FileExtensions.Add(trimmed);
         }
 
         opts.AudioFormat = _audioFormat.Trim().ToLowerInvariant();
-        opts.AudioProcessingScope = opts.AudioFormat.Length > 0 ? _audioProcessingScope : "disabled";
+        opts.AudioProcessingScope = !string.IsNullOrEmpty(opts.AudioFormat) ? _audioProcessingScope : "disabled";
         opts.AudioDownsample24To16 = (opts.AudioFormat == "flac" || opts.AudioFormat == "lpcm") && opts.AudioProcessingScope != "disabled" && _audioDownsample24To16;
-        opts.AudioPeakNormalize = opts.AudioFormat.Length > 0 && opts.AudioProcessingScope != "disabled" && _audioPeakNormalize;
+        opts.AudioPeakNormalize = !string.IsNullOrEmpty(opts.AudioFormat) && opts.AudioProcessingScope != "disabled" && _audioPeakNormalize;
         if (!double.TryParse(_audioPeakTargetDb, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out audioPeakTargetDb))
         {
             audioPeakTargetDb = -1.0;
@@ -802,7 +801,7 @@
         opts.AudioPeakTargetDb = audioPeakTargetDb;
 
         // Path mkvmerge da AppSettings (gestito nel dialog Percorsi tool)
-        opts.MkvMergePath = AppSettingsService.Instance.Settings.Tools.MkvMergePath.Length > 0 ? AppSettingsService.Instance.Settings.Tools.MkvMergePath : "mkvmerge";
+        opts.MkvMergePath = !string.IsNullOrEmpty(AppSettingsService.Instance.Settings.Tools.MkvMergePath) ? AppSettingsService.Instance.Settings.Tools.MkvMergePath : "mkvmerge";
         opts.EncodingProfileName = _encodingProfile;
 
         validation = OptionsValidator.Validate(opts, false, false);
@@ -826,9 +825,7 @@
         string trimmed;
 
         if (!ValidateSplitInput())
-        {
             return;
-        }
 
         opts.Mode = RemuxForge.Core.Models.Options.MODE_SPLIT;
         opts.SourceFolder = _splitSource.Trim();
@@ -869,7 +866,8 @@
         for (int i = 0; i < parts.Length; i++)
         {
             trimmed = parts[i].Trim().TrimStart('.');
-            if (trimmed.Length > 0) { opts.FileExtensions.Add(trimmed); }
+            if (!string.IsNullOrEmpty(trimmed))
+                opts.FileExtensions.Add(trimmed);
         }
 
         validation = OptionsValidator.Validate(opts, false, false);
@@ -910,7 +908,7 @@
             errors.Add(AppText.T("web.config.validation.audioSourceThresholdPositive"));
         }
 
-        if (_audioSourceFillEnabled && _audioSourceFillLanguage.Trim().Length == 0)
+        if (_audioSourceFillEnabled && string.IsNullOrEmpty(_audioSourceFillLanguage.Trim()))
         {
             errors.Add(AppText.T("web.config.validation.audioSourceLanguageRequired"));
         }
@@ -920,7 +918,7 @@
             errors.Add(AppText.T("web.config.validation.audioSourceModeRequired"));
         }
 
-        if (_audioSourceFillEnabled && _audioFormat.Length == 0)
+        if (_audioSourceFillEnabled && string.IsNullOrEmpty(_audioFormat))
         {
             errors.Add(AppText.T("web.config.validation.audioSourceFormatRequired"));
         }
@@ -940,7 +938,7 @@
             errors.Add(AppText.T("web.config.validation.cropLangInvalid"));
         }
 
-        if (_audioFormat.Length > 0 && _audioProcessingScope != "disabled" && _audioPeakNormalize && !double.TryParse(_audioPeakTargetDb, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _))
+        if (!string.IsNullOrEmpty(_audioFormat) && _audioProcessingScope != "disabled" && _audioPeakNormalize && !double.TryParse(_audioPeakTargetDb, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _))
         {
             errors.Add(AppText.T("web.config.validation.normalizationTargetInvalid"));
         }
@@ -961,37 +959,37 @@
     private bool ValidateSplitInput()
     {
         List<string> errors = new List<string>();
-        if (_splitSource.Trim().Length == 0)
+        if (string.IsNullOrEmpty(_splitSource.Trim()))
         {
             errors.Add(AppText.T("web.config.validation.sourceRequired"));
         }
 
-        if (_splitSourceRaw.Trim().Length > 0 && System.IO.Directory.Exists(_splitSourceRaw.Trim()))
+        if (!string.IsNullOrEmpty(_splitSourceRaw.Trim()) && System.IO.Directory.Exists(_splitSourceRaw.Trim()))
         {
             errors.Add(AppText.T("web.config.validation.sourceRawMustBeFile"));
         }
 
-        if (_splitCutMode.Length == 0)
+        if (string.IsNullOrEmpty(_splitCutMode))
         {
             errors.Add(AppText.T("web.config.validation.cutModeRequired"));
         }
 
-        if (_splitCutMode == SPLIT_CUT_PATTERN && _splitPattern.Trim().Length == 0)
+        if (_splitCutMode == SPLIT_CUT_PATTERN && string.IsNullOrEmpty(_splitPattern.Trim()))
         {
             errors.Add(AppText.T("web.config.validation.patternRequired"));
         }
 
-        if (_splitCutMode == SPLIT_CUT_RANGES && _splitRanges.Trim().Length == 0)
+        if (_splitCutMode == SPLIT_CUT_RANGES && string.IsNullOrEmpty(_splitRanges.Trim()))
         {
             errors.Add(AppText.T("web.config.validation.rangesRequired"));
         }
 
-        if (_splitCutMode == SPLIT_CUT_SPLIT_AT && _splitAt.Trim().Length == 0)
+        if (_splitCutMode == SPLIT_CUT_SPLIT_AT && string.IsNullOrEmpty(_splitAt.Trim()))
         {
             errors.Add(AppText.T("web.config.validation.splitAtRequired"));
         }
 
-        if (_splitCutMode == SPLIT_CUT_TRIM && _splitTrimStart.Trim().Length == 0 && _splitTrimEnd.Trim().Length == 0)
+        if (_splitCutMode == SPLIT_CUT_TRIM && string.IsNullOrEmpty(_splitTrimStart.Trim()) && string.IsNullOrEmpty(_splitTrimEnd.Trim()))
         {
             errors.Add(AppText.T("web.config.validation.trimRequired"));
         }
@@ -1022,7 +1020,8 @@
             for (int i = 0; i < parts.Length; i++)
             {
                 trimmed = parts[i].Trim();
-                if (trimmed.Length > 0) { list.Add(trimmed); }
+                if (!string.IsNullOrEmpty(trimmed))
+                    list.Add(trimmed);
             }
         }
     }
@@ -1040,18 +1039,30 @@
     }
 
     /// <summary>
-    /// Determina la modalita' di taglio configurata
+    /// Determina la modalità di taglio configurata
     /// </summary>
     /// <param name="split">Opzioni split</param>
-    /// <returns>Identificativo modalita' di taglio</returns>
+    /// <returns>Identificativo modalità di taglio</returns>
     private string DetectSplitCutMode(MkvSplitOptions split)
     {
-        if (split == null) { return ""; }
-        if (split.Pattern.Length > 0) { return SPLIT_CUT_PATTERN; }
-        if (split.Ranges.Length > 0) { return SPLIT_CUT_RANGES; }
-        if (split.SplitAt.Length > 0) { return SPLIT_CUT_SPLIT_AT; }
-        if (split.TrimStart.Length > 0 || split.TrimEnd.Length > 0) { return SPLIT_CUT_TRIM; }
-        if (split.ChaptersEach) { return SPLIT_CUT_CHAPTERS_EACH; }
+        if (split == null)
+            return "";
+
+        if (!string.IsNullOrEmpty(split.Pattern))
+            return SPLIT_CUT_PATTERN;
+
+        if (!string.IsNullOrEmpty(split.Ranges))
+            return SPLIT_CUT_RANGES;
+
+        if (!string.IsNullOrEmpty(split.SplitAt))
+            return SPLIT_CUT_SPLIT_AT;
+
+        if (!string.IsNullOrEmpty(split.TrimStart) || !string.IsNullOrEmpty(split.TrimEnd))
+            return SPLIT_CUT_TRIM;
+
+        if (split.ChaptersEach)
+            return SPLIT_CUT_CHAPTERS_EACH;
+
         return "";
     }
 
@@ -1065,9 +1076,12 @@
         _browseShowFiles = false;
 
         // Determina percorso iniziale dal campo corrente
-        if (fieldIndex == 0) { _browseInitialPath = _sourceFolder; }
-        else if (fieldIndex == 1) { _browseInitialPath = _languageFolder; }
-        else if (fieldIndex == 2) { _browseInitialPath = _destFolder; }
+        if (fieldIndex == 0)
+            _browseInitialPath = _sourceFolder;
+        else if (fieldIndex == 1)
+            _browseInitialPath = _languageFolder;
+        else if (fieldIndex == 2)
+            _browseInitialPath = _destFolder;
 
         _showBrowse = true;
     }
@@ -1083,9 +1097,12 @@
         _browseShowFiles = showFiles;
         _browseAllowCurrentFolderSelection = allowCurrentFolderSelection;
 
-        if (fieldIndex == 10) { _browseInitialPath = _splitSource; }
-        else if (fieldIndex == 11) { _browseInitialPath = _splitOutputDir; }
-        else if (fieldIndex == 12) { _browseInitialPath = _splitSourceRaw; }
+        if (fieldIndex == 10)
+            _browseInitialPath = _splitSource;
+        else if (fieldIndex == 11)
+            _browseInitialPath = _splitOutputDir;
+        else if (fieldIndex == 12)
+            _browseInitialPath = _splitSourceRaw;
 
         _showBrowse = true;
     }
@@ -1106,24 +1123,31 @@
     {
         _showBrowse = false;
 
-        if (string.IsNullOrEmpty(selectedPath)) { return; }
+        if (string.IsNullOrEmpty(selectedPath))
+            return;
 
         // Applica al campo corretto
-        if (_browseFieldIndex == 0) { _sourceFolder = selectedPath; }
-        else if (_browseFieldIndex == 1) { _languageFolder = selectedPath; }
-        else if (_browseFieldIndex == 2) { _destFolder = selectedPath; }
-        else if (_browseFieldIndex == 10) { _splitSource = selectedPath; }
-        else if (_browseFieldIndex == 11) { _splitOutputDir = selectedPath; }
-        else if (_browseFieldIndex == 12) { _splitSourceRaw = selectedPath; }
+        if (_browseFieldIndex == 0)
+            _sourceFolder = selectedPath;
+        else if (_browseFieldIndex == 1)
+            _languageFolder = selectedPath;
+        else if (_browseFieldIndex == 2)
+            _destFolder = selectedPath;
+        else if (_browseFieldIndex == 10)
+            _splitSource = selectedPath;
+        else if (_browseFieldIndex == 11)
+            _splitOutputDir = selectedPath;
+        else if (_browseFieldIndex == 12)
+            _splitSourceRaw = selectedPath;
     }
 
     /// <summary>
-    /// Gestisce cambio formato audio e pulisce opzioni dipendenti non piu' applicabili
+    /// Gestisce cambio formato audio e pulisce opzioni dipendenti non più applicabili
     /// </summary>
     private void OnAudioFormatChanged(ChangeEventArgs args)
     {
         _audioFormat = args.Value != null ? args.Value.ToString().Trim().ToLowerInvariant() : "";
-        if (_audioFormat.Length == 0)
+        if (string.IsNullOrEmpty(_audioFormat))
         {
             _audioProcessingScope = "disabled";
             _audioDownsample24To16 = false;

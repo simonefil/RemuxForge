@@ -147,7 +147,7 @@ namespace RemuxForge.Core.Audio
         public bool DeepEditRender { get; set; }
 
         /// <summary>
-        /// True se source-fill e' configurato per questa traccia
+        /// True se source-fill è configurato per questa traccia
         /// </summary>
         public bool SourceFillConfigured { get; set; }
 
@@ -182,7 +182,7 @@ namespace RemuxForge.Core.Audio
         public AudioSourceFillPlan SourceFillPlan { get; set; }
 
         /// <summary>
-        /// Errore determinabile gia' in fase preview
+        /// Errore determinabile già in fase preview
         /// </summary>
         public string ErrorMessage { get; set; }
 

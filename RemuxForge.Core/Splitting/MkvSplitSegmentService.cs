@@ -63,7 +63,7 @@ namespace RemuxForge.Core.Splitting
             if (s == "END") { return (duration, false); }
 
             // Prefisso "f" seguito da un intero = indice di frame
-            if (s.Length > 0 && (s[0] == 'f' || s[0] == 'F'))
+            if (!string.IsNullOrEmpty(s) && (s[0] == 'f' || s[0] == 'F'))
             {
                 f = int.Parse(s.Substring(1), CultureInfo.InvariantCulture);
                 return (f, true);
@@ -185,7 +185,8 @@ namespace RemuxForge.Core.Splitting
                 foreach (string t in args.SplitAt.Split(','))
                 {
                     string tt = t.Trim();
-                    if (tt.Length > 0) { tokens.Add(tt); }
+                    if (!string.IsNullOrEmpty(tt))
+                        tokens.Add(tt);
                 }
                 if (tokens.Count == 0)
                 {
@@ -277,7 +278,7 @@ namespace RemuxForge.Core.Splitting
             for (int i = 0; i < rangeTokens.Length; i++)
             {
                 r = rangeTokens[i].Trim();
-                if (r.Length == 0)
+                if (string.IsNullOrEmpty(r))
                 {
                     throw new ArgumentException(AppText.F("split.rangeEmpty", i + 1));
                 }
@@ -632,7 +633,7 @@ namespace RemuxForge.Core.Splitting
         /// <param name="segmentNumber">Numero segmento 1-based.</param>
         /// <param name="fmt">Format spec opzionale.</param>
         /// <param name="rendered">Risultato renderizzato.</param>
-        /// <returns>True se il token e' una espressione numerica supportata.</returns>
+        /// <returns>True se il token è una espressione numerica supportata</returns>
         private static bool TryRenderNumberExpression(string name, int segmentNumber, string fmt, out string rendered)
         {
             int signIndex;
@@ -652,7 +653,7 @@ namespace RemuxForge.Core.Splitting
             }
 
             offsetText = name.Substring(signIndex + 1);
-            if (offsetText.Length == 0 || !int.TryParse(offsetText, NumberStyles.Integer, CultureInfo.InvariantCulture, out offset))
+            if (string.IsNullOrEmpty(offsetText) || !int.TryParse(offsetText, NumberStyles.Integer, CultureInfo.InvariantCulture, out offset))
             {
                 throw new FormatException("Invalid numeric offset in template variable '{" + name + "}'.");
             }

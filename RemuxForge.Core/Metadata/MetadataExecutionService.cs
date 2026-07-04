@@ -19,8 +19,19 @@ namespace RemuxForge.Core.Metadata
     {
         #region Variabili di classe
 
+        /// <summary>
+        /// Percorso eseguibile mkvmerge
+        /// </summary>
         private string _mkvMergePath;
+
+        /// <summary>
+        /// Percorso eseguibile mkvpropedit
+        /// </summary>
         private string _mkvPropEditPath;
+
+        /// <summary>
+        /// Percorso eseguibile mkvextract
+        /// </summary>
         private string _mkvExtractPath;
 
         #endregion
@@ -178,7 +189,7 @@ namespace RemuxForge.Core.Metadata
                 return record.InputFile;
 
             string relativeFolder = options.PreserveFolderStructure ? record.RelativeFolder : "";
-            string folder = relativeFolder.Length > 0 ? Path.Combine(options.OutputDir, relativeFolder) : options.OutputDir;
+            string folder = !string.IsNullOrEmpty(relativeFolder) ? Path.Combine(options.OutputDir, relativeFolder) : options.OutputDir;
             string fileName = Path.GetFileName(record.InputFile);
             if (!fileName.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase))
                 fileName += ".mkv";
@@ -194,7 +205,7 @@ namespace RemuxForge.Core.Metadata
         {
             XDocument document;
 
-            if (record == null || record.FileInfo == null || record.InputFile == null || record.InputFile.Length == 0)
+            if (record == null || record.FileInfo == null || string.IsNullOrEmpty(record.InputFile))
                 return;
 
             document = this.LoadExistingTags(record.InputFile);
@@ -238,7 +249,7 @@ namespace RemuxForge.Core.Metadata
             {
                 MkvMetadataChange change = record.Changes[i];
 
-                if (change.OperationType == MkvMetadataOperationType.RemoveTrack && change.TrackSelector.Length > 0 && !removedSelectors.Contains(change.TrackSelector))
+                if (change.OperationType == MkvMetadataOperationType.RemoveTrack && !string.IsNullOrEmpty(change.TrackSelector) && !removedSelectors.Contains(change.TrackSelector))
                     removedSelectors.Add(change.TrackSelector);
             }
 
@@ -250,7 +261,7 @@ namespace RemuxForge.Core.Metadata
             if (processResult.ExitCode != 0)
             {
                 CleanupTemp(tempFile);
-                throw new InvalidOperationException(AppText.F("metadata.execution.mkvmergeFailed", LastErrorLine(processResult.Stderr.Length > 0 ? processResult.Stderr : processResult.Stdout)));
+                throw new InvalidOperationException(AppText.F("metadata.execution.mkvmergeFailed", LastErrorLine(!string.IsNullOrEmpty(processResult.Stderr) ? processResult.Stderr : processResult.Stdout)));
             }
 
             trackUidMap = this.BuildTrackUidMap(remuxOutput, record.FileInfo.Tracks, selectorMap);
@@ -258,7 +269,7 @@ namespace RemuxForge.Core.Metadata
             if (propEditCommand != "mkvpropedit: NoOp")
                 commandText += Environment.NewLine + propEditCommand;
 
-            if (tempFile.Length > 0)
+            if (!string.IsNullOrEmpty(tempFile))
                 ReplaceOriginal(tempFile, record.InputFile);
 
             return commandText;
@@ -301,7 +312,7 @@ namespace RemuxForge.Core.Metadata
                     isTagOperation = change.OperationType == MkvMetadataOperationType.SetTagField || change.OperationType == MkvMetadataOperationType.ClearTagField || change.OperationType == MkvMetadataOperationType.ClearTags;
                     if (isTagOperation)
                     {
-                        if (removedSelectors == null || change.TrackSelector.Length == 0 || !removedSelectors.Contains(change.TrackSelector))
+                        if (removedSelectors == null || string.IsNullOrEmpty(change.TrackSelector) || !removedSelectors.Contains(change.TrackSelector))
                             tagChanges.Add(change);
 
                         continue;
@@ -311,18 +322,18 @@ namespace RemuxForge.Core.Metadata
                     if (!isDirectPropEditOperation)
                         continue;
 
-                    if (removedSelectors != null && change.TrackSelector.Length > 0 && removedSelectors.Contains(change.TrackSelector))
+                    if (removedSelectors != null && !string.IsNullOrEmpty(change.TrackSelector) && removedSelectors.Contains(change.TrackSelector))
                         continue;
 
-                    if (change.MkvPropEditProperty.Length == 0)
+                    if (string.IsNullOrEmpty(change.MkvPropEditProperty))
                         continue;
 
                     editSelector = ResolveRemuxedSelector(change.TrackSelector, selectorMap);
-                    if (change.TrackSelector.Length > 0 && editSelector.Length == 0)
+                    if (!string.IsNullOrEmpty(change.TrackSelector) && string.IsNullOrEmpty(editSelector))
                         continue;
 
                     args.Add("--edit");
-                    args.Add(editSelector.Length > 0 ? editSelector : "info");
+                    args.Add(!string.IsNullOrEmpty(editSelector) ? editSelector : "info");
 
                     if (change.OperationType == MkvMetadataOperationType.ClearField)
                     {
@@ -360,7 +371,7 @@ namespace RemuxForge.Core.Metadata
 
                 ProcessResult processResult = ProcessRunner.Run(this._mkvPropEditPath, args.ToArray());
                 if (processResult.ExitCode != 0)
-                    throw new InvalidOperationException(AppText.F("metadata.execution.mkvpropeditFailed", LastErrorLine(processResult.Stderr.Length > 0 ? processResult.Stderr : processResult.Stdout)));
+                    throw new InvalidOperationException(AppText.F("metadata.execution.mkvpropeditFailed", LastErrorLine(!string.IsNullOrEmpty(processResult.Stderr) ? processResult.Stderr : processResult.Stdout)));
 
                 return FormatCommand(this._mkvPropEditPath, args);
             }
@@ -478,7 +489,7 @@ namespace RemuxForge.Core.Metadata
             {
                 MkvMetadataTrackInfo track = tracks[i];
                 string sourceSelector = track.TrackSelector != null ? track.TrackSelector : "";
-                if (sourceSelector.Length == 0)
+                if (string.IsNullOrEmpty(sourceSelector))
                     continue;
 
                 if (removedSelectors != null && removedSelectors.Contains(sourceSelector))
@@ -515,7 +526,7 @@ namespace RemuxForge.Core.Metadata
             string text = selector != null ? selector : "";
             string mapped;
 
-            if (text.Length == 0)
+            if (string.IsNullOrEmpty(text))
                 return "";
 
             if (selectorMap == null)
@@ -538,7 +549,7 @@ namespace RemuxForge.Core.Metadata
             string text = trackUid != null ? trackUid.Trim() : "";
             string mapped;
 
-            if (text.Length == 0)
+            if (string.IsNullOrEmpty(text))
                 return "";
 
             if (trackUidMap == null)
@@ -572,10 +583,10 @@ namespace RemuxForge.Core.Metadata
                 string newSelector = ResolveRemuxedSelector(track.TrackSelector, selectorMap);
                 string newUid;
 
-                if (oldUid.Length == 0 || newSelector.Length == 0)
+                if (string.IsNullOrEmpty(oldUid) || string.IsNullOrEmpty(newSelector))
                     continue;
 
-                if (selectorToUid.TryGetValue(newSelector, out newUid) && newUid.Length > 0)
+                if (selectorToUid.TryGetValue(newSelector, out newUid) && !string.IsNullOrEmpty(newUid))
                     result[oldUid] = newUid;
             }
 
@@ -598,7 +609,7 @@ namespace RemuxForge.Core.Metadata
             int subtitleIndex = 0;
 
             processResult = ProcessRunner.Run(this._mkvMergePath, new string[] { "-J", filePath });
-            if (processResult.ExitCode != 0 || processResult.Stdout.Trim().Length == 0)
+            if (processResult.ExitCode != 0 || string.IsNullOrEmpty(processResult.Stdout.Trim()))
                 return result;
 
             try
@@ -628,7 +639,7 @@ namespace RemuxForge.Core.Metadata
                         selector = "track:s" + subtitleIndex.ToString(CultureInfo.InvariantCulture);
                     }
 
-                    if (selector.Length > 0)
+                    if (!string.IsNullOrEmpty(selector))
                         result[selector] = GetJsonPropertyString(trackElement, "properties", "uid");
                 }
             }
@@ -720,9 +731,15 @@ namespace RemuxForge.Core.Metadata
         /// </summary>
         private static void CleanupTemp(string tempFile)
         {
-            if (tempFile.Length > 0 && File.Exists(tempFile))
+            if (!string.IsNullOrEmpty(tempFile) && File.Exists(tempFile))
             {
-                try { File.Delete(tempFile); } catch (IOException) { }
+                try
+                {
+                    File.Delete(tempFile);
+                }
+                catch (IOException)
+                {
+                }
             }
         }
 
@@ -771,7 +788,7 @@ namespace RemuxForge.Core.Metadata
             {
                 result = ProcessRunner.Run(this._mkvExtractPath, new string[] { filePath, "tags", tempFile });
                 if (result.ExitCode != 0)
-                    throw new InvalidOperationException(AppText.F("metadata.execution.mkvextractTagsFailed", LastErrorLine(result.Stderr.Length > 0 ? result.Stderr : result.Stdout)));
+                    throw new InvalidOperationException(AppText.F("metadata.execution.mkvextractTagsFailed", LastErrorLine(!string.IsNullOrEmpty(result.Stderr) ? result.Stderr : result.Stdout)));
 
                 if (File.Exists(tempFile) && new FileInfo(tempFile).Length > 0)
                     return XDocument.Load(tempFile);
@@ -823,7 +840,7 @@ namespace RemuxForge.Core.Metadata
         /// </summary>
         private static MkvMetadataTrackInfo FindTrackByUid(MkvMetadataFileInfo fileInfo, string trackUid)
         {
-            if (trackUid == null || trackUid.Trim().Length == 0)
+            if (string.IsNullOrEmpty(trackUid) || string.IsNullOrEmpty(trackUid.Trim()))
                 return null;
 
             for (int i = 0; i < fileInfo.Tracks.Count; i++)
@@ -897,7 +914,7 @@ namespace RemuxForge.Core.Metadata
                 if (change.Scope == MkvMetadataTargetScope.Container && IsGlobalTag(tag))
                     return tag;
 
-                if (change.Scope != MkvMetadataTargetScope.Container && trackUid.Length > 0 && string.Equals(GetTrackUid(tag), trackUid, StringComparison.OrdinalIgnoreCase))
+                if (change.Scope != MkvMetadataTargetScope.Container && !string.IsNullOrEmpty(trackUid) && string.Equals(GetTrackUid(tag), trackUid, StringComparison.OrdinalIgnoreCase))
                     return tag;
             }
 
@@ -906,7 +923,7 @@ namespace RemuxForge.Core.Metadata
             XElement result = new XElement("Tag", targets);
             if (change.Scope != MkvMetadataTargetScope.Container)
             {
-                if (trackUid.Length == 0)
+                if (string.IsNullOrEmpty(trackUid))
                     throw new InvalidOperationException(AppText.F("metadata.execution.missingTrackUidForTag", change.TrackSelector));
 
                 targets.Add(new XElement("TrackUID", trackUid));
@@ -1041,7 +1058,7 @@ namespace RemuxForge.Core.Metadata
         private static string LastErrorLine(string text)
         {
             string result = text != null ? text.Trim() : "";
-            if (result.Length == 0)
+            if (string.IsNullOrEmpty(result))
                 return "";
 
             string[] lines = result.Replace("\r", "").Split('\n');

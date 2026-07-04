@@ -41,7 +41,7 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
-    /// Policy editabilita' campo metadata
+    /// Policy editabilità campo metadata
     /// </summary>
     public enum MetadataFieldEditPolicy
     {
@@ -111,7 +111,7 @@ namespace RemuxForge.Core.Models
         public MetadataFieldValueType ValueType { get; set; }
 
         /// <summary>
-        /// Unita' di misura
+        /// Unità di misura
         /// </summary>
         public string Unit { get; set; }
 
@@ -136,7 +136,7 @@ namespace RemuxForge.Core.Models
         public MetadataFieldRiskLevel RiskLevel { get; set; }
 
         /// <summary>
-        /// Policy editabilita'
+        /// Policy editabilità
         /// </summary>
         public MetadataFieldEditPolicy EditPolicy { get; set; }
 
@@ -146,7 +146,7 @@ namespace RemuxForge.Core.Models
         public List<string> MediaInfoFieldNames { get; set; }
 
         /// <summary>
-        /// Proprieta' mkvpropedit
+        /// Proprietà mkvpropedit
         /// </summary>
         public string MkvPropEditProperty { get; set; }
 

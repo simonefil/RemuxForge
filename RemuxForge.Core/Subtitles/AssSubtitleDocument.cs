@@ -52,7 +52,7 @@ namespace RemuxForge.Core.Subtitles
             normalized = (content ?? "").Replace("\r\n", "\n").Replace('\r', '\n').Replace("\0", "");
             parts = normalized.Split('\n');
             lines = new List<string>(parts);
-            if (lines.Count > 0 && lines[lines.Count - 1].Length == 0)
+            if (lines.Count > 0 && string.IsNullOrEmpty(lines[lines.Count - 1]))
             {
                 lines.RemoveAt(lines.Count - 1);
             }
@@ -86,7 +86,7 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         /// <param name="name">Nome campo</param>
         /// <param name="value">Valore letto</param>
-        /// <returns>True se il campo e' presente e valido</returns>
+        /// <returns>True se il campo è presente e valido</returns>
         public bool TryGetScriptInfoInt(string name, out int value)
         {
             int index;
@@ -110,7 +110,7 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         /// <param name="name">Nome campo</param>
         /// <param name="value">Valore letto</param>
-        /// <returns>True se il campo e' presente e valido</returns>
+        /// <returns>True se il campo è presente e valido</returns>
         public bool TryGetScriptInfoBool(string name, out bool value)
         {
             int index;
@@ -127,7 +127,7 @@ namespace RemuxForge.Core.Subtitles
             line = this._lines[index];
             rawValue = line.Substring(line.IndexOf(':') + 1).Trim();
 
-            // ASS accetta piu' forme booleane nei metadata: normalizza solo quelle esplicite
+            // ASS accetta più forme booleane nei metadata: normalizza solo quelle esplicite
             if (rawValue.Equals("yes", StringComparison.OrdinalIgnoreCase) || rawValue.Equals("true", StringComparison.OrdinalIgnoreCase) || rawValue == "1")
             {
                 value = true;

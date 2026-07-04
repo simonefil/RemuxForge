@@ -119,7 +119,7 @@ namespace RemuxForge.Core.Media
         /// <param name="result">Oggetto timing da aggiornare</param>
         private void ReadMediaInfo(string filePath, string mediaInfoPath, VideoTimingInfo result)
         {
-            if (mediaInfoPath.Length == 0 || !File.Exists(mediaInfoPath))
+            if (string.IsNullOrEmpty(mediaInfoPath) || !File.Exists(mediaInfoPath))
             {
                 return;
             }
@@ -127,7 +127,7 @@ namespace RemuxForge.Core.Media
             MediaInfoService service = new MediaInfoService(mediaInfoPath);
             if (service.TryGetVideoTiming(filePath, out string mode, out double frameRate, out double originalFrameRate, out long frameCount, out double durationMs, out double minFrameRate, out double maxFrameRate))
             {
-                // MediaInfo e' la fonte primaria per VFR/CFR: sovrascrive i dati mkvmerge quando disponibili
+                // MediaInfo è la fonte primaria per VFR/CFR: sovrascrive i dati mkvmerge quando disponibili
                 result.IsMediaInfoAvailable = true;
                 result.FrameRateMode = mode;
                 if (frameRate > 0.0)
@@ -154,7 +154,7 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Classifica il timing video e decide se la speed correction automatica e' consentita
+        /// Classifica il timing video e decide se la speed correction automatica è consentita
         /// </summary>
         /// <param name="timing">Timing video da classificare</param>
         private void Classify(VideoTimingInfo timing)
@@ -191,12 +191,12 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Verifica se default_duration e' coerente con durata e numero frame reali
+        /// Verifica se default_duration è coerente con durata e numero frame reali
         /// </summary>
         /// <param name="defaultDurationNs">Default duration Matroska in nanosecondi</param>
         /// <param name="frameCount">Numero frame video</param>
         /// <param name="durationMs">Durata video in millisecondi</param>
-        /// <returns>True se default_duration e' utilizzabile come sorgente timing CFR</returns>
+        /// <returns>True se default_duration è utilizzabile come sorgente timing CFR</returns>
         private bool IsDefaultDurationTrusted(long defaultDurationNs, long frameCount, double durationMs)
         {
             bool result = false;

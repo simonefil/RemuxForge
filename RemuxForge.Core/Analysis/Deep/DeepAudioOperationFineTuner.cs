@@ -158,7 +158,7 @@ namespace RemuxForge.Core.Analysis.Deep
 
             if (!languageAudioAvailable || this._audioEnvelopeService == null || string.IsNullOrEmpty(langFile))
             {
-                this.MarkSkipped(transition, STATUS_SKIPPED_NO_AUDIO, noAudioReason != null && noAudioReason.Length > 0 ? noAudioReason : "traccia audio language non disponibile", BOUNDARY_NONE);
+                this.MarkSkipped(transition, STATUS_SKIPPED_NO_AUDIO, !string.IsNullOrEmpty(noAudioReason) ? noAudioReason : "traccia audio language non disponibile", BOUNDARY_NONE);
                 return;
             }
 
@@ -256,7 +256,7 @@ namespace RemuxForge.Core.Analysis.Deep
         {
             transition.AudioFineTuneStatus = status;
             transition.AudioFineTuneRejectReason = reason != null ? reason : "";
-            transition.AudioFineTuneBoundaryKind = boundaryKind != null && boundaryKind.Length > 0 ? boundaryKind : BOUNDARY_NONE;
+            transition.AudioFineTuneBoundaryKind = !string.IsNullOrEmpty(boundaryKind) ? boundaryKind : BOUNDARY_NONE;
         }
 
         /// <summary>

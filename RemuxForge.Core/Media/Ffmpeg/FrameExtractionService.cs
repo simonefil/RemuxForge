@@ -201,7 +201,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
                 lines = text.Replace("\r", "").Split('\n');
                 for (int i = lines.Length - 1; i >= 0; i--)
                 {
-                    if (lines[i].Trim().Length > 0)
+                    if (!string.IsNullOrEmpty(lines[i].Trim()))
                     {
                         result = lines[i].Trim();
                         break;
@@ -229,7 +229,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
             hasManualCrop = this.TryBuildManualCropFilter(manualCropPx, out manualCropFilter);
             if (hasManualCrop)
             {
-                if (filterChain.Length > 0)
+                if (!string.IsNullOrEmpty(filterChain))
                 {
                     filterChain = filterChain + "," + manualCropFilter;
                 }
@@ -240,7 +240,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
             }
             else if (geometryCropToFourThree)
             {
-                if (filterChain.Length > 0)
+                if (!string.IsNullOrEmpty(filterChain))
                 {
                     filterChain = filterChain + ",crop=ih*4/3:ih";
                 }
@@ -249,7 +249,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
                     filterChain = "crop=ih*4/3:ih";
                 }
             }
-            if (filterChain.Length > 0)
+            if (!string.IsNullOrEmpty(filterChain))
             {
                 filterChain = filterChain + ",scale=w='trunc(iw*sar/2)*2':h=ih:flags=fast_bilinear,setsar=1,scale=" + resolution + ":flags=fast_bilinear,format=gray";
             }
@@ -322,7 +322,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
             }
 
             /// <summary>
-            /// Accoda un chunk stdout e produce frame completi quando il buffer e' pieno
+            /// Accoda un chunk stdout e produce frame completi quando il buffer è pieno
             /// </summary>
             public void Append(byte[] buffer, int bytesRead)
             {

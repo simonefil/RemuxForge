@@ -132,12 +132,12 @@ namespace RemuxForge.Core.Tools
         {
             string result = ResolveConfiguredOrPath("mkvextract", AppSettingsService.Instance.Settings.Tools.MkvExtractPath);
             string mkvPath = mkvMergePath;
-            if (result.Length == 0)
+            if (string.IsNullOrEmpty(result))
             {
                 result = this.ResolveSiblingToolPath("mkvextract", mkvPath, autoSave);
             }
 
-            if (autoSave && result.Length > 0 && AppSettingsService.Instance.Settings.Tools.MkvExtractPath != result)
+            if (autoSave && !string.IsNullOrEmpty(result) && AppSettingsService.Instance.Settings.Tools.MkvExtractPath != result)
             {
                 AppSettingsService.Instance.Settings.Tools.MkvExtractPath = result;
                 AppSettingsService.Instance.Save();
@@ -155,12 +155,12 @@ namespace RemuxForge.Core.Tools
         public string ResolveMkvPropEditPath(string mkvMergePath, bool autoSave)
         {
             string result = ResolveConfiguredOrPath("mkvpropedit", AppSettingsService.Instance.Settings.Tools.MkvPropEditPath);
-            if (result.Length == 0)
+            if (string.IsNullOrEmpty(result))
             {
                 result = this.ResolveSiblingToolPath("mkvpropedit", mkvMergePath, autoSave);
             }
 
-            if (autoSave && result.Length > 0 && AppSettingsService.Instance.Settings.Tools.MkvPropEditPath != result)
+            if (autoSave && !string.IsNullOrEmpty(result) && AppSettingsService.Instance.Settings.Tools.MkvPropEditPath != result)
             {
                 AppSettingsService.Instance.Settings.Tools.MkvPropEditPath = result;
                 AppSettingsService.Instance.Save();
@@ -178,12 +178,12 @@ namespace RemuxForge.Core.Tools
         public string ResolveFfprobePath(string ffmpegPath, bool autoSave)
         {
             string result = ResolveConfiguredOrPath("ffprobe", AppSettingsService.Instance.Settings.Tools.FfprobePath);
-            if (result.Length == 0)
+            if (string.IsNullOrEmpty(result))
             {
                 result = this.ResolveSiblingExecutable("ffprobe", ffmpegPath);
             }
 
-            if (autoSave && result.Length > 0 && AppSettingsService.Instance.Settings.Tools.FfprobePath != result)
+            if (autoSave && !string.IsNullOrEmpty(result) && AppSettingsService.Instance.Settings.Tools.FfprobePath != result)
             {
                 AppSettingsService.Instance.Settings.Tools.FfprobePath = result;
                 AppSettingsService.Instance.Save();
@@ -223,12 +223,12 @@ namespace RemuxForge.Core.Tools
         {
             string result = "";
             string mkvPath = mkvMergePath;
-            if (mkvPath.Length == 0 && autoSave)
+            if (string.IsNullOrEmpty(mkvPath) && autoSave)
             {
                 mkvPath = this.ResolveMkvMergePath(autoSave);
             }
 
-            if (mkvPath.Length > 0)
+            if (!string.IsNullOrEmpty(mkvPath))
             {
                 result = this.ResolveSiblingExecutable(toolName, mkvPath);
             }

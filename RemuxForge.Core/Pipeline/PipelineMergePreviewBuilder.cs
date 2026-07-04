@@ -76,7 +76,7 @@ namespace RemuxForge.Core.Pipeline
             sourceInfo = fileInfoProvider(record.SourceFilePath);
             sourceTracks = (sourceInfo != null) ? sourceInfo.Tracks : null;
 
-            if (needsMerge && record.LangFilePath.Length > 0)
+            if (needsMerge && !string.IsNullOrEmpty(record.LangFilePath))
             {
                 langInfo = fileInfoProvider(record.LangFilePath);
                 langTracks = (langInfo != null) ? langInfo.Tracks : null;
@@ -173,7 +173,7 @@ namespace RemuxForge.Core.Pipeline
 
             deepAudioRequired = record.DeepAnalysisApplied && record.DeepAnalysisMap != null && record.DeepAnalysisMap.Operations.Count > 0 && !options.SubOnly;
             processingPossible = options.AudioProcessingScope != "disabled" || options.AudioSourceFillThresholdMs > 0 || deepAudioRequired;
-            if (!processingPossible || options.AudioFormat.Length == 0)
+            if (!processingPossible || string.IsNullOrEmpty(options.AudioFormat))
             {
                 record.AudioProcessingPreview = null;
                 return;
@@ -207,7 +207,7 @@ namespace RemuxForge.Core.Pipeline
         /// <param name="sourceTracks">Tracce file sorgente</param>
         /// <param name="sourceAudioIds">ID audio sorgente da aggiornare</param>
         /// <param name="convertedSourceTracks">Tracce source processate come file separati</param>
-        /// <param name="filterSourceAudio">True se il filtro source audio e' attivo</param>
+        /// <param name="filterSourceAudio">True se il filtro source audio è attivo</param>
         private void EnsureSourceAudioIdsForProcessedTracks(List<TrackInfo> sourceTracks, List<int> sourceAudioIds, Dictionary<int, string> convertedSourceTracks, bool filterSourceAudio)
         {
             if (convertedSourceTracks == null || convertedSourceTracks.Count == 0)

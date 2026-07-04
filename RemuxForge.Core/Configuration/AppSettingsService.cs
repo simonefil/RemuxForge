@@ -145,7 +145,7 @@ namespace RemuxForge.Core.Configuration
                 success = this.Load();
 
                 // Precompila TempFolder se vuoto
-                if (this._model.Tools.TempFolder.Length == 0)
+                if (string.IsNullOrEmpty(this._model.Tools.TempFolder))
                 {
                     this._model.Tools.TempFolder = defaultTempFolder;
                 }
@@ -178,7 +178,7 @@ namespace RemuxForge.Core.Configuration
         /// <summary>
         /// Carica le impostazioni dal file appsettings.json
         /// </summary>
-        /// <returns>True se il caricamento e' riuscito</returns>
+        /// <returns>True se il caricamento è riuscito</returns>
         public bool Load()
         {
             bool success = false;
@@ -218,7 +218,7 @@ namespace RemuxForge.Core.Configuration
         /// <summary>
         /// Salva le impostazioni correnti su appsettings.json
         /// </summary>
-        /// <returns>True se il salvataggio e' riuscito</returns>
+        /// <returns>True se il salvataggio è riuscito</returns>
         public bool Save()
         {
             bool success = false;
@@ -343,41 +343,41 @@ namespace RemuxForge.Core.Configuration
             this._model.Tools.MediaInfoPath = this._model.Tools.MediaInfoPath.Trim();
 
             // Verifica esistenza mkvmerge
-            if (this._model.Tools.MkvMergePath.Length > 0 && !File.Exists(this._model.Tools.MkvMergePath))
+            if (!string.IsNullOrEmpty(this._model.Tools.MkvMergePath) && !File.Exists(this._model.Tools.MkvMergePath))
             {
                 errors.Add(AppText.F("settings.validation.toolPathNotFound", "mkvmerge", this._model.Tools.MkvMergePath));
             }
 
             // Verifica esistenza mkvextract
-            if (this._model.Tools.MkvExtractPath.Length > 0 && !File.Exists(this._model.Tools.MkvExtractPath))
+            if (!string.IsNullOrEmpty(this._model.Tools.MkvExtractPath) && !File.Exists(this._model.Tools.MkvExtractPath))
             {
                 errors.Add(AppText.F("settings.validation.toolPathNotFound", "mkvextract", this._model.Tools.MkvExtractPath));
             }
 
             // Verifica esistenza mkvpropedit
-            if (this._model.Tools.MkvPropEditPath.Length > 0 && !File.Exists(this._model.Tools.MkvPropEditPath))
+            if (!string.IsNullOrEmpty(this._model.Tools.MkvPropEditPath) && !File.Exists(this._model.Tools.MkvPropEditPath))
             {
                 errors.Add(AppText.F("settings.validation.toolPathNotFound", "mkvpropedit", this._model.Tools.MkvPropEditPath));
             }
 
             // Verifica esistenza ffmpeg
-            if (this._model.Tools.FfmpegPath.Length > 0 && !File.Exists(this._model.Tools.FfmpegPath))
+            if (!string.IsNullOrEmpty(this._model.Tools.FfmpegPath) && !File.Exists(this._model.Tools.FfmpegPath))
             {
                 errors.Add(AppText.F("settings.validation.toolPathNotFound", "ffmpeg", this._model.Tools.FfmpegPath));
             }
 
             // Verifica esistenza ffprobe
-            if (this._model.Tools.FfprobePath.Length > 0 && !File.Exists(this._model.Tools.FfprobePath))
+            if (!string.IsNullOrEmpty(this._model.Tools.FfprobePath) && !File.Exists(this._model.Tools.FfprobePath))
             {
                 errors.Add(AppText.F("settings.validation.toolPathNotFound", "ffprobe", this._model.Tools.FfprobePath));
             }
 
             // Verifica esistenza mediainfo
-            if (this._model.Tools.MediaInfoPath.Length > 0 && !File.Exists(this._model.Tools.MediaInfoPath))
+            if (!string.IsNullOrEmpty(this._model.Tools.MediaInfoPath) && !File.Exists(this._model.Tools.MediaInfoPath))
             {
                 errors.Add(AppText.F("settings.validation.toolPathNotFound", "mediainfo", this._model.Tools.MediaInfoPath));
             }
-            else if (this._model.Tools.MediaInfoPath.Length > 0 && !MediaInfoProvider.IsCliExecutablePath(this._model.Tools.MediaInfoPath))
+            else if (!string.IsNullOrEmpty(this._model.Tools.MediaInfoPath) && !MediaInfoProvider.IsCliExecutablePath(this._model.Tools.MediaInfoPath))
             {
                 errors.Add(AppText.T("settings.validation.mediaInfoCliPath"));
             }
@@ -397,7 +397,7 @@ namespace RemuxForge.Core.Configuration
         {
             // Usa il percorso configurato in appsettings, fallback a default
             string tempFolder = this._model.Tools.TempFolder;
-            if (tempFolder.Length == 0)
+            if (string.IsNullOrEmpty(tempFolder))
             {
                 tempFolder = Path.Combine(this._configFolder, TEMP_FOLDER_NAME);
             }
@@ -522,42 +522,98 @@ namespace RemuxForge.Core.Configuration
         /// </summary>
         private void EnsureNotNull()
         {
-            if (this._model.Tools == null) { this._model.Tools = new ToolsConfig(); }
-            if (this._model.Flac == null) { this._model.Flac = new FlacConfig(); }
-            if (this._model.Opus == null) { this._model.Opus = new OpusConfig(); }
-            if (this._model.Opus.Bitrate == null) { this._model.Opus.Bitrate = new OpusBitrateConfig(); }
-            if (this._model.Aac == null) { this._model.Aac = new AacConfig(); }
-            if (this._model.Aac.Bitrate == null) { this._model.Aac.Bitrate = new AacBitrateConfig(); }
-            if (this._model.Ac3 == null) { this._model.Ac3 = new Ac3Config(); }
-            if (this._model.Ac3.Bitrate == null) { this._model.Ac3.Bitrate = new Ac3BitrateConfig(); }
-            if (this._model.Ui == null) { this._model.Ui = new UiConfig(); }
-            if (this._model.EncodingProfiles == null) { this._model.EncodingProfiles = new List<EncodingProfile>(); }
+            if (this._model.Tools == null)
+                this._model.Tools = new ToolsConfig();
+
+            if (this._model.Flac == null)
+                this._model.Flac = new FlacConfig();
+
+            if (this._model.Opus == null)
+                this._model.Opus = new OpusConfig();
+
+            if (this._model.Opus.Bitrate == null)
+                this._model.Opus.Bitrate = new OpusBitrateConfig();
+
+            if (this._model.Aac == null)
+                this._model.Aac = new AacConfig();
+
+            if (this._model.Aac.Bitrate == null)
+                this._model.Aac.Bitrate = new AacBitrateConfig();
+
+            if (this._model.Ac3 == null)
+                this._model.Ac3 = new Ac3Config();
+
+            if (this._model.Ac3.Bitrate == null)
+                this._model.Ac3.Bitrate = new Ac3BitrateConfig();
+
+            if (this._model.Ui == null)
+                this._model.Ui = new UiConfig();
+
+            if (this._model.EncodingProfiles == null)
+                this._model.EncodingProfiles = new List<EncodingProfile>();
 
             // Assicura stringhe non null nei percorsi tool
-            if (this._model.Tools.MkvMergePath == null) { this._model.Tools.MkvMergePath = ""; }
-            if (this._model.Tools.MkvExtractPath == null) { this._model.Tools.MkvExtractPath = ""; }
-            if (this._model.Tools.MkvPropEditPath == null) { this._model.Tools.MkvPropEditPath = ""; }
-            if (this._model.Tools.FfmpegPath == null) { this._model.Tools.FfmpegPath = ""; }
-            if (this._model.Tools.FfprobePath == null) { this._model.Tools.FfprobePath = ""; }
-            if (this._model.Tools.MediaInfoPath == null) { this._model.Tools.MediaInfoPath = ""; }
-            if (this._model.Tools.TempFolder == null) { this._model.Tools.TempFolder = ""; }
-            if (this._model.Ui.Theme == null) { this._model.Ui.Theme = "nord"; }
-            if (this._model.Ui.LastMode == null) { this._model.Ui.LastMode = Options.MODE_REMUX; }
-            if (this._model.Ui.Language == null) { this._model.Ui.Language = AppText.LANG_EN; }
+            if (this._model.Tools.MkvMergePath == null)
+                this._model.Tools.MkvMergePath = "";
+
+            if (this._model.Tools.MkvExtractPath == null)
+                this._model.Tools.MkvExtractPath = "";
+
+            if (this._model.Tools.MkvPropEditPath == null)
+                this._model.Tools.MkvPropEditPath = "";
+
+            if (this._model.Tools.FfmpegPath == null)
+                this._model.Tools.FfmpegPath = "";
+
+            if (this._model.Tools.FfprobePath == null)
+                this._model.Tools.FfprobePath = "";
+
+            if (this._model.Tools.MediaInfoPath == null)
+                this._model.Tools.MediaInfoPath = "";
+
+            if (this._model.Tools.TempFolder == null)
+                this._model.Tools.TempFolder = "";
+
+            if (this._model.Ui.Theme == null)
+                this._model.Ui.Theme = "nord";
+
+            if (this._model.Ui.LastMode == null)
+                this._model.Ui.LastMode = Options.MODE_REMUX;
+
+            if (this._model.Ui.Language == null)
+                this._model.Ui.Language = AppText.LANG_EN;
 
             // Assicura sotto-oggetti Advanced non null
-            if (this._model.Advanced == null) { this._model.Advanced = new AdvancedConfig(); }
-            if (this._model.Advanced.VideoSync == null) { this._model.Advanced.VideoSync = new VideoSyncConfig(); }
-            if (this._model.Advanced.SpeedCorrection == null) { this._model.Advanced.SpeedCorrection = new SpeedCorrectionConfig(); }
-            if (this._model.Advanced.FrameSync == null) { this._model.Advanced.FrameSync = new FrameSyncConfig(); }
-            if (this._model.Advanced.DeepAnalysis == null) { this._model.Advanced.DeepAnalysis = new DeepAnalysisConfig(); }
-            if (this._model.Advanced.SubtitleEdit == null) { this._model.Advanced.SubtitleEdit = new SubtitleEditConfig(); }
-            if (this._model.Advanced.Ffmpeg == null) { this._model.Advanced.Ffmpeg = new FfmpegConfig(); }
+            if (this._model.Advanced == null)
+                this._model.Advanced = new AdvancedConfig();
+
+            if (this._model.Advanced.VideoSync == null)
+                this._model.Advanced.VideoSync = new VideoSyncConfig();
+
+            if (this._model.Advanced.SpeedCorrection == null)
+                this._model.Advanced.SpeedCorrection = new SpeedCorrectionConfig();
+
+            if (this._model.Advanced.FrameSync == null)
+                this._model.Advanced.FrameSync = new FrameSyncConfig();
+
+            if (this._model.Advanced.DeepAnalysis == null)
+                this._model.Advanced.DeepAnalysis = new DeepAnalysisConfig();
+
+            if (this._model.Advanced.SubtitleEdit == null)
+                this._model.Advanced.SubtitleEdit = new SubtitleEditConfig();
+
+            if (this._model.Advanced.Ffmpeg == null)
+                this._model.Advanced.Ffmpeg = new FfmpegConfig();
 
             // Assicura array DeepAnalysis non null
-            if (this._model.Advanced.DeepAnalysis.ProbeMultiMarginsSec == null) { this._model.Advanced.DeepAnalysis.ProbeMultiMarginsSec = new List<double> { 5.0, 15.0, 25.0 }; }
-            if (this._model.Advanced.DeepAnalysis.OffsetProbeDeltas == null) { this._model.Advanced.DeepAnalysis.OffsetProbeDeltas = new List<int> { 1000, 2000, 3000, 4000, 5000, -1000, -2000, -3000, -4000, -5000 }; }
-            if (this._model.Advanced.DeepAnalysis.AudioFineTuneOperationTypes == null) { this._model.Advanced.DeepAnalysis.AudioFineTuneOperationTypes = "insert,cut"; }
+            if (this._model.Advanced.DeepAnalysis.ProbeMultiMarginsSec == null)
+                this._model.Advanced.DeepAnalysis.ProbeMultiMarginsSec = new List<double> { 5.0, 15.0, 25.0 };
+
+            if (this._model.Advanced.DeepAnalysis.OffsetProbeDeltas == null)
+                this._model.Advanced.DeepAnalysis.OffsetProbeDeltas = new List<int> { 1000, 2000, 3000, 4000, 5000, -1000, -2000, -3000, -4000, -5000 };
+
+            if (this._model.Advanced.DeepAnalysis.AudioFineTuneOperationTypes == null)
+                this._model.Advanced.DeepAnalysis.AudioFineTuneOperationTypes = "insert,cut";
         }
 
         /// <summary>
@@ -591,7 +647,8 @@ namespace RemuxForge.Core.Configuration
             }
             finally
             {
-                if (document != null) { document.Dispose(); }
+                if (document != null)
+                    document.Dispose();
             }
         }
 
@@ -627,7 +684,7 @@ namespace RemuxForge.Core.Configuration
             this._model.Ac3.Bitrate.Stereo = this.ClampAc3Bitrate(this._model.Ac3.Bitrate.Stereo);
             this._model.Ac3.Bitrate.Surround51 = this.ClampAc3Bitrate(this._model.Ac3.Bitrate.Surround51);
 
-            // Validazione tema: se non e' tra quelli validi, reset a "nord"
+            // Validazione tema: se non è tra quelli validi, reset a "nord"
             bool themeValid = false;
             for (int i = 0; i < AppSettingsModel.VALID_THEMES.Length; i++)
             {
@@ -648,7 +705,7 @@ namespace RemuxForge.Core.Configuration
             }
 
             string normalizedLanguage = AppText.NormalizeLanguage(this._model.Ui.Language);
-            this._model.Ui.Language = normalizedLanguage.Length > 0 ? normalizedLanguage : AppText.LANG_EN;
+            this._model.Ui.Language = !string.IsNullOrEmpty(normalizedLanguage) ? normalizedLanguage : AppText.LANG_EN;
 
             // Sanitizzazione Advanced — VideoSync
             VideoSyncConfig vs = this._model.Advanced.VideoSync;
@@ -736,7 +793,7 @@ namespace RemuxForge.Core.Configuration
             da.InitialOffsetRangeSec = this.ClampInt(da.InitialOffsetRangeSec, 1, 3600);
             da.InitialOffsetStepSec = this.ClampDouble(da.InitialOffsetStepSec, 0.01, 60.0);
             da.InitialVotingCuts = this.ClampInt(da.InitialVotingCuts, 1, 10000);
-            if (da.AudioFineTuneOperationTypes == null || da.AudioFineTuneOperationTypes.Trim().Length == 0)
+            if (string.IsNullOrEmpty(da.AudioFineTuneOperationTypes != null ? da.AudioFineTuneOperationTypes.Trim() : null))
             {
                 da.AudioFineTuneOperationTypes = "insert,cut";
             }
@@ -854,8 +911,11 @@ namespace RemuxForge.Core.Configuration
         {
             int result = value;
 
-            if (result < min) { result = min; }
-            if (result > max) { result = max; }
+            if (result < min)
+                result = min;
+
+            if (result > max)
+                result = max;
 
             return result;
         }
@@ -871,8 +931,11 @@ namespace RemuxForge.Core.Configuration
         {
             double result = value;
 
-            if (result < min) { result = min; }
-            if (result > max) { result = max; }
+            if (result < min)
+                result = min;
+
+            if (result > max)
+                result = max;
 
             return result;
         }

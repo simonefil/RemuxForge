@@ -24,8 +24,12 @@
     /// </summary>
     [Parameter] public string Width { get; set; } = "10ch";
 
+    /// <summary>
+    /// Propaga il valore digitato
+    /// </summary>
+    /// <param name="args">Argomenti input</param>
     private void OnInput(ChangeEventArgs args)
     {
-        ValueChanged.InvokeAsync(args.Value != null ? args.Value.ToString() : "");
+        this.ValueChanged.InvokeAsync(args.Value != null ? args.Value.ToString() : "");
     }
 }

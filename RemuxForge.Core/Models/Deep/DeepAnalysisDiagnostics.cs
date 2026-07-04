@@ -106,7 +106,7 @@ namespace RemuxForge.Core.Models
         }
 
         /// <summary>
-        /// True se e' disponibile un candidato da scene cut
+        /// True se è disponibile un candidato da scene cut
         /// </summary>
         public bool SceneCandidateAvailable { get; set; }
         /// <summary>
@@ -118,7 +118,7 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public int SceneVotes { get; set; }
         /// <summary>
-        /// True se e' disponibile un candidato audio
+        /// True se è disponibile un candidato audio
         /// </summary>
         public bool AudioCandidateAvailable { get; set; }
         /// <summary>
@@ -180,7 +180,7 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public string RejectReason { get; set; }
         /// <summary>
-        /// Modalita' anchor usata
+        /// Modalità anchor usata
         /// </summary>
         public string AnchorMode { get; set; }
         /// <summary>
@@ -251,7 +251,7 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public double Margin { get; set; }
         /// <summary>
-        /// True se l'anchor e' stato accettato
+        /// True se l'anchor è stato accettato
         /// </summary>
         public bool Accepted { get; set; }
         /// <summary>
@@ -519,7 +519,7 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public bool Verified { get; set; }
         /// <summary>
-        /// True se il candidato puo' essere demandato alla verifica globale
+        /// True se il candidato può essere demandato alla verifica globale
         /// </summary>
         public bool CanDeferToGlobalVerification { get; set; }
         /// <summary>
@@ -531,7 +531,7 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public string Decision { get; set; }
         /// <summary>
-        /// True se il boundary e' stato riportato all'inizio di una run dark comune
+        /// True se il boundary è stato riportato all'inizio di una run dark comune
         /// </summary>
         public bool DarkBoundaryRewritten { get; set; }
         /// <summary>
@@ -566,7 +566,7 @@ namespace RemuxForge.Core.Models
         }
 
         /// <summary>
-        /// True se la verifica locale e' passata
+        /// True se la verifica locale è passata
         /// </summary>
         public bool Verified { get; set; }
         /// <summary>
@@ -670,7 +670,7 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public double AudioForwardNewScore { get; set; }
         /// <summary>
-        /// True se la transizione puo' essere demandata alla verifica globale
+        /// True se la transizione può essere demandata alla verifica globale
         /// </summary>
         public bool CanDeferToGlobalVerification { get; set; }
         /// <summary>
@@ -749,7 +749,7 @@ namespace RemuxForge.Core.Models
     public class DeepAnalysisGlobalVerificationDiagnostic
     {
         /// <summary>
-        /// True se la verifica globale e' passata
+        /// True se la verifica globale è passata
         /// </summary>
         public bool Verified { get; set; }
         /// <summary>

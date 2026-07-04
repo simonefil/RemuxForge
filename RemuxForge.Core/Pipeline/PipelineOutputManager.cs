@@ -148,7 +148,7 @@ namespace RemuxForge.Core.Pipeline
                 else
                 {
                     ConsoleHelper.Write(LogSection.Merge, LogLevel.Error, "  mkvmerge fallito con codice " + exitCode);
-                    if (mergeOutput.Length > 0)
+                    if (!string.IsNullOrEmpty(mergeOutput))
                     {
                         ConsoleHelper.Write(LogSection.Merge, LogLevel.Error, "  Output: " + mergeOutput);
                     }
@@ -239,7 +239,7 @@ namespace RemuxForge.Core.Pipeline
         {
             string result = path;
 
-            if (path.Length > 0)
+            if (!string.IsNullOrEmpty(path))
             {
                 // Il confronto destinazione/source usa path assoluti per evitare falsi negativi
                 result = Path.GetFullPath(path);

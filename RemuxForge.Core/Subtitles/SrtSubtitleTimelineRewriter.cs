@@ -36,7 +36,7 @@ namespace RemuxForge.Core.Subtitles
             for (int i = 0; i < blocks.Length; i++)
             {
                 block = blocks[i].Trim('\n');
-                if (block.Trim().Length == 0)
+                if (string.IsNullOrEmpty(block.Trim()))
                 {
                     continue;
                 }
@@ -61,7 +61,7 @@ namespace RemuxForge.Core.Subtitles
 
                 intervals = SubtitleTimelineMapper.ApplyOperationsToCue(startMs, endMs, editMap);
 
-                // Un cue puo' diventare piu' cue se un cut attraversa l'intervallo originale
+                // Un cue può diventare più cue se un cut attraversa l'intervallo originale
                 for (int c = 0; c < intervals.Count; c++)
                 {
                     if (intervals[c].EndMs <= intervals[c].StartMs)

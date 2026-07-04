@@ -94,7 +94,7 @@ namespace RemuxForge.Core.Subtitles
             outputPlayResY = context.Transform.OutputDisplayHeight > 0 ? context.Transform.OutputDisplayHeight : context.Transform.OutputCanvasHeight;
             scriptTransform = context.Transform.CreateCoordinateTransform(inputPlayResX, inputPlayResY, outputPlayResX, outputPlayResY);
 
-            // Aggiorna solo le risoluzioni script gia' semanticamente presenti nel file
+            // Aggiorna solo le risoluzioni script già semanticamente presenti nel file
             hadLayoutResX = document.TryGetScriptInfoInt("LayoutResX", out _);
             hadLayoutResY = document.TryGetScriptInfoInt("LayoutResY", out _);
             document.SetOrAddScriptInfoInt("PlayResX", outputPlayResX);
@@ -108,7 +108,7 @@ namespace RemuxForge.Core.Subtitles
                 document.SetOrAddScriptInfoInt("LayoutResY", outputPlayResY);
             }
 
-            // Riscrive le sezioni renderizzabili e abortisce se un tag geometrico non e' parsabile in sicurezza
+            // Riscrive le sezioni renderizzabili e abortisce se un tag geometrico non è parsabile in sicurezza
             this.RewriteBody(document, scriptTransform, inputPlayResX, inputPlayResY, outputPlayResX, outputPlayResY, scaledBorderAndShadow, result);
             if (result.Get("parse-errors") > 0)
             {
@@ -281,7 +281,7 @@ namespace RemuxForge.Core.Subtitles
             }
 
             // Lo style riscritto diventa riferimento per i Dialogue/Comment successivi
-            if (styleInfo.Name.Length > 0)
+            if (!string.IsNullOrEmpty(styleInfo.Name))
             {
                 styles[styleInfo.Name] = styleInfo;
             }
@@ -296,7 +296,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="line">Riga evento originale</param>
         /// <param name="prefix">Prefisso evento da preservare</param>
         /// <param name="format">Formato campi evento</param>
-        /// <param name="styles">Mappa style gia' riscritti</param>
+        /// <param name="styles">Mappa style già riscritti</param>
         /// <param name="transform">Trasformazione coordinate script da applicare</param>
         /// <param name="inputPlayResX">PlayResX input</param>
         /// <param name="inputPlayResY">PlayResY input</param>
@@ -322,8 +322,8 @@ namespace RemuxForge.Core.Subtitles
 
             styleName = this.GetField(fields, format.StyleIndex).Trim();
 
-            // Risolve alignment effettivo dalla riga Style gia' processata, con fallback ASS bottom-center
-            if (styleName.Length > 0 && styles.TryGetValue(styleName, out styleInfo))
+            // Risolve alignment effettivo dalla riga Style già processata, con fallback ASS bottom-center
+            if (!string.IsNullOrEmpty(styleName) && styles.TryGetValue(styleName, out styleInfo))
             {
                 alignment = styleInfo.Alignment;
             }
@@ -508,7 +508,7 @@ namespace RemuxForge.Core.Subtitles
             /// <summary>
             /// Costruttore default
             /// </summary>
-            /// <param name="legacySsa">True se il formato e' SSA V4</param>
+            /// <param name="legacySsa">True se il formato è SSA V4</param>
             public AssStyleFormat(bool legacySsa)
             {
                 this.NameIndex = 0;
@@ -552,7 +552,7 @@ namespace RemuxForge.Core.Subtitles
             /// Costruttore da riga Format
             /// </summary>
             /// <param name="format">Contenuto della riga Format</param>
-            /// <param name="legacySsa">True se il formato e' SSA V4</param>
+            /// <param name="legacySsa">True se il formato è SSA V4</param>
             public AssStyleFormat(string format, bool legacySsa)
                 : this(legacySsa)
             {

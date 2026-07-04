@@ -1,7 +1,7 @@
 namespace RemuxForge.Core.Models
 {
     /// <summary>
-    /// Policy delle tracce che DeepAnalysis puo' usare per validazione audio
+    /// Policy delle tracce che DeepAnalysis può usare per validazione audio
     /// </summary>
     public class DeepAnalysisTrackPolicy
     {
@@ -87,7 +87,7 @@ namespace RemuxForge.Core.Models
         public string LanguageFineTuneTrackName { get; set; }
 
         /// <summary>
-        /// Motivo per cui la validazione audio non e' disponibile
+        /// Motivo per cui la validazione audio non è disponibile
         /// </summary>
         public string RejectReason { get; set; }
 

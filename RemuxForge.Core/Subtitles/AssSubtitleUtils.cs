@@ -197,7 +197,7 @@ namespace RemuxForge.Core.Subtitles
                 return 0;
             }
 
-            // Il margine e' una distanza dall'ancora effettiva dettata dall'allineamento
+            // Il margine è una distanza dall'ancora effettiva dettata dall'allineamento
             if (rightOrBottom)
             {
                 anchor = inputSize - value;
@@ -341,7 +341,7 @@ namespace RemuxForge.Core.Subtitles
             double clipScale;
             string drawing;
 
-            // Se non e' un clip rettangolare prova le due forme vettoriali ASS: \clip(drawing) e \clip(scale,drawing)
+            // Se non è un clip rettangolare prova le due forme vettoriali ASS: \clip(drawing) e \clip(scale,drawing)
             if (args.Length != 4 || !TryParseDouble(args[0], out x1) || !TryParseDouble(args[1], out y1) || !TryParseDouble(args[2], out x2) || !TryParseDouble(args[3], out y2))
             {
                 if (args.Length == 1)
@@ -453,7 +453,7 @@ namespace RemuxForge.Core.Subtitles
         }
 
         /// <summary>
-        /// Indica se un tag e' renderer-sensitive per border/shadow
+        /// Indica se un tag è renderer-sensitive per border/shadow
         /// </summary>
         /// <param name="name">Nome tag normalizzato</param>
         /// <returns>True se il tag riguarda border, shadow o blur</returns>
@@ -625,7 +625,7 @@ namespace RemuxForge.Core.Subtitles
             int pos = 0;
             string command;
 
-            // Il parser e' command-driven: preserva semantica, normalizzando gli spazi del path
+            // Il parser è command-driven: preserva semantica, normalizzando gli spazi del path
             while (pos < tokens.Count)
             {
                 command = tokens[pos].Value.ToLowerInvariant();
@@ -685,7 +685,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="drawingScale">Scala drawing ASS corrente</param>
         /// <param name="transform">Trasformazione coordinate script da applicare</param>
         /// <param name="absoluteCoordinates">True se il punto usa coordinate assolute</param>
-        /// <returns>True se il punto e' stato letto e scritto</returns>
+        /// <returns>True se il punto è stato letto e scritto</returns>
         private static bool AppendDrawingPoint(MatchCollection tokens, ref int pos, StringBuilder output, double drawingScale, SubtitleCanvasTransform transform, bool absoluteCoordinates)
         {
             double x;
@@ -714,10 +714,10 @@ namespace RemuxForge.Core.Subtitles
         }
 
         /// <summary>
-        /// Indica se il token e' un comando drawing
+        /// Indica se il token è un comando drawing
         /// </summary>
         /// <param name="value">Token da verificare</param>
-        /// <returns>True se il token e' un comando drawing ASS</returns>
+        /// <returns>True se il token è un comando drawing ASS</returns>
         private static bool IsDrawingCommand(string value)
         {
             return value == "m" || value == "n" || value == "l" || value == "b" || value == "s" || value == "p" || value == "c";
@@ -774,7 +774,7 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         /// <param name="value">Valore testuale</param>
         /// <param name="number">Numero letto</param>
-        /// <returns>True se il valore e' un double valido</returns>
+        /// <returns>True se il valore è un double valido</returns>
         private static bool TryParseDouble(string value, out double number)
         {
             return double.TryParse((value ?? "").Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out number);

@@ -33,7 +33,7 @@ namespace RemuxForge.Core.Models
         public bool Success { get; set; }
 
         /// <summary>
-        /// True se il risultato e' ambiguo e non deve essere applicato
+        /// True se il risultato è ambiguo e non deve essere applicato
         /// </summary>
         public bool Ambiguous { get; set; }
 

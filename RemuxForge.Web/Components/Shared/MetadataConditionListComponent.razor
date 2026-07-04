@@ -227,7 +227,7 @@
                 <select class="form-input metadata-rule-select-unit" @bind="condition.Unit" @onfocus='@(() => this.SetFieldHelp("conditionUnit"))' @onmouseenter='@(() => this.SetFieldHelp("conditionUnit"))'>
                     @foreach (string unit in MetadataPresetUiHelper.GetUnits(condition.FieldKey))
                     {
-                        <option value="@unit">@(unit.Length == 0 ? AppText.T("web.metadata.unit.none") : unit)</option>
+                        <option value="@unit">@(string.IsNullOrEmpty(unit) ? AppText.T("web.metadata.unit.none") : unit)</option>
                     }
                 </select>
             }

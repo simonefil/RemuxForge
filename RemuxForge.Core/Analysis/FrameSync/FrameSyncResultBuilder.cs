@@ -80,7 +80,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
                     if (score > 1.0) { score = 1.0; }
                     scoreSum += score;
                 }
-                else if (point.RejectReason.Length == 0)
+                else if (string.IsNullOrEmpty(point.RejectReason))
                 {
                     point.RejectReason = "Nessun match";
                 }
@@ -106,7 +106,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
                 validCount >= minValidPoints &&
                 result.Confidence >= finalMinConfidence;
 
-            if (!result.Success && finalOffset != int.MinValue && result.FailureReason.Length == 0)
+            if (!result.Success && finalOffset != int.MinValue && string.IsNullOrEmpty(result.FailureReason))
             {
                 if (!result.Initial.Success)
                 {
@@ -122,7 +122,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
                 }
             }
 
-            if (!result.Success && failureReason.Length > 0)
+            if (!result.Success && !string.IsNullOrEmpty(failureReason))
             {
                 result.Ambiguous = failureReason.IndexOf("coerenti", StringComparison.OrdinalIgnoreCase) >= 0;
             }

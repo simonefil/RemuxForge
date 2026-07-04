@@ -41,7 +41,7 @@
                     </thead>
                     <tbody>
                         @* Cartella parent *@
-                        @if (_parentPath.Length > 0)
+                        @if (!string.IsNullOrEmpty(_parentPath))
                         {
                             <tr class="browse-row" @ondblclick="() => NavigateTo(_parentPath)">
                                 <td class="browse-col-name">..</td>
@@ -66,7 +66,7 @@
                             </tr>
                         }
 
-                        @if (_entries.Count == 0 && _parentPath.Length == 0)
+                        @if (_entries.Count == 0 && string.IsNullOrEmpty(_parentPath))
                         {
                             <tr>
                                 <td colspan="4" style="color: var(--foreground2); text-align: center;">@AppText.T("web.common.empty")</td>
@@ -83,7 +83,7 @@
             </div>
 
             @* Messaggio errore *@
-            @if (_errorMessage.Length > 0)
+            @if (!string.IsNullOrEmpty(_errorMessage))
             {
                 <div class="browse-error">@_errorMessage</div>
             }
@@ -184,7 +184,7 @@
     private string _autocompleteParentDir = "";
 
     /// <summary>
-    /// Flag: directory iniziale gia' caricata
+    /// Flag: directory iniziale già caricata
     /// </summary>
     private bool _loaded;
 
@@ -230,7 +230,7 @@
 
     #endregion
 
-    #region Lifecycle
+    #region Ciclo di vita
 
     /// <summary>
     /// Inizializza il dialog con il percorso iniziale (solo al primo caricamento)
@@ -239,36 +239,34 @@
     {
         // Evita reinizializzazione su ogni re-render del parent
         if (this._loaded)
-        {
             return;
-        }
 
         this._loaded = true;
 
-        if (!string.IsNullOrEmpty(InitialPath))
+        if (!string.IsNullOrEmpty(this.InitialPath))
         {
-            if (System.IO.Directory.Exists(InitialPath))
+            if (System.IO.Directory.Exists(this.InitialPath))
             {
-                _currentPath = InitialPath;
+                this._currentPath = this.InitialPath;
             }
-            else if (System.IO.File.Exists(InitialPath))
+            else if (System.IO.File.Exists(this.InitialPath))
             {
                 // Percorso file: usa la cartella parent
-                string dir = System.IO.Path.GetDirectoryName(InitialPath);
-                _currentPath = !string.IsNullOrEmpty(dir) ? dir : GetDefaultRoot();
+                string dir = System.IO.Path.GetDirectoryName(this.InitialPath);
+                this._currentPath = !string.IsNullOrEmpty(dir) ? dir : this.GetDefaultRoot();
             }
             else
             {
-                _currentPath = GetDefaultRoot();
+                this._currentPath = this.GetDefaultRoot();
             }
         }
         else
         {
-            _currentPath = GetDefaultRoot();
+            this._currentPath = this.GetDefaultRoot();
         }
 
-        _editPath = _currentPath;
-        this.LoadDirectory(_currentPath);
+        this._editPath = this._currentPath;
+        this.LoadDirectory(this._currentPath);
     }
 
     #endregion
@@ -281,11 +279,11 @@
     /// <param name="path">Percorso cartella</param>
     private void LoadDirectory(string path)
     {
-        _errorMessage = "";
-        _selectedIndex = -1;
-        _filterText = "";
-        _allEntries.Clear();
-        _entries.Clear();
+        this._errorMessage = "";
+        this._selectedIndex = -1;
+        this._filterText = "";
+        this._allEntries.Clear();
+        this._entries.Clear();
 
         try
         {
@@ -293,21 +291,21 @@
 
             if (!dirInfo.Exists)
             {
-                _errorMessage = AppText.F("web.folder.folderNotFound", path);
+                this._errorMessage = AppText.F("web.folder.folderNotFound", path);
                 return;
             }
 
-            _currentPath = dirInfo.FullName;
-            _editPath = _currentPath;
+            this._currentPath = dirInfo.FullName;
+            this._editPath = this._currentPath;
 
             // Percorso parent
             if (dirInfo.Parent != null)
             {
-                _parentPath = dirInfo.Parent.FullName;
+                this._parentPath = dirInfo.Parent.FullName;
             }
             else
             {
-                _parentPath = "";
+                this._parentPath = "";
             }
 
             // Elenca sottocartelle
@@ -315,8 +313,11 @@
             for (int i = 0; i < subDirs.Length; i++)
             {
                 // Nascondi cartelle di sistema/nascoste
-                if ((subDirs[i].Attributes & System.IO.FileAttributes.Hidden) != 0) { continue; }
-                if ((subDirs[i].Attributes & System.IO.FileAttributes.System) != 0) { continue; }
+                if ((subDirs[i].Attributes & System.IO.FileAttributes.Hidden) != 0)
+                    continue;
+
+                if ((subDirs[i].Attributes & System.IO.FileAttributes.System) != 0)
+                    continue;
 
                 DirEntry entry = new DirEntry();
                 entry.Name = subDirs[i].Name;
@@ -326,41 +327,44 @@
                 entry.TypeText = AppText.T("web.folder.directory");
                 entry.IsDirectory = true;
 
-                _allEntries.Add(entry);
+                this._allEntries.Add(entry);
             }
 
-            // Elenca file (solo se ShowFiles e' attivo)
+            // Elenca file (solo se ShowFiles è attivo)
             if (this.ShowFiles)
             {
                 System.IO.FileInfo[] files = dirInfo.GetFiles();
                 for (int i = 0; i < files.Length; i++)
                 {
-                    if ((files[i].Attributes & System.IO.FileAttributes.Hidden) != 0) { continue; }
-                    if ((files[i].Attributes & System.IO.FileAttributes.System) != 0) { continue; }
+                    if ((files[i].Attributes & System.IO.FileAttributes.Hidden) != 0)
+                        continue;
+
+                    if ((files[i].Attributes & System.IO.FileAttributes.System) != 0)
+                        continue;
 
                     DirEntry fileEntry = new DirEntry();
                     fileEntry.Name = files[i].Name;
                     fileEntry.FullPath = files[i].FullName;
                     fileEntry.SizeText = FormatFileSize(files[i].Length);
                     fileEntry.ModifiedText = files[i].LastWriteTime.ToString("yyyy-MM-ddTHH:mm:ss");
-                    fileEntry.TypeText = files[i].Extension.Length > 0 ? files[i].Extension : AppText.T("web.folder.fileType");
+                    fileEntry.TypeText = !string.IsNullOrEmpty(files[i].Extension) ? files[i].Extension : AppText.T("web.folder.fileType");
                     fileEntry.IsDirectory = false;
 
-                    _allEntries.Add(fileEntry);
+                    this._allEntries.Add(fileEntry);
                 }
             }
 
             // Ordina
             this.SortEntries();
-            _entries = new List<DirEntry>(_allEntries);
+            this._entries = new List<DirEntry>(this._allEntries);
         }
         catch (UnauthorizedAccessException)
         {
-            _errorMessage = AppText.F("web.folder.accessDenied", path);
+            this._errorMessage = AppText.F("web.folder.accessDenied", path);
         }
         catch (Exception ex)
         {
-            _errorMessage = AppText.F("cli.error", ex.Message);
+            this._errorMessage = AppText.F("cli.error", ex.Message);
         }
     }
 
@@ -409,12 +413,12 @@
     {
         if (this.ShowFiles && _selectedIndex >= 0 && _selectedIndex < _entries.Count && !_entries[_selectedIndex].IsDirectory)
         {
-            // Modalita' file: restituisci il file selezionato
+            // Modalità file: restituisci il file selezionato
             this.OnSelect.InvokeAsync(_entries[_selectedIndex].FullPath);
         }
         else if (!this.ShowFiles || this.AllowCurrentFolderSelection)
         {
-            // Modalita' cartella: restituisci la cartella corrente
+            // Modalità cartella: restituisci la cartella corrente
             this.OnSelect.InvokeAsync(_currentPath);
         }
         else
@@ -424,13 +428,17 @@
     }
 
     /// <summary>
-    /// Restituisce il titolo del dialog in base alla modalita'
+    /// Restituisce il titolo del dialog in base alla modalità
     /// </summary>
     /// <returns>Titolo dialog</returns>
     private string GetDialogTitle()
     {
-        if (this.ShowFiles && this.AllowCurrentFolderSelection) { return AppText.T("web.folder.selectFileOrFolderTitle"); }
-        if (this.ShowFiles) { return AppText.T("web.folder.selectFileTitle"); }
+        if (this.ShowFiles && this.AllowCurrentFolderSelection)
+            return AppText.T("web.folder.selectFileOrFolderTitle");
+
+        if (this.ShowFiles)
+            return AppText.T("web.folder.selectFileTitle");
+
         return AppText.T("web.folder.selectFolderTitle");
     }
 
@@ -440,8 +448,12 @@
     /// <returns>Label pulsante</returns>
     private string GetConfirmLabel()
     {
-        if (this.ShowFiles && this.AllowCurrentFolderSelection) { return AppText.T("web.folder.selectFileOrFolderButton"); }
-        if (this.ShowFiles) { return AppText.T("web.folder.selectFileButton"); }
+        if (this.ShowFiles && this.AllowCurrentFolderSelection)
+            return AppText.T("web.folder.selectFileOrFolderButton");
+
+        if (this.ShowFiles)
+            return AppText.T("web.folder.selectFileButton");
+
         return AppText.T("web.folder.selectFolderButton");
     }
 
@@ -538,7 +550,7 @@
             _autocompleteMatches.Clear();
             string path = _editPath.Trim();
 
-            if (path.Length > 0 && System.IO.Directory.Exists(path))
+            if (!string.IsNullOrEmpty(path) && System.IO.Directory.Exists(path))
             {
                 this.LoadDirectory(path);
             }
@@ -596,9 +608,7 @@
         }
 
         if (!System.IO.Directory.Exists(parentDir))
-        {
             return;
-        }
 
         // Cerca sottocartelle che matchano il prefisso
         List<string> matches = new List<string>();
@@ -610,8 +620,11 @@
 
             for (int i = 0; i < subDirs.Length; i++)
             {
-                if ((subDirs[i].Attributes & System.IO.FileAttributes.Hidden) != 0) { continue; }
-                if ((subDirs[i].Attributes & System.IO.FileAttributes.System) != 0) { continue; }
+                if ((subDirs[i].Attributes & System.IO.FileAttributes.Hidden) != 0)
+                    continue;
+
+                if ((subDirs[i].Attributes & System.IO.FileAttributes.System) != 0)
+                    continue;
 
                 if (subDirs[i].Name.ToLowerInvariant().StartsWith(prefixLower))
                 {
@@ -625,9 +638,7 @@
         }
 
         if (matches.Count == 0)
-        {
             return;
-        }
 
         // Salva parent per il cycling
         _autocompleteParentDir = parentDir;
@@ -650,7 +661,7 @@
     }
 
     /// <summary>
-    /// Trova il prefisso comune piu' lungo tra una lista di stringhe
+    /// Trova il prefisso comune più lungo tra una lista di stringhe
     /// </summary>
     /// <param name="strings">Lista stringhe</param>
     /// <returns>Prefisso comune</returns>
@@ -688,7 +699,7 @@
 
             // Naviga direttamente
             string path = _editPath.Trim();
-            if (path.Length > 0 && System.IO.Directory.Exists(path))
+            if (!string.IsNullOrEmpty(path) && System.IO.Directory.Exists(path))
             {
                 this.LoadDirectory(path);
             }

@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace RemuxForge.Core.Models
 {
     /// <summary>
-    /// Politica output runtime della modalita' Metadata
+    /// Politica output runtime della modalità Metadata
     /// </summary>
     public enum MkvMetadataOutputPolicy
     {
@@ -34,7 +34,7 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
-    /// Modalita' tecnica di esecuzione metadata
+    /// Modalità tecnica di esecuzione metadata
     /// </summary>
     public enum MkvMetadataExecutionMode
     {
@@ -52,7 +52,7 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
-    /// Opzioni runtime della modalita' Metadata
+    /// Opzioni runtime della modalità Metadata
     /// </summary>
     public class MkvMetadataOptions
     {
@@ -92,7 +92,7 @@ namespace RemuxForge.Core.Models
         public MkvMetadataOutputPolicy OutputPolicy { get; set; }
 
         /// <summary>
-        /// Cartella output quando OutputPolicy e' OutputPath
+        /// Cartella output quando OutputPolicy è OutputPath
         /// </summary>
         public string OutputDir { get; set; }
 
@@ -404,7 +404,7 @@ namespace RemuxForge.Core.Models
         public string ToValue { get; set; }
 
         /// <summary>
-        /// Unita' valore
+        /// Unità valore
         /// </summary>
         public string Unit { get; set; }
 
@@ -709,7 +709,7 @@ namespace RemuxForge.Core.Models
         public MkvMetadataAnalysisStatus AnalysisStatus { get; set; }
 
         /// <summary>
-        /// Modalita' esecuzione prevista
+        /// Modalità esecuzione prevista
         /// </summary>
         public MkvMetadataExecutionMode ExecutionMode { get; set; }
 
@@ -807,7 +807,7 @@ namespace RemuxForge.Core.Models
         public string FieldKey { get; set; }
 
         /// <summary>
-        /// Proprieta' mkvpropedit
+        /// Proprietà mkvpropedit
         /// </summary>
         public string MkvPropEditProperty { get; set; }
 

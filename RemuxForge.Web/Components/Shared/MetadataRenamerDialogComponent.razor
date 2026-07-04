@@ -35,7 +35,7 @@
                         }
                         <tr class="@rowClass">
                             <td title="@item.OriginalName">@item.OriginalName</td>
-                            <td title="@(item.ErrorMessage.Length > 0 ? item.ErrorMessage : item.NewName)">@item.NewName</td>
+                            <td title="@(!string.IsNullOrEmpty(item.ErrorMessage) ? item.ErrorMessage : item.NewName)">@item.NewName</td>
                         </tr>
                     }
                 </tbody>
@@ -257,14 +257,49 @@
     /// </summary>
     [Parameter] public EventCallback<bool> OnClose { get; set; }
 
+    /// <summary>
+    /// File sorgente da rinominare
+    /// </summary>
     private List<RenameFileEntry> _entries;
+
+    /// <summary>
+    /// Pipeline metodi rename applicata
+    /// </summary>
     private List<RenameMethod> _methodStack;
+
+    /// <summary>
+    /// Anteprima rinomina corrente
+    /// </summary>
     private List<RenamePreviewItem> _previewItems;
+
+    /// <summary>
+    /// Metodo in editing prima dell'aggiunta alla pipeline
+    /// </summary>
     private RenameMethod _editingMethod;
+
+    /// <summary>
+    /// Tipo metodo selezionato
+    /// </summary>
     private RenameMethodType _selectedMethodType;
+
+    /// <summary>
+    /// Errore parametri metodo corrente
+    /// </summary>
     private string _paramsError;
+
+    /// <summary>
+    /// Testo barra stato
+    /// </summary>
     private string _statusText;
+
+    /// <summary>
+    /// Modulo JS per drag e resize finestra
+    /// </summary>
     private IJSObjectReference _interopModule;
+
+    /// <summary>
+    /// Indica se la rinomina è stata eseguita
+    /// </summary>
     private bool _didRename;
 
     /// <summary>
@@ -304,26 +339,31 @@
         await this.DisposeInteropAsync();
     }
 
+    /// <summary>
+    /// Restituisce l'etichetta localizzata del metodo rename
+    /// </summary>
+    /// <param name="methodType">Tipo metodo rename</param>
+    /// <returns>Etichetta localizzata</returns>
     private static string GetRenameMethodTypeLabel(RenameMethodType methodType)
     {
         return AppText.T("web.rename.method." + methodType.ToString());
     }
 
+    /// <summary>
+    /// Costruisce gli entry file dai record metadata
+    /// </summary>
+    /// <returns>Lista file rinominabili</returns>
     private List<RenameFileEntry> BuildEntries()
     {
         List<RenameFileEntry> entries = new List<RenameFileEntry>();
         if (this.Records == null)
-        {
             return entries;
-        }
 
         for (int i = 0; i < this.Records.Count; i++)
         {
             MkvMetadataRecord record = this.Records[i];
-            if (record == null || record.InputFile.Length == 0)
-            {
+            if (record == null || string.IsNullOrEmpty(record.InputFile))
                 continue;
-            }
 
             RenameFileEntry entry = new RenameFileEntry();
             entry.FullPath = record.InputFile;
@@ -335,6 +375,9 @@
         return entries;
     }
 
+    /// <summary>
+    /// Resetta il metodo in editing al cambio tipo
+    /// </summary>
     private void HandleMethodTypeChanged()
     {
         this._editingMethod = new RenameMethod();
@@ -342,6 +385,9 @@
         this.RecalculatePreview();
     }
 
+    /// <summary>
+    /// Ricalcola anteprima includendo il metodo in editing
+    /// </summary>
     private void RecalculatePreview()
     {
         List<RenameMethod> previewStack = new List<RenameMethod>(this._methodStack);
@@ -358,6 +404,10 @@
         this.UpdateStatusText();
     }
 
+    /// <summary>
+    /// Verifica se il metodo in editing contiene input applicabile
+    /// </summary>
+    /// <returns>True se il metodo può entrare in anteprima</returns>
     private bool HasEditingMethodInput()
     {
         bool result = false;
@@ -397,6 +447,10 @@
         return result;
     }
 
+    /// <summary>
+    /// Valida il metodo in editing
+    /// </summary>
+    /// <returns>Messaggio errore o stringa vuota</returns>
     private string ValidateEditingMethod()
     {
         string error = "";
@@ -427,6 +481,9 @@
         return error;
     }
 
+    /// <summary>
+    /// Aggiorna il testo riepilogo della barra stato
+    /// </summary>
     private void UpdateStatusText()
     {
         int fileCount = this._previewItems.Count;
@@ -461,6 +518,10 @@
         }
     }
 
+    /// <summary>
+    /// Verifica se la rinomina può essere eseguita
+    /// </summary>
+    /// <returns>True se sono presenti modifiche senza conflitti</returns>
     private bool CanRename()
     {
         if (this._methodStack.Count == 0)
@@ -487,6 +548,9 @@
         return false;
     }
 
+    /// <summary>
+    /// Aggiunge il metodo in editing alla pipeline
+    /// </summary>
     private void HandleAddMethod()
     {
         if (!this.HasEditingMethodInput())
@@ -511,6 +575,10 @@
         this.UpdateStatusText();
     }
 
+    /// <summary>
+    /// Rimuove un metodo dalla pipeline
+    /// </summary>
+    /// <param name="index">Indice metodo</param>
     private void HandleRemoveMethod(int index)
     {
         if (index >= 0 && index < this._methodStack.Count)
@@ -520,6 +588,10 @@
         }
     }
 
+    /// <summary>
+    /// Sposta un metodo verso l'alto
+    /// </summary>
+    /// <param name="index">Indice metodo</param>
     private void HandleMoveUp(int index)
     {
         if (index > 0 && index < this._methodStack.Count)
@@ -531,6 +603,10 @@
         }
     }
 
+    /// <summary>
+    /// Sposta un metodo verso il basso
+    /// </summary>
+    /// <param name="index">Indice metodo</param>
     private void HandleMoveDown(int index)
     {
         if (index >= 0 && index < this._methodStack.Count - 1)
@@ -542,6 +618,9 @@
         }
     }
 
+    /// <summary>
+    /// Esegue la rinomina dei file
+    /// </summary>
     private async Task HandleRename()
     {
         if (!this.CanRename())
@@ -566,6 +645,9 @@
         }
     }
 
+    /// <summary>
+    /// Chiude la finestra rename
+    /// </summary>
     private async Task HandleClose()
     {
         await this.DisposeInteropAsync();

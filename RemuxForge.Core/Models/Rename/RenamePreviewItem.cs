@@ -51,7 +51,7 @@ namespace RemuxForge.Core.Models
         public bool HasConflict { get; set; }
 
         /// <summary>
-        /// True se il nome e' invalido o il target e' occupato
+        /// True se il nome è invalido o il target è occupato
         /// </summary>
         public bool HasError { get; set; }
 

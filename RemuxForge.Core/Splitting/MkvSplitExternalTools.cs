@@ -19,6 +19,9 @@ namespace RemuxForge.Core.Splitting
     {
         #region Singleton
 
+        /// <summary>
+        /// Istanza singleton del wrapper
+        /// </summary>
         private static readonly MkvSplitExternalTools s_instance = new MkvSplitExternalTools();
 
         /// <summary>
@@ -30,11 +33,34 @@ namespace RemuxForge.Core.Splitting
 
         #region Variabili di classe
 
+        /// <summary>
+        /// Percorso mkvextract
+        /// </summary>
         private string _mkvextract;
+
+        /// <summary>
+        /// Percorso mkvmerge
+        /// </summary>
         private string _mkvmerge;
+
+        /// <summary>
+        /// Percorso mkvpropedit
+        /// </summary>
         private string _mkvpropedit;
+
+        /// <summary>
+        /// Percorso ffmpeg
+        /// </summary>
         private string _ffmpeg;
+
+        /// <summary>
+        /// Percorso ffprobe
+        /// </summary>
         private string _ffprobe;
+
+        /// <summary>
+        /// Percorso MediaInfo
+        /// </summary>
         private string _mediainfo;
 
         #endregion
@@ -59,7 +85,7 @@ namespace RemuxForge.Core.Splitting
         #region Metodi pubblici
 
         /// <summary>
-        /// Risolve e valida i binari necessari alla modalita' split
+        /// Risolve e valida i binari necessari alla modalità split
         /// </summary>
         public void ResolveBinaries()
         {
@@ -73,12 +99,23 @@ namespace RemuxForge.Core.Splitting
             this._ffprobe = resolver.ResolveFfprobePath(this._ffmpeg, true);
             this._mediainfo = resolver.ResolveMediaInfoPath(true);
 
-            if (this._mkvmerge.Length == 0) { missing.Add("mkvmerge"); }
-            if (this._mkvextract.Length == 0) { missing.Add("mkvextract"); }
-            if (this._mkvpropedit.Length == 0) { missing.Add("mkvpropedit"); }
-            if (this._ffmpeg.Length == 0) { missing.Add("ffmpeg"); }
-            if (this._ffprobe.Length == 0) { missing.Add("ffprobe"); }
-            if (this._mediainfo.Length == 0) { missing.Add("mediainfo"); }
+            if (string.IsNullOrEmpty(this._mkvmerge))
+                missing.Add("mkvmerge");
+
+            if (string.IsNullOrEmpty(this._mkvextract))
+                missing.Add("mkvextract");
+
+            if (string.IsNullOrEmpty(this._mkvpropedit))
+                missing.Add("mkvpropedit");
+
+            if (string.IsNullOrEmpty(this._ffmpeg))
+                missing.Add("ffmpeg");
+
+            if (string.IsNullOrEmpty(this._ffprobe))
+                missing.Add("ffprobe");
+
+            if (string.IsNullOrEmpty(this._mediainfo))
+                missing.Add("mediainfo");
 
             if (missing.Count > 0)
             {
@@ -89,6 +126,8 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// Legge parametri del primo stream video
         /// </summary>
+        /// <param name="inputFile">File sorgente MKV</param>
+        /// <returns>Parametri video letti da ffprobe</returns>
         public MkvSplitVideoParams GetVideoParams(string inputFile)
         {
             ProcessResult r;
@@ -109,19 +148,42 @@ namespace RemuxForge.Core.Splitting
             foreach (string rawLine in r.Stdout.Split('\n'))
             {
                 line = rawLine.Trim();
-                if (line.Length == 0) { continue; }
+                if (string.IsNullOrEmpty(line))
+                    continue;
+
                 eq = line.IndexOf('=');
-                if (eq <= 0) { continue; }
+                if (eq <= 0)
+                    continue;
+
                 key = line.Substring(0, eq).Trim();
                 val = line.Substring(eq + 1).Trim();
-                if (val.Length == 0 || val.Equals("unknown", StringComparison.OrdinalIgnoreCase) || val == "N/A") { continue; }
+                if (string.IsNullOrEmpty(val) || val.Equals("unknown", StringComparison.OrdinalIgnoreCase) || val == "N/A")
+                    continue;
 
-                if (key == "codec_name") { vp.CodecName = val; }
-                else if (key == "pix_fmt") { vp.PixFmt = val; }
-                else if (key == "color_space") { vp.ColorSpace = val; }
-                else if (key == "color_primaries") { vp.ColorPrimaries = val; }
-                else if (key == "color_transfer") { vp.ColorTransfer = val; }
-                else if (key == "color_range") { vp.ColorRange = val; }
+                if (key == "codec_name")
+                {
+                    vp.CodecName = val;
+                }
+                else if (key == "pix_fmt")
+                {
+                    vp.PixFmt = val;
+                }
+                else if (key == "color_space")
+                {
+                    vp.ColorSpace = val;
+                }
+                else if (key == "color_primaries")
+                {
+                    vp.ColorPrimaries = val;
+                }
+                else if (key == "color_transfer")
+                {
+                    vp.ColorTransfer = val;
+                }
+                else if (key == "color_range")
+                {
+                    vp.ColorRange = val;
+                }
             }
 
             return vp;
@@ -130,6 +192,8 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// Legge durata container via ffprobe
         /// </summary>
+        /// <param name="inputFile">File sorgente MKV</param>
+        /// <returns>Durata container in secondi</returns>
         public double GetDuration(string inputFile)
         {
             ProcessResult r = this.Run(this._ffprobe, new string[] { "-v", "quiet", "-show_entries", "format=duration", "-of", "csv=p=0", inputFile });
@@ -139,6 +203,8 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// Estrae PTS video via mkvextract timestamps_v2
         /// </summary>
+        /// <param name="sourceFile">File sorgente MKV</param>
+        /// <returns>Array ordinato dei PTS video in secondi</returns>
         public double[] ExtractSourcePts(string sourceFile)
         {
             string tempFile;
@@ -156,7 +222,9 @@ namespace RemuxForge.Core.Splitting
                 while ((line = reader.ReadLine()) != null)
                 {
                     line = line.Trim();
-                    if (line.Length == 0 || line[0] == '#') { continue; }
+                    if (string.IsNullOrEmpty(line) || line[0] == '#')
+                        continue;
+
                     if (double.TryParse(line, NumberStyles.Float, CultureInfo.InvariantCulture, out value))
                     {
                         pts.Add(value / 1000.0);
@@ -165,11 +233,21 @@ namespace RemuxForge.Core.Splitting
             }
             finally
             {
-                if (reader != null) { reader.Dispose(); }
-                try { File.Delete(tempFile); } catch (IOException) { }
+                if (reader != null)
+                    reader.Dispose();
+
+                try
+                {
+                    File.Delete(tempFile);
+                }
+                catch (IOException)
+                {
+                }
             }
 
-            if (pts.Count > 0) { pts.RemoveAt(pts.Count - 1); }
+            if (pts.Count > 0)
+                pts.RemoveAt(pts.Count - 1);
+
             double[] arr = pts.ToArray();
             Array.Sort(arr);
             ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "  " + arr.Length + " PTS extracted");
@@ -179,6 +257,8 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// Mappa posizione, dimensione e keyflag di ogni packet del raw stream
         /// </summary>
+        /// <param name="rawFile">File raw da analizzare</param>
+        /// <returns>Mappa dei frame con posizione, dimensione e keyflag</returns>
         public List<MkvSplitFrameInfo> GetFrameByteMap(string rawFile)
         {
             List<MkvSplitFrameInfo> frames = new List<MkvSplitFrameInfo>(1 << 17);
@@ -192,7 +272,9 @@ namespace RemuxForge.Core.Splitting
             {
                 string[] parts = line.Split(',');
                 MkvSplitFrameInfo f;
-                if (parts.Length < 2) { return; }
+                if (parts.Length < 2)
+                    return;
+
                 f = new MkvSplitFrameInfo();
                 f.Size = int.Parse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture);
                 f.Pos = long.Parse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture);
@@ -207,6 +289,8 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// Legge solo keyflag video
         /// </summary>
+        /// <param name="inputFile">File sorgente MKV</param>
+        /// <returns>Lista dei packet con flag keyframe</returns>
         public List<MkvSplitFrameInfo> GetKeyFlags(string inputFile)
         {
             List<MkvSplitFrameInfo> frames = new List<MkvSplitFrameInfo>(1 << 17);
@@ -220,7 +304,9 @@ namespace RemuxForge.Core.Splitting
             {
                 MkvSplitFrameInfo f;
                 line = line.Trim();
-                if (line.Length == 0) { return; }
+                if (string.IsNullOrEmpty(line))
+                    return;
+
                 f = new MkvSplitFrameInfo();
                 f.Key = line.IndexOf('K') >= 0;
                 frames.Add(f);
@@ -233,6 +319,8 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// Conta packet video
         /// </summary>
+        /// <param name="inputFile">File sorgente MKV</param>
+        /// <returns>Numero di packet video</returns>
         public int CountPackets(string inputFile)
         {
             int count = 0;
@@ -242,7 +330,8 @@ namespace RemuxForge.Core.Splitting
                 "-show_entries", "packet=pos", "-of", "csv=p=0", inputFile
             }, delegate (string line)
             {
-                if (line.Trim().Length > 0) { count++; }
+                if (!string.IsNullOrEmpty(line.Trim()))
+                    count++;
             });
 
             return count;
@@ -251,6 +340,8 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// Probe dimensione/posizione packet
         /// </summary>
+        /// <param name="file">File video da analizzare</param>
+        /// <returns>Lista dimensione/posizione dei packet</returns>
         public List<(int size, long pos)> ProbePacketsSizePos(string file)
         {
             List<(int size, long pos)> frames = new List<(int, long)>();
@@ -261,7 +352,9 @@ namespace RemuxForge.Core.Splitting
             }, delegate (string line)
             {
                 string[] parts = line.Split(',');
-                if (parts.Length < 2) { return; }
+                if (parts.Length < 2)
+                    return;
+
                 frames.Add((int.Parse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture), long.Parse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture)));
             });
 
@@ -271,6 +364,7 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// Esegue ffmpeg con throw su errore
         /// </summary>
+        /// <param name="args">Argomenti ffmpeg</param>
         public void RunFfmpeg(IEnumerable<string> args)
         {
             this.Run(this._ffmpeg, args);
@@ -279,6 +373,8 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// Esegue ffmpeg senza throw
         /// </summary>
+        /// <param name="args">Argomenti ffmpeg</param>
+        /// <returns>Exit code del processo</returns>
         public int RunFfmpegNoThrow(IEnumerable<string> args)
         {
             return this.RunNoThrow(this._ffmpeg, args);
@@ -287,6 +383,8 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// Estrae capitoli in formato simple
         /// </summary>
+        /// <param name="inputFile">File sorgente MKV</param>
+        /// <returns>Lista capitoli estratti</returns>
         public List<MkvSplitChapter> GetChapters(string inputFile)
         {
             ProcessResult r;
@@ -305,9 +403,13 @@ namespace RemuxForge.Core.Splitting
             foreach (string rawLine in r.Stdout.Split('\n'))
             {
                 string line = rawLine.Trim();
-                if (line.Length == 0) { continue; }
+                if (string.IsNullOrEmpty(line))
+                    continue;
+
                 eq = line.IndexOf('=');
-                if (eq < 0) { continue; }
+                if (eq < 0)
+                    continue;
+
                 key = line.Substring(0, eq);
                 val = line.Substring(eq + 1);
                 hasName = key.IndexOf("NAME", StringComparison.Ordinal) >= 0;
@@ -337,6 +439,9 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// Estrae traccia raw
         /// </summary>
+        /// <param name="inputFile">File sorgente MKV</param>
+        /// <param name="trackId">ID traccia mkvmerge</param>
+        /// <param name="outputFile">File raw destinazione</param>
         public void ExtractRawTrack(string inputFile, int trackId, string outputFile)
         {
             this.Run(this._mkvextract, new string[] { inputFile, "tracks", trackId + ":" + outputFile });
@@ -345,6 +450,7 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// Esegue mkvmerge
         /// </summary>
+        /// <param name="args">Argomenti mkvmerge</param>
         public void RunMkvmerge(IEnumerable<string> args)
         {
             this.Run(this._mkvmerge, args);
@@ -353,6 +459,7 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// Esegue mkvpropedit
         /// </summary>
+        /// <param name="args">Argomenti mkvpropedit</param>
         public void RunMkvpropedit(IEnumerable<string> args)
         {
             this.Run(this._mkvpropedit, args);
@@ -361,11 +468,14 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// True se il file contiene audio FLAC
         /// </summary>
+        /// <param name="inputFile">File sorgente MKV</param>
+        /// <returns>True se almeno una traccia audio è FLAC</returns>
         public bool HasFlacAudio(string inputFile)
         {
             MkvToolsService service = new MkvToolsService(this._mkvmerge);
             MkvFileInfo info = service.GetFileInfo(inputFile);
-            if (info == null) { return false; }
+            if (info == null)
+                return false;
 
             for (int i = 0; i < info.Tracks.Count; i++)
             {
@@ -382,12 +492,18 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// Rileva CFR/VFR da MediaInfo CLI
         /// </summary>
+        /// <param name="inputFile">File sorgente MKV</param>
+        /// <returns>Modalità framerate rilevata</returns>
         public MkvSplitFrameRateMode DetectFrameRateMode(string inputFile)
         {
             MediaInfoService service = new MediaInfoService(this._mediainfo);
             string mode = service.GetVideoFrameRateMode(inputFile);
-            if (mode.IndexOf("Constant", StringComparison.OrdinalIgnoreCase) >= 0 || string.Equals(mode, "CFR", StringComparison.OrdinalIgnoreCase)) { return MkvSplitFrameRateMode.Cfr; }
-            if (mode.IndexOf("Variable", StringComparison.OrdinalIgnoreCase) >= 0 || string.Equals(mode, "VFR", StringComparison.OrdinalIgnoreCase)) { return MkvSplitFrameRateMode.Vfr; }
+            if (mode.IndexOf("Constant", StringComparison.OrdinalIgnoreCase) >= 0 || string.Equals(mode, "CFR", StringComparison.OrdinalIgnoreCase))
+                return MkvSplitFrameRateMode.Cfr;
+
+            if (mode.IndexOf("Variable", StringComparison.OrdinalIgnoreCase) >= 0 || string.Equals(mode, "VFR", StringComparison.OrdinalIgnoreCase))
+                return MkvSplitFrameRateMode.Vfr;
+
             return MkvSplitFrameRateMode.Unknown;
         }
 
@@ -398,6 +514,9 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// Esegue processo con throw su exit code diverso da zero
         /// </summary>
+        /// <param name="exe">Eseguibile da invocare</param>
+        /// <param name="args">Argomenti processo</param>
+        /// <returns>Risultato processo</returns>
         private ProcessResult Run(string exe, IEnumerable<string> args)
         {
             List<string> list = new List<string>(args);
@@ -406,8 +525,12 @@ namespace RemuxForge.Core.Splitting
             if (result.ExitCode != 0)
             {
                 ConsoleHelper.Write(LogSection.Split, LogLevel.Error, "  FAILED (exit " + result.ExitCode + ")");
-                if (result.Stdout.Length > 0) { ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "  stdout: " + Truncate(result.Stdout, 2000)); }
-                if (result.Stderr.Length > 0) { ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "  stderr: " + Truncate(result.Stderr, 2000)); }
+                if (!string.IsNullOrEmpty(result.Stdout))
+                    ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "  stdout: " + Truncate(result.Stdout, 2000));
+
+                if (!string.IsNullOrEmpty(result.Stderr))
+                    ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "  stderr: " + Truncate(result.Stderr, 2000));
+
                 throw new InvalidOperationException("Command failed: " + Path.GetFileName(exe));
             }
 
@@ -417,6 +540,9 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// Esegue processo senza throw
         /// </summary>
+        /// <param name="exe">Eseguibile da invocare</param>
+        /// <param name="args">Argomenti processo</param>
+        /// <returns>Exit code processo</returns>
         private int RunNoThrow(string exe, IEnumerable<string> args)
         {
             List<string> list = new List<string>(args);
@@ -428,6 +554,9 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// Esegue processo leggendo stdout riga per riga
         /// </summary>
+        /// <param name="exe">Eseguibile da invocare</param>
+        /// <param name="args">Argomenti processo</param>
+        /// <param name="onLine">Callback chiamata per ogni riga stdout</param>
         private void RunStreamed(string exe, IEnumerable<string> args, Action<string> onLine)
         {
             List<string> list = new List<string>(args);
@@ -435,7 +564,9 @@ namespace RemuxForge.Core.Splitting
             ProcessResult result = ProcessRunner.RunWithStdoutLines(exe, list, onLine);
             if (result.ExitCode != 0)
             {
-                if (result.Stderr.Length > 0) { ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "  stderr: " + Truncate(result.Stderr, 2000)); }
+                if (!string.IsNullOrEmpty(result.Stderr))
+                    ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "  stderr: " + Truncate(result.Stderr, 2000));
+
                 throw new InvalidOperationException("Command failed: " + Path.GetFileName(exe));
             }
         }
@@ -443,6 +574,8 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// Log sintetico command line
         /// </summary>
+        /// <param name="exe">Eseguibile invocato</param>
+        /// <param name="args">Argomenti processo</param>
         private void PrintShortCmd(string exe, List<string> args)
         {
             StringBuilder sb = new StringBuilder("  $ ");
@@ -454,17 +587,26 @@ namespace RemuxForge.Core.Splitting
                 sb.Append(args[i]);
             }
             text = sb.ToString();
-            if (text.Length > 120) { text = text.Substring(0, 117) + "..."; }
+            if (text.Length > 120)
+                text = text.Substring(0, 117) + "...";
+
             ConsoleHelper.Write(LogSection.Split, LogLevel.Debug, text);
         }
 
         /// <summary>
         /// Tronca testo
         /// </summary>
+        /// <param name="text">Testo di input</param>
+        /// <param name="max">Numero massimo caratteri</param>
+        /// <returns>Testo troncato</returns>
         private static string Truncate(string text, int max)
         {
-            if (text == null) { return ""; }
-            if (text.Length > max) { return text.Substring(0, max); }
+            if (text == null)
+                return "";
+
+            if (text.Length > max)
+                return text.Substring(0, max);
+
             return text;
         }
 

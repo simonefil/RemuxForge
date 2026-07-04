@@ -9,7 +9,7 @@ using System.IO;
 namespace RemuxForge.Core.Splitting
 {
     /// <summary>
-    /// Orchestrazione completa della modalita' split
+    /// Orchestrazione completa della modalità split
     /// </summary>
     public class MkvSplitPipeline
     {
@@ -51,7 +51,7 @@ namespace RemuxForge.Core.Splitting
         }
 
         /// <summary>
-        /// Esegue la pipeline split su un singolo file gia' risolto
+        /// Esegue la pipeline split su un singolo file già risolto
         /// </summary>
         /// <param name="options">Opzioni globali</param>
         /// <param name="inputFile">File da elaborare</param>
@@ -68,7 +68,7 @@ namespace RemuxForge.Core.Splitting
         #region Metodi privati
 
         /// <summary>
-        /// Esegue la pipeline split su un singolo file gia' risolto senza rieseguire setup tool
+        /// Esegue la pipeline split su un singolo file già risolto senza rieseguire setup tool
         /// </summary>
         private MkvSplitExecutionResult ExecuteFileInternal(Options options, string inputFile, bool batch)
         {
@@ -84,7 +84,7 @@ namespace RemuxForge.Core.Splitting
                 splitOptions.Batch = batch;
                 result.ExitCode = this.ExecuteSingle(splitOptions, out segments);
                 result.Segments = segments;
-                if (result.ExitCode != 0 && result.ErrorMessage.Length == 0)
+                if (result.ExitCode != 0 && string.IsNullOrEmpty(result.ErrorMessage))
                 {
                     result.ErrorMessage = AppText.T("split.error.generic");
                 }
@@ -164,14 +164,14 @@ namespace RemuxForge.Core.Splitting
                 return 1;
             }
 
-            sourceRaw = args.SourceRaw.Length > 0 ? Path.GetFullPath(args.SourceRaw) : inputFile;
+            sourceRaw = !string.IsNullOrEmpty(args.SourceRaw) ? Path.GetFullPath(args.SourceRaw) : inputFile;
             if (!File.Exists(sourceRaw))
             {
                 ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("split.fileNotFound", sourceRaw));
                 return 1;
             }
 
-            outputDir = args.OutputDir.Length > 0 ? args.OutputDir : Path.GetDirectoryName(inputFile);
+            outputDir = !string.IsNullOrEmpty(args.OutputDir) ? args.OutputDir : Path.GetDirectoryName(inputFile);
             Directory.CreateDirectory(outputDir);
 
             ConsoleHelper.Write(LogSection.Split, LogLevel.Phase, AppText.F("split.input", inputFile));

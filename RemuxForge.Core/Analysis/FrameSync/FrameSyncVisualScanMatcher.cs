@@ -289,7 +289,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         }
 
         /// <summary>
-        /// Similarita' durata normalizzata e robusta a VFR estremi
+        /// Similarità durata normalizzata e robusta a VFR estremi
         /// </summary>
         private double ComputeDurationSimilarity(double firstMs, double secondMs, double capMs)
         {
@@ -359,7 +359,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         }
 
         /// <summary>
-        /// Aggiunge un offset se nel range richiesto e non gia' presente
+        /// Aggiunge un offset se nel range richiesto e non già presente
         /// </summary>
         public void AddUniqueOffset(List<int> offsets, int offsetMs, int minOffsetMs, int maxOffsetMs)
         {
@@ -456,7 +456,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         }
 
         /// <summary>
-        /// SSIM con media e varianza gia' precomputate nel descriptor
+        /// SSIM con media e varianza già precomputate nel descriptor
         /// </summary>
         public double ComputeSsim(VisualScanFrameDescriptor descriptor1, VisualScanFrameDescriptor descriptor2)
         {
@@ -889,7 +889,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         }
 
         /// <summary>
-        /// Trova l'indice del timestamp piu' vicino con distanza massima esplicita
+        /// Trova l'indice del timestamp più vicino con distanza massima esplicita
         /// </summary>
         public int FindNearestTimestampIndex(double[] timestampsMs, double expectedMs, double maxDistanceMs)
         {

@@ -15,7 +15,7 @@ namespace RemuxForge.Core.Subtitles
     /// <param name="Y">Luminanza</param>
     /// <param name="Cr">Color difference red</param>
     /// <param name="Cb">Color difference blue</param>
-    /// <param name="Alpha">Opacita'</param>
+    /// <param name="Alpha">Opacità</param>
     internal readonly record struct PgsPaletteEntry(byte Index, byte Y, byte Cr, byte Cb, byte Alpha);
 
     /// <summary>

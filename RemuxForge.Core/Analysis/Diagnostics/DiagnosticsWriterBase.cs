@@ -21,7 +21,7 @@ namespace RemuxForge.Core.Analysis.Diagnostics
         {
             string folder = Path.Combine(AppSettingsService.Instance.ConfigFolder, folderName);
             string safeEpisode = this.SanitizeFileName(episodeId);
-            string baseName = safeEpisode.Length == 0 ? "episode" : safeEpisode;
+            string baseName = string.IsNullOrEmpty(safeEpisode) ? "episode" : safeEpisode;
             Directory.CreateDirectory(folder);
 
             string timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmssfff", CultureInfo.InvariantCulture);

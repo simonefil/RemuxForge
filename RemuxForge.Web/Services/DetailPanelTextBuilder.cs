@@ -77,7 +77,7 @@ namespace RemuxForge.Web.Services
         private void AppendLanguageFile(StringBuilder sb, FileProcessingRecord record)
         {
             sb.Append(AppText.T("web.detail.languageFile")).Append('\n');
-            sb.Append("  ").Append(record.LangFileName.Length > 0 ? record.LangFileName : AppText.T("web.common.none")).Append('\n');
+            sb.Append("  ").Append(!string.IsNullOrEmpty(record.LangFileName) ? record.LangFileName : AppText.T("web.common.none")).Append('\n');
             if (record.LangSize > 0)
             {
                 sb.Append(AppText.F("web.detail.sizeLine", Utils.FormatSize(record.LangSize))).Append('\n');
@@ -135,7 +135,8 @@ namespace RemuxForge.Web.Services
 
             for (int i = 0; i < tracks.Count; i++)
             {
-                if (i > 0) { sb.Append(" | "); }
+                if (i > 0)
+                    sb.Append(" | ");
                 sb.Append(this.FormatAudioTrackWithPlan(tracks[i], plan != null ? plan.FindLangTrack(tracks[i].Id) : null, options));
             }
 
@@ -159,7 +160,8 @@ namespace RemuxForge.Web.Services
                         continue;
                     }
 
-                    if (count > 0) { sb.Append(" | "); }
+                    if (count > 0)
+                        sb.Append(" | ");
                     sb.Append(this.FormatAudioTrackWithPlan(record.SourceAudioTracks[i], record.AudioProcessingPreview != null ? record.AudioProcessingPreview.FindSourceTrack(record.SourceAudioTracks[i].Id) : null, options));
                     count++;
                 }
@@ -169,7 +171,8 @@ namespace RemuxForge.Web.Services
             {
                 for (int i = 0; i < record.ImportedAudioTracks.Count; i++)
                 {
-                    if (count > 0) { sb.Append(" | "); }
+                    if (count > 0)
+                        sb.Append(" | ");
                     sb.Append(this.FormatAudioTrackWithPlan(record.ImportedAudioTracks[i], record.AudioProcessingPreview != null ? record.AudioProcessingPreview.FindLangTrack(record.ImportedAudioTracks[i].Id) : null, options));
                     count++;
                 }
@@ -186,7 +189,7 @@ namespace RemuxForge.Web.Services
             string result = Utils.FormatTrackCompact(track);
             string summary = this.FormatAudioProcessingSummary(plan, options, false);
 
-            if (summary.Length > 0)
+            if (!string.IsNullOrEmpty(summary))
             {
                 result += " -> " + summary;
             }
@@ -216,7 +219,7 @@ namespace RemuxForge.Web.Services
             {
                 string origin = tracks[i].IsSource ? "SRC" : "LANG";
                 string summary = this.FormatAudioProcessingSummary(tracks[i], options, true);
-                sb.Append(AppText.F("web.detail.audioProcessingTrackLine", origin, tracks[i].Track.Id, summary.Length > 0 ? summary : AppText.T("web.detail.audioNoRender"))).Append('\n');
+                sb.Append(AppText.F("web.detail.audioProcessingTrackLine", origin, tracks[i].Track.Id, !string.IsNullOrEmpty(summary) ? summary : AppText.T("web.detail.audioNoRender"))).Append('\n');
             }
         }
 
@@ -232,13 +235,13 @@ namespace RemuxForge.Web.Services
             {
                 return "";
             }
-            if (plan.ErrorMessage.Length > 0)
+            if (!string.IsNullOrEmpty(plan.ErrorMessage))
             {
                 return AppText.F("web.detail.audioError", plan.ErrorMessage);
             }
 
-            target = options.AudioFormat.Length > 0 ? Utils.FormatAudioFormat(options.AudioFormat) : "";
-            if (plan.RenderRequired && target.Length > 0)
+            target = !string.IsNullOrEmpty(options.AudioFormat) ? Utils.FormatAudioFormat(options.AudioFormat) : "";
+            if (plan.RenderRequired && !string.IsNullOrEmpty(target))
             {
                 parts.Add(target);
             }
@@ -393,7 +396,7 @@ namespace RemuxForge.Web.Services
             sb.Append('\n').Append(AppText.T("web.detail.sync")).Append('\n');
             sb.Append(AppText.F("web.detail.audioDelayLine", Utils.FormatDelay(record.AudioDelayApplied))).Append('\n');
             sb.Append(AppText.F("web.detail.subDelayLine", Utils.FormatDelay(record.SubDelayApplied))).Append('\n');
-            if (record.StretchFactor.Length > 0)
+            if (!string.IsNullOrEmpty(record.StretchFactor))
             {
                 sb.Append(AppText.F("web.detail.stretchLine", record.StretchFactor)).Append('\n');
             }
@@ -417,7 +420,7 @@ namespace RemuxForge.Web.Services
         private void AppendDeepAnalysisSummary(StringBuilder sb, EditMap editMap)
         {
             sb.Append(AppText.T("web.detail.deepApplied")).Append('\n');
-            if (editMap.StretchFactor.Length > 0)
+            if (!string.IsNullOrEmpty(editMap.StretchFactor))
             {
                 sb.Append(AppText.F("web.detail.deepStretchLine", editMap.StretchFactor)).Append('\n');
             }
@@ -475,7 +478,7 @@ namespace RemuxForge.Web.Services
             {
                 sb.Append(AppText.F("web.detail.checkpointValid", accepted, total)).Append('\n');
             }
-            if (frameSyncResult.FailureReason.Length > 0)
+            if (!string.IsNullOrEmpty(frameSyncResult.FailureReason))
             {
                 sb.Append(AppText.F("web.detail.reasonLine", frameSyncResult.FailureReason)).Append('\n');
             }
@@ -486,12 +489,12 @@ namespace RemuxForge.Web.Services
         /// </summary>
         private void AppendErrors(StringBuilder sb, FileProcessingRecord record)
         {
-            if (record.ErrorMessage.Length > 0)
+            if (!string.IsNullOrEmpty(record.ErrorMessage))
             {
                 sb.Append('\n').Append(AppText.T("web.detail.error")).Append('\n');
                 sb.Append("  ").Append(record.ErrorMessage).Append('\n');
             }
-            if (record.SkipReason.Length > 0)
+            if (!string.IsNullOrEmpty(record.SkipReason))
             {
                 sb.Append('\n').Append(AppText.T("web.detail.skipped")).Append('\n');
                 sb.Append("  ").Append(record.SkipReason).Append('\n');
@@ -506,10 +509,14 @@ namespace RemuxForge.Web.Services
             if (record.SpeedCorrectionTimeMs > 0 || record.FrameSyncTimeMs > 0 || record.DeepAnalysisTimeMs > 0 || record.MergeTimeMs > 0)
             {
                 sb.Append('\n').Append(AppText.T("web.detail.processingTimes")).Append('\n');
-                if (record.SpeedCorrectionTimeMs > 0) { sb.Append(AppText.F("web.detail.speedTime", record.SpeedCorrectionTimeMs)).Append('\n'); }
-                if (record.FrameSyncTimeMs > 0) { sb.Append("  Frame-sync: ").Append(record.FrameSyncTimeMs).Append(" ms\n"); }
-                if (record.DeepAnalysisTimeMs > 0) { sb.Append("  Deep analysis: ").Append(record.DeepAnalysisTimeMs).Append(" ms\n"); }
-                if (record.MergeTimeMs > 0) { sb.Append("  Merge:      ").Append(record.MergeTimeMs).Append(" ms\n"); }
+                if (record.SpeedCorrectionTimeMs > 0)
+                    sb.Append(AppText.F("web.detail.speedTime", record.SpeedCorrectionTimeMs)).Append('\n');
+                if (record.FrameSyncTimeMs > 0)
+                    sb.Append("  Frame-sync: ").Append(record.FrameSyncTimeMs).Append(" ms\n");
+                if (record.DeepAnalysisTimeMs > 0)
+                    sb.Append("  Deep analysis: ").Append(record.DeepAnalysisTimeMs).Append(" ms\n");
+                if (record.MergeTimeMs > 0)
+                    sb.Append("  Merge:      ").Append(record.MergeTimeMs).Append(" ms\n");
             }
         }
 
@@ -522,7 +529,7 @@ namespace RemuxForge.Web.Services
             {
                 sb.Append('\n').Append(AppText.T("web.detail.result")).Append('\n');
                 sb.Append(AppText.F("web.detail.sizeLine", Utils.FormatSize(record.ResultSize))).Append('\n');
-                if (record.ResultFilePath.Length > 0)
+                if (!string.IsNullOrEmpty(record.ResultFilePath))
                 {
                     sb.Append(AppText.F("web.detail.fileLine", record.ResultFilePath)).Append('\n');
                 }
@@ -534,7 +541,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         private void AppendEncoding(StringBuilder sb, FileProcessingRecord record)
         {
-            if (record.EncodingProfileName.Length == 0)
+            if (string.IsNullOrEmpty(record.EncodingProfileName))
             {
                 return;
             }
@@ -551,7 +558,7 @@ namespace RemuxForge.Web.Services
             {
                 sb.Append(AppText.F("web.detail.timeLine", record.EncodingTimeMs)).Append('\n');
             }
-            if (record.EncodingCommand.Length > 0)
+            if (!string.IsNullOrEmpty(record.EncodingCommand))
             {
                 sb.Append(AppText.T("web.detail.commandAvailable")).Append('\n');
             }
@@ -594,7 +601,8 @@ namespace RemuxForge.Web.Services
         /// </summary>
         private string FormatTimestamp(int timestampMs)
         {
-            if (timestampMs < 0) { timestampMs = 0; }
+            if (timestampMs < 0)
+                timestampMs = 0;
 
             int totalSeconds = timestampMs / 1000;
             int hours = totalSeconds / 3600;

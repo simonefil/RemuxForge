@@ -199,7 +199,7 @@ namespace RemuxForge.Core.Configuration
                     return "lossless";
             }
 
-            if (formatText.Length > 0)
+            if (!string.IsNullOrEmpty(formatText))
                 return "lossy";
 
             return "unknown";
@@ -260,7 +260,7 @@ namespace RemuxForge.Core.Configuration
             bool result = false;
             bool downsampleRequired;
 
-            if (track == null || options == null || options.AudioFormat.Length == 0)
+            if (track == null || options == null || string.IsNullOrEmpty(options.AudioFormat))
             {
                 return result;
             }

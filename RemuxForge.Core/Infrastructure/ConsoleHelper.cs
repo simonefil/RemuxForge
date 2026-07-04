@@ -6,12 +6,12 @@ using System.Text;
 namespace RemuxForge.Core.Infrastructure
 {
     /// <summary>
-    /// Modalita' runtime del logger
+    /// Modalità runtime del logger
     /// </summary>
     public enum LogRuntimeMode
     {
         /// <summary>
-        /// Modalita' non ancora impostata
+        /// Modalità non ancora impostata
         /// </summary>
         Unset,
 
@@ -49,7 +49,7 @@ namespace RemuxForge.Core.Infrastructure
         private static string s_logFilePath = "";
 
         /// <summary>
-        /// Modalita' runtime corrente per decidere il fallback console
+        /// Modalità runtime corrente per decidere il fallback console
         /// </summary>
         private static LogRuntimeMode s_runtimeMode = LogRuntimeMode.Unset;
 
@@ -66,7 +66,7 @@ namespace RemuxForge.Core.Infrastructure
         /// Scrive un messaggio di log con sezione e livello specificati
         /// </summary>
         /// <param name="section">Sezione operativa del messaggio</param>
-        /// <param name="level">Livello di severita' del messaggio</param>
+        /// <param name="level">Livello di severità del messaggio</param>
         /// <param name="text">Testo del messaggio</param>
         public static void Write(LogSection section, LogLevel level, string text)
         {
@@ -82,7 +82,7 @@ namespace RemuxForge.Core.Infrastructure
             }
 
             // Sink 2: file log (se abilitato)
-            if (s_logFilePath.Length > 0)
+            if (!string.IsNullOrEmpty(s_logFilePath))
             {
                 WriteToFile(section, level, text);
             }
@@ -98,9 +98,9 @@ namespace RemuxForge.Core.Infrastructure
         }
 
         /// <summary>
-        /// Imposta la modalita' runtime del logger
+        /// Imposta la modalità runtime del logger
         /// </summary>
-        /// <param name="mode">Modalita' runtime</param>
+        /// <param name="mode">Modalità runtime</param>
         public static void SetRuntimeMode(LogRuntimeMode mode)
         {
             s_runtimeMode = mode;
@@ -151,7 +151,7 @@ namespace RemuxForge.Core.Infrastructure
         /// </summary>
         public static void ResetFileLog()
         {
-            if (s_logFilePath.Length == 0)
+            if (string.IsNullOrEmpty(s_logFilePath))
             {
                 return;
             }

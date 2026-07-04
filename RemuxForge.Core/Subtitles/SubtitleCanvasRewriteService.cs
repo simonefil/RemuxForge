@@ -54,7 +54,7 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         /// <param name="record">Record elaborazione corrente</param>
         /// <param name="subtitleTracks">Tracce sottotitoli importate dal file lingua</param>
-        /// <param name="processedLangSubTracks">Mappa tracce sottotitolo gia' sostituite da file temporanei</param>
+        /// <param name="processedLangSubTracks">Mappa tracce sottotitolo già sostituite da file temporanei</param>
         /// <param name="options">Opzioni correnti</param>
         /// <param name="ffmpegPath">Path ffmpeg</param>
         /// <param name="tempFolder">Cartella temporanea</param>
@@ -109,7 +109,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="ffmpegPath">Path ffmpeg risolto</param>
         /// <param name="tempFolder">Cartella temporanea pipeline</param>
         /// <param name="context">Contesto canvas costruito</param>
-        /// <returns>True se il contesto e' valido e richiede rewrite</returns>
+        /// <returns>True se il contesto è valido e richiede rewrite</returns>
         private bool TryBuildContext(FileProcessingRecord record, Options options, string ffmpegPath, string tempFolder, out SubtitleCanvasRewriteContext context)
         {
             FrameSyncGeometryInfo sourceGeometry;
@@ -157,14 +157,14 @@ namespace RemuxForge.Core.Subtitles
                 return false;
             }
 
-            // Se canvas, crop e active area coincidono, non c'e' nulla da riscrivere per nessun formato sottotitolo
+            // Se canvas, crop e active area coincidono, non c'è nulla da riscrivere per nessun formato sottotitolo
             if (transform.InputCanvasWidth == transform.OutputCanvasWidth &&
                 transform.InputCanvasHeight == transform.OutputCanvasHeight &&
                 transform.OffsetX == 0 &&
                 transform.OffsetY == 0 &&
                 !transform.RequiresScaling)
             {
-                ConsoleHelper.Write(LogSection.Merge, LogLevel.Text, "  Subtitle canvas rewrite ignorato: canvas gia' allineato");
+                ConsoleHelper.Write(LogSection.Merge, LogLevel.Text, "  Subtitle canvas rewrite ignorato: canvas già allineato");
                 return false;
             }
 
@@ -191,7 +191,7 @@ namespace RemuxForge.Core.Subtitles
         }
 
         /// <summary>
-        /// Legge geometria gia' prodotta da DeepAnalysis o FrameSync
+        /// Legge geometria già prodotta da DeepAnalysis o FrameSync
         /// </summary>
         /// <param name="record">Record pipeline corrente</param>
         /// <param name="source">True per geometria source, false per language</param>
@@ -229,14 +229,14 @@ namespace RemuxForge.Core.Subtitles
             int bottom;
             int activeWidth;
 
-            // Priorita' al crop salvato dalla geometria di analisi, poi al crop manuale globale
-            if (manualCrop.Length == 0)
+            // Priorità al crop salvato dalla geometria di analisi, poi al crop manuale globale
+            if (string.IsNullOrEmpty(manualCrop))
             {
                 manualCrop = Options.NormalizeAnalysisCropPx(optionCropPx);
             }
 
-            // Il crop manuale esplicito e' l'unico caso in cui top/bottom possono essere diversi da zero
-            if (manualCrop.Length > 0 && Options.TryParseAnalysisCropPx(manualCrop, out left, out right, out top, out bottom))
+            // Il crop manuale esplicito è l'unico caso in cui top/bottom possono essere diversi da zero
+            if (!string.IsNullOrEmpty(manualCrop) && Options.TryParseAnalysisCropPx(manualCrop, out left, out right, out top, out bottom))
             {
                 result.Left = left;
                 result.Right = right;
@@ -287,7 +287,7 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         /// <param name="context">Contesto canvas comune</param>
         /// <param name="track">Traccia sottotitoli da processare</param>
-        /// <param name="processedLangSubTracks">Mappa tracce gia' estratte, tagliate o riscritte</param>
+        /// <param name="processedLangSubTracks">Mappa tracce già estratte, tagliate o riscritte</param>
         /// <param name="rewriter">Rewriter formato-specifico</param>
         private void TryProcessTrack(SubtitleCanvasRewriteContext context, TrackInfo track, Dictionary<int, string> processedLangSubTracks, ISubtitleCanvasRewriter rewriter)
         {
@@ -317,8 +317,8 @@ namespace RemuxForge.Core.Subtitles
                 }
             }
 
-            // Se il timeline edit ha gia' normalizzato il formato testuale, preserva l'estensione del file temporaneo
-            outputExtension = previousFile.Length > 0 && Path.GetExtension(inputFile).Length > 0 ? Path.GetExtension(inputFile) : rewriter.GetPrimaryExtension(track);
+            // Se il timeline edit ha già normalizzato il formato testuale, preserva l'estensione del file temporaneo
+            outputExtension = !string.IsNullOrEmpty(previousFile) && !string.IsNullOrEmpty(Path.GetExtension(inputFile)) ? Path.GetExtension(inputFile) : rewriter.GetPrimaryExtension(track);
             outputFile = Path.Combine(context.TempFolder, "subcanvas_t" + track.Id.ToString(CultureInfo.InvariantCulture) + "_" + Guid.NewGuid().ToString("N").Substring(0, 8) + outputExtension);
 
             // Il rewriter produce file standalone muxabili; il dizionario viene aggiornato solo dopo validazione
@@ -327,7 +327,7 @@ namespace RemuxForge.Core.Subtitles
                 rewriter.ValidateOutput(context, outputFile))
             {
                 processedLangSubTracks[track.Id] = outputFile;
-                if (previousFile.Length > 0)
+                if (!string.IsNullOrEmpty(previousFile))
                 {
                     this.DeleteSubtitleFiles(previousFile);
                 }
@@ -341,7 +341,7 @@ namespace RemuxForge.Core.Subtitles
                 this.DeleteSubtitleFiles(outputFile);
                 ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning,
                     "  Subtitle canvas rewrite t" + track.Id + " ignorato: " +
-                    (result != null && result.ErrorMessage.Length > 0 ? result.ErrorMessage : "validazione fallita"));
+                    (result != null && !string.IsNullOrEmpty(result.ErrorMessage) ? result.ErrorMessage : "validazione fallita"));
             }
 
             if (extractedInput)
@@ -381,7 +381,7 @@ namespace RemuxForge.Core.Subtitles
             string mkvExtractPath = this.ResolveMkvExtractPath(options);
             ProcessResult result;
 
-            if (mkvExtractPath.Length == 0)
+            if (string.IsNullOrEmpty(mkvExtractPath))
             {
                 return false;
             }
@@ -404,7 +404,7 @@ namespace RemuxForge.Core.Subtitles
         private string ResolveMkvExtractPath(Options options)
         {
             string mkvMergePath = options.MkvMergePath;
-            if (mkvMergePath.Length == 0)
+            if (string.IsNullOrEmpty(mkvMergePath))
             {
                 mkvMergePath = this._toolPathResolver.ResolveMkvMergePath(false);
             }
@@ -441,7 +441,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="right">Crop destro</param>
         /// <param name="top">Crop superiore</param>
         /// <param name="bottom">Crop inferiore</param>
-        /// <param name="mode">Modalita' origine crop</param>
+        /// <param name="mode">Modalità origine crop</param>
         /// <returns>Crop formattato</returns>
         private string FormatCrop(int left, int right, int top, int bottom, string mode)
         {
@@ -490,7 +490,7 @@ namespace RemuxForge.Core.Subtitles
             public int Bottom { get; set; }
 
             /// <summary>
-            /// Modalita' crop
+            /// Modalità crop
             /// </summary>
             public string Mode { get; set; }
         }

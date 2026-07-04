@@ -27,7 +27,7 @@ namespace RemuxForge.Core.Tools
         /// Individua mkvmerge nel sistema
         /// Ordine: AppSettings → posizioni note → PATH
         /// </summary>
-        /// <returns>True se mkvmerge e' stato trovato</returns>
+        /// <returns>True se mkvmerge è stato trovato</returns>
         public bool Resolve()
         {
             return this.Resolve(true);
@@ -38,7 +38,7 @@ namespace RemuxForge.Core.Tools
         /// Ordine: AppSettings → posizioni note → PATH
         /// </summary>
         /// <param name="autoSave">Se true, salva il percorso trovato in AppSettings</param>
-        /// <returns>True se mkvmerge e' stato trovato</returns>
+        /// <returns>True se mkvmerge è stato trovato</returns>
         public bool Resolve(bool autoSave)
         {
             bool resolved = false;
@@ -100,7 +100,7 @@ namespace RemuxForge.Core.Tools
             try
             {
                 ProcessResult processResult = ProcessRunner.Run(path, new string[] { "--version" });
-                result = processResult.Stdout.Length > 0;
+                result = !string.IsNullOrEmpty(processResult.Stdout);
             }
             catch
             {
@@ -149,7 +149,7 @@ namespace RemuxForge.Core.Tools
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Percorso risolto dell'eseguibile mkvmerge

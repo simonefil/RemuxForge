@@ -25,7 +25,7 @@ namespace RemuxForge.Core.Models
         #region Proprieta
 
         /// <summary>
-        /// True se la timeline e' stata accettata
+        /// True se la timeline è stata accettata
         /// </summary>
         public bool Success { get; set; }
 

@@ -194,7 +194,7 @@ namespace RemuxForge.Core.Analysis.Deep
         /// <param name="searchRadiusMs">Raggio ricerca</param>
         /// <param name="inverseRatio">Rapporto inverso speed correction</param>
         /// <param name="diagnostic">Diagnostica timeline da aggiornare</param>
-        /// <returns>True se la scansione visuale e' stata avviata</returns>
+        /// <returns>True se la scansione visuale è stata avviata</returns>
         private bool BuildVisualAnchors(string sourceFile, string langFile, double sourceDurationSec, int searchRadiusMs, double inverseRatio, DeepAnalysisTimelineMapDiagnostic diagnostic)
         {
             bool result = false;
@@ -244,7 +244,7 @@ namespace RemuxForge.Core.Analysis.Deep
             {
                 bool anchorNear;
                 bool centerNear;
-                // Densifichiamo solo dove c'e' una vera transizione di offset da localizzare
+                // Densifichiamo solo dove c'è una vera transizione di offset da localizzare
                 if (Math.Abs(baseAccepted[i + 1].OffsetMs - baseAccepted[i].OffsetMs) < MIN_TIMELINE_TRANSITION_MS)
                 {
                     continue;
@@ -311,7 +311,7 @@ namespace RemuxForge.Core.Analysis.Deep
 
             Parallel.For(0, centers.Count, options, delegate (int i)
             {
-                // Ogni slot dell'array e' scritto da una sola iterazione, quindi non serve lock
+                // Ogni slot dell'array è scritto da una sola iterazione, quindi non serve lock
                 DeepAnalysisTimelineAnchorDiagnostic anchor;
                 if (this._visualAnchorProbe(sourceFile, langFile, centers[i], searchRadiusMs, VIDEO_SEARCH_STEP_MS, inverseRatio, out anchor))
                 {
@@ -383,7 +383,7 @@ namespace RemuxForge.Core.Analysis.Deep
 
             for (int i = 0; i < anchors.Count; i++)
             {
-                // Quando l'offset si allontana dalla mediana corrente, il plateau e' chiuso
+                // Quando l'offset si allontana dalla mediana corrente, il plateau è chiuso
                 if (current.Count > 0 && Math.Abs(anchors[i].OffsetMs - currentOffset) > PLATEAU_TOLERANCE_MS)
                 {
                     this.AddPlateau(current, diagnostic);
@@ -405,7 +405,7 @@ namespace RemuxForge.Core.Analysis.Deep
         }
 
         /// <summary>
-        /// Aggiunge un plateau se contiene abbastanza anchor per la modalita' corrente
+        /// Aggiunge un plateau se contiene abbastanza anchor per la modalità corrente
         /// </summary>
         /// <param name="anchors">Anchor del plateau</param>
         /// <param name="diagnostic">Diagnostica timeline da aggiornare</param>
@@ -418,7 +418,7 @@ namespace RemuxForge.Core.Analysis.Deep
 
             DeepAnalysisTimelinePlateauDiagnostic plateau = new DeepAnalysisTimelinePlateauDiagnostic();
             double halfStepSec = VIDEO_ANCHOR_STEP_SEC / 2.0;
-            // I bordi plateau sono stimati a meta' passo attorno al primo/ultimo anchor
+            // I bordi plateau sono stimati a metà passo attorno al primo/ultimo anchor
             plateau.Index = diagnostic.Plateaus.Count;
             plateau.StartSrcSec = anchors[0].SourceCenterSec - halfStepSec;
             plateau.EndSrcSec = anchors[anchors.Count - 1].SourceCenterSec + halfStepSec;
@@ -447,7 +447,7 @@ namespace RemuxForge.Core.Analysis.Deep
                 DeepAnalysisTimelinePlateauDiagnostic current = diagnostic.Plateaus[i];
                 if (merged.Count > 0 && Math.Abs(merged[merged.Count - 1].OffsetMs - current.OffsetMs) < MIN_TIMELINE_TRANSITION_MS)
                 {
-                    // Media pesata per numero anchor: mantiene piu' influenza ai plateau piu' supportati
+                    // Media pesata per numero anchor: mantiene più influenza ai plateau più supportati
                     DeepAnalysisTimelinePlateauDiagnostic previous = merged[merged.Count - 1];
                     int totalAnchors = previous.AnchorCount + current.AnchorCount;
                     previous.EndSrcSec = current.EndSrcSec;
@@ -549,7 +549,7 @@ namespace RemuxForge.Core.Analysis.Deep
 
             for (int i = 0; i < plateaus.Count; i++)
             {
-                // Il confine tra due plateau e' il punto medio tra fine plateau precedente e inizio successivo
+                // Il confine tra due plateau è il punto medio tra fine plateau precedente e inizio successivo
                 OffsetRegion region = new OffsetRegion();
                 region.StartSrcSec = i == 0 ? 0.0 : this.ResolvePlateauBoundarySec(plateaus[i - 1], plateaus[i]);
                 region.EndSrcSec = i == plateaus.Count - 1 ? sourceDurationSec : this.ResolvePlateauBoundarySec(plateaus[i], plateaus[i + 1]);

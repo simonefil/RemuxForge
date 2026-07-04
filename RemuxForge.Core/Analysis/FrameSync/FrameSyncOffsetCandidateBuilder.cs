@@ -12,7 +12,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         #region Metodi pubblici
 
         /// <summary>
-        /// Seleziona i cluster di offset piu' promettenti dai voti ordinati
+        /// Seleziona i cluster di offset più promettenti dai voti ordinati
         /// </summary>
         public List<FrameSyncCandidate> SelectInitialCandidates(double[] sortedCandidates, int candidateCount, double frameIntervalMs, int maxInitialCandidates, int maxAbsOffsetMs)
         {

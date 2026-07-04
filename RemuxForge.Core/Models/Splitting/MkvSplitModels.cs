@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace RemuxForge.Core.Models
 {
     /// <summary>
-    /// Opzioni specifiche della modalita' split
+    /// Opzioni specifiche della modalità split
     /// </summary>
     public class MkvSplitOptions
     {
@@ -38,12 +38,12 @@ namespace RemuxForge.Core.Models
         #region Proprieta
 
         /// <summary>
-        /// File MKV di input in modalita' singolo file
+        /// File MKV di input in modalità singolo file
         /// </summary>
         public string InputFile { get; set; }
 
         /// <summary>
-        /// Cartella input in modalita' batch
+        /// Cartella input in modalità batch
         /// </summary>
         public string InputFolder { get; set; }
 
@@ -113,7 +113,7 @@ namespace RemuxForge.Core.Models
         public string Log { get; set; }
 
         /// <summary>
-        /// True quando l'input e' una cartella batch
+        /// True quando l'input è una cartella batch
         /// </summary>
         public bool Batch { get; set; }
 
@@ -139,12 +139,12 @@ namespace RemuxForge.Core.Models
         /// <summary>Keyframe successivo</summary>
         After,
 
-        /// <summary>Keyframe piu' vicino</summary>
+        /// <summary>Keyframe più vicino</summary>
         Nearest
     }
 
     /// <summary>
-    /// Modalita' di costruzione segmenti
+    /// Modalità di costruzione segmenti
     /// </summary>
     public enum MkvSplitMode
     {
@@ -174,7 +174,7 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
-    /// Modalita' frame rate rilevata
+    /// Modalità frame rate rilevata
     /// </summary>
     public enum MkvSplitFrameRateMode
     {

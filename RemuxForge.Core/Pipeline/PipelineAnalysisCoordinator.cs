@@ -187,7 +187,7 @@ namespace RemuxForge.Core.Pipeline
                 ConsoleHelper.Progress(LogSection.Speed, 10, "Speed: setup");
 
                 ffmpegPath = this.ResolveFfmpegForSpeed();
-                if (ffmpegPath.Length > 0)
+                if (!string.IsNullOrEmpty(ffmpegPath))
                 {
                     ConsoleHelper.Progress(LogSection.Speed, 14, "Speed: ffmpeg");
                     this._ffmpegPath = ffmpegPath;
@@ -240,13 +240,13 @@ namespace RemuxForge.Core.Pipeline
                             }
                             else
                             {
-                                ConsoleHelper.Write(LogSection.Speed, LogLevel.Error, "  Correzione velocita' manuale fallita");
+                                ConsoleHelper.Write(LogSection.Speed, LogLevel.Error, "  Correzione velocità manuale fallita");
                                 done = this.FailAndFinalizeRecord(record, "Speed correction manuale fallita");
                             }
                         }
                         else
                         {
-                            ConsoleHelper.Write(LogSection.Speed, LogLevel.Error, "  Correzione velocita' manuale fallita");
+                            ConsoleHelper.Write(LogSection.Speed, LogLevel.Error, "  Correzione velocità manuale fallita");
                             done = this.FailAndFinalizeRecord(record, "Speed correction manuale fallita");
                         }
                     }
@@ -259,7 +259,7 @@ namespace RemuxForge.Core.Pipeline
                 }
             }
 
-            // Rilevamento automatico mismatch velocita' (solo Auto esplicito)
+            // Rilevamento automatico mismatch velocità (solo Auto esplicito)
             if (!done && sourceInfo != null && langInfo != null && !this._opts.DeepAnalysis && speedCorrectionMode == Options.SPEED_CORRECTION_AUTO)
             {
                 if (sourceTiming == null)
@@ -288,19 +288,19 @@ namespace RemuxForge.Core.Pipeline
                         speedMismatch = false;
                     }
 
-                    // Se non c'e' mismatch reale, Auto non applica stretch
+                    // Se non c'è mismatch reale, Auto non applica stretch
                 }
 
                 if (speedMismatch)
                 {
-                    ConsoleHelper.Write(LogSection.Speed, LogLevel.Phase, "  Mismatch velocita': source " + detectedSourceFps.ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + "fps, lang " + detectedLangFps.ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + "fps");
+                    ConsoleHelper.Write(LogSection.Speed, LogLevel.Phase, "  Mismatch velocità: source " + detectedSourceFps.ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + "fps, lang " + detectedLangFps.ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + "fps");
                     ConsoleHelper.Progress(LogSection.Speed, 10, "Speed: setup");
 
                     // Risolvi ffmpeg se non ancora disponibile
                     ffmpegPath = this.ResolveFfmpegForSpeed();
                     this._ffmpegPath = ffmpegPath;
 
-                    if (speedMismatch && ffmpegPath.Length > 0)
+                    if (speedMismatch && !string.IsNullOrEmpty(ffmpegPath))
                     {
                         // Trova default_duration validato per tracce video
                         sourceDefaultDuration = this._timingResolver.GetTrustedDefaultDurationNs(sourceInfo, record.SourceFilePath);
@@ -329,14 +329,14 @@ namespace RemuxForge.Core.Pipeline
                         }
                         else
                         {
-                            ConsoleHelper.Write(LogSection.Speed, LogLevel.Error, "  Correzione velocita' fallita");
+                            ConsoleHelper.Write(LogSection.Speed, LogLevel.Error, "  Correzione velocità fallita");
                             done = this.FailAndFinalizeRecord(record, "Speed correction fallita");
                         }
                     }
                 }
             }
 
-            // Deep analysis: modalita' avanzata per file con edit diversi
+            // Deep analysis: modalità avanzata per file con edit diversi
             if (!done && !speedCorrectionActive && this._opts.DeepAnalysis)
             {
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, "  Avvio deep analysis...");
@@ -373,13 +373,13 @@ namespace RemuxForge.Core.Pipeline
 
                 // Risolvi ffmpeg se non ancora disponibile
                 ffmpegPath = this._ffmpegPath;
-                if (ffmpegPath.Length == 0)
+                if (string.IsNullOrEmpty(ffmpegPath))
                 {
                     ffmpegPath = this.ResolveFfmpegForSpeed();
                     this._ffmpegPath = ffmpegPath;
                 }
 
-                if (ffmpegPath.Length == 0)
+                if (string.IsNullOrEmpty(ffmpegPath))
                 {
                     ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, "  ffmpeg non disponibile");
                     ConsoleHelper.Progress(LogSection.Deep, 98, "Deep: errore");
@@ -399,7 +399,7 @@ namespace RemuxForge.Core.Pipeline
                     }
                     if (sourceDurationMs == 0 && sourceTiming != null && sourceTiming.DurationMs > 0.0)
                     {
-                        // DeepAnalysis lavora sulla timeline video/common-track; la durata container puo' essere gonfiata da tracce non importate
+                        // DeepAnalysis lavora sulla timeline video/common-track; la durata container può essere gonfiata da tracce non importate
                         sourceDurationMs = (int)Math.Round(sourceTiming.DurationMs);
                     }
                     if (sourceDurationMs == 0 && sourceInfo != null && sourceInfo.ContainerDurationNs > 0)
@@ -424,7 +424,7 @@ namespace RemuxForge.Core.Pipeline
                             record.DeepAnalysisApplied = true;
                             syncOffset = editMap.InitialDelayMs;
 
-                            if (editMap.StretchFactor.Length > 0)
+                            if (!string.IsNullOrEmpty(editMap.StretchFactor))
                             {
                                 record.StretchFactor = editMap.StretchFactor;
                                 record.SpeedCorrectionApplied = true;
@@ -469,7 +469,7 @@ namespace RemuxForge.Core.Pipeline
                 }
             }
 
-            // Frame-sync solo se non in correzione velocita'
+            // Frame-sync solo se non in correzione velocità
             if (!done && !speedCorrectionActive && this._opts.FrameSync && this._frameSyncService != null)
             {
                 ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Phase, "  Sincronizzazione tramite confronto visivo...");
@@ -501,7 +501,7 @@ namespace RemuxForge.Core.Pipeline
 
                 if (frameSyncOffset != int.MinValue && !frameSyncAccepted)
                 {
-                    if (record.FrameSyncResult != null && record.FrameSyncResult.FailureReason.Length == 0)
+                    if (record.FrameSyncResult != null && string.IsNullOrEmpty(record.FrameSyncResult.FailureReason))
                     {
                         if (record.FrameSyncResult.Initial == null || !record.FrameSyncResult.Initial.Success)
                         {
@@ -557,13 +557,13 @@ namespace RemuxForge.Core.Pipeline
 
                         // Risolvi ffmpeg se necessario
                         ffmpegPath = this._ffmpegPath;
-                        if (ffmpegPath.Length == 0)
+                        if (string.IsNullOrEmpty(ffmpegPath))
                         {
                             ffmpegPath = this.ResolveFfmpegForSpeed();
                             this._ffmpegPath = ffmpegPath;
                         }
 
-                        if (ffmpegPath.Length > 0 && sourceDefaultDuration == 0)
+                        if (!string.IsNullOrEmpty(ffmpegPath) && sourceDefaultDuration == 0)
                         {
                             // Recupera default_duration se non ancora estratta (non era passato dal blocco speedMismatch)
                             sourceDefaultDuration = Utils.GetVideoDefaultDuration(sourceInfo.Tracks);
@@ -571,7 +571,7 @@ namespace RemuxForge.Core.Pipeline
                             sourceDurationMs = (int)(sourceInfo.ContainerDurationNs / 1000000);
                         }
 
-                        if (ffmpegPath.Length > 0 && sourceDefaultDuration > 0 && langDefaultDuration > 0)
+                        if (!string.IsNullOrEmpty(ffmpegPath) && sourceDefaultDuration > 0 && langDefaultDuration > 0)
                         {
                             speedService = new SpeedCorrectionService(ffmpegPath);
                             speedService.SetAnalysisCrop(this._opts.AnalysisCropSourcePx, this._opts.AnalysisCropLanguagePx);
@@ -592,7 +592,7 @@ namespace RemuxForge.Core.Pipeline
                             }
                             else
                             {
-                                ConsoleHelper.Write(LogSection.Speed, LogLevel.Error, "  Correzione velocita' forzata fallita");
+                                ConsoleHelper.Write(LogSection.Speed, LogLevel.Error, "  Correzione velocità forzata fallita");
                                 done = this.FailAndFinalizeRecord(record, "Frame sync e speed correction falliti");
                             }
                         }
@@ -668,7 +668,7 @@ namespace RemuxForge.Core.Pipeline
                 record.Status = FileStatus.Analyzed;
             }
 
-            if (completionMessage.Length > 0)
+            if (!string.IsNullOrEmpty(completionMessage))
             {
                 ConsoleHelper.Write(LogSection.General, LogLevel.Success, completionMessage);
             }
@@ -689,7 +689,7 @@ namespace RemuxForge.Core.Pipeline
         }
 
         /// <summary>
-        /// Costruisce la policy delle tracce audio che DeepAnalysis puo' usare come conferma locale
+        /// Costruisce la policy delle tracce audio che DeepAnalysis può usare come conferma locale
         /// </summary>
         /// <param name="sourceInfo">Metadata source</param>
         /// <param name="langInfo">Metadata file lingua</param>
@@ -790,7 +790,7 @@ namespace RemuxForge.Core.Pipeline
                     }
 
                     result.AudioValidationAvailable = true;
-                    result.TrackLanguage = sourceTrack.Language.Length > 0 ? sourceTrack.Language : sourceTrack.LanguageIetf;
+                    result.TrackLanguage = !string.IsNullOrEmpty(sourceTrack.Language) ? sourceTrack.Language : sourceTrack.LanguageIetf;
                     result.SourceTrackId = sourceTrack.Id;
                     result.LanguageTrackId = languageTrack.Id;
                     result.SourceTrackName = sourceTrack.Name;
@@ -867,7 +867,7 @@ namespace RemuxForge.Core.Pipeline
             for (int i = 0; i < languages.Count; i++)
             {
                 if (string.Equals(track.Language, languages[i], StringComparison.OrdinalIgnoreCase) ||
-                    (track.LanguageIetf.Length > 0 && (track.LanguageIetf.StartsWith(languages[i], StringComparison.OrdinalIgnoreCase) || string.Equals(track.LanguageIetf, languages[i], StringComparison.OrdinalIgnoreCase))))
+                    (!string.IsNullOrEmpty(track.LanguageIetf) && (track.LanguageIetf.StartsWith(languages[i], StringComparison.OrdinalIgnoreCase) || string.Equals(track.LanguageIetf, languages[i], StringComparison.OrdinalIgnoreCase))))
                 {
                     return true;
                 }
@@ -884,10 +884,10 @@ namespace RemuxForge.Core.Pipeline
         /// <returns>True se la lingua coincide</returns>
         private bool IsSameTrackLanguage(TrackInfo sourceTrack, TrackInfo languageTrack)
         {
-            string sourceLanguage = sourceTrack.Language.Length > 0 ? sourceTrack.Language : sourceTrack.LanguageIetf;
-            string language = languageTrack.Language.Length > 0 ? languageTrack.Language : languageTrack.LanguageIetf;
+            string sourceLanguage = !string.IsNullOrEmpty(sourceTrack.Language) ? sourceTrack.Language : sourceTrack.LanguageIetf;
+            string language = !string.IsNullOrEmpty(languageTrack.Language) ? languageTrack.Language : languageTrack.LanguageIetf;
 
-            if (sourceLanguage.Length == 0 || language.Length == 0)
+            if (string.IsNullOrEmpty(sourceLanguage) || string.IsNullOrEmpty(language))
             {
                 return false;
             }
@@ -933,12 +933,12 @@ namespace RemuxForge.Core.Pipeline
         {
             string result = this._ffmpegPath;
 
-            if (result.Length == 0)
+            if (string.IsNullOrEmpty(result))
             {
-                // Se la pipeline non ha ancora un path ffmpeg, usa il provider centrale gia' configurato
+                // Se la pipeline non ha ancora un path ffmpeg, usa il provider centrale già configurato
                 ConsoleHelper.Write(LogSection.Speed, LogLevel.Notice, "  Risoluzione ffmpeg per frame matching...");
                 result = this._toolPathResolver.ResolveFfmpegPath(true, false);
-                if (result.Length > 0)
+                if (!string.IsNullOrEmpty(result))
                 {
                     ConsoleHelper.Write(LogSection.Speed, LogLevel.Success, "  ffmpeg trovato: " + result);
                 }

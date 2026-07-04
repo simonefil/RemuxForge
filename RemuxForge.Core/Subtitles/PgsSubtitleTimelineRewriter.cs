@@ -26,7 +26,7 @@ namespace RemuxForge.Core.Subtitles
             int setStart;
             int setEnd;
 
-            // Il formato SUP/PGS e' una sequenza di display-set terminati da segment type 0x80
+            // Il formato SUP/PGS è una sequenza di display-set terminati da segment type 0x80
             while (pos + PgsSubtitleUtils.SUP_PACKET_HEADER_SIZE <= data.Length)
             {
                 setStart = pos;

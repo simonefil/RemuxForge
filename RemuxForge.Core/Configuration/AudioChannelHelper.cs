@@ -179,7 +179,7 @@ namespace RemuxForge.Core.Configuration
         {
             string text = channels != null ? channels.Trim() : "";
 
-            if (text.Length == 0)
+            if (string.IsNullOrEmpty(text))
                 return "";
 
             for (int i = 0; i < s_channelLayoutAliases.Length; i++)
@@ -205,7 +205,7 @@ namespace RemuxForge.Core.Configuration
                 return result;
 
             text = channels.Trim();
-            if (text.Length == 0)
+            if (string.IsNullOrEmpty(text))
                 return result;
 
             if (text.StartsWith("9.1.6", StringComparison.OrdinalIgnoreCase))

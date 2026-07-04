@@ -77,7 +77,7 @@ namespace RemuxForge.Core.Rename
                     result.FailCount++;
                     string error = AppText.F("rename.error.finalRename", tempEntry.Item.NewName, ex.Message);
                     result.Errors.Add(error);
-                    if (result.ErrorMessage.Length == 0)
+                    if (string.IsNullOrEmpty(result.ErrorMessage))
                         result.ErrorMessage = error;
 
                     this.RollbackSingle(tempEntry);

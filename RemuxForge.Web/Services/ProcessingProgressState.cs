@@ -55,7 +55,7 @@ namespace RemuxForge.Web.Services
         #region Proprieta
 
         /// <summary>
-        /// True se un'operazione e' in corso
+        /// True se un'operazione è in corso
         /// </summary>
         public bool IsActive { get; set; }
 
@@ -100,12 +100,12 @@ namespace RemuxForge.Web.Services
         public int GlobalPercent { get; set; }
 
         /// <summary>
-        /// True se la barra episodio e' indeterminata
+        /// True se la barra episodio è indeterminata
         /// </summary>
         public bool CurrentIndeterminate { get; set; }
 
         /// <summary>
-        /// True se la barra globale e' indeterminata
+        /// True se la barra globale è indeterminata
         /// </summary>
         public bool GlobalIndeterminate { get; set; }
 

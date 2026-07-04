@@ -166,7 +166,7 @@ namespace RemuxForge.Core.Transcoding
 
             // Tune
             tuneValue = this.ExtractTuneValue(profile.Codec, profile.Tune);
-            if (tuneValue.Length > 0)
+            if (!string.IsNullOrEmpty(tuneValue))
             {
                 if (profile.Codec == "libsvtav1")
                 {
@@ -186,7 +186,7 @@ namespace RemuxForge.Core.Transcoding
 
             // Pixel format
             pixFmt = this.ExtractPixelFormat(profile.BitDepth);
-            if (pixFmt.Length > 0)
+            if (!string.IsNullOrEmpty(pixFmt))
             {
                 sb.Append(" -pix_fmt ").Append(pixFmt);
             }
@@ -209,14 +209,14 @@ namespace RemuxForge.Core.Transcoding
             if (profile.Codec == "libsvtav1")
             {
                 string svtParams = this.BuildSvtAv1Params(profile, tuneValue);
-                if (svtParams.Length > 0)
+                if (!string.IsNullOrEmpty(svtParams))
                 {
                     sb.Append(" -svtav1-params ").Append(svtParams);
                 }
             }
 
             // ExtraParams
-            if (profile.ExtraParams.Length > 0)
+            if (!string.IsNullOrEmpty(profile.ExtraParams))
             {
                 sb.Append(" ").Append(profile.ExtraParams);
             }
@@ -265,7 +265,7 @@ namespace RemuxForge.Core.Transcoding
 
             // Tune (solo x264/x265, non "default")
             tuneValue = this.ExtractTuneValue(profile.Codec, profile.Tune);
-            if (tuneValue.Length > 0 && profile.Codec != "libsvtav1")
+            if (!string.IsNullOrEmpty(tuneValue) && profile.Codec != "libsvtav1")
             {
                 args.Add("-tune");
                 args.Add(tuneValue);
@@ -280,7 +280,7 @@ namespace RemuxForge.Core.Transcoding
 
             // Pixel format
             pixFmt = this.ExtractPixelFormat(profile.BitDepth);
-            if (pixFmt.Length > 0)
+            if (!string.IsNullOrEmpty(pixFmt))
             {
                 args.Add("-pix_fmt");
                 args.Add(pixFmt);
@@ -315,7 +315,7 @@ namespace RemuxForge.Core.Transcoding
             if (profile.Codec == "libsvtav1")
             {
                 string svtParams = this.BuildSvtAv1Params(profile, tuneValue);
-                if (svtParams.Length > 0)
+                if (!string.IsNullOrEmpty(svtParams))
                 {
                     args.Add("-svtav1-params");
                     args.Add(svtParams);
@@ -323,13 +323,13 @@ namespace RemuxForge.Core.Transcoding
             }
 
             // Extra params
-            if (profile.ExtraParams.Length > 0)
+            if (!string.IsNullOrEmpty(profile.ExtraParams))
             {
                 string[] extraParts = profile.ExtraParams.Split(' ');
                 for (int i = 0; i < extraParts.Length; i++)
                 {
                     string part = extraParts[i].Trim();
-                    if (part.Length > 0)
+                    if (!string.IsNullOrEmpty(part))
                     {
                         args.Add(part);
                     }
@@ -350,7 +350,7 @@ namespace RemuxForge.Core.Transcoding
             List<string> parts = new List<string>();
 
             // Tune
-            if (tuneValue.Length > 0)
+            if (!string.IsNullOrEmpty(tuneValue))
             {
                 parts.Add("tune=" + tuneValue);
             }
@@ -411,7 +411,7 @@ namespace RemuxForge.Core.Transcoding
         private string ExtractTuneValue(string codec, string tune)
         {
             string result = "";
-            if (tune == "default" || tune.Length == 0)
+            if (tune == "default" || string.IsNullOrEmpty(tune))
             {
                 return result;
             }
@@ -424,7 +424,7 @@ namespace RemuxForge.Core.Transcoding
             }
             else
             {
-                // x264/x265: il valore e' il nome stesso
+                // x264/x265: il valore è il nome stesso
                 result = tune;
             }
 

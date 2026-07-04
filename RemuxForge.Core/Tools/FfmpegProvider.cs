@@ -74,7 +74,7 @@ namespace RemuxForge.Core.Tools
         /// <param name="autoSave">Se true, salva il percorso trovato in AppSettings</param>
         /// <param name="allowDownload">Se true, tenta il download se non trovato localmente</param>
         /// <param name="requireLibSoxr">Se true, aggiorna il binario RemuxForge gestito se non espone libsoxr</param>
-        /// <returns>True se ffmpeg e' stato trovato o scaricato</returns>
+        /// <returns>True se ffmpeg è stato trovato o scaricato</returns>
         public bool Resolve(bool autoSave, bool allowDownload, bool requireLibSoxr)
         {
             bool resolved = false;
@@ -82,7 +82,7 @@ namespace RemuxForge.Core.Tools
             string toolsFfmpeg = Path.Combine(this._toolsFolder, ffmpegName);
             string found;
             // Controlla percorso salvato in AppSettings
-            if (AppSettingsService.Instance.Settings.Tools.FfmpegPath.Length > 0 && File.Exists(AppSettingsService.Instance.Settings.Tools.FfmpegPath))
+            if (!string.IsNullOrEmpty(AppSettingsService.Instance.Settings.Tools.FfmpegPath) && File.Exists(AppSettingsService.Instance.Settings.Tools.FfmpegPath))
             {
                 this._resolvedPath = AppSettingsService.Instance.Settings.Tools.FfmpegPath;
                 resolved = true;
@@ -105,7 +105,7 @@ namespace RemuxForge.Core.Tools
             if (!resolved)
             {
                 found = SearchInPaths(ffmpegName, this.GetWellKnownPaths());
-                if (found.Length > 0)
+                if (!string.IsNullOrEmpty(found))
                 {
                     this._resolvedPath = found;
                     resolved = true;
@@ -116,7 +116,7 @@ namespace RemuxForge.Core.Tools
             if (!resolved)
             {
                 found = FindInSystemPath(ffmpegName);
-                if (found.Length > 0)
+                if (!string.IsNullOrEmpty(found))
                 {
                     this._resolvedPath = found;
                     resolved = true;
@@ -158,7 +158,7 @@ namespace RemuxForge.Core.Tools
             for (int i = 0; i < lines.Length; i++)
             {
                 string line = lines[i].Trim();
-                if (line.Length > 0)
+                if (!string.IsNullOrEmpty(line))
                 {
                     return line;
                 }
@@ -216,7 +216,7 @@ namespace RemuxForge.Core.Tools
         /// Determina la piattaforma e avvia il download appropriato
         /// </summary>
         /// <param name="ffmpegDest">Percorso di destinazione dell'eseguibile</param>
-        /// <returns>True se il download e' riuscito</returns>
+        /// <returns>True se il download è riuscito</returns>
         private bool DownloadForCurrentPlatform(string ffmpegDest)
         {
             bool success = false;
@@ -295,10 +295,10 @@ namespace RemuxForge.Core.Tools
                 foundFfmpeg = FindFileRecursive(extractPath, "ffmpeg.exe");
                 foundFfprobe = FindFileRecursive(extractPath, "ffprobe.exe");
 
-                if (foundFfmpeg.Length > 0)
+                if (!string.IsNullOrEmpty(foundFfmpeg))
                 {
                     File.Copy(foundFfmpeg, ffmpegDest, true);
-                    if (foundFfprobe.Length > 0)
+                    if (!string.IsNullOrEmpty(foundFfprobe))
                     {
                         ffprobeDest = Path.Combine(this._toolsFolder, "ffprobe.exe");
                         File.Copy(foundFfprobe, ffprobeDest, true);
@@ -321,7 +321,9 @@ namespace RemuxForge.Core.Tools
             }
             finally
             {
-                if (webClient != null) { webClient.Dispose(); }
+                if (webClient != null)
+                    webClient.Dispose();
+
                 CleanupTempFiles(zipPath, extractPath);
             }
 
@@ -373,11 +375,11 @@ namespace RemuxForge.Core.Tools
                     foundFfmpeg = FindFileRecursive(extractPath, "ffmpeg");
                     foundFfprobe = FindFileRecursive(extractPath, "ffprobe");
 
-                    if (foundFfmpeg.Length > 0)
+                    if (!string.IsNullOrEmpty(foundFfmpeg))
                     {
                         File.Copy(foundFfmpeg, ffmpegDest, true);
                         RunCommand("chmod", new string[] { "+x", ffmpegDest });
-                        if (foundFfprobe.Length > 0)
+                        if (!string.IsNullOrEmpty(foundFfprobe))
                         {
                             ffprobeDest = Path.Combine(this._toolsFolder, "ffprobe");
                             File.Copy(foundFfprobe, ffprobeDest, true);
@@ -403,7 +405,9 @@ namespace RemuxForge.Core.Tools
             }
             finally
             {
-                if (webClient != null) { webClient.Dispose(); }
+                if (webClient != null)
+                    webClient.Dispose();
+
                 CleanupTempFiles(tarPath, extractPath);
             }
 
@@ -411,7 +415,7 @@ namespace RemuxForge.Core.Tools
         }
 
         /// <summary>
-        /// Segnala che il download automatico ffmpeg non e' supportato su macOS
+        /// Segnala che il download automatico ffmpeg non è supportato su macOS
         /// </summary>
         /// <returns>Sempre false: usare Homebrew o path manuale</returns>
         private bool DownloadMacOS()
@@ -438,12 +442,15 @@ namespace RemuxForge.Core.Tools
         /// <summary>
         /// Legge output completo di ffmpeg -version
         /// </summary>
+        /// <param name="ffmpegPath">Percorso ffmpeg</param>
+        /// <param name="output">Output completo di ffmpeg -version</param>
+        /// <returns>True se la versione è stata letta</returns>
         private static bool TryReadVersionOutput(string ffmpegPath, out string output)
         {
             ProcessResult result;
 
             output = "";
-            if (ffmpegPath == null || ffmpegPath.Length == 0 || !File.Exists(ffmpegPath))
+            if (string.IsNullOrEmpty(ffmpegPath) || !File.Exists(ffmpegPath))
             {
                 return false;
             }
@@ -451,18 +458,21 @@ namespace RemuxForge.Core.Tools
             result = ProcessRunner.Run(ffmpegPath, new string[] { "-version" });
             output = result.Stdout + "\n" + result.Stderr;
 
-            return result.ExitCode == 0 && output.Length > 0;
+            return result.ExitCode == 0 && !string.IsNullOrEmpty(output);
         }
 
         /// <summary>
         /// Indica se il path ffmpeg corrisponde al binario gestito nella cartella RemuxForge
         /// </summary>
+        /// <param name="resolvedPath">Path ffmpeg risolto</param>
+        /// <param name="toolsFfmpeg">Path ffmpeg nella cartella tools</param>
+        /// <returns>True se il path risolto è quello gestito</returns>
         private bool IsManagedFfmpegPath(string resolvedPath, string toolsFfmpeg)
         {
             string resolvedFullPath;
             string toolsFullPath;
 
-            if (resolvedPath == null || toolsFfmpeg == null || resolvedPath.Length == 0 || toolsFfmpeg.Length == 0)
+            if (string.IsNullOrEmpty(resolvedPath) || string.IsNullOrEmpty(toolsFfmpeg))
             {
                 return false;
             }
@@ -514,13 +524,13 @@ namespace RemuxForge.Core.Tools
             }
 
             // Se non trovato, cerca nelle sottodirectory
-            if (result.Length == 0)
+            if (string.IsNullOrEmpty(result))
             {
                 subdirs = Directory.GetDirectories(directory);
                 for (int i = 0; i < subdirs.Length; i++)
                 {
                     result = FindFileRecursive(subdirs[i], fileName);
-                    if (result.Length > 0)
+                    if (!string.IsNullOrEmpty(result))
                     {
                         break;
                     }
@@ -532,7 +542,7 @@ namespace RemuxForge.Core.Tools
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Percorso risolto dell'eseguibile ffmpeg

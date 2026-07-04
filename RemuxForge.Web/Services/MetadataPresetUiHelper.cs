@@ -184,7 +184,7 @@ namespace RemuxForge.Web.Services
                 operation.TagKey = "";
 
             List<string> tagNames = GetTagNames();
-            if (operation.TagKey.Length == 0 && tagNames.Count > 0)
+            if (string.IsNullOrEmpty(operation.TagKey) && tagNames.Count > 0)
                 operation.TagKey = tagNames[0];
 
             if (RequiresEditableField(operation.Type) && !ContainsField(GetEditableFields(scope, operation, includeAdvancedFields), operation.FieldKey))

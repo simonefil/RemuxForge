@@ -68,7 +68,7 @@ namespace RemuxForge.Core.Pipeline
                 {
                     string langFileName = Path.GetFileName(languageFiles[i]);
                     string langEpisodeId = this.GetEpisodeIdentifier(langFileName, options.MatchPattern);
-                    if (langEpisodeId.Length > 0)
+                    if (!string.IsNullOrEmpty(langEpisodeId))
                     {
                         languageIndex[langEpisodeId] = languageFiles[i];
                     }
@@ -91,7 +91,7 @@ namespace RemuxForge.Core.Pipeline
 
                 if (needsMerge)
                 {
-                    if (episodeId.Length == 0)
+                    if (string.IsNullOrEmpty(episodeId))
                     {
                         record.SkipReason = "No episode ID";
                         record.Status = FileStatus.Skipped;
@@ -118,7 +118,7 @@ namespace RemuxForge.Core.Pipeline
                 }
                 else
                 {
-                    record.EpisodeId = episodeId.Length > 0 ? episodeId : sourceFileName;
+                    record.EpisodeId = !string.IsNullOrEmpty(episodeId) ? episodeId : sourceFileName;
                 }
 
                 record.Status = FileStatus.Pending;
@@ -144,7 +144,7 @@ namespace RemuxForge.Core.Pipeline
             Match match = Regex.Match(fileName, pattern, RegexOptions.IgnoreCase);
             if (match.Success)
             {
-                // Se la regex contiene gruppi, l'ID stabile e' la concatenazione dei gruppi catturati
+                // Se la regex contiene gruppi, l'ID stabile è la concatenazione dei gruppi catturati
                 if (match.Groups.Count > 1)
                 {
                     StringBuilder sb = new StringBuilder();

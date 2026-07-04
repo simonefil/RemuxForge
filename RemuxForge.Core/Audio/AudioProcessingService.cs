@@ -75,7 +75,7 @@ namespace RemuxForge.Core.Audio
                 return result;
             }
 
-            if (request.Options.AudioFormat.Length == 0)
+            if (string.IsNullOrEmpty(request.Options.AudioFormat))
             {
                 errorMessage = "Processing audio richiesto ma formato audio non impostato";
                 ConsoleHelper.Write(LogSection.Conv, LogLevel.Error, "  " + errorMessage);
@@ -90,7 +90,7 @@ namespace RemuxForge.Core.Audio
             request.Plan = plan;
             request.Record.AudioProcessingPreview = plan;
 
-            // La richiesta puo' contenere tracce source e lang: da qui in poi ogni job e' indipendente
+            // La richiesta può contenere tracce source e lang: da qui in poi ogni job è indipendente
             if (plan.SourceTracks != null)
             {
                 for (int i = 0; i < plan.SourceTracks.Count; i++)
@@ -116,7 +116,8 @@ namespace RemuxForge.Core.Audio
             this.LogAudioProcessingPlan(request, jobs);
 
             maxParallel = Math.Min(4, Environment.ProcessorCount);
-            if (maxParallel < 1) { maxParallel = 1; }
+            if (maxParallel < 1)
+                maxParallel = 1;
 
             try
             {
@@ -131,7 +132,7 @@ namespace RemuxForge.Core.Audio
                             result.Success = false;
                             result.ErrorMessage = trackResult.ErrorMessage;
                         }
-                        else if (trackResult.Success && trackResult.OutputFile.Length > 0)
+                        else if (trackResult.Success && !string.IsNullOrEmpty(trackResult.OutputFile))
                         {
                             if (job.IsSource)
                             {
@@ -195,7 +196,7 @@ namespace RemuxForge.Core.Audio
                 return result;
             }
 
-            if (trackPlan != null && trackPlan.ErrorMessage.Length > 0)
+            if (trackPlan != null && !string.IsNullOrEmpty(trackPlan.ErrorMessage))
             {
                 result.ErrorMessage = trackPlan.ErrorMessage;
                 return result;
@@ -203,7 +204,7 @@ namespace RemuxForge.Core.Audio
 
             outputFile = this.CreateOutputPath(request.Record, job.Track, request.Options.AudioFormat, job.IsSource ? "src" : "lang");
 
-            // Priorita': source fill modifica la timeline completa, poi EditMap deep-analysis, infine conversione semplice
+            // Priorità: source fill modifica la timeline completa, poi EditMap deep-analysis, infine conversione semplice
             if (trackPlan != null && trackPlan.SourceFillHasWork)
             {
                 if (sourceFillTrack == null || job.Track == null)
@@ -271,7 +272,7 @@ namespace RemuxForge.Core.Audio
             {
                 // La normalizzazione peak richiede un render temporaneo completo per misurare il picco reale
                 tempFile = this.RenderSimpleTemp(request, inputFile, track);
-                if (tempFile.Length == 0)
+                if (string.IsNullOrEmpty(tempFile))
                 {
                     result.ErrorMessage = "Peak normalization fallita: impossibile creare temp audio per track " + track.Id + this.FormatLastFfmpegError();
                     return false;
@@ -325,7 +326,7 @@ namespace RemuxForge.Core.Audio
                 args = this.BuildEditMapArgs(request.LanguageFilePath, track, request.LangEditMap, request.Options, tempFile, true);
                 this.AddPeakTempCodecArgsBeforeOutput(args, request.Options);
                 tempFile = this.RunFfmpegToTemp(args, tempFile) ? tempFile : "";
-                if (tempFile.Length == 0)
+                if (string.IsNullOrEmpty(tempFile))
                 {
                     result.ErrorMessage = "Deep audio render fallito su temp track " + track.Id + this.FormatLastFfmpegError();
                     return false;
@@ -385,7 +386,7 @@ namespace RemuxForge.Core.Audio
                 args = this.BuildSourceFillArgs(request, sourceTrack, langTrack, plan, tempFile, true);
                 this.AddPeakTempCodecArgsBeforeOutput(args, request.Options);
                 tempFile = this.RunFfmpegToTemp(args, tempFile) ? tempFile : "";
-                if (tempFile.Length == 0)
+                if (string.IsNullOrEmpty(tempFile))
                 {
                     result.ErrorMessage = "Audio source fill fallito su temp track " + langTrack.Id + this.FormatLastFfmpegError();
                     return false;
@@ -426,14 +427,14 @@ namespace RemuxForge.Core.Audio
             ConsoleHelper.Write(LogSection.Conv, LogLevel.Notice, "  Peak normalize source fill: normalizzazione preventiva source/lang");
 
             sourceTemp = this.RenderSimpleTemp(request, request.SourceFilePath, sourceTrack);
-            if (sourceTemp.Length == 0)
+            if (string.IsNullOrEmpty(sourceTemp))
             {
                 result.ErrorMessage = "Peak normalization source fill fallita: temp source non creato per track " + sourceTrack.Id + this.FormatLastFfmpegError();
                 return false;
             }
 
             langTemp = this.RenderSimpleTemp(request, request.LanguageFilePath, langTrack);
-            if (langTemp.Length == 0)
+            if (string.IsNullOrEmpty(langTemp))
             {
                 result.ErrorMessage = "Peak normalization source fill fallita: temp lang non creato per track " + langTrack.Id + this.FormatLastFfmpegError();
                 return false;
@@ -506,7 +507,7 @@ namespace RemuxForge.Core.Audio
         /// <param name="editMap">Mappa operazioni deep-analysis</param>
         /// <param name="options">Opzioni correnti</param>
         /// <param name="outputFile">File di output</param>
-        /// <param name="forPeakTemp">True se l'output e' un PCM temporaneo per peak</param>
+        /// <param name="forPeakTemp">True se l'output è un PCM temporaneo per peak</param>
         /// <returns>Lista argomenti ffmpeg</returns>
         private List<string> BuildEditMapArgs(string inputFile, TrackInfo track, EditMap editMap, Options options, string outputFile, bool forPeakTemp)
         {
@@ -539,7 +540,7 @@ namespace RemuxForge.Core.Audio
         /// <param name="langTrack">Traccia lang da renderizzare</param>
         /// <param name="plan">Piano source fill calcolato</param>
         /// <param name="outputFile">File di output</param>
-        /// <param name="forPeakTemp">True se l'output e' un PCM temporaneo per peak</param>
+        /// <param name="forPeakTemp">True se l'output è un PCM temporaneo per peak</param>
         /// <returns>Lista argomenti ffmpeg</returns>
         private List<string> BuildSourceFillArgs(AudioProcessingRequest request, TrackInfo sourceTrack, TrackInfo langTrack, AudioSourceFillPlan plan, string outputFile, bool forPeakTemp)
         {
@@ -735,7 +736,7 @@ namespace RemuxForge.Core.Audio
                 filter += ",atrim=start=" + (initialTrimMs / 1000.0).ToString("F3", CultureInfo.InvariantCulture) + ",asetpts=PTS-STARTPTS";
             }
             string post = this.BuildPostFilter(track, options, forPeakTemp);
-            if (post.Length > 0)
+            if (!string.IsNullOrEmpty(post))
             {
                 filter += "," + post;
             }
@@ -928,7 +929,7 @@ namespace RemuxForge.Core.Audio
         /// <param name="tempFile">File PCM temporaneo da analizzare</param>
         /// <param name="targetDb">Target peak in dB</param>
         /// <param name="gainDb">Gain calcolato in dB</param>
-        /// <returns>True se il peak e' stato letto correttamente</returns>
+        /// <returns>True se il peak è stato letto correttamente</returns>
         private bool MeasurePeakGain(string tempFile, double targetDb, out double gainDb)
         {
             List<string> args = new List<string>();
@@ -967,7 +968,7 @@ namespace RemuxForge.Core.Audio
         /// </summary>
         /// <param name="stderr">Output stderr ffmpeg</param>
         /// <param name="peakDb">Peak rilevato in dB</param>
-        /// <returns>True se il valore e' stato trovato e parsato</returns>
+        /// <returns>True se il valore è stato trovato e parsato</returns>
         private bool TryParsePeak(string stderr, out double peakDb)
         {
             string[] lines = stderr.Split('\n');
@@ -1050,7 +1051,7 @@ namespace RemuxForge.Core.Audio
         /// <returns>Messaggio errore normalizzato</returns>
         private string ResolveFfmpegError(ProcessResult processResult)
         {
-            string output = processResult.Stderr.Length > 0 ? processResult.Stderr : processResult.Stdout;
+            string output = !string.IsNullOrEmpty(processResult.Stderr) ? processResult.Stderr : processResult.Stdout;
 
             if (output.IndexOf("Requested resampling engine is unavailable", StringComparison.OrdinalIgnoreCase) >= 0)
             {
@@ -1059,14 +1060,14 @@ namespace RemuxForge.Core.Audio
 
             if (output.IndexOf("Requested noise shaping dither not available", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                return "ffmpeg non puo' applicare il dither shibata alla frequenza richiesta";
+                return "ffmpeg non può applicare il dither shibata alla frequenza richiesta";
             }
 
             return this.LastErrorLine(output);
         }
 
         /// <summary>
-        /// Rileva fallback audio che ffmpeg puo' segnalare senza fallire il processo
+        /// Rileva fallback audio che ffmpeg può segnalare senza fallire il processo
         /// </summary>
         /// <param name="stderr">Output stderr ffmpeg</param>
         /// <returns>True se il fallback rende l'output non accettabile</returns>
@@ -1081,7 +1082,7 @@ namespace RemuxForge.Core.Audio
         /// <returns>Errore formattato, oppure stringa vuota</returns>
         private string FormatLastFfmpegError()
         {
-            return this._lastFfmpegError.Length > 0 ? ": " + this._lastFfmpegError : "";
+            return !string.IsNullOrEmpty(this._lastFfmpegError) ? ": " + this._lastFfmpegError : "";
         }
 
         /// <summary>
@@ -1110,7 +1111,7 @@ namespace RemuxForge.Core.Audio
                 }
             }
 
-            if (result.Codec.Length == 0)
+            if (string.IsNullOrEmpty(result.Codec))
             {
                 result.Codec = options.AudioFormat;
             }
@@ -1223,7 +1224,7 @@ namespace RemuxForge.Core.Audio
             {
                 return result;
             }
-            if (plan.ErrorMessage.Length > 0)
+            if (!string.IsNullOrEmpty(plan.ErrorMessage))
             {
                 result = "errore";
             }
@@ -1270,11 +1271,11 @@ namespace RemuxForge.Core.Audio
             string channels;
             string result;
 
-            language = track.Language.Length > 0 ? track.Language : "und";
+            language = !string.IsNullOrEmpty(track.Language) ? track.Language : "und";
             channels = AudioChannelHelper.FormatChannels(track.Channels);
             result = language + " " + track.Codec;
 
-            if (channels.Length > 0)
+            if (!string.IsNullOrEmpty(channels))
             {
                 result += " " + channels;
             }
@@ -1301,7 +1302,7 @@ namespace RemuxForge.Core.Audio
         private string CreateOutputPath(FileProcessingRecord record, TrackInfo track, string format, string prefix)
         {
             string extension = ".mka";
-            string label = record.EpisodeId.Length > 0 ? record.EpisodeId : "track";
+            string label = !string.IsNullOrEmpty(record.EpisodeId) ? record.EpisodeId : "track";
 
             if (format == "flac") { extension = ".flac"; }
             else if (format == "lpcm") { extension = ".wav"; }
@@ -1320,7 +1321,7 @@ namespace RemuxForge.Core.Audio
         /// <returns>Path temporaneo completo</returns>
         private string CreatePeakTempPath(FileProcessingRecord record, TrackInfo track)
         {
-            string label = record.EpisodeId.Length > 0 ? record.EpisodeId : "track";
+            string label = !string.IsNullOrEmpty(record.EpisodeId) ? record.EpisodeId : "track";
             return Path.Combine(this._tempFolder, "audio_peak_" + label + "_t" + track.Id + "_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".wav");
         }
 
@@ -1370,7 +1371,7 @@ namespace RemuxForge.Core.Audio
             for (int i = lines.Length - 1; i >= 0; i--)
             {
                 string line = lines[i].Trim();
-                if (line.Length > 0)
+                if (!string.IsNullOrEmpty(line))
                 {
                     return line;
                 }
@@ -1442,7 +1443,7 @@ namespace RemuxForge.Core.Audio
             }
 
             /// <summary>
-            /// True se la traccia e' stata processata correttamente
+            /// True se la traccia è stata processata correttamente
             /// </summary>
             public bool Success { get; set; }
 
@@ -1479,7 +1480,7 @@ namespace RemuxForge.Core.Audio
             /// <param name="trackId">ID traccia nell'input</param>
             /// <param name="startMs">Inizio segmento in ms</param>
             /// <param name="endMs">Fine segmento in ms, oppure -1 per coda</param>
-            /// <param name="isSilence">True se il segmento e' silenzio generato</param>
+            /// <param name="isSilence">True se il segmento è silenzio generato</param>
             public AudioFilterSegment(int inputIndex, int trackId, int startMs, int endMs, bool isSilence) : this(inputIndex, trackId, startMs, endMs, isSilence, 1.0)
             {
             }
@@ -1518,7 +1519,7 @@ namespace RemuxForge.Core.Audio
             public int EndMs { get; set; }
 
             /// <summary>
-            /// True se il segmento e' silenzio generato
+            /// True se il segmento è silenzio generato
             /// </summary>
             public bool IsSilence { get; set; }
 
@@ -1637,7 +1638,7 @@ namespace RemuxForge.Core.Audio
         }
 
         /// <summary>
-        /// True se il processing audio complessivo e' riuscito
+        /// True se il processing audio complessivo è riuscito
         /// </summary>
         public bool Success { get; set; }
 

@@ -30,7 +30,7 @@ namespace RemuxForge.Core.Pipeline
             {
                 FrameSyncDiagnosticsWriter writer = new FrameSyncDiagnosticsWriter();
                 diagnosticsPath = writer.Write(record, options);
-                if (diagnosticsPath.Length > 0)
+                if (!string.IsNullOrEmpty(diagnosticsPath))
                 {
                     ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, "  Diagnostica frame-sync: " + diagnosticsPath);
                 }
@@ -58,7 +58,7 @@ namespace RemuxForge.Core.Pipeline
             {
                 DeepAnalysisDiagnosticsWriter writer = new DeepAnalysisDiagnosticsWriter();
                 diagnosticsPath = writer.Write(record, options);
-                if (diagnosticsPath.Length > 0)
+                if (!string.IsNullOrEmpty(diagnosticsPath))
                 {
                     ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  Diagnostica deep-analysis: " + diagnosticsPath);
                 }

@@ -100,7 +100,7 @@ namespace RemuxForge.Core.Subtitles
 
             intervals = SubtitleTimelineMapper.ApplyOperationsToCue(startMs, endMs, editMap);
 
-            // Un Dialogue attraversato da un cut puo' generare piu' righe Dialogue
+            // Un Dialogue attraversato da un cut può generare più righe Dialogue
             for (int i = 0; i < intervals.Count; i++)
             {
                 if (intervals[i].EndMs <= intervals[i].StartMs)

@@ -129,7 +129,7 @@ namespace RemuxForge.Core.Rename
         private static void SplitFileName(string fileName, out string name, out string ext)
         {
             string extension = Path.GetExtension(fileName);
-            if (extension.Length > 0)
+            if (!string.IsNullOrEmpty(extension))
             {
                 ext = extension.Substring(1);
                 name = fileName.Substring(0, fileName.Length - extension.Length);

@@ -359,7 +359,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
 
         /// <summary>
         /// Calcola correlazione tra fingerprint a blocchi su luma
-        /// La media globale viene rimossa per resistere a differenze di luminosita'/contrasto
+        /// La media globale viene rimossa per resistere a differenze di luminosità/contrasto
         /// </summary>
         /// <param name="frame1">Primo frame grayscale</param>
         /// <param name="frame2">Secondo frame grayscale</param>
@@ -760,11 +760,11 @@ namespace RemuxForge.Core.Media.Ffmpeg
         }
 
         /// <summary>
-        /// Calcola similarita' percettiva leggera combinando aHash e dHash
+        /// Calcola similarità percettiva leggera combinando aHash e dHash
         /// </summary>
         /// <param name="frame1">Primo frame grayscale</param>
         /// <param name="frame2">Secondo frame grayscale</param>
-        /// <returns>Similarita' normalizzata 0..1</returns>
+        /// <returns>Similarità normalizzata 0..1</returns>
         public double ComputePerceptualHashSimilarity(byte[] frame1, byte[] frame2)
         {
             ulong averageHash1 = this.ComputeAverageHash(frame1);
@@ -778,14 +778,14 @@ namespace RemuxForge.Core.Media.Ffmpeg
         }
 
         /// <summary>
-        /// Calcola similarita' media aHash/dHash su una sequenza
+        /// Calcola similarità media aHash/dHash su una sequenza
         /// </summary>
         /// <param name="sourceFrames">Lista frame sorgente</param>
         /// <param name="sourceStartIdx">Indice iniziale nei frame sorgente</param>
         /// <param name="langFrames">Lista frame lingua</param>
         /// <param name="langStartIdx">Indice iniziale nei frame lingua</param>
         /// <param name="sequenceLength">Numero di frame nella sequenza</param>
-        /// <returns>Similarita' media 0..1 o 0 se frame insufficienti</returns>
+        /// <returns>Similarità media 0..1 o 0 se frame insufficienti</returns>
         public double ComputeSequenceHashSimilarity(List<byte[]> sourceFrames, int sourceStartIdx, List<byte[]> langFrames, int langStartIdx, int sequenceLength)
         {
             double totalSimilarity = 0.0;
@@ -906,11 +906,11 @@ namespace RemuxForge.Core.Media.Ffmpeg
         }
 
         /// <summary>
-        /// Calcola similarita' tra due hash a 64 bit tramite distanza di Hamming
+        /// Calcola similarità tra due hash a 64 bit tramite distanza di Hamming
         /// </summary>
         /// <param name="hash1">Primo hash</param>
         /// <param name="hash2">Secondo hash</param>
-        /// <returns>Similarita' 0..1</returns>
+        /// <returns>Similarità 0..1</returns>
         public double ComputeHashSimilarity(ulong hash1, ulong hash2)
         {
             int distance = BitOperations.PopCount(hash1 ^ hash2);

@@ -164,11 +164,11 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Ricerca binaria dell'indice del timestamp piu' vicino al target
+        /// Ricerca binaria dell'indice del timestamp più vicino al target
         /// </summary>
         /// <param name="timestampsMs">Array di timestamp ordinato in modo crescente</param>
         /// <param name="targetMs">Timestamp target da cercare</param>
-        /// <returns>Indice del timestamp piu' vicino, -1 se array vuoto</returns>
+        /// <returns>Indice del timestamp più vicino, -1 se array vuoto</returns>
         protected static int NearestTimestampIndex(double[] timestampsMs, double targetMs)
         {
             int result = -1;
@@ -196,7 +196,7 @@ namespace RemuxForge.Core.Media
                     }
                 }
 
-                // Confronta con indice precedente per scegliere il piu' vicino
+                // Confronta con indice precedente per scegliere il più vicino
                 result = low;
                 if (low > 0)
                 {
@@ -249,7 +249,7 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Analizza geometria source/lang e applica il crop 4:3 automatico quando il confronto e' pillarbox vs 4:3 nativo
+        /// Analizza geometria source/lang e applica il crop 4:3 automatico quando il confronto è pillarbox vs 4:3 nativo
         /// </summary>
         /// <param name="sourceFile">File sorgente</param>
         /// <param name="languageFile">File lingua</param>
@@ -333,7 +333,7 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Verifica se la geometria display e' circa 4:3
+        /// Verifica se la geometria display è circa 4:3
         /// </summary>
         /// <param name="geometry">Profilo geometria</param>
         /// <returns>True se aspect circa 4:3</returns>
@@ -349,7 +349,7 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Verifica se la geometria display e' circa wide 16:9
+        /// Verifica se la geometria display è circa wide 16:9
         /// </summary>
         /// <param name="geometry">Profilo geometria</param>
         /// <returns>True se aspect circa 16:9</returns>
@@ -414,7 +414,7 @@ namespace RemuxForge.Core.Media
                 result.CropBottom = geometry.CropBottom;
                 result.ManualAnalysisCropPx = normalizedManualCrop;
                 result.GeometryCropToFourThree = this.UseGeometryCrop(geometryCropToFourThree, normalizedManualCrop);
-                if (result.ManualAnalysisCropPx.Length > 0)
+                if (!string.IsNullOrEmpty(result.ManualAnalysisCropPx))
                 {
                     result.CropMode = "manual_analysis_crop";
                 }
@@ -472,14 +472,14 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Restituisce true se il crop geometry puo' restare attivo con il crop manuale corrente
+        /// Restituisce true se il crop geometry può restare attivo con il crop manuale corrente
         /// </summary>
         /// <param name="geometryCropToFourThree">Flag crop geometry richiesto</param>
         /// <param name="manualCropPx">Crop manuale normalizzato o raw</param>
         /// <returns>True se usare il crop geometry</returns>
         protected bool UseGeometryCrop(bool geometryCropToFourThree, string manualCropPx)
         {
-            return geometryCropToFourThree && Options.NormalizeAnalysisCropPx(manualCropPx).Length == 0;
+            return geometryCropToFourThree && string.IsNullOrEmpty(Options.NormalizeAnalysisCropPx(manualCropPx));
         }
 
         /// <summary>
@@ -509,7 +509,7 @@ namespace RemuxForge.Core.Media
         /// <summary>
         /// Calcola SSIM (Structural Similarity Index) tra due frame grayscale
         /// Restituisce un valore tra 0.0 (completamente diversi) e 1.0 (identici)
-        /// Robusto rispetto a differenze di compressione, luminosita' e crop
+        /// Robusto rispetto a differenze di compressione, luminosità e crop
         /// </summary>
         /// <param name="frame1">Primo frame grayscale</param>
         /// <param name="frame2">Secondo frame grayscale</param>
@@ -574,7 +574,7 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Calcola similarita' media aHash/dHash su una sequenza
+        /// Calcola similarità media aHash/dHash su una sequenza
         /// </summary>
         protected double ComputeSequenceHashSimilarity(List<byte[]> sourceFrames, int sourceStartIdx, List<byte[]> langFrames, int langStartIdx, int sequenceLength)
         {
@@ -592,7 +592,7 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Rileva tagli di scena tramite MSE tra frame consecutivi con soglia piu' permissiva
+        /// Rileva tagli di scena tramite MSE tra frame consecutivi con soglia più permissiva
         /// Usato come fallback quando un segmento scuro/grainy non produce cut con la soglia conservativa
         /// </summary>
         /// <param name="frames">Lista frame grayscale</param>

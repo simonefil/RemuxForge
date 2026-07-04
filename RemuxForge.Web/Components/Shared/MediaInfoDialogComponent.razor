@@ -2,7 +2,7 @@
     <div class="dialog-box" style="min-width: 80ch; max-width: 100ch; max-height: 80vh;" @onclick:stopPropagation="true">
         <div class="dialog-title">@AppText.F("web.mediaInfo.title", Title)</div>
         <div class="dialog-body" style="max-height: 60vh; overflow-y: auto;">
-            <pre style="white-space: pre-wrap; font-size: 0.9em; color: var(--foreground0);">@(Report.Length > 0 ? Report : AppText.T("web.mediaInfo.noReport"))</pre>
+            <pre style="white-space: pre-wrap; font-size: 0.9em; color: var(--foreground0);">@(!string.IsNullOrEmpty(Report) ? Report : AppText.T("web.mediaInfo.noReport"))</pre>
         </div>
         <div class="dialog-footer">
             <button @onclick="CopyReport">@AppText.T("web.common.copy")</button>
@@ -37,11 +37,11 @@
     /// </summary>
     private void CopyReport()
     {
-        if (JsModule != null && Report.Length > 0)
+        if (this.JsModule != null && !string.IsNullOrEmpty(this.Report))
         {
             try
             {
-                _ = JsModule.InvokeVoidAsync("copyToClipboard", Report);
+                _ = this.JsModule.InvokeVoidAsync("copyToClipboard", this.Report);
             }
             catch
             {

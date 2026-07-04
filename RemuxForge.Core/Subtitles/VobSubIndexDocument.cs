@@ -291,7 +291,7 @@ namespace RemuxForge.Core.Subtitles
                 }
             }
 
-            // L'inserimento sposta gli indici delle entry gia' parseate e delle righe rimosse
+            // L'inserimento sposta gli indici delle entry già parseate e delle righe rimosse
             this._lines.Insert(insertIndex, name + ": " + value);
             this.ShiftLineState(insertIndex, 1);
         }

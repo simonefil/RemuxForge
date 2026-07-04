@@ -121,7 +121,7 @@ namespace RemuxForge.Core.Audio
         #region Metodi privati
 
         /// <summary>
-        /// Costruisce il piano di una singola traccia secondo la stessa priorita' del render effettivo
+        /// Costruisce il piano di una singola traccia secondo la stessa priorità del render effettivo
         /// </summary>
         /// <param name="request">Richiesta audio corrente</param>
         /// <param name="track">Traccia da pianificare</param>
@@ -151,7 +151,7 @@ namespace RemuxForge.Core.Audio
             }
 
             sourceFillActive = request.Options.AudioSourceFillThresholdMs > 0 &&
-                request.Options.AudioSourceFillLanguage.Length > 0 &&
+                !string.IsNullOrEmpty(request.Options.AudioSourceFillLanguage) &&
                 (request.Options.AudioSourceFillStart || request.Options.AudioSourceFillEnd || request.Options.AudioSourceFillInsertSilence);
 
             if (!isSource && sourceFillActive)
@@ -256,7 +256,7 @@ namespace RemuxForge.Core.Audio
         private double ResolveStretchRatio(AudioProcessingRequest request)
         {
             double result = 1.0;
-            if (request != null && request.Record != null && request.Record.StretchFactor.Length > 0)
+            if (request != null && request.Record != null && !string.IsNullOrEmpty(request.Record.StretchFactor))
             {
                 SpeedCorrectionService.TryParseStretchFactor(request.Record.StretchFactor, out result, out _);
             }
@@ -272,13 +272,13 @@ namespace RemuxForge.Core.Audio
         private int ResolveMediaDurationMs(string filePath)
         {
             ProcessResult processResult;
-            if (this._ffmpegPath.Length == 0 || string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+            if (string.IsNullOrEmpty(this._ffmpegPath) || string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
             {
                 return 0;
             }
 
             processResult = ProcessRunner.Run(this._ffmpegPath, new string[] { "-hide_banner", "-i", filePath });
-            return this.ParseFfmpegDurationMs(processResult.Stderr.Length > 0 ? processResult.Stderr : processResult.Stdout);
+            return this.ParseFfmpegDurationMs(!string.IsNullOrEmpty(processResult.Stderr) ? processResult.Stderr : processResult.Stdout);
         }
 
         /// <summary>

@@ -3,6 +3,7 @@
     {
         <span class="cmd-key" @onclick="OnShowConfig"><span class="key-label">F2</span>@AppText.T("web.status.metadata.path")</span>
         <span class="cmd-key" @onclick="OnShowPreset"><span class="key-label">F3</span>@AppText.T("web.status.metadata.preset")</span>
+        <span class="cmd-key" @onclick="OnManualEdit"><span class="key-label">F4</span>@AppText.T("web.status.metadata.manualEdit")</span>
         <span class="cmd-key" @onclick="OnScan"><span class="key-label">F5</span>@AppText.T("web.status.scan")</span>
         <span class="cmd-key" @onclick="OnAnalyzeAll"><span class="key-label">F6</span>@AppText.T("web.status.metadata.analyze")</span>
         <span class="cmd-key" @onclick="OnMergeSelected"><span class="key-label">F9</span>@AppText.T("web.status.metadata.apply")</span>
@@ -88,7 +89,12 @@
     [Parameter] public EventCallback OnRename { get; set; }
 
     /// <summary>
-    /// Modalita' corrente
+    /// Evento editor manuale metadata
+    /// </summary>
+    [Parameter] public EventCallback OnManualEdit { get; set; }
+
+    /// <summary>
+    /// Modalità corrente
     /// </summary>
     [Parameter] public string CurrentMode { get; set; }
 }

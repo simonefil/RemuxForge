@@ -26,7 +26,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
 
         /// <summary>
         /// Finestra minima clustering initial in millisecondi
-        /// Su VFR/anime i cut equivalenti possono cadere su PTS distanti piu' di un frame medio
+        /// Su VFR/anime i cut equivalenti possono cadere su PTS distanti più di un frame medio
         /// </summary>
         private const int INITIAL_CLUSTER_TOLERANCE_MIN_MS = 150;
 
@@ -77,7 +77,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         private const int VISUAL_SCAN_MAX_SAMPLES = 24;
 
         /// <summary>
-        /// Score minimo del fallback visuale quando il margine e' molto netto
+        /// Score minimo del fallback visuale quando il margine è molto netto
         /// L'offset resta comunque soggetto alla verifica finale sui checkpoint
         /// </summary>
         private const double VISUAL_SCAN_PROMISING_MIN_SCORE = 0.30;
@@ -109,7 +109,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
 
         /// <summary>
         /// Numero massimo processi ffmpeg video simultanei durante FrameSync
-        /// ffmpeg usa gia' thread interni, quindi evitare oversubscription eccessiva
+        /// ffmpeg usa già thread interni, quindi evitare oversubscription eccessiva
         /// </summary>
         private const int MAX_CONCURRENT_VIDEO_EXTRACTS = 4;
 
@@ -138,7 +138,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         private readonly double[] _ssimValues;
 
         /// <summary>
-        /// Validita' per ciascun punto di verifica
+        /// Validità per ciascun punto di verifica
         /// </summary>
         private readonly bool[] _pointValid;
 
@@ -362,7 +362,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
                     }
                     fpsRatio = langFps / fps;
 
-                    // Log se fps lang differisce di piu' del 2% dal source
+                    // Log se fps lang differisce di più del 2% dal source
                     if (Math.Abs(fpsRatio - 1.0) > 0.02)
                     {
                         ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, "  FPS osservati diversi (diagnostica): source=" + fps.ToString("F3", CultureInfo.InvariantCulture) + ", lang=" + langFps.ToString("F3", CultureInfo.InvariantCulture));
@@ -425,7 +425,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
                         // Tolleranza raggruppamento: frameInterval * numero frame configurato
                         groupingToleranceMs = frameIntervalMs * this._fsConfig.GroupingToleranceFrames;
 
-                        // Trova il gruppo di offset coerenti piu' grande
+                        // Trova il gruppo di offset coerenti più grande
                         for (int i = 0; i < validOffsets.Count; i++)
                         {
                             int groupCount = 0;
@@ -522,7 +522,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
                 }
                 else
                 {
-                    if (this._lastInitialResult != null && this._lastInitialResult.FailureReason.Length > 0)
+                    if (this._lastInitialResult != null && !string.IsNullOrEmpty(this._lastInitialResult.FailureReason))
                     {
                         failureReason = this._lastInitialResult.FailureReason;
                     }
@@ -546,7 +546,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
             this._timing.TotalMs = this._frameSyncTimeMs;
 
             // Inverte segno: internamente usa langTime - sourceTime per i calcoli,
-            // ma il delay da applicare e' l'opposto (negativo se lang e' in ritardo)
+            // ma il delay da applicare è l'opposto (negativo se lang è in ritardo)
             if (resultOffset != int.MinValue)
             {
                 resultOffset = -resultOffset;
@@ -689,7 +689,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         }
 
         /// <summary>
-        /// Costruisce un segmento cache riusabile se l'estrazione iniziale e' valida
+        /// Costruisce un segmento cache riusabile se l'estrazione iniziale è valida
         /// </summary>
         private FrameExtractProfile BuildFrameExtractProfile(string filePath, int startMs, double durationSec, double targetFps, bool geometryCropToFourThree, string manualCropPx)
         {
@@ -1119,7 +1119,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
                     else if (verifiedDelays.Count >= this._fsConfig.InitialMinMatchedCuts)
                     {
                         ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Warning, "  Candidato iniziale scartato: tagli verificati=" + verifiedDelays.Count + " (minimo: " + this._fsConfig.InitialMinMatchedCuts + "), score o margine sotto soglia");
-                        if (this._lastInitialResult.FailureReason.Length == 0)
+                        if (string.IsNullOrEmpty(this._lastInitialResult.FailureReason))
                         {
                             this._lastInitialResult.FailureReason = "Candidato iniziale sotto soglia";
                         }
@@ -1127,7 +1127,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
                     else
                     {
                         ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Warning, "  Tagli iniziali verificati insufficienti: " + verifiedDelays.Count + " (minimo: " + this._fsConfig.InitialMinMatchedCuts + ")");
-                        if (this._lastInitialResult.FailureReason.Length == 0)
+                        if (string.IsNullOrEmpty(this._lastInitialResult.FailureReason))
                         {
                             this._lastInitialResult.FailureReason = "Nessun candidato iniziale verificato";
                         }
@@ -1214,7 +1214,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         }
 
         /// <summary>
-        /// Genera candidati initial accoppiando ogni cut sorgente con i cut lingua piu' simili per fingerprint temporale
+        /// Genera candidati initial accoppiando ogni cut sorgente con i cut lingua più simili per fingerprint temporale
         /// Questo evita che il voting su timestamp grezzi domini quando VFR o cut non equivalenti spostano i cluster
         /// </summary>
         private int FindInitialDelayByTemporalCutMatching(List<byte[]> sourceFrames, List<byte[]> langFrames, double[][] sourceTemporalFingerprints, double[][] langTemporalFingerprints, double[] sourceTimestampsMs, double[] langTimestampsMs, List<int> validSourceCuts, List<int> validLangCuts, double clusterTolMs, double consistencyTolMs, double nearestTolMs, int minInitialOffsetMs, int maxInitialOffsetMs)
@@ -1494,7 +1494,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
             bestDescriptorVotes = 0;
             verifiedDelays.Clear();
 
-            // Primo passaggio: associa ogni cut source al cut language piu' vicino previsto
+            // Primo passaggio: associa ogni cut source al cut language più vicino previsto
             // dall'offset candidato, poi verifica il contenuto visuale attorno al taglio.
             for (int s = 0; s < validSourceCuts.Count; s++)
             {
@@ -1536,7 +1536,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
                             localDescriptorVotes = this._candidateScorer.CountDescriptorVotes(localSsim, localBlurCorrelation, localEdgeCorrelation, localBlockCorrelation, localMotionCorrelation, localHashSimilarity);
 
                             // Preferisce lo score visuale migliore; a score quasi pari sceglie il match
-                            // con piu' descriptor concordanti, piu' robusto su frame statici o compressi.
+                            // con più descriptor concordanti, più robusto su frame statici o compressi.
                             if (localVisualScore > visualScore || (localDescriptorVotes > descriptorVotes && Math.Abs(localVisualScore - visualScore) < 0.02))
                             {
                                 blurCorrelation = localBlurCorrelation;
@@ -1643,13 +1643,13 @@ namespace RemuxForge.Core.Analysis.FrameSync
 
             if (verifiedDelays.Count >= this._vsConfig.MinSceneCuts)
             {
-                // L'offset finale del candidato e' la mediana dei delay verificati:
+                // L'offset finale del candidato è la mediana dei delay verificati:
                 // riduce l'impatto di un singolo cut sbagliato o di un PTS locale rumoroso.
                 verifiedDelays.Sort();
                 medianDelay = verifiedDelays[verifiedDelays.Count / 2];
 
                 // La mediana viene accettata solo se abbastanza delay cadono entro un frame:
-                // senza questa coerenza il candidato e' temporalmente instabile.
+                // senza questa coerenza il candidato è temporalmente instabile.
                 for (int i = 0; i < verifiedDelays.Count; i++)
                 {
                     if (Math.Abs(verifiedDelays[i] - medianDelay) <= frameIntervalMs)
@@ -1673,11 +1673,11 @@ namespace RemuxForge.Core.Analysis.FrameSync
 
         /// <summary>
         /// Fallback iniziale per sorgenti lente/scure dove i tagli scena sono pochi o non affidabili
-        /// Estrae una finestra piu' lunga a basso FPS e cerca l'offset su campioni ad alto movimento
+        /// Estrae una finestra più lunga a basso FPS e cerca l'offset su campioni ad alto movimento
         /// </summary>
         /// <param name="sourceFile">File sorgente</param>
         /// <param name="languageFile">File lingua</param>
-        /// <param name="sourceFps">FPS sorgente usato per arrotondare al frame piu' vicino</param>
+        /// <param name="sourceFps">FPS sorgente usato per arrotondare al frame più vicino</param>
         /// <returns>Delay iniziale positivo, oppure int.MinValue</returns>
         private int FindInitialDelayByVisualScanFallback(string sourceFile, string languageFile, double sourceFps)
         {
@@ -2000,12 +2000,12 @@ namespace RemuxForge.Core.Analysis.FrameSync
         }
 
         /// <summary>
-        /// Trova il taglio lingua piu' vicino al timestamp atteso
+        /// Trova il taglio lingua più vicino al timestamp atteso
         /// </summary>
         /// <param name="langTimestampsMs">Timestamp frame lingua</param>
         /// <param name="validLangCuts">Cut lingua utilizzabili</param>
         /// <param name="expectedLangCutMs">Timestamp atteso in millisecondi</param>
-        /// <param name="nearestDistMs">Distanza del cut piu' vicino</param>
+        /// <param name="nearestDistMs">Distanza del cut più vicino</param>
         /// <returns>Indice dentro validLangCuts, -1 se non disponibile</returns>
         private int FindNearestCut(double[] langTimestampsMs, List<int> validLangCuts, double expectedLangCutMs, out double nearestDistMs)
         {
@@ -2094,7 +2094,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
 
             if (this._checkpointGrouper.CanSkipRetry(initialDelay, fps, this._pointValid, this._offsets, this._pointResults, this._ssimValues, out int baseValidCount, out int baseGroupCount, out double baseGroupScore) && this._vsConfig.NumCheckPoints - baseValidCount <= 1)
             {
-                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, "  Retry checkpoint saltato: base pass gia' conclusivo (" + baseGroupCount + "/" + baseValidCount + " coerenti, avg=" + baseGroupScore.ToString("F3", CultureInfo.InvariantCulture) + ")");
+                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, "  Retry checkpoint saltato: base pass già conclusivo (" + baseGroupCount + "/" + baseValidCount + " coerenti, avg=" + baseGroupScore.ToString("F3", CultureInfo.InvariantCulture) + ")");
             }
             else
             {
@@ -2121,7 +2121,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
                         }
                     }
 
-                    // Limita thread retry a 4 (ogni ffmpeg usa gia' auto-threading)
+                    // Limita thread retry a 4 (ogni ffmpeg usa già auto-threading)
                     int retryThreadCount = 4;
                     if (retryThreadCount > failedPoints.Count)
                     {
@@ -2244,7 +2244,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
 
                 if (this._pointValid[p])
                 {
-                    string method = this._pointResults[p] != null && this._pointResults[p].MatchMethod.Length > 0 ? this._pointResults[p].MatchMethod : "match";
+                    string method = this._pointResults[p] != null && !string.IsNullOrEmpty(this._pointResults[p].MatchMethod) ? this._pointResults[p].MatchMethod : "match";
                     // Valore negativo = correlazione fingerprint, positivo = score visuale/combinato
                     if (this._ssimValues[p] < 0)
                     {
@@ -2257,7 +2257,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
                 }
                 else
                 {
-                    string reason = this._pointResults[p] != null && this._pointResults[p].RejectReason.Length > 0 ? this._pointResults[p].RejectReason : "nessun match";
+                    string reason = this._pointResults[p] != null && !string.IsNullOrEmpty(this._pointResults[p].RejectReason) ? this._pointResults[p].RejectReason : "nessun match";
                     ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Notice, "  " + percentage + "%: FAIL " + reason);
                 }
             }
@@ -2690,7 +2690,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         }
 
         /// <summary>
-        /// Se il miglior match locale e' driftato, rivaluta l'offset iniziale sugli stessi frame
+        /// Se il miglior match locale è driftato, rivaluta l'offset iniziale sugli stessi frame
         /// Evita falsi positivi su VFR anime con frame tenuti o ripetuti
         /// </summary>
         private bool TryAnchorCheckpointToInitial(List<byte[]> sourceFrames, List<byte[]> langFrames, double[] sourceTimestampsMs, double[] langTimestampsMs, int baseOffset, double timestampMatchToleranceMs, FrameSyncPointResult pointResult, out int resultOffset, out double bestScore)
@@ -2852,7 +2852,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         }
 
         /// <summary>
-        /// Indica se il checkpoint e' troppo statico o nero per essere affidabile
+        /// Indica se il checkpoint è troppo statico o nero per essere affidabile
         /// </summary>
         private bool IsStaticOrBlackSegment(FrameSyncPointResult pointResult)
         {

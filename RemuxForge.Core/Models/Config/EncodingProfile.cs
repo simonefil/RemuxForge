@@ -89,22 +89,22 @@ namespace RemuxForge.Core.Models
         public string BitDepth { get; set; }
 
         /// <summary>
-        /// Modalita' rate control: crf, qp, bitrate
+        /// Modalità rate control: crf, qp, bitrate
         /// </summary>
         public string RateMode { get; set; }
 
         /// <summary>
-        /// Valore CRF o QP, usato quando RateMode e' crf o qp
+        /// Valore CRF o QP, usato quando RateMode è crf o qp
         /// </summary>
         public int CrfQp { get; set; }
 
         /// <summary>
-        /// Bitrate target in kbps, usato quando RateMode e' bitrate
+        /// Bitrate target in kbps, usato quando RateMode è bitrate
         /// </summary>
         public int Bitrate { get; set; }
 
         /// <summary>
-        /// Numero di passate, 1 o 2, solo per x264/x265 in modalita' bitrate
+        /// Numero di passate, 1 o 2, solo per x264/x265 in modalità bitrate
         /// </summary>
         public int Passes { get; set; }
 

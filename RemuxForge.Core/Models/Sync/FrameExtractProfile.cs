@@ -88,7 +88,7 @@ namespace RemuxForge.Core.Models
         }
 
         /// <summary>
-        /// Verifica se questo profilo e' completamente contenuto nel profilo indicato
+        /// Verifica se questo profilo è completamente contenuto nel profilo indicato
         /// </summary>
         public bool IsContainedIn(FrameExtractProfile parent)
         {

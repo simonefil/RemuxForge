@@ -339,16 +339,21 @@
         {
             min = EncodingDefaults.GetMinCrf(this._editing.Codec);
             max = EncodingDefaults.GetMaxCrf(this._editing.Codec);
-            if (val < min) { val = min; }
-            else if (val > max) { val = max; }
+            if (val < min)
+                val = min;
+            else if (val > max)
+                val = max;
             this._editing.CrfQp = val;
             this._crfQpStr = val.ToString();
         }
-        if (int.TryParse(this._bitrateStr, out val)) { this._editing.Bitrate = val; }
+        if (int.TryParse(this._bitrateStr, out val))
+            this._editing.Bitrate = val;
         if (int.TryParse(this._filmGrainStr, out val))
         {
-            if (val < EncodingDefaults.SVTAV1_FILM_GRAIN_MIN) { val = EncodingDefaults.SVTAV1_FILM_GRAIN_MIN; }
-            else if (val > EncodingDefaults.SVTAV1_FILM_GRAIN_MAX) { val = EncodingDefaults.SVTAV1_FILM_GRAIN_MAX; }
+            if (val < EncodingDefaults.SVTAV1_FILM_GRAIN_MIN)
+                val = EncodingDefaults.SVTAV1_FILM_GRAIN_MIN;
+            else if (val > EncodingDefaults.SVTAV1_FILM_GRAIN_MAX)
+                val = EncodingDefaults.SVTAV1_FILM_GRAIN_MAX;
             this._editing.FilmGrain = val;
             this._filmGrainStr = val.ToString();
         }
@@ -408,7 +413,7 @@
         for (int i = 0; i < this._profiles.Count; i++)
         {
             // Ignora profili senza nome
-            if (this._profiles[i].Name.Length > 0)
+            if (!string.IsNullOrEmpty(this._profiles[i].Name))
             {
                 AppSettingsService.Instance.Settings.EncodingProfiles.Add(this._profiles[i]);
             }

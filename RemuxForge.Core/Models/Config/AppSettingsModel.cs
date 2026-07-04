@@ -329,7 +329,7 @@ namespace RemuxForge.Core.Models
         public string Theme { get; set; }
 
         /// <summary>
-        /// Ultima modalita' selezionata nella UI
+        /// Ultima modalità selezionata nella UI
         /// </summary>
         public string LastMode { get; set; }
 

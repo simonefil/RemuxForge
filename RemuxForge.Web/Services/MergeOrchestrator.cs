@@ -42,7 +42,7 @@ namespace RemuxForge.Web.Services
         private ProcessingProgressState _progress;
 
         /// <summary>
-        /// Flag: indica se un'operazione e' in corso
+        /// Flag: indica se un'operazione è in corso
         /// </summary>
         private volatile bool _isBusy;
 
@@ -116,7 +116,7 @@ namespace RemuxForge.Web.Services
             {
                 // Formatta testo con prefisso sezione
                 string prefix = ConsoleHelper.FormatSectionPrefix(section);
-                string formatted = prefix.Length > 0 ? prefix + text : text;
+                string formatted = !string.IsNullOrEmpty(prefix) ? prefix + text : text;
                 this.AppendLog(formatted);
             };
 
@@ -174,7 +174,7 @@ namespace RemuxForge.Web.Services
                 processingOptionsChanged = scanInputsChanged || this.ProcessingOptionsChanged(previousOptions, opts);
             }
 
-            if (opts.SourceFolder.Length > 0)
+            if (!string.IsNullOrEmpty(opts.SourceFolder))
             {
                 result = this._pipeline.Initialize(opts);
                 if (!result)
@@ -237,7 +237,7 @@ namespace RemuxForge.Web.Services
             }
 
             // Verifica parametro obbligatorio: source folder
-            if (this._options.SourceFolder.Length == 0)
+            if (string.IsNullOrEmpty(this._options.SourceFolder))
             {
                 this.AppendLog(AppText.T("web.merge.configureSourceFirst"));
                 return;
@@ -279,8 +279,10 @@ namespace RemuxForge.Web.Services
                     int skipped = 0;
                     for (int i = 0; i < scanned.Count; i++)
                     {
-                        if (scanned[i].Status == FileStatus.Pending) { pending++; }
-                        else if (scanned[i].Status == FileStatus.Skipped) { skipped++; }
+                        if (scanned[i].Status == FileStatus.Pending)
+                            pending++;
+                        else if (scanned[i].Status == FileStatus.Skipped)
+                            skipped++;
                     }
 
                     this.OnRecordsChanged?.Invoke();
@@ -932,7 +934,7 @@ namespace RemuxForge.Web.Services
             record.DeepAnalysisApplied = false;
             record.AudioProcessingPreview = null;
 
-            if (this._options.TargetLanguage.Count == 0 || record.LangFilePath.Length > 0)
+            if (this._options.TargetLanguage.Count == 0 || !string.IsNullOrEmpty(record.LangFilePath))
             {
                 record.Status = FileStatus.Pending;
             }
@@ -951,8 +953,8 @@ namespace RemuxForge.Web.Services
         {
             if (record.Status == FileStatus.Skipped)
             {
-                // In merge mode, consenti unskip solo se c'e' un file lingua associato
-                if (this._options.TargetLanguage.Count == 0 || record.LangFilePath.Length > 0)
+                // In merge mode, consenti unskip solo se c'è un file lingua associato
+                if (this._options.TargetLanguage.Count == 0 || !string.IsNullOrEmpty(record.LangFilePath))
                 {
                     record.Status = FileStatus.Pending;
                     record.SkipReason = "";
@@ -980,7 +982,7 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
-        /// True se e' stato richiesto stop cooperativo
+        /// True se è stato richiesto stop cooperativo
         /// </summary>
         private bool IsStopRequested()
         {
@@ -1311,7 +1313,7 @@ namespace RemuxForge.Web.Services
         {
             lock (this._lock)
             {
-                if (this._logText.Length > 0)
+                if (!string.IsNullOrEmpty(this._logText))
                 {
                     this._logText = this._logText + "\n" + message;
                 }
@@ -1320,7 +1322,7 @@ namespace RemuxForge.Web.Services
                     this._logText = message;
                 }
 
-                // Tronca log se supera il limite, mantieni la parte piu' recente
+                // Tronca log se supera il limite, mantieni la parte più recente
                 if (this._logText.Length > LOG_MAX_LENGTH)
                 {
                     int cutIndex = this._logText.IndexOf('\n', this._logText.Length - LOG_MAX_LENGTH);
@@ -1349,17 +1351,29 @@ namespace RemuxForge.Web.Services
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
-        /// Indica se un'operazione e' in corso
+        /// Indica se un'operazione è in corso
         /// </summary>
-        public bool IsBusy { get { return this._isBusy; } }
+        public bool IsBusy
+        {
+            get
+            {
+                return this._isBusy;
+            }
+        }
 
         /// <summary>
         /// Opzioni correnti
         /// </summary>
-        public Options CurrentOptions { get { return this._options; } }
+        public Options CurrentOptions
+        {
+            get
+            {
+                return this._options;
+            }
+        }
 
         /// <summary>
         /// Testo log accumulato
@@ -1380,8 +1394,14 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public int SelectedIndex
         {
-            get { return this._selectedIndex; }
-            set { this._selectedIndex = value; }
+            get
+            {
+                return this._selectedIndex;
+            }
+            set
+            {
+                this._selectedIndex = value;
+            }
         }
 
         /// <summary>

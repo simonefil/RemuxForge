@@ -21,7 +21,7 @@ namespace RemuxForge.Core.Models
         #region Proprieta
 
         /// <summary>
-        /// Modalita' frame rate dichiarata da MediaInfo
+        /// Modalità frame rate dichiarata da MediaInfo
         /// </summary>
         public string FrameRateMode { get; set; }
 
@@ -51,27 +51,27 @@ namespace RemuxForge.Core.Models
         public double DurationMs { get; set; }
 
         /// <summary>
-        /// True se MediaInfo e' stato interrogato correttamente
+        /// True se MediaInfo è stato interrogato correttamente
         /// </summary>
         public bool IsMediaInfoAvailable { get; set; }
 
         /// <summary>
-        /// True se il video e' classificato VFR
+        /// True se il video è classificato VFR
         /// </summary>
         public bool IsVariableFrameRate { get; set; }
 
         /// <summary>
-        /// True se default_duration e' coerente con durata e frame count
+        /// True se default_duration è coerente con durata e frame count
         /// </summary>
         public bool IsDefaultDurationTrusted { get; set; }
 
         /// <summary>
-        /// True se la speed correction automatica puo' essere applicata
+        /// True se la speed correction automatica può essere applicata
         /// </summary>
         public bool CanAutoSpeedCorrect { get; set; }
 
         /// <summary>
-        /// True se e' possibile normalizzare al FPS nominale
+        /// True se è possibile normalizzare al FPS nominale
         /// </summary>
         public bool CanNormalizeToNominalFps { get; set; }
 

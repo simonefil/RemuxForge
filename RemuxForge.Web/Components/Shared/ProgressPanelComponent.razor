@@ -27,14 +27,10 @@
     private string BuildGlobalText()
     {
         if (!IsActive())
-        {
             return AppText.T("web.progress.ready");
-        }
 
         if (Progress.Total > 0)
-        {
             return Progress.Operation + " " + Progress.Completed + "/" + Progress.Total + " " + Progress.GlobalPercent + "%";
-        }
 
         return Progress.Operation;
     }
@@ -47,11 +43,9 @@
         string result;
 
         if (!IsActive())
-        {
             return AppText.T("web.progress.noOperation");
-        }
 
-        if (Progress.CurrentEpisode.Length > 0)
+        if (!string.IsNullOrEmpty(Progress.CurrentEpisode))
         {
             result = Progress.CurrentEpisode;
         }
@@ -65,7 +59,7 @@
             result = result + " [" + Progress.CurrentIndex + "/" + Progress.Total + "]";
         }
 
-        if (Progress.CurrentStatus.Length > 0)
+        if (!string.IsNullOrEmpty(Progress.CurrentStatus))
         {
             result = result + " - " + Progress.CurrentStatus;
         }
@@ -79,7 +73,7 @@
     }
 
     /// <summary>
-    /// True se lo stato e' attivo
+    /// True se lo stato è attivo
     /// </summary>
     private bool IsActive()
     {
@@ -103,18 +97,18 @@
     }
 
     /// <summary>
-    /// True se la barra globale e' indeterminata
+    /// True se la barra globale è indeterminata
     /// </summary>
     private bool IsGlobalIndeterminate()
     {
-        return IsActive() && Progress.GlobalIndeterminate;
+        return this.IsActive() && Progress.GlobalIndeterminate;
     }
 
     /// <summary>
-    /// True se la barra episodio e' indeterminata
+    /// True se la barra episodio è indeterminata
     /// </summary>
     private bool IsCurrentIndeterminate()
     {
-        return IsActive() && Progress.CurrentIndeterminate;
+        return this.IsActive() && Progress.CurrentIndeterminate;
     }
 }

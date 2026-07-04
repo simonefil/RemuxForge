@@ -56,12 +56,12 @@ namespace RemuxForge.Core.Models
         public string Name { get; set; }
 
         /// <summary>
-        /// Indica se la traccia e' marcata come default nel container
+        /// Indica se la traccia è marcata come default nel container
         /// </summary>
         public bool DefaultTrack { get; set; }
 
         /// <summary>
-        /// Indica se la traccia e' marcata come forced nel container
+        /// Indica se la traccia è marcata come forced nel container
         /// </summary>
         public bool ForcedTrack { get; set; }
 

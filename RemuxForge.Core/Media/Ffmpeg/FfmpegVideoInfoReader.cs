@@ -139,9 +139,9 @@ namespace RemuxForge.Core.Media.Ffmpeg
             int seconds = int.Parse(match.Groups[3].Value);
             string fractionText = match.Groups[4].Value;
             double fractionMs = 0.0;
-            if (fractionText.Length > 0)
+            if (!string.IsNullOrEmpty(fractionText))
             {
-                // La frazione ffmpeg puo' avere precisione variabile: viene normalizzata come parte decimale
+                // La frazione ffmpeg può avere precisione variabile: viene normalizzata come parte decimale
                 fractionMs = double.Parse("0." + fractionText, CultureInfo.InvariantCulture) * 1000.0;
             }
 
@@ -190,7 +190,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
             Match framesMatch;
             int durationMs;
             long frameCount;
-            if (videoBlock.Length == 0)
+            if (string.IsNullOrEmpty(videoBlock))
             {
                 return result;
             }
@@ -200,7 +200,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
 
             if (durationMatch.Success && framesMatch.Success)
             {
-                // Questo valore e' piu' robusto del token "fps" su alcuni VFR/mux problematici
+                // Questo valore è più robusto del token "fps" su alcuni VFR/mux problematici
                 durationMs = this.ParseDurationMs(durationMatch);
                 long.TryParse(framesMatch.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out frameCount);
                 if (durationMs > 0 && frameCount > 0)

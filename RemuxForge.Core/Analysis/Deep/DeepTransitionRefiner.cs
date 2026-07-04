@@ -127,7 +127,7 @@ namespace RemuxForge.Core.Analysis.Deep
             DeepAnalysisTransitionDiagnostic transition;
             List<double> acceptedOffsetBeforeSec = new List<double>();
             List<DeepAnalysisTransitionDiagnostic> acceptedTransitions = new List<DeepAnalysisTransitionDiagnostic>();
-            // Ogni coppia di regioni adiacenti puo' generare un cut o un insert silence
+            // Ogni coppia di regioni adiacenti può generare un cut o un insert silence
             for (int r = 0; r < regions.Count - 1; r++)
             {
                 performanceDiagnostics.TransitionRefineCount++;
@@ -177,7 +177,7 @@ namespace RemuxForge.Core.Analysis.Deep
                 }
                 if (timelineMode && regions[r].SupportEndSrcSec > regions[r + 1].SupportStartSrcSec)
                 {
-                    // Anchor sovrapposti indicano una zona ambigua: il boundary reale puo' essere molto dopo il primo anchor del nuovo plateau
+                    // Anchor sovrapposti indicano una zona ambigua: il boundary reale può essere molto dopo il primo anchor del nuovo plateau
                     searchStartSrc = Math.Min(searchStartSrc, regions[r + 1].SupportStartSrcSec);
                     searchEndSrc = Math.Max(searchEndSrc, Math.Min(regions[r + 1].SupportEndSrcSec, regions[r + 1].SupportStartSrcSec + 180.0));
                     if (searchEndSrc > regions[r + 1].EndSrcSec) { searchEndSrc = regions[r + 1].EndSrcSec; }
@@ -211,8 +211,8 @@ namespace RemuxForge.Core.Analysis.Deep
                     regions[r + 1].MatchCount <= 1 &&
                     Math.Abs(regions[r].EndSrcSec - regions[r + 1].StartSrcSec) <= 0.001)
                 {
-                    // Le regioni di tail recovery possono arrivare gia' con un boundary frame-confirmed.
-                    // In quel caso il primo match post-gap e' troppo tardo per l'operazione INSERT.
+                    // Le regioni di tail recovery possono arrivare già con un boundary frame-confirmed.
+                    // In quel caso il primo match post-gap è troppo tardo per l'operazione INSERT.
                     bestCrossover = regions[r + 1].StartSrcSec;
                     refineMethod = "frame-boundary";
                 }

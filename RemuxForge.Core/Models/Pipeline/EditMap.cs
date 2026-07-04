@@ -49,7 +49,7 @@ namespace RemuxForge.Core.Models
         public long AnalysisTimeMs { get; set; }
 
         /// <summary>
-        /// MSE medio tra frame allineati (baseline qualita' match)
+        /// MSE medio tra frame allineati (baseline qualità match)
         /// </summary>
         public double BaselineMse { get; set; }
 

@@ -22,7 +22,7 @@ namespace RemuxForge.Core.Pipeline
         /// <param name="processedLangSubTracks">Tracce sottotitolo processate</param>
         /// <param name="options">Opzioni operative</param>
         /// <param name="ffmpegPath">Percorso ffmpeg</param>
-        /// <returns>True se l'applicazione e' completata o non necessaria</returns>
+        /// <returns>True se l'applicazione è completata o non necessaria</returns>
         public bool ApplySubtitles(FileProcessingRecord record, List<TrackInfo> subtitleTracks, Dictionary<int, string> processedLangSubTracks, Options options, string ffmpegPath)
         {
             string tempFolder;
@@ -41,7 +41,7 @@ namespace RemuxForge.Core.Pipeline
                 return true;
             }
 
-            if (ffmpegPath.Length == 0)
+            if (string.IsNullOrEmpty(ffmpegPath))
             {
                 this.FailApply(record, "Deep analysis richiede ffmpeg per applicare tagli/insert ai sottotitoli importati");
                 return false;
@@ -60,7 +60,7 @@ namespace RemuxForge.Core.Pipeline
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Traccia sub " + subtitleTracks[s].Id + " (" + subtitleTracks[s].Codec + "): " + record.DeepAnalysisMap.Operations.Count + " operazioni da applicare");
                 processedFile = subtitleService.Apply(record.LangFilePath, subtitleTracks[s].Id, subtitleTracks[s].Codec, record.DeepAnalysisMap, splitLabel);
 
-                if (processedFile.Length > 0)
+                if (!string.IsNullOrEmpty(processedFile))
                 {
                     ConsoleHelper.Write(LogSection.Deep, LogLevel.Success, "  Timestamp sottotitoli riscritti -> output OK");
                     processedLangSubTracks[subtitleTracks[s].Id] = processedFile;

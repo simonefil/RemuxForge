@@ -48,7 +48,7 @@
                 <span class="btn-browse" @onclick="() => BrowseFolder(3)">[ .. ]</span>
             </div>
         </div>
-        @if (_validationError.Length > 0)
+        @if (!string.IsNullOrEmpty(_validationError))
         {
             <div style="padding: 0.5em 1em; color: var(--color-error); white-space: pre-line;">@_validationError</div>
         }
@@ -175,56 +175,56 @@
     private string _validationError = "";
 
     /// <summary>
-    /// Carica valori correnti da AppSettings (auto-find gia' fatto all'avvio)
+    /// Carica valori correnti da AppSettings (auto-find già fatto all'avvio)
     /// </summary>
     protected override void OnInitialized()
     {
         this._toolPathResolver = new ToolPathResolverService(AppSettingsService.Instance.ConfigFolder);
 
         // mkvmerge
-        _mkvPath = this._toolPathResolver.ResolveMkvMergePath(false);
-        if (_mkvPath.Length == 0)
-        {
-            _mkvPath = AppSettingsService.Instance.Settings.Tools.MkvMergePath;
-        }
+        this._mkvPath = this._toolPathResolver.ResolveMkvMergePath(false);
+        if (string.IsNullOrEmpty(this._mkvPath))
+            this._mkvPath = AppSettingsService.Instance.Settings.Tools.MkvMergePath;
 
-        _mkvFound = _mkvPath.Length > 0 && _mkvPath != "mkvmerge" && System.IO.File.Exists(_mkvPath);
+        this._mkvFound = !string.IsNullOrEmpty(this._mkvPath) && this._mkvPath != "mkvmerge" && System.IO.File.Exists(this._mkvPath);
 
         // mkvextract / mkvpropedit
-        _mkvExtractPath = this._toolPathResolver.ResolveMkvExtractPath(_mkvPath, false);
-        if (_mkvExtractPath.Length == 0) { _mkvExtractPath = AppSettingsService.Instance.Settings.Tools.MkvExtractPath; }
-        _mkvExtractFound = _mkvExtractPath.Length > 0 && System.IO.File.Exists(_mkvExtractPath);
+        this._mkvExtractPath = this._toolPathResolver.ResolveMkvExtractPath(this._mkvPath, false);
+        if (string.IsNullOrEmpty(this._mkvExtractPath))
+            this._mkvExtractPath = AppSettingsService.Instance.Settings.Tools.MkvExtractPath;
 
-        _mkvPropEditPath = this._toolPathResolver.ResolveMkvPropEditPath(_mkvPath, false);
-        if (_mkvPropEditPath.Length == 0) { _mkvPropEditPath = AppSettingsService.Instance.Settings.Tools.MkvPropEditPath; }
-        _mkvPropEditFound = _mkvPropEditPath.Length > 0 && System.IO.File.Exists(_mkvPropEditPath);
+        this._mkvExtractFound = !string.IsNullOrEmpty(this._mkvExtractPath) && System.IO.File.Exists(this._mkvExtractPath);
+
+        this._mkvPropEditPath = this._toolPathResolver.ResolveMkvPropEditPath(this._mkvPath, false);
+        if (string.IsNullOrEmpty(this._mkvPropEditPath))
+            this._mkvPropEditPath = AppSettingsService.Instance.Settings.Tools.MkvPropEditPath;
+
+        this._mkvPropEditFound = !string.IsNullOrEmpty(this._mkvPropEditPath) && System.IO.File.Exists(this._mkvPropEditPath);
 
         // ffmpeg
-        _ffmpegPath = this._toolPathResolver.ResolveFfmpegPath(false, false);
-        if (_ffmpegPath.Length == 0)
-        {
-            _ffmpegPath = AppSettingsService.Instance.Settings.Tools.FfmpegPath;
-        }
+        this._ffmpegPath = this._toolPathResolver.ResolveFfmpegPath(false, false);
+        if (string.IsNullOrEmpty(this._ffmpegPath))
+            this._ffmpegPath = AppSettingsService.Instance.Settings.Tools.FfmpegPath;
 
-        _ffmpegFound = _ffmpegPath.Length > 0 && System.IO.File.Exists(_ffmpegPath);
-        _ffmpegStatusText = _ffmpegFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusNotFound");
+        this._ffmpegFound = !string.IsNullOrEmpty(this._ffmpegPath) && System.IO.File.Exists(this._ffmpegPath);
+        this._ffmpegStatusText = this._ffmpegFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusNotFound");
 
         // ffprobe
-        _ffprobePath = this._toolPathResolver.ResolveFfprobePath(_ffmpegPath, false);
-        if (_ffprobePath.Length == 0) { _ffprobePath = AppSettingsService.Instance.Settings.Tools.FfprobePath; }
-        _ffprobeFound = _ffprobePath.Length > 0 && System.IO.File.Exists(_ffprobePath);
+        this._ffprobePath = this._toolPathResolver.ResolveFfprobePath(this._ffmpegPath, false);
+        if (string.IsNullOrEmpty(this._ffprobePath))
+            this._ffprobePath = AppSettingsService.Instance.Settings.Tools.FfprobePath;
+
+        this._ffprobeFound = !string.IsNullOrEmpty(this._ffprobePath) && System.IO.File.Exists(this._ffprobePath);
 
         // mediainfo
-        _mediaInfoPath = this._toolPathResolver.ResolveMediaInfoPath(false);
-        if (_mediaInfoPath.Length == 0)
-        {
-            _mediaInfoPath = AppSettingsService.Instance.Settings.Tools.MediaInfoPath;
-        }
+        this._mediaInfoPath = this._toolPathResolver.ResolveMediaInfoPath(false);
+        if (string.IsNullOrEmpty(this._mediaInfoPath))
+            this._mediaInfoPath = AppSettingsService.Instance.Settings.Tools.MediaInfoPath;
 
-        _mediaInfoFound = _mediaInfoPath.Length > 0 && System.IO.File.Exists(_mediaInfoPath) && this._toolPathResolver.IsMediaInfoCliPath(_mediaInfoPath);
+        this._mediaInfoFound = !string.IsNullOrEmpty(this._mediaInfoPath) && System.IO.File.Exists(this._mediaInfoPath) && this._toolPathResolver.IsMediaInfoCliPath(this._mediaInfoPath);
 
         // cartella temp
-        _tempFolder = AppSettingsService.Instance.Settings.Tools.TempFolder;
+        this._tempFolder = AppSettingsService.Instance.Settings.Tools.TempFolder;
     }
 
     /// <summary>
@@ -232,26 +232,27 @@
     /// </summary>
     private void Save()
     {
+        string errorMessage;
+
         // Aggiorna model
-        AppSettingsService.Instance.Settings.Tools.MkvMergePath = _mkvPath;
-        AppSettingsService.Instance.Settings.Tools.MkvExtractPath = _mkvExtractPath;
-        AppSettingsService.Instance.Settings.Tools.MkvPropEditPath = _mkvPropEditPath;
-        AppSettingsService.Instance.Settings.Tools.FfmpegPath = _ffmpegPath;
-        AppSettingsService.Instance.Settings.Tools.FfprobePath = _ffprobePath;
-        AppSettingsService.Instance.Settings.Tools.MediaInfoPath = _mediaInfoPath;
-        AppSettingsService.Instance.Settings.Tools.TempFolder = _tempFolder;
+        AppSettingsService.Instance.Settings.Tools.MkvMergePath = this._mkvPath;
+        AppSettingsService.Instance.Settings.Tools.MkvExtractPath = this._mkvExtractPath;
+        AppSettingsService.Instance.Settings.Tools.MkvPropEditPath = this._mkvPropEditPath;
+        AppSettingsService.Instance.Settings.Tools.FfmpegPath = this._ffmpegPath;
+        AppSettingsService.Instance.Settings.Tools.FfprobePath = this._ffprobePath;
+        AppSettingsService.Instance.Settings.Tools.MediaInfoPath = this._mediaInfoPath;
+        AppSettingsService.Instance.Settings.Tools.TempFolder = this._tempFolder;
 
         // Valida percorsi
-        string errorMessage;
         if (!AppSettingsService.Instance.ValidateToolPaths(out errorMessage))
         {
-            _validationError = errorMessage;
+            this._validationError = errorMessage;
             return;
         }
 
-        _validationError = "";
+        this._validationError = "";
         AppSettingsService.Instance.Save();
-        OnClose.InvokeAsync();
+        this.OnClose.InvokeAsync();
     }
 
     /// <summary>
@@ -260,17 +261,24 @@
     /// <param name="fieldIndex">Indice campo: 0=mkv, 1=ffmpeg, 2=mediainfo, 3=temp</param>
     private void BrowseFolder(int fieldIndex)
     {
-        _browseFieldIndex = fieldIndex;
+        this._browseFieldIndex = fieldIndex;
 
-        if (fieldIndex == 0) { _browseInitialPath = _mkvPath; }
-        else if (fieldIndex == 1) { _browseInitialPath = _ffmpegPath; }
-        else if (fieldIndex == 2) { _browseInitialPath = _mediaInfoPath; }
-        else if (fieldIndex == 3) { _browseInitialPath = _tempFolder; }
-        else if (fieldIndex == 4) { _browseInitialPath = _mkvExtractPath; }
-        else if (fieldIndex == 5) { _browseInitialPath = _mkvPropEditPath; }
-        else if (fieldIndex == 6) { _browseInitialPath = _ffprobePath; }
+        if (fieldIndex == 0)
+            this._browseInitialPath = this._mkvPath;
+        else if (fieldIndex == 1)
+            this._browseInitialPath = this._ffmpegPath;
+        else if (fieldIndex == 2)
+            this._browseInitialPath = this._mediaInfoPath;
+        else if (fieldIndex == 3)
+            this._browseInitialPath = this._tempFolder;
+        else if (fieldIndex == 4)
+            this._browseInitialPath = this._mkvExtractPath;
+        else if (fieldIndex == 5)
+            this._browseInitialPath = this._mkvPropEditPath;
+        else if (fieldIndex == 6)
+            this._browseInitialPath = this._ffprobePath;
 
-        _showBrowse = true;
+        this._showBrowse = true;
     }
 
     /// <summary>
@@ -278,7 +286,7 @@
     /// </summary>
     private void CloseBrowse()
     {
-        _showBrowse = false;
+        this._showBrowse = false;
     }
 
     /// <summary>
@@ -287,17 +295,25 @@
     /// <param name="selectedPath">Percorso selezionato</param>
     private void ApplyBrowse(string selectedPath)
     {
-        _showBrowse = false;
+        this._showBrowse = false;
 
-        if (string.IsNullOrEmpty(selectedPath)) { return; }
+        if (string.IsNullOrEmpty(selectedPath))
+            return;
 
-        if (_browseFieldIndex == 0) { _mkvPath = selectedPath; }
-        else if (_browseFieldIndex == 1) { _ffmpegPath = selectedPath; }
-        else if (_browseFieldIndex == 2) { _mediaInfoPath = selectedPath; }
-        else if (_browseFieldIndex == 3) { _tempFolder = selectedPath; }
-        else if (_browseFieldIndex == 4) { _mkvExtractPath = selectedPath; }
-        else if (_browseFieldIndex == 5) { _mkvPropEditPath = selectedPath; }
-        else if (_browseFieldIndex == 6) { _ffprobePath = selectedPath; }
+        if (this._browseFieldIndex == 0)
+            this._mkvPath = selectedPath;
+        else if (this._browseFieldIndex == 1)
+            this._ffmpegPath = selectedPath;
+        else if (this._browseFieldIndex == 2)
+            this._mediaInfoPath = selectedPath;
+        else if (this._browseFieldIndex == 3)
+            this._tempFolder = selectedPath;
+        else if (this._browseFieldIndex == 4)
+            this._mkvExtractPath = selectedPath;
+        else if (this._browseFieldIndex == 5)
+            this._mkvPropEditPath = selectedPath;
+        else if (this._browseFieldIndex == 6)
+            this._ffprobePath = selectedPath;
     }
 
     /// <summary>
@@ -305,27 +321,28 @@
     /// </summary>
     private void DownloadFfmpeg()
     {
-        _ffmpegDownloading = true;
-        _ffmpegStatusText = AppText.T("web.common.downloading");
+        this._ffmpegDownloading = true;
+        this._ffmpegStatusText = AppText.T("web.common.downloading");
 
         Thread dlThread = new Thread(() =>
         {
-            bool dlResult = this._toolPathResolver.ResolveFfmpegPath(true, true).Length > 0;
+            bool dlResult = !string.IsNullOrEmpty(this._toolPathResolver.ResolveFfmpegPath(true, true));
 
-            InvokeAsync(() =>
+            this.InvokeAsync(() =>
             {
-                _ffmpegDownloading = false;
+                this._ffmpegDownloading = false;
                 if (dlResult)
                 {
-                    _ffmpegPath = this._toolPathResolver.ResolveFfmpegPath(false, false);
-                    _ffmpegFound = true;
-                    _ffmpegStatusText = AppText.T("web.common.statusOk");
+                    this._ffmpegPath = this._toolPathResolver.ResolveFfmpegPath(false, false);
+                    this._ffmpegFound = true;
+                    this._ffmpegStatusText = AppText.T("web.common.statusOk");
                 }
                 else
                 {
-                    _ffmpegStatusText = AppText.T("web.common.statusError");
+                    this._ffmpegStatusText = AppText.T("web.common.statusError");
                 }
-                StateHasChanged();
+
+                this.StateHasChanged();
             });
         });
         dlThread.IsBackground = true;

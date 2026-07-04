@@ -18,7 +18,7 @@
                         <option value="@_presetFiles[i]">@System.IO.Path.GetFileNameWithoutExtension(_presetFiles[i])</option>
                     }
                 </select>
-                @if (_selectedPresetFile.Length == 0)
+                @if (string.IsNullOrEmpty(_selectedPresetFile))
                 {
                     <input class="form-input metadata-preset-name-input" @bind="_preset.Name" placeholder="@AppText.T("web.metadata.presetDialog.presetNamePlaceholder")" @onfocus='@(() => SetFieldHelp("presetName"))' @onmouseenter='@(() => SetFieldHelp("presetName"))' />
                 }
@@ -28,11 +28,10 @@
                     <button @onclick="NewPreset">@AppText.T("web.common.new")</button>
                 }
                 <button @onclick="SavePreset">@AppText.T("web.metadata.presetDialog.save")</button>
-                <button @onclick="DeletePreset" disabled="@(_selectedPresetFile.Length == 0)">@AppText.T("web.common.delete")</button>
-                <button @onclick="UsePreset" disabled="@(_selectedPresetFile.Length == 0)">@AppText.T("web.metadata.presetDialog.usePreset")</button>
+                <button @onclick="DeletePreset" disabled="@(string.IsNullOrEmpty(_selectedPresetFile))">@AppText.T("web.common.delete")</button>
             </div>
 
-            @if (_message.Length > 0)
+            @if (!string.IsNullOrEmpty(_message))
             {
                 <div class="renamer-params-error">@_message</div>
             }
@@ -219,7 +218,6 @@
             </div>
         </div>
         <div class="dialog-footer">
-            <button @onclick="UsePreset" disabled="@(_selectedPresetFile.Length == 0)">@AppText.T("web.common.ok")</button>
             <button @onclick="OnClose">@AppText.T("web.common.close")</button>
         </div>
     </div>
@@ -238,7 +236,7 @@
                         <code>@_functionExampleItem.ExampleExpression</code>
                         <span>@AppText.T("web.metadata.presetDialog.functionExampleOutput")</span>
                         <code>@_functionExampleItem.ExampleOutput</code>
-                        @if (_functionExampleItem.ExampleNotes != null && _functionExampleItem.ExampleNotes.Length > 0)
+                        @if (!string.IsNullOrEmpty(_functionExampleItem.ExampleNotes))
                         {
                             <span>@AppText.T("web.metadata.presetDialog.functionExampleNotes")</span>
                             <code>@_functionExampleItem.ExampleNotes</code>
@@ -254,26 +252,94 @@
 </div>
 
 @code {
+    /// <summary>
+    /// Opzioni applicazione correnti
+    /// </summary>
     [Parameter] public Options Options { get; set; }
-    [Parameter] public List<MkvMetadataRecord> Records { get; set; }
-    [Parameter] public EventCallback OnClose { get; set; }
-    [Parameter] public EventCallback<string> OnPresetSelected { get; set; }
 
+    /// <summary>
+    /// Record metadata disponibili per contesto UI
+    /// </summary>
+    [Parameter] public List<MkvMetadataRecord> Records { get; set; }
+
+    /// <summary>
+    /// Evento chiusura dialog
+    /// </summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>
+    /// Servizio gestione preset metadata
+    /// </summary>
     private MetadataPresetService _service;
+
+    /// <summary>
+    /// File preset disponibili
+    /// </summary>
     private List<string> _presetFiles;
+
+    /// <summary>
+    /// File preset selezionato
+    /// </summary>
     private string _selectedPresetFile;
+
+    /// <summary>
+    /// Preset in editing
+    /// </summary>
     private MkvMetadataPreset _preset;
+
+    /// <summary>
+    /// Indice regola selezionata
+    /// </summary>
     private int _selectedRuleIndex;
+
+    /// <summary>
+    /// Messaggio stato o errore
+    /// </summary>
     private string _message;
+
+    /// <summary>
+    /// Indica se mostrare campi avanzati
+    /// </summary>
     private bool _showAdvancedFields;
+
+    /// <summary>
+    /// Filtro browser token
+    /// </summary>
     private string _tokenBrowserFilter;
+
+    /// <summary>
+    /// Filtro browser funzioni
+    /// </summary>
     private string _functionBrowserFilter;
+
+    /// <summary>
+    /// Funzione selezionata per esempio
+    /// </summary>
     private MetadataFunctionBrowserItem _functionExampleItem;
+
+    /// <summary>
+    /// Titolo help contestuale
+    /// </summary>
     private string _fieldHelpTitle;
+
+    /// <summary>
+    /// Testo help contestuale
+    /// </summary>
     private string _fieldHelpText;
+
+    /// <summary>
+    /// Condizione attiva per inserimento token
+    /// </summary>
     private MkvMetadataFieldCondition _activeFieldCondition;
+
+    /// <summary>
+    /// Operazione attiva per inserimento token
+    /// </summary>
     private MkvMetadataOperation _activeOperation;
 
+    /// <summary>
+    /// Inizializza preset e stato dialog
+    /// </summary>
     protected override void OnInitialized()
     {
         this._service = new MetadataPresetService(AppSettingsService.Instance.ConfigFolder);
@@ -290,7 +356,7 @@
         this._activeOperation = null;
         this.SetFieldHelp("default");
 
-        if (this._selectedPresetFile.Length > 0 && System.IO.File.Exists(this._selectedPresetFile))
+        if (!string.IsNullOrEmpty(this._selectedPresetFile) && System.IO.File.Exists(this._selectedPresetFile))
         {
             this.LoadSelectedPreset();
         }
@@ -300,6 +366,9 @@
         }
     }
 
+    /// <summary>
+    /// Regola correntemente selezionata
+    /// </summary>
     private MkvMetadataRule SelectedRule
     {
         get
@@ -313,6 +382,9 @@
         }
     }
 
+    /// <summary>
+    /// Prepara un nuovo preset vuoto
+    /// </summary>
     private void NewPreset()
     {
         this._preset = new MkvMetadataPreset();
@@ -325,9 +397,12 @@
         this._activeOperation = null;
     }
 
+    /// <summary>
+    /// Carica il preset selezionato dal dropdown
+    /// </summary>
     private void LoadSelectedPreset()
     {
-        if (this._selectedPresetFile.Length == 0)
+        if (string.IsNullOrEmpty(this._selectedPresetFile))
         {
             this.NewPreset();
             return;
@@ -346,9 +421,12 @@
         }
     }
 
+    /// <summary>
+    /// Salva il preset corrente
+    /// </summary>
     private void SavePreset()
     {
-        if (this._selectedPresetFile.Length == 0)
+        if (string.IsNullOrEmpty(this._selectedPresetFile))
         {
             this.SaveNewPreset();
             return;
@@ -358,10 +436,13 @@
         this.SaveTo(this._selectedPresetFile);
     }
 
+    /// <summary>
+    /// Salva un nuovo preset usando il nome inserito
+    /// </summary>
     private void SaveNewPreset()
     {
         string fileName = this.SanitizeFileName(this._preset.Name);
-        if (fileName.Length == 0)
+        if (string.IsNullOrEmpty(fileName))
         {
             this._message = AppText.T("web.metadata.presetDialog.presetNameRequired");
             return;
@@ -370,6 +451,10 @@
         this.SaveTo(System.IO.Path.Combine(this._service.GetPresetFolder(), fileName + ".json"));
     }
 
+    /// <summary>
+    /// Salva il preset su file
+    /// </summary>
+    /// <param name="filePath">Percorso preset destinazione</param>
     private void SaveTo(string filePath)
     {
         try
@@ -387,11 +472,14 @@
         }
     }
 
+    /// <summary>
+    /// Elimina il preset selezionato
+    /// </summary>
     private void DeletePreset()
     {
         try
         {
-            if (this._selectedPresetFile.Length > 0 && System.IO.File.Exists(this._selectedPresetFile))
+            if (!string.IsNullOrEmpty(this._selectedPresetFile) && System.IO.File.Exists(this._selectedPresetFile))
             {
                 System.IO.File.Delete(this._selectedPresetFile);
             }
@@ -406,14 +494,9 @@
         }
     }
 
-    private void UsePreset()
-    {
-        if (this._selectedPresetFile.Length > 0)
-        {
-            this.OnPresetSelected.InvokeAsync(this._selectedPresetFile);
-        }
-    }
-
+    /// <summary>
+    /// Aggiunge una nuova regola al preset
+    /// </summary>
     private void AddRule()
     {
         MkvMetadataRule rule = new MkvMetadataRule();
@@ -423,6 +506,10 @@
         this._selectedRuleIndex = this._preset.Rules.Count - 1;
     }
 
+    /// <summary>
+    /// Seleziona una regola
+    /// </summary>
+    /// <param name="index">Indice regola</param>
     private void SelectRule(int index)
     {
         this._selectedRuleIndex = index;
@@ -430,6 +517,11 @@
         this._activeOperation = null;
     }
 
+    /// <summary>
+    /// Sposta una regola nella lista
+    /// </summary>
+    /// <param name="index">Indice regola</param>
+    /// <param name="delta">Spostamento richiesto</param>
     private void MoveRule(int index, int delta)
     {
         int target = index + delta;
@@ -444,6 +536,10 @@
         this._selectedRuleIndex = target;
     }
 
+    /// <summary>
+    /// Duplica una regola esistente
+    /// </summary>
+    /// <param name="index">Indice regola</param>
     private void DuplicateRule(int index)
     {
         if (index < 0 || index >= this._preset.Rules.Count)
@@ -457,6 +553,10 @@
         this._selectedRuleIndex = index + 1;
     }
 
+    /// <summary>
+    /// Rimuove una regola
+    /// </summary>
+    /// <param name="index">Indice regola</param>
     private void RemoveRule(int index)
     {
         if (index < 0 || index >= this._preset.Rules.Count)
@@ -471,70 +571,92 @@
         }
     }
 
+    /// <summary>
+    /// Cambia ambito della regola selezionata
+    /// </summary>
+    /// <param name="e">Argomenti cambio selezione</param>
     private void ChangeSelectedRuleScope(ChangeEventArgs e)
     {
         MkvMetadataTargetScope parsed;
-        if (SelectedRule == null)
-        {
+        if (this.SelectedRule == null)
             return;
-        }
 
         if (Enum.TryParse(GetChangeValue(e), out parsed))
         {
-            SelectedRule.TargetScope = parsed;
-            MetadataPresetUiHelper.EnsureRule(SelectedRule, this._showAdvancedFields);
+            this.SelectedRule.TargetScope = parsed;
+            MetadataPresetUiHelper.EnsureRule(this.SelectedRule, this._showAdvancedFields);
         }
     }
 
+    /// <summary>
+    /// Aggiunge un'operazione alla regola selezionata
+    /// </summary>
     private void AddOperation()
     {
-        if (SelectedRule == null)
+        if (this.SelectedRule == null)
             return;
 
         MkvMetadataOperation operation = new MkvMetadataOperation();
-        MetadataPresetUiHelper.EnsureOperation(SelectedRule.TargetScope, operation, this._showAdvancedFields);
-        SelectedRule.Operations.Add(operation);
+        MetadataPresetUiHelper.EnsureOperation(this.SelectedRule.TargetScope, operation, this._showAdvancedFields);
+        this.SelectedRule.Operations.Add(operation);
     }
 
+    /// <summary>
+    /// Sposta un'operazione nella regola selezionata
+    /// </summary>
+    /// <param name="index">Indice operazione</param>
+    /// <param name="delta">Spostamento richiesto</param>
     private void MoveOperation(int index, int delta)
     {
         int target = index + delta;
-        if (SelectedRule == null || index < 0 || index >= SelectedRule.Operations.Count || target < 0 || target >= SelectedRule.Operations.Count)
-        {
+        if (this.SelectedRule == null || index < 0 || index >= this.SelectedRule.Operations.Count || target < 0 || target >= this.SelectedRule.Operations.Count)
             return;
-        }
 
-        MkvMetadataOperation operation = SelectedRule.Operations[index];
-        SelectedRule.Operations.RemoveAt(index);
-        SelectedRule.Operations.Insert(target, operation);
+        MkvMetadataOperation operation = this.SelectedRule.Operations[index];
+        this.SelectedRule.Operations.RemoveAt(index);
+        this.SelectedRule.Operations.Insert(target, operation);
     }
 
+    /// <summary>
+    /// Rimuove un'operazione dalla regola selezionata
+    /// </summary>
+    /// <param name="index">Indice operazione</param>
     private void RemoveOperation(int index)
     {
-        if (SelectedRule != null && index >= 0 && index < SelectedRule.Operations.Count)
-        {
-            SelectedRule.Operations.RemoveAt(index);
-        }
+        if (this.SelectedRule != null && index >= 0 && index < this.SelectedRule.Operations.Count)
+            this.SelectedRule.Operations.RemoveAt(index);
     }
 
+    /// <summary>
+    /// Normalizza il modello preset per la UI
+    /// </summary>
     private void NormalizePresetModel()
     {
         MetadataPresetUiHelper.EnsurePreset(this._preset, this._showAdvancedFields);
     }
 
+    /// <summary>
+    /// Cambia il tipo di un'operazione
+    /// </summary>
+    /// <param name="operation">Operazione da aggiornare</param>
+    /// <param name="value">Nuovo tipo testuale</param>
     private void ChangeOperationType(MkvMetadataOperation operation, string value)
     {
         MkvMetadataOperationType parsed;
-        if (operation == null || SelectedRule == null)
+        if (operation == null || this.SelectedRule == null)
             return;
 
         if (Enum.TryParse(value, out parsed))
         {
             operation.Type = parsed;
-            MetadataPresetUiHelper.EnsureOperation(SelectedRule.TargetScope, operation, this._showAdvancedFields);
+            MetadataPresetUiHelper.EnsureOperation(this.SelectedRule.TargetScope, operation, this._showAdvancedFields);
         }
     }
 
+    /// <summary>
+    /// Imposta la condizione attiva per inserimento token/funzioni
+    /// </summary>
+    /// <param name="condition">Condizione attiva</param>
     private void ActivateFieldCondition(MkvMetadataFieldCondition condition)
     {
         this._activeFieldCondition = condition;
@@ -542,6 +664,10 @@
         this.SetFieldHelp("conditionValue");
     }
 
+    /// <summary>
+    /// Imposta l'operazione attiva per inserimento token/funzioni
+    /// </summary>
+    /// <param name="operation">Operazione attiva</param>
     private void ActivateOperation(MkvMetadataOperation operation)
     {
         this._activeOperation = operation;
@@ -549,12 +675,14 @@
         this.SetFieldHelp("operationValue");
     }
 
+    /// <summary>
+    /// Inserisce un token nel target attivo
+    /// </summary>
+    /// <param name="token">Token da inserire</param>
     private void InsertToken(string token)
     {
-        if (token == null || token.Length == 0)
-        {
+        if (string.IsNullOrEmpty(token))
             return;
-        }
 
         if (this._activeOperation != null)
         {
@@ -571,14 +699,16 @@
         this._message = AppText.T("web.metadata.presetDialog.tokenTargetMissing");
     }
 
+    /// <summary>
+    /// Appende una funzione al token o all'espressione attiva
+    /// </summary>
+    /// <param name="functionCall">Chiamata funzione</param>
     private void InsertFunction(string functionCall)
     {
         string result;
 
-        if (functionCall == null || functionCall.Length == 0)
-        {
+        if (string.IsNullOrEmpty(functionCall))
             return;
-        }
 
         if (this._activeOperation != null)
         {
@@ -609,31 +739,40 @@
         this._message = AppText.T("web.metadata.presetDialog.functionTargetMissing");
     }
 
+    /// <summary>
+    /// Mostra esempio funzione
+    /// </summary>
+    /// <param name="item">Funzione selezionata</param>
     private void ShowFunctionExample(MetadataFunctionBrowserItem item)
     {
         if (item == null)
-        {
             return;
-        }
 
         this._functionExampleItem = item;
     }
 
+    /// <summary>
+    /// Chiude esempio funzione
+    /// </summary>
     private void CloseFunctionExample()
     {
         this._functionExampleItem = null;
     }
 
+    /// <summary>
+    /// Costruisce le voci del browser token
+    /// </summary>
+    /// <returns>Token disponibili</returns>
     private List<MetadataTokenBrowserItem> GetTokenBrowserItems()
     {
         List<MetadataTokenBrowserItem> result = new List<MetadataTokenBrowserItem>();
-        MkvMetadataTargetScope scope = SelectedRule != null ? SelectedRule.TargetScope : MkvMetadataTargetScope.Audio;
+        MkvMetadataTargetScope scope = this.SelectedRule != null ? this.SelectedRule.TargetScope : MkvMetadataTargetScope.Audio;
         List<MetadataFieldDefinition> fields = MetadataPresetUiHelper.GetReadableFieldsForCondition(scope);
         string filter = this._tokenBrowserFilter != null ? this._tokenBrowserFilter.Trim() : "";
         for (int i = 0; i < fields.Count; i++)
         {
             string token = "[" + fields[i].Key + "]";
-            if (filter.Length == 0 || ContainsIgnoreCase(token, filter) || ContainsIgnoreCase(fields[i].Label, filter))
+            if (string.IsNullOrEmpty(filter) || ContainsIgnoreCase(token, filter) || ContainsIgnoreCase(fields[i].Label, filter))
             {
                 result.Add(new MetadataTokenBrowserItem { Token = token, Label = fields[i].Label, Description = MetadataPresetUiHelper.GetSectorLabel(fields[i].Sector) });
             }
@@ -642,6 +781,10 @@
         return result;
     }
 
+    /// <summary>
+    /// Costruisce le voci del browser funzioni
+    /// </summary>
+    /// <returns>Funzioni disponibili</returns>
     private List<MetadataFunctionBrowserItem> GetFunctionBrowserItems()
     {
         List<MetadataFunctionBrowserItem> result = new List<MetadataFunctionBrowserItem>();
@@ -657,10 +800,8 @@
         AddFunction(result, "NormalizeSpaces()", "NormalizeSpaces", "ITA   Full", "{[subtitle_title]:NormalizeSpaces()}", "ITA Full");
 
         string filter = this._functionBrowserFilter != null ? this._functionBrowserFilter.Trim() : "";
-        if (filter.Length == 0)
-        {
+        if (string.IsNullOrEmpty(filter))
             return result;
-        }
 
         List<MetadataFunctionBrowserItem> filtered = new List<MetadataFunctionBrowserItem>();
         for (int i = 0; i < result.Count; i++)
@@ -674,11 +815,30 @@
         return filtered;
     }
 
+    /// <summary>
+    /// Aggiunge una funzione senza note
+    /// </summary>
+    /// <param name="result">Lista destinazione</param>
+    /// <param name="call">Chiamata funzione</param>
+    /// <param name="key">Chiave traduzione</param>
+    /// <param name="exampleInput">Input esempio</param>
+    /// <param name="exampleExpression">Espressione esempio</param>
+    /// <param name="exampleOutput">Output esempio</param>
     private void AddFunction(List<MetadataFunctionBrowserItem> result, string call, string key, string exampleInput, string exampleExpression, string exampleOutput)
     {
-        AddFunction(result, call, key, exampleInput, exampleExpression, exampleOutput, "");
+        this.AddFunction(result, call, key, exampleInput, exampleExpression, exampleOutput, "");
     }
 
+    /// <summary>
+    /// Aggiunge una funzione al browser funzioni
+    /// </summary>
+    /// <param name="result">Lista destinazione</param>
+    /// <param name="call">Chiamata funzione</param>
+    /// <param name="key">Chiave traduzione</param>
+    /// <param name="exampleInput">Input esempio</param>
+    /// <param name="exampleExpression">Espressione esempio</param>
+    /// <param name="exampleOutput">Output esempio</param>
+    /// <param name="exampleNotes">Note esempio</param>
     private void AddFunction(List<MetadataFunctionBrowserItem> result, string call, string key, string exampleInput, string exampleExpression, string exampleOutput, string exampleNotes)
     {
         result.Add(new MetadataFunctionBrowserItem
@@ -692,16 +852,34 @@
         });
     }
 
+    /// <summary>
+    /// Restituisce descrizione breve regola
+    /// </summary>
+    /// <param name="rule">Regola metadata</param>
+    /// <returns>Descrizione visualizzabile</returns>
     private static string GetRuleListDescription(MkvMetadataRule rule)
     {
-        return rule != null && rule.Description != null && rule.Description.Trim().Length > 0 ? rule.Description : AppText.T("web.metadata.presetDialog.ruleWithoutDescription");
+        return rule != null && !string.IsNullOrEmpty(rule.Description) && !string.IsNullOrEmpty(rule.Description.Trim()) ? rule.Description : AppText.T("web.metadata.presetDialog.ruleWithoutDescription");
     }
 
+    /// <summary>
+    /// Appende un token a un testo
+    /// </summary>
+    /// <param name="value">Testo originale</param>
+    /// <param name="token">Token da aggiungere</param>
+    /// <returns>Testo aggiornato</returns>
     private static string AppendToken(string value, string token)
     {
         return (value != null ? value : "") + token;
     }
 
+    /// <summary>
+    /// Appende una funzione all'ultimo token valido
+    /// </summary>
+    /// <param name="value">Testo originale</param>
+    /// <param name="functionCall">Chiamata funzione</param>
+    /// <param name="result">Testo aggiornato</param>
+    /// <returns>True se la funzione è stata applicata</returns>
     private static bool TryAppendFunction(string value, string functionCall, out string result)
     {
         string text = value != null ? value : "";
@@ -709,10 +887,8 @@
         string suffix = text.Substring(trimmed.Length);
 
         result = text;
-        if (trimmed.Length == 0)
-        {
+        if (string.IsNullOrEmpty(trimmed))
             return false;
-        }
 
         if (trimmed.EndsWith("}", StringComparison.Ordinal))
         {
@@ -732,16 +908,32 @@
         return false;
     }
 
+    /// <summary>
+    /// Verifica contenimento case insensitive
+    /// </summary>
+    /// <param name="text">Testo sorgente</param>
+    /// <param name="value">Valore cercato</param>
+    /// <returns>True se trovato</returns>
     private static bool ContainsIgnoreCase(string text, string value)
     {
         return text != null && value != null && text.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
+    /// <summary>
+    /// Converte valore evento change in stringa
+    /// </summary>
+    /// <param name="e">Argomenti change</param>
+    /// <returns>Valore testuale</returns>
     private static string GetChangeValue(ChangeEventArgs e)
     {
         return e != null && e.Value != null ? e.Value.ToString() : "";
     }
 
+    /// <summary>
+    /// Pulisce un nome file preset
+    /// </summary>
+    /// <param name="value">Nome originale</param>
+    /// <returns>Nome file valido</returns>
     private string SanitizeFileName(string value)
     {
         string result = value != null ? value.Trim() : "";
@@ -754,12 +946,21 @@
         return result;
     }
 
+    /// <summary>
+    /// Imposta help contestuale
+    /// </summary>
+    /// <param name="key">Chiave help</param>
     private void SetFieldHelp(string key)
     {
         this._fieldHelpTitle = AppText.T("web.metadata.presetDialog.help." + key + ".title");
         this._fieldHelpText = AppText.T("web.metadata.presetDialog.help." + key + ".text");
     }
 
+    /// <summary>
+    /// Clona una regola metadata
+    /// </summary>
+    /// <param name="source">Regola sorgente</param>
+    /// <returns>Regola clonata</returns>
     private MkvMetadataRule CloneRule(MkvMetadataRule source)
     {
         MkvMetadataRule clone = new MkvMetadataRule();
@@ -775,6 +976,11 @@
         return clone;
     }
 
+    /// <summary>
+    /// Clona nodi condizione
+    /// </summary>
+    /// <param name="source">Nodi sorgente</param>
+    /// <returns>Nodi clonati</returns>
     private List<MkvMetadataRuleConditionNode> CloneNodes(List<MkvMetadataRuleConditionNode> source)
     {
         List<MkvMetadataRuleConditionNode> result = new List<MkvMetadataRuleConditionNode>();
@@ -786,6 +992,11 @@
         return result;
     }
 
+    /// <summary>
+    /// Clona un nodo condizione
+    /// </summary>
+    /// <param name="source">Nodo sorgente</param>
+    /// <returns>Nodo clonato</returns>
     private MkvMetadataRuleConditionNode CloneNode(MkvMetadataRuleConditionNode source)
     {
         MkvMetadataRuleConditionNode clone = new MkvMetadataRuleConditionNode();
@@ -828,6 +1039,11 @@
         return clone;
     }
 
+    /// <summary>
+    /// Clona un'operazione metadata
+    /// </summary>
+    /// <param name="source">Operazione sorgente</param>
+    /// <returns>Operazione clonata</returns>
     private static MkvMetadataOperation CloneOperation(MkvMetadataOperation source)
     {
         return new MkvMetadataOperation
@@ -842,20 +1058,60 @@
         };
     }
 
+    /// <summary>
+    /// Voce browser token
+    /// </summary>
     private class MetadataTokenBrowserItem
     {
+        /// <summary>
+        /// Token inseribile
+        /// </summary>
         public string Token { get; set; }
+
+        /// <summary>
+        /// Etichetta token
+        /// </summary>
         public string Label { get; set; }
+
+        /// <summary>
+        /// Descrizione token
+        /// </summary>
         public string Description { get; set; }
     }
 
+    /// <summary>
+    /// Voce browser funzioni
+    /// </summary>
     private class MetadataFunctionBrowserItem
     {
+        /// <summary>
+        /// Chiamata funzione inseribile
+        /// </summary>
         public string Call { get; set; }
+
+        /// <summary>
+        /// Descrizione funzione
+        /// </summary>
         public string Description { get; set; }
+
+        /// <summary>
+        /// Input esempio
+        /// </summary>
         public string ExampleInput { get; set; }
+
+        /// <summary>
+        /// Espressione esempio
+        /// </summary>
         public string ExampleExpression { get; set; }
+
+        /// <summary>
+        /// Output esempio
+        /// </summary>
         public string ExampleOutput { get; set; }
+
+        /// <summary>
+        /// Note esempio
+        /// </summary>
         public string ExampleNotes { get; set; }
     }
 }
