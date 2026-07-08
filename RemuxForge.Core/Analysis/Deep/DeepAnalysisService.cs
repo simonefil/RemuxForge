@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace RemuxForge.Core.Analysis.Deep
 {
@@ -278,13 +279,17 @@ namespace RemuxForge.Core.Analysis.Deep
             {
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  Audio validator non disponibile: " + this._currentTrackPolicy.RejectReason);
             }
-            if (this._currentTrackPolicy.LanguageFineTuneAudioAvailable)
+            if (this._currentTrackPolicy.SourceFineTuneAudioAvailable)
             {
-                ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  Audio fine-tune: lang stream " + this._currentTrackPolicy.LanguageFineTuneAudioStreamIndex.ToString(CultureInfo.InvariantCulture) + (!string.IsNullOrEmpty(this._currentTrackPolicy.LanguageFineTuneTrackName) ? " (" + this._currentTrackPolicy.LanguageFineTuneTrackName + ")" : ""));
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  Audio fine-tune: source stream " + this._currentTrackPolicy.SourceFineTuneAudioStreamIndex.ToString(CultureInfo.InvariantCulture) + (!string.IsNullOrEmpty(this._currentTrackPolicy.SourceFineTuneTrackName) ? " (" + this._currentTrackPolicy.SourceFineTuneTrackName + ")" : ""));
+            }
+            else if (this._currentTrackPolicy.LanguageFineTuneAudioAvailable)
+            {
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  Audio fine-tune fallback language: lang stream " + this._currentTrackPolicy.LanguageFineTuneAudioStreamIndex.ToString(CultureInfo.InvariantCulture) + (!string.IsNullOrEmpty(this._currentTrackPolicy.LanguageFineTuneTrackName) ? " (" + this._currentTrackPolicy.LanguageFineTuneTrackName + ")" : ""));
             }
             else
             {
-                ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  Audio fine-tune non disponibile: " + this._currentTrackPolicy.LanguageFineTuneRejectReason);
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  Audio fine-tune non disponibile: " + this._currentTrackPolicy.SourceFineTuneRejectReason + "; " + this._currentTrackPolicy.LanguageFineTuneRejectReason);
             }
 
             regions = timelineMap.Regions;
@@ -353,7 +358,7 @@ namespace RemuxForge.Core.Analysis.Deep
             ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, "  Fase 5: Fine tuning audio...");
             ConsoleHelper.Progress(LogSection.Deep, 86, "Deep: audio tune");
             phaseStartMs = stopwatch.ElapsedMilliseconds;
-            this._audioOperationFineTuner.FineTune(langFile, operations, transitions, stretchRatio, initialDelayMs, this._currentTrackPolicy.LanguageFineTuneAudioAvailable, this._currentTrackPolicy.LanguageFineTuneAudioStreamIndex, this._currentTrackPolicy.LanguageFineTuneRejectReason);
+            this._audioOperationFineTuner.FineTune(sourceFile, langFile, operations, transitions, stretchRatio, initialDelayMs, this._currentTrackPolicy);
             diagnostics.Timing.AudioFineTuneMs = stopwatch.ElapsedMilliseconds - phaseStartMs;
 
             // Costruisci EditMap
@@ -378,7 +383,7 @@ namespace RemuxForge.Core.Analysis.Deep
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Tempo di esecuzione analisi in ms
@@ -1538,20 +1543,14 @@ namespace RemuxForge.Core.Analysis.Deep
             double duration = searchEndSrc - searchStartSrc;
             double langStartOld = searchStartSrc - oldOffsetSec;
             double langStartNew = searchStartSrc - newOffsetSec;
-            List<byte[]> srcFrames;
-            double[] sourceTimestampsMs;
-            List<byte[]> langOldFrames;
-            double[] langOldTimestampsMs;
-            List<byte[]> langNewFrames;
-            double[] langNewTimestampsMs;
+            List<byte[]> srcFrames = new List<byte[]>();
+            double[] sourceTimestampsMs = Array.Empty<double>();
+            List<byte[]> langOldFrames = new List<byte[]>();
+            double[] langOldTimestampsMs = Array.Empty<double>();
+            List<byte[]> langNewFrames = new List<byte[]>();
+            double[] langNewTimestampsMs = Array.Empty<double>();
             double toleranceMs = 100.0;
             int maxIdx;
-            double targetOldMs;
-            double targetNewMs;
-            int oldIdx;
-            int newIdx;
-            double oldDistMs;
-            double newDistMs;
             bool[] valid;
             bool[] changed;
             double[] oldScores;
@@ -1579,6 +1578,8 @@ namespace RemuxForge.Core.Analysis.Deep
             int offsetDirection = Math.Sign(newOffsetSec - oldOffsetSec);
             bool collectCutDiagnostics = transition != null && duration > 60.0 && offsetDirection < 0 && Math.Abs(newOffsetSec - oldOffsetSec) <= 1.5;
             int candidateDiagnosticsLimit = 80;
+            ParallelOptions extractionParallelOptions;
+            ParallelOptions scoringParallelOptions;
 
             if (duration < 1.0)
             {
@@ -1603,10 +1604,13 @@ namespace RemuxForge.Core.Analysis.Deep
              * Estrazione frame e scoring dei due offset candidati
              */
 
-            // Estrae frame nativi per non perdere i PTS reali nei source VFR
-            this.ExtractDeepSegment(sourceFile, (int)(searchStartSrc * 1000), duration, 0.0, this._geometryCropSourceToFourThree, this._analysisCropSourcePx, out srcFrames, out sourceTimestampsMs);
-            this.ExtractDeepSegment(langFile, (int)(langStartOld * 1000), duration, 0.0, this._geometryCropLanguageToFourThree, this._analysisCropLanguagePx, out langOldFrames, out langOldTimestampsMs);
-            this.ExtractDeepSegment(langFile, (int)(langStartNew * 1000), duration, 0.0, this._geometryCropLanguageToFourThree, this._analysisCropLanguagePx, out langNewFrames, out langNewTimestampsMs);
+            // Estrae frame nativi in parallelo per non perdere i PTS reali nei source VFR
+            extractionParallelOptions = new ParallelOptions();
+            extractionParallelOptions.MaxDegreeOfParallelism = Math.Min(3, ParallelismHelper.ResolveDefaultMaxDegree());
+            Parallel.Invoke(extractionParallelOptions,
+                () => this.ExtractDeepSegment(sourceFile, (int)(searchStartSrc * 1000), duration, 0.0, this._geometryCropSourceToFourThree, this._analysisCropSourcePx, out srcFrames, out sourceTimestampsMs),
+                () => this.ExtractDeepSegment(langFile, (int)(langStartOld * 1000), duration, 0.0, this._geometryCropLanguageToFourThree, this._analysisCropLanguagePx, out langOldFrames, out langOldTimestampsMs),
+                () => this.ExtractDeepSegment(langFile, (int)(langStartNew * 1000), duration, 0.0, this._geometryCropLanguageToFourThree, this._analysisCropLanguagePx, out langNewFrames, out langNewTimestampsMs));
 
             if (srcFrames.Count < minSideFrames || langOldFrames.Count < minSideFrames || langNewFrames.Count < minSideFrames)
             {
@@ -1627,29 +1631,27 @@ namespace RemuxForge.Core.Analysis.Deep
             newMseScores = new double[maxIdx];
 
             // Allinea ogni frame source al frame lang più vicino per ciascun offset candidato
-            for (int i = 0; i < maxIdx; i++)
+            scoringParallelOptions = new ParallelOptions();
+            scoringParallelOptions.MaxDegreeOfParallelism = ParallelismHelper.ResolveDefaultMaxDegree();
+            Parallel.For(0, maxIdx, scoringParallelOptions, i =>
             {
-                targetOldMs = sourceTimestampsMs[i] - (oldOffsetSec * 1000.0);
-                targetNewMs = sourceTimestampsMs[i] - (newOffsetSec * 1000.0);
+                double targetOldMs = sourceTimestampsMs[i] - (oldOffsetSec * 1000.0);
+                double targetNewMs = sourceTimestampsMs[i] - (newOffsetSec * 1000.0);
                 if (Math.Abs(inverseRatio - 1.0) > 0.0001)
                 {
                     targetOldMs = targetOldMs * inverseRatio;
                     targetNewMs = targetNewMs * inverseRatio;
                 }
-                oldIdx = NearestTimestampIndex(langOldTimestampsMs, targetOldMs);
-                newIdx = NearestTimestampIndex(langNewTimestampsMs, targetNewMs);
+                int oldIdx = NearestTimestampIndex(langOldTimestampsMs, targetOldMs);
+                int newIdx = NearestTimestampIndex(langNewTimestampsMs, targetNewMs);
 
                 if (oldIdx < 0 || oldIdx >= langOldFrames.Count || newIdx < 0 || newIdx >= langNewFrames.Count)
-                {
-                    continue;
-                }
+                    return;
 
-                oldDistMs = Math.Abs(langOldTimestampsMs[oldIdx] - targetOldMs);
-                newDistMs = Math.Abs(langNewTimestampsMs[newIdx] - targetNewMs);
+                double oldDistMs = Math.Abs(langOldTimestampsMs[oldIdx] - targetOldMs);
+                double newDistMs = Math.Abs(langNewTimestampsMs[newIdx] - targetNewMs);
                 if (oldDistMs > toleranceMs || newDistMs > toleranceMs)
-                {
-                    continue;
-                }
+                    return;
 
                 valid[i] = true;
                 oldScores[i] = this.ComputeSsim(srcFrames[i], langOldFrames[oldIdx]);
@@ -1661,7 +1663,7 @@ namespace RemuxForge.Core.Analysis.Deep
                 oldLangMeanScores[i] = ComputeFrameMean(langOldFrames[oldIdx]);
                 newLangMeanScores[i] = ComputeFrameMean(langNewFrames[newIdx]);
                 changed[i] = i == 0 || this.ComputeSsim(srcFrames[i - 1], srcFrames[i]) < duplicateSsim;
-            }
+            });
 
             /*
              * Candidati: old deve vincere prima, new deve vincere dopo
@@ -1725,6 +1727,9 @@ namespace RemuxForge.Core.Analysis.Deep
                 double mseInsertScore = 0.0;
                 double mseInsertOldMse = double.MaxValue;
                 double mseInsertNewMse = double.MaxValue;
+                bool mseInsertDarkRewritten = false;
+                int mseInsertDarkRunFrames = 0;
+                double mseInsertDarkBoundaryIntervalRatio = 0.0;
                 bool mseInsertAccepted = false;
                 bool longInsertTransition = Math.Abs(newOffsetSec - oldOffsetSec) > 1.5;
                 double insertRunMseMargin = 100.0;
@@ -1770,7 +1775,7 @@ namespace RemuxForge.Core.Analysis.Deep
                         }
                     }
 
-                    // Se il boundary cade in nero/fade, risale finche' il nuovo offset rimane nettamente migliore:
+                    // Se il boundary cade in nero/fade, risale finché il nuovo offset rimane nettamente migliore:
                     // l'edit deve partire all'inizio del tratto source-only, non al primo frame luminoso.
                     if (meanScores[boundaryIdx] <= darkFrameMean)
                     {
@@ -1892,6 +1897,26 @@ namespace RemuxForge.Core.Analysis.Deep
                         ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: boundary dark comune riportato da src " + darkBoundaryOriginalSourceSec.ToString("F3", CultureInfo.InvariantCulture) + "s a " + rewrittenSourceSec.ToString("F3", CultureInfo.InvariantCulture) + "s (shift=" + darkBoundaryShiftMs.ToString("F0", CultureInfo.InvariantCulture) + "ms, ratio=" + darkBoundaryIntervalDarkRatio.ToString("F2", CultureInfo.InvariantCulture) + ")");
                         boundaryIdx = sharedDarkBoundaryIdx;
                     }
+                    if (!darkBoundaryRewritten && this.TryRewriteSourceDarkInsertBoundary(
+                        boundaryIdx,
+                        oldOffsetSec,
+                        newOffsetSec,
+                        searchStartSrc,
+                        searchEndSrc,
+                        valid,
+                        sourceTimestampsMs,
+                        meanScores,
+                        darkFrameMean,
+                        out sharedDarkBoundaryIdx,
+                        out darkBoundaryRunFrames,
+                        out darkBoundaryIntervalDarkRatio))
+                    {
+                        double rewrittenSourceSec = sourceTimestampsMs[sharedDarkBoundaryIdx] / 1000.0;
+                        double darkBoundaryShiftMs = (darkBoundaryOriginalSourceSec - rewrittenSourceSec) * 1000.0;
+                        darkBoundaryRewritten = true;
+                        ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: boundary dark source riportato da src " + darkBoundaryOriginalSourceSec.ToString("F3", CultureInfo.InvariantCulture) + "s a " + rewrittenSourceSec.ToString("F3", CultureInfo.InvariantCulture) + "s (shift=" + darkBoundaryShiftMs.ToString("F0", CultureInfo.InvariantCulture) + "ms, ratio=" + darkBoundaryIntervalDarkRatio.ToString("F2", CultureInfo.InvariantCulture) + ")");
+                        boundaryIdx = sharedDarkBoundaryIdx;
+                    }
 
                     result = sourceTimestampsMs[boundaryIdx] / 1000.0;
 
@@ -2006,8 +2031,18 @@ namespace RemuxForge.Core.Analysis.Deep
                     mseInsertScore = insertCandidates[c].Value;
                     mseInsertOldMse = oldMseScores[boundaryIdx];
                     mseInsertNewMse = newMseScores[boundaryIdx];
+                    mseInsertDarkRewritten = darkBoundaryRewritten;
+                    mseInsertDarkRunFrames = darkBoundaryRunFrames;
+                    mseInsertDarkBoundaryIntervalRatio = darkBoundaryIntervalDarkRatio;
                     mseInsertAccepted = true;
                     break;
+                }
+
+                if (mseInsertAccepted && longInsertTransition && mseInsertDarkRewritten && mseInsertDarkRunFrames >= 2 && mseInsertDarkBoundaryIntervalRatio >= 0.75)
+                {
+                    // In INSERT lunghi un dark-boundary condiviso è l'inizio operativo del gap, anche se il nuovo offset torna buono solo dopo la durata inserita
+                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: uso boundary dark insert lungo a src " + mseInsertResult.ToString("F3", CultureInfo.InvariantCulture) + "s (ratio=" + mseInsertDarkBoundaryIntervalRatio.ToString("F2", CultureInfo.InvariantCulture) + ")");
+                    return mseInsertResult;
                 }
 
                 // Se il boundary MSE è vicino al breakpoint di una INSERT lunga, è già il punto operativo.
@@ -2015,11 +2050,11 @@ namespace RemuxForge.Core.Analysis.Deep
                 if (mseInsertResult >= 0.0 && longInsertTransition && Math.Abs(mseInsertResult - longInsertTargetSec) <= 2.0)
                 {
                     double insertDurationSec = Math.Abs(newOffsetSec - oldOffsetSec);
-                    if (mseInsertNewMse <= 100.0)
+                    if (mseInsertNewMse <= 350.0)
                     {
                         double shiftedResult = mseInsertResult - insertDurationSec;
                         if (mseInsertResult - longInsertTargetSec >= insertDurationSec * 0.75 &&
-                            Math.Abs(shiftedResult - longInsertTargetSec) <= 1.0 &&
+                            Math.Abs(shiftedResult - longInsertTargetSec) <= 2.0 &&
                             shiftedResult >= searchStartSrc)
                         {
                             ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: boundary MSE post-gap riportato a src " + shiftedResult.ToString("F3", CultureInfo.InvariantCulture) + "s da contenuto " + mseInsertResult.ToString("F3", CultureInfo.InvariantCulture) + "s");
@@ -2176,6 +2211,26 @@ namespace RemuxForge.Core.Analysis.Deep
                         ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: boundary dark comune riportato da src " + darkBoundaryOriginalSourceSec.ToString("F3", CultureInfo.InvariantCulture) + "s a " + rewrittenSourceSec.ToString("F3", CultureInfo.InvariantCulture) + "s (shift=" + darkBoundaryShiftMs.ToString("F0", CultureInfo.InvariantCulture) + "ms, ratio=" + darkBoundaryIntervalDarkRatio.ToString("F2", CultureInfo.InvariantCulture) + ")");
                         ssimBoundaryIdx = sharedDarkBoundaryIdx;
                     }
+                    if (!darkBoundaryRewritten && this.TryRewriteSourceDarkInsertBoundary(
+                        ssimBoundaryIdx,
+                        oldOffsetSec,
+                        newOffsetSec,
+                        searchStartSrc,
+                        searchEndSrc,
+                        valid,
+                        sourceTimestampsMs,
+                        meanScores,
+                        darkFrameMean,
+                        out sharedDarkBoundaryIdx,
+                        out darkBoundaryRunFrames,
+                        out darkBoundaryIntervalDarkRatio))
+                    {
+                        double rewrittenSourceSec = sourceTimestampsMs[sharedDarkBoundaryIdx] / 1000.0;
+                        double darkBoundaryShiftMs = (darkBoundaryOriginalSourceSec - rewrittenSourceSec) * 1000.0;
+                        darkBoundaryRewritten = true;
+                        ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: boundary dark source riportato da src " + darkBoundaryOriginalSourceSec.ToString("F3", CultureInfo.InvariantCulture) + "s a " + rewrittenSourceSec.ToString("F3", CultureInfo.InvariantCulture) + "s (shift=" + darkBoundaryShiftMs.ToString("F0", CultureInfo.InvariantCulture) + "ms, ratio=" + darkBoundaryIntervalDarkRatio.ToString("F2", CultureInfo.InvariantCulture) + ")");
+                        ssimBoundaryIdx = sharedDarkBoundaryIdx;
+                    }
 
                     result = sourceTimestampsMs[ssimBoundaryIdx] / 1000.0;
 
@@ -2245,12 +2300,12 @@ namespace RemuxForge.Core.Analysis.Deep
                         return mseInsertResult;
                     }
 
-                    if (longInsertTransition && newMseScores[ssimBoundaryIdx] <= 100.0)
+                    if (longInsertTransition && newMseScores[ssimBoundaryIdx] <= 350.0)
                     {
                         double insertDurationSec = Math.Abs(newOffsetSec - oldOffsetSec);
                         double shiftedResult = result - insertDurationSec;
                         if (result - longInsertTargetSec >= insertDurationSec * 0.75 &&
-                            Math.Abs(shiftedResult - longInsertTargetSec) <= 1.0 &&
+                            Math.Abs(shiftedResult - longInsertTargetSec) <= 2.0 &&
                             shiftedResult >= searchStartSrc)
                         {
                             // Se SSIM aggancia il primo contenuto dopo un gap source-only, l'edit operativo parte all'inizio del gap.
@@ -2515,6 +2570,143 @@ namespace RemuxForge.Core.Analysis.Deep
             ConsoleHelper.Write(LogSection.Deep, LogLevel.Warning, "    Scansione differenziale: non conclusiva");
 
             return result;
+        }
+
+        /// <summary>
+        /// Riporta un boundary INSERT all'inizio di una run dark source-only compatibile con la durata del gap
+        /// </summary>
+        /// <param name="candidateBoundaryIdx">Indice candidato originale</param>
+        /// <param name="oldOffsetSec">Offset precedente in secondi</param>
+        /// <param name="newOffsetSec">Offset successivo in secondi</param>
+        /// <param name="searchStartSrc">Inizio finestra di ricerca source</param>
+        /// <param name="searchEndSrc">Fine finestra di ricerca source</param>
+        /// <param name="valid">Frame validi per il confronto</param>
+        /// <param name="sourceTimestampsMs">Timestamp source dei frame estratti</param>
+        /// <param name="meanScores">Media luma dei frame source</param>
+        /// <param name="darkFrameMean">Soglia luma per considerare un frame dark</param>
+        /// <param name="rewrittenBoundaryIdx">Indice riscritto all'inizio della run dark</param>
+        /// <param name="runFrames">Numero di frame dark nella run individuata</param>
+        /// <param name="intervalDarkRatio">Quota di frame dark nell'intervallo dell'insert</param>
+        /// <returns>True se il boundary è stato riscritto</returns>
+        private bool TryRewriteSourceDarkInsertBoundary(
+            int candidateBoundaryIdx,
+            double oldOffsetSec,
+            double newOffsetSec,
+            double searchStartSrc,
+            double searchEndSrc,
+            bool[] valid,
+            double[] sourceTimestampsMs,
+            double[] meanScores,
+            double darkFrameMean,
+            out int rewrittenBoundaryIdx,
+            out int runFrames,
+            out double intervalDarkRatio)
+        {
+            double deltaMs;
+            double candidateSourceMs;
+            double boundarySourceMs;
+            double boundarySourceSec;
+            double rewindWindowMs;
+            double intervalEndMs;
+            int runStartIdx;
+            int runEndIdx;
+            int intervalFrames;
+            int intervalDarkFrames;
+
+            rewrittenBoundaryIdx = candidateBoundaryIdx;
+            runFrames = 0;
+            intervalDarkRatio = 0.0;
+
+            if (valid == null || sourceTimestampsMs == null || meanScores == null)
+                return false;
+
+            if (candidateBoundaryIdx < 0 ||
+                candidateBoundaryIdx >= valid.Length ||
+                candidateBoundaryIdx >= sourceTimestampsMs.Length ||
+                candidateBoundaryIdx >= meanScores.Length ||
+                !valid[candidateBoundaryIdx])
+            {
+                return false;
+            }
+
+            deltaMs = Math.Abs(newOffsetSec - oldOffsetSec) * 1000.0;
+            if (deltaMs <= 0.0)
+                return false;
+
+            candidateSourceMs = sourceTimestampsMs[candidateBoundaryIdx];
+            rewindWindowMs = Math.Max(1000.0, deltaMs + 500.0);
+            runStartIdx = -1;
+            runEndIdx = -1;
+
+            for (int i = candidateBoundaryIdx; i >= 0 && candidateSourceMs - sourceTimestampsMs[i] <= rewindWindowMs; i--)
+            {
+                if (!valid[i])
+                    continue;
+
+                if (meanScores[i] <= darkFrameMean)
+                {
+                    runStartIdx = i;
+                    runEndIdx = i;
+                    for (int j = i - 1; j >= 0 && candidateSourceMs - sourceTimestampsMs[j] <= rewindWindowMs; j--)
+                    {
+                        if (!valid[j])
+                            continue;
+
+                        if (meanScores[j] <= darkFrameMean)
+                        {
+                            runStartIdx = j;
+                            continue;
+                        }
+
+                        break;
+                    }
+
+                    break;
+                }
+            }
+
+            if (runStartIdx < 0 || runEndIdx < 0)
+                return false;
+
+            for (int i = runStartIdx; i <= runEndIdx; i++)
+            {
+                if (valid[i] && meanScores[i] <= darkFrameMean)
+                    runFrames++;
+            }
+
+            if (runFrames < 2)
+                return false;
+
+            boundarySourceMs = sourceTimestampsMs[runStartIdx];
+            boundarySourceSec = boundarySourceMs / 1000.0;
+            if (boundarySourceSec < searchStartSrc || boundarySourceSec > searchEndSrc)
+                return false;
+
+            if (candidateSourceMs - boundarySourceMs > rewindWindowMs)
+                return false;
+
+            intervalFrames = 0;
+            intervalDarkFrames = 0;
+            intervalEndMs = boundarySourceMs + deltaMs;
+            for (int i = runStartIdx; i < valid.Length && sourceTimestampsMs[i] < intervalEndMs; i++)
+            {
+                if (!valid[i] || sourceTimestampsMs[i] < boundarySourceMs)
+                    continue;
+
+                intervalFrames++;
+                if (meanScores[i] <= darkFrameMean)
+                    intervalDarkFrames++;
+            }
+
+            if (intervalFrames < 2)
+                return false;
+
+            intervalDarkRatio = (double)intervalDarkFrames / intervalFrames;
+            if (intervalDarkRatio < 0.75)
+                return false;
+
+            rewrittenBoundaryIdx = runStartIdx;
+            return rewrittenBoundaryIdx != candidateBoundaryIdx;
         }
 
         /// <summary>
@@ -3047,6 +3239,10 @@ namespace RemuxForge.Core.Analysis.Deep
             double forwardOldSsim;
             double forwardNewMse;
             double forwardNewSsim;
+            double[] visualMseScores;
+            double[] visualSsimScores;
+            List<DeepAnalysisLocalVisualScoreSampleDiagnostic>[] visualSamples;
+            ParallelOptions visualParallelOptions;
             if (this._currentAnalysisUsesTimelineMap && offsetDeltaSec < 0.0)
             {
                 // Nei CUT timeline il frame immediatamente prima può cadere in una zona ambigua: il veto old-before va misurato più indietro
@@ -3067,12 +3263,38 @@ namespace RemuxForge.Core.Analysis.Deep
             result.ForwardSrcSec = forwardSrcSec;
 
             // Calcola SSIM e MSE sugli stessi campioni per confrontare vecchio e nuovo offset senza doppie estrazioni
-            this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, beforeSrcSec, oldOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out beforeOldMse, out beforeOldSsim, result.VisualSamples, "before", "old");
-            this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, beforeSrcSec, newOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out beforeNewMse, out beforeNewSsim, result.VisualSamples, "before", "new");
-            this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, afterSrcSec, oldOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out afterOldMse, out afterOldSsim, result.VisualSamples, "after", "old");
-            this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, afterSrcSec, newOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out afterNewMse, out afterNewSsim, result.VisualSamples, "after", "new");
-            this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, forwardSrcSec, oldOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out forwardOldMse, out forwardOldSsim, result.VisualSamples, "forward", "old");
-            this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, forwardSrcSec, newOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out forwardNewMse, out forwardNewSsim, result.VisualSamples, "forward", "new");
+            visualMseScores = new double[6];
+            visualSsimScores = new double[6];
+            visualSamples = new List<DeepAnalysisLocalVisualScoreSampleDiagnostic>[6];
+            for (int i = 0; i < visualSamples.Length; i++)
+                visualSamples[i] = new List<DeepAnalysisLocalVisualScoreSampleDiagnostic>();
+
+            visualParallelOptions = new ParallelOptions();
+            visualParallelOptions.MaxDegreeOfParallelism = ParallelismHelper.ResolveDefaultMaxDegree();
+            Parallel.Invoke(visualParallelOptions, new Action[]
+            {
+                () => this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, beforeSrcSec, oldOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out visualMseScores[0], out visualSsimScores[0], visualSamples[0], "before", "old"),
+                () => this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, beforeSrcSec, newOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out visualMseScores[1], out visualSsimScores[1], visualSamples[1], "before", "new"),
+                () => this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, afterSrcSec, oldOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out visualMseScores[2], out visualSsimScores[2], visualSamples[2], "after", "old"),
+                () => this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, afterSrcSec, newOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out visualMseScores[3], out visualSsimScores[3], visualSamples[3], "after", "new"),
+                () => this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, forwardSrcSec, oldOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out visualMseScores[4], out visualSsimScores[4], visualSamples[4], "forward", "old"),
+                () => this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, forwardSrcSec, newOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out visualMseScores[5], out visualSsimScores[5], visualSamples[5], "forward", "new")
+            });
+            beforeOldMse = visualMseScores[0];
+            beforeNewMse = visualMseScores[1];
+            afterOldMse = visualMseScores[2];
+            afterNewMse = visualMseScores[3];
+            forwardOldMse = visualMseScores[4];
+            forwardNewMse = visualMseScores[5];
+            beforeOldSsim = visualSsimScores[0];
+            beforeNewSsim = visualSsimScores[1];
+            afterOldSsim = visualSsimScores[2];
+            afterNewSsim = visualSsimScores[3];
+            forwardOldSsim = visualSsimScores[4];
+            forwardNewSsim = visualSsimScores[5];
+            for (int i = 0; i < visualSamples.Length; i++)
+                result.VisualSamples.AddRange(visualSamples[i]);
+
             result.BeforeOldMse = beforeOldMse;
             result.BeforeNewMse = beforeNewMse;
             result.AfterOldMse = afterOldMse;
@@ -3118,8 +3340,22 @@ namespace RemuxForge.Core.Analysis.Deep
                 timelineCutLocalBeforeNewBetter = beforeSsimNewBetter || (!timelineCutBeforeSsimStable && result.BeforeNewMse < result.BeforeOldMse * 0.75);
                 timelineCutLateGuardSrcSec = crossoverSrcSec - Math.Max(LOCAL_TIMELINE_CUT_FORWARD_SEC, transitionDurationSec + 2.0);
                 if (timelineCutLateGuardSrcSec < 0.0) { timelineCutLateGuardSrcSec = 0.0; }
-                this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, timelineCutLateGuardSrcSec, oldOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out timelineCutLateGuardOldMse, out timelineCutLateGuardOldSsim, result.VisualSamples, "lateGuard", "old");
-                this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, timelineCutLateGuardSrcSec, newOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out timelineCutLateGuardNewMse, out timelineCutLateGuardNewSsim, result.VisualSamples, "lateGuard", "new");
+                double[] lateGuardMseScores = new double[2];
+                double[] lateGuardSsimScores = new double[2];
+                List<DeepAnalysisLocalVisualScoreSampleDiagnostic>[] lateGuardSamples = new List<DeepAnalysisLocalVisualScoreSampleDiagnostic>[2];
+                lateGuardSamples[0] = new List<DeepAnalysisLocalVisualScoreSampleDiagnostic>();
+                lateGuardSamples[1] = new List<DeepAnalysisLocalVisualScoreSampleDiagnostic>();
+                Parallel.Invoke(visualParallelOptions, new Action[]
+                {
+                    () => this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, timelineCutLateGuardSrcSec, oldOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out lateGuardMseScores[0], out lateGuardSsimScores[0], lateGuardSamples[0], "lateGuard", "old"),
+                    () => this._visualFrameAnalyzer.TryComputeLocalVisualScoreAt(sourceFile, langFile, timelineCutLateGuardSrcSec, newOffsetSec, inverseRatio, this._daConfig.CoarseFps, this._geometryCropSourceToFourThree, this._geometryCropLanguageToFourThree, out lateGuardMseScores[1], out lateGuardSsimScores[1], lateGuardSamples[1], "lateGuard", "new")
+                });
+                timelineCutLateGuardOldMse = lateGuardMseScores[0];
+                timelineCutLateGuardNewMse = lateGuardMseScores[1];
+                timelineCutLateGuardOldSsim = lateGuardSsimScores[0];
+                timelineCutLateGuardNewSsim = lateGuardSsimScores[1];
+                result.VisualSamples.AddRange(lateGuardSamples[0]);
+                result.VisualSamples.AddRange(lateGuardSamples[1]);
                 timelineCutLateGuardNewBetter = timelineCutLateGuardNewSsim > timelineCutLateGuardOldSsim + LOCAL_SSIM_CLEAR_MARGIN || timelineCutLateGuardNewMse < timelineCutLateGuardOldMse * 0.75;
                 if (timelineCutLocalBeforeNewBetter || timelineCutLateGuardNewBetter)
                 {
@@ -3241,10 +3477,11 @@ namespace RemuxForge.Core.Analysis.Deep
             double sourceStartSec = srcSec - (LOCAL_AUDIO_VERIFY_WINDOW_SEC / 2.0);
             double oldLanguageStartSec;
             double newLanguageStartSec;
-            double[] sourceEnvelope;
-            double[] oldEnvelope;
-            double[] newEnvelope;
+            double[] sourceEnvelope = null;
+            double[] oldEnvelope = null;
+            double[] newEnvelope = null;
             int compareCount;
+            ParallelOptions envelopeParallelOptions;
             oldScore = 0.0;
             newScore = 0.0;
 
@@ -3266,9 +3503,12 @@ namespace RemuxForge.Core.Analysis.Deep
                 return false;
             }
 
-            sourceEnvelope = this.ExtractAudioEnvelope(sourceFile, sourceStartSec, LOCAL_AUDIO_VERIFY_WINDOW_SEC, LOCAL_AUDIO_VERIFY_WINDOW_MS);
-            oldEnvelope = this.ExtractAudioEnvelope(langFile, oldLanguageStartSec, LOCAL_AUDIO_VERIFY_WINDOW_SEC, LOCAL_AUDIO_VERIFY_WINDOW_MS);
-            newEnvelope = this.ExtractAudioEnvelope(langFile, newLanguageStartSec, LOCAL_AUDIO_VERIFY_WINDOW_SEC, LOCAL_AUDIO_VERIFY_WINDOW_MS);
+            envelopeParallelOptions = new ParallelOptions();
+            envelopeParallelOptions.MaxDegreeOfParallelism = Math.Min(3, ParallelismHelper.ResolveDefaultMaxDegree());
+            Parallel.Invoke(envelopeParallelOptions,
+                () => sourceEnvelope = this.ExtractAudioEnvelope(sourceFile, sourceStartSec, LOCAL_AUDIO_VERIFY_WINDOW_SEC, LOCAL_AUDIO_VERIFY_WINDOW_MS),
+                () => oldEnvelope = this.ExtractAudioEnvelope(langFile, oldLanguageStartSec, LOCAL_AUDIO_VERIFY_WINDOW_SEC, LOCAL_AUDIO_VERIFY_WINDOW_MS),
+                () => newEnvelope = this.ExtractAudioEnvelope(langFile, newLanguageStartSec, LOCAL_AUDIO_VERIFY_WINDOW_SEC, LOCAL_AUDIO_VERIFY_WINDOW_MS));
 
             if (sourceEnvelope == null || oldEnvelope == null || newEnvelope == null)
             {

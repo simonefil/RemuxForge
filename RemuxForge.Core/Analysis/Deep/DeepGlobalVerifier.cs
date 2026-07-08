@@ -76,7 +76,7 @@ namespace RemuxForge.Core.Analysis.Deep
             pointMse = new double[this._deepAnalysisConfig.GlobalVerifyPoints + 1];
             pointValid = new bool[this._deepAnalysisConfig.GlobalVerifyPoints + 1];
             parallelOptions = new ParallelOptions();
-            parallelOptions.MaxDegreeOfParallelism = 4;
+            parallelOptions.MaxDegreeOfParallelism = ParallelismHelper.ResolveDefaultMaxDegree();
 
             Parallel.For(1, this._deepAnalysisConfig.GlobalVerifyPoints + 1, parallelOptions, p =>
             {

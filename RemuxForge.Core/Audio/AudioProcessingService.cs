@@ -115,9 +115,7 @@ namespace RemuxForge.Core.Audio
 
             this.LogAudioProcessingPlan(request, jobs);
 
-            maxParallel = Math.Min(4, Environment.ProcessorCount);
-            if (maxParallel < 1)
-                maxParallel = 1;
+            maxParallel = ParallelismHelper.ResolveDefaultMaxDegree();
 
             try
             {

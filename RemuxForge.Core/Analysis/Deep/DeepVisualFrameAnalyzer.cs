@@ -69,7 +69,7 @@ namespace RemuxForge.Core.Analysis.Deep
         #region Metodi pubblici
 
         /// <summary>
-        /// Trova cali SSIM in una regione usando match per timestamp, utile per individuare discontinuita'
+        /// Trova cali SSIM in una regione usando match per timestamp, utile per individuare discontinuità
         /// </summary>
         /// <param name="sourceFile">File sorgente</param>
         /// <param name="langFile">File lingua</param>

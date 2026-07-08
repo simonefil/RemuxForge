@@ -697,16 +697,20 @@ namespace RemuxForge.Core.Pipeline
         private DeepAnalysisTrackPolicy BuildDeepAnalysisTrackPolicy(MkvFileInfo sourceInfo, MkvFileInfo langInfo)
         {
             DeepAnalysisTrackPolicy result = new DeepAnalysisTrackPolicy();
-            List<TrackInfo> sourceAudio = new List<TrackInfo>();
-            List<TrackInfo> languageAudio = new List<TrackInfo>();
-            string[] sourceCodecPatterns = this.ResolveCodecPatterns(this._opts.KeepSourceAudioCodec);
+            List<TrackInfo> sourceFineTuneAudio = new List<TrackInfo>();
+            List<TrackInfo> sourceValidationAudio = new List<TrackInfo>();
+            List<TrackInfo> languageFineTuneAudio = new List<TrackInfo>();
+            List<TrackInfo> languageValidationAudio = new List<TrackInfo>();
             string[] languageCodecPatterns = this.ResolveCodecPatterns(this._opts.AudioCodec);
             TrackInfo sourceTrack;
+            TrackInfo sourceFineTuneTrack = null;
+            TrackInfo languageFineTuneTrack = null;
             TrackInfo languageTrack;
 
             if (sourceInfo == null || langInfo == null || sourceInfo.Tracks == null || langInfo.Tracks == null)
             {
                 result.RejectReason = "metadata audio non disponibili";
+                result.SourceFineTuneRejectReason = "metadata audio source non disponibili";
                 result.LanguageFineTuneRejectReason = "metadata audio language non disponibili";
                 return result;
             }
@@ -714,6 +718,7 @@ namespace RemuxForge.Core.Pipeline
             if (this._opts.SubOnly)
             {
                 result.RejectReason = "sub-only: nessuna traccia language audio finale";
+                result.SourceFineTuneRejectReason = "sub-only: nessun fine tuning audio necessario";
                 result.LanguageFineTuneRejectReason = "sub-only: nessuna traccia language audio finale";
                 return result;
             }
@@ -726,22 +731,10 @@ namespace RemuxForge.Core.Pipeline
                     continue;
                 }
 
-                if (this._opts.KeepSourceAudioLangs.Count > 0 && !this.IsTrackLanguageInList(sourceTrack, this._opts.KeepSourceAudioLangs))
-                {
-                    continue;
-                }
+                sourceFineTuneAudio.Add(sourceTrack);
 
-                if (this.IsTrackLanguageInList(sourceTrack, this._opts.TargetLanguage))
-                {
-                    continue;
-                }
-
-                if (sourceCodecPatterns != null && !CodecMapping.MatchesCodec(sourceTrack.Codec, sourceCodecPatterns))
-                {
-                    continue;
-                }
-
-                sourceAudio.Add(sourceTrack);
+                if (!string.IsNullOrEmpty(sourceTrack.Language) || !string.IsNullOrEmpty(sourceTrack.LanguageIetf))
+                    sourceValidationAudio.Add(sourceTrack);
             }
 
             for (int i = 0; i < langInfo.Tracks.Count; i++)
@@ -751,6 +744,9 @@ namespace RemuxForge.Core.Pipeline
                 {
                     continue;
                 }
+
+                if (!string.IsNullOrEmpty(languageTrack.Language) || !string.IsNullOrEmpty(languageTrack.LanguageIetf))
+                    languageValidationAudio.Add(languageTrack);
 
                 if (!this.IsTrackLanguageInList(languageTrack, this._opts.TargetLanguage))
                 {
@@ -762,28 +758,59 @@ namespace RemuxForge.Core.Pipeline
                     continue;
                 }
 
-                languageAudio.Add(languageTrack);
+                languageFineTuneAudio.Add(languageTrack);
             }
 
-            if (languageAudio.Count > 0)
+            for (int i = 0; i < sourceFineTuneAudio.Count && sourceFineTuneTrack == null; i++)
             {
-                languageTrack = languageAudio[0];
+                if (sourceFineTuneAudio[i].DefaultTrack)
+                {
+                    sourceFineTuneTrack = sourceFineTuneAudio[i];
+                }
+            }
+
+            for (int i = 0; i < sourceFineTuneAudio.Count && sourceFineTuneTrack == null; i++)
+            {
+                if (!string.IsNullOrEmpty(sourceFineTuneAudio[i].Language) || !string.IsNullOrEmpty(sourceFineTuneAudio[i].LanguageIetf))
+                    sourceFineTuneTrack = sourceFineTuneAudio[i];
+            }
+
+            if (sourceFineTuneTrack == null && sourceFineTuneAudio.Count > 0)
+            {
+                sourceFineTuneTrack = sourceFineTuneAudio[0];
+            }
+
+            if (sourceFineTuneTrack != null)
+            {
+                result.SourceFineTuneAudioAvailable = true;
+                result.SourceFineTuneTrackId = sourceFineTuneTrack.Id;
+                result.SourceFineTuneTrackName = sourceFineTuneTrack.Name;
+                result.SourceFineTuneAudioStreamIndex = this.GetAudioStreamIndex(sourceInfo.Tracks, sourceFineTuneTrack.Id);
+            }
+            else
+            {
+                result.SourceFineTuneRejectReason = "nessuna traccia source audio disponibile";
+            }
+
+            if (languageFineTuneAudio.Count > 0)
+            {
+                languageFineTuneTrack = languageFineTuneAudio[0];
                 result.LanguageFineTuneAudioAvailable = true;
-                result.LanguageFineTuneTrackId = languageTrack.Id;
-                result.LanguageFineTuneTrackName = languageTrack.Name;
-                result.LanguageFineTuneAudioStreamIndex = this.GetAudioStreamIndex(langInfo.Tracks, languageTrack.Id);
+                result.LanguageFineTuneTrackId = languageFineTuneTrack.Id;
+                result.LanguageFineTuneTrackName = languageFineTuneTrack.Name;
+                result.LanguageFineTuneAudioStreamIndex = this.GetAudioStreamIndex(langInfo.Tracks, languageFineTuneTrack.Id);
             }
             else
             {
                 result.LanguageFineTuneRejectReason = "nessuna traccia language audio finale";
             }
 
-            for (int s = 0; s < sourceAudio.Count && !result.AudioValidationAvailable; s++)
+            for (int s = 0; s < sourceValidationAudio.Count && !result.AudioValidationAvailable; s++)
             {
-                sourceTrack = sourceAudio[s];
-                for (int l = 0; l < languageAudio.Count; l++)
+                sourceTrack = sourceValidationAudio[s];
+                for (int l = 0; l < languageValidationAudio.Count; l++)
                 {
-                    languageTrack = languageAudio[l];
+                    languageTrack = languageValidationAudio[l];
                     if (!this.IsSameTrackLanguage(sourceTrack, languageTrack))
                     {
                         continue;
@@ -797,20 +824,13 @@ namespace RemuxForge.Core.Pipeline
                     result.LanguageTrackName = languageTrack.Name;
                     result.SourceAudioStreamIndex = this.GetAudioStreamIndex(sourceInfo.Tracks, sourceTrack.Id);
                     result.LanguageAudioStreamIndex = this.GetAudioStreamIndex(langInfo.Tracks, languageTrack.Id);
-                    if (!result.LanguageFineTuneAudioAvailable)
-                    {
-                        result.LanguageFineTuneAudioAvailable = true;
-                        result.LanguageFineTuneTrackId = languageTrack.Id;
-                        result.LanguageFineTuneTrackName = languageTrack.Name;
-                        result.LanguageFineTuneAudioStreamIndex = result.LanguageAudioStreamIndex;
-                    }
                     break;
                 }
             }
 
             if (!result.AudioValidationAvailable)
             {
-                result.RejectReason = "nessuna coppia audio comune inclusa nell'output";
+                result.RejectReason = "nessuna coppia audio source/lang con stessa lingua";
             }
 
             return result;
@@ -884,17 +904,29 @@ namespace RemuxForge.Core.Pipeline
         /// <returns>True se la lingua coincide</returns>
         private bool IsSameTrackLanguage(TrackInfo sourceTrack, TrackInfo languageTrack)
         {
-            string sourceLanguage = !string.IsNullOrEmpty(sourceTrack.Language) ? sourceTrack.Language : sourceTrack.LanguageIetf;
-            string language = !string.IsNullOrEmpty(languageTrack.Language) ? languageTrack.Language : languageTrack.LanguageIetf;
+            string[] sourceLanguages = new string[] { sourceTrack.Language, sourceTrack.LanguageIetf };
+            string[] languageLanguages = new string[] { languageTrack.Language, languageTrack.LanguageIetf };
 
-            if (string.IsNullOrEmpty(sourceLanguage) || string.IsNullOrEmpty(language))
+            for (int s = 0; s < sourceLanguages.Length; s++)
             {
-                return false;
+                if (string.IsNullOrEmpty(sourceLanguages[s]))
+                    continue;
+
+                for (int l = 0; l < languageLanguages.Length; l++)
+                {
+                    if (string.IsNullOrEmpty(languageLanguages[l]))
+                        continue;
+
+                    if (string.Equals(sourceLanguages[s], languageLanguages[l], StringComparison.OrdinalIgnoreCase) ||
+                        sourceLanguages[s].StartsWith(languageLanguages[l], StringComparison.OrdinalIgnoreCase) ||
+                        languageLanguages[l].StartsWith(sourceLanguages[s], StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
             }
 
-            return string.Equals(sourceLanguage, language, StringComparison.OrdinalIgnoreCase) ||
-                sourceLanguage.StartsWith(language, StringComparison.OrdinalIgnoreCase) ||
-                language.StartsWith(sourceLanguage, StringComparison.OrdinalIgnoreCase);
+            return false;
         }
 
         /// <summary>

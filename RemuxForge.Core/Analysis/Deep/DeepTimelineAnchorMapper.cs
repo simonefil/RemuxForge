@@ -1,3 +1,4 @@
+using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
 using System;
@@ -46,7 +47,6 @@ namespace RemuxForge.Core.Analysis.Deep
         private const double SHORT_VIDEO_PLATEAU_MAX_SEC = 120.0;
         private const int SHORT_VIDEO_PLATEAU_MAX_ANCHORS = 11;
         private const double DENSE_VIDEO_ANCHOR_STEP_SEC = 5.0;
-        private const int MAX_PARALLEL_VIDEO_ANCHORS = 4;
 
         #endregion
 
@@ -209,7 +209,7 @@ namespace RemuxForge.Core.Analysis.Deep
 
             while (centerSec <= endCenterSec)
             {
-                // I centri visuali sono fitti per compensare ambiguita' su anime/VFR
+                // I centri visuali sono fitti per compensare ambiguità su anime/VFR
                 centers.Add(centerSec);
                 centerSec += VIDEO_ANCHOR_STEP_SEC;
             }
@@ -307,7 +307,7 @@ namespace RemuxForge.Core.Analysis.Deep
         {
             DeepAnalysisTimelineAnchorDiagnostic[] result = new DeepAnalysisTimelineAnchorDiagnostic[centers.Count];
             ParallelOptions options = new ParallelOptions();
-            options.MaxDegreeOfParallelism = MAX_PARALLEL_VIDEO_ANCHORS;
+            options.MaxDegreeOfParallelism = ParallelismHelper.ResolveDefaultMaxDegree();
 
             Parallel.For(0, centers.Count, options, delegate (int i)
             {

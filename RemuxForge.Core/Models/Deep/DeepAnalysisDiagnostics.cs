@@ -335,6 +335,8 @@ namespace RemuxForge.Core.Models
             this.AudioFineTuneStatus = "NotRun";
             this.AudioFineTuneRejectReason = "";
             this.AudioFineTuneBoundaryKind = "";
+            this.AudioFineTuneReferenceKind = "";
+            this.AudioFineTuneReferenceTrackName = "";
             this.Candidates = new List<DeepAnalysisTransitionCandidateDiagnostic>();
         }
 
@@ -418,6 +420,26 @@ namespace RemuxForge.Core.Models
         /// Tipo di boundary audio selezionato
         /// </summary>
         public string AudioFineTuneBoundaryKind { get; set; }
+        /// <summary>
+        /// Reference audio usata per il fine tuning
+        /// </summary>
+        public string AudioFineTuneReferenceKind { get; set; }
+        /// <summary>
+        /// Nome della traccia audio usata come reference
+        /// </summary>
+        public string AudioFineTuneReferenceTrackName { get; set; }
+        /// <summary>
+        /// Indice ffmpeg della traccia audio usata come reference
+        /// </summary>
+        public int AudioFineTuneReferenceStreamIndex { get; set; }
+        /// <summary>
+        /// Timestamp reference prima del fine tuning
+        /// </summary>
+        public int AudioFineTuneReferenceOriginalTimestampMs { get; set; }
+        /// <summary>
+        /// Timestamp reference dopo il fine tuning
+        /// </summary>
+        public int AudioFineTuneReferenceSnappedTimestampMs { get; set; }
         /// <summary>
         /// Confidenza del boundary audio selezionato
         /// </summary>
