@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace RemuxForge.Core.Configuration
 {
@@ -111,18 +112,18 @@ namespace RemuxForge.Core.Configuration
             { "italian", "ita" }, { "italiano", "ita" },
             { "english", "eng" }, { "inglese", "eng" },
             { "japanese", "jpn" }, { "giapponese", "jpn" },
-            { "german", "ger" }, { "tedesco", "ger" }, { "deutsch", "deu" },
+            { "german", "deu" }, { "tedesco", "deu" }, { "deutsch", "deu" },
             { "french", "fra" }, { "francese", "fra" },
             { "spanish", "spa" }, { "spagnolo", "spa" },
             { "portuguese", "por" }, { "portoghese", "por" },
             { "russian", "rus" }, { "russo", "rus" },
-            { "chinese", "chi" }, { "cinese", "chi" },
+            { "chinese", "zho" }, { "cinese", "zho" },
             { "korean", "kor" }, { "coreano", "kor" },
             { "arabic", "ara" }, { "arabo", "ara" },
-            { "dutch", "dut" }, { "olandese", "dut" },
+            { "dutch", "nld" }, { "olandese", "nld" },
             { "polish", "pol" }, { "polacco", "pol" },
             { "turkish", "tur" }, { "turco", "tur" },
-            { "greek", "gre" }, { "greco", "gre" },
+            { "greek", "ell" }, { "greco", "ell" },
             { "hebrew", "heb" }, { "ebraico", "heb" },
             { "hindi", "hin" },
             { "thai", "tha" }, { "tailandese", "tha" },
@@ -132,7 +133,7 @@ namespace RemuxForge.Core.Configuration
             { "danish", "dan" }, { "danese", "dan" },
             { "finnish", "fin" }, { "finlandese", "fin" },
             { "hungarian", "hun" }, { "ungherese", "hun" },
-            { "czech", "cze" }, { "ceco", "cze" },
+            { "czech", "ces" }, { "ceco", "ces" },
             { "romanian", "ron" }, { "rumeno", "ron" },
             { "bulgarian", "bul" }, { "bulgaro", "bul" },
             { "croatian", "hrv" }, { "croato", "hrv" },
@@ -145,7 +146,34 @@ namespace RemuxForge.Core.Configuration
         };
 
         /// <summary>
-        /// Lista ordinata di tutti i codici lingua validi
+        /// Alias ISO 639-2 bibliografici convertiti nel codice terminologico canonico
+        /// </summary>
+        private static readonly Dictionary<string, string> s_iso6392CanonicalAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "alb", "sqi" },
+            { "arm", "hye" },
+            { "baq", "eus" },
+            { "bur", "mya" },
+            { "chi", "zho" },
+            { "cze", "ces" },
+            { "dut", "nld" },
+            { "fre", "fra" },
+            { "geo", "kat" },
+            { "ger", "deu" },
+            { "gre", "ell" },
+            { "ice", "isl" },
+            { "mac", "mkd" },
+            { "mao", "mri" },
+            { "may", "msa" },
+            { "per", "fas" },
+            { "rum", "ron" },
+            { "slo", "slk" },
+            { "tib", "bod" },
+            { "wel", "cym" }
+        };
+
+        /// <summary>
+        /// Lista ordinata dei codici lingua ISO 639-2 canonici
         /// </summary>
         private static readonly List<string> s_sortedLanguages;
 
@@ -158,7 +186,13 @@ namespace RemuxForge.Core.Configuration
         /// </summary>
         static LanguageValidator()
         {
-            s_sortedLanguages = new List<string>(s_validLanguages);
+            HashSet<string> canonical = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string language in s_validLanguages)
+            {
+                canonical.Add(NormalizeIso6392Alias(language));
+            }
+
+            s_sortedLanguages = new List<string>(canonical);
             s_sortedLanguages.Sort(StringComparer.OrdinalIgnoreCase);
         }
 
@@ -173,8 +207,59 @@ namespace RemuxForge.Core.Configuration
         /// <returns>True se valido, false altrimenti</returns>
         public static bool IsValid(string lang)
         {
-            string normalized = lang.ToLower().Trim();
-            return s_validLanguages.Contains(normalized);
+            string normalized;
+            return TryNormalizeToIso6392(lang, out normalized);
+        }
+
+        /// <summary>
+        /// Normalizza una lingua utente, ISO 639-1, ISO 639-2 o BCP 47 nel codice ISO 639-2 RemuxForge
+        /// </summary>
+        /// <param name="lang">Codice o nome lingua</param>
+        /// <param name="normalized">Codice ISO 639-2 normalizzato</param>
+        /// <returns>Vero se la lingua è riconosciuta</returns>
+        public static bool TryNormalizeToIso6392(string lang, out string normalized)
+        {
+            string text = lang != null ? lang.Trim().ToLowerInvariant().Replace('_', '-') : "";
+            string mapped;
+
+            normalized = "";
+            if (string.IsNullOrEmpty(text))
+                return false;
+
+            if (s_commonNames.TryGetValue(text, out mapped))
+            {
+                normalized = NormalizeIso6392Alias(mapped);
+                return true;
+            }
+
+            if (text.Length == 3 && s_validLanguages.Contains(text))
+            {
+                normalized = NormalizeIso6392Alias(text);
+                return true;
+            }
+
+            if (TryNormalizeCultureLanguage(text, out normalized))
+                return true;
+
+            int separator = text.IndexOf('-', StringComparison.Ordinal);
+            if (separator > 0 && TryNormalizeCultureLanguage(text.Substring(0, separator), out normalized))
+                return true;
+
+            return false;
+        }
+
+        /// <summary>
+        /// Normalizza una lingua nel codice ISO 639-2 RemuxForge o restituisce stringa vuota
+        /// </summary>
+        /// <param name="lang">Codice o nome lingua</param>
+        /// <returns>Codice ISO 639-2 o stringa vuota</returns>
+        public static string NormalizeToIso6392(string lang)
+        {
+            string normalized;
+            if (TryNormalizeToIso6392(lang, out normalized))
+                return normalized;
+
+            return "";
         }
 
         /// <summary>
@@ -195,12 +280,21 @@ namespace RemuxForge.Core.Configuration
         public static List<string> GetSimilar(string lang, int maxResults)
         {
             List<string> suggestions = new List<string>();
-            string normalized = lang.ToLower().Trim();
+            string normalized = lang != null ? lang.ToLowerInvariant().Trim() : "";
+            string normalizedLanguage;
+
+            if (string.IsNullOrEmpty(normalized))
+                return suggestions;
+
+            if (TryNormalizeToIso6392(normalized, out normalizedLanguage))
+                suggestions.Add(normalizedLanguage);
 
             // Controlla prima le mappature nomi comuni
             if (s_commonNames.ContainsKey(normalized))
             {
-                suggestions.Add(s_commonNames[normalized]);
+                string mapped = NormalizeIso6392Alias(s_commonNames[normalized]);
+                if (!suggestions.Contains(mapped))
+                    suggestions.Add(mapped);
             }
 
             // Trova codici che iniziano con lo stesso prefisso
@@ -250,6 +344,52 @@ namespace RemuxForge.Core.Configuration
             }
 
             return suggestions;
+        }
+
+        #endregion
+
+        #region Metodi privati
+
+        /// <summary>
+        /// Normalizza alias ISO 639-2 bibliografici nel codice terminologico usato da RemuxForge
+        /// </summary>
+        /// <param name="language">Codice ISO 639-2</param>
+        /// <returns>Codice canonico</returns>
+        private static string NormalizeIso6392Alias(string language)
+        {
+            string mapped;
+            string text = language != null ? language.Trim().ToLowerInvariant() : "";
+            if (s_iso6392CanonicalAliases.TryGetValue(text, out mapped))
+                return mapped;
+
+            return text;
+        }
+
+        /// <summary>
+        /// Usa CultureInfo per convertire codici ISO 639-1 o BCP 47 in ISO 639-2
+        /// </summary>
+        /// <param name="language">Codice lingua</param>
+        /// <param name="normalized">Codice ISO 639-2 normalizzato</param>
+        /// <returns>Vero se la conversione è riuscita</returns>
+        private static bool TryNormalizeCultureLanguage(string language, out string normalized)
+        {
+            normalized = "";
+
+            try
+            {
+                CultureInfo culture = CultureInfo.GetCultureInfo(language);
+                string candidate = NormalizeIso6392Alias(culture.ThreeLetterISOLanguageName);
+                if (s_validLanguages.Contains(candidate))
+                {
+                    normalized = candidate;
+                    return true;
+                }
+            }
+            catch (CultureNotFoundException)
+            {
+            }
+
+            return false;
         }
 
         #endregion

@@ -475,7 +475,7 @@ namespace RemuxForge.Core.Metadata
             {
                 result.AddError(AppText.F("metadata.preset.unknownConditionField", path, condition.FieldKey));
             }
-            else if (!MetadataScopeHelper.IsFieldReadableInScope(field, scope))
+            else if (!field.IsReadable || field.Visibility == MetadataFieldVisibility.Hidden || !MetadataScopeHelper.IsFieldReadableInScope(field, scope))
             {
                 result.AddError(AppText.F("metadata.preset.conditionScopeMismatch", path, condition.FieldKey, scope));
             }
@@ -507,7 +507,7 @@ namespace RemuxForge.Core.Metadata
             {
                 result.AddError(AppText.F("metadata.preset.unknownConditionField", path, condition.FieldKey));
             }
-            else if (!MetadataScopeHelper.IsTrackFieldInScope(field, scope) || field.ValueType == MetadataFieldValueType.Boolean)
+            else if (!field.IsReadable || field.Visibility == MetadataFieldVisibility.Hidden || !MetadataScopeHelper.IsTrackFieldInScope(field, scope) || field.ValueType == MetadataFieldValueType.Boolean)
             {
                 result.AddError(AppText.F("metadata.preset.conditionScopeMismatch", path, condition.FieldKey, scope));
             }

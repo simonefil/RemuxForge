@@ -500,7 +500,8 @@ namespace RemuxForge.Core.Metadata
         {
             Configure(fields, "video_title", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Text, "", "Title", "Name");
             Configure(fields, "video_language", MetadataFieldVisibility.Primary, MetadataFieldInputKind.LanguageSelect, "", "Language", "Language/String3");
-            Configure(fields, "video_language_ietf", MetadataFieldVisibility.Advanced, MetadataFieldInputKind.LanguageIetf, "", "Language/String");
+            Configure(fields, "video_language_ietf", MetadataFieldVisibility.Hidden, MetadataFieldInputKind.LanguageIetf, "", "Language/String");
+            BlockFieldWrite(fields, "video_language_ietf");
             Configure(fields, "video_default", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Boolean, "", "Default", "Default/String");
             Configure(fields, "video_forced", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Boolean, "", "Forced", "Forced/String");
             Configure(fields, "video_enabled", MetadataFieldVisibility.Advanced, MetadataFieldInputKind.Boolean, "", "Enabled", "Enabled/String");
@@ -609,7 +610,8 @@ namespace RemuxForge.Core.Metadata
         {
             Configure(fields, "audio_title", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Text, "", "Title", "Name");
             Configure(fields, "audio_language", MetadataFieldVisibility.Primary, MetadataFieldInputKind.LanguageSelect, "", "Language", "Language/String3");
-            Configure(fields, "audio_language_ietf", MetadataFieldVisibility.Advanced, MetadataFieldInputKind.LanguageIetf, "", "Language/String");
+            Configure(fields, "audio_language_ietf", MetadataFieldVisibility.Hidden, MetadataFieldInputKind.LanguageIetf, "", "Language/String");
+            BlockFieldWrite(fields, "audio_language_ietf");
             Configure(fields, "audio_default", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Boolean, "", "Default", "Default/String");
             Configure(fields, "audio_forced", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Boolean, "", "Forced", "Forced/String");
             Configure(fields, "audio_enabled", MetadataFieldVisibility.Advanced, MetadataFieldInputKind.Boolean, "", "Enabled", "Enabled/String");
@@ -666,7 +668,8 @@ namespace RemuxForge.Core.Metadata
         {
             Configure(fields, "subtitle_title", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Text, "", "Title", "Name");
             Configure(fields, "subtitle_language", MetadataFieldVisibility.Primary, MetadataFieldInputKind.LanguageSelect, "", "Language", "Language/String3");
-            Configure(fields, "subtitle_language_ietf", MetadataFieldVisibility.Advanced, MetadataFieldInputKind.LanguageIetf, "", "Language/String");
+            Configure(fields, "subtitle_language_ietf", MetadataFieldVisibility.Hidden, MetadataFieldInputKind.LanguageIetf, "", "Language/String");
+            BlockFieldWrite(fields, "subtitle_language_ietf");
             Configure(fields, "subtitle_default", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Boolean, "", "Default", "Default/String");
             Configure(fields, "subtitle_forced", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Boolean, "", "Forced", "Forced/String");
             Configure(fields, "subtitle_enabled", MetadataFieldVisibility.Advanced, MetadataFieldInputKind.Boolean, "", "Enabled", "Enabled/String");
@@ -968,6 +971,22 @@ namespace RemuxForge.Core.Metadata
                 if (!string.IsNullOrEmpty(mediaInfoFieldNames[i]))
                     field.MediaInfoFieldNames.Add(mediaInfoFieldNames[i]);
             }
+        }
+
+        /// <summary>
+        /// Blocca un campo mantenendolo disponibile solo come dato interno letto da MediaInfo
+        /// </summary>
+        /// <param name="fields">Lista campi</param>
+        /// <param name="key">Chiave campo</param>
+        private static void BlockFieldWrite(List<MetadataFieldDefinition> fields, string key)
+        {
+            MetadataFieldDefinition field = FindField(fields, key);
+            if (field == null)
+                return;
+
+            field.IsEditable = false;
+            field.IsClearable = false;
+            field.EditPolicy = MetadataFieldEditPolicy.Blocked;
         }
 
         /// <summary>

@@ -240,8 +240,11 @@ namespace RemuxForge.Core.Metadata
             track.Format = GetRaw(track.RawFields, "Format");
             track.CodecId = GetRaw(track.RawFields, "CodecID");
             track.Title = GetRawFirst(track.RawFields, "Title", "Name");
-            track.Language = GetRawFirst(track.RawFields, "Language", "Language/String3");
             track.LanguageIetf = GetRaw(track.RawFields, "Language/String");
+            track.Language = LanguageValidator.NormalizeToIso6392(GetRawFirst(track.RawFields, "Language/String3", "Language"));
+            if (string.IsNullOrEmpty(track.Language))
+                track.Language = LanguageValidator.NormalizeToIso6392(track.LanguageIetf);
+
             track.StreamSize = MetadataValueNormalizer.ParseLong(GetRawFirst(track.RawFields, "StreamSize", "StreamSize/String"));
 
             if (track.TrackKind == "video")

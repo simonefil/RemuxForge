@@ -271,6 +271,14 @@ namespace RemuxForge.Core.Metadata
             result.Add(CreateFunction("Left", "Left(3)", "Italiano", "{[audio_language]:Left(3)}", "Ita"));
             result.Add(CreateFunction("Right", "Right(3)", "Italiano", "{[audio_language]:Right(3)}", "ano"));
             result.Add(CreateFunction("NormalizeSpaces", "NormalizeSpaces()", "ITA   Full", "{[subtitle_title]:NormalizeSpaces()}", "ITA Full"));
+            result.Add(CreateFunction("Add", "Add(1000)", "24000", "{[audio_bitrate]:Add(1000)}", "25000"));
+            result.Add(CreateFunction("Sub", "Sub(1000)", "25000", "{[audio_bitrate]:Sub(1000)}", "24000"));
+            result.Add(CreateFunction("Mul", "Mul(2)", "24", "{[video_frame_count]:Mul(2)}", "48"));
+            result.Add(CreateFunction("Div", "Div(1000)", "1536000", "{[audio_bitrate]:Div(1000)}", "1536"));
+            result.Add(CreateFunction("Round", "Round(1)", "23.976", "{[video_fps]:Round(1)}", "24"));
+            result.Add(CreateFunction("Floor", "Floor()", "23.976", "{[video_fps]:Floor()}", "23"));
+            result.Add(CreateFunction("Ceil", "Ceil()", "23.001", "{[video_fps]:Ceil()}", "24"));
+            result.Add(CreateFunction("Format", "Format(0.#)", "48000", "{[audio_sampling_rate]:Div(1000):Format(0.#)} kHz", "48 kHz"));
             return result;
         }
 
@@ -588,7 +596,7 @@ namespace RemuxForge.Core.Metadata
             List<MetadataInputOption> result = new List<MetadataInputOption>();
             for (int i = 0; i < languages.Count; i++)
             {
-                result.Add(new MetadataInputOption(languages[i], languages[i]));
+                result.Add(CreateLanguageOption(languages[i]));
             }
 
             return result;
@@ -614,6 +622,21 @@ namespace RemuxForge.Core.Metadata
             return result;
         }
 
+        /// <summary>
+        /// Crea una opzione lingua ISO 639-2 con label leggibile
+        /// </summary>
+        /// <param name="code">Codice ISO 639-2</param>
+        /// <returns>Opzione lingua</returns>
+        private static MetadataInputOption CreateLanguageOption(string code)
+        {
+            string name = GetOptionalText("metadata.language." + code);
+            if (string.IsNullOrEmpty(name))
+                return new MetadataInputOption(code, code);
+
+            return new MetadataInputOption(code, name + " (" + code + ")");
+        }
+
+        /// <summary>
         /// Crea una definizione funzione UI
         /// </summary>
         /// <param name="name">Nome funzione</param>

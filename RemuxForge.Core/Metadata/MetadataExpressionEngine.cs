@@ -29,7 +29,7 @@ namespace RemuxForge.Core.Metadata
         {
             string result = template != null ? template : "";
             result = Regex.Replace(result, @"\{([^{}]+)\}", match => this.EvaluateExpression(match.Groups[1].Value, fileInfo, track, originalFileInfo, originalTrack));
-            result = Regex.Replace(result, @"\[([^\[\]]+)\]", match => this.ResolveToken(match.Groups[1].Value, fileInfo, track, originalFileInfo, originalTrack));
+            result = Regex.Replace(result, @"\[([^\[\]]+)\]", match => this.ResolveTokenOrLiteral(match.Value, match.Groups[1].Value, fileInfo, track, originalFileInfo, originalTrack));
             return result;
         }
 
@@ -79,12 +79,6 @@ namespace RemuxForge.Core.Metadata
         {
             List<string> errors = new List<string>();
             string text = template != null ? template : "";
-
-            foreach (Match match in Regex.Matches(text, @"\[([^\[\]]+)\]"))
-            {
-                if (!this.IsKnownToken(match.Groups[1].Value))
-                    errors.Add(AppText.F("metadata.expression.unknownTokenAt", match.Groups[1].Value, match.Groups[1].Index));
-            }
 
             foreach (Match match in Regex.Matches(text, @"\{([^{}]+)\}"))
             {
@@ -140,6 +134,24 @@ namespace RemuxForge.Core.Metadata
         }
 
         /// <summary>
+        /// Risolve un token conosciuto mantenendo letterali le quadre non registrate
+        /// </summary>
+        /// <param name="literal">Testo originale con parentesi quadre</param>
+        /// <param name="token">Token senza parentesi quadre</param>
+        /// <param name="fileInfo">Info file corrente</param>
+        /// <param name="track">Traccia corrente</param>
+        /// <param name="originalFileInfo">Info file originale</param>
+        /// <param name="originalTrack">Traccia originale</param>
+        /// <returns>Valore token o testo letterale originale</returns>
+        private string ResolveTokenOrLiteral(string literal, string token, MkvMetadataFileInfo fileInfo, MkvMetadataTrackInfo track, MkvMetadataFileInfo originalFileInfo, MkvMetadataTrackInfo originalTrack)
+        {
+            if (!this.IsKnownToken(token))
+                return literal != null ? literal : "";
+
+            return this.ResolveToken(token, fileInfo, track, originalFileInfo, originalTrack);
+        }
+
+        /// <summary>
         /// Valuta una singola espressione con pipeline di funzioni
         /// </summary>
         /// <param name="expression">Espressione senza parentesi graffe esterne</param>
@@ -178,6 +190,9 @@ namespace RemuxForge.Core.Metadata
             int length;
             int leftCount;
             int rightCount;
+            double number;
+            double operand;
+            int decimals;
 
             ParseFunction(functionCall, out name, out args);
 
@@ -253,6 +268,59 @@ namespace RemuxForge.Core.Metadata
                     break;
                 case "NormalizeSpaces":
                     return Regex.Replace(value.Trim(), @"\s+", " ");
+                case "Add":
+                    if (args.Count == 1 && TryParseExpressionDouble(value, out number) && TryParseExpressionDouble(args[0], out operand))
+                        return FormatExpressionNumber(number + operand);
+
+                    break;
+                case "Sub":
+                    if (args.Count == 1 && TryParseExpressionDouble(value, out number) && TryParseExpressionDouble(args[0], out operand))
+                        return FormatExpressionNumber(number - operand);
+
+                    break;
+                case "Mul":
+                    if (args.Count == 1 && TryParseExpressionDouble(value, out number) && TryParseExpressionDouble(args[0], out operand))
+                        return FormatExpressionNumber(number * operand);
+
+                    break;
+                case "Div":
+                    if (args.Count == 1 && TryParseExpressionDouble(value, out number) && TryParseExpressionDouble(args[0], out operand))
+                    {
+                        if (operand == 0.0)
+                            throw new InvalidOperationException(AppText.T("metadata.expression.divideByZero"));
+
+                        return FormatExpressionNumber(number / operand);
+                    }
+
+                    break;
+                case "Round":
+                    if (TryParseExpressionDouble(value, out number))
+                    {
+                        decimals = args.Count == 1 ? ParseExpressionInt(args[0]) : 0;
+                        if (decimals < 0)
+                            decimals = 0;
+                        if (decimals > 15)
+                            decimals = 15;
+
+                        return FormatExpressionNumber(Math.Round(number, decimals, MidpointRounding.AwayFromZero));
+                    }
+
+                    break;
+                case "Floor":
+                    if (TryParseExpressionDouble(value, out number))
+                        return FormatExpressionNumber(Math.Floor(number));
+
+                    break;
+                case "Ceil":
+                    if (TryParseExpressionDouble(value, out number))
+                        return FormatExpressionNumber(Math.Ceiling(number));
+
+                    break;
+                case "Format":
+                    if (args.Count == 1 && TryParseExpressionDouble(value, out number))
+                        return number.ToString(args[0], CultureInfo.InvariantCulture);
+
+                    break;
             }
 
             return value;
@@ -282,10 +350,18 @@ namespace RemuxForge.Core.Metadata
             for (int i = 1; i < parts.Count; i++)
             {
                 string name;
+                List<string> args;
+                double operand;
 
-                ParseFunction(parts[i], out name, out _);
+                ParseFunction(parts[i], out name, out args);
                 if (!MetadataUiCatalog.IsKnownFunction(name))
+                {
                     errors.Add(AppText.F("metadata.expression.unknownFunctionAt", name, basePosition + FindExpressionPartPosition(expression, parts, i)));
+                }
+                else if (string.Equals(name, "Div", StringComparison.Ordinal) && args.Count == 1 && TryParseExpressionDouble(args[0], out operand) && operand == 0.0)
+                {
+                    errors.Add(AppText.F("metadata.expression.divideByZeroAt", basePosition + FindExpressionPartPosition(expression, parts, i)));
+                }
             }
         }
 
@@ -322,6 +398,7 @@ namespace RemuxForge.Core.Metadata
         /// <returns>Vero se il token è valido</returns>
         private bool IsKnownToken(string token)
         {
+            MetadataFieldDefinition field;
             string key = token != null ? token.Trim() : "";
 
             if (key.StartsWith("original.", StringComparison.OrdinalIgnoreCase) || key.StartsWith("current.", StringComparison.OrdinalIgnoreCase))
@@ -330,7 +407,10 @@ namespace RemuxForge.Core.Metadata
             if (key.StartsWith("mi.", StringComparison.OrdinalIgnoreCase))
                 return true;
 
-            return MetadataFieldRegistry.TryGet(key, out _) || key == "file_folder" || key == "file_relative_folder";
+            if (MetadataFieldRegistry.TryGet(key, out field))
+                return field.IsReadable && field.Visibility != MetadataFieldVisibility.Hidden;
+
+            return key == "file_folder" || key == "file_relative_folder";
         }
 
         /// <summary>
@@ -501,6 +581,44 @@ namespace RemuxForge.Core.Metadata
                 result = 0;
 
             return result;
+        }
+
+        /// <summary>
+        /// Converte testo o valore MediaInfo in numero usabile dalle funzioni matematiche
+        /// </summary>
+        /// <param name="value">Valore testuale</param>
+        /// <param name="number">Numero estratto</param>
+        /// <returns>True se il valore contiene un numero</returns>
+        private static bool TryParseExpressionDouble(string value, out double number)
+        {
+            string text = value != null ? value.Trim() : "";
+            if (string.IsNullOrEmpty(text))
+            {
+                number = 0.0;
+                return false;
+            }
+
+            if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out number))
+                return true;
+
+            number = MetadataValueNormalizer.ParseDoubleWithUnit(text);
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (char.IsDigit(text[i]))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Formatta un numero expression senza zeri decimali inutili
+        /// </summary>
+        /// <param name="value">Valore numerico</param>
+        /// <returns>Numero in formato invariant</returns>
+        private static string FormatExpressionNumber(double value)
+        {
+            return value.ToString("0.############", CultureInfo.InvariantCulture);
         }
 
         /// <summary>

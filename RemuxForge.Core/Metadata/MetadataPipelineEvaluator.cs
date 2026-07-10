@@ -1,3 +1,4 @@
+using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
@@ -212,10 +213,10 @@ namespace RemuxForge.Core.Metadata
 
             left = this.GetConditionFieldValue(record, track, condition.FieldKey);
             if (condition.Operator == MkvMetadataConditionOperator.InList)
-                return this.IsInValueList(left, condition.Values, record, track);
+                return this.IsInValueList(condition.FieldKey, left, condition.Values, record, track);
 
             if (condition.Operator == MkvMetadataConditionOperator.NotInList)
-                return !this.IsInValueList(left, condition.Values, record, track);
+                return !this.IsInValueList(condition.FieldKey, left, condition.Values, record, track);
 
             if (condition.Operator == MkvMetadataConditionOperator.Between || condition.Operator == MkvMetadataConditionOperator.NotBetween)
             {
@@ -230,6 +231,7 @@ namespace RemuxForge.Core.Metadata
             }
 
             right = this.ResolveConditionScalar(condition.Value, condition.Unit, record, track);
+            this.NormalizeConditionValues(condition.FieldKey, ref left, ref right);
             return Compare(left, right, condition.Operator);
         }
 
@@ -367,12 +369,13 @@ namespace RemuxForge.Core.Metadata
         /// <summary>
         /// Verifica se un valore è presente nella lista della condizione
         /// </summary>
+        /// <param name="fieldKey">Chiave campo condizione</param>
         /// <param name="left">Valore corrente</param>
         /// <param name="values">Valori candidati</param>
         /// <param name="record">Record metadata corrente</param>
         /// <param name="track">Traccia corrente o null per container</param>
         /// <returns>True se il valore corrente è nella lista</returns>
-        private bool IsInValueList(string left, List<string> values, MkvMetadataRecord record, MkvMetadataTrackInfo track)
+        private bool IsInValueList(string fieldKey, string left, List<string> values, MkvMetadataRecord record, MkvMetadataTrackInfo track)
         {
             if (values == null)
                 return false;
@@ -380,11 +383,37 @@ namespace RemuxForge.Core.Metadata
             for (int i = 0; i < values.Count; i++)
             {
                 string resolved = this.ResolveConditionScalar(values[i], "", record, track);
+                this.NormalizeConditionValues(fieldKey, ref left, ref resolved);
                 if (string.Equals(left != null ? left.Trim() : "", resolved.Trim(), StringComparison.OrdinalIgnoreCase))
                     return true;
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Normalizza valori condizione per campi lingua nel codice ISO 639-2 unico della UI
+        /// </summary>
+        /// <param name="fieldKey">Chiave campo condizione</param>
+        /// <param name="left">Valore corrente</param>
+        /// <param name="right">Valore confronto</param>
+        private void NormalizeConditionValues(string fieldKey, ref string left, ref string right)
+        {
+            MetadataFieldDefinition field;
+            string normalized;
+            string key = fieldKey != null ? fieldKey.Trim() : "";
+
+            if (key.StartsWith("original.", StringComparison.OrdinalIgnoreCase) || key.StartsWith("current.", StringComparison.OrdinalIgnoreCase))
+                key = key.Substring(key.IndexOf(".", StringComparison.Ordinal) + 1);
+
+            if (!MetadataFieldRegistry.TryGet(key, out field) || field.ValueType != MetadataFieldValueType.Language)
+                return;
+
+            if (LanguageValidator.TryNormalizeToIso6392(left, out normalized))
+                left = normalized;
+
+            if (LanguageValidator.TryNormalizeToIso6392(right, out normalized))
+                right = normalized;
         }
 
         /// <summary>

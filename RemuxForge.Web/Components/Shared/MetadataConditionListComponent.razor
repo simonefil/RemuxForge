@@ -1,7 +1,16 @@
 @using System.Threading.Tasks
 
 <div class="metadata-condition-stack @(Nested ? "metadata-condition-stack-nested" : "")">
-    @if (Nodes != null)
+    @if (Nodes == null || Nodes.Count == 0)
+    {
+        <div class="metadata-sentence-card">
+            <div class="metadata-sentence-row">
+                <span class="metadata-sentence-kind">@AppText.T("web.metadata.presetDialog.alwaysTrue")</span>
+                <span class="metadata-sentence-placeholder"></span>
+            </div>
+        </div>
+    }
+    else
     {
         @for (int i = 0; i < Nodes.Count; i++)
         {

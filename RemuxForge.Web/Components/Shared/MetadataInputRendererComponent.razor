@@ -2,7 +2,7 @@
 
 @if (ShouldRenderSelect())
 {
-    <select class="@CssClass" value="@Value" @onchange="ChangeValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter">
+    <select class="@CssClass" value="@_currentValue" @onchange="CommitChangedValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter">
         @if (EffectiveSchema.AllowsEmpty)
         {
             <option value=""></option>
@@ -15,7 +15,7 @@
 }
 else if (ShouldRenderDatalist())
 {
-    <input class="@CssClass" type="@EffectiveSchema.HtmlInputType" step="@EffectiveSchema.Step" list="@_listId" value="@Value" placeholder="@EffectiveSchema.Placeholder" @oninput="ChangeValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" @onkeydown="HandleKeyDown" />
+    <input class="@CssClass" type="@EffectiveSchema.HtmlInputType" step="@EffectiveSchema.Step" list="@_listId" value="@_currentValue" placeholder="@EffectiveSchema.Placeholder" @oninput="UpdateLocalValue" @onchange="CommitChangedValue" @onblur="CommitCurrentValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" @onkeydown="HandleKeyDown" />
     <datalist id="@_listId">
         @foreach (MetadataInputOption option in EffectiveSchema.Options)
         {
@@ -25,7 +25,7 @@ else if (ShouldRenderDatalist())
 }
 else
 {
-    <input class="@CssClass" type="@EffectiveSchema.HtmlInputType" step="@EffectiveSchema.Step" value="@Value" placeholder="@EffectiveSchema.Placeholder" @oninput="ChangeValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" @onkeydown="HandleKeyDown" />
+    <input class="@CssClass" type="@EffectiveSchema.HtmlInputType" step="@EffectiveSchema.Step" value="@_currentValue" placeholder="@EffectiveSchema.Placeholder" @oninput="UpdateLocalValue" @onchange="CommitChangedValue" @onblur="CommitCurrentValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" @onkeydown="HandleKeyDown" />
 }
 
 @code {
@@ -68,6 +68,29 @@ else
     /// Identificativo datalist
     /// </summary>
     private readonly string _listId = "metadata-input-" + Guid.NewGuid().ToString("N");
+
+    /// <summary>
+    /// Valore locale digitato senza notificare il parent a ogni tasto
+    /// </summary>
+    private string _currentValue = "";
+
+    /// <summary>
+    /// Ultimo valore ricevuto o confermato dal parent
+    /// </summary>
+    private string _lastParameterValue = "";
+
+    /// <summary>
+    /// Sincronizza il buffer locale quando il parent cambia valore
+    /// </summary>
+    protected override void OnParametersSet()
+    {
+        string value = this.Value != null ? this.Value : "";
+        if (!string.Equals(value, this._lastParameterValue, StringComparison.Ordinal))
+        {
+            this._currentValue = value;
+            this._lastParameterValue = value;
+        }
+    }
 
     /// <summary>
     /// Schema effettivo con fallback testuale
@@ -120,12 +143,35 @@ else
     }
 
     /// <summary>
-    /// Propaga cambio valore
+    /// Aggiorna il buffer locale senza invalidare l'intero preset builder
     /// </summary>
     /// <param name="args">Argomenti change/input</param>
-    private Task ChangeValue(ChangeEventArgs args)
+    private void UpdateLocalValue(ChangeEventArgs args)
     {
-        return this.ValueChanged.InvokeAsync(args != null && args.Value != null ? args.Value.ToString() : "");
+        this._currentValue = args != null && args.Value != null ? args.Value.ToString() : "";
+    }
+
+    /// <summary>
+    /// Aggiorna e propaga il valore quando l'editing del campo è confermato
+    /// </summary>
+    /// <param name="args">Argomenti change/input</param>
+    private Task CommitChangedValue(ChangeEventArgs args)
+    {
+        this.UpdateLocalValue(args);
+        return this.CommitCurrentValue();
+    }
+
+    /// <summary>
+    /// Propaga il valore corrente al parent solo se è realmente cambiato
+    /// </summary>
+    private Task CommitCurrentValue()
+    {
+        string value = this._currentValue != null ? this._currentValue : "";
+        if (string.Equals(value, this._lastParameterValue, StringComparison.Ordinal))
+            return Task.CompletedTask;
+
+        this._lastParameterValue = value;
+        return this.ValueChanged.InvokeAsync(value);
     }
 
     /// <summary>
@@ -148,11 +194,12 @@ else
     /// Gestisce shortcut locali dell'input
     /// </summary>
     /// <param name="args">Argomenti tastiera</param>
-    private Task HandleKeyDown(KeyboardEventArgs args)
+    private async Task HandleKeyDown(KeyboardEventArgs args)
     {
         if (args != null && args.ShiftKey && string.Equals(args.Key, "F2", StringComparison.OrdinalIgnoreCase) && this.CanUseExpandedEditor())
-            return this.OnExpandedEditRequested.InvokeAsync();
-
-        return Task.CompletedTask;
+        {
+            await this.CommitCurrentValue();
+            await this.OnExpandedEditRequested.InvokeAsync();
+        }
     }
 }
