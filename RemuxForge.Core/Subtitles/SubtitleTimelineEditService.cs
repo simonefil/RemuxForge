@@ -124,20 +124,21 @@ namespace RemuxForge.Core.Subtitles
             string codec = srt ? "srt" : "ass";
             string content;
             string rewritten;
-            int exitCode;
+            ProcessResult processResult;
 
             // ffmpeg normalizza l'estrazione testuale in SRT/ASS prima della riscrittura timestamp
-            exitCode = this.RunFfmpeg(new string[]
+            processResult = this.RunFfmpeg(new string[]
             {
-                "-nostdin", "-hide_banner", "-y",
+                "-nostdin", "-hide_banner", "-v", "error", "-y",
                 "-i", langFile,
                 "-map", "0:" + trackId.ToString(CultureInfo.InvariantCulture),
                 "-c:s", codec,
                 inputFile
             });
 
-            if (exitCode != 0 || !File.Exists(inputFile))
+            if (processResult == null || processResult.ExitCode != 0 || !File.Exists(inputFile))
             {
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, "  Estrazione sottotitolo traccia " + trackId + " fallita (exit " + this.GetExitCode(processResult) + "): " + this.GetProcessError(processResult));
                 FileHelper.DeleteTempFile(inputFile);
                 return result;
             }
@@ -269,7 +270,13 @@ namespace RemuxForge.Core.Subtitles
                 "-"
             }, this._timeoutMs);
 
-            return result != null && result.ExitCode == 0;
+            if (result == null || result.ExitCode != 0)
+            {
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, "  Validazione sottotitolo riscritto fallita (exit " + this.GetExitCode(result) + "): " + this.GetProcessError(result));
+                return false;
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -367,11 +374,44 @@ namespace RemuxForge.Core.Subtitles
         /// Esegue ffmpeg tramite ProcessRunner normalizzando gli argomenti composti
         /// </summary>
         /// <param name="args">Argomenti ffmpeg</param>
-        /// <returns>Exit code processo</returns>
-        private int RunFfmpeg(string[] args)
+        /// <returns>Risultato processo comprensivo di stdout e stderr</returns>
+        private ProcessResult RunFfmpeg(string[] args)
         {
             string[] splitArgs = ProcessRunner.SplitCompoundArgs(args);
-            return ProcessRunner.RunDiscardOutput(this._ffmpegPath, splitArgs, this._timeoutMs);
+            return ProcessRunner.Run(this._ffmpegPath, splitArgs, this._timeoutMs);
+        }
+
+        /// <summary>
+        /// Restituisce l'exit code di un processo in forma stampabile
+        /// </summary>
+        /// <param name="result">Risultato processo</param>
+        /// <returns>Exit code oppure n/d se il processo non ha restituito un risultato</returns>
+        private string GetExitCode(ProcessResult result)
+        {
+            return result != null ? result.ExitCode.ToString(CultureInfo.InvariantCulture) : "n/d";
+        }
+
+        /// <summary>
+        /// Estrae il dettaglio conclusivo dall'output di un processo
+        /// </summary>
+        /// <param name="result">Risultato processo</param>
+        /// <returns>Coda dell'output utile oppure un messaggio generico</returns>
+        private string GetProcessError(ProcessResult result)
+        {
+            string output;
+
+            if (result == null)
+                return "nessun risultato restituito dal processo";
+
+            output = !string.IsNullOrEmpty(result.Stderr) ? result.Stderr : result.Stdout;
+            if (string.IsNullOrEmpty(output))
+                return "nessun dettaglio restituito da ffmpeg";
+
+            output = output.Replace("\r", "").Trim();
+            if (output.Length > 2000)
+                output = output.Substring(output.Length - 2000);
+
+            return output;
         }
 
         #endregion
