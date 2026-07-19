@@ -4,9 +4,6 @@
 /* WebTUI full bundle */
 @import '../lib/webtui/dist/full.css';
 
-/* WebTUI Nord theme */
-@import '../lib/webtui-theme-nord/dist/index.css';
-
 /* Custom themes */
 @import 'themes.css';
 
@@ -23,4 +20,5 @@ html, body {
     margin: 0;
     padding: 0;
     overflow: hidden;
+    word-break: normal;
 }

@@ -2,7 +2,7 @@
     <div class="dialog-box" style="min-width: 55ch;" @onclick:stopPropagation="true">
         <div class="dialog-title">@AppText.T("web.info.title")</div>
         <div class="dialog-body">
-            <table class="info-table">
+            <table class="info-table" divide-="none">
                 <tr><td class="info-label">@AppText.T("web.info.name")</td><td><img src="favicon-32x32.png" alt="icon" style="vertical-align: middle; margin-right: 0.5ch;" />RemuxForge</td></tr>
                 <tr><td class="info-label">@AppText.T("web.info.version")</td><td>@_version</td></tr>
                 <tr><td class="info-label">@AppText.T("web.info.license")</td><td>GNU General Public License v3.0</td></tr>
