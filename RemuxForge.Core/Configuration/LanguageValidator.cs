@@ -146,6 +146,52 @@ namespace RemuxForge.Core.Configuration
         };
 
         /// <summary>
+        /// Mappa ISO 639-1 verso ISO 639-2 indipendente dalla culture installata nel runtime
+        /// </summary>
+        private static readonly Dictionary<string, string> s_iso6391Languages = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "af", "afr" }, { "ak", "aka" }, { "am", "amh" }, { "ar", "ara" },
+            { "as", "asm" }, { "az", "aze" }, { "ba", "bak" }, { "be", "bel" },
+            { "bg", "bul" }, { "bm", "bam" }, { "bn", "ben" }, { "bo", "bod" },
+            { "br", "bre" }, { "bs", "bos" }, { "ca", "cat" }, { "ce", "che" },
+            { "co", "cos" }, { "cs", "ces" }, { "cv", "chv" }, { "cy", "cym" },
+            { "da", "dan" }, { "de", "deu" }, { "dv", "div" }, { "dz", "dzo" },
+            { "ee", "ewe" }, { "el", "ell" }, { "en", "eng" }, { "eo", "epo" },
+            { "es", "spa" }, { "et", "est" }, { "eu", "eus" }, { "fa", "fas" },
+            { "ff", "ful" }, { "fi", "fin" }, { "fo", "fao" }, { "fr", "fra" },
+            { "fy", "fry" }, { "ga", "gle" }, { "gd", "gla" }, { "gl", "glg" },
+            { "gn", "grn" }, { "gu", "guj" }, { "gv", "glv" }, { "ha", "hau" },
+            { "he", "heb" }, { "hi", "hin" }, { "hr", "hrv" }, { "ht", "hat" },
+            { "hu", "hun" }, { "hy", "hye" }, { "ia", "ina" }, { "id", "ind" },
+            { "ie", "ile" }, { "ig", "ibo" }, { "ii", "iii" }, { "io", "ido" },
+            { "is", "isl" }, { "it", "ita" }, { "iu", "iku" }, { "ja", "jpn" },
+            { "jv", "jav" }, { "ka", "kat" }, { "ki", "kik" }, { "kk", "kaz" },
+            { "kl", "kal" }, { "km", "khm" }, { "kn", "kan" }, { "ko", "kor" },
+            { "ks", "kas" }, { "ku", "kur" }, { "kw", "cor" }, { "ky", "kir" },
+            { "lb", "ltz" }, { "lg", "lug" }, { "ln", "lin" }, { "lo", "lao" },
+            { "lt", "lit" }, { "lu", "lub" }, { "lv", "lav" }, { "mg", "mlg" },
+            { "mi", "mri" }, { "mk", "mkd" }, { "ml", "mal" }, { "mn", "mon" },
+            { "mr", "mar" }, { "ms", "msa" }, { "mt", "mlt" }, { "my", "mya" },
+            { "nb", "nob" }, { "nd", "nde" }, { "ne", "nep" }, { "nl", "nld" },
+            { "nn", "nno" }, { "no", "nor" }, { "nr", "nbl" }, { "nv", "nav" },
+            { "ny", "nya" }, { "oc", "oci" }, { "om", "orm" }, { "or", "ori" },
+            { "os", "oss" }, { "pa", "pan" }, { "pl", "pol" }, { "ps", "pus" },
+            { "pt", "por" }, { "qu", "que" }, { "rm", "roh" }, { "rn", "run" },
+            { "ro", "ron" }, { "ru", "rus" }, { "rw", "kin" }, { "sa", "san" },
+            { "sc", "srd" }, { "sd", "snd" }, { "se", "sme" }, { "sg", "sag" },
+            { "si", "sin" }, { "sk", "slk" }, { "sl", "slv" }, { "sm", "smo" },
+            { "sn", "sna" }, { "so", "som" }, { "sq", "sqi" }, { "sr", "srp" },
+            { "ss", "ssw" }, { "st", "sot" }, { "su", "sun" }, { "sv", "swe" },
+            { "sw", "swa" }, { "ta", "tam" }, { "te", "tel" }, { "tg", "tgk" },
+            { "th", "tha" }, { "ti", "tir" }, { "tk", "tuk" }, { "tn", "tsn" },
+            { "to", "ton" }, { "tr", "tur" }, { "ts", "tso" }, { "tt", "tat" },
+            { "ug", "uig" }, { "uk", "ukr" }, { "ur", "urd" }, { "uz", "uzb" },
+            { "ve", "ven" }, { "vi", "vie" }, { "wa", "wln" }, { "wo", "wol" },
+            { "xh", "xho" }, { "yi", "yid" }, { "yo", "yor" }, { "za", "zha" },
+            { "zh", "zho" }, { "zu", "zul" }
+        };
+
+        /// <summary>
         /// Alias ISO 639-2 bibliografici convertiti nel codice terminologico canonico
         /// </summary>
         private static readonly Dictionary<string, string> s_iso6392CanonicalAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -238,11 +284,11 @@ namespace RemuxForge.Core.Configuration
                 return true;
             }
 
-            if (TryNormalizeCultureLanguage(text, out normalized))
+            if (TryNormalizeLanguageCode(text, out normalized))
                 return true;
 
             int separator = text.IndexOf('-', StringComparison.Ordinal);
-            if (separator > 0 && TryNormalizeCultureLanguage(text.Substring(0, separator), out normalized))
+            if (separator > 0 && TryNormalizeLanguageCode(text.Substring(0, separator), out normalized))
                 return true;
 
             return false;
@@ -366,14 +412,21 @@ namespace RemuxForge.Core.Configuration
         }
 
         /// <summary>
-        /// Usa CultureInfo per convertire codici ISO 639-1 o BCP 47 in ISO 639-2
+        /// Converte codici ISO 639-1 o culture disponibili in ISO 639-2
         /// </summary>
         /// <param name="language">Codice lingua</param>
         /// <param name="normalized">Codice ISO 639-2 normalizzato</param>
         /// <returns>Vero se la conversione è riuscita</returns>
-        private static bool TryNormalizeCultureLanguage(string language, out string normalized)
+        private static bool TryNormalizeLanguageCode(string language, out string normalized)
         {
+            string mapped;
             normalized = "";
+
+            if (s_iso6391Languages.TryGetValue(language, out mapped))
+            {
+                normalized = NormalizeIso6392Alias(mapped);
+                return true;
+            }
 
             try
             {

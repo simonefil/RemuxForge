@@ -67,10 +67,11 @@ namespace RemuxForge.Core.Metadata
 
             if (inputKind == MetadataFieldInputKind.LanguageSelect || valueType == MetadataFieldValueType.Language)
             {
-                if (LanguageValidator.TryNormalizeToIso6392(normalizedValue, out normalizedValue))
+                string languageValue = normalizedValue;
+                if (LanguageValidator.TryNormalizeToIso6392(languageValue, out normalizedValue))
                     return true;
 
-                errorMessage = AppText.F("metadata.validation.invalidLanguageValue", label, normalizedValue);
+                errorMessage = AppText.F("metadata.validation.invalidLanguageValue", label, languageValue);
                 return false;
             }
 
