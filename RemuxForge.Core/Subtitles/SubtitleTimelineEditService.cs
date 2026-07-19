@@ -74,17 +74,19 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="trackCodec">Codec sottotitoli</param>
         /// <param name="editMap">Edit map da applicare</param>
         /// <param name="label">Etichetta temporanea</param>
+        /// <param name="emptyTrack">True se la traccia estratta non contiene cue</param>
         /// <returns>Path del file sottotitolo riscritto, vuoto se non applicabile</returns>
-        public string Apply(string langFile, int trackId, string trackCodec, EditMap editMap, string label)
+        public string Apply(string langFile, int trackId, string trackCodec, EditMap editMap, string label, out bool emptyTrack)
         {
             string result = "";
+            emptyTrack = false;
             if (this.IsSrtCodec(trackCodec))
             {
-                result = this.ApplyTextSubtitle(langFile, trackId, editMap, label, true);
+                result = this.ApplyTextSubtitle(langFile, trackId, editMap, label, true, out emptyTrack);
             }
             else if (this.IsAssCodec(trackCodec))
             {
-                result = this.ApplyTextSubtitle(langFile, trackId, editMap, label, false);
+                result = this.ApplyTextSubtitle(langFile, trackId, editMap, label, false, out emptyTrack);
             }
             else if (this.IsPgsCodec(trackCodec))
             {
@@ -114,8 +116,9 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="editMap">Edit map da applicare</param>
         /// <param name="label">Etichetta temporanea</param>
         /// <param name="srt">True per SRT, false per ASS/SSA</param>
+        /// <param name="emptyTrack">True se la traccia estratta non contiene cue</param>
         /// <returns>Path del sottotitolo riscritto, oppure stringa vuota</returns>
-        private string ApplyTextSubtitle(string langFile, int trackId, EditMap editMap, string label, bool srt)
+        private string ApplyTextSubtitle(string langFile, int trackId, EditMap editMap, string label, bool srt, out bool emptyTrack)
         {
             string result = "";
             string extension = srt ? ".srt" : ".ass";
@@ -125,6 +128,7 @@ namespace RemuxForge.Core.Subtitles
             string content;
             string rewritten;
             ProcessResult processResult;
+            emptyTrack = false;
 
             // ffmpeg normalizza l'estrazione testuale in SRT/ASS prima della riscrittura timestamp
             processResult = this.RunFfmpeg(new string[]
@@ -139,6 +143,14 @@ namespace RemuxForge.Core.Subtitles
             if (processResult == null || processResult.ExitCode != 0 || !File.Exists(inputFile))
             {
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, "  Estrazione sottotitolo traccia " + trackId + " fallita (exit " + this.GetExitCode(processResult) + "): " + this.GetProcessError(processResult));
+                FileHelper.DeleteTempFile(inputFile);
+                return result;
+            }
+
+            if (new FileInfo(inputFile).Length == 0)
+            {
+                emptyTrack = true;
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Traccia sottotitolo " + trackId + " vuota: nessun timestamp da riscrivere");
                 FileHelper.DeleteTempFile(inputFile);
                 return result;
             }

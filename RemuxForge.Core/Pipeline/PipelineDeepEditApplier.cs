@@ -30,6 +30,7 @@ namespace RemuxForge.Core.Pipeline
             SubtitleTimelineEditService subtitleService;
             string splitLabel;
             string processedFile;
+            bool emptyTrack;
 
             if (!record.DeepAnalysisApplied || record.DeepAnalysisMap == null || record.DeepAnalysisMap.Operations.Count == 0)
             {
@@ -58,12 +59,16 @@ namespace RemuxForge.Core.Pipeline
             for (int s = 0; s < subtitleTracks.Count; s++)
             {
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Traccia sub " + subtitleTracks[s].Id + " (" + subtitleTracks[s].Codec + "): " + record.DeepAnalysisMap.Operations.Count + " operazioni da applicare");
-                processedFile = subtitleService.Apply(record.LangFilePath, subtitleTracks[s].Id, subtitleTracks[s].Codec, record.DeepAnalysisMap, splitLabel);
+                processedFile = subtitleService.Apply(record.LangFilePath, subtitleTracks[s].Id, subtitleTracks[s].Codec, record.DeepAnalysisMap, splitLabel, out emptyTrack);
 
                 if (!string.IsNullOrEmpty(processedFile))
                 {
                     ConsoleHelper.Write(LogSection.Deep, LogLevel.Success, "  Timestamp sottotitoli riscritti -> output OK");
                     processedLangSubTracks[subtitleTracks[s].Id] = processedFile;
+                }
+                else if (emptyTrack)
+                {
+                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Traccia sub " + subtitleTracks[s].Id + " mantenuta invariata perché vuota");
                 }
                 else
                 {
