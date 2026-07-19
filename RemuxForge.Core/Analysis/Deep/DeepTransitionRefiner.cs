@@ -121,7 +121,7 @@ namespace RemuxForge.Core.Analysis.Deep
             double boundaryToleranceSec;
             double unsupportedGapStartSrc;
             double unsupportedGapEndSrc;
-            bool strongDifferentialAccepted;
+            bool strongVisualCandidateAccepted;
             int operationDurationMs;
             double effectiveOffsetSec = regions.Count > 0 ? regions[0].OffsetMs / 1000.0 : 0.0;
             DeepAnalysisTransitionDiagnostic transition;
@@ -289,15 +289,18 @@ namespace RemuxForge.Core.Analysis.Deep
                 transition.SourceTimestampMs = sourceTimestampMs;
                 transition.DurationMs = durationMs;
                 transition.LocalVerification = this._localTransitionVerifier(sourceFile, langFile, bestCrossover, oldOffsetSec, newOffsetSec, inverseRatio);
-                strongDifferentialAccepted = false;
+                strongVisualCandidateAccepted = false;
                 for (int c = 0; c < transition.Candidates.Count; c++)
                 {
                     if (Math.Abs(transition.Candidates[c].SourceSec - bestCrossover) <= 0.05 &&
                         (string.Equals(transition.Candidates[c].Decision, "accepted-strong-differential", StringComparison.Ordinal) ||
-                        string.Equals(transition.Candidates[c].Decision, "accepted-timeline-cut-boundary", StringComparison.Ordinal)) &&
+                        string.Equals(transition.Candidates[c].Decision, "accepted-insert-mse-motion-boundary", StringComparison.Ordinal) ||
+                        string.Equals(transition.Candidates[c].Decision, "accepted-timeline-cut-boundary", StringComparison.Ordinal) ||
+                        string.Equals(transition.Candidates[c].Decision, "accepted-insert-unmatched-boundary", StringComparison.Ordinal) ||
+                        string.Equals(transition.Candidates[c].Decision, "accepted-timeline-dark-duration", StringComparison.Ordinal)) &&
                         !transition.Candidates[c].AudioRejected)
                     {
-                        strongDifferentialAccepted = true;
+                        strongVisualCandidateAccepted = true;
                         break;
                     }
                 }
@@ -306,11 +309,11 @@ namespace RemuxForge.Core.Analysis.Deep
                 {
                     if (timelineMode)
                     {
-                        if (strongDifferentialAccepted)
+                        if (strongVisualCandidateAccepted)
                         {
                             transition.Status = "AcceptedTentative";
-                            transition.RejectReason = "Candidato differenziale forte, demandato alla verifica globale";
-                            ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Transizione " + (r + 1) + ": candidato differenziale forte, operazione timeline mantenuta per verifica globale");
+                            transition.RejectReason = "Candidato visuale forte, demandato alla verifica globale";
+                            ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Transizione " + (r + 1) + ": candidato visuale forte, operazione timeline mantenuta per verifica globale");
                         }
                         else if (transition.LocalVerification != null && transition.LocalVerification.CanDeferToGlobalVerification)
                         {
@@ -389,10 +392,6 @@ namespace RemuxForge.Core.Analysis.Deep
 
             return operations;
         }
-
-        #endregion
-
-        #region Metodi privati
 
         #endregion
     }

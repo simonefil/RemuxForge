@@ -1580,6 +1580,16 @@ namespace RemuxForge.Core.Analysis.Deep
             int candidateDiagnosticsLimit = 80;
             ParallelOptions extractionParallelOptions;
             ParallelOptions scoringParallelOptions;
+            int timelineDarkBoundaryIdx;
+            int timelineDarkRunFrames;
+            double timelineDarkSourceDurationMs;
+            double timelineDarkLanguageDurationMs;
+            double timelineDarkDifferenceMs;
+            int timelineCutDarkBoundaryIdx;
+            int timelineCutDarkRunFrames;
+            double timelineCutDarkSourceDurationMs;
+            double timelineCutDarkLanguageDurationMs;
+            double timelineCutDarkDifferenceMs;
 
             if (duration < 1.0)
             {
@@ -1721,12 +1731,114 @@ namespace RemuxForge.Core.Analysis.Deep
                  * Ramo INSERT: boundary MSE robusto e verifica locale
                  */
 
+                int unmatchedBoundaryIdx;
+                int unmatchedRecoveryIdx;
+                int unmatchedFrames;
+                if (this.TryFindInsertUnmatchedBoundary(
+                    transition,
+                    newOffsetSec - oldOffsetSec,
+                    valid,
+                    sourceTimestampsMs,
+                    oldScores,
+                    newScores,
+                    oldMseScores,
+                    newMseScores,
+                    minNewSsim,
+                    minMargin,
+                    toleranceMs,
+                    requiredAfterVotes,
+                    out unmatchedBoundaryIdx,
+                    out unmatchedRecoveryIdx,
+                    out unmatchedFrames))
+                {
+                    int originalUnmatchedBoundaryIdx = unmatchedBoundaryIdx;
+                    int darkBoundaryRunFrames = 0;
+                    double darkBoundaryIntervalRatio = 0.0;
+                    bool darkBoundaryRewritten = false;
+                    int sharedDarkBoundaryIdx;
+                    double unmatchedBreakpointSrcSec = transition != null ? transition.BreakpointSrcSec : 0.0;
+
+                    if (this.TryRewriteSharedDarkBoundary(
+                        unmatchedBoundaryIdx,
+                        true,
+                        offsetDirection,
+                        oldOffsetSec,
+                        newOffsetSec,
+                        inverseRatio,
+                        searchStartSrc,
+                        searchEndSrc,
+                        unmatchedBreakpointSrcSec,
+                        valid,
+                        sourceTimestampsMs,
+                        meanScores,
+                        oldLangMeanScores,
+                        newLangMeanScores,
+                        oldMseScores,
+                        newMseScores,
+                        langOldFrames,
+                        langOldTimestampsMs,
+                        darkFrameMean,
+                        out sharedDarkBoundaryIdx,
+                        out darkBoundaryRunFrames,
+                        out darkBoundaryIntervalRatio))
+                    {
+                        unmatchedBoundaryIdx = sharedDarkBoundaryIdx;
+                        darkBoundaryRewritten = true;
+                    }
+                    else if (this.TryRewriteSourceDarkInsertBoundary(
+                        unmatchedBoundaryIdx,
+                        true,
+                        oldOffsetSec,
+                        newOffsetSec,
+                        unmatchedBreakpointSrcSec,
+                        searchStartSrc,
+                        searchEndSrc,
+                        valid,
+                        sourceTimestampsMs,
+                        meanScores,
+                        darkFrameMean,
+                        out sharedDarkBoundaryIdx,
+                        out darkBoundaryRunFrames,
+                        out darkBoundaryIntervalRatio))
+                    {
+                        unmatchedBoundaryIdx = sharedDarkBoundaryIdx;
+                        darkBoundaryRewritten = true;
+                    }
+
+                    result = sourceTimestampsMs[unmatchedBoundaryIdx] / 1000.0;
+                    if (transition != null && transition.Candidates.Count < candidateDiagnosticsLimit)
+                    {
+                        transition.Candidates.Add(new DeepAnalysisTransitionCandidateDiagnostic
+                        {
+                            SourceSec = result,
+                            OriginalSourceSec = sourceTimestampsMs[originalUnmatchedBoundaryIdx] / 1000.0,
+                            Score = unmatchedFrames,
+                            MotionMse = motionScores[unmatchedBoundaryIdx],
+                            OldMse = oldMseScores[unmatchedBoundaryIdx],
+                            NewMse = newMseScores[unmatchedBoundaryIdx],
+                            Verified = false,
+                            CanDeferToGlobalVerification = true,
+                            AudioRejected = false,
+                            Decision = "accepted-insert-unmatched-boundary",
+                            DarkBoundaryRewritten = darkBoundaryRewritten,
+                            DarkBoundaryShiftMs = darkBoundaryRewritten ? sourceTimestampsMs[originalUnmatchedBoundaryIdx] - sourceTimestampsMs[unmatchedBoundaryIdx] : 0.0,
+                            DarkBoundaryDecision = darkBoundaryRewritten ? "insert-unmatched-dark-boundary" : "",
+                            DarkBoundaryRunFrames = darkBoundaryRunFrames,
+                            DarkBoundaryIntervalDarkRatio = darkBoundaryIntervalRatio
+                        });
+                    }
+
+                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: inizio run unmatched INSERT a src " + result.ToString("F3", CultureInfo.InvariantCulture) + "s, recovery new a src " + (sourceTimestampsMs[unmatchedRecoveryIdx] / 1000.0).ToString("F3", CultureInfo.InvariantCulture) + "s (frame unmatched=" + unmatchedFrames.ToString(CultureInfo.InvariantCulture) + ")");
+                    return result;
+                }
+
                 // INSERT: prima prova un boundary MSE robusto, utile quando SSIM satura su frame statici
                 List<KeyValuePair<int, double>> insertCandidates = new List<KeyValuePair<int, double>>(candidates);
                 double mseInsertResult = -1.0;
                 double mseInsertScore = 0.0;
                 double mseInsertOldMse = double.MaxValue;
                 double mseInsertNewMse = double.MaxValue;
+                double mseInsertMotionMse = 0.0;
                 bool mseInsertDarkRewritten = false;
                 int mseInsertDarkRunFrames = 0;
                 double mseInsertDarkBoundaryIntervalRatio = 0.0;
@@ -1747,6 +1859,7 @@ namespace RemuxForge.Core.Analysis.Deep
                     DeepAnalysisLocalVerificationDiagnostic candidateVerification;
                     DeepAnalysisTransitionCandidateDiagnostic candidateDiagnostic = null;
                     bool candidateRejected;
+                    string candidateDecision;
 
                     // Sposta il candidato sul primo frame vicino dove il nuovo offset diventa almeno
                     // competitivo e c'è movimento reale nel source.
@@ -1870,6 +1983,7 @@ namespace RemuxForge.Core.Analysis.Deep
                     int sharedDarkBoundaryIdx;
                     if (this.TryRewriteSharedDarkBoundary(
                         boundaryIdx,
+                        !longInsertTransition,
                         offsetDirection,
                         oldOffsetSec,
                         newOffsetSec,
@@ -1899,8 +2013,10 @@ namespace RemuxForge.Core.Analysis.Deep
                     }
                     if (!darkBoundaryRewritten && this.TryRewriteSourceDarkInsertBoundary(
                         boundaryIdx,
+                        !longInsertTransition,
                         oldOffsetSec,
                         newOffsetSec,
+                        darkBoundaryBreakpointSrcSec,
                         searchStartSrc,
                         searchEndSrc,
                         valid,
@@ -1938,7 +2054,7 @@ namespace RemuxForge.Core.Analysis.Deep
                             Decision = "insert-mse-unverified-large-delta",
                             DarkBoundaryRewritten = darkBoundaryRewritten,
                             DarkBoundaryShiftMs = darkBoundaryRewritten ? (darkBoundaryOriginalSourceSec - result) * 1000.0 : 0.0,
-                            DarkBoundaryDecision = darkBoundaryRewritten ? "insert-mse-shared-dark-rewind" : "",
+                            DarkBoundaryDecision = darkBoundaryRewritten ? "insert-mse-shared-dark-boundary" : "",
                             DarkBoundaryRunFrames = darkBoundaryRunFrames,
                             DarkBoundaryIntervalDarkRatio = darkBoundaryIntervalDarkRatio
                         });
@@ -1950,6 +2066,19 @@ namespace RemuxForge.Core.Analysis.Deep
                     if (!longInsertTransition)
                     {
                         candidateVerification = this.VerifyTransitionLocal(sourceFile, langFile, result, oldOffsetSec, newOffsetSec, inverseRatio);
+                        if (candidateVerification == null || (!candidateVerification.Verified && !candidateVerification.CanDeferToGlobalVerification))
+                        {
+                            candidateDecision = "insert-mse-rejected-local";
+                        }
+                        else if (candidateVerification.Verified && motionScores[boundaryIdx] >= motionThreshold)
+                        {
+                            candidateDecision = "accepted-insert-mse-motion-boundary";
+                        }
+                        else
+                        {
+                            candidateDecision = "insert-mse-accepted-local";
+                        }
+
                         if (transition != null && transition.Candidates.Count < candidateDiagnosticsLimit)
                         {
                             candidateDiagnostic = new DeepAnalysisTransitionCandidateDiagnostic
@@ -1963,10 +2092,10 @@ namespace RemuxForge.Core.Analysis.Deep
                                 Verified = candidateVerification != null && candidateVerification.Verified,
                                 CanDeferToGlobalVerification = candidateVerification != null && candidateVerification.CanDeferToGlobalVerification,
                                 AudioRejected = candidateVerification != null && candidateVerification.AudioRejected,
-                                Decision = candidateVerification == null || (!candidateVerification.Verified && !candidateVerification.CanDeferToGlobalVerification) ? "insert-mse-rejected-local" : "insert-mse-accepted-local",
+                                Decision = candidateDecision,
                                 DarkBoundaryRewritten = darkBoundaryRewritten,
                                 DarkBoundaryShiftMs = darkBoundaryRewritten ? (darkBoundaryOriginalSourceSec - result) * 1000.0 : 0.0,
-                                DarkBoundaryDecision = darkBoundaryRewritten ? "insert-mse-shared-dark-rewind" : "",
+                                DarkBoundaryDecision = darkBoundaryRewritten ? "insert-mse-shared-dark-boundary" : "",
                                 DarkBoundaryRunFrames = darkBoundaryRunFrames,
                                 DarkBoundaryIntervalDarkRatio = darkBoundaryIntervalDarkRatio
                             };
@@ -2031,6 +2160,7 @@ namespace RemuxForge.Core.Analysis.Deep
                     mseInsertScore = insertCandidates[c].Value;
                     mseInsertOldMse = oldMseScores[boundaryIdx];
                     mseInsertNewMse = newMseScores[boundaryIdx];
+                    mseInsertMotionMse = motionScores[boundaryIdx];
                     mseInsertDarkRewritten = darkBoundaryRewritten;
                     mseInsertDarkRunFrames = darkBoundaryRunFrames;
                     mseInsertDarkBoundaryIntervalRatio = darkBoundaryIntervalDarkRatio;
@@ -2184,6 +2314,7 @@ namespace RemuxForge.Core.Analysis.Deep
                     int sharedDarkBoundaryIdx;
                     if (this.TryRewriteSharedDarkBoundary(
                         ssimBoundaryIdx,
+                        !longInsertTransition,
                         offsetDirection,
                         oldOffsetSec,
                         newOffsetSec,
@@ -2213,8 +2344,10 @@ namespace RemuxForge.Core.Analysis.Deep
                     }
                     if (!darkBoundaryRewritten && this.TryRewriteSourceDarkInsertBoundary(
                         ssimBoundaryIdx,
+                        !longInsertTransition,
                         oldOffsetSec,
                         newOffsetSec,
+                        darkBoundaryBreakpointSrcSec,
                         searchStartSrc,
                         searchEndSrc,
                         valid,
@@ -2252,7 +2385,7 @@ namespace RemuxForge.Core.Analysis.Deep
                             Decision = "insert-ssim-unverified-large-delta",
                             DarkBoundaryRewritten = darkBoundaryRewritten,
                             DarkBoundaryShiftMs = darkBoundaryRewritten ? (darkBoundaryOriginalSourceSec - result) * 1000.0 : 0.0,
-                            DarkBoundaryDecision = darkBoundaryRewritten ? "insert-ssim-shared-dark-rewind" : "",
+                            DarkBoundaryDecision = darkBoundaryRewritten ? "insert-ssim-shared-dark-boundary" : "",
                             DarkBoundaryRunFrames = darkBoundaryRunFrames,
                             DarkBoundaryIntervalDarkRatio = darkBoundaryIntervalDarkRatio
                         });
@@ -2276,7 +2409,7 @@ namespace RemuxForge.Core.Analysis.Deep
                                 Decision = candidateVerification == null || (!candidateVerification.Verified && !candidateVerification.CanDeferToGlobalVerification) ? "insert-ssim-rejected-local" : "insert-ssim-accepted-local",
                                 DarkBoundaryRewritten = darkBoundaryRewritten,
                                 DarkBoundaryShiftMs = darkBoundaryRewritten ? (darkBoundaryOriginalSourceSec - result) * 1000.0 : 0.0,
-                                DarkBoundaryDecision = darkBoundaryRewritten ? "insert-ssim-shared-dark-rewind" : "",
+                                DarkBoundaryDecision = darkBoundaryRewritten ? "insert-ssim-shared-dark-boundary" : "",
                                 DarkBoundaryRunFrames = darkBoundaryRunFrames,
                                 DarkBoundaryIntervalDarkRatio = darkBoundaryIntervalDarkRatio
                             });
@@ -2289,13 +2422,13 @@ namespace RemuxForge.Core.Analysis.Deep
 
                     ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: boundary video a src " + result.ToString("F3", CultureInfo.InvariantCulture) + "s (after new=" + afterNewVotes.ToString(CultureInfo.InvariantCulture) + ", old=" + afterOldVotes.ToString(CultureInfo.InvariantCulture) + ")");
                     if (mseInsertAccepted &&
-                        mseInsertOldMse - mseInsertNewMse >= insertRunPreferredBoundaryMargin &&
+                        (mseInsertOldMse - mseInsertNewMse >= insertRunPreferredBoundaryMargin || mseInsertMotionMse >= motionThreshold) &&
                         mseInsertResult >= 0.0 &&
                         mseInsertResult <= result &&
                         result - mseInsertResult <= 3.0)
                     {
-                        // Usa il primo boundary MSE solo quando il cambio è netto: in fade/logo ambigui SSIM
-                        // può trovare un frame quasi perfetto più avanti e non va scavalcato da un vantaggio debole.
+                        // Usa il primo boundary MSE quando il differenziale è netto oppure quando cade su un vero cambio frame.
+                        // Un candidato statico debole non deve invece scavalcare il successivo match SSIM.
                         ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: uso boundary MSE insert a src " + mseInsertResult.ToString("F3", CultureInfo.InvariantCulture) + "s (score=" + mseInsertScore.ToString("F1", CultureInfo.InvariantCulture) + ")");
                         return mseInsertResult;
                     }
@@ -2321,6 +2454,53 @@ namespace RemuxForge.Core.Analysis.Deep
                 {
                     ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: fallback boundary MSE insert a src " + mseInsertResult.ToString("F3", CultureInfo.InvariantCulture) + "s (score=" + mseInsertScore.ToString("F1", CultureInfo.InvariantCulture) + ")");
                     return mseInsertResult;
+                }
+
+                if (this.TryFindTimelineDarkDurationBoundary(
+                    transition,
+                    offsetDirection,
+                    oldOffsetSec,
+                    newOffsetSec,
+                    inverseRatio,
+                    valid,
+                    sourceTimestampsMs,
+                    meanScores,
+                    oldMseScores,
+                    newMseScores,
+                    langOldFrames,
+                    langOldTimestampsMs,
+                    darkFrameMean,
+                    out timelineDarkBoundaryIdx,
+                    out timelineDarkRunFrames,
+                    out timelineDarkSourceDurationMs,
+                    out timelineDarkLanguageDurationMs,
+                    out timelineDarkDifferenceMs))
+                {
+                    result = sourceTimestampsMs[timelineDarkBoundaryIdx] / 1000.0;
+                    if (transition != null && transition.Candidates.Count < candidateDiagnosticsLimit)
+                    {
+                        transition.Candidates.Add(new DeepAnalysisTransitionCandidateDiagnostic
+                        {
+                            SourceSec = result,
+                            OriginalSourceSec = result,
+                            Score = timelineDarkDifferenceMs,
+                            MotionMse = motionScores[timelineDarkBoundaryIdx],
+                            OldMse = oldMseScores[timelineDarkBoundaryIdx],
+                            NewMse = newMseScores[timelineDarkBoundaryIdx],
+                            Verified = false,
+                            CanDeferToGlobalVerification = true,
+                            AudioRejected = false,
+                            Decision = "accepted-timeline-dark-duration",
+                            DarkBoundaryRewritten = false,
+                            DarkBoundaryShiftMs = 0.0,
+                            DarkBoundaryDecision = "timeline-dark-duration",
+                            DarkBoundaryRunFrames = timelineDarkRunFrames,
+                            DarkBoundaryIntervalDarkRatio = 1.0
+                        });
+                    }
+
+                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: boundary dark timeline a src " + result.ToString("F3", CultureInfo.InvariantCulture) + "s (source=" + timelineDarkSourceDurationMs.ToString("F1", CultureInfo.InvariantCulture) + "ms, lang=" + timelineDarkLanguageDurationMs.ToString("F1", CultureInfo.InvariantCulture) + "ms, diff=" + timelineDarkDifferenceMs.ToString("F1", CultureInfo.InvariantCulture) + "ms)");
+                    return result;
                 }
 
                 result = -1.0;
@@ -2403,6 +2583,7 @@ namespace RemuxForge.Core.Analysis.Deep
                 int sharedDarkBoundaryIdx;
                 if (this.TryRewriteSharedDarkBoundary(
                     boundaryIdx,
+                    true,
                     offsetDirection,
                     oldOffsetSec,
                     newOffsetSec,
@@ -2460,7 +2641,7 @@ namespace RemuxForge.Core.Analysis.Deep
                         Decision = candidateVerification == null || (!candidateVerification.Verified && !candidateVerification.CanDeferToGlobalVerification) ? "rejected-local" : "accepted-local",
                         DarkBoundaryRewritten = darkBoundaryRewritten,
                         DarkBoundaryShiftMs = darkBoundaryRewritten ? (darkBoundaryOriginalSourceSec - result) * 1000.0 : 0.0,
-                        DarkBoundaryDecision = darkBoundaryRewritten ? "cut-shared-dark-rewind" : "",
+                        DarkBoundaryDecision = darkBoundaryRewritten ? "cut-shared-dark-boundary" : "",
                         DarkBoundaryRunFrames = darkBoundaryRunFrames,
                         DarkBoundaryIntervalDarkRatio = darkBoundaryIntervalDarkRatio
                     };
@@ -2563,7 +2744,104 @@ namespace RemuxForge.Core.Analysis.Deep
                     }
                 }
 
+                // Un CUT verificato può agganciare il primo contenuto dopo una run dark.
+                // In quel caso usa l'inizio della run solo se la differenza di durata source/lang è univoca.
+                if (candidateVerification != null && candidateVerification.Verified && !darkBoundaryRewritten && darkBoundaryRunFrames >= 2 &&
+                    this.TryFindTimelineDarkDurationBoundary(
+                        transition,
+                        offsetDirection,
+                        oldOffsetSec,
+                        newOffsetSec,
+                        inverseRatio,
+                        valid,
+                        sourceTimestampsMs,
+                        meanScores,
+                        oldMseScores,
+                        newMseScores,
+                        langOldFrames,
+                        langOldTimestampsMs,
+                        darkFrameMean,
+                        out timelineCutDarkBoundaryIdx,
+                        out timelineCutDarkRunFrames,
+                        out timelineCutDarkSourceDurationMs,
+                        out timelineCutDarkLanguageDurationMs,
+                        out timelineCutDarkDifferenceMs))
+                {
+                    result = sourceTimestampsMs[timelineCutDarkBoundaryIdx] / 1000.0;
+                    if (transition != null && transition.Candidates.Count < candidateDiagnosticsLimit)
+                    {
+                        transition.Candidates.Add(new DeepAnalysisTransitionCandidateDiagnostic
+                        {
+                            SourceSec = result,
+                            OriginalSourceSec = sourceTimestampsMs[boundaryIdx] / 1000.0,
+                            Score = timelineCutDarkDifferenceMs,
+                            MotionMse = motionScores[timelineCutDarkBoundaryIdx],
+                            OldMse = oldMseScores[timelineCutDarkBoundaryIdx],
+                            NewMse = newMseScores[timelineCutDarkBoundaryIdx],
+                            Verified = false,
+                            CanDeferToGlobalVerification = true,
+                            AudioRejected = false,
+                            Decision = "accepted-timeline-dark-duration",
+                            DarkBoundaryRewritten = true,
+                            DarkBoundaryShiftMs = (sourceTimestampsMs[boundaryIdx] - sourceTimestampsMs[timelineCutDarkBoundaryIdx]),
+                            DarkBoundaryDecision = "timeline-dark-duration",
+                            DarkBoundaryRunFrames = timelineCutDarkRunFrames,
+                            DarkBoundaryIntervalDarkRatio = 1.0
+                        });
+                    }
+
+                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: CUT verificato riportato all'inizio della run dark a src " + result.ToString("F3", CultureInfo.InvariantCulture) + "s (source=" + timelineCutDarkSourceDurationMs.ToString("F1", CultureInfo.InvariantCulture) + "ms, lang=" + timelineCutDarkLanguageDurationMs.ToString("F1", CultureInfo.InvariantCulture) + "ms, diff=" + timelineCutDarkDifferenceMs.ToString("F1", CultureInfo.InvariantCulture) + "ms)");
+                    return result;
+                }
+
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: boundary video a src " + result.ToString("F3", CultureInfo.InvariantCulture) + "s (score=" + candidates[c].Value.ToString("F1", CultureInfo.InvariantCulture) + ")");
+                return result;
+            }
+
+            if (this.TryFindTimelineDarkDurationBoundary(
+                transition,
+                offsetDirection,
+                oldOffsetSec,
+                newOffsetSec,
+                inverseRatio,
+                valid,
+                sourceTimestampsMs,
+                meanScores,
+                oldMseScores,
+                newMseScores,
+                langOldFrames,
+                langOldTimestampsMs,
+                darkFrameMean,
+                out timelineCutDarkBoundaryIdx,
+                out timelineCutDarkRunFrames,
+                out timelineCutDarkSourceDurationMs,
+                out timelineCutDarkLanguageDurationMs,
+                out timelineCutDarkDifferenceMs))
+            {
+                result = sourceTimestampsMs[timelineCutDarkBoundaryIdx] / 1000.0;
+                if (transition != null && transition.Candidates.Count < candidateDiagnosticsLimit)
+                {
+                    transition.Candidates.Add(new DeepAnalysisTransitionCandidateDiagnostic
+                    {
+                        SourceSec = result,
+                        OriginalSourceSec = result,
+                        Score = timelineCutDarkDifferenceMs,
+                        MotionMse = motionScores[timelineCutDarkBoundaryIdx],
+                        OldMse = oldMseScores[timelineCutDarkBoundaryIdx],
+                        NewMse = newMseScores[timelineCutDarkBoundaryIdx],
+                        Verified = false,
+                        CanDeferToGlobalVerification = true,
+                        AudioRejected = false,
+                        Decision = "accepted-timeline-dark-duration",
+                        DarkBoundaryRewritten = false,
+                        DarkBoundaryShiftMs = 0.0,
+                        DarkBoundaryDecision = "timeline-dark-duration",
+                        DarkBoundaryRunFrames = timelineCutDarkRunFrames,
+                        DarkBoundaryIntervalDarkRatio = 1.0
+                    });
+                }
+
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Scansione differenziale: boundary dark timeline a src " + result.ToString("F3", CultureInfo.InvariantCulture) + "s (source=" + timelineCutDarkSourceDurationMs.ToString("F1", CultureInfo.InvariantCulture) + "ms, lang=" + timelineCutDarkLanguageDurationMs.ToString("F1", CultureInfo.InvariantCulture) + "ms, diff=" + timelineCutDarkDifferenceMs.ToString("F1", CultureInfo.InvariantCulture) + "ms)");
                 return result;
             }
 
@@ -2573,11 +2851,495 @@ namespace RemuxForge.Core.Analysis.Deep
         }
 
         /// <summary>
+        /// Cerca l'inizio di un intervallo source-only compreso tra supporto stabile OLD e supporto stabile NEW
+        /// </summary>
+        /// <param name="transition">Diagnostica della transizione corrente</param>
+        /// <param name="insertDurationSec">Durata attesa dell'intervallo source-only</param>
+        /// <param name="valid">Frame validi per il confronto</param>
+        /// <param name="sourceTimestampsMs">Timestamp source dei frame estratti</param>
+        /// <param name="oldScores">Score SSIM con il vecchio offset</param>
+        /// <param name="newScores">Score SSIM con il nuovo offset</param>
+        /// <param name="oldMseScores">MSE con il vecchio offset</param>
+        /// <param name="newMseScores">MSE con il nuovo offset</param>
+        /// <param name="minSsim">SSIM minimo per considerare supportato un offset</param>
+        /// <param name="minSsimMargin">Margine SSIM minimo rispetto all'altro offset</param>
+        /// <param name="timestampToleranceMs">Tolleranza usata nell'allineamento dei PTS</param>
+        /// <param name="requiredSupportFrames">Numero minimo di frame consecutivi per confermare OLD, unmatched e NEW</param>
+        /// <param name="boundaryIdx">Indice del primo frame source-only</param>
+        /// <param name="recoveryIdx">Indice del primo frame con supporto NEW stabile</param>
+        /// <param name="unmatchedFrames">Numero di frame senza supporto forte tra boundary e recovery</param>
+        /// <returns>True se la sequenza OLD, unmatched, NEW è coerente con la durata attesa</returns>
+        private bool TryFindInsertUnmatchedBoundary(
+            DeepAnalysisTransitionDiagnostic transition,
+            double insertDurationSec,
+            bool[] valid,
+            double[] sourceTimestampsMs,
+            double[] oldScores,
+            double[] newScores,
+            double[] oldMseScores,
+            double[] newMseScores,
+            double minSsim,
+            double minSsimMargin,
+            double timestampToleranceMs,
+            int requiredSupportFrames,
+            out int boundaryIdx,
+            out int recoveryIdx,
+            out int unmatchedFrames)
+        {
+            int resultBoundaryIdx = -1;
+            int resultRecoveryIdx = -1;
+            int resultUnmatchedFrames = 0;
+            int supportFrames;
+            int maxIdx;
+            int nearestRecoveryIdx;
+            int recoverySearchStartIdx;
+            int recoverySearchEndIdx;
+            int candidateUnmatchedFrames;
+            int candidateComparableFrames;
+            double bestBreakpointDistanceMs = double.MaxValue;
+            double expectedDurationMs;
+            double expectedRecoveryMs;
+            double observedDurationMs;
+            double localFrameDurationMs;
+            double durationToleranceMs;
+            double breakpointDistanceMs;
+
+            boundaryIdx = -1;
+            recoveryIdx = -1;
+            unmatchedFrames = 0;
+            expectedDurationMs = insertDurationSec * 1000.0;
+            supportFrames = Math.Max(2, requiredSupportFrames);
+            if (expectedDurationMs <= 0.0 || valid == null || sourceTimestampsMs == null || oldScores == null || newScores == null || oldMseScores == null || newMseScores == null)
+            {
+                return false;
+            }
+
+            maxIdx = Math.Min(valid.Length, Math.Min(sourceTimestampsMs.Length, Math.Min(oldScores.Length, Math.Min(newScores.Length, Math.Min(oldMseScores.Length, newMseScores.Length)))));
+            for (int candidateBoundaryIdx = supportFrames; candidateBoundaryIdx < maxIdx - supportFrames; candidateBoundaryIdx++)
+            {
+                if (!this.HasStableOffsetSupport(candidateBoundaryIdx - supportFrames, supportFrames, true, valid, oldScores, newScores, oldMseScores, newMseScores, minSsim, minSsimMargin) ||
+                    !this.HasStableUnmatchedSupport(candidateBoundaryIdx, supportFrames, valid, oldScores, newScores, oldMseScores, newMseScores, minSsim, minSsimMargin))
+                {
+                    continue;
+                }
+
+                expectedRecoveryMs = sourceTimestampsMs[candidateBoundaryIdx] + expectedDurationMs;
+                nearestRecoveryIdx = NearestTimestampIndex(sourceTimestampsMs, expectedRecoveryMs);
+                if (nearestRecoveryIdx < candidateBoundaryIdx + supportFrames)
+                {
+                    continue;
+                }
+
+                recoverySearchStartIdx = Math.Max(candidateBoundaryIdx + supportFrames, nearestRecoveryIdx - supportFrames);
+                recoverySearchEndIdx = Math.Min(maxIdx - supportFrames, nearestRecoveryIdx + supportFrames);
+                for (int candidateRecoveryIdx = recoverySearchStartIdx; candidateRecoveryIdx <= recoverySearchEndIdx; candidateRecoveryIdx++)
+                {
+                    if (!this.HasStableOffsetSupport(candidateRecoveryIdx, supportFrames, false, valid, oldScores, newScores, oldMseScores, newMseScores, minSsim, minSsimMargin))
+                    {
+                        continue;
+                    }
+
+                    observedDurationMs = sourceTimestampsMs[candidateRecoveryIdx] - sourceTimestampsMs[candidateBoundaryIdx];
+                    localFrameDurationMs = sourceTimestampsMs[candidateBoundaryIdx] - sourceTimestampsMs[candidateBoundaryIdx - 1];
+                    durationToleranceMs = Math.Max(timestampToleranceMs, Math.Abs(localFrameDurationMs) * supportFrames);
+                    if (Math.Abs(observedDurationMs - expectedDurationMs) > durationToleranceMs)
+                    {
+                        continue;
+                    }
+
+                    candidateUnmatchedFrames = 0;
+                    candidateComparableFrames = 0;
+                    for (int i = candidateBoundaryIdx; i < candidateRecoveryIdx; i++)
+                    {
+                        if (!valid[i])
+                        {
+                            continue;
+                        }
+
+                        candidateComparableFrames++;
+                        if (!this.IsOffsetStronglySupported(i, true, oldScores, newScores, oldMseScores, newMseScores, minSsim, minSsimMargin) &&
+                            !this.IsOffsetStronglySupported(i, false, oldScores, newScores, oldMseScores, newMseScores, minSsim, minSsimMargin))
+                        {
+                            candidateUnmatchedFrames++;
+                        }
+                    }
+
+                    if (candidateComparableFrames < supportFrames || candidateUnmatchedFrames * 4 < candidateComparableFrames * 3)
+                    {
+                        continue;
+                    }
+
+                    breakpointDistanceMs = transition != null ? Math.Abs(sourceTimestampsMs[candidateBoundaryIdx] - (transition.BreakpointSrcSec * 1000.0)) : 0.0;
+                    if (breakpointDistanceMs < bestBreakpointDistanceMs)
+                    {
+                        bestBreakpointDistanceMs = breakpointDistanceMs;
+                        resultBoundaryIdx = candidateBoundaryIdx;
+                        resultRecoveryIdx = candidateRecoveryIdx;
+                        resultUnmatchedFrames = candidateUnmatchedFrames;
+                    }
+                }
+            }
+
+            if (resultBoundaryIdx < 0 || resultRecoveryIdx < 0)
+            {
+                return false;
+            }
+
+            boundaryIdx = resultBoundaryIdx;
+            recoveryIdx = resultRecoveryIdx;
+            unmatchedFrames = resultUnmatchedFrames;
+            return true;
+        }
+
+        /// <summary>
+        /// Verifica una run consecutiva con supporto forte per uno dei due offset
+        /// </summary>
+        /// <param name="startIdx">Indice iniziale della run</param>
+        /// <param name="count">Numero di frame richiesti</param>
+        /// <param name="oldOffset">True per verificare il vecchio offset</param>
+        /// <param name="valid">Frame validi per il confronto</param>
+        /// <param name="oldScores">Score SSIM con il vecchio offset</param>
+        /// <param name="newScores">Score SSIM con il nuovo offset</param>
+        /// <param name="oldMseScores">MSE con il vecchio offset</param>
+        /// <param name="newMseScores">MSE con il nuovo offset</param>
+        /// <param name="minSsim">SSIM minimo</param>
+        /// <param name="minSsimMargin">Margine SSIM minimo rispetto all'altro offset</param>
+        /// <returns>True se tutti i frame della run supportano l'offset richiesto</returns>
+        private bool HasStableOffsetSupport(
+            int startIdx,
+            int count,
+            bool oldOffset,
+            bool[] valid,
+            double[] oldScores,
+            double[] newScores,
+            double[] oldMseScores,
+            double[] newMseScores,
+            double minSsim,
+            double minSsimMargin)
+        {
+            if (startIdx < 0 || startIdx + count > valid.Length)
+            {
+                return false;
+            }
+
+            for (int i = startIdx; i < startIdx + count; i++)
+            {
+                if (!valid[i] || !this.IsOffsetStronglySupported(i, oldOffset, oldScores, newScores, oldMseScores, newMseScores, minSsim, minSsimMargin))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Verifica una run consecutiva dove nessuno dei due offset è supportato con forza
+        /// </summary>
+        /// <param name="startIdx">Indice iniziale della run</param>
+        /// <param name="count">Numero di frame richiesti</param>
+        /// <param name="valid">Frame validi per il confronto</param>
+        /// <param name="oldScores">Score SSIM con il vecchio offset</param>
+        /// <param name="newScores">Score SSIM con il nuovo offset</param>
+        /// <param name="oldMseScores">MSE con il vecchio offset</param>
+        /// <param name="newMseScores">MSE con il nuovo offset</param>
+        /// <param name="minSsim">SSIM minimo</param>
+        /// <param name="minSsimMargin">Margine SSIM minimo rispetto all'altro offset</param>
+        /// <returns>True se tutti i frame della run sono unmatched</returns>
+        private bool HasStableUnmatchedSupport(
+            int startIdx,
+            int count,
+            bool[] valid,
+            double[] oldScores,
+            double[] newScores,
+            double[] oldMseScores,
+            double[] newMseScores,
+            double minSsim,
+            double minSsimMargin)
+        {
+            if (startIdx < 0 || startIdx + count > valid.Length)
+            {
+                return false;
+            }
+
+            for (int i = startIdx; i < startIdx + count; i++)
+            {
+                if (!valid[i] ||
+                    this.IsOffsetStronglySupported(i, true, oldScores, newScores, oldMseScores, newMseScores, minSsim, minSsimMargin) ||
+                    this.IsOffsetStronglySupported(i, false, oldScores, newScores, oldMseScores, newMseScores, minSsim, minSsimMargin))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Determina se SSIM e MSE supportano congiuntamente uno dei due offset
+        /// </summary>
+        /// <param name="index">Indice del frame</param>
+        /// <param name="oldOffset">True per valutare il vecchio offset</param>
+        /// <param name="oldScores">Score SSIM con il vecchio offset</param>
+        /// <param name="newScores">Score SSIM con il nuovo offset</param>
+        /// <param name="oldMseScores">MSE con il vecchio offset</param>
+        /// <param name="newMseScores">MSE con il nuovo offset</param>
+        /// <param name="minSsim">SSIM minimo</param>
+        /// <param name="minSsimMargin">Margine SSIM minimo rispetto all'altro offset</param>
+        /// <returns>True se l'offset selezionato domina con entrambe le metriche</returns>
+        private bool IsOffsetStronglySupported(
+            int index,
+            bool oldOffset,
+            double[] oldScores,
+            double[] newScores,
+            double[] oldMseScores,
+            double[] newMseScores,
+            double minSsim,
+            double minSsimMargin)
+        {
+            double selectedSsim = oldOffset ? oldScores[index] : newScores[index];
+            double otherSsim = oldOffset ? newScores[index] : oldScores[index];
+            double selectedMse = oldOffset ? oldMseScores[index] : newMseScores[index];
+            double otherMse = oldOffset ? newMseScores[index] : oldMseScores[index];
+
+            return selectedSsim >= minSsim && selectedSsim >= otherSsim + minSsimMargin && selectedMse <= otherMse * 0.75;
+        }
+
+        /// <summary>
+        /// Cerca un boundary timeline all'inizio di una coppia di run dark con differenza di durata compatibile col delta offset
+        /// </summary>
+        /// <param name="transition">Diagnostica della transizione corrente</param>
+        /// <param name="offsetDirection">Direzione della variazione offset</param>
+        /// <param name="oldOffsetSec">Offset precedente in secondi</param>
+        /// <param name="newOffsetSec">Offset successivo in secondi</param>
+        /// <param name="inverseRatio">Rapporto temporale inverso source/lang</param>
+        /// <param name="valid">Frame source validi per il confronto</param>
+        /// <param name="sourceTimestampsMs">Timestamp source dei frame estratti</param>
+        /// <param name="meanScores">Media luma dei frame source</param>
+        /// <param name="oldMseScores">MSE source/lang col vecchio offset</param>
+        /// <param name="newMseScores">MSE source/lang col nuovo offset</param>
+        /// <param name="langOldFrames">Frame lingua estratti col vecchio offset</param>
+        /// <param name="langOldTimestampsMs">Timestamp dei frame lingua col vecchio offset</param>
+        /// <param name="darkFrameMean">Soglia luma per considerare un frame dark</param>
+        /// <param name="boundaryIdx">Indice del primo frame della run dark compatibile</param>
+        /// <param name="runFrames">Numero di frame nella run dark source</param>
+        /// <param name="sourceDurationMs">Durata della run dark source</param>
+        /// <param name="languageDurationMs">Durata della run dark lingua</param>
+        /// <param name="durationDifferenceMs">Differenza direzionale tra le durate delle run</param>
+        /// <returns>True se esiste una sola coppia di run compatibile e verificata</returns>
+        private bool TryFindTimelineDarkDurationBoundary(
+            DeepAnalysisTransitionDiagnostic transition,
+            int offsetDirection,
+            double oldOffsetSec,
+            double newOffsetSec,
+            double inverseRatio,
+            bool[] valid,
+            double[] sourceTimestampsMs,
+            double[] meanScores,
+            double[] oldMseScores,
+            double[] newMseScores,
+            List<byte[]> langOldFrames,
+            double[] langOldTimestampsMs,
+            double darkFrameMean,
+            out int boundaryIdx,
+            out int runFrames,
+            out double sourceDurationMs,
+            out double languageDurationMs,
+            out double durationDifferenceMs)
+        {
+            double deltaSourceMs;
+            int expectedLanguageDeltaMs;
+            double probeRadiusSec;
+            double probeStartMs;
+            double probeEndMs;
+            int compatibleCount;
+            int sourceRunStartIdx;
+            int sourceRunEndIdx;
+            double sourceRunStartMs;
+            double sourceFrameDurationMs;
+            double sourceRunEndMs;
+            double expectedLanguageStartMs;
+            int nearestLanguageIdx;
+            double languageFrameDurationMs;
+            double startToleranceMs;
+            int languageDarkIdx;
+            int languageRunStartIdx;
+            int languageRunEndIdx;
+            double languageRunStartMs;
+            double currentSourceDurationMs;
+            double currentLanguageDurationMs;
+            double normalizedSourceDurationMs;
+            double currentDifferenceMs;
+            double durationToleranceMs;
+            bool beforeOldEvidence;
+            int afterNewVotes;
+
+            boundaryIdx = -1;
+            runFrames = 0;
+            sourceDurationMs = 0.0;
+            languageDurationMs = 0.0;
+            durationDifferenceMs = 0.0;
+
+            if (!this._currentAnalysisUsesTimelineMap || transition == null || transition.BreakpointSrcSec <= 0.0 || offsetDirection == 0)
+                return false;
+
+            if (valid == null || sourceTimestampsMs == null || meanScores == null || oldMseScores == null || newMseScores == null || langOldFrames == null || langOldTimestampsMs == null)
+                return false;
+
+            if (valid.Length == 0 || sourceTimestampsMs.Length != valid.Length || meanScores.Length != valid.Length || oldMseScores.Length != valid.Length || newMseScores.Length != valid.Length || langOldFrames.Count == 0 || langOldTimestampsMs.Length == 0)
+                return false;
+
+            deltaSourceMs = Math.Abs(newOffsetSec - oldOffsetSec) * 1000.0;
+            expectedLanguageDeltaMs = EditMapTimelineHelper.SourceDurationToLanguageDurationMs((int)Math.Round(deltaSourceMs), inverseRatio);
+            probeRadiusSec = Math.Max(5.0, (deltaSourceMs / 1000.0) + 2.0);
+            if (probeRadiusSec > 10.0)
+                probeRadiusSec = 10.0;
+
+            probeStartMs = (transition.BreakpointSrcSec - probeRadiusSec) * 1000.0;
+            probeEndMs = (transition.BreakpointSrcSec + probeRadiusSec) * 1000.0;
+            compatibleCount = 0;
+
+            for (int sourceIdx = 0; sourceIdx < valid.Length; sourceIdx++)
+            {
+                if (!valid[sourceIdx] || meanScores[sourceIdx] > darkFrameMean)
+                    continue;
+
+                sourceRunStartIdx = sourceIdx;
+                sourceRunEndIdx = sourceIdx;
+                while (sourceRunStartIdx > 0 && valid[sourceRunStartIdx - 1] && meanScores[sourceRunStartIdx - 1] <= darkFrameMean)
+                    sourceRunStartIdx--;
+                while (sourceRunEndIdx + 1 < valid.Length && valid[sourceRunEndIdx + 1] && meanScores[sourceRunEndIdx + 1] <= darkFrameMean)
+                    sourceRunEndIdx++;
+
+                sourceIdx = sourceRunEndIdx;
+                sourceRunStartMs = sourceTimestampsMs[sourceRunStartIdx];
+                sourceFrameDurationMs = GetFrameDurationMs(sourceTimestampsMs, sourceRunEndIdx);
+                sourceRunEndMs = sourceTimestampsMs[sourceRunEndIdx] + sourceFrameDurationMs;
+                if (sourceRunEndMs < probeStartMs || sourceRunStartMs > probeEndMs)
+                    continue;
+
+                expectedLanguageStartMs = sourceRunStartMs - (oldOffsetSec * 1000.0);
+                if (Math.Abs(inverseRatio - 1.0) > 0.0001)
+                    expectedLanguageStartMs = expectedLanguageStartMs * inverseRatio;
+
+                nearestLanguageIdx = NearestTimestampIndex(langOldTimestampsMs, expectedLanguageStartMs);
+                if (nearestLanguageIdx < 0 || nearestLanguageIdx >= langOldFrames.Count || nearestLanguageIdx >= langOldTimestampsMs.Length)
+                    continue;
+
+                languageFrameDurationMs = GetFrameDurationMs(langOldTimestampsMs, nearestLanguageIdx);
+                startToleranceMs = Math.Max(125.0, languageFrameDurationMs * 3.0);
+                languageDarkIdx = -1;
+                for (int languageIdx = nearestLanguageIdx; languageIdx >= 0 && expectedLanguageStartMs - langOldTimestampsMs[languageIdx] <= startToleranceMs; languageIdx--)
+                {
+                    if (ComputeFrameMean(langOldFrames[languageIdx]) <= darkFrameMean)
+                    {
+                        languageDarkIdx = languageIdx;
+                        break;
+                    }
+                }
+                if (languageDarkIdx < 0)
+                {
+                    for (int languageIdx = nearestLanguageIdx + 1; languageIdx < langOldFrames.Count && languageIdx < langOldTimestampsMs.Length && langOldTimestampsMs[languageIdx] - expectedLanguageStartMs <= startToleranceMs; languageIdx++)
+                    {
+                        if (ComputeFrameMean(langOldFrames[languageIdx]) <= darkFrameMean)
+                        {
+                            languageDarkIdx = languageIdx;
+                            break;
+                        }
+                    }
+                }
+                if (languageDarkIdx < 0)
+                    continue;
+
+                languageRunStartIdx = languageDarkIdx;
+                languageRunEndIdx = languageDarkIdx;
+                while (languageRunStartIdx > 0 && ComputeFrameMean(langOldFrames[languageRunStartIdx - 1]) <= darkFrameMean)
+                    languageRunStartIdx--;
+                while (languageRunEndIdx + 1 < langOldFrames.Count && languageRunEndIdx + 1 < langOldTimestampsMs.Length && ComputeFrameMean(langOldFrames[languageRunEndIdx + 1]) <= darkFrameMean)
+                    languageRunEndIdx++;
+
+                languageRunStartMs = langOldTimestampsMs[languageRunStartIdx];
+                if (Math.Abs(languageRunStartMs - expectedLanguageStartMs) > startToleranceMs)
+                    continue;
+
+                sourceFrameDurationMs = GetFrameDurationMs(sourceTimestampsMs, sourceRunEndIdx);
+                languageFrameDurationMs = GetFrameDurationMs(langOldTimestampsMs, languageRunEndIdx);
+                currentSourceDurationMs = sourceTimestampsMs[sourceRunEndIdx] - sourceRunStartMs + sourceFrameDurationMs;
+                currentLanguageDurationMs = langOldTimestampsMs[languageRunEndIdx] - languageRunStartMs + languageFrameDurationMs;
+                normalizedSourceDurationMs = currentSourceDurationMs * inverseRatio;
+                currentDifferenceMs = offsetDirection < 0 ? currentLanguageDurationMs - normalizedSourceDurationMs : normalizedSourceDurationMs - currentLanguageDurationMs;
+                durationToleranceMs = Math.Max(100.0, Math.Max(sourceFrameDurationMs * inverseRatio, languageFrameDurationMs) * 3.0);
+                if (currentDifferenceMs <= 0.0 || Math.Abs(currentDifferenceMs - expectedLanguageDeltaMs) > durationToleranceMs)
+                    continue;
+
+                beforeOldEvidence = false;
+                for (int i = sourceRunStartIdx - 1; i >= 0 && sourceRunStartMs - sourceTimestampsMs[i] <= 3000.0; i--)
+                {
+                    if (!valid[i] || meanScores[i] <= darkFrameMean)
+                        continue;
+
+                    if (oldMseScores[i] <= newMseScores[i] * 1.02 || oldMseScores[i] <= newMseScores[i] + 50.0)
+                    {
+                        beforeOldEvidence = true;
+                        break;
+                    }
+                }
+                if (!beforeOldEvidence)
+                    continue;
+
+                afterNewVotes = 0;
+                for (int i = sourceRunEndIdx + 1; i < valid.Length && sourceTimestampsMs[i] - sourceRunEndMs <= 6000.0; i++)
+                {
+                    if (!valid[i] || meanScores[i] <= darkFrameMean)
+                        continue;
+
+                    if (newMseScores[i] <= oldMseScores[i] * 1.02 || newMseScores[i] <= oldMseScores[i] + 50.0)
+                        afterNewVotes++;
+
+                    if (afterNewVotes >= 2)
+                        break;
+                }
+                if (afterNewVotes < 2)
+                    continue;
+
+                compatibleCount++;
+                boundaryIdx = sourceRunStartIdx;
+                runFrames = sourceRunEndIdx - sourceRunStartIdx + 1;
+                sourceDurationMs = currentSourceDurationMs;
+                languageDurationMs = currentLanguageDurationMs;
+                durationDifferenceMs = currentDifferenceMs;
+                if (compatibleCount > 1)
+                    return false;
+            }
+
+            return compatibleCount == 1 && boundaryIdx >= 0;
+        }
+
+        /// <summary>
+        /// Stima la durata del frame associato a un timestamp
+        /// </summary>
+        /// <param name="timestampsMs">Timestamp ordinati dei frame estratti</param>
+        /// <param name="frameIdx">Indice del frame da misurare</param>
+        /// <returns>Durata stimata del frame in millisecondi</returns>
+        private static double GetFrameDurationMs(double[] timestampsMs, int frameIdx)
+        {
+            if (timestampsMs == null || timestampsMs.Length < 2 || frameIdx < 0 || frameIdx >= timestampsMs.Length)
+                return 0.0;
+
+            if (frameIdx + 1 < timestampsMs.Length)
+                return timestampsMs[frameIdx + 1] - timestampsMs[frameIdx];
+
+            return timestampsMs[frameIdx] - timestampsMs[frameIdx - 1];
+        }
+
+        /// <summary>
         /// Riporta un boundary INSERT all'inizio di una run dark source-only compatibile con la durata del gap
         /// </summary>
         /// <param name="candidateBoundaryIdx">Indice candidato originale</param>
+        /// <param name="allowForwardSearch">True per cercare una run dark anche poco dopo il candidato</param>
         /// <param name="oldOffsetSec">Offset precedente in secondi</param>
         /// <param name="newOffsetSec">Offset successivo in secondi</param>
+        /// <param name="breakpointSrcSec">Breakpoint stimato dalla timeline</param>
         /// <param name="searchStartSrc">Inizio finestra di ricerca source</param>
         /// <param name="searchEndSrc">Fine finestra di ricerca source</param>
         /// <param name="valid">Frame validi per il confronto</param>
@@ -2590,8 +3352,10 @@ namespace RemuxForge.Core.Analysis.Deep
         /// <returns>True se il boundary è stato riscritto</returns>
         private bool TryRewriteSourceDarkInsertBoundary(
             int candidateBoundaryIdx,
+            bool allowForwardSearch,
             double oldOffsetSec,
             double newOffsetSec,
+            double breakpointSrcSec,
             double searchStartSrc,
             double searchEndSrc,
             bool[] valid,
@@ -2607,7 +3371,12 @@ namespace RemuxForge.Core.Analysis.Deep
             double boundarySourceMs;
             double boundarySourceSec;
             double rewindWindowMs;
+            double forwardWindowMs;
             double intervalEndMs;
+            double runDurationMs;
+            double nearestDarkDistanceMs;
+            double distanceMs;
+            double absoluteDistanceMs;
             int runStartIdx;
             int runEndIdx;
             int intervalFrames;
@@ -2635,38 +3404,50 @@ namespace RemuxForge.Core.Analysis.Deep
 
             candidateSourceMs = sourceTimestampsMs[candidateBoundaryIdx];
             rewindWindowMs = Math.Max(1000.0, deltaMs + 500.0);
+            forwardWindowMs = allowForwardSearch ? Math.Min(500.0, Math.Max(125.0, deltaMs * 0.25)) : 0.0;
             runStartIdx = -1;
             runEndIdx = -1;
+            nearestDarkDistanceMs = double.MaxValue;
 
-            for (int i = candidateBoundaryIdx; i >= 0 && candidateSourceMs - sourceTimestampsMs[i] <= rewindWindowMs; i--)
+            for (int i = 0; i < valid.Length; i++)
             {
+                distanceMs = sourceTimestampsMs[i] - candidateSourceMs;
+                if (distanceMs < -rewindWindowMs)
+                    continue;
+
+                if (distanceMs > forwardWindowMs)
+                    break;
+
                 if (!valid[i])
                     continue;
 
-                if (meanScores[i] <= darkFrameMean)
+                absoluteDistanceMs = Math.Abs(distanceMs);
+                if (meanScores[i] <= darkFrameMean && absoluteDistanceMs < nearestDarkDistanceMs)
                 {
                     runStartIdx = i;
                     runEndIdx = i;
-                    for (int j = i - 1; j >= 0 && candidateSourceMs - sourceTimestampsMs[j] <= rewindWindowMs; j--)
-                    {
-                        if (!valid[j])
-                            continue;
-
-                        if (meanScores[j] <= darkFrameMean)
-                        {
-                            runStartIdx = j;
-                            continue;
-                        }
-
-                        break;
-                    }
-
-                    break;
+                    nearestDarkDistanceMs = absoluteDistanceMs;
                 }
             }
 
             if (runStartIdx < 0 || runEndIdx < 0)
                 return false;
+
+            for (int i = runStartIdx - 1; i >= 0; i--)
+            {
+                if (!valid[i] || meanScores[i] > darkFrameMean)
+                    break;
+
+                runStartIdx = i;
+            }
+
+            for (int i = runEndIdx + 1; i < valid.Length; i++)
+            {
+                if (!valid[i] || meanScores[i] > darkFrameMean)
+                    break;
+
+                runEndIdx = i;
+            }
 
             for (int i = runStartIdx; i <= runEndIdx; i++)
             {
@@ -2677,12 +3458,20 @@ namespace RemuxForge.Core.Analysis.Deep
             if (runFrames < 2)
                 return false;
 
+            runDurationMs = sourceTimestampsMs[runEndIdx] - sourceTimestampsMs[runStartIdx];
+
             boundarySourceMs = sourceTimestampsMs[runStartIdx];
             boundarySourceSec = boundarySourceMs / 1000.0;
             if (boundarySourceSec < searchStartSrc || boundarySourceSec > searchEndSrc)
                 return false;
 
-            if (candidateSourceMs - boundarySourceMs > rewindWindowMs)
+            if (Math.Abs(candidateSourceMs - boundarySourceMs) > rewindWindowMs)
+                return false;
+
+            if (Math.Abs(candidateSourceMs - boundarySourceMs) > deltaMs + 100.0 && runDurationMs > deltaMs + 100.0)
+                return false;
+
+            if (breakpointSrcSec > 0.0 && boundarySourceSec < breakpointSrcSec - ((rewindWindowMs + (deltaMs * 0.5)) / 1000.0))
                 return false;
 
             intervalFrames = 0;
@@ -2706,14 +3495,38 @@ namespace RemuxForge.Core.Analysis.Deep
                 return false;
 
             rewrittenBoundaryIdx = runStartIdx;
-            return rewrittenBoundaryIdx != candidateBoundaryIdx;
+            return true;
         }
 
         /// <summary>
         /// Riporta un boundary all'inizio della run dark comune quando le guardie direzionali lo dimostrano
         /// </summary>
+        /// <param name="candidateBoundaryIdx">Indice candidato originale</param>
+        /// <param name="allowForwardSearch">True per cercare una run dark anche poco dopo il candidato</param>
+        /// <param name="offsetDirection">Direzione della variazione offset</param>
+        /// <param name="oldOffsetSec">Offset precedente in secondi</param>
+        /// <param name="newOffsetSec">Offset successivo in secondi</param>
+        /// <param name="inverseRatio">Rapporto temporale inverso source/lang</param>
+        /// <param name="searchStartSrc">Inizio finestra di ricerca source</param>
+        /// <param name="searchEndSrc">Fine finestra di ricerca source</param>
+        /// <param name="breakpointSrcSec">Breakpoint stimato dalla timeline</param>
+        /// <param name="valid">Frame source validi per il confronto</param>
+        /// <param name="sourceTimestampsMs">Timestamp source dei frame estratti</param>
+        /// <param name="meanScores">Media luma dei frame source</param>
+        /// <param name="oldLangMeanScores">Media luma dei frame lingua col vecchio offset</param>
+        /// <param name="newLangMeanScores">Media luma dei frame lingua col nuovo offset</param>
+        /// <param name="oldMseScores">MSE source/lang col vecchio offset</param>
+        /// <param name="newMseScores">MSE source/lang col nuovo offset</param>
+        /// <param name="langOldFrames">Frame lingua estratti col vecchio offset</param>
+        /// <param name="langOldTimestampsMs">Timestamp dei frame lingua col vecchio offset</param>
+        /// <param name="darkFrameMean">Soglia luma per considerare un frame dark</param>
+        /// <param name="rewrittenBoundaryIdx">Indice riscritto all'inizio della run dark comune</param>
+        /// <param name="runFrames">Numero di frame nella run dark comune</param>
+        /// <param name="intervalDarkRatio">Quota di frame dark nell'intervallo dell'edit</param>
+        /// <returns>True se il boundary dark comune supera tutte le guardie</returns>
         private bool TryRewriteSharedDarkBoundary(
             int candidateBoundaryIdx,
+            bool allowForwardSearch,
             int offsetDirection,
             double oldOffsetSec,
             double newOffsetSec,
@@ -2737,9 +3550,13 @@ namespace RemuxForge.Core.Analysis.Deep
         {
             double deltaMs;
             double rewindWindowMs;
+            double forwardWindowMs;
             double candidateSourceMs;
             double boundarySourceMs;
             double boundarySourceSec;
+            double nearestDarkDistanceMs;
+            double distanceMs;
+            double absoluteDistanceMs;
             int runStartIdx;
             int runEndIdx;
             bool beforeOldEvidence;
@@ -2747,6 +3564,7 @@ namespace RemuxForge.Core.Analysis.Deep
             int intervalFrames;
             int intervalDarkFrames;
             double intervalEndMs;
+            double runDurationMs;
 
             rewrittenBoundaryIdx = candidateBoundaryIdx;
             runFrames = 0;
@@ -2777,44 +3595,62 @@ namespace RemuxForge.Core.Analysis.Deep
             }
 
             rewindWindowMs = Math.Max(1000.0, deltaMs + 500.0);
+            forwardWindowMs = allowForwardSearch ? Math.Min(500.0, Math.Max(125.0, deltaMs * 0.25)) : 0.0;
             candidateSourceMs = sourceTimestampsMs[candidateBoundaryIdx];
             runStartIdx = -1;
             runEndIdx = -1;
+            nearestDarkDistanceMs = double.MaxValue;
 
-            for (int i = candidateBoundaryIdx; i >= 0 && candidateSourceMs - sourceTimestampsMs[i] <= rewindWindowMs; i--)
+            for (int i = 0; i < valid.Length; i++)
             {
+                distanceMs = sourceTimestampsMs[i] - candidateSourceMs;
+                if (distanceMs < -rewindWindowMs)
+                {
+                    continue;
+                }
+
+                if (distanceMs > forwardWindowMs)
+                {
+                    break;
+                }
+
                 if (!valid[i])
                 {
                     continue;
                 }
 
-                if (meanScores[i] <= darkFrameMean && oldLangMeanScores[i] <= darkFrameMean)
+                absoluteDistanceMs = Math.Abs(distanceMs);
+                if (meanScores[i] <= darkFrameMean && oldLangMeanScores[i] <= darkFrameMean && absoluteDistanceMs < nearestDarkDistanceMs)
                 {
                     runStartIdx = i;
                     runEndIdx = i;
-                    for (int j = i - 1; j >= 0 && candidateSourceMs - sourceTimestampsMs[j] <= rewindWindowMs; j--)
-                    {
-                        if (!valid[j])
-                        {
-                            continue;
-                        }
-
-                        if (meanScores[j] <= darkFrameMean && oldLangMeanScores[j] <= darkFrameMean)
-                        {
-                            runStartIdx = j;
-                            continue;
-                        }
-
-                        break;
-                    }
-
-                    break;
+                    nearestDarkDistanceMs = absoluteDistanceMs;
                 }
             }
 
             if (runStartIdx < 0 || runEndIdx < 0)
             {
                 return false;
+            }
+
+            for (int i = runStartIdx - 1; i >= 0 && (offsetDirection <= 0 || candidateSourceMs - sourceTimestampsMs[i] <= rewindWindowMs); i--)
+            {
+                if (!valid[i] || meanScores[i] > darkFrameMean || oldLangMeanScores[i] > darkFrameMean)
+                {
+                    break;
+                }
+
+                runStartIdx = i;
+            }
+
+            for (int i = runEndIdx + 1; i < valid.Length; i++)
+            {
+                if (!valid[i] || meanScores[i] > darkFrameMean || oldLangMeanScores[i] > darkFrameMean)
+                {
+                    break;
+                }
+
+                runEndIdx = i;
             }
 
             for (int i = runStartIdx; i <= runEndIdx; i++)
@@ -2830,6 +3666,8 @@ namespace RemuxForge.Core.Analysis.Deep
                 return false;
             }
 
+            runDurationMs = sourceTimestampsMs[runEndIdx] - sourceTimestampsMs[runStartIdx];
+
             boundarySourceMs = sourceTimestampsMs[runStartIdx];
             boundarySourceSec = boundarySourceMs / 1000.0;
             if (boundarySourceSec < searchStartSrc || boundarySourceSec > searchEndSrc)
@@ -2837,7 +3675,17 @@ namespace RemuxForge.Core.Analysis.Deep
                 return false;
             }
 
-            if (candidateSourceMs - boundarySourceMs > rewindWindowMs)
+            if (Math.Abs(candidateSourceMs - boundarySourceMs) > rewindWindowMs)
+            {
+                return false;
+            }
+
+            if (offsetDirection > 0 && Math.Abs(candidateSourceMs - boundarySourceMs) > deltaMs + 100.0 && runDurationMs > deltaMs + 100.0)
+            {
+                return false;
+            }
+
+            if (offsetDirection > 0 && breakpointSrcSec > 0.0 && boundarySourceSec < breakpointSrcSec - ((rewindWindowMs + (deltaMs * 0.5)) / 1000.0))
             {
                 return false;
             }
@@ -2982,7 +3830,7 @@ namespace RemuxForge.Core.Analysis.Deep
             }
 
             rewrittenBoundaryIdx = runStartIdx;
-            return rewrittenBoundaryIdx != candidateBoundaryIdx;
+            return true;
         }
 
         /// <summary>

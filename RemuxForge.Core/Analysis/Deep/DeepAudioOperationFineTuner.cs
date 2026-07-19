@@ -19,8 +19,10 @@ namespace RemuxForge.Core.Analysis.Deep
         private const string STATUS_SKIPPED_OUT_OF_WINDOW = "SkippedOutOfWindow";
         private const string STATUS_SKIPPED_NON_MONOTONIC = "SkippedNonMonotonic";
         private const string STATUS_SKIPPED_UNSUPPORTED = "SkippedUnsupportedOperation";
+        private const string STATUS_SKIPPED_VISUAL_DARK_BOUNDARY = "SkippedVisualDarkBoundary";
         private const int LANGUAGE_FALLBACK_MAX_SHIFT_MS = 750;
         private const int ENERGY_VALLEY_MAX_SHIFT_MS = 750;
+        private const int FRAME_CONFIRMED_MAX_SHIFT_MS = 250;
         private const string BOUNDARY_NONE = "none";
         private const string BOUNDARY_SILENCE_RUN_START = "silence-run-start";
         private const string BOUNDARY_ENERGY_VALLEY = "energy-valley";
@@ -167,6 +169,13 @@ namespace RemuxForge.Core.Analysis.Deep
             windowMs = this.ResolveWindowMs();
             this.InitializeDiagnostic(transition, operation, renderedBeforeMs, cumulativeDeltaBeforeMs, windowMs);
 
+            if (this.IsVisualDarkBoundaryLocked(operation, transition))
+            {
+                this.MarkSkipped(transition, STATUS_SKIPPED_VISUAL_DARK_BOUNDARY, "Boundary visuale dark verificato mantenuto all'inizio della run nera", BOUNDARY_NONE);
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  Transizione " + transition.Index.ToString(CultureInfo.InvariantCulture) + ": audio fine-tune saltato, boundary visuale dark verificato bloccato a source " + (operation.VisualSourceTimestampMs / 1000.0).ToString("F3", CultureInfo.InvariantCulture) + "s");
+                return;
+            }
+
             if (!this.IsOperationEnabled(operation.Type))
             {
                 this.MarkSkipped(transition, STATUS_SKIPPED_UNSUPPORTED, "Tipo operazione non abilitato per fine tuning audio", BOUNDARY_NONE);
@@ -251,6 +260,12 @@ namespace RemuxForge.Core.Analysis.Deep
             }
 
             shiftMs = boundary.RenderedTimestampMs - renderedBeforeMs;
+            if (this.IsVisualBoundaryFrameConfirmed(operation, transition) && Math.Abs(boundary.ReferenceTimestampMs - centerReferenceMs) > FRAME_CONFIRMED_MAX_SHIFT_MS)
+            {
+                this.MarkSkipped(transition, STATUS_SKIPPED_OUT_OF_WINDOW, "Boundary audio troppo distante dal boundary visuale frame-confirmed", boundary.Kind);
+                return;
+            }
+
             if (Math.Abs(shiftMs) > this.ResolveMaxShiftMs())
             {
                 this.MarkSkipped(transition, STATUS_SKIPPED_OUT_OF_WINDOW, "Boundary audio fuori shift massimo", boundary.Kind);
@@ -330,6 +345,65 @@ namespace RemuxForge.Core.Analysis.Deep
             transition.AudioFineTuneStatus = status;
             transition.AudioFineTuneRejectReason = reason != null ? reason : "";
             transition.AudioFineTuneBoundaryKind = !string.IsNullOrEmpty(boundaryKind) ? boundaryKind : BOUNDARY_NONE;
+        }
+
+        /// <summary>
+        /// Verifica se un boundary visuale dark verificato deve restare autoritativo
+        /// </summary>
+        /// <param name="operation">Operazione editmap</param>
+        /// <param name="transition">Diagnostica transizione associata</param>
+        /// <returns>True se il fine tuning audio non deve spostare il boundary</returns>
+        private bool IsVisualDarkBoundaryLocked(EditOperation operation, DeepAnalysisTransitionDiagnostic transition)
+        {
+            if (operation == null || transition == null || transition.Candidates == null || operation.VisualSourceTimestampMs <= 0)
+                return false;
+
+            double visualSourceSec = operation.VisualSourceTimestampMs / 1000.0;
+            for (int i = 0; i < transition.Candidates.Count; i++)
+            {
+                DeepAnalysisTransitionCandidateDiagnostic candidate = transition.Candidates[i];
+                if (candidate == null || Math.Abs(candidate.SourceSec - visualSourceSec) > 0.05)
+                    continue;
+
+                if (candidate.DarkBoundaryRunFrames < 2 || candidate.DarkBoundaryIntervalDarkRatio < 0.75)
+                    continue;
+
+                if (string.Equals(candidate.Decision, "accepted-timeline-dark-duration", StringComparison.Ordinal))
+                    return true;
+
+                if (candidate.DarkBoundaryRewritten && candidate.Verified)
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Verifica se il boundary visuale è confermato direttamente dalla sequenza dei frame
+        /// </summary>
+        /// <param name="operation">Operazione editmap</param>
+        /// <param name="transition">Diagnostica transizione associata</param>
+        /// <returns>True se l'audio può applicare soltanto uno shift locale</returns>
+        private bool IsVisualBoundaryFrameConfirmed(EditOperation operation, DeepAnalysisTransitionDiagnostic transition)
+        {
+            if (operation == null || transition == null || transition.Candidates == null || operation.VisualSourceTimestampMs <= 0)
+                return false;
+
+            double visualSourceSec = operation.VisualSourceTimestampMs / 1000.0;
+            for (int i = 0; i < transition.Candidates.Count; i++)
+            {
+                DeepAnalysisTransitionCandidateDiagnostic candidate = transition.Candidates[i];
+                if (candidate == null || Math.Abs(candidate.SourceSec - visualSourceSec) > 0.05)
+                    continue;
+
+                if (string.Equals(candidate.Decision, "accepted-insert-unmatched-boundary", StringComparison.Ordinal) ||
+                    string.Equals(candidate.Decision, "accepted-insert-mse-motion-boundary", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>

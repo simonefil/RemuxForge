@@ -467,7 +467,7 @@ namespace RemuxForge.Core.Analysis.Deep
         }
 
         /// <summary>
-        /// Rimuove spike timeline isolati con un solo anchor e supporto debole
+        /// Rimuove plateau video brevi non supportati e spike timeline isolati
         /// </summary>
         /// <param name="diagnostic">Diagnostica contenente i plateau da filtrare</param>
         private void RemoveIsolatedOutlierPlateaus(DeepAnalysisTimelineMapDiagnostic diagnostic)
@@ -476,6 +476,9 @@ namespace RemuxForge.Core.Analysis.Deep
             DeepAnalysisTimelinePlateauDiagnostic previous;
             DeepAnalysisTimelinePlateauDiagnostic current;
             DeepAnalysisTimelinePlateauDiagnostic next;
+            int previousStepMs;
+            int nextStepMs;
+            bool isSupportedMonotonicPlateau;
             bool removeCurrent;
 
             if (diagnostic.Plateaus == null || diagnostic.Plateaus.Count < 3)
@@ -486,12 +489,29 @@ namespace RemuxForge.Core.Analysis.Deep
             for (int i = 0; i < diagnostic.Plateaus.Count; i++)
             {
                 current = diagnostic.Plateaus[i];
+                previousStepMs = 0;
+                nextStepMs = 0;
+                isSupportedMonotonicPlateau = false;
                 removeCurrent = false;
+
+                if (i > 0 && i < diagnostic.Plateaus.Count - 1)
+                {
+                    previous = diagnostic.Plateaus[i - 1];
+                    next = diagnostic.Plateaus[i + 1];
+                    previousStepMs = current.OffsetMs - previous.OffsetMs;
+                    nextStepMs = next.OffsetMs - current.OffsetMs;
+                    // Una progressione ben supportata nello stesso verso rappresenta edit cumulativi reali
+                    isSupportedMonotonicPlateau = previousStepMs != 0 &&
+                        Math.Sign(previousStepMs) == Math.Sign(nextStepMs) &&
+                        current.AnchorCount > MIN_VIDEO_PLATEAU_ANCHORS &&
+                        current.AverageScore >= ISOLATED_OUTLIER_MAX_SCORE;
+                }
 
                 if (i > 0 && i < diagnostic.Plateaus.Count - 1 &&
                     string.Equals(diagnostic.AnchorMode, "video", StringComparison.Ordinal) &&
                     current.EndSrcSec - current.StartSrcSec <= SHORT_VIDEO_PLATEAU_MAX_SEC &&
-                    current.AnchorCount <= SHORT_VIDEO_PLATEAU_MAX_ANCHORS)
+                    current.AnchorCount <= SHORT_VIDEO_PLATEAU_MAX_ANCHORS &&
+                    !isSupportedMonotonicPlateau)
                 {
                     removeCurrent = true;
                 }
