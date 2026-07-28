@@ -26,6 +26,16 @@ namespace RemuxForge.Core.Models
         public double SupportEndSrcSec { get; set; }
 
         /// <summary>
+        /// Centro del primo anchor affidabile del plateau
+        /// </summary>
+        public double FirstAnchorSrcSec { get; set; }
+
+        /// <summary>
+        /// Centro dell'ultimo anchor affidabile del plateau
+        /// </summary>
+        public double LastAnchorSrcSec { get; set; }
+
+        /// <summary>
         /// Offset in millisecondi
         /// </summary>
         public double OffsetMs { get; set; }

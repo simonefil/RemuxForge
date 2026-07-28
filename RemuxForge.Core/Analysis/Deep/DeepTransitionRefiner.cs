@@ -11,6 +11,18 @@ namespace RemuxForge.Core.Analysis.Deep
     /// </summary>
     public class DeepTransitionRefiner
     {
+        #region Costanti
+
+        private const double PLATEAU_WINDOW_MIN_SEC = 8.0;
+
+        private const double PLATEAU_WINDOW_TARGET_MAX_SEC = 20.0;
+
+        private const double PLATEAU_WINDOW_HARD_CAP_SEC = 30.0;
+
+        private const double PLATEAU_WINDOW_MARGIN_SEC = 1.0;
+
+        #endregion
+
         #region Delegati
 
         /// <summary>
@@ -121,7 +133,10 @@ namespace RemuxForge.Core.Analysis.Deep
             double boundaryToleranceSec;
             double unsupportedGapStartSrc;
             double unsupportedGapEndSrc;
+            double plateauWindowStartSrc;
+            double plateauWindowEndSrc;
             bool strongVisualCandidateAccepted;
+            bool plateauWindowAvailable;
             int operationDurationMs;
             double effectiveOffsetSec = regions.Count > 0 ? regions[0].OffsetMs / 1000.0 : 0.0;
             DeepAnalysisTransitionDiagnostic transition;
@@ -204,6 +219,14 @@ namespace RemuxForge.Core.Analysis.Deep
                 validationStartSrc = searchStartSrc;
                 refineMethod = "";
                 bestCrossover = -1.0;
+                plateauWindowStartSrc = 0.0;
+                plateauWindowEndSrc = 0.0;
+
+                // I CUT usano sempre il supporto plateau; gli INSERT densi conservano il percorso legacy:
+                // una finestra corta può reinterpretare l'inizio di una lunga run dark già stabile
+                plateauWindowAvailable = timelineMode &&
+                    (newOffsetSec < oldOffsetSec || regions[r + 1].FirstAnchorSrcSec - regions[r].LastAnchorSrcSec > PLATEAU_WINDOW_TARGET_MAX_SEC) &&
+                    this.TryResolvePlateauBoundaryWindow(regions[r], regions[r + 1], out plateauWindowStartSrc, out plateauWindowEndSrc);
 
                 if (timelineMode &&
                     newOffsetSec > oldOffsetSec &&
@@ -215,6 +238,55 @@ namespace RemuxForge.Core.Analysis.Deep
                     // In quel caso il primo match post-gap è troppo tardo per l'operazione INSERT.
                     bestCrossover = regions[r + 1].StartSrcSec;
                     refineMethod = "frame-boundary";
+                }
+
+                if (bestCrossover < 0.0 && plateauWindowAvailable)
+                {
+                    // Nei gap tra supporto OLD e NEW la timeline restringe la ricerca al solo intervallo
+                    // che può contenere il cambio di plateau, escludendo scene cut anticipati ancora in OLD
+                    bestCrossover = this._visualCrossoverScanner(sourceFile, langFile, plateauWindowStartSrc, plateauWindowEndSrc, oldOffsetSec, newOffsetSec, inverseRatio, transition);
+                    if (bestCrossover >= 0.0)
+                    {
+                        bool darkBoundary = false;
+                        bool audioRejected = false;
+                        int darkBoundaryRunFrames = 0;
+                        double darkBoundaryIntervalRatio = 0.0;
+                        for (int c = transition.Candidates.Count - 1; c >= 0; c--)
+                        {
+                            if (Math.Abs(transition.Candidates[c].SourceSec - bestCrossover) > 0.05)
+                            {
+                                continue;
+                            }
+
+                            darkBoundary = transition.Candidates[c].DarkBoundaryRewritten ||
+                                (!string.IsNullOrEmpty(transition.Candidates[c].Decision) && transition.Candidates[c].Decision.IndexOf("dark", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                (transition.Candidates[c].DarkBoundaryRunFrames >= 2 && transition.Candidates[c].DarkBoundaryIntervalDarkRatio >= 0.75);
+                            audioRejected = transition.Candidates[c].AudioRejected;
+                            darkBoundaryRunFrames = transition.Candidates[c].DarkBoundaryRunFrames;
+                            darkBoundaryIntervalRatio = transition.Candidates[c].DarkBoundaryIntervalDarkRatio;
+                            break;
+                        }
+
+                        transition.Candidates.Add(new DeepAnalysisTransitionCandidateDiagnostic
+                        {
+                            SourceSec = bestCrossover,
+                            OriginalSourceSec = bestCrossover,
+                            Verified = false,
+                            CanDeferToGlobalVerification = true,
+                            AudioRejected = audioRejected,
+                            Decision = darkBoundary ? "accepted-plateau-dark-boundary" : "accepted-plateau-scene-boundary",
+                            DarkBoundaryRewritten = darkBoundary,
+                            DarkBoundaryDecision = darkBoundary ? "plateau-dark-boundary" : "",
+                            DarkBoundaryRunFrames = darkBoundaryRunFrames,
+                            DarkBoundaryIntervalDarkRatio = darkBoundaryIntervalRatio
+                        });
+                        transition.SearchStartSrcSec = plateauWindowStartSrc;
+                        transition.SearchEndSrcSec = plateauWindowEndSrc;
+                        validationStartSrc = plateauWindowStartSrc;
+                        searchEndSrc = plateauWindowEndSrc;
+                        refineMethod = "plateau-boundary";
+                        performanceDiagnostics.TransitionVisualRefineCount++;
+                    }
                 }
 
                 if (bestCrossover < 0.0)
@@ -247,6 +319,52 @@ namespace RemuxForge.Core.Analysis.Deep
                     refineMethod = "dense-linear";
                     performanceDiagnostics.TransitionDenseLinearRefineCount++;
                 }
+
+                if (newOffsetSec > oldOffsetSec)
+                {
+                    double rewrittenCrossover = bestCrossover;
+                    double restoredCrossover = -1.0;
+                    for (int c = transition.Candidates.Count - 1; c >= 0; c--)
+                    {
+                        if (Math.Abs(transition.Candidates[c].SourceSec - rewrittenCrossover) <= 0.05 &&
+                            transition.Candidates[c].DarkBoundaryRewritten &&
+                            transition.Candidates[c].OriginalSourceSec > 0.0 &&
+                            transition.Candidates[c].DarkBoundaryShiftMs > durationMs &&
+                            (transition.Candidates[c].DarkBoundaryRunFrames < 2 || transition.Candidates[c].DarkBoundaryIntervalDarkRatio < 0.75))
+                        {
+                            restoredCrossover = transition.Candidates[c].OriginalSourceSec;
+                            break;
+                        }
+                    }
+
+                    if (restoredCrossover >= 0.0)
+                    {
+                        // Una riscrittura oltre la durata INSERT attraverserebbe contenuto appartenente
+                        // al plateau OLD invece di fermarsi sul punto di montaggio compatibile col delta
+                        bestCrossover = restoredCrossover;
+                        for (int c = 0; c < transition.Candidates.Count; c++)
+                        {
+                            if (Math.Abs(transition.Candidates[c].SourceSec - rewrittenCrossover) > 0.05)
+                            {
+                                continue;
+                            }
+
+                            transition.Candidates[c].SourceSec = restoredCrossover;
+                            transition.Candidates[c].DarkBoundaryRewritten = false;
+                            transition.Candidates[c].DarkBoundaryShiftMs = 0.0;
+                            transition.Candidates[c].DarkBoundaryDecision = "";
+                            transition.Candidates[c].DarkBoundaryRunFrames = 0;
+                            transition.Candidates[c].DarkBoundaryIntervalDarkRatio = 0.0;
+                            if (string.Equals(transition.Candidates[c].Decision, "accepted-plateau-dark-boundary", StringComparison.Ordinal))
+                            {
+                                transition.Candidates[c].Decision = "accepted-plateau-scene-boundary";
+                            }
+                        }
+
+                        ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "    Boundary dark INSERT ripristinato da src " + rewrittenCrossover.ToString("F3", CultureInfo.InvariantCulture) + "s a " + restoredCrossover.ToString("F3", CultureInfo.InvariantCulture) + "s: shift oltre durata attesa " + durationMs + "ms");
+                    }
+                }
+
                 boundaryToleranceSec = timelineMode ? Math.Max(2.0, (durationMs / 1000.0) + 1.5) : 0.0;
                 if (bestCrossover < validationStartSrc - boundaryToleranceSec || bestCrossover > searchEndSrc + boundaryToleranceSec)
                 {
@@ -297,7 +415,9 @@ namespace RemuxForge.Core.Analysis.Deep
                         string.Equals(transition.Candidates[c].Decision, "accepted-insert-mse-motion-boundary", StringComparison.Ordinal) ||
                         string.Equals(transition.Candidates[c].Decision, "accepted-timeline-cut-boundary", StringComparison.Ordinal) ||
                         string.Equals(transition.Candidates[c].Decision, "accepted-insert-unmatched-boundary", StringComparison.Ordinal) ||
-                        string.Equals(transition.Candidates[c].Decision, "accepted-timeline-dark-duration", StringComparison.Ordinal)) &&
+                        string.Equals(transition.Candidates[c].Decision, "accepted-timeline-dark-duration", StringComparison.Ordinal) ||
+                        string.Equals(transition.Candidates[c].Decision, "accepted-plateau-dark-boundary", StringComparison.Ordinal) ||
+                        string.Equals(transition.Candidates[c].Decision, "accepted-plateau-scene-boundary", StringComparison.Ordinal)) &&
                         !transition.Candidates[c].AudioRejected)
                     {
                         strongVisualCandidateAccepted = true;
@@ -391,6 +511,58 @@ namespace RemuxForge.Core.Analysis.Deep
             }
 
             return operations;
+        }
+
+        #endregion
+
+        #region Metodi privati
+
+        /// <summary>
+        /// Costruisce una finestra conservativa tra l'ultimo supporto OLD e il primo supporto NEW
+        /// </summary>
+        /// <param name="current">Regione OLD</param>
+        /// <param name="next">Regione NEW</param>
+        /// <param name="windowStartSrc">Inizio finestra source</param>
+        /// <param name="windowEndSrc">Fine finestra source</param>
+        /// <returns>True se il supporto plateau definisce una finestra univoca</returns>
+        private bool TryResolvePlateauBoundaryWindow(OffsetRegion current, OffsetRegion next, out double windowStartSrc, out double windowEndSrc)
+        {
+            double supportGapSec;
+            double targetWidthSec;
+            double centerSec;
+
+            windowStartSrc = 0.0;
+            windowEndSrc = 0.0;
+
+            if (current.LastAnchorSrcSec <= 0.0 || next.FirstAnchorSrcSec <= 0.0)
+                return false;
+
+            supportGapSec = next.FirstAnchorSrcSec - current.LastAnchorSrcSec;
+            if (supportGapSec < 0.0)
+                return false;
+
+            centerSec = (current.LastAnchorSrcSec + next.FirstAnchorSrcSec) / 2.0;
+            if (supportGapSec <= PLATEAU_WINDOW_TARGET_MAX_SEC)
+            {
+                targetWidthSec = Math.Max(PLATEAU_WINDOW_MIN_SEC, supportGapSec + (PLATEAU_WINDOW_MARGIN_SEC * 2.0));
+                if (targetWidthSec > PLATEAU_WINDOW_TARGET_MAX_SEC)
+                {
+                    targetWidthSec = PLATEAU_WINDOW_TARGET_MAX_SEC;
+                }
+            }
+            else
+            {
+                targetWidthSec = Math.Min(supportGapSec, PLATEAU_WINDOW_HARD_CAP_SEC);
+                centerSec = next.FirstAnchorSrcSec - (targetWidthSec / 2.0);
+            }
+
+            windowStartSrc = centerSec - (targetWidthSec / 2.0);
+            windowEndSrc = centerSec + (targetWidthSec / 2.0);
+            if (windowStartSrc < current.StartSrcSec) { windowStartSrc = current.StartSrcSec; }
+            if (windowEndSrc > next.EndSrcSec) { windowEndSrc = next.EndSrcSec; }
+            if (windowStartSrc < 0.0) { windowStartSrc = 0.0; }
+
+            return windowEndSrc - windowStartSrc >= 1.0;
         }
 
         #endregion

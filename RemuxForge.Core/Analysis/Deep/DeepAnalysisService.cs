@@ -312,6 +312,8 @@ namespace RemuxForge.Core.Analysis.Deep
                 regionDiagnostic.Index = i + 1;
                 regionDiagnostic.StartSrcSec = regions[i].StartSrcSec;
                 regionDiagnostic.EndSrcSec = regions[i].EndSrcSec;
+                regionDiagnostic.FirstAnchorSrcSec = regions[i].FirstAnchorSrcSec;
+                regionDiagnostic.LastAnchorSrcSec = regions[i].LastAnchorSrcSec;
                 regionDiagnostic.OffsetMs = regions[i].OffsetMs;
                 regionDiagnostic.MatchCount = regions[i].MatchCount;
                 diagnostics.Regions.Add(regionDiagnostic);
@@ -3374,6 +3376,7 @@ namespace RemuxForge.Core.Analysis.Deep
             double forwardWindowMs;
             double intervalEndMs;
             double runDurationMs;
+            double plateauCompatibilityWindowMs;
             double nearestDarkDistanceMs;
             double distanceMs;
             double absoluteDistanceMs;
@@ -3403,7 +3406,8 @@ namespace RemuxForge.Core.Analysis.Deep
                 return false;
 
             candidateSourceMs = sourceTimestampsMs[candidateBoundaryIdx];
-            rewindWindowMs = Math.Max(1000.0, deltaMs + 500.0);
+            plateauCompatibilityWindowMs = deltaMs + 2500.0;
+            rewindWindowMs = Math.Max(1000.0, plateauCompatibilityWindowMs);
             forwardWindowMs = allowForwardSearch ? Math.Min(500.0, Math.Max(125.0, deltaMs * 0.25)) : 0.0;
             runStartIdx = -1;
             runEndIdx = -1;
@@ -3468,7 +3472,9 @@ namespace RemuxForge.Core.Analysis.Deep
             if (Math.Abs(candidateSourceMs - boundarySourceMs) > rewindWindowMs)
                 return false;
 
-            if (Math.Abs(candidateSourceMs - boundarySourceMs) > deltaMs + 100.0 && runDurationMs > deltaMs + 100.0)
+            if (Math.Abs(candidateSourceMs - boundarySourceMs) > deltaMs + 100.0 &&
+                runDurationMs > deltaMs + 100.0 &&
+                (breakpointSrcSec <= 0.0 || Math.Abs(boundarySourceMs - (breakpointSrcSec * 1000.0)) > plateauCompatibilityWindowMs))
                 return false;
 
             if (breakpointSrcSec > 0.0 && boundarySourceSec < breakpointSrcSec - ((rewindWindowMs + (deltaMs * 0.5)) / 1000.0))
@@ -3565,6 +3571,7 @@ namespace RemuxForge.Core.Analysis.Deep
             int intervalDarkFrames;
             double intervalEndMs;
             double runDurationMs;
+            double plateauCompatibilityWindowMs;
 
             rewrittenBoundaryIdx = candidateBoundaryIdx;
             runFrames = 0;
@@ -3594,7 +3601,8 @@ namespace RemuxForge.Core.Analysis.Deep
                 return false;
             }
 
-            rewindWindowMs = Math.Max(1000.0, deltaMs + 500.0);
+            plateauCompatibilityWindowMs = deltaMs + 2500.0;
+            rewindWindowMs = Math.Max(1000.0, plateauCompatibilityWindowMs);
             forwardWindowMs = allowForwardSearch ? Math.Min(500.0, Math.Max(125.0, deltaMs * 0.25)) : 0.0;
             candidateSourceMs = sourceTimestampsMs[candidateBoundaryIdx];
             runStartIdx = -1;
@@ -3680,7 +3688,10 @@ namespace RemuxForge.Core.Analysis.Deep
                 return false;
             }
 
-            if (offsetDirection > 0 && Math.Abs(candidateSourceMs - boundarySourceMs) > deltaMs + 100.0 && runDurationMs > deltaMs + 100.0)
+            if (offsetDirection > 0 &&
+                Math.Abs(candidateSourceMs - boundarySourceMs) > deltaMs + 100.0 &&
+                runDurationMs > deltaMs + 100.0 &&
+                (breakpointSrcSec <= 0.0 || Math.Abs(boundarySourceMs - (breakpointSrcSec * 1000.0)) > plateauCompatibilityWindowMs))
             {
                 return false;
             }

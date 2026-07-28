@@ -278,6 +278,14 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public double EndSrcSec { get; set; }
         /// <summary>
+        /// Centro del primo anchor affidabile del plateau
+        /// </summary>
+        public double FirstAnchorSrcSec { get; set; }
+        /// <summary>
+        /// Centro dell'ultimo anchor affidabile del plateau
+        /// </summary>
+        public double LastAnchorSrcSec { get; set; }
+        /// <summary>
         /// Offset plateau in millisecondi
         /// </summary>
         public int OffsetMs { get; set; }
@@ -308,6 +316,14 @@ namespace RemuxForge.Core.Models
         /// Fine source regione
         /// </summary>
         public double EndSrcSec { get; set; }
+        /// <summary>
+        /// Centro del primo anchor affidabile della regione
+        /// </summary>
+        public double FirstAnchorSrcSec { get; set; }
+        /// <summary>
+        /// Centro dell'ultimo anchor affidabile della regione
+        /// </summary>
+        public double LastAnchorSrcSec { get; set; }
         /// <summary>
         /// Offset regione in millisecondi
         /// </summary>

@@ -422,6 +422,8 @@ namespace RemuxForge.Core.Analysis.Deep
             plateau.Index = diagnostic.Plateaus.Count;
             plateau.StartSrcSec = anchors[0].SourceCenterSec - halfStepSec;
             plateau.EndSrcSec = anchors[anchors.Count - 1].SourceCenterSec + halfStepSec;
+            plateau.FirstAnchorSrcSec = anchors[0].SourceCenterSec;
+            plateau.LastAnchorSrcSec = anchors[anchors.Count - 1].SourceCenterSec;
             if (plateau.StartSrcSec < 0.0) { plateau.StartSrcSec = 0.0; }
             plateau.OffsetMs = this.MedianOffset(anchors);
             plateau.AnchorCount = anchors.Count;
@@ -451,6 +453,7 @@ namespace RemuxForge.Core.Analysis.Deep
                     DeepAnalysisTimelinePlateauDiagnostic previous = merged[merged.Count - 1];
                     int totalAnchors = previous.AnchorCount + current.AnchorCount;
                     previous.EndSrcSec = current.EndSrcSec;
+                    previous.LastAnchorSrcSec = current.LastAnchorSrcSec;
                     previous.OffsetMs = (int)Math.Round(((previous.OffsetMs * previous.AnchorCount) + (current.OffsetMs * current.AnchorCount)) / (double)totalAnchors);
                     previous.AverageScore = ((previous.AverageScore * previous.AnchorCount) + (current.AverageScore * current.AnchorCount)) / totalAnchors;
                     previous.AnchorCount = totalAnchors;
@@ -575,6 +578,8 @@ namespace RemuxForge.Core.Analysis.Deep
                 region.EndSrcSec = i == plateaus.Count - 1 ? sourceDurationSec : this.ResolvePlateauBoundarySec(plateaus[i], plateaus[i + 1]);
                 region.SupportStartSrcSec = plateaus[i].StartSrcSec;
                 region.SupportEndSrcSec = plateaus[i].EndSrcSec;
+                region.FirstAnchorSrcSec = plateaus[i].FirstAnchorSrcSec;
+                region.LastAnchorSrcSec = plateaus[i].LastAnchorSrcSec;
                 region.OffsetMs = plateaus[i].OffsetMs;
                 region.MatchCount = plateaus[i].AnchorCount;
                 if (region.EndSrcSec > region.StartSrcSec)
