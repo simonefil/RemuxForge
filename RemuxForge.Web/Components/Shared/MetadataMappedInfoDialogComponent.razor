@@ -683,7 +683,7 @@
         string cssClass = "form-input metadata-manual-input" + (IsManualValueChanged(row, cell) ? " metadata-manual-input-changed" : "");
         string value = this.GetManualEditValue(row, cell);
 
-        return @<MetadataInputRendererComponent Schema="@schema" Value="@value" ValueChanged="@((string nextValue) => ChangeManualEditValue(row, nextValue))" CssClass="@cssClass" />;
+        return @<MetadataInputRendererComponent @key="BuildEditKey(row)" Schema="@schema" Value="@value" ValueChanged="@((string nextValue) => ChangeManualEditValue(row, nextValue))" CssClass="@cssClass" NativeTextEditing="true" />;
     }
 
     /// <summary>
