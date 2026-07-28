@@ -81,6 +81,7 @@ namespace RemuxForge.Core.Splitting
             string avFile;
             int avExit;
             bool hasAv;
+            bool hasChapters;
             string chFile;
             List<string> muxCmd;
             double sizeMb;
@@ -202,11 +203,16 @@ namespace RemuxForge.Core.Splitting
                 ConsoleHelper.Write(LogSection.Split, LogLevel.Notice, "  WARN: audio/subs extraction failed (exit " + avExit + "); muxing video-only.");
             }
 
-            // Generazione del file capitoli rebasato e con nomi generici rinumerati
-            chFile = Path.Combine(tempDir, "chapters.txt");
-            WriteChaptersFile(seg.Chapters, seg.StartTs, chFile);
+            // Generazione del file capitoli rebasato e con nomi generici rinumerati, solo quando presenti
+            hasChapters = seg.Chapters != null && seg.Chapters.Count > 0;
+            chFile = null;
+            if (hasChapters)
+            {
+                chFile = Path.Combine(tempDir, "chapters.txt");
+                WriteChaptersFile(seg.Chapters, seg.StartTs, chFile);
+            }
 
-            // Mux finale: video con timecodes + av (se presente) + capitoli custom
+            // Mux finale: video con timecodes + av e capitoli custom quando presenti
             muxCmd = new List<string>();
             muxCmd.Add("-o"); muxCmd.Add(outputFile);
             muxCmd.Add("--no-chapters"); muxCmd.Add(videoMkv);
@@ -214,7 +220,10 @@ namespace RemuxForge.Core.Splitting
             {
                 muxCmd.Add("--no-video"); muxCmd.Add("--no-chapters"); muxCmd.Add(avFile);
             }
-            muxCmd.Add("--chapters"); muxCmd.Add(chFile);
+            if (hasChapters)
+            {
+                muxCmd.Add("--chapters"); muxCmd.Add(chFile);
+            }
             MkvSplitExternalTools.Instance.RunMkvmerge(muxCmd);
 
             // Log finale con dimensione del file prodotto
@@ -238,6 +247,7 @@ namespace RemuxForge.Core.Splitting
         {
             string startTc;
             string endTc;
+            bool hasChapters;
             string chFile;
             string tcFile;
             List<string> muxArgs;
@@ -246,9 +256,14 @@ namespace RemuxForge.Core.Splitting
             startTc = MkvSplitSegmentService.SecsToTs(seg.StartTs);
             endTc = MkvSplitSegmentService.SecsToTs(seg.EndTs);
 
-            // Generazione del file capitoli rebasato
-            chFile = Path.Combine(tempDir, "chapters.txt");
-            WriteChaptersFile(seg.Chapters, seg.StartTs, chFile);
+            // Generazione del file capitoli rebasato, solo quando presenti
+            hasChapters = seg.Chapters != null && seg.Chapters.Count > 0;
+            chFile = null;
+            if (hasChapters)
+            {
+                chFile = Path.Combine(tempDir, "chapters.txt");
+                WriteChaptersFile(seg.Chapters, seg.StartTs, chFile);
+            }
 
             if (hasFlac)
             {
@@ -280,7 +295,10 @@ namespace RemuxForge.Core.Splitting
                     muxArgs.Add("--timestamps"); muxArgs.Add("0:" + tcFile);
                 }
                 muxArgs.Add("--no-chapters"); muxArgs.Add(tempSeg);
-                muxArgs.Add("--chapters"); muxArgs.Add(chFile);
+                if (hasChapters)
+                {
+                    muxArgs.Add("--chapters"); muxArgs.Add(chFile);
+                }
                 MkvSplitExternalTools.Instance.RunMkvmerge(muxArgs);
             }
             else
@@ -295,7 +313,10 @@ namespace RemuxForge.Core.Splitting
                 MkvSplitExternalTools.Instance.RunMkvmerge(muxArgs);
 
                 // Capitoli aggiunti post-split con mkvpropedit (modifica header in-place)
-                MkvSplitExternalTools.Instance.RunMkvpropedit(new string[] { outputFile, "--chapters", chFile });
+                if (hasChapters)
+                {
+                    MkvSplitExternalTools.Instance.RunMkvpropedit(new string[] { outputFile, "--chapters", chFile });
+                }
             }
 
             sizeMb = new FileInfo(outputFile).Length / 1048576.0;
