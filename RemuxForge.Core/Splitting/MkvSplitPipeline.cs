@@ -261,7 +261,7 @@ namespace RemuxForge.Core.Splitting
             bool hasFlac;
 
             hasFlac = MkvSplitExternalTools.Instance.HasFlacAudio(inputFile);
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Phase, AppText.F("split.fastPath", isVfr ? "VFR (timecodes v2)" : "CFR", hasFlac ? " + ffmpeg (FLAC)" : " + mkvmerge"));
+            ConsoleHelper.Write(LogSection.Split, LogLevel.Phase, AppText.F("split.fastPath", isVfr ? "VFR" : "CFR", hasFlac ? " + mkvmerge video / ffmpeg AV (FLAC)" : " + mkvmerge"));
 
             keyFlags = MkvSplitExternalTools.Instance.GetKeyFlags(inputFile);
             segmentService = new MkvSplitSegmentService();
@@ -269,7 +269,7 @@ namespace RemuxForge.Core.Splitting
 
             foreach (MkvSplitSegment seg in segments)
             {
-                if (!this.ProcessSegment(seg, outputDir, absInput, args.Force, tmp => splitter.SplitFast(seg, inputFile, Path.Combine(outputDir, seg.File), tmp, isVfr, sourcePts, hasFlac)))
+                if (!this.ProcessSegment(seg, outputDir, absInput, args.Force, tmp => splitter.SplitFast(seg, inputFile, Path.Combine(outputDir, seg.File), tmp, hasFlac)))
                 {
                     return 1;
                 }

@@ -235,21 +235,18 @@ namespace RemuxForge.Core.Splitting
 
         #region Pipeline fast (ffmpeg seek + stream copy)
 
-        /// <summary>Fast path: mkvmerge --split parts per default, ffmpeg stream copy solo se il file ha audio FLAC. Se VFR applica timecodes v2.</summary>
+        /// <summary>Fast path: mkvmerge --split parts per il video e, quando presente FLAC, ffmpeg stream copy per audio e sottotitoli.</summary>
         /// <param name="seg">Segmento da elaborare.</param>
         /// <param name="inputFile">File MKV di input.</param>
         /// <param name="outputFile">Path del file di output.</param>
         /// <param name="tempDir">Directory temporanea per i file intermedi.</param>
-        /// <param name="isVfr">Se true genera e applica timecodes v2.</param>
-        /// <param name="sourcePts">PTS del sorgente (usato solo se isVfr).</param>
-        /// <param name="hasFlac">Se true usa ffmpeg per il taglio (mkvmerge non gestisce split di FLAC).</param>
-        public void SplitFast(MkvSplitSegment seg, string inputFile, string outputFile, string tempDir, bool isVfr, double[] sourcePts, bool hasFlac)
+        /// <param name="hasFlac">Se true separa il video con mkvmerge e audio/sottotitoli con ffmpeg, perché mkvmerge non splitta FLAC insieme al video.</param>
+        public void SplitFast(MkvSplitSegment seg, string inputFile, string outputFile, string tempDir, bool hasFlac)
         {
             string startTc;
             string endTc;
             bool hasChapters;
             string chFile;
-            string tcFile;
             List<string> muxArgs;
             double sizeMb;
 
@@ -267,34 +264,50 @@ namespace RemuxForge.Core.Splitting
 
             if (hasFlac)
             {
-                // FLAC: mkvmerge non supporta split, uso ffmpeg stream copy + remux
-                string tempSeg = Path.Combine(tempDir, "seg.mkv");
-                List<string> ffArgs = new List<string>();
-                ffArgs.Add("-y"); ffArgs.Add("-hide_banner"); ffArgs.Add("-loglevel"); ffArgs.Add("warning");
-                ffArgs.Add("-ss"); ffArgs.Add(startTc);
-                ffArgs.Add("-to"); ffArgs.Add(endTc);
-                ffArgs.Add("-i"); ffArgs.Add(inputFile);
-                ffArgs.Add("-map"); ffArgs.Add("0:v?");
-                ffArgs.Add("-map"); ffArgs.Add("0:a?");
-                ffArgs.Add("-map"); ffArgs.Add("0:s?");
-                ffArgs.Add("-c"); ffArgs.Add("copy");
-                ffArgs.Add("-avoid_negative_ts"); ffArgs.Add("make_zero");
-                ffArgs.Add("-map_chapters"); ffArgs.Add("-1");
-                ffArgs.Add(tempSeg);
-                ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "  ffmpeg fast-seek copy " + startTc + " -> " + endTc);
-                MkvSplitExternalTools.Instance.RunFfmpeg(ffArgs);
+                string videoMkv = Path.Combine(tempDir, "video.mkv");
+                string avFile = Path.Combine(tempDir, "av.mkv");
+                List<string> videoArgs = new List<string>();
+                List<string> avArgs = new List<string>();
+                int avExit;
+                bool hasAv;
+
+                // mkvmerge non splitta FLAC insieme al video; si splitta il video separatamente e si rimuxa l'audio estratto da FFmpeg
+                videoArgs.Add("-o"); videoArgs.Add(videoMkv);
+                videoArgs.Add("--no-audio");
+                videoArgs.Add("--no-subtitles");
+                videoArgs.Add("--no-chapters");
+                videoArgs.Add("--split"); videoArgs.Add("parts:" + startTc + "-" + endTc);
+                videoArgs.Add(inputFile);
+                ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "  mkvmerge video split " + startTc + " -> " + endTc);
+                MkvSplitExternalTools.Instance.RunMkvmerge(videoArgs);
+
+                avArgs.Add("-y"); avArgs.Add("-hide_banner"); avArgs.Add("-loglevel"); avArgs.Add("warning");
+                avArgs.Add("-i"); avArgs.Add(inputFile);
+                avArgs.Add("-ss"); avArgs.Add(startTc);
+                avArgs.Add("-to"); avArgs.Add(endTc);
+                avArgs.Add("-map"); avArgs.Add("0:a?");
+                avArgs.Add("-map"); avArgs.Add("0:s?");
+                avArgs.Add("-c:a"); avArgs.Add("copy");
+                avArgs.Add("-c:s"); avArgs.Add("copy");
+                avArgs.Add("-vn");
+                avArgs.Add("-avoid_negative_ts"); avArgs.Add("make_zero");
+                avArgs.Add("-map_chapters"); avArgs.Add("-1");
+                avArgs.Add(avFile);
+                ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "  ffmpeg AV fast-seek copy " + startTc + " -> " + endTc);
+                avExit = MkvSplitExternalTools.Instance.RunFfmpegNoThrow(avArgs);
+                hasAv = avExit == 0 && File.Exists(avFile) && new FileInfo(avFile).Length > 0;
+                if (!hasAv)
+                {
+                    ConsoleHelper.Write(LogSection.Split, LogLevel.Notice, "  WARN: audio/subs extraction failed (exit " + avExit + "); muxing video-only.");
+                }
 
                 muxArgs = new List<string>();
                 muxArgs.Add("-o"); muxArgs.Add(outputFile);
-                if (isVfr)
+                muxArgs.Add("--no-chapters"); muxArgs.Add(videoMkv);
+                if (hasAv)
                 {
-                    double[] segPts = MkvSplitExternalTools.Instance.ExtractSourcePts(tempSeg);
-                    int tcCount = Math.Min(segPts.Length, sourcePts.Length - seg.StartFrame);
-                    tcFile = Path.Combine(tempDir, "timecodes.txt");
-                    WriteTimecodesFile(tcFile, sourcePts, seg.StartFrame, tcCount);
-                    muxArgs.Add("--timestamps"); muxArgs.Add("0:" + tcFile);
+                    muxArgs.Add(avFile);
                 }
-                muxArgs.Add("--no-chapters"); muxArgs.Add(tempSeg);
                 if (hasChapters)
                 {
                     muxArgs.Add("--chapters"); muxArgs.Add(chFile);
