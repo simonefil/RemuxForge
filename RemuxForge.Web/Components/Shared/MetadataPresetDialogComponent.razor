@@ -1,3 +1,6 @@
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
 <div class="dialog-overlay visible" @onclick="OnClose">
     <div class="dialog-box dialog-fullscreen metadata-preset-dialog-box" @onclick:stopPropagation="true">
         <div class="dialog-title">@AppText.T("web.metadata.presetDialog.title")</div>
@@ -92,7 +95,7 @@
                         <div class="metadata-rule-section">
                             <div class="form-section">@AppText.T("web.metadata.presetDialog.sectionWhen")</div>
                             <div class="metadata-rule-section-caption">@AppText.T("web.metadata.presetDialog.whenAllCaption")</div>
-                            <MetadataConditionListComponent Rule="SelectedRule" Nodes="SelectedRule.When.All" IncludeAdvancedFields="_showAdvancedFields" OnFieldActivated="ActivateFieldCondition" OnHelpChanged="SetFieldHelp" OnTextEditRequested="OpenTextEditor" />
+                            <MetadataConditionListComponent Rule="SelectedRule" Nodes="SelectedRule.When.All" IncludeAdvancedFields="_showAdvancedFields" OnFieldActivated="ActivateFieldCondition" OnInputActivated="ActivateTextInput" OnHelpChanged="SetFieldHelp" OnTextEditRequested="OpenTextEditor" />
                         </div>
 
                         <div class="metadata-rule-section">
@@ -163,7 +166,7 @@
 
                                             @if (operation.Type == MkvMetadataOperationType.SetField || operation.Type == MkvMetadataOperationType.SetTagField)
                                             {
-                                                <MetadataInputRendererComponent Schema="@GetOperationInputSchema(operation)" Value="@operation.Value" ValueChanged="@((string value) => operation.Value = value)" CssClass="form-input metadata-operation-value" OnFocus="@(() => ActivateOperation(operation))" OnMouseEnter="@(() => ActivateOperation(operation))" OnExpandedEditRequested="@(() => OpenOperationTextEditor(operation))" />
+                                                <MetadataInputRendererComponent Schema="@GetOperationInputSchema(operation)" Value="@operation.Value" ValueChanged="@((string value) => operation.Value = value)" CssClass="form-input metadata-operation-value" OnFocus="@(() => SetOperationValueHelp(operation))" OnTextActivated="@((string inputId) => ActivateOperationTextInput(operation, inputId))" OnMouseEnter="@(() => SetOperationValueHelp(operation))" OnExpandedEditRequested="@(() => OpenOperationTextEditor(operation))" />
                                             }
                                             else
                                             {
@@ -353,14 +356,14 @@
     private string _fieldHelpText;
 
     /// <summary>
-    /// Condizione attiva per inserimento token
+    /// Target testuale attivo per inserimento al caret
     /// </summary>
-    private MkvMetadataFieldCondition _activeFieldCondition;
+    private MetadataTextInputTarget _activeTextInput;
 
     /// <summary>
-    /// Operazione attiva per inserimento token
+    /// Modulo JavaScript per gestione selection e focus
     /// </summary>
-    private MkvMetadataOperation _activeOperation;
+    private IJSObjectReference _interopModule;
 
     /// <summary>
     /// Inizializza preset e stato dialog
@@ -379,8 +382,7 @@
         this._functionExampleItem = null;
         this._textEditRequest = null;
         this._textEditValue = "";
-        this._activeFieldCondition = null;
-        this._activeOperation = null;
+        this._activeTextInput = null;
         this.SetFieldHelp("default");
 
         if (!string.IsNullOrEmpty(this._selectedPresetFile) && System.IO.File.Exists(this._selectedPresetFile))
@@ -390,6 +392,34 @@
         else
         {
             this.NewPreset();
+        }
+    }
+
+    /// <summary>
+    /// Importa il modulo interop dopo il primo render
+    /// </summary>
+    /// <param name="firstRender">True al primo render</param>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            this._interopModule = await this.JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/interop.js");
+    }
+
+    /// <summary>
+    /// Rilascia il modulo interop del dialog
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (this._interopModule == null)
+            return;
+
+        try
+        {
+            await this._interopModule.DisposeAsync();
+        }
+        catch
+        {
+            // Ignora errori durante dispose del circuito
         }
     }
 
@@ -424,8 +454,7 @@
         this._showAdvancedFields = false;
         this._textEditRequest = null;
         this._textEditValue = "";
-        this._activeFieldCondition = null;
-        this._activeOperation = null;
+        this._activeTextInput = null;
     }
 
     /// <summary>
@@ -445,6 +474,7 @@
             this._showAdvancedFields = this._preset.ShowAdvancedFields || MetadataUiCatalog.PresetUsesAdvancedFields(this._preset);
             this.NormalizePresetModel();
             this._selectedRuleIndex = this._preset.Rules.Count > 0 ? 0 : -1;
+            this._activeTextInput = null;
             this._message = "";
         }
         catch (Exception ex)
@@ -546,8 +576,7 @@
     private void SelectRule(int index)
     {
         this._selectedRuleIndex = index;
-        this._activeFieldCondition = null;
-        this._activeOperation = null;
+        this._activeTextInput = null;
     }
 
     /// <summary>
@@ -734,8 +763,6 @@
     /// <param name="condition">Condizione attiva</param>
     private void ActivateFieldCondition(MkvMetadataFieldCondition condition)
     {
-        this._activeFieldCondition = condition;
-        this._activeOperation = null;
         this.SetHelpInfo(condition != null ? MetadataUiCatalog.GetFieldHelp(condition.FieldKey) : MetadataUiCatalog.GetPresetControlHelp("conditionValue"));
     }
 
@@ -745,51 +772,86 @@
     /// <param name="operation">Operazione attiva</param>
     private void ActivateOperation(MkvMetadataOperation operation)
     {
-        this._activeOperation = operation;
-        this._activeFieldCondition = null;
         this.SetOperationValueHelp(operation);
+    }
+
+    /// <summary>
+    /// Imposta il target testuale attivo
+    /// </summary>
+    /// <param name="target">Target input</param>
+    private void ActivateTextInput(MetadataTextInputTarget target)
+    {
+        this._activeTextInput = target;
+    }
+
+    /// <summary>
+    /// Imposta un valore operazione come target testuale attivo
+    /// </summary>
+    /// <param name="operation">Operazione proprietaria</param>
+    /// <param name="inputId">Identificativo DOM input</param>
+    private void ActivateOperationTextInput(MkvMetadataOperation operation, string inputId)
+    {
+        MetadataTextInputTarget target = new MetadataTextInputTarget();
+        target.InputId = inputId;
+        target.Value = operation != null ? operation.Value : "";
+        target.Commit = value =>
+        {
+            if (operation != null)
+                operation.Value = value;
+        };
+
+        this.ActivateOperation(operation);
+        this.ActivateTextInput(target);
     }
 
     /// <summary>
     /// Inserisce un token nel target attivo
     /// </summary>
     /// <param name="token">Token da inserire</param>
-    private void InsertToken(string token)
+    private async Task InsertToken(string token)
     {
-        if (string.IsNullOrEmpty(token))
-            return;
-
-        if (this._activeOperation != null)
+        if (string.IsNullOrEmpty(token) || this._activeTextInput == null || this._activeTextInput.Commit == null)
         {
-            this._activeOperation.Value = AppendToken(this._activeOperation.Value, token);
+            this._message = AppText.T("web.metadata.presetDialog.tokenTargetMissing");
             return;
         }
 
-        if (this._activeFieldCondition != null)
-        {
-            this._activeFieldCondition.Value = AppendToken(this._activeFieldCondition.Value, token);
-            return;
-        }
+        (string value, int start, int end) = await this.GetActiveTextSelectionAsync();
+        string result = value.Substring(0, start) + token + value.Substring(end);
+        int caret = start + token.Length;
 
-        this._message = AppText.T("web.metadata.presetDialog.tokenTargetMissing");
+        await this.CommitActiveTextInputAsync(result, caret);
     }
 
     /// <summary>
     /// Appende una funzione al token o all'espressione attiva
     /// </summary>
     /// <param name="functionCall">Chiamata funzione</param>
-    private void InsertFunction(string functionCall)
+    private async Task InsertFunction(string functionCall)
     {
+        int caret;
+        int end;
+        int start;
         string result;
+        string selected;
+        string transformed;
+        string value;
 
-        if (string.IsNullOrEmpty(functionCall))
-            return;
-
-        if (this._activeOperation != null)
+        if (string.IsNullOrEmpty(functionCall) || this._activeTextInput == null || this._activeTextInput.Commit == null)
         {
-            if (TryAppendFunction(this._activeOperation.Value, functionCall, out result))
+            this._message = AppText.T("web.metadata.presetDialog.functionTargetMissing");
+            return;
+        }
+
+        (value, start, end) = await this.GetActiveTextSelectionAsync();
+        if (end > start)
+        {
+            selected = value.Substring(start, end - start);
+            if (TryAppendFunction(selected, functionCall, out transformed))
             {
-                this._activeOperation.Value = result;
+                result = value.Substring(0, start) + transformed + value.Substring(end);
+                caret = start + transformed.Length;
+                await this.CommitActiveTextInputAsync(result, caret);
             }
             else
             {
@@ -798,20 +860,15 @@
             return;
         }
 
-        if (this._activeFieldCondition != null)
+        if (TryAppendFunction(value.Substring(0, start), functionCall, out transformed))
         {
-            if (TryAppendFunction(this._activeFieldCondition.Value, functionCall, out result))
-            {
-                this._activeFieldCondition.Value = result;
-            }
-            else
-            {
-                this._message = AppText.T("web.metadata.presetDialog.functionValueMissing");
-            }
+            result = transformed + value.Substring(start);
+            caret = transformed.Length;
+            await this.CommitActiveTextInputAsync(result, caret);
             return;
         }
 
-        this._message = AppText.T("web.metadata.presetDialog.functionTargetMissing");
+        this._message = AppText.T("web.metadata.presetDialog.functionValueMissing");
     }
 
     /// <summary>
@@ -1023,14 +1080,59 @@
     }
 
     /// <summary>
-    /// Appende un token a un testo
+    /// Legge valore e selection correnti dal target testuale attivo
     /// </summary>
-    /// <param name="value">Testo originale</param>
-    /// <param name="token">Token da aggiungere</param>
-    /// <returns>Testo aggiornato</returns>
-    private static string AppendToken(string value, string token)
+    /// <returns>Valore, inizio e fine selection</returns>
+    private async Task<(string Value, int Start, int End)> GetActiveTextSelectionAsync()
     {
-        return (value != null ? value : "") + token;
+        string value = this._activeTextInput != null && this._activeTextInput.Value != null ? this._activeTextInput.Value : "";
+        int start = value.Length;
+        int end = value.Length;
+
+        if (this._interopModule != null && this._activeTextInput != null && !string.IsNullOrEmpty(this._activeTextInput.InputId))
+        {
+            try
+            {
+                string[] selection = await this._interopModule.InvokeAsync<string[]>("getTextInputSelection", this._activeTextInput.InputId);
+                if (selection != null && selection.Length == 3)
+                {
+                    value = selection[0] != null ? selection[0] : "";
+                    if (!int.TryParse(selection[1], out start))
+                        start = value.Length;
+                    if (!int.TryParse(selection[2], out end))
+                        end = start;
+                }
+            }
+            catch
+            {
+                start = value.Length;
+                end = value.Length;
+            }
+        }
+
+        start = Math.Max(0, Math.Min(start, value.Length));
+        end = Math.Max(start, Math.Min(end, value.Length));
+        return (value, start, end);
+    }
+
+    /// <summary>
+    /// Applica il testo al modello e ripristina focus e caret
+    /// </summary>
+    /// <param name="value">Nuovo valore</param>
+    /// <param name="caret">Nuova posizione caret</param>
+    private async Task CommitActiveTextInputAsync(string value, int caret)
+    {
+        if (this._activeTextInput == null || this._activeTextInput.Commit == null)
+            return;
+
+        this._activeTextInput.Value = value;
+        this._activeTextInput.Commit(value);
+        this._message = "";
+
+        if (this._interopModule != null && !string.IsNullOrEmpty(this._activeTextInput.InputId))
+        {
+            await this._interopModule.InvokeVoidAsync("setTextInputValueAndSelection", this._activeTextInput.InputId, value, caret, caret);
+        }
     }
 
     /// <summary>

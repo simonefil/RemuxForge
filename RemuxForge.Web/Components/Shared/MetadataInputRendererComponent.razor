@@ -2,7 +2,7 @@
 
 @if (ShouldRenderSelect())
 {
-    <select class="@CssClass" value="@_currentValue" @onchange="CommitChangedValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter">
+    <select id="@_inputId" class="@CssClass" value="@_currentValue" @onchange="CommitChangedValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter">
         @if (EffectiveSchema.AllowsEmpty)
         {
             <option value=""></option>
@@ -17,11 +17,11 @@ else if (ShouldRenderDatalist())
 {
     @if (UseNativeTextEditing())
     {
-        <input class="@CssClass" type="@EffectiveSchema.HtmlInputType" step="@EffectiveSchema.Step" list="@_listId" value="@_currentValue" placeholder="@EffectiveSchema.Placeholder" @onchange="CommitChangedValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" />
+        <input id="@_inputId" class="@CssClass" type="@GetHtmlInputType()" step="@EffectiveSchema.Step" list="@_listId" value="@_currentValue" placeholder="@EffectiveSchema.Placeholder" @onchange="CommitChangedValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" />
     }
     else
     {
-        <input class="@CssClass" type="@EffectiveSchema.HtmlInputType" step="@EffectiveSchema.Step" list="@_listId" value="@_currentValue" placeholder="@EffectiveSchema.Placeholder" @oninput="UpdateLocalValue" @onchange="CommitChangedValue" @onblur="CommitCurrentValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" @onkeydown="HandleKeyDown" />
+        <input id="@_inputId" class="@CssClass" type="@GetHtmlInputType()" step="@EffectiveSchema.Step" list="@_listId" value="@_currentValue" placeholder="@EffectiveSchema.Placeholder" @oninput="UpdateLocalValue" @onchange="CommitChangedValue" @onblur="CommitCurrentValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" @onkeydown="HandleKeyDown" />
     }
     <datalist id="@_listId">
         @foreach (MetadataInputOption option in EffectiveSchema.Options)
@@ -34,11 +34,11 @@ else
 {
     @if (UseNativeTextEditing())
     {
-        <input class="@CssClass" type="@EffectiveSchema.HtmlInputType" step="@EffectiveSchema.Step" value="@_currentValue" placeholder="@EffectiveSchema.Placeholder" @onchange="CommitChangedValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" />
+        <input id="@_inputId" class="@CssClass" type="@GetHtmlInputType()" step="@EffectiveSchema.Step" value="@_currentValue" placeholder="@EffectiveSchema.Placeholder" @onchange="CommitChangedValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" />
     }
     else
     {
-        <input class="@CssClass" type="@EffectiveSchema.HtmlInputType" step="@EffectiveSchema.Step" value="@_currentValue" placeholder="@EffectiveSchema.Placeholder" @oninput="UpdateLocalValue" @onchange="CommitChangedValue" @onblur="CommitCurrentValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" @onkeydown="HandleKeyDown" />
+        <input id="@_inputId" class="@CssClass" type="@GetHtmlInputType()" step="@EffectiveSchema.Step" value="@_currentValue" placeholder="@EffectiveSchema.Placeholder" @oninput="UpdateLocalValue" @onchange="CommitChangedValue" @onblur="CommitCurrentValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" @onkeydown="HandleKeyDown" />
     }
 }
 
@@ -74,6 +74,11 @@ else
     [Parameter] public EventCallback OnFocus { get; set; }
 
     /// <summary>
+    /// Evento attivazione input testuale con identificativo DOM
+    /// </summary>
+    [Parameter] public EventCallback<string> OnTextActivated { get; set; }
+
+    /// <summary>
     /// Evento hover
     /// </summary>
     [Parameter] public EventCallback OnMouseEnter { get; set; }
@@ -87,6 +92,11 @@ else
     /// Identificativo datalist
     /// </summary>
     private readonly string _listId = "metadata-input-" + Guid.NewGuid().ToString("N");
+
+    /// <summary>
+    /// Identificativo DOM stabile dell'input
+    /// </summary>
+    private readonly string _inputId = "metadata-text-input-" + Guid.NewGuid().ToString("N");
 
     /// <summary>
     /// Valore locale digitato senza notificare il parent a ogni tasto
@@ -149,6 +159,15 @@ else
     }
 
     /// <summary>
+    /// Restituisce il tipo HTML compatibile con eventuali espressioni
+    /// </summary>
+    /// <returns>Tipo input HTML</returns>
+    private string GetHtmlInputType()
+    {
+        return this.EffectiveSchema.SupportsExpression ? "text" : this.EffectiveSchema.HtmlInputType;
+    }
+
+    /// <summary>
     /// Indica se l'input corrente può usare l'editor testo espanso
     /// </summary>
     /// <returns>Vero se il valore è stringa semplice</returns>
@@ -205,9 +224,11 @@ else
     /// <summary>
     /// Propaga focus
     /// </summary>
-    private Task HandleFocus()
+    private async Task HandleFocus()
     {
-        return this.OnFocus.InvokeAsync();
+        await this.OnFocus.InvokeAsync();
+        if (!this.ShouldRenderSelect())
+            await this.OnTextActivated.InvokeAsync(this._inputId);
     }
 
     /// <summary>

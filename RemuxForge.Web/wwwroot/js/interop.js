@@ -277,6 +277,38 @@ export function copyToClipboard(text) {
     }
 }
 
+// Legge valore e selection di un input testuale senza dipendere dal focus corrente
+export function getTextInputSelection(elementId) {
+    var element = document.getElementById(elementId);
+    if (!element) {
+        return ['', '0', '0'];
+    }
+
+    var value = element.value || '';
+    var start = typeof element.selectionStart === 'number' ? element.selectionStart : value.length;
+    var end = typeof element.selectionEnd === 'number' ? element.selectionEnd : start;
+    return [value, start.toString(), end.toString()];
+}
+
+// Aggiorna un input testuale e ripristina focus e selection dopo l'inserimento
+export function setTextInputValueAndSelection(elementId, value, selectionStart, selectionEnd) {
+    var element = document.getElementById(elementId);
+    if (!element) {
+        return;
+    }
+
+    element.value = value || '';
+    element.focus({ preventScroll: true });
+    if (typeof element.setSelectionRange === 'function') {
+        try {
+            element.setSelectionRange(selectionStart, selectionEnd);
+        }
+        catch {
+            // Alcuni input specializzati espongono il metodo ma non supportano selection
+        }
+    }
+}
+
 // Scroll log alla fine
 export function scrollLogToBottom() {
     var el = document.querySelector('.log-panel .rf-panel-body');

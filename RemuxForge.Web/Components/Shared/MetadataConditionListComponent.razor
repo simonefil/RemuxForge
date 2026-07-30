@@ -27,7 +27,7 @@
                         </div>
                         @NodeActions(Nodes, nodeIndex)
                     </div>
-                    <MetadataConditionListComponent Rule="Rule" Nodes="node.Alternative.Any" Nested="true" AllowAlternative="false" IncludeAdvancedFields="IncludeAdvancedFields" OnFieldActivated="OnFieldActivated" OnHelpChanged="OnHelpChanged" OnTextEditRequested="OnTextEditRequested" />
+                    <MetadataConditionListComponent Rule="Rule" Nodes="node.Alternative.Any" Nested="true" AllowAlternative="false" IncludeAdvancedFields="IncludeAdvancedFields" OnFieldActivated="OnFieldActivated" OnInputActivated="OnInputActivated" OnHelpChanged="OnHelpChanged" OnTextEditRequested="OnTextEditRequested" />
                 }
                 else if (node.NodeType == MkvMetadataRuleConditionNodeType.TrackComparison)
                 {
@@ -105,7 +105,7 @@
                                     {
                                         int valueIndex = j;
                                         <span class="metadata-chip">
-                                            <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" Value="@condition.Values[valueIndex]" ValueChanged="@((string value) => ChangeListValue(condition, valueIndex, value))" CssClass="" OnFocus="@(() => ActivateFieldConditionAsync(condition))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.ListValue, valueIndex))" />
+                                            <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" Value="@condition.Values[valueIndex]" ValueChanged="@((string value) => ChangeListValue(condition, valueIndex, value))" CssClass="" OnFocus="@(() => ActivateFieldConditionAsync(condition))" OnTextActivated="@((string inputId) => ActivateTextInputAsync(condition, MetadataConditionTextTarget.ListValue, valueIndex, inputId))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.ListValue, valueIndex))" />
                                             <button @onclick="() => RemoveListValue(condition, valueIndex)">x</button>
                                         </span>
                                     }
@@ -115,16 +115,16 @@
                             else if (MetadataPresetUiHelper.OperatorNeedsRange(condition.Operator))
                             {
                                 <div class="metadata-range-editor">
-                                    <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" Value="@condition.FromValue" ValueChanged="@((string value) => condition.FromValue = value)" CssClass="form-input" OnFocus="@(() => ActivateFieldConditionAsync(condition))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.FromValue, -1))" />
+                                    <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" Value="@condition.FromValue" ValueChanged="@((string value) => condition.FromValue = value)" CssClass="form-input" OnFocus="@(() => ActivateFieldConditionAsync(condition))" OnTextActivated="@((string inputId) => ActivateTextInputAsync(condition, MetadataConditionTextTarget.FromValue, -1, inputId))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.FromValue, -1))" />
                                     <span>@AppText.T("web.metadata.presetDialog.rangeTo")</span>
-                                    <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" Value="@condition.ToValue" ValueChanged="@((string value) => condition.ToValue = value)" CssClass="form-input" OnFocus="@(() => ActivateFieldConditionAsync(condition))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.ToValue, -1))" />
+                                    <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" Value="@condition.ToValue" ValueChanged="@((string value) => condition.ToValue = value)" CssClass="form-input" OnFocus="@(() => ActivateFieldConditionAsync(condition))" OnTextActivated="@((string inputId) => ActivateTextInputAsync(condition, MetadataConditionTextTarget.ToValue, -1, inputId))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.ToValue, -1))" />
                                     @UnitSelector(condition)
                                 </div>
                             }
                             else
                             {
                                 <div class="metadata-value-editor">
-                                    <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" Value="@condition.Value" ValueChanged="@((string value) => condition.Value = value)" CssClass="form-input" OnFocus="@(() => ActivateFieldConditionAsync(condition))" OnMouseEnter="@(() => SetFieldHelp("conditionValue"))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.Value, -1))" />
+                                    <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" Value="@condition.Value" ValueChanged="@((string value) => condition.Value = value)" CssClass="form-input" OnFocus="@(() => ActivateFieldConditionAsync(condition))" OnTextActivated="@((string inputId) => ActivateTextInputAsync(condition, MetadataConditionTextTarget.Value, -1, inputId))" OnMouseEnter="@(() => SetFieldHelp("conditionValue"))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.Value, -1))" />
                                     @UnitSelector(condition)
                                 </div>
                             }
@@ -184,6 +184,11 @@
     /// Evento attivazione campo condizione per il token browser
     /// </summary>
     [Parameter] public EventCallback<MkvMetadataFieldCondition> OnFieldActivated { get; set; }
+
+    /// <summary>
+    /// Evento attivazione input testuale per il token browser
+    /// </summary>
+    [Parameter] public EventCallback<MetadataTextInputTarget> OnInputActivated { get; set; }
 
     /// <summary>
     /// Evento cambio help contestuale
@@ -516,6 +521,46 @@
     private Task ActivateFieldConditionAsync(MkvMetadataFieldCondition condition)
     {
         return this.OnFieldActivated.InvokeAsync(condition);
+    }
+
+    /// <summary>
+    /// Notifica il target testuale esatto attivato
+    /// </summary>
+    /// <param name="condition">Condizione proprietaria</param>
+    /// <param name="target">Campo valore attivato</param>
+    /// <param name="index">Indice valore lista</param>
+    /// <param name="inputId">Identificativo DOM input</param>
+    private async Task ActivateTextInputAsync(MkvMetadataFieldCondition condition, MetadataConditionTextTarget target, int index, string inputId)
+    {
+        MetadataTextInputTarget inputTarget = new MetadataTextInputTarget();
+        inputTarget.InputId = inputId;
+
+        if (target == MetadataConditionTextTarget.FromValue)
+        {
+            inputTarget.Value = condition.FromValue;
+            inputTarget.Commit = value => condition.FromValue = value;
+        }
+        else if (target == MetadataConditionTextTarget.ToValue)
+        {
+            inputTarget.Value = condition.ToValue;
+            inputTarget.Commit = value => condition.ToValue = value;
+        }
+        else if (target == MetadataConditionTextTarget.ListValue && index >= 0 && index < condition.Values.Count)
+        {
+            inputTarget.Value = condition.Values[index];
+            inputTarget.Commit = value =>
+            {
+                if (index >= 0 && index < condition.Values.Count)
+                    condition.Values[index] = value;
+            };
+        }
+        else
+        {
+            inputTarget.Value = condition.Value;
+            inputTarget.Commit = value => condition.Value = value;
+        }
+
+        await this.OnInputActivated.InvokeAsync(inputTarget);
     }
 
     /// <summary>
