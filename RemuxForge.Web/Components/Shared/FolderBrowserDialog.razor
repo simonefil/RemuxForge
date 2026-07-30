@@ -33,17 +33,17 @@
                 <table class="browse-table" divide-="none">
                     <thead>
                         <tr>
-                            <th class="browse-col-name" @onclick="ToggleSort">@AppText.T("web.folder.filename") @(_sortAsc ? "(▲)" : "(▼)")</th>
-                            <th class="browse-col-size">@AppText.T("web.folder.size")</th>
-                            <th class="browse-col-date">@AppText.T("web.folder.modified")</th>
-                            <th class="browse-col-type">@AppText.T("web.folder.type")</th>
+                            <th class="browse-col-name" @onclick="() => ToggleSort(BrowserSortColumn.Name)">@AppText.T("web.folder.filename") @GetSortIndicator(BrowserSortColumn.Name)</th>
+                            <th class="browse-col-size" @onclick="() => ToggleSort(BrowserSortColumn.Size)">@AppText.T("web.folder.size") @GetSortIndicator(BrowserSortColumn.Size)</th>
+                            <th class="browse-col-date" @onclick="() => ToggleSort(BrowserSortColumn.Modified)">@AppText.T("web.folder.modified") @GetSortIndicator(BrowserSortColumn.Modified)</th>
+                            <th class="browse-col-type" @onclick="() => ToggleSort(BrowserSortColumn.Type)">@AppText.T("web.folder.type") @GetSortIndicator(BrowserSortColumn.Type)</th>
                         </tr>
                     </thead>
                     <tbody>
                         @* Cartella parent *@
-                        @if (!string.IsNullOrEmpty(_parentPath))
+                        @if (!string.IsNullOrEmpty(_parentPath) || _canNavigateToDriveRoots)
                         {
-                            <tr class="browse-row" @ondblclick="() => NavigateTo(_parentPath)">
+                            <tr class="browse-row" @ondblclick="NavigateToParent">
                                 <td class="browse-col-name">..</td>
                                 <td class="browse-col-size"></td>
                                 <td class="browse-col-date"></td>
@@ -90,7 +90,19 @@
         </div>
         <div class="dialog-footer">
             <button @onclick="OnClose">@AppText.T("web.common.cancel")</button>
-            <button @onclick="Confirm">@GetConfirmLabel()</button>
+            @if (this.ShowFiles && this.AllowCurrentFolderSelection)
+            {
+                <button @onclick="ConfirmFolder" disabled="@_showingDriveRoots">@AppText.T("web.folder.selectFolderButton")</button>
+                <button @onclick="ConfirmFile" disabled="@(!CanSelectFile())">@AppText.T("web.folder.selectFileButton")</button>
+            }
+            else if (this.ShowFiles)
+            {
+                <button @onclick="ConfirmFile" disabled="@(!CanSelectFile())">@AppText.T("web.folder.selectFileButton")</button>
+            }
+            else
+            {
+                <button @onclick="ConfirmFolder" disabled="@_showingDriveRoots">@AppText.T("web.folder.selectFolderButton")</button>
+            }
         </div>
     </div>
 </div>
@@ -120,6 +132,11 @@
     /// Se true permette di confermare la cartella corrente
     /// </summary>
     [Parameter] public bool AllowCurrentFolderSelection { get; set; } = true;
+
+    /// <summary>
+    /// Estensioni file ammesse senza punto; null per mostrare tutti i file
+    /// </summary>
+    [Parameter] public List<string> AllowedExtensions { get; set; }
 
     #region Variabili di classe
 
@@ -169,6 +186,21 @@
     private bool _sortAsc = true;
 
     /// <summary>
+    /// Colonna di ordinamento corrente
+    /// </summary>
+    private BrowserSortColumn _sortColumn = BrowserSortColumn.Name;
+
+    /// <summary>
+    /// Flag: il browser mostra l'elenco virtuale dei drive Windows
+    /// </summary>
+    private bool _showingDriveRoots;
+
+    /// <summary>
+    /// Flag: dalla cartella corrente è possibile tornare all'elenco drive
+    /// </summary>
+    private bool _canNavigateToDriveRoots;
+
+    /// <summary>
     /// Match autocomplete correnti
     /// </summary>
     private List<string> _autocompleteMatches = new List<string>();
@@ -187,6 +219,21 @@
     /// Flag: directory iniziale già caricata
     /// </summary>
     private bool _loaded;
+
+    #endregion
+
+    #region Enumerazioni
+
+    /// <summary>
+    /// Colonne ordinabili del browser
+    /// </summary>
+    private enum BrowserSortColumn
+    {
+        Name,
+        Size,
+        Modified,
+        Type
+    }
 
     #endregion
 
@@ -213,9 +260,19 @@
         public string SizeText = "";
 
         /// <summary>
+        /// Dimensione file in byte
+        /// </summary>
+        public long SizeBytes;
+
+        /// <summary>
         /// Data modifica formattata
         /// </summary>
         public string ModifiedText = "";
+
+        /// <summary>
+        /// Data ultima modifica
+        /// </summary>
+        public DateTime LastModified;
 
         /// <summary>
         /// Tipo entry
@@ -253,16 +310,26 @@
             {
                 // Percorso file: usa la cartella parent
                 string dir = System.IO.Path.GetDirectoryName(this.InitialPath);
-                this._currentPath = !string.IsNullOrEmpty(dir) ? dir : this.GetDefaultRoot();
+                if (!string.IsNullOrEmpty(dir))
+                {
+                    this._currentPath = dir;
+                }
+                else
+                {
+                    this.LoadDefaultRoot();
+                    return;
+                }
             }
             else
             {
-                this._currentPath = this.GetDefaultRoot();
+                this.LoadDefaultRoot();
+                return;
             }
         }
         else
         {
-            this._currentPath = this.GetDefaultRoot();
+            this.LoadDefaultRoot();
+            return;
         }
 
         this._editPath = this._currentPath;
@@ -297,6 +364,8 @@
 
             this._currentPath = dirInfo.FullName;
             this._editPath = this._currentPath;
+            this._showingDriveRoots = false;
+            this._canNavigateToDriveRoots = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows) && dirInfo.Parent == null;
 
             // Percorso parent
             if (dirInfo.Parent != null)
@@ -324,6 +393,7 @@
                 entry.FullPath = subDirs[i].FullName;
                 entry.SizeText = "";
                 entry.ModifiedText = subDirs[i].LastWriteTime.ToString("yyyy-MM-ddTHH:mm:ss");
+                entry.LastModified = subDirs[i].LastWriteTime;
                 entry.TypeText = AppText.T("web.folder.directory");
                 entry.IsDirectory = true;
 
@@ -342,11 +412,16 @@
                     if ((files[i].Attributes & System.IO.FileAttributes.System) != 0)
                         continue;
 
+                    if (!this.IsAllowedFile(files[i]))
+                        continue;
+
                     DirEntry fileEntry = new DirEntry();
                     fileEntry.Name = files[i].Name;
                     fileEntry.FullPath = files[i].FullName;
                     fileEntry.SizeText = FormatFileSize(files[i].Length);
+                    fileEntry.SizeBytes = files[i].Length;
                     fileEntry.ModifiedText = files[i].LastWriteTime.ToString("yyyy-MM-ddTHH:mm:ss");
+                    fileEntry.LastModified = files[i].LastWriteTime;
                     fileEntry.TypeText = !string.IsNullOrEmpty(files[i].Extension) ? files[i].Extension : AppText.T("web.folder.fileType");
                     fileEntry.IsDirectory = false;
 
@@ -375,6 +450,21 @@
     private void NavigateTo(string path)
     {
         this.LoadDirectory(path);
+    }
+
+    /// <summary>
+    /// Naviga alla cartella parent o all'elenco drive Windows
+    /// </summary>
+    private void NavigateToParent()
+    {
+        if (!string.IsNullOrEmpty(this._parentPath))
+        {
+            this.LoadDirectory(this._parentPath);
+        }
+        else if (this._canNavigateToDriveRoots)
+        {
+            this.LoadDriveRoots();
+        }
     }
 
     /// <summary>
@@ -409,22 +499,36 @@
     /// <summary>
     /// Conferma selezione e notifica il parent
     /// </summary>
-    private void Confirm()
+    private void ConfirmFile()
     {
-        if (this.ShowFiles && _selectedIndex >= 0 && _selectedIndex < _entries.Count && !_entries[_selectedIndex].IsDirectory)
+        if (this.CanSelectFile())
         {
-            // Modalità file: restituisci il file selezionato
             this.OnSelect.InvokeAsync(_entries[_selectedIndex].FullPath);
-        }
-        else if (!this.ShowFiles || this.AllowCurrentFolderSelection)
-        {
-            // Modalità cartella: restituisci la cartella corrente
-            this.OnSelect.InvokeAsync(_currentPath);
         }
         else
         {
             _errorMessage = AppText.T("web.folder.selectFileError");
         }
+    }
+
+    /// <summary>
+    /// Conferma la cartella corrente
+    /// </summary>
+    private void ConfirmFolder()
+    {
+        if (!this._showingDriveRoots && (!this.ShowFiles || this.AllowCurrentFolderSelection))
+        {
+            this.OnSelect.InvokeAsync(this._currentPath);
+        }
+    }
+
+    /// <summary>
+    /// Verifica se è selezionato un file confermabile
+    /// </summary>
+    /// <returns>True se la selezione corrente è un file</returns>
+    private bool CanSelectFile()
+    {
+        return this.ShowFiles && this._selectedIndex >= 0 && this._selectedIndex < this._entries.Count && !this._entries[this._selectedIndex].IsDirectory;
     }
 
     /// <summary>
@@ -442,48 +546,88 @@
         return AppText.T("web.folder.selectFolderTitle");
     }
 
-    /// <summary>
-    /// Restituisce la label del pulsante di conferma
-    /// </summary>
-    /// <returns>Label pulsante</returns>
-    private string GetConfirmLabel()
-    {
-        if (this.ShowFiles && this.AllowCurrentFolderSelection)
-            return AppText.T("web.folder.selectFileOrFolderButton");
-
-        if (this.ShowFiles)
-            return AppText.T("web.folder.selectFileButton");
-
-        return AppText.T("web.folder.selectFolderButton");
-    }
-
     #endregion
 
     #region Ordinamento e filtro
 
     /// <summary>
-    /// Ordina le entries per nome
+    /// Ordina le entries secondo la colonna corrente
     /// </summary>
     private void SortEntries()
     {
-        if (_sortAsc)
-        {
-            _allEntries.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
-        }
-        else
-        {
-            _allEntries.Sort((a, b) => string.Compare(b.Name, a.Name, StringComparison.OrdinalIgnoreCase));
-        }
+        this._allEntries.Sort(this.CompareEntries);
     }
 
     /// <summary>
-    /// Inverte ordinamento
+    /// Imposta o inverte l'ordinamento della colonna selezionata
     /// </summary>
-    private void ToggleSort()
+    /// <param name="column">Colonna selezionata</param>
+    private void ToggleSort(BrowserSortColumn column)
     {
-        _sortAsc = !_sortAsc;
+        if (this._sortColumn == column)
+        {
+            this._sortAsc = !this._sortAsc;
+        }
+        else
+        {
+            this._sortColumn = column;
+            this._sortAsc = true;
+        }
+
         this.SortEntries();
         this.ApplyFilterInternal();
+    }
+
+    /// <summary>
+    /// Restituisce l'indicatore della colonna ordinata
+    /// </summary>
+    /// <param name="column">Colonna</param>
+    /// <returns>Indicatore corrente o stringa vuota</returns>
+    private string GetSortIndicator(BrowserSortColumn column)
+    {
+        if (this._sortColumn != column)
+            return "";
+
+        return this._sortAsc ? "(▲)" : "(▼)";
+    }
+
+    /// <summary>
+    /// Confronta due entries secondo l'ordinamento corrente
+    /// </summary>
+    /// <param name="left">Prima entry</param>
+    /// <param name="right">Seconda entry</param>
+    /// <returns>Risultato confronto</returns>
+    private int CompareEntries(DirEntry left, DirEntry right)
+    {
+        int result;
+        int direction = this._sortAsc ? 1 : -1;
+
+        if (this._sortColumn == BrowserSortColumn.Type)
+        {
+            result = right.IsDirectory.CompareTo(left.IsDirectory) * direction;
+            if (result != 0)
+                return result;
+
+            return string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase) * direction;
+        }
+
+        if (this._sortColumn == BrowserSortColumn.Size)
+        {
+            result = left.SizeBytes.CompareTo(right.SizeBytes) * direction;
+        }
+        else if (this._sortColumn == BrowserSortColumn.Modified)
+        {
+            result = left.LastModified.CompareTo(right.LastModified) * direction;
+        }
+        else
+        {
+            result = string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase) * direction;
+        }
+
+        if (result == 0 && this._sortColumn != BrowserSortColumn.Name)
+            result = string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase);
+
+        return result;
     }
 
     /// <summary>
@@ -711,6 +855,78 @@
     #region Utility
 
     /// <summary>
+    /// Carica la vista iniziale appropriata al sistema operativo
+    /// </summary>
+    private void LoadDefaultRoot()
+    {
+        if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+        {
+            this.LoadDriveRoots();
+        }
+        else
+        {
+            this._currentPath = "/";
+            this._editPath = this._currentPath;
+            this.LoadDirectory(this._currentPath);
+        }
+    }
+
+    /// <summary>
+    /// Carica l'elenco dei drive Windows disponibili
+    /// </summary>
+    private void LoadDriveRoots()
+    {
+        this._errorMessage = "";
+        this._selectedIndex = -1;
+        this._filterText = "";
+        this._parentPath = "";
+        this._currentPath = "";
+        this._editPath = AppText.T("web.folder.computer");
+        this._showingDriveRoots = true;
+        this._canNavigateToDriveRoots = false;
+        this._allEntries.Clear();
+        this._entries.Clear();
+
+        System.IO.DriveInfo[] drives = System.IO.DriveInfo.GetDrives();
+        for (int i = 0; i < drives.Length; i++)
+        {
+            if (!drives[i].IsReady)
+                continue;
+
+            DirEntry entry = new DirEntry();
+            entry.Name = drives[i].Name;
+            entry.FullPath = drives[i].RootDirectory.FullName;
+            entry.TypeText = AppText.T("web.folder.drive");
+            entry.IsDirectory = true;
+            this._allEntries.Add(entry);
+        }
+
+        this.SortEntries();
+        this._entries = new List<DirEntry>(this._allEntries);
+    }
+
+    /// <summary>
+    /// Verifica se un file rispetta il filtro estensioni
+    /// </summary>
+    /// <param name="file">File da verificare</param>
+    /// <returns>True se il file è ammesso</returns>
+    private bool IsAllowedFile(System.IO.FileInfo file)
+    {
+        if (this.AllowedExtensions == null)
+            return true;
+
+        string extension = file.Extension.TrimStart('.');
+        for (int i = 0; i < this.AllowedExtensions.Count; i++)
+        {
+            string allowed = this.AllowedExtensions[i] != null ? this.AllowedExtensions[i].Trim().TrimStart('.') : "";
+            if (!string.IsNullOrEmpty(allowed) && string.Equals(extension, allowed, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Formatta dimensione file in formato leggibile
     /// </summary>
     /// <param name="bytes">Dimensione in byte</param>
@@ -734,22 +950,6 @@
         else
         {
             result = bytes + " B";
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// Restituisce la root di default del sistema
-    /// </summary>
-    /// <returns>Percorso root</returns>
-    private string GetDefaultRoot()
-    {
-        string result = "/";
-
-        if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
-        {
-            result = @"C:\";
         }
 
         return result;

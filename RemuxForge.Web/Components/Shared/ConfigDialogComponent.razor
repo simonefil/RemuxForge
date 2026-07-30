@@ -192,10 +192,13 @@
 
             @* Matching *@
             <div class="form-section">@AppText.T("web.config.section.matching")</div>
-            <div class="form-row">
-                <span class="form-label">@AppText.T("web.config.label.matchPattern")</span>
-                <input class="form-input" @bind="_matchPattern" @onfocus="@(() => SetFieldHelp("remux.match"))" @onmouseenter="@(() => SetFieldHelp("remux.match"))" />
-            </div>
+            @if (!IsSingleFileSelection())
+            {
+                <div class="form-row">
+                    <span class="form-label">@AppText.T("web.config.label.matchPattern")</span>
+                    <input class="form-input" @bind="_matchPattern" @onfocus="@(() => SetFieldHelp("remux.match"))" @onmouseenter="@(() => SetFieldHelp("remux.match"))" />
+                </div>
+            }
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.extensions")</span>
                 <input class="form-input" @bind="_extensions" @onfocus="@(() => SetFieldHelp("remux.extensions"))" @onmouseenter="@(() => SetFieldHelp("remux.extensions"))" />
@@ -304,6 +307,7 @@
     <FolderBrowserDialog InitialPath="@_browseInitialPath"
                           ShowFiles="@_browseShowFiles"
                           AllowCurrentFolderSelection="@_browseAllowCurrentFolderSelection"
+                          AllowedExtensions="@_browseAllowedExtensions"
                           OnClose="CloseBrowse"
                           OnSelect="ApplyBrowse" />
 }
@@ -372,6 +376,11 @@
     /// Flag: il dialog browse può confermare la cartella corrente
     /// </summary>
     private bool _browseAllowCurrentFolderSelection = true;
+
+    /// <summary>
+    /// Estensioni ammesse dal browser corrente
+    /// </summary>
+    private List<string> _browseAllowedExtensions = new List<string>();
 
     /// <summary>
     /// Indice campo destinazione del browse: 0=source, 1=lingua, 2=dest
@@ -943,6 +952,11 @@
             errors.Add(AppText.T("web.config.validation.normalizationTargetInvalid"));
         }
 
+        if (IsMixedSingleFileSelection())
+        {
+            errors.Add(AppText.T("web.config.validation.singleFilePairRequired"));
+        }
+
         if (errors.Count > 0)
         {
             _validationError = string.Join("\n", errors);
@@ -1073,7 +1087,9 @@
     private void BrowseFolder(int fieldIndex)
     {
         _browseFieldIndex = fieldIndex;
-        _browseShowFiles = false;
+        _browseShowFiles = fieldIndex == 0 || fieldIndex == 1;
+        _browseAllowCurrentFolderSelection = true;
+        _browseAllowedExtensions = _browseShowFiles ? GetConfiguredExtensions() : new List<string>();
 
         // Determina percorso iniziale dal campo corrente
         if (fieldIndex == 0)
@@ -1096,6 +1112,7 @@
         _browseFieldIndex = fieldIndex;
         _browseShowFiles = showFiles;
         _browseAllowCurrentFolderSelection = allowCurrentFolderSelection;
+        _browseAllowedExtensions = showFiles ? GetConfiguredExtensions() : new List<string>();
 
         if (fieldIndex == 10)
             _browseInitialPath = _splitSource;
@@ -1139,6 +1156,51 @@
             _splitOutputDir = selectedPath;
         else if (_browseFieldIndex == 12)
             _splitSourceRaw = selectedPath;
+    }
+
+    /// <summary>
+    /// Verifica se almeno uno dei due input Remux è un file
+    /// </summary>
+    /// <returns>True se è attiva una selezione file singolo</returns>
+    private bool IsSingleFileSelection()
+    {
+        return System.IO.File.Exists(_sourceFolder) || System.IO.File.Exists(_languageFolder);
+    }
+
+    /// <summary>
+    /// Verifica se Source e Language combinano file e cartella
+    /// </summary>
+    /// <returns>True se la combinazione non è valida</returns>
+    private bool IsMixedSingleFileSelection()
+    {
+        bool sourceIsFile = System.IO.File.Exists(_sourceFolder);
+        bool languageIsFile = System.IO.File.Exists(_languageFolder);
+        bool languageIsFolder = System.IO.Directory.Exists(_languageFolder);
+        bool needsMerge = !string.IsNullOrEmpty(_targetLang.Trim());
+
+        if (sourceIsFile)
+            return needsMerge ? !languageIsFile : languageIsFile || languageIsFolder;
+
+        return languageIsFile;
+    }
+
+    /// <summary>
+    /// Parsa le estensioni configurate per il filtro del browser
+    /// </summary>
+    /// <returns>Lista estensioni senza punto</returns>
+    private List<string> GetConfiguredExtensions()
+    {
+        List<string> result = new List<string>();
+        string[] parts = _extensions.Split(',');
+
+        for (int i = 0; i < parts.Length; i++)
+        {
+            string extension = parts[i].Trim().TrimStart('.');
+            if (!string.IsNullOrEmpty(extension))
+                result.Add(extension);
+        }
+
+        return result;
     }
 
     /// <summary>

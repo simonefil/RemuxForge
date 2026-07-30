@@ -126,6 +126,11 @@ namespace RemuxForge.Web.Components.Pages
         private bool _metadataBrowseAllowCurrentFolderSelection;
 
         /// <summary>
+        /// Estensioni ammesse dal browser metadata
+        /// </summary>
+        private List<string> _metadataBrowseAllowedExtensions = new List<string> { "mkv" };
+
+        /// <summary>
         /// Flag: mostra dettaglio metadata mappato
         /// </summary>
         private bool _showMetadataMappedInfo;

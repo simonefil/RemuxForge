@@ -202,7 +202,7 @@ namespace RemuxForge.Core.Pipeline
             this._needsEncode = !string.IsNullOrEmpty(this._opts.EncodingProfileName);
 
             // Modalità singola sorgente per merge
-            if (this._needsMerge && string.IsNullOrEmpty(this._opts.LanguageFolder) && !string.IsNullOrEmpty(this._opts.SourceFolder))
+            if (this._needsMerge && string.IsNullOrEmpty(this._opts.LanguageFolder) && Directory.Exists(this._opts.SourceFolder))
             {
                 this._opts.LanguageFolder = this._opts.SourceFolder;
             }

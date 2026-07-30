@@ -56,32 +56,40 @@ namespace RemuxForge.Core.Pipeline
             Dictionary<string, string> languageIndex = new Dictionary<string, string>();
             string extList = string.Join(", ", options.FileExtensions);
             List<string> sourceFiles = this.FindVideoFiles(options.SourceFolder, options.FileExtensions, options.Recursive);
+            bool singleFileMode = File.Exists(options.SourceFolder);
 
             this._log(LogSection.General, LogLevel.Success, "Trovati " + sourceFiles.Count + " file sorgente (" + extList + ")");
 
             if (needsMerge)
             {
-                this._log(LogSection.General, LogLevel.Info, "Indicizzazione cartella lingua...");
-                List<string> languageFiles = this.FindVideoFiles(options.LanguageFolder, options.FileExtensions, options.Recursive);
-
-                for (int i = 0; i < languageFiles.Count; i++)
+                if (singleFileMode)
                 {
-                    string langFileName = Path.GetFileName(languageFiles[i]);
-                    string langEpisodeId = this.GetEpisodeIdentifier(langFileName, options.MatchPattern);
-                    if (!string.IsNullOrEmpty(langEpisodeId))
-                    {
-                        languageIndex[langEpisodeId] = languageFiles[i];
-                    }
+                    this._log(LogSection.General, LogLevel.Success, "File lingua singolo selezionato");
                 }
+                else
+                {
+                    this._log(LogSection.General, LogLevel.Info, "Indicizzazione cartella lingua...");
+                    List<string> languageFiles = this.FindVideoFiles(options.LanguageFolder, options.FileExtensions, options.Recursive);
 
-                this._log(LogSection.General, LogLevel.Success, "Indicizzati " + languageIndex.Count + " file lingua");
+                    for (int i = 0; i < languageFiles.Count; i++)
+                    {
+                        string langFileName = Path.GetFileName(languageFiles[i]);
+                        string langEpisodeId = this.GetEpisodeIdentifier(langFileName, options.MatchPattern);
+                        if (!string.IsNullOrEmpty(langEpisodeId))
+                        {
+                            languageIndex[langEpisodeId] = languageFiles[i];
+                        }
+                    }
+
+                    this._log(LogSection.General, LogLevel.Success, "Indicizzati " + languageIndex.Count + " file lingua");
+                }
             }
 
             for (int i = 0; i < sourceFiles.Count; i++)
             {
                 string sourceFilePath = sourceFiles[i];
                 string sourceFileName = Path.GetFileName(sourceFilePath);
-                string episodeId = this.GetEpisodeIdentifier(sourceFileName, options.MatchPattern);
+                string episodeId = singleFileMode ? sourceFileName : this.GetEpisodeIdentifier(sourceFileName, options.MatchPattern);
                 FileProcessingRecord record = new FileProcessingRecord();
                 record.SourceFileName = sourceFileName;
                 record.SourceFilePath = sourceFilePath;
@@ -91,30 +99,40 @@ namespace RemuxForge.Core.Pipeline
 
                 if (needsMerge)
                 {
-                    if (string.IsNullOrEmpty(episodeId))
+                    if (singleFileMode)
+                    {
+                        string languageFilePath = options.LanguageFolder;
+                        record.EpisodeId = episodeId;
+                        record.LangFileName = Path.GetFileName(languageFilePath);
+                        record.LangFilePath = languageFilePath;
+
+                        FileInfo langFileInfo = new FileInfo(languageFilePath);
+                        record.LangSize = langFileInfo.Length;
+                    }
+                    else if (string.IsNullOrEmpty(episodeId))
                     {
                         record.SkipReason = "No episode ID";
                         record.Status = FileStatus.Skipped;
                         records.Add(record);
                         continue;
                     }
-
-                    record.EpisodeId = episodeId;
-
-                    if (!languageIndex.ContainsKey(episodeId))
+                    else if (!languageIndex.ContainsKey(episodeId))
                     {
                         record.SkipReason = "No match";
                         record.Status = FileStatus.Skipped;
                         records.Add(record);
                         continue;
                     }
+                    else
+                    {
+                        record.EpisodeId = episodeId;
+                        string languageFilePath = languageIndex[episodeId];
+                        record.LangFileName = Path.GetFileName(languageFilePath);
+                        record.LangFilePath = languageFilePath;
 
-                    string languageFilePath = languageIndex[episodeId];
-                    record.LangFileName = Path.GetFileName(languageFilePath);
-                    record.LangFilePath = languageFilePath;
-
-                    FileInfo langFileInfo = new FileInfo(languageFilePath);
-                    record.LangSize = langFileInfo.Length;
+                        FileInfo langFileInfo = new FileInfo(languageFilePath);
+                        record.LangSize = langFileInfo.Length;
+                    }
                 }
                 else
                 {
@@ -177,6 +195,22 @@ namespace RemuxForge.Core.Pipeline
         private List<string> FindVideoFiles(string folder, List<string> extensions, bool recursive)
         {
             List<string> files = new List<string>();
+
+            if (File.Exists(folder))
+            {
+                string fileExtension = Path.GetExtension(folder).TrimStart('.');
+                for (int e = 0; e < extensions.Count; e++)
+                {
+                    if (string.Equals(fileExtension, extensions[e].Trim().TrimStart('.'), System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        files.Add(folder);
+                        break;
+                    }
+                }
+
+                return files;
+            }
+
             SearchOption searchOption = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
 
             for (int e = 0; e < extensions.Count; e++)

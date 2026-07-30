@@ -46,7 +46,7 @@ namespace RemuxForge.Core.Pipeline
             else
             {
                 normalizedSource = this.NormalizePath(sourceFilePath);
-                normalizedFolder = this.NormalizePath(options.SourceFolder);
+                normalizedFolder = this.ResolveSourceBaseFolder(options.SourceFolder);
                 relativePath = normalizedSource.Substring(normalizedFolder.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
                 finalOutput = Path.Combine(options.DestinationFolder, relativePath);
                 tempOutput = finalOutput;
@@ -82,7 +82,7 @@ namespace RemuxForge.Core.Pipeline
             else
             {
                 normalizedSource = this.NormalizePath(sourceFilePath);
-                normalizedFolder = this.NormalizePath(options.SourceFolder);
+                normalizedFolder = this.ResolveSourceBaseFolder(options.SourceFolder);
                 relativePath = normalizedSource.Substring(normalizedFolder.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
                 finalOutput = Path.Combine(options.DestinationFolder, relativePath);
             }
@@ -229,6 +229,26 @@ namespace RemuxForge.Core.Pipeline
         #endregion
 
         #region Metodi privati
+
+        /// <summary>
+        /// Restituisce la cartella base per il calcolo del percorso relativo
+        /// </summary>
+        /// <param name="sourcePath">Percorso source configurato, file o cartella</param>
+        /// <returns>Cartella base normalizzata</returns>
+        private string ResolveSourceBaseFolder(string sourcePath)
+        {
+            string result = sourcePath;
+            if (File.Exists(sourcePath))
+            {
+                result = Path.GetDirectoryName(sourcePath);
+                if (string.IsNullOrEmpty(result))
+                {
+                    result = Directory.GetCurrentDirectory();
+                }
+            }
+
+            return this.NormalizePath(result);
+        }
 
         /// <summary>
         /// Normalizza un percorso destinazione in formato assoluto senza separatori finali

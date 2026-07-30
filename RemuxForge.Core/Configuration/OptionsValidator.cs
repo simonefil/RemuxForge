@@ -77,7 +77,8 @@ namespace RemuxForge.Core.Configuration
             ValidateAudioProcessing(options, result);
             ValidateAudioSourceFill(options, needsMerge, result);
             ValidateAnalysisCrop(options, result);
-            ValidateRegex(options.MatchPattern, result);
+            if (!File.Exists(options.SourceFolder))
+                ValidateRegex(options.MatchPattern, result);
             ValidateExtensions(options, result);
             ValidateLanguages(options, needsMerge, result);
             ValidateCodecs(options, result);
@@ -447,20 +448,68 @@ namespace RemuxForge.Core.Configuration
         /// <param name="result">Risultato validazione da aggiornare</param>
         private static void ValidateFolders(Options options, bool requireSourceFolder, bool validateFolderExists, bool needsMerge, OptionsValidationResult result)
         {
+            bool sourceIsFile = !string.IsNullOrEmpty(options.SourceFolder) && File.Exists(options.SourceFolder);
+            bool sourceIsFolder = !string.IsNullOrEmpty(options.SourceFolder) && Directory.Exists(options.SourceFolder);
+            bool languageIsFile = !string.IsNullOrEmpty(options.LanguageFolder) && File.Exists(options.LanguageFolder);
+            bool languageIsFolder = !string.IsNullOrEmpty(options.LanguageFolder) && Directory.Exists(options.LanguageFolder);
+
             if (requireSourceFolder && string.IsNullOrEmpty(options.SourceFolder))
             {
                 result.AddError(AppText.T("validation.sourceRequired"));
             }
 
-            if (validateFolderExists && !string.IsNullOrEmpty(options.SourceFolder) && !Directory.Exists(options.SourceFolder))
+            if (sourceIsFile)
             {
-                result.AddError(AppText.F("validation.sourceFolderNotFound", options.SourceFolder));
+                if ((needsMerge && !languageIsFile) || (!needsMerge && !string.IsNullOrEmpty(options.LanguageFolder)))
+                {
+                    result.AddError(AppText.T("validation.singleFilePairRequired"));
+                }
+
+                if (!IsAllowedFileExtension(options.SourceFolder, options.FileExtensions))
+                {
+                    result.AddError(AppText.F("validation.fileExtensionNotAllowed", options.SourceFolder));
+                }
+
+                if (languageIsFile && !IsAllowedFileExtension(options.LanguageFolder, options.FileExtensions))
+                {
+                    result.AddError(AppText.F("validation.fileExtensionNotAllowed", options.LanguageFolder));
+                }
+            }
+            else
+            {
+                if (languageIsFile)
+                {
+                    result.AddError(AppText.T("validation.singleFilePairRequired"));
+                }
+
+                if (validateFolderExists && !string.IsNullOrEmpty(options.SourceFolder) && !sourceIsFolder)
+                {
+                    result.AddError(AppText.F("validation.sourceFolderNotFound", options.SourceFolder));
+                }
+
+                if (validateFolderExists && needsMerge && !string.IsNullOrEmpty(options.LanguageFolder) && !languageIsFolder && !languageIsFile)
+                {
+                    result.AddError(AppText.F("validation.languageFolderNotFound", options.LanguageFolder));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Verifica se il file usa una delle estensioni configurate
+        /// </summary>
+        /// <param name="filePath">Percorso file</param>
+        /// <param name="extensions">Estensioni ammesse</param>
+        /// <returns>True se l'estensione è ammessa</returns>
+        private static bool IsAllowedFileExtension(string filePath, List<string> extensions)
+        {
+            string fileExtension = Path.GetExtension(filePath).TrimStart('.');
+            for (int i = 0; i < extensions.Count; i++)
+            {
+                if (string.Equals(fileExtension, extensions[i].Trim().TrimStart('.'), StringComparison.OrdinalIgnoreCase))
+                    return true;
             }
 
-            if (validateFolderExists && needsMerge && !string.IsNullOrEmpty(options.LanguageFolder) && !Directory.Exists(options.LanguageFolder))
-            {
-                result.AddError(AppText.F("validation.languageFolderNotFound", options.LanguageFolder));
-            }
+            return false;
         }
 
         /// <summary>
