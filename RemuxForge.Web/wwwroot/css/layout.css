@@ -406,6 +406,51 @@ textarea {
     line-height: 1lh;
 }
 
+.split-detail-section {
+    margin-top: 1lh;
+}
+
+.split-detail-content {
+    white-space: normal;
+    word-break: normal;
+}
+
+.split-detail-section-title {
+    color: var(--foreground0);
+    font-weight: bold;
+    margin-bottom: 0.5lh;
+}
+
+.split-segment-card {
+    border-top: 1px solid var(--foreground2);
+    padding: 0.5lh 0;
+}
+
+.split-segment-title {
+    color: var(--foreground0);
+    font-weight: bold;
+    margin-bottom: 0.25lh;
+}
+
+.split-detail-line {
+    display: grid;
+    grid-template-columns: 10ch minmax(0, 1fr);
+    gap: 1ch;
+    min-width: 0;
+}
+
+.split-detail-line .detail-label {
+    width: auto;
+    min-width: 0;
+    color: var(--foreground1);
+    white-space: nowrap;
+}
+
+.split-detail-value {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
 /* ============================================================
    Dialog overlay and dialog box (Bivium pattern)
    ============================================================ */

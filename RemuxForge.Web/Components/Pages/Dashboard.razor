@@ -186,18 +186,64 @@
             </div>
             <div class="rf-panel">
                 <div class="rf-panel-title">@AppText.T("web.dashboard.fileDetail")</div>
-                <div class="rf-panel-body detail-content">
+                <div class="rf-panel-body detail-content split-detail-content">
                     @if (_selectedSplitRecord == null)
                     {
                         <div class="empty-detail">@AppText.T("web.dashboard.noFileSelected")</div>
                     }
                     else
                     {
-                        <div><span class="detail-label">@AppText.T("web.dashboard.fileLabel")</span> @_selectedSplitRecord.InputFile</div>
-                        <div><span class="detail-label">@AppText.T("web.dashboard.statusLabel")</span> @_selectedSplitRecord.Status</div>
+                        <div class="split-detail-line">
+                            <span class="detail-label">@AppText.T("web.dashboard.fileLabel")</span>
+                            <span class="split-detail-value">@_selectedSplitRecord.InputFile</span>
+                        </div>
+                        <div class="split-detail-line">
+                            <span class="detail-label">@AppText.T("web.dashboard.statusLabel")</span>
+                            <span class="split-detail-value">@_selectedSplitRecord.Status</span>
+                        </div>
                         @if (!string.IsNullOrEmpty(_selectedSplitRecord.ErrorMessage))
                         {
-                            <div><span class="detail-label">@AppText.T("web.dashboard.errorLabel")</span> @_selectedSplitRecord.ErrorMessage</div>
+                            <div class="split-detail-line">
+                                <span class="detail-label">@AppText.T("web.dashboard.errorLabel")</span>
+                                <span class="split-detail-value">@_selectedSplitRecord.ErrorMessage</span>
+                            </div>
+                        }
+                        @if (_selectedSplitRecord.Segments.Count > 0)
+                        {
+                            <div class="split-detail-section">
+                                <div class="split-detail-section-title">@AppText.F("web.split.detail.segments", _selectedSplitRecord.Segments.Count)</div>
+                                @foreach (MkvSplitSegment segment in _selectedSplitRecord.Segments)
+                                {
+                                    double duration = Math.Max(0.0, segment.EndTs - segment.StartTs);
+                                    <div class="split-segment-card">
+                                        <div class="split-segment-title">@AppText.F("web.split.detail.segment", segment.Num)</div>
+                                        <div class="split-detail-line">
+                                            <span class="detail-label">@AppText.T("web.split.detail.output"):</span>
+                                            <span class="split-detail-value">@segment.File</span>
+                                        </div>
+                                        <div class="split-detail-line">
+                                            <span class="detail-label">@AppText.T("web.split.detail.start"):</span>
+                                            <span class="split-detail-value">@RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(segment.StartTs)</span>
+                                        </div>
+                                        <div class="split-detail-line">
+                                            <span class="detail-label">@AppText.T("web.split.detail.end"):</span>
+                                            <span class="split-detail-value">@RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(segment.EndTs)</span>
+                                        </div>
+                                        <div class="split-detail-line">
+                                            <span class="detail-label">@AppText.T("web.split.detail.duration"):</span>
+                                            <span class="split-detail-value">@RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(duration)</span>
+                                        </div>
+                                        <div class="split-detail-line">
+                                            <span class="detail-label">@AppText.T("web.split.detail.chapters"):</span>
+                                            <span class="split-detail-value">@segment.Chapters.Count</span>
+                                        </div>
+                                        <div class="split-detail-line">
+                                            <span class="detail-label">@AppText.T("web.split.detail.frames"):</span>
+                                            <span class="split-detail-value">@segment.FrameCount</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
                         }
                     }
                 </div>
