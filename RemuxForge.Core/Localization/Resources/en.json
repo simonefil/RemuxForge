@@ -35,10 +35,10 @@
     "REMUX - SYNC:",
     "  -fs,  --framesync              Visual frame comparison for constant delay",
     "        --framesync-diagnostics  Write frame-sync JSON diagnostics",
-    "  -da,  --deep-analysis          Full analysis for files with different edits",
+    "  -da,  --deep-analysis          Full analysis; imported audio requires format and lang/all scope",
     "        --deep-analysis-diagnostics",
     "                                 Write Deep Analysis JSON diagnostics",
-    "        --speed-correction <m>   Speed correction: off, auto, manual",
+    "        --speed-correction <m>   off, auto, manual; materializes audio stretch with FFmpeg",
     "        --stretch-factor <f>     Manual stretch factor, e.g. 25025/24000",
     "        --analysis-crop-source-px <L:R:T:B>",
     "        --analysis-crop-lang-px <L:R:T:B>",
@@ -58,8 +58,8 @@
     "  -m,   --match-pattern <regex>  Episode matching regex. Default: S(\\d+)E(\\d+)",
     "",
     "REMUX - AUDIO:",
-    "        --audio-format <fmt>     flac, lpcm, aac, opus, ac3",
-    "        --audio-scope <scope>    disabled, lang, all",
+    "        --audio-format <fmt>     flac, lpcm, aac, opus, ac3; required for Speed/Deep audio",
+    "        --audio-scope <scope>    disabled, lang, all; Speed/Deep require lang or all",
     "        --audio-24-to-16         Convert 24-bit to 16-bit for FLAC/LPCM",
     "        --audio-peak-normalize   Global multichannel peak normalization",
     "        --audio-peak-target-db   Peak target in dB",
@@ -182,6 +182,9 @@
   "validation.sourceFillInsertSilenceNeedsDeep": "audio-source-fill mode insert-silence requires --deep-analysis",
   "validation.audioScopeRequiresFormat": "audio-scope requires audio-format",
   "validation.audioFormatRequiredWithScope": "audio-format is required when audio-scope is not disabled",
+  "validation.speedNeedsAudioFormat": "Speed Correction requires an audio format when Language audio tracks are imported",
+  "validation.deepNeedsAudioFormat": "DeepAnalysis requires an audio format when Language audio tracks are imported",
+  "validation.timelineAudioNeedsLangScope": "With Speed Correction or DeepAnalysis the minimum audio scope is Language",
   "validation.audioNormalizeNeedsFormat": "normalization and 24->16 require audio format and active audio scope",
   "validation.audio24To16OnlyFlacLpcm": "24->16 is allowed only for flac and lpcm",
   "validation.audioPeakTargetMaxZero": "audio-peak-target-db must be less than or equal to 0",
@@ -422,6 +425,8 @@
   "web.detail.audioNoRender": "no render",
   "web.detail.audioError": "ERROR: {0}",
   "web.detail.audioDeepEditMap": "deep edit-map",
+  "web.detail.audioTimelinePolicy": "mandatory Speed/Deep conversion",
+  "web.detail.audioStretchMaterialized": "audio stretch materialized: factor {0}, ratio {1}, FFmpeg tempo {2}",
   "web.detail.audioSourceFillNoWork": "source-fill configured, no fill above threshold",
   "web.detail.audioSkipCompatible": "already compatible with configured audio processing",
   "web.detail.audioSkipOutsideScope": "outside generic audio scope",
@@ -646,6 +651,8 @@
   "web.config.validation.audioSourceModeRequired": "Audio source: select at least one mode",
   "web.config.validation.audioSourceFormatRequired": "Audio source: audio format is required",
   "web.config.validation.audioSourceScopeRequired": "Audio source: audio must be Lang or All",
+  "web.config.validation.timelineAudioFormatRequired": "Speed Correction or DeepAnalysis require an audio format when Language tracks are imported",
+  "web.config.validation.timelineAudioScopeRequired": "With Speed Correction or DeepAnalysis the minimum audio scope is Language",
   "web.config.validation.cropSourceInvalid": "Crop source: invalid L:R:T:B format",
   "web.config.validation.cropLangInvalid": "Crop lang: invalid L:R:T:B format",
   "web.config.validation.normalizationTargetInvalid": "Normalization: invalid target dB",
@@ -938,7 +945,7 @@
   "web.config.help.remux.audioOnly.text": "Imports only audio from the language file, ignoring subtitles.",
   "web.config.help.remux.speed.title": "Speed",
   "web.config.help.remux.speed.text": [
-    "Speed correction through temporal stretch, without audio/video re-encoding.",
+    "Speed correction through temporal stretch. Language audio tracks are rendered by FFmpeg in the selected format; video is not re-encoded.",
     "",
     "Auto detects the factor only when CFR metadata is reliable.",
     "Manual applies the value specified in Stretch.",
@@ -963,7 +970,7 @@
   "web.config.help.remux.deep.text": [
     "Full analysis for releases with added/removed scenes. Mutually exclusive with Frame-sync.",
     "",
-    "If it finds only a constant delay, it applies --sync without audio post-processing. If it produces cut/insert operations and you import audio, an Audio format is required to re-encode the affected tracks."
+    "When audio is imported, it requires an Audio format up front and processes every Language track in the batch, even when an episode produces no cut/insert operations."
   ],
   "web.config.help.remux.cropSource.title": "Crop src",
   "web.config.help.remux.cropSource.text": [
@@ -1083,13 +1090,13 @@
   "web.config.help.remux.audioFormat.text": [
     "Final format for processed audio tracks: FLAC, LPCM, AAC, Opus or AC-3.",
     "",
-    "Enables dependent audio options. Required for Audio source fill and for Deep analysis only when the analysis produces operations that modify audio."
+    "Determines the codec of produced audio files. It is required for Audio source fill and when Speed Correction or DeepAnalysis import Language audio."
   ],
   "web.config.help.remux.audioScope.title": "Audio",
   "web.config.help.remux.audioScope.text": [
-    "Chooses which audio tracks to encode in the selected format: Lang or All.",
+    "Language processes every audio track imported from the language file. All extends the same processing to final Source tracks.",
     "",
-    "Required with Audio source fill enabled. Disabled avoids generic conversions; any required Deep analysis operations still require the audio format."
+    "With Speed Correction, DeepAnalysis or Audio source fill the minimum scope is Language: timeline corrections are not optional conversions."
   ],
   "web.config.help.remux.audio24.title": "24bit -> 16bit",
   "web.config.help.remux.audio24.text": "Reduces 24-bit tracks to 16-bit using soxr VHQ and shibata dither. Available only for FLAC and LPCM.",
@@ -1103,6 +1110,7 @@
   "web.merge.configAppliedScanInvalidated": "Configuration applied: previous scan invalidated, press F5",
   "web.merge.configAppliedAnalysisReset": "Configuration applied: {0} previous analyses discarded",
   "web.merge.configApplied": "Configuration applied",
+  "web.merge.configAppliedPreviewRefreshed": "Configuration applied: preview and render plan refreshed for {0} records without repeating analysis",
   "web.merge.configureSourceFirst": "Configure the source folder first (F2)",
   "web.merge.pipelineInitError": "Pipeline initialization error",
   "web.merge.scanCompleted": "Scan completed: {0} files found, {1} ready, {2} skipped",

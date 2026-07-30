@@ -1,4 +1,5 @@
 using RemuxForge.Core.Audio;
+using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -32,6 +33,7 @@ namespace RemuxForge.Core.Pipeline
             List<TrackInfo> finalSourceAudioTracks = this.ResolveFinalSourceAudioTracks(sourceTracks, sourceAudioIds, filterSourceAudio);
             bool deepAudioRequired = record.DeepAnalysisApplied && record.DeepAnalysisMap != null && record.DeepAnalysisMap.Operations.Count > 0 && !options.SubOnly;
             bool sourceFillRequired = options.AudioSourceFillThresholdMs > 0;
+            bool mandatoryLangProcessing = OptionsValidator.RequiresTimelineAudioProcessing(options, needsMerge);
 
             request.Record = record;
             request.Options = options;
@@ -41,6 +43,7 @@ namespace RemuxForge.Core.Pipeline
             request.LangInfo = langInfo;
             request.LangEditMap = record.DeepAnalysisMap;
             request.EffectiveAudioDelayMs = effectiveAudioDelay;
+            request.MandatoryLangProcessing = mandatoryLangProcessing;
 
             if (options.AudioProcessingScope == "all")
             {
@@ -59,7 +62,7 @@ namespace RemuxForge.Core.Pipeline
                 }
             }
 
-            if (deepAudioRequired || sourceFillRequired)
+            if (mandatoryLangProcessing || deepAudioRequired || sourceFillRequired)
             {
                 this.AddMissingLangTracks(request, audioTracks);
             }

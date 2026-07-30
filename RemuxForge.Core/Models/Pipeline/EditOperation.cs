@@ -47,7 +47,7 @@ namespace RemuxForge.Core.Models
 
         /// <summary>
         /// Durata dell'operazione in millisecondi
-        /// Espressa sempre nella timeline originale del lang, prima di eventuale stretch mkvmerge
+        /// Espressa sempre nella timeline originale del lang, prima del render dello stretch
         /// </summary>
         public int DurationMs { get; set; }
 

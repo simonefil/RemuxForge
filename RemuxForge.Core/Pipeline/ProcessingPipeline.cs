@@ -792,7 +792,7 @@ namespace RemuxForge.Core.Pipeline
                     }
                 }
 
-                // Deep analysis: applica EditMap solo ai sottotitoli. Audio e stretch restano gestiti da AudioProcessingService/mkvmerge.
+                // Deep analysis: applica qui la EditMap solo ai sottotitoli; AudioProcessingService materializza EditMap e stretch audio.
                 if (!done && this._deepEditApplier.ApplySubtitles(record, subtitleTracks, processedLangSubTracks, this._opts, this._ffmpegPath))
                 {
                 }
@@ -835,11 +835,12 @@ namespace RemuxForge.Core.Pipeline
                     mergeReq.SubDelayMs = effectiveSubDelay;
                     mergeReq.FilterSourceAudio = this._filterSourceAudio || convertedSourceTracks.Count > 0;
                     mergeReq.FilterSourceSubs = this._filterSourceSubs;
-                    mergeReq.StretchFactor = stretchFactor;
+                    mergeReq.SubtitleStretchFactor = stretchFactor;
                     mergeReq.AudioFormat = this._opts.AudioFormat;
                     mergeReq.SourceTitle = (sourceInfo != null) ? sourceInfo.ContainerTitle : "";
                     mergeReq.ConvertedSourceTracks = convertedSourceTracks;
                     mergeReq.ConvertedLangTracks = convertedLangTracks;
+                    this.AddRequiredProcessedLangTrackIds(record.AudioProcessingPreview, mergeReq.RequiredProcessedLangTrackIds);
                     mergeReq.AudioDelayBypassedLangIds = audioDelayBypassedLangIds;
                     mergeReq.ProcessedSourceAudioInfo = processedSourceAudioInfo;
                     mergeReq.ProcessedLangAudioInfo = processedLangAudioInfo;
@@ -888,6 +889,25 @@ namespace RemuxForge.Core.Pipeline
             }
 
             return finalOutput;
+        }
+
+        /// <summary>
+        /// Copia nel merge gli ID Language per cui il piano impone un output FFmpeg
+        /// </summary>
+        private void AddRequiredProcessedLangTrackIds(AudioProcessingPlan plan, HashSet<int> destination)
+        {
+            if (plan == null || destination == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < plan.LangTracks.Count; i++)
+            {
+                if (plan.LangTracks[i].RenderRequired && plan.LangTracks[i].Track != null)
+                {
+                    destination.Add(plan.LangTracks[i].Track.Id);
+                }
+            }
         }
 
         /// <summary>

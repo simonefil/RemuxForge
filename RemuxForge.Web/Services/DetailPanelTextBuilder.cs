@@ -254,15 +254,29 @@ namespace RemuxForge.Web.Services
             {
                 parts.Add(AppText.T("web.detail.audioDeepEditMap"));
             }
-            else if (plan.GenericRenderRequired)
+            else if (plan.TimelinePolicyRenderRequired)
+            {
+                parts.Add(AppText.T("web.detail.audioTimelinePolicy"));
+            }
+
+            if (plan.StretchRender)
+            {
+                parts.Add(AppText.F(
+                    "web.detail.audioStretchMaterialized",
+                    plan.StretchFactor,
+                    plan.StretchRatio.ToString("0.########", CultureInfo.InvariantCulture),
+                    plan.AudioTempo.ToString("0.########", CultureInfo.InvariantCulture)));
+            }
+
+            if (plan.GenericRenderRequired)
             {
                 this.AddGenericAudioReasons(parts, plan, options);
             }
-            else if (includeSkip && plan.SourceFillConfigured)
+            else if (includeSkip && !plan.RenderRequired && plan.SourceFillConfigured)
             {
                 parts.Add(AppText.T("web.detail.audioSourceFillNoWork"));
             }
-            else if (includeSkip)
+            else if (includeSkip && !plan.RenderRequired)
             {
                 parts.Add(plan.GenericProcessing ? AppText.T("web.detail.audioSkipCompatible") : AppText.T("web.detail.audioSkipOutsideScope"));
             }
@@ -318,14 +332,7 @@ namespace RemuxForge.Web.Services
             }
             if (options.AudioPeakNormalize)
             {
-                if (plan.ActualSourceFill)
-                {
-                    parts.Add(AppText.F("web.detail.audioPreNormalizeSourceLang", options.AudioPeakTargetDb.ToString("F2", CultureInfo.InvariantCulture)));
-                }
-                else
-                {
-                    parts.Add(AppText.F("web.detail.audioNormalize", options.AudioPeakTargetDb.ToString("F2", CultureInfo.InvariantCulture)));
-                }
+                parts.Add(AppText.F("web.detail.audioNormalize", options.AudioPeakTargetDb.ToString("F2", CultureInfo.InvariantCulture)));
             }
         }
 

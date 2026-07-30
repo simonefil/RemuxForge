@@ -164,6 +164,24 @@ namespace RemuxForge.Core.Audio
                 return result;
             }
 
+            for (int i = 0; i < plan.LangTracks.Count; i++)
+            {
+                AudioTrackProcessingPlan requiredPlan = plan.LangTracks[i];
+                if (requiredPlan.RenderRequired &&
+                    (requiredPlan.Track == null ||
+                     !result.LangOutputFiles.ContainsKey(requiredPlan.Track.Id) ||
+                     string.IsNullOrEmpty(result.LangOutputFiles[requiredPlan.Track.Id]) ||
+                     !File.Exists(result.LangOutputFiles[requiredPlan.Track.Id])))
+                {
+                    result.Success = false;
+                    result.ErrorMessage = "Output audio Language obbligatorio mancante per track " + (requiredPlan.Track != null ? requiredPlan.Track.Id.ToString(CultureInfo.InvariantCulture) : "?");
+                    this.DeleteCreatedFiles();
+                    request.Record.ErrorMessage = result.ErrorMessage;
+                    request.Record.Status = FileStatus.Error;
+                    return result;
+                }
+            }
+
             result.Success = true;
             result.EffectiveAudioDelayMs = result.AudioDelayBypassedLangIds.Count > 0 ? 0 : request.EffectiveAudioDelayMs;
             this.DeleteTransientFiles();
@@ -210,7 +228,7 @@ namespace RemuxForge.Core.Audio
                     result.ErrorMessage = "Audio source fill fallito: tracce non valide per lang track " + job.Track.Id;
                     return result;
                 }
-                if (!this.ProcessSourceFill(request, sourceFillTrack, job.Track, fillPlan, outputFile, result, trackPlan.ActualSourceFill))
+                if (!this.ProcessSourceFill(request, sourceFillTrack, job.Track, fillPlan, outputFile, result))
                 {
                     return result;
                 }
@@ -222,23 +240,18 @@ namespace RemuxForge.Core.Audio
                     return result;
                 }
             }
-            else if (!job.GenericProcessing)
+            else if (trackPlan != null && trackPlan.RenderRequired)
             {
-                result.Success = true;
-                return result;
-            }
-            else if (trackPlan != null && !trackPlan.GenericRenderRequired)
-            {
-                result.Success = true;
-                ConsoleHelper.Write(LogSection.Conv, LogLevel.Notice, "  " + this.FormatAudioTrackLabel(job.IsSource, job.Track) + " già in formato " + Utils.FormatAudioFormat(request.Options.AudioFormat) + ", processing saltato");
-                return result;
-            }
-            else
-            {
-                if (!this.ProcessSimple(request, job.IsSource ? request.SourceFilePath : request.LanguageFilePath, job.Track, this.FormatAudioTrackLabel(job.IsSource, job.Track), outputFile, result))
+                if (!this.ProcessSimple(request, job.IsSource ? request.SourceFilePath : request.LanguageFilePath, job.Track, this.FormatAudioTrackLabel(job.IsSource, job.Track), trackPlan, outputFile, result))
                 {
                     return result;
                 }
+            }
+            else
+            {
+                result.Success = true;
+                ConsoleHelper.Write(LogSection.Conv, LogLevel.Notice, "  " + this.FormatAudioTrackLabel(job.IsSource, job.Track) + " già nel formato richiesto, processing saltato");
+                return result;
             }
 
             result.OutputFile = outputFile;
@@ -258,7 +271,7 @@ namespace RemuxForge.Core.Audio
         /// <param name="outputFile">File audio temporaneo finale</param>
         /// <param name="result">Risultato della traccia</param>
         /// <returns>True se ffmpeg ha prodotto il file finale</returns>
-        private bool ProcessSimple(AudioProcessingRequest request, string inputFile, TrackInfo track, string trackLabel, string outputFile, AudioTrackProcessResult result)
+        private bool ProcessSimple(AudioProcessingRequest request, string inputFile, TrackInfo track, string trackLabel, AudioTrackProcessingPlan trackPlan, string outputFile, AudioTrackProcessResult result)
         {
             List<string> args;
             string tempFile;
@@ -269,7 +282,7 @@ namespace RemuxForge.Core.Audio
             if (request.Options.AudioPeakNormalize)
             {
                 // La normalizzazione peak richiede un render temporaneo completo per misurare il picco reale
-                tempFile = this.RenderSimpleTemp(request, inputFile, track);
+                tempFile = this.RenderSimpleTemp(request, inputFile, track, trackPlan);
                 if (string.IsNullOrEmpty(tempFile))
                 {
                     result.ErrorMessage = "Peak normalization fallita: impossibile creare temp audio per track " + track.Id + this.FormatLastFfmpegError();
@@ -293,7 +306,7 @@ namespace RemuxForge.Core.Audio
                 args.Add("-map");
                 args.Add("0:" + track.Id);
                 args.Add("-af");
-                args.Add(this.BuildPostFilter(track, request.Options, false));
+                args.Add(this.BuildSimpleFilter(track, request.Options, trackPlan, false));
                 this.AddCodecArgs(args, track, request.Options);
                 args.Add(outputFile);
             }
@@ -321,8 +334,8 @@ namespace RemuxForge.Core.Audio
             {
                 // L'EditMap viene renderizzata prima in PCM temporaneo: solo dopo si misura il peak
                 tempFile = this.CreatePeakTempPath(request.Record, track);
-                args = this.BuildEditMapArgs(request.LanguageFilePath, track, request.LangEditMap, request.Options, tempFile, true);
-                this.AddPeakTempCodecArgsBeforeOutput(args, request.Options);
+                args = this.BuildEditMapArgs(request.LanguageFilePath, track, request.LangEditMap, request.Options, request.Plan.FindLangTrack(track.Id), tempFile, true);
+                this.AddPeakTempCodecArgsBeforeOutput(args);
                 tempFile = this.RunFfmpegToTemp(args, tempFile) ? tempFile : "";
                 if (string.IsNullOrEmpty(tempFile))
                 {
@@ -338,7 +351,7 @@ namespace RemuxForge.Core.Audio
             }
             else
             {
-                args = this.BuildEditMapArgs(request.LanguageFilePath, track, request.LangEditMap, request.Options, outputFile, false);
+                args = this.BuildEditMapArgs(request.LanguageFilePath, track, request.LangEditMap, request.Options, request.Plan.FindLangTrack(track.Id), outputFile, false);
             }
 
             return this.RunFfmpeg(args, outputFile, result);
@@ -353,9 +366,8 @@ namespace RemuxForge.Core.Audio
         /// <param name="plan">Piano source fill calcolato</param>
         /// <param name="outputFile">File audio temporaneo finale</param>
         /// <param name="result">Risultato della traccia</param>
-        /// <param name="actualSourceFill">True se il piano usa segmenti audio source reali</param>
         /// <returns>True se il render e l'eventuale normalizzazione sono riusciti</returns>
-        private bool ProcessSourceFill(AudioProcessingRequest request, TrackInfo sourceTrack, TrackInfo langTrack, AudioSourceFillPlan plan, string outputFile, AudioTrackProcessResult result, bool actualSourceFill)
+        private bool ProcessSourceFill(AudioProcessingRequest request, TrackInfo sourceTrack, TrackInfo langTrack, AudioSourceFillPlan plan, string outputFile, AudioTrackProcessResult result)
         {
             List<string> args;
             string tempFile;
@@ -363,26 +375,12 @@ namespace RemuxForge.Core.Audio
 
             ConsoleHelper.Write(LogSection.Conv, LogLevel.Notice, "  Audio source fill " + this.FormatAudioTrackLabel(false, langTrack) + " da " + this.FormatAudioTrackLabel(true, sourceTrack));
 
-            if (request.Options.AudioPeakNormalize && actualSourceFill)
-            {
-                if (!this.ProcessSourceFillWithPreNormalization(request, sourceTrack, langTrack, plan, outputFile, result))
-                {
-                    return false;
-                }
-
-                if (plan.StartFillMs > 0 || plan.MaterializesExternalSync)
-                {
-                    result.BypassAudioDelay = true;
-                }
-
-                return true;
-            }
-            else if (request.Options.AudioPeakNormalize)
+            if (request.Options.AudioPeakNormalize)
             {
                 // Anche il source fill va misurato dopo il concat, altrimenti il target peak sarebbe parziale
                 tempFile = this.CreatePeakTempPath(request.Record, langTrack);
                 args = this.BuildSourceFillArgs(request, sourceTrack, langTrack, plan, tempFile, true);
-                this.AddPeakTempCodecArgsBeforeOutput(args, request.Options);
+                this.AddPeakTempCodecArgsBeforeOutput(args);
                 tempFile = this.RunFfmpegToTemp(args, tempFile) ? tempFile : "";
                 if (string.IsNullOrEmpty(tempFile))
                 {
@@ -410,74 +408,13 @@ namespace RemuxForge.Core.Audio
         }
 
         /// <summary>
-        /// Source fill con normalizzazione peak preventiva delle due tracce complete.
-        /// </summary>
-        private bool ProcessSourceFillWithPreNormalization(AudioProcessingRequest request, TrackInfo sourceTrack, TrackInfo langTrack, AudioSourceFillPlan plan, string outputFile, AudioTrackProcessResult result)
-        {
-            string sourceTemp;
-            string langTemp;
-            string sourceNormalizedTemp;
-            string langNormalizedTemp;
-            double sourceGainDb;
-            double langGainDb;
-            List<string> args;
-
-            ConsoleHelper.Write(LogSection.Conv, LogLevel.Notice, "  Peak normalize source fill: normalizzazione preventiva source/lang");
-
-            sourceTemp = this.RenderSimpleTemp(request, request.SourceFilePath, sourceTrack);
-            if (string.IsNullOrEmpty(sourceTemp))
-            {
-                result.ErrorMessage = "Peak normalization source fill fallita: temp source non creato per track " + sourceTrack.Id + this.FormatLastFfmpegError();
-                return false;
-            }
-
-            langTemp = this.RenderSimpleTemp(request, request.LanguageFilePath, langTrack);
-            if (string.IsNullOrEmpty(langTemp))
-            {
-                result.ErrorMessage = "Peak normalization source fill fallita: temp lang non creato per track " + langTrack.Id + this.FormatLastFfmpegError();
-                return false;
-            }
-
-            if (!this.MeasurePeakGain(sourceTemp, request.Options.AudioPeakTargetDb, out sourceGainDb))
-            {
-                result.ErrorMessage = "Peak normalization source fill fallita: peak source non rilevato per track " + sourceTrack.Id;
-                return false;
-            }
-
-            if (!this.MeasurePeakGain(langTemp, request.Options.AudioPeakTargetDb, out langGainDb))
-            {
-                result.ErrorMessage = "Peak normalization source fill fallita: peak lang non rilevato per track " + langTrack.Id;
-                return false;
-            }
-
-            sourceNormalizedTemp = this.CreatePeakTempPath(request.Record, sourceTrack);
-            args = this.BuildNormalizeTempArgs(sourceTemp, request.Options, sourceNormalizedTemp, sourceGainDb);
-            if (!this.RunFfmpegToTemp(args, sourceNormalizedTemp))
-            {
-                result.ErrorMessage = "Peak normalization source fill fallita: normalizzazione source non riuscita" + this.FormatLastFfmpegError();
-                return false;
-            }
-
-            langNormalizedTemp = this.CreatePeakTempPath(request.Record, langTrack);
-            args = this.BuildNormalizeTempArgs(langTemp, request.Options, langNormalizedTemp, langGainDb);
-            if (!this.RunFfmpegToTemp(args, langNormalizedTemp))
-            {
-                result.ErrorMessage = "Peak normalization source fill fallita: normalizzazione lang non riuscita" + this.FormatLastFfmpegError();
-                return false;
-            }
-
-            args = this.BuildSourceFillArgs(request, langTrack, plan, outputFile, false, sourceNormalizedTemp, 0, langNormalizedTemp, 0);
-            return this.RunFfmpeg(args, outputFile, result);
-        }
-
-        /// <summary>
         /// Renderizza una traccia in PCM temporaneo per misurazione peak
         /// </summary>
         /// <param name="request">Richiesta audio corrente</param>
         /// <param name="inputFile">File di input</param>
         /// <param name="track">Traccia da renderizzare</param>
         /// <returns>Path del file temporaneo, oppure stringa vuota se fallisce</returns>
-        private string RenderSimpleTemp(AudioProcessingRequest request, string inputFile, TrackInfo track)
+        private string RenderSimpleTemp(AudioProcessingRequest request, string inputFile, TrackInfo track, AudioTrackProcessingPlan trackPlan)
         {
             string tempFile = this.CreatePeakTempPath(request.Record, track);
             List<string> args = new List<string>();
@@ -490,8 +427,8 @@ namespace RemuxForge.Core.Audio
             args.Add("-map");
             args.Add("0:" + track.Id);
             args.Add("-af");
-            args.Add(this.BuildPostFilter(track, request.Options, true));
-            this.AddPeakTempCodecArgs(args, request.Options);
+            args.Add(this.BuildSimpleFilter(track, request.Options, trackPlan, true));
+            this.AddPeakTempCodecArgs(args);
             args.Add(tempFile);
 
             return this.RunFfmpegToTemp(args, tempFile) ? tempFile : "";
@@ -507,10 +444,10 @@ namespace RemuxForge.Core.Audio
         /// <param name="outputFile">File di output</param>
         /// <param name="forPeakTemp">True se l'output è un PCM temporaneo per peak</param>
         /// <returns>Lista argomenti ffmpeg</returns>
-        private List<string> BuildEditMapArgs(string inputFile, TrackInfo track, EditMap editMap, Options options, string outputFile, bool forPeakTemp)
+        private List<string> BuildEditMapArgs(string inputFile, TrackInfo track, EditMap editMap, Options options, AudioTrackProcessingPlan trackPlan, string outputFile, bool forPeakTemp)
         {
             List<string> args = new List<string>();
-            string filter = this.BuildEditMapFilter(track, editMap, options, forPeakTemp);
+            string filter = this.BuildEditMapFilter(track, editMap, options, trackPlan, forPeakTemp);
 
             args.Add("-nostdin");
             args.Add("-hide_banner");
@@ -581,7 +518,7 @@ namespace RemuxForge.Core.Audio
         /// <param name="options">Opzioni correnti</param>
         /// <param name="forPeakTemp">True se il filtro produce PCM temporaneo per peak</param>
         /// <returns>Filtro ffmpeg completo con output [outa]</returns>
-        private string BuildEditMapFilter(TrackInfo track, EditMap editMap, Options options, bool forPeakTemp)
+        private string BuildEditMapFilter(TrackInfo track, EditMap editMap, Options options, AudioTrackProcessingPlan trackPlan, bool forPeakTemp)
         {
             List<AudioFilterSegment> segments = new List<AudioFilterSegment>();
             int currentLangMs = 0;
@@ -615,7 +552,7 @@ namespace RemuxForge.Core.Audio
             // Aggiunge la coda lang non coperta da operazioni esplicite
             segments.Add(new AudioFilterSegment(0, track.Id, currentLangMs, -1, false));
 
-            return this.BuildConcatFilter(segments, track, options, forPeakTemp);
+            return this.BuildConcatFilter(segments, track, options, forPeakTemp, 0, trackPlan != null ? trackPlan.AudioTempoFilter : "");
         }
 
         /// <summary>
@@ -676,7 +613,7 @@ namespace RemuxForge.Core.Audio
                 segments.Add(new AudioFilterSegment(0, sourceTrackId, plan.SourceDurationMs - plan.EndFillMs, plan.SourceDurationMs, false));
             }
 
-            return this.BuildConcatFilter(segments, langTrack, options, forPeakTemp, plan.InitialTrimMs);
+            return this.BuildConcatFilter(segments, langTrack, options, forPeakTemp, plan.InitialTrimMs, "");
         }
 
         /// <summary>
@@ -689,13 +626,13 @@ namespace RemuxForge.Core.Audio
         /// <returns>Filtro ffmpeg completo con output [outa]</returns>
         private string BuildConcatFilter(List<AudioFilterSegment> segments, TrackInfo track, Options options, bool forPeakTemp)
         {
-            return this.BuildConcatFilter(segments, track, options, forPeakTemp, 0);
+            return this.BuildConcatFilter(segments, track, options, forPeakTemp, 0, "");
         }
 
         /// <summary>
         /// Costruisce il filtro concat comune a EditMap e source fill, con trim iniziale opzionale.
         /// </summary>
-        private string BuildConcatFilter(List<AudioFilterSegment> segments, TrackInfo track, Options options, bool forPeakTemp, int initialTrimMs)
+        private string BuildConcatFilter(List<AudioFilterSegment> segments, TrackInfo track, Options options, bool forPeakTemp, int initialTrimMs, string globalTempoFilter)
         {
             string filter = "";
             string concatInputs = "";
@@ -721,7 +658,11 @@ namespace RemuxForge.Core.Audio
                     filter += ",asetpts=PTS-STARTPTS";
                     if (Math.Abs(segment.Tempo - 1.0) > 0.0001)
                     {
-                        filter += ",atempo=" + segment.Tempo.ToString("F8", CultureInfo.InvariantCulture);
+                        if (!AudioTempoFilterBuilder.TryBuildFromTempo(segment.Tempo, out string segmentTempoFilter, out _))
+                        {
+                            throw new InvalidOperationException("Tempo audio FFmpeg non valido");
+                        }
+                        filter += "," + segmentTempoFilter;
                     }
                     filter += ",aformat=sample_fmts=flt:sample_rates=" + sampleRate + ":channel_layouts=" + layout + "[" + label + "];";
                 }
@@ -729,6 +670,10 @@ namespace RemuxForge.Core.Audio
             }
 
             filter += concatInputs + "concat=n=" + segments.Count + ":v=0:a=1";
+            if (!string.IsNullOrEmpty(globalTempoFilter))
+            {
+                filter += "," + globalTempoFilter;
+            }
             if (initialTrimMs > 0)
             {
                 filter += ",atrim=start=" + (initialTrimMs / 1000.0).ToString("F3", CultureInfo.InvariantCulture) + ",asetpts=PTS-STARTPTS";
@@ -739,6 +684,22 @@ namespace RemuxForge.Core.Audio
                 filter += "," + post;
             }
             filter += "[outa]";
+            return filter;
+        }
+
+        /// <summary>
+        /// Costruisce il filtro semplice combinando stretch materializzato e post-processing
+        /// </summary>
+        private string BuildSimpleFilter(TrackInfo track, Options options, AudioTrackProcessingPlan trackPlan, bool forPeakTemp)
+        {
+            string filter = trackPlan != null ? trackPlan.AudioTempoFilter : "";
+            string postFilter = this.BuildPostFilter(track, options, forPeakTemp);
+
+            if (!string.IsNullOrEmpty(filter) && !string.IsNullOrEmpty(postFilter))
+            {
+                filter += ",";
+            }
+            filter += postFilter;
             return filter;
         }
 
@@ -759,9 +720,9 @@ namespace RemuxForge.Core.Audio
                 filter += ":sample_rates=" + this.ResolveAc3SampleRate(track).ToString(CultureInfo.InvariantCulture) + ":channel_layouts=" + AudioChannelHelper.GetAc3ChannelLayout(channels);
             }
 
-            if (options.AudioDownsample24To16 && (forPeakTemp || !options.AudioPeakNormalize))
+            if (options.AudioDownsample24To16 && !forPeakTemp)
             {
-                // Con peak normalize il downsample avviene nel temp, così il peak viene misurato dopo dither
+                // Il dither deve essere l'ultima trasformazione PCM, dopo l'eventuale gain di normalizzazione
                 filter += ",aresample=resampler=soxr:precision=28:dither_method=shibata:osf=s16";
             }
 
@@ -855,23 +816,21 @@ namespace RemuxForge.Core.Audio
         /// Aggiunge il codec PCM usato per i file temporanei di normalizzazione peak
         /// </summary>
         /// <param name="args">Lista argomenti ffmpeg da modificare</param>
-        /// <param name="options">Opzioni correnti</param>
-        private void AddPeakTempCodecArgs(List<string> args, Options options)
+        private void AddPeakTempCodecArgs(List<string> args)
         {
             args.Add("-c:a");
-            args.Add(options.AudioDownsample24To16 ? "pcm_s16le" : "pcm_f32le");
+            args.Add("pcm_f32le");
         }
 
         /// <summary>
         /// Inserisce il codec PCM temporaneo prima del file di output già presente negli argomenti
         /// </summary>
         /// <param name="args">Lista argomenti ffmpeg da modificare</param>
-        /// <param name="options">Opzioni correnti</param>
-        private void AddPeakTempCodecArgsBeforeOutput(List<string> args, Options options)
+        private void AddPeakTempCodecArgsBeforeOutput(List<string> args)
         {
             string output = args[args.Count - 1];
             args.RemoveAt(args.Count - 1);
-            this.AddPeakTempCodecArgs(args, options);
+            this.AddPeakTempCodecArgs(args);
             args.Add(output);
         }
 
@@ -887,6 +846,12 @@ namespace RemuxForge.Core.Audio
         private List<string> BuildEncodeFromTempArgs(string tempFile, TrackInfo track, Options options, string outputFile, double gainDb)
         {
             List<string> args = new List<string>();
+            string filter = "volume=" + gainDb.ToString("F6", CultureInfo.InvariantCulture) + "dB";
+
+            if (options.AudioDownsample24To16)
+            {
+                filter += ",aresample=resampler=soxr:precision=28:dither_method=shibata:osf=s16";
+            }
 
             args.Add("-nostdin");
             args.Add("-hide_banner");
@@ -894,28 +859,8 @@ namespace RemuxForge.Core.Audio
             args.Add("-i");
             args.Add(tempFile);
             args.Add("-af");
-            args.Add("volume=" + gainDb.ToString("F6", CultureInfo.InvariantCulture) + "dB");
+            args.Add(filter);
             this.AddCodecArgs(args, track, options);
-            args.Add(outputFile);
-
-            return args;
-        }
-
-        /// <summary>
-        /// Costruisce gli argomenti ffmpeg per applicare gain peak mantenendo un PCM temporaneo.
-        /// </summary>
-        private List<string> BuildNormalizeTempArgs(string tempFile, Options options, string outputFile, double gainDb)
-        {
-            List<string> args = new List<string>();
-
-            args.Add("-nostdin");
-            args.Add("-hide_banner");
-            args.Add("-y");
-            args.Add("-i");
-            args.Add(tempFile);
-            args.Add("-af");
-            args.Add("volume=" + gainDb.ToString("F6", CultureInfo.InvariantCulture) + "dB");
-            this.AddPeakTempCodecArgs(args, options);
             args.Add(outputFile);
 
             return args;
@@ -1205,7 +1150,14 @@ namespace RemuxForge.Core.Audio
                 generic = jobs[i].GenericProcessing;
                 render = jobs[i].Plan != null && jobs[i].Plan.RenderRequired;
                 reason = this.FormatAudioPlanReason(jobs[i].Plan);
-                ConsoleHelper.Write(LogSection.Conv, LogLevel.Debug, "    " + this.FormatAudioTrackLabel(jobs[i].IsSource, jobs[i].Track) + ", generic=" + (generic ? "si" : "no") + ", render=" + (render ? "si" : "no") + ", motivo=" + reason);
+                ConsoleHelper.Write(
+                    LogSection.Conv,
+                    LogLevel.Debug,
+                    "    " + this.FormatAudioTrackLabel(jobs[i].IsSource, jobs[i].Track) +
+                    ", generic=" + (generic ? "si" : "no") +
+                    ", render=" + (render ? "si" : "no") +
+                    ", motivo=" + reason +
+                    this.FormatAudioTempoLog(jobs[i].Plan));
             }
         }
 
@@ -1234,6 +1186,14 @@ namespace RemuxForge.Core.Audio
             {
                 result = "deep-edit-map";
             }
+            else if (plan.StretchRender)
+            {
+                result = "stretch-materializzato";
+            }
+            else if (plan.TimelinePolicyRenderRequired)
+            {
+                result = "policy-speed-deep";
+            }
             else if (plan.GenericRenderRequired)
             {
                 result = "generic";
@@ -1244,6 +1204,21 @@ namespace RemuxForge.Core.Audio
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Formatta rapporto stretch e tempo FFmpeg per il log del piano
+        /// </summary>
+        private string FormatAudioTempoLog(AudioTrackProcessingPlan plan)
+        {
+            if (plan == null || plan.IsSource)
+            {
+                return "";
+            }
+
+            return ", stretch=" + (!string.IsNullOrEmpty(plan.StretchFactor) ? plan.StretchFactor : "1") +
+                ", ratio=" + plan.StretchRatio.ToString("0.########", CultureInfo.InvariantCulture) +
+                ", tempo=" + plan.AudioTempo.ToString("0.########", CultureInfo.InvariantCulture);
         }
 
         /// <summary>
@@ -1546,6 +1521,7 @@ namespace RemuxForge.Core.Audio
             this.LangTracksToProcess = new List<TrackInfo>();
             this.GenericSourceTrackIds = new HashSet<int>();
             this.GenericLangTrackIds = new HashSet<int>();
+            this.MandatoryLangProcessing = false;
             this.Plan = null;
         }
 
@@ -1588,6 +1564,11 @@ namespace RemuxForge.Core.Audio
         /// ID tracce language con processing generico
         /// </summary>
         public HashSet<int> GenericLangTrackIds { get; set; }
+
+        /// <summary>
+        /// True se Speed Correction o DeepAnalysis impongono il render di tutte le tracce Language
+        /// </summary>
+        public bool MandatoryLangProcessing { get; set; }
 
         /// <summary>
         /// EditMap da applicare alle tracce language

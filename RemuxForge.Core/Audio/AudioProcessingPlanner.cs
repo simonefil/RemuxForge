@@ -133,10 +133,12 @@ namespace RemuxForge.Core.Audio
         {
             AudioTrackProcessingPlan result = new AudioTrackProcessingPlan();
             bool sourceFillActive;
+            double stretchRatio;
 
             result.IsSource = isSource;
             result.Track = track;
             result.GenericProcessing = genericProcessing;
+            result.TimelinePolicyRenderRequired = !isSource && request.MandatoryLangProcessing;
 
             if (track == null)
             {
@@ -148,6 +150,23 @@ namespace RemuxForge.Core.Audio
             {
                 result.ErrorMessage = "Traccia audio spaziale/object selezionata per processing";
                 return result;
+            }
+
+            if (!isSource)
+            {
+                stretchRatio = this.ResolveStretchRatio(request, out string stretchError);
+                result.StretchFactor = request.Record != null ? request.Record.StretchFactor : "";
+                result.StretchRatio = stretchRatio;
+                bool validTempo = AudioTempoFilterBuilder.TryBuild(stretchRatio, out double audioTempo, out string audioTempoFilter, out string tempoError);
+                if (!string.IsNullOrEmpty(stretchError) || !validTempo)
+                {
+                    result.ErrorMessage = !string.IsNullOrEmpty(stretchError) ? stretchError : tempoError;
+                    return result;
+                }
+
+                result.AudioTempo = audioTempo;
+                result.AudioTempoFilter = audioTempoFilter;
+                result.StretchRender = !AudioTempoFilterBuilder.IsIdentity(stretchRatio);
             }
 
             sourceFillActive = request.Options.AudioSourceFillThresholdMs > 0 &&
@@ -181,10 +200,20 @@ namespace RemuxForge.Core.Audio
                 result.DeepEditRender = true;
                 result.RenderRequired = true;
             }
+            else if (!isSource && (result.StretchRender || result.TimelinePolicyRenderRequired))
+            {
+                result.RenderRequired = true;
+            }
             else if (genericProcessing)
             {
                 result.GenericRenderRequired = CodecMapping.RequiresGenericAudioRender(track, request.Options);
                 result.RenderRequired = result.GenericRenderRequired;
+            }
+
+            if (genericProcessing)
+            {
+                result.GenericRenderRequired = CodecMapping.RequiresGenericAudioRender(track, request.Options);
+                result.RenderRequired = result.RenderRequired || result.GenericRenderRequired;
             }
 
             return result;
@@ -203,7 +232,7 @@ namespace RemuxForge.Core.Audio
             AudioSourceFillPlan result = new AudioSourceFillPlan();
             List<EditOperation> editOperations = this.GetSourceFillEditOperations(request.LangEditMap);
             int sourceDurationMs = this.ResolveTrackDurationMs(request.SourceInfo, sourceTrack);
-            double stretchRatio = this.ResolveStretchRatio(request);
+            double stretchRatio = this.ResolveStretchRatio(request, out _);
             int langDurationMs;
 
             if (sourceDurationMs <= 0)
@@ -218,9 +247,10 @@ namespace RemuxForge.Core.Audio
             }
 
             result.StretchRatio = stretchRatio;
-            result.LangTempo = Math.Abs(stretchRatio - 1.0) > 0.0001 ? 1.0 / stretchRatio : 1.0;
-            result.InitialSilenceMs = Math.Abs(stretchRatio - 1.0) > 0.0001 && request.EffectiveAudioDelayMs > 0 ? request.EffectiveAudioDelayMs : 0;
-            result.InitialTrimMs = Math.Abs(stretchRatio - 1.0) > 0.0001 && request.EffectiveAudioDelayMs < 0 ? -request.EffectiveAudioDelayMs : 0;
+            AudioTempoFilterBuilder.TryBuild(stretchRatio, out double audioTempo, out _, out _);
+            result.LangTempo = audioTempo;
+            result.InitialSilenceMs = !AudioTempoFilterBuilder.IsIdentity(stretchRatio) && request.EffectiveAudioDelayMs > 0 ? request.EffectiveAudioDelayMs : 0;
+            result.InitialTrimMs = !AudioTempoFilterBuilder.IsIdentity(stretchRatio) && request.EffectiveAudioDelayMs < 0 ? -request.EffectiveAudioDelayMs : 0;
 
             if (request.Options.AudioSourceFillStart && request.EffectiveAudioDelayMs > request.Options.AudioSourceFillThresholdMs)
             {
@@ -253,12 +283,17 @@ namespace RemuxForge.Core.Audio
         /// </summary>
         /// <param name="request">Richiesta audio corrente</param>
         /// <returns>Rapporto stretch o 1.0</returns>
-        private double ResolveStretchRatio(AudioProcessingRequest request)
+        private double ResolveStretchRatio(AudioProcessingRequest request, out string errorMessage)
         {
             double result = 1.0;
+            errorMessage = "";
             if (request != null && request.Record != null && !string.IsNullOrEmpty(request.Record.StretchFactor))
             {
-                SpeedCorrectionService.TryParseStretchFactor(request.Record.StretchFactor, out result, out _);
+                if (!SpeedCorrectionService.TryParseStretchFactor(request.Record.StretchFactor, out result, out _))
+                {
+                    errorMessage = "Fattore stretch audio non valido: " + request.Record.StretchFactor;
+                    result = 1.0;
+                }
             }
 
             return result;

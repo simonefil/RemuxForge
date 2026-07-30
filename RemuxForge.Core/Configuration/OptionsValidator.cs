@@ -75,6 +75,7 @@ namespace RemuxForge.Core.Configuration
 
             ValidateSpeedCorrection(options, result);
             ValidateAudioProcessing(options, result);
+            ValidateTimelineAudioProcessing(options, needsMerge, result);
             ValidateAudioSourceFill(options, needsMerge, result);
             ValidateAnalysisCrop(options, result);
             if (!File.Exists(options.SourceFolder))
@@ -288,6 +289,48 @@ namespace RemuxForge.Core.Configuration
             if (options.AudioPeakTargetDb < -60.0)
             {
                 result.AddError(AppText.T("validation.audioPeakTargetMin"));
+            }
+        }
+
+        /// <summary>
+        /// Verifica se Speed Correction o DeepAnalysis richiedono il render audio Language
+        /// </summary>
+        /// <param name="options">Opzioni correnti</param>
+        /// <param name="needsMerge">True se è configurato un merge Language</param>
+        /// <returns>True se tutte le tracce audio Language devono essere processate</returns>
+        public static bool RequiresTimelineAudioProcessing(Options options, bool needsMerge)
+        {
+            return options != null &&
+                needsMerge &&
+                !options.SubOnly &&
+                (options.SpeedCorrectionMode != Options.SPEED_CORRECTION_OFF || options.DeepAnalysis);
+        }
+
+        /// <summary>
+        /// Valida la configurazione audio obbligatoria per Speed Correction e DeepAnalysis
+        /// </summary>
+        private static void ValidateTimelineAudioProcessing(Options options, bool needsMerge, OptionsValidationResult result)
+        {
+            if (!RequiresTimelineAudioProcessing(options, needsMerge))
+            {
+                return;
+            }
+
+            if (string.IsNullOrEmpty(options.AudioFormat))
+            {
+                if (options.SpeedCorrectionMode != Options.SPEED_CORRECTION_OFF)
+                {
+                    result.AddError(AppText.T("validation.speedNeedsAudioFormat"));
+                }
+                if (options.DeepAnalysis)
+                {
+                    result.AddError(AppText.T("validation.deepNeedsAudioFormat"));
+                }
+            }
+
+            if (options.AudioProcessingScope == "disabled")
+            {
+                result.AddError(AppText.T("validation.timelineAudioNeedsLangScope"));
             }
         }
 

@@ -465,7 +465,7 @@ namespace RemuxForge.Core.Analysis.Deep
         /// <param name="allowAutoStretch">True se può usare metadata video</param>
         /// <param name="stretchRatio">Ratio stretch source/lang</param>
         /// <param name="inverseRatio">Ratio inverso da applicare al language</param>
-        /// <param name="stretchFactor">Fattore stretch normalizzato per mkvmerge</param>
+        /// <param name="stretchFactor">Fattore stretch logico normalizzato</param>
         /// <returns>True se lo stretch è valido</returns>
         private bool DetectStretch(long sourceDefaultDurationNs, long langDefaultDurationNs, string manualStretchFactor, bool allowAutoStretch, out double stretchRatio, out double inverseRatio, out string stretchFactor)
         {

@@ -150,7 +150,7 @@
                 <input class="form-input" @bind="_keepSrcSub" @onfocus="@(() => SetFieldHelp("remux.keepSub"))" @onmouseenter="@(() => SetFieldHelp("remux.keepSub"))" />
             </div>
             <div class="form-row">
-                <span class="ui-toggle" @onclick="() => _subOnly = !_subOnly" @onmouseenter="@(() => SetFieldHelp("remux.subOnly"))">@(_subOnly ? "[X]" : "[ ]") @AppText.T("web.config.toggle.subOnly")</span>
+                <span class="ui-toggle" @onclick="ToggleSubOnly" @onmouseenter="@(() => SetFieldHelp("remux.subOnly"))">@(_subOnly ? "[X]" : "[ ]") @AppText.T("web.config.toggle.subOnly")</span>
                 <span class="ui-toggle" style="margin-left: 2ch;" @onclick="() => _audioOnly = !_audioOnly" @onmouseenter="@(() => SetFieldHelp("remux.audioOnly"))">@(_audioOnly ? "[X]" : "[ ]") @AppText.T("web.config.toggle.audioOnly")</span>
             </div>
 
@@ -158,7 +158,7 @@
             <div class="form-section">@AppText.T("web.config.section.sync")</div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.speed")</span>
-                <select class="form-input" style="width: 14ch;" @bind="_speedCorrectionMode" @onfocus="@(() => SetFieldHelp("remux.speed"))" @onmouseenter="@(() => SetFieldHelp("remux.speed"))">
+                <select class="form-input" style="width: 14ch;" value="@_speedCorrectionMode" @onchange="OnSpeedCorrectionChanged" @onfocus="@(() => SetFieldHelp("remux.speed"))" @onmouseenter="@(() => SetFieldHelp("remux.speed"))">
                     <option value="@Options.SPEED_CORRECTION_OFF">@AppText.T("web.config.option.off")</option>
                     <option value="@Options.SPEED_CORRECTION_AUTO">@AppText.T("web.config.option.auto")</option>
                     <option value="@Options.SPEED_CORRECTION_MANUAL">@AppText.T("web.config.option.manual")</option>
@@ -207,7 +207,7 @@
             @* Post-Processing audio *@
             <div class="form-section">@AppText.T("web.config.section.audioPost")</div>
             <div class="form-row">
-                <span class="form-label">@AppText.T("web.config.label.audioFormat")@(_audioSourceFillEnabled ? "*" : ""):</span>
+                <span class="form-label">@AppText.T("web.config.label.audioFormat")@((_audioSourceFillEnabled || RequiresTimelineAudioProcessing()) ? "*" : ""):</span>
                 <select class="form-input" style="width: 12ch;" value="@_audioFormat" @onchange="OnAudioFormatChanged" @onfocus="@(() => SetFieldHelp("remux.audioFormat"))" @onmouseenter="@(() => SetFieldHelp("remux.audioFormat"))">
                     <option value="">@AppText.T("web.common.no")</option>
                     <option value="flac">FLAC</option>
@@ -220,9 +220,12 @@
             @if (!string.IsNullOrEmpty(_audioFormat))
             {
             <div class="form-row">
-                <span class="form-label">@AppText.T("web.config.label.audioScope")@(_audioSourceFillEnabled ? "*" : ""):</span>
+                <span class="form-label">@AppText.T("web.config.label.audioScope")@((_audioSourceFillEnabled || RequiresTimelineAudioProcessing()) ? "*" : ""):</span>
                 <select class="form-input" style="width: 14ch;" @bind="_audioProcessingScope" @onfocus="@(() => SetFieldHelp("remux.audioScope"))" @onmouseenter="@(() => SetFieldHelp("remux.audioScope"))">
+                    @if (!RequiresTimelineAudioProcessing())
+                    {
                     <option value="disabled">@AppText.T("web.config.option.disabled")</option>
+                    }
                     <option value="lang">Lang</option>
                     <option value="all">@AppText.T("web.config.option.all")</option>
                 </select>
@@ -800,7 +803,7 @@
         }
 
         opts.AudioFormat = _audioFormat.Trim().ToLowerInvariant();
-        opts.AudioProcessingScope = !string.IsNullOrEmpty(opts.AudioFormat) ? _audioProcessingScope : "disabled";
+        opts.AudioProcessingScope = !string.IsNullOrEmpty(opts.AudioFormat) ? (RequiresTimelineAudioProcessing() && _audioProcessingScope == "disabled" ? "lang" : _audioProcessingScope) : "disabled";
         opts.AudioDownsample24To16 = (opts.AudioFormat == "flac" || opts.AudioFormat == "lpcm") && opts.AudioProcessingScope != "disabled" && _audioDownsample24To16;
         opts.AudioPeakNormalize = !string.IsNullOrEmpty(opts.AudioFormat) && opts.AudioProcessingScope != "disabled" && _audioPeakNormalize;
         if (!double.TryParse(_audioPeakTargetDb, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out audioPeakTargetDb))
@@ -935,6 +938,16 @@
         if (_audioSourceFillEnabled && _audioProcessingScope == "disabled")
         {
             errors.Add(AppText.T("web.config.validation.audioSourceScopeRequired"));
+        }
+
+        if (RequiresTimelineAudioProcessing() && string.IsNullOrEmpty(_audioFormat))
+        {
+            errors.Add(AppText.T("web.config.validation.timelineAudioFormatRequired"));
+        }
+
+        if (RequiresTimelineAudioProcessing() && _audioProcessingScope == "disabled")
+        {
+            errors.Add(AppText.T("web.config.validation.timelineAudioScopeRequired"));
         }
 
         if (!Options.TryParseAnalysisCropPx(_analysisCropSourcePx, out _, out _, out _, out _))
@@ -1220,6 +1233,26 @@
         {
             _audioDownsample24To16 = false;
         }
+
+        NormalizeMandatoryAudioScope();
+    }
+
+    /// <summary>
+    /// Gestisce il cambio Speed Correction e mantiene valido lo scope audio obbligatorio
+    /// </summary>
+    private void OnSpeedCorrectionChanged(ChangeEventArgs args)
+    {
+        _speedCorrectionMode = args.Value != null ? args.Value.ToString() : Options.SPEED_CORRECTION_OFF;
+        NormalizeMandatoryAudioScope();
+    }
+
+    /// <summary>
+    /// Toggle SubOnly e riallinea la policy audio della timeline
+    /// </summary>
+    private void ToggleSubOnly()
+    {
+        _subOnly = !_subOnly;
+        NormalizeMandatoryAudioScope();
     }
 
     /// <summary>
@@ -1248,6 +1281,29 @@
         if (!_deepAnalysis)
         {
             _audioSourceFillInsertSilence = false;
+        }
+
+        NormalizeMandatoryAudioScope();
+    }
+
+    /// <summary>
+    /// True se Speed Correction o DeepAnalysis richiedono audio Language processato
+    /// </summary>
+    private bool RequiresTimelineAudioProcessing()
+    {
+        return !_subOnly &&
+            !string.IsNullOrEmpty(_targetLang.Trim()) &&
+            (_speedCorrectionMode != Options.SPEED_CORRECTION_OFF || _deepAnalysis);
+    }
+
+    /// <summary>
+    /// Imposta Language come scope minimo senza scegliere automaticamente il codec
+    /// </summary>
+    private void NormalizeMandatoryAudioScope()
+    {
+        if (RequiresTimelineAudioProcessing() && !string.IsNullOrEmpty(_audioFormat) && _audioProcessingScope == "disabled")
+        {
+            _audioProcessingScope = "lang";
         }
     }
 

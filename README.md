@@ -143,8 +143,8 @@ Main remux options:
 | `-d` | `--destination` | Output folder |
 | `-o` | `--overwrite` | Overwrite source files |
 | `-fs` | `--framesync` | Calculate a constant visual sync delay |
-| `-da` | `--deep-analysis` | Build a cut/insert map for edited releases |
-| | `--speed-correction` | `off`, `auto`, `manual` |
+| `-da` | `--deep-analysis` | Build a cut/insert map; imported Language audio requires `--audio-format` and scope `lang` or `all` |
+| | `--speed-correction` | `off`, `auto`, `manual`; active modes materialize audio stretch through FFmpeg |
 | | `--stretch-factor` | Manual speed factor, for example `25025/24000` |
 | | `--subtitle-canvas-rewrite` | Rewrite imported PGS, ASS/SSA and VobSub subtitle geometry when analysis allows it |
 | `-ac` | `--audio-codec` | Import only matching audio codecs |
@@ -153,11 +153,11 @@ Main remux options:
 | `-ksa` | `--keep-source-audio` | Keep only these source audio languages |
 | `-ksac` | `--keep-source-audio-codec` | Keep only these source audio codecs |
 | `-kss` | `--keep-source-subs` | Keep only these source subtitle languages |
-| | `--audio-format` | `flac`, `lpcm`, `aac`, `opus`, `ac3` |
-| | `--audio-scope` | `disabled`, `lang`, `all` |
+| | `--audio-format` | `flac`, `lpcm`, `aac`, `opus`, `ac3`; required for imported audio with Speed/Deep |
+| | `--audio-scope` | `disabled`, `lang`, `all`; Speed/Deep require at least `lang`, while `all` also processes final Source tracks |
 | `-ep` | `--encoding-profile` | Post-merge video encoding profile |
 
-Subtitle canvas rewrite is opt-in. It uses geometry from Frame-sync or Deep Analysis to realign imported PGS, ASS/SSA and VobSub subtitles when source and language video geometry differs, including different canvas/display resolutions and different crop or active-area aspect ratios. Unsupported or unsafe cases are left unchanged with a warning. See [Synchronization](https://github.com/simonefil/RemuxForge/wiki/Synchronization#subtitle-canvas-rewrite).
+Subtitle canvas rewrite is opt-in. It uses geometry from Frame-sync or Deep Analysis to realign imported PGS, ASS/SSA and VobSub subtitles when source and language video geometry differs, including different canvas/display resolutions and different crop or active-area aspect ratios. Unsupported or unsafe cases are left unchanged with a warning. See [Remux Synchronization](https://github.com/simonefil/RemuxForge/wiki/Remux-Synchronization#subtitle-canvas-rewrite).
 
 Main split options:
 
@@ -190,15 +190,32 @@ See the [CLI Reference](https://github.com/simonefil/RemuxForge/wiki/CLI-Referen
 
 ## Documentation
 
+The [wiki](https://github.com/simonefil/RemuxForge/wiki) is written for the WebUI, which is how most people use RemuxForge.
+
+**Start here**
+
 - [Wiki home](https://github.com/simonefil/RemuxForge/wiki)
-- [Getting Started](https://github.com/simonefil/RemuxForge/wiki/Getting-Started)
-- [WebUI Guide](https://github.com/simonefil/RemuxForge/wiki/WebUI-Guide)
-- [CLI Guide](https://github.com/simonefil/RemuxForge/wiki/CLI-Guide)
-- [Remux Guide](https://github.com/simonefil/RemuxForge/wiki/Remux-Guide)
-- [Split Guide](https://github.com/simonefil/RemuxForge/wiki/Split-Guide)
-- [Bulk Rename Guide](https://github.com/simonefil/RemuxForge/wiki/Bulk-Rename-Guide)
-- [Metadata Edit Guide](https://github.com/simonefil/RemuxForge/wiki/Metadata-Edit-Guide)
+- [Installation](https://github.com/simonefil/RemuxForge/wiki/Installation)
+- [Docker](https://github.com/simonefil/RemuxForge/wiki/Docker)
+- [WebUI Basics](https://github.com/simonefil/RemuxForge/wiki/WebUI-Basics)
+
+**Using the WebUI**
+
+- [Remux Mode](https://github.com/simonefil/RemuxForge/wiki/Remux-Mode) · [Synchronization](https://github.com/simonefil/RemuxForge/wiki/Remux-Synchronization) · [Audio and Video](https://github.com/simonefil/RemuxForge/wiki/Remux-Audio-and-Video)
+- [Split Mode](https://github.com/simonefil/RemuxForge/wiki/Split-Mode)
+- [Metadata Mode](https://github.com/simonefil/RemuxForge/wiki/Metadata-Mode) · [Metadata Presets](https://github.com/simonefil/RemuxForge/wiki/Metadata-Presets) · [Bulk Rename](https://github.com/simonefil/RemuxForge/wiki/Bulk-Rename)
+
+**Examples**
+
+- [Remux](https://github.com/simonefil/RemuxForge/wiki/Examples-Remux) · [Split](https://github.com/simonefil/RemuxForge/wiki/Examples-Split) · [Metadata](https://github.com/simonefil/RemuxForge/wiki/Examples-Metadata)
+
+**Reference**
+
 - [CLI Reference](https://github.com/simonefil/RemuxForge/wiki/CLI-Reference)
+- [Settings](https://github.com/simonefil/RemuxForge/wiki/Settings-Reference)
+- [Metadata Fields](https://github.com/simonefil/RemuxForge/wiki/Metadata-Reference)
+- [Codecs and Languages](https://github.com/simonefil/RemuxForge/wiki/Codec-and-Language-Reference)
+- [Troubleshooting](https://github.com/simonefil/RemuxForge/wiki/Troubleshooting)
 
 ## Build from Source
 

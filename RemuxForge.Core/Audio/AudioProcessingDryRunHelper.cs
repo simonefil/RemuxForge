@@ -51,7 +51,7 @@ namespace RemuxForge.Core.Audio
                 }
 
                 convertedSourceTracks[trackPlan.Track.Id] = "<processed-audio:source-track-" + trackPlan.Track.Id + ">";
-                processedSourceAudioInfo[trackPlan.Track.Id] = CloneAudioInfoForDryRun(trackPlan.Track, options);
+                processedSourceAudioInfo[trackPlan.Track.Id] = CloneAudioInfoForDryRun(trackPlan.Track, trackPlan, options);
             }
         }
 
@@ -69,7 +69,7 @@ namespace RemuxForge.Core.Audio
                 }
 
                 convertedLangTracks[trackPlan.Track.Id] = "<processed-audio:lang-track-" + trackPlan.Track.Id + ">";
-                processedLangAudioInfo[trackPlan.Track.Id] = CloneAudioInfoForDryRun(trackPlan.Track, options);
+                processedLangAudioInfo[trackPlan.Track.Id] = CloneAudioInfoForDryRun(trackPlan.Track, trackPlan, options);
                 if (trackPlan.BypassAudioDelay)
                 {
                     audioDelayBypassedLangIds.Add(trackPlan.Track.Id);
@@ -81,9 +81,10 @@ namespace RemuxForge.Core.Audio
         /// Crea metadati audio stimati per preview dry-run
         /// </summary>
         /// <param name="source">Traccia sorgente</param>
+        /// <param name="trackPlan">Piano operativo della traccia</param>
         /// <param name="options">Opzioni audio correnti</param>
         /// <returns>Metadata stimati del file processato</returns>
-        private static TrackInfo CloneAudioInfoForDryRun(TrackInfo source, Options options)
+        private static TrackInfo CloneAudioInfoForDryRun(TrackInfo source, AudioTrackProcessingPlan trackPlan, Options options)
         {
             TrackInfo result = new TrackInfo();
             int ac3SampleRate;
@@ -99,6 +100,10 @@ namespace RemuxForge.Core.Audio
             result.DefaultDurationNs = source.DefaultDurationNs;
             result.VideoFrameCount = source.VideoFrameCount;
             result.TrackDurationNs = source.TrackDurationNs;
+            if (trackPlan != null && trackPlan.StretchRender && result.TrackDurationNs > 0)
+            {
+                result.TrackDurationNs = (long)System.Math.Round(result.TrackDurationNs * trackPlan.StretchRatio);
+            }
             result.Channels = source.Channels;
             result.BitsPerSample = options.AudioDownsample24To16 ? 16 : source.BitsPerSample;
             result.SamplingFrequency = source.SamplingFrequency;

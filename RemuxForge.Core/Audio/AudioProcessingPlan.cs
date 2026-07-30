@@ -114,6 +114,10 @@ namespace RemuxForge.Core.Audio
             this.Track = null;
             this.SourceFillTrack = null;
             this.SourceFillPlan = null;
+            this.StretchFactor = "";
+            this.StretchRatio = 1.0;
+            this.AudioTempo = 1.0;
+            this.AudioTempoFilter = "";
             this.ErrorMessage = "";
         }
 
@@ -140,6 +144,36 @@ namespace RemuxForge.Core.Audio
         /// True se il processing generico richiede un render
         /// </summary>
         public bool GenericRenderRequired { get; set; }
+
+        /// <summary>
+        /// True se Speed Correction o DeepAnalysis impongono il render Language
+        /// </summary>
+        public bool TimelinePolicyRenderRequired { get; set; }
+
+        /// <summary>
+        /// True se il render deve materializzare lo stretch nei campioni
+        /// </summary>
+        public bool StretchRender { get; set; }
+
+        /// <summary>
+        /// Fattore stretch logico originale
+        /// </summary>
+        public string StretchFactor { get; set; }
+
+        /// <summary>
+        /// Moltiplicatore della durata finale
+        /// </summary>
+        public double StretchRatio { get; set; }
+
+        /// <summary>
+        /// Moltiplicatore di velocità usato da FFmpeg
+        /// </summary>
+        public double AudioTempo { get; set; }
+
+        /// <summary>
+        /// Catena atempo FFmpeg risolta
+        /// </summary>
+        public string AudioTempoFilter { get; set; }
 
         /// <summary>
         /// True se la traccia language deve materializzare la EditMap

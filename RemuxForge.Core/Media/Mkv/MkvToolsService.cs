@@ -290,6 +290,19 @@ namespace RemuxForge.Core.Media.Mkv
             bool hasProcessedSubs = (req.ProcessedLangSubTracks != null && req.ProcessedLangSubTracks.Count > 0);
             bool bypassAudioDelay;
 
+            if (req.RequiredProcessedLangTrackIds != null)
+            {
+                foreach (int requiredTrackId in req.RequiredProcessedLangTrackIds)
+                {
+                    if (req.ConvertedLangTracks == null ||
+                        !req.ConvertedLangTracks.ContainsKey(requiredTrackId) ||
+                        string.IsNullOrEmpty(req.ConvertedLangTracks[requiredTrackId]))
+                    {
+                        throw new InvalidOperationException("Output audio Language obbligatorio mancante per track " + requiredTrackId);
+                    }
+                }
+            }
+
             // File output
             mkvArgs.Add("-o");
             mkvArgs.Add(req.OutputFile);
@@ -391,16 +404,12 @@ namespace RemuxForge.Core.Media.Mkv
                     mkvArgs.Add("--audio-tracks");
                     mkvArgs.Add(JoinInts(langAudioKeep));
 
-                    // Applica delay e/o stretch alle tracce non convertite
-                    if (req.AudioDelayMs != 0 || !string.IsNullOrEmpty(req.StretchFactor))
+                    // Lo stretch audio deve essere materializzato da FFmpeg; mkvmerge applica solo il delay residuo
+                    if (req.AudioDelayMs != 0)
                     {
                         for (int i = 0; i < langAudioKeep.Count; i++)
                         {
                             syncValue = langAudioKeep[i] + ":" + req.AudioDelayMs;
-                            if (!string.IsNullOrEmpty(req.StretchFactor))
-                            {
-                                syncValue = syncValue + "," + req.StretchFactor;
-                            }
                             mkvArgs.Add("--sync");
                             mkvArgs.Add(syncValue);
                         }
@@ -433,14 +442,14 @@ namespace RemuxForge.Core.Media.Mkv
                     mkvArgs.Add(JoinInts(langSubIds));
 
                     // Applica delay e/o stretch ai sottotitoli
-                    if (req.SubDelayMs != 0 || !string.IsNullOrEmpty(req.StretchFactor))
+                    if (req.SubDelayMs != 0 || !string.IsNullOrEmpty(req.SubtitleStretchFactor))
                     {
                         for (int i = 0; i < langSubIds.Count; i++)
                         {
                             syncValue = langSubIds[i] + ":" + req.SubDelayMs;
-                            if (!string.IsNullOrEmpty(req.StretchFactor))
+                            if (!string.IsNullOrEmpty(req.SubtitleStretchFactor))
                             {
-                                syncValue = syncValue + "," + req.StretchFactor;
+                                syncValue = syncValue + "," + req.SubtitleStretchFactor;
                             }
                             mkvArgs.Add("--sync");
                             mkvArgs.Add(syncValue);
@@ -456,7 +465,7 @@ namespace RemuxForge.Core.Media.Mkv
                 mkvArgs.Add("--no-chapters");
                 mkvArgs.Add(req.LanguageFile);
 
-                // File convertiti da lingua: aggiunti come input separati con delay/stretch
+                // File convertiti da lingua: aggiunti come input separati con il solo delay residuo
                 if (hasConvertedLang)
                 {
                     for (int i = 0; i < req.LangAudioTracks.Count; i++)
@@ -469,14 +478,10 @@ namespace RemuxForge.Core.Media.Mkv
                             mkvArgs.Add("-D");
                             mkvArgs.Add("-S");
 
-                            // Applica delay e/o stretch (trackId 0 nel file convertito)
-                            if (!bypassAudioDelay && (req.AudioDelayMs != 0 || !string.IsNullOrEmpty(req.StretchFactor)))
+                            // Lo stretch è già incorporato nei campioni del file convertito
+                            if (!bypassAudioDelay && req.AudioDelayMs != 0)
                             {
                                 syncValue = "0:" + req.AudioDelayMs;
-                                if (!string.IsNullOrEmpty(req.StretchFactor))
-                                {
-                                    syncValue = syncValue + "," + req.StretchFactor;
-                                }
                                 mkvArgs.Add("--sync");
                                 mkvArgs.Add(syncValue);
                             }
@@ -506,12 +511,12 @@ namespace RemuxForge.Core.Media.Mkv
                             mkvArgs.Add("-A");
 
                             // Applica delay/stretch via mkvmerge anche ai sottotitoli standalone
-                            if (req.SubDelayMs != 0 || !string.IsNullOrEmpty(req.StretchFactor))
+                            if (req.SubDelayMs != 0 || !string.IsNullOrEmpty(req.SubtitleStretchFactor))
                             {
                                 syncValue = "0:" + req.SubDelayMs;
-                                if (!string.IsNullOrEmpty(req.StretchFactor))
+                                if (!string.IsNullOrEmpty(req.SubtitleStretchFactor))
                                 {
-                                    syncValue = syncValue + "," + req.StretchFactor;
+                                    syncValue = syncValue + "," + req.SubtitleStretchFactor;
                                 }
                                 mkvArgs.Add("--sync");
                                 mkvArgs.Add(syncValue);

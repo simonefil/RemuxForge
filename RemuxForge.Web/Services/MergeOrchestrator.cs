@@ -147,13 +147,17 @@ namespace RemuxForge.Web.Services
         {
             bool result = false;
             bool scanInputsChanged;
-            bool processingOptionsChanged;
+            bool analysisOptionsChanged;
+            bool renderOptionsChanged;
             int resetCount;
+            int refreshedCount;
             Options previousOptions;
             errorMessage = "";
             resetCount = 0;
+            refreshedCount = 0;
             scanInputsChanged = false;
-            processingOptionsChanged = false;
+            analysisOptionsChanged = false;
+            renderOptionsChanged = false;
 
             if (opts == null)
             {
@@ -171,7 +175,8 @@ namespace RemuxForge.Web.Services
             {
                 previousOptions = this._options;
                 scanInputsChanged = this.ScanInputsChanged(previousOptions, opts);
-                processingOptionsChanged = scanInputsChanged || this.ProcessingOptionsChanged(previousOptions, opts);
+                analysisOptionsChanged = scanInputsChanged || this.AnalysisOptionsChanged(previousOptions, opts);
+                renderOptionsChanged = !scanInputsChanged && !analysisOptionsChanged && this.RenderOptionsChanged(previousOptions, opts);
             }
 
             if (!string.IsNullOrEmpty(opts.SourceFolder))
@@ -199,7 +204,7 @@ namespace RemuxForge.Web.Services
                     }
                     this.AppendLog(AppText.T("web.merge.configAppliedScanInvalidated"));
                 }
-                else if (processingOptionsChanged)
+                else if (analysisOptionsChanged)
                 {
                     lock (this._lock)
                     {
@@ -209,6 +214,17 @@ namespace RemuxForge.Web.Services
 
                     this.AppendLog(resetCount > 0
                         ? AppText.F("web.merge.configAppliedAnalysisReset", resetCount)
+                        : AppText.T("web.merge.configApplied"));
+                }
+                else if (renderOptionsChanged)
+                {
+                    lock (this._lock)
+                    {
+                        this._options = opts;
+                    }
+                    refreshedCount = this.RefreshAnalyzedRecordsAfterRenderChange();
+                    this.AppendLog(refreshedCount > 0
+                        ? AppText.F("web.merge.configAppliedPreviewRefreshed", refreshedCount)
                         : AppText.T("web.merge.configApplied"));
                 }
                 else
@@ -799,9 +815,9 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
-        /// Verifica se la nuova configurazione invalida analisi e preview esistenti
+        /// Verifica se la nuova configurazione invalida realmente i risultati di analisi
         /// </summary>
-        private bool ProcessingOptionsChanged(Options previousOptions, Options newOptions)
+        private bool AnalysisOptionsChanged(Options previousOptions, Options newOptions)
         {
             bool result = false;
 
@@ -812,13 +828,36 @@ namespace RemuxForge.Web.Services
 
             if (!this.StringListsEqual(previousOptions.TargetLanguage, newOptions.TargetLanguage) ||
                 !this.StringListsEqual(previousOptions.AudioCodec, newOptions.AudioCodec) ||
-                !this.StringListsEqual(previousOptions.KeepSourceAudioLangs, newOptions.KeepSourceAudioLangs) ||
-                !this.StringListsEqual(previousOptions.KeepSourceAudioCodec, newOptions.KeepSourceAudioCodec) ||
-                !this.StringListsEqual(previousOptions.KeepSourceSubtitleLangs, newOptions.KeepSourceSubtitleLangs) ||
                 previousOptions.SubOnly != newOptions.SubOnly ||
                 previousOptions.AudioOnly != newOptions.AudioOnly ||
                 previousOptions.FrameSync != newOptions.FrameSync ||
                 previousOptions.DeepAnalysis != newOptions.DeepAnalysis ||
+                !string.Equals(previousOptions.SpeedCorrectionMode, newOptions.SpeedCorrectionMode, StringComparison.Ordinal) ||
+                !string.Equals(previousOptions.ManualStretchFactor, newOptions.ManualStretchFactor, StringComparison.Ordinal) ||
+                !string.Equals(previousOptions.AnalysisCropSourcePx, newOptions.AnalysisCropSourcePx, StringComparison.Ordinal) ||
+                !string.Equals(previousOptions.AnalysisCropLanguagePx, newOptions.AnalysisCropLanguagePx, StringComparison.Ordinal))
+            {
+                result = true;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Verifica se la nuova configurazione richiede soltanto di ricostruire render e preview
+        /// </summary>
+        private bool RenderOptionsChanged(Options previousOptions, Options newOptions)
+        {
+            bool result = false;
+
+            if (previousOptions == null || newOptions == null)
+            {
+                return true;
+            }
+
+            if (!this.StringListsEqual(previousOptions.KeepSourceAudioLangs, newOptions.KeepSourceAudioLangs) ||
+                !this.StringListsEqual(previousOptions.KeepSourceAudioCodec, newOptions.KeepSourceAudioCodec) ||
+                !this.StringListsEqual(previousOptions.KeepSourceSubtitleLangs, newOptions.KeepSourceSubtitleLangs) ||
                 previousOptions.SubtitleCanvasRewrite != newOptions.SubtitleCanvasRewrite ||
                 previousOptions.AudioDelay != newOptions.AudioDelay ||
                 previousOptions.SubtitleDelay != newOptions.SubtitleDelay ||
@@ -828,8 +867,6 @@ namespace RemuxForge.Web.Services
                 previousOptions.AudioSourceFillInsertSilence != newOptions.AudioSourceFillInsertSilence ||
                 previousOptions.Overwrite != newOptions.Overwrite ||
                 !string.Equals(previousOptions.AudioSourceFillLanguage, newOptions.AudioSourceFillLanguage, StringComparison.Ordinal) ||
-                !string.Equals(previousOptions.SpeedCorrectionMode, newOptions.SpeedCorrectionMode, StringComparison.Ordinal) ||
-                !string.Equals(previousOptions.ManualStretchFactor, newOptions.ManualStretchFactor, StringComparison.Ordinal) ||
                 !string.Equals(previousOptions.DestinationFolder, newOptions.DestinationFolder, StringComparison.Ordinal) ||
                 !string.Equals(previousOptions.AudioFormat, newOptions.AudioFormat, StringComparison.Ordinal) ||
                 !string.Equals(previousOptions.AudioProcessingScope, newOptions.AudioProcessingScope, StringComparison.Ordinal) ||
@@ -840,6 +877,41 @@ namespace RemuxForge.Web.Services
                 !string.Equals(previousOptions.MkvMergePath, newOptions.MkvMergePath, StringComparison.Ordinal))
             {
                 result = true;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Ricostruisce delay, piano audio e comando senza cancellare i risultati di analisi
+        /// </summary>
+        private int RefreshAnalyzedRecordsAfterRenderChange()
+        {
+            List<FileProcessingRecord> records;
+            int result = 0;
+
+            lock (this._lock)
+            {
+                records = new List<FileProcessingRecord>(this._records);
+            }
+
+            for (int i = 0; i < records.Count; i++)
+            {
+                if (records[i].Status != FileStatus.Analyzed &&
+                    !(records[i].Status == FileStatus.Error && records[i].DeepAnalysisApplied))
+                {
+                    continue;
+                }
+
+                if (records[i].Status == FileStatus.Error)
+                {
+                    records[i].Status = FileStatus.Analyzed;
+                    records[i].ErrorMessage = "";
+                }
+
+                this._pipeline.RecalculateDelays(records[i]);
+                this._pipeline.BuildMergeCommand(records[i]);
+                result++;
             }
 
             return result;
@@ -1094,6 +1166,12 @@ namespace RemuxForge.Web.Services
             result.Track = source.Track;
             result.GenericProcessing = source.GenericProcessing;
             result.GenericRenderRequired = source.GenericRenderRequired;
+            result.TimelinePolicyRenderRequired = source.TimelinePolicyRenderRequired;
+            result.StretchRender = source.StretchRender;
+            result.StretchFactor = source.StretchFactor;
+            result.StretchRatio = source.StretchRatio;
+            result.AudioTempo = source.AudioTempo;
+            result.AudioTempoFilter = source.AudioTempoFilter;
             result.DeepEditRender = source.DeepEditRender;
             result.SourceFillConfigured = source.SourceFillConfigured;
             result.SourceFillHasWork = source.SourceFillHasWork;

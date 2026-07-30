@@ -22,10 +22,11 @@ namespace RemuxForge.Core.Models
             this.SourceSubIds = new List<int>();
             this.LangAudioTracks = new List<TrackInfo>();
             this.LangSubTracks = new List<TrackInfo>();
-            this.StretchFactor = "";
+            this.SubtitleStretchFactor = "";
             this.AudioFormat = "";
             this.ConvertedSourceTracks = new Dictionary<int, string>();
             this.ConvertedLangTracks = new Dictionary<int, string>();
+            this.RequiredProcessedLangTrackIds = new HashSet<int>();
             this.ProcessedLangSubTracks = new Dictionary<int, string>();
             this.AudioDelayBypassedLangIds = new HashSet<int>();
             this.ProcessedSourceAudioInfo = new Dictionary<int, TrackInfo>();
@@ -98,9 +99,9 @@ namespace RemuxForge.Core.Models
         public bool FilterSourceSubs { get; set; }
 
         /// <summary>
-        /// Fattore di stretch temporale per mkvmerge --sync
+        /// Fattore di stretch temporale applicato esclusivamente ai sottotitoli tramite mkvmerge
         /// </summary>
-        public string StretchFactor { get; set; }
+        public string SubtitleStretchFactor { get; set; }
 
         /// <summary>
         /// Formato audio processato o stringa vuota se nessuna conversione
@@ -118,6 +119,11 @@ namespace RemuxForge.Core.Models
         /// vengono aggiunte come input separati in mkvmerge al posto della traccia originale
         /// </summary>
         public Dictionary<int, string> ConvertedLangTracks { get; set; }
+
+        /// <summary>
+        /// ID tracce Language che devono essere sostituite da un output FFmpeg
+        /// </summary>
+        public HashSet<int> RequiredProcessedLangTrackIds { get; set; }
 
         /// <summary>
         /// Mappa trackId lingua sub -> percorso file sub processato dalla timeline edit o dal canvas rewrite

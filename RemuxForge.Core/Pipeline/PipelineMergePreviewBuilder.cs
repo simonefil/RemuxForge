@@ -108,7 +108,11 @@ namespace RemuxForge.Core.Pipeline
 
                 if (hasWork)
                 {
-                    this.BuildAudioPreview(record, options, mkvService, sourceInfo, langInfo, sourceTracks, sourceAudioIds, audioTracks, needsMerge, filterSourceAudio, ffmpegPath, convertedSourceTracks, convertedLangTracks, processedSourceAudioInfo, processedLangAudioInfo, audioDelayBypassedLangIds, ref effectiveAudioDelay);
+                    if (!this.BuildAudioPreview(record, options, mkvService, sourceInfo, langInfo, sourceTracks, sourceAudioIds, audioTracks, needsMerge, filterSourceAudio, ffmpegPath, convertedSourceTracks, convertedLangTracks, processedSourceAudioInfo, processedLangAudioInfo, audioDelayBypassedLangIds, ref effectiveAudioDelay))
+                    {
+                        record.MergeCommand = "";
+                        return;
+                    }
                     outputPath = this._outputManager.ComputeFinalOutputPath(record.SourceFilePath, options);
 
                     MergeRequest mergeReq = new MergeRequest();
@@ -124,11 +128,12 @@ namespace RemuxForge.Core.Pipeline
                     mergeReq.SubDelayMs = effectiveSubDelay;
                     mergeReq.FilterSourceAudio = filterSourceAudio || convertedSourceTracks.Count > 0;
                     mergeReq.FilterSourceSubs = filterSourceSubs;
-                    mergeReq.StretchFactor = stretchFactor;
+                    mergeReq.SubtitleStretchFactor = stretchFactor;
                     mergeReq.AudioFormat = options.AudioFormat;
                     mergeReq.SourceTitle = (sourceInfo != null) ? sourceInfo.ContainerTitle : "";
                     mergeReq.ConvertedSourceTracks = convertedSourceTracks;
                     mergeReq.ConvertedLangTracks = convertedLangTracks;
+                    this.AddRequiredProcessedLangTrackIds(record.AudioProcessingPreview, mergeReq.RequiredProcessedLangTrackIds);
                     mergeReq.ProcessedSourceAudioInfo = processedSourceAudioInfo;
                     mergeReq.ProcessedLangAudioInfo = processedLangAudioInfo;
                     mergeReq.AudioDelayBypassedLangIds = audioDelayBypassedLangIds;
@@ -163,11 +168,12 @@ namespace RemuxForge.Core.Pipeline
         /// <param name="processedLangAudioInfo">Metadata stimati language</param>
         /// <param name="audioDelayBypassedLangIds">Tracce language con delay materializzato</param>
         /// <param name="effectiveAudioDelay">Delay audio effettivo modificabile</param>
-        private void BuildAudioPreview(FileProcessingRecord record, Options options, MkvToolsService mkvService, MkvFileInfo sourceInfo, MkvFileInfo langInfo, List<TrackInfo> sourceTracks, List<int> sourceAudioIds, List<TrackInfo> audioTracks, bool needsMerge, bool filterSourceAudio, string ffmpegPath, Dictionary<int, string> convertedSourceTracks, Dictionary<int, string> convertedLangTracks, Dictionary<int, TrackInfo> processedSourceAudioInfo, Dictionary<int, TrackInfo> processedLangAudioInfo, HashSet<int> audioDelayBypassedLangIds, ref int effectiveAudioDelay)
+        private bool BuildAudioPreview(FileProcessingRecord record, Options options, MkvToolsService mkvService, MkvFileInfo sourceInfo, MkvFileInfo langInfo, List<TrackInfo> sourceTracks, List<int> sourceAudioIds, List<TrackInfo> audioTracks, bool needsMerge, bool filterSourceAudio, string ffmpegPath, Dictionary<int, string> convertedSourceTracks, Dictionary<int, string> convertedLangTracks, Dictionary<int, TrackInfo> processedSourceAudioInfo, Dictionary<int, TrackInfo> processedLangAudioInfo, HashSet<int> audioDelayBypassedLangIds, ref int effectiveAudioDelay)
         {
             AudioProcessingRequest request;
             AudioProcessingPlanner planner;
             AudioProcessingPlan plan;
+            List<AudioTrackProcessingPlan> plannedTracks;
             bool deepAudioRequired;
             bool processingPossible;
 
@@ -176,20 +182,31 @@ namespace RemuxForge.Core.Pipeline
             if (!processingPossible || string.IsNullOrEmpty(options.AudioFormat))
             {
                 record.AudioProcessingPreview = null;
-                return;
+                return true;
             }
 
             request = this._audioRequestBuilder.Build(record, options, sourceInfo, langInfo, sourceTracks, sourceAudioIds, audioTracks, needsMerge, filterSourceAudio, effectiveAudioDelay);
             if (request.SourceTracksToProcess.Count == 0 && request.LangTracksToProcess.Count == 0)
             {
                 record.AudioProcessingPreview = null;
-                return;
+                return true;
             }
 
             planner = new AudioProcessingPlanner(mkvService, ffmpegPath);
             plan = planner.BuildPlan(request, true);
             request.Plan = plan;
             record.AudioProcessingPreview = plan;
+            plannedTracks = plan.GetAllTracks();
+            for (int i = 0; i < plannedTracks.Count; i++)
+            {
+                AudioTrackProcessingPlan trackPlan = plannedTracks[i];
+                if (!string.IsNullOrEmpty(trackPlan.ErrorMessage))
+                {
+                    record.ErrorMessage = trackPlan.ErrorMessage;
+                    return false;
+                }
+            }
+            record.ErrorMessage = "";
             AudioProcessingDryRunHelper.AddPlaceholders(plan, options, convertedSourceTracks, convertedLangTracks, processedSourceAudioInfo, processedLangAudioInfo, audioDelayBypassedLangIds);
 
             this.EnsureSourceAudioIdsForProcessedTracks(sourceTracks, sourceAudioIds, convertedSourceTracks, filterSourceAudio);
@@ -198,6 +215,27 @@ namespace RemuxForge.Core.Pipeline
             {
                 effectiveAudioDelay = 0;
                 record.AudioDelayApplied = effectiveAudioDelay;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Copia nel merge gli ID Language per cui il piano impone un output FFmpeg
+        /// </summary>
+        private void AddRequiredProcessedLangTrackIds(AudioProcessingPlan plan, HashSet<int> destination)
+        {
+            if (plan == null || destination == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < plan.LangTracks.Count; i++)
+            {
+                if (plan.LangTracks[i].RenderRequired && plan.LangTracks[i].Track != null)
+                {
+                    destination.Add(plan.LangTracks[i].Track.Id);
+                }
             }
         }
 

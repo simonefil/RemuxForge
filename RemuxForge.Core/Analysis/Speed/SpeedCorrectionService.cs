@@ -30,7 +30,7 @@ namespace RemuxForge.Core.Analysis.Speed
         private int _initialDelayMs;
 
         /// <summary>
-        /// Rapporto stretch come stringa per mkvmerge
+        /// Rapporto stretch logico della timeline
         /// </summary>
         private string _stretchFactor;
 
@@ -1435,7 +1435,7 @@ namespace RemuxForge.Core.Analysis.Speed
         public int InitialDelayMs { get { return this._initialDelayMs; } }
 
         /// <summary>
-        /// Rapporto stretch per mkvmerge
+        /// Rapporto stretch logico della timeline
         /// </summary>
         public string StretchFactor { get { return this._stretchFactor; } }
 

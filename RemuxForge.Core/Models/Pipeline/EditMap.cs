@@ -34,7 +34,7 @@ namespace RemuxForge.Core.Models
         public int InitialDelayMs { get; set; }
 
         /// <summary>
-        /// Stretch ratio come stringa per mkvmerge, vuoto se nessuno
+        /// Stretch ratio logico della timeline, vuoto se nessuno
         /// </summary>
         public string StretchFactor { get; set; }
 
