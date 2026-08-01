@@ -95,7 +95,10 @@ namespace RemuxForge.Web.Services
             sb.Append(AppText.F("web.detail.audioLine", Utils.FormatTrackList(record.SourceAudioTracks))).Append('\n');
             sb.Append(AppText.F("web.detail.subLine", Utils.FormatTrackList(record.SourceSubTracks))).Append('\n');
 
-            if (record.KeptSourceAudioIds.Count > 0 || record.KeptSourceSubIds.Count > 0)
+            filterAudio = options.KeepSourceAudioLangs.Count > 0 || options.KeepSourceAudioCodec.Count > 0;
+            filterSub = options.KeepSourceSubtitleLangs.Count > 0;
+
+            if (filterAudio || filterSub)
             {
                 sb.Append('\n').Append(AppText.T("web.detail.keptSourceTracks")).Append('\n');
                 sb.Append(AppText.F("web.detail.audioLine", Utils.FormatTrackListByIds(record.SourceAudioTracks, record.KeptSourceAudioIds))).Append('\n');
@@ -109,8 +112,6 @@ namespace RemuxForge.Web.Services
                 sb.Append(AppText.F("web.detail.subLine", Utils.FormatTrackList(record.ImportedSubTracks))).Append('\n');
             }
 
-            filterAudio = record.KeptSourceAudioIds.Count > 0;
-            filterSub = record.KeptSourceSubIds.Count > 0;
             if (record.ImportedAudioTracks.Count > 0 || record.ImportedSubTracks.Count > 0 || filterAudio || filterSub)
             {
                 sb.Append('\n').Append(AppText.T("web.detail.finalResult")).Append('\n');
