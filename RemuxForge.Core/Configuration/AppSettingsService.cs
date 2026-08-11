@@ -5,6 +5,7 @@ using RemuxForge.Core.Tools;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Text.Json;
 
 namespace RemuxForge.Core.Configuration
@@ -46,6 +47,11 @@ namespace RemuxForge.Core.Configuration
         private static AppSettingsService s_instance;
 
         /// <summary>
+        /// Sincronizza la creazione dell'istanza singleton
+        /// </summary>
+        private static readonly object s_instanceLock = new object();
+
+        /// <summary>
         /// Modello impostazioni correnti
         /// </summary>
         private AppSettingsModel _model;
@@ -59,6 +65,11 @@ namespace RemuxForge.Core.Configuration
         /// Percorso completo del file appsettings.json
         /// </summary>
         private readonly string _configFilePath;
+
+        /// <summary>
+        /// Serializza lettura e scrittura del file di configurazione
+        /// </summary>
+        private readonly object _fileLock;
 
         #endregion
 
@@ -74,6 +85,7 @@ namespace RemuxForge.Core.Configuration
             this._configFolder = Path.Combine(baseDir, CONFIG_FOLDER_NAME);
             this._configFilePath = Path.Combine(this._configFolder, CONFIG_FILE_NAME);
             this._model = new AppSettingsModel();
+            this._fileLock = new object();
         }
 
         #endregion
@@ -87,11 +99,12 @@ namespace RemuxForge.Core.Configuration
         {
             get
             {
-                if (s_instance == null)
+                lock (s_instanceLock)
                 {
-                    s_instance = new AppSettingsService();
+                    if (s_instance == null)
+                        s_instance = new AppSettingsService();
+                    return s_instance;
                 }
-                return s_instance;
             }
         }
 
@@ -104,11 +117,6 @@ namespace RemuxForge.Core.Configuration
         /// Percorso della cartella .remux-forge
         /// </summary>
         public string ConfigFolder { get { return this._configFolder; } }
-
-        /// <summary>
-        /// Percorso del file appsettings.json
-        /// </summary>
-        public string ConfigFilePath { get { return this._configFilePath; } }
 
         #endregion
 
@@ -188,28 +196,32 @@ namespace RemuxForge.Core.Configuration
 
             try
             {
-                json = File.ReadAllText(this._configFilePath);
+                lock (this._fileLock)
+                {
+                    json = File.ReadAllText(this._configFilePath);
 
-                // Se deserializzazione restituisce null, ricrea model default
-                this._model = JsonSerializer.Deserialize<AppSettingsModel>(json, options) ?? new AppSettingsModel();
+                    // Se deserializzazione restituisce null, ricrea model default
+                    this._model = JsonSerializer.Deserialize<AppSettingsModel>(json, options) ?? new AppSettingsModel();
 
-                this.MigrateSubtitleEditConfig(json);
+                    this.MigrateSubtitleEditConfig(json);
 
-                // Assicura che sotto-oggetti non siano null
-                this.EnsureNotNull();
+                    // Assicura che sotto-oggetti non siano null
+                    this.EnsureNotNull();
 
-                // Sanitizzazione post-caricamento: clamp range e correggi valori invalidi
-                this.Sanitize();
+                    // Sanitizzazione post-caricamento: clamp range e correggi valori invalidi
+                    this.Sanitize();
 
-                // Rimuovi profili senza nome
-                this.RemoveEmptyProfiles();
+                    // Rimuovi profili senza nome
+                    this.RemoveEmptyProfiles();
+                }
 
                 success = true;
             }
             catch (Exception ex)
             {
                 ConsoleHelper.Write(LogSection.Config, LogLevel.Warning, AppText.F("settings.loadError", ex.Message));
-                this._model = new AppSettingsModel();
+                lock (this._fileLock)
+                    this._model = new AppSettingsModel();
             }
 
             return success;
@@ -225,15 +237,42 @@ namespace RemuxForge.Core.Configuration
             JsonSerializerOptions options = new JsonSerializerOptions();
             options.WriteIndented = true;
             string json;
+            string tempFilePath = this._configFilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
             {
-                json = JsonSerializer.Serialize(this._model, options);
-                File.WriteAllText(this._configFilePath, json);
+                lock (this._fileLock)
+                {
+                    json = JsonSerializer.Serialize(this._model, options);
+                    using (FileStream stream = new FileStream(tempFilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    using (StreamWriter writer = new StreamWriter(stream, new UTF8Encoding(false)))
+                    {
+                        writer.Write(json);
+                        writer.Flush();
+                        stream.Flush(true);
+                    }
+                    File.Move(tempFilePath, this._configFilePath, true);
+                }
                 success = true;
             }
             catch (Exception ex)
             {
                 ConsoleHelper.Write(LogSection.Config, LogLevel.Warning, AppText.F("settings.saveError", ex.Message));
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(tempFilePath))
+                        File.Delete(tempFilePath);
+                }
+                catch (IOException)
+                {
+                    // Il salvataggio ha già registrato l'errore principale; la pulizia resta best-effort.
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    // Il salvataggio ha già registrato l'errore principale; la pulizia resta best-effort.
+                }
             }
 
             return success;
@@ -503,7 +542,7 @@ namespace RemuxForge.Core.Configuration
             EncodingProfile result = null;
             for (int i = 0; i < this._model.EncodingProfiles.Count; i++)
             {
-                if (this._model.EncodingProfiles[i].Name == name)
+                if (this._model.EncodingProfiles[i] != null && this._model.EncodingProfiles[i].Name == name)
                 {
                     result = this._model.EncodingProfiles[i];
                     break;
@@ -605,15 +644,9 @@ namespace RemuxForge.Core.Configuration
             if (this._model.Advanced.Ffmpeg == null)
                 this._model.Advanced.Ffmpeg = new FfmpegConfig();
 
-            // Assicura array DeepAnalysis non null
-            if (this._model.Advanced.DeepAnalysis.ProbeMultiMarginsSec == null)
-                this._model.Advanced.DeepAnalysis.ProbeMultiMarginsSec = new List<double> { 5.0, 15.0, 25.0 };
+            if (this._model.Advanced.Ffmpeg.HardwareAccelerationMethod == null)
+                this._model.Advanced.Ffmpeg.HardwareAccelerationMethod = "";
 
-            if (this._model.Advanced.DeepAnalysis.OffsetProbeDeltas == null)
-                this._model.Advanced.DeepAnalysis.OffsetProbeDeltas = new List<int> { 1000, 2000, 3000, 4000, 5000, -1000, -2000, -3000, -4000, -5000 };
-
-            if (this._model.Advanced.DeepAnalysis.AudioFineTuneOperationTypes == null)
-                this._model.Advanced.DeepAnalysis.AudioFineTuneOperationTypes = "insert,cut";
         }
 
         /// <summary>
@@ -624,7 +657,7 @@ namespace RemuxForge.Core.Configuration
         {
             JsonDocument document = null;
 
-            if (this._model == null || this._model.Advanced == null || this._model.Advanced.SubtitleEdit != null)
+            if (this._model == null || this._model.Advanced == null)
             {
                 return;
             }
@@ -633,11 +666,13 @@ namespace RemuxForge.Core.Configuration
             {
                 document = JsonDocument.Parse(json);
                 if (document.RootElement.TryGetProperty("Advanced", out JsonElement advancedElement) &&
+                    !advancedElement.TryGetProperty("SubtitleEdit", out _) &&
                     advancedElement.TryGetProperty("TrackSplit", out JsonElement trackSplitElement) &&
                     trackSplitElement.TryGetProperty("FfmpegTimeoutMs", out JsonElement timeoutElement) &&
                     timeoutElement.TryGetInt32(out int timeoutMs))
                 {
-                    this._model.Advanced.SubtitleEdit = new SubtitleEditConfig();
+                    if (this._model.Advanced.SubtitleEdit == null)
+                        this._model.Advanced.SubtitleEdit = new SubtitleEditConfig();
                     this._model.Advanced.SubtitleEdit.FfmpegTimeoutMs = timeoutMs;
                 }
             }
@@ -711,8 +746,6 @@ namespace RemuxForge.Core.Configuration
             VideoSyncConfig vs = this._model.Advanced.VideoSync;
             vs.FrameWidth = this.ClampInt(vs.FrameWidth, 64, 1920);
             vs.FrameHeight = this.ClampInt(vs.FrameHeight, 64, 1080);
-            vs.MseThreshold = this.ClampDouble(vs.MseThreshold, 0.0, 10000.0);
-            vs.MseMinThreshold = this.ClampDouble(vs.MseMinThreshold, 0.0, 10000.0);
             vs.SsimThreshold = this.ClampDouble(vs.SsimThreshold, 0.0, 1.0);
             vs.SsimMaxThreshold = this.ClampDouble(vs.SsimMaxThreshold, 0.0, 1.0);
             vs.NumCheckPoints = this.ClampInt(vs.NumCheckPoints, 1, 1000);
@@ -733,8 +766,6 @@ namespace RemuxForge.Core.Configuration
             sc.SourceStartSec = this.ClampInt(sc.SourceStartSec, 0, 3600);
             sc.SourceDurationSec = this.ClampInt(sc.SourceDurationSec, 1, 3600);
             sc.LangDurationSec = this.ClampInt(sc.LangDurationSec, 1, 3600);
-            sc.MinSpeedRatioDiff = this.ClampDouble(sc.MinSpeedRatioDiff, 0.0001, 1.0);
-            sc.MaxDurationDiffTelecine = this.ClampDouble(sc.MaxDurationDiffTelecine, 0.0001, 1.0);
 
             // Sanitizzazione Advanced — FrameSync
             FrameSyncConfig fs = this._model.Advanced.FrameSync;
@@ -769,53 +800,30 @@ namespace RemuxForge.Core.Configuration
             fs.AudioGlobalMinCoverage = this.ClampDouble(fs.AudioGlobalMinCoverage, 0.0, 1.0);
             fs.AudioGlobalConfirmToleranceFrames = this.ClampInt(fs.AudioGlobalConfirmToleranceFrames, 1, 1000);
             fs.AudioGlobalRejectToleranceFrames = this.ClampInt(fs.AudioGlobalRejectToleranceFrames, 1, 1000);
+            SpeedCorrectionConfig speedCorrection = this._model.Advanced.SpeedCorrection;
+            speedCorrection.SiftBackend = string.IsNullOrEmpty(speedCorrection.SiftBackend) ? "cpu" : speedCorrection.SiftBackend.Trim().ToLowerInvariant();
+            if (speedCorrection.SiftBackend != "cpu" && speedCorrection.SiftBackend != "vulkan")
+                speedCorrection.SiftBackend = "cpu";
+
             // Sanitizzazione Advanced — DeepAnalysis
             DeepAnalysisConfig da = this._model.Advanced.DeepAnalysis;
-            da.CoarseFps = this.ClampDouble(da.CoarseFps, 0.1, 30.0);
-            da.DenseScanFps = this.ClampDouble(da.DenseScanFps, 0.1, 30.0);
-            da.DenseScanSsimThreshold = this.ClampDouble(da.DenseScanSsimThreshold, 0.0, 1.0);
-            da.DenseScanMinDipFrames = this.ClampInt(da.DenseScanMinDipFrames, 1, 1000);
-            da.LinearScanWindowSec = this.ClampDouble(da.LinearScanWindowSec, 0.1, 60.0);
-            da.LinearScanConfirmFrames = this.ClampInt(da.LinearScanConfirmFrames, 1, 1000);
-            da.VerifyDipSsimThreshold = this.ClampDouble(da.VerifyDipSsimThreshold, 0.0, 1.0);
-            da.ProbeMinConsistentPoints = this.ClampInt(da.ProbeMinConsistentPoints, 1, 1000);
-            da.OffsetProbeDurationSec = this.ClampDouble(da.OffsetProbeDurationSec, 0.1, 60.0);
-            da.OffsetProbeMinSsim = this.ClampDouble(da.OffsetProbeMinSsim, 0.0, 1.0);
-            da.MinOffsetChangeMs = this.ClampInt(da.MinOffsetChangeMs, 1, 60000);
-            da.MinConsecutiveStable = this.ClampInt(da.MinConsecutiveStable, 1, 1000);
-            da.SceneThreshold = this.ClampDouble(da.SceneThreshold, 0.0, 1.0);
-            da.MatchToleranceMs = this.ClampInt(da.MatchToleranceMs, 1, 60000);
-            da.WideProbeToleranceSec = this.ClampDouble(da.WideProbeToleranceSec, 0.1, 120.0);
+            da.SiftBackend = string.IsNullOrEmpty(da.SiftBackend) ? "cpu" : da.SiftBackend.Trim().ToLowerInvariant();
+            if (da.SiftBackend != "cpu" && da.SiftBackend != "vulkan")
+                da.SiftBackend = "cpu";
             da.SceneExtractTimeoutMs = this.ClampInt(da.SceneExtractTimeoutMs, 1000, 3600000);
-            da.GlobalVerifyPoints = this.ClampInt(da.GlobalVerifyPoints, 1, 1000);
-            da.GlobalVerifyMinRatio = this.ClampDouble(da.GlobalVerifyMinRatio, 0.0, 1.0);
-            da.VerifyMseMultiplier = this.ClampDouble(da.VerifyMseMultiplier, 0.1, 100.0);
-            da.InitialOffsetRangeSec = this.ClampInt(da.InitialOffsetRangeSec, 1, 3600);
-            da.InitialOffsetStepSec = this.ClampDouble(da.InitialOffsetStepSec, 0.01, 60.0);
-            da.InitialVotingCuts = this.ClampInt(da.InitialVotingCuts, 1, 10000);
-            if (string.IsNullOrEmpty(da.AudioFineTuneOperationTypes != null ? da.AudioFineTuneOperationTypes.Trim() : null))
-            {
-                da.AudioFineTuneOperationTypes = "insert,cut";
-            }
-            da.AudioFineTuneWindowMs = this.ClampInt(da.AudioFineTuneWindowMs, 100, 30000);
-            da.AudioFineTuneEnvelopeWindowMs = this.ClampInt(da.AudioFineTuneEnvelopeWindowMs, 5, 500);
-            da.AudioFineTuneMinSilenceMs = this.ClampInt(da.AudioFineTuneMinSilenceMs, 25, 10000);
-            da.AudioFineTuneMaxShiftMs = this.ClampInt(da.AudioFineTuneMaxShiftMs, 100, 30000);
 
             // Sanitizzazione Advanced — SubtitleEdit
             SubtitleEditConfig subtitleEdit = this._model.Advanced.SubtitleEdit;
             subtitleEdit.FfmpegTimeoutMs = this.ClampInt(subtitleEdit.FfmpegTimeoutMs, 1000, 3600000);
-            this._model.Advanced.Ffmpeg.FrameExtractionTimeoutMs = this.ClampInt(this._model.Advanced.Ffmpeg.FrameExtractionTimeoutMs, 1000, 3600000);
+            FfmpegConfig ffmpeg = this._model.Advanced.Ffmpeg;
+            ffmpeg.FrameExtractionTimeoutMs = this.ClampInt(ffmpeg.FrameExtractionTimeoutMs, 1000, 3600000);
+            ffmpeg.HardwareAccelerationMethod = ffmpeg.HardwareAccelerationMethod.Trim().ToLowerInvariant();
+            if (!FfmpegConfig.IsValidHardwareAccelerationMethod(ffmpeg.HardwareAccelerationMethod))
+            {
+                ffmpeg.HardwareAcceleration = false;
+                ffmpeg.HardwareAccelerationMethod = "";
+            }
 
-            // Sanitizzazione array DeepAnalysis: se vuoti, ripristina default
-            if (da.ProbeMultiMarginsSec.Count == 0)
-            {
-                da.ProbeMultiMarginsSec = new List<double> { 5.0, 15.0, 25.0 };
-            }
-            if (da.OffsetProbeDeltas.Count == 0)
-            {
-                da.OffsetProbeDeltas = new List<int> { 1000, 2000, 3000, 4000, 5000, -1000, -2000, -3000, -4000, -5000 };
-            }
         }
 
         /// <summary>
@@ -948,7 +956,7 @@ namespace RemuxForge.Core.Configuration
             int i = 0;
             while (i < this._model.EncodingProfiles.Count)
             {
-                if (string.IsNullOrEmpty(this._model.EncodingProfiles[i].Name))
+                if (this._model.EncodingProfiles[i] == null || string.IsNullOrEmpty(this._model.EncodingProfiles[i].Name))
                 {
                     this._model.EncodingProfiles.RemoveAt(i);
                 }

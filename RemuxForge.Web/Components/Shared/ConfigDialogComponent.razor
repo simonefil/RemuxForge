@@ -158,13 +158,19 @@
             <div class="form-section">@AppText.T("web.config.section.sync")</div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.speed")</span>
-                <select class="form-input" style="width: 14ch;" value="@_speedCorrectionMode" @onchange="OnSpeedCorrectionChanged" @onfocus="@(() => SetFieldHelp("remux.speed"))" @onmouseenter="@(() => SetFieldHelp("remux.speed"))">
-                    <option value="@Options.SPEED_CORRECTION_OFF">@AppText.T("web.config.option.off")</option>
-                    <option value="@Options.SPEED_CORRECTION_AUTO">@AppText.T("web.config.option.auto")</option>
-                    <option value="@Options.SPEED_CORRECTION_MANUAL">@AppText.T("web.config.option.manual")</option>
+                <select class="form-input" style="width: 34ch;" value="@_speedCorrectionPreset" @onchange="OnSpeedCorrectionChanged" @onfocus="@(() => SetFieldHelp("remux.speed"))" @onmouseenter="@(() => SetFieldHelp("remux.speed"))">
+                    <option value="">@AppText.T("web.config.option.off")</option>
+                    @if (!string.IsNullOrEmpty(_customSpeedCorrectionFactor))
+                    {
+                        <option value="@_customSpeedCorrectionFactor">@AppText.F("web.config.option.speedCustom", _customSpeedCorrectionFactor)</option>
+                    }
+                    <option value="1001/960">@AppText.T("web.config.option.speed23976To25")</option>
+                    <option value="960/1001">@AppText.T("web.config.option.speed25To23976")</option>
+                    <option value="5/4">@AppText.T("web.config.option.speed23976To2997")</option>
+                    <option value="4/5">@AppText.T("web.config.option.speed2997To23976")</option>
+                    <option value="1200/1001">@AppText.T("web.config.option.speed25To2997")</option>
+                    <option value="1001/1200">@AppText.T("web.config.option.speed2997To25")</option>
                 </select>
-                <span style="margin-left: 1ch;">@AppText.T("web.config.label.stretch")</span>
-                <input class="form-input" style="width: 14ch;" @bind="_manualStretchFactor" @onfocus="@(() => SetFieldHelp("remux.stretch"))" @onmouseenter="@(() => SetFieldHelp("remux.stretch"))" />
             </div>
             <div class="form-row">
                 <span class="ui-toggle" @onclick="ToggleFrameSync" @onmouseenter="@(() => SetFieldHelp("remux.framesync"))">@(_frameSync ? "[X]" : "[ ]") @AppText.T("web.config.toggle.frameSync")</span>
@@ -456,14 +462,14 @@
     private bool _audioOnly;
 
     /// <summary>
-    /// Modalità speed correction
+    /// Preset speed correction selezionato
     /// </summary>
-    private string _speedCorrectionMode = Options.SPEED_CORRECTION_OFF;
+    private string _speedCorrectionPreset = "";
 
     /// <summary>
-    /// Stretch factor manuale
+    /// Fattore manuale CLI valido ma non modificabile tramite i preset UI
     /// </summary>
-    private string _manualStretchFactor = "";
+    private string _customSpeedCorrectionFactor = "";
 
     /// <summary>
     /// Flag frame-sync
@@ -675,8 +681,12 @@
             _keepSrcSub = string.Join(",", Options.KeepSourceSubtitleLangs);
             _subOnly = Options.SubOnly;
             _audioOnly = Options.AudioOnly;
-            _speedCorrectionMode = !string.IsNullOrEmpty(Options.SpeedCorrectionMode) ? Options.SpeedCorrectionMode : Options.SPEED_CORRECTION_OFF;
-            _manualStretchFactor = Options.ManualStretchFactor;
+            _speedCorrectionPreset = Options.SpeedCorrectionMode == Options.SPEED_CORRECTION_MANUAL ? NormalizeSpeedCorrectionPreset(Options.ManualStretchFactor) : "";
+            if (Options.SpeedCorrectionMode == Options.SPEED_CORRECTION_MANUAL && string.IsNullOrEmpty(_speedCorrectionPreset) && SpeedCorrectionService.TryParseStretchFactor(Options.ManualStretchFactor, out _, out string normalizedCustomFactor))
+            {
+                _customSpeedCorrectionFactor = normalizedCustomFactor;
+                _speedCorrectionPreset = normalizedCustomFactor;
+            }
             _frameSync = Options.FrameSync;
             _deepAnalysis = Options.DeepAnalysis;
             _analysisCropSourcePx = Options.AnalysisCropSourcePx;
@@ -768,8 +778,8 @@
 
         opts.SubOnly = _subOnly;
         opts.AudioOnly = _audioOnly;
-        opts.SpeedCorrectionMode = _speedCorrectionMode;
-        opts.ManualStretchFactor = _manualStretchFactor.Trim();
+        opts.SpeedCorrectionMode = string.IsNullOrEmpty(_speedCorrectionPreset) ? Options.SPEED_CORRECTION_OFF : Options.SPEED_CORRECTION_MANUAL;
+        opts.ManualStretchFactor = _speedCorrectionPreset;
         opts.FrameSync = _frameSync;
         opts.DeepAnalysis = _deepAnalysis;
         opts.AnalysisCropSourcePx = Options.NormalizeAnalysisCropPx(_analysisCropSourcePx);
@@ -1120,6 +1130,7 @@
     /// </summary>
     /// <param name="fieldIndex">Indice campo split</param>
     /// <param name="showFiles">Flag: mostra file selezionabili</param>
+    /// <param name="allowCurrentFolderSelection">True per consentire la selezione della cartella corrente</param>
     private void BrowseSplit(int fieldIndex, bool showFiles, bool allowCurrentFolderSelection)
     {
         _browseFieldIndex = fieldIndex;
@@ -1221,7 +1232,8 @@
     /// </summary>
     private void OnAudioFormatChanged(ChangeEventArgs args)
     {
-        _audioFormat = args.Value != null ? args.Value.ToString().Trim().ToLowerInvariant() : "";
+        string audioFormat = args.Value != null ? args.Value.ToString() : null;
+        _audioFormat = audioFormat != null ? audioFormat.Trim().ToLowerInvariant() : "";
         if (string.IsNullOrEmpty(_audioFormat))
         {
             _audioProcessingScope = "disabled";
@@ -1242,8 +1254,30 @@
     /// </summary>
     private void OnSpeedCorrectionChanged(ChangeEventArgs args)
     {
-        _speedCorrectionMode = args.Value != null ? args.Value.ToString() : Options.SPEED_CORRECTION_OFF;
+        string selectedValue = args.Value != null ? args.Value.ToString() : "";
+        if (!string.IsNullOrEmpty(_customSpeedCorrectionFactor) && string.Equals(selectedValue, _customSpeedCorrectionFactor, StringComparison.Ordinal))
+        {
+            _speedCorrectionPreset = _customSpeedCorrectionFactor;
+        }
+        else
+        {
+            _customSpeedCorrectionFactor = "";
+            _speedCorrectionPreset = NormalizeSpeedCorrectionPreset(selectedValue);
+        }
         NormalizeMandatoryAudioScope();
+    }
+
+    /// <summary>
+    /// Limita la configurazione UI ai rapporti di playback supportati dalla tendina
+    /// </summary>
+    /// <param name="value">Valore da normalizzare</param>
+    /// <returns>Preset supportato oppure stringa vuota</returns>
+    private static string NormalizeSpeedCorrectionPreset(string value)
+    {
+        string preset = value != null ? value.Trim() : "";
+        if (preset == "1001/960" || preset == "960/1001" || preset == "5/4" || preset == "4/5" || preset == "1200/1001" || preset == "1001/1200")
+            return preset;
+        return "";
     }
 
     /// <summary>
@@ -1293,7 +1327,7 @@
     {
         return !_subOnly &&
             !string.IsNullOrEmpty(_targetLang.Trim()) &&
-            (_speedCorrectionMode != Options.SPEED_CORRECTION_OFF || _deepAnalysis);
+            (!string.IsNullOrEmpty(_speedCorrectionPreset) || _deepAnalysis);
     }
 
     /// <summary>

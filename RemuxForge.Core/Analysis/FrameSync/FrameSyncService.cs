@@ -371,18 +371,9 @@ namespace RemuxForge.Core.Analysis.FrameSync
                 phaseStopwatch.Stop();
                 this._timing.VideoInfoMs += phaseStopwatch.ElapsedMilliseconds;
 
-                if (sourceTiming != null && langTiming != null && sourceTiming.CanNormalizeToNominalFps && langTiming.CanNormalizeToNominalFps)
-                {
-                    sourceTargetFps = fps;
-                    langTargetFps = fps;
-                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, "  Normalizzazione CFR a " + fps.ToString("F3", CultureInfo.InvariantCulture) + "fps");
-                }
-                else
-                {
-                    sourceTargetFps = 0.0;
-                    langTargetFps = 0.0;
-                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Notice, "  Normalizzazione FPS disattivata: uso timestamp PTS reali");
-                }
+                sourceTargetFps = 0.0;
+                langTargetFps = 0.0;
+                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, "  Campionamento FrameSync su timestamp PTS reali");
 
                 ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, "  Durata: " + (durationMs / 1000) + "s, fps diagnostico=" + fps.ToString("F3", CultureInfo.InvariantCulture) + ", intervallo fallback=" + frameIntervalMs + "ms, core=" + Environment.ProcessorCount);
 
@@ -827,7 +818,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
             ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, "  Estrazione frame (source " + this._fsConfig.SourceDurationSec + "s, lang " + this._fsConfig.LangDurationSec + "s)...");
             ConsoleHelper.Progress(LogSection.FrameSync, 24, "FrameSync: estrazione");
 
-            // Estrae segmenti in parallelo (fps forzato per garantire output CFR, passthrough se VFR)
+            // Estrae segmenti in parallelo preservando i timestamp PTS originali
             double fpsCopy = sourceTargetFps;
             bool sourceGeometryCropCopy = this._geometryCropSourceToFourThree;
             bool languageGeometryCropCopy = this._geometryCropLanguageToFourThree;

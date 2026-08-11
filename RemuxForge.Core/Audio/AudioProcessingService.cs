@@ -24,7 +24,7 @@ namespace RemuxForge.Core.Audio
         private readonly List<string> _createdFiles;
         private readonly List<string> _transientFiles;
         private readonly object _lock;
-        private string _lastFfmpegError;
+        private readonly System.Threading.AsyncLocal<string> _lastFfmpegError;
 
         #endregion
 
@@ -42,7 +42,7 @@ namespace RemuxForge.Core.Audio
             this._createdFiles = new List<string>();
             this._transientFiles = new List<string>();
             this._lock = new object();
-            this._lastFfmpegError = "";
+            this._lastFfmpegError = new System.Threading.AsyncLocal<string>();
         }
 
         #endregion
@@ -164,26 +164,29 @@ namespace RemuxForge.Core.Audio
                 return result;
             }
 
-            for (int i = 0; i < plan.LangTracks.Count; i++)
+            if (plan.LangTracks != null)
             {
-                AudioTrackProcessingPlan requiredPlan = plan.LangTracks[i];
-                if (requiredPlan.RenderRequired &&
-                    (requiredPlan.Track == null ||
-                     !result.LangOutputFiles.ContainsKey(requiredPlan.Track.Id) ||
-                     string.IsNullOrEmpty(result.LangOutputFiles[requiredPlan.Track.Id]) ||
-                     !File.Exists(result.LangOutputFiles[requiredPlan.Track.Id])))
+                for (int i = 0; i < plan.LangTracks.Count; i++)
                 {
-                    result.Success = false;
-                    result.ErrorMessage = "Output audio Language obbligatorio mancante per track " + (requiredPlan.Track != null ? requiredPlan.Track.Id.ToString(CultureInfo.InvariantCulture) : "?");
-                    this.DeleteCreatedFiles();
-                    request.Record.ErrorMessage = result.ErrorMessage;
-                    request.Record.Status = FileStatus.Error;
-                    return result;
+                    AudioTrackProcessingPlan requiredPlan = plan.LangTracks[i];
+                    if (requiredPlan.RenderRequired &&
+                        (requiredPlan.Track == null ||
+                         !result.LangOutputFiles.ContainsKey(requiredPlan.Track.Id) ||
+                         string.IsNullOrEmpty(result.LangOutputFiles[requiredPlan.Track.Id]) ||
+                         !File.Exists(result.LangOutputFiles[requiredPlan.Track.Id])))
+                    {
+                        result.Success = false;
+                        result.ErrorMessage = "Output audio Language obbligatorio mancante per track " + (requiredPlan.Track != null ? requiredPlan.Track.Id.ToString(CultureInfo.InvariantCulture) : "?");
+                        this.DeleteCreatedFiles();
+                        request.Record.ErrorMessage = result.ErrorMessage;
+                        request.Record.Status = FileStatus.Error;
+                        return result;
+                    }
                 }
             }
 
             result.Success = true;
-            result.EffectiveAudioDelayMs = result.AudioDelayBypassedLangIds.Count > 0 ? 0 : request.EffectiveAudioDelayMs;
+            result.EffectiveAudioDelayMs = request.EffectiveAudioDelayMs;
             this.DeleteTransientFiles();
             return result;
         }
@@ -206,6 +209,12 @@ namespace RemuxForge.Core.Audio
             TrackInfo sourceFillTrack = trackPlan != null ? trackPlan.SourceFillTrack : null;
             string outputFile;
 
+            if (job.Track == null)
+            {
+                result.ErrorMessage = "Processing audio fallito: traccia non valida";
+                return result;
+            }
+
             if (CodecMapping.IsSpatialCodec(job.Track))
             {
                 result.ErrorMessage = "Traccia audio spaziale/object selezionata per processing: track " + job.Track.Id + " (" + job.Track.Codec + ")";
@@ -223,7 +232,7 @@ namespace RemuxForge.Core.Audio
             // Priorità: source fill modifica la timeline completa, poi EditMap deep-analysis, infine conversione semplice
             if (trackPlan != null && trackPlan.SourceFillHasWork)
             {
-                if (sourceFillTrack == null || job.Track == null)
+                if (sourceFillTrack == null)
                 {
                     result.ErrorMessage = "Audio source fill fallito: tracce non valide per lang track " + job.Track.Id;
                     return result;
@@ -268,6 +277,7 @@ namespace RemuxForge.Core.Audio
         /// <param name="inputFile">File di input</param>
         /// <param name="track">Traccia da processare</param>
         /// <param name="trackLabel">Etichetta traccia da usare nei log</param>
+        /// <param name="trackPlan">Piano di elaborazione della traccia</param>
         /// <param name="outputFile">File audio temporaneo finale</param>
         /// <param name="result">Risultato della traccia</param>
         /// <returns>True se ffmpeg ha prodotto il file finale</returns>
@@ -413,6 +423,7 @@ namespace RemuxForge.Core.Audio
         /// <param name="request">Richiesta audio corrente</param>
         /// <param name="inputFile">File di input</param>
         /// <param name="track">Traccia da renderizzare</param>
+        /// <param name="trackPlan">Piano di elaborazione della traccia</param>
         /// <returns>Path del file temporaneo, oppure stringa vuota se fallisce</returns>
         private string RenderSimpleTemp(AudioProcessingRequest request, string inputFile, TrackInfo track, AudioTrackProcessingPlan trackPlan)
         {
@@ -441,6 +452,7 @@ namespace RemuxForge.Core.Audio
         /// <param name="track">Traccia lang da renderizzare</param>
         /// <param name="editMap">Mappa operazioni deep-analysis</param>
         /// <param name="options">Opzioni correnti</param>
+        /// <param name="trackPlan">Piano di elaborazione della traccia</param>
         /// <param name="outputFile">File di output</param>
         /// <param name="forPeakTemp">True se l'output è un PCM temporaneo per peak</param>
         /// <returns>Lista argomenti ffmpeg</returns>
@@ -516,6 +528,7 @@ namespace RemuxForge.Core.Audio
         /// <param name="track">Traccia lang da filtrare</param>
         /// <param name="editMap">Mappa operazioni deep-analysis</param>
         /// <param name="options">Opzioni correnti</param>
+        /// <param name="trackPlan">Piano di elaborazione della traccia</param>
         /// <param name="forPeakTemp">True se il filtro produce PCM temporaneo per peak</param>
         /// <returns>Filtro ffmpeg completo con output [outa]</returns>
         private string BuildEditMapFilter(TrackInfo track, EditMap editMap, Options options, AudioTrackProcessingPlan trackPlan, bool forPeakTemp)
@@ -614,19 +627,6 @@ namespace RemuxForge.Core.Audio
             }
 
             return this.BuildConcatFilter(segments, langTrack, options, forPeakTemp, plan.InitialTrimMs, "");
-        }
-
-        /// <summary>
-        /// Costruisce il filtro concat comune a EditMap e source fill
-        /// </summary>
-        /// <param name="segments">Segmenti audio già ordinati in timeline di output</param>
-        /// <param name="track">Traccia usata per layout e sample rate finale</param>
-        /// <param name="options">Opzioni correnti</param>
-        /// <param name="forPeakTemp">True se il filtro produce PCM temporaneo per peak</param>
-        /// <returns>Filtro ffmpeg completo con output [outa]</returns>
-        private string BuildConcatFilter(List<AudioFilterSegment> segments, TrackInfo track, Options options, bool forPeakTemp)
-        {
-            return this.BuildConcatFilter(segments, track, options, forPeakTemp, 0, "");
         }
 
         /// <summary>
@@ -972,7 +972,7 @@ namespace RemuxForge.Core.Audio
         private bool RunFfmpegToTemp(List<string> args, string tempFile)
         {
             ProcessResult processResult = ProcessRunner.Run(this._ffmpegPath, args.ToArray());
-            this._lastFfmpegError = "";
+            this._lastFfmpegError.Value = "";
             if (processResult.ExitCode == 0 && File.Exists(tempFile) && !this.HasForbiddenAudioFallback(processResult.Stderr))
             {
                 lock (this._lock)
@@ -983,7 +983,7 @@ namespace RemuxForge.Core.Audio
             }
 
             FileHelper.DeleteTempFile(tempFile);
-            this._lastFfmpegError = this.ResolveFfmpegError(processResult);
+            this._lastFfmpegError.Value = this.ResolveFfmpegError(processResult);
             return false;
         }
 
@@ -1025,7 +1025,7 @@ namespace RemuxForge.Core.Audio
         /// <returns>Errore formattato, oppure stringa vuota</returns>
         private string FormatLastFfmpegError()
         {
-            return !string.IsNullOrEmpty(this._lastFfmpegError) ? ": " + this._lastFfmpegError : "";
+            return !string.IsNullOrEmpty(this._lastFfmpegError.Value) ? ": " + this._lastFfmpegError.Value : "";
         }
 
         /// <summary>

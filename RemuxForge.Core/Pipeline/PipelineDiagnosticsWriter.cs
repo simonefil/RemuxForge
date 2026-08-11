@@ -49,7 +49,7 @@ namespace RemuxForge.Core.Pipeline
         public void WriteDeepAnalysisIfEnabled(FileProcessingRecord record, Options options)
         {
             string diagnosticsPath;
-            if (options == null || !options.DeepAnalysisDiagnostics || record == null)
+            if (options == null || record == null || !options.DeepAnalysisDiagnostics)
             {
                 return;
             }
@@ -57,7 +57,7 @@ namespace RemuxForge.Core.Pipeline
             try
             {
                 DeepAnalysisDiagnosticsWriter writer = new DeepAnalysisDiagnosticsWriter();
-                diagnosticsPath = writer.Write(record, options);
+                diagnosticsPath = writer.Write(record);
                 if (!string.IsNullOrEmpty(diagnosticsPath))
                 {
                     ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  Diagnostica deep-analysis: " + diagnosticsPath);

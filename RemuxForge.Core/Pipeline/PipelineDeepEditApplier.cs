@@ -68,7 +68,9 @@ namespace RemuxForge.Core.Pipeline
                 }
                 else if (emptyTrack)
                 {
-                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Traccia sub " + subtitleTracks[s].Id + " mantenuta invariata perché vuota");
+                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Traccia sub " + subtitleTracks[s].Id + " omessa: nessun cue dopo l'applicazione della edit map");
+                    subtitleTracks.RemoveAt(s);
+                    s--;
                 }
                 else
                 {

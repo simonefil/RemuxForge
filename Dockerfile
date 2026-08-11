@@ -15,7 +15,7 @@ WORKDIR /app
 ENV LANG=C.UTF-8
 ARG FFMPEG_RELEASE_BRANCH=8.1
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    mkvtoolnix mediainfo curl xz-utils \
+    mkvtoolnix mediainfo curl xz-utils libvulkan1 mesa-vulkan-drivers \
     && curl -L -o /tmp/ffmpeg.tar.xz https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n${FFMPEG_RELEASE_BRANCH}-latest-linux64-gpl-${FFMPEG_RELEASE_BRANCH}.tar.xz \
     && tar -xf /tmp/ffmpeg.tar.xz -C /tmp \
     && cp /tmp/ffmpeg-n${FFMPEG_RELEASE_BRANCH}-latest-linux64-gpl-${FFMPEG_RELEASE_BRANCH}/bin/ffmpeg /usr/local/bin/ \

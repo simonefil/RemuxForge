@@ -36,11 +36,6 @@ namespace RemuxForge.Core.Models
         public double ObservedFps { get; set; }
 
         /// <summary>
-        /// FPS derivato da default_duration Matroska
-        /// </summary>
-        public double DefaultDurationFps { get; set; }
-
-        /// <summary>
         /// Numero frame video
         /// </summary>
         public long FrameCount { get; set; }
@@ -64,11 +59,6 @@ namespace RemuxForge.Core.Models
         /// True se default_duration è coerente con durata e frame count
         /// </summary>
         public bool IsDefaultDurationTrusted { get; set; }
-
-        /// <summary>
-        /// True se la speed correction automatica può essere applicata
-        /// </summary>
-        public bool CanAutoSpeedCorrect { get; set; }
 
         /// <summary>
         /// True se è possibile normalizzare al FPS nominale

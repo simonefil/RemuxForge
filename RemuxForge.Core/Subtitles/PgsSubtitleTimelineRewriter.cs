@@ -17,14 +17,16 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="inputFile">File PGS/SUP originale</param>
         /// <param name="outputFile">File PGS/SUP riscritto</param>
         /// <param name="editMap">Edit map da applicare</param>
-        /// <returns>True se il file riscritto contiene packet validi</returns>
-        public bool Rewrite(string inputFile, string outputFile, EditMap editMap)
+        /// <param name="emptyTrack">True se l'edit map elimina tutti i display-set</param>
+        /// <returns>True se il file è valido o è stato completamente eliminato</returns>
+        public bool Rewrite(string inputFile, string outputFile, EditMap editMap, out bool emptyTrack)
         {
             byte[] data = File.ReadAllBytes(inputFile);
             MemoryStream output = new MemoryStream();
             int pos = 0;
             int setStart;
             int setEnd;
+            emptyTrack = false;
 
             // Il formato SUP/PGS è una sequenza di display-set terminati da segment type 0x80
             while (pos + PgsSubtitleUtils.SUP_PACKET_HEADER_SIZE <= data.Length)
@@ -44,7 +46,8 @@ namespace RemuxForge.Core.Subtitles
             }
 
             File.WriteAllBytes(outputFile, output.ToArray());
-            return output.Length > 0;
+            emptyTrack = output.Length == 0;
+            return true;
         }
 
         #endregion

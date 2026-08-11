@@ -16,8 +16,6 @@ namespace RemuxForge.Core.Models
         {
             this.FrameWidth = 320;
             this.FrameHeight = 240;
-            this.MseThreshold = 100.0;
-            this.MseMinThreshold = 0.05;
             this.SsimThreshold = 0.55;
             this.SsimMaxThreshold = 0.999;
             this.NumCheckPoints = 9;
@@ -36,7 +34,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Larghezza frame di analisi in pixel
@@ -47,16 +45,6 @@ namespace RemuxForge.Core.Models
         /// Altezza frame di analisi in pixel
         /// </summary>
         public int FrameHeight { get; set; }
-
-        /// <summary>
-        /// Soglia MSE massima per considerare due frame simili
-        /// </summary>
-        public double MseThreshold { get; set; }
-
-        /// <summary>
-        /// Soglia MSE minima per escludere frame neri o identici
-        /// </summary>
-        public double MseMinThreshold { get; set; }
 
         /// <summary>
         /// Soglia SSIM minima per considerare due frame corrispondenti
@@ -143,16 +131,20 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public SpeedCorrectionConfig()
         {
-            this.SourceStartSec = 1;
-            this.SourceDurationSec = 120;
-            this.LangDurationSec = 180;
-            this.MinSpeedRatioDiff = 0.001;
-            this.MaxDurationDiffTelecine = 0.005;
+            this.SiftBackend = "cpu";
+            this.SourceStartSec = 0;
+            this.SourceDurationSec = 300;
+            this.LangDurationSec = 375;
         }
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
+
+        /// <summary>
+        /// Backend SIFT: cpu oppure vulkan
+        /// </summary>
+        public string SiftBackend { get; set; }
 
         /// <summary>
         /// Secondo di inizio estrazione source
@@ -168,16 +160,6 @@ namespace RemuxForge.Core.Models
         /// Durata in secondi dell'estrazione lang
         /// </summary>
         public int LangDurationSec { get; set; }
-
-        /// <summary>
-        /// Differenza minima di speed ratio per applicare correzione
-        /// </summary>
-        public double MinSpeedRatioDiff { get; set; }
-
-        /// <summary>
-        /// Differenza massima durata relativa per rilevamento telecine
-        /// </summary>
-        public double MaxDurationDiffTelecine { get; set; }
 
         #endregion
     }
@@ -230,7 +212,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Durata minima video in millisecondi per procedere con sync
@@ -396,7 +378,7 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
-    /// Configurazione parametri deep analysis (DeepAnalysisService)
+    /// Configurazione della pipeline DeepAnalysis SIFT
     /// </summary>
     public class DeepAnalysisConfig
     {
@@ -407,191 +389,23 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public DeepAnalysisConfig()
         {
-            this.CoarseFps = 2.0;
-            this.DenseScanFps = 1.0;
-            this.DenseScanSsimThreshold = 0.5;
-            this.DenseScanMinDipFrames = 2;
-            this.LinearScanWindowSec = 3.0;
-            this.LinearScanConfirmFrames = 5;
-            this.VerifyDipSsimThreshold = 0.2;
-            this.ProbeMultiMarginsSec = new List<double> { 5.0, 15.0, 25.0 };
-            this.ProbeMinConsistentPoints = 2;
-            this.OffsetProbeDurationSec = 3.0;
-            this.OffsetProbeDeltas = new List<int> { 1000, 2000, 3000, 4000, 5000, -1000, -2000, -3000, -4000, -5000 };
-            this.OffsetProbeMinSsim = 0.7;
-            this.MinOffsetChangeMs = 500;
-            this.MinConsecutiveStable = 5;
-            this.SceneThreshold = 0.3;
-            this.MatchToleranceMs = 250;
-            this.WideProbeToleranceSec = 15.0;
+            this.SiftBackend = "cpu";
             this.SceneExtractTimeoutMs = 600000;
-            this.GlobalVerifyPoints = 30;
-            this.GlobalVerifyMinRatio = 0.80;
-            this.VerifyMseMultiplier = 3.0;
-            this.InitialOffsetRangeSec = 30;
-            this.InitialOffsetStepSec = 0.5;
-            this.InitialVotingCuts = 50;
-            this.AudioFineTuneEnabled = true;
-            this.AudioFineTuneOperationTypes = "insert,cut";
-            this.AudioFineTuneWindowMs = 3500;
-            this.AudioFineTuneEnvelopeWindowMs = 25;
-            this.AudioFineTuneMinSilenceMs = 150;
-            this.AudioFineTuneMaxShiftMs = 3500;
         }
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
-        /// FPS per scansione grossolana (coarse pass)
+        /// Backend SIFT: cpu oppure vulkan
         /// </summary>
-        public double CoarseFps { get; set; }
-
-        /// <summary>
-        /// FPS per scansione densa (dense scan)
-        /// </summary>
-        public double DenseScanFps { get; set; }
-
-        /// <summary>
-        /// Soglia SSIM per rilevare dip nella scansione densa
-        /// </summary>
-        public double DenseScanSsimThreshold { get; set; }
-
-        /// <summary>
-        /// Numero minimo di frame consecutivi in dip per confermare un cambio
-        /// </summary>
-        public int DenseScanMinDipFrames { get; set; }
-
-        /// <summary>
-        /// Finestra temporale in secondi per scansione lineare
-        /// </summary>
-        public double LinearScanWindowSec { get; set; }
-
-        /// <summary>
-        /// Numero di frame di conferma per scansione lineare
-        /// </summary>
-        public int LinearScanConfirmFrames { get; set; }
-
-        /// <summary>
-        /// Soglia SSIM per verifica dip (valore basso = dip confermato)
-        /// </summary>
-        public double VerifyDipSsimThreshold { get; set; }
-
-        /// <summary>
-        /// Margini temporali in secondi per probe multi-punto
-        /// </summary>
-        public List<double> ProbeMultiMarginsSec { get; set; }
-
-        /// <summary>
-        /// Numero minimo di punti consistenti nel probe multi-punto
-        /// </summary>
-        public int ProbeMinConsistentPoints { get; set; }
-
-        /// <summary>
-        /// Durata in secondi dell'estrazione per offset probe
-        /// </summary>
-        public double OffsetProbeDurationSec { get; set; }
-
-        /// <summary>
-        /// Delta offset in millisecondi da provare nel probe
-        /// </summary>
-        public List<int> OffsetProbeDeltas { get; set; }
-
-        /// <summary>
-        /// Soglia SSIM minima per accettare un risultato del probe offset
-        /// </summary>
-        public double OffsetProbeMinSsim { get; set; }
-
-        /// <summary>
-        /// Variazione minima offset in millisecondi per considerare un cambio significativo
-        /// </summary>
-        public int MinOffsetChangeMs { get; set; }
-
-        /// <summary>
-        /// Numero minimo di punti consecutivi stabili per confermare un segmento
-        /// </summary>
-        public int MinConsecutiveStable { get; set; }
-
-        /// <summary>
-        /// Soglia scene change passata a ffmpeg (0.0-1.0)
-        /// </summary>
-        public double SceneThreshold { get; set; }
-
-        /// <summary>
-        /// Tolleranza match in millisecondi per corrispondenza scene cut
-        /// </summary>
-        public int MatchToleranceMs { get; set; }
-
-        /// <summary>
-        /// Tolleranza temporale in secondi per probe ampio
-        /// </summary>
-        public double WideProbeToleranceSec { get; set; }
+        public string SiftBackend { get; set; }
 
         /// <summary>
         /// Timeout in millisecondi per estrazione scene con ffmpeg
         /// </summary>
         public int SceneExtractTimeoutMs { get; set; }
-
-        /// <summary>
-        /// Numero di punti per verifica globale finale
-        /// </summary>
-        public int GlobalVerifyPoints { get; set; }
-
-        /// <summary>
-        /// Rapporto minimo punti validi su totale per verifica globale
-        /// </summary>
-        public double GlobalVerifyMinRatio { get; set; }
-
-        /// <summary>
-        /// Moltiplicatore MSE per soglia dinamica nella verifica
-        /// </summary>
-        public double VerifyMseMultiplier { get; set; }
-
-        /// <summary>
-        /// Range iniziale in secondi per ricerca offset
-        /// </summary>
-        public int InitialOffsetRangeSec { get; set; }
-
-        /// <summary>
-        /// Step in secondi per ricerca offset iniziale
-        /// </summary>
-        public double InitialOffsetStepSec { get; set; }
-
-        /// <summary>
-        /// Numero di tagli scena per voting iniziale
-        /// </summary>
-        public int InitialVotingCuts { get; set; }
-
-        /// <summary>
-        /// Abilita fine tuning audio post verifica globale
-        /// </summary>
-        public bool AudioFineTuneEnabled { get; set; }
-
-        /// <summary>
-        /// Tipi operazione abilitati per fine tuning audio
-        /// </summary>
-        public string AudioFineTuneOperationTypes { get; set; }
-
-        /// <summary>
-        /// Finestra massima di ricerca fine tuning audio in millisecondi
-        /// </summary>
-        public int AudioFineTuneWindowMs { get; set; }
-
-        /// <summary>
-        /// Finestra envelope audio per fine tuning in millisecondi
-        /// </summary>
-        public int AudioFineTuneEnvelopeWindowMs { get; set; }
-
-        /// <summary>
-        /// Durata minima silenzio locale per accettare un boundary audio
-        /// </summary>
-        public int AudioFineTuneMinSilenceMs { get; set; }
-
-        /// <summary>
-        /// Shift massimo applicabile dal fine tuning audio in millisecondi
-        /// </summary>
-        public int AudioFineTuneMaxShiftMs { get; set; }
 
         #endregion
     }
@@ -613,7 +427,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Timeout singolo comando ffmpeg in millisecondi
@@ -636,22 +450,48 @@ namespace RemuxForge.Core.Models
         public FfmpegConfig()
         {
             this.HardwareAcceleration = false;
+            this.HardwareAccelerationMethod = "";
             this.FrameExtractionTimeoutMs = 120000;
         }
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
-        /// Abilita accelerazione hardware ffmpeg (-hwaccel auto)
+        /// Abilita accelerazione hardware ffmpeg con il metodo selezionato
         /// </summary>
         public bool HardwareAcceleration { get; set; }
+
+        /// <summary>
+        /// Metodo hardware ffmpeg verificato e selezionato dall'utente
+        /// </summary>
+        public string HardwareAccelerationMethod { get; set; }
 
         /// <summary>
         /// Timeout singola estrazione frame rawvideo in millisecondi
         /// </summary>
         public int FrameExtractionTimeoutMs { get; set; }
+
+        /// <summary>
+        /// Verifica che il metodo hardware sia un identificatore ffmpeg esplicito e sicuro
+        /// </summary>
+        /// <param name="method">Metodo da validare</param>
+        /// <returns>True per un identificatore esplicito valido</returns>
+        public static bool IsValidHardwareAccelerationMethod(string method)
+        {
+            if (string.IsNullOrEmpty(method) || method == "auto" || method == "none")
+                return false;
+
+            for (int i = 0; i < method.Length; i++)
+            {
+                char current = method[i];
+                if ((current < 'a' || current > 'z') && (current < '0' || current > '9') && current != '_')
+                    return false;
+            }
+
+            return true;
+        }
 
         #endregion
     }
@@ -678,7 +518,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Parametri base sincronizzazione video

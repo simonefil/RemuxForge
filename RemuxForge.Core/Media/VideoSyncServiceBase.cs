@@ -55,16 +55,6 @@ namespace RemuxForge.Core.Media
         protected string _analysisCropLanguagePx;
 
         /// <summary>
-        /// File sorgente dell'analisi corrente
-        /// </summary>
-        private string _analysisCropSourceFile;
-
-        /// <summary>
-        /// File lingua dell'analisi corrente
-        /// </summary>
-        private string _analysisCropLanguageFile;
-
-        /// <summary>
         /// Analyzer geometry video condiviso dal servizio
         /// </summary>
         private readonly VideoGeometryAnalyzer _geometryAnalyzer;
@@ -113,8 +103,6 @@ namespace RemuxForge.Core.Media
             this._geometryCropLanguageToFourThree = false;
             this._analysisCropSourcePx = "";
             this._analysisCropLanguagePx = "";
-            this._analysisCropSourceFile = "";
-            this._analysisCropLanguageFile = "";
             this._geometryAnalyzer = new VideoGeometryAnalyzer(this._ffmpegPath, this._ffmpegConfig, this._logSection);
             this._blackBorderNormalizer = new BlackBorderNormalizer(this._ffmpegPath, this._vsConfig, this._ffmpegConfig, this._logSection, this._geometryAnalyzer);
             this._sceneCutDetector = new SceneCutDetector(this._vsConfig);
@@ -164,52 +152,15 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Ricerca binaria dell'indice del timestamp più vicino al target
+        /// Estrae frame campionati nel tempo conservando i PTS originali selezionati
         /// </summary>
-        /// <param name="timestampsMs">Array di timestamp ordinato in modo crescente</param>
-        /// <param name="targetMs">Timestamp target da cercare</param>
-        /// <returns>Indice del timestamp più vicino, -1 se array vuoto</returns>
-        protected static int NearestTimestampIndex(double[] timestampsMs, double targetMs)
+        protected void ExtractSegmentAtInterval(string filePath, int startMs, double durationSec, double sampleIntervalSec, bool geometryCropToFourThree, string manualCropPx, out List<byte[]> frames, out double[] timestampsMs)
         {
-            int result = -1;
-            int low;
-            int high;
-            int mid;
-            double leftDist;
-            double rightDist;
-            if (timestampsMs != null && timestampsMs.Length > 0)
-            {
-                low = 0;
-                high = timestampsMs.Length - 1;
-
-                // Binary search per il primo indice con timestamp >= target
-                while (low < high)
-                {
-                    mid = (low + high) / 2;
-                    if (timestampsMs[mid] < targetMs)
-                    {
-                        low = mid + 1;
-                    }
-                    else
-                    {
-                        high = mid;
-                    }
-                }
-
-                // Confronta con indice precedente per scegliere il più vicino
-                result = low;
-                if (low > 0)
-                {
-                    leftDist = Math.Abs(timestampsMs[low - 1] - targetMs);
-                    rightDist = Math.Abs(timestampsMs[low] - targetMs);
-                    if (leftDist < rightDist)
-                    {
-                        result = low - 1;
-                    }
-                }
-            }
-
-            return result;
+            FrameExtractionService extractor = new FrameExtractionService(this._ffmpegPath, this._vsConfig, this._ffmpegConfig, this._logSection);
+            string normalizedManualCrop = Options.NormalizeAnalysisCropPx(manualCropPx);
+            bool effectiveGeometryCrop = this.UseGeometryCrop(geometryCropToFourThree, normalizedManualCrop);
+            extractor.ExtractSegmentAtInterval(filePath, startMs, durationSec, sampleIntervalSec, effectiveGeometryCrop, normalizedManualCrop, out frames, out timestampsMs);
+            this.NormalizeBlackBorders(filePath, effectiveGeometryCrop, normalizedManualCrop, frames);
         }
 
         /// <summary>
@@ -265,8 +216,6 @@ namespace RemuxForge.Core.Media
             this._lastLanguageGeometryInfo = null;
             this._geometryCropSourceToFourThree = false;
             this._geometryCropLanguageToFourThree = false;
-            this._analysisCropSourceFile = sourceFile;
-            this._analysisCropLanguageFile = languageFile;
             this._blackBorderNormalizer.Reset();
 
             sourceManualCrop = this._analysisCropSourcePx;
@@ -448,30 +397,6 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Risolve il crop manuale configurato per il file dell'analisi corrente
-        /// </summary>
-        /// <param name="filePath">File video</param>
-        /// <returns>Crop L:R:T:B o stringa vuota</returns>
-        protected string ResolveManualAnalysisCrop(string filePath)
-        {
-            string result = "";
-
-            if (!string.IsNullOrEmpty(filePath))
-            {
-                if (string.Equals(filePath, this._analysisCropSourceFile, StringComparison.OrdinalIgnoreCase))
-                {
-                    result = this._analysisCropSourcePx;
-                }
-                else if (string.Equals(filePath, this._analysisCropLanguageFile, StringComparison.OrdinalIgnoreCase))
-                {
-                    result = this._analysisCropLanguagePx;
-                }
-            }
-
-            return result;
-        }
-
-        /// <summary>
         /// Restituisce true se il crop geometry può restare attivo con il crop manuale corrente
         /// </summary>
         /// <param name="geometryCropToFourThree">Flag crop geometry richiesto</param>
@@ -493,30 +418,6 @@ namespace RemuxForge.Core.Media
             {
                 ConsoleHelper.Write(this._logSection, LogLevel.Notice, "  Analysis crop " + role + " attivo: " + manualCropPx + " px");
             }
-        }
-
-        /// <summary>
-        /// Calcola MSE tra due frame grayscale
-        /// </summary>
-        /// <param name="frame1">Primo frame grayscale</param>
-        /// <param name="frame2">Secondo frame grayscale</param>
-        /// <returns>Valore MSE calcolato</returns>
-        protected double ComputeMse(byte[] frame1, byte[] frame2)
-        {
-            return this._visualMetricCalculator.ComputeMse(frame1, frame2);
-        }
-
-        /// <summary>
-        /// Calcola SSIM (Structural Similarity Index) tra due frame grayscale
-        /// Restituisce un valore tra 0.0 (completamente diversi) e 1.0 (identici)
-        /// Robusto rispetto a differenze di compressione, luminosità e crop
-        /// </summary>
-        /// <param name="frame1">Primo frame grayscale</param>
-        /// <param name="frame2">Secondo frame grayscale</param>
-        /// <returns>Valore SSIM tra 0.0 e 1.0</returns>
-        protected double ComputeSsim(byte[] frame1, byte[] frame2)
-        {
-            return this._visualMetricCalculator.ComputeSsim(frame1, frame2);
         }
 
         /// <summary>

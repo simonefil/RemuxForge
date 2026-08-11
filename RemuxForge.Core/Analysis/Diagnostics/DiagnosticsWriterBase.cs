@@ -3,6 +3,7 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace RemuxForge.Core.Analysis.Diagnostics
 {
@@ -29,19 +30,15 @@ namespace RemuxForge.Core.Analysis.Diagnostics
         }
 
         /// <summary>
-        /// Costruisce il percorso completo del file diagnostico
-        /// </summary>
-        protected string BuildDiagnosticsFilePath(string folderName, string episodeId, string suffix)
-        {
-            return this.BuildDiagnosticsBasePath(folderName, episodeId) + suffix;
-        }
-
-        /// <summary>
         /// Serializza un payload JSON in modo safe
         /// </summary>
         protected void WriteJson<T>(string filePath, T payload)
         {
-            JsonSerializerOptions serializerOptions = new JsonSerializerOptions { WriteIndented = true };
+            JsonSerializerOptions serializerOptions = new JsonSerializerOptions
+            {
+                NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
+                WriteIndented = true
+            };
             string json = JsonSerializer.Serialize(payload, serializerOptions);
             File.WriteAllText(filePath, json);
         }

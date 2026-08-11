@@ -52,6 +52,11 @@ namespace RemuxForge.Web.Services
         private volatile bool _stopRequested;
 
         /// <summary>
+        /// Sorgente di cancellazione posseduta dall'operazione corrente
+        /// </summary>
+        private CancellationTokenSource _operationCancellation;
+
+        /// <summary>
         /// Buffer log accumulato
         /// </summary>
         private string _logText;
@@ -101,6 +106,7 @@ namespace RemuxForge.Web.Services
             this._progress = new ProcessingProgressState();
             this._isBusy = false;
             this._stopRequested = false;
+            this._operationCancellation = null;
             this._logText = AppText.T("web.merge.ready");
             this._selectedIndex = -1;
 
@@ -247,71 +253,72 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void Scan()
         {
-            if (this._isBusy)
-            {
-                return;
-            }
-
             // Verifica parametro obbligatorio: source folder
             if (string.IsNullOrEmpty(this._options.SourceFolder))
             {
                 this.AppendLog(AppText.T("web.merge.configureSourceFirst"));
                 return;
             }
+            if (!this.TryBeginOperation())
+                return;
 
             Thread thread = new Thread(() =>
             {
-                this.SetBusy(true);
-                this.BeginProgress(AppText.T("web.progress.scan"), 0, true);
-
                 try
                 {
-                    this.UpdateProgress("", 0, 0, 0, AppText.T("web.progress.initialization"), true, true);
-
-                    // Inizializza pipeline con opzioni correnti (come flusso CLI)
-                    if (!this._pipeline.Initialize(this._options))
+                    this.BeginProgress(AppText.T("web.progress.scan"), 0, true);
+    
+                    try
                     {
-                        this.AppendLog(AppText.T("web.merge.pipelineInitError"));
-                        this.CompleteProgress(AppText.T("web.progress.initializationError"));
-                        this.SetBusy(false);
-                        return;
+                        this.UpdateProgress("", 0, 0, 0, AppText.T("web.progress.initialization"), true, true);
+    
+                        // Inizializza pipeline con opzioni correnti (come flusso CLI)
+                        if (!this._pipeline.Initialize(this._options))
+                        {
+                            this.AppendLog(AppText.T("web.merge.pipelineInitError"));
+                            this.CompleteProgress(AppText.T("web.progress.initializationError"));
+                            return;
+                        }
+    
+                        this.UpdateProgress("", 0, 0, 30, AppText.T("web.progress.scanFiles"), true, true);
+    
+                        // Scan
+                        List<FileProcessingRecord> scanned = this._pipeline.ScanFiles();
+    
+                        // Ordina per EpisodeId (come flusso CLI)
+                        scanned.Sort((a, b) => string.Compare(a.EpisodeId, b.EpisodeId, StringComparison.OrdinalIgnoreCase));
+    
+                        lock (this._lock)
+                        {
+                            this._records = scanned;
+                        }
+    
+                        // Conta file pronti e saltati
+                        int pending = 0;
+                        int skipped = 0;
+                        for (int i = 0; i < scanned.Count; i++)
+                        {
+                            if (scanned[i].Status == FileStatus.Pending)
+                                pending++;
+                            else if (scanned[i].Status == FileStatus.Skipped)
+                                skipped++;
+                        }
+    
+                        this.OnRecordsChanged?.Invoke();
+                        this.AppendLog(AppText.F("web.merge.scanCompleted", scanned.Count, pending, skipped));
+                        this.CompleteProgress(AppText.T("web.progress.scanCompleted"));
                     }
-
-                    this.UpdateProgress("", 0, 0, 30, AppText.T("web.progress.scanFiles"), true, true);
-
-                    // Scan
-                    List<FileProcessingRecord> scanned = this._pipeline.ScanFiles();
-
-                    // Ordina per EpisodeId (come flusso CLI)
-                    scanned.Sort((a, b) => string.Compare(a.EpisodeId, b.EpisodeId, StringComparison.OrdinalIgnoreCase));
-
-                    lock (this._lock)
+                    catch (Exception ex)
                     {
-                        this._records = scanned;
+                        this.AppendLog(AppText.F("web.merge.scanError", ex.Message));
+                        this.CompleteProgress(AppText.T("web.progress.scanError"));
                     }
-
-                    // Conta file pronti e saltati
-                    int pending = 0;
-                    int skipped = 0;
-                    for (int i = 0; i < scanned.Count; i++)
-                    {
-                        if (scanned[i].Status == FileStatus.Pending)
-                            pending++;
-                        else if (scanned[i].Status == FileStatus.Skipped)
-                            skipped++;
-                    }
-
-                    this.OnRecordsChanged?.Invoke();
-                    this.AppendLog(AppText.F("web.merge.scanCompleted", scanned.Count, pending, skipped));
-                    this.CompleteProgress(AppText.T("web.progress.scanCompleted"));
+    
                 }
-                catch (Exception ex)
+                finally
                 {
-                    this.AppendLog(AppText.F("web.merge.scanError", ex.Message));
-                    this.CompleteProgress(AppText.T("web.progress.scanError"));
+                    this.SetBusy(false);
                 }
-
-                this.SetBusy(false);
             });
             thread.IsBackground = true;
             thread.Start();
@@ -325,33 +332,40 @@ namespace RemuxForge.Web.Services
         {
             FileProcessingRecord record = this.GetRecord(index);
 
-            if (record == null || this._isBusy)
+            if (record == null || !this.TryBeginOperation())
             {
                 return;
             }
 
             Thread thread = new Thread(() =>
             {
-                this.SetBusy(true);
-                this.BeginProgress(AppText.T("web.progress.analyzeEpisode"), 1, false);
-
                 try
                 {
-                    this.UpdateProgress(record.EpisodeId, 1, 0, 5, AppText.T("web.progress.analysis"), false, false);
-                    this._pipeline.AnalyzeFile(record);
-                    this.UpdateProgress(record.EpisodeId, 1, 0, 85, AppText.T("web.progress.mergeCommand"), false, false);
-                    this._pipeline.BuildMergeCommand(record);
-                    this.OnRecordsChanged?.Invoke();
-                    this.UpdateProgress(record.EpisodeId, 1, 1, 100, AppText.T("web.progress.completed"), false, false);
-                    this.CompleteProgress(AppText.T("web.progress.analysisCompleted"));
+                    this.BeginProgress(AppText.T("web.progress.analyzeEpisode"), 1, false);
+    
+                    try
+                    {
+                        this.UpdateProgress(record.EpisodeId, 1, 0, 5, AppText.T("web.progress.analysis"), false, false);
+                        this._pipeline.AnalyzeFile(record, this.GetOperationCancellationToken());
+                        this.OnRecordsChanged?.Invoke();
+                        this.UpdateProgress(record.EpisodeId, 1, 1, 100, AppText.T("web.progress.completed"), false, false);
+                        this.CompleteProgress(AppText.T("web.progress.analysisCompleted"));
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        this.AppendLog(AppText.T("web.merge.analysisSelectionStopped"));
+                        this.CompleteProgress(AppText.T("web.progress.analysisStopped"));
+                    }
+                    catch (Exception ex)
+                    {
+                        this.AppendLog(AppText.F("web.merge.analysisError", ex.Message));
+                        this.CompleteProgress(AppText.T("web.progress.analysisError"));
+                    }
                 }
-                catch (Exception ex)
+                finally
                 {
-                    this.AppendLog(AppText.F("web.merge.analysisError", ex.Message));
-                    this.CompleteProgress(AppText.T("web.progress.analysisError"));
+                    this.SetBusy(false);
                 }
-
-                this.SetBusy(false);
             });
             thread.IsBackground = true;
             thread.Start();
@@ -365,49 +379,56 @@ namespace RemuxForge.Web.Services
         {
             List<FileProcessingRecord> selected = this.GetRecordsByIndices(indices);
 
-            if (selected.Count == 0 || this._isBusy)
+            if (selected.Count == 0 || !this.TryBeginOperation())
             {
                 return;
             }
 
             Thread thread = new Thread(() =>
             {
-                this.SetBusy(true);
-                bool stopped = false;
-                this.BeginProgress(AppText.T("web.progress.analyzeSelection"), selected.Count, false);
-
                 try
                 {
-                    for (int i = 0; i < selected.Count; i++)
+                    bool stopped = false;
+                    this.BeginProgress(AppText.T("web.progress.analyzeSelection"), selected.Count, false);
+    
+                    try
                     {
-                        if (this.IsStopRequested())
+                        for (int i = 0; i < selected.Count; i++)
                         {
-                            stopped = true;
-                            this.AppendLog(AppText.T("web.merge.analysisSelectionStopped"));
-                            this.CompleteProgress(AppText.T("web.progress.analysisStopped"));
-                            break;
+                            if (this.IsStopRequested())
+                            {
+                                stopped = true;
+                                this.AppendLog(AppText.T("web.merge.analysisSelectionStopped"));
+                                this.CompleteProgress(AppText.T("web.progress.analysisStopped"));
+                                break;
+                            }
+    
+                            this.UpdateProgress(selected[i].EpisodeId, i + 1, i, 5, AppText.T("web.progress.analysis"), false, false);
+                            this._pipeline.AnalyzeFile(selected[i], this.GetOperationCancellationToken());
+                            this.OnRecordsChanged?.Invoke();
+                            this.UpdateProgress(selected[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
-
-                        this.UpdateProgress(selected[i].EpisodeId, i + 1, i, 5, AppText.T("web.progress.analysis"), false, false);
-                        this._pipeline.AnalyzeFile(selected[i]);
-                        this.UpdateProgress(selected[i].EpisodeId, i + 1, i, 85, AppText.T("web.progress.mergeCommand"), false, false);
-                        this._pipeline.BuildMergeCommand(selected[i]);
-                        this.OnRecordsChanged?.Invoke();
-                        this.UpdateProgress(selected[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
+    
+                        if (!stopped)
+                        {
+                            this.CompleteProgress(AppText.T("web.progress.analysisSelectionCompleted"));
+                        }
                     }
-
-                    if (!stopped)
+                    catch (OperationCanceledException)
                     {
-                        this.CompleteProgress(AppText.T("web.progress.analysisSelectionCompleted"));
+                        this.AppendLog(AppText.T("web.merge.analysisSelectionStopped"));
+                        this.CompleteProgress(AppText.T("web.progress.analysisStopped"));
+                    }
+                    catch (Exception ex)
+                    {
+                        this.AppendLog(AppText.F("web.merge.analysisSelectionError", ex.Message));
+                        this.CompleteProgress(AppText.T("web.progress.analysisSelectionError"));
                     }
                 }
-                catch (Exception ex)
+                finally
                 {
-                    this.AppendLog(AppText.F("web.merge.analysisSelectionError", ex.Message));
-                    this.CompleteProgress(AppText.T("web.progress.analysisSelectionError"));
+                    this.SetBusy(false);
                 }
-
-                this.SetBusy(false);
             });
             thread.IsBackground = true;
             thread.Start();
@@ -418,65 +439,72 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void AnalyzeAll()
         {
-            if (this._isBusy)
+            if (!this.TryBeginOperation())
             {
                 return;
             }
 
             Thread thread = new Thread(() =>
             {
-                this.SetBusy(true);
-                List<FileProcessingRecord> snapshot;
-                List<FileProcessingRecord> pending = new List<FileProcessingRecord>();
-                bool stopped = false;
-                lock (this._lock)
-                {
-                    snapshot = new List<FileProcessingRecord>(this._records);
-                }
-
-                for (int i = 0; i < snapshot.Count; i++)
-                {
-                    // Includi anche file in errore per ritentare (come flusso CLI)
-                    if (snapshot[i].Status == FileStatus.Pending || snapshot[i].Status == FileStatus.Error)
-                    {
-                        pending.Add(snapshot[i]);
-                    }
-                }
-
-                this.BeginProgress(AppText.T("web.progress.analyzeBatch"), pending.Count, false);
-
                 try
                 {
-                    for (int i = 0; i < pending.Count; i++)
+                    List<FileProcessingRecord> snapshot;
+                    List<FileProcessingRecord> pending = new List<FileProcessingRecord>();
+                    bool stopped = false;
+                    lock (this._lock)
                     {
-                        if (this.IsStopRequested())
+                        snapshot = new List<FileProcessingRecord>(this._records);
+                    }
+    
+                    for (int i = 0; i < snapshot.Count; i++)
+                    {
+                        // Includi anche file in errore per ritentare (come flusso CLI)
+                        if (snapshot[i].Status == FileStatus.Pending || snapshot[i].Status == FileStatus.Error)
                         {
-                            stopped = true;
-                            this.AppendLog(AppText.T("web.merge.analysisBatchStopped"));
-                            this.CompleteProgress(AppText.T("web.progress.analysisStopped"));
-                            break;
+                            pending.Add(snapshot[i]);
                         }
-
-                        this.UpdateProgress(pending[i].EpisodeId, i + 1, i, 5, AppText.T("web.progress.analysis"), false, false);
-                        this._pipeline.AnalyzeFile(pending[i]);
-                        this.UpdateProgress(pending[i].EpisodeId, i + 1, i, 85, AppText.T("web.progress.mergeCommand"), false, false);
-                        this._pipeline.BuildMergeCommand(pending[i]);
-                        this.OnRecordsChanged?.Invoke();
-                        this.UpdateProgress(pending[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                     }
-
-                    if (!stopped)
+    
+                    this.BeginProgress(AppText.T("web.progress.analyzeBatch"), pending.Count, false);
+    
+                    try
                     {
-                        this.CompleteProgress(AppText.T("web.progress.analysisBatchCompleted"));
+                        for (int i = 0; i < pending.Count; i++)
+                        {
+                            if (this.IsStopRequested())
+                            {
+                                stopped = true;
+                                this.AppendLog(AppText.T("web.merge.analysisBatchStopped"));
+                                this.CompleteProgress(AppText.T("web.progress.analysisStopped"));
+                                break;
+                            }
+    
+                            this.UpdateProgress(pending[i].EpisodeId, i + 1, i, 5, AppText.T("web.progress.analysis"), false, false);
+                            this._pipeline.AnalyzeFile(pending[i], this.GetOperationCancellationToken());
+                            this.OnRecordsChanged?.Invoke();
+                            this.UpdateProgress(pending[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
+                        }
+    
+                        if (!stopped)
+                        {
+                            this.CompleteProgress(AppText.T("web.progress.analysisBatchCompleted"));
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        this.AppendLog(AppText.T("web.merge.analysisBatchStopped"));
+                        this.CompleteProgress(AppText.T("web.progress.analysisStopped"));
+                    }
+                    catch (Exception ex)
+                    {
+                        this.AppendLog(AppText.F("web.merge.analysisBatchError", ex.Message));
+                        this.CompleteProgress(AppText.T("web.progress.analysisBatchError"));
                     }
                 }
-                catch (Exception ex)
+                finally
                 {
-                    this.AppendLog(AppText.F("web.merge.analysisBatchError", ex.Message));
-                    this.CompleteProgress(AppText.T("web.progress.analysisBatchError"));
+                    this.SetBusy(false);
                 }
-
-                this.SetBusy(false);
             });
             thread.IsBackground = true;
             thread.Start();
@@ -490,31 +518,36 @@ namespace RemuxForge.Web.Services
         {
             FileProcessingRecord record = this.GetRecord(index);
 
-            if (record == null || this._isBusy)
+            if (record == null || !this.TryBeginOperation())
             {
                 return;
             }
 
             Thread thread = new Thread(() =>
             {
-                this.SetBusy(true);
-                this.BeginProgress(AppText.T("web.progress.mergeEpisode"), 1, false);
-
                 try
                 {
-                    this.UpdateProgress(record.EpisodeId, 1, 0, 10, AppText.T("web.progress.merge"), false, false);
-                    this._pipeline.MergeFile(record);
-                    this.OnRecordsChanged?.Invoke();
-                    this.UpdateProgress(record.EpisodeId, 1, 1, 100, AppText.T("web.progress.completed"), false, false);
-                    this.CompleteProgress(AppText.T("web.progress.mergeCompleted"));
+                    this.BeginProgress(AppText.T("web.progress.mergeEpisode"), 1, false);
+    
+                    try
+                    {
+                        this.UpdateProgress(record.EpisodeId, 1, 0, 10, AppText.T("web.progress.merge"), false, false);
+                        this._pipeline.MergeFile(record);
+                        this.OnRecordsChanged?.Invoke();
+                        this.UpdateProgress(record.EpisodeId, 1, 1, 100, AppText.T("web.progress.completed"), false, false);
+                        this.CompleteProgress(AppText.T("web.progress.mergeCompleted"));
+                    }
+                    catch (Exception ex)
+                    {
+                        this.AppendLog(AppText.F("web.merge.mergeError", ex.Message));
+                        this.CompleteProgress(AppText.T("web.progress.mergeError"));
+                    }
+    
                 }
-                catch (Exception ex)
+                finally
                 {
-                    this.AppendLog(AppText.F("web.merge.mergeError", ex.Message));
-                    this.CompleteProgress(AppText.T("web.progress.mergeError"));
+                    this.SetBusy(false);
                 }
-
-                this.SetBusy(false);
             });
             thread.IsBackground = true;
             thread.Start();
@@ -528,48 +561,53 @@ namespace RemuxForge.Web.Services
         {
             List<FileProcessingRecord> selected = this.GetRecordsByIndices(indices);
 
-            if (selected.Count == 0 || this._isBusy)
+            if (selected.Count == 0 || !this.TryBeginOperation())
             {
                 return;
             }
 
             Thread thread = new Thread(() =>
             {
-                this.SetBusy(true);
-                bool stopped = false;
-                this.BeginProgress(AppText.T("web.progress.mergeSelection"), selected.Count, false);
-
                 try
                 {
-                    for (int i = 0; i < selected.Count; i++)
+                    bool stopped = false;
+                    this.BeginProgress(AppText.T("web.progress.mergeSelection"), selected.Count, false);
+    
+                    try
                     {
-                        if (this.IsStopRequested())
+                        for (int i = 0; i < selected.Count; i++)
                         {
-                            stopped = true;
-                            this.AppendLog(AppText.T("web.merge.mergeSelectionStopped"));
-                            this.CompleteProgress(AppText.T("web.progress.mergeStopped"));
-                            break;
+                            if (this.IsStopRequested())
+                            {
+                                stopped = true;
+                                this.AppendLog(AppText.T("web.merge.mergeSelectionStopped"));
+                                this.CompleteProgress(AppText.T("web.progress.mergeStopped"));
+                                break;
+                            }
+    
+                            this.UpdateProgress(selected[i].EpisodeId, i + 1, i, 10, AppText.T("web.progress.merge"), false, false);
+                            this._pipeline.MergeFile(selected[i]);
+                            this.OnRecordsChanged?.Invoke();
+                            this.UpdateProgress(selected[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
-
-                        this.UpdateProgress(selected[i].EpisodeId, i + 1, i, 10, AppText.T("web.progress.merge"), false, false);
-                        this._pipeline.MergeFile(selected[i]);
-                        this.OnRecordsChanged?.Invoke();
-                        this.UpdateProgress(selected[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
+    
+                        if (!stopped)
+                        {
+                            this.AppendLog(AppText.T("web.merge.mergeSelectionCompleted"));
+                            this.CompleteProgress(AppText.T("web.progress.mergeSelectionCompleted"));
+                        }
                     }
-
-                    if (!stopped)
+                    catch (Exception ex)
                     {
-                        this.AppendLog(AppText.T("web.merge.mergeSelectionCompleted"));
-                        this.CompleteProgress(AppText.T("web.progress.mergeSelectionCompleted"));
+                        this.AppendLog(AppText.F("web.merge.mergeSelectionError", ex.Message));
+                        this.CompleteProgress(AppText.T("web.progress.mergeSelectionError"));
                     }
+    
                 }
-                catch (Exception ex)
+                finally
                 {
-                    this.AppendLog(AppText.F("web.merge.mergeSelectionError", ex.Message));
-                    this.CompleteProgress(AppText.T("web.progress.mergeSelectionError"));
+                    this.SetBusy(false);
                 }
-
-                this.SetBusy(false);
             });
             thread.IsBackground = true;
             thread.Start();
@@ -580,63 +618,68 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void MergeAll()
         {
-            if (this._isBusy)
+            if (!this.TryBeginOperation())
             {
                 return;
             }
 
             Thread thread = new Thread(() =>
             {
-                this.SetBusy(true);
-                List<FileProcessingRecord> snapshot;
-                List<FileProcessingRecord> analyzed = new List<FileProcessingRecord>();
-                bool stopped = false;
-                lock (this._lock)
-                {
-                    snapshot = new List<FileProcessingRecord>(this._records);
-                }
-
-                for (int i = 0; i < snapshot.Count; i++)
-                {
-                    if (snapshot[i].Status == FileStatus.Analyzed)
-                    {
-                        analyzed.Add(snapshot[i]);
-                    }
-                }
-
-                this.BeginProgress(AppText.T("web.progress.mergeBatch"), analyzed.Count, false);
-
                 try
                 {
-                    for (int i = 0; i < analyzed.Count; i++)
+                    List<FileProcessingRecord> snapshot;
+                    List<FileProcessingRecord> analyzed = new List<FileProcessingRecord>();
+                    bool stopped = false;
+                    lock (this._lock)
                     {
-                        if (this.IsStopRequested())
+                        snapshot = new List<FileProcessingRecord>(this._records);
+                    }
+    
+                    for (int i = 0; i < snapshot.Count; i++)
+                    {
+                        if (snapshot[i].Status == FileStatus.Analyzed)
                         {
-                            stopped = true;
-                            this.AppendLog(AppText.T("web.merge.mergeBatchStopped"));
-                            this.CompleteProgress(AppText.T("web.progress.mergeStopped"));
-                            break;
+                            analyzed.Add(snapshot[i]);
                         }
-
-                        this.UpdateProgress(analyzed[i].EpisodeId, i + 1, i, 10, AppText.T("web.progress.merge"), false, false);
-                        this._pipeline.MergeFile(analyzed[i]);
-                        this.OnRecordsChanged?.Invoke();
-                        this.UpdateProgress(analyzed[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                     }
-
-                    if (!stopped)
+    
+                    this.BeginProgress(AppText.T("web.progress.mergeBatch"), analyzed.Count, false);
+    
+                    try
                     {
-                        this.AppendLog(AppText.T("web.merge.mergeBatchCompleted"));
-                        this.CompleteProgress(AppText.T("web.progress.mergeBatchCompleted"));
+                        for (int i = 0; i < analyzed.Count; i++)
+                        {
+                            if (this.IsStopRequested())
+                            {
+                                stopped = true;
+                                this.AppendLog(AppText.T("web.merge.mergeBatchStopped"));
+                                this.CompleteProgress(AppText.T("web.progress.mergeStopped"));
+                                break;
+                            }
+    
+                            this.UpdateProgress(analyzed[i].EpisodeId, i + 1, i, 10, AppText.T("web.progress.merge"), false, false);
+                            this._pipeline.MergeFile(analyzed[i]);
+                            this.OnRecordsChanged?.Invoke();
+                            this.UpdateProgress(analyzed[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
+                        }
+    
+                        if (!stopped)
+                        {
+                            this.AppendLog(AppText.T("web.merge.mergeBatchCompleted"));
+                            this.CompleteProgress(AppText.T("web.progress.mergeBatchCompleted"));
+                        }
                     }
+                    catch (Exception ex)
+                    {
+                        this.AppendLog(AppText.F("web.merge.mergeBatchError", ex.Message));
+                        this.CompleteProgress(AppText.T("web.progress.mergeBatchError"));
+                    }
+    
                 }
-                catch (Exception ex)
+                finally
                 {
-                    this.AppendLog(AppText.F("web.merge.mergeBatchError", ex.Message));
-                    this.CompleteProgress(AppText.T("web.progress.mergeBatchError"));
+                    this.SetBusy(false);
                 }
-
-                this.SetBusy(false);
             });
             thread.IsBackground = true;
             thread.Start();
@@ -648,6 +691,8 @@ namespace RemuxForge.Web.Services
         /// <param name="index">Indice del record nella lista</param>
         public void ToggleSkip(int index)
         {
+            if (this._isBusy)
+                return;
             FileProcessingRecord record = this.GetRecord(index);
 
             if (record == null)
@@ -665,6 +710,8 @@ namespace RemuxForge.Web.Services
         /// <param name="indices">Indici dei record nella lista</param>
         public void ToggleSkip(List<int> indices)
         {
+            if (this._isBusy)
+                return;
             List<FileProcessingRecord> selected = this.GetRecordsByIndices(indices);
 
             if (selected.Count == 0)
@@ -688,6 +735,8 @@ namespace RemuxForge.Web.Services
         /// <param name="subDelayMs">Delay sottotitoli in ms</param>
         public void UpdateDelay(int index, int audioDelayMs, int subDelayMs)
         {
+            if (this._isBusy)
+                return;
             FileProcessingRecord record = this.GetRecord(index);
 
             if (record == null)
@@ -710,6 +759,8 @@ namespace RemuxForge.Web.Services
             lock (this._lock)
             {
                 this._stopRequested = true;
+                if (this._operationCancellation != null)
+                    this._operationCancellation.Cancel();
             }
 
             this.AppendLog(AppText.T("web.merge.stopRequested"));
@@ -971,40 +1022,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         private void ResetRecordAnalysisState(FileProcessingRecord record)
         {
-            record.ResultFileName = "";
-            record.ResultSize = 0;
-            record.ResultAudioLangs.Clear();
-            record.ResultSubLangs.Clear();
-            record.AudioDelayApplied = 0;
-            record.SubDelayApplied = 0;
-            record.FrameSyncTimeMs = 0;
-            record.FrameSyncResult = null;
-            record.MergeTimeMs = 0;
-            record.SpeedCorrectionTimeMs = 0;
-            record.StretchFactor = "";
-            record.SpeedCorrectionApplied = false;
-            record.Success = false;
-            record.SkipReason = "";
-            record.AnalysisLog.Clear();
-            record.ErrorMessage = "";
-            record.SyncOffsetMs = 0;
-            record.MergeCommand = "";
-            record.EncodingProfileName = "";
-            record.EncodingTimeMs = 0;
-            record.EncodedSize = 0;
-            record.EncodingCommand = "";
-            record.ResultFilePath = "";
-            record.SourceAudioTracks.Clear();
-            record.SourceSubTracks.Clear();
-            record.KeptSourceAudioIds.Clear();
-            record.KeptSourceSubIds.Clear();
-            record.ImportedAudioTracks.Clear();
-            record.ImportedSubTracks.Clear();
-            record.DisplayAudioFormat = "";
-            record.DeepAnalysisMap = null;
-            record.DeepAnalysisTimeMs = 0;
-            record.DeepAnalysisApplied = false;
-            record.AudioProcessingPreview = null;
+            record.ResetDerivedState();
 
             if (this._options.TargetLanguage.Count == 0 || !string.IsNullOrEmpty(record.LangFilePath))
             {
@@ -1045,12 +1063,48 @@ namespace RemuxForge.Web.Services
         /// <param name="busy">Stato busy</param>
         private void SetBusy(bool busy)
         {
+            CancellationTokenSource cancellation = null;
             lock (this._lock)
             {
+                this._isBusy = busy;
                 this._stopRequested = false;
+                if (!busy)
+                {
+                    cancellation = this._operationCancellation;
+                    this._operationCancellation = null;
+                }
             }
+            if (cancellation != null)
+                cancellation.Dispose();
+        }
 
-            this._isBusy = busy;
+        /// <summary>
+        /// Riserva atomicamente l'esecuzione di una sola operazione in background
+        /// </summary>
+        /// <returns>True se il chiamante ha acquisito la riserva</returns>
+        private bool TryBeginOperation()
+        {
+            lock (this._lock)
+            {
+                if (this._isBusy)
+                    return false;
+                this._isBusy = true;
+                this._stopRequested = false;
+                this._operationCancellation = new CancellationTokenSource();
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Restituisce il token dell'operazione correntemente riservata
+        /// </summary>
+        /// <returns>Token cooperativo oppure token non cancellabile</returns>
+        private CancellationToken GetOperationCancellationToken()
+        {
+            lock (this._lock)
+            {
+                return this._operationCancellation != null ? this._operationCancellation.Token : CancellationToken.None;
+            }
         }
 
         /// <summary>
@@ -1123,6 +1177,7 @@ namespace RemuxForge.Web.Services
             result.DeepAnalysisMap = record.DeepAnalysisMap;
             result.DeepAnalysisTimeMs = record.DeepAnalysisTimeMs;
             result.DeepAnalysisApplied = record.DeepAnalysisApplied;
+            result.DeepAnalysisResult = record.DeepAnalysisResult;
             result.AudioProcessingPreview = this.CloneAudioProcessingPlan(record.AudioProcessingPreview);
 
             return result;

@@ -1,3 +1,4 @@
+using RemuxForge.Core.Analysis.Speed;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
@@ -38,6 +39,12 @@ namespace RemuxForge.Core.Configuration
             if (options.Mode != Options.MODE_REMUX && options.Mode != Options.MODE_SPLIT && options.Mode != Options.MODE_METADATA)
             {
                 result.AddError(AppText.T("validation.missingInvalidMode"));
+                return result;
+            }
+
+            if (options.TargetLanguage == null || options.AudioCodec == null || options.KeepSourceAudioLangs == null || options.KeepSourceAudioCodec == null || options.KeepSourceSubtitleLangs == null || options.FileExtensions == null)
+            {
+                result.AddError(AppText.T("validation.invalidConfig"));
                 return result;
             }
 
@@ -173,7 +180,6 @@ namespace RemuxForge.Core.Configuration
         private static void ValidateSpeedCorrection(Options options, OptionsValidationResult result)
         {
             if (options.SpeedCorrectionMode != Options.SPEED_CORRECTION_OFF &&
-                options.SpeedCorrectionMode != Options.SPEED_CORRECTION_AUTO &&
                 options.SpeedCorrectionMode != Options.SPEED_CORRECTION_MANUAL)
             {
                 result.AddError(AppText.F("options.invalidSpeedCorrection", options.SpeedCorrectionMode));
@@ -183,7 +189,7 @@ namespace RemuxForge.Core.Configuration
             if (options.SpeedCorrectionMode == Options.SPEED_CORRECTION_MANUAL)
             {
                 // In manuale lo stretch deve essere esplicito: non si tenta inferenza automatica su VFR
-                if (string.IsNullOrEmpty(options.ManualStretchFactor.Trim()))
+                if (string.IsNullOrWhiteSpace(options.ManualStretchFactor))
                 {
                     result.AddError(AppText.T("validation.speedManualNeedsStretch"));
                 }
@@ -259,11 +265,6 @@ namespace RemuxForge.Core.Configuration
             if (!IsValidScope(options.AudioProcessingScope))
             {
                 result.AddError(AppText.F("options.invalidAudioScope", options.AudioProcessingScope));
-            }
-
-            if (string.IsNullOrEmpty(options.AudioFormat) && options.AudioProcessingScope != "disabled")
-            {
-                result.AddError(AppText.T("validation.audioScopeRequiresFormat"));
             }
 
             if (options.AudioProcessingScope != "disabled" && string.IsNullOrEmpty(options.AudioFormat))
@@ -625,31 +626,7 @@ namespace RemuxForge.Core.Configuration
         /// <returns>True se il valore è positivo e parsabile</returns>
         private static bool IsValidStretchFactor(string value)
         {
-            bool result = false;
-            string trimmed = value != null ? value.Trim() : "";
-            string[] parts;
-            double numerator;
-            double denominator;
-            double parsed;
-            if (trimmed.Contains("/"))
-            {
-                // Supporta forma frazionaria tipo 24000/25025 per casi PAL/NTSC precisi
-                parts = trimmed.Split('/');
-                if (parts.Length == 2 &&
-                    double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out numerator) &&
-                    double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out denominator) &&
-                    numerator > 0.0 &&
-                    denominator > 0.0)
-                {
-                    result = true;
-                }
-            }
-            else if (double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out parsed) && parsed > 0.0)
-            {
-                result = true;
-            }
-
-            return result;
+            return SpeedCorrectionService.TryParseStretchFactor(value, out _, out _);
         }
 
         #endregion

@@ -12,4 +12,17 @@
     <EmbeddedResource Include="Localization/Resources/*.json" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="OpenCvSharp4" Version="4.13.0.20260627" />
+    <PackageReference Include="OpenCvSharp4.runtime.win.slim" Version="4.13.0.20260627" />
+    <PackageReference Include="OpenCvSharp4.official.runtime.linux-x64.slim" Version="4.13.0.20260627" />
+    <PackageReference Include="OpenCvSharp4.runtime.linux-arm64" Version="4.13.0.20260627" />
+    <PackageReference Include="OpenCvSharp4.runtime.osx.x64" Version="4.13.0.20260627" />
+    <PackageReference Include="OpenCvSharp4.runtime.osx.arm64" Version="4.13.0.20260627" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RemuxForge.Vulkan" Version="0.1.1" />
+  </ItemGroup>
+
 </Project>

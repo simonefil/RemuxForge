@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Text.Json.Serialization;
 
 namespace RemuxForge.Core.Models
 {
@@ -20,8 +19,6 @@ namespace RemuxForge.Core.Models
             this.StretchFactor = "";
             this.Operations = new List<EditOperation>();
             this.AnalysisTimeMs = 0;
-            this.BaselineMse = 0.0;
-            this.Diagnostics = null;
         }
 
         #endregion
@@ -47,17 +44,6 @@ namespace RemuxForge.Core.Models
         /// Tempo di esecuzione analisi in ms
         /// </summary>
         public long AnalysisTimeMs { get; set; }
-
-        /// <summary>
-        /// MSE medio tra frame allineati (baseline qualità match)
-        /// </summary>
-        public double BaselineMse { get; set; }
-
-        /// <summary>
-        /// Diagnostica strutturata DeepAnalysis, se disponibile
-        /// </summary>
-        [JsonIgnore]
-        public DeepAnalysisDiagnostics Diagnostics { get; set; }
 
         #endregion
     }

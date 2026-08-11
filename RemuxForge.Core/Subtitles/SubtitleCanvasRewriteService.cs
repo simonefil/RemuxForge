@@ -200,9 +200,9 @@ namespace RemuxForge.Core.Subtitles
         {
             FrameSyncGeometryInfo result = null;
 
-            if (record.DeepAnalysisMap != null && record.DeepAnalysisMap.Diagnostics != null)
+            if (record.DeepAnalysisResult != null)
             {
-                result = source ? record.DeepAnalysisMap.Diagnostics.SourceGeometry : record.DeepAnalysisMap.Diagnostics.LanguageGeometry;
+                result = source ? record.DeepAnalysisResult.SourceGeometry : record.DeepAnalysisResult.LanguageGeometry;
             }
 
             if (result == null && record.FrameSyncResult != null)

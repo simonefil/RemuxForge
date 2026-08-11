@@ -18,8 +18,9 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="outputIdx">File IDX riscritto</param>
         /// <param name="outputSub">File SUB riscritto</param>
         /// <param name="editMap">Edit map da applicare</param>
-        /// <returns>True se la coppia riscritta contiene entry valide</returns>
-        public bool Rewrite(string inputIdx, string inputSub, string outputIdx, string outputSub, EditMap editMap)
+        /// <param name="emptyTrack">True se l'edit map elimina tutte le entry</param>
+        /// <returns>True se la coppia è valida o è stata completamente eliminata</returns>
+        public bool Rewrite(string inputIdx, string inputSub, string outputIdx, string outputSub, EditMap editMap, out bool emptyTrack)
         {
             VobSubIndexDocument document = VobSubIndexDocument.Load(inputIdx);
             byte[] subData = File.ReadAllBytes(inputSub);
@@ -29,6 +30,7 @@ namespace RemuxForge.Core.Subtitles
             long nextFilePosition;
             long outputPosition;
             int keptCount = 0;
+            emptyTrack = false;
 
             // IDX contiene i timestamp e i filepos, SUB contiene i packet bitmap collegati
             if (document.Entries.Count == 0)
@@ -62,7 +64,8 @@ namespace RemuxForge.Core.Subtitles
             // Nessuna entry valida significa sottotitolo completamente tagliato
             if (keptCount == 0)
             {
-                return false;
+                emptyTrack = true;
+                return true;
             }
 
             document.Save(outputIdx);

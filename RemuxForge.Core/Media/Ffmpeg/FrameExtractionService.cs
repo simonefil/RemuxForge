@@ -72,6 +72,21 @@ namespace RemuxForge.Core.Media.Ffmpeg
         /// </summary>
         public void ExtractSegment(string filePath, int startMs, double durationSec, double targetFps, bool geometryCropToFourThree, string manualCropPx, out List<byte[]> frames, out double[] timestampsMs)
         {
+            this.ExtractSegmentCore(filePath, startMs, durationSec, targetFps, 0.0, geometryCropToFourThree, manualCropPx, out frames, out timestampsMs);
+        }
+
+        /// <summary>
+        /// Estrae frame a intervalli temporali regolari conservando i PTS dei frame selezionati
+        /// </summary>
+        public void ExtractSegmentAtInterval(string filePath, int startMs, double durationSec, double sampleIntervalSec, bool geometryCropToFourThree, string manualCropPx, out List<byte[]> frames, out double[] timestampsMs)
+        {
+            if (sampleIntervalSec <= 0.0 || double.IsNaN(sampleIntervalSec) || double.IsInfinity(sampleIntervalSec))
+                throw new ArgumentOutOfRangeException(nameof(sampleIntervalSec));
+            this.ExtractSegmentCore(filePath, startMs, durationSec, 0.0, sampleIntervalSec, geometryCropToFourThree, manualCropPx, out frames, out timestampsMs);
+        }
+
+        private void ExtractSegmentCore(string filePath, int startMs, double durationSec, double targetFps, double sampleIntervalSec, bool geometryCropToFourThree, string manualCropPx, out List<byte[]> frames, out double[] timestampsMs)
+        {
             frames = new List<byte[]>();
             timestampsMs = new double[0];
             ProcessBinaryResult processResult;
@@ -99,7 +114,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
                 startFormatted = startSec.ToString("F3", CultureInfo.InvariantCulture);
                 endFormatted = endSec.ToString("F3", CultureInfo.InvariantCulture);
                 resolution = this._videoSyncConfig.FrameWidth + ":" + this._videoSyncConfig.FrameHeight;
-                useFpsFilter = targetFps > 0.0;
+                useFpsFilter = targetFps > 0.0 || sampleIntervalSec > 0.0;
                 maxAttempts = this._ffmpegConfig.HardwareAcceleration ? 2 : 1;
                 timeoutMs = this._ffmpegConfig.FrameExtractionTimeoutMs;
 
@@ -115,7 +130,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
                     if (useHardwareAcceleration)
                     {
                         args.Add("-hwaccel");
-                        args.Add("auto");
+                        args.Add(this._ffmpegConfig.HardwareAccelerationMethod);
                     }
                     args.Add("-ss");
                     args.Add(startFormatted);
@@ -127,7 +142,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
                     args.Add("-fps_mode");
                     args.Add(useFpsFilter ? "vfr" : "passthrough");
 
-                    filterChain = this.BuildFilterChain(targetFps, geometryCropToFourThree, manualCropPx, useFpsFilter, resolution);
+                    filterChain = this.BuildFilterChain(targetFps, sampleIntervalSec, geometryCropToFourThree, manualCropPx, useFpsFilter, resolution);
                     args.Add("-vf");
                     args.Add(filterChain);
                     args.Add("-f");
@@ -157,20 +172,22 @@ namespace RemuxForge.Core.Media.Ffmpeg
                         tsList.RemoveRange(minCount, tsList.Count - minCount);
                     }
 
-                    if (extractedFrames.Count > 0 || !useHardwareAcceleration)
+                    if (processResult.ExitCode == 0 && extractedFrames.Count > 0 && extractedFrames.Count == tsList.Count)
                     {
-                        if (extractedFrames.Count == 0 && processResult.ExitCode != 0)
-                        {
-                            ConsoleHelper.Write(this._logSection, LogLevel.Warning, "  Estrazione frame fallita: " + this.GetLastErrorLine(processResult.Stderr));
-                        }
-
                         break;
                     }
 
-                    if (!s_reportedHwAccelFallback)
+                    extractedFrames.Clear();
+                    tsList.Clear();
+                    if (!useHardwareAcceleration)
+                    {
+                        ConsoleHelper.Write(this._logSection, LogLevel.Warning, "  Estrazione frame fallita: " + this.GetLastErrorLine(processResult.Stderr));
+                        break;
+                    }
+
+                    if (System.Threading.Interlocked.Exchange(ref s_reportedHwAccelFallback, true) == false)
                     {
                         ConsoleHelper.Write(this._logSection, LogLevel.Notice, "  HWAccel non utilizzabile per questa estrazione, retry software (" + this.GetLastErrorLine(processResult.Stderr) + ")");
-                        s_reportedHwAccelFallback = true;
                     }
                 }
 
@@ -215,7 +232,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
         /// <summary>
         /// Costruisce filter chain ffmpeg per normalizzare frame
         /// </summary>
-        private string BuildFilterChain(double targetFps, bool geometryCropToFourThree, string manualCropPx, bool useFpsFilter, string resolution)
+        private string BuildFilterChain(double targetFps, double sampleIntervalSec, bool geometryCropToFourThree, string manualCropPx, bool useFpsFilter, string resolution)
         {
             string filterChain = "";
             string manualCropFilter;
@@ -223,7 +240,14 @@ namespace RemuxForge.Core.Media.Ffmpeg
 
             if (useFpsFilter)
             {
-                filterChain = "fps=fps=" + targetFps.ToString("F6", CultureInfo.InvariantCulture);
+                if (sampleIntervalSec > 0.0)
+                {
+                    filterChain = "select='isnan(prev_selected_t)+gte(t-prev_selected_t\\," + sampleIntervalSec.ToString("R", CultureInfo.InvariantCulture) + ")'";
+                }
+                else
+                {
+                    filterChain = "fps=fps=" + targetFps.ToString("R", CultureInfo.InvariantCulture) + ":round=near";
+                }
             }
 
             hasManualCrop = this.TryBuildManualCropFilter(manualCropPx, out manualCropFilter);

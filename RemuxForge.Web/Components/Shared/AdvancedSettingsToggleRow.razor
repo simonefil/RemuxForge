@@ -21,8 +21,8 @@
     /// <summary>
     /// Commuta il valore corrente
     /// </summary>
-    private void Toggle()
+    private async System.Threading.Tasks.Task Toggle()
     {
-        this.ValueChanged.InvokeAsync(!this.Value);
+        await this.ValueChanged.InvokeAsync(!this.Value);
     }
 }

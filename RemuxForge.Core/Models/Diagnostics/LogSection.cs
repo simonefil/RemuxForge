@@ -21,7 +21,7 @@ namespace RemuxForge.Core.Models
         Speed,
 
         /// <summary>
-        /// Deep analysis (DeepAnalysisService, SubtitleTimelineEditService)
+        /// Deep analysis SIFT e applicazione degli edit di timeline
         /// </summary>
         Deep,
 

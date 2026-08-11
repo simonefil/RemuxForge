@@ -61,7 +61,58 @@ namespace RemuxForge.Core.Models
             this.DeepAnalysisMap = null;
             this.DeepAnalysisTimeMs = 0;
             this.DeepAnalysisApplied = false;
+            this.DeepAnalysisResult = null;
             this.FrameSyncResult = null;
+            this.AudioProcessingPreview = null;
+        }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Ripulisce tutti i risultati derivati lasciando intatti identità file e delay manuali
+        /// </summary>
+        public void ResetDerivedState()
+        {
+            this.SourceAudioLangs.Clear();
+            this.SourceSubLangs.Clear();
+            this.LangAudioLangs.Clear();
+            this.LangSubLangs.Clear();
+            this.ResultFileName = "";
+            this.ResultSize = 0;
+            this.ResultAudioLangs.Clear();
+            this.ResultSubLangs.Clear();
+            this.AudioDelayApplied = 0;
+            this.SubDelayApplied = 0;
+            this.FrameSyncTimeMs = 0;
+            this.FrameSyncResult = null;
+            this.MergeTimeMs = 0;
+            this.SpeedCorrectionTimeMs = 0;
+            this.StretchFactor = "";
+            this.SpeedCorrectionApplied = false;
+            this.Success = false;
+            this.SkipReason = "";
+            this.AnalysisLog.Clear();
+            this.ErrorMessage = "";
+            this.SyncOffsetMs = 0;
+            this.MergeCommand = "";
+            this.EncodingProfileName = "";
+            this.EncodingTimeMs = 0;
+            this.EncodedSize = 0;
+            this.EncodingCommand = "";
+            this.ResultFilePath = "";
+            this.SourceAudioTracks.Clear();
+            this.SourceSubTracks.Clear();
+            this.KeptSourceAudioIds.Clear();
+            this.KeptSourceSubIds.Clear();
+            this.ImportedAudioTracks.Clear();
+            this.ImportedSubTracks.Clear();
+            this.DisplayAudioFormat = "";
+            this.DeepAnalysisMap = null;
+            this.DeepAnalysisTimeMs = 0;
+            this.DeepAnalysisApplied = false;
+            this.DeepAnalysisResult = null;
             this.AudioProcessingPreview = null;
         }
 
@@ -303,6 +354,11 @@ namespace RemuxForge.Core.Models
         /// Indica se la deep analysis è stata eseguita con successo
         /// </summary>
         public bool DeepAnalysisApplied { get; set; }
+
+        /// <summary>
+        /// Risultato diagnostico DeepAnalysis, null se la modalità non è stata eseguita
+        /// </summary>
+        public DeepAnalysisResult DeepAnalysisResult { get; set; }
 
         /// <summary>
         /// Piano audio usato da preview dettaglio e dry-run, null se non calcolato

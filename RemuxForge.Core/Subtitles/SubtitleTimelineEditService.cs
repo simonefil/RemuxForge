@@ -90,11 +90,11 @@ namespace RemuxForge.Core.Subtitles
             }
             else if (this.IsPgsCodec(trackCodec))
             {
-                result = this.ApplyPgsSubtitle(langFile, trackId, editMap, label);
+                result = this.ApplyPgsSubtitle(langFile, trackId, editMap, label, out emptyTrack);
             }
             else if (this.IsVobSubCodec(trackCodec))
             {
-                result = this.ApplyVobSubSubtitle(langFile, trackId, editMap, label);
+                result = this.ApplyVobSubSubtitle(langFile, trackId, editMap, label, out emptyTrack);
             }
             else
             {
@@ -167,6 +167,14 @@ namespace RemuxForge.Core.Subtitles
                 AssSubtitleTimelineRewriter rewriter = new AssSubtitleTimelineRewriter();
                 rewritten = rewriter.Rewrite(content, editMap);
             }
+
+            if (!this.ContainsTextCue(rewritten, srt))
+            {
+                emptyTrack = true;
+                FileHelper.DeleteTempFile(inputFile);
+                return result;
+            }
+
             File.WriteAllText(outputFile, rewritten, new UTF8Encoding(false));
             FileHelper.DeleteTempFile(inputFile);
 
@@ -193,12 +201,14 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="trackId">ID traccia sottotitoli</param>
         /// <param name="editMap">Edit map da applicare</param>
         /// <param name="label">Etichetta temporanea</param>
+        /// <param name="emptyTrack">True se l'edit map elimina tutti i display-set</param>
         /// <returns>Path del file SUP riscritto, oppure stringa vuota</returns>
-        private string ApplyPgsSubtitle(string langFile, int trackId, EditMap editMap, string label)
+        private string ApplyPgsSubtitle(string langFile, int trackId, EditMap editMap, string label, out bool emptyTrack)
         {
             string result = "";
             string inputFile = Path.Combine(this._tempFolder, label + "_sub_t" + trackId + "_src_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".sup");
             string outputFile = Path.Combine(this._tempFolder, label + "_deep_t" + trackId + "_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".sup");
+            emptyTrack = false;
 
             if (!this.ExtractWithMkvExtract(langFile, trackId, inputFile))
             {
@@ -207,7 +217,7 @@ namespace RemuxForge.Core.Subtitles
 
             // Il rewriter modifica solo timestamp/segmenti PGS; le immagini non vengono ricodificate
             PgsSubtitleTimelineRewriter rewriter = new PgsSubtitleTimelineRewriter();
-            if (rewriter.Rewrite(inputFile, outputFile, editMap) && File.Exists(outputFile) && this.ValidateSubtitleFile(outputFile))
+            if (rewriter.Rewrite(inputFile, outputFile, editMap, out emptyTrack) && !emptyTrack && File.Exists(outputFile) && this.ValidateSubtitleFile(outputFile))
             {
                 result = outputFile;
             }
@@ -227,14 +237,16 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="trackId">ID traccia sottotitoli</param>
         /// <param name="editMap">Edit map da applicare</param>
         /// <param name="label">Etichetta temporanea</param>
+        /// <param name="emptyTrack">True se l'edit map elimina tutte le entry</param>
         /// <returns>Path del file IDX riscritto, oppure stringa vuota</returns>
-        private string ApplyVobSubSubtitle(string langFile, int trackId, EditMap editMap, string label)
+        private string ApplyVobSubSubtitle(string langFile, int trackId, EditMap editMap, string label, out bool emptyTrack)
         {
             string result = "";
             string inputIdx = Path.Combine(this._tempFolder, label + "_sub_t" + trackId + "_src_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".idx");
             string inputSub = Path.ChangeExtension(inputIdx, ".sub");
             string outputIdx = Path.Combine(this._tempFolder, label + "_deep_t" + trackId + "_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".idx");
             string outputSub = Path.ChangeExtension(outputIdx, ".sub");
+            emptyTrack = false;
 
             if (!this.ExtractWithMkvExtract(langFile, trackId, inputIdx) || !File.Exists(inputSub))
             {
@@ -245,7 +257,7 @@ namespace RemuxForge.Core.Subtitles
 
             // IDX contiene i timestamp, SUB contiene i pacchetti bitmap: entrambi vanno mantenuti allineati
             VobSubSubtitleTimelineRewriter rewriter = new VobSubSubtitleTimelineRewriter();
-            if (rewriter.Rewrite(inputIdx, inputSub, outputIdx, outputSub, editMap) && this.ValidateSubtitleFile(outputIdx))
+            if (rewriter.Rewrite(inputIdx, inputSub, outputIdx, outputSub, editMap, out emptyTrack) && !emptyTrack && this.ValidateSubtitleFile(outputIdx))
             {
                 result = outputIdx;
             }
@@ -263,6 +275,27 @@ namespace RemuxForge.Core.Subtitles
         #endregion
 
         #region Metodi privati - Utility
+
+        /// <summary>
+        /// Verifica che il sottotitolo testuale riscritto contenga almeno un cue renderizzabile
+        /// </summary>
+        /// <param name="content">Contenuto riscritto</param>
+        /// <param name="srt">True per SRT, false per ASS/SSA</param>
+        /// <returns>True se è presente almeno un cue</returns>
+        private bool ContainsTextCue(string content, bool srt)
+        {
+            string[] lines = (content != null ? content : "").Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if ((srt && lines[i].IndexOf("-->", StringComparison.Ordinal) >= 0) ||
+                    (!srt && lines[i].TrimStart().StartsWith("Dialogue:", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         /// <summary>
         /// Verifica che un sottotitolo generato sia leggibile da ffmpeg

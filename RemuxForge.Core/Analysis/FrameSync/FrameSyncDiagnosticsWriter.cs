@@ -1,5 +1,4 @@
 using RemuxForge.Core.Analysis.Diagnostics;
-using RemuxForge.Core.Analysis.Speed;
 using RemuxForge.Core.Models;
 using System;
 using System.Globalization;
@@ -38,10 +37,6 @@ namespace RemuxForge.Core.Analysis.FrameSync
             string geometryCsvPath;
             string audioCsvPath;
             FrameSyncDiagnosticsPayload payload;
-            string sourceFrameRateMode;
-            string languageFrameRateMode;
-            string frameRateModeReason;
-            string autoSpeedPolicy;
             if (record == null || record.FrameSyncResult == null)
             {
                 return result;
@@ -66,24 +61,6 @@ namespace RemuxForge.Core.Analysis.FrameSync
             payload.SubtitleDelayApplied = record.SubDelayApplied;
             payload.SpeedCorrectionMode = options != null ? options.SpeedCorrectionMode : "";
             payload.ManualStretchFactor = options != null ? options.ManualStretchFactor : "";
-            if (SpeedCorrectionService.TryGetFrameRateModes(record.SourceFilePath, record.LangFilePath, out sourceFrameRateMode, out languageFrameRateMode, out frameRateModeReason))
-            {
-                payload.SourceFrameRateMode = sourceFrameRateMode;
-                payload.LanguageFrameRateMode = languageFrameRateMode;
-                if (SpeedCorrectionService.ShouldBlockAutoForVfr(record.SourceFilePath, record.LangFilePath, out autoSpeedPolicy))
-                {
-                    payload.AutoSpeedPolicy = "blocked: " + autoSpeedPolicy;
-                }
-                else
-                {
-                    payload.AutoSpeedPolicy = "allowed: " + autoSpeedPolicy;
-                }
-            }
-            else
-            {
-                payload.FrameRateModeReason = frameRateModeReason;
-                payload.AutoSpeedPolicy = "blocked: " + frameRateModeReason;
-            }
             payload.CandidateCsvPath = candidateCsvPath;
             payload.PointCsvPath = pointCsvPath;
             payload.GeometryCsvPath = geometryCsvPath;
@@ -461,26 +438,6 @@ namespace RemuxForge.Core.Analysis.FrameSync
             /// Stretch factor manuale richiesto
             /// </summary>
             public string ManualStretchFactor { get; set; }
-
-            /// <summary>
-            /// Modalità frame rate source
-            /// </summary>
-            public string SourceFrameRateMode { get; set; }
-
-            /// <summary>
-            /// Modalità frame rate language
-            /// </summary>
-            public string LanguageFrameRateMode { get; set; }
-
-            /// <summary>
-            /// Motivazione classificazione frame rate
-            /// </summary>
-            public string FrameRateModeReason { get; set; }
-
-            /// <summary>
-            /// Policy auto speed applicata
-            /// </summary>
-            public string AutoSpeedPolicy { get; set; }
 
             /// <summary>
             /// Path CSV candidati

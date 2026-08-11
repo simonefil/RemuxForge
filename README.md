@@ -16,6 +16,8 @@ It ships as a scriptable CLI and as a WebUI for local browsers or headless serve
 - [MediaInfo CLI](https://mediaarea.net/en/MediaInfo) (`mediainfo`)
 - UTF-8 locale on Linux
 
+The optional Vulkan SIFT backend for Deep Analysis requires a Vulkan 1.2 loader and a compatible compute device with timeline semaphore support. CPU SIFT is the default and does not require Vulkan. On macOS, Vulkan is provided through MoltenVK.
+
 Tool paths are auto-detected or configurable from the WebUI under **Settings > Tool paths**. On Windows and Linux, ffmpeg and ffprobe are downloaded automatically when missing; on macOS they must be installed manually.
 
 Supported targets:
@@ -56,7 +58,7 @@ docker run -d \
   draknodd/remuxforge:latest
 ```
 
-Paths typed in the WebUI are resolved inside the container. See [Docker](https://github.com/simonefil/RemuxForge/wiki/Docker) for Compose, permissions and GPU decode, and [Installation](https://github.com/simonefil/RemuxForge/wiki/Installation) for the data directory and environment variables.
+Paths typed in the WebUI are resolved inside the container. See [Docker](https://github.com/simonefil/RemuxForge/wiki/Docker) for Compose, permissions and GPU acceleration, and [Installation](https://github.com/simonefil/RemuxForge/wiki/Installation) for the data directory and environment variables.
 
 ## CLI
 

@@ -190,7 +190,7 @@ namespace RemuxForge.Core.Audio
                 }
             }
 
-            if (result.SourceFillHasWork)
+            if (result.SourceFillHasWork && result.SourceFillPlan != null)
             {
                 result.RenderRequired = true;
                 result.BypassAudioDelay = result.SourceFillPlan.StartFillMs > 0 || result.SourceFillPlan.MaterializesExternalSync;
@@ -261,7 +261,12 @@ namespace RemuxForge.Core.Audio
 
             if (request.Options.AudioSourceFillEnd && sourceDurationMs > 0 && langDurationMs > 0)
             {
-                int renderedLangDurationMs = (int)Math.Round(langDurationMs * stretchRatio) + Math.Max(request.EffectiveAudioDelayMs, 0) + this.ComputeEditMapDurationDeltaMs(editOperations, stretchRatio);
+                int materializedDelayMs = result.StartFillMs + result.InitialSilenceMs - result.InitialTrimMs;
+                if (materializedDelayMs == 0)
+                {
+                    materializedDelayMs = request.EffectiveAudioDelayMs;
+                }
+                int renderedLangDurationMs = (int)Math.Round(langDurationMs * stretchRatio) + materializedDelayMs + this.ComputeEditMapDurationDeltaMs(editOperations, stretchRatio);
                 int endFillMs = sourceDurationMs - renderedLangDurationMs;
                 if (endFillMs > request.Options.AudioSourceFillThresholdMs)
                 {
@@ -282,6 +287,7 @@ namespace RemuxForge.Core.Audio
         /// Risolve lo stretch applicato alla traccia language
         /// </summary>
         /// <param name="request">Richiesta audio corrente</param>
+        /// <param name="errorMessage">Errore di parsing, vuoto quando il rapporto è valido</param>
         /// <returns>Rapporto stretch o 1.0</returns>
         private double ResolveStretchRatio(AudioProcessingRequest request, out string errorMessage)
         {

@@ -102,7 +102,7 @@ namespace RemuxForge.Core.Media
                 if (this._ffmpegConfig.HardwareAcceleration)
                 {
                     args.Add("-hwaccel");
-                    args.Add("auto");
+                    args.Add(this._ffmpegConfig.HardwareAccelerationMethod);
                 }
                 args.Add("-i");
                 args.Add(filePath);

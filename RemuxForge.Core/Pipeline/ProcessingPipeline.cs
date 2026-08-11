@@ -267,8 +267,13 @@ namespace RemuxForge.Core.Pipeline
                     this._mkvService = tempService;
                     this.Log(LogSection.Config, LogLevel.Success, "Trovato mkvmerge: " + this._opts.MkvMergePath);
 
-                    // Risolvi ffmpeg (tentato sempre per supportare speed correction automatica)
-                    this._ffmpegPath = this._toolPathResolver.ResolveFfmpegPath(true, true, !this._opts.DryRun && this._opts.AudioDownsample24To16);
+                    bool manualSpeedCorrection = string.Equals(this._opts.SpeedCorrectionMode, Options.SPEED_CORRECTION_MANUAL, StringComparison.OrdinalIgnoreCase);
+                    bool requiresFfmpeg = this._opts.FrameSync || this._opts.DeepAnalysis || manualSpeedCorrection ||
+                        (!this._opts.DryRun && !string.IsNullOrEmpty(this._opts.AudioFormat)) ||
+                        !string.IsNullOrEmpty(this._opts.EncodingProfileName) ||
+                        (!this._opts.DryRun && this._opts.AudioSourceFillThresholdMs > 0);
+                    // Risolvi ffmpeg soltanto per le funzionalità che lo utilizzano
+                    this._ffmpegPath = requiresFfmpeg ? this._toolPathResolver.ResolveFfmpegPath(true, true, !this._opts.DryRun && this._opts.AudioDownsample24To16) : "";
                     if (!string.IsNullOrEmpty(this._ffmpegPath))
                     {
                         this.Log(LogSection.Config, LogLevel.Success, "Trovato ffmpeg: " + this._ffmpegPath);
@@ -278,10 +283,10 @@ namespace RemuxForge.Core.Pipeline
                             this.Log(LogSection.Config, LogLevel.Debug, "  " + ffmpegVersion);
                         }
                     }
-                    else if (this._opts.FrameSync || this._opts.DeepAnalysis || (!this._opts.DryRun && !string.IsNullOrEmpty(this._opts.AudioFormat)) || !string.IsNullOrEmpty(this._opts.EncodingProfileName) || (!this._opts.DryRun && this._opts.AudioSourceFillThresholdMs > 0))
+                    else if (requiresFfmpeg)
                     {
                         // ffmpeg richiesto per analisi sync, conversione audio, audio source fill o encoding video
-                        string reason = this._opts.FrameSync ? "frame-sync" : (this._opts.DeepAnalysis ? "deep analysis" : (this._opts.AudioSourceFillThresholdMs > 0 ? "audio source fill" : (!string.IsNullOrEmpty(this._opts.EncodingProfileName) ? "encoding video" : "processing audio")));
+                        string reason = this._opts.FrameSync ? "frame-sync" : (this._opts.DeepAnalysis ? "deep analysis" : (manualSpeedCorrection ? "speed correction manuale" : (this._opts.AudioSourceFillThresholdMs > 0 ? "audio source fill" : (!string.IsNullOrEmpty(this._opts.EncodingProfileName) ? "encoding video" : "processing audio"))));
                         this.Log(LogSection.Config, LogLevel.Error, "ffmpeg non trovato e impossibile scaricarlo. Necessario per " + reason);
                         success = false;
                     }
@@ -363,11 +368,19 @@ namespace RemuxForge.Core.Pipeline
         /// Analizza un singolo file: rilevamento velocità e frame-sync
         /// </summary>
         /// <param name="record">Record del file da analizzare</param>
-        public void AnalyzeFile(FileProcessingRecord record)
+        /// <param name="cancellationToken">Token di annullamento cooperativo</param>
+        public void AnalyzeFile(FileProcessingRecord record, System.Threading.CancellationToken cancellationToken = default)
         {
             PipelineAnalysisCoordinator coordinator = new PipelineAnalysisCoordinator(this._opts, this._needsMerge, this._ffmpegPath, this._frameSyncService, this._trackMapper, this._diagnosticsWriter, this.GetCachedFileInfo, this.SetupLogRedirect, this.ClearLogRedirect, this.OnFileUpdated, this.BuildMergeCommand, this._toolPathResolver);
-            coordinator.AnalyzeFile(record);
-            this._ffmpegPath = coordinator.FfmpegPath;
+            try
+            {
+                coordinator.AnalyzeFile(record, cancellationToken);
+                this._ffmpegPath = coordinator.FfmpegPath;
+            }
+            finally
+            {
+                this.ClearLogRedirect();
+            }
         }
 
         /// <summary>
@@ -755,11 +768,6 @@ namespace RemuxForge.Core.Pipeline
                     {
                         AudioProcessingPlan audioPlan = this.BuildAudioProcessingPlan(audioRequest, true);
                         AudioProcessingDryRunHelper.AddPlaceholders(audioPlan, this._opts, convertedSourceTracks, convertedLangTracks, processedSourceAudioInfo, processedLangAudioInfo, audioDelayBypassedLangIds);
-                        if (audioDelayBypassedLangIds.Count > 0)
-                        {
-                            effectiveAudioDelay = 0;
-                            record.AudioDelayApplied = effectiveAudioDelay;
-                        }
                         if (convertedSourceTracks.Count > 0)
                         {
                             this.EnsureSourceAudioIdsForProcessedTracks(sourceTracks, sourceAudioIds, convertedSourceTracks);
@@ -1037,28 +1045,37 @@ namespace RemuxForge.Core.Pipeline
         private void SetupLogRedirect(FileProcessingRecord record)
         {
             bool inCallback = false;
+            object callbackSync = new object();
             ConsoleHelper.SetLogCallback((section, level, text) =>
             {
-                // Guard contro ri-entranza (OnLogMessage potrebbe chiamare Write)
-                if (inCallback)
+                lock (callbackSync)
                 {
-                    // Evita fallback console nella WebUI: il messaggio rientrante viene scartato
-                    return;
-                }
-                inCallback = true;
-
-                if (level != LogLevel.Debug)
-                {
-                    // Salva nel log del record con prefisso sezione
-                    record.AnalysisLog.Add(ConsoleHelper.FormatSectionPrefix(section) + text);
-                    // Invia all'evento per UI (CLI/WebUI)
-                    if (this.OnLogMessage != null)
+                    // Guard contro ri-entranza (OnLogMessage potrebbe chiamare Write)
+                    if (inCallback)
                     {
-                        this.OnLogMessage(section, level, text);
+                        // Evita fallback console nella WebUI: il messaggio rientrante viene scartato
+                        return;
+                    }
+                    inCallback = true;
+
+                    try
+                    {
+                        if (level != LogLevel.Debug)
+                        {
+                            // Salva nel log del record con prefisso sezione
+                            record.AnalysisLog.Add(ConsoleHelper.FormatSectionPrefix(section) + text);
+                            // Invia all'evento per UI (CLI/WebUI)
+                            if (this.OnLogMessage != null)
+                            {
+                                this.OnLogMessage(section, level, text);
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        inCallback = false;
                     }
                 }
-
-                inCallback = false;
             });
         }
 

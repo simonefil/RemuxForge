@@ -397,7 +397,7 @@ namespace RemuxForge.Cli
 
             // Mostra configurazione sync
             ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.speedCorrection", opts.SpeedCorrectionMode));
-            if (!string.IsNullOrEmpty(opts.ManualStretchFactor))
+            if (opts.SpeedCorrectionMode == Options.SPEED_CORRECTION_MANUAL && !string.IsNullOrEmpty(opts.ManualStretchFactor))
             {
                 ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.manualStretch", opts.ManualStretchFactor));
             }

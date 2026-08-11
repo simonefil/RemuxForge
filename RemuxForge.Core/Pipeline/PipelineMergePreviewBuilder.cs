@@ -54,6 +54,9 @@ namespace RemuxForge.Core.Pipeline
         /// <param name="ffmpegPath">Percorso ffmpeg per fallback durata preview audio</param>
         public void Build(FileProcessingRecord record, Options options, MkvToolsService mkvService, Func<string, MkvFileInfo> fileInfoProvider, bool needsMerge, bool needsRemux, bool filterSourceAudio, bool filterSourceSubs, string[] codecPatterns, string[] sourceAudioCodecPatterns, string ffmpegPath)
         {
+            record.MergeCommand = "";
+            if (record.Status != FileStatus.Analyzed)
+                return;
             int effectiveAudioDelay = record.SyncOffsetMs + options.AudioDelay + record.ManualAudioDelayMs;
             int effectiveSubDelay = record.SyncOffsetMs + options.SubtitleDelay + record.ManualSubDelayMs;
             string stretchFactor = record.StretchFactor;
@@ -69,6 +72,7 @@ namespace RemuxForge.Core.Pipeline
             Dictionary<int, string> convertedLangTracks = new Dictionary<int, string>();
             Dictionary<int, TrackInfo> processedSourceAudioInfo = new Dictionary<int, TrackInfo>();
             Dictionary<int, TrackInfo> processedLangAudioInfo = new Dictionary<int, TrackInfo>();
+            Dictionary<int, string> processedLangSubTracks = new Dictionary<int, string>();
             HashSet<int> audioDelayBypassedLangIds = new HashSet<int>();
             string outputPath;
             List<string> mergeArgs;
@@ -108,6 +112,11 @@ namespace RemuxForge.Core.Pipeline
 
                 if (hasWork)
                 {
+                    if (record.DeepAnalysisApplied && record.DeepAnalysisMap != null && record.DeepAnalysisMap.Operations.Count > 0)
+                    {
+                        for (int subtitleIndex = 0; subtitleIndex < subtitleTracks.Count; subtitleIndex++)
+                            processedLangSubTracks[subtitleTracks[subtitleIndex].Id] = "<processed-subtitle:lang-track-" + subtitleTracks[subtitleIndex].Id + ">";
+                    }
                     if (!this.BuildAudioPreview(record, options, mkvService, sourceInfo, langInfo, sourceTracks, sourceAudioIds, audioTracks, needsMerge, filterSourceAudio, ffmpegPath, convertedSourceTracks, convertedLangTracks, processedSourceAudioInfo, processedLangAudioInfo, audioDelayBypassedLangIds, ref effectiveAudioDelay))
                     {
                         record.MergeCommand = "";
@@ -136,6 +145,7 @@ namespace RemuxForge.Core.Pipeline
                     this.AddRequiredProcessedLangTrackIds(record.AudioProcessingPreview, mergeReq.RequiredProcessedLangTrackIds);
                     mergeReq.ProcessedSourceAudioInfo = processedSourceAudioInfo;
                     mergeReq.ProcessedLangAudioInfo = processedLangAudioInfo;
+                    mergeReq.ProcessedLangSubTracks = processedLangSubTracks;
                     mergeReq.AudioDelayBypassedLangIds = audioDelayBypassedLangIds;
                     mergeArgs = mkvService.BuildMergeArguments(mergeReq);
 
@@ -210,12 +220,6 @@ namespace RemuxForge.Core.Pipeline
             AudioProcessingDryRunHelper.AddPlaceholders(plan, options, convertedSourceTracks, convertedLangTracks, processedSourceAudioInfo, processedLangAudioInfo, audioDelayBypassedLangIds);
 
             this.EnsureSourceAudioIdsForProcessedTracks(sourceTracks, sourceAudioIds, convertedSourceTracks, filterSourceAudio);
-
-            if (audioDelayBypassedLangIds.Count > 0)
-            {
-                effectiveAudioDelay = 0;
-                record.AudioDelayApplied = effectiveAudioDelay;
-            }
 
             return true;
         }

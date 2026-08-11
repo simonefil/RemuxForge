@@ -73,11 +73,6 @@ namespace RemuxForge.Core.Media
                 result.DurationMs = fileInfo.ContainerDurationNs / 1000000.0;
             }
 
-            if (defaultDurationNs > 0)
-            {
-                result.DefaultDurationFps = 1000000000.0 / defaultDurationNs;
-            }
-
             this.ReadMediaInfo(filePath, mediaInfoPath, result);
 
             if (result.FrameCount > 0 && result.DurationMs > 0.0)
@@ -87,23 +82,6 @@ namespace RemuxForge.Core.Media
 
             result.IsDefaultDurationTrusted = this.IsDefaultDurationTrusted(defaultDurationNs, result.FrameCount, result.DurationMs);
             this.Classify(result);
-            return result;
-        }
-
-        /// <summary>
-        /// Ritorna durata default affidabile oppure 0
-        /// </summary>
-        public long GetTrustedDefaultDurationNs(MkvFileInfo fileInfo, string filePath)
-        {
-            long result = 0;
-            TrackInfo videoTrack = this.FindVideoTrack(fileInfo);
-            VideoTimingInfo timing = this.Resolve(filePath, fileInfo);
-
-            if (videoTrack != null && timing.IsDefaultDurationTrusted)
-            {
-                result = videoTrack.DefaultDurationNs;
-            }
-
             return result;
         }
 
@@ -154,7 +132,7 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Classifica il timing video e decide se la speed correction automatica è consentita
+        /// Classifica il timing video per la normalizzazione di campionamento FrameSync
         /// </summary>
         /// <param name="timing">Timing video da classificare</param>
         private void Classify(VideoTimingInfo timing)
@@ -186,7 +164,6 @@ namespace RemuxForge.Core.Media
                 timing.Reason = "timing CFR coerente";
             }
 
-            timing.CanAutoSpeedCorrect = timing.IsMediaInfoAvailable && modeConstant && !timing.IsVariableFrameRate && timing.IsDefaultDurationTrusted;
             timing.CanNormalizeToNominalFps = timing.IsMediaInfoAvailable && modeConstant && !timing.IsVariableFrameRate && timing.NominalFps > 0.0;
         }
 

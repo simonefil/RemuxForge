@@ -4,29 +4,79 @@
         <div class="dialog-body">
 
             @* Sezione opzioni utente *@
-            <AdvancedSettingsSection Title="Analysis">
-                <AdvancedSettingsToggleRow Label="Hardware Acceleration" @bind-Value="_ffHardwareAcceleration" />
-                <AdvancedSettingsFieldRow Label="FrameWidth:" Width="10ch" @bind-Value="_vsFrameWidth" />
-                <AdvancedSettingsFieldRow Label="FrameHeight:" Width="10ch" @bind-Value="_vsFrameHeight" />
-                <AdvancedSettingsFieldRow Label="NumCheckPoints:" Width="10ch" @bind-Value="_vsNumCheckPoints" />
-                <AdvancedSettingsFieldRow Label="MinValidPoints:" Width="10ch" @bind-Value="_vsMinValidPoints" />
+            <AdvancedSettingsSection Title="@AppText.T("web.advanced.section.analysis")">
+                <AdvancedSettingsToggleRow Label="@AppText.T("web.advanced.hardwareAcceleration")" Value="_ffHardwareAcceleration" ValueChanged="ChangeHardwareAcceleration" />
+                @if (_ffHardwareProbeRunning)
+                {
+                    <div class="form-row">
+                        <span class="form-label">@AppText.T("web.advanced.hardwareBackend")</span>
+                        <span>@AppText.T("web.advanced.probeRunning")</span>
+                    </div>
+                }
+                else if (_ffHardwareAcceleration && _ffHardwareAccelerationMethods.Count > 0)
+                {
+                    <div class="form-row">
+                        <span class="form-label">@AppText.T("web.advanced.hardwareBackend")</span>
+                        <select class="form-input" style="width: 18ch;" value="@_ffHardwareAccelerationMethod" @onchange="ChangeHardwareAccelerationMethod">
+                            <option value="">@AppText.T("web.advanced.select")</option>
+                            @for (int i = 0; i < _ffHardwareAccelerationMethods.Count; i++)
+                            {
+                                <option value="@_ffHardwareAccelerationMethods[i]">@_ffHardwareAccelerationMethods[i]</option>
+                            }
+                        </select>
+                    </div>
+                }
+                <AdvancedSettingsFieldRow Label="@AppText.T("web.advanced.frameWidth")" Width="10ch" @bind-Value="_vsFrameWidth" />
+                <AdvancedSettingsFieldRow Label="@AppText.T("web.advanced.frameHeight")" Width="10ch" @bind-Value="_vsFrameHeight" />
+                <AdvancedSettingsFieldRow Label="@AppText.T("web.advanced.checkPoints")" Width="10ch" @bind-Value="_vsNumCheckPoints" />
+                <AdvancedSettingsFieldRow Label="@AppText.T("web.advanced.minValidPoints")" Width="10ch" @bind-Value="_vsMinValidPoints" />
             </AdvancedSettingsSection>
 
-            <AdvancedSettingsSection Title="Frame Sync">
-                <AdvancedSettingsFieldRow Label="SourceDurationSec:" Width="10ch" @bind-Value="_fsSourceDurationSec" />
-                <AdvancedSettingsFieldRow Label="LangDurationSec:" Width="10ch" @bind-Value="_fsLangDurationSec" />
-                <AdvancedSettingsFieldRow Label="MinValidPoints:" Width="10ch" @bind-Value="_fsMinValidPoints" />
-                <AdvancedSettingsToggleRow Label="AudioGlobalEnabled" @bind-Value="_fsAudioGlobalEnabled" />
+            <AdvancedSettingsSection Title="@AppText.T("web.advanced.section.frameSync")">
+                <AdvancedSettingsFieldRow Label="@AppText.T("web.advanced.sourceDuration")" Width="10ch" @bind-Value="_fsSourceDurationSec" />
+                <AdvancedSettingsFieldRow Label="@AppText.T("web.advanced.languageDuration")" Width="10ch" @bind-Value="_fsLangDurationSec" />
+                <AdvancedSettingsFieldRow Label="@AppText.T("web.advanced.minValidPoints")" Width="10ch" @bind-Value="_fsMinValidPoints" />
+                <AdvancedSettingsToggleRow Label="@AppText.T("web.advanced.globalAudio")" @bind-Value="_fsAudioGlobalEnabled" />
             </AdvancedSettingsSection>
 
-            <AdvancedSettingsSection Title="Deep Analysis">
-                <AdvancedSettingsFieldRow Label="GlobalVerifyPoints:" Width="10ch" @bind-Value="_daGlobalVerifyPoints" />
-                <AdvancedSettingsFieldRow Label="GlobalVerifyMinRatio:" Width="10ch" @bind-Value="_daGlobalVerifyMinRatio" />
-                <AdvancedSettingsFieldRow Label="SceneExtractTimeoutMs:" Width="10ch" @bind-Value="_daSceneExtractTimeoutMs" />
+            <AdvancedSettingsSection Title="@AppText.T("web.advanced.section.speedCorrection")">
+                <div class="form-row">
+                    <span class="form-label">@AppText.T("web.advanced.siftBackend")</span>
+                    <select class="form-input" style="width: 18ch;" value="@_scSiftBackend" @onchange="ChangeSpeedSiftBackend" disabled="@_scVulkanProbeRunning">
+                        <option value="cpu">CPU</option>
+                        <option value="vulkan">Vulkan</option>
+                    </select>
+                    @if (_scVulkanProbeRunning)
+                    {
+                        <span>@AppText.T("web.advanced.probeRunning")</span>
+                    }
+                    else if (_scSiftBackend == "vulkan" && !string.IsNullOrEmpty(_scVulkanDeviceName))
+                    {
+                        <span>@_scVulkanDeviceName</span>
+                    }
+                </div>
             </AdvancedSettingsSection>
 
-            <AdvancedSettingsSection Title="Timeouts">
-                <AdvancedSettingsFieldRow Label="SubtitleEditFfmpegTimeoutMs:" Width="10ch" @bind-Value="_subtitleEditFfmpegTimeoutMs" />
+            <AdvancedSettingsSection Title="@AppText.T("web.advanced.section.deepAnalysis")">
+                <div class="form-row">
+                    <span class="form-label">@AppText.T("web.advanced.siftBackend")</span>
+                    <select class="form-input" style="width: 18ch;" value="@_daSiftBackend" @onchange="ChangeSiftBackend" disabled="@_daVulkanProbeRunning">
+                        <option value="cpu">CPU</option>
+                        <option value="vulkan">Vulkan</option>
+                    </select>
+                    @if (_daVulkanProbeRunning)
+                    {
+                        <span>@AppText.T("web.advanced.probeRunning")</span>
+                    }
+                    else if (_daSiftBackend == "vulkan" && !string.IsNullOrEmpty(_daVulkanDeviceName))
+                    {
+                        <span>@_daVulkanDeviceName</span>
+                    }
+                </div>
+            </AdvancedSettingsSection>
+
+            <AdvancedSettingsSection Title="@AppText.T("web.advanced.section.timeouts")">
+                <AdvancedSettingsFieldRow Label="@AppText.T("web.advanced.subtitleTimeout")" Width="10ch" @bind-Value="_subtitleEditFfmpegTimeoutMs" />
             </AdvancedSettingsSection>
 
         </div>
@@ -35,14 +85,19 @@
             <div style="padding: 0.5em 1em; color: var(--color-error); white-space: pre-line;">@_validationError</div>
         }
         <div class="dialog-footer">
-            <button @onclick="Save">@AppText.T("web.common.ok")</button>
-            <button @onclick="ResetDefaults">@AppText.T("web.advanced.resetDefault")</button>
-            <button @onclick="OnClose">@AppText.T("web.common.cancel")</button>
+            <button @onclick="Save" disabled="@(_ffHardwareProbeRunning || _scVulkanProbeRunning || _daVulkanProbeRunning)">@AppText.T("web.common.ok")</button>
+            <button @onclick="ResetDefaults" disabled="@(_ffHardwareProbeRunning || _scVulkanProbeRunning || _daVulkanProbeRunning)">@AppText.T("web.advanced.resetDefault")</button>
+            <button @onclick="OnClose" disabled="@(_ffHardwareProbeRunning || _scVulkanProbeRunning || _daVulkanProbeRunning)">@AppText.T("web.common.cancel")</button>
         </div>
     </div>
 </div>
 
 @code {
+    /// <summary>
+    /// Indica che il prossimo salvataggio deve partire dall'intera configurazione avanzata predefinita
+    /// </summary>
+    private bool _resetAllDefaults;
+
     /// <summary>
     /// Evento chiusura dialog
     /// </summary>
@@ -96,22 +151,41 @@
 
     #endregion
 
+    #region Campi SpeedCorrection
+
+    /// <summary>
+    /// Backend SIFT usato dalla SpeedCorrection
+    /// </summary>
+    private string _scSiftBackend = "cpu";
+
+    /// <summary>
+    /// True durante il probe Vulkan SpeedCorrection
+    /// </summary>
+    private bool _scVulkanProbeRunning;
+
+    /// <summary>
+    /// Device Vulkan confermato per SpeedCorrection
+    /// </summary>
+    private string _scVulkanDeviceName = "";
+
+    #endregion
+
     #region Campi DeepAnalysis
 
     /// <summary>
-    /// Timeout estrazione scene DeepAnalysis
+    /// Backend SIFT usato dalla DeepAnalysis
     /// </summary>
-    private string _daSceneExtractTimeoutMs = "";
+    private string _daSiftBackend = "cpu";
 
     /// <summary>
-    /// Punti verifica globale DeepAnalysis
+    /// True durante il probe del backend Vulkan
     /// </summary>
-    private string _daGlobalVerifyPoints = "";
+    private bool _daVulkanProbeRunning;
 
     /// <summary>
-    /// Rapporto minimo verifica globale DeepAnalysis
+    /// Device confermato dal probe Vulkan corrente
     /// </summary>
-    private string _daGlobalVerifyMinRatio = "";
+    private string _daVulkanDeviceName = "";
 
     #endregion
 
@@ -131,6 +205,21 @@
     /// </summary>
     private bool _ffHardwareAcceleration;
 
+    /// <summary>
+    /// Metodo hardware ffmpeg selezionato
+    /// </summary>
+    private string _ffHardwareAccelerationMethod = "";
+
+    /// <summary>
+    /// Metodi hardware verificati e disponibili nella sessione corrente
+    /// </summary>
+    private List<string> _ffHardwareAccelerationMethods = new List<string>();
+
+    /// <summary>
+    /// True durante il probe ffmpeg avviato dal toggle
+    /// </summary>
+    private bool _ffHardwareProbeRunning;
+
     #endregion
 
     /// <summary>
@@ -141,9 +230,10 @@
     /// <summary>
     /// Carica valori correnti da AppSettings
     /// </summary>
-    protected override void OnInitialized()
+    protected override async System.Threading.Tasks.Task OnInitializedAsync()
     {
         this.LoadFields();
+        await this.ProbePersistedBackends();
     }
 
     /// <summary>
@@ -174,17 +264,107 @@
         // FrameSync: booleani
         this._fsAudioGlobalEnabled = adv.FrameSync.AudioGlobalEnabled;
 
-        this._daGlobalVerifyMinRatio = adv.DeepAnalysis.GlobalVerifyMinRatio.ToString(System.Globalization.CultureInfo.InvariantCulture);
-
-        // DeepAnalysis: interi
-        this._daSceneExtractTimeoutMs = adv.DeepAnalysis.SceneExtractTimeoutMs.ToString();
-        this._daGlobalVerifyPoints = adv.DeepAnalysis.GlobalVerifyPoints.ToString();
+        this._scSiftBackend = adv.SpeedCorrection.SiftBackend;
+        this._scVulkanDeviceName = "";
+        this._daSiftBackend = adv.DeepAnalysis.SiftBackend;
+        this._daVulkanDeviceName = "";
 
         // SubtitleEdit: interi
         this._subtitleEditFfmpegTimeoutMs = adv.SubtitleEdit.FfmpegTimeoutMs.ToString();
 
         // Ffmpeg: booleani
         this._ffHardwareAcceleration = adv.Ffmpeg.HardwareAcceleration;
+        this._ffHardwareAccelerationMethod = adv.Ffmpeg.HardwareAccelerationMethod;
+        this._ffHardwareAccelerationMethods.Clear();
+        if (this._ffHardwareAcceleration && FfmpegConfig.IsValidHardwareAccelerationMethod(this._ffHardwareAccelerationMethod))
+            this._ffHardwareAccelerationMethods.Add(this._ffHardwareAccelerationMethod);
+    }
+
+    /// <summary>
+    /// Verifica i backend accelerati caricati dalla configurazione persistita
+    /// </summary>
+    private async System.Threading.Tasks.Task ProbePersistedBackends()
+    {
+        bool requiresVulkanProbe = this._scSiftBackend == "vulkan" || this._daSiftBackend == "vulkan";
+        if (requiresVulkanProbe)
+        {
+            this._scVulkanProbeRunning = this._scSiftBackend == "vulkan";
+            this._daVulkanProbeRunning = this._daSiftBackend == "vulkan";
+            try
+            {
+                VulkanSiftBackendProbeResult probeResult = await System.Threading.Tasks.Task.Run(() => new VulkanSiftBackendProbe().Probe());
+                if (!probeResult.Available)
+                {
+                    if (this._scSiftBackend == "vulkan")
+                        this._scSiftBackend = "cpu";
+                    if (this._daSiftBackend == "vulkan")
+                        this._daSiftBackend = "cpu";
+                    this.AppendValidationError(AppText.F("web.advanced.vulkanUnavailable", probeResult.ErrorMessage));
+                }
+                else
+                {
+                    if (this._scSiftBackend == "vulkan")
+                        this._scVulkanDeviceName = probeResult.DeviceName;
+                    if (this._daSiftBackend == "vulkan")
+                        this._daVulkanDeviceName = probeResult.DeviceName;
+                }
+            }
+            catch (Exception ex)
+            {
+                if (this._scSiftBackend == "vulkan")
+                    this._scSiftBackend = "cpu";
+                if (this._daSiftBackend == "vulkan")
+                    this._daSiftBackend = "cpu";
+                this.AppendValidationError(AppText.F("web.advanced.vulkanProbeFailed", ex.Message));
+            }
+            finally
+            {
+                this._scVulkanProbeRunning = false;
+                this._daVulkanProbeRunning = false;
+            }
+        }
+
+        if (this._ffHardwareAcceleration)
+        {
+            string selectedMethod = this._ffHardwareAccelerationMethod;
+            this._ffHardwareProbeRunning = true;
+            this._ffHardwareAccelerationMethods.Clear();
+            try
+            {
+                string ffmpegPath = AppSettingsService.Instance.Settings.Tools.FfmpegPath;
+                FfmpegHardwareAccelerationProbeResult probeResult = await System.Threading.Tasks.Task.Run(() => new FfmpegHardwareAccelerationProbe(ffmpegPath).Probe());
+                this._ffHardwareAccelerationMethods.AddRange(probeResult.Methods);
+                bool selectedMethodAvailable = this._ffHardwareAccelerationMethods.Exists(method => string.Equals(method, selectedMethod, StringComparison.OrdinalIgnoreCase));
+                if (!selectedMethodAvailable)
+                {
+                    this._ffHardwareAcceleration = false;
+                    this._ffHardwareAccelerationMethod = "";
+                    this.AppendValidationError(AppText.F("web.advanced.hardwareUnavailable", selectedMethod));
+                }
+            }
+            catch (Exception ex)
+            {
+                this._ffHardwareAcceleration = false;
+                this._ffHardwareAccelerationMethod = "";
+                this.AppendValidationError(AppText.F("web.advanced.hardwareProbeFailed", ex.Message));
+            }
+            finally
+            {
+                this._ffHardwareProbeRunning = false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Accoda un errore di validazione preservando quelli già rilevati
+    /// </summary>
+    /// <param name="message">Messaggio da aggiungere</param>
+    private void AppendValidationError(string message)
+    {
+        if (string.IsNullOrEmpty(message))
+            return;
+
+        this._validationError = string.IsNullOrEmpty(this._validationError) ? message : this._validationError + "\n" + message;
     }
 
     /// <summary>
@@ -193,9 +373,9 @@
     private void Save()
     {
         this._validationError = "";
-        AdvancedConfig adv = AppSettingsService.Instance.Settings.Advanced;
+        AdvancedConfig original = AppSettingsService.Instance.Settings.Advanced;
+        AdvancedConfig adv = this._resetAllDefaults ? new AdvancedConfig() : System.Text.Json.JsonSerializer.Deserialize<AdvancedConfig>(System.Text.Json.JsonSerializer.Serialize(original));
         int intVal;
-        double dblVal;
 
         if (!this.ValidateAdvancedFields())
             return;
@@ -226,16 +406,8 @@
         // Parsing FrameSync: booleani
         adv.FrameSync.AudioGlobalEnabled = this._fsAudioGlobalEnabled;
 
-        // Parsing DeepAnalysis: double
-        if (double.TryParse(this._daGlobalVerifyMinRatio, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out dblVal))
-            adv.DeepAnalysis.GlobalVerifyMinRatio = dblVal;
-
-        // Parsing DeepAnalysis: interi
-        if (int.TryParse(this._daSceneExtractTimeoutMs, out intVal))
-            adv.DeepAnalysis.SceneExtractTimeoutMs = intVal;
-
-        if (int.TryParse(this._daGlobalVerifyPoints, out intVal))
-            adv.DeepAnalysis.GlobalVerifyPoints = intVal;
+        adv.SpeedCorrection.SiftBackend = this._scSiftBackend;
+        adv.DeepAnalysis.SiftBackend = this._daSiftBackend;
 
         // Parsing SubtitleEdit: interi
         if (int.TryParse(this._subtitleEditFfmpegTimeoutMs, out intVal))
@@ -243,9 +415,17 @@
 
         // Parsing Ffmpeg: booleani
         adv.Ffmpeg.HardwareAcceleration = this._ffHardwareAcceleration;
+        adv.Ffmpeg.HardwareAccelerationMethod = this._ffHardwareAcceleration ? this._ffHardwareAccelerationMethod : "";
 
+        AppSettingsService.Instance.Settings.Advanced = adv;
+        if (!AppSettingsService.Instance.Save())
+        {
+            AppSettingsService.Instance.Settings.Advanced = original;
+            this._validationError = AppText.T("web.advanced.saveFailed");
+            return;
+        }
+        this._resetAllDefaults = false;
         this._validationError = "";
-        AppSettingsService.Instance.Save();
         this.OnClose.InvokeAsync();
     }
 
@@ -256,6 +436,7 @@
     {
         // Ricarica default nei campi; il salvataggio avviene solo con OK
         this._validationError = "";
+        this._resetAllDefaults = true;
         this.LoadFieldsFrom(new AdvancedConfig());
     }
 
@@ -275,11 +456,19 @@
         AdvancedSettingsFieldValidator.ValidateIntRange(errors, "FrameSync.LangDurationSec", this._fsLangDurationSec, 1, 3600);
         AdvancedSettingsFieldValidator.ValidateIntRange(errors, "FrameSync.MinValidPoints", this._fsMinValidPoints, 1, 1000);
 
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "DeepAnalysis.SceneExtractTimeoutMs", this._daSceneExtractTimeoutMs, 1000, 3600000);
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "DeepAnalysis.GlobalVerifyPoints", this._daGlobalVerifyPoints, 1, 1000);
-        AdvancedSettingsFieldValidator.ValidateDoubleRange(errors, "DeepAnalysis.GlobalVerifyMinRatio", this._daGlobalVerifyMinRatio, 0.0, 1.0);
+        if (this._daSiftBackend != "cpu" && this._daSiftBackend != "vulkan")
+            errors.Add(AppText.T("web.advanced.invalidSiftBackend"));
+        else if (this._daSiftBackend == "vulkan" && string.IsNullOrEmpty(this._daVulkanDeviceName))
+            errors.Add(AppText.T("web.advanced.unverifiedVulkanBackend"));
+        if (this._scSiftBackend != "cpu" && this._scSiftBackend != "vulkan")
+            errors.Add(AppText.T("web.advanced.invalidSpeedSiftBackend"));
+        else if (this._scSiftBackend == "vulkan" && string.IsNullOrEmpty(this._scVulkanDeviceName))
+            errors.Add(AppText.T("web.advanced.unverifiedVulkanBackend"));
 
         AdvancedSettingsFieldValidator.ValidateIntRange(errors, "SubtitleEdit.FfmpegTimeoutMs", this._subtitleEditFfmpegTimeoutMs, 1000, 3600000);
+
+        if (this._ffHardwareAcceleration && !this._ffHardwareAccelerationMethods.Contains(this._ffHardwareAccelerationMethod))
+            errors.Add(AppText.T("web.advanced.invalidHardwareBackend"));
 
         if (errors.Count > 0)
         {
@@ -288,5 +477,141 @@
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Aggiorna il backend SIFT selezionato
+    /// </summary>
+    /// <param name="args">Evento di selezione</param>
+    private async System.Threading.Tasks.Task ChangeSiftBackend(ChangeEventArgs args)
+    {
+        string selectedBackend = args.Value != null ? args.Value.ToString() : "cpu";
+        this._validationError = "";
+        this._daVulkanDeviceName = "";
+        if (selectedBackend != "vulkan")
+        {
+            this._daSiftBackend = "cpu";
+            return;
+        }
+
+        this._daSiftBackend = "vulkan";
+        this._daVulkanProbeRunning = true;
+        try
+        {
+            VulkanSiftBackendProbeResult probeResult = await System.Threading.Tasks.Task.Run(() => new VulkanSiftBackendProbe().Probe());
+            if (!probeResult.Available)
+            {
+                this._daSiftBackend = "cpu";
+                this._validationError = AppText.F("web.advanced.vulkanUnavailable", probeResult.ErrorMessage);
+                return;
+            }
+
+            this._daVulkanDeviceName = probeResult.DeviceName;
+        }
+        catch (Exception ex)
+        {
+            this._daSiftBackend = "cpu";
+            this._validationError = AppText.F("web.advanced.vulkanProbeFailed", ex.Message);
+        }
+        finally
+        {
+            this._daVulkanProbeRunning = false;
+        }
+    }
+
+    /// <summary>
+    /// Aggiorna il backend SIFT della SpeedCorrection
+    /// </summary>
+    private async System.Threading.Tasks.Task ChangeSpeedSiftBackend(ChangeEventArgs args)
+    {
+        string selectedBackend = args.Value != null ? args.Value.ToString() : "cpu";
+        this._validationError = "";
+        this._scVulkanDeviceName = "";
+        if (selectedBackend != "vulkan")
+        {
+            this._scSiftBackend = "cpu";
+            return;
+        }
+
+        this._scSiftBackend = "vulkan";
+        this._scVulkanProbeRunning = true;
+        try
+        {
+            VulkanSiftBackendProbeResult probeResult = await System.Threading.Tasks.Task.Run(() => new VulkanSiftBackendProbe().Probe());
+            if (!probeResult.Available)
+            {
+                this._scSiftBackend = "cpu";
+                this._validationError = AppText.F("web.advanced.vulkanUnavailable", probeResult.ErrorMessage);
+                return;
+            }
+
+            this._scVulkanDeviceName = probeResult.DeviceName;
+        }
+        catch (Exception ex)
+        {
+            this._scSiftBackend = "cpu";
+            this._validationError = AppText.F("web.advanced.vulkanProbeFailed", ex.Message);
+        }
+        finally
+        {
+            this._scVulkanProbeRunning = false;
+        }
+    }
+
+    /// <summary>
+    /// Esegue il probe quando l'accelerazione hardware passa da disabilitata ad abilitata
+    /// </summary>
+    /// <param name="enabled">Nuovo stato richiesto</param>
+    private async System.Threading.Tasks.Task ChangeHardwareAcceleration(bool enabled)
+    {
+        FfmpegHardwareAccelerationProbeResult probeResult;
+
+        if (this._ffHardwareProbeRunning)
+            return;
+
+        this._validationError = "";
+        if (!enabled)
+        {
+            this._ffHardwareAcceleration = false;
+            this._ffHardwareAccelerationMethod = "";
+            this._ffHardwareAccelerationMethods.Clear();
+            return;
+        }
+
+        this._ffHardwareAcceleration = false;
+        this._ffHardwareAccelerationMethod = "";
+        this._ffHardwareAccelerationMethods.Clear();
+        this._ffHardwareProbeRunning = true;
+
+        try
+        {
+            string ffmpegPath = AppSettingsService.Instance.Settings.Tools.FfmpegPath;
+            probeResult = await System.Threading.Tasks.Task.Run(() => new FfmpegHardwareAccelerationProbe(ffmpegPath).Probe());
+            if (probeResult.Methods.Count == 0)
+            {
+                this._validationError = probeResult.ErrorMessage;
+                return;
+            }
+
+            this._ffHardwareAccelerationMethods.AddRange(probeResult.Methods);
+            this._ffHardwareAcceleration = true;
+        }
+        catch (Exception ex)
+        {
+            this._validationError = AppText.F("web.advanced.hardwareProbeFailed", ex.Message);
+        }
+        finally
+        {
+            this._ffHardwareProbeRunning = false;
+        }
+    }
+
+    /// <summary>
+    /// Aggiorna il backend hardware selezionato nella tendina
+    /// </summary>
+    /// <param name="args">Valore selezionato</param>
+    private void ChangeHardwareAccelerationMethod(ChangeEventArgs args)
+    {
+        this._ffHardwareAccelerationMethod = args.Value != null ? args.Value.ToString() : "";
     }
 }

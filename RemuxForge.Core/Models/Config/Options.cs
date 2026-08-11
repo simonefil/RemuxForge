@@ -88,11 +88,6 @@ namespace RemuxForge.Core.Models
         public const string SPEED_CORRECTION_OFF = "off";
 
         /// <summary>
-        /// Speed correction automatica conservativa
-        /// </summary>
-        public const string SPEED_CORRECTION_AUTO = "auto";
-
-        /// <summary>
         /// Speed correction con stretch factor manuale verificato
         /// </summary>
         public const string SPEED_CORRECTION_MANUAL = "manual";
@@ -475,6 +470,7 @@ namespace RemuxForge.Core.Models
             else if (key == "no-speed-correction")
             {
                 options.SpeedCorrectionMode = SPEED_CORRECTION_OFF;
+                options.ManualStretchFactor = "";
                 i++;
             }
             else if (key == "subtitle-canvas-rewrite" || key == "sub-canvas-rewrite")
@@ -545,6 +541,10 @@ namespace RemuxForge.Core.Models
                         if (string.IsNullOrEmpty(options.SpeedCorrectionMode))
                         {
                             options.ErrorMessage = AppText.F("options.invalidSpeedCorrection", value);
+                        }
+                        else if (options.SpeedCorrectionMode == SPEED_CORRECTION_OFF)
+                        {
+                            options.ManualStretchFactor = "";
                         }
                     }
                     else if (key == "stretch-factor")
@@ -908,10 +908,6 @@ namespace RemuxForge.Core.Models
             {
                 result = SPEED_CORRECTION_OFF;
             }
-            else if (trimmed == SPEED_CORRECTION_AUTO || trimmed == "autosafe")
-            {
-                result = SPEED_CORRECTION_AUTO;
-            }
             else if (trimmed == SPEED_CORRECTION_MANUAL)
             {
                 result = SPEED_CORRECTION_MANUAL;
@@ -1037,12 +1033,12 @@ namespace RemuxForge.Core.Models
         public bool AudioSourceFillInsertSilence { get; set; }
 
         /// <summary>
-        /// Modalità speed correction: off, auto, manual
+        /// Modalità speed correction: off oppure manual
         /// </summary>
         public string SpeedCorrectionMode { get; set; }
 
         /// <summary>
-        /// Stretch factor manuale per mkvmerge --sync
+        /// Fattore temporale manuale applicato alla timeline Language
         /// </summary>
         public string ManualStretchFactor { get; set; }
 
@@ -1057,7 +1053,7 @@ namespace RemuxForge.Core.Models
         public bool FrameSyncDiagnostics { get; set; }
 
         /// <summary>
-        /// Indica se la deep analysis è abilitata (-da, --deep-analysis). Mutuamente esclusiva con FrameSync
+        /// Abilita la pipeline SIFT DeepAnalysis (-da, --deep-analysis)
         /// </summary>
         public bool DeepAnalysis { get; set; }
 

@@ -364,7 +364,7 @@ namespace RemuxForge.Core.Media.Mkv
                     if (req.ConvertedSourceTracks.ContainsKey(srcId))
                     {
                         // Recupera TrackInfo originale per lingua e info audio
-                        TrackInfo origTrack = FindTrackById(req.SourceAudioTracks, srcId);
+                        TrackInfo origTrack = req.ProcessedSourceAudioInfo != null && req.ProcessedSourceAudioInfo.TryGetValue(srcId, out TrackInfo processedSourceTrack) ? processedSourceTrack : FindTrackById(req.SourceAudioTracks, srcId);
 
                         // File convertito: no video, no sottotitoli
                         mkvArgs.Add("-D");
@@ -487,7 +487,7 @@ namespace RemuxForge.Core.Media.Mkv
                             }
 
                             // Imposta lingua e titolo sulla traccia (trackId 0 nel file standalone)
-                            TrackInfo origLangTrack = FindTrackById(req.LangAudioTracks, langId);
+                            TrackInfo origLangTrack = req.ProcessedLangAudioInfo != null && req.ProcessedLangAudioInfo.TryGetValue(langId, out TrackInfo processedLangTrack) ? processedLangTrack : FindTrackById(req.LangAudioTracks, langId);
                             if (origLangTrack != null)
                             {
                                 AddAudioLanguageMetadata(mkvArgs, origLangTrack);
