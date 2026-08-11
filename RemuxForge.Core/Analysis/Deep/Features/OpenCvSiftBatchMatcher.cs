@@ -97,8 +97,9 @@ namespace RemuxForge.Core.Analysis.Deep.Features
                 result.LanguageFeaturelessAnchorCount = this.CountFeatureless(languageFeatures);
                 List<int> activeSourceIndexes = this.GetActiveIndexes(sourceFeatures);
                 List<int> activeLanguageIndexes = this.GetActiveIndexes(languageFeatures);
-                result.SourceAnchors = this.GetActiveAnchors(sourceAnchors, activeSourceIndexes);
-                result.LanguageAnchors = this.GetActiveAnchors(languageAnchors, activeLanguageIndexes);
+                bool preserveInputIndexes = plannedPairKeys != null;
+                result.SourceAnchors = preserveInputIndexes ? new List<DeepSiftVisualAnchor>(sourceAnchors) : this.GetActiveAnchors(sourceAnchors, activeSourceIndexes);
+                result.LanguageAnchors = preserveInputIndexes ? new List<DeepSiftVisualAnchor>(languageAnchors) : this.GetActiveAnchors(languageAnchors, activeLanguageIndexes);
                 result.SourceAnchorCount = result.SourceAnchors.Count;
                 result.LanguageAnchorCount = result.LanguageAnchors.Count;
                 result.Matrix = new DeepSiftMatchMatrix(result.SourceAnchorCount, result.LanguageAnchorCount);
@@ -127,7 +128,9 @@ namespace RemuxForge.Core.Analysis.Deep.Features
                                 Interlocked.Add(ref descriptorMatchingTicks, match.DescriptorMatchingTicks);
                                 Interlocked.Add(ref geometryTicks, match.GeometryTicks);
                             }
-                            result.Matrix.Set(sourceIndex, languageIndex, this.CreateCell(match));
+                            int matrixSourceIndex = preserveInputIndexes ? originalSourceIndex : sourceIndex;
+                            int matrixLanguageIndex = preserveInputIndexes ? originalLanguageIndex : languageIndex;
+                            result.Matrix.Set(matrixSourceIndex, matrixLanguageIndex, this.CreateCell(match));
                             Interlocked.Increment(ref processedCells);
                         }
                     }
