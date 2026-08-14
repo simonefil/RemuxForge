@@ -1,4 +1,5 @@
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -8,14 +9,14 @@ using System.Text.RegularExpressions;
 namespace RemuxForge.Core.Media
 {
     /// <summary>
-    /// Analizza e mantiene in cache la geometria video effettiva
+    /// Analizza la geometria video effettiva e conserva i profili in cache
     /// </summary>
     public class VideoGeometryAnalyzer
     {
         #region Variabili statiche
 
         /// <summary>
-        /// Regex per parsing geometria video da stderr ffmpeg
+        /// Espressione regolare compilata per estrarre la geometria video dall'output di ffmpeg
         /// </summary>
         private static readonly Regex s_videoGeometryRegex = new Regex(@"Video:.*?(\d{2,5})x(\d{2,5})(?:[^\r\n]*?\[SAR\s+(\d+):(\d+)\s+DAR\s+(\d+):(\d+)\])?", RegexOptions.Compiled);
 
@@ -24,27 +25,27 @@ namespace RemuxForge.Core.Media
         #region Variabili di classe
 
         /// <summary>
-        /// Percorso ffmpeg
+        /// Percorso dell'eseguibile ffmpeg
         /// </summary>
         private string _ffmpegPath;
 
         /// <summary>
-        /// Configurazione ffmpeg
+        /// Configurazione usata per invocare ffmpeg
         /// </summary>
         private FfmpegConfig _ffmpegConfig;
 
         /// <summary>
-        /// Sezione log
+        /// Sezione di log usata per segnalare gli errori di analisi
         /// </summary>
         private LogSection _logSection;
 
         /// <summary>
-        /// Lock per cache profili geometry
+        /// Oggetto di sincronizzazione per l'accesso alla cache dei profili di geometria
         /// </summary>
         private object _lock;
 
         /// <summary>
-        /// Cache profili geometry per file
+        /// Cache dei profili di geometria indicizzata per percorso file
         /// </summary>
         private Dictionary<string, VideoGeometryProfile> _cache;
 
@@ -53,8 +54,11 @@ namespace RemuxForge.Core.Media
         #region Costruttore
 
         /// <summary>
-        /// Costruttore
+        /// Inizializza l'analizzatore della geometria video
         /// </summary>
+        /// <param name="ffmpegPath">Percorso dell'eseguibile ffmpeg</param>
+        /// <param name="ffmpegConfig">Configurazione da usare per ffmpeg</param>
+        /// <param name="logSection">Sezione di log per gli errori di analisi</param>
         public VideoGeometryAnalyzer(string ffmpegPath, FfmpegConfig ffmpegConfig, LogSection logSection)
         {
             this._ffmpegPath = ffmpegPath;
@@ -69,8 +73,10 @@ namespace RemuxForge.Core.Media
         #region Metodi pubblici
 
         /// <summary>
-        /// Analizza geometria video tramite ffmpeg
+        /// Analizza la geometria video tramite ffmpeg e restituisce il profilo associato al file
         /// </summary>
+        /// <param name="filePath">Percorso del file video da analizzare</param>
+        /// <returns>Profilo della geometria video, oppure null se l'analisi non produce un risultato</returns>
         public VideoGeometryProfile Analyze(string filePath)
         {
             VideoGeometryProfile profile;
@@ -141,15 +147,20 @@ namespace RemuxForge.Core.Media
             }
             catch (Exception ex)
             {
-                ConsoleHelper.Write(this._logSection, LogLevel.Warning, "  Errore AnalyzeVideoGeometry: " + ex.Message);
+                ConsoleHelper.Write(this._logSection, LogLevel.Warning, AppText.F("deep.temporal.geometry.analysisError", ex.Message));
             }
 
             return profile;
         }
 
         /// <summary>
-        /// Aggiorna il profilo geometry cached con il crop rilevato in analisi frame
+        /// Aggiorna il profilo in cache con il crop rilevato durante l'analisi dei frame
         /// </summary>
+        /// <param name="filePath">Percorso del file video associato al profilo</param>
+        /// <param name="cropLeft">Numero di pixel da rimuovere sul lato sinistro</param>
+        /// <param name="cropRight">Numero di pixel da rimuovere sul lato destro</param>
+        /// <param name="cropTop">Numero di pixel da rimuovere sul lato superiore</param>
+        /// <param name="cropBottom">Numero di pixel da rimuovere sul lato inferiore</param>
         public void UpdateCropProfile(string filePath, int cropLeft, int cropRight, int cropTop, int cropBottom)
         {
             VideoGeometryProfile profile;
@@ -171,8 +182,16 @@ namespace RemuxForge.Core.Media
         #region Metodi privati
 
         /// <summary>
-        /// Costruisce profilo geometria
+        /// Costruisce il profilo della geometria video a partire dai valori rilevati
         /// </summary>
+        /// <param name="filePath">Percorso del file video analizzato</param>
+        /// <param name="width">Larghezza del video in pixel</param>
+        /// <param name="height">Altezza del video in pixel</param>
+        /// <param name="sarNum">Numeratore del rapporto tra pixel del video</param>
+        /// <param name="sarDen">Denominatore del rapporto tra pixel del video</param>
+        /// <param name="darNum">Numeratore del rapporto d'aspetto di visualizzazione</param>
+        /// <param name="darDen">Denominatore del rapporto d'aspetto di visualizzazione</param>
+        /// <returns>Profilo della geometria video calcolato</returns>
         private VideoGeometryProfile BuildProfile(string filePath, int width, int height, int sarNum, int sarDen, int darNum, int darDen)
         {
             VideoGeometryProfile profile = new VideoGeometryProfile();

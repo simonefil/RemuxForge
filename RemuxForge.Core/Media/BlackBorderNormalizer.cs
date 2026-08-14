@@ -1,4 +1,5 @@
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media.Ffmpeg;
 using RemuxForge.Core.Models;
 using System;
@@ -8,27 +9,69 @@ using System.IO;
 namespace RemuxForge.Core.Media
 {
     /// <summary>
-    /// Normalizza bordi neri stabili rilevati sull'intera durata del file
+    /// Rileva e normalizza i bordi neri stabili sull'intera durata del file
     /// </summary>
     public class BlackBorderNormalizer
     {
         #region Costanti
 
+        /// <summary>
+        /// Valore massimo di luminanza considerato nero
+        /// </summary>
         private const int BLACK_THRESHOLD = 18;
+
+        /// <summary>
+        /// Numero minimo di pixel consecutivi richiesto per confermare un bordo
+        /// </summary>
         private const int MIN_BORDER_MARGIN = 4;
+
+        /// <summary>
+        /// Divisore che limita la profondità massima del crop automatico
+        /// </summary>
         private const int MAX_AUTO_CROP_DIVISOR = 6;
+
+        /// <summary>
+        /// Durata di ogni segmento usato per il campionamento globale in millisecondi
+        /// </summary>
         private const int SAMPLE_DURATION_MS = 1000;
 
         #endregion
 
         #region Variabili di classe
 
+        /// <summary>
+        /// Percorso dell'eseguibile ffmpeg
+        /// </summary>
         private readonly string _ffmpegPath;
+
+        /// <summary>
+        /// Configurazione usata per l'estrazione e la normalizzazione dei frame
+        /// </summary>
         private readonly VideoSyncConfig _videoSyncConfig;
+
+        /// <summary>
+        /// Configurazione usata per l'esecuzione di ffmpeg
+        /// </summary>
         private readonly FfmpegConfig _ffmpegConfig;
+
+        /// <summary>
+        /// Sezione di log per le operazioni di analisi
+        /// </summary>
         private readonly LogSection _logSection;
+
+        /// <summary>
+        /// Analizzatore condiviso della geometria video
+        /// </summary>
         private readonly VideoGeometryAnalyzer _geometryAnalyzer;
+
+        /// <summary>
+        /// Oggetto di sincronizzazione usato per proteggere la cache dei profili crop
+        /// </summary>
         private readonly object _lock;
+
+        /// <summary>
+        /// Cache dei profili crop calcolati durante l'analisi corrente
+        /// </summary>
         private readonly Dictionary<string, BorderCropProfile> _cache;
 
         #endregion
@@ -36,13 +79,13 @@ namespace RemuxForge.Core.Media
         #region Costruttore
 
         /// <summary>
-        /// Costruttore
+        /// Inizializza il normalizzatore dei bordi neri
         /// </summary>
-        /// <param name="ffmpegPath">Percorso ffmpeg</param>
-        /// <param name="videoSyncConfig">Configurazione estrazione frame</param>
-        /// <param name="ffmpegConfig">Configurazione ffmpeg</param>
-        /// <param name="logSection">Sezione log da usare</param>
-        /// <param name="geometryAnalyzer">Analyzer geometria condiviso con il match visuale</param>
+        /// <param name="ffmpegPath">Percorso dell'eseguibile ffmpeg</param>
+        /// <param name="videoSyncConfig">Configurazione per l'estrazione dei frame</param>
+        /// <param name="ffmpegConfig">Configurazione per l'esecuzione di ffmpeg</param>
+        /// <param name="logSection">Sezione di log da usare per l'analisi</param>
+        /// <param name="geometryAnalyzer">Analizzatore della geometria condiviso con il confronto visuale</param>
         public BlackBorderNormalizer(string ffmpegPath, VideoSyncConfig videoSyncConfig, FfmpegConfig ffmpegConfig, LogSection logSection, VideoGeometryAnalyzer geometryAnalyzer)
         {
             this._ffmpegPath = ffmpegPath;
@@ -59,7 +102,7 @@ namespace RemuxForge.Core.Media
         #region Metodi pubblici
 
         /// <summary>
-        /// Svuota i profili crop dell'analisi corrente
+        /// Svuota la cache dei profili crop dell'analisi corrente
         /// </summary>
         public void Reset()
         {
@@ -70,8 +113,12 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Prepara il profilo crop del file usando campioni distribuiti sulla durata completa
+        /// Calcola e memorizza il profilo crop del file usando campioni distribuiti sulla durata completa
         /// </summary>
+        /// <param name="filePath">Percorso del file video da analizzare</param>
+        /// <param name="durationMs">Durata del file in millisecondi, oppure 0 per leggerla da ffmpeg</param>
+        /// <param name="geometryCropToFourThree">Indica se applicare ai campioni la normalizzazione geometrica 4:3</param>
+        /// <param name="manualCropPx">Crop manuale nel formato L:R:T:B in pixel da applicare ai campioni</param>
         public void PrepareFile(string filePath, int durationMs, bool geometryCropToFourThree, string manualCropPx)
         {
             BorderCropProfile profile;
@@ -98,17 +145,21 @@ namespace RemuxForge.Core.Media
             if (profile.Enabled)
             {
                 this._geometryAnalyzer.UpdateCropProfile(filePath, profile.Left, this._videoSyncConfig.FrameWidth - 1 - profile.Right, profile.Top, this._videoSyncConfig.FrameHeight - 1 - profile.Bottom);
-                ConsoleHelper.Write(this._logSection, LogLevel.Debug, "  Auto-crop globale (" + this.GetLogFileName(filePath) + "): L" + profile.Left + " R" + (this._videoSyncConfig.FrameWidth - 1 - profile.Right) + " T" + profile.Top + " B" + (this._videoSyncConfig.FrameHeight - 1 - profile.Bottom));
+                ConsoleHelper.Write(this._logSection, LogLevel.Debug, AppText.F("deep.temporal.geometry.autoCrop", this.GetLogFileName(filePath), profile.Left, this._videoSyncConfig.FrameWidth - 1 - profile.Right, profile.Top, this._videoSyncConfig.FrameHeight - 1 - profile.Bottom));
             }
             else
             {
-                ConsoleHelper.Write(this._logSection, LogLevel.Debug, "  Auto-crop globale (" + this.GetLogFileName(filePath) + "): nessun bordo stabile");
+                ConsoleHelper.Write(this._logSection, LogLevel.Debug, AppText.F("deep.temporal.geometry.noStableBorder", this.GetLogFileName(filePath)));
             }
         }
 
         /// <summary>
-        /// Applica ai frame il profilo crop già calcolato per crop geometrico/manuale
+        /// Applica ai frame il profilo crop già calcolato per la combinazione di crop geometrico e manuale
         /// </summary>
+        /// <param name="filePath">Percorso del file video associato ai frame</param>
+        /// <param name="geometryCropToFourThree">Indica se i frame includono la normalizzazione geometrica 4:3</param>
+        /// <param name="manualCropPx">Crop manuale nel formato L:R:T:B applicato ai frame</param>
+        /// <param name="frames">Frame grayscale da modificare in-place</param>
         public void Normalize(string filePath, bool geometryCropToFourThree, string manualCropPx, List<byte[]> frames)
         {
             BorderCropProfile profile;
@@ -134,7 +185,7 @@ namespace RemuxForge.Core.Media
         #region Metodi privati - Profilo globale
 
         /// <summary>
-        /// Estrae i frame campione globali ai punti 20/40/60/80% della durata
+        /// Estrae un frame campione dai punti 20, 40, 60 e 80 percento della durata
         /// </summary>
         /// <param name="filePath">File video da campionare</param>
         /// <param name="durationMs">Durata nota in millisecondi, oppure 0 per leggerla da ffmpeg</param>
@@ -182,7 +233,7 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Costruisce il profilo crop solo se i bordi sono stabili su tutti i campioni globali
+        /// Costruisce il profilo crop solo quando i bordi sono stabili su tutti i campioni globali
         /// </summary>
         /// <param name="frames">Frame campione già estratti</param>
         /// <returns>Profilo crop, disabilitato se i bordi non sono affidabili</returns>
@@ -216,7 +267,7 @@ namespace RemuxForge.Core.Media
 
             if (profile.CropWidth < width / 2 || profile.CropHeight < height / 2)
             {
-                // Guard rail contro falsi positivi catastrofici su scene buie o titoli quasi neri
+                // Protezione contro falsi positivi catastrofici su scene buie o titoli quasi neri
                 profile = new BorderCropProfile();
             }
 
@@ -224,10 +275,10 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Rileva il margine nero stabile su lato sinistro o destro
+        /// Rileva il margine nero stabile sul lato sinistro o destro
         /// </summary>
         /// <param name="frames">Frame campione</param>
-        /// <param name="leftSide">True per sinistra, false per destra</param>
+        /// <param name="leftSide">Indica se la scansione procede da sinistra invece che da destra</param>
         /// <param name="width">Larghezza frame</param>
         /// <param name="height">Altezza frame</param>
         /// <returns>Margine stabile in pixel</returns>
@@ -243,7 +294,7 @@ namespace RemuxForge.Core.Media
                 lineMargins = new List<int>();
                 for (int i = 0; i < scanYs.Length; i++)
                 {
-                    // Il minimo tra righe e campioni è il bordo nero garantito, quindi evita over-crop su scene scure.
+                    // Il minimo tra righe e campioni è il bordo nero garantito e impedisce un crop eccessivo su scene scure
                     lineMargins.Add(this.MeasureVerticalRawMargin(frames[f], leftSide, width, scanYs[i], maxMargin));
                 }
 
@@ -257,7 +308,7 @@ namespace RemuxForge.Core.Media
         /// Rileva il margine nero stabile su lato superiore o inferiore
         /// </summary>
         /// <param name="frames">Frame campione</param>
-        /// <param name="topSide">True per alto, false per basso</param>
+        /// <param name="topSide">Indica se la scansione procede dall'alto invece che dal basso</param>
         /// <param name="width">Larghezza frame</param>
         /// <param name="height">Altezza frame</param>
         /// <returns>Margine stabile in pixel</returns>
@@ -273,7 +324,7 @@ namespace RemuxForge.Core.Media
                 lineMargins = new List<int>();
                 for (int i = 0; i < scanXs.Length; i++)
                 {
-                    // Il minimo tra colonne e campioni è il bordo nero garantito, quindi evita over-crop su scene scure.
+                    // Il minimo tra colonne e campioni è il bordo nero garantito e impedisce un crop eccessivo su scene scure
                     lineMargins.Add(this.MeasureHorizontalRawMargin(frames[f], topSide, width, height, scanXs[i], maxMargin));
                 }
 
@@ -287,7 +338,7 @@ namespace RemuxForge.Core.Media
         /// Misura quanti pixel neri contigui ci sono su una riga senza usare contrasto interno
         /// </summary>
         /// <param name="frame">Frame grayscale</param>
-        /// <param name="leftSide">True per scansione da sinistra</param>
+        /// <param name="leftSide">Indica se la scansione procede da sinistra invece che da destra</param>
         /// <param name="width">Larghezza frame</param>
         /// <param name="y">Riga da analizzare</param>
         /// <param name="maxMargin">Limite massimo crop consentito</param>
@@ -317,7 +368,7 @@ namespace RemuxForge.Core.Media
         /// Misura quanti pixel neri contigui ci sono su una colonna senza usare contrasto interno
         /// </summary>
         /// <param name="frame">Frame grayscale</param>
-        /// <param name="topSide">True per scansione dall'alto</param>
+        /// <param name="topSide">Indica se la scansione procede dall'alto invece che dal basso</param>
         /// <param name="width">Larghezza frame</param>
         /// <param name="height">Altezza frame</param>
         /// <param name="x">Colonna da analizzare</param>
@@ -345,7 +396,7 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Restituisce il minimo positivo tra misure valide: è il crop nero garantito.
+        /// Restituisce il margine minimo condiviso da tutte le misure valide
         /// </summary>
         /// <param name="margins">Misure raccolte</param>
         /// <returns>Minimo stabile, oppure 0 se almeno una misura non conferma il bordo</returns>
@@ -413,7 +464,7 @@ namespace RemuxForge.Core.Media
         /// Costruisce la chiave cache del profilo crop
         /// </summary>
         /// <param name="filePath">File video</param>
-        /// <param name="geometryCropToFourThree">True se i campioni includono crop geometrico 4:3</param>
+        /// <param name="geometryCropToFourThree">Indica se i campioni includono il crop geometrico 4:3</param>
         /// <param name="manualCropPx">Crop manuale applicato ai campioni</param>
         /// <returns>Chiave cache</returns>
         private string BuildCacheKey(string filePath, bool geometryCropToFourThree, string manualCropPx)
@@ -422,10 +473,10 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Costruisce un nome file compatto per i log autocrop
+        /// Costruisce un nome compatto di file per i log del crop automatico
         /// </summary>
-        /// <param name="filePath">Path completo</param>
-        /// <returns>Nome cartella/file</returns>
+        /// <param name="filePath">Percorso completo del file</param>
+        /// <returns>Nome della cartella e del file</returns>
         private string GetLogFileName(string filePath)
         {
             string result = Path.GetFileName(filePath);
@@ -452,7 +503,7 @@ namespace RemuxForge.Core.Media
 
             for (int i = 0; i < frames.Count; i++)
             {
-                // Ogni frame viene riscalato alla geometria originale per non rompere il matcher esistente
+                // Ogni frame viene ridimensionato alla geometria originale per non alterare il matcher esistente
                 output = new byte[width * height];
                 this.ResizeCropNearest(frames[i], output, width, height, profile.Left, profile.Top, profile.CropWidth, profile.CropHeight);
                 frames[i] = output;
@@ -460,7 +511,7 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Esegue crop e resize nearest-neighbor su frame grayscale
+        /// Esegue crop e ridimensionamento nearest-neighbor su un frame grayscale
         /// </summary>
         /// <param name="input">Frame sorgente</param>
         /// <param name="output">Frame destinazione</param>
@@ -500,7 +551,7 @@ namespace RemuxForge.Core.Media
         private class BorderCropProfile
         {
             /// <summary>
-            /// True se il profilo deve essere applicato
+            /// Indica se il profilo deve essere applicato
             /// </summary>
             public bool Enabled;
 

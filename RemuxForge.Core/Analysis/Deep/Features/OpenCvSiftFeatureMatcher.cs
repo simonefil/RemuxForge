@@ -1,6 +1,7 @@
 using OpenCvSharp;
 using OpenCvSharp.Features2D;
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Localization;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -8,7 +9,7 @@ using System.Diagnostics;
 namespace RemuxForge.Core.Analysis.Deep.Features
 {
     /// <summary>
-    /// Backend CPU SIFT basato su OpenCvSharp con ratio test, cross-check e RANSAC
+    /// Matcher SIFT CPU basato su OpenCvSharp con ratio test, cross-check e verifica geometrica RANSAC
     /// </summary>
     public sealed class OpenCvSiftFeatureMatcher : IDisposable
     {
@@ -23,18 +24,39 @@ namespace RemuxForge.Core.Analysis.Deep.Features
 
         #region Variabili di classe
 
+        /// <summary>
+        /// Parametri di estrazione, ratio test e verifica geometrica
+        /// </summary>
         private readonly FrameFeatureMatcherOptions _options;
 
+        /// <summary>
+        /// Sincronizza il probe del runtime OpenCV
+        /// </summary>
         private readonly object _availabilityLock;
 
+        /// <summary>
+        /// Indica che la disponibilità del runtime è già stata verificata
+        /// </summary>
         private bool _availabilityChecked;
 
+        /// <summary>
+        /// Esito memorizzato del probe OpenCV
+        /// </summary>
         private bool _available;
 
+        /// <summary>
+        /// Motivo diagnostico dell'indisponibilità del runtime
+        /// </summary>
         private string _availabilityRejectReason;
 
+        /// <summary>
+        /// Estrattore SIFT nativo posseduto dal matcher
+        /// </summary>
         private SIFT _sift;
 
+        /// <summary>
+        /// Matcher brute-force nativo posseduto dall'istanza
+        /// </summary>
         private BFMatcher _matcher;
 
         #endregion
@@ -66,8 +88,10 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         #region Metodi pubblici
 
         /// <summary>
-        /// Verifica che OpenCvSharp e il runtime nativo siano caricabili
+        /// Verifica che OpenCvSharp e il runtime nativo siano caricabili e memorizza l'esito del probe
         /// </summary>
+        /// <param name="rejectReason">Motivo della mancata disponibilità del runtime</param>
+        /// <returns>True se OpenCvSharp e il runtime nativo sono disponibili</returns>
         public bool IsAvailable(out string rejectReason)
         {
             lock (this._availabilityLock)
@@ -79,7 +103,7 @@ namespace RemuxForge.Core.Analysis.Deep.Features
                         string version = Cv2.GetVersionString();
                         if (string.IsNullOrEmpty(version))
                         {
-                            this._availabilityRejectReason = "OpenCV non restituisce una versione valida";
+                            this._availabilityRejectReason = AppText.T("deep.temporal.matcher.invalidOpenCvVersion");
                             this._available = false;
                         }
                         else
@@ -93,7 +117,7 @@ namespace RemuxForge.Core.Analysis.Deep.Features
                     }
                     catch (Exception ex)
                     {
-                        this._availabilityRejectReason = "Backend OpenCV SIFT non disponibile: " + ex.Message;
+                        this._availabilityRejectReason = AppText.F("deep.temporal.matcher.openCvUnavailable", ex.Message);
                         this._available = false;
                     }
 
@@ -108,6 +132,10 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         /// <summary>
         /// Estrae keypoint e descriptor SIFT da un frame grayscale
         /// </summary>
+        /// <param name="grayscaleFrame">Buffer del frame in scala di grigi, con un byte per pixel</param>
+        /// <param name="width">Larghezza del frame in pixel</param>
+        /// <param name="height">Altezza del frame in pixel</param>
+        /// <returns>Feature SIFT estratte dal frame</returns>
         public OpenCvSiftFeatureSet ExtractFeatures(byte[] grayscaleFrame, int width, int height)
         {
             Mat descriptors = null;
@@ -120,7 +148,7 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             if (height <= 0)
                 throw new ArgumentOutOfRangeException(nameof(height));
             if (grayscaleFrame.Length != width * height)
-                throw new ArgumentException("La dimensione del buffer non coincide con larghezza e altezza", nameof(grayscaleFrame));
+                throw new ArgumentException(AppText.T("deep.temporal.matcher.invalidFrameBufferSize"), nameof(grayscaleFrame));
             if (!this.IsAvailable(out string rejectReason))
                 throw new InvalidOperationException(rejectReason);
 
@@ -146,7 +174,22 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         /// <summary>
         /// Confronta descriptor SIFT e verifica la coerenza geometrica tramite omografia RANSAC
         /// </summary>
+        /// <param name="sourceFeatures">Feature estratte dal frame source</param>
+        /// <param name="languageFeatures">Feature estratte dal frame language</param>
+        /// <returns>Risultato del confronto dei descriptor e della verifica geometrica</returns>
         public FrameFeatureMatchResult Match(OpenCvSiftFeatureSet sourceFeatures, OpenCvSiftFeatureSet languageFeatures)
+        {
+            return this.Match(sourceFeatures, languageFeatures, 0);
+        }
+
+        /// <summary>
+        /// Confronta descriptor e completa la verifica geometrica usando il seed RANSAC fornito
+        /// </summary>
+        /// <param name="sourceFeatures">Feature estratte dal frame source</param>
+        /// <param name="languageFeatures">Feature estratte dal frame language</param>
+        /// <param name="randomSeed">Seed usato per rendere deterministico RANSAC</param>
+        /// <returns>Risultato del confronto dei descriptor e della verifica geometrica</returns>
+        public FrameFeatureMatchResult Match(OpenCvSiftFeatureSet sourceFeatures, OpenCvSiftFeatureSet languageFeatures, int randomSeed)
         {
             List<DMatch> forwardRatioMatches;
             List<DMatch> reverseRatioMatches;
@@ -159,15 +202,35 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             forwardRatioMatches = this.ApplyRatioTest(this._matcher.KnnMatch(sourceFeatures.Descriptors, languageFeatures.Descriptors, 2));
             reverseRatioMatches = this.ApplyRatioTest(this._matcher.KnnMatch(languageFeatures.Descriptors, sourceFeatures.Descriptors, 2));
             result.DescriptorMatchingTicks = Stopwatch.GetTimestamp() - phaseStart;
-            return this.CompleteGeometricMatch(result, sourceFeatures, languageFeatures, forwardRatioMatches, reverseRatioMatches);
+            return this.CompleteGeometricMatch(result, sourceFeatures, languageFeatures, forwardRatioMatches, reverseRatioMatches, randomSeed);
         }
-        private FrameFeatureMatchResult CompleteGeometricMatch(FrameFeatureMatchResult result, OpenCvSiftFeatureSet source, OpenCvSiftFeatureSet language, List<DMatch> forwardRatioMatches, List<DMatch> reverseRatioMatches)
+        /// <summary>
+        /// Interseca i ratio match nei due versi prima della verifica geometrica
+        /// </summary>
+        /// <param name="result">Risultato da completare</param>
+        /// <param name="source">Feature estratte dal frame source</param>
+        /// <param name="language">Feature estratte dal frame language</param>
+        /// <param name="forwardRatioMatches">Match source-language dopo il ratio test</param>
+        /// <param name="reverseRatioMatches">Match language-source dopo il ratio test</param>
+        /// <param name="randomSeed">Seed deterministico di RANSAC</param>
+        /// <returns>Risultato geometrico completo</returns>
+        private FrameFeatureMatchResult CompleteGeometricMatch(FrameFeatureMatchResult result, OpenCvSiftFeatureSet source, OpenCvSiftFeatureSet language, List<DMatch> forwardRatioMatches, List<DMatch> reverseRatioMatches, int randomSeed)
         {
             List<DMatch> reciprocalMatches = this.CrossCheck(forwardRatioMatches, reverseRatioMatches);
-            return this.CompleteGeometricMatch(result, source, language, reciprocalMatches, forwardRatioMatches.Count);
+            return this.CompleteGeometricMatch(result, source, language, reciprocalMatches, forwardRatioMatches.Count, randomSeed);
         }
 
-        private FrameFeatureMatchResult CompleteGeometricMatch(FrameFeatureMatchResult result, OpenCvSiftFeatureSet source, OpenCvSiftFeatureSet language, List<DMatch> reciprocalMatches, int forwardRatioMatchCount)
+        /// <summary>
+        /// Stima l'omografia e valida copertura, inlier ed errore di riproiezione
+        /// </summary>
+        /// <param name="result">Risultato da completare</param>
+        /// <param name="source">Feature estratte dal frame source</param>
+        /// <param name="language">Feature estratte dal frame language</param>
+        /// <param name="reciprocalMatches">Match reciproci da verificare</param>
+        /// <param name="forwardRatioMatchCount">Numero di match forward prima della reciprocità</param>
+        /// <param name="randomSeed">Seed deterministico di RANSAC</param>
+        /// <returns>Risultato geometrico completo</returns>
+        private FrameFeatureMatchResult CompleteGeometricMatch(FrameFeatureMatchResult result, OpenCvSiftFeatureSet source, OpenCvSiftFeatureSet language, List<DMatch> reciprocalMatches, int forwardRatioMatchCount, int randomSeed)
         {
             List<Point2d> sourcePoints;
             List<Point2d> languagePoints;
@@ -178,7 +241,7 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             result.ReciprocalMatchCount = reciprocalMatches.Count;
             if (reciprocalMatches.Count < this._options.MinReciprocalMatches)
             {
-                result.RejectReason = "Match reciproci insufficienti";
+                result.RejectReason = AppText.T("deep.temporal.matcher.insufficientReciprocalMatches");
                 return result;
             }
 
@@ -193,12 +256,13 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             }
 
             long phaseStart = Stopwatch.GetTimestamp();
+            Cv2.SetTheRNG(unchecked((uint)randomSeed));
             using (Mat inlierMask = new Mat())
             using (Mat homography = Cv2.FindHomography(sourcePoints, languagePoints, HomographyMethods.Ransac, this._options.RansacReprojectionThreshold, inlierMask))
             {
                 if (homography.Empty() || inlierMask.Empty())
                 {
-                    result.RejectReason = "Trasformazione geometrica non stimabile";
+                    result.RejectReason = AppText.T("deep.temporal.matcher.unestimableGeometry");
                     return result;
                 }
 
@@ -224,27 +288,27 @@ namespace RemuxForge.Core.Analysis.Deep.Features
 
             if (result.InlierCount < this._options.MinInliers)
             {
-                result.RejectReason = "Inlier geometrici insufficienti";
+                result.RejectReason = AppText.T("deep.temporal.matcher.insufficientGeometricInliers");
                 return result;
             }
             if (result.InlierRatio < this._options.MinInlierRatio)
             {
-                result.RejectReason = "Rapporto inlier insufficiente";
+                result.RejectReason = AppText.T("deep.temporal.matcher.insufficientInlierRatio");
                 return result;
             }
             if (result.SourceCoverage < this._options.MinCoverage || result.LanguageCoverage < this._options.MinCoverage)
             {
-                result.RejectReason = "Copertura spaziale insufficiente";
+                result.RejectReason = AppText.T("deep.temporal.matcher.insufficientSpatialCoverage");
                 return result;
             }
             if (result.MeanReprojectionError > this._options.MaxMeanReprojectionError || double.IsNaN(result.MeanReprojectionError) || double.IsInfinity(result.MeanReprojectionError))
             {
-                result.RejectReason = "Errore di riproiezione eccessivo";
+                result.RejectReason = AppText.T("deep.temporal.matcher.excessiveReprojectionError");
                 return result;
             }
             if (!this.IsHomographyPlausible(result.Homography, source.Width, source.Height))
             {
-                result.RejectReason = "Omografia geometricamente non valida";
+                result.RejectReason = AppText.T("deep.temporal.matcher.invalidHomography");
                 return result;
             }
 
@@ -253,7 +317,7 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         }
 
         /// <summary>
-        /// Il backend corrente non mantiene risorse condivise tra chiamate
+        /// Rilascia le risorse native possedute dal matcher
         /// </summary>
         public void Dispose()
         {
@@ -277,9 +341,6 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         #region Metodi privati
 
         /// <summary>
-        /// Valida i parametri indipendentemente dal runtime nativo
-        /// </summary>
-        /// <summary>
         /// Crea una sola istanza SIFT e BFMatcher per il worker corrente
         /// </summary>
         private void EnsureWorkerResources()
@@ -291,15 +352,19 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         }
 
         /// <summary>
-        /// Valida i feature set e inizializza la diagnostica comune CPU/Vulkan
+        /// Valida i feature set e prepara la diagnostica comune dei matcher
         /// </summary>
+        /// <param name="sourceFeatures">Feature estratte dal frame source</param>
+        /// <param name="languageFeatures">Feature estratte dal frame language</param>
+        /// <param name="result">Risultato diagnostico inizializzato dal metodo</param>
+        /// <returns>True se i feature set sono compatibili e sufficienti per il confronto</returns>
         private bool TryInitializeMatch(OpenCvSiftFeatureSet sourceFeatures, OpenCvSiftFeatureSet languageFeatures, out FrameFeatureMatchResult result)
         {
             result = new FrameFeatureMatchResult();
             result.BackendName = this.BackendName;
             if (sourceFeatures == null || languageFeatures == null || !string.Equals(sourceFeatures.BackendName, this.BackendName, StringComparison.Ordinal) || !string.Equals(languageFeatures.BackendName, this.BackendName, StringComparison.Ordinal))
             {
-                result.RejectReason = "Feature prodotte da un backend incompatibile";
+                result.RejectReason = AppText.T("deep.temporal.matcher.incompatibleFeatureBackend");
                 return false;
             }
 
@@ -307,7 +372,7 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             result.LanguageKeypointCount = languageFeatures.KeypointCount;
             if (sourceFeatures.KeypointCount < this._options.MinKeypoints || languageFeatures.KeypointCount < this._options.MinKeypoints || sourceFeatures.Descriptors.Empty() || languageFeatures.Descriptors.Empty())
             {
-                result.RejectReason = "Keypoint insufficienti";
+                result.RejectReason = AppText.T("deep.temporal.matcher.insufficientKeypoints");
                 return false;
             }
 
@@ -317,6 +382,10 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         /// <summary>
         /// Verifica finitezza, orientamento e scala dell'omografia stimata
         /// </summary>
+        /// <param name="homography">Valori dell'omografia disposti per righe</param>
+        /// <param name="width">Larghezza del frame di riferimento in pixel</param>
+        /// <param name="height">Altezza del frame di riferimento in pixel</param>
+        /// <returns>True se l'omografia proietta il frame in modo plausibile</returns>
         private bool IsHomographyPlausible(double[] homography, int width, int height)
         {
             if (homography == null || homography.Length != 9 || width <= 0 || height <= 0)
@@ -363,6 +432,8 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         /// <summary>
         /// Applica il Lowe ratio test ai due nearest neighbour di ogni descriptor
         /// </summary>
+        /// <param name="matches">Match dei due nearest neighbour per ogni descriptor</param>
+        /// <returns>Match che superano il ratio test</returns>
         private List<DMatch> ApplyRatioTest(DMatch[][] matches)
         {
             List<DMatch> result = new List<DMatch>();
@@ -379,9 +450,12 @@ namespace RemuxForge.Core.Analysis.Deep.Features
 
             return result;
         }
-       /// <summary>
+        /// <summary>
         /// Conserva soltanto i match che concordano nelle due direzioni
         /// </summary>
+        /// <param name="forwardMatches">Match dal frame source al frame language</param>
+        /// <param name="reverseMatches">Match dal frame language al frame source</param>
+        /// <returns>Match presenti in entrambe le direzioni</returns>
         private List<DMatch> CrossCheck(List<DMatch> forwardMatches, List<DMatch> reverseMatches)
         {
             List<DMatch> result = new List<DMatch>();
@@ -406,6 +480,10 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         /// <summary>
         /// Calcola la copertura del bounding box degli inlier rispetto al frame
         /// </summary>
+        /// <param name="points">Punti degli inlier nel sistema di coordinate del frame</param>
+        /// <param name="width">Larghezza del frame in pixel</param>
+        /// <param name="height">Altezza del frame in pixel</param>
+        /// <returns>Rapporto fra l'area del bounding box e l'area del frame, limitato all'intervallo 0-1</returns>
         private double ComputeCoverage(List<Point2d> points, int width, int height)
         {
             if (points == null || points.Count < 2 || width <= 0 || height <= 0)
@@ -430,8 +508,12 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         }
 
         /// <summary>
-        /// Calcola l'errore medio fra punti language e source riproiettati
+        /// Calcola l'errore medio fra i punti language e i punti source riproiettati nel sistema language
         /// </summary>
+        /// <param name="sourcePoints">Punti source da riproiettare</param>
+        /// <param name="languagePoints">Punti language di riferimento</param>
+        /// <param name="homography">Omografia usata per la riproiezione</param>
+        /// <returns>Errore medio di riproiezione oppure il valore massimo se gli input non sono coerenti</returns>
         private double ComputeMeanReprojectionError(List<Point2d> sourcePoints, List<Point2d> languagePoints, Mat homography)
         {
             if (sourcePoints.Count == 0 || sourcePoints.Count != languagePoints.Count)
@@ -452,6 +534,8 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         /// <summary>
         /// Copia l'omografia in un formato indipendente da OpenCV
         /// </summary>
+        /// <param name="homography">Matrice OpenCV dell'omografia</param>
+        /// <returns>Valori dell'omografia disposti per righe</returns>
         private double[] ReadHomography(Mat homography)
         {
             double[] result = new double[9];
@@ -467,8 +551,10 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         }
 
         /// <summary>
-        /// Costruisce una confidence diagnostica senza partecipare ancora alla pipeline decisionale
+        /// Costruisce la confidence condivisa usata per ordinare alternative temporali già accettate
         /// </summary>
+        /// <param name="result">Risultato con le metriche del confronto</param>
+        /// <returns>Punteggio normalizzato nell'intervallo 0-1</returns>
         private double ComputeScore(FrameFeatureMatchResult result)
         {
             double quantityScore = Math.Min(1.0, result.InlierCount / 30.0);

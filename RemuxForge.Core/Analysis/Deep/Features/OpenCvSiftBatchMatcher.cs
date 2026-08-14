@@ -1,4 +1,5 @@
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Localization;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -9,20 +10,43 @@ using System.Threading.Tasks;
 namespace RemuxForge.Core.Analysis.Deep.Features
 {
     /// <summary>
-    /// Backend CPU SIFT con descriptor persistenti e valutazione delle sole coppie richieste
+    /// Backend CPU SIFT con cache opzionale delle feature e valutazione delle coppie complete o pianificate
     /// </summary>
     public sealed class OpenCvSiftBatchMatcher : FrameFeatureBatchMatcherBase
     {
         #region Variabili di classe
 
+        /// <summary>
+        /// Sincronizza l'accesso e il rilascio delle cache di feature
+        /// </summary>
+        private readonly object _featureCacheLock = new object();
+
+        /// <summary>
+        /// Feature SIFT della timeline source riutilizzabili e indicizzate per PTS e geometria
+        /// </summary>
+        private readonly Dictionary<(long Pts, int Width, int Height), OpenCvSiftFeatureSet> _sourceFeatureCache = new Dictionary<(long Pts, int Width, int Height), OpenCvSiftFeatureSet>();
+
+        /// <summary>
+        /// Feature SIFT della timeline language riutilizzabili e indicizzate per PTS e geometria
+        /// </summary>
+        private readonly Dictionary<(long Pts, int Width, int Height), OpenCvSiftFeatureSet> _languageFeatureCache = new Dictionary<(long Pts, int Width, int Height), OpenCvSiftFeatureSet>();
+
+        /// <summary>
+        /// Parametri condivisi di estrazione e matching SIFT
+        /// </summary>
         private readonly FrameFeatureMatcherOptions _options;
+
+        /// <summary>
+        /// Indica che le cache devono sopravvivere fra batch locali consecutivi
+        /// </summary>
+        private bool _featureReuseScopeActive;
 
         #endregion
 
         #region Costruttore
 
         /// <summary>
-        /// Costruttore con opzioni SIFT condivise dai worker
+        /// Inizializza il backend con le opzioni SIFT condivise dai worker
         /// </summary>
         /// <param name="options">Opzioni del matcher</param>
         public OpenCvSiftBatchMatcher(FrameFeatureMatcherOptions options = null)
@@ -37,6 +61,8 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         /// <summary>
         /// Verifica la disponibilità del backend CPU
         /// </summary>
+        /// <param name="rejectReason">Motivo per cui il backend non è disponibile</param>
+        /// <returns>True se il backend CPU è disponibile</returns>
         public override bool IsAvailable(out string rejectReason)
         {
             using (OpenCvSiftFeatureMatcher matcher = this.CreateMatcher())
@@ -44,8 +70,15 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         }
 
         /// <summary>
-        /// Costruisce la matrice SIFT completa in parallelo
+        /// Costruisce in parallelo la matrice SIFT completa o le sole coppie pianificate
         /// </summary>
+        /// <param name="sourceAnchors">Ancore visuali della timeline source</param>
+        /// <param name="languageAnchors">Ancore visuali della timeline language</param>
+        /// <param name="maxDegreeOfParallelism">Numero massimo di worker eseguibili in parallelo</param>
+        /// <param name="cancellationToken">Token per annullare l'elaborazione</param>
+        /// <param name="progress">Destinatario opzionale degli aggiornamenti di avanzamento</param>
+        /// <param name="plannedPairs">Coppie source-language da valutare, oppure null per valutare tutte le coppie</param>
+        /// <returns>Risultato del matching batch con matrice e diagnostica dell'elaborazione</returns>
         public override DeepSiftBatchMatchResult BuildMatrix(IReadOnlyList<DeepSiftVisualAnchor> sourceAnchors, IReadOnlyList<DeepSiftVisualAnchor> languageAnchors, int maxDegreeOfParallelism, CancellationToken cancellationToken, IProgress<DeepSiftBatchProgress> progress = null, IReadOnlyList<DeepSiftFramePair> plannedPairs = null)
         {
             if (sourceAnchors == null)
@@ -79,7 +112,7 @@ namespace RemuxForge.Core.Analysis.Deep.Features
                 {
                     workerThreads.TryAdd(Thread.CurrentThread.ManagedThreadId, 0);
                     DeepSiftVisualAnchor anchor = sourceAnchors[index];
-                    sourceFeatures[index] = matcher.ExtractFeatures(anchor.Frame, anchor.Width, anchor.Height);
+                    sourceFeatures[index] = this.GetOrExtractFeatures(anchor, matcher, this._sourceFeatureCache);
                     return matcher;
                 }, matcher => matcher.Dispose());
 
@@ -87,7 +120,7 @@ namespace RemuxForge.Core.Analysis.Deep.Features
                 {
                     workerThreads.TryAdd(Thread.CurrentThread.ManagedThreadId, 0);
                     DeepSiftVisualAnchor anchor = languageAnchors[index];
-                    languageFeatures[index] = matcher.ExtractFeatures(anchor.Frame, anchor.Width, anchor.Height);
+                    languageFeatures[index] = this.GetOrExtractFeatures(anchor, matcher, this._languageFeatureCache);
                     return matcher;
                 }, matcher => matcher.Dispose());
 
@@ -110,36 +143,40 @@ namespace RemuxForge.Core.Analysis.Deep.Features
                 long descriptorMatchingTicks = 0;
                 long geometryTicks = 0;
                 int completedTiles = 0;
-                Parallel.ForEach<Tuple<int, int>, OpenCvSiftFeatureMatcher>(Partitioner.Create(0, activeSourceIndexes.Count, TILE_ROW_COUNT), options, this.CreateMatcher, (range, _, matcher) =>
+                if (activeSourceIndexes.Count > 0 && activeLanguageIndexes.Count > 0)
                 {
-                    workerThreads.TryAdd(Thread.CurrentThread.ManagedThreadId, 0);
-                    for (int sourceIndex = range.Item1; sourceIndex < range.Item2; sourceIndex++)
+                    Parallel.ForEach<Tuple<int, int>, OpenCvSiftFeatureMatcher>(Partitioner.Create(0, activeSourceIndexes.Count, TILE_ROW_COUNT), options, this.CreateMatcher, (range, _, matcher) =>
                     {
-                        int originalSourceIndex = activeSourceIndexes[sourceIndex];
-                        for (int languageIndex = 0; languageIndex < activeLanguageIndexes.Count; languageIndex++)
+                        workerThreads.TryAdd(Thread.CurrentThread.ManagedThreadId, 0);
+                        for (int sourceIndex = range.Item1; sourceIndex < range.Item2; sourceIndex++)
                         {
-                            cancellationToken.ThrowIfCancellationRequested();
-                            int originalLanguageIndex = activeLanguageIndexes[languageIndex];
-                            if (plannedPairKeys != null && !plannedPairKeys.Contains(this.GetPairKey(originalSourceIndex, originalLanguageIndex)))
-                                continue;
-                            FrameFeatureMatchResult match = matcher.Match(sourceFeatures[originalSourceIndex], languageFeatures[originalLanguageIndex]);
-                            if (match != null)
+                            int originalSourceIndex = activeSourceIndexes[sourceIndex];
+                            for (int languageIndex = 0; languageIndex < activeLanguageIndexes.Count; languageIndex++)
                             {
-                                Interlocked.Add(ref descriptorMatchingTicks, match.DescriptorMatchingTicks);
-                                Interlocked.Add(ref geometryTicks, match.GeometryTicks);
+                                cancellationToken.ThrowIfCancellationRequested();
+                                int originalLanguageIndex = activeLanguageIndexes[languageIndex];
+                                if (plannedPairKeys != null && !plannedPairKeys.Contains(this.GetPairKey(originalSourceIndex, originalLanguageIndex)))
+                                    continue;
+                                int randomSeed = this.GetStablePairSeed(sourceAnchors[originalSourceIndex], languageAnchors[originalLanguageIndex]);
+                                FrameFeatureMatchResult match = matcher.Match(sourceFeatures[originalSourceIndex], languageFeatures[originalLanguageIndex], randomSeed);
+                                if (match != null)
+                                {
+                                    Interlocked.Add(ref descriptorMatchingTicks, match.DescriptorMatchingTicks);
+                                    Interlocked.Add(ref geometryTicks, match.GeometryTicks);
+                                }
+                                int matrixSourceIndex = preserveInputIndexes ? originalSourceIndex : sourceIndex;
+                                int matrixLanguageIndex = preserveInputIndexes ? originalLanguageIndex : languageIndex;
+                                result.Matrix.Set(matrixSourceIndex, matrixLanguageIndex, this.CreateCell(match));
+                                Interlocked.Increment(ref processedCells);
                             }
-                            int matrixSourceIndex = preserveInputIndexes ? originalSourceIndex : sourceIndex;
-                            int matrixLanguageIndex = preserveInputIndexes ? originalLanguageIndex : languageIndex;
-                            result.Matrix.Set(matrixSourceIndex, matrixLanguageIndex, this.CreateCell(match));
-                            Interlocked.Increment(ref processedCells);
                         }
-                    }
 
-                    long currentProcessed = Interlocked.Read(ref processedCells);
-                    int currentTiles = Interlocked.Increment(ref completedTiles);
-                    progress?.Report(new DeepSiftBatchProgress { CompletedTiles = currentTiles, TotalTiles = totalTiles, ProcessedCells = currentProcessed, TotalCells = totalCells });
-                    return matcher;
-                }, matcher => matcher.Dispose());
+                        long currentProcessed = Interlocked.Read(ref processedCells);
+                        int currentTiles = Interlocked.Increment(ref completedTiles);
+                        progress?.Report(new DeepSiftBatchProgress { CompletedTiles = currentTiles, TotalTiles = totalTiles, ProcessedCells = currentProcessed, TotalCells = totalCells });
+                        return matcher;
+                    }, matcher => matcher.Dispose());
+                }
 
                 result.MatchingMs = stopwatch.ElapsedMilliseconds;
                 result.DescriptorMatchingMs = (long)Math.Round(descriptorMatchingTicks * 1000.0 / Stopwatch.Frequency);
@@ -157,28 +194,56 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             catch (OperationCanceledException)
             {
                 result.Cancelled = true;
-                result.RejectReason = "Matching SIFT annullato";
+                result.RejectReason = AppText.T("deep.temporal.matcher.cpuCancelled");
                 return result;
             }
             catch (Exception ex)
             {
-                result.RejectReason = "Matching SIFT batch fallito: " + ex.Message;
+                result.RejectReason = AppText.F("deep.temporal.matcher.cpuBatchFailed", ex.Message);
                 return result;
             }
             finally
             {
-                for (int i = 0; i < sourceFeatures.Length; i++)
-                    sourceFeatures[i]?.Dispose();
-                for (int i = 0; i < languageFeatures.Length; i++)
-                    languageFeatures[i]?.Dispose();
+                if (!this._featureReuseScopeActive)
+                {
+                    for (int i = 0; i < sourceFeatures.Length; i++)
+                        sourceFeatures[i]?.Dispose();
+                    for (int i = 0; i < languageFeatures.Length; i++)
+                        languageFeatures[i]?.Dispose();
+                }
             }
         }
 
         /// <summary>
-        /// Rilascia il wrapper batch, che non possiede risorse native persistenti
+        /// Attiva il riuso delle feature limitato a una sola regione locale
+        /// </summary>
+        public override void BeginFeatureReuseScope()
+        {
+            lock (this._featureCacheLock)
+            {
+                this.ReleaseFeatureCaches();
+                this._featureReuseScopeActive = true;
+            }
+        }
+
+        /// <summary>
+        /// Disattiva il riuso e rilascia la cache al termine della regione locale
+        /// </summary>
+        public override void EndFeatureReuseScope()
+        {
+            lock (this._featureCacheLock)
+            {
+                this._featureReuseScopeActive = false;
+                this.ReleaseFeatureCaches();
+            }
+        }
+
+        /// <summary>
+        /// Rilascia le feature eventualmente conservate nella cache del batch
         /// </summary>
         public override void Dispose()
         {
+            this.EndFeatureReuseScope();
         }
 
         #endregion
@@ -197,14 +262,60 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         /// <summary>
         /// Crea un matcher isolato per il worker corrente
         /// </summary>
+        /// <returns>Matcher SIFT configurato con le opzioni condivise</returns>
         private OpenCvSiftFeatureMatcher CreateMatcher()
         {
             return new OpenCvSiftFeatureMatcher(this._options);
         }
 
         /// <summary>
+        /// Recupera le feature dalla cache corrente oppure le estrae dal frame
+        /// </summary>
+        /// <param name="anchor">Ancora visuale da elaborare</param>
+        /// <param name="matcher">Matcher OpenCV proprietario dell'estrazione</param>
+        /// <param name="cache">Cache dell'asse temporale corrente</param>
+        /// <returns>Feature SIFT dell'ancora</returns>
+        private OpenCvSiftFeatureSet GetOrExtractFeatures(DeepSiftVisualAnchor anchor, OpenCvSiftFeatureMatcher matcher, Dictionary<(long Pts, int Width, int Height), OpenCvSiftFeatureSet> cache)
+        {
+            if (!this._featureReuseScopeActive)
+                return matcher.ExtractFeatures(anchor.Frame, anchor.Width, anchor.Height);
+            (long Pts, int Width, int Height) key = ((long)Math.Round(anchor.PtsMs * 1000.0), anchor.Width, anchor.Height);
+            lock (this._featureCacheLock)
+            {
+                if (cache.TryGetValue(key, out OpenCvSiftFeatureSet cached))
+                    return cached;
+            }
+            OpenCvSiftFeatureSet extracted = matcher.ExtractFeatures(anchor.Frame, anchor.Width, anchor.Height);
+            lock (this._featureCacheLock)
+            {
+                if (cache.TryGetValue(key, out OpenCvSiftFeatureSet cached))
+                {
+                    extracted.Dispose();
+                    return cached;
+                }
+                cache.Add(key, extracted);
+                return extracted;
+            }
+        }
+
+        /// <summary>
+        /// Rilascia tutte le feature OpenCV conservate fra batch
+        /// </summary>
+        private void ReleaseFeatureCaches()
+        {
+            foreach (OpenCvSiftFeatureSet features in this._sourceFeatureCache.Values)
+                features.Dispose();
+            foreach (OpenCvSiftFeatureSet features in this._languageFeatureCache.Values)
+                features.Dispose();
+            this._sourceFeatureCache.Clear();
+            this._languageFeatureCache.Clear();
+        }
+
+        /// <summary>
         /// Traduce il risultato scalare nel contratto della matrice
         /// </summary>
+        /// <param name="match">Risultato scalare del matching, oppure null se il confronto non ha prodotto un risultato</param>
+        /// <returns>Cella della matrice corrispondente al risultato del matching</returns>
         private DeepSiftMatchCell CreateCell(FrameFeatureMatchResult match)
         {
             DeepSiftMatchCell result = new DeepSiftMatchCell();
@@ -219,8 +330,10 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         }
 
         /// <summary>
-        /// Conta i frame che non hanno prodotto descriptor informativi
+        /// Conta le ancore che non hanno prodotto un numero sufficiente di keypoint SIFT
         /// </summary>
+        /// <param name="features">Feature estratte per ogni ancora</param>
+        /// <returns>Numero di ancore con un numero insufficiente di keypoint SIFT</returns>
         private int CountFeatureless(OpenCvSiftFeatureSet[] features)
         {
             int result = 0;
@@ -233,6 +346,11 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             return result;
         }
 
+        /// <summary>
+        /// Seleziona gli indici delle ancore che contengono un numero sufficiente di keypoint SIFT
+        /// </summary>
+        /// <param name="features">Feature estratte per ogni ancora</param>
+        /// <returns>Indici delle ancore informative</returns>
         private List<int> GetActiveIndexes(OpenCvSiftFeatureSet[] features)
         {
             List<int> result = new List<int>();
@@ -244,6 +362,13 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             return result;
         }
 
+        /// <summary>
+        /// Converte le coppie pianificate in chiavi valide per la matrice locale
+        /// </summary>
+        /// <param name="pairs">Coppie richieste dal pianificatore temporale</param>
+        /// <param name="sourceCount">Numero di ancore source</param>
+        /// <param name="languageCount">Numero di ancore language</param>
+        /// <returns>Chiavi delle sole celle valide</returns>
         private HashSet<long> CreatePlannedPairKeys(IReadOnlyList<DeepSiftFramePair> pairs, int sourceCount, int languageCount)
         {
             if (pairs == null)
@@ -259,6 +384,12 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             return result;
         }
 
+        /// <summary>
+        /// Compone gli indici source e language in una chiave di cella
+        /// </summary>
+        /// <param name="sourceIndex">Indice source</param>
+        /// <param name="languageIndex">Indice language</param>
+        /// <returns>Chiave intera della coppia</returns>
         private long GetPairKey(int sourceIndex, int languageIndex)
         {
             return ((long)sourceIndex << 32) | (uint)languageIndex;

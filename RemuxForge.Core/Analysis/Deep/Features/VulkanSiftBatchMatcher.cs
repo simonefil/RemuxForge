@@ -1,4 +1,5 @@
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Localization;
 using RemuxForge.Vulkan;
 using System;
 using System.Collections.Generic;
@@ -8,35 +9,69 @@ using System.Threading;
 namespace RemuxForge.Core.Analysis.Deep.Features
 {
     /// <summary>
-    /// Backend batch SIFT, matching reciproco e RANSAC interamente Vulkan
+    /// Backend batch SIFT con matching reciproco e RANSAC interamente eseguiti tramite Vulkan
     /// </summary>
     public sealed class VulkanSiftBatchMatcher : FrameFeatureBatchMatcherBase
     {
         #region Costanti
 
         /// <summary>
-        /// Identificativo stabile del backend full-GPU
+        /// Identificativo stabile del backend SIFT Vulkan
         /// </summary>
         public const string BACKEND_NAME = "vortice-vulkan-sift-ransac";
 
+        /// <summary>
+        /// Numero massimo di carichi Vulkan mantenuti contemporaneamente in volo
+        /// </summary>
         private const int MAXIMUM_IN_FLIGHT_WORKLOADS = 3;
 
         /// <summary>
-        /// Budget massimo VRAM del backend RemuxForge
+        /// Zero delega al runtime Vulkan il budget disponibile esposto dal driver
         /// </summary>
-        private const ulong MAXIMUM_VRAM_BYTES = 1024UL * 1024UL * 1024UL;
+        private const ulong MAXIMUM_VRAM_BYTES = 0UL;
 
         #endregion
 
         #region Variabili di classe
 
+        /// <summary>
+        /// Opzioni SIFT condivise con gli altri backend di matching
+        /// </summary>
         private readonly FrameFeatureMatcherOptions _options;
+
+        /// <summary>
+        /// Sincronizza il controllo di disponibilità e il rilascio delle risorse Vulkan
+        /// </summary>
         private readonly object _availabilityLock;
+
+        /// <summary>
+        /// Serializza l'esecuzione e il rilascio della pipeline Vulkan
+        /// </summary>
         private readonly object _executionLock;
+
+        /// <summary>
+        /// Contesto Vulkan persistente posseduto dal matcher
+        /// </summary>
         private VulkanVisionContext _context;
+
+        /// <summary>
+        /// Pipeline SIFT Vulkan persistente posseduta dal matcher
+        /// </summary>
         private VulkanSiftPipeline _pipeline;
+
+        /// <summary>
+        /// Motivo diagnostico dell'indisponibilità del backend
+        /// </summary>
         private string _availabilityRejectReason;
+
+        /// <summary>
+        /// Indica che il controllo di disponibilità è già stato eseguito
+        /// </summary>
         private bool _availabilityChecked;
+
+        /// <summary>
+        /// Indica che il matcher è stato disposto e non può più essere utilizzato
+        /// </summary>
         private bool _disposed;
 
         #endregion
@@ -61,7 +96,7 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         #region Metodi pubblici
 
         /// <summary>
-        /// Verifica e inizializza una sola volta il runtime Vulkan persistente
+        /// Verifica e inizializza una sola volta il contesto e la pipeline Vulkan persistenti
         /// </summary>
         /// <param name="rejectReason">Motivo della mancata disponibilità</param>
         /// <returns>True se il backend è disponibile</returns>
@@ -71,7 +106,7 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             {
                 if (this._disposed)
                 {
-                    rejectReason = "Il backend Vulkan SIFT è già stato rilasciato";
+                    rejectReason = AppText.T("deep.temporal.matcher.vulkanDisposed");
                     return false;
                 }
 
@@ -103,7 +138,7 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         }
 
         /// <summary>
-        /// Costruisce il risultato delle coppie pianificate senza fallback CPU o readback intermedi
+        /// Costruisce la matrice dei match usando la pipeline Vulkan, eventualmente limitata alle coppie pianificate
         /// </summary>
         /// <param name="sourceAnchors">Ancore della timeline source</param>
         /// <param name="languageAnchors">Ancore della timeline language</param>
@@ -130,7 +165,7 @@ namespace RemuxForge.Core.Analysis.Deep.Features
                 this.ValidateAnchors(languageAnchors);
                 if (!this.IsAvailable(out string rejectReason))
                 {
-                    result.RejectReason = "Backend Vulkan SIFT non disponibile: " + rejectReason;
+                    result.RejectReason = AppText.F("deep.temporal.matcher.vulkanUnavailable", rejectReason);
                     return result;
                 }
 
@@ -164,18 +199,18 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             catch (OperationCanceledException)
             {
                 result.Cancelled = true;
-                result.RejectReason = "Matching SIFT Vulkan annullato";
+                result.RejectReason = AppText.T("deep.temporal.matcher.vulkanCancelled");
                 return result;
             }
             catch (Exception ex)
             {
-                result.RejectReason = "Matching SIFT Vulkan fallito: " + ex;
+                result.RejectReason = AppText.F("deep.temporal.matcher.vulkanFailed", ex);
                 return result;
             }
         }
 
         /// <summary>
-        /// Rilascia pipeline e contesto solo dopo l'eventuale esecuzione attiva
+        /// Rilascia pipeline e contesto dopo l'eventuale esecuzione attiva
         /// </summary>
         public override void Dispose()
         {
@@ -203,10 +238,22 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         /// </summary>
         public override string BackendName { get { return BACKEND_NAME; } }
 
+        /// <summary>
+        /// La pipeline Vulkan applica internamente il proprio scheduling alle coppie sparse
+        /// </summary>
+        public override bool SupportsNativeSparseBatching { get { return true; } }
+
         #endregion
 
         #region Metodi privati
 
+        /// <summary>
+        /// Inizializza il risultato con le dimensioni dichiarate e il parallelismo effettivo del backend
+        /// </summary>
+        /// <param name="sourceCount">Numero di ancore source dichiarate</param>
+        /// <param name="languageCount">Numero di ancore language dichiarate</param>
+        /// <param name="maximumParallelism">Parallelismo massimo richiesto dal chiamante</param>
+        /// <returns>Risultato iniziale del batch</returns>
         private DeepSiftBatchMatchResult CreateInitialResult(int sourceCount, int languageCount, int maximumParallelism)
         {
             DeepSiftBatchMatchResult result = new DeepSiftBatchMatchResult();
@@ -217,6 +264,13 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             return result;
         }
 
+        /// <summary>
+        /// Costruisce una richiesta Vulkan completa con tutte le coppie fra le due timeline
+        /// </summary>
+        /// <param name="sourceAnchors">Ancore source da caricare</param>
+        /// <param name="languageAnchors">Ancore language da caricare</param>
+        /// <param name="progress">Destinatario opzionale del progresso Vulkan</param>
+        /// <returns>Richiesta batch completa</returns>
         private VulkanSiftBatchRequest CreateRequest(IReadOnlyList<DeepSiftVisualAnchor> sourceAnchors, IReadOnlyList<DeepSiftVisualAnchor> languageAnchors, IProgress<DeepSiftBatchProgress> progress)
         {
             List<VulkanImageFrame> sourceFrames = this.CreateFrames(sourceAnchors);
@@ -250,6 +304,14 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             return request;
         }
 
+        /// <summary>
+        /// Costruisce una richiesta Vulkan compatta per le sole coppie pianificate
+        /// </summary>
+        /// <param name="sourceAnchors">Ancore source originali</param>
+        /// <param name="languageAnchors">Ancore language originali</param>
+        /// <param name="progress">Destinatario opzionale del progresso Vulkan</param>
+        /// <param name="plannedPairs">Coppie sparse da elaborare</param>
+        /// <returns>Richiesta compatta e mapping verso gli indici originali</returns>
         private PackedBatchRequest CreatePackedRequest(IReadOnlyList<DeepSiftVisualAnchor> sourceAnchors, IReadOnlyList<DeepSiftVisualAnchor> languageAnchors, IProgress<DeepSiftBatchProgress> progress, IReadOnlyList<DeepSiftFramePair> plannedPairs)
         {
             SortedSet<int> sourceIndexes = new SortedSet<int>();
@@ -263,7 +325,7 @@ namespace RemuxForge.Core.Analysis.Deep.Features
                 languageIndexes.Add(pair.LanguageAnchorIndex);
             }
             if (sourceIndexes.Count == 0 || languageIndexes.Count == 0)
-                throw new ArgumentException("Il piano sparse non contiene frame", nameof(plannedPairs));
+                throw new ArgumentException(AppText.T("deep.temporal.matcher.sparsePlanWithoutFrames"), nameof(plannedPairs));
 
             PackedBatchRequest result = new PackedBatchRequest();
             result.SourceOriginalIndexes.AddRange(sourceIndexes);
@@ -300,6 +362,11 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             return result;
         }
 
+        /// <summary>
+        /// Associa ogni indice originale alla posizione nella lista compatta
+        /// </summary>
+        /// <param name="originalIndexes">Indici originali ordinati</param>
+        /// <returns>Mappa da indice originale a indice compatto</returns>
         private Dictionary<int, int> CreateCompactIndexes(List<int> originalIndexes)
         {
             Dictionary<int, int> result = new Dictionary<int, int>(originalIndexes.Count);
@@ -308,6 +375,12 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             return result;
         }
 
+        /// <summary>
+        /// Estrae le ancore corrispondenti agli indici originali selezionati
+        /// </summary>
+        /// <param name="anchors">Ancore originali</param>
+        /// <param name="originalIndexes">Indici da proiettare nella lista compatta</param>
+        /// <returns>Subset delle ancore nello stesso ordine degli indici</returns>
         private List<DeepSiftVisualAnchor> GetAnchorSubset(IReadOnlyList<DeepSiftVisualAnchor> anchors, List<int> originalIndexes)
         {
             List<DeepSiftVisualAnchor> result = new List<DeepSiftVisualAnchor>(originalIndexes.Count);
@@ -315,14 +388,26 @@ namespace RemuxForge.Core.Analysis.Deep.Features
                 result.Add(anchors[originalIndexes[i]]);
             return result;
         }
+
+        /// <summary>
+        /// Converte le ancore in frame grayscale pronti per la pipeline Vulkan
+        /// </summary>
+        /// <param name="anchors">Ancore da convertire</param>
+        /// <returns>Frame Vulkan nello stesso ordine delle ancore</returns>
         private List<VulkanImageFrame> CreateFrames(IReadOnlyList<DeepSiftVisualAnchor> anchors)
         {
             List<VulkanImageFrame> result = new List<VulkanImageFrame>(anchors.Count);
             for (int i = 0; i < anchors.Count; i++)
-                result.Add(new VulkanImageFrame(i, anchors[i].Frame, anchors[i].Width, anchors[i].Height, anchors[i].Width, VulkanPixelFormat.Gray8));
+                result.Add(new VulkanImageFrame(this.GetStableFrameIdentifier(anchors[i]), anchors[i].Frame, anchors[i].Width, anchors[i].Height, anchors[i].Width, VulkanPixelFormat.Gray8));
             return result;
         }
 
+        /// <summary>
+        /// Traduce le opzioni condivise nel formato richiesto dalla pipeline SIFT Vulkan
+        /// </summary>
+        /// <param name="sourceAnchors">Ancore source usate per il rapporto delle feature</param>
+        /// <param name="languageAnchors">Ancore language usate per il rapporto delle feature</param>
+        /// <returns>Opzioni SIFT configurate per la richiesta Vulkan</returns>
         private VulkanSiftOptions CreateVulkanOptions(IReadOnlyList<DeepSiftVisualAnchor> sourceAnchors, IReadOnlyList<DeepSiftVisualAnchor> languageAnchors)
         {
             VulkanSiftOptions result = new VulkanSiftOptions();
@@ -346,6 +431,13 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             return result;
         }
 
+        /// <summary>
+        /// Calcola il rapporto di scala necessario a rispettare il limite di feature per frame
+        /// </summary>
+        /// <param name="sourceAnchors">Ancore source da considerare</param>
+        /// <param name="languageAnchors">Ancore language da considerare</param>
+        /// <param name="doubleInput">Indica se la piramide usa l'ingresso raddoppiato</param>
+        /// <returns>Rapporto di feature compreso fra il limite minimo e uno</returns>
         private float CalculateFeatureRatio(IReadOnlyList<DeepSiftVisualAnchor> sourceAnchors, IReadOnlyList<DeepSiftVisualAnchor> languageAnchors, bool doubleInput)
         {
             long maximumOctaveArea = 1;
@@ -356,6 +448,13 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             return Math.Min(1.0f, Math.Max(1.0f / maximumOctaveArea, (float)this._options.MaxFeatures / maximumOctaveArea));
         }
 
+        /// <summary>
+        /// Somma l'area dei livelli della piramide che rispettano la dimensione minima
+        /// </summary>
+        /// <param name="width">Larghezza del frame</param>
+        /// <param name="height">Altezza del frame</param>
+        /// <param name="doubleInput">Indica se raddoppiare le dimensioni iniziali</param>
+        /// <returns>Area complessiva dei livelli utilizzabili</returns>
         private long CalculateOctaveArea(int width, int height, bool doubleInput)
         {
             long result = 0;
@@ -370,6 +469,13 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             return Math.Max(1, result);
         }
 
+        /// <summary>
+        /// Popola il risultato completo rimuovendo dalla matrice le ancore prive di feature
+        /// </summary>
+        /// <param name="result">Risultato da completare</param>
+        /// <param name="batch">Risultato prodotto dalla pipeline Vulkan</param>
+        /// <param name="sourceAnchors">Ancore source originali</param>
+        /// <param name="languageAnchors">Ancore language originali</param>
         private void PopulateResult(DeepSiftBatchMatchResult result, VulkanSiftBatchResult batch, IReadOnlyList<DeepSiftVisualAnchor> sourceAnchors, IReadOnlyList<DeepSiftVisualAnchor> languageAnchors)
         {
             int[] sourceKeypointCounts = this.CopyFrameCounts(batch.FirstFrameKeypointCounts, sourceAnchors.Count);
@@ -412,6 +518,14 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             result.VulkanDeviceName = batch.Capabilities.DeviceName;
         }
 
+        /// <summary>
+        /// Popola il risultato mantenendo le dimensioni originali per una richiesta sparsa
+        /// </summary>
+        /// <param name="result">Risultato da completare</param>
+        /// <param name="batch">Risultato prodotto dalla pipeline Vulkan</param>
+        /// <param name="sourceAnchors">Ancore source originali</param>
+        /// <param name="languageAnchors">Ancore language originali</param>
+        /// <param name="packed">Mapping fra frame compatti e indici originali</param>
         private void PopulatePackedResult(DeepSiftBatchMatchResult result, VulkanSiftBatchResult batch, IReadOnlyList<DeepSiftVisualAnchor> sourceAnchors, IReadOnlyList<DeepSiftVisualAnchor> languageAnchors, PackedBatchRequest packed)
         {
             int[] sourceKeypointCounts = this.CopyFrameCounts(batch.FirstFrameKeypointCounts, packed.SourceOriginalIndexes.Count);
@@ -455,6 +569,11 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             result.VulkanDeviceName = batch.Capabilities.DeviceName;
         }
 
+        /// <summary>
+        /// Conta le ancore con un numero di keypoint inferiore alla soglia configurata
+        /// </summary>
+        /// <param name="keypointCounts">Numero di keypoint per frame</param>
+        /// <returns>Numero di frame privi di feature sufficienti</returns>
         private int CountFeatureless(int[] keypointCounts)
         {
             int result = 0;
@@ -466,16 +585,27 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             return result;
         }
 
+        /// <summary>
+        /// Copia i conteggi dei keypoint dopo averne verificato la cardinalità attesa
+        /// </summary>
+        /// <param name="counts">Conteggi restituiti dalla pipeline Vulkan</param>
+        /// <param name="expectedCount">Numero atteso di frame</param>
+        /// <returns>Copia indicizzata dei conteggi</returns>
         private int[] CopyFrameCounts(IReadOnlyList<int> counts, int expectedCount)
         {
             if (counts == null || counts.Count != expectedCount)
-                throw new InvalidOperationException("Il batch Vulkan non contiene conteggi frame coerenti");
+                throw new InvalidOperationException(AppText.T("deep.temporal.matcher.inconsistentVulkanFrameCounts"));
             int[] result = new int[expectedCount];
             for (int i = 0; i < expectedCount; i++)
                 result[i] = counts[i];
             return result;
         }
 
+        /// <summary>
+        /// Trasferisce le diagnostiche temporali e quantitative della GPU nel risultato batch
+        /// </summary>
+        /// <param name="result">Risultato da completare</param>
+        /// <param name="diagnostics">Diagnostiche prodotte dal runtime Vulkan</param>
         private void PopulateGpuDiagnostics(DeepSiftBatchMatchResult result, VulkanVisionDiagnostics diagnostics)
         {
             result.GpuUploadMs = this.ToGpuMilliseconds(diagnostics.GpuUploadNanoseconds);
@@ -496,21 +626,41 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             result.TruncatedKeypointCount = diagnostics.TruncatedKeypointCount;
         }
 
+        /// <summary>
+        /// Converte nanosecondi GPU in millisecondi arrotondati
+        /// </summary>
+        /// <param name="nanoseconds">Durata in nanosecondi</param>
+        /// <returns>Durata in millisecondi</returns>
         private long ToGpuMilliseconds(ulong nanoseconds)
         {
             return (long)Math.Round(nanoseconds / 1000000.0);
         }
 
+        /// <summary>
+        /// Converte una dimensione unsigned nel formato signed usato dalla diagnostica
+        /// </summary>
+        /// <param name="bytes">Dimensione in byte</param>
+        /// <returns>Dimensione convertita senza superare il massimo di Int64</returns>
         private long ToSignedBytes(ulong bytes)
         {
             return bytes > long.MaxValue ? long.MaxValue : (long)bytes;
         }
 
+        /// <summary>
+        /// Converte i tick del cronometro ad alta risoluzione in millisecondi arrotondati
+        /// </summary>
+        /// <param name="ticks">Durata espressa in tick</param>
+        /// <returns>Durata in millisecondi</returns>
         private long ToMilliseconds(long ticks)
         {
             return (long)Math.Round(ticks * 1000.0 / Stopwatch.Frequency);
         }
 
+        /// <summary>
+        /// Traduce il risultato di una coppia Vulkan nella cella della matrice condivisa
+        /// </summary>
+        /// <param name="match">Risultato della coppia prodotto dalla pipeline</param>
+        /// <returns>Cella di matching con stato e metriche geometriche</returns>
         private DeepSiftMatchCell CreateCell(VulkanSiftPairResult match)
         {
             DeepSiftMatchCell result = new DeepSiftMatchCell();
@@ -524,6 +674,11 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             return result;
         }
 
+        /// <summary>
+        /// Seleziona gli indici delle ancore che superano la soglia minima di keypoint
+        /// </summary>
+        /// <param name="keypointCounts">Numero di keypoint per ancora</param>
+        /// <returns>Indici delle ancore con feature sufficienti</returns>
         private List<int> GetActiveIndexes(int[] keypointCounts)
         {
             List<int> result = new List<int>();
@@ -535,6 +690,11 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             return result;
         }
 
+        /// <summary>
+        /// Crea la mappa dagli indici originali degli elementi attivi alle posizioni della matrice
+        /// </summary>
+        /// <param name="activeIndexes">Indici originali degli elementi attivi</param>
+        /// <returns>Mappa da indice originale a indice della matrice</returns>
         private Dictionary<int, int> CreateMatrixIndexes(List<int> activeIndexes)
         {
             Dictionary<int, int> result = new Dictionary<int, int>(activeIndexes.Count);
@@ -543,6 +703,9 @@ namespace RemuxForge.Core.Analysis.Deep.Features
             return result;
         }
 
+        /// <summary>
+        /// Richiesta Vulkan compatta con mapping verso gli indici originali della matrice
+        /// </summary>
         private sealed class PackedBatchRequest
         {
             /// <summary>
@@ -554,8 +717,19 @@ namespace RemuxForge.Core.Analysis.Deep.Features
                 this.LanguageOriginalIndexes = new List<int>();
             }
 
+            /// <summary>
+            /// Richiesta da inviare al backend Vulkan
+            /// </summary>
             public VulkanSiftBatchRequest Request { get; set; }
+
+            /// <summary>
+            /// Indici source originali ordinati come i frame compatti
+            /// </summary>
             public List<int> SourceOriginalIndexes { get; }
+
+            /// <summary>
+            /// Indici language originali ordinati come i frame compatti
+            /// </summary>
             public List<int> LanguageOriginalIndexes { get; }
         }
 

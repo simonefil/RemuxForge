@@ -1,14 +1,14 @@
 namespace RemuxForge.Core.Models
 {
     /// <summary>
-    /// Risultato della fingerprint audio globale usata come metrica di consenso
+    /// Risultato della fingerprint audio globale usata per stimare e validare l'offset temporale
     /// </summary>
     public class AudioGlobalFingerprintResult
     {
         #region Costruttore
 
         /// <summary>
-        /// Costruttore
+        /// Inizializza il risultato della fingerprint audio con valori che indicano l'assenza di un candidato valido
         /// </summary>
         public AudioGlobalFingerprintResult()
         {
@@ -39,15 +39,15 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
-        /// True se l'audio ha prodotto un candidato abbastanza netto
+        /// Indica se la fingerprint audio ha prodotto un candidato sufficientemente netto
         /// </summary>
         public bool Success { get; set; }
 
         /// <summary>
-        /// Offset interno in millisecondi, langTime - sourceTime
+        /// Offset interno in millisecondi calcolato come langTime - sourceTime
         /// </summary>
         public int OffsetMs { get; set; }
 
@@ -57,102 +57,102 @@ namespace RemuxForge.Core.Models
         public double Score { get; set; }
 
         /// <summary>
-        /// Margine tra primo e secondo candidato separato
+        /// Margine tra il primo candidato e il secondo candidato distinto
         /// </summary>
         public double Margin { get; set; }
 
         /// <summary>
-        /// Copertura temporale media usata nel confronto
+        /// Copertura temporale media delle finestre usate nel confronto
         /// </summary>
         public double Coverage { get; set; }
 
         /// <summary>
-        /// Correlazione envelope RMS/energia
+        /// Punteggio di correlazione dell'envelope RMS/energia
         /// </summary>
         public double EnvelopeScore { get; set; }
 
         /// <summary>
-        /// Concordanza maschera silenzi
+        /// Punteggio di concordanza della maschera dei silenzi
         /// </summary>
         public double SilenceScore { get; set; }
 
         /// <summary>
-        /// Correlazione onset/variazioni energia
+        /// Punteggio di correlazione degli onset e delle variazioni di energia
         /// </summary>
         public double OnsetScore { get; set; }
 
         /// <summary>
-        /// Correlazione derivata signed dell'envelope
+        /// Punteggio di correlazione della derivata con segno dell'envelope
         /// </summary>
         public double DerivativeScore { get; set; }
 
         /// <summary>
-        /// Concordanza forma run-length dei silenzi
+        /// Punteggio di concordanza della forma run-length dei silenzi
         /// </summary>
         public double SilenceRunScore { get; set; }
 
         /// <summary>
-        /// Score medio distribuito su chunk temporali
+        /// Punteggio medio distribuito sui chunk temporali
         /// </summary>
         public double ChunkScore { get; set; }
 
         /// <summary>
-        /// Offset video iniziale confrontato con l'audio, se disponibile
+        /// Offset video iniziale confrontato con quello audio quando disponibile
         /// </summary>
         public int VideoOffsetMs { get; set; }
 
         /// <summary>
-        /// Delta assoluto tra offset audio e offset video iniziale
+        /// Delta assoluto in millisecondi tra offset audio e offset video iniziale
         /// </summary>
         public int AudioVideoDeltaMs { get; set; }
 
         /// <summary>
-        /// True se l'audio conferma l'offset video iniziale
+        /// Indica se la fingerprint audio conferma l'offset video iniziale
         /// </summary>
         public bool ConfirmedVideoInitial { get; set; }
 
         /// <summary>
-        /// True se l'audio boccia un offset video iniziale debole
+        /// Indica se la fingerprint audio rifiuta un offset video iniziale debole
         /// </summary>
         public bool RejectedVideoInitial { get; set; }
 
         /// <summary>
-        /// Numero offset valutati
+        /// Numero di offset candidati valutati
         /// </summary>
         public int CandidateCount { get; set; }
 
         /// <summary>
-        /// Dimensione finestra fingerprint in millisecondi
+        /// Dimensione della finestra della fingerprint in millisecondi
         /// </summary>
         public int WindowMs { get; set; }
 
         /// <summary>
-        /// Tempo di calcolo in millisecondi
+        /// Tempo complessivo di elaborazione in millisecondi
         /// </summary>
         public long TimingMs { get; set; }
 
         /// <summary>
-        /// Tempo estrazione/costruzione fingerprint in millisecondi
+        /// Tempo di estrazione e costruzione della fingerprint in millisecondi
         /// </summary>
         public long ExtractionMs { get; set; }
 
         /// <summary>
-        /// Tempo correlazione e ricerca offset in millisecondi
+        /// Tempo di correlazione e ricerca dell'offset in millisecondi
         /// </summary>
         public long CorrelationMs { get; set; }
 
         /// <summary>
-        /// True se fingerprint sorgente recuperata da cache
+        /// Indica se la fingerprint source è stata recuperata dalla cache
         /// </summary>
         public bool SourceCacheHit { get; set; }
 
         /// <summary>
-        /// True se fingerprint lingua recuperata da cache
+        /// Indica se la fingerprint language è stata recuperata dalla cache
         /// </summary>
         public bool LanguageCacheHit { get; set; }
 
         /// <summary>
-        /// Motivo fallimento
+        /// Motivo del fallimento, vuoto quando l'analisi ha esito positivo
         /// </summary>
         public string FailureReason { get; set; }
 

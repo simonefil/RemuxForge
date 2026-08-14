@@ -1,4 +1,5 @@
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -24,27 +25,27 @@ namespace RemuxForge.Core.Media.Ffmpeg
         #region Variabili di classe
 
         /// <summary>
-        /// Percorso ffmpeg
+        /// Percorso dell'eseguibile ffmpeg
         /// </summary>
         private string _ffmpegPath;
 
         /// <summary>
-        /// Configurazione VideoSync
+        /// Configurazione della normalizzazione dei frame VideoSync
         /// </summary>
         private VideoSyncConfig _videoSyncConfig;
 
         /// <summary>
-        /// Configurazione ffmpeg
+        /// Configurazione di esecuzione di ffmpeg
         /// </summary>
         private FfmpegConfig _ffmpegConfig;
 
         /// <summary>
-        /// Sezione log
+        /// Sezione del log in cui riportare gli errori di estrazione
         /// </summary>
         private LogSection _logSection;
 
         /// <summary>
-        /// True dopo il primo fallback software per evitare log ripetuti.
+        /// Indica se è già stato registrato il primo fallback all'accelerazione software
         /// </summary>
         private static bool s_reportedHwAccelFallback;
 
@@ -53,8 +54,12 @@ namespace RemuxForge.Core.Media.Ffmpeg
         #region Costruttore
 
         /// <summary>
-        /// Costruttore
+        /// Inizializza il servizio di estrazione dei frame
         /// </summary>
+        /// <param name="ffmpegPath">Percorso dell'eseguibile ffmpeg</param>
+        /// <param name="videoSyncConfig">Configurazione della normalizzazione dei frame</param>
+        /// <param name="ffmpegConfig">Configurazione di esecuzione di ffmpeg</param>
+        /// <param name="logSection">Sezione del log per gli errori di estrazione</param>
         public FrameExtractionService(string ffmpegPath, VideoSyncConfig videoSyncConfig, FfmpegConfig ffmpegConfig, LogSection logSection)
         {
             this._ffmpegPath = ffmpegPath;
@@ -70,14 +75,47 @@ namespace RemuxForge.Core.Media.Ffmpeg
         /// <summary>
         /// Estrae frame di un segmento video applicando un eventuale crop manuale prima dello scale
         /// </summary>
+        /// <param name="filePath">Percorso del file video da elaborare</param>
+        /// <param name="startMs">Punto di inizio del segmento in millisecondi</param>
+        /// <param name="durationSec">Durata del segmento in secondi</param>
+        /// <param name="targetFps">Frequenza di campionamento dei frame, oppure zero per mantenere quella sorgente</param>
+        /// <param name="geometryCropToFourThree">Indica se applicare il crop geometrico in rapporto quattro a tre</param>
+        /// <param name="manualCropPx">Crop manuale nel formato sinistra:destra:alto:basso, oppure valore non configurato</param>
+        /// <param name="frames">Frame grayscale estratti</param>
+        /// <param name="timestampsMs">Timestamp PTS dei frame estratti in millisecondi</param>
         public void ExtractSegment(string filePath, int startMs, double durationSec, double targetFps, bool geometryCropToFourThree, string manualCropPx, out List<byte[]> frames, out double[] timestampsMs)
         {
             this.ExtractSegmentCore(filePath, startMs, durationSec, targetFps, 0.0, geometryCropToFourThree, manualCropPx, out frames, out timestampsMs);
         }
 
         /// <summary>
+        /// Estrae un segmento e distingue un fallimento FFmpeg da un risultato valido
+        /// </summary>
+        /// <param name="filePath">Percorso del file video da elaborare</param>
+        /// <param name="startMs">Punto di inizio del segmento in millisecondi</param>
+        /// <param name="durationSec">Durata del segmento in secondi</param>
+        /// <param name="targetFps">Frequenza di campionamento dei frame, oppure zero per mantenere quella sorgente</param>
+        /// <param name="geometryCropToFourThree">Indica se applicare il crop geometrico in rapporto quattro a tre</param>
+        /// <param name="manualCropPx">Crop manuale nel formato sinistra:destra:alto:basso, oppure valore non configurato</param>
+        /// <param name="frames">Frame grayscale estratti</param>
+        /// <param name="timestampsMs">Timestamp PTS dei frame estratti in millisecondi</param>
+        /// <returns>true se l'estrazione è riuscita e frame e timestamp sono coerenti</returns>
+        public bool TryExtractSegment(string filePath, int startMs, double durationSec, double targetFps, bool geometryCropToFourThree, string manualCropPx, out List<byte[]> frames, out double[] timestampsMs)
+        {
+            return this.ExtractSegmentCore(filePath, startMs, durationSec, targetFps, 0.0, geometryCropToFourThree, manualCropPx, out frames, out timestampsMs);
+        }
+
+        /// <summary>
         /// Estrae frame a intervalli temporali regolari conservando i PTS dei frame selezionati
         /// </summary>
+        /// <param name="filePath">Percorso del file video da elaborare</param>
+        /// <param name="startMs">Punto di inizio del segmento in millisecondi</param>
+        /// <param name="durationSec">Durata del segmento in secondi</param>
+        /// <param name="sampleIntervalSec">Intervallo tra i frame selezionati in secondi</param>
+        /// <param name="geometryCropToFourThree">Indica se applicare il crop geometrico in rapporto quattro a tre</param>
+        /// <param name="manualCropPx">Crop manuale nel formato sinistra:destra:alto:basso, oppure valore non configurato</param>
+        /// <param name="frames">Frame grayscale estratti</param>
+        /// <param name="timestampsMs">Timestamp PTS dei frame estratti in millisecondi</param>
         public void ExtractSegmentAtInterval(string filePath, int startMs, double durationSec, double sampleIntervalSec, bool geometryCropToFourThree, string manualCropPx, out List<byte[]> frames, out double[] timestampsMs)
         {
             if (sampleIntervalSec <= 0.0 || double.IsNaN(sampleIntervalSec) || double.IsInfinity(sampleIntervalSec))
@@ -85,7 +123,20 @@ namespace RemuxForge.Core.Media.Ffmpeg
             this.ExtractSegmentCore(filePath, startMs, durationSec, 0.0, sampleIntervalSec, geometryCropToFourThree, manualCropPx, out frames, out timestampsMs);
         }
 
-        private void ExtractSegmentCore(string filePath, int startMs, double durationSec, double targetFps, double sampleIntervalSec, bool geometryCropToFourThree, string manualCropPx, out List<byte[]> frames, out double[] timestampsMs)
+        /// <summary>
+        /// Esegue l'estrazione del segmento con il filtro richiesto e il fallback software
+        /// </summary>
+        /// <param name="filePath">Percorso del file video da elaborare</param>
+        /// <param name="startMs">Punto di inizio del segmento in millisecondi</param>
+        /// <param name="durationSec">Durata del segmento in secondi</param>
+        /// <param name="targetFps">Frequenza di campionamento dei frame, oppure zero per usare l'intervallo</param>
+        /// <param name="sampleIntervalSec">Intervallo tra i frame selezionati in secondi, oppure zero per usare il frame rate</param>
+        /// <param name="geometryCropToFourThree">Indica se applicare il crop geometrico in rapporto quattro a tre</param>
+        /// <param name="manualCropPx">Crop manuale nel formato sinistra:destra:alto:basso, oppure valore non configurato</param>
+        /// <param name="frames">Frame grayscale estratti</param>
+        /// <param name="timestampsMs">Timestamp PTS dei frame estratti in millisecondi</param>
+        /// <returns>true se l'estrazione è riuscita e frame e timestamp sono coerenti</returns>
+        private bool ExtractSegmentCore(string filePath, int startMs, double durationSec, double targetFps, double sampleIntervalSec, bool geometryCropToFourThree, string manualCropPx, out List<byte[]> frames, out double[] timestampsMs)
         {
             frames = new List<byte[]>();
             timestampsMs = new double[0];
@@ -107,6 +158,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
             bool useFpsFilter;
             int maxAttempts;
             int timeoutMs;
+            bool succeeded = false;
             try
             {
                 startSec = startMs / 1000.0;
@@ -174,6 +226,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
 
                     if (processResult.ExitCode == 0 && extractedFrames.Count > 0 && extractedFrames.Count == tsList.Count)
                     {
+                        succeeded = true;
                         break;
                     }
 
@@ -181,21 +234,23 @@ namespace RemuxForge.Core.Media.Ffmpeg
                     tsList.Clear();
                     if (!useHardwareAcceleration)
                     {
-                        ConsoleHelper.Write(this._logSection, LogLevel.Warning, "  Estrazione frame fallita: " + this.GetLastErrorLine(processResult.Stderr));
+                        ConsoleHelper.Write(this._logSection, LogLevel.Warning, AppText.F("deep.temporal.ffmpeg.frameExtractionFailed", this.GetLastErrorLine(processResult.Stderr)));
                         break;
                     }
 
                     if (System.Threading.Interlocked.Exchange(ref s_reportedHwAccelFallback, true) == false)
                     {
-                        ConsoleHelper.Write(this._logSection, LogLevel.Notice, "  HWAccel non utilizzabile per questa estrazione, retry software (" + this.GetLastErrorLine(processResult.Stderr) + ")");
+                        ConsoleHelper.Write(this._logSection, LogLevel.Notice, AppText.F("deep.temporal.ffmpeg.hardwareAccelerationRetry", this.GetLastErrorLine(processResult.Stderr)));
                     }
                 }
 
                 timestampsMs = tsList.ToArray();
+                return succeeded;
             }
             catch (Exception ex)
             {
-                ConsoleHelper.Write(this._logSection, LogLevel.Warning, "  Errore ExtractSegment: " + ex.Message);
+                ConsoleHelper.Write(this._logSection, LogLevel.Warning, AppText.F("deep.temporal.ffmpeg.segmentExtractionError", ex.Message));
+                return false;
             }
         }
 
@@ -210,7 +265,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
         /// <returns>Ultima riga utile, o messaggio generico</returns>
         private string GetLastErrorLine(string text)
         {
-            string result = "nessun dettaglio";
+            string result = AppText.T("deep.temporal.ffmpeg.noDetails");
             string[] lines;
 
             if (!string.IsNullOrEmpty(text))
@@ -230,8 +285,15 @@ namespace RemuxForge.Core.Media.Ffmpeg
         }
 
         /// <summary>
-        /// Costruisce filter chain ffmpeg per normalizzare frame
+        /// Costruisce la catena di filtri ffmpeg per normalizzare i frame
         /// </summary>
+        /// <param name="targetFps">Frequenza di campionamento dei frame, oppure zero per non applicare il filtro fps</param>
+        /// <param name="sampleIntervalSec">Intervallo tra i frame selezionati in secondi, oppure zero per non applicare il filtro select</param>
+        /// <param name="geometryCropToFourThree">Indica se applicare il crop geometrico in rapporto quattro a tre</param>
+        /// <param name="manualCropPx">Crop manuale nel formato sinistra:destra:alto:basso, oppure valore non configurato</param>
+        /// <param name="useFpsFilter">Indica se la catena deve selezionare i frame secondo una frequenza o un intervallo</param>
+        /// <param name="resolution">Risoluzione finale nel formato larghezza:altezza</param>
+        /// <returns>Catena di filtri ffmpeg completa</returns>
         private string BuildFilterChain(double targetFps, double sampleIntervalSec, bool geometryCropToFourThree, string manualCropPx, bool useFpsFilter, string resolution)
         {
             string filterChain = "";
@@ -326,17 +388,31 @@ namespace RemuxForge.Core.Media.Ffmpeg
         /// </summary>
         private class RawFrameStdoutState
         {
+            /// <summary>
+            /// Dimensione in byte di ogni frame raw completo
+            /// </summary>
             private readonly int _frameSize;
 
+            /// <summary>
+            /// Collezione in cui accodare i frame ricostruiti
+            /// </summary>
             private readonly List<byte[]> _frames;
 
+            /// <summary>
+            /// Buffer del frame attualmente in costruzione
+            /// </summary>
             private byte[] _frameData;
 
+            /// <summary>
+            /// Numero di byte già presenti nel buffer corrente
+            /// </summary>
             private int _totalRead;
 
             /// <summary>
-            /// Crea lo stato per frame raw di dimensione fissa
+            /// Inizializza lo stato per frame raw di dimensione fissa
             /// </summary>
+            /// <param name="frameSize">Dimensione in byte di un frame completo</param>
+            /// <param name="frames">Collezione in cui accodare i frame ricostruiti</param>
             public RawFrameStdoutState(int frameSize, List<byte[]> frames)
             {
                 this._frameSize = frameSize;
@@ -348,6 +424,8 @@ namespace RemuxForge.Core.Media.Ffmpeg
             /// <summary>
             /// Accoda un chunk stdout e produce frame completi quando il buffer è pieno
             /// </summary>
+            /// <param name="buffer">Dati ricevuti dalla stdout di ffmpeg</param>
+            /// <param name="bytesRead">Numero di byte validi presenti nel buffer</param>
             public void Append(byte[] buffer, int bytesRead)
             {
                 int offset = 0;

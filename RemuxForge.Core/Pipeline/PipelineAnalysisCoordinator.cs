@@ -3,6 +3,7 @@ using RemuxForge.Core.Analysis.FrameSync;
 using RemuxForge.Core.Analysis.Speed;
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Tools;
@@ -13,24 +14,75 @@ using System.Threading;
 namespace RemuxForge.Core.Pipeline
 {
     /// <summary>
-    /// Coordinator analisi pipeline: metadata, speed correction, deep-analysis e frame-sync
+    /// Coordina l'analisi di un record della pipeline, dalla lettura dei metadata alla sincronizzazione temporale
     /// </summary>
     public class PipelineAnalysisCoordinator
     {
         #region Variabili di classe
 
+        /// <summary>
+        /// Opzioni operative che determinano le fasi e i parametri dell'analisi
+        /// </summary>
         private Options _opts;
+
+        /// <summary>
+        /// Indica se il flusso deve analizzare anche il file lingua per il merge
+        /// </summary>
         private bool _needsMerge;
+
+        /// <summary>
+        /// Percorso di ffmpeg disponibile per le analisi che richiedono elaborazione video
+        /// </summary>
         private string _ffmpegPath;
+
+        /// <summary>
+        /// Servizio per la sincronizzazione basata sul confronto visivo
+        /// </summary>
         private FrameSyncService _frameSyncService;
+
+        /// <summary>
+        /// Componente che estrae lingue e seleziona tracce per il record
+        /// </summary>
         private PipelineTrackMapper _trackMapper;
+
+        /// <summary>
+        /// Componente che scrive le diagnostiche opzionali delle analisi
+        /// </summary>
         private PipelineDiagnosticsWriter _diagnosticsWriter;
+
+        /// <summary>
+        /// Callback che recupera i metadata MKV di un file
+        /// </summary>
         private Func<string, MkvFileInfo> _fileInfoProvider;
+
+        /// <summary>
+        /// Callback che indirizza i messaggi di log al record in elaborazione
+        /// </summary>
         private Action<FileProcessingRecord> _setupLogRedirect;
+
+        /// <summary>
+        /// Callback che rimuove il redirect del log al termine dell'analisi
+        /// </summary>
         private Action _clearLogRedirect;
+
+        /// <summary>
+        /// Callback invocata quando cambia lo stato del record
+        /// </summary>
         private Action<FileProcessingRecord> _fileUpdated;
+
+        /// <summary>
+        /// Callback che rigenera il comando di merge dopo un'analisi riuscita
+        /// </summary>
         private Action<FileProcessingRecord> _buildMergeCommand;
+
+        /// <summary>
+        /// Resolver centralizzato dei percorsi degli strumenti esterni
+        /// </summary>
         private ToolPathResolverService _toolPathResolver;
+
+        /// <summary>
+        /// Resolver della durata e della temporizzazione del video sorgente
+        /// </summary>
         private VideoTimingResolver _timingResolver;
 
         #endregion
@@ -38,20 +90,20 @@ namespace RemuxForge.Core.Pipeline
         #region Costruttore
 
         /// <summary>
-        /// Costruttore
+        /// Inizializza il coordinatore con i servizi e i callback necessari all'analisi
         /// </summary>
         /// <param name="opts">Opzioni operative</param>
-        /// <param name="needsMerge">True se il file richiede merge/remux</param>
-        /// <param name="ffmpegPath">Percorso ffmpeg risolto</param>
-        /// <param name="frameSyncService">Servizio FrameSync</param>
-        /// <param name="trackMapper">Mapper tracce pipeline</param>
-        /// <param name="diagnosticsWriter">Writer diagnostiche</param>
-        /// <param name="fileInfoProvider">Provider metadata MKV</param>
-        /// <param name="setupLogRedirect">Callback setup log record</param>
-        /// <param name="clearLogRedirect">Callback reset log record</param>
-        /// <param name="fileUpdated">Callback aggiornamento record</param>
-        /// <param name="buildMergeCommand">Callback costruzione comando merge</param>
-        /// <param name="toolPathResolver">Resolver strumenti esterni</param>
+        /// <param name="needsMerge">Indica se il file richiede merge o remux con un file lingua</param>
+        /// <param name="ffmpegPath">Percorso di ffmpeg già risolto, se disponibile</param>
+        /// <param name="frameSyncService">Servizio per la sincronizzazione tramite confronto visivo</param>
+        /// <param name="trackMapper">Mapper delle tracce e delle lingue della pipeline</param>
+        /// <param name="diagnosticsWriter">Writer delle diagnostiche opzionali</param>
+        /// <param name="fileInfoProvider">Provider dei metadata MKV</param>
+        /// <param name="setupLogRedirect">Callback per associare il log al record corrente</param>
+        /// <param name="clearLogRedirect">Callback per rimuovere l'associazione del log al record</param>
+        /// <param name="fileUpdated">Callback per notificare l'aggiornamento del record</param>
+        /// <param name="buildMergeCommand">Callback per rigenerare il comando di merge</param>
+        /// <param name="toolPathResolver">Resolver degli strumenti esterni, oppure null per usare la configurazione applicativa</param>
         public PipelineAnalysisCoordinator(Options opts, bool needsMerge, string ffmpegPath, FrameSyncService frameSyncService, PipelineTrackMapper trackMapper, PipelineDiagnosticsWriter diagnosticsWriter, Func<string, MkvFileInfo> fileInfoProvider, Action<FileProcessingRecord> setupLogRedirect, Action clearLogRedirect, Action<FileProcessingRecord> fileUpdated, Action<FileProcessingRecord> buildMergeCommand, ToolPathResolverService toolPathResolver = null)
         {
             this._opts = opts;
@@ -74,7 +126,7 @@ namespace RemuxForge.Core.Pipeline
         #region Metodi pubblici
 
         /// <summary>
-        /// Percorso ffmpeg attualmente risolto
+        /// Restituisce il percorso di ffmpeg attualmente risolto
         /// </summary>
         public string FfmpegPath
         {
@@ -82,10 +134,10 @@ namespace RemuxForge.Core.Pipeline
         }
 
         /// <summary>
-        /// Analizza un record applicando speed correction, DeepAnalysis o FrameSync secondo le opzioni
+        /// Analizza un record applicando speed correction, DeepAnalysis o FrameSync secondo le opzioni configurate
         /// </summary>
-        /// <param name="record">Record da analizzare</param>
-        /// <param name="cancellationToken">Token di annullamento cooperativo</param>
+        /// <param name="record">Record da analizzare e aggiornare con l'esito dell'elaborazione</param>
+        /// <param name="cancellationToken">Token per interrompere cooperativamente le analisi lunghe</param>
         public void AnalyzeFile(FileProcessingRecord record, CancellationToken cancellationToken = default)
         {
             MkvFileInfo sourceInfo = null;
@@ -104,7 +156,7 @@ namespace RemuxForge.Core.Pipeline
             bool done = false;
             FrameSyncTimingInfo frameSyncTiming;
             VideoTimingInfo sourceTiming = null;
-            // Ignora record non pendenti
+            // Ignora i record che non sono in uno stato rielaborabile
             if (record.Status != FileStatus.Pending && record.Status != FileStatus.Error)
             {
                 done = true;
@@ -112,13 +164,13 @@ namespace RemuxForge.Core.Pipeline
 
             if (!done)
             {
-                // Elimina ogni risultato della precedente analisi prima di un nuovo tentativo
+                // Pulisce gli esiti derivati per evitare di riutilizzare risultati di un tentativo precedente
                 record.ResetDerivedState();
 
-                // Imposta redirect log
+                // Associa il log al record corrente per conservare il contesto dell'analisi
                 this._setupLogRedirect(record);
 
-                // Aggiorna stato
+                // Porta il record nello stato di analisi e propaga subito l'aggiornamento
                 record.Status = FileStatus.Analyzing;
                 if (this._fileUpdated != null)
                 {
@@ -128,11 +180,11 @@ namespace RemuxForge.Core.Pipeline
                 ConsoleHelper.Write(LogSection.General, LogLevel.Header, "Analisi: " + record.SourceFileName);
                 ConsoleHelper.Write(LogSection.General, LogLevel.Debug, "  ID Episodio: " + record.EpisodeId);
 
-                // Ottieni info file sorgente
+                // Carica i metadata del file sorgente per preparare le fasi successive
                 sourceInfo = this._fileInfoProvider(record.SourceFilePath);
                 sourceTracks = (sourceInfo != null) ? sourceInfo.Tracks : null;
 
-                // Popola lingue e tracce sorgente nel record
+                // Prepara nel record il riepilogo delle lingue e delle tracce sorgente
                 record.SourceAudioLangs = this._trackMapper.GetAudioLanguages(sourceTracks);
                 record.SourceSubLangs = this._trackMapper.GetSubtitleLanguages(sourceTracks);
                 record.SourceAudioTracks = this._trackMapper.FilterTracksByType(sourceTracks, "audio");
@@ -140,7 +192,7 @@ namespace RemuxForge.Core.Pipeline
 
                 if (this._needsMerge)
                 {
-                    // Merge attivo: leggi anche file lingua
+                    // Nel merge serve anche il contesto temporale e delle tracce del file lingua
                     ConsoleHelper.Write(LogSection.General, LogLevel.Info, "  Match: " + record.LangFileName);
 
                     langInfo = this._fileInfoProvider(record.LangFilePath);
@@ -152,20 +204,21 @@ namespace RemuxForge.Core.Pipeline
 
                     if (langTracks == null)
                     {
+                        // Interrompe l'analisi perché senza metadata non è possibile costruire il merge
                         ConsoleHelper.Write(LogSection.General, LogLevel.Error, "  Impossibile leggere info tracce file lingua");
                         done = this.FailAndFinalizeRecord(record, "Impossibile leggere tracce file lingua");
                     }
                 }
                 else
                 {
-                    // Senza merge: analisi ridotta, passa direttamente ad Analyzed
+                    // Senza merge non servono confronti tra file e il record può essere completato subito
                     done = this.MarkAnalyzedAndFinalize(record, 0, false, "  Analisi completata (no merge)");
                 }
             }
 
             speedCorrectionMode = this._opts.SpeedCorrectionMode != null ? this._opts.SpeedCorrectionMode : Options.SPEED_CORRECTION_OFF;
 
-            // Speed correction manuale con stretch factor esplicito
+            // Applica la correzione manuale quando non è attiva la deep analysis
             if (!done && sourceInfo != null && langInfo != null && !this._opts.DeepAnalysis && speedCorrectionMode == Options.SPEED_CORRECTION_MANUAL)
             {
                 ConsoleHelper.Write(LogSection.Speed, LogLevel.Phase, "  Speed correction manuale: stretch=" + this._opts.ManualStretchFactor);
@@ -176,7 +229,7 @@ namespace RemuxForge.Core.Pipeline
                 {
                     ConsoleHelper.Progress(LogSection.Speed, 14, "Speed: ffmpeg");
                     this._ffmpegPath = ffmpegPath;
-                    if (sourceDurationMs == 0 && sourceInfo.ContainerDurationNs > 0)
+                    if (sourceInfo.ContainerDurationNs > 0)
                     {
                         sourceDurationMs = (int)(sourceInfo.ContainerDurationNs / 1000000);
                     }
@@ -212,19 +265,19 @@ namespace RemuxForge.Core.Pipeline
                 }
             }
 
-            // Deep analysis: modalità avanzata per file con edit diversi
+            // Avvia la modalità avanzata per gestire file con edit temporali diversi
             if (!done && !speedCorrectionActive && this._opts.DeepAnalysis)
             {
-                ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, "  Avvio DeepAnalysis...");
-                ConsoleHelper.Progress(LogSection.Deep, 8, "Deep: avvio");
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, AppText.T("deep.temporal.pipeline.start"));
+                ConsoleHelper.Progress(LogSection.Deep, 8, AppText.T("deep.temporal.pipeline.progressStart"));
                 deepManualStretchFactor = "";
 
                 if (speedCorrectionMode == Options.SPEED_CORRECTION_MANUAL)
                 {
                     deepManualStretchFactor = this._opts.ManualStretchFactor;
-                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Stretch manuale DeepAnalysis: " + deepManualStretchFactor);
+                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, AppText.F("deep.temporal.pipeline.manualStretch", deepManualStretchFactor));
                 }
-                // Risolvi ffmpeg se non ancora disponibile
+                // Risolve ffmpeg solo quando la fase avanzata ne ha effettivamente bisogno
                 ffmpegPath = this._ffmpegPath;
                 if (string.IsNullOrEmpty(ffmpegPath))
                 {
@@ -234,16 +287,17 @@ namespace RemuxForge.Core.Pipeline
 
                 if (string.IsNullOrEmpty(ffmpegPath))
                 {
-                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, "  ffmpeg non disponibile");
-                    ConsoleHelper.Progress(LogSection.Deep, 98, "Deep: errore");
-                    done = this.FailAndFinalizeRecord(record, "ffmpeg non disponibile per deep analysis");
+                    string ffmpegUnavailableReason = AppText.T("deep.temporal.pipeline.ffmpegUnavailable");
+                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, ffmpegUnavailableReason);
+                    ConsoleHelper.Progress(LogSection.Deep, 98, AppText.T("deep.temporal.pipeline.progressError"));
+                    done = this.FailAndFinalizeRecord(record, ffmpegUnavailableReason.Trim());
                 }
 
                 if (!done)
                 {
                     if (sourceDurationMs == 0 && sourceTiming != null && sourceTiming.DurationMs > 0.0)
                     {
-                        // DeepAnalysis lavora sulla timeline video/common-track; la durata container può essere gonfiata da tracce non importate
+                        // Usa la timeline video perché la durata container può includere tracce non importate
                         sourceDurationMs = (int)Math.Round(sourceTiming.DurationMs);
                     }
                     if (sourceDurationMs == 0 && sourceInfo != null && sourceInfo.ContainerDurationNs > 0)
@@ -271,29 +325,31 @@ namespace RemuxForge.Core.Pipeline
                                 record.SpeedCorrectionApplied = true;
                             }
 
-                            ConsoleHelper.Write(LogSection.Deep, LogLevel.Success, "  Completata: " + editMap.Operations.Count + " operazioni, delay iniziale " + editMap.InitialDelayMs + "ms (" + record.DeepAnalysisTimeMs + "ms)");
-                            ConsoleHelper.Progress(LogSection.Deep, 90, "Deep: diagnostica");
+                            ConsoleHelper.Write(LogSection.Deep, LogLevel.Success, AppText.F("deep.temporal.pipeline.completed", editMap.Operations.Count, editMap.InitialDelayMs, record.DeepAnalysisTimeMs));
+                            ConsoleHelper.Progress(LogSection.Deep, 90, AppText.T("deep.temporal.pipeline.progressDiagnostics"));
                             this._diagnosticsWriter.WriteDeepAnalysisIfEnabled(record, this._opts);
                         }
                         else
                         {
-                            string deepRejectReason = record.DeepAnalysisResult != null && !string.IsNullOrEmpty(record.DeepAnalysisResult.RejectReason) ? record.DeepAnalysisResult.RejectReason : "elaborazione bloccata";
-                            ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, "  Deep analysis fallita: " + deepRejectReason);
-                            ConsoleHelper.Progress(LogSection.Deep, 98, "Deep: errore");
+                            string deepRejectReason = record.DeepAnalysisResult != null && !string.IsNullOrEmpty(record.DeepAnalysisResult.RejectReason) ? record.DeepAnalysisResult.RejectReason : AppText.T("deep.temporal.pipeline.blocked");
+                            string deepFailure = AppText.F("deep.temporal.pipeline.failed", deepRejectReason);
+                            ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, deepFailure);
+                            ConsoleHelper.Progress(LogSection.Deep, 98, AppText.T("deep.temporal.pipeline.progressError"));
                             this._diagnosticsWriter.WriteDeepAnalysisIfEnabled(record, this._opts);
-                            done = this.FailAndFinalizeRecord(record, "Deep analysis fallita: " + deepRejectReason);
+                            done = this.FailAndFinalizeRecord(record, deepFailure.Trim());
                         }
                     }
                     else
                     {
-                        ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, "  Dati video insufficienti per deep analysis");
-                        ConsoleHelper.Progress(LogSection.Deep, 98, "Deep: errore");
-                        done = this.FailAndFinalizeRecord(record, "Dati video insufficienti per deep analysis");
+                        string insufficientVideoData = AppText.T("deep.temporal.pipeline.insufficientVideoData");
+                        ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, insufficientVideoData);
+                        ConsoleHelper.Progress(LogSection.Deep, 98, AppText.T("deep.temporal.pipeline.progressError"));
+                        done = this.FailAndFinalizeRecord(record, insufficientVideoData.Trim());
                     }
                 }
             }
 
-            // Frame-sync solo se non in correzione velocità
+            // Esegue il frame-sync solo se non è già disponibile una correzione temporale
             if (!done && !speedCorrectionActive && this._opts.FrameSync && this._frameSyncService != null)
             {
                 ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Phase, "  Sincronizzazione tramite confronto visivo...");
@@ -388,11 +444,11 @@ namespace RemuxForge.Core.Pipeline
         #region Metodi privati
 
         /// <summary>
-        /// Finalizza un record in errore e notifica aggiornamento
+        /// Imposta lo stato di errore del record, notifica l'aggiornamento e chiude il redirect del log
         /// </summary>
-        /// <param name="record">Record da aggiornare</param>
-        /// <param name="errorMessage">Messaggio errore</param>
-        /// <returns>true</returns>
+        /// <param name="record">Record da portare in errore</param>
+        /// <param name="errorMessage">Messaggio da registrare nel record</param>
+        /// <returns>True per indicare che il flusso è stato finalizzato</returns>
         private bool FailAndFinalizeRecord(FileProcessingRecord record, string errorMessage)
         {
             if (record != null)
@@ -411,13 +467,13 @@ namespace RemuxForge.Core.Pipeline
         }
 
         /// <summary>
-        /// Finalizza un record analizzato con offset finale e notifica
+        /// Imposta gli offset risultanti, aggiorna lo stato del record e chiude l'analisi
         /// </summary>
-        /// <param name="record">Record da aggiornare</param>
-        /// <param name="syncOffset">Offset sincronizzazione applicato</param>
-        /// <param name="buildMergeCommand">true per rigenerare preview command</param>
-        /// <param name="completionMessage">Messaggio di esito nel log (opzionale)</param>
-        /// <returns>true</returns>
+        /// <param name="record">Record da finalizzare</param>
+        /// <param name="syncOffset">Offset di sincronizzazione da applicare ad audio e sottotitoli</param>
+        /// <param name="buildMergeCommand">Indica se rigenerare il comando di merge</param>
+        /// <param name="completionMessage">Messaggio opzionale da scrivere nel log</param>
+        /// <returns>True per indicare che il flusso è stato finalizzato</returns>
         private bool MarkAnalyzedAndFinalize(FileProcessingRecord record, int syncOffset, bool buildMergeCommand, string completionMessage)
         {
             if (record != null)
@@ -449,16 +505,16 @@ namespace RemuxForge.Core.Pipeline
         }
 
         /// <summary>
-        /// Risolve ffmpeg per le operazioni di speed/frame matching
+        /// Restituisce il percorso di ffmpeg già disponibile o lo risolve tramite il resolver centrale
         /// </summary>
-        /// <returns>Percorso ffmpeg disponibile, oppure stringa vuota</returns>
+        /// <returns>Percorso di ffmpeg disponibile oppure stringa vuota se la risoluzione fallisce</returns>
         private string ResolveFfmpegForSpeed()
         {
             string result = this._ffmpegPath;
 
             if (string.IsNullOrEmpty(result))
             {
-                // Se la pipeline non ha ancora un path ffmpeg, usa il provider centrale già configurato
+                // Se la pipeline non ha ancora un percorso ffmpeg, usa il resolver centrale già configurato
                 ConsoleHelper.Write(LogSection.Speed, LogLevel.Notice, "  Risoluzione ffmpeg per frame matching...");
                 result = this._toolPathResolver.ResolveFfmpegPath(true, false);
                 if (!string.IsNullOrEmpty(result))

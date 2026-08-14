@@ -1,4 +1,5 @@
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -8,23 +9,49 @@ using System.Text.RegularExpressions;
 namespace RemuxForge.Core.Media.Ffmpeg
 {
     /// <summary>
-    /// Legge durata e frame rate tramite ffmpeg
+    /// Legge la durata e il frame rate di un video tramite ffmpeg
     /// </summary>
     public class FfmpegVideoInfoReader
     {
         #region Variabili statiche
 
+        /// <summary>
+        /// Riconosce la durata riportata nella riga principale dell'output ffmpeg
+        /// </summary>
         private static readonly Regex s_durationRegex = new Regex(@"Duration:\s*(\d{2}):(\d{2}):(\d{2})\.(\d+)", RegexOptions.Compiled);
+
+        /// <summary>
+        /// Riconosce il tag DURATION nei metadati dello stream video
+        /// </summary>
         private static readonly Regex s_metadataDurationRegex = new Regex(@"DURATION\s*:\s*(\d{2}):(\d{2}):(\d{2})\.(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// Riconosce il tag NUMBER_OF_FRAMES nei metadati dello stream video
+        /// </summary>
         private static readonly Regex s_numberOfFramesRegex = new Regex(@"NUMBER_OF_FRAMES\s*:\s*(\d+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// Riconosce il frame rate espresso con il suffisso fps nell'output ffmpeg
+        /// </summary>
         private static readonly Regex s_fpsRegex = new Regex(@"(\d+(?:\.\d+)?)\s*fps", RegexOptions.Compiled);
 
         #endregion
 
         #region Variabili di classe
 
+        /// <summary>
+        /// Percorso dell'eseguibile ffmpeg
+        /// </summary>
         private string _ffmpegPath;
+
+        /// <summary>
+        /// Configurazione ffmpeg da applicare all'esecuzione
+        /// </summary>
         private FfmpegConfig _ffmpegConfig;
+
+        /// <summary>
+        /// Sezione di log per gli errori di lettura
+        /// </summary>
         private LogSection _logSection;
 
         #endregion
@@ -32,7 +59,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
         #region Costruttore
 
         /// <summary>
-        /// Costruttore
+        /// Inizializza il lettore delle informazioni video ffmpeg
         /// </summary>
         /// <param name="ffmpegPath">Percorso ffmpeg</param>
         /// <param name="ffmpegConfig">Configurazione ffmpeg</param>
@@ -49,8 +76,12 @@ namespace RemuxForge.Core.Media.Ffmpeg
         #region Metodi pubblici
 
         /// <summary>
-        /// Ottiene durata e frame rate del video tramite ffmpeg
+        /// Ottiene la durata e il frame rate del video tramite ffmpeg
         /// </summary>
+        /// <param name="filePath">Percorso del file video da analizzare</param>
+        /// <param name="durationMs">Durata del video in millisecondi, oppure zero se non viene riconosciuta</param>
+        /// <param name="fps">Frame rate rilevato, con valore predefinito 25,0 se non disponibile</param>
+        /// <returns>True se la durata viene letta correttamente, altrimenti false</returns>
         public bool TryRead(string filePath, out int durationMs, out double fps)
         {
             durationMs = 0;
@@ -68,7 +99,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
 
             try
             {
-                // ffmpeg scrive metadata e stream info su stderr quando viene invocato con solo -i
+                // ffmpeg scrive metadati e informazioni sugli stream su stderr quando viene invocato con il solo parametro -i
                 args.Add("-nostdin");
                 args.Add("-hide_banner");
                 if (this._ffmpegConfig.HardwareAcceleration)
@@ -103,7 +134,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
                 observedFps = this.TryComputeObservedVideoFps(videoBlock);
                 if (observedFps > 0.0)
                 {
-                    // Quando fps dichiarato e frame count/durata divergono, preferiamo il valore osservato
+                    // Quando il frame rate dichiarato diverge dal rapporto tra numero di frame e durata, preferiamo il valore osservato
                     if (parsedFps > 0.0)
                     {
                         relativeDiff = Math.Abs(parsedFps - observedFps) / Math.Max(parsedFps, observedFps);
@@ -117,7 +148,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
             }
             catch (Exception ex)
             {
-                ConsoleHelper.Write(this._logSection, LogLevel.Warning, "  Errore GetVideoInfo: " + ex.Message);
+                ConsoleHelper.Write(this._logSection, LogLevel.Warning, AppText.F("deep.temporal.ffmpeg.videoInfoError", ex.Message));
             }
 
             return success;
@@ -128,7 +159,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
         #region Metodi privati
 
         /// <summary>
-        /// Converte un match durata ffmpeg in millisecondi
+        /// Converte il match della durata ffmpeg in millisecondi
         /// </summary>
         /// <param name="match">Match regex durata</param>
         /// <returns>Durata in millisecondi</returns>
@@ -149,10 +180,10 @@ namespace RemuxForge.Core.Media.Ffmpeg
         }
 
         /// <summary>
-        /// Estrae dal log ffmpeg il blocco relativo al primo stream video
+        /// Estrae dall'output ffmpeg il blocco relativo al primo stream video
         /// </summary>
         /// <param name="output">Output completo ffmpeg</param>
-        /// <returns>Blocco stream video, oppure stringa vuota</returns>
+        /// <returns>Blocco del primo stream video, oppure stringa vuota se non viene trovato</returns>
         private string ExtractFirstVideoStreamBlock(string output)
         {
             string result = "";
@@ -171,7 +202,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
                 streamStart = videoIndex;
             }
 
-            // Il blocco termina all'inizio dello stream successivo, se presente
+            // Il blocco termina all'inizio dello stream successivo, quando presente
             nextStream = output.IndexOf("Stream #", videoIndex + 1, StringComparison.OrdinalIgnoreCase);
             result = nextStream > streamStart ? output.Substring(streamStart, nextStream - streamStart) : output.Substring(streamStart);
 
@@ -179,10 +210,10 @@ namespace RemuxForge.Core.Media.Ffmpeg
         }
 
         /// <summary>
-        /// Calcola FPS osservato da NUMBER_OF_FRAMES e DURATION metadata dello stream
+        /// Calcola il frame rate osservato dai tag NUMBER_OF_FRAMES e DURATION dello stream
         /// </summary>
-        /// <param name="videoBlock">Blocco log del primo stream video</param>
-        /// <returns>FPS osservato, oppure 0</returns>
+        /// <param name="videoBlock">Blocco dell'output relativo al primo stream video</param>
+        /// <returns>Frame rate osservato, oppure 0 se i metadati non sono disponibili o validi</returns>
         private double TryComputeObservedVideoFps(string videoBlock)
         {
             double result = 0.0;
@@ -200,7 +231,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
 
             if (durationMatch.Success && framesMatch.Success)
             {
-                // Questo valore è più robusto del token "fps" su alcuni VFR/mux problematici
+                // Questo valore è più robusto del token "fps" su alcuni flussi VFR o contenitori problematici
                 durationMs = this.ParseDurationMs(durationMatch);
                 long.TryParse(framesMatch.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out frameCount);
                 if (durationMs > 0 && frameCount > 0)

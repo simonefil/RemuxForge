@@ -1,5 +1,6 @@
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
 using System;
@@ -17,13 +18,44 @@ namespace RemuxForge.Core.Audio
     {
         #region Variabili di classe
 
+        /// <summary>
+        /// Percorso dell'eseguibile ffmpeg
+        /// </summary>
         private readonly string _ffmpegPath;
+
+        /// <summary>
+        /// Cartella per i file temporanei audio
+        /// </summary>
         private readonly string _tempFolder;
+
+        /// <summary>
+        /// Servizio usato per leggere i metadati dei file audio prodotti
+        /// </summary>
         private readonly MkvToolsService _mkvToolsService;
+
+        /// <summary>
+        /// Pianificatore delle operazioni audio
+        /// </summary>
         private readonly AudioProcessingPlanner _planner;
+
+        /// <summary>
+        /// File audio finali creati durante il processing corrente
+        /// </summary>
         private readonly List<string> _createdFiles;
+
+        /// <summary>
+        /// File temporanei intermedi creati durante il processing corrente
+        /// </summary>
         private readonly List<string> _transientFiles;
+
+        /// <summary>
+        /// Sincronizzazione per le raccolte condivise tra i render paralleli
+        /// </summary>
         private readonly object _lock;
+
+        /// <summary>
+        /// Ultimo errore ffmpeg associato al contesto asincrono corrente
+        /// </summary>
         private readonly System.Threading.AsyncLocal<string> _lastFfmpegError;
 
         #endregion
@@ -33,6 +65,9 @@ namespace RemuxForge.Core.Audio
         /// <summary>
         /// Costruttore
         /// </summary>
+        /// <param name="ffmpegPath">Percorso dell'eseguibile ffmpeg</param>
+        /// <param name="tempFolder">Cartella per i file temporanei audio</param>
+        /// <param name="mkvToolsService">Servizio per leggere i metadati dei file MKV</param>
         public AudioProcessingService(string ffmpegPath, string tempFolder, MkvToolsService mkvToolsService)
         {
             this._ffmpegPath = ffmpegPath;
@@ -52,6 +87,8 @@ namespace RemuxForge.Core.Audio
         /// <summary>
         /// Processa le tracce audio richieste
         /// </summary>
+        /// <param name="request">Richiesta completa di processing audio</param>
+        /// <returns>Risultato complessivo del processing audio</returns>
         public AudioProcessingResult Process(AudioProcessingRequest request)
         {
             AudioProcessingResult result = new AudioProcessingResult();
@@ -338,7 +375,7 @@ namespace RemuxForge.Core.Audio
             string tempFile;
             double gainDb;
 
-            ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Deep audio render " + this.FormatAudioTrackLabel(false, track) + ": " + request.LangEditMap.Operations.Count + " operazioni");
+            ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, AppText.F("deep.temporal.audio.render", this.FormatAudioTrackLabel(false, track), request.LangEditMap.Operations.Count));
 
             if (request.Options.AudioPeakNormalize)
             {
@@ -495,8 +532,18 @@ namespace RemuxForge.Core.Audio
         }
 
         /// <summary>
-        /// Costruisce gli argomenti ffmpeg per render source fill usando input espliciti.
+        /// Costruisce gli argomenti ffmpeg per render source fill usando input espliciti
         /// </summary>
+        /// <param name="request">Richiesta audio corrente</param>
+        /// <param name="langTrack">Traccia lang da renderizzare</param>
+        /// <param name="plan">Piano source fill calcolato</param>
+        /// <param name="outputFile">File di output</param>
+        /// <param name="forPeakTemp">True se l'output è un PCM temporaneo per peak</param>
+        /// <param name="sourceInputFile">File source di input</param>
+        /// <param name="sourceInputTrackId">ID della traccia source nell'input</param>
+        /// <param name="langInputFile">File language di input</param>
+        /// <param name="langInputTrackId">ID della traccia language nell'input</param>
+        /// <returns>Lista argomenti ffmpeg</returns>
         private List<string> BuildSourceFillArgs(AudioProcessingRequest request, TrackInfo langTrack, AudioSourceFillPlan plan, string outputFile, bool forPeakTemp, string sourceInputFile, int sourceInputTrackId, string langInputFile, int langInputTrackId)
         {
             List<string> args = new List<string>();
@@ -569,8 +616,15 @@ namespace RemuxForge.Core.Audio
         }
 
         /// <summary>
-        /// Costruisce il filtro ffmpeg concat per combinare audio lang e porzioni source con stream id espliciti.
+        /// Costruisce il filtro ffmpeg concat per combinare audio lang e porzioni source con ID di stream espliciti
         /// </summary>
+        /// <param name="sourceTrackId">ID della traccia source nell'input</param>
+        /// <param name="langTrack">Traccia language da usare per il filtro</param>
+        /// <param name="langTrackId">ID della traccia language nell'input</param>
+        /// <param name="plan">Piano source fill calcolato</param>
+        /// <param name="options">Opzioni correnti</param>
+        /// <param name="forPeakTemp">True se il filtro produce PCM temporaneo per peak</param>
+        /// <returns>Filtro ffmpeg completo con output [outa]</returns>
         private string BuildSourceFillFilter(int sourceTrackId, TrackInfo langTrack, int langTrackId, AudioSourceFillPlan plan, Options options, bool forPeakTemp)
         {
             List<AudioFilterSegment> segments = new List<AudioFilterSegment>();
@@ -583,7 +637,7 @@ namespace RemuxForge.Core.Audio
             }
             else if (plan.InitialSilenceMs > 0)
             {
-                // Se lo stretch viene materializzato nel render, anche il delay va incorporato nel file.
+                // Se lo stretch viene materializzato nel render, anche il delay va incorporato nel file
                 segments.Add(new AudioFilterSegment(1, langTrackId, 0, plan.InitialSilenceMs, true));
             }
 
@@ -602,12 +656,12 @@ namespace RemuxForge.Core.Audio
                 {
                     if (options.AudioSourceFillInsertSilence && sourceOperationDurationMs > options.AudioSourceFillThresholdMs)
                     {
-                        // Nei gap grandi usa lo stesso intervallo temporale della source invece di generare silenzio.
+                        // Nei gap grandi usa lo stesso intervallo temporale della source invece di generare silenzio
                         segments.Add(new AudioFilterSegment(0, sourceTrackId, operation.SourceTimestampMs, operation.SourceTimestampMs + sourceOperationDurationMs, false));
                     }
                     else
                     {
-                        // Qui lo stretch è già materializzato dal filtro, quindi il silenzio deve durare quanto l'output.
+                        // Qui lo stretch è già materializzato dal filtro, quindi il silenzio deve durare quanto l'output
                         segments.Add(new AudioFilterSegment(1, langTrackId, 0, sourceOperationDurationMs, true));
                     }
                     currentLangMs = operation.LangTimestampMs;
@@ -630,8 +684,15 @@ namespace RemuxForge.Core.Audio
         }
 
         /// <summary>
-        /// Costruisce il filtro concat comune a EditMap e source fill, con trim iniziale opzionale.
+        /// Costruisce il filtro concat comune a EditMap e source fill, con trim iniziale opzionale
         /// </summary>
+        /// <param name="segments">Segmenti audio da concatenare</param>
+        /// <param name="track">Traccia audio usata per risolvere formato e layout</param>
+        /// <param name="options">Opzioni correnti</param>
+        /// <param name="forPeakTemp">True se il filtro produce PCM temporaneo per peak</param>
+        /// <param name="initialTrimMs">Durata del trim iniziale in millisecondi</param>
+        /// <param name="globalTempoFilter">Filtro atempo globale, vuoto se non richiesto</param>
+        /// <returns>Filtro ffmpeg completo con output [outa]</returns>
         private string BuildConcatFilter(List<AudioFilterSegment> segments, TrackInfo track, Options options, bool forPeakTemp, int initialTrimMs, string globalTempoFilter)
         {
             string filter = "";
@@ -690,6 +751,11 @@ namespace RemuxForge.Core.Audio
         /// <summary>
         /// Costruisce il filtro semplice combinando stretch materializzato e post-processing
         /// </summary>
+        /// <param name="track">Traccia audio da filtrare</param>
+        /// <param name="options">Opzioni correnti</param>
+        /// <param name="trackPlan">Piano di elaborazione della traccia</param>
+        /// <param name="forPeakTemp">True se il filtro produce PCM temporaneo per peak</param>
+        /// <returns>Filtro audio completo, vuoto se non sono necessarie trasformazioni</returns>
         private string BuildSimpleFilter(TrackInfo track, Options options, AudioTrackProcessingPlan trackPlan, bool forPeakTemp)
         {
             string filter = trackPlan != null ? trackPlan.AudioTempoFilter : "";
@@ -1209,6 +1275,8 @@ namespace RemuxForge.Core.Audio
         /// <summary>
         /// Formatta rapporto stretch e tempo FFmpeg per il log del piano
         /// </summary>
+        /// <param name="plan">Piano traccia</param>
+        /// <returns>Dettaglio di stretch e tempo, oppure stringa vuota</returns>
         private string FormatAudioTempoLog(AudioTrackProcessingPlan plan)
         {
             if (plan == null || plan.IsSource)
@@ -1461,6 +1529,12 @@ namespace RemuxForge.Core.Audio
             /// <summary>
             /// Costruttore segmento audio per filtro concat con tempo esplicito
             /// </summary>
+            /// <param name="inputIndex">Indice input ffmpeg</param>
+            /// <param name="trackId">ID traccia nell'input</param>
+            /// <param name="startMs">Inizio segmento in millisecondi</param>
+            /// <param name="endMs">Fine segmento in millisecondi, oppure -1 per la coda</param>
+            /// <param name="isSilence">True se il segmento è silenzio generato</param>
+            /// <param name="tempo">Tempo ffmpeg da applicare al segmento</param>
             public AudioFilterSegment(int inputIndex, int trackId, int startMs, int endMs, bool isSilence, double tempo)
             {
                 this.InputIndex = inputIndex;

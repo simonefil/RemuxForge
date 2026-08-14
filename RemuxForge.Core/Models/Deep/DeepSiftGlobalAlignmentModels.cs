@@ -12,7 +12,7 @@ namespace RemuxForge.Core.Models
         #region Costruttore
 
         /// <summary>
-        /// Costruttore
+        /// Inizializza un'ancora visuale con un buffer frame vuoto
         /// </summary>
         public DeepSiftVisualAnchor()
         {
@@ -90,10 +90,29 @@ namespace RemuxForge.Core.Models
     {
         #region Variabili di classe
 
+        /// <summary>
+        /// Score SIFT memorizzato in precisione singola
+        /// </summary>
         private float _score;
+
+        /// <summary>
+        /// Rapporto di inlier memorizzato in precisione singola
+        /// </summary>
         private float _inlierRatio;
+
+        /// <summary>
+        /// Copertura spaziale source memorizzata in precisione singola
+        /// </summary>
         private float _sourceCoverage;
+
+        /// <summary>
+        /// Copertura spaziale language memorizzata in precisione singola
+        /// </summary>
         private float _languageCoverage;
+
+        /// <summary>
+        /// Errore medio di riproiezione memorizzato in precisione singola
+        /// </summary>
         private float _meanReprojectionError;
 
         #endregion
@@ -165,6 +184,9 @@ namespace RemuxForge.Core.Models
     {
         #region Variabili di classe
 
+        /// <summary>
+        /// Celle della matrice disposte per riga source e colonna language
+        /// </summary>
         private readonly DeepSiftMatchCell[] _cells;
 
         #endregion
@@ -172,7 +194,7 @@ namespace RemuxForge.Core.Models
         #region Costruttore
 
         /// <summary>
-        /// Costruisce una matrice inizialmente rifiutata
+        /// Costruisce una matrice le cui celle sono inizialmente rifiutate
         /// </summary>
         /// <param name="sourceCount">Numero di ancore source</param>
         /// <param name="languageCount">Numero di ancore language</param>
@@ -195,6 +217,9 @@ namespace RemuxForge.Core.Models
         /// <summary>
         /// Recupera la cella indicizzata per riga source e colonna language
         /// </summary>
+        /// <param name="sourceIndex">Indice della riga source</param>
+        /// <param name="languageIndex">Indice della colonna language</param>
+        /// <returns>Cella memorizzata nella posizione richiesta</returns>
         public DeepSiftMatchCell Get(int sourceIndex, int languageIndex)
         {
             this.ValidateIndexes(sourceIndex, languageIndex);
@@ -204,6 +229,9 @@ namespace RemuxForge.Core.Models
         /// <summary>
         /// Imposta la cella indicizzata per riga source e colonna language
         /// </summary>
+        /// <param name="sourceIndex">Indice della riga source</param>
+        /// <param name="languageIndex">Indice della colonna language</param>
+        /// <param name="cell">Cella da memorizzare nella posizione richiesta</param>
         public void Set(int sourceIndex, int languageIndex, DeepSiftMatchCell cell)
         {
             this.ValidateIndexes(sourceIndex, languageIndex);
@@ -246,6 +274,8 @@ namespace RemuxForge.Core.Models
         /// <summary>
         /// Verifica gli indici della matrice
         /// </summary>
+        /// <param name="sourceIndex">Indice della riga source da verificare</param>
+        /// <param name="languageIndex">Indice della colonna language da verificare</param>
         private void ValidateIndexes(int sourceIndex, int languageIndex)
         {
             if (sourceIndex < 0 || sourceIndex >= this.SourceCount)
@@ -256,12 +286,16 @@ namespace RemuxForge.Core.Models
 
         #endregion
     }
+
+    /// <summary>
+    /// Risultato backend-neutral del matching SIFT con evidenze e metriche diagnostiche
+    /// </summary>
     public class DeepSiftBatchMatchResult
     {
         #region Costruttore
 
         /// <summary>
-        /// Costruttore
+        /// Inizializza il risultato con le collezioni e le stringhe vuote predefinite
         /// </summary>
         public DeepSiftBatchMatchResult()
         {
@@ -287,7 +321,7 @@ namespace RemuxForge.Core.Models
         public DeepSiftMatchMatrix Matrix { get; set; }
 
         /// <summary>
-        /// Motivo di errore del batch
+        /// Motivo del rifiuto del batch
         /// </summary>
         public string RejectReason { get; set; }
 
@@ -494,7 +528,7 @@ namespace RemuxForge.Core.Models
         public long TruncatedKeypointCount { get; set; }
 
         /// <summary>
-        /// True quando l'operazione è stata cancellata
+        /// Indica se l'operazione è stata cancellata
         /// </summary>
         public bool Cancelled { get; set; }
 
@@ -537,6 +571,16 @@ namespace RemuxForge.Core.Models
         public double LanguageFrameDurationMs { get; set; }
 
         /// <summary>
+        /// Durata PTS rappresentata dall'ancora source nella griglia di campionamento
+        /// </summary>
+        public double SourceSamplingDurationMs { get; set; }
+
+        /// <summary>
+        /// Durata PTS rappresentata dall'ancora language nella griglia di campionamento
+        /// </summary>
+        public double LanguageSamplingDurationMs { get; set; }
+
+        /// <summary>
         /// Punteggio normalizzato del match geometrico
         /// </summary>
         public double Score { get; set; }
@@ -568,7 +612,7 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
-    /// Coppia source-language pianificata esplicitamente dal temporale
+    /// Coppia source-language pianificata esplicitamente dal solver temporale
     /// </summary>
     public struct DeepSiftFramePair
     {
@@ -584,7 +628,7 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
-    /// Avanzamento aggregato della costruzione tiled della matrice
+    /// Avanzamento aggregato della costruzione della matrice a tile
     /// </summary>
     public class DeepSiftBatchProgress
     {

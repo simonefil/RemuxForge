@@ -2,6 +2,7 @@ using RemuxForge.Core.Analysis.Deep.Features;
 using RemuxForge.Core.Analysis.Speed;
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Tools;
@@ -14,12 +15,15 @@ using System.Threading;
 namespace RemuxForge.Core.Analysis.Deep
 {
     /// <summary>
-    /// Orchestratore della pipeline DeepAnalysis globale SIFT backend-neutral
+    /// Orchestratore della pipeline DeepAnalysis globale basata su SIFT e indipendente dal backend di matching
     /// </summary>
     public sealed class DeepAnalysisService : VideoSyncServiceBase
     {
         #region Variabili di classe
 
+        /// <summary>
+        /// Risolve i percorsi degli strumenti MKV usati dalla pipeline
+        /// </summary>
         private readonly ToolPathResolverService _toolPathResolver;
 
         #endregion
@@ -27,14 +31,14 @@ namespace RemuxForge.Core.Analysis.Deep
         #region Costruttore
 
         /// <summary>
-        /// Costruttore
+        /// Inizializza il servizio con i percorsi necessari alla pipeline DeepAnalysis
         /// </summary>
         /// <param name="ffmpegPath">Percorso FFmpeg risolto</param>
-        /// <param name="toolPathResolver">Resolver degli strumenti MKV</param>
+        /// <param name="toolPathResolver">Resolver dei percorsi degli strumenti MKV</param>
         public DeepAnalysisService(string ffmpegPath, ToolPathResolverService toolPathResolver) : base(ffmpegPath, LogSection.Deep)
         {
             if (string.IsNullOrEmpty(ffmpegPath))
-                throw new ArgumentException("Percorso FFmpeg mancante", nameof(ffmpegPath));
+                throw new ArgumentException(AppText.T("deep.temporal.argument.missingFfmpegPath"), nameof(ffmpegPath));
             if (toolPathResolver == null)
                 throw new ArgumentNullException(nameof(toolPathResolver));
             this._ffmpegPath = ffmpegPath;
@@ -46,15 +50,15 @@ namespace RemuxForge.Core.Analysis.Deep
         #region Metodi pubblici
 
         /// <summary>
-        /// Esegue discovery sparsa, tracking temporale SIFT e refinement dei boundary
+        /// Esegue la pipeline completa di discovery, tracking temporale SIFT e refinement dei boundary
         /// </summary>
-        /// <param name="sourceFile">File source</param>
-        /// <param name="languageFile">File language</param>
-        /// <param name="manualStretchFactor">Stretch manuale</param>
-        /// <param name="sourceCropPx">Crop source</param>
-        /// <param name="languageCropPx">Crop language</param>
+        /// <param name="sourceFile">Percorso del file video source</param>
+        /// <param name="languageFile">Percorso del file video language</param>
+        /// <param name="manualStretchFactor">Fattore di stretch manuale oppure stringa vuota per la risoluzione automatica</param>
+        /// <param name="sourceCropPx">Crop manuale in pixel per il file source</param>
+        /// <param name="languageCropPx">Crop manuale in pixel per il file language</param>
         /// <param name="cancellationToken">Token di annullamento cooperativo</param>
-        /// <returns>EditMap completa oppure null</returns>
+        /// <returns>Mappa di montaggio completa se l'analisi viene accettata, altrimenti null</returns>
         public EditMap Analyze(string sourceFile, string languageFile, string manualStretchFactor, string sourceCropPx, string languageCropPx, CancellationToken cancellationToken = default)
         {
             Stopwatch totalStopwatch = Stopwatch.StartNew();
@@ -63,6 +67,7 @@ namespace RemuxForge.Core.Analysis.Deep
 
             try
             {
+                // Risolve il fattore manuale prima di allocare le risorse della pipeline
                 if (!this.TryResolveStretch(manualStretchFactor, out double sourceToLanguageScale, out string stretchFactor, out string rejectReason))
                 {
                     return this.Reject(result, rejectReason);
@@ -71,6 +76,8 @@ namespace RemuxForge.Core.Analysis.Deep
                 result.SourceToLanguageScale = sourceToLanguageScale;
                 result.StretchFactor = stretchFactor;
                 cancellationToken.ThrowIfCancellationRequested();
+
+                // Determina la geometria effettiva per mantenere coerenti crop e frame SIFT
                 this.SetAnalysisCrop(sourceCropPx, languageCropPx);
                 this.PrepareGeometryDrivenCrop(sourceFile, languageFile);
                 result.SourceGeometry = this._lastSourceGeometryInfo;
@@ -88,11 +95,14 @@ namespace RemuxForge.Core.Analysis.Deep
                 VideoSyncConfig videoSyncConfig = advanced.VideoSync;
                 string mkvMergePath = this._toolPathResolver.ResolveMkvMergePath(false);
                 string mkvExtractPath = this._toolPathResolver.ResolveMkvExtractPath(mkvMergePath, false);
-                DeepSiftAnchorTimelineBuilder sourceTimelineBuilder = new DeepSiftAnchorTimelineBuilder(this._ffmpegPath, mkvMergePath, mkvExtractPath, ffmpegConfig, videoSyncConfig.FrameWidth, videoSyncConfig.FrameHeight, 1.0, sourceGeometryCrop, frames => this.NormalizeBlackBorders(sourceFile, sourceGeometryCrop, sourceCropPx, frames));
-                DeepSiftAnchorTimelineBuilder languageTimelineBuilder = new DeepSiftAnchorTimelineBuilder(this._ffmpegPath, mkvMergePath, mkvExtractPath, ffmpegConfig, videoSyncConfig.FrameWidth, videoSyncConfig.FrameHeight, 1.0, languageGeometryCrop, frames => this.NormalizeBlackBorders(languageFile, languageGeometryCrop, languageCropPx, frames));
 
-                ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, "  fase 1: discovery PTS adattiva...");
-                ConsoleHelper.Progress(LogSection.Deep, 14, "Deep: ancore SIFT");
+                // Prepara le timeline uniformi e il preprocess condiviso dai due video
+                DeepSiftAnchorTimelineBuilder sourceTimelineBuilder = new DeepSiftAnchorTimelineBuilder(this._ffmpegPath, mkvMergePath, mkvExtractPath, ffmpegConfig, videoSyncConfig.FrameWidth, videoSyncConfig.FrameHeight, 0.25, sourceGeometryCrop, frames => this.NormalizeBlackBorders(sourceFile, sourceGeometryCrop, sourceCropPx, frames));
+                DeepSiftAnchorTimelineBuilder languageTimelineBuilder = new DeepSiftAnchorTimelineBuilder(this._ffmpegPath, mkvMergePath, mkvExtractPath, ffmpegConfig, videoSyncConfig.FrameWidth, videoSyncConfig.FrameHeight, 0.25, languageGeometryCrop, frames => this.NormalizeBlackBorders(languageFile, languageGeometryCrop, languageCropPx, frames));
+
+                // Esegue matching, tracking temporale e costruzione della mappa nello stesso percorso
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, AppText.T("deep.temporal.log.phaseDiscovery"));
+                ConsoleHelper.Progress(LogSection.Deep, 14, AppText.T("deep.temporal.progress.siftAnchors"));
                 using (FrameFeatureBatchMatcherBase batchMatcher = this.CreateBatchMatcher(siftBackend))
                 {
                     result.BackendName = batchMatcher.BackendName;
@@ -107,34 +117,28 @@ namespace RemuxForge.Core.Analysis.Deep
                     result.SourceTimeline = alignment.SourceTimeline;
                     result.LanguageTimeline = alignment.LanguageTimeline;
                     result.BatchMatching = alignment.Batch;
-                    if (!alignment.Accepted || result.BatchMatching == null)
-                        return this.Reject(result, string.IsNullOrEmpty(alignment.RejectReason) ? "Tracking SIFT adattivo non disponibile" : alignment.RejectReason);
-                    this.ReleaseAnchorFrames(result.SourceTimeline.Anchors);
-                    this.ReleaseAnchorFrames(result.LanguageTimeline.Anchors);
-
-                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  matching: elaborate=" + result.BatchMatching.ProcessedCellCount.ToString(CultureInfo.InvariantCulture) + ", accettate=" + result.BatchMatching.AcceptedPairs.Count.ToString(CultureInfo.InvariantCulture) + ", scala=" + alignment.AppliedScale.ToString("R", CultureInfo.InvariantCulture));
-                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, "  fase 3: plateau temporali globali...");
-                    ConsoleHelper.Progress(LogSection.Deep, 68, "Deep: plateau globali");
                     result.Alignment = alignment.Temporal;
+                    result.EditMapResult = alignment.EditMapResult;
+                    if (!alignment.Accepted || result.BatchMatching == null)
+                        return this.Reject(result, string.IsNullOrEmpty(alignment.RejectReason) ? AppText.T("deep.temporal.service.adaptiveTrackingUnavailable") : alignment.RejectReason);
+
+                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, AppText.F("deep.temporal.log.matchingSummary", result.BatchMatching.ProcessedCellCount, result.BatchMatching.AcceptedPairs.Count, alignment.AppliedScale.ToString("R", CultureInfo.InvariantCulture)));
                     sourceToLanguageScale = alignment.AppliedScale;
                     result.SourceToLanguageScale = sourceToLanguageScale;
-                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  percorso: match=" + result.Alignment.Chain.Count.ToString(CultureInfo.InvariantCulture) + ", score=" + result.Alignment.ChainScore.ToString("F3", CultureInfo.InvariantCulture) + ", plateau=" + result.Alignment.Plateaus.Count.ToString(CultureInfo.InvariantCulture));
-                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, "  fase 4: boundary al frame common-side...");
-                    ConsoleHelper.Progress(LogSection.Deep, 82, "Deep: boundary frame");
-                    result.EditMapResult = alignment.EditMapResult;
+                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, AppText.F("deep.temporal.log.pathSummary", result.Alignment.Chain.Count, result.Alignment.ChainScore.ToString("F3", CultureInfo.InvariantCulture), result.Alignment.SupportRuns.Count));
                 }
 
                 if (result.EditMapResult == null || !result.EditMapResult.Success)
-                    return this.Reject(result, result.EditMapResult != null ? result.EditMapResult.RejectReason : "Costruzione EditMap fallita");
+                    return this.Reject(result, result.EditMapResult != null ? result.EditMapResult.RejectReason : AppText.T("deep.temporal.service.editMapFailed"));
 
-                result.Status = "Accepted";
+                result.Status = DeepAnalysisStatus.Accepted;
                 result.EditMapResult.EditMap.AnalysisTimeMs = totalStopwatch.ElapsedMilliseconds;
                 return result.EditMapResult.EditMap;
             }
             catch (OperationCanceledException)
             {
-                result.Status = "Cancelled";
-                result.RejectReason = "DeepAnalysis annullata";
+                result.Status = DeepAnalysisStatus.Cancelled;
+                result.RejectReason = AppText.T("deep.temporal.service.cancelled");
                 throw;
             }
             catch (Exception ex)
@@ -143,6 +147,7 @@ namespace RemuxForge.Core.Analysis.Deep
             }
             finally
             {
+                // Rilascia i frame anche quando l'analisi termina con rifiuto, errore o annullamento
                 this.ReleaseResultFrames(result);
                 totalStopwatch.Stop();
                 result.TotalElapsedMs = totalStopwatch.ElapsedMilliseconds;
@@ -152,7 +157,7 @@ namespace RemuxForge.Core.Analysis.Deep
         }
 
         /// <summary>
-        /// Ultimo risultato diagnostico, valorizzato anche in caso di rifiuto
+        /// Ultimo risultato diagnostico dell'analisi, valorizzato anche in caso di rifiuto o errore gestito
         /// </summary>
         public DeepAnalysisResult LastResult { get; private set; }
 
@@ -161,30 +166,40 @@ namespace RemuxForge.Core.Analysis.Deep
         #region Metodi privati
 
         /// <summary>
-        /// Imposta un rifiuto esplicito e restituisce null come mappa
+        /// Imposta lo stato di rifiuto e conserva la motivazione nel risultato diagnostico
         /// </summary>
+        /// <param name="result">Risultato diagnostico da aggiornare</param>
+        /// <param name="reason">Motivazione del rifiuto oppure stringa vuota per il messaggio predefinito</param>
+        /// <returns>Valore null per segnalare che non è disponibile una mappa valida</returns>
         private EditMap Reject(DeepAnalysisResult result, string reason)
         {
-            result.Status = "Rejected";
-            result.RejectReason = string.IsNullOrEmpty(reason) ? "DeepAnalysis rifiutata" : reason;
+            result.Status = DeepAnalysisStatus.Rejected;
+            result.RejectReason = string.IsNullOrEmpty(reason) ? AppText.T("deep.temporal.service.rejected") : reason;
             return null;
         }
 
         /// <summary>
-        /// Crea esclusivamente il backend selezionato senza fallback impliciti
+        /// Crea esclusivamente il matcher del backend selezionato senza fallback impliciti
         /// </summary>
+        /// <param name="backendName">Nome del backend SIFT configurato</param>
+        /// <returns>Matcher SIFT associato al backend richiesto</returns>
         private FrameFeatureBatchMatcherBase CreateBatchMatcher(string backendName)
         {
             if (string.Equals(backendName, "vulkan", StringComparison.OrdinalIgnoreCase))
                 return new VulkanSiftBatchMatcher();
             if (string.IsNullOrEmpty(backendName) || string.Equals(backendName, "cpu", StringComparison.OrdinalIgnoreCase))
                 return new OpenCvSiftBatchMatcher();
-            throw new InvalidOperationException("Backend SIFT DeepAnalysis non supportato: " + backendName);
+            throw new InvalidOperationException(AppText.F("deep.temporal.service.unsupportedBackend", backendName));
         }
 
         /// <summary>
-        /// Risolve la scala source-language con la semantica stretch esistente
+        /// Risolve la scala source-language applicando la semantica di stretch esistente
         /// </summary>
+        /// <param name="manualStretchFactor">Fattore di stretch manuale oppure stringa vuota</param>
+        /// <param name="sourceToLanguageScale">Scala temporale source-language calcolata</param>
+        /// <param name="stretchFactor">Fattore normalizzato da propagare alla fase di allineamento</param>
+        /// <param name="rejectReason">Motivazione del rifiuto quando il valore manuale non è valido</param>
+        /// <returns>True se la scala è valida o non è stato richiesto uno stretch manuale</returns>
         private bool TryResolveStretch(string manualStretchFactor, out double sourceToLanguageScale, out string stretchFactor, out string rejectReason)
         {
             double stretchRatio;
@@ -197,36 +212,24 @@ namespace RemuxForge.Core.Analysis.Deep
             {
                 if (!SpeedCorrectionService.TryParseStretchFactor(manualStretchFactor, out stretchRatio, out normalizedManualFactor))
                 {
-                    rejectReason = "Stretch manuale non valido: " + manualStretchFactor;
+                    rejectReason = AppText.F("deep.temporal.service.invalidManualStretch", manualStretchFactor);
                     return false;
                 }
 
                 sourceToLanguageScale = 1.0 / stretchRatio;
                 if (!double.IsFinite(sourceToLanguageScale) || sourceToLanguageScale <= 0.0)
                 {
-                    rejectReason = "Scala temporale manuale non valida: " + manualStretchFactor;
+                    rejectReason = AppText.F("deep.temporal.service.invalidManualScale", manualStretchFactor);
                     return false;
                 }
                 stretchFactor = normalizedManualFactor;
-                return true;
             }
 
             return true;
         }
 
         /// <summary>
-        /// Rilascia i buffer grayscale globali dopo che il backend ha completato la matrice
-        /// </summary>
-        private void ReleaseAnchorFrames(System.Collections.Generic.List<DeepSiftVisualAnchor> anchors)
-        {
-            if (anchors == null)
-                return;
-            for (int i = 0; i < anchors.Count; i++)
-                anchors[i].Frame = Array.Empty<byte>();
-        }
-
-        /// <summary>
-        /// Rilascia i buffer frame trattenuti dai risultati anche sui percorsi di rifiuto
+        /// Rilascia i buffer dei frame trattenuti dai risultati parziali o completi
         /// </summary>
         /// <param name="result">Risultato parziale o completo</param>
         private void ReleaseResultFrames(DeepAnalysisResult result)
@@ -234,13 +237,13 @@ namespace RemuxForge.Core.Analysis.Deep
             if (result == null)
                 return;
             if (result.SourceTimeline != null)
-                this.ReleaseAnchorFrames(result.SourceTimeline.Anchors);
+                DeepSiftVisualAnchorBufferHelper.ReleaseFrames(result.SourceTimeline.Anchors);
             if (result.LanguageTimeline != null)
-                this.ReleaseAnchorFrames(result.LanguageTimeline.Anchors);
+                DeepSiftVisualAnchorBufferHelper.ReleaseFrames(result.LanguageTimeline.Anchors);
             if (result.BatchMatching != null)
             {
-                this.ReleaseAnchorFrames(result.BatchMatching.SourceAnchors);
-                this.ReleaseAnchorFrames(result.BatchMatching.LanguageAnchors);
+                DeepSiftVisualAnchorBufferHelper.ReleaseFrames(result.BatchMatching.SourceAnchors);
+                DeepSiftVisualAnchorBufferHelper.ReleaseFrames(result.BatchMatching.LanguageAnchors);
             }
         }
 
