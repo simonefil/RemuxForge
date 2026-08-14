@@ -17,15 +17,15 @@ namespace RemuxForge.Core.Models
             this.OffsetMs = int.MinValue;
             this.InitialToFinalDeltaMs = int.MinValue;
             this.FailureReason = "";
-            this.AudioGlobal = new AudioGlobalFingerprintResult();
             this.Timing = new FrameSyncTimingInfo();
             this.Initial = new FrameSyncInitialResult();
             this.Points = new List<FrameSyncPointResult>();
+            this.PrecisionCheckpointPercent = -1;
         }
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// True se il frame-sync ha prodotto un offset applicabile
@@ -53,7 +53,7 @@ namespace RemuxForge.Core.Models
         public int InitialToFinalDeltaMs { get; set; }
 
         /// <summary>
-        /// Motivo del fallimento o dell'ambiguita'
+        /// Motivo del fallimento o dell'ambiguità
         /// </summary>
         public string FailureReason { get; set; }
 
@@ -66,11 +66,6 @@ namespace RemuxForge.Core.Models
         /// Geometria rilevata per il file lingua
         /// </summary>
         public FrameSyncGeometryInfo LanguageGeometry { get; set; }
-
-        /// <summary>
-        /// Risultato fingerprint audio globale, se eseguita
-        /// </summary>
-        public AudioGlobalFingerprintResult AudioGlobal { get; set; }
 
         /// <summary>
         /// Timing diagnostici delle fasi frame-sync
@@ -86,6 +81,16 @@ namespace RemuxForge.Core.Models
         /// Risultati dei checkpoint di verifica
         /// </summary>
         public List<FrameSyncPointResult> Points { get; set; }
+
+        /// <summary>
+        /// Candidato full-rate che determina l'offset finale al frame
+        /// </summary>
+        public FrameSyncCandidate PrecisionCandidate { get; set; }
+
+        /// <summary>
+        /// Percentuale del checkpoint usato per il refinement full-rate
+        /// </summary>
+        public int PrecisionCheckpointPercent { get; set; }
 
         #endregion
     }

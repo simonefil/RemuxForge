@@ -66,16 +66,6 @@ namespace RemuxForge.Core.Media
         private readonly BlackBorderNormalizer _blackBorderNormalizer;
 
         /// <summary>
-        /// Rilevatore dei tagli di scena condiviso dal servizio
-        /// </summary>
-        private readonly SceneCutDetector _sceneCutDetector;
-
-        /// <summary>
-        /// Calcolatore delle metriche visuali condiviso dal servizio
-        /// </summary>
-        private readonly VisualMetricCalculator _visualMetricCalculator;
-
-        /// <summary>
         /// Ultima geometria diagnostica del file sorgente preparata dal servizio
         /// </summary>
         protected FrameSyncGeometryInfo _lastSourceGeometryInfo;
@@ -106,8 +96,6 @@ namespace RemuxForge.Core.Media
             this._analysisCropLanguagePx = "";
             this._geometryAnalyzer = new VideoGeometryAnalyzer(this._ffmpegPath, this._ffmpegConfig, this._logSection);
             this._blackBorderNormalizer = new BlackBorderNormalizer(this._ffmpegPath, this._vsConfig, this._ffmpegConfig, this._logSection, this._geometryAnalyzer);
-            this._sceneCutDetector = new SceneCutDetector(this._vsConfig);
-            this._visualMetricCalculator = new VisualMetricCalculator(this._vsConfig);
             this._lastSourceGeometryInfo = null;
             this._lastLanguageGeometryInfo = null;
         }
@@ -427,147 +415,6 @@ namespace RemuxForge.Core.Media
             {
                 ConsoleHelper.Write(this._logSection, LogLevel.Notice, AppText.F("deep.temporal.geometry.manualCrop", role, manualCropPx));
             }
-        }
-
-        /// <summary>
-        /// Calcola lo SSIM medio di una sequenza di frame consecutivi tra due file
-        /// </summary>
-        /// <param name="sourceFrames">Lista dei frame sorgente</param>
-        /// <param name="sourceStartIdx">Indice iniziale nella lista dei frame sorgente</param>
-        /// <param name="langFrames">Lista dei frame lingua</param>
-        /// <param name="langStartIdx">Indice iniziale nella lista dei frame lingua</param>
-        /// <param name="sequenceLength">Numero di frame nella sequenza</param>
-        /// <returns>SSIM medio della sequenza oppure 0,0 se i frame sono insufficienti</returns>
-        protected double ComputeSequenceSsim(List<byte[]> sourceFrames, int sourceStartIdx, List<byte[]> langFrames, int langStartIdx, int sequenceLength)
-        {
-            return this._visualMetricCalculator.ComputeSequenceSsim(sourceFrames, sourceStartIdx, langFrames, langStartIdx, sequenceLength);
-        }
-
-        /// <summary>
-        /// Calcola la correlazione media su una sequenza usando luma sfocata
-        /// </summary>
-        /// <param name="sourceFrames">Lista dei frame sorgente</param>
-        /// <param name="sourceStartIdx">Indice iniziale nella lista dei frame sorgente</param>
-        /// <param name="langFrames">Lista dei frame lingua</param>
-        /// <param name="langStartIdx">Indice iniziale nella lista dei frame lingua</param>
-        /// <param name="sequenceLength">Numero di frame nella sequenza</param>
-        /// <returns>Correlazione media normalizzata tra 0 e 1 oppure 0,0 se i frame sono insufficienti</returns>
-        protected double ComputeSequenceBlurredCorrelation(List<byte[]> sourceFrames, int sourceStartIdx, List<byte[]> langFrames, int langStartIdx, int sequenceLength)
-        {
-            return this._visualMetricCalculator.ComputeSequenceBlurredCorrelation(sourceFrames, sourceStartIdx, langFrames, langStartIdx, sequenceLength);
-        }
-
-        /// <summary>
-        /// Calcola la correlazione edge media di una sequenza di frame consecutivi
-        /// </summary>
-        /// <param name="sourceFrames">Lista dei frame sorgente</param>
-        /// <param name="sourceStartIdx">Indice iniziale nella lista dei frame sorgente</param>
-        /// <param name="langFrames">Lista dei frame lingua</param>
-        /// <param name="langStartIdx">Indice iniziale nella lista dei frame lingua</param>
-        /// <param name="sequenceLength">Numero di frame nella sequenza</param>
-        /// <returns>Correlazione media normalizzata tra 0 e 1 oppure 0,0 se i frame sono insufficienti</returns>
-        protected double ComputeSequenceEdgeCorrelation(List<byte[]> sourceFrames, int sourceStartIdx, List<byte[]> langFrames, int langStartIdx, int sequenceLength)
-        {
-            return this._visualMetricCalculator.ComputeSequenceEdgeCorrelation(sourceFrames, sourceStartIdx, langFrames, langStartIdx, sequenceLength);
-        }
-
-        /// <summary>
-        /// Calcola la correlazione media dei fingerprint a blocchi su una sequenza di frame
-        /// </summary>
-        /// <param name="sourceFrames">Lista dei frame sorgente</param>
-        /// <param name="sourceStartIdx">Indice iniziale nella lista dei frame sorgente</param>
-        /// <param name="langFrames">Lista dei frame lingua</param>
-        /// <param name="langStartIdx">Indice iniziale nella lista dei frame lingua</param>
-        /// <param name="sequenceLength">Numero di frame nella sequenza</param>
-        /// <returns>Correlazione media normalizzata tra 0 e 1 oppure 0,0 se i frame sono insufficienti</returns>
-        protected double ComputeSequenceBlockCorrelation(List<byte[]> sourceFrames, int sourceStartIdx, List<byte[]> langFrames, int langStartIdx, int sequenceLength)
-        {
-            return this._visualMetricCalculator.ComputeSequenceBlockCorrelation(sourceFrames, sourceStartIdx, langFrames, langStartIdx, sequenceLength);
-        }
-
-        /// <summary>
-        /// Calcola la correlazione media edge-block su una sequenza
-        /// </summary>
-        /// <param name="sourceFrames">Lista dei frame sorgente</param>
-        /// <param name="sourceStartIdx">Indice iniziale nella lista dei frame sorgente</param>
-        /// <param name="langFrames">Lista dei frame lingua</param>
-        /// <param name="langStartIdx">Indice iniziale nella lista dei frame lingua</param>
-        /// <param name="sequenceLength">Numero di frame nella sequenza</param>
-        /// <returns>Correlazione media normalizzata tra 0 e 1 oppure 0,0 se i frame sono insufficienti</returns>
-        protected double ComputeSequenceEdgeBlockCorrelation(List<byte[]> sourceFrames, int sourceStartIdx, List<byte[]> langFrames, int langStartIdx, int sequenceLength)
-        {
-            return this._visualMetricCalculator.ComputeSequenceEdgeBlockCorrelation(sourceFrames, sourceStartIdx, langFrames, langStartIdx, sequenceLength);
-        }
-
-        /// <summary>
-        /// Calcola la correlazione media block-motion su una sequenza
-        /// </summary>
-        /// <param name="sourceFrames">Lista dei frame sorgente</param>
-        /// <param name="sourceStartIdx">Indice iniziale nella lista dei frame sorgente</param>
-        /// <param name="langFrames">Lista dei frame lingua</param>
-        /// <param name="langStartIdx">Indice iniziale nella lista dei frame lingua</param>
-        /// <param name="sequenceLength">Numero di frame nella sequenza</param>
-        /// <returns>Correlazione media normalizzata tra 0 e 1 oppure 0,0 se i frame sono insufficienti</returns>
-        protected double ComputeSequenceBlockMotionCorrelation(List<byte[]> sourceFrames, int sourceStartIdx, List<byte[]> langFrames, int langStartIdx, int sequenceLength)
-        {
-            return this._visualMetricCalculator.ComputeSequenceBlockMotionCorrelation(sourceFrames, sourceStartIdx, langFrames, langStartIdx, sequenceLength);
-        }
-
-        /// <summary>
-        /// Calcola la similarità media aHash/dHash su una sequenza
-        /// </summary>
-        /// <param name="sourceFrames">Lista dei frame sorgente</param>
-        /// <param name="sourceStartIdx">Indice iniziale nella lista dei frame sorgente</param>
-        /// <param name="langFrames">Lista dei frame lingua</param>
-        /// <param name="langStartIdx">Indice iniziale nella lista dei frame lingua</param>
-        /// <param name="sequenceLength">Numero di frame nella sequenza</param>
-        /// <returns>Similarità media normalizzata tra 0 e 1 oppure 0,0 se i frame sono insufficienti</returns>
-        protected double ComputeSequenceHashSimilarity(List<byte[]> sourceFrames, int sourceStartIdx, List<byte[]> langFrames, int langStartIdx, int sequenceLength)
-        {
-            return this._visualMetricCalculator.ComputeSequenceHashSimilarity(sourceFrames, sourceStartIdx, langFrames, langStartIdx, sequenceLength);
-        }
-
-        /// <summary>
-        /// Rileva i tagli di scena tramite MSE tra frame consecutivi
-        /// </summary>
-        /// <param name="frames">Lista dei frame in scala di grigi</param>
-        /// <returns>Lista indici frame dove avviene il taglio</returns>
-        protected List<int> DetectSceneCuts(List<byte[]> frames)
-        {
-            return this._sceneCutDetector.Detect(frames);
-        }
-
-        /// <summary>
-        /// Rileva i tagli di scena tramite MSE tra frame consecutivi con una soglia più permissiva
-        /// Usato come fallback quando un segmento scuro o granuloso non produce tagli con la soglia conservativa
-        /// </summary>
-        /// <param name="frames">Lista dei frame in scala di grigi</param>
-        /// <returns>Lista indici frame dove avviene il taglio</returns>
-        protected List<int> DetectSceneCutsRelaxed(List<byte[]> frames)
-        {
-            return this._sceneCutDetector.DetectRelaxed(frames);
-        }
-
-        /// <summary>
-        /// Calcola il fingerprint temporale di un taglio di scena usando luma, edge e block-motion
-        /// </summary>
-        /// <param name="frames">Lista dei frame in scala di grigi</param>
-        /// <param name="cutIndex">Indice del frame in cui avviene il taglio</param>
-        /// <returns>Array dei valori inter-frame oppure null se gli indici non sono validi</returns>
-        protected double[] ComputeTemporalFingerprint(List<byte[]> frames, int cutIndex)
-        {
-            return this._visualMetricCalculator.ComputeTemporalFingerprint(frames, cutIndex);
-        }
-
-        /// <summary>
-        /// Calcola la correlazione di Pearson tra due fingerprint temporali
-        /// </summary>
-        /// <param name="fp1">Primo fingerprint temporale</param>
-        /// <param name="fp2">Secondo fingerprint temporale</param>
-        /// <returns>Coefficiente di correlazione tra -1 e 1 oppure 0,0 se non è calcolabile</returns>
-        protected double ComputeFingerprintCorrelation(double[] fp1, double[] fp2)
-        {
-            return this._visualMetricCalculator.ComputeFingerprintCorrelation(fp1, fp2);
         }
 
         #endregion

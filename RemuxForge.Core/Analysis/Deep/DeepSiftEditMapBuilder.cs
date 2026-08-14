@@ -47,7 +47,7 @@ namespace RemuxForge.Core.Analysis.Deep
         public DeepSiftEditMapBuilder(string ffmpegPath, FfmpegConfig ffmpegConfig, VideoSyncConfig videoSyncConfig, LogSection logSection, FrameFeatureBatchMatcherBase batchMatcher, Func<string, bool> geometryCropResolver, Action<string, bool, string, List<byte[]>> frameNormalizer, int maximumParallelism)
         {
             if (string.IsNullOrEmpty(ffmpegPath))
-                throw new ArgumentException(AppText.T("deep.temporal.argument.missingFfmpegPath"), nameof(ffmpegPath));
+                throw new ArgumentException(AppText.T("analysis.sift.missingFfmpegPath"), nameof(ffmpegPath));
             if (ffmpegConfig == null)
                 throw new ArgumentNullException(nameof(ffmpegConfig));
             if (maximumParallelism < 1)

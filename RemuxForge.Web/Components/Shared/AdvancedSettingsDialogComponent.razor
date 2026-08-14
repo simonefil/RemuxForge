@@ -3,7 +3,6 @@
         <div class="dialog-title">@AppText.T("web.advanced.title")</div>
         <div class="dialog-body">
 
-            @* Sezione opzioni utente *@
             <AdvancedSettingsSection Title="@AppText.T("web.advanced.section.analysis")">
                 <AdvancedSettingsToggleRow Label="@AppText.T("web.advanced.hardwareAcceleration")" Value="_ffHardwareAcceleration" ValueChanged="ChangeHardwareAcceleration" />
                 @if (_ffHardwareProbeRunning)
@@ -26,57 +25,21 @@
                         </select>
                     </div>
                 }
-                <AdvancedSettingsFieldRow Label="@AppText.T("web.advanced.frameWidth")" Width="10ch" @bind-Value="_vsFrameWidth" />
-                <AdvancedSettingsFieldRow Label="@AppText.T("web.advanced.frameHeight")" Width="10ch" @bind-Value="_vsFrameHeight" />
-                <AdvancedSettingsFieldRow Label="@AppText.T("web.advanced.checkPoints")" Width="10ch" @bind-Value="_vsNumCheckPoints" />
-                <AdvancedSettingsFieldRow Label="@AppText.T("web.advanced.minValidPoints")" Width="10ch" @bind-Value="_vsMinValidPoints" />
-            </AdvancedSettingsSection>
-
-            <AdvancedSettingsSection Title="@AppText.T("web.advanced.section.frameSync")">
-                <AdvancedSettingsFieldRow Label="@AppText.T("web.advanced.sourceDuration")" Width="10ch" @bind-Value="_fsSourceDurationSec" />
-                <AdvancedSettingsFieldRow Label="@AppText.T("web.advanced.languageDuration")" Width="10ch" @bind-Value="_fsLangDurationSec" />
-                <AdvancedSettingsFieldRow Label="@AppText.T("web.advanced.minValidPoints")" Width="10ch" @bind-Value="_fsMinValidPoints" />
-                <AdvancedSettingsToggleRow Label="@AppText.T("web.advanced.globalAudio")" @bind-Value="_fsAudioGlobalEnabled" />
-            </AdvancedSettingsSection>
-
-            <AdvancedSettingsSection Title="@AppText.T("web.advanced.section.speedCorrection")">
                 <div class="form-row">
                     <span class="form-label">@AppText.T("web.advanced.siftBackend")</span>
-                    <select class="form-input" style="width: 18ch;" value="@_scSiftBackend" @onchange="ChangeSpeedSiftBackend" disabled="@_scVulkanProbeRunning">
-                        <option value="cpu">CPU</option>
-                        <option value="vulkan">Vulkan</option>
+                    <select class="form-input" style="width: 18ch;" value="@AdvancedConfig.GetSiftBackendValue(_siftBackend)" @onchange="ChangeSiftBackend" disabled="@_siftVulkanProbeRunning">
+                        <option value="@AdvancedConfig.GetSiftBackendValue(SiftBackendKind.Cpu)">CPU</option>
+                        <option value="@AdvancedConfig.GetSiftBackendValue(SiftBackendKind.Vulkan)">Vulkan</option>
                     </select>
-                    @if (_scVulkanProbeRunning)
+                    @if (_siftVulkanProbeRunning)
                     {
                         <span>@AppText.T("web.advanced.probeRunning")</span>
                     }
-                    else if (_scSiftBackend == "vulkan" && !string.IsNullOrEmpty(_scVulkanDeviceName))
+                    else if (_siftBackend == SiftBackendKind.Vulkan && !string.IsNullOrEmpty(_siftVulkanDeviceName))
                     {
-                        <span>@_scVulkanDeviceName</span>
+                        <span>@_siftVulkanDeviceName</span>
                     }
                 </div>
-            </AdvancedSettingsSection>
-
-            <AdvancedSettingsSection Title="@AppText.T("web.advanced.section.deepAnalysis")">
-                <div class="form-row">
-                    <span class="form-label">@AppText.T("web.advanced.siftBackend")</span>
-                    <select class="form-input" style="width: 18ch;" value="@_daSiftBackend" @onchange="ChangeSiftBackend" disabled="@_daVulkanProbeRunning">
-                        <option value="cpu">CPU</option>
-                        <option value="vulkan">Vulkan</option>
-                    </select>
-                    @if (_daVulkanProbeRunning)
-                    {
-                        <span>@AppText.T("web.advanced.probeRunning")</span>
-                    }
-                    else if (_daSiftBackend == "vulkan" && !string.IsNullOrEmpty(_daVulkanDeviceName))
-                    {
-                        <span>@_daVulkanDeviceName</span>
-                    }
-                </div>
-            </AdvancedSettingsSection>
-
-            <AdvancedSettingsSection Title="@AppText.T("web.advanced.section.timeouts")">
-                <AdvancedSettingsFieldRow Label="@AppText.T("web.advanced.subtitleTimeout")" Width="10ch" @bind-Value="_subtitleEditFfmpegTimeoutMs" />
             </AdvancedSettingsSection>
 
         </div>
@@ -85,116 +48,35 @@
             <div style="padding: 0.5em 1em; color: var(--color-error); white-space: pre-line;">@_validationError</div>
         }
         <div class="dialog-footer">
-            <button @onclick="Save" disabled="@(_ffHardwareProbeRunning || _scVulkanProbeRunning || _daVulkanProbeRunning)">@AppText.T("web.common.ok")</button>
-            <button @onclick="ResetDefaults" disabled="@(_ffHardwareProbeRunning || _scVulkanProbeRunning || _daVulkanProbeRunning)">@AppText.T("web.advanced.resetDefault")</button>
-            <button @onclick="OnClose" disabled="@(_ffHardwareProbeRunning || _scVulkanProbeRunning || _daVulkanProbeRunning)">@AppText.T("web.common.cancel")</button>
+            <button @onclick="Save" disabled="@(_ffHardwareProbeRunning || _siftVulkanProbeRunning)">@AppText.T("web.common.ok")</button>
+            <button @onclick="ResetDefaults" disabled="@(_ffHardwareProbeRunning || _siftVulkanProbeRunning)">@AppText.T("web.advanced.resetDefault")</button>
+            <button @onclick="OnClose" disabled="@(_ffHardwareProbeRunning || _siftVulkanProbeRunning)">@AppText.T("web.common.cancel")</button>
         </div>
     </div>
 </div>
 
 @code {
     /// <summary>
-    /// Indica che il prossimo salvataggio deve partire dall'intera configurazione avanzata predefinita
-    /// </summary>
-    private bool _resetAllDefaults;
-
-    /// <summary>
     /// Evento chiusura dialog
     /// </summary>
     [Parameter] public EventCallback OnClose { get; set; }
 
-    #region Campi VideoSync
+    #region Campi SIFT
 
     /// <summary>
-    /// Larghezza frame VideoSync
+    /// Backend SIFT condiviso da FrameSync, DeepAnalysis e SpeedCorrection
     /// </summary>
-    private string _vsFrameWidth = "";
+    private SiftBackendKind _siftBackend = SiftBackendKind.Cpu;
 
     /// <summary>
-    /// Altezza frame VideoSync
+    /// True durante il probe Vulkan del backend SIFT condiviso
     /// </summary>
-    private string _vsFrameHeight = "";
+    private bool _siftVulkanProbeRunning;
 
     /// <summary>
-    /// Numero checkpoint VideoSync
+    /// Device Vulkan confermato dal probe del backend SIFT condiviso
     /// </summary>
-    private string _vsNumCheckPoints = "";
-
-    /// <summary>
-    /// Punti validi minimi VideoSync
-    /// </summary>
-    private string _vsMinValidPoints = "";
-
-    #endregion
-
-    #region Campi FrameSync
-
-    /// <summary>
-    /// Durata sorgente FrameSync
-    /// </summary>
-    private string _fsSourceDurationSec = "";
-
-    /// <summary>
-    /// Durata lingua FrameSync
-    /// </summary>
-    private string _fsLangDurationSec = "";
-
-    /// <summary>
-    /// Punti validi minimi FrameSync
-    /// </summary>
-    private string _fsMinValidPoints = "";
-
-    /// <summary>
-    /// Abilitazione audio globale FrameSync
-    /// </summary>
-    private bool _fsAudioGlobalEnabled;
-
-    #endregion
-
-    #region Campi SpeedCorrection
-
-    /// <summary>
-    /// Backend SIFT usato dalla SpeedCorrection
-    /// </summary>
-    private string _scSiftBackend = "cpu";
-
-    /// <summary>
-    /// True durante il probe Vulkan SpeedCorrection
-    /// </summary>
-    private bool _scVulkanProbeRunning;
-
-    /// <summary>
-    /// Device Vulkan confermato per SpeedCorrection
-    /// </summary>
-    private string _scVulkanDeviceName = "";
-
-    #endregion
-
-    #region Campi DeepAnalysis
-
-    /// <summary>
-    /// Backend SIFT usato dalla DeepAnalysis
-    /// </summary>
-    private string _daSiftBackend = "cpu";
-
-    /// <summary>
-    /// True durante il probe del backend Vulkan
-    /// </summary>
-    private bool _daVulkanProbeRunning;
-
-    /// <summary>
-    /// Device confermato dal probe Vulkan corrente
-    /// </summary>
-    private string _daVulkanDeviceName = "";
-
-    #endregion
-
-    #region Campi SubtitleEdit
-
-    /// <summary>
-    /// Timeout comando ffmpeg (ms)
-    /// </summary>
-    private string _subtitleEditFfmpegTimeoutMs = "";
+    private string _siftVulkanDeviceName = "";
 
     #endregion
 
@@ -250,27 +132,8 @@
     /// </summary>
     private void LoadFieldsFrom(AdvancedConfig adv)
     {
-        // VideoSync: interi
-        this._vsFrameWidth = adv.VideoSync.FrameWidth.ToString();
-        this._vsFrameHeight = adv.VideoSync.FrameHeight.ToString();
-        this._vsNumCheckPoints = adv.VideoSync.NumCheckPoints.ToString();
-        this._vsMinValidPoints = adv.VideoSync.MinValidPoints.ToString();
-
-        // FrameSync: interi
-        this._fsSourceDurationSec = adv.FrameSync.SourceDurationSec.ToString();
-        this._fsLangDurationSec = adv.FrameSync.LangDurationSec.ToString();
-        this._fsMinValidPoints = adv.FrameSync.MinValidPoints.ToString();
-
-        // FrameSync: booleani
-        this._fsAudioGlobalEnabled = adv.FrameSync.AudioGlobalEnabled;
-
-        this._scSiftBackend = adv.SpeedCorrection.SiftBackend;
-        this._scVulkanDeviceName = "";
-        this._daSiftBackend = adv.DeepAnalysis.SiftBackend;
-        this._daVulkanDeviceName = "";
-
-        // SubtitleEdit: interi
-        this._subtitleEditFfmpegTimeoutMs = adv.SubtitleEdit.FfmpegTimeoutMs.ToString();
+        this._siftBackend = adv.GetSiftBackendKind();
+        this._siftVulkanDeviceName = "";
 
         // Ffmpeg: booleani
         this._ffHardwareAcceleration = adv.Ffmpeg.HardwareAcceleration;
@@ -285,42 +148,30 @@
     /// </summary>
     private async System.Threading.Tasks.Task ProbePersistedBackends()
     {
-        bool requiresVulkanProbe = this._scSiftBackend == "vulkan" || this._daSiftBackend == "vulkan";
-        if (requiresVulkanProbe)
+        if (this._siftBackend == SiftBackendKind.Vulkan)
         {
-            this._scVulkanProbeRunning = this._scSiftBackend == "vulkan";
-            this._daVulkanProbeRunning = this._daSiftBackend == "vulkan";
+            this._siftVulkanProbeRunning = true;
             try
             {
                 VulkanSiftBackendProbeResult probeResult = await System.Threading.Tasks.Task.Run(() => new VulkanSiftBackendProbe().Probe());
                 if (!probeResult.Available)
                 {
-                    if (this._scSiftBackend == "vulkan")
-                        this._scSiftBackend = "cpu";
-                    if (this._daSiftBackend == "vulkan")
-                        this._daSiftBackend = "cpu";
+                    this._siftBackend = SiftBackendKind.Cpu;
                     this.AppendValidationError(AppText.F("web.advanced.vulkanUnavailable", probeResult.ErrorMessage));
                 }
                 else
                 {
-                    if (this._scSiftBackend == "vulkan")
-                        this._scVulkanDeviceName = probeResult.DeviceName;
-                    if (this._daSiftBackend == "vulkan")
-                        this._daVulkanDeviceName = probeResult.DeviceName;
+                    this._siftVulkanDeviceName = probeResult.DeviceName;
                 }
             }
             catch (Exception ex)
             {
-                if (this._scSiftBackend == "vulkan")
-                    this._scSiftBackend = "cpu";
-                if (this._daSiftBackend == "vulkan")
-                    this._daSiftBackend = "cpu";
+                this._siftBackend = SiftBackendKind.Cpu;
                 this.AppendValidationError(AppText.F("web.advanced.vulkanProbeFailed", ex.Message));
             }
             finally
             {
-                this._scVulkanProbeRunning = false;
-                this._daVulkanProbeRunning = false;
+                this._siftVulkanProbeRunning = false;
             }
         }
 
@@ -374,44 +225,12 @@
     {
         this._validationError = "";
         AdvancedConfig original = AppSettingsService.Instance.Settings.Advanced;
-        AdvancedConfig adv = this._resetAllDefaults ? new AdvancedConfig() : System.Text.Json.JsonSerializer.Deserialize<AdvancedConfig>(System.Text.Json.JsonSerializer.Serialize(original));
-        int intVal;
+        AdvancedConfig adv = System.Text.Json.JsonSerializer.Deserialize<AdvancedConfig>(System.Text.Json.JsonSerializer.Serialize(original));
 
         if (!this.ValidateAdvancedFields())
             return;
 
-        // Parsing VideoSync: interi
-        if (int.TryParse(this._vsFrameWidth, out intVal))
-            adv.VideoSync.FrameWidth = intVal;
-
-        if (int.TryParse(this._vsFrameHeight, out intVal))
-            adv.VideoSync.FrameHeight = intVal;
-
-        if (int.TryParse(this._vsNumCheckPoints, out intVal))
-            adv.VideoSync.NumCheckPoints = intVal;
-
-        if (int.TryParse(this._vsMinValidPoints, out intVal))
-            adv.VideoSync.MinValidPoints = intVal;
-
-        // Parsing FrameSync: interi
-        if (int.TryParse(this._fsSourceDurationSec, out intVal))
-            adv.FrameSync.SourceDurationSec = intVal;
-
-        if (int.TryParse(this._fsLangDurationSec, out intVal))
-            adv.FrameSync.LangDurationSec = intVal;
-
-        if (int.TryParse(this._fsMinValidPoints, out intVal))
-            adv.FrameSync.MinValidPoints = intVal;
-
-        // Parsing FrameSync: booleani
-        adv.FrameSync.AudioGlobalEnabled = this._fsAudioGlobalEnabled;
-
-        adv.SpeedCorrection.SiftBackend = this._scSiftBackend;
-        adv.DeepAnalysis.SiftBackend = this._daSiftBackend;
-
-        // Parsing SubtitleEdit: interi
-        if (int.TryParse(this._subtitleEditFfmpegTimeoutMs, out intVal))
-            adv.SubtitleEdit.FfmpegTimeoutMs = intVal;
+        adv.SetSiftBackendKind(this._siftBackend);
 
         // Parsing Ffmpeg: booleani
         adv.Ffmpeg.HardwareAcceleration = this._ffHardwareAcceleration;
@@ -424,7 +243,6 @@
             this._validationError = AppText.T("web.advanced.saveFailed");
             return;
         }
-        this._resetAllDefaults = false;
         this._validationError = "";
         this.OnClose.InvokeAsync();
     }
@@ -434,9 +252,7 @@
     /// </summary>
     private void ResetDefaults()
     {
-        // Ricarica default nei campi; il salvataggio avviene solo con OK
         this._validationError = "";
-        this._resetAllDefaults = true;
         this.LoadFieldsFrom(new AdvancedConfig());
     }
 
@@ -447,25 +263,10 @@
     {
         List<string> errors = new List<string>();
 
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "VideoSync.FrameWidth", this._vsFrameWidth, 64, 1920);
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "VideoSync.FrameHeight", this._vsFrameHeight, 64, 1080);
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "VideoSync.NumCheckPoints", this._vsNumCheckPoints, 1, 1000);
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "VideoSync.MinValidPoints", this._vsMinValidPoints, 1, 1000);
-
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "FrameSync.SourceDurationSec", this._fsSourceDurationSec, 1, 3600);
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "FrameSync.LangDurationSec", this._fsLangDurationSec, 1, 3600);
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "FrameSync.MinValidPoints", this._fsMinValidPoints, 1, 1000);
-
-        if (this._daSiftBackend != "cpu" && this._daSiftBackend != "vulkan")
+        if (!Enum.IsDefined(typeof(SiftBackendKind), this._siftBackend) || this._siftBackend == SiftBackendKind.Unknown)
             errors.Add(AppText.T("web.advanced.invalidSiftBackend"));
-        else if (this._daSiftBackend == "vulkan" && string.IsNullOrEmpty(this._daVulkanDeviceName))
+        else if (this._siftBackend == SiftBackendKind.Vulkan && string.IsNullOrEmpty(this._siftVulkanDeviceName))
             errors.Add(AppText.T("web.advanced.unverifiedVulkanBackend"));
-        if (this._scSiftBackend != "cpu" && this._scSiftBackend != "vulkan")
-            errors.Add(AppText.T("web.advanced.invalidSpeedSiftBackend"));
-        else if (this._scSiftBackend == "vulkan" && string.IsNullOrEmpty(this._scVulkanDeviceName))
-            errors.Add(AppText.T("web.advanced.unverifiedVulkanBackend"));
-
-        AdvancedSettingsFieldValidator.ValidateIntRange(errors, "SubtitleEdit.FfmpegTimeoutMs", this._subtitleEditFfmpegTimeoutMs, 1000, 3600000);
 
         if (this._ffHardwareAcceleration && !this._ffHardwareAccelerationMethods.Contains(this._ffHardwareAccelerationMethod))
             errors.Add(AppText.T("web.advanced.invalidHardwareBackend"));
@@ -480,81 +281,46 @@
     }
 
     /// <summary>
-    /// Aggiorna il backend SIFT selezionato
+    /// Aggiorna il backend SIFT condiviso selezionato
     /// </summary>
     /// <param name="args">Evento di selezione</param>
     private async System.Threading.Tasks.Task ChangeSiftBackend(ChangeEventArgs args)
     {
-        string selectedBackend = args.Value != null ? args.Value.ToString() : "cpu";
+        string selectedValue = args.Value != null ? args.Value.ToString() : "";
         this._validationError = "";
-        this._daVulkanDeviceName = "";
-        if (selectedBackend != "vulkan")
+        this._siftVulkanDeviceName = "";
+        if (!AdvancedConfig.TryParseSiftBackend(selectedValue, out SiftBackendKind selectedBackend))
         {
-            this._daSiftBackend = "cpu";
+            this._siftBackend = SiftBackendKind.Cpu;
+            this._validationError = AppText.T("web.advanced.invalidSiftBackend");
             return;
         }
 
-        this._daSiftBackend = "vulkan";
-        this._daVulkanProbeRunning = true;
+        this._siftBackend = selectedBackend;
+        if (selectedBackend != SiftBackendKind.Vulkan)
+            return;
+
+        this._siftVulkanProbeRunning = true;
         try
         {
             VulkanSiftBackendProbeResult probeResult = await System.Threading.Tasks.Task.Run(() => new VulkanSiftBackendProbe().Probe());
             if (!probeResult.Available)
             {
-                this._daSiftBackend = "cpu";
+                this._siftBackend = SiftBackendKind.Cpu;
                 this._validationError = AppText.F("web.advanced.vulkanUnavailable", probeResult.ErrorMessage);
                 return;
             }
 
-            this._daVulkanDeviceName = probeResult.DeviceName;
+            this._siftVulkanDeviceName = probeResult.DeviceName;
         }
         catch (Exception ex)
         {
-            this._daSiftBackend = "cpu";
+            this._siftBackend = SiftBackendKind.Cpu;
             this._validationError = AppText.F("web.advanced.vulkanProbeFailed", ex.Message);
         }
         finally
         {
-            this._daVulkanProbeRunning = false;
-        }
-    }
-
-    /// <summary>
-    /// Aggiorna il backend SIFT della SpeedCorrection
-    /// </summary>
-    private async System.Threading.Tasks.Task ChangeSpeedSiftBackend(ChangeEventArgs args)
-    {
-        string selectedBackend = args.Value != null ? args.Value.ToString() : "cpu";
-        this._validationError = "";
-        this._scVulkanDeviceName = "";
-        if (selectedBackend != "vulkan")
-        {
-            this._scSiftBackend = "cpu";
-            return;
-        }
-
-        this._scSiftBackend = "vulkan";
-        this._scVulkanProbeRunning = true;
-        try
-        {
-            VulkanSiftBackendProbeResult probeResult = await System.Threading.Tasks.Task.Run(() => new VulkanSiftBackendProbe().Probe());
-            if (!probeResult.Available)
-            {
-                this._scSiftBackend = "cpu";
-                this._validationError = AppText.F("web.advanced.vulkanUnavailable", probeResult.ErrorMessage);
-                return;
-            }
-
-            this._scVulkanDeviceName = probeResult.DeviceName;
-        }
-        catch (Exception ex)
-        {
-            this._scSiftBackend = "cpu";
-            this._validationError = AppText.F("web.advanced.vulkanProbeFailed", ex.Message);
-        }
-        finally
-        {
-            this._scVulkanProbeRunning = false;
+            this._siftVulkanProbeRunning = false;
         }
     }
 

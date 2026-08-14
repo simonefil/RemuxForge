@@ -93,7 +93,7 @@ namespace RemuxForge.Core.Analysis.Deep
         public DeepSiftAnchorTimelineBuilder(string ffmpegPath, string mkvMergePath, string mkvExtractPath, FfmpegConfig ffmpegConfig, int width, int height, double sampleStepSec, bool geometryCropToFourThree, Action<List<byte[]>> frameNormalizer)
         {
             if (string.IsNullOrEmpty(ffmpegPath))
-                throw new ArgumentException(AppText.T("deep.temporal.argument.missingFfmpegPath"), nameof(ffmpegPath));
+                throw new ArgumentException(AppText.T("analysis.sift.missingFfmpegPath"), nameof(ffmpegPath));
             if (ffmpegConfig == null)
                 throw new ArgumentNullException(nameof(ffmpegConfig));
             if (width <= 0)

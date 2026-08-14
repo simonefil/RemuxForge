@@ -90,7 +90,7 @@ namespace RemuxForge.Core.Configuration
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Istanza singleton del servizio
@@ -204,6 +204,7 @@ namespace RemuxForge.Core.Configuration
                     this._model = JsonSerializer.Deserialize<AppSettingsModel>(json, options) ?? new AppSettingsModel();
 
                     this.MigrateSubtitleEditConfig(json);
+                    this.MigrateSiftBackendConfig(json);
 
                     // Assicura che sotto-oggetti non siano null
                     this.EnsureNotNull();
@@ -267,11 +268,11 @@ namespace RemuxForge.Core.Configuration
                 }
                 catch (IOException)
                 {
-                    // Il salvataggio ha già registrato l'errore principale; la pulizia resta best-effort.
+                    // Il salvataggio ha già registrato l'errore principale; la pulizia resta best-effort
                 }
                 catch (UnauthorizedAccessException)
                 {
-                    // Il salvataggio ha già registrato l'errore principale; la pulizia resta best-effort.
+                    // Il salvataggio ha già registrato l'errore principale; la pulizia resta best-effort
                 }
             }
 
@@ -678,13 +679,68 @@ namespace RemuxForge.Core.Configuration
             }
             catch
             {
-                // Migrazione best-effort: in caso di JSON non atteso resta il default.
+                // Migrazione best-effort: in caso di JSON non atteso resta il default
             }
             finally
             {
                 if (document != null)
                     document.Dispose();
             }
+        }
+
+        /// <summary>
+        /// Migra il backend SIFT dalle vecchie sezioni specifiche alla configurazione condivisa
+        /// </summary>
+        /// <param name="json">JSON originale delle impostazioni</param>
+        private void MigrateSiftBackendConfig(string json)
+        {
+            JsonDocument document = null;
+
+            if (this._model == null || this._model.Advanced == null)
+                return;
+
+            try
+            {
+                document = JsonDocument.Parse(json);
+                if (!document.RootElement.TryGetProperty("Advanced", out JsonElement advancedElement) ||
+                    advancedElement.TryGetProperty("SiftBackend", out _))
+                {
+                    return;
+                }
+
+                string siftBackend = this.ReadNestedSiftBackend(advancedElement, "DeepAnalysis");
+                if (string.IsNullOrEmpty(siftBackend))
+                    siftBackend = this.ReadNestedSiftBackend(advancedElement, "SpeedCorrection");
+                if (!string.IsNullOrEmpty(siftBackend))
+                    this._model.Advanced.SiftBackend = siftBackend;
+            }
+            catch
+            {
+                // Migrazione best-effort: in caso di JSON non atteso resta il default
+            }
+            finally
+            {
+                if (document != null)
+                    document.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Legge il backend SIFT da una vecchia sezione Advanced
+        /// </summary>
+        /// <param name="advancedElement">Sezione Advanced originale</param>
+        /// <param name="sectionName">Nome della sezione precedente</param>
+        /// <returns>Backend configurato oppure stringa vuota</returns>
+        private string ReadNestedSiftBackend(JsonElement advancedElement, string sectionName)
+        {
+            if (advancedElement.TryGetProperty(sectionName, out JsonElement sectionElement) &&
+                sectionElement.TryGetProperty("SiftBackend", out JsonElement backendElement) &&
+                backendElement.ValueKind == JsonValueKind.String)
+            {
+                return backendElement.GetString() ?? "";
+            }
+
+            return "";
         }
 
         /// <summary>
@@ -746,20 +802,9 @@ namespace RemuxForge.Core.Configuration
             VideoSyncConfig vs = this._model.Advanced.VideoSync;
             vs.FrameWidth = this.ClampInt(vs.FrameWidth, 64, 1920);
             vs.FrameHeight = this.ClampInt(vs.FrameHeight, 64, 1080);
-            vs.SsimThreshold = this.ClampDouble(vs.SsimThreshold, 0.0, 1.0);
-            vs.SsimMaxThreshold = this.ClampDouble(vs.SsimMaxThreshold, 0.0, 1.0);
             vs.NumCheckPoints = this.ClampInt(vs.NumCheckPoints, 1, 1000);
-            vs.MinValidPoints = this.ClampInt(vs.MinValidPoints, 1, 1000);
-            vs.SceneCutThreshold = this.ClampDouble(vs.SceneCutThreshold, 0.0, 10000.0);
-            vs.CutHalfWindow = this.ClampInt(vs.CutHalfWindow, 1, 1000);
-            vs.CutSignatureLength = this.ClampInt(vs.CutSignatureLength, 2, 1000);
-            vs.FingerprintCorrelationThreshold = this.ClampDouble(vs.FingerprintCorrelationThreshold, 0.0, 1.0);
-            vs.MinSceneCuts = this.ClampInt(vs.MinSceneCuts, 1, 10000);
-            vs.MinCutSpacingFrames = this.ClampInt(vs.MinCutSpacingFrames, 1, 10000);
             vs.VerifySourceDurationSec = this.ClampInt(vs.VerifySourceDurationSec, 1, 3600);
             vs.VerifyLangDurationSec = this.ClampInt(vs.VerifyLangDurationSec, 1, 3600);
-            vs.VerifySourceRetrySec = this.ClampInt(vs.VerifySourceRetrySec, 1, 3600);
-            vs.VerifyLangRetrySec = this.ClampInt(vs.VerifyLangRetrySec, 1, 3600);
 
             // Sanitizzazione Advanced — SpeedCorrection
             SpeedCorrectionConfig sc = this._model.Advanced.SpeedCorrection;
@@ -774,42 +819,13 @@ namespace RemuxForge.Core.Configuration
             fs.SourceDurationSec = this.ClampInt(fs.SourceDurationSec, 1, 3600);
             fs.LangDurationSec = this.ClampInt(fs.LangDurationSec, 1, 3600);
             fs.MinValidPoints = this.ClampInt(fs.MinValidPoints, 1, 1000);
-            fs.GroupingToleranceFrames = this.ClampInt(fs.GroupingToleranceFrames, 1, 10);
-            fs.MinEdgeCorrelation = this.ClampDouble(fs.MinEdgeCorrelation, 0.0, 1.0);
-            fs.MinBlockCorrelation = this.ClampDouble(fs.MinBlockCorrelation, 0.0, 1.0);
-            fs.MinMotionCorrelation = this.ClampDouble(fs.MinMotionCorrelation, 0.0, 1.0);
-            fs.MinBlurredCorrelation = this.ClampDouble(fs.MinBlurredCorrelation, 0.0, 1.0);
-            fs.MinHashSimilarity = this.ClampDouble(fs.MinHashSimilarity, 0.0, 1.0);
-            fs.MinDescriptorVotes = this.ClampInt(fs.MinDescriptorVotes, 1, 6);
-            fs.InitialMinMatchedCuts = this.ClampInt(fs.InitialMinMatchedCuts, 1, 1000);
-            fs.InitialMinScore = this.ClampDouble(fs.InitialMinScore, 0.0, 1.0);
-            fs.CheckpointMinScore = this.ClampDouble(fs.CheckpointMinScore, 0.0, 1.0);
             fs.FinalMinConfidence = this.ClampDouble(fs.FinalMinConfidence, 0.0, 1.0);
-            fs.InitialCheckpointDriftPenaltyFrames = this.ClampInt(fs.InitialCheckpointDriftPenaltyFrames, 1, 1000);
-            fs.InitialCheckpointDriftRejectFrames = this.ClampInt(fs.InitialCheckpointDriftRejectFrames, 1, 1000);
-            fs.InitialMinMargin = this.ClampDouble(fs.InitialMinMargin, 0.0, 1.0);
-            fs.CheckpointMinMargin = this.ClampDouble(fs.CheckpointMinMargin, 0.0, 1.0);
-            fs.StaticSegmentVarianceThreshold = this.ClampDouble(fs.StaticSegmentVarianceThreshold, 0.0, 10000.0);
-            fs.BlackFrameRatioThreshold = this.ClampDouble(fs.BlackFrameRatioThreshold, 0.0, 1.0);
-            fs.AudioGlobalSampleRate = this.ClampInt(fs.AudioGlobalSampleRate, 4000, 48000);
-            fs.AudioGlobalWindowMs = this.ClampInt(fs.AudioGlobalWindowMs, 10, 1000);
-            fs.AudioGlobalSearchRangeMs = this.ClampInt(fs.AudioGlobalSearchRangeMs, 1000, 600000);
-            fs.AudioGlobalCoarseStepMs = this.ClampInt(fs.AudioGlobalCoarseStepMs, 10, 5000);
-            fs.AudioGlobalMinScore = this.ClampDouble(fs.AudioGlobalMinScore, 0.0, 1.0);
-            fs.AudioGlobalMinMargin = this.ClampDouble(fs.AudioGlobalMinMargin, 0.0, 1.0);
-            fs.AudioGlobalMinCoverage = this.ClampDouble(fs.AudioGlobalMinCoverage, 0.0, 1.0);
-            fs.AudioGlobalConfirmToleranceFrames = this.ClampInt(fs.AudioGlobalConfirmToleranceFrames, 1, 1000);
-            fs.AudioGlobalRejectToleranceFrames = this.ClampInt(fs.AudioGlobalRejectToleranceFrames, 1, 1000);
-            SpeedCorrectionConfig speedCorrection = this._model.Advanced.SpeedCorrection;
-            speedCorrection.SiftBackend = string.IsNullOrEmpty(speedCorrection.SiftBackend) ? "cpu" : speedCorrection.SiftBackend.Trim().ToLowerInvariant();
-            if (speedCorrection.SiftBackend != "cpu" && speedCorrection.SiftBackend != "vulkan")
-                speedCorrection.SiftBackend = "cpu";
+            if (!AdvancedConfig.TryParseSiftBackend(this._model.Advanced.SiftBackend, out SiftBackendKind siftBackend))
+                siftBackend = SiftBackendKind.Cpu;
+            this._model.Advanced.SetSiftBackendKind(siftBackend);
 
             // Sanitizzazione Advanced — DeepAnalysis
             DeepAnalysisConfig da = this._model.Advanced.DeepAnalysis;
-            da.SiftBackend = string.IsNullOrEmpty(da.SiftBackend) ? "cpu" : da.SiftBackend.Trim().ToLowerInvariant();
-            if (da.SiftBackend != "cpu" && da.SiftBackend != "vulkan")
-                da.SiftBackend = "cpu";
             da.SceneExtractTimeoutMs = this.ClampInt(da.SceneExtractTimeoutMs, 1000, 3600000);
 
             // Sanitizzazione Advanced — SubtitleEdit

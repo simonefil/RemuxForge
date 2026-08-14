@@ -1,6 +1,7 @@
 using RemuxForge.Core.Analysis.Deep.Features;
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
 using System;
@@ -17,18 +18,70 @@ namespace RemuxForge.Core.Analysis.Speed
     /// </summary>
     public class SpeedCorrectionService : VideoSyncServiceBase
     {
+        #region Costanti
+
+        /// <summary>
+        /// Passo temporale delle ancore SIFT
+        /// </summary>
         private const double SAMPLE_INTERVAL_SEC = 1.0;
+
+        /// <summary>
+        /// Ampiezza dei bin usati per aggregare gli offset compatibili
+        /// </summary>
         private const double OFFSET_BIN_MS = 250.0;
 
+        #endregion
+
+        #region Variabili di classe
+
+        /// <summary>
+        /// Configurazione delle finestre SpeedCorrection
+        /// </summary>
         private readonly SpeedCorrectionConfig _speedConfig;
+
+        /// <summary>
+        /// Delay iniziale espresso sulla scala language
+        /// </summary>
         private int _initialDelayMs;
+
+        /// <summary>
+        /// Fattore di stretch normalizzato
+        /// </summary>
         private string _stretchFactor;
+
+        /// <summary>
+        /// Delay finale da applicare
+        /// </summary>
         private int _syncDelayMs;
+
+        /// <summary>
+        /// Tempo totale dell'ultima verifica
+        /// </summary>
         private long _executionTimeMs;
+
+        /// <summary>
+        /// Motivo localizzato dell'ultimo rifiuto
+        /// </summary>
         private string _rejectReason;
+
+        /// <summary>
+        /// Numero di ancore source distinte nel modo selezionato
+        /// </summary>
         private int _supportCount;
+
+        /// <summary>
+        /// Copertura temporale source del modo selezionato
+        /// </summary>
         private double _sourceSpanMs;
+
+        /// <summary>
+        /// Deviazione assoluta mediana degli offset selezionati
+        /// </summary>
         private double _medianResidualMs;
+
+        #endregion
+
+        #region Costruttore
 
         /// <summary>
         /// Costruisce il servizio usando la configurazione SpeedCorrection corrente
@@ -39,6 +92,10 @@ namespace RemuxForge.Core.Analysis.Speed
             this._stretchFactor = "";
             this._rejectReason = "";
         }
+
+        #endregion
+
+        #region Metodi pubblici
 
         /// <summary>
         /// Risolve il delay visuale usando un rapporto manuale esplicito
@@ -52,13 +109,13 @@ namespace RemuxForge.Core.Analysis.Speed
             this.ResetResult();
             if (!TryParseStretchFactor(manualStretchFactor, out double stretchRatio, out string normalized))
             {
-                this._rejectReason = "Fattore stretch manuale non valido";
+                this._rejectReason = AppText.T("speed.sift.invalidStretchFactor");
                 return false;
             }
             double scale = 1.0 / stretchRatio;
             if (!double.IsFinite(scale) || scale <= 0.0)
             {
-                this._rejectReason = "Scala temporale manuale non valida";
+                this._rejectReason = AppText.T("speed.sift.invalidScale");
                 return false;
             }
             return this.Resolve(sourceFile, languageFile, scale, normalized);
@@ -103,12 +160,17 @@ namespace RemuxForge.Core.Analysis.Speed
             if (!string.IsNullOrEmpty(this._rejectReason))
                 return this._rejectReason;
             if (this._supportCount == 0)
-                return "nessuna analisi visuale";
-            return "supporto=" + this._supportCount.ToString(CultureInfo.InvariantCulture) +
-                ", span=" + this._sourceSpanMs.ToString("F0", CultureInfo.InvariantCulture) + "ms" +
-                ", residuo=" + this._medianResidualMs.ToString("F1", CultureInfo.InvariantCulture) + "ms";
+                return AppText.T("speed.sift.noVisualAnalysis");
+            return AppText.F("speed.sift.summary", this._supportCount, this._sourceSpanMs.ToString("F0", CultureInfo.InvariantCulture), this._medianResidualMs.ToString("F1", CultureInfo.InvariantCulture));
         }
 
+        #endregion
+
+        #region Metodi privati
+
+        /// <summary>
+        /// Esegue estrazione, matching e risoluzione dell'offset alla scala richiesta
+        /// </summary>
         private bool Resolve(string sourceFile, string languageFile, double scale, string stretchFactor)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -118,12 +180,12 @@ namespace RemuxForge.Core.Analysis.Speed
                 this.ExtractInitialFrames(sourceFile, languageFile, out List<byte[]> sourceFrames, out double[] sourcePtsMs, out List<byte[]> languageFrames, out double[] languagePtsMs);
                 if (sourceFrames.Count < 5 || languageFrames.Count < 5)
                 {
-                    this._rejectReason = "Frame visuali insufficienti";
+                    this._rejectReason = AppText.T("speed.sift.insufficientFrames");
                     return false;
                 }
                 List<DeepSiftVisualAnchor> sourceAnchors = this.BuildAnchors(sourceFrames, sourcePtsMs);
                 List<DeepSiftVisualAnchor> languageAnchors = this.BuildAnchors(languageFrames, languagePtsMs);
-                using (FrameFeatureBatchMatcherBase matcher = this.CreateMatcher())
+                using (FrameFeatureBatchMatcherBase matcher = FrameFeatureBatchMatcherBase.Create(AppSettingsService.Instance.Settings.Advanced.GetSiftBackendKind()))
                 {
                     if (!matcher.IsAvailable(out string rejectReason))
                     {
@@ -133,7 +195,7 @@ namespace RemuxForge.Core.Analysis.Speed
                     DeepSiftBatchMatchResult batch = matcher.BuildMatrix(sourceAnchors, languageAnchors, ParallelismHelper.ResolveDefaultMaxDegree(), CancellationToken.None);
                     if (batch == null || batch.Cancelled || !string.IsNullOrEmpty(batch.RejectReason))
                     {
-                        this._rejectReason = batch != null ? batch.RejectReason : "Matching visuale non disponibile";
+                        this._rejectReason = batch != null ? batch.RejectReason : AppText.T("speed.sift.matchingUnavailable");
                         return false;
                     }
                     double sourceSpanMs = sourcePtsMs[sourcePtsMs.Length - 1] - sourcePtsMs[0];
@@ -143,7 +205,7 @@ namespace RemuxForge.Core.Analysis.Speed
                     this._syncDelayMs = (int)Math.Round(offsetMs);
                     this._initialDelayMs = (int)Math.Round(scale * offsetMs);
                 }
-                ConsoleHelper.Write(LogSection.Speed, LogLevel.Debug, "  Rapporto verificato: scala=" + scale.ToString("R", CultureInfo.InvariantCulture) + ", stretch=" + this._stretchFactor + ", sync=" + this._syncDelayMs.ToString(CultureInfo.InvariantCulture) + "ms");
+                ConsoleHelper.Write(LogSection.Speed, LogLevel.Debug, AppText.F("speed.sift.verifiedRatio", scale.ToString("R", CultureInfo.InvariantCulture), this._stretchFactor, this._syncDelayMs));
                 return true;
             }
             finally
@@ -153,6 +215,9 @@ namespace RemuxForge.Core.Analysis.Speed
             }
         }
 
+        /// <summary>
+        /// Azzera lo stato diagnostico della verifica precedente
+        /// </summary>
         private void ResetResult()
         {
             this._initialDelayMs = 0;
@@ -204,7 +269,7 @@ namespace RemuxForge.Core.Analysis.Speed
 
             if (best == null || best.SourceCount < 5 || best.LanguageCount < 5 || best.SourceSpanMs < Math.Min(90000.0, availableSourceSpanMs * 0.3))
             {
-                this._rejectReason = "Supporto visuale temporale insufficiente";
+                this._rejectReason = AppText.T("speed.sift.insufficientTemporalSupport");
                 return false;
             }
 
@@ -215,6 +280,9 @@ namespace RemuxForge.Core.Analysis.Speed
             return true;
         }
 
+        /// <summary>
+        /// Estrae in parallelo le finestre source e language
+        /// </summary>
         private void ExtractInitialFrames(string sourceFile, string languageFile, out List<byte[]> sourceFrames, out double[] sourcePtsMs, out List<byte[]> languageFrames, out double[] languagePtsMs)
         {
             List<byte[]> source = null;
@@ -230,6 +298,9 @@ namespace RemuxForge.Core.Analysis.Speed
             languagePtsMs = languagePts ?? Array.Empty<double>();
         }
 
+        /// <summary>
+        /// Costruisce le ancore SIFT preservando i PTS estratti
+        /// </summary>
         private List<DeepSiftVisualAnchor> BuildAnchors(List<byte[]> frames, double[] ptsMs)
         {
             int count = Math.Min(frames.Count, ptsMs.Length);
@@ -242,25 +313,39 @@ namespace RemuxForge.Core.Analysis.Speed
             return result;
         }
 
-        private FrameFeatureBatchMatcherBase CreateMatcher()
-        {
-            if (string.Equals(this._speedConfig.SiftBackend, "vulkan", StringComparison.OrdinalIgnoreCase))
-                return new VulkanSiftBatchMatcher();
-            if (string.IsNullOrEmpty(this._speedConfig.SiftBackend) || string.Equals(this._speedConfig.SiftBackend, "cpu", StringComparison.OrdinalIgnoreCase))
-                return new OpenCvSiftBatchMatcher();
-            throw new InvalidOperationException("Backend SIFT SpeedCorrection non supportato: " + this._speedConfig.SiftBackend);
-        }
-
         /// <summary>
         /// Accumula le corrispondenze appartenenti alla stessa banda di offset
         /// </summary>
         private sealed class OffsetCluster
         {
+            /// <summary>
+            /// Indici source distinti sostenuti dal cluster
+            /// </summary>
             private readonly HashSet<int> _sourceIndexes = new HashSet<int>();
+
+            /// <summary>
+            /// Indici language distinti sostenuti dal cluster
+            /// </summary>
             private readonly HashSet<int> _languageIndexes = new HashSet<int>();
+
+            /// <summary>
+            /// Offset assegnati al cluster
+            /// </summary>
             private readonly List<double> _offsets = new List<double>();
+
+            /// <summary>
+            /// PTS source minimo sostenuto dal cluster
+            /// </summary>
             private double _minimumSourcePtsMs = double.PositiveInfinity;
+
+            /// <summary>
+            /// PTS source massimo sostenuto dal cluster
+            /// </summary>
             private double _maximumSourcePtsMs = double.NegativeInfinity;
+
+            /// <summary>
+            /// Somma delle confidence SIFT del cluster
+            /// </summary>
             private double _score;
 
             /// <summary>
@@ -354,9 +439,30 @@ namespace RemuxForge.Core.Analysis.Speed
             }
         }
 
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Delay iniziale risolto
+        /// </summary>
         public int InitialDelayMs { get { return this._initialDelayMs; } }
+
+        /// <summary>
+        /// Fattore di stretch normalizzato
+        /// </summary>
         public string StretchFactor { get { return this._stretchFactor; } }
+
+        /// <summary>
+        /// Delay finale da applicare
+        /// </summary>
         public int SyncDelayMs { get { return this._syncDelayMs; } }
+
+        /// <summary>
+        /// Tempo totale dell'ultima verifica
+        /// </summary>
         public long ExecutionTimeMs { get { return this._executionTimeMs; } }
+
+        #endregion
     }
 }

@@ -1,118 +1,86 @@
 namespace RemuxForge.Core.Models
 {
     /// <summary>
-    /// Timing diagnostici della sincronizzazione frame-sync
+    /// Timing diagnostici della sincronizzazione FrameSync SIFT
     /// </summary>
     public class FrameSyncTimingInfo
     {
-        #region Costruttore
+        #region Proprietà
 
         /// <summary>
-        /// Costruttore
-        /// </summary>
-        public FrameSyncTimingInfo()
-        {
-            this.TotalMs = 0;
-            this.VideoInfoMs = 0;
-            this.GeometryMs = 0;
-            this.InitialSearchMs = 0;
-            this.InitialExtractMs = 0;
-            this.InitialSceneCutMs = 0;
-            this.InitialVotingMs = 0;
-            this.InitialCandidateVerifyMs = 0;
-            this.AudioGlobalMs = 0;
-            this.CheckpointsMs = 0;
-            this.CheckpointsBaseMs = 0;
-            this.CheckpointsRetryMs = 0;
-            this.VideoExtractCalls = 0;
-            this.VideoExtractCacheHits = 0;
-            this.VideoExtractCacheMisses = 0;
-            this.VideoExtractCachedMs = 0;
-        }
-
-        #endregion
-
-        #region Proprieta
-
-        /// <summary>
-        /// Tempo totale frame-sync
+        /// Tempo totale FrameSync
         /// </summary>
         public long TotalMs { get; set; }
 
         /// <summary>
-        /// Tempo lettura informazioni video
+        /// Tempo di lettura delle informazioni video
         /// </summary>
         public long VideoInfoMs { get; set; }
 
         /// <summary>
-        /// Tempo analisi geometria
+        /// Tempo di analisi della geometria
         /// </summary>
         public long GeometryMs { get; set; }
 
         /// <summary>
-        /// Tempo totale ricerca delay iniziale
+        /// Tempo totale della ricerca iniziale
         /// </summary>
         public long InitialSearchMs { get; set; }
 
         /// <summary>
-        /// Tempo estrazione frame ricerca iniziale
+        /// Tempo di estrazione delle ancore iniziali
         /// </summary>
         public long InitialExtractMs { get; set; }
 
         /// <summary>
-        /// Tempo rilevamento scene-cut ricerca iniziale
+        /// Tempo di matching NxM e risoluzione iniziale
         /// </summary>
-        public long InitialSceneCutMs { get; set; }
+        public long InitialMatchMs { get; set; }
 
         /// <summary>
-        /// Tempo voting e clusterizzazione ricerca iniziale
+        /// Numero di coppie elaborate dalla ricerca iniziale
         /// </summary>
-        public long InitialVotingMs { get; set; }
+        public long InitialPairCount { get; set; }
 
         /// <summary>
-        /// Tempo verifica candidati iniziali
-        /// </summary>
-        public long InitialCandidateVerifyMs { get; set; }
-
-        /// <summary>
-        /// Tempo fingerprint audio globale
-        /// </summary>
-        public long AudioGlobalMs { get; set; }
-
-        /// <summary>
-        /// Tempo totale checkpoint
+        /// Tempo totale dei checkpoint
         /// </summary>
         public long CheckpointsMs { get; set; }
 
         /// <summary>
-        /// Tempo primo passaggio checkpoint
+        /// Tempo di estrazione complessivo dei checkpoint
         /// </summary>
-        public long CheckpointsBaseMs { get; set; }
+        public long CheckpointExtractMs { get; set; }
 
         /// <summary>
-        /// Tempo retry checkpoint
+        /// Tempo di matching complessivo dei checkpoint
         /// </summary>
-        public long CheckpointsRetryMs { get; set; }
+        public long CheckpointMatchMs { get; set; }
 
         /// <summary>
-        /// Numero richieste estrazione video tramite cache
+        /// Numero di coppie elaborate complessivamente nei checkpoint
         /// </summary>
-        public int VideoExtractCalls { get; set; }
+        public long CheckpointPairCount { get; set; }
 
         /// <summary>
-        /// Numero richieste soddisfatte dalla cache segmenti
+        /// Tempo totale del refinement finale full-rate
         /// </summary>
-        public int VideoExtractCacheHits { get; set; }
+        public long PrecisionRefinementMs { get; set; }
 
         /// <summary>
-        /// Numero richieste che hanno lanciato ffmpeg
+        /// Tempo di estrazione accumulato dai tentativi full-rate
         /// </summary>
-        public int VideoExtractCacheMisses { get; set; }
+        public long PrecisionExtractMs { get; set; }
 
         /// <summary>
-        /// Tempo totale nel wrapper cache/estrazione video
+        /// Tempo di matching accumulato dai tentativi full-rate
         /// </summary>
-        public long VideoExtractCachedMs { get; set; }
+        public long PrecisionMatchMs { get; set; }
+
+        /// <summary>
+        /// Numero di coppie elaborate dai tentativi full-rate
+        /// </summary>
+        public long PrecisionPairCount { get; set; }
 
         #endregion
     }

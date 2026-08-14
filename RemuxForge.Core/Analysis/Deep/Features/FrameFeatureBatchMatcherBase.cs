@@ -15,6 +15,24 @@ namespace RemuxForge.Core.Analysis.Deep.Features
         #region Metodi pubblici
 
         /// <summary>
+        /// Crea il matcher associato al backend SIFT richiesto senza fallback impliciti
+        /// </summary>
+        /// <param name="backend">Backend SIFT operativo</param>
+        /// <returns>Matcher del backend richiesto</returns>
+        public static FrameFeatureBatchMatcherBase Create(SiftBackendKind backend)
+        {
+            switch (backend)
+            {
+                case SiftBackendKind.Cpu:
+                    return new OpenCvSiftBatchMatcher();
+                case SiftBackendKind.Vulkan:
+                    return new VulkanSiftBatchMatcher();
+                default:
+                    throw new InvalidOperationException(AppText.F("analysis.sift.unsupportedBackend", backend));
+            }
+        }
+
+        /// <summary>
         /// Verifica che il backend sia utilizzabile nella sessione corrente
         /// e restituisce l'eventuale motivo di indisponibilità
         /// </summary>

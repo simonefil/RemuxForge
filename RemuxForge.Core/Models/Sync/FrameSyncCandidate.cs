@@ -3,176 +3,104 @@ using System.Collections.Generic;
 namespace RemuxForge.Core.Models
 {
     /// <summary>
-    /// Candidato offset prodotto dalla pipeline frame-sync
+    /// Modo temporale SIFT candidato per l'offset FrameSync
     /// </summary>
     public class FrameSyncCandidate
     {
         #region Costruttore
 
         /// <summary>
-        /// Costruttore
+        /// Inizializza il candidato con backend e stato diagnostico vuoti
         /// </summary>
         public FrameSyncCandidate()
         {
-            this.OffsetMs = 0;
-            this.Source = "";
-            this.VoteCount = 0;
-            this.VisualScore = 0.0;
-            this.BlurScore = 0.0;
-            this.TemporalScore = 0.0;
-            this.EdgeScore = 0.0;
-            this.BlockScore = 0.0;
-            this.MotionScore = 0.0;
-            this.HashScore = 0.0;
-            this.DescriptorVotes = 0;
-            this.DescriptorAgreement = 0.0;
-            this.CombinedScore = 0.0;
-            this.SecondBestScore = 0.0;
-            this.Margin = 0.0;
-            this.MatchedCuts = 0;
+            this.Backend = "";
         }
 
         #endregion
 
-        #region Costanti
+        #region Proprietà
 
         /// <summary>
-        /// Candidato generato tramite voting sui tagli scena
-        /// </summary>
-        public const string SCENE_CUT_VOTING = "SceneCutVoting";
-
-        /// <summary>
-        /// Candidato generato tramite fingerprint temporale
-        /// </summary>
-        public const string TEMPORAL_FINGERPRINT = "TemporalFingerprint";
-
-        /// <summary>
-        /// Candidato generato tramite ricerca locale
-        /// </summary>
-        public const string LOCAL_SEARCH = "LocalSearch";
-
-        /// <summary>
-        /// Candidato generato tramite fingerprint audio globale
-        /// </summary>
-        public const string AUDIO_GLOBAL = "AudioGlobalFingerprint";
-
-        #endregion
-
-        #region Proprieta
-
-        /// <summary>
-        /// Offset candidato in millisecondi
+        /// Offset da applicare alla timeline language in millisecondi
         /// </summary>
         public int OffsetMs { get; set; }
 
         /// <summary>
-        /// Origine del candidato
+        /// Backend SIFT che ha prodotto le evidenze
         /// </summary>
-        public string Source { get; set; }
+        public string Backend { get; set; }
 
         /// <summary>
-        /// Numero di voti grezzi ricevuti
+        /// Numero di coppie elaborate dal matcher
         /// </summary>
-        public int VoteCount { get; set; }
+        public long ProcessedPairCount { get; set; }
 
         /// <summary>
-        /// Score visuale
+        /// Numero di coppie accettate geometricamente nel modo
         /// </summary>
-        public double VisualScore { get; set; }
+        public int AcceptedPairCount { get; set; }
 
         /// <summary>
-        /// Score luma blur/denoise
+        /// Numero di coppie reciprocamente univoche nel percorso monotono
         /// </summary>
-        public double BlurScore { get; set; }
+        public int StrongPairCount { get; set; }
 
         /// <summary>
-        /// Score fingerprint temporale
+        /// Numero di coppie geometriche escluse per ambiguità temporale
         /// </summary>
-        public double TemporalScore { get; set; }
+        public int AmbiguousPairCount { get; set; }
 
         /// <summary>
-        /// Score edge/gradient
+        /// Copertura temporale source del percorso monotono
         /// </summary>
-        public double EdgeScore { get; set; }
+        public double SourceCoverageMs { get; set; }
 
         /// <summary>
-        /// Score fingerprint blocchi
+        /// Copertura temporale language del percorso monotono
         /// </summary>
-        public double BlockScore { get; set; }
+        public double LanguageCoverageMs { get; set; }
 
         /// <summary>
-        /// Score movimento a blocchi inter-frame
+        /// Confidence SIFT media del percorso monotono
         /// </summary>
-        public double MotionScore { get; set; }
+        public double MeanScore { get; set; }
 
         /// <summary>
-        /// Score hash percettivo leggero
+        /// Deviazione assoluta mediana degli offset del percorso
         /// </summary>
-        public double HashScore { get; set; }
-
-        /// <summary>
-        /// Numero descriptor visuali concordanti
-        /// </summary>
-        public int DescriptorVotes { get; set; }
-
-        /// <summary>
-        /// Quota descriptor visuali concordanti 0..1
-        /// </summary>
-        public double DescriptorAgreement { get; set; }
-
-        /// <summary>
-        /// Score combinato normalizzato
-        /// </summary>
-        public double CombinedScore { get; set; }
-
-        /// <summary>
-        /// Score del secondo candidato migliore
-        /// </summary>
-        public double SecondBestScore { get; set; }
-
-        /// <summary>
-        /// Distanza tra miglior candidato e secondo candidato
-        /// </summary>
-        public double Margin { get; set; }
-
-        /// <summary>
-        /// Numero di tagli matchati/verificati
-        /// </summary>
-        public int MatchedCuts { get; set; }
+        public double DispersionMs { get; set; }
 
         #endregion
     }
 
     /// <summary>
-    /// Risultato iniziale della ricerca offset frame-sync
+    /// Risultato della ricerca iniziale SIFT FrameSync
     /// </summary>
     public class FrameSyncInitialResult
     {
         #region Costruttore
 
         /// <summary>
-        /// Costruttore
+        /// Inizializza il risultato senza candidati
         /// </summary>
         public FrameSyncInitialResult()
         {
-            this.Success = false;
-            this.Ambiguous = false;
-            this.BestCandidate = null;
             this.Candidates = new List<FrameSyncCandidate>();
             this.FailureReason = "";
         }
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
-        /// True se la ricerca iniziale ha prodotto un candidato accettabile
+        /// Indica che la ricerca iniziale ha prodotto un modo applicabile
         /// </summary>
         public bool Success { get; set; }
 
         /// <summary>
-        /// True se la ricerca iniziale ha prodotto candidati ambigui
+        /// Indica che più modi temporali equivalenti impediscono una decisione
         /// </summary>
         public bool Ambiguous { get; set; }
 
@@ -182,12 +110,12 @@ namespace RemuxForge.Core.Models
         public FrameSyncCandidate BestCandidate { get; set; }
 
         /// <summary>
-        /// Lista candidati ordinati per affidabilita'
+        /// Modi temporali ordinati per supporto monotono
         /// </summary>
         public List<FrameSyncCandidate> Candidates { get; set; }
 
         /// <summary>
-        /// Motivo fallimento o ambiguita'
+        /// Motivo localizzato del rifiuto
         /// </summary>
         public string FailureReason { get; set; }
 

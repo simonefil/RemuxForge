@@ -1,7 +1,28 @@
-using System.Collections.Generic;
+using System;
 
 namespace RemuxForge.Core.Models
 {
+    /// <summary>
+    /// Backend SIFT disponibile per le analisi visuali
+    /// </summary>
+    public enum SiftBackendKind
+    {
+        /// <summary>
+        /// Valore assente o non riconosciuto
+        /// </summary>
+        Unknown,
+
+        /// <summary>
+        /// Implementazione OpenCV eseguita sulla CPU
+        /// </summary>
+        Cpu,
+
+        /// <summary>
+        /// Implementazione RemuxForge.Vulkan eseguita sulla GPU
+        /// </summary>
+        Vulkan
+    }
+
     /// <summary>
     /// Configurazione parametri base sincronizzazione video (VideoSyncServiceBase)
     /// </summary>
@@ -16,20 +37,9 @@ namespace RemuxForge.Core.Models
         {
             this.FrameWidth = 320;
             this.FrameHeight = 240;
-            this.SsimThreshold = 0.55;
-            this.SsimMaxThreshold = 0.999;
             this.NumCheckPoints = 9;
-            this.MinValidPoints = 5;
-            this.SceneCutThreshold = 50.0;
-            this.CutHalfWindow = 5;
-            this.CutSignatureLength = 10;
-            this.FingerprintCorrelationThreshold = 0.80;
-            this.MinSceneCuts = 3;
-            this.MinCutSpacingFrames = 24;
             this.VerifySourceDurationSec = 10;
             this.VerifyLangDurationSec = 15;
-            this.VerifySourceRetrySec = 20;
-            this.VerifyLangRetrySec = 30;
         }
 
         #endregion
@@ -47,54 +57,9 @@ namespace RemuxForge.Core.Models
         public int FrameHeight { get; set; }
 
         /// <summary>
-        /// Soglia SSIM minima per considerare due frame corrispondenti
-        /// </summary>
-        public double SsimThreshold { get; set; }
-
-        /// <summary>
-        /// Soglia SSIM massima per escludere frame troppo simili (scene statiche)
-        /// </summary>
-        public double SsimMaxThreshold { get; set; }
-
-        /// <summary>
         /// Numero di punti di verifica distribuiti nel video
         /// </summary>
         public int NumCheckPoints { get; set; }
-
-        /// <summary>
-        /// Numero minimo di punti validi richiesti per confermare la sincronizzazione
-        /// </summary>
-        public int MinValidPoints { get; set; }
-
-        /// <summary>
-        /// Soglia differenza media pixel per rilevare un cambio scena
-        /// </summary>
-        public double SceneCutThreshold { get; set; }
-
-        /// <summary>
-        /// Metà della finestra di frame intorno a un taglio scena
-        /// </summary>
-        public int CutHalfWindow { get; set; }
-
-        /// <summary>
-        /// Lunghezza della firma di taglio scena in frame
-        /// </summary>
-        public int CutSignatureLength { get; set; }
-
-        /// <summary>
-        /// Soglia minima di correlazione Pearson per match fingerprint
-        /// </summary>
-        public double FingerprintCorrelationThreshold { get; set; }
-
-        /// <summary>
-        /// Numero minimo di tagli scena richiesti per procedere
-        /// </summary>
-        public int MinSceneCuts { get; set; }
-
-        /// <summary>
-        /// Distanza minima in frame tra due tagli scena consecutivi
-        /// </summary>
-        public int MinCutSpacingFrames { get; set; }
 
         /// <summary>
         /// Durata in secondi dell'estrazione source per verifica
@@ -105,16 +70,6 @@ namespace RemuxForge.Core.Models
         /// Durata in secondi dell'estrazione lang per verifica
         /// </summary>
         public int VerifyLangDurationSec { get; set; }
-
-        /// <summary>
-        /// Durata in secondi dell'estrazione source per retry verifica
-        /// </summary>
-        public int VerifySourceRetrySec { get; set; }
-
-        /// <summary>
-        /// Durata in secondi dell'estrazione lang per retry verifica
-        /// </summary>
-        public int VerifyLangRetrySec { get; set; }
 
         #endregion
     }
@@ -131,7 +86,6 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public SpeedCorrectionConfig()
         {
-            this.SiftBackend = "cpu";
             this.SourceStartSec = 0;
             this.SourceDurationSec = 300;
             this.LangDurationSec = 375;
@@ -140,11 +94,6 @@ namespace RemuxForge.Core.Models
         #endregion
 
         #region Proprietà
-
-        /// <summary>
-        /// Backend SIFT: cpu oppure vulkan
-        /// </summary>
-        public string SiftBackend { get; set; }
 
         /// <summary>
         /// Secondo di inizio estrazione source
@@ -181,33 +130,7 @@ namespace RemuxForge.Core.Models
             this.SourceDurationSec = 120;
             this.LangDurationSec = 180;
             this.MinValidPoints = 5;
-            this.GroupingToleranceFrames = 1;
-            this.MinEdgeCorrelation = 0.70;
-            this.MinBlockCorrelation = 0.72;
-            this.MinMotionCorrelation = 0.58;
-            this.MinBlurredCorrelation = 0.70;
-            this.MinHashSimilarity = 0.78;
-            this.MinDescriptorVotes = 2;
-            this.InitialMinMatchedCuts = 3;
-            this.InitialMinScore = 0.62;
-            this.CheckpointMinScore = 0.58;
             this.FinalMinConfidence = 0.35;
-            this.InitialCheckpointDriftPenaltyFrames = 3;
-            this.InitialCheckpointDriftRejectFrames = 12;
-            this.InitialMinMargin = 0.05;
-            this.CheckpointMinMargin = 0.04;
-            this.StaticSegmentVarianceThreshold = 8.0;
-            this.BlackFrameRatioThreshold = 0.92;
-            this.AudioGlobalEnabled = true;
-            this.AudioGlobalSampleRate = 8000;
-            this.AudioGlobalWindowMs = 50;
-            this.AudioGlobalSearchRangeMs = 30000;
-            this.AudioGlobalCoarseStepMs = 100;
-            this.AudioGlobalMinScore = 0.62;
-            this.AudioGlobalMinMargin = 0.04;
-            this.AudioGlobalMinCoverage = 0.55;
-            this.AudioGlobalConfirmToleranceFrames = 2;
-            this.AudioGlobalRejectToleranceFrames = 8;
         }
 
         #endregion
@@ -240,139 +163,9 @@ namespace RemuxForge.Core.Models
         public int MinValidPoints { get; set; }
 
         /// <summary>
-        /// Tolleranza raggruppamento offset in frame (1 = 1 frame, 2 = 2 frame)
-        /// </summary>
-        public int GroupingToleranceFrames { get; set; }
-
-        /// <summary>
-        /// Correlazione minima edge per voto descriptor
-        /// </summary>
-        public double MinEdgeCorrelation { get; set; }
-
-        /// <summary>
-        /// Correlazione minima block fingerprint per voto descriptor
-        /// </summary>
-        public double MinBlockCorrelation { get; set; }
-
-        /// <summary>
-        /// Correlazione minima block-motion per voto descriptor
-        /// </summary>
-        public double MinMotionCorrelation { get; set; }
-
-        /// <summary>
-        /// Correlazione minima blur/denoise per voto descriptor
-        /// </summary>
-        public double MinBlurredCorrelation { get; set; }
-
-        /// <summary>
-        /// Similarità minima hash percettivo per voto descriptor
-        /// </summary>
-        public double MinHashSimilarity { get; set; }
-
-        /// <summary>
-        /// Numero minimo di descriptor concordanti
-        /// </summary>
-        public int MinDescriptorVotes { get; set; }
-
-        /// <summary>
-        /// Numero minimo di tagli verificati richiesti solo per il candidato iniziale
-        /// </summary>
-        public int InitialMinMatchedCuts { get; set; }
-
-        /// <summary>
-        /// Score minimo candidato iniziale
-        /// </summary>
-        public double InitialMinScore { get; set; }
-
-        /// <summary>
-        /// Score minimo checkpoint
-        /// </summary>
-        public double CheckpointMinScore { get; set; }
-
-        /// <summary>
         /// Confidence finale minima per applicare offset
         /// </summary>
         public double FinalMinConfidence { get; set; }
-
-        /// <summary>
-        /// Delta initial/checkpoint in frame oltre cui loggare e penalizzare la confidence
-        /// </summary>
-        public int InitialCheckpointDriftPenaltyFrames { get; set; }
-
-        /// <summary>
-        /// Delta initial/checkpoint in frame oltre cui il risultato è troppo sospetto
-        /// </summary>
-        public int InitialCheckpointDriftRejectFrames { get; set; }
-
-        /// <summary>
-        /// Margine minimo tra primo e secondo candidato iniziale
-        /// </summary>
-        public double InitialMinMargin { get; set; }
-
-        /// <summary>
-        /// Margine minimo tra primo e secondo candidato checkpoint
-        /// </summary>
-        public double CheckpointMinMargin { get; set; }
-
-        /// <summary>
-        /// Varianza sotto cui un segmento è considerato statico/piatto
-        /// </summary>
-        public double StaticSegmentVarianceThreshold { get; set; }
-
-        /// <summary>
-        /// Rapporto pixel scuri sopra cui un segmento è considerato nero
-        /// </summary>
-        public double BlackFrameRatioThreshold { get; set; }
-
-        /// <summary>
-        /// Abilita fingerprint audio globale come fallback/metrica di consenso
-        /// </summary>
-        public bool AudioGlobalEnabled { get; set; }
-
-        /// <summary>
-        /// Sample rate PCM usato per fingerprint audio
-        /// </summary>
-        public int AudioGlobalSampleRate { get; set; }
-
-        /// <summary>
-        /// Finestra fingerprint audio in millisecondi
-        /// </summary>
-        public int AudioGlobalWindowMs { get; set; }
-
-        /// <summary>
-        /// Range massimo offset audio globale
-        /// </summary>
-        public int AudioGlobalSearchRangeMs { get; set; }
-
-        /// <summary>
-        /// Step coarse offset audio globale
-        /// </summary>
-        public int AudioGlobalCoarseStepMs { get; set; }
-
-        /// <summary>
-        /// Score minimo audio globale
-        /// </summary>
-        public double AudioGlobalMinScore { get; set; }
-
-        /// <summary>
-        /// Margine minimo audio globale
-        /// </summary>
-        public double AudioGlobalMinMargin { get; set; }
-
-        /// <summary>
-        /// Copertura minima audio globale
-        /// </summary>
-        public double AudioGlobalMinCoverage { get; set; }
-
-        /// <summary>
-        /// Delta audio/video in frame entro cui l'audio conferma un initial debole
-        /// </summary>
-        public int AudioGlobalConfirmToleranceFrames { get; set; }
-
-        /// <summary>
-        /// Delta audio/video in frame oltre cui l'audio boccia un initial debole
-        /// </summary>
-        public int AudioGlobalRejectToleranceFrames { get; set; }
 
         #endregion
     }
@@ -389,18 +182,12 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public DeepAnalysisConfig()
         {
-            this.SiftBackend = "cpu";
             this.SceneExtractTimeoutMs = 600000;
         }
 
         #endregion
 
         #region Proprietà
-
-        /// <summary>
-        /// Backend SIFT: cpu oppure vulkan
-        /// </summary>
-        public string SiftBackend { get; set; }
 
         /// <summary>
         /// Timeout in millisecondi per estrazione scene con ffmpeg
@@ -501,6 +288,20 @@ namespace RemuxForge.Core.Models
     /// </summary>
     public class AdvancedConfig
     {
+        #region Costanti
+
+        /// <summary>
+        /// Valore persistito del backend CPU
+        /// </summary>
+        private const string SIFT_BACKEND_CPU = "cpu";
+
+        /// <summary>
+        /// Valore persistito del backend Vulkan
+        /// </summary>
+        private const string SIFT_BACKEND_VULKAN = "vulkan";
+
+        #endregion
+
         #region Costruttore
 
         /// <summary>
@@ -508,6 +309,7 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public AdvancedConfig()
         {
+            this.SiftBackend = SIFT_BACKEND_CPU;
             this.VideoSync = new VideoSyncConfig();
             this.SpeedCorrection = new SpeedCorrectionConfig();
             this.FrameSync = new FrameSyncConfig();
@@ -518,7 +320,76 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Converte il valore persistito nel backend operativo
+        /// </summary>
+        /// <returns>Backend SIFT configurato oppure <see cref="SiftBackendKind.Unknown"/></returns>
+        public SiftBackendKind GetSiftBackendKind()
+        {
+            TryParseSiftBackend(this.SiftBackend, out SiftBackendKind backend);
+            return backend;
+        }
+
+        /// <summary>
+        /// Imposta il backend operativo usando il valore persistito canonico
+        /// </summary>
+        /// <param name="backend">Backend SIFT da configurare</param>
+        public void SetSiftBackendKind(SiftBackendKind backend)
+        {
+            this.SiftBackend = GetSiftBackendValue(backend);
+        }
+
+        /// <summary>
+        /// Converte un valore persistito nel relativo enum operativo
+        /// </summary>
+        /// <param name="value">Valore letto dalla configurazione o dalla UI</param>
+        /// <param name="backend">Backend SIFT riconosciuto</param>
+        /// <returns>True se il valore identifica un backend supportato</returns>
+        public static bool TryParseSiftBackend(string value, out SiftBackendKind backend)
+        {
+            if (string.Equals(value, SIFT_BACKEND_CPU, StringComparison.OrdinalIgnoreCase))
+            {
+                backend = SiftBackendKind.Cpu;
+                return true;
+            }
+            if (string.Equals(value, SIFT_BACKEND_VULKAN, StringComparison.OrdinalIgnoreCase))
+            {
+                backend = SiftBackendKind.Vulkan;
+                return true;
+            }
+
+            backend = SiftBackendKind.Unknown;
+            return false;
+        }
+
+        /// <summary>
+        /// Restituisce il valore persistibile canonico di un backend operativo
+        /// </summary>
+        /// <param name="backend">Backend SIFT operativo</param>
+        /// <returns>Valore in minuscolo usato da JSON e UI</returns>
+        public static string GetSiftBackendValue(SiftBackendKind backend)
+        {
+            switch (backend)
+            {
+                case SiftBackendKind.Cpu:
+                    return SIFT_BACKEND_CPU;
+                case SiftBackendKind.Vulkan:
+                    return SIFT_BACKEND_VULKAN;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(backend));
+            }
+        }
+
+        #endregion
+
         #region Proprietà
+
+        /// <summary>
+        /// Backend SIFT condiviso da FrameSync, SpeedCorrection e DeepAnalysis
+        /// </summary>
+        public string SiftBackend { get; set; }
 
         /// <summary>
         /// Parametri base sincronizzazione video

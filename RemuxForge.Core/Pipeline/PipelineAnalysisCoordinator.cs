@@ -221,13 +221,13 @@ namespace RemuxForge.Core.Pipeline
             // Applica la correzione manuale quando non è attiva la deep analysis
             if (!done && sourceInfo != null && langInfo != null && !this._opts.DeepAnalysis && speedCorrectionMode == Options.SPEED_CORRECTION_MANUAL)
             {
-                ConsoleHelper.Write(LogSection.Speed, LogLevel.Phase, "  Speed correction manuale: stretch=" + this._opts.ManualStretchFactor);
-                ConsoleHelper.Progress(LogSection.Speed, 10, "Speed: setup");
+                ConsoleHelper.Write(LogSection.Speed, LogLevel.Phase, AppText.F("speed.pipeline.manualStart", this._opts.ManualStretchFactor));
+                ConsoleHelper.Progress(LogSection.Speed, 10, AppText.T("speed.pipeline.progressSetup"));
 
                 ffmpegPath = this.ResolveFfmpegForSpeed();
                 if (!string.IsNullOrEmpty(ffmpegPath))
                 {
-                    ConsoleHelper.Progress(LogSection.Speed, 14, "Speed: ffmpeg");
+                    ConsoleHelper.Progress(LogSection.Speed, 14, AppText.T("speed.pipeline.progressFfmpeg"));
                     this._ffmpegPath = ffmpegPath;
                     if (sourceInfo.ContainerDurationNs > 0)
                     {
@@ -236,7 +236,7 @@ namespace RemuxForge.Core.Pipeline
 
                     speedService = new SpeedCorrectionService(ffmpegPath);
                     speedService.SetAnalysisCrop(this._opts.AnalysisCropSourcePx, this._opts.AnalysisCropLanguagePx);
-                    ConsoleHelper.Progress(LogSection.Speed, 20, "Speed: stretch");
+                    ConsoleHelper.Progress(LogSection.Speed, 20, AppText.T("speed.pipeline.progressStretch"));
                     speedOk = speedService.FindDelayAndVerifyManual(record.SourceFilePath, record.LangFilePath, this._opts.ManualStretchFactor);
                     record.SpeedCorrectionTimeMs = speedService.ExecutionTimeMs;
 
@@ -247,21 +247,23 @@ namespace RemuxForge.Core.Pipeline
                         record.SpeedCorrectionApplied = true;
                         speedCorrectionActive = true;
 
-                        ConsoleHelper.Write(LogSection.Speed, LogLevel.Success, "  Correzione manuale: delay=" + speedService.InitialDelayMs + "ms, sync=" + speedService.SyncDelayMs + "ms, stretch=" + speedService.StretchFactor + " (" + speedService.ExecutionTimeMs + "ms)");
-                        ConsoleHelper.Write(LogSection.Speed, LogLevel.Debug, "  Verifica: " + speedService.GetDetailSummary());
-                        ConsoleHelper.Progress(LogSection.Speed, 72, "Speed: completata");
+                        ConsoleHelper.Write(LogSection.Speed, LogLevel.Success, AppText.F("speed.pipeline.manualCompleted", speedService.InitialDelayMs, speedService.SyncDelayMs, speedService.StretchFactor, speedService.ExecutionTimeMs));
+                        ConsoleHelper.Write(LogSection.Speed, LogLevel.Debug, AppText.F("speed.pipeline.verification", speedService.GetDetailSummary()));
+                        ConsoleHelper.Progress(LogSection.Speed, 72, AppText.T("speed.pipeline.progressCompleted"));
                     }
                     else
                     {
-                        ConsoleHelper.Write(LogSection.Speed, LogLevel.Error, "  Correzione velocità manuale fallita: " + speedService.GetDetailSummary());
-                        done = this.FailAndFinalizeRecord(record, "Speed correction manuale fallita: " + speedService.GetDetailSummary());
+                        string speedFailure = AppText.F("speed.pipeline.manualFailed", speedService.GetDetailSummary());
+                        ConsoleHelper.Write(LogSection.Speed, LogLevel.Error, speedFailure);
+                        done = this.FailAndFinalizeRecord(record, speedFailure);
                     }
                 }
                 else
                 {
-                    ConsoleHelper.Write(LogSection.Speed, LogLevel.Error, "  ffmpeg non disponibile per speed correction manuale");
-                    ConsoleHelper.Progress(LogSection.Speed, 72, "Speed: non applicata");
-                    done = this.FailAndFinalizeRecord(record, "ffmpeg non disponibile per speed correction manuale");
+                    string ffmpegUnavailable = AppText.T("speed.pipeline.ffmpegUnavailable");
+                    ConsoleHelper.Write(LogSection.Speed, LogLevel.Error, ffmpegUnavailable);
+                    ConsoleHelper.Progress(LogSection.Speed, 72, AppText.T("speed.pipeline.progressNotApplied"));
+                    done = this.FailAndFinalizeRecord(record, ffmpegUnavailable);
                 }
             }
 
@@ -352,8 +354,8 @@ namespace RemuxForge.Core.Pipeline
             // Esegue il frame-sync solo se non è già disponibile una correzione temporale
             if (!done && !speedCorrectionActive && this._opts.FrameSync && this._frameSyncService != null)
             {
-                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Phase, "  Sincronizzazione tramite confronto visivo...");
-                ConsoleHelper.Progress(LogSection.FrameSync, 10, "FrameSync: setup");
+                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Phase, AppText.T("framesync.pipeline.start"));
+                ConsoleHelper.Progress(LogSection.FrameSync, 10, AppText.T("framesync.pipeline.progressSetup"));
 
                 frameSyncOffset = this._frameSyncService.RefineOffset(record.SourceFilePath, record.LangFilePath);
                 record.FrameSyncTimeMs = this._frameSyncService.FrameSyncTimeMs;
@@ -385,20 +387,20 @@ namespace RemuxForge.Core.Pipeline
                     {
                         if (record.FrameSyncResult.Initial == null || !record.FrameSyncResult.Initial.Success)
                         {
-                            record.FrameSyncResult.FailureReason = "Delay iniziale non verificato";
+                            record.FrameSyncResult.FailureReason = AppText.T("framesync.pipeline.initialNotVerified");
                         }
                         else if (acceptedFrameSyncPoints < AppSettingsService.Instance.Settings.Advanced.FrameSync.MinValidPoints)
                         {
-                            record.FrameSyncResult.FailureReason = "Punti validi insufficienti";
+                            record.FrameSyncResult.FailureReason = AppText.T("framesync.pipeline.insufficientPoints");
                         }
                         else
                         {
-                            record.FrameSyncResult.FailureReason = "Confidence finale insufficiente";
+                            record.FrameSyncResult.FailureReason = AppText.T("framesync.pipeline.insufficientConfidence");
                         }
                     }
 
-                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Warning, "  Risultato non applicabile: punti=" + acceptedFrameSyncPoints + "/" + AppSettingsService.Instance.Settings.Advanced.VideoSync.NumCheckPoints + ", confidence=" + (record.FrameSyncResult != null ? record.FrameSyncResult.Confidence.ToString("P0", System.Globalization.CultureInfo.InvariantCulture) : "0%") + ", richiesta=" + AppSettingsService.Instance.Settings.Advanced.FrameSync.FinalMinConfidence.ToString("P0", System.Globalization.CultureInfo.InvariantCulture));
-                    ConsoleHelper.Progress(LogSection.FrameSync, 76, "FrameSync: non conclusivo");
+                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Warning, AppText.F("framesync.pipeline.notApplicable", acceptedFrameSyncPoints, AppSettingsService.Instance.Settings.Advanced.VideoSync.NumCheckPoints, record.FrameSyncResult != null ? record.FrameSyncResult.Confidence.ToString("P0", System.Globalization.CultureInfo.InvariantCulture) : "0%", AppSettingsService.Instance.Settings.Advanced.FrameSync.FinalMinConfidence.ToString("P0", System.Globalization.CultureInfo.InvariantCulture)));
+                    ConsoleHelper.Progress(LogSection.FrameSync, 76, AppText.T("framesync.pipeline.inconclusive"));
                 }
 
                 this._diagnosticsWriter.WriteFrameSyncIfEnabled(record, this._opts);
@@ -406,25 +408,25 @@ namespace RemuxForge.Core.Pipeline
                 if (frameSyncAccepted)
                 {
                     syncOffset = frameSyncOffset;
-                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Success, "  Offset: " + Utils.FormatDelay(frameSyncOffset) + " (tempo: " + this._frameSyncService.FrameSyncTimeMs + "ms)");
+                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Success, AppText.F("framesync.pipeline.offset", Utils.FormatDelay(frameSyncOffset), this._frameSyncService.FrameSyncTimeMs));
                     if (record.FrameSyncResult != null)
                     {
-                        ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, "  Confidence: " + record.FrameSyncResult.Confidence.ToString("P0", System.Globalization.CultureInfo.InvariantCulture));
+                        ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("framesync.pipeline.confidence", record.FrameSyncResult.Confidence.ToString("P0", System.Globalization.CultureInfo.InvariantCulture)));
                         frameSyncTiming = record.FrameSyncResult.Timing;
                         if (frameSyncTiming != null)
                         {
-                            ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, "  Timing: info=" + frameSyncTiming.VideoInfoMs + "ms, geometria=" + frameSyncTiming.GeometryMs + "ms, iniziale=" + frameSyncTiming.InitialSearchMs + "ms, audio=" + frameSyncTiming.AudioGlobalMs + "ms, checkpoint=" + frameSyncTiming.CheckpointsMs + "ms, totale=" + frameSyncTiming.TotalMs + "ms");
-                            ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, "  Estrazioni: calls=" + frameSyncTiming.VideoExtractCalls + ", hit=" + frameSyncTiming.VideoExtractCacheHits + ", miss=" + frameSyncTiming.VideoExtractCacheMisses + ", tempo=" + frameSyncTiming.VideoExtractCachedMs + "ms");
+                            ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("framesync.pipeline.timing", frameSyncTiming.VideoInfoMs, frameSyncTiming.GeometryMs, frameSyncTiming.InitialSearchMs, frameSyncTiming.CheckpointsMs, frameSyncTiming.PrecisionRefinementMs, frameSyncTiming.TotalMs));
+                            ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("framesync.pipeline.pairs", frameSyncTiming.InitialPairCount, frameSyncTiming.CheckpointPairCount, frameSyncTiming.PrecisionPairCount));
                         }
                     }
-                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, "  Dettaglio: " + this._frameSyncService.GetDetailSummary());
-                    ConsoleHelper.Progress(LogSection.FrameSync, 88, "FrameSync: completato");
+                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("framesync.pipeline.detail", this._frameSyncService.GetDetailSummary()));
+                    ConsoleHelper.Progress(LogSection.FrameSync, 88, AppText.T("framesync.pipeline.completed"));
                 }
                 else
                 {
-                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Error, "  Sincronizzazione fallita");
-                    ConsoleHelper.Progress(LogSection.FrameSync, 76, "FrameSync: non conclusivo");
-                    done = this.FailAndFinalizeRecord(record, "Frame sync fallito");
+                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Error, AppText.T("framesync.pipeline.failed"));
+                    ConsoleHelper.Progress(LogSection.FrameSync, 76, AppText.T("framesync.pipeline.inconclusive"));
+                    done = this.FailAndFinalizeRecord(record, AppText.T("framesync.pipeline.failureReason"));
                 }
             }
 
@@ -515,15 +517,15 @@ namespace RemuxForge.Core.Pipeline
             if (string.IsNullOrEmpty(result))
             {
                 // Se la pipeline non ha ancora un percorso ffmpeg, usa il resolver centrale già configurato
-                ConsoleHelper.Write(LogSection.Speed, LogLevel.Notice, "  Risoluzione ffmpeg per frame matching...");
+                ConsoleHelper.Write(LogSection.Speed, LogLevel.Notice, AppText.T("speed.pipeline.ffmpegResolving"));
                 result = this._toolPathResolver.ResolveFfmpegPath(true, false);
                 if (!string.IsNullOrEmpty(result))
                 {
-                    ConsoleHelper.Write(LogSection.Speed, LogLevel.Success, "  ffmpeg trovato: " + result);
+                    ConsoleHelper.Write(LogSection.Speed, LogLevel.Success, AppText.F("speed.pipeline.ffmpegFound", result));
                 }
                 else
                 {
-                    ConsoleHelper.Write(LogSection.Speed, LogLevel.Warning, "  ffmpeg non disponibile");
+                    ConsoleHelper.Write(LogSection.Speed, LogLevel.Warning, AppText.T("speed.pipeline.ffmpegMissing"));
                 }
             }
 

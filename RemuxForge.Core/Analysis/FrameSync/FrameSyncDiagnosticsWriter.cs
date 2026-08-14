@@ -7,14 +7,14 @@ using System.IO;
 namespace RemuxForge.Core.Analysis.FrameSync
 {
     /// <summary>
-    /// Scrive diagnostica frame-sync in formato JSON per tuning e regressioni
+    /// Scrive la diagnostica FrameSync SIFT in JSON e CSV
     /// </summary>
     public class FrameSyncDiagnosticsWriter : DiagnosticsWriterBase
     {
         #region Costanti
 
         /// <summary>
-        /// Nome cartella diagnostica
+        /// Nome della cartella diagnostica FrameSync
         /// </summary>
         private const string DIAGNOSTICS_FOLDER_NAME = "framesync-diagnostics";
 
@@ -23,33 +23,19 @@ namespace RemuxForge.Core.Analysis.FrameSync
         #region Metodi pubblici
 
         /// <summary>
-        /// Scrive un file JSON diagnostico per un episodio elaborato con frame-sync
+        /// Scrive la diagnostica completa di un episodio elaborato con FrameSync
         /// </summary>
-        /// <param name="record">Record elaborazione</param>
+        /// <param name="record">Record elaborato</param>
         /// <param name="options">Opzioni operative</param>
-        /// <returns>Percorso file scritto, vuoto se non scritto</returns>
+        /// <returns>Percorso del file JSON oppure stringa vuota</returns>
         public string Write(FileProcessingRecord record, Options options)
         {
-            string result = "";
-            string baseName;
-            string candidateCsvPath;
-            string pointCsvPath;
-            string geometryCsvPath;
-            string audioCsvPath;
-            FrameSyncDiagnosticsPayload payload;
             if (record == null || record.FrameSyncResult == null)
-            {
-                return result;
-            }
+                return "";
 
-            baseName = this.BuildDiagnosticsBasePath(DIAGNOSTICS_FOLDER_NAME, record.EpisodeId);
-            result = baseName + ".json";
-            candidateCsvPath = baseName + "-candidates.csv";
-            pointCsvPath = baseName + "-points.csv";
-            geometryCsvPath = baseName + "-geometry.csv";
-            audioCsvPath = baseName + "-audio.csv";
-
-            payload = new FrameSyncDiagnosticsPayload();
+            string baseName = this.BuildDiagnosticsBasePath(DIAGNOSTICS_FOLDER_NAME, record.EpisodeId);
+            string jsonPath = baseName + ".json";
+            FrameSyncDiagnosticsPayload payload = new FrameSyncDiagnosticsPayload();
             payload.GeneratedAt = DateTimeOffset.Now.ToString("O", CultureInfo.InvariantCulture);
             payload.EpisodeId = record.EpisodeId;
             payload.SourceFileName = record.SourceFileName;
@@ -61,19 +47,16 @@ namespace RemuxForge.Core.Analysis.FrameSync
             payload.SubtitleDelayApplied = record.SubDelayApplied;
             payload.SpeedCorrectionMode = options != null ? options.SpeedCorrectionMode : "";
             payload.ManualStretchFactor = options != null ? options.ManualStretchFactor : "";
-            payload.CandidateCsvPath = candidateCsvPath;
-            payload.PointCsvPath = pointCsvPath;
-            payload.GeometryCsvPath = geometryCsvPath;
-            payload.AudioCsvPath = audioCsvPath;
+            payload.CandidateCsvPath = baseName + "-candidates.csv";
+            payload.PointCsvPath = baseName + "-points.csv";
+            payload.GeometryCsvPath = baseName + "-geometry.csv";
             payload.Result = record.FrameSyncResult;
 
-            this.WriteJson(result, payload);
-            this.WriteCandidateCsv(candidateCsvPath, record);
-            this.WritePointCsv(pointCsvPath, record);
-            this.WriteGeometryCsv(geometryCsvPath, record);
-            this.WriteAudioCsv(audioCsvPath, record);
-
-            return result;
+            this.WriteJson(jsonPath, payload);
+            this.WriteCandidateCsv(payload.CandidateCsvPath, record);
+            this.WritePointCsv(payload.PointCsvPath, record);
+            this.WriteGeometryCsv(payload.GeometryCsvPath, record);
+            return jsonPath;
         }
 
         #endregion
@@ -81,140 +64,116 @@ namespace RemuxForge.Core.Analysis.FrameSync
         #region Metodi privati
 
         /// <summary>
-        /// Scrive CSV candidati iniziali
+        /// Scrive i modi temporali prodotti dalla ricerca iniziale
         /// </summary>
-        /// <param name="filePath">Path CSV</param>
-        /// <param name="record">Record elaborazione</param>
         private void WriteCandidateCsv(string filePath, FileProcessingRecord record)
         {
             using (StreamWriter writer = new StreamWriter(filePath, false))
             {
-                writer.WriteLine("episode,source_file,language_file,success,ambiguous,offset_ms,source,votes,matched_cuts,descriptor_votes,descriptor_agreement,visual_score,blur_score,temporal_score,edge_score,block_score,motion_score,hash_score,combined_score,second_best_score,margin");
-
+                writer.WriteLine("episode,source_file,language_file,phase,success,ambiguous,offset_ms,backend,processed_pairs,accepted_pairs,strong_pairs,ambiguous_pairs,source_coverage_ms,language_coverage_ms,mean_score,dispersion_ms");
                 if (record.FrameSyncResult.Initial != null && record.FrameSyncResult.Initial.Candidates != null)
                 {
-                    for (int i = 0; i < record.FrameSyncResult.Initial.Candidates.Count; i++)
-                    {
-                        FrameSyncCandidate candidate = record.FrameSyncResult.Initial.Candidates[i];
-                        writer.Write(this.EscapeCsv(record.EpisodeId));
-                        writer.Write(',');
-                        writer.Write(this.EscapeCsv(record.SourceFileName));
-                        writer.Write(',');
-                        writer.Write(this.EscapeCsv(record.LangFileName));
-                        writer.Write(',');
-                        writer.Write(record.FrameSyncResult.Success ? "true" : "false");
-                        writer.Write(',');
-                        writer.Write(record.FrameSyncResult.Ambiguous ? "true" : "false");
-                        writer.Write(',');
-                        writer.Write(candidate.OffsetMs.ToString(CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(this.EscapeCsv(candidate.Source));
-                        writer.Write(',');
-                        writer.Write(candidate.VoteCount.ToString(CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(candidate.MatchedCuts.ToString(CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(candidate.DescriptorVotes.ToString(CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(candidate.DescriptorAgreement.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(candidate.VisualScore.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(candidate.BlurScore.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(candidate.TemporalScore.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(candidate.EdgeScore.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(candidate.BlockScore.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(candidate.MotionScore.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(candidate.HashScore.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(candidate.CombinedScore.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(candidate.SecondBestScore.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.WriteLine(candidate.Margin.ToString("F6", CultureInfo.InvariantCulture));
-                    }
+                    for (int candidateIndex = 0; candidateIndex < record.FrameSyncResult.Initial.Candidates.Count; candidateIndex++)
+                        this.WriteCandidateCsvRow(writer, record, "initial", record.FrameSyncResult.Initial.Candidates[candidateIndex]);
                 }
+                if (record.FrameSyncResult.PrecisionCandidate != null)
+                    this.WriteCandidateCsvRow(writer, record, "precision", record.FrameSyncResult.PrecisionCandidate);
             }
         }
 
         /// <summary>
-        /// Scrive CSV checkpoint frame-sync
+        /// Scrive una riga candidata iniziale o full-rate
         /// </summary>
-        /// <param name="filePath">Path CSV</param>
-        /// <param name="record">Record elaborazione</param>
+        private void WriteCandidateCsvRow(StreamWriter writer, FileProcessingRecord record, string phase, FrameSyncCandidate candidate)
+        {
+            writer.Write(this.EscapeCsv(record.EpisodeId));
+            writer.Write(',');
+            writer.Write(this.EscapeCsv(record.SourceFileName));
+            writer.Write(',');
+            writer.Write(this.EscapeCsv(record.LangFileName));
+            writer.Write(',');
+            writer.Write(this.EscapeCsv(phase));
+            writer.Write(',');
+            writer.Write(record.FrameSyncResult.Success ? "true" : "false");
+            writer.Write(',');
+            writer.Write(record.FrameSyncResult.Ambiguous ? "true" : "false");
+            writer.Write(',');
+            writer.Write(candidate.OffsetMs.ToString(CultureInfo.InvariantCulture));
+            writer.Write(',');
+            writer.Write(this.EscapeCsv(candidate.Backend));
+            writer.Write(',');
+            writer.Write(candidate.ProcessedPairCount.ToString(CultureInfo.InvariantCulture));
+            writer.Write(',');
+            writer.Write(candidate.AcceptedPairCount.ToString(CultureInfo.InvariantCulture));
+            writer.Write(',');
+            writer.Write(candidate.StrongPairCount.ToString(CultureInfo.InvariantCulture));
+            writer.Write(',');
+            writer.Write(candidate.AmbiguousPairCount.ToString(CultureInfo.InvariantCulture));
+            writer.Write(',');
+            writer.Write(candidate.SourceCoverageMs.ToString("F3", CultureInfo.InvariantCulture));
+            writer.Write(',');
+            writer.Write(candidate.LanguageCoverageMs.ToString("F3", CultureInfo.InvariantCulture));
+            writer.Write(',');
+            writer.Write(candidate.MeanScore.ToString("F6", CultureInfo.InvariantCulture));
+            writer.Write(',');
+            writer.WriteLine(candidate.DispersionMs.ToString("F3", CultureInfo.InvariantCulture));
+        }
+
+        /// <summary>
+        /// Scrive i risultati dei checkpoint SIFT locali
+        /// </summary>
         private void WritePointCsv(string filePath, FileProcessingRecord record)
         {
             using (StreamWriter writer = new StreamWriter(filePath, false))
             {
-                writer.WriteLine("episode,source_file,language_file,checkpoint_percent,expected_offset_ms,best_offset_ms,best_score,blur_score,second_best_score,margin,descriptor_votes,descriptor_agreement,motion_score,source_variance,language_variance,source_black_ratio,language_black_ratio,accepted,reject_reason,match_method,timing_ms,extract_ms,scene_cut_ms,candidate_ms");
-
-                if (record.FrameSyncResult.Points != null)
+                writer.WriteLine("episode,source_file,language_file,checkpoint_percent,expected_offset_ms,best_offset_ms,backend,processed_pairs,accepted_pairs,strong_pairs,source_coverage_ms,language_coverage_ms,mean_score,dispersion_ms,accepted,reject_reason,timing_ms,extract_ms,match_ms");
+                for (int pointIndex = 0; pointIndex < record.FrameSyncResult.Points.Count; pointIndex++)
                 {
-                    for (int i = 0; i < record.FrameSyncResult.Points.Count; i++)
-                    {
-                        FrameSyncPointResult point = record.FrameSyncResult.Points[i];
-                        writer.Write(this.EscapeCsv(record.EpisodeId));
-                        writer.Write(',');
-                        writer.Write(this.EscapeCsv(record.SourceFileName));
-                        writer.Write(',');
-                        writer.Write(this.EscapeCsv(record.LangFileName));
-                        writer.Write(',');
-                        writer.Write(point.CheckpointPercent.ToString(CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(point.ExpectedOffsetMs.ToString(CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(point.BestOffsetMs.ToString(CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(point.BestScore.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(point.BlurScore.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(point.SecondBestScore.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(point.Margin.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(point.DescriptorVotes.ToString(CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(point.DescriptorAgreement.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(point.MotionScore.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(point.SourceVariance.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(point.LanguageVariance.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(point.SourceBlackRatio.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(point.LanguageBlackRatio.ToString("F6", CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(point.Accepted ? "true" : "false");
-                        writer.Write(',');
-                        writer.Write(this.EscapeCsv(point.RejectReason));
-                        writer.Write(',');
-                        writer.Write(this.EscapeCsv(point.MatchMethod));
-                        writer.Write(',');
-                        writer.Write(point.TimingMs.ToString(CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(point.ExtractMs.ToString(CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.Write(point.SceneCutMs.ToString(CultureInfo.InvariantCulture));
-                        writer.Write(',');
-                        writer.WriteLine(point.CandidateMs.ToString(CultureInfo.InvariantCulture));
-                    }
+                    FrameSyncPointResult point = record.FrameSyncResult.Points[pointIndex];
+                    writer.Write(this.EscapeCsv(record.EpisodeId));
+                    writer.Write(',');
+                    writer.Write(this.EscapeCsv(record.SourceFileName));
+                    writer.Write(',');
+                    writer.Write(this.EscapeCsv(record.LangFileName));
+                    writer.Write(',');
+                    writer.Write(point.CheckpointPercent.ToString(CultureInfo.InvariantCulture));
+                    writer.Write(',');
+                    writer.Write(point.ExpectedOffsetMs.ToString(CultureInfo.InvariantCulture));
+                    writer.Write(',');
+                    writer.Write(point.BestOffsetMs.ToString(CultureInfo.InvariantCulture));
+                    writer.Write(',');
+                    writer.Write(this.EscapeCsv(point.Backend));
+                    writer.Write(',');
+                    writer.Write(point.ProcessedPairCount.ToString(CultureInfo.InvariantCulture));
+                    writer.Write(',');
+                    writer.Write(point.AcceptedPairCount.ToString(CultureInfo.InvariantCulture));
+                    writer.Write(',');
+                    writer.Write(point.StrongPairCount.ToString(CultureInfo.InvariantCulture));
+                    writer.Write(',');
+                    writer.Write(point.SourceCoverageMs.ToString("F3", CultureInfo.InvariantCulture));
+                    writer.Write(',');
+                    writer.Write(point.LanguageCoverageMs.ToString("F3", CultureInfo.InvariantCulture));
+                    writer.Write(',');
+                    writer.Write(point.BestScore.ToString("F6", CultureInfo.InvariantCulture));
+                    writer.Write(',');
+                    writer.Write(point.DispersionMs.ToString("F3", CultureInfo.InvariantCulture));
+                    writer.Write(',');
+                    writer.Write(point.Accepted ? "true" : "false");
+                    writer.Write(',');
+                    writer.Write(this.EscapeCsv(point.RejectReason));
+                    writer.Write(',');
+                    writer.Write(point.TimingMs.ToString(CultureInfo.InvariantCulture));
+                    writer.Write(',');
+                    writer.Write(point.ExtractMs.ToString(CultureInfo.InvariantCulture));
+                    writer.Write(',');
+                    writer.WriteLine(point.MatchMs.ToString(CultureInfo.InvariantCulture));
                 }
             }
         }
 
         /// <summary>
-        /// Scrive CSV geometria source/lang
+        /// Scrive la geometria source e language usata dal preprocess SIFT
         /// </summary>
-        /// <param name="filePath">Path CSV</param>
-        /// <param name="record">Record elaborazione</param>
         private void WriteGeometryCsv(string filePath, FileProcessingRecord record)
         {
             using (StreamWriter writer = new StreamWriter(filePath, false))
@@ -226,90 +185,12 @@ namespace RemuxForge.Core.Analysis.FrameSync
         }
 
         /// <summary>
-        /// Scrive CSV audio globale
+        /// Scrive una riga della diagnostica geometrica
         /// </summary>
-        /// <param name="filePath">Path CSV</param>
-        /// <param name="record">Record elaborazione</param>
-        private void WriteAudioCsv(string filePath, FileProcessingRecord record)
-        {
-            using (StreamWriter writer = new StreamWriter(filePath, false))
-            {
-                writer.WriteLine("episode,source_file,language_file,success,offset_ms,video_offset_ms,audio_video_delta_ms,confirmed_video_initial,rejected_video_initial,score,margin,coverage,envelope_score,silence_score,onset_score,derivative_score,silence_run_score,chunk_score,candidate_count,window_ms,timing_ms,extraction_ms,correlation_ms,source_cache_hit,language_cache_hit,failure_reason");
-
-                if (record.FrameSyncResult.AudioGlobal == null)
-                {
-                    return;
-                }
-
-                AudioGlobalFingerprintResult audio = record.FrameSyncResult.AudioGlobal;
-                writer.Write(this.EscapeCsv(record.EpisodeId));
-                writer.Write(',');
-                writer.Write(this.EscapeCsv(record.SourceFileName));
-                writer.Write(',');
-                writer.Write(this.EscapeCsv(record.LangFileName));
-                writer.Write(',');
-                writer.Write(audio.Success ? "true" : "false");
-                writer.Write(',');
-                writer.Write(audio.OffsetMs.ToString(CultureInfo.InvariantCulture));
-                writer.Write(',');
-                writer.Write(audio.VideoOffsetMs.ToString(CultureInfo.InvariantCulture));
-                writer.Write(',');
-                writer.Write(audio.AudioVideoDeltaMs.ToString(CultureInfo.InvariantCulture));
-                writer.Write(',');
-                writer.Write(audio.ConfirmedVideoInitial ? "true" : "false");
-                writer.Write(',');
-                writer.Write(audio.RejectedVideoInitial ? "true" : "false");
-                writer.Write(',');
-                writer.Write(audio.Score.ToString("F6", CultureInfo.InvariantCulture));
-                writer.Write(',');
-                writer.Write(audio.Margin.ToString("F6", CultureInfo.InvariantCulture));
-                writer.Write(',');
-                writer.Write(audio.Coverage.ToString("F6", CultureInfo.InvariantCulture));
-                writer.Write(',');
-                writer.Write(audio.EnvelopeScore.ToString("F6", CultureInfo.InvariantCulture));
-                writer.Write(',');
-                writer.Write(audio.SilenceScore.ToString("F6", CultureInfo.InvariantCulture));
-                writer.Write(',');
-                writer.Write(audio.OnsetScore.ToString("F6", CultureInfo.InvariantCulture));
-                writer.Write(',');
-                writer.Write(audio.DerivativeScore.ToString("F6", CultureInfo.InvariantCulture));
-                writer.Write(',');
-                writer.Write(audio.SilenceRunScore.ToString("F6", CultureInfo.InvariantCulture));
-                writer.Write(',');
-                writer.Write(audio.ChunkScore.ToString("F6", CultureInfo.InvariantCulture));
-                writer.Write(',');
-                writer.Write(audio.CandidateCount.ToString(CultureInfo.InvariantCulture));
-                writer.Write(',');
-                writer.Write(audio.WindowMs.ToString(CultureInfo.InvariantCulture));
-                writer.Write(',');
-                writer.Write(audio.TimingMs.ToString(CultureInfo.InvariantCulture));
-                writer.Write(',');
-                writer.Write(audio.ExtractionMs.ToString(CultureInfo.InvariantCulture));
-                writer.Write(',');
-                writer.Write(audio.CorrelationMs.ToString(CultureInfo.InvariantCulture));
-                writer.Write(',');
-                writer.Write(audio.SourceCacheHit ? "true" : "false");
-                writer.Write(',');
-                writer.Write(audio.LanguageCacheHit ? "true" : "false");
-                writer.Write(',');
-                writer.WriteLine(this.EscapeCsv(audio.FailureReason));
-            }
-        }
-
-        /// <summary>
-        /// Scrive una riga CSV geometria
-        /// </summary>
-        /// <param name="writer">Writer CSV</param>
-        /// <param name="record">Record elaborazione</param>
-        /// <param name="role">Ruolo file</param>
-        /// <param name="geometry">Geometria</param>
         private void WriteGeometryCsvRow(StreamWriter writer, FileProcessingRecord record, string role, FrameSyncGeometryInfo geometry)
         {
             if (geometry == null)
-            {
                 return;
-            }
-
             writer.Write(this.EscapeCsv(record.EpisodeId));
             writer.Write(',');
             writer.Write(this.EscapeCsv(role));
@@ -352,26 +233,13 @@ namespace RemuxForge.Core.Analysis.FrameSync
         }
 
         /// <summary>
-        /// Escape CSV minimale
+        /// Applica l'escape CSV minimo a una stringa
         /// </summary>
-        /// <param name="value">Valore originale</param>
-        /// <returns>Valore escapato</returns>
         private string EscapeCsv(string value)
         {
-            string result = value;
-
-            if (result == null)
-            {
-                result = "";
-            }
-
-            result = result.Replace("\"", "\"\"");
-
+            string result = (value ?? "").Replace("\"", "\"\"");
             if (result.IndexOf(',') >= 0 || result.IndexOf('"') >= 0 || result.IndexOf('\n') >= 0 || result.IndexOf('\r') >= 0)
-            {
                 result = "\"" + result + "\"";
-            }
-
             return result;
         }
 
@@ -380,42 +248,42 @@ namespace RemuxForge.Core.Analysis.FrameSync
         #region Classi annidate
 
         /// <summary>
-        /// Payload JSON diagnostico frame-sync
+        /// Payload JSON della diagnostica FrameSync
         /// </summary>
-        private class FrameSyncDiagnosticsPayload
+        private sealed class FrameSyncDiagnosticsPayload
         {
             /// <summary>
-            /// Timestamp generazione
+            /// Timestamp di generazione
             /// </summary>
             public string GeneratedAt { get; set; }
 
             /// <summary>
-            /// ID episodio
+            /// Identificativo episodio
             /// </summary>
             public string EpisodeId { get; set; }
 
             /// <summary>
-            /// Nome file sorgente
+            /// Nome del file sorgente
             /// </summary>
             public string SourceFileName { get; set; }
 
             /// <summary>
-            /// Nome file lingua
+            /// Nome del file lingua
             /// </summary>
             public string LanguageFileName { get; set; }
 
             /// <summary>
-            /// Path file sorgente
+            /// Percorso del file sorgente
             /// </summary>
             public string SourceFilePath { get; set; }
 
             /// <summary>
-            /// Path file lingua
+            /// Percorso del file lingua
             /// </summary>
             public string LanguageFilePath { get; set; }
 
             /// <summary>
-            /// Tempo frame-sync in millisecondi
+            /// Tempo FrameSync in millisecondi
             /// </summary>
             public long FrameSyncTimeMs { get; set; }
 
@@ -430,37 +298,32 @@ namespace RemuxForge.Core.Analysis.FrameSync
             public int SubtitleDelayApplied { get; set; }
 
             /// <summary>
-            /// Modalità speed correction usata
+            /// Modalità Speed Correction
             /// </summary>
             public string SpeedCorrectionMode { get; set; }
 
             /// <summary>
-            /// Stretch factor manuale richiesto
+            /// Fattore di stretch manuale
             /// </summary>
             public string ManualStretchFactor { get; set; }
 
             /// <summary>
-            /// Path CSV candidati
+            /// Percorso CSV dei candidati
             /// </summary>
             public string CandidateCsvPath { get; set; }
 
             /// <summary>
-            /// Path CSV checkpoint
+            /// Percorso CSV dei checkpoint
             /// </summary>
             public string PointCsvPath { get; set; }
 
             /// <summary>
-            /// Path CSV geometria
+            /// Percorso CSV della geometria
             /// </summary>
             public string GeometryCsvPath { get; set; }
 
             /// <summary>
-            /// Path CSV audio globale
-            /// </summary>
-            public string AudioCsvPath { get; set; }
-
-            /// <summary>
-            /// Risultato frame-sync
+            /// Risultato FrameSync completo
             /// </summary>
             public FrameSyncResult Result { get; set; }
         }

@@ -38,7 +38,7 @@ namespace RemuxForge.Core.Analysis.Deep
         public DeepAnalysisService(string ffmpegPath, ToolPathResolverService toolPathResolver) : base(ffmpegPath, LogSection.Deep)
         {
             if (string.IsNullOrEmpty(ffmpegPath))
-                throw new ArgumentException(AppText.T("deep.temporal.argument.missingFfmpegPath"), nameof(ffmpegPath));
+                throw new ArgumentException(AppText.T("analysis.sift.missingFfmpegPath"), nameof(ffmpegPath));
             if (toolPathResolver == null)
                 throw new ArgumentNullException(nameof(toolPathResolver));
             this._ffmpegPath = ffmpegPath;
@@ -87,7 +87,7 @@ namespace RemuxForge.Core.Analysis.Deep
                 bool sourceGeometryCrop = this.UseGeometryCrop(this._geometryCropSourceToFourThree, sourceCropPx);
                 bool languageGeometryCrop = this.UseGeometryCrop(this._geometryCropLanguageToFourThree, languageCropPx);
                 AdvancedConfig advanced = AppSettingsService.Instance.Settings.Advanced;
-                string siftBackend = advanced.DeepAnalysis.SiftBackend;
+                SiftBackendKind siftBackend = advanced.GetSiftBackendKind();
                 FfmpegConfig ffmpegConfig = new FfmpegConfig();
                 ffmpegConfig.HardwareAcceleration = advanced.Ffmpeg.HardwareAcceleration;
                 ffmpegConfig.HardwareAccelerationMethod = advanced.Ffmpeg.HardwareAccelerationMethod;
@@ -103,7 +103,7 @@ namespace RemuxForge.Core.Analysis.Deep
                 // Esegue matching, tracking temporale e costruzione della mappa nello stesso percorso
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, AppText.T("deep.temporal.log.phaseDiscovery"));
                 ConsoleHelper.Progress(LogSection.Deep, 14, AppText.T("deep.temporal.progress.siftAnchors"));
-                using (FrameFeatureBatchMatcherBase batchMatcher = this.CreateBatchMatcher(siftBackend))
+                using (FrameFeatureBatchMatcherBase batchMatcher = FrameFeatureBatchMatcherBase.Create(siftBackend))
                 {
                     result.BackendName = batchMatcher.BackendName;
                     if (!batchMatcher.IsAvailable(out rejectReason))
@@ -176,20 +176,6 @@ namespace RemuxForge.Core.Analysis.Deep
             result.Status = DeepAnalysisStatus.Rejected;
             result.RejectReason = string.IsNullOrEmpty(reason) ? AppText.T("deep.temporal.service.rejected") : reason;
             return null;
-        }
-
-        /// <summary>
-        /// Crea esclusivamente il matcher del backend selezionato senza fallback impliciti
-        /// </summary>
-        /// <param name="backendName">Nome del backend SIFT configurato</param>
-        /// <returns>Matcher SIFT associato al backend richiesto</returns>
-        private FrameFeatureBatchMatcherBase CreateBatchMatcher(string backendName)
-        {
-            if (string.Equals(backendName, "vulkan", StringComparison.OrdinalIgnoreCase))
-                return new VulkanSiftBatchMatcher();
-            if (string.IsNullOrEmpty(backendName) || string.Equals(backendName, "cpu", StringComparison.OrdinalIgnoreCase))
-                return new OpenCvSiftBatchMatcher();
-            throw new InvalidOperationException(AppText.F("deep.temporal.service.unsupportedBackend", backendName));
         }
 
         /// <summary>

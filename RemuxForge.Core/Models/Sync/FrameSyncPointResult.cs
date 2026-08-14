@@ -1,43 +1,25 @@
 namespace RemuxForge.Core.Models
 {
     /// <summary>
-    /// Risultato della verifica frame-sync in un checkpoint
+    /// Risultato SIFT della verifica FrameSync in un checkpoint
     /// </summary>
     public class FrameSyncPointResult
     {
         #region Costruttore
 
         /// <summary>
-        /// Costruttore
+        /// Inizializza il checkpoint come non risolto
         /// </summary>
         public FrameSyncPointResult()
         {
-            this.CheckpointPercent = 0;
-            this.ExpectedOffsetMs = 0;
             this.BestOffsetMs = int.MinValue;
-            this.BestScore = 0.0;
-            this.BlurScore = 0.0;
-            this.SecondBestScore = 0.0;
-            this.Margin = 0.0;
-            this.DescriptorVotes = 0;
-            this.DescriptorAgreement = 0.0;
-            this.MotionScore = 0.0;
-            this.SourceVariance = 0.0;
-            this.LanguageVariance = 0.0;
-            this.SourceBlackRatio = 0.0;
-            this.LanguageBlackRatio = 0.0;
-            this.Accepted = false;
             this.RejectReason = "";
-            this.MatchMethod = "";
-            this.TimingMs = 0;
-            this.ExtractMs = 0;
-            this.SceneCutMs = 0;
-            this.CandidateMs = 0;
+            this.Backend = "";
         }
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Percentuale del video verificata
@@ -50,99 +32,74 @@ namespace RemuxForge.Core.Models
         public int ExpectedOffsetMs { get; set; }
 
         /// <summary>
-        /// Miglior offset trovato in millisecondi
+        /// Offset risolto dal percorso monotono locale
         /// </summary>
         public int BestOffsetMs { get; set; }
 
         /// <summary>
-        /// Score del miglior match
+        /// Confidence SIFT media del percorso monotono locale
         /// </summary>
         public double BestScore { get; set; }
 
         /// <summary>
-        /// Score luma blur/denoise del miglior match
+        /// Dispersione temporale del percorso locale
         /// </summary>
-        public double BlurScore { get; set; }
+        public double DispersionMs { get; set; }
 
         /// <summary>
-        /// Score del secondo miglior match
+        /// Numero di coppie elaborate nel corridoio locale
         /// </summary>
-        public double SecondBestScore { get; set; }
+        public long ProcessedPairCount { get; set; }
 
         /// <summary>
-        /// Margine tra miglior match e secondo miglior match
+        /// Numero di coppie accettate geometricamente
         /// </summary>
-        public double Margin { get; set; }
+        public int AcceptedPairCount { get; set; }
 
         /// <summary>
-        /// Numero descriptor visuali concordanti nel miglior match
+        /// Numero di coppie forti nel percorso monotono
         /// </summary>
-        public int DescriptorVotes { get; set; }
+        public int StrongPairCount { get; set; }
 
         /// <summary>
-        /// Quota descriptor visuali concordanti nel miglior match
+        /// Copertura temporale source del percorso locale
         /// </summary>
-        public double DescriptorAgreement { get; set; }
+        public double SourceCoverageMs { get; set; }
 
         /// <summary>
-        /// Score movimento a blocchi inter-frame nel miglior match
+        /// Copertura temporale language del percorso locale
         /// </summary>
-        public double MotionScore { get; set; }
+        public double LanguageCoverageMs { get; set; }
 
         /// <summary>
-        /// Varianza luma media segmento sorgente
-        /// </summary>
-        public double SourceVariance { get; set; }
-
-        /// <summary>
-        /// Varianza luma media segmento lingua
-        /// </summary>
-        public double LanguageVariance { get; set; }
-
-        /// <summary>
-        /// Percentuale pixel molto scuri nel segmento sorgente
-        /// </summary>
-        public double SourceBlackRatio { get; set; }
-
-        /// <summary>
-        /// Percentuale pixel molto scuri nel segmento lingua
-        /// </summary>
-        public double LanguageBlackRatio { get; set; }
-
-        /// <summary>
-        /// True se il checkpoint è accettato
+        /// Indica che il checkpoint conferma l'offset costante iniziale
         /// </summary>
         public bool Accepted { get; set; }
 
         /// <summary>
-        /// Motivo rifiuto, se presente
+        /// Motivo localizzato del rifiuto
         /// </summary>
         public string RejectReason { get; set; }
 
         /// <summary>
-        /// Metodo usato per il match
+        /// Backend SIFT che ha prodotto il risultato
         /// </summary>
-        public string MatchMethod { get; set; }
+        public string Backend { get; set; }
 
         /// <summary>
-        /// Tempo totale verifica checkpoint
+        /// Tempo totale del checkpoint
         /// </summary>
         public long TimingMs { get; set; }
 
         /// <summary>
-        /// Tempo estrazione frame checkpoint
+        /// Tempo di estrazione delle ancore
         /// </summary>
         public long ExtractMs { get; set; }
 
         /// <summary>
-        /// Tempo rilevamento scene-cut checkpoint
+        /// Tempo di matching e risoluzione temporale
         /// </summary>
-        public long SceneCutMs { get; set; }
-
-        /// <summary>
-        /// Tempo build/verifica candidati checkpoint
-        /// </summary>
-        public long CandidateMs { get; set; }
+        public long MatchMs { get; set; }
 
         #endregion
     }
