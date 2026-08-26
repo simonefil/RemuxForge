@@ -46,21 +46,6 @@ namespace RemuxForge.Core.Metadata
         #region Metodi pubblici
 
         /// <summary>
-        /// Restituisce tutti i tag gestiti
-        /// </summary>
-        /// <returns>Lista tag</returns>
-        public static List<MetadataTagDefinition> GetAll()
-        {
-            List<MetadataTagDefinition> result = new List<MetadataTagDefinition>();
-            for (int i = 0; i < s_tags.Count; i++)
-            {
-                result.Add(CloneTag(s_tags[i]));
-            }
-
-            return result;
-        }
-
-        /// <summary>
         /// Restituisce tag editabili per scope
         /// </summary>
         /// <param name="scope">Scope target</param>

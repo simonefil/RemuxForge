@@ -73,39 +73,6 @@ namespace RemuxForge.Core.Media.Ffmpeg
         #region Metodi pubblici
 
         /// <summary>
-        /// Estrae frame di un segmento video applicando un eventuale crop manuale prima dello scale
-        /// </summary>
-        /// <param name="filePath">Percorso del file video da elaborare</param>
-        /// <param name="startMs">Punto di inizio del segmento in millisecondi</param>
-        /// <param name="durationSec">Durata del segmento in secondi</param>
-        /// <param name="targetFps">Frequenza di campionamento dei frame, oppure zero per mantenere quella sorgente</param>
-        /// <param name="geometryCropToFourThree">Indica se applicare il crop geometrico in rapporto quattro a tre</param>
-        /// <param name="manualCropPx">Crop manuale nel formato sinistra:destra:alto:basso, oppure valore non configurato</param>
-        /// <param name="frames">Frame grayscale estratti</param>
-        /// <param name="timestampsMs">Timestamp PTS dei frame estratti in millisecondi</param>
-        public void ExtractSegment(string filePath, int startMs, double durationSec, double targetFps, bool geometryCropToFourThree, string manualCropPx, out List<byte[]> frames, out double[] timestampsMs)
-        {
-            this.ExtractSegmentCore(filePath, startMs, durationSec, targetFps, 0.0, geometryCropToFourThree, manualCropPx, out frames, out timestampsMs);
-        }
-
-        /// <summary>
-        /// Estrae un segmento e distingue un fallimento FFmpeg da un risultato valido
-        /// </summary>
-        /// <param name="filePath">Percorso del file video da elaborare</param>
-        /// <param name="startMs">Punto di inizio del segmento in millisecondi</param>
-        /// <param name="durationSec">Durata del segmento in secondi</param>
-        /// <param name="targetFps">Frequenza di campionamento dei frame, oppure zero per mantenere quella sorgente</param>
-        /// <param name="geometryCropToFourThree">Indica se applicare il crop geometrico in rapporto quattro a tre</param>
-        /// <param name="manualCropPx">Crop manuale nel formato sinistra:destra:alto:basso, oppure valore non configurato</param>
-        /// <param name="frames">Frame grayscale estratti</param>
-        /// <param name="timestampsMs">Timestamp PTS dei frame estratti in millisecondi</param>
-        /// <returns>true se l'estrazione è riuscita e frame e timestamp sono coerenti</returns>
-        public bool TryExtractSegment(string filePath, int startMs, double durationSec, double targetFps, bool geometryCropToFourThree, string manualCropPx, out List<byte[]> frames, out double[] timestampsMs)
-        {
-            return this.ExtractSegmentCore(filePath, startMs, durationSec, targetFps, 0.0, geometryCropToFourThree, manualCropPx, out frames, out timestampsMs);
-        }
-
-        /// <summary>
         /// Estrae frame a intervalli temporali regolari conservando i PTS dei frame selezionati
         /// </summary>
         /// <param name="filePath">Percorso del file video da elaborare</param>
@@ -135,8 +102,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
         /// <param name="manualCropPx">Crop manuale nel formato sinistra:destra:alto:basso, oppure valore non configurato</param>
         /// <param name="frames">Frame grayscale estratti</param>
         /// <param name="timestampsMs">Timestamp PTS dei frame estratti in millisecondi</param>
-        /// <returns>true se l'estrazione è riuscita e frame e timestamp sono coerenti</returns>
-        private bool ExtractSegmentCore(string filePath, int startMs, double durationSec, double targetFps, double sampleIntervalSec, bool geometryCropToFourThree, string manualCropPx, out List<byte[]> frames, out double[] timestampsMs)
+        private void ExtractSegmentCore(string filePath, int startMs, double durationSec, double targetFps, double sampleIntervalSec, bool geometryCropToFourThree, string manualCropPx, out List<byte[]> frames, out double[] timestampsMs)
         {
             frames = new List<byte[]>();
             timestampsMs = new double[0];
@@ -158,7 +124,6 @@ namespace RemuxForge.Core.Media.Ffmpeg
             bool useFpsFilter;
             int maxAttempts;
             int timeoutMs;
-            bool succeeded = false;
             try
             {
                 startSec = startMs / 1000.0;
@@ -226,7 +191,6 @@ namespace RemuxForge.Core.Media.Ffmpeg
 
                     if (processResult.ExitCode == 0 && extractedFrames.Count > 0 && extractedFrames.Count == tsList.Count)
                     {
-                        succeeded = true;
                         break;
                     }
 
@@ -245,12 +209,10 @@ namespace RemuxForge.Core.Media.Ffmpeg
                 }
 
                 timestampsMs = tsList.ToArray();
-                return succeeded;
             }
             catch (Exception ex)
             {
                 ConsoleHelper.Write(this._logSection, LogLevel.Warning, AppText.F("deep.temporal.ffmpeg.segmentExtractionError", ex.Message));
-                return false;
             }
         }
 

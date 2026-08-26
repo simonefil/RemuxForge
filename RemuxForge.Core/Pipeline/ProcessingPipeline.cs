@@ -300,7 +300,7 @@ namespace RemuxForge.Core.Pipeline
                     // Crea servizio frame-sync
                     if (success && this._opts.FrameSync && !string.IsNullOrEmpty(this._ffmpegPath))
                     {
-                        this._frameSyncService = new FrameSyncService(this._ffmpegPath);
+                        this._frameSyncService = new FrameSyncService(this._ffmpegPath, this._toolPathResolver);
                         this._frameSyncService.SetAnalysisCrop(this._opts.AnalysisCropSourcePx, this._opts.AnalysisCropLanguagePx);
                     }
 

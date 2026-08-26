@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Text;
 
 namespace RemuxForge.Core.Subtitles
@@ -127,12 +128,12 @@ namespace RemuxForge.Core.Subtitles
 
         #region Metodi pubblici - SUB/SPU
 
+
         /// <summary>
         /// Riscrive un blocco SUB contenente una SPU DVD
         /// </summary>
         /// <param name="block">Blocco SUB originale</param>
         /// <param name="transform">Trasformazione canvas</param>
-        /// <param name="palette">Palette IDX RGB a 16 colori, se presente</param>
         /// <param name="rewrittenBlock">Blocco SUB riscritto</param>
         /// <param name="areasRewritten">Display area riscritte</param>
         /// <param name="bitmapsDecoded">Bitmap decodificate</param>
@@ -143,7 +144,6 @@ namespace RemuxForge.Core.Subtitles
         public static bool TryRewriteSubtitleBlock(
             byte[] block,
             SubtitleCanvasTransform transform,
-            int[] palette,
             out byte[] rewrittenBlock,
             out int areasRewritten,
             out int bitmapsDecoded,
@@ -154,6 +154,9 @@ namespace RemuxForge.Core.Subtitles
             VobSubSpuInfo info;
             byte[] rawSpu;
             byte[] newSpu;
+            byte[] packHeader;
+            byte[] firstPesHeader;
+            byte substreamId;
 
             rewrittenBlock = null;
             areasRewritten = 0;
@@ -162,6 +165,16 @@ namespace RemuxForge.Core.Subtitles
             bitmapsEncoded = 0;
             errorMessage = "";
 
+            // mkvextract produce normalmente program-stream DVD: ricompone la SPU quando attraversa più PES/settori
+            if (TryExtractPacketizedSpu(block, out rawSpu, out packHeader, out firstPesHeader, out substreamId))
+            {
+                if (!TryRewriteRawSpu(rawSpu, transform, out newSpu, out areasRewritten, out bitmapsDecoded, out bitmapsScaled, out bitmapsEncoded, out errorMessage))
+                    return false;
+
+                rewrittenBlock = BuildPacketizedSpuBlock(newSpu, packHeader, firstPesHeader, substreamId, out errorMessage);
+                return rewrittenBlock != null;
+            }
+
             if (!TryFindSpu(block, out info, out errorMessage))
             {
                 return false;
@@ -169,7 +182,7 @@ namespace RemuxForge.Core.Subtitles
 
             rawSpu = new byte[info.SpuSize];
             Array.Copy(block, info.SpuOffset, rawSpu, 0, rawSpu.Length);
-            if (!TryRewriteRawSpu(rawSpu, transform, palette, out newSpu, out areasRewritten, out bitmapsDecoded, out bitmapsScaled, out bitmapsEncoded, out errorMessage))
+            if (!TryRewriteRawSpu(rawSpu, transform, out newSpu, out areasRewritten, out bitmapsDecoded, out bitmapsScaled, out bitmapsEncoded, out errorMessage))
             {
                 return false;
             }
@@ -179,6 +192,7 @@ namespace RemuxForge.Core.Subtitles
         }
 
         #endregion
+
 
         #region Metodi privati - IDX
 
@@ -252,6 +266,179 @@ namespace RemuxForge.Core.Subtitles
         #region Metodi privati - SPU rewrite
 
         /// <summary>
+        /// Ricompone una SPU distribuita nei private-stream PES di uno o più settori DVD
+        /// </summary>
+        /// <param name="block">Blocco SUB indicizzato</param>
+        /// <param name="rawSpu">SPU contigua ricomposta</param>
+        /// <param name="packHeader">Header pack MPEG da preservare</param>
+        /// <param name="firstPesHeader">Header PES del primo settore, PTS incluso</param>
+        /// <param name="substreamId">Id substream DVD</param>
+        /// <returns>True se il blocco contiene una SPU PES completa</returns>
+        private static bool TryExtractPacketizedSpu(byte[] block, out byte[] rawSpu, out byte[] packHeader, out byte[] firstPesHeader, out byte substreamId)
+        {
+            MemoryStream payload = new MemoryStream();
+            int scan = 0;
+            int pesStart;
+            int pesLength;
+            int packetEnd;
+            int headerLength;
+            int substreamPos;
+            int packStart;
+            int packLength;
+            int declaredSize;
+
+            rawSpu = null;
+            packHeader = null;
+            firstPesHeader = null;
+            substreamId = 0;
+
+            while (scan + 10 <= block.Length)
+            {
+                pesStart = FindStartCode(block, scan, 0xbd);
+                if (pesStart < 0 || pesStart + 9 > block.Length)
+                    break;
+
+                pesLength = ReadUInt16BigEndian(block, pesStart + 4);
+                packetEnd = pesStart + 6 + pesLength;
+                headerLength = block[pesStart + 8];
+                substreamPos = pesStart + 9 + headerLength;
+                if (pesLength <= 0 || packetEnd > block.Length || substreamPos >= packetEnd ||
+                    block[substreamPos] < 0x20 || block[substreamPos] > 0x3f)
+                    return false;
+
+                if (packHeader == null)
+                {
+                    packStart = (pesStart / 2048) * 2048;
+                    if (packStart + 14 > block.Length || block[packStart] != 0x00 || block[packStart + 1] != 0x00 ||
+                        block[packStart + 2] != 0x01 || block[packStart + 3] != 0xba)
+                        return false;
+
+                    packLength = 14 + (block[packStart + 13] & 0x07);
+                    if (packStart + packLength != pesStart)
+                        return false;
+                    packHeader = new byte[packLength];
+                    Array.Copy(block, packStart, packHeader, 0, packLength);
+                    firstPesHeader = new byte[substreamPos - (pesStart + 6)];
+                    Array.Copy(block, pesStart + 6, firstPesHeader, 0, firstPesHeader.Length);
+                    substreamId = block[substreamPos];
+                }
+                else if (block[substreamPos] != substreamId)
+                {
+                    return false;
+                }
+
+                payload.Write(block, substreamPos + 1, packetEnd - substreamPos - 1);
+                scan = packetEnd;
+            }
+
+            if (payload.Length < 4 || packHeader == null || firstPesHeader == null)
+                return false;
+
+            byte[] collected = payload.ToArray();
+            declaredSize = ReadUInt16BigEndian(collected, 0);
+            if (declaredSize <= 4 || declaredSize > collected.Length)
+                return false;
+
+            rawSpu = new byte[declaredSize];
+            Array.Copy(collected, rawSpu, declaredSize);
+            return true;
+        }
+
+        /// <summary>
+        /// Pacchettizza una SPU contigua in settori MPEG-PS DVD da 2048 byte
+        /// </summary>
+        /// <param name="rawSpu">SPU riscritta</param>
+        /// <param name="packHeader">Header pack MPEG originale</param>
+        /// <param name="firstPesHeader">Header PES originale del primo settore</param>
+        /// <param name="substreamId">Id substream DVD</param>
+        /// <param name="errorMessage">Errore</param>
+        /// <returns>Blocco SUB pacchettizzato, null se non rappresentabile</returns>
+        private static byte[] BuildPacketizedSpuBlock(byte[] rawSpu, byte[] packHeader, byte[] firstPesHeader, byte substreamId, out string errorMessage)
+        {
+            const int SECTOR_SIZE = 2048;
+            MemoryStream output = new MemoryStream();
+            int sourceOffset = 0;
+            bool first = true;
+
+            errorMessage = "";
+            if (rawSpu == null || rawSpu.Length == 0 || rawSpu.Length > 0xffff || packHeader == null ||
+                firstPesHeader == null || packHeader.Length + 10 >= SECTOR_SIZE)
+            {
+                errorMessage = "SPU VobSub non pacchettizzabile";
+                return null;
+            }
+
+            while (sourceOffset < rawSpu.Length)
+            {
+                byte[] pesHeader = first ? firstPesHeader : new byte[] { 0x81, 0x00, 0x00 };
+                int prefixLength = packHeader.Length + 6 + pesHeader.Length + 1;
+                int capacity = SECTOR_SIZE - prefixLength;
+                int chunkLength = Math.Min(capacity, rawSpu.Length - sourceOffset);
+                int remaining = capacity - chunkLength;
+
+                // Un padding stream richiede almeno sei byte: in quel raro bordo sposta alcuni byte al settore seguente
+                if (remaining > 0 && remaining < 6)
+                {
+                    chunkLength -= 6 - remaining;
+                    remaining = capacity - chunkLength;
+                }
+                if (chunkLength <= 0)
+                {
+                    errorMessage = "capacità settore VobSub insufficiente";
+                    return null;
+                }
+
+                byte[] sector = new byte[SECTOR_SIZE];
+                Array.Copy(packHeader, 0, sector, 0, packHeader.Length);
+                int pesStart = packHeader.Length;
+                sector[pesStart] = 0x00;
+                sector[pesStart + 1] = 0x00;
+                sector[pesStart + 2] = 0x01;
+                sector[pesStart + 3] = 0xbd;
+                WriteUInt16BigEndian(sector, pesStart + 4, pesHeader.Length + 1 + chunkLength);
+                Array.Copy(pesHeader, 0, sector, pesStart + 6, pesHeader.Length);
+                sector[pesStart + 6 + pesHeader.Length] = substreamId;
+                Array.Copy(rawSpu, sourceOffset, sector, prefixLength, chunkLength);
+
+                int packetEnd = prefixLength + chunkLength;
+                if (remaining >= 6)
+                {
+                    sector[packetEnd] = 0x00;
+                    sector[packetEnd + 1] = 0x00;
+                    sector[packetEnd + 2] = 0x01;
+                    sector[packetEnd + 3] = 0xbe;
+                    WriteUInt16BigEndian(sector, packetEnd + 4, remaining - 6);
+                    for (int i = packetEnd + 6; i < sector.Length; i++)
+                        sector[i] = 0xff;
+                }
+
+                output.Write(sector, 0, sector.Length);
+                sourceOffset += chunkLength;
+                first = false;
+            }
+
+            return output.ToArray();
+        }
+
+        /// <summary>
+        /// Cerca uno start code MPEG con stream id specifico
+        /// </summary>
+        /// <param name="data">Buffer</param>
+        /// <param name="start">Offset iniziale</param>
+        /// <param name="streamId">Stream id</param>
+        /// <returns>Offset dello start code, -1 se assente</returns>
+        private static int FindStartCode(byte[] data, int start, byte streamId)
+        {
+            for (int i = Math.Max(0, start); i + 4 <= data.Length; i++)
+            {
+                if (data[i] == 0x00 && data[i + 1] == 0x00 && data[i + 2] == 0x01 && data[i + 3] == streamId)
+                    return i;
+            }
+
+            return -1;
+        }
+
+        /// <summary>
         /// Cerca una SPU DVD valida dentro il blocco SUB
         /// </summary>
         /// <param name="block">Blocco SUB da analizzare</param>
@@ -289,7 +476,6 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         /// <param name="rawSpu">SPU raw da riscrivere</param>
         /// <param name="transform">Trasformazione canvas da applicare</param>
-        /// <param name="palette">Palette IDX RGB a 16 colori, se presente</param>
         /// <param name="output">SPU raw riscritta</param>
         /// <param name="areasRewritten">Numero SET_DAREA riscritti</param>
         /// <param name="bitmapsDecoded">Numero bitmap decodificate</param>
@@ -297,7 +483,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="bitmapsEncoded">Numero bitmap ricodificate</param>
         /// <param name="errorMessage">Errore in caso di rewrite fallito</param>
         /// <returns>True se la SPU è stata riscritta</returns>
-        private static bool TryRewriteRawSpu(byte[] rawSpu, SubtitleCanvasTransform transform, int[] palette, out byte[] output, out int areasRewritten, out int bitmapsDecoded, out int bitmapsScaled, out int bitmapsEncoded, out string errorMessage)
+        private static bool TryRewriteRawSpu(byte[] rawSpu, SubtitleCanvasTransform transform, out byte[] output, out int areasRewritten, out int bitmapsDecoded, out int bitmapsScaled, out int bitmapsEncoded, out string errorMessage)
         {
             VobSubSpuInfo info;
             VobSubBitmap bitmap;
@@ -309,6 +495,13 @@ namespace RemuxForge.Core.Subtitles
             int newY;
             int newWidth;
             int newHeight;
+            int mappedWidth;
+            int mappedHeight;
+            int cropLeft;
+            int cropRight;
+            int cropTop;
+            int cropBottom;
+            bool requiresCrop;
             int newCommandOffset;
 
             output = null;
@@ -323,21 +516,32 @@ namespace RemuxForge.Core.Subtitles
                 return false;
             }
 
-            // Trasforma SET_DAREA nello spazio canvas finale e valida subito i bounds
+            // Trasforma SET_DAREA e calcola l'intersezione col canvas finale senza alterare la geometria misurata
             newX = transform.MapX(info.X);
             newY = transform.MapY(info.Y);
-            newWidth = transform.MapWidth(info.Width);
-            newHeight = transform.MapHeight(info.Height);
-            if (newX < 0 || newY < 0 || newWidth <= 0 || newHeight <= 0 ||
-                newX + newWidth > transform.OutputCanvasWidth ||
-                newY + newHeight > transform.OutputCanvasHeight)
+            mappedWidth = transform.MapWidth(info.Width);
+            mappedHeight = transform.MapHeight(info.Height);
+            cropLeft = Math.Max(0, -newX);
+            cropRight = Math.Max(0, newX + mappedWidth - transform.OutputCanvasWidth);
+            cropTop = Math.Max(0, -newY);
+            cropBottom = Math.Max(0, newY + mappedHeight - transform.OutputCanvasHeight);
+            newWidth = mappedWidth - cropLeft - cropRight;
+            newHeight = mappedHeight - cropTop - cropBottom;
+            requiresCrop = cropLeft > 0 || cropRight > 0 || cropTop > 0 || cropBottom > 0;
+            if (newWidth <= 0 || newHeight <= 0)
             {
-                errorMessage = "SET_DAREA VobSub fuori canvas";
+                errorMessage = "SET_DAREA VobSub interamente fuori canvas: " +
+                    info.X.ToString(CultureInfo.InvariantCulture) + ":" + info.Y.ToString(CultureInfo.InvariantCulture) + " " +
+                    info.Width.ToString(CultureInfo.InvariantCulture) + "x" + info.Height.ToString(CultureInfo.InvariantCulture) +
+                    " -> " + newX.ToString(CultureInfo.InvariantCulture) + ":" + newY.ToString(CultureInfo.InvariantCulture) + " " +
+                    mappedWidth.ToString(CultureInfo.InvariantCulture) + "x" + mappedHeight.ToString(CultureInfo.InvariantCulture);
                 return false;
             }
+            newX = Math.Max(0, newX);
+            newY = Math.Max(0, newY);
 
             // Offset-only: non tocca bitmap/RLE, riscrive solo command table e coordinate
-            if (!transform.RequiresScaling)
+            if (!transform.RequiresScaling && !requiresCrop)
             {
                 commandTable = BuildCommandTable(rawSpu, info, 0, info.TopFieldOffset, info.BottomFieldOffset, newX, newY, newWidth, newHeight, out areasRewritten, out errorMessage);
                 if (commandTable == null)
@@ -358,12 +562,13 @@ namespace RemuxForge.Core.Subtitles
             }
             bitmapsDecoded++;
 
-            // Scala in spazio palette-aware quando SET_COLOR/SET_CONTR e palette IDX sono disponibili
-            scaledBitmap = transform.RequiresScaling ? ScaleBitmap(bitmap, newWidth, newHeight, info, palette) : bitmap;
+            scaledBitmap = transform.RequiresScaling ? ScaleBitmap(bitmap, mappedWidth, mappedHeight) : bitmap;
             if (transform.RequiresScaling)
             {
                 bitmapsScaled++;
             }
+            if (requiresCrop)
+                scaledBitmap = CropBitmap(scaledBitmap, cropLeft, cropRight, cropTop, cropBottom);
 
             // Ricodifica top/bottom field e ricostruisce command table con i nuovi offset RLE
             topRle = EncodeFieldRle(scaledBitmap, 0);
@@ -378,6 +583,12 @@ namespace RemuxForge.Core.Subtitles
             }
 
             output = new byte[newCommandOffset + commandTable.Length];
+            if (output.Length > 0xffff)
+            {
+                output = null;
+                errorMessage = "SPU VobSub oltre il limite di 65535 byte";
+                return false;
+            }
             WriteUInt16BigEndian(output, 0, output.Length);
             WriteUInt16BigEndian(output, 2, newCommandOffset);
             Array.Copy(topRle, 0, output, 4, topRle.Length);
@@ -593,20 +804,6 @@ namespace RemuxForge.Core.Subtitles
                         info.HasDisplayArea = true;
                     }
 
-                    // SET_COLOR mappa i quattro indici 2-bit ai colori della palette IDX
-                    else if (command == 0x03)
-                    {
-                        ReadNibbleMap(data, commandPos, info.ColorIndexes);
-                        info.HasColorIndexes = true;
-                    }
-
-                    // SET_CONTR assegna l'alpha/contrasto dei quattro indici 2-bit
-                    else if (command == 0x04)
-                    {
-                        ReadNibbleMap(data, commandPos, info.ContrastValues);
-                        info.HasContrastValues = true;
-                    }
-
                     // SET_DSPXA contiene gli offset dei due field RLE da aggiornare dopo ricodifica
                     else if (command == 0x06)
                     {
@@ -800,71 +997,51 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="input">Bitmap input</param>
         /// <param name="outputWidth">Larghezza output</param>
         /// <param name="outputHeight">Altezza output</param>
-        /// <param name="info">Informazioni SPU parseate</param>
-        /// <param name="palette">Palette IDX RGB a 16 colori, se presente</param>
         /// <returns>Bitmap scalata</returns>
-        private static VobSubBitmap ScaleBitmap(VobSubBitmap input, int outputWidth, int outputHeight, VobSubSpuInfo info, int[] palette)
+        private static VobSubBitmap ScaleBitmap(VobSubBitmap input, int outputWidth, int outputHeight)
         {
-            if (CanScaleWithPalette(info, palette))
-            {
-                return ScaleBitmapWithPalette(input, outputWidth, outputHeight, info, palette);
-            }
-
-            return ScaleBitmapByCoverage(input, outputWidth, outputHeight);
+            return outputWidth >= input.Width && outputHeight >= input.Height
+                ? ScaleBitmapNearest(input, outputWidth, outputHeight)
+                : ScaleBitmapMajority(input, outputWidth, outputHeight);
         }
 
         /// <summary>
-        /// Verifica se la SPU dispone dei dati colore necessari per il resampling premoltiplicato
+        /// Interseca una bitmap SPU col canvas finale dopo la trasformazione affine
         /// </summary>
-        /// <param name="info">Informazioni SPU parseate</param>
-        /// <param name="palette">Palette IDX RGB</param>
-        /// <returns>True se il resampling palette-aware è applicabile</returns>
-        private static bool CanScaleWithPalette(VobSubSpuInfo info, int[] palette)
+        /// <param name="input">Bitmap trasformata</param>
+        /// <param name="left">Pixel da rimuovere a sinistra</param>
+        /// <param name="right">Pixel da rimuovere a destra</param>
+        /// <param name="top">Pixel da rimuovere in alto</param>
+        /// <param name="bottom">Pixel da rimuovere in basso</param>
+        /// <returns>Bitmap ritagliata</returns>
+        private static VobSubBitmap CropBitmap(VobSubBitmap input, int left, int right, int top, int bottom)
         {
-            if (info == null || palette == null || palette.Length < 16 || !info.HasColorIndexes || !info.HasContrastValues)
-            {
-                return false;
-            }
+            int width = input.Width - left - right;
+            int height = input.Height - top - bottom;
+            byte[] pixels = new byte[width * height];
 
-            for (int i = 0; i < 4; i++)
-            {
-                if (info.ColorIndexes[i] < 0 || info.ColorIndexes[i] >= 16 || info.ContrastValues[i] < 0 || info.ContrastValues[i] > 15)
-                {
-                    return false;
-                }
-            }
+            for (int y = 0; y < height; y++)
+                Array.Copy(input.Pixels, ((y + top) * input.Width) + left, pixels, y * width, width);
 
-            return true;
+            return new VobSubBitmap(width, height, pixels);
         }
 
         /// <summary>
-        /// Scala la bitmap usando area sampling e quantizzazione sui quattro colori SPU effettivi
+        /// Scala una bitmap SPU con nearest-neighbor
         /// </summary>
-        /// <param name="input">Bitmap input</param>
-        /// <param name="outputWidth">Larghezza output</param>
-        /// <param name="outputHeight">Altezza output</param>
-        /// <param name="info">Informazioni SPU parseate</param>
-        /// <param name="palette">Palette IDX RGB</param>
-        /// <returns>Bitmap scalata</returns>
-        private static VobSubBitmap ScaleBitmapWithPalette(VobSubBitmap input, int outputWidth, int outputHeight, VobSubSpuInfo info, int[] palette)
+        private static VobSubBitmap ScaleBitmapNearest(VobSubBitmap input, int outputWidth, int outputHeight)
         {
             byte[] output = new byte[outputWidth * outputHeight];
-            VobSubResampleColor[] colors = BuildVobSubResampleColors(info, palette);
-            double sourceX0;
-            double sourceX1;
-            double sourceY0;
-            double sourceY1;
+            int sourceX;
+            int sourceY;
 
-            // Media i pixel sorgenti in RGBA premoltiplicato e ricade su uno dei quattro indici SPU
             for (int y = 0; y < outputHeight; y++)
             {
-                sourceY0 = y * input.Height / (double)outputHeight;
-                sourceY1 = (y + 1) * input.Height / (double)outputHeight;
+                sourceY = Math.Min(input.Height - 1, (int)(((y + 0.5) * input.Height) / outputHeight));
                 for (int x = 0; x < outputWidth; x++)
                 {
-                    sourceX0 = x * input.Width / (double)outputWidth;
-                    sourceX1 = (x + 1) * input.Width / (double)outputWidth;
-                    output[(y * outputWidth) + x] = QuantizeVobSubArea(input, colors, sourceX0, sourceX1, sourceY0, sourceY1);
+                    sourceX = Math.Min(input.Width - 1, (int)(((x + 0.5) * input.Width) / outputWidth));
+                    output[(y * outputWidth) + x] = input.Pixels[(sourceY * input.Width) + sourceX];
                 }
             }
 
@@ -872,195 +1049,44 @@ namespace RemuxForge.Core.Subtitles
         }
 
         /// <summary>
-        /// Scala la bitmap usando solo la copertura pesata degli indici 2-bit
+        /// Scala una bitmap SPU scegliendo l'indice prevalente nell'area sorgente
         /// </summary>
-        /// <param name="input">Bitmap input</param>
-        /// <param name="outputWidth">Larghezza output</param>
-        /// <param name="outputHeight">Altezza output</param>
-        /// <returns>Bitmap scalata</returns>
-        private static VobSubBitmap ScaleBitmapByCoverage(VobSubBitmap input, int outputWidth, int outputHeight)
+        private static VobSubBitmap ScaleBitmapMajority(VobSubBitmap input, int outputWidth, int outputHeight)
         {
             byte[] output = new byte[outputWidth * outputHeight];
-            double[] weights = new double[4];
-            double sourceX0;
-            double sourceX1;
-            double sourceY0;
-            double sourceY1;
+            int[] counts = new int[4];
+            int xStart;
+            int xEnd;
+            int yStart;
+            int yEnd;
+            int bestColor;
 
-            // Fallback senza palette: usa comunque overlap reale, evitando il majority count a rettangoli interi
             for (int y = 0; y < outputHeight; y++)
             {
-                sourceY0 = y * input.Height / (double)outputHeight;
-                sourceY1 = (y + 1) * input.Height / (double)outputHeight;
+                yStart = (int)Math.Floor(y * input.Height / (double)outputHeight);
+                yEnd = Math.Min(input.Height, Math.Max(yStart + 1, (int)Math.Ceiling((y + 1) * input.Height / (double)outputHeight)));
                 for (int x = 0; x < outputWidth; x++)
                 {
-                    sourceX0 = x * input.Width / (double)outputWidth;
-                    sourceX1 = (x + 1) * input.Width / (double)outputWidth;
-                    output[(y * outputWidth) + x] = SelectCoverageColor(input, sourceX0, sourceX1, sourceY0, sourceY1, weights);
+                    Array.Clear(counts, 0, counts.Length);
+                    xStart = (int)Math.Floor(x * input.Width / (double)outputWidth);
+                    xEnd = Math.Min(input.Width, Math.Max(xStart + 1, (int)Math.Ceiling((x + 1) * input.Width / (double)outputWidth)));
+                    for (int sourceY = yStart; sourceY < yEnd; sourceY++)
+                    {
+                        for (int sourceX = xStart; sourceX < xEnd; sourceX++)
+                            counts[input.Pixels[(sourceY * input.Width) + sourceX] & 0x03]++;
+                    }
+
+                    bestColor = 0;
+                    for (int i = 1; i < counts.Length; i++)
+                    {
+                        if (counts[i] > counts[bestColor])
+                            bestColor = i;
+                    }
+                    output[(y * outputWidth) + x] = (byte)bestColor;
                 }
             }
 
             return new VobSubBitmap(outputWidth, outputHeight, output);
-        }
-
-        /// <summary>
-        /// Costruisce i quattro colori SPU premoltiplicati
-        /// </summary>
-        /// <param name="info">Informazioni SPU parseate</param>
-        /// <param name="palette">Palette IDX RGB</param>
-        /// <returns>Colori per indice 2-bit</returns>
-        private static VobSubResampleColor[] BuildVobSubResampleColors(VobSubSpuInfo info, int[] palette)
-        {
-            VobSubResampleColor[] result = new VobSubResampleColor[4];
-
-            // Ogni valore bitmap 0..3 punta a un colore IDX e a un alpha/contrast 0..15
-            for (int i = 0; i < result.Length; i++)
-            {
-                int rgb = palette[info.ColorIndexes[i]];
-                int alpha = info.ContrastValues[i] * 17;
-                result[i] = new VobSubResampleColor((rgb >> 16) & 0xff, (rgb >> 8) & 0xff, rgb & 0xff, alpha);
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Calcola un pixel output palette-aware
-        /// </summary>
-        /// <param name="input">Bitmap input</param>
-        /// <param name="colors">Colori premoltiplicati</param>
-        /// <param name="sourceX0">X sorgente iniziale</param>
-        /// <param name="sourceX1">X sorgente finale</param>
-        /// <param name="sourceY0">Y sorgente iniziale</param>
-        /// <param name="sourceY1">Y sorgente finale</param>
-        /// <returns>Indice 2-bit output</returns>
-        private static byte QuantizeVobSubArea(VobSubBitmap input, VobSubResampleColor[] colors, double sourceX0, double sourceX1, double sourceY0, double sourceY1)
-        {
-            int xStart = Math.Max(0, (int)Math.Floor(sourceX0));
-            int xEnd = Math.Min(input.Width, (int)Math.Ceiling(sourceX1));
-            int yStart = Math.Max(0, (int)Math.Floor(sourceY0));
-            int yEnd = Math.Min(input.Height, (int)Math.Ceiling(sourceY1));
-            double sumR = 0.0;
-            double sumG = 0.0;
-            double sumB = 0.0;
-            double sumAlpha = 0.0;
-            double totalWeight = 0.0;
-
-            // Accumula RGBA premoltiplicato sui pixel sorgenti coperti
-            for (int y = yStart; y < yEnd; y++)
-            {
-                double yWeight = Math.Min(sourceY1, y + 1.0) - Math.Max(sourceY0, y);
-                if (yWeight <= 0.0)
-                {
-                    continue;
-                }
-
-                for (int x = xStart; x < xEnd; x++)
-                {
-                    double xWeight = Math.Min(sourceX1, x + 1.0) - Math.Max(sourceX0, x);
-                    if (xWeight <= 0.0)
-                    {
-                        continue;
-                    }
-
-                    double weight = xWeight * yWeight;
-                    VobSubResampleColor color = colors[input.Pixels[(y * input.Width) + x] & 0x03];
-                    sumR += color.PremultipliedR * weight;
-                    sumG += color.PremultipliedG * weight;
-                    sumB += color.PremultipliedB * weight;
-                    sumAlpha += color.Alpha * weight;
-                    totalWeight += weight;
-                }
-            }
-
-            if (totalWeight <= 0.0)
-            {
-                return 0;
-            }
-
-            return FindNearestVobSubIndex(colors, sumR / totalWeight, sumG / totalWeight, sumB / totalWeight, sumAlpha / totalWeight);
-        }
-
-        /// <summary>
-        /// Seleziona un indice 2-bit in base alla copertura pesata
-        /// </summary>
-        /// <param name="input">Bitmap input</param>
-        /// <param name="sourceX0">X sorgente iniziale</param>
-        /// <param name="sourceX1">X sorgente finale</param>
-        /// <param name="sourceY0">Y sorgente iniziale</param>
-        /// <param name="sourceY1">Y sorgente finale</param>
-        /// <param name="weights">Buffer pesi riutilizzato</param>
-        /// <returns>Indice 2-bit output</returns>
-        private static byte SelectCoverageColor(VobSubBitmap input, double sourceX0, double sourceX1, double sourceY0, double sourceY1, double[] weights)
-        {
-            int xStart = Math.Max(0, (int)Math.Floor(sourceX0));
-            int xEnd = Math.Min(input.Width, (int)Math.Ceiling(sourceX1));
-            int yStart = Math.Max(0, (int)Math.Floor(sourceY0));
-            int yEnd = Math.Min(input.Height, (int)Math.Ceiling(sourceY1));
-            int bestColor = 0;
-            double bestWeight = -1.0;
-
-            Array.Clear(weights, 0, weights.Length);
-            for (int y = yStart; y < yEnd; y++)
-            {
-                double yWeight = Math.Min(sourceY1, y + 1.0) - Math.Max(sourceY0, y);
-                if (yWeight <= 0.0)
-                {
-                    continue;
-                }
-
-                for (int x = xStart; x < xEnd; x++)
-                {
-                    double xWeight = Math.Min(sourceX1, x + 1.0) - Math.Max(sourceX0, x);
-                    if (xWeight > 0.0)
-                    {
-                        weights[input.Pixels[(y * input.Width) + x] & 0x03] += xWeight * yWeight;
-                    }
-                }
-            }
-
-            // A parità preferisce un indice non zero per non cancellare bordi sottili
-            for (int i = 0; i < weights.Length; i++)
-            {
-                if (weights[i] > bestWeight || (Math.Abs(weights[i] - bestWeight) < 0.000001 && bestColor == 0 && i != 0))
-                {
-                    bestColor = i;
-                    bestWeight = weights[i];
-                }
-            }
-
-            return (byte)bestColor;
-        }
-
-        /// <summary>
-        /// Trova l'indice SPU più vicino al colore target
-        /// </summary>
-        /// <param name="colors">Colori premoltiplicati</param>
-        /// <param name="targetR">Rosso premoltiplicato target</param>
-        /// <param name="targetG">Verde premoltiplicato target</param>
-        /// <param name="targetB">Blu premoltiplicato target</param>
-        /// <param name="targetAlpha">Alpha target</param>
-        /// <returns>Indice 2-bit più vicino</returns>
-        private static byte FindNearestVobSubIndex(VobSubResampleColor[] colors, double targetR, double targetG, double targetB, double targetAlpha)
-        {
-            int bestIndex = 0;
-            double bestDistance = double.MaxValue;
-
-            for (int i = 0; i < colors.Length; i++)
-            {
-                double dr = colors[i].PremultipliedR - targetR;
-                double dg = colors[i].PremultipliedG - targetG;
-                double db = colors[i].PremultipliedB - targetB;
-                double da = colors[i].Alpha - targetAlpha;
-                double distance = (dr * dr) + (dg * dg) + (db * db) + (da * da * 4.0);
-                if (distance < bestDistance)
-                {
-                    bestDistance = distance;
-                    bestIndex = i;
-                }
-            }
-
-            return (byte)bestIndex;
         }
 
         /// <summary>
@@ -1121,23 +1147,6 @@ namespace RemuxForge.Core.Subtitles
         #endregion
 
         #region Metodi privati - Binary helpers
-
-        /// <summary>
-        /// Legge quattro nibble command-table in ordine indice pixel 0..3
-        /// </summary>
-        /// <param name="data">Buffer command table</param>
-        /// <param name="offset">Offset payload comando</param>
-        /// <param name="values">Array destinazione da quattro valori</param>
-        private static void ReadNibbleMap(byte[] data, int offset, int[] values)
-        {
-            int packed = ReadUInt16BigEndian(data, offset);
-
-            // Il payload DVD SPU serializza i valori dal pixel 3 al pixel 0 nei quattro nibble
-            values[3] = (packed >> 12) & 0x0f;
-            values[2] = (packed >> 8) & 0x0f;
-            values[1] = (packed >> 4) & 0x0f;
-            values[0] = packed & 0x0f;
-        }
 
         /// <summary>
         /// Legge SET_DAREA
@@ -1215,8 +1224,6 @@ namespace RemuxForge.Core.Subtitles
                 this.SequenceOffsets = new List<int>();
                 this.DisplayAreaCommandOffsets = new List<int>();
                 this.PixelOffsetCommandOffsets = new List<int>();
-                this.ColorIndexes = new int[4];
-                this.ContrastValues = new int[4];
             }
 
             /// <summary>
@@ -1243,16 +1250,6 @@ namespace RemuxForge.Core.Subtitles
             /// True se la command table contiene SET_DSPXA
             /// </summary>
             public bool HasPixelOffsets { get; set; }
-
-            /// <summary>
-            /// True se la command table contiene SET_COLOR
-            /// </summary>
-            public bool HasColorIndexes { get; set; }
-
-            /// <summary>
-            /// True se la command table contiene SET_CONTR
-            /// </summary>
-            public bool HasContrastValues { get; set; }
 
             /// <summary>
             /// Coordinata sinistra display area
@@ -1295,16 +1292,6 @@ namespace RemuxForge.Core.Subtitles
             public int BottomFieldOffset { get; set; }
 
             /// <summary>
-            /// Indici colore palette per pixel value 0..3
-            /// </summary>
-            public int[] ColorIndexes { get; private set; }
-
-            /// <summary>
-            /// Alpha/contrast per pixel value 0..3
-            /// </summary>
-            public int[] ContrastValues { get; private set; }
-
-            /// <summary>
             /// Offset sequenze command table
             /// </summary>
             public List<int> SequenceOffsets { get; private set; }
@@ -1328,47 +1315,6 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="Pixels">Pixel palette-indexed in ordine row-major</param>
         private sealed record VobSubBitmap(int Width, int Height, byte[] Pixels);
 
-        /// <summary>
-        /// Colore VobSub premoltiplicato per resampling bitmap
-        /// </summary>
-        private readonly struct VobSubResampleColor
-        {
-            /// <summary>
-            /// Crea il colore premoltiplicato
-            /// </summary>
-            /// <param name="red">Rosso</param>
-            /// <param name="green">Verde</param>
-            /// <param name="blue">Blu</param>
-            /// <param name="alpha">Opacità</param>
-            public VobSubResampleColor(double red, double green, double blue, double alpha)
-            {
-                double alphaFactor = alpha / 255.0;
-                this.PremultipliedR = red * alphaFactor;
-                this.PremultipliedG = green * alphaFactor;
-                this.PremultipliedB = blue * alphaFactor;
-                this.Alpha = alpha;
-            }
-
-            /// <summary>
-            /// Rosso premoltiplicato
-            /// </summary>
-            public double PremultipliedR { get; }
-
-            /// <summary>
-            /// Verde premoltiplicato
-            /// </summary>
-            public double PremultipliedG { get; }
-
-            /// <summary>
-            /// Blu premoltiplicato
-            /// </summary>
-            public double PremultipliedB { get; }
-
-            /// <summary>
-            /// Alpha non premoltiplicata
-            /// </summary>
-            public double Alpha { get; }
-        }
 
         /// <summary>
         /// Lettore nibble per RLE SPU

@@ -54,6 +54,9 @@ namespace RemuxForge.Core.Subtitles
             long outputPosition;
             byte[] block;
             byte[] rewrittenBlock;
+            SubtitleCanvasTransform transform;
+            int inputCanvasWidth;
+            int inputCanvasHeight;
             int areas;
             int decoded;
             int scaled;
@@ -85,17 +88,24 @@ namespace RemuxForge.Core.Subtitles
                 return false;
             }
 
-            // Il canvas dichiarato nell'IDX deve coincidere con la geometria lang analizzata
-            if (document.Width > 0 && document.Height > 0 &&
-                (document.Width != context.Transform.InputCanvasWidth || document.Height != context.Transform.InputCanvasHeight))
+            // Il canvas DVD dichiarato nell'IDX è uno spazio coordinate autonomo e può differire dallo storage video rimuxato o ricodificato
+            inputCanvasWidth = document.Width > 0 ? document.Width : context.Transform.InputCanvasWidth;
+            inputCanvasHeight = document.Height > 0 ? document.Height : context.Transform.InputCanvasHeight;
+            if (inputCanvasWidth <= 0 || inputCanvasHeight <= 0)
             {
-                result.ErrorMessage = "IDX VobSub size " + document.Width.ToString(CultureInfo.InvariantCulture) + "x" + document.Height.ToString(CultureInfo.InvariantCulture) +
-                    " non coerente con canvas lang " + context.Transform.InputCanvasWidth.ToString(CultureInfo.InvariantCulture) + "x" + context.Transform.InputCanvasHeight.ToString(CultureInfo.InvariantCulture);
+                result.ErrorMessage = "IDX VobSub senza canvas valido";
                 return false;
             }
+            transform = context.Transform.CreateCoordinateTransform(
+                inputCanvasWidth,
+                inputCanvasHeight,
+                context.Transform.OutputCanvasWidth,
+                context.Transform.OutputCanvasHeight);
+            if (inputCanvasWidth != context.Transform.InputCanvasWidth || inputCanvasHeight != context.Transform.InputCanvasHeight)
+                result.Increment("canvas-adapted");
 
             // Dopo la riscrittura le coordinate sono assolute nel canvas output: org/scale/align vanno normalizzati
-            document.SetSize(context.Transform.OutputCanvasWidth, context.Transform.OutputCanvasHeight);
+            document.SetSize(transform.OutputCanvasWidth, transform.OutputCanvasHeight);
             document.SetOrg(0, 0);
             document.SetScale(100, 100);
             document.SetAlign("OFF at LEFT TOP");
@@ -114,9 +124,10 @@ namespace RemuxForge.Core.Subtitles
                 // Ogni entry IDX punta all'inizio di un blocco SUB; la prossima entry ne determina la fine
                 block = new byte[nextFilePosition - entry.FilePosition];
                 Array.Copy(subData, (int)entry.FilePosition, block, 0, block.Length);
-                if (!VobSubSubtitleUtils.TryRewriteSubtitleBlock(block, context.Transform, document.Palette, out rewrittenBlock, out areas, out decoded, out scaled, out encoded, out errorMessage))
+                if (!VobSubSubtitleUtils.TryRewriteSubtitleBlock(block, transform, out rewrittenBlock, out areas, out decoded, out scaled, out encoded, out errorMessage))
                 {
-                    result.ErrorMessage = errorMessage;
+                    result.ErrorMessage = "entry " + i.ToString(CultureInfo.InvariantCulture) +
+                        " @" + entry.TimestampMs.ToString(CultureInfo.InvariantCulture) + "ms: " + errorMessage;
                     return false;
                 }
 
@@ -137,7 +148,8 @@ namespace RemuxForge.Core.Subtitles
                 ", SET_DAREA=" + result.Get("areas").ToString(CultureInfo.InvariantCulture) +
                 ", bitmap=" + result.Get("bitmap-decoded").ToString(CultureInfo.InvariantCulture) +
                 "/" + result.Get("bitmap-scaled").ToString(CultureInfo.InvariantCulture) +
-                "/" + result.Get("bitmap-encoded").ToString(CultureInfo.InvariantCulture);
+                "/" + result.Get("bitmap-encoded").ToString(CultureInfo.InvariantCulture) +
+                ", canvas-adapted=" + result.Get("canvas-adapted").ToString(CultureInfo.InvariantCulture);
             return true;
         }
 
@@ -163,7 +175,9 @@ namespace RemuxForge.Core.Subtitles
             subInfo = new FileInfo(subFile);
 
             // Le entry IDX devono puntare a posizioni reali nel SUB prodotto
-            if (document.Entries.Count == 0 || subInfo.Length == 0)
+            if (document.Width != context.Transform.OutputCanvasWidth ||
+                document.Height != context.Transform.OutputCanvasHeight ||
+                document.Entries.Count == 0 || subInfo.Length == 0)
             {
                 return false;
             }

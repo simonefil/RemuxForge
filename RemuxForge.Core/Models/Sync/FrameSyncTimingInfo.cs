@@ -62,25 +62,9 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public long CheckpointPairCount { get; set; }
 
-        /// <summary>
-        /// Tempo totale del refinement finale full-rate
-        /// </summary>
-        public long PrecisionRefinementMs { get; set; }
 
-        /// <summary>
-        /// Tempo di estrazione accumulato dai tentativi full-rate
-        /// </summary>
-        public long PrecisionExtractMs { get; set; }
 
-        /// <summary>
-        /// Tempo di matching accumulato dai tentativi full-rate
-        /// </summary>
-        public long PrecisionMatchMs { get; set; }
 
-        /// <summary>
-        /// Numero di coppie elaborate dai tentativi full-rate
-        /// </summary>
-        public long PrecisionPairCount { get; set; }
 
         #endregion
     }

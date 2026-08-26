@@ -34,7 +34,7 @@
             else
             {
                 <div class="menu-dropdown-item @(_activeItemIndex == itemIndex ? "active" : "")"
-                     @onclick="() => InvokeItem(item)"
+                     @onclick="() => InvokeItemAsync(item)"
                      @onmouseenter="() => SetActiveItem(itemIndex)">
                     <span>@item.Label</span>
                     @if (!string.IsNullOrEmpty(item.Shortcut))
@@ -87,7 +87,7 @@
         /// <summary>
         /// Callback azione
         /// </summary>
-        public Action Callback;
+        public Func<Task> Callback;
 
         /// <summary>
         /// Flag separatore
@@ -404,7 +404,7 @@
     /// <param name="shift">Flag Shift</param>
     /// <param name="alt">Flag Alt</param>
     /// <returns>True se il tasto è stato gestito dal menu</returns>
-    public bool HandleKeyboardKey(string key, bool ctrl, bool shift, bool alt)
+    public async Task<bool> HandleKeyboardKeyAsync(string key, bool ctrl, bool shift, bool alt)
     {
         bool result = false;
         int mnemonicIndex;
@@ -447,7 +447,7 @@
             }
             else if (key == "Enter" || key == " ")
             {
-                this.InvokeActiveItem();
+                await this.InvokeActiveItemAsync();
             }
             else if (alt && this.TryFindMenuMnemonic(key, out mnemonicIndex))
             {
@@ -514,12 +514,12 @@
     /// Invoca callback voce menu e chiude
     /// </summary>
     /// <param name="item">Voce menu</param>
-    private void InvokeItem(MenuItemDef item)
+    private async Task InvokeItemAsync(MenuItemDef item)
     {
         this.CloseMenu();
         if (item.Callback != null)
         {
-            item.Callback.Invoke();
+            await item.Callback.Invoke();
         }
     }
 
@@ -632,7 +632,7 @@
     /// <summary>
     /// Invoca la voce attiva
     /// </summary>
-    private void InvokeActiveItem()
+    private async Task InvokeActiveItemAsync()
     {
         if (this._activeIndex < 0 || this._activeIndex >= this._menus.Count)
         {
@@ -649,7 +649,7 @@
             return;
         }
 
-        this.InvokeItem(this._menus[this._activeIndex].Items[this._activeItemIndex]);
+        await this.InvokeItemAsync(this._menus[this._activeIndex].Items[this._activeItemIndex]);
     }
 
     /// <summary>

@@ -7,12 +7,16 @@ namespace RemuxForge.Core.Models
     /// </summary>
     public enum MetadataFieldSector
     {
+        /// <summary>Campo relativo al file</summary>
         File,
+        /// <summary>Campo relativo al contenitore</summary>
         Container,
+        /// <summary>Campo relativo a una traccia video</summary>
         Video,
+        /// <summary>Campo relativo a una traccia audio</summary>
         Audio,
-        Subtitle,
-        Tag
+        /// <summary>Campo relativo a una traccia sottotitoli</summary>
+        Subtitle
     }
 
     /// <summary>
@@ -20,14 +24,23 @@ namespace RemuxForge.Core.Models
     /// </summary>
     public enum MetadataFieldValueType
     {
+        /// <summary>Valore testuale</summary>
         String,
+        /// <summary>Valore intero</summary>
         Integer,
+        /// <summary>Valore decimale</summary>
         Decimal,
+        /// <summary>Valore booleano</summary>
         Boolean,
+        /// <summary>Durata temporale</summary>
         Duration,
+        /// <summary>Dimensione in byte</summary>
         Bytes,
+        /// <summary>Codice lingua ISO 639</summary>
         Language,
+        /// <summary>Tag lingua IETF</summary>
         LanguageIetf,
+        /// <summary>Valore data</summary>
         Date
     }
 
@@ -36,8 +49,11 @@ namespace RemuxForge.Core.Models
     /// </summary>
     public enum MetadataFieldRiskLevel
     {
+        /// <summary>Modifica ordinaria</summary>
         Normal,
+        /// <summary>Modifica avanzata</summary>
         Advanced,
+        /// <summary>Modifica potenzialmente distruttiva</summary>
         Dangerous
     }
 
@@ -46,9 +62,13 @@ namespace RemuxForge.Core.Models
     /// </summary>
     public enum MetadataFieldEditPolicy
     {
+        /// <summary>Campo in sola lettura</summary>
         ReadOnly,
+        /// <summary>Campo modificabile</summary>
         Editable,
+        /// <summary>Campo modificabile in modalità avanzata</summary>
         Advanced,
+        /// <summary>Campo non modificabile</summary>
         Blocked
     }
 
@@ -57,9 +77,13 @@ namespace RemuxForge.Core.Models
     /// </summary>
     public enum MetadataFieldVisibility
     {
+        /// <summary>Campo mostrato nell'interfaccia principale</summary>
         Primary,
+        /// <summary>Campo mostrato nelle opzioni avanzate</summary>
         Advanced,
+        /// <summary>Campo tecnico</summary>
         Technical,
+        /// <summary>Campo nascosto</summary>
         Hidden
     }
 
@@ -68,15 +92,25 @@ namespace RemuxForge.Core.Models
     /// </summary>
     public enum MetadataFieldInputKind
     {
+        /// <summary>Input testuale</summary>
         Text,
+        /// <summary>Input numerico intero</summary>
         Number,
+        /// <summary>Input numerico decimale</summary>
         Decimal,
+        /// <summary>Input booleano</summary>
         Boolean,
+        /// <summary>Selezione da elenco</summary>
         Select,
+        /// <summary>Selezione lingua ISO 639</summary>
         LanguageSelect,
+        /// <summary>Input lingua IETF</summary>
         LanguageIetf,
+        /// <summary>Input dimensione</summary>
         SizeInput,
+        /// <summary>Input durata</summary>
         DurationInput,
+        /// <summary>Input data</summary>
         DateInput
     }
 
@@ -85,10 +119,12 @@ namespace RemuxForge.Core.Models
     /// </summary>
     public enum MetadataCatalogInputUsage
     {
+        /// <summary>Valore di una condizione</summary>
         ConditionValue,
+        /// <summary>Valore di un'operazione</summary>
         OperationValue,
-        ManualEdit,
-        Sheet
+        /// <summary>Modifica manuale</summary>
+        ManualEdit
     }
 
     /// <summary>

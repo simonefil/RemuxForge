@@ -76,7 +76,7 @@ namespace RemuxForge.Core.Subtitles
 
             if (options.DryRun)
             {
-                ConsoleHelper.Write(LogSection.Merge, LogLevel.Text, "  [DRY-RUN] Subtitle canvas rewrite attivo");
+                ConsoleHelper.Write(LogSection.Merge, LogLevel.Text, "  [DRY-RUN] Processing canvas sottotitoli attivo");
                 return;
             }
 
@@ -114,6 +114,7 @@ namespace RemuxForge.Core.Subtitles
         {
             FrameSyncGeometryInfo sourceGeometry;
             FrameSyncGeometryInfo languageGeometry;
+            VisualGeometryAlignment alignment;
             SubtitleCanvasCrop sourceCrop;
             SubtitleCanvasCrop languageCrop;
             SubtitleCanvasTransform transform;
@@ -123,7 +124,8 @@ namespace RemuxForge.Core.Subtitles
             // La geometria deve essere quella usata dall'analisi: source e lang possono avere storage/display/crop diversi
             sourceGeometry = this.ResolveAnalysisGeometryInfo(record, true);
             languageGeometry = this.ResolveAnalysisGeometryInfo(record, false);
-            if (sourceGeometry == null || languageGeometry == null || sourceGeometry.Width <= 0 || sourceGeometry.Height <= 0 || languageGeometry.Width <= 0 || languageGeometry.Height <= 0)
+            alignment = this.ResolveAnalysisGeometryAlignment(record);
+            if (sourceGeometry == null || languageGeometry == null || alignment == null || !alignment.Success || sourceGeometry.Width <= 0 || sourceGeometry.Height <= 0 || languageGeometry.Width <= 0 || languageGeometry.Height <= 0)
             {
                 ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, "  Subtitle canvas rewrite ignorato: geometria analisi non disponibile");
                 return false;
@@ -151,6 +153,10 @@ namespace RemuxForge.Core.Subtitles
             transform.OutputCropRight = sourceCrop.Right;
             transform.OutputCropTop = sourceCrop.Top;
             transform.OutputCropBottom = sourceCrop.Bottom;
+            transform.GeometryScaleX = alignment.ScaleX;
+            transform.GeometryScaleY = alignment.ScaleY;
+            transform.GeometryTranslateX = alignment.TranslateX;
+            transform.GeometryTranslateY = alignment.TranslateY;
 
             if (!this.ValidateTransform(transform))
             {
@@ -184,7 +190,9 @@ namespace RemuxForge.Core.Subtitles
                 " -> source " + transform.OutputCanvasWidth + "x" + transform.OutputCanvasHeight +
                 " crop " + this.FormatCrop(transform.OutputCropLeft, transform.OutputCropRight, transform.OutputCropTop, transform.OutputCropBottom, context.SourceCropMode) +
                 ", active " + transform.InputActiveWidth + "x" + transform.InputActiveHeight + " -> " + transform.OutputActiveWidth + "x" + transform.OutputActiveHeight +
-                ", scale " + transform.ScaleX.ToString("0.######", CultureInfo.InvariantCulture) + ":" + transform.ScaleY.ToString("0.######", CultureInfo.InvariantCulture) +
+                ", resolution-scale " + transform.ResolutionScaleX.ToString("0.######", CultureInfo.InvariantCulture) + ":" + transform.ResolutionScaleY.ToString("0.######", CultureInfo.InvariantCulture) +
+                ", geometry-scale " + transform.GeometryScaleX.ToString("0.######", CultureInfo.InvariantCulture) + ":" + transform.GeometryScaleY.ToString("0.######", CultureInfo.InvariantCulture) +
+                ", effective-scale " + transform.ScaleX.ToString("0.######", CultureInfo.InvariantCulture) + ":" + transform.ScaleY.ToString("0.######", CultureInfo.InvariantCulture) +
                 ", mode " + (transform.RequiresBitmapScaling ? "scale" : "offset-only") +
                 ", offset " + transform.OffsetX.ToString(CultureInfo.InvariantCulture) + ":" + transform.OffsetY.ToString(CultureInfo.InvariantCulture));
             return true;
@@ -214,6 +222,21 @@ namespace RemuxForge.Core.Subtitles
         }
 
         /// <summary>
+        /// Legge la trasformazione geometrica prodotta dalla stessa analisi temporale
+        /// </summary>
+        /// <param name="record">Record pipeline corrente</param>
+        /// <returns>Trasformazione geometry language-source, oppure null</returns>
+        private VisualGeometryAlignment ResolveAnalysisGeometryAlignment(FileProcessingRecord record)
+        {
+            VisualGeometryAlignment result = null;
+            if (record.DeepAnalysisResult != null)
+                result = record.DeepAnalysisResult.GeometryAlignment;
+            if (result == null && record.FrameSyncResult != null)
+                result = record.FrameSyncResult.GeometryAlignment;
+            return result;
+        }
+
+        /// <summary>
         /// Determina il crop effettivo usabile per coordinate sottotitoli
         /// </summary>
         /// <param name="geometry">Geometria analisi</param>
@@ -227,7 +250,6 @@ namespace RemuxForge.Core.Subtitles
             int right;
             int top;
             int bottom;
-            int activeWidth;
 
             // Priorità al crop salvato dalla geometria di analisi, poi al crop manuale globale
             if (string.IsNullOrEmpty(manualCrop))
@@ -244,15 +266,13 @@ namespace RemuxForge.Core.Subtitles
                 result.Bottom = bottom;
                 result.Mode = "manual";
             }
-            else if (geometry.GeometryCropToFourThree)
+            else if (geometry.HasBlackBorderCrop)
             {
-                // Rilevamento pillarbox: calcola l'area 4:3 centrata usando l'altezza del video
-                activeWidth = (int)Math.Round(geometry.Height * 4.0 / 3.0);
-                result.Left = Math.Max(0, (geometry.Width - activeWidth) / 2);
-                result.Right = Math.Max(0, geometry.Width - activeWidth - result.Left);
-                result.Top = 0;
-                result.Bottom = 0;
-                result.Mode = "geometry_4_3";
+                result.Left = geometry.CropLeft;
+                result.Right = geometry.CropRight;
+                result.Top = geometry.CropTop;
+                result.Bottom = geometry.CropBottom;
+                result.Mode = "black_border_autocrop";
             }
             else
             {
@@ -297,6 +317,7 @@ namespace RemuxForge.Core.Subtitles
             string previousFile = "";
             bool extractedInput = false;
             SubtitleCanvasRewriteResult result;
+            bool succeeded;
 
             // Se un passo precedente ha prodotto un file temporaneo, il canvas rewrite deve partire da quello
             if (processedLangSubTracks.ContainsKey(track.Id))
@@ -322,9 +343,11 @@ namespace RemuxForge.Core.Subtitles
             outputFile = Path.Combine(context.TempFolder, "subcanvas_t" + track.Id.ToString(CultureInfo.InvariantCulture) + "_" + Guid.NewGuid().ToString("N").Substring(0, 8) + outputExtension);
 
             // Il rewriter produce file standalone muxabili; il dizionario viene aggiornato solo dopo validazione
-            if (rewriter.Rewrite(context, track, inputFile, outputFile, out result) &&
+            succeeded = rewriter.Rewrite(context, track, inputFile, outputFile, out result) &&
                 File.Exists(outputFile) &&
-                rewriter.ValidateOutput(context, outputFile))
+                rewriter.ValidateOutput(context, outputFile);
+
+            if (succeeded)
             {
                 processedLangSubTracks[track.Id] = outputFile;
                 if (!string.IsNullOrEmpty(previousFile))

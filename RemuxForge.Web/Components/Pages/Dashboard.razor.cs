@@ -451,7 +451,7 @@ namespace RemuxForge.Web.Components.Pages
         /// <param name="shift">Flag Shift</param>
         /// <param name="alt">Flag Alt</param>
         [JSInvokable("OnKeyDown")]
-        public void HandleKeyDown(string key, bool ctrl, bool shift, bool alt)
+        public async Task HandleKeyDownAsync(string key, bool ctrl, bool shift, bool alt)
         {
             if (this.IsBlockingDialogOpen())
             {
@@ -470,7 +470,7 @@ namespace RemuxForge.Web.Components.Pages
                 return;
             }
 
-            if (this._menuBar != null && this._menuBar.HandleKeyboardKey(key, ctrl, shift, alt))
+            if (this._menuBar != null && await this._menuBar.HandleKeyboardKeyAsync(key, ctrl, shift, alt))
             {
                 this.StateHasChanged();
                 return;
@@ -592,7 +592,7 @@ namespace RemuxForge.Web.Components.Pages
             if (index >= 0 && index < this._splitRecords.Count)
             {
                 this._selectedSplitRecord = this._splitRecords[index];
-                this.ScrollSplitRowIntoView(index);
+                _ = this.ScrollSplitRowIntoViewAsync(index);
             }
             else
             {
@@ -610,7 +610,7 @@ namespace RemuxForge.Web.Components.Pages
             if (index >= 0 && index < this._metadataRecords.Count)
             {
                 this._selectedMetadataRecord = this._metadataRecords[index];
-                this.ScrollMetadataRowIntoView(index);
+                _ = this.ScrollMetadataRowIntoViewAsync(index);
             }
             else
             {
@@ -674,7 +674,7 @@ namespace RemuxForge.Web.Components.Pages
             if (index >= 0 && index < this._records.Count)
             {
                 this._selectedRecord = this._records[index];
-                this.ScrollEpisodeRowIntoView(index);
+                _ = this.ScrollEpisodeRowIntoViewAsync(index);
             }
             else
             {
@@ -967,14 +967,14 @@ namespace RemuxForge.Web.Components.Pages
         /// Scorre la riga episodio selezionata dentro la viewport tabella
         /// </summary>
         /// <param name="index">Indice riga</param>
-        private void ScrollEpisodeRowIntoView(int index)
+        private async Task ScrollEpisodeRowIntoViewAsync(int index)
         {
             if (this._jsModule == null)
                 return;
 
             try
             {
-                _ = this._jsModule.InvokeVoidAsync("scrollEpisodeRowIntoView", index);
+                await this._jsModule.InvokeVoidAsync("scrollEpisodeRowIntoView", index);
             }
             catch
             {
@@ -986,14 +986,14 @@ namespace RemuxForge.Web.Components.Pages
         /// Scorre la riga split selezionata dentro la viewport tabella
         /// </summary>
         /// <param name="index">Indice riga</param>
-        private void ScrollSplitRowIntoView(int index)
+        private async Task ScrollSplitRowIntoViewAsync(int index)
         {
             if (this._jsModule == null)
                 return;
 
             try
             {
-                _ = this._jsModule.InvokeVoidAsync("scrollSplitRowIntoView", index);
+                await this._jsModule.InvokeVoidAsync("scrollSplitRowIntoView", index);
             }
             catch
             {
@@ -1005,14 +1005,14 @@ namespace RemuxForge.Web.Components.Pages
         /// Scorre la riga metadata selezionata dentro la viewport tabella
         /// </summary>
         /// <param name="index">Indice riga</param>
-        private void ScrollMetadataRowIntoView(int index)
+        private async Task ScrollMetadataRowIntoViewAsync(int index)
         {
             if (this._jsModule == null)
                 return;
 
             try
             {
-                _ = this._jsModule.InvokeVoidAsync("scrollMetadataRowIntoView", index);
+                await this._jsModule.InvokeVoidAsync("scrollMetadataRowIntoView", index);
             }
             catch
             {
@@ -1379,42 +1379,6 @@ namespace RemuxForge.Web.Components.Pages
             }
 
             value += part;
-        }
-
-        /// <summary>
-        /// Costruisce testo preview prima/dopo per una modifica metadata
-        /// </summary>
-        /// <param name="change">Modifica</param>
-        /// <returns>Testo preview</returns>
-        private string BuildMetadataChangeText(MkvMetadataChange change)
-        {
-            if (change == null)
-                return "";
-
-            if (!string.IsNullOrEmpty(change.FieldKey) &&
-                (change.OperationType == MkvMetadataOperationType.SetField ||
-                 change.OperationType == MkvMetadataOperationType.ClearField ||
-                 change.OperationType == MkvMetadataOperationType.SetExclusiveFlag ||
-                 change.OperationType == MkvMetadataOperationType.SetTagField ||
-                 change.OperationType == MkvMetadataOperationType.ClearTagField))
-            {
-                return change.FieldKey + ": " + FormatMetadataPreviewValue(change.BeforeValue) + " -> " + FormatMetadataPreviewValue(change.AfterValue);
-            }
-
-            return change.Message;
-        }
-
-        /// <summary>
-        /// Formatta valore preview metadata
-        /// </summary>
-        /// <param name="value">Valore</param>
-        /// <returns>Valore leggibile</returns>
-        private static string FormatMetadataPreviewValue(string value)
-        {
-            if (string.IsNullOrEmpty(value))
-                return "''";
-
-            return "'" + value + "'";
         }
 
         #endregion
@@ -2198,7 +2162,7 @@ namespace RemuxForge.Web.Components.Pages
         /// Cambia tema via modulo JS interop e salva in AppSettings
         /// </summary>
         /// <param name="theme">Nome tema kebab-case</param>
-        private void ChangeTheme(string theme)
+        private async Task ChangeThemeAsync(string theme)
         {
             this._currentTheme = theme;
 
@@ -2210,7 +2174,7 @@ namespace RemuxForge.Web.Components.Pages
             {
                 try
                 {
-                    _ = this._jsModule.InvokeVoidAsync("setTheme", theme);
+                    await this._jsModule.InvokeVoidAsync("setTheme", theme);
                 }
                 catch
                 {
@@ -2223,7 +2187,7 @@ namespace RemuxForge.Web.Components.Pages
         /// Cambia lingua UI e salva in AppSettings
         /// </summary>
         /// <param name="language">Codice lingua</param>
-        private void ChangeLanguage(string language)
+        private async Task ChangeLanguageAsync(string language)
         {
             string normalizedLanguage = AppText.NormalizeLanguage(language);
             if (string.IsNullOrEmpty(normalizedLanguage))
@@ -2242,7 +2206,7 @@ namespace RemuxForge.Web.Components.Pages
             {
                 try
                 {
-                    _ = this._jsModule.InvokeVoidAsync("setLanguage", normalizedLanguage);
+                    await this._jsModule.InvokeVoidAsync("setLanguage", normalizedLanguage);
                 }
                 catch
                 {

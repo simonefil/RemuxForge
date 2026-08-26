@@ -1,11 +1,14 @@
-using RemuxForge.Core.Analysis.Deep.Features;
-using RemuxForge.Core.Analysis.Deep;
+using RemuxForge.Core.Analysis.Edit;
+using RemuxForge.Core.Analysis.Edit.Extraction;
+using RemuxForge.Core.Analysis.Edit.Geometry;
+using RemuxForge.Core.Analysis.Speed;
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Media.Ffmpeg;
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Tools;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -15,51 +18,81 @@ using System.Threading;
 namespace RemuxForge.Core.Analysis.FrameSync
 {
     /// <summary>
-    /// Determina un offset costante tramite SIFT, PTS reali e percorsi temporali monotoni
+    /// Determina un offset costante fra due copie e lo verifica in checkpoint distribuiti
     /// </summary>
     public sealed class FrameSyncService : VideoSyncServiceBase
     {
         #region Costanti
 
         /// <summary>
-        /// Passo temporale delle ancore NxM iniziali
+        /// Posizioni relative delle finestre dense di ricerca visiva
         /// </summary>
-        private const double INITIAL_SAMPLE_INTERVAL_SEC = 1.0;
+        private static readonly double[] SEARCH_POSITIONS = new double[] { 0.2, 0.5, 0.8 };
 
         /// <summary>
-        /// Passo temporale delle ancore locali dei checkpoint
+        /// Durata della finestra sorgente di ricerca, in millisecondi
         /// </summary>
-        private const double CHECKPOINT_SAMPLE_INTERVAL_SEC = 0.5;
+        private const double SEARCH_WINDOW_MS = 20000.0;
 
         /// <summary>
-        /// Semilarghezza della banda di offset valutata nei checkpoint
+        /// Semiampiezza del corridoio esplorato dalla ricerca visiva, in millisecondi
         /// </summary>
-        private const double CHECKPOINT_OFFSET_CORRIDOR_MS = 1000.0;
+        private const double SEARCH_CORRIDOR_MS = 60000.0;
 
         /// <summary>
-        /// Copertura temporale minima del percorso iniziale
+        /// Distanza entro cui due finestre di ricerca raccontano lo stesso offset
         /// </summary>
-        private const double INITIAL_MINIMUM_COVERAGE_MS = 20000.0;
+        private const double SEARCH_AGREEMENT_MS = 200.0;
 
         /// <summary>
-        /// Copertura temporale minima del percorso locale di un checkpoint
+        /// Larghezza del raggruppamento dei voti di offset, in millisecondi
         /// </summary>
-        private const double CHECKPOINT_MINIMUM_COVERAGE_MS = 2000.0;
+        private const double VOTE_CLUSTER_MS = 100.0;
 
         /// <summary>
-        /// Durata source della finestra full-rate usata per il refinement finale
+        /// Voti minimi perché il raggruppamento dominante sia credibile
         /// </summary>
-        private const double PRECISION_SOURCE_DURATION_SEC = 4.0;
+        private const int VOTE_MIN_SUPPORT = 20;
 
         /// <summary>
-        /// Durata language della finestra full-rate usata per il refinement finale
+        /// Durata della finestra sorgente di un checkpoint, in millisecondi
         /// </summary>
-        private const double PRECISION_LANGUAGE_DURATION_SEC = 6.0;
+        private const double CHECKPOINT_WINDOW_MS = 6000.0;
 
         /// <summary>
-        /// Semilarghezza della banda full-rate intorno all'offset dei checkpoint
+        /// Semiampiezza della banda di offset verificata in un checkpoint
         /// </summary>
-        private const double PRECISION_OFFSET_CORRIDOR_MS = 600.0;
+        private const double CHECKPOINT_CORRIDOR_MS = 1000.0;
+
+        /// <summary>
+        /// Scarto oltre il quale un checkpoint misurato racconta un altro offset
+        /// </summary>
+        private const double CHECKPOINT_TOLERANCE_MS = 100.0;
+
+        /// <summary>
+        /// Passo della scansione grossolana degli offset, in millisecondi
+        /// </summary>
+        private const double COARSE_STEP_MS = 20.0;
+
+        /// <summary>
+        /// Semiampiezza della scansione fine attorno all'offset grossolano
+        /// </summary>
+        private const double FINE_RADIUS_MS = 250.0;
+
+        /// <summary>
+        /// Passo della scansione fine degli offset, in millisecondi
+        /// </summary>
+        private const double FINE_STEP_MS = 5.0;
+
+        /// <summary>
+        /// Frazione minima di fotogrammi spiegati perché un checkpoint regga
+        /// </summary>
+        private const double MIN_EXPLAINED = 0.55;
+
+        /// <summary>
+        /// Fotogrammi minimi in una finestra perché la misura sia significativa
+        /// </summary>
+        private const int MIN_WINDOW_FRAMES = 50;
 
         #endregion
 
@@ -71,9 +104,39 @@ namespace RemuxForge.Core.Analysis.FrameSync
         private readonly FrameSyncConfig _frameSyncConfig;
 
         /// <summary>
-        /// Resolver dei modi SIFT a offset costante
+        /// Risolutore dei percorsi degli strumenti esterni
         /// </summary>
-        private readonly FrameSyncSiftTemporalResolver _temporalResolver;
+        private readonly ToolPathResolverService _toolPathResolver;
+
+        /// <summary>
+        /// Estrattore dei segnali per fotogramma, valorizzato all'avvio della misura
+        /// </summary>
+        private FrameSignalExtractor _extractor;
+
+        /// <summary>
+        /// Fattore che riporta i tempi della copia doppiata nel dominio della sorgente
+        /// </summary>
+        private double _stretch;
+
+        /// <summary>
+        /// Fotogrammi al secondo dichiarati dalla sorgente
+        /// </summary>
+        private double _sourceFps;
+
+        /// <summary>
+        /// Fotogrammi al secondo dichiarati dalla copia doppiata
+        /// </summary>
+        private double _languageFps;
+
+        /// <summary>
+        /// Geometria di normalizzazione della sorgente
+        /// </summary>
+        private FrameGeometry _sourceFrameGeometry;
+
+        /// <summary>
+        /// Geometria di normalizzazione della copia doppiata
+        /// </summary>
+        private FrameGeometry _languageFrameGeometry;
 
         /// <summary>
         /// Tempo dell'ultima esecuzione FrameSync
@@ -93,12 +156,14 @@ namespace RemuxForge.Core.Analysis.FrameSync
         /// Inizializza il servizio con il percorso FFmpeg risolto
         /// </summary>
         /// <param name="ffmpegPath">Percorso dell'eseguibile FFmpeg</param>
-        public FrameSyncService(string ffmpegPath) : base(ffmpegPath, LogSection.FrameSync)
+        /// <param name="toolPathResolver">Risolutore dei percorsi degli strumenti esterni</param>
+        public FrameSyncService(string ffmpegPath, ToolPathResolverService toolPathResolver) : base(ffmpegPath, LogSection.FrameSync)
         {
             if (string.IsNullOrEmpty(ffmpegPath))
                 throw new ArgumentException(AppText.T("analysis.sift.missingFfmpegPath"), nameof(ffmpegPath));
             this._frameSyncConfig = AppSettingsService.Instance.Settings.Advanced.FrameSync;
-            this._temporalResolver = new FrameSyncSiftTemporalResolver();
+            this._toolPathResolver = toolPathResolver;
+            this._stretch = 1.0;
             this._lastResult = new FrameSyncResult();
         }
 
@@ -107,52 +172,40 @@ namespace RemuxForge.Core.Analysis.FrameSync
         #region Metodi pubblici
 
         /// <summary>
-        /// Determina e verifica un offset costante tramite ricerca SIFT iniziale e checkpoint locali
+        /// Determina e verifica un offset costante fra le due copie
         /// </summary>
         /// <param name="sourceFile">Percorso del video sorgente</param>
         /// <param name="languageFile">Percorso del video lingua</param>
+        /// <param name="manualStretchFactor">Fattore di stretch manuale, vuoto quando le due copie corrono uguali</param>
         /// <returns>Offset da applicare in millisecondi oppure <see cref="int.MinValue"/></returns>
-        public int RefineOffset(string sourceFile, string languageFile)
+        public int RefineOffset(string sourceFile, string languageFile, string manualStretchFactor)
         {
             Stopwatch totalStopwatch = Stopwatch.StartNew();
             FrameSyncResult result = new FrameSyncResult();
             FrameSyncTimingInfo timing = result.Timing;
-            bool originalSourceGeometryCrop = this._geometryCropSourceToFourThree;
-            bool originalLanguageGeometryCrop = this._geometryCropLanguageToFourThree;
-            int finalOffset = int.MinValue;
 
             try
             {
+                // Con lo stretch l'offset è costante solo nel dominio della sorgente: senza
+                // applicarlo i checkpoint vedrebbero una deriva e rinuncerebbero sempre
+                if (!this.TryResolveStretch(manualStretchFactor, result))
+                    return int.MinValue;
                 if (!this.TryPrepare(sourceFile, languageFile, result, timing, out int durationMs))
                     return int.MinValue;
 
-                AdvancedConfig advanced = AppSettingsService.Instance.Settings.Advanced;
-                SiftBackendKind backend = advanced.GetSiftBackendKind();
-                using (FrameFeatureBatchMatcherBase matcher = FrameFeatureBatchMatcherBase.Create(backend))
-                {
-                    if (!matcher.IsAvailable(out string rejectReason))
-                    {
-                        result.FailureReason = rejectReason;
-                        return int.MinValue;
-                    }
+                FrameSyncCandidate initial = this.ResolveInitial(sourceFile, languageFile, durationMs, result, timing);
+                if (initial == null)
+                    return int.MinValue;
 
-                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Phase, AppText.T("framesync.sift.initialPhase"));
-                    ConsoleHelper.Progress(LogSection.FrameSync, 18, AppText.T("framesync.sift.initialProgress"));
-                    FrameSyncCandidate initial = this.ResolveInitial(sourceFile, languageFile, matcher, result, timing);
-                    if (initial == null)
-                        return int.MinValue;
-
-                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Success, AppText.F("framesync.sift.initialOffset", Utils.FormatDelay(initial.OffsetMs), initial.StrongPairCount, initial.ProcessedPairCount));
-                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Phase, AppText.F("framesync.sift.checkpointPhase", this._vsConfig.NumCheckPoints));
-                    ConsoleHelper.Progress(LogSection.FrameSync, 58, AppText.T("framesync.sift.checkpointProgress"));
-                    this.ResolveCheckpoints(sourceFile, languageFile, durationMs, initial, matcher, result, timing);
-                    finalOffset = this.FinalizeOffset(sourceFile, languageFile, durationMs, initial, matcher, result, timing);
-                }
-                return finalOffset;
+                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Success, AppText.F("framesync.match.initialOffset", Utils.FormatDelay(initial.OffsetMs), initial.StrongPairCount, initial.ProcessedPairCount));
+                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Phase, AppText.F("framesync.match.checkpointPhase", this._vsConfig.NumCheckPoints));
+                ConsoleHelper.Progress(LogSection.FrameSync, 58, AppText.T("framesync.match.checkpointProgress"));
+                this.ResolveCheckpoints(sourceFile, languageFile, durationMs, initial, result, timing);
+                return this.FinalizeOffset(initial, result);
             }
             catch (Exception ex)
             {
-                result.FailureReason = AppText.F("framesync.sift.failed", ex.Message);
+                result.FailureReason = AppText.F("framesync.match.failed", ex.Message);
                 ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Error, result.FailureReason);
                 return int.MinValue;
             }
@@ -162,13 +215,11 @@ namespace RemuxForge.Core.Analysis.FrameSync
                 timing.TotalMs = totalStopwatch.ElapsedMilliseconds;
                 this._frameSyncTimeMs = timing.TotalMs;
                 this._lastResult = result;
-                this._geometryCropSourceToFourThree = originalSourceGeometryCrop;
-                this._geometryCropLanguageToFourThree = originalLanguageGeometryCrop;
             }
         }
 
         /// <summary>
-        /// Restituisce un riepilogo compatto dei checkpoint SIFT
+        /// Restituisce un riepilogo compatto dei checkpoint
         /// </summary>
         /// <returns>Riepilogo localizzato dell'ultima esecuzione</returns>
         public string GetDetailSummary()
@@ -179,7 +230,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
                 if (this._lastResult.Points[pointIndex].Accepted)
                     accepted++;
             }
-            return AppText.F("framesync.sift.summary", accepted, this._lastResult.Points.Count, this._lastResult.Timing.InitialPairCount, this._lastResult.Timing.CheckpointPairCount, this._lastResult.Timing.PrecisionPairCount);
+            return AppText.F("framesync.match.summary", accepted, this._lastResult.Points.Count, this._lastResult.Timing.InitialPairCount, this._lastResult.Timing.CheckpointPairCount);
         }
 
         #endregion
@@ -187,159 +238,276 @@ namespace RemuxForge.Core.Analysis.FrameSync
         #region Metodi privati
 
         /// <summary>
-        /// Legge la durata e prepara la geometria comune alle estrazioni SIFT
+        /// Porta il fattore manuale nel rapporto con cui si stirano i tempi della copia doppiata
         /// </summary>
-        private bool TryPrepare(string sourceFile, string languageFile, FrameSyncResult result, FrameSyncTimingInfo timing, out int durationMs)
+        /// <param name="manualStretchFactor">Fattore di stretch manuale</param>
+        /// <param name="result">Risultato diagnostico in costruzione</param>
+        /// <returns>True quando il fattore è assente oppure valido</returns>
+        private bool TryResolveStretch(string manualStretchFactor, FrameSyncResult result)
         {
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            FfmpegVideoInfoReader reader = new FfmpegVideoInfoReader(this._ffmpegPath, this._ffmpegConfig, LogSection.FrameSync);
-            bool infoAvailable = reader.TryRead(sourceFile, out durationMs, out _);
-            stopwatch.Stop();
-            timing.VideoInfoMs = stopwatch.ElapsedMilliseconds;
-            if (!infoAvailable || durationMs < this._frameSyncConfig.MinDurationMs)
+            this._stretch = 1.0;
+            if (string.IsNullOrEmpty(manualStretchFactor != null ? manualStretchFactor.Trim() : null))
+                return true;
+
+            if (!SpeedCorrectionService.TryParseStretchFactor(manualStretchFactor, out double stretchRatio, out _) || !double.IsFinite(stretchRatio) || stretchRatio <= 0.0)
             {
-                result.FailureReason = AppText.T("framesync.sift.videoInfoUnavailable");
+                result.FailureReason = AppText.F("framesync.match.invalidStretch", manualStretchFactor);
+                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Error, result.FailureReason);
                 return false;
             }
 
-            stopwatch.Restart();
-            this.PrepareGeometryDrivenCrop(sourceFile, languageFile);
-            stopwatch.Stop();
-            timing.GeometryMs = stopwatch.ElapsedMilliseconds;
-            result.SourceGeometry = this._lastSourceGeometryInfo;
-            result.LanguageGeometry = this._lastLanguageGeometryInfo;
+            this._stretch = stretchRatio;
+            ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Notice, AppText.F("framesync.match.stretch", manualStretchFactor));
             return true;
         }
 
         /// <summary>
-        /// Estrae le finestre iniziali e risolve il modo SIFT monotono dominante
+        /// Legge la durata e stima la geometria comune alle due copie
         /// </summary>
-        private FrameSyncCandidate ResolveInitial(string sourceFile, string languageFile, FrameFeatureBatchMatcherBase matcher, FrameSyncResult result, FrameSyncTimingInfo timing)
+        /// <param name="sourceFile">Percorso del video sorgente</param>
+        /// <param name="languageFile">Percorso del video lingua</param>
+        /// <param name="result">Risultato diagnostico in costruzione</param>
+        /// <param name="timing">Tempi della sessione</param>
+        /// <param name="durationMs">Durata della sorgente in millisecondi</param>
+        /// <returns>True quando la misura può procedere</returns>
+        private bool TryPrepare(string sourceFile, string languageFile, FrameSyncResult result, FrameSyncTimingInfo timing, out int durationMs)
         {
-            Stopwatch phaseStopwatch = Stopwatch.StartNew();
-            int sourceStartMs = this._frameSyncConfig.SourceStartSec * 1000;
-            this.ExtractSegmentAtInterval(sourceFile, sourceStartMs, this._frameSyncConfig.SourceDurationSec, INITIAL_SAMPLE_INTERVAL_SEC, this._geometryCropSourceToFourThree, this._analysisCropSourcePx, out List<byte[]> sourceFrames, out double[] sourcePtsMs);
-            this.ExtractSegmentAtInterval(languageFile, 0, this._frameSyncConfig.LangDurationSec, INITIAL_SAMPLE_INTERVAL_SEC, this._geometryCropLanguageToFourThree, this._analysisCropLanguagePx, out List<byte[]> languageFrames, out double[] languagePtsMs);
-            timing.InitialExtractMs = phaseStopwatch.ElapsedMilliseconds;
-
-            List<DeepSiftVisualAnchor> sourceAnchors = this.BuildAnchors(sourceFrames, sourcePtsMs);
-            List<DeepSiftVisualAnchor> languageAnchors = this.BuildAnchors(languageFrames, languagePtsMs);
-            phaseStopwatch.Restart();
-            DeepSiftBatchMatchResult batch = matcher.BuildMatrix(sourceAnchors, languageAnchors, ParallelismHelper.ResolveDefaultMaxDegree(), CancellationToken.None);
-            timing.InitialMatchMs = phaseStopwatch.ElapsedMilliseconds;
-            timing.InitialSearchMs = timing.InitialExtractMs + timing.InitialMatchMs;
-            timing.InitialPairCount = batch != null ? batch.ProcessedCellCount : 0;
-            if (batch == null || batch.Cancelled || !string.IsNullOrEmpty(batch.RejectReason))
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            FfmpegVideoInfoReader reader = new FfmpegVideoInfoReader(this._ffmpegPath, this._ffmpegConfig, LogSection.FrameSync);
+            bool infoAvailable = reader.TryRead(sourceFile, out durationMs, out this._sourceFps);
+            reader.TryRead(languageFile, out _, out this._languageFps);
+            stopwatch.Stop();
+            timing.VideoInfoMs = stopwatch.ElapsedMilliseconds;
+            if (!infoAvailable || durationMs < this._frameSyncConfig.MinDurationMs)
             {
-                result.Initial.FailureReason = batch != null ? batch.RejectReason : AppText.T("framesync.sift.initialUnavailable");
-                result.FailureReason = result.Initial.FailureReason;
-                return null;
+                result.FailureReason = AppText.T("framesync.match.videoInfoUnavailable");
+                return false;
             }
 
-            List<FrameSyncCandidate> candidates = this._temporalResolver.Resolve(batch.AcceptedPairs, batch.BackendName, batch.ProcessedCellCount);
-            result.Initial.Candidates.AddRange(candidates);
-            if (candidates.Count == 0 || Math.Min(candidates[0].SourceCoverageMs, candidates[0].LanguageCoverageMs) < INITIAL_MINIMUM_COVERAGE_MS)
+            stopwatch.Restart();
+            ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Phase, AppText.T("framesync.match.geometryPhase"));
+            ConsoleHelper.Progress(LogSection.FrameSync, 10, AppText.T("framesync.match.geometryProgress"));
+            VisionBackendKind backend = AppSettingsService.Instance.Settings.Advanced.GetVisionBackendKind();
+            FrameGeometryEstimator estimator = new FrameGeometryEstimator(this._ffmpegPath, this._ffmpegConfig, backend, LogSection.FrameSync);
+            FrameGeometryEstimationResult geometry = estimator.Estimate(sourceFile, languageFile, this._analysisCropSourcePx, this._analysisCropLanguagePx, durationMs, CancellationToken.None);
+            result.SourceGeometry = geometry.SourceGeometryInfo;
+            result.LanguageGeometry = geometry.LanguageGeometryInfo;
+            result.GeometryAlignment = geometry.Alignment;
+            if (!geometry.Alignment.Success)
             {
-                result.Initial.FailureReason = AppText.T("framesync.sift.initialUnsupported");
-                result.FailureReason = result.Initial.FailureReason;
-                return null;
+                result.FailureReason = geometry.Alignment.RejectReason;
+                return false;
             }
-            if (!this._temporalResolver.IsBestCandidateUnique(candidates))
-            {
-                result.Initial.Ambiguous = true;
-                result.Initial.FailureReason = AppText.T("framesync.sift.initialAmbiguous");
-                result.FailureReason = result.Initial.FailureReason;
-                result.Ambiguous = true;
-                return null;
-            }
+            this._sourceFrameGeometry = geometry.SourceCommonGeometry;
+            this._languageFrameGeometry = geometry.LanguageCommonGeometry;
+            stopwatch.Stop();
+            timing.GeometryMs = stopwatch.ElapsedMilliseconds;
 
-            result.Initial.Success = true;
-            result.Initial.BestCandidate = candidates[0];
-            return candidates[0];
+            string mkvMergePath = this._toolPathResolver.ResolveMkvMergePath(false);
+            // FrameSync guarda finestre da sei secondi: aprire il dispositivo costa più di quanto
+            // farebbe risparmiare, e gli hash restano sul processore
+            this._extractor = new FrameSignalExtractor(this._ffmpegPath, this._toolPathResolver.ResolveFfprobePath(this._ffmpegPath, false), mkvMergePath, this._toolPathResolver.ResolveMkvExtractPath(mkvMergePath, false), this._ffmpegConfig, new CpuHashBackend());
+            return true;
         }
 
         /// <summary>
-        /// Verifica l'offset iniziale in checkpoint distribuiti usando sole coppie nella banda PTS locale
+        /// Trova l'offset di partenza, dall'audio quando le due copie condividono una traccia
         /// </summary>
-        private void ResolveCheckpoints(string sourceFile, string languageFile, int durationMs, FrameSyncCandidate initial, FrameFeatureBatchMatcherBase matcher, FrameSyncResult result, FrameSyncTimingInfo timing)
+        /// <param name="sourceFile">Percorso del video sorgente</param>
+        /// <param name="languageFile">Percorso del video lingua</param>
+        /// <param name="durationMs">Durata della sorgente in millisecondi</param>
+        /// <param name="result">Risultato diagnostico in costruzione</param>
+        /// <param name="timing">Tempi della sessione</param>
+        /// <returns>Candidato iniziale oppure null</returns>
+        private FrameSyncCandidate ResolveInitial(string sourceFile, string languageFile, int durationMs, FrameSyncResult result, FrameSyncTimingInfo timing)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            FrameSyncCandidate candidate = this.ResolveAudioOffset(sourceFile, languageFile, timing);
+            if (candidate == null)
+                candidate = this.ResolveVisualOffset(sourceFile, languageFile, durationMs, timing);
+            timing.InitialSearchMs = stopwatch.ElapsedMilliseconds;
+
+            if (candidate == null)
+            {
+                result.Initial.FailureReason = AppText.T("framesync.match.initialUnsupported");
+                result.FailureReason = result.Initial.FailureReason;
+                return null;
+            }
+
+            result.Initial.Candidates.Add(candidate);
+            result.Initial.BestCandidate = candidate;
+            result.Initial.Success = true;
+            return candidate;
+        }
+
+        /// <summary>
+        /// Cerca l'offset nella correlazione degli inviluppi della traccia condivisa
+        /// </summary>
+        /// <param name="sourceFile">Percorso del video sorgente</param>
+        /// <param name="languageFile">Percorso del video lingua</param>
+        /// <param name="timing">Tempi della sessione</param>
+        /// <returns>Candidato audio oppure null quando la traccia non è condivisa</returns>
+        private FrameSyncCandidate ResolveAudioOffset(string sourceFile, string languageFile, FrameSyncTimingInfo timing)
+        {
+            // Con una traccia nella stessa lingua l'offset costa due decodifiche audio, contro
+            // le centinaia di secondi di video che servirebbero a cercarlo guardando
+            string ffprobePath = this._toolPathResolver.ResolveFfprobePath(this._ffmpegPath, false);
+            if (string.IsNullOrEmpty(ffprobePath))
+                return null;
+
+            AudioEnvelopeExtractor extractor = new AudioEnvelopeExtractor(this._ffmpegPath, ffprobePath);
+            if (!extractor.ResolveSharedStreams(sourceFile, languageFile, this._ffmpegConfig.FrameExtractionTimeoutMs, out int sourceStream, out int languageStream))
+            {
+                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.T("framesync.match.audioUnavailable"));
+                return null;
+            }
+
+            ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Phase, AppText.T("framesync.match.audioPhase"));
+            ConsoleHelper.Progress(LogSection.FrameSync, 24, AppText.T("framesync.match.audioProgress"));
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            AudioEnvelope source = extractor.Extract(sourceFile, sourceStream, this._ffmpegConfig.FrameExtractionTimeoutMs);
+            AudioEnvelope language = extractor.Extract(languageFile, languageStream, this._ffmpegConfig.FrameExtractionTimeoutMs);
+            timing.InitialExtractMs += stopwatch.ElapsedMilliseconds;
+            if (!new FrameSyncAudioOffsetResolver().TryResolve(new AudioEnvelopePair(source, language, this._stretch), out double offsetMs, out double correlation))
+            {
+                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Notice, AppText.T("framesync.match.audioInconsistent"));
+                return null;
+            }
+
+            ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("framesync.match.audioOffset", Utils.FormatDelay((int)Math.Round(offsetMs)), correlation.ToString("F2", CultureInfo.InvariantCulture)));
+            FrameSyncCandidate result = new FrameSyncCandidate();
+            result.Backend = AppText.T("framesync.match.audioBackend");
+            result.OffsetMs = (int)Math.Round(offsetMs);
+            result.MeanScore = correlation;
+            result.SourceCoverageMs = source.Count * AudioEnvelopeExtractor.STEP_MS;
+            result.LanguageCoverageMs = language.Count * AudioEnvelopeExtractor.STEP_MS;
+            return result;
+        }
+
+        /// <summary>
+        /// Cerca l'offset in finestre dense lontane dalla testa, dove le due copie si somigliano
+        /// </summary>
+        /// <param name="sourceFile">Percorso del video sorgente</param>
+        /// <param name="languageFile">Percorso del video lingua</param>
+        /// <param name="durationMs">Durata della sorgente in millisecondi</param>
+        /// <param name="timing">Tempi della sessione</param>
+        /// <returns>Candidato visivo oppure null</returns>
+        private FrameSyncCandidate ResolveVisualOffset(string sourceFile, string languageFile, int durationMs, FrameSyncTimingInfo timing)
+        {
+            // Mai in testa: loghi, cartelli e sigle sono il punto in cui due edizioni
+            // differiscono di più, ed è esattamente dove la vecchia ricerca guardava
+            ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Phase, AppText.T("framesync.match.searchPhase"));
+            ConsoleHelper.Progress(LogSection.FrameSync, 30, AppText.T("framesync.match.searchProgress"));
+            List<FrameSyncCandidate> candidates = new List<FrameSyncCandidate>();
+            for (int positionIndex = 0; positionIndex < SEARCH_POSITIONS.Length; positionIndex++)
+            {
+                double sourceStartMs = Math.Max(0.0, durationMs * SEARCH_POSITIONS[positionIndex] - SEARCH_WINDOW_MS / 2.0);
+                Stopwatch stopwatch = Stopwatch.StartNew();
+                PairSignals pair = this.ExtractPair(sourceFile, languageFile, sourceStartMs, SEARCH_WINDOW_MS, 0.0, SEARCH_CORRIDOR_MS);
+                timing.InitialExtractMs += stopwatch.ElapsedMilliseconds;
+                if (pair == null)
+                    continue;
+
+                stopwatch.Restart();
+                FrameSyncCandidate candidate = this.VotePair(pair);
+                timing.InitialMatchMs += stopwatch.ElapsedMilliseconds;
+                if (candidate == null)
+                    continue;
+                timing.InitialPairCount += candidate.ProcessedPairCount;
+                candidates.Add(candidate);
+                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("framesync.match.searchWindow", (int)Math.Round(SEARCH_POSITIONS[positionIndex] * 100.0), Utils.FormatDelay(candidate.OffsetMs), candidate.StrongPairCount));
+            }
+
+            if (candidates.Count < 2)
+                return null;
+
+            // Finestre lontane che raccontano lo stesso offset sono la prova che è costante, ma
+            // devono dirlo tutte: una che si sfila è un taglio, non un voto di minoranza
+            FrameSyncCandidate best = candidates[0];
+            for (int index = 1; index < candidates.Count; index++)
+            {
+                if (Math.Abs(candidates[index].OffsetMs - candidates[0].OffsetMs) > SEARCH_AGREEMENT_MS)
+                    return null;
+                if (candidates[index].StrongPairCount > best.StrongPairCount)
+                    best = candidates[index];
+            }
+
+            return best;
+        }
+
+        /// <summary>
+        /// Verifica l'offset iniziale in checkpoint distribuiti su tutta la durata
+        /// </summary>
+        /// <param name="sourceFile">Percorso del video sorgente</param>
+        /// <param name="languageFile">Percorso del video lingua</param>
+        /// <param name="durationMs">Durata della sorgente in millisecondi</param>
+        /// <param name="initial">Candidato iniziale</param>
+        /// <param name="result">Risultato diagnostico in costruzione</param>
+        /// <param name="timing">Tempi della sessione</param>
+        private void ResolveCheckpoints(string sourceFile, string languageFile, int durationMs, FrameSyncCandidate initial, FrameSyncResult result, FrameSyncTimingInfo timing)
         {
             Stopwatch checkpointsStopwatch = Stopwatch.StartNew();
             for (int pointIndex = 0; pointIndex < this._vsConfig.NumCheckPoints; pointIndex++)
             {
                 int percentage = (int)Math.Round((pointIndex + 1) * 100.0 / (this._vsConfig.NumCheckPoints + 1));
-                int sourceCenterMs = (int)Math.Round(durationMs * percentage / 100.0);
-                FrameSyncPointResult point = this.ResolveCheckpoint(sourceFile, languageFile, sourceCenterMs, percentage, initial.OffsetMs, matcher);
+                FrameSyncPointResult point = this.ResolveCheckpoint(sourceFile, languageFile, durationMs * percentage / 100.0, percentage, initial.OffsetMs);
                 result.Points.Add(point);
                 timing.CheckpointExtractMs += point.ExtractMs;
                 timing.CheckpointMatchMs += point.MatchMs;
                 timing.CheckpointPairCount += point.ProcessedPairCount;
-                ConsoleHelper.Write(LogSection.FrameSync, point.Accepted ? LogLevel.Debug : LogLevel.Notice, AppText.F("framesync.sift.checkpointResult", percentage, point.Accepted ? AppText.T("framesync.sift.accepted") : AppText.T("framesync.sift.rejected"), point.BestOffsetMs == int.MinValue ? "-" : Utils.FormatDelay(point.BestOffsetMs), point.StrongPairCount, point.ProcessedPairCount));
+                ConsoleHelper.Write(LogSection.FrameSync, point.Accepted ? LogLevel.Debug : LogLevel.Notice, AppText.F("framesync.match.checkpointResult", percentage, point.Accepted ? AppText.T("framesync.match.accepted") : point.RejectReason, point.BestOffsetMs == int.MinValue ? "-" : Utils.FormatDelay(point.BestOffsetMs), point.StrongPairCount, point.ProcessedPairCount));
             }
             checkpointsStopwatch.Stop();
             timing.CheckpointsMs = checkpointsStopwatch.ElapsedMilliseconds;
         }
 
         /// <summary>
-        /// Risolve un singolo checkpoint SIFT nel corridoio dell'offset atteso
+        /// Misura l'offset in un checkpoint e ne verifica la tenuta
         /// </summary>
-        private FrameSyncPointResult ResolveCheckpoint(string sourceFile, string languageFile, int sourceCenterMs, int percentage, int expectedOffsetMs, FrameFeatureBatchMatcherBase matcher)
+        /// <param name="sourceFile">Percorso del video sorgente</param>
+        /// <param name="languageFile">Percorso del video lingua</param>
+        /// <param name="sourceCenterMs">Centro della finestra sorgente</param>
+        /// <param name="percentage">Posizione percentuale del checkpoint</param>
+        /// <param name="expectedOffsetMs">Offset atteso dal candidato iniziale</param>
+        /// <returns>Esito del checkpoint</returns>
+        private FrameSyncPointResult ResolveCheckpoint(string sourceFile, string languageFile, double sourceCenterMs, int percentage, int expectedOffsetMs)
         {
+            // Verificare costa un confronto per fotogramma, cercare costa una griglia: qui si
+            // verifica soltanto, e un checkpoint che cade dice che l'offset non è costante
             Stopwatch totalStopwatch = Stopwatch.StartNew();
             Stopwatch phaseStopwatch = Stopwatch.StartNew();
             FrameSyncPointResult result = new FrameSyncPointResult();
             result.CheckpointPercent = percentage;
             result.ExpectedOffsetMs = expectedOffsetMs;
-            result.Backend = matcher.BackendName;
-            int sourceDurationMs = this._vsConfig.VerifySourceDurationSec * 1000;
-            int languageDurationMs = this._vsConfig.VerifyLangDurationSec * 1000;
-            int sourceStartMs = Math.Max(0, sourceCenterMs - (sourceDurationMs / 2));
-            int expectedLanguageCenterMs = sourceCenterMs - expectedOffsetMs;
-            int languageStartMs = Math.Max(0, expectedLanguageCenterMs - (languageDurationMs / 2));
-            this.ExtractSegmentAtInterval(sourceFile, sourceStartMs, this._vsConfig.VerifySourceDurationSec, CHECKPOINT_SAMPLE_INTERVAL_SEC, this._geometryCropSourceToFourThree, this._analysisCropSourcePx, out List<byte[]> sourceFrames, out double[] sourcePtsMs);
-            this.ExtractSegmentAtInterval(languageFile, languageStartMs, this._vsConfig.VerifyLangDurationSec, CHECKPOINT_SAMPLE_INTERVAL_SEC, this._geometryCropLanguageToFourThree, this._analysisCropLanguagePx, out List<byte[]> languageFrames, out double[] languagePtsMs);
+            result.Backend = AppText.T("framesync.match.hashBackend");
+            double sourceStartMs = Math.Max(0.0, sourceCenterMs - CHECKPOINT_WINDOW_MS / 2.0);
+            PairSignals pair = this.ExtractPair(sourceFile, languageFile, sourceStartMs, CHECKPOINT_WINDOW_MS, expectedOffsetMs, CHECKPOINT_CORRIDOR_MS);
             result.ExtractMs = phaseStopwatch.ElapsedMilliseconds;
-
-            List<DeepSiftVisualAnchor> sourceAnchors = this.BuildAnchors(sourceFrames, sourcePtsMs);
-            List<DeepSiftVisualAnchor> languageAnchors = this.BuildAnchors(languageFrames, languagePtsMs);
-            List<DeepSiftFramePair> plannedPairs = this.BuildOffsetBandPairs(sourceAnchors, languageAnchors, expectedOffsetMs, CHECKPOINT_OFFSET_CORRIDOR_MS);
-            if (plannedPairs.Count == 0)
+            if (pair == null)
             {
-                result.RejectReason = AppText.T("framesync.sift.checkpointWithoutPairs");
+                result.RejectReason = AppText.T("framesync.match.checkpointWithoutFrames");
                 result.TimingMs = totalStopwatch.ElapsedMilliseconds;
                 return result;
             }
 
             phaseStopwatch.Restart();
-            DeepSiftBatchMatchResult batch = matcher.BuildMatrix(sourceAnchors, languageAnchors, ParallelismHelper.ResolveDefaultMaxDegree(), CancellationToken.None, null, plannedPairs);
+            int[] indices = HashOps.RangeIndices(pair, sourceStartMs, sourceStartMs + CHECKPOINT_WINDOW_MS, 1);
+            double coarseMs = this.Measure(pair, indices, expectedOffsetMs, CHECKPOINT_CORRIDOR_MS, COARSE_STEP_MS);
+            double offsetMs = this.Measure(pair, indices, coarseMs, FINE_RADIUS_MS, FINE_STEP_MS);
+            double explained = HashOps.ExplainedFraction(pair, indices, -offsetMs, EditAnalysisProfile.VERIFICATION_RADIUS, EditAnalysisProfile.VERIFICATION_THRESHOLD);
             result.MatchMs = phaseStopwatch.ElapsedMilliseconds;
-            result.ProcessedPairCount = batch != null ? batch.ProcessedCellCount : 0;
-            if (batch == null || batch.Cancelled || !string.IsNullOrEmpty(batch.RejectReason))
-            {
-                result.RejectReason = batch != null ? batch.RejectReason : AppText.T("framesync.sift.checkpointUnavailable");
-                result.TimingMs = totalStopwatch.ElapsedMilliseconds;
-                return result;
-            }
+            result.ProcessedPairCount = indices.Length * (long)Math.Ceiling((2.0 * CHECKPOINT_CORRIDOR_MS + COARSE_STEP_MS) / COARSE_STEP_MS);
+            result.AcceptedPairCount = indices.Length;
+            result.StrongPairCount = (int)Math.Round(explained * indices.Length);
+            result.BestOffsetMs = (int)Math.Round(offsetMs);
+            result.BestScore = explained;
+            result.SourceCoverageMs = CHECKPOINT_WINDOW_MS;
+            result.LanguageCoverageMs = CHECKPOINT_WINDOW_MS + 2.0 * CHECKPOINT_CORRIDOR_MS;
 
-            List<FrameSyncCandidate> candidates = this._temporalResolver.Resolve(batch.AcceptedPairs, batch.BackendName, batch.ProcessedCellCount);
-            if (candidates.Count == 0 || !this._temporalResolver.IsBestCandidateUnique(candidates))
-            {
-                result.RejectReason = AppText.T("framesync.sift.checkpointAmbiguous");
-                result.TimingMs = totalStopwatch.ElapsedMilliseconds;
-                return result;
-            }
-
-            FrameSyncCandidate best = candidates[0];
-            result.BestOffsetMs = best.OffsetMs;
-            result.BestScore = best.MeanScore;
-            result.DispersionMs = best.DispersionMs;
-            result.AcceptedPairCount = best.AcceptedPairCount;
-            result.StrongPairCount = best.StrongPairCount;
-            result.SourceCoverageMs = best.SourceCoverageMs;
-            result.LanguageCoverageMs = best.LanguageCoverageMs;
-            if (Math.Min(best.SourceCoverageMs, best.LanguageCoverageMs) < CHECKPOINT_MINIMUM_COVERAGE_MS)
-                result.RejectReason = AppText.T("framesync.sift.checkpointUnsupported");
-            else if (Math.Abs(best.OffsetMs - expectedOffsetMs) > CHECKPOINT_OFFSET_CORRIDOR_MS)
-                result.RejectReason = AppText.T("framesync.sift.checkpointDrift");
+            if (explained < MIN_EXPLAINED)
+                result.RejectReason = AppText.T("framesync.match.checkpointUnsupported");
+            else if (Math.Abs(offsetMs - expectedOffsetMs) > CHECKPOINT_CORRIDOR_MS)
+                result.RejectReason = AppText.T("framesync.match.checkpointDrift");
             else
                 result.Accepted = true;
             result.TimingMs = totalStopwatch.ElapsedMilliseconds;
@@ -347,230 +515,200 @@ namespace RemuxForge.Core.Analysis.FrameSync
         }
 
         /// <summary>
-        /// Conclude FrameSync richiedendo checkpoint sufficienti e coerenti con un solo offset costante
+        /// Conclude richiedendo checkpoint sufficienti e coerenti con un solo offset costante
         /// </summary>
-        private int FinalizeOffset(string sourceFile, string languageFile, int durationMs, FrameSyncCandidate initial, FrameFeatureBatchMatcherBase matcher, FrameSyncResult result, FrameSyncTimingInfo timing)
+        /// <param name="initial">Candidato iniziale</param>
+        /// <param name="result">Risultato diagnostico in costruzione</param>
+        /// <returns>Offset finale oppure <see cref="int.MinValue"/></returns>
+        private int FinalizeOffset(FrameSyncCandidate initial, FrameSyncResult result)
         {
             List<int> offsets = new List<int>();
             double scoreSum = 0.0;
+            FrameSyncPointResult strongest = null;
             for (int pointIndex = 0; pointIndex < result.Points.Count; pointIndex++)
             {
                 FrameSyncPointResult point = result.Points[pointIndex];
+
+                // Un checkpoint che non si misura è solo un checkpoint in meno; uno che si
+                // misura bene e dà un altro offset dice che lì dentro c'è un taglio
+                if (!point.Accepted && point.BestScore >= MIN_EXPLAINED)
+                {
+                    result.FailureReason = AppText.T("framesync.match.inconsistentCheckpoints");
+                    return int.MinValue;
+                }
                 if (!point.Accepted)
                     continue;
                 offsets.Add(point.BestOffsetMs);
                 scoreSum += point.BestScore;
+                if (strongest == null || point.BestScore > strongest.BestScore)
+                    strongest = point;
             }
             if (offsets.Count < this._frameSyncConfig.MinValidPoints)
             {
-                result.FailureReason = AppText.F("framesync.sift.insufficientCheckpoints", offsets.Count, this._frameSyncConfig.MinValidPoints);
+                result.FailureReason = AppText.F("framesync.match.insufficientCheckpoints", offsets.Count, this._frameSyncConfig.MinValidPoints);
                 return int.MinValue;
             }
 
+            // I checkpoint misurano, la mediana giudica: l'ancora iniziale ha un errore suo e
+            // non è il metro con cui si decide se l'offset è costante
             offsets.Sort();
             int middle = offsets.Count / 2;
-            int coarseOffset = offsets.Count % 2 == 0 ? (int)Math.Round((offsets[middle - 1] + offsets[middle]) * 0.5) : offsets[middle];
+            int finalOffset = offsets.Count % 2 == 0 ? (int)Math.Round((offsets[middle - 1] + offsets[middle]) * 0.5) : offsets[middle];
             for (int offsetIndex = 0; offsetIndex < offsets.Count; offsetIndex++)
             {
-                if (Math.Abs(offsets[offsetIndex] - coarseOffset) > CHECKPOINT_OFFSET_CORRIDOR_MS)
+                if (Math.Abs(offsets[offsetIndex] - finalOffset) > CHECKPOINT_TOLERANCE_MS)
                 {
-                    result.Ambiguous = true;
-                    result.FailureReason = AppText.T("framesync.sift.inconsistentCheckpoints");
+                    result.FailureReason = AppText.T("framesync.match.inconsistentCheckpoints");
                     return int.MinValue;
                 }
-            }
-            if (Math.Abs(coarseOffset - initial.OffsetMs) > CHECKPOINT_OFFSET_CORRIDOR_MS)
-            {
-                result.Ambiguous = true;
-                result.FailureReason = AppText.T("framesync.sift.initialCheckpointDrift");
-                return int.MinValue;
             }
 
             result.Confidence = scoreSum / offsets.Count;
             if (result.Confidence < this._frameSyncConfig.FinalMinConfidence)
             {
-                result.FailureReason = AppText.F("framesync.sift.insufficientConfidence", result.Confidence.ToString("P0", CultureInfo.InvariantCulture), this._frameSyncConfig.FinalMinConfidence.ToString("P0", CultureInfo.InvariantCulture));
+                result.FailureReason = AppText.F("framesync.match.insufficientConfidence", result.Confidence.ToString("P0", CultureInfo.InvariantCulture), this._frameSyncConfig.FinalMinConfidence.ToString("P0", CultureInfo.InvariantCulture));
                 return int.MinValue;
             }
 
-            ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Phase, AppText.T("framesync.sift.precisionPhase"));
-            ConsoleHelper.Progress(LogSection.FrameSync, 72, AppText.T("framesync.sift.precisionProgress"));
-            FrameSyncCandidate precision = this.ResolvePrecisionOffset(sourceFile, languageFile, durationMs, coarseOffset, matcher, result, timing);
-            if (precision == null)
-                return int.MinValue;
-
-            result.OffsetMs = precision.OffsetMs;
-            result.InitialToFinalDeltaMs = Math.Abs(precision.OffsetMs - initial.OffsetMs);
-            result.Confidence = ((scoreSum + precision.MeanScore) / (offsets.Count + 1));
-            result.Success = result.Confidence >= this._frameSyncConfig.FinalMinConfidence;
-            if (!result.Success)
-            {
-                result.FailureReason = AppText.F("framesync.sift.insufficientConfidence", result.Confidence.ToString("P0", CultureInfo.InvariantCulture), this._frameSyncConfig.FinalMinConfidence.ToString("P0", CultureInfo.InvariantCulture));
-                return int.MinValue;
-            }
-            ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Success, AppText.F("framesync.sift.precisionOffset", Utils.FormatDelay(precision.OffsetMs), result.PrecisionCheckpointPercent, precision.StrongPairCount, precision.ProcessedPairCount));
-            return precision.OffsetMs;
+            result.OffsetMs = finalOffset;
+            result.InitialToFinalDeltaMs = Math.Abs(finalOffset - initial.OffsetMs);
+            result.PrecisionCheckpointPercent = strongest.CheckpointPercent;
+            result.PrecisionCandidate = new FrameSyncCandidate();
+            result.PrecisionCandidate.Backend = strongest.Backend;
+            result.PrecisionCandidate.OffsetMs = strongest.BestOffsetMs;
+            result.PrecisionCandidate.MeanScore = strongest.BestScore;
+            result.PrecisionCandidate.StrongPairCount = strongest.StrongPairCount;
+            result.PrecisionCandidate.AcceptedPairCount = strongest.AcceptedPairCount;
+            result.PrecisionCandidate.ProcessedPairCount = strongest.ProcessedPairCount;
+            result.PrecisionCandidate.SourceCoverageMs = strongest.SourceCoverageMs;
+            result.PrecisionCandidate.LanguageCoverageMs = strongest.LanguageCoverageMs;
+            result.Success = true;
+            ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Success, AppText.F("framesync.match.finalOffset", Utils.FormatDelay(finalOffset), offsets.Count, result.Points.Count));
+            return finalOffset;
         }
 
         /// <summary>
-        /// Risolve l'offset al frame usando in ordine i checkpoint più informativi
+        /// Offset più votato dai fotogrammi che si somigliano nelle due finestre
         /// </summary>
-        private FrameSyncCandidate ResolvePrecisionOffset(string sourceFile, string languageFile, int durationMs, int coarseOffsetMs, FrameFeatureBatchMatcherBase matcher, FrameSyncResult result, FrameSyncTimingInfo timing)
+        /// <param name="pair">Finestre delle due copie</param>
+        /// <returns>Candidato del raggruppamento dominante oppure null</returns>
+        private FrameSyncCandidate VotePair(PairSignals pair)
         {
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            List<FrameSyncPointResult> points = new List<FrameSyncPointResult>();
-            for (int pointIndex = 0; pointIndex < result.Points.Count; pointIndex++)
+            // Ogni coppia di fotogrammi simili vota la propria differenza di PTS: il
+            // raggruppamento più affollato è l'offset, senza griglia da spazzare
+            List<double> votes = new List<double>();
+            for (int sourceIndex = 0; sourceIndex < pair.Source.Count; sourceIndex++)
             {
-                if (result.Points[pointIndex].Accepted)
-                    points.Add(result.Points[pointIndex]);
-            }
-            points.Sort(this.ComparePrecisionPoints);
-
-            string lastRejectReason = AppText.T("framesync.sift.precisionUnavailable");
-            for (int pointIndex = 0; pointIndex < points.Count; pointIndex++)
-            {
-                FrameSyncPointResult point = points[pointIndex];
-                int sourceCenterMs = (int)Math.Round(durationMs * point.CheckpointPercent / 100.0);
-                FrameSyncCandidate candidate = this.ResolvePrecisionCandidate(sourceFile, languageFile, sourceCenterMs, coarseOffsetMs, matcher, timing, out string rejectReason);
-                if (candidate != null)
+                for (int languageIndex = 0; languageIndex < pair.Language.Count; languageIndex++)
                 {
-                    result.PrecisionCandidate = candidate;
-                    result.PrecisionCheckpointPercent = point.CheckpointPercent;
-                    stopwatch.Stop();
-                    timing.PrecisionRefinementMs = stopwatch.ElapsedMilliseconds;
-                    return candidate;
+                    if (HashOps.Distance(pair.Source, sourceIndex, pair.Language, languageIndex) > EditAnalysisProfile.DETECTION_THRESHOLD)
+                        continue;
+                    votes.Add(pair.Source.PtsMs[sourceIndex] - pair.LanguagePtsMs[languageIndex]);
                 }
-
-                lastRejectReason = rejectReason;
-                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Notice, AppText.F("framesync.sift.precisionAttemptRejected", point.CheckpointPercent, rejectReason));
             }
-
-            stopwatch.Stop();
-            timing.PrecisionRefinementMs = stopwatch.ElapsedMilliseconds;
-            result.FailureReason = AppText.F("framesync.sift.precisionFailed", lastRejectReason);
-            return null;
-        }
-
-        /// <summary>
-        /// Esegue un refinement full-rate nella banda del checkpoint selezionato
-        /// </summary>
-        private FrameSyncCandidate ResolvePrecisionCandidate(string sourceFile, string languageFile, int sourceCenterMs, int expectedOffsetMs, FrameFeatureBatchMatcherBase matcher, FrameSyncTimingInfo timing, out string rejectReason)
-        {
-            Stopwatch phaseStopwatch = Stopwatch.StartNew();
-            int sourceStartMs = Math.Max(0, sourceCenterMs - (int)Math.Round(PRECISION_SOURCE_DURATION_SEC * 500.0));
-            int expectedLanguageCenterMs = sourceCenterMs - expectedOffsetMs;
-            int languageStartMs = Math.Max(0, expectedLanguageCenterMs - (int)Math.Round(PRECISION_LANGUAGE_DURATION_SEC * 500.0));
-            this.ExtractSegment(sourceFile, sourceStartMs, PRECISION_SOURCE_DURATION_SEC, 0.0, this._geometryCropSourceToFourThree, this._analysisCropSourcePx, out List<byte[]> sourceFrames, out double[] sourcePtsMs);
-            this.ExtractSegment(languageFile, languageStartMs, PRECISION_LANGUAGE_DURATION_SEC, 0.0, this._geometryCropLanguageToFourThree, this._analysisCropLanguagePx, out List<byte[]> languageFrames, out double[] languagePtsMs);
-            timing.PrecisionExtractMs += phaseStopwatch.ElapsedMilliseconds;
-
-            List<DeepSiftVisualAnchor> sourceAnchors = this.BuildAnchors(sourceFrames, sourcePtsMs);
-            List<DeepSiftVisualAnchor> languageAnchors = this.BuildAnchors(languageFrames, languagePtsMs);
-            List<DeepSiftFramePair> plannedPairs = this.BuildOffsetBandPairs(sourceAnchors, languageAnchors, expectedOffsetMs, PRECISION_OFFSET_CORRIDOR_MS);
-            if (plannedPairs.Count == 0)
-            {
-                rejectReason = AppText.T("framesync.sift.checkpointWithoutPairs");
+            if (votes.Count < VOTE_MIN_SUPPORT)
                 return null;
-            }
 
-            phaseStopwatch.Restart();
-            DeepSiftBatchMatchResult batch = matcher.BuildMatrix(sourceAnchors, languageAnchors, ParallelismHelper.ResolveDefaultMaxDegree(), CancellationToken.None, null, plannedPairs);
-            timing.PrecisionMatchMs += phaseStopwatch.ElapsedMilliseconds;
-            timing.PrecisionPairCount += batch != null ? batch.ProcessedCellCount : 0;
-            if (batch == null || batch.Cancelled || !string.IsNullOrEmpty(batch.RejectReason))
+            votes.Sort();
+            int bestStart = 0;
+            int bestCount = 0;
+            int start = 0;
+            for (int end = 0; end < votes.Count; end++)
             {
-                rejectReason = batch != null && !string.IsNullOrEmpty(batch.RejectReason) ? batch.RejectReason : AppText.T("framesync.sift.checkpointUnavailable");
+                while (votes[end] - votes[start] > VOTE_CLUSTER_MS)
+                    start++;
+                if (end - start + 1 <= bestCount)
+                    continue;
+                bestCount = end - start + 1;
+                bestStart = start;
+            }
+            if (bestCount < VOTE_MIN_SUPPORT)
                 return null;
-            }
 
-            List<FrameSyncCandidate> candidates = this._temporalResolver.Resolve(batch.AcceptedPairs, batch.BackendName, batch.ProcessedCellCount);
-            if (candidates.Count == 0 || !this._temporalResolver.IsBestCandidateUnique(candidates))
-            {
-                rejectReason = AppText.T("framesync.sift.checkpointAmbiguous");
-                return null;
-            }
-
-            FrameSyncCandidate best = candidates[0];
-            if (Math.Min(best.SourceCoverageMs, best.LanguageCoverageMs) < CHECKPOINT_MINIMUM_COVERAGE_MS)
-            {
-                rejectReason = AppText.T("framesync.sift.checkpointUnsupported");
-                return null;
-            }
-            if (Math.Abs(best.OffsetMs - expectedOffsetMs) > PRECISION_OFFSET_CORRIDOR_MS)
-            {
-                rejectReason = AppText.T("framesync.sift.checkpointDrift");
-                return null;
-            }
-
-            rejectReason = "";
-            return best;
-        }
-
-        /// <summary>
-        /// Ordina i checkpoint per supporto, copertura, confidence e posizione
-        /// </summary>
-        private int ComparePrecisionPoints(FrameSyncPointResult left, FrameSyncPointResult right)
-        {
-            int comparison = right.StrongPairCount.CompareTo(left.StrongPairCount);
-            if (comparison != 0)
-                return comparison;
-            comparison = DeepSiftTemporalMetricComparer.QuantizeMilliseconds(Math.Min(right.SourceCoverageMs, right.LanguageCoverageMs)).CompareTo(DeepSiftTemporalMetricComparer.QuantizeMilliseconds(Math.Min(left.SourceCoverageMs, left.LanguageCoverageMs)));
-            if (comparison != 0)
-                return comparison;
-            comparison = DeepSiftTemporalMetricComparer.QuantizeMetric(right.BestScore).CompareTo(DeepSiftTemporalMetricComparer.QuantizeMetric(left.BestScore));
-            return comparison != 0 ? comparison : left.CheckpointPercent.CompareTo(right.CheckpointPercent);
-        }
-
-        /// <summary>
-        /// Costruisce ancore SIFT conservando PTS e durata di campionamento reali
-        /// </summary>
-        private List<DeepSiftVisualAnchor> BuildAnchors(List<byte[]> frames, double[] timestampsMs)
-        {
-            List<DeepSiftVisualAnchor> result = new List<DeepSiftVisualAnchor>();
-            if (frames == null || timestampsMs == null)
-                return result;
-            int count = Math.Min(frames.Count, timestampsMs.Length);
-            for (int frameIndex = 0; frameIndex < count; frameIndex++)
-            {
-                double durationMs = frameIndex + 1 < count ? timestampsMs[frameIndex + 1] - timestampsMs[frameIndex] : frameIndex > 0 ? timestampsMs[frameIndex] - timestampsMs[frameIndex - 1] : INITIAL_SAMPLE_INTERVAL_SEC * 1000.0;
-                DeepSiftVisualAnchor anchor = new DeepSiftVisualAnchor();
-                anchor.Index = frameIndex;
-                anchor.FrameIndex = frameIndex;
-                anchor.PtsMs = timestampsMs[frameIndex];
-                anchor.DurationMs = durationMs > 0.0 ? durationMs : 1.0;
-                anchor.FrameDurationMs = anchor.DurationMs;
-                anchor.Frame = frames[frameIndex];
-                anchor.Width = this._vsConfig.FrameWidth;
-                anchor.Height = this._vsConfig.FrameHeight;
-                result.Add(anchor);
-            }
+            FrameSyncCandidate result = new FrameSyncCandidate();
+            result.Backend = AppText.T("framesync.match.hashBackend");
+            result.OffsetMs = (int)Math.Round(votes[bestStart + bestCount / 2]);
+            result.StrongPairCount = bestCount;
+            result.AcceptedPairCount = votes.Count;
+            result.ProcessedPairCount = (long)pair.Source.Count * pair.Language.Count;
+            result.MeanScore = (double)bestCount / votes.Count;
+            result.DispersionMs = votes[bestStart + bestCount - 1] - votes[bestStart];
+            result.SourceCoverageMs = pair.Source.PtsMs[pair.Source.Count - 1] - pair.Source.PtsMs[0];
+            result.LanguageCoverageMs = pair.LanguagePtsMs[pair.Language.Count - 1] - pair.LanguagePtsMs[0];
             return result;
         }
 
         /// <summary>
-        /// Pianifica le sole coppie comprese nella banda dell'offset atteso
+        /// Offset che spiega più fotogrammi, preso al centro della cima piatta
         /// </summary>
-        private List<DeepSiftFramePair> BuildOffsetBandPairs(IReadOnlyList<DeepSiftVisualAnchor> sourceAnchors, IReadOnlyList<DeepSiftVisualAnchor> languageAnchors, double expectedOffsetMs, double corridorMs)
+        /// <param name="pair">Finestre delle due copie</param>
+        /// <param name="indices">Fotogrammi sorgente su cui si misura</param>
+        /// <param name="centerMs">Centro della scansione</param>
+        /// <param name="radiusMs">Semiampiezza della scansione</param>
+        /// <param name="stepMs">Passo della scansione</param>
+        /// <returns>Offset in millisecondi, nella convenzione lang = source - offset</returns>
+        private double Measure(PairSignals pair, int[] indices, double centerMs, double radiusMs, double stepMs)
         {
-            List<DeepSiftFramePair> result = new List<DeepSiftFramePair>();
-            int languageStartIndex = 0;
-            for (int sourceIndex = 0; sourceIndex < sourceAnchors.Count; sourceIndex++)
+            // Sotto la durata di un fotogramma la frazione spiegata non cambia più: il centro
+            // della cima piatta è la stima, l'estremo sinistro sarebbe sbilanciato
+            int count = (int)Math.Ceiling((2.0 * radiusMs + stepMs) / stepMs);
+            double[] fractions = new double[count];
+            double explained = -1.0;
+            int best = 0;
+            for (int i = 0; i < count; i++)
             {
-                double minimumLanguagePtsMs = sourceAnchors[sourceIndex].PtsMs - expectedOffsetMs - corridorMs;
-                double maximumLanguagePtsMs = sourceAnchors[sourceIndex].PtsMs - expectedOffsetMs + corridorMs;
-                while (languageStartIndex < languageAnchors.Count && languageAnchors[languageStartIndex].PtsMs < minimumLanguagePtsMs)
-                    languageStartIndex++;
-                int languageIndex = languageStartIndex;
-                while (languageIndex < languageAnchors.Count && languageAnchors[languageIndex].PtsMs <= maximumLanguagePtsMs)
-                {
-                    DeepSiftFramePair pair = new DeepSiftFramePair();
-                    pair.SourceAnchorIndex = sourceIndex;
-                    pair.LanguageAnchorIndex = languageIndex;
-                    result.Add(pair);
-                    languageIndex++;
-                }
+                double candidateMs = centerMs - radiusMs + i * stepMs;
+                fractions[i] = HashOps.ExplainedFraction(pair, indices, -candidateMs, EditAnalysisProfile.DETECTION_RADIUS, EditAnalysisProfile.DETECTION_THRESHOLD);
+                if (fractions[i] <= explained)
+                    continue;
+                explained = fractions[i];
+                best = i;
             }
-            return result;
+
+            int low = best;
+            while (low > 0 && fractions[low - 1] >= explained)
+                low--;
+            int high = best;
+            while (high < count - 1 && fractions[high + 1] >= explained)
+                high++;
+
+            // L'intorno di tolleranza si conta dal primo fotogramma non precedente, e questo
+            // arrotondamento per eccesso sposta la cima piatta di mezzo fotogramma in avanti
+            double frameMs = (pair.LanguagePtsMs[pair.Language.Count - 1] - pair.LanguagePtsMs[0]) / Math.Max(1, pair.Language.Count - 1);
+            return centerMs - radiusMs + (low + high) * 0.5 * stepMs - frameMs / 2.0;
+        }
+
+        /// <summary>
+        /// Indicizza la finestra sorgente e la corrispondente finestra allargata della copia
+        /// </summary>
+        /// <param name="sourceFile">Percorso del video sorgente</param>
+        /// <param name="languageFile">Percorso del video lingua</param>
+        /// <param name="sourceStartMs">Inizio della finestra sorgente</param>
+        /// <param name="windowMs">Durata della finestra sorgente</param>
+        /// <param name="expectedOffsetMs">Offset atteso, nella convenzione lang = source - offset</param>
+        /// <param name="corridorMs">Semiampiezza del corridoio di ricerca</param>
+        /// <returns>Coppia di finestre oppure null quando i fotogrammi non bastano</returns>
+        private PairSignals ExtractPair(string sourceFile, string languageFile, double sourceStartMs, double windowMs, double expectedOffsetMs, double corridorMs)
+        {
+            // La finestra della copia si cerca sul suo orologio, non su quello della sorgente
+            double languageStartMs = Math.Max(0.0, (sourceStartMs - expectedOffsetMs - corridorMs) / this._stretch);
+            double languageWindowMs = (windowMs + 2.0 * corridorMs) / this._stretch;
+            FrameSignals source = this._extractor.Extract(sourceFile, this._sourceFrameGeometry, sourceStartMs, windowMs, FrameBudget(windowMs, this._sourceFps), this._ffmpegConfig.FrameExtractionTimeoutMs, CancellationToken.None);
+            FrameSignals language = this._extractor.Extract(languageFile, this._languageFrameGeometry, languageStartMs, languageWindowMs, FrameBudget(languageWindowMs, this._languageFps), this._ffmpegConfig.FrameExtractionTimeoutMs, CancellationToken.None);
+            if (source.Count < MIN_WINDOW_FRAMES || language.Count < MIN_WINDOW_FRAMES)
+                return null;
+            return new PairSignals(source, language, this._stretch);
+        }
+
+        /// <summary>
+        /// Fotogrammi da chiedere alla decodifica per coprire una finestra
+        /// </summary>
+        /// <param name="windowMs">Durata della finestra in millisecondi</param>
+        /// <param name="fps">Fotogrammi al secondo dichiarati dal file</param>
+        /// <returns>Budget di fotogrammi con margine sul framerate variabile</returns>
+        private static int FrameBudget(double windowMs, double fps)
+        {
+            return (int)Math.Ceiling(windowMs / 1000.0 * Math.Max(1.0, fps) * 1.1) + 8;
         }
 
         #endregion

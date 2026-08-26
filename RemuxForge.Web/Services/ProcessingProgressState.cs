@@ -52,7 +52,7 @@ namespace RemuxForge.Web.Services
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// True se un'operazione è in corso

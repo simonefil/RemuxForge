@@ -93,7 +93,6 @@ namespace RemuxForge.Core.Subtitles
             byte[] data = File.ReadAllBytes(inputFile);
             MemoryStream output = new MemoryStream();
             Dictionary<int, PgsObjectDefinition> epochObjects = new Dictionary<int, PgsObjectDefinition>();
-            Dictionary<byte, PgsPaletteEntry> epochPalette = new Dictionary<byte, PgsPaletteEntry>();
             int pos = 0;
             int setStart;
             int setEnd;
@@ -113,7 +112,7 @@ namespace RemuxForge.Core.Subtitles
                 report.DisplaySets++;
 
                 // Riscrive in blocco PCS, WDS e ODS correlati dello stesso display-set
-                if (!this.RewriteDisplaySet(data, setStart, setEnd, plan, output, epochObjects, epochPalette, report))
+                if (!this.RewriteDisplaySet(data, setStart, setEnd, plan, output, epochObjects, report))
                 {
                     return false;
                 }
@@ -273,10 +272,9 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="plan">Piano canvas/coordinate</param>
         /// <param name="output">Output SUP</param>
         /// <param name="epochObjects">Oggetti noti nell'epoch corrente</param>
-        /// <param name="epochPalette">Palette PDS nota nell'epoch corrente</param>
         /// <param name="report">Report aggiornato</param>
         /// <returns>True se il display-set è riscritto correttamente</returns>
-        private bool RewriteDisplaySet(byte[] data, int start, int end, PgsSubtitleCanvasRewritePlan plan, MemoryStream output, Dictionary<int, PgsObjectDefinition> epochObjects, Dictionary<byte, PgsPaletteEntry> epochPalette, PgsSubtitleCanvasRewriteReport report)
+        private bool RewriteDisplaySet(byte[] data, int start, int end, PgsSubtitleCanvasRewritePlan plan, MemoryStream output, Dictionary<int, PgsObjectDefinition> epochObjects, PgsSubtitleCanvasRewriteReport report)
         {
             Dictionary<int, PgsObjectDefinition> displayObjects;
             Dictionary<int, PgsObjectSize> objectSizes;
@@ -286,24 +284,15 @@ namespace RemuxForge.Core.Subtitles
             int packetLength;
             int segmentType;
             byte[] packet;
-            string errorMessage;
 
             // Nuova epoch: gli ODS precedenti non sono più referenziabili
             if (this.IsEpochStart(data, start, end))
             {
                 epochObjects.Clear();
-                epochPalette.Clear();
-            }
-
-            // La bitmap scaling usa il PDS corrente per preservare alpha e antialiasing degli indici palette
-            if (plan.RequiresBitmapScaling && !PgsSubtitleUtils.CollectDisplaySetPaletteEntries(data, start, end, epochPalette, out errorMessage))
-            {
-                report.ErrorMessage = errorMessage;
-                return false;
             }
 
             // Raccoglie gli ODS del display-set e li scala se il piano lo richiede
-            if (!this.PrepareDisplaySetObjects(data, start, end, plan, epochObjects, epochPalette, report, out displayObjects))
+            if (!this.PrepareDisplaySetObjects(data, start, end, plan, epochObjects, report, out displayObjects))
             {
                 return false;
             }
@@ -408,11 +397,10 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="end">Offset finale display-set</param>
         /// <param name="plan">Piano canvas/coordinate</param>
         /// <param name="epochObjects">Oggetti noti nell'epoch corrente</param>
-        /// <param name="epochPalette">Palette PDS nota nell'epoch corrente</param>
         /// <param name="report">Report aggiornato</param>
         /// <param name="displayObjects">Oggetti del display-set corrente</param>
         /// <returns>True se gli oggetti sono stati raccolti e preparati</returns>
-        private bool PrepareDisplaySetObjects(byte[] data, int start, int end, PgsSubtitleCanvasRewritePlan plan, Dictionary<int, PgsObjectDefinition> epochObjects, Dictionary<byte, PgsPaletteEntry> epochPalette, PgsSubtitleCanvasRewriteReport report, out Dictionary<int, PgsObjectDefinition> displayObjects)
+        private bool PrepareDisplaySetObjects(byte[] data, int start, int end, PgsSubtitleCanvasRewritePlan plan, Dictionary<int, PgsObjectDefinition> epochObjects, PgsSubtitleCanvasRewriteReport report, out Dictionary<int, PgsObjectDefinition> displayObjects)
         {
             Dictionary<int, PgsObjectDefinition> collectedObjects;
             PgsObjectDefinition rewrittenObject;
@@ -430,7 +418,7 @@ namespace RemuxForge.Core.Subtitles
             {
                 if (plan.RequiresBitmapScaling)
                 {
-                    if (!this.TryScaleObject(kvp.Value, plan, epochPalette, report, out rewrittenObject))
+                    if (!this.TryScaleObject(kvp.Value, plan, report, out rewrittenObject))
                     {
                         return false;
                     }
@@ -452,11 +440,10 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         /// <param name="definition">Definizione oggetto originale</param>
         /// <param name="plan">Piano canvas/coordinate</param>
-        /// <param name="epochPalette">Palette PDS nota nell'epoch corrente</param>
         /// <param name="report">Report aggiornato</param>
         /// <param name="rewrittenObject">Oggetto riscalato prodotto</param>
         /// <returns>True se decoding, scaling e ricodifica sono riusciti</returns>
-        private bool TryScaleObject(PgsObjectDefinition definition, PgsSubtitleCanvasRewritePlan plan, Dictionary<byte, PgsPaletteEntry> epochPalette, PgsSubtitleCanvasRewriteReport report, out PgsObjectDefinition rewrittenObject)
+        private bool TryScaleObject(PgsObjectDefinition definition, PgsSubtitleCanvasRewritePlan plan, PgsSubtitleCanvasRewriteReport report, out PgsObjectDefinition rewrittenObject)
         {
             PgsSubtitleBitmap bitmap;
             PgsSubtitleBitmap scaledBitmap;
@@ -481,8 +468,7 @@ namespace RemuxForge.Core.Subtitles
             outputWidth = plan.Transform.MapObjectWidth(definition.Width);
             outputHeight = plan.Transform.MapObjectHeight(definition.Height);
 
-            // Scala in spazio palette-aware quando il PDS è disponibile, mantenendo invariati i segmenti palette originali
-            scaledBitmap = PgsSubtitleUtils.ScaleBitmap(bitmap, outputWidth, outputHeight, epochPalette, out scaleWarnings);
+            scaledBitmap = PgsSubtitleUtils.ScaleBitmap(bitmap, outputWidth, outputHeight, out scaleWarnings);
             report.ObjectBitmapsScaled++;
             report.ScaleWarnings += scaleWarnings;
 

@@ -253,8 +253,7 @@ namespace RemuxForge.Core.Configuration
         /// <returns>True se valido, false altrimenti</returns>
         public static bool IsValid(string lang)
         {
-            string normalized;
-            return TryNormalizeToIso6392(lang, out normalized);
+            return TryNormalizeToIso6392(lang, out _);
         }
 
         /// <summary>

@@ -5,7 +5,7 @@
             <pre style="white-space: pre-wrap; font-size: 0.9em; color: var(--foreground0);">@(!string.IsNullOrEmpty(Report) ? Report : AppText.T("web.mediaInfo.noReport"))</pre>
         </div>
         <div class="dialog-footer">
-            <button @onclick="CopyReport">@AppText.T("web.common.copy")</button>
+            <button @onclick="CopyReportAsync">@AppText.T("web.common.copy")</button>
             <button @onclick="OnClose">@AppText.T("web.common.close")</button>
         </div>
     </div>
@@ -35,13 +35,13 @@
     /// <summary>
     /// Copia il report nella clipboard via JS interop
     /// </summary>
-    private void CopyReport()
+    private async Task CopyReportAsync()
     {
         if (this.JsModule != null && !string.IsNullOrEmpty(this.Report))
         {
             try
             {
-                _ = this.JsModule.InvokeVoidAsync("copyToClipboard", this.Report);
+                await this.JsModule.InvokeVoidAsync("copyToClipboard", this.Report);
             }
             catch
             {

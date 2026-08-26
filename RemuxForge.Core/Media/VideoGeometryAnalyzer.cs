@@ -153,30 +153,6 @@ namespace RemuxForge.Core.Media
             return profile;
         }
 
-        /// <summary>
-        /// Aggiorna il profilo in cache con il crop rilevato durante l'analisi dei frame
-        /// </summary>
-        /// <param name="filePath">Percorso del file video associato al profilo</param>
-        /// <param name="cropLeft">Numero di pixel da rimuovere sul lato sinistro</param>
-        /// <param name="cropRight">Numero di pixel da rimuovere sul lato destro</param>
-        /// <param name="cropTop">Numero di pixel da rimuovere sul lato superiore</param>
-        /// <param name="cropBottom">Numero di pixel da rimuovere sul lato inferiore</param>
-        public void UpdateCropProfile(string filePath, int cropLeft, int cropRight, int cropTop, int cropBottom)
-        {
-            VideoGeometryProfile profile;
-            lock (this._lock)
-            {
-                if (this._cache.TryGetValue(filePath, out profile))
-                {
-                    profile.CropLeft = cropLeft;
-                    profile.CropRight = cropRight;
-                    profile.CropTop = cropTop;
-                    profile.CropBottom = cropBottom;
-                    profile.HasBlackBorderCrop = true;
-                }
-            }
-        }
-
         #endregion
 
         #region Metodi privati

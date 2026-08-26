@@ -27,16 +27,6 @@ namespace RemuxForge.Core.Tools
         /// Individua mkvmerge nel sistema
         /// Ordine: AppSettings → posizioni note → PATH
         /// </summary>
-        /// <returns>True se mkvmerge è stato trovato</returns>
-        public bool Resolve()
-        {
-            return this.Resolve(true);
-        }
-
-        /// <summary>
-        /// Individua mkvmerge nel sistema
-        /// Ordine: AppSettings → posizioni note → PATH
-        /// </summary>
         /// <param name="autoSave">Se true, salva il percorso trovato in AppSettings</param>
         /// <returns>True se mkvmerge è stato trovato</returns>
         public bool Resolve(bool autoSave)

@@ -81,39 +81,18 @@ namespace RemuxForge.Core.Audio
         }
 
         /// <summary>
-        /// True se il piano usera' davvero segmenti source, non solo stretch/delay/render lang
+        /// True se il piano userà davvero segmenti source, non solo stretch/delay/render lang
         /// </summary>
         /// <param name="plan">Piano source-fill</param>
-        /// <param name="options">Opzioni correnti</param>
         /// <returns>True se verranno usati segmenti audio source</returns>
-        public bool HasActualSourceFill(AudioSourceFillPlan plan, Options options)
+        public bool HasActualSourceFill(AudioSourceFillPlan plan)
         {
             if (plan == null)
             {
                 return false;
             }
 
-            if (plan.StartFillMs > 0 || plan.EndFillMs > 0)
-            {
-                return true;
-            }
-
-            if (options == null || !options.AudioSourceFillInsertSilence || plan.InsertOperations == null)
-            {
-                return false;
-            }
-
-            for (int i = 0; i < plan.InsertOperations.Count; i++)
-            {
-                EditOperation operation = plan.InsertOperations[i];
-                if (string.Equals(operation.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal) &&
-                    EditMapTimelineHelper.LanguageDurationToRenderedDurationMs(operation.DurationMs, plan.StretchRatio) > options.AudioSourceFillThresholdMs)
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return plan.StartFillMs > 0 || plan.EndFillMs > 0 || (plan.SourceFilledOperations != null && plan.SourceFilledOperations.Count > 0);
         }
 
         #endregion
@@ -182,7 +161,7 @@ namespace RemuxForge.Core.Audio
                 result.SourceFillTrack = this.SelectSourceFillTrack(request.SourceInfo, request.Options.AudioSourceFillLanguage);
                 result.SourceFillPlan = this.BuildSourceFillPlan(request, result.SourceFillTrack, track, probeMissingDurations);
                 result.SourceFillHasWork = result.SourceFillPlan != null && result.SourceFillPlan.HasWork;
-                result.ActualSourceFill = this.HasActualSourceFill(result.SourceFillPlan, request.Options);
+                result.ActualSourceFill = this.HasActualSourceFill(result.SourceFillPlan);
                 if (result.SourceFillHasWork && result.SourceFillTrack == null)
                 {
                     result.ErrorMessage = "Audio source fill fallito: nessuna traccia source in lingua " + request.Options.AudioSourceFillLanguage + " per lang track " + track.Id;
@@ -275,9 +254,36 @@ namespace RemuxForge.Core.Audio
                 }
             }
 
+            // La deep analysis materializza testa e coda come operazioni invece che come delay di
+            // contenitore: le tre spunte dicono dove il riempimento è ammesso, non se esiste
             for (int i = 0; i < editOperations.Count; i++)
             {
-                result.InsertOperations.Add(editOperations[i]);
+                EditOperation operation = editOperations[i];
+                result.InsertOperations.Add(operation);
+                if (!string.Equals(operation.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal) ||
+                    EditMapTimelineHelper.LanguageDurationToRenderedDurationMs(operation.DurationMs, stretchRatio) <= request.Options.AudioSourceFillThresholdMs)
+                {
+                    continue;
+                }
+
+                bool allowed;
+                if (string.Equals(operation.Scope, EditOperation.SCOPE_HEAD, StringComparison.Ordinal))
+                {
+                    allowed = request.Options.AudioSourceFillStart;
+                }
+                else if (string.Equals(operation.Scope, EditOperation.SCOPE_TAIL, StringComparison.Ordinal))
+                {
+                    allowed = request.Options.AudioSourceFillEnd;
+                }
+                else
+                {
+                    allowed = request.Options.AudioSourceFillInsertSilence;
+                }
+
+                if (allowed)
+                {
+                    result.SourceFilledOperations.Add(operation);
+                }
             }
 
             return result;

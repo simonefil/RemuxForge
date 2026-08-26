@@ -1040,6 +1040,7 @@ namespace RemuxForge.Core.Metadata
             }
         }
 
+        /// <summary>
         /// Valida coerenza strutturale del catalogo campi
         /// </summary>
         private static void ValidateCatalog()

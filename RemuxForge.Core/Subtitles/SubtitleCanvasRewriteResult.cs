@@ -85,7 +85,7 @@ namespace RemuxForge.Core.Subtitles
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Formato sottotitolo processato

@@ -1,5 +1,3 @@
-@using System.Threading.Tasks
-
 @if (ShouldRenderSelect())
 {
     <select id="@_inputId" class="@CssClass" value="@_currentValue" @onchange="CommitChangedValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter">

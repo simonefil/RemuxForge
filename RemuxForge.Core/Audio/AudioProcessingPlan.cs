@@ -236,6 +236,7 @@ namespace RemuxForge.Core.Audio
         public AudioSourceFillPlan()
         {
             this.InsertOperations = new List<EditOperation>();
+            this.SourceFilledOperations = new List<EditOperation>();
             this.StretchRatio = 1.0;
             this.LangTempo = 1.0;
             this.InitialSilenceMs = 0;
@@ -285,6 +286,11 @@ namespace RemuxForge.Core.Audio
         /// Operazioni insert silence da sostituire con audio source
         /// </summary>
         public List<EditOperation> InsertOperations { get; set; }
+
+        /// <summary>
+        /// Sottoinsieme delle operazioni che vanno riempite davvero con audio source
+        /// </summary>
+        public List<EditOperation> SourceFilledOperations { get; set; }
 
         /// <summary>
         /// True se il piano contiene almeno una operazione

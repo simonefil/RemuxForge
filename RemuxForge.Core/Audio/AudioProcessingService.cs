@@ -654,9 +654,9 @@ namespace RemuxForge.Core.Audio
 
                 if (string.Equals(operation.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal))
                 {
-                    if (options.AudioSourceFillInsertSilence && sourceOperationDurationMs > options.AudioSourceFillThresholdMs)
+                    if (plan.SourceFilledOperations.Contains(operation))
                     {
-                        // Nei gap grandi usa lo stesso intervallo temporale della source invece di generare silenzio
+                        // Dove il piano lo ammette usa lo stesso intervallo temporale della source invece di generare silenzio
                         segments.Add(new AudioFilterSegment(0, sourceTrackId, operation.SourceTimestampMs, operation.SourceTimestampMs + sourceOperationDurationMs, false));
                     }
                     else

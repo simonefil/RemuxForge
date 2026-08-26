@@ -21,6 +21,7 @@ namespace RemuxForge.Core.Models
             this.Initial = new FrameSyncInitialResult();
             this.Points = new List<FrameSyncPointResult>();
             this.PrecisionCheckpointPercent = -1;
+            this.GeometryAlignment = new VisualGeometryAlignment();
         }
 
         #endregion
@@ -66,6 +67,11 @@ namespace RemuxForge.Core.Models
         /// Geometria rilevata per il file lingua
         /// </summary>
         public FrameSyncGeometryInfo LanguageGeometry { get; set; }
+
+        /// <summary>
+        /// Trasformazione globale dall'area attiva language all'area attiva source
+        /// </summary>
+        public VisualGeometryAlignment GeometryAlignment { get; set; }
 
         /// <summary>
         /// Timing diagnostici delle fasi frame-sync

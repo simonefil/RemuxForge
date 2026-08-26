@@ -62,6 +62,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         /// <param name="rule">Regola proprietaria</param>
         /// <param name="node">Nodo da normalizzare</param>
+        /// <param name="includeAdvancedFields">True per includere i campi avanzati</param>
         public static void EnsureNode(MkvMetadataRule rule, MkvMetadataRuleConditionNode node, bool includeAdvancedFields)
         {
             if (node == null)
@@ -117,6 +118,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         /// <param name="scope">Ambito regola</param>
         /// <param name="condition">Condizione da normalizzare</param>
+        /// <param name="includeAdvancedFields">True per includere i campi avanzati</param>
         public static void EnsureFieldCondition(MkvMetadataTargetScope scope, MkvMetadataFieldCondition condition, bool includeAdvancedFields)
         {
             if (condition == null)
@@ -146,6 +148,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         /// <param name="scope">Ambito regola</param>
         /// <param name="condition">Condizione da normalizzare</param>
+        /// <param name="includeAdvancedFields">True per includere i campi avanzati</param>
         public static void EnsureTrackComparisonCondition(MkvMetadataTargetScope scope, MkvMetadataTrackComparisonCondition condition, bool includeAdvancedFields)
         {
             if (condition == null)
@@ -198,6 +201,7 @@ namespace RemuxForge.Web.Services
         /// Crea una condizione su campo con default coerenti allo scope
         /// </summary>
         /// <param name="scope">Ambito regola</param>
+        /// <param name="includeAdvancedFields">True per includere i campi avanzati</param>
         /// <returns>Nodo condizione</returns>
         public static MkvMetadataRuleConditionNode CreateFieldConditionNode(MkvMetadataTargetScope scope, bool includeAdvancedFields)
         {
@@ -213,6 +217,7 @@ namespace RemuxForge.Web.Services
         /// Crea una condizione confronto tracce con default coerenti allo scope
         /// </summary>
         /// <param name="scope">Ambito regola</param>
+        /// <param name="includeAdvancedFields">True per includere i campi avanzati</param>
         /// <returns>Nodo condizione</returns>
         public static MkvMetadataRuleConditionNode CreateTrackComparisonNode(MkvMetadataTargetScope scope, bool includeAdvancedFields)
         {
@@ -242,6 +247,7 @@ namespace RemuxForge.Web.Services
         /// Restituisce i campi leggibili disponibili per una condizione
         /// </summary>
         /// <param name="scope">Ambito regola</param>
+        /// <param name="includeAdvancedFields">True per includere i campi avanzati</param>
         /// <returns>Campi leggibili</returns>
         public static List<MetadataFieldDefinition> GetReadableFieldsForCondition(MkvMetadataTargetScope scope, bool includeAdvancedFields)
         {
@@ -252,6 +258,7 @@ namespace RemuxForge.Web.Services
         /// Restituisce i campi confrontabili tra tracce
         /// </summary>
         /// <param name="scope">Ambito regola</param>
+        /// <param name="includeAdvancedFields">True per includere i campi avanzati</param>
         /// <returns>Campi confrontabili</returns>
         public static List<MetadataFieldDefinition> GetTrackComparableFields(MkvMetadataTargetScope scope, bool includeAdvancedFields)
         {
@@ -455,6 +462,7 @@ namespace RemuxForge.Web.Services
             return MetadataUiCatalog.GetConditionOperatorInfo(conditionOperator).RequiresList;
         }
 
+        /// <summary>
         /// Indica se uno scope può usare condizioni tra tracce
         /// </summary>
         /// <param name="scope">Ambito regola</param>
@@ -481,16 +489,6 @@ namespace RemuxForge.Web.Services
                 return AppText.T("web.metadata.scope.subtitle");
 
             return scope.ToString();
-        }
-
-        /// <summary>
-        /// Restituisce label settore campo
-        /// </summary>
-        /// <param name="sector">Settore</param>
-        /// <returns>Label localizzata</returns>
-        public static string GetSectorLabel(MetadataFieldSector sector)
-        {
-            return AppText.T("web.metadata.fieldSector." + sector.ToString());
         }
 
         /// <summary>

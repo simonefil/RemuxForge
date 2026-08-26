@@ -147,7 +147,7 @@ namespace RemuxForge.Core.Subtitles
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Entry timestamp/filepos

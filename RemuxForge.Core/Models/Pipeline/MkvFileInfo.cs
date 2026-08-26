@@ -20,7 +20,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Lista delle tracce contenute nel file MKV

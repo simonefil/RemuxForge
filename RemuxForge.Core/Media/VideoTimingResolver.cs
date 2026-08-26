@@ -29,14 +29,6 @@ namespace RemuxForge.Core.Media
         #region Costruttori
 
         /// <summary>
-        /// Costruttore con resolver predefinito
-        /// </summary>
-        public VideoTimingResolver()
-            : this(new ToolPathResolverService(AppSettingsService.Instance.ConfigFolder))
-        {
-        }
-
-        /// <summary>
         /// Costruttore esplicito
         /// </summary>
         /// <param name="toolPathResolver">Resolver strumenti esterni</param>

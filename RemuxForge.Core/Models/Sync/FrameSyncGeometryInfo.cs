@@ -21,7 +21,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Path file analizzato
@@ -99,9 +99,29 @@ namespace RemuxForge.Core.Models
         public int CropBottom { get; set; }
 
         /// <summary>
-        /// True se la geometria suggerisce normalizzazione 4:3
+        /// Numero di frame informativi usati dal consenso dei bordi
         /// </summary>
-        public bool GeometryCropToFourThree { get; set; }
+        public int CropSampleCount { get; set; }
+
+        /// <summary>
+        /// Dispersione robusta del bordo sinistro in pixel
+        /// </summary>
+        public double CropLeftDispersionPx { get; set; }
+
+        /// <summary>
+        /// Dispersione robusta del bordo destro in pixel
+        /// </summary>
+        public double CropRightDispersionPx { get; set; }
+
+        /// <summary>
+        /// Dispersione robusta del bordo superiore in pixel
+        /// </summary>
+        public double CropTopDispersionPx { get; set; }
+
+        /// <summary>
+        /// Dispersione robusta del bordo inferiore in pixel
+        /// </summary>
+        public double CropBottomDispersionPx { get; set; }
 
         /// <summary>
         /// Crop manuale di analisi applicato nel formato L:R:T:B

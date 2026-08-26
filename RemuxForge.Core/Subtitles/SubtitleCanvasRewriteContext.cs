@@ -22,7 +22,7 @@ namespace RemuxForge.Core.Subtitles
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Record elaborazione corrente

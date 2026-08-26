@@ -13,6 +13,7 @@ namespace RemuxForge.Core.Models
         public EditOperation()
         {
             this.Type = "";
+            this.Scope = SCOPE_BODY;
         }
 
         #endregion
@@ -29,9 +30,24 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public const string CUT_SEGMENT = "CUT_SEGMENT";
 
+        /// <summary>
+        /// Provenienza: l'offset con cui le due copie partono disallineate
+        /// </summary>
+        public const string SCOPE_HEAD = "HEAD";
+
+        /// <summary>
+        /// Provenienza: una differenza di montaggio rilevata dall'analisi
+        /// </summary>
+        public const string SCOPE_BODY = "BODY";
+
+        /// <summary>
+        /// Provenienza: il residuo di lunghezza fra le due copie, non un esito dell'analisi
+        /// </summary>
+        public const string SCOPE_TAIL = "TAIL";
+
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Tipo operazione: INSERT_SILENCE o CUT_SEGMENT
@@ -60,6 +76,13 @@ namespace RemuxForge.Core.Models
         /// Boundary source/video verificato dalla DeepAnalysis prima del fine tuning audio
         /// </summary>
         public int VisualSourceTimestampMs { get; set; }
+
+        /// <summary>
+        /// Provenienza dell'operazione: SCOPE_HEAD, SCOPE_BODY o SCOPE_TAIL
+        /// Testa e coda esistono perché le due copie non partono e non finiscono insieme,
+        /// il corpo perché il montaggio è diverso: chi consuma la mappa non deve dedurlo
+        /// </summary>
+        public string Scope { get; set; }
 
         #endregion
     }

@@ -17,11 +17,6 @@ namespace RemuxForge.Core.Subtitles
         public const int SUP_PACKET_HEADER_SIZE = 13;
 
         /// <summary>
-        /// Segment type Palette Definition Segment
-        /// </summary>
-        public const int SEGMENT_PALETTE = 0x14;
-
-        /// <summary>
         /// Segment type Object Definition Segment
         /// </summary>
         public const int SEGMENT_OBJECT = 0x15;
@@ -209,39 +204,6 @@ namespace RemuxForge.Core.Subtitles
         }
 
         /// <summary>
-        /// Raccoglie le entry palette PDS presenti nel display-set
-        /// </summary>
-        /// <param name="data">Buffer SUP completo</param>
-        /// <param name="start">Offset iniziale display-set</param>
-        /// <param name="end">Offset finale display-set</param>
-        /// <param name="palette">Palette epoch da aggiornare</param>
-        /// <param name="errorMessage">Errore di parsing</param>
-        /// <returns>True se tutti i PDS incontrati sono validi</returns>
-        public static bool CollectDisplaySetPaletteEntries(byte[] data, int start, int end, Dictionary<byte, PgsPaletteEntry> palette, out string errorMessage)
-        {
-            int pos = start;
-            int packetLength;
-
-            errorMessage = "";
-
-            // Scorre il display-set prima del rewrite ODS: la palette può precedere gli oggetti da scalare
-            while (pos < end && TryGetPacketLength(data, pos, out packetLength) && pos + packetLength <= end)
-            {
-                if (data[pos + 10] == SEGMENT_PALETTE)
-                {
-                    if (!ReadPaletteSegment(data, pos, palette, out errorMessage))
-                    {
-                        return false;
-                    }
-                }
-
-                pos += packetLength;
-            }
-
-            return true;
-        }
-
-        /// <summary>
         /// Costruisce packet SUP ODS completi per una definizione oggetto
         /// </summary>
         /// <param name="definition">Definizione oggetto</param>
@@ -295,6 +257,7 @@ namespace RemuxForge.Core.Subtitles
 
             return true;
         }
+
 
         #endregion
 
@@ -519,84 +482,9 @@ namespace RemuxForge.Core.Subtitles
             return ScaleBitmapMajority(input, outputWidth, outputHeight);
         }
 
-        /// <summary>
-        /// Scala una bitmap PGS usando la palette PDS per preservare alpha e antialiasing
-        /// </summary>
-        /// <param name="input">Bitmap input</param>
-        /// <param name="outputWidth">Larghezza output</param>
-        /// <param name="outputHeight">Altezza output</param>
-        /// <param name="palette">Palette PDS corrente</param>
-        /// <param name="warnings">Warning non fatali</param>
-        /// <returns>Bitmap scalata</returns>
-        public static PgsSubtitleBitmap ScaleBitmap(PgsSubtitleBitmap input, int outputWidth, int outputHeight, Dictionary<byte, PgsPaletteEntry> palette, out int warnings)
-        {
-            warnings = 0;
-
-            // Nessuno scaling: restituisce una copia per non condividere il buffer
-            if (input.Width == outputWidth && input.Height == outputHeight)
-            {
-                byte[] copy = new byte[input.Pixels.Length];
-                Array.Copy(input.Pixels, copy, input.Pixels.Length);
-                return new PgsSubtitleBitmap(outputWidth, outputHeight, copy);
-            }
-
-            // Se manca una palette completa per gli indici usati, torna al percorso legacy conservativo
-            if (!CanScaleWithPalette(input, palette))
-            {
-                int legacyWarnings;
-                PgsSubtitleBitmap fallback = ScaleBitmap(input, outputWidth, outputHeight, out legacyWarnings);
-                warnings = legacyWarnings + 1;
-                return fallback;
-            }
-
-            return ScaleBitmapWithPalette(input, outputWidth, outputHeight, palette);
-        }
-
         #endregion
 
         #region Metodi privati - Assembly ODS
-
-        /// <summary>
-        /// Legge un segmento PDS e aggiorna la palette corrente
-        /// </summary>
-        /// <param name="data">Buffer SUP completo</param>
-        /// <param name="packetStart">Offset packet PDS</param>
-        /// <param name="palette">Palette da aggiornare</param>
-        /// <param name="errorMessage">Errore di parsing</param>
-        /// <returns>True se il segmento PDS è valido</returns>
-        private static bool ReadPaletteSegment(byte[] data, int packetStart, Dictionary<byte, PgsPaletteEntry> palette, out string errorMessage)
-        {
-            int segmentLength = ReadUInt16BigEndian(data, packetStart + 11);
-            int payload = packetStart + SUP_PACKET_HEADER_SIZE;
-            int pos;
-            int end;
-            byte index;
-
-            errorMessage = "";
-            if (palette == null)
-            {
-                errorMessage = "PDS PGS palette mancante";
-                return false;
-            }
-
-            // PDS contiene palette_id/versione seguiti da entry da 5 byte: index, Y, Cr, Cb, Alpha
-            if (segmentLength < 2 || payload + segmentLength > data.Length || ((segmentLength - 2) % 5) != 0)
-            {
-                errorMessage = "PDS PGS non valido";
-                return false;
-            }
-
-            pos = payload + 2;
-            end = payload + segmentLength;
-            while (pos + 5 <= end)
-            {
-                index = data[pos];
-                palette[index] = new PgsPaletteEntry(index, data[pos + 1], data[pos + 2], data[pos + 3], data[pos + 4]);
-                pos += 5;
-            }
-
-            return true;
-        }
 
         /// <summary>
         /// Legge un segmento ODS e aggiorna lo stato di assembly
@@ -806,6 +694,7 @@ namespace RemuxForge.Core.Subtitles
         #endregion
 
         #region Metodi privati - Scrittura ODS
+
 
         /// <summary>
         /// Costruisce il primo packet ODS
@@ -1017,209 +906,6 @@ namespace RemuxForge.Core.Subtitles
         #region Metodi privati - Scaling bitmap
 
         /// <summary>
-        /// Verifica che la palette contenga tutti gli indici non trasparenti usati dalla bitmap
-        /// </summary>
-        /// <param name="input">Bitmap input</param>
-        /// <param name="palette">Palette PDS corrente</param>
-        /// <returns>True se il resize palette-aware è applicabile</returns>
-        private static bool CanScaleWithPalette(PgsSubtitleBitmap input, Dictionary<byte, PgsPaletteEntry> palette)
-        {
-            bool[] used = new bool[256];
-
-            if (input == null || input.Pixels == null || palette == null || palette.Count == 0)
-            {
-                return false;
-            }
-
-            // L'indice 0 è trattato come trasparente anche se alcuni stream non lo dichiarano nel PDS
-            for (int i = 0; i < input.Pixels.Length; i++)
-            {
-                used[input.Pixels[i]] = true;
-            }
-
-            for (int i = 1; i < used.Length; i++)
-            {
-                if (used[i] && !palette.ContainsKey((byte)i))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        /// <summary>
-        /// Scala la bitmap in spazio YCrCb premoltiplicato e quantizza sugli indici palette originali
-        /// </summary>
-        /// <param name="input">Bitmap input</param>
-        /// <param name="outputWidth">Larghezza output</param>
-        /// <param name="outputHeight">Altezza output</param>
-        /// <param name="palette">Palette PDS corrente</param>
-        /// <returns>Bitmap scalata</returns>
-        private static PgsSubtitleBitmap ScaleBitmapWithPalette(PgsSubtitleBitmap input, int outputWidth, int outputHeight, Dictionary<byte, PgsPaletteEntry> palette)
-        {
-            byte[] output = new byte[outputWidth * outputHeight];
-            bool[] used = BuildUsedPaletteMap(input);
-            PgsResampleColor[] colors = BuildPgsResampleColors(palette);
-            double sourceX0;
-            double sourceX1;
-            double sourceY0;
-            double sourceY1;
-
-            // Area sampling: ogni pixel output media i pixel sorgenti coperti, mantenendo alpha premoltiplicata
-            for (int y = 0; y < outputHeight; y++)
-            {
-                sourceY0 = y * input.Height / (double)outputHeight;
-                sourceY1 = (y + 1) * input.Height / (double)outputHeight;
-                for (int x = 0; x < outputWidth; x++)
-                {
-                    sourceX0 = x * input.Width / (double)outputWidth;
-                    sourceX1 = (x + 1) * input.Width / (double)outputWidth;
-                    output[(y * outputWidth) + x] = QuantizePgsArea(input, colors, used, sourceX0, sourceX1, sourceY0, sourceY1);
-                }
-            }
-
-            return new PgsSubtitleBitmap(outputWidth, outputHeight, output);
-        }
-
-        /// <summary>
-        /// Costruisce la mappa degli indici palette usati dalla bitmap
-        /// </summary>
-        /// <param name="input">Bitmap input</param>
-        /// <returns>Mappa indici usati</returns>
-        private static bool[] BuildUsedPaletteMap(PgsSubtitleBitmap input)
-        {
-            bool[] used = new bool[256];
-            for (int i = 0; i < input.Pixels.Length; i++)
-            {
-                used[input.Pixels[i]] = true;
-            }
-
-            used[0] = true;
-            return used;
-        }
-
-        /// <summary>
-        /// Converte la palette PDS in vettori premoltiplicati
-        /// </summary>
-        /// <param name="palette">Palette PDS corrente</param>
-        /// <returns>Vettori colore per indice</returns>
-        private static PgsResampleColor[] BuildPgsResampleColors(Dictionary<byte, PgsPaletteEntry> palette)
-        {
-            PgsResampleColor[] result = new PgsResampleColor[256];
-
-            // Default trasparente per indici non definiti, utile per l'indice 0 assente nel PDS
-            for (int i = 0; i < result.Length; i++)
-            {
-                result[i] = new PgsResampleColor(0.0, 0.0, 0.0, 0.0);
-            }
-
-            foreach (KeyValuePair<byte, PgsPaletteEntry> kvp in palette)
-            {
-                result[kvp.Key] = new PgsResampleColor(kvp.Value.Y, kvp.Value.Cr, kvp.Value.Cb, kvp.Value.Alpha);
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Calcola un pixel output area-sampled e lo quantizza alla palette originale
-        /// </summary>
-        /// <param name="input">Bitmap input</param>
-        /// <param name="colors">Colori palette premoltiplicati</param>
-        /// <param name="used">Indici palette ammessi</param>
-        /// <param name="sourceX0">X sorgente iniziale</param>
-        /// <param name="sourceX1">X sorgente finale</param>
-        /// <param name="sourceY0">Y sorgente iniziale</param>
-        /// <param name="sourceY1">Y sorgente finale</param>
-        /// <returns>Indice palette output</returns>
-        private static byte QuantizePgsArea(PgsSubtitleBitmap input, PgsResampleColor[] colors, bool[] used, double sourceX0, double sourceX1, double sourceY0, double sourceY1)
-        {
-            int xStart = Math.Max(0, (int)Math.Floor(sourceX0));
-            int xEnd = Math.Min(input.Width, (int)Math.Ceiling(sourceX1));
-            int yStart = Math.Max(0, (int)Math.Floor(sourceY0));
-            int yEnd = Math.Min(input.Height, (int)Math.Ceiling(sourceY1));
-            double sumY = 0.0;
-            double sumCr = 0.0;
-            double sumCb = 0.0;
-            double sumAlpha = 0.0;
-            double totalWeight = 0.0;
-
-            // Accumula il contributo reale di sovrapposizione di ogni pixel sorgente
-            for (int y = yStart; y < yEnd; y++)
-            {
-                double yWeight = Math.Min(sourceY1, y + 1.0) - Math.Max(sourceY0, y);
-                if (yWeight <= 0.0)
-                {
-                    continue;
-                }
-
-                for (int x = xStart; x < xEnd; x++)
-                {
-                    double xWeight = Math.Min(sourceX1, x + 1.0) - Math.Max(sourceX0, x);
-                    if (xWeight <= 0.0)
-                    {
-                        continue;
-                    }
-
-                    double weight = xWeight * yWeight;
-                    PgsResampleColor color = colors[input.Pixels[(y * input.Width) + x]];
-                    sumY += color.PremultipliedY * weight;
-                    sumCr += color.PremultipliedCr * weight;
-                    sumCb += color.PremultipliedCb * weight;
-                    sumAlpha += color.Alpha * weight;
-                    totalWeight += weight;
-                }
-            }
-
-            if (totalWeight <= 0.0)
-            {
-                return 0;
-            }
-
-            return FindNearestPgsPaletteIndex(used, colors, sumY / totalWeight, sumCr / totalWeight, sumCb / totalWeight, sumAlpha / totalWeight);
-        }
-
-        /// <summary>
-        /// Trova l'indice palette più vicino al colore premoltiplicato target
-        /// </summary>
-        /// <param name="used">Indici palette ammessi</param>
-        /// <param name="colors">Colori palette premoltiplicati</param>
-        /// <param name="targetY">Y premoltiplicata target</param>
-        /// <param name="targetCr">Cr premoltiplicato target</param>
-        /// <param name="targetCb">Cb premoltiplicato target</param>
-        /// <param name="targetAlpha">Alpha target</param>
-        /// <returns>Indice palette più vicino</returns>
-        private static byte FindNearestPgsPaletteIndex(bool[] used, PgsResampleColor[] colors, double targetY, double targetCr, double targetCb, double targetAlpha)
-        {
-            int bestIndex = 0;
-            double bestDistance = double.MaxValue;
-
-            // La distanza pesa alpha più dei crominance: sui bordi è l'opacità che preserva l'antialiasing
-            for (int i = 0; i < used.Length; i++)
-            {
-                if (!used[i])
-                {
-                    continue;
-                }
-
-                PgsResampleColor color = colors[i];
-                double dy = color.PremultipliedY - targetY;
-                double dcr = color.PremultipliedCr - targetCr;
-                double dcb = color.PremultipliedCb - targetCb;
-                double da = color.Alpha - targetAlpha;
-                double distance = (dy * dy) + (dcr * dcr) + (dcb * dcb) + (da * da * 4.0);
-                if (distance < bestDistance)
-                {
-                    bestDistance = distance;
-                    bestIndex = i;
-                }
-            }
-
-            return (byte)bestIndex;
-        }
-
-        /// <summary>
         /// Scala con nearest-neighbor
         /// </summary>
         /// <param name="input">Bitmap input</param>
@@ -1325,48 +1011,6 @@ namespace RemuxForge.Core.Subtitles
         #endregion
 
         #region Classi annidate
-
-        /// <summary>
-        /// Colore PGS premoltiplicato per resampling bitmap
-        /// </summary>
-        private readonly struct PgsResampleColor
-        {
-            /// <summary>
-            /// Crea il colore premoltiplicato
-            /// </summary>
-            /// <param name="y">Luminanza</param>
-            /// <param name="cr">Color difference red</param>
-            /// <param name="cb">Color difference blue</param>
-            /// <param name="alpha">Opacità</param>
-            public PgsResampleColor(double y, double cr, double cb, double alpha)
-            {
-                double alphaFactor = alpha / 255.0;
-                this.PremultipliedY = y * alphaFactor;
-                this.PremultipliedCr = cr * alphaFactor;
-                this.PremultipliedCb = cb * alphaFactor;
-                this.Alpha = alpha;
-            }
-
-            /// <summary>
-            /// Y premoltiplicata
-            /// </summary>
-            public double PremultipliedY { get; }
-
-            /// <summary>
-            /// Cr premoltiplicato
-            /// </summary>
-            public double PremultipliedCr { get; }
-
-            /// <summary>
-            /// Cb premoltiplicato
-            /// </summary>
-            public double PremultipliedCb { get; }
-
-            /// <summary>
-            /// Alpha non premoltiplicata
-            /// </summary>
-            public double Alpha { get; }
-        }
 
         /// <summary>
         /// Stato temporaneo di assembly ODS

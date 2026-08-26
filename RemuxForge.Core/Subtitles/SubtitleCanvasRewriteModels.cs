@@ -20,7 +20,7 @@ namespace RemuxForge.Core.Subtitles
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Trasformazione geometrica del piano
@@ -55,7 +55,7 @@ namespace RemuxForge.Core.Subtitles
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Messaggio errore per fallback

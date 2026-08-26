@@ -17,6 +17,9 @@ namespace RemuxForge.Core.Models
         public DeepSiftVisualAnchor()
         {
             this.Frame = Array.Empty<byte>();
+            this.CompactSignature = Array.Empty<byte>();
+            this.AppliedGeometry = "";
+            this.CompactSignatureBackend = "";
         }
 
         #endregion
@@ -63,6 +66,21 @@ namespace RemuxForge.Core.Models
         /// Altezza del buffer grayscale
         /// </summary>
         public int Height { get; set; }
+
+        /// <summary>
+        /// Firma visuale compatta deterministica conservata senza raw frame residente
+        /// </summary>
+        public byte[] CompactSignature { get; set; }
+
+        /// <summary>
+        /// Geometria e crop effettivamente applicati prima della firma
+        /// </summary>
+        public string AppliedGeometry { get; set; }
+
+        /// <summary>
+        /// Backend deterministico che ha prodotto la firma compatta
+        /// </summary>
+        public string CompactSignatureBackend { get; set; }
 
         #endregion
     }
@@ -178,7 +196,7 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
-    /// Matrice completa dei risultati SIFT tra due sequenze di ancore
+    /// Matrice locale dei risultati SIFT del batch corrente
     /// </summary>
     public class DeepSiftMatchMatrix
     {
@@ -609,6 +627,13 @@ namespace RemuxForge.Core.Models
         /// Errore medio di riproiezione degli inlier
         /// </summary>
         public double MeanReprojectionError { get; set; }
+
+        /// <summary>
+        /// Omografia 3x3 row-major dalla source alla language, mantenuta soltanto in memoria
+        /// </summary>
+        [JsonIgnore]
+        public double[] Homography { get; set; }
+
     }
 
     /// <summary>

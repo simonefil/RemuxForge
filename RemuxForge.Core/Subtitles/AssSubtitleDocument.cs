@@ -170,7 +170,7 @@ namespace RemuxForge.Core.Subtitles
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Righe del documento

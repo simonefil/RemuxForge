@@ -18,7 +18,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Modalità frame rate dichiarata da MediaInfo

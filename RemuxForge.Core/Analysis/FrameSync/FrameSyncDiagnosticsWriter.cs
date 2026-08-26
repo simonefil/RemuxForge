@@ -70,7 +70,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         {
             using (StreamWriter writer = new StreamWriter(filePath, false))
             {
-                writer.WriteLine("episode,source_file,language_file,phase,success,ambiguous,offset_ms,backend,processed_pairs,accepted_pairs,strong_pairs,ambiguous_pairs,source_coverage_ms,language_coverage_ms,mean_score,dispersion_ms");
+                writer.WriteLine("episode,source_file,language_file,phase,success,ambiguous,offset_ms,backend,processed_pairs,accepted_pairs,strong_pairs,source_coverage_ms,language_coverage_ms,mean_score,dispersion_ms");
                 if (record.FrameSyncResult.Initial != null && record.FrameSyncResult.Initial.Candidates != null)
                 {
                     for (int candidateIndex = 0; candidateIndex < record.FrameSyncResult.Initial.Candidates.Count; candidateIndex++)
@@ -107,8 +107,6 @@ namespace RemuxForge.Core.Analysis.FrameSync
             writer.Write(candidate.AcceptedPairCount.ToString(CultureInfo.InvariantCulture));
             writer.Write(',');
             writer.Write(candidate.StrongPairCount.ToString(CultureInfo.InvariantCulture));
-            writer.Write(',');
-            writer.Write(candidate.AmbiguousPairCount.ToString(CultureInfo.InvariantCulture));
             writer.Write(',');
             writer.Write(candidate.SourceCoverageMs.ToString("F3", CultureInfo.InvariantCulture));
             writer.Write(',');
@@ -178,7 +176,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         {
             using (StreamWriter writer = new StreamWriter(filePath, false))
             {
-                writer.WriteLine("episode,role,file_path,width,height,sar_num,sar_den,dar_num,dar_den,display_width,display_height,display_aspect,has_black_border_crop,crop_left,crop_right,crop_top,crop_bottom,geometry_crop_to_four_three,manual_analysis_crop_px,crop_mode");
+                writer.WriteLine("episode,role,file_path,width,height,sar_num,sar_den,dar_num,dar_den,display_width,display_height,display_aspect,has_black_border_crop,crop_left,crop_right,crop_top,crop_bottom,crop_samples,crop_left_dispersion_px,crop_right_dispersion_px,crop_top_dispersion_px,crop_bottom_dispersion_px,manual_analysis_crop_px,crop_mode");
                 this.WriteGeometryCsvRow(writer, record, "source", record.FrameSyncResult.SourceGeometry);
                 this.WriteGeometryCsvRow(writer, record, "language", record.FrameSyncResult.LanguageGeometry);
             }
@@ -225,7 +223,15 @@ namespace RemuxForge.Core.Analysis.FrameSync
             writer.Write(',');
             writer.Write(geometry.CropBottom.ToString(CultureInfo.InvariantCulture));
             writer.Write(',');
-            writer.Write(geometry.GeometryCropToFourThree ? "true" : "false");
+            writer.Write(geometry.CropSampleCount.ToString(CultureInfo.InvariantCulture));
+            writer.Write(',');
+            writer.Write(geometry.CropLeftDispersionPx.ToString("F3", CultureInfo.InvariantCulture));
+            writer.Write(',');
+            writer.Write(geometry.CropRightDispersionPx.ToString("F3", CultureInfo.InvariantCulture));
+            writer.Write(',');
+            writer.Write(geometry.CropTopDispersionPx.ToString("F3", CultureInfo.InvariantCulture));
+            writer.Write(',');
+            writer.Write(geometry.CropBottomDispersionPx.ToString("F3", CultureInfo.InvariantCulture));
             writer.Write(',');
             writer.Write(this.EscapeCsv(geometry.ManualAnalysisCropPx));
             writer.Write(',');

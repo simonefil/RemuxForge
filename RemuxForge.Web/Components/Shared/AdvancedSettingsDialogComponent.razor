@@ -26,16 +26,16 @@
                     </div>
                 }
                 <div class="form-row">
-                    <span class="form-label">@AppText.T("web.advanced.siftBackend")</span>
-                    <select class="form-input" style="width: 18ch;" value="@AdvancedConfig.GetSiftBackendValue(_siftBackend)" @onchange="ChangeSiftBackend" disabled="@_siftVulkanProbeRunning">
-                        <option value="@AdvancedConfig.GetSiftBackendValue(SiftBackendKind.Cpu)">CPU</option>
-                        <option value="@AdvancedConfig.GetSiftBackendValue(SiftBackendKind.Vulkan)">Vulkan</option>
+                    <span class="form-label">@AppText.T("web.advanced.visionBackend")</span>
+                    <select class="form-input" style="width: 18ch;" value="@AdvancedConfig.GetVisionBackendValue(_visionBackend)" @onchange="ChangeVisionBackend" disabled="@_siftVulkanProbeRunning">
+                        <option value="@AdvancedConfig.GetVisionBackendValue(VisionBackendKind.Cpu)">CPU</option>
+                        <option value="@AdvancedConfig.GetVisionBackendValue(VisionBackendKind.Vulkan)">Vulkan</option>
                     </select>
                     @if (_siftVulkanProbeRunning)
                     {
                         <span>@AppText.T("web.advanced.probeRunning")</span>
                     }
-                    else if (_siftBackend == SiftBackendKind.Vulkan && !string.IsNullOrEmpty(_siftVulkanDeviceName))
+                    else if (_visionBackend == VisionBackendKind.Vulkan && !string.IsNullOrEmpty(_siftVulkanDeviceName))
                     {
                         <span>@_siftVulkanDeviceName</span>
                     }
@@ -61,20 +61,20 @@
     /// </summary>
     [Parameter] public EventCallback OnClose { get; set; }
 
-    #region Campi SIFT
+    #region Campi backend visuale
 
     /// <summary>
-    /// Backend SIFT condiviso da FrameSync, DeepAnalysis e SpeedCorrection
+    /// Backend visuale condiviso dal dHash e dal bootstrap SIFT/RANSAC
     /// </summary>
-    private SiftBackendKind _siftBackend = SiftBackendKind.Cpu;
+    private VisionBackendKind _visionBackend = VisionBackendKind.Cpu;
 
     /// <summary>
-    /// True durante il probe Vulkan del backend SIFT condiviso
+    /// True durante il probe Vulkan del backend visuale condiviso
     /// </summary>
     private bool _siftVulkanProbeRunning;
 
     /// <summary>
-    /// Device Vulkan confermato dal probe del backend SIFT condiviso
+    /// Device Vulkan confermato dal probe del backend visuale condiviso
     /// </summary>
     private string _siftVulkanDeviceName = "";
 
@@ -132,7 +132,7 @@
     /// </summary>
     private void LoadFieldsFrom(AdvancedConfig adv)
     {
-        this._siftBackend = adv.GetSiftBackendKind();
+        this._visionBackend = adv.GetVisionBackendKind();
         this._siftVulkanDeviceName = "";
 
         // Ffmpeg: booleani
@@ -148,7 +148,7 @@
     /// </summary>
     private async System.Threading.Tasks.Task ProbePersistedBackends()
     {
-        if (this._siftBackend == SiftBackendKind.Vulkan)
+        if (this._visionBackend == VisionBackendKind.Vulkan)
         {
             this._siftVulkanProbeRunning = true;
             try
@@ -156,7 +156,7 @@
                 VulkanSiftBackendProbeResult probeResult = await System.Threading.Tasks.Task.Run(() => new VulkanSiftBackendProbe().Probe());
                 if (!probeResult.Available)
                 {
-                    this._siftBackend = SiftBackendKind.Cpu;
+                    this._visionBackend = VisionBackendKind.Cpu;
                     this.AppendValidationError(AppText.F("web.advanced.vulkanUnavailable", probeResult.ErrorMessage));
                 }
                 else
@@ -166,7 +166,7 @@
             }
             catch (Exception ex)
             {
-                this._siftBackend = SiftBackendKind.Cpu;
+                this._visionBackend = VisionBackendKind.Cpu;
                 this.AppendValidationError(AppText.F("web.advanced.vulkanProbeFailed", ex.Message));
             }
             finally
@@ -230,7 +230,7 @@
         if (!this.ValidateAdvancedFields())
             return;
 
-        adv.SetSiftBackendKind(this._siftBackend);
+        adv.SetVisionBackendKind(this._visionBackend);
 
         // Parsing Ffmpeg: booleani
         adv.Ffmpeg.HardwareAcceleration = this._ffHardwareAcceleration;
@@ -263,9 +263,9 @@
     {
         List<string> errors = new List<string>();
 
-        if (!Enum.IsDefined(typeof(SiftBackendKind), this._siftBackend) || this._siftBackend == SiftBackendKind.Unknown)
-            errors.Add(AppText.T("web.advanced.invalidSiftBackend"));
-        else if (this._siftBackend == SiftBackendKind.Vulkan && string.IsNullOrEmpty(this._siftVulkanDeviceName))
+        if (!Enum.IsDefined(typeof(VisionBackendKind), this._visionBackend) || this._visionBackend == VisionBackendKind.Unknown)
+            errors.Add(AppText.T("web.advanced.invalidVisionBackend"));
+        else if (this._visionBackend == VisionBackendKind.Vulkan && string.IsNullOrEmpty(this._siftVulkanDeviceName))
             errors.Add(AppText.T("web.advanced.unverifiedVulkanBackend"));
 
         if (this._ffHardwareAcceleration && !this._ffHardwareAccelerationMethods.Contains(this._ffHardwareAccelerationMethod))
@@ -281,23 +281,23 @@
     }
 
     /// <summary>
-    /// Aggiorna il backend SIFT condiviso selezionato
+    /// Aggiorna il backend visuale condiviso selezionato
     /// </summary>
     /// <param name="args">Evento di selezione</param>
-    private async System.Threading.Tasks.Task ChangeSiftBackend(ChangeEventArgs args)
+    private async System.Threading.Tasks.Task ChangeVisionBackend(ChangeEventArgs args)
     {
         string selectedValue = args.Value != null ? args.Value.ToString() : "";
         this._validationError = "";
         this._siftVulkanDeviceName = "";
-        if (!AdvancedConfig.TryParseSiftBackend(selectedValue, out SiftBackendKind selectedBackend))
+        if (!AdvancedConfig.TryParseVisionBackend(selectedValue, out VisionBackendKind selectedBackend))
         {
-            this._siftBackend = SiftBackendKind.Cpu;
-            this._validationError = AppText.T("web.advanced.invalidSiftBackend");
+            this._visionBackend = VisionBackendKind.Cpu;
+            this._validationError = AppText.T("web.advanced.invalidVisionBackend");
             return;
         }
 
-        this._siftBackend = selectedBackend;
-        if (selectedBackend != SiftBackendKind.Vulkan)
+        this._visionBackend = selectedBackend;
+        if (selectedBackend != VisionBackendKind.Vulkan)
             return;
 
         this._siftVulkanProbeRunning = true;
@@ -306,7 +306,7 @@
             VulkanSiftBackendProbeResult probeResult = await System.Threading.Tasks.Task.Run(() => new VulkanSiftBackendProbe().Probe());
             if (!probeResult.Available)
             {
-                this._siftBackend = SiftBackendKind.Cpu;
+                this._visionBackend = VisionBackendKind.Cpu;
                 this._validationError = AppText.F("web.advanced.vulkanUnavailable", probeResult.ErrorMessage);
                 return;
             }
@@ -315,7 +315,7 @@
         }
         catch (Exception ex)
         {
-            this._siftBackend = SiftBackendKind.Cpu;
+            this._visionBackend = VisionBackendKind.Cpu;
             this._validationError = AppText.F("web.advanced.vulkanProbeFailed", ex.Message);
         }
         finally
@@ -380,4 +380,5 @@
     {
         this._ffHardwareAccelerationMethod = args.Value != null ? args.Value.ToString() : "";
     }
+
 }

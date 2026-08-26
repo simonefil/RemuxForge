@@ -125,7 +125,7 @@ namespace RemuxForge.Core.Subtitles
                 }
                 else if (interval.StartMs >= cutStartMs && interval.EndMs <= cutEndMs)
                 {
-                    // Cue interamente rimosso dal cut: verra' eliminato nel pass finale
+                    // Cue interamente rimosso dal cut: verrà eliminato nel pass finale
                     interval.StartMs = 0;
                     interval.EndMs = 0;
                 }
@@ -194,7 +194,7 @@ namespace RemuxForge.Core.Subtitles
     /// </summary>
     internal class SubtitleCueInterval
     {
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Timestamp iniziale del cue

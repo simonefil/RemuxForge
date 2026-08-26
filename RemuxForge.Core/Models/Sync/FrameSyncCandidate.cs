@@ -46,10 +46,6 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public int StrongPairCount { get; set; }
 
-        /// <summary>
-        /// Numero di coppie geometriche escluse per ambiguità temporale
-        /// </summary>
-        public int AmbiguousPairCount { get; set; }
 
         /// <summary>
         /// Copertura temporale source del percorso monotono
@@ -98,11 +94,6 @@ namespace RemuxForge.Core.Models
         /// Indica che la ricerca iniziale ha prodotto un modo applicabile
         /// </summary>
         public bool Success { get; set; }
-
-        /// <summary>
-        /// Indica che più modi temporali equivalenti impediscono una decisione
-        /// </summary>
-        public bool Ambiguous { get; set; }
 
         /// <summary>
         /// Miglior candidato iniziale

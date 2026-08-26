@@ -41,20 +41,6 @@ namespace RemuxForge.Core.Metadata
         }
 
         /// <summary>
-        /// Indica se una traccia runtime appartiene allo scope richiesto
-        /// </summary>
-        /// <param name="track">Traccia metadata</param>
-        /// <param name="scope">Scope target</param>
-        /// <returns>Vero se la traccia appartiene allo scope</returns>
-        public static bool IsTrackInScope(MkvMetadataTrackInfo track, MkvMetadataTargetScope scope)
-        {
-            if (track == null)
-                return false;
-
-            return ScopeFromTrack(track) == scope;
-        }
-
-        /// <summary>
         /// Converte tipo traccia runtime nello scope metadata corrispondente
         /// </summary>
         /// <param name="track">Traccia metadata</param>

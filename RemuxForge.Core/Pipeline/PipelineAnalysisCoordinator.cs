@@ -357,7 +357,7 @@ namespace RemuxForge.Core.Pipeline
                 ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Phase, AppText.T("framesync.pipeline.start"));
                 ConsoleHelper.Progress(LogSection.FrameSync, 10, AppText.T("framesync.pipeline.progressSetup"));
 
-                frameSyncOffset = this._frameSyncService.RefineOffset(record.SourceFilePath, record.LangFilePath);
+                frameSyncOffset = this._frameSyncService.RefineOffset(record.SourceFilePath, record.LangFilePath, speedCorrectionMode == Options.SPEED_CORRECTION_MANUAL ? this._opts.ManualStretchFactor : "");
                 record.FrameSyncTimeMs = this._frameSyncService.FrameSyncTimeMs;
                 record.FrameSyncResult = this._frameSyncService.LastResult;
 
@@ -415,8 +415,8 @@ namespace RemuxForge.Core.Pipeline
                         frameSyncTiming = record.FrameSyncResult.Timing;
                         if (frameSyncTiming != null)
                         {
-                            ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("framesync.pipeline.timing", frameSyncTiming.VideoInfoMs, frameSyncTiming.GeometryMs, frameSyncTiming.InitialSearchMs, frameSyncTiming.CheckpointsMs, frameSyncTiming.PrecisionRefinementMs, frameSyncTiming.TotalMs));
-                            ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("framesync.pipeline.pairs", frameSyncTiming.InitialPairCount, frameSyncTiming.CheckpointPairCount, frameSyncTiming.PrecisionPairCount));
+                            ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("framesync.pipeline.timing", frameSyncTiming.VideoInfoMs, frameSyncTiming.GeometryMs, frameSyncTiming.InitialSearchMs, frameSyncTiming.CheckpointsMs, frameSyncTiming.TotalMs));
+                            ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("framesync.pipeline.pairs", frameSyncTiming.InitialPairCount, frameSyncTiming.CheckpointPairCount));
                         }
                     }
                     ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("framesync.pipeline.detail", this._frameSyncService.GetDetailSummary()));

@@ -306,7 +306,7 @@ namespace RemuxForge.Core.Metadata
             for (int i = 0; i < fields.Count; i++)
             {
                 MetadataFieldDefinition field = fields[i];
-                string value = "";
+                string value;
                 if (field.Sector != sector)
                     continue;
 

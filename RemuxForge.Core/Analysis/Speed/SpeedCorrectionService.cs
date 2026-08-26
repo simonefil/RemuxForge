@@ -1,8 +1,10 @@
-using RemuxForge.Core.Analysis.Deep.Features;
+using RemuxForge.Core.Analysis.Edit.Geometry;
+using RemuxForge.Core.Analysis.Features;
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
+using RemuxForge.Core.Media.Ffmpeg;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -176,8 +178,20 @@ namespace RemuxForge.Core.Analysis.Speed
             Stopwatch stopwatch = Stopwatch.StartNew();
             try
             {
-                this.PrepareGeometryDrivenCrop(sourceFile, languageFile);
-                this.ExtractInitialFrames(sourceFile, languageFile, out List<byte[]> sourceFrames, out double[] sourcePtsMs, out List<byte[]> languageFrames, out double[] languagePtsMs);
+                FfmpegVideoInfoReader reader = new FfmpegVideoInfoReader(this._ffmpegPath, this._ffmpegConfig, LogSection.Speed);
+                if (!reader.TryRead(sourceFile, out int sourceDurationMs, out _))
+                {
+                    this._rejectReason = AppText.T("speed.sift.insufficientFrames");
+                    return false;
+                }
+                FrameGeometryEstimator estimator = new FrameGeometryEstimator(this._ffmpegPath, this._ffmpegConfig, AppSettingsService.Instance.Settings.Advanced.GetVisionBackendKind(), LogSection.Speed);
+                FrameGeometryEstimationResult geometry = estimator.Estimate(sourceFile, languageFile, this._analysisCropSourcePx, this._analysisCropLanguagePx, sourceDurationMs, CancellationToken.None);
+                if (!geometry.Alignment.Success)
+                {
+                    this._rejectReason = geometry.Alignment.RejectReason;
+                    return false;
+                }
+                this.ExtractInitialFrames(sourceFile, languageFile, geometry.SourceCommonGeometry.CropPx, geometry.LanguageCommonGeometry.CropPx, out List<byte[]> sourceFrames, out double[] sourcePtsMs, out List<byte[]> languageFrames, out double[] languagePtsMs);
                 if (sourceFrames.Count < 5 || languageFrames.Count < 5)
                 {
                     this._rejectReason = AppText.T("speed.sift.insufficientFrames");
@@ -185,7 +199,7 @@ namespace RemuxForge.Core.Analysis.Speed
                 }
                 List<DeepSiftVisualAnchor> sourceAnchors = this.BuildAnchors(sourceFrames, sourcePtsMs);
                 List<DeepSiftVisualAnchor> languageAnchors = this.BuildAnchors(languageFrames, languagePtsMs);
-                using (FrameFeatureBatchMatcherBase matcher = FrameFeatureBatchMatcherBase.Create(AppSettingsService.Instance.Settings.Advanced.GetSiftBackendKind()))
+                using (FrameFeatureBatchMatcherBase matcher = FrameFeatureBatchMatcherBase.Create(AppSettingsService.Instance.Settings.Advanced.GetVisionBackendKind()))
                 {
                     if (!matcher.IsAvailable(out string rejectReason))
                     {
@@ -283,15 +297,15 @@ namespace RemuxForge.Core.Analysis.Speed
         /// <summary>
         /// Estrae in parallelo le finestre source e language
         /// </summary>
-        private void ExtractInitialFrames(string sourceFile, string languageFile, out List<byte[]> sourceFrames, out double[] sourcePtsMs, out List<byte[]> languageFrames, out double[] languagePtsMs)
+        private void ExtractInitialFrames(string sourceFile, string languageFile, string sourceCropPx, string languageCropPx, out List<byte[]> sourceFrames, out double[] sourcePtsMs, out List<byte[]> languageFrames, out double[] languagePtsMs)
         {
             List<byte[]> source = null;
             List<byte[]> language = null;
             double[] sourcePts = null;
             double[] languagePts = null;
             Parallel.Invoke(
-                () => this.ExtractSegmentAtInterval(sourceFile, this._speedConfig.SourceStartSec * 1000, this._speedConfig.SourceDurationSec, SAMPLE_INTERVAL_SEC, this._geometryCropSourceToFourThree, this._analysisCropSourcePx, out source, out sourcePts),
-                () => this.ExtractSegmentAtInterval(languageFile, 0, this._speedConfig.LangDurationSec, SAMPLE_INTERVAL_SEC, this._geometryCropLanguageToFourThree, this._analysisCropLanguagePx, out language, out languagePts));
+                () => this.ExtractSegmentAtInterval(sourceFile, this._speedConfig.SourceStartSec * 1000, this._speedConfig.SourceDurationSec, SAMPLE_INTERVAL_SEC, sourceCropPx, out source, out sourcePts),
+                () => this.ExtractSegmentAtInterval(languageFile, 0, this._speedConfig.LangDurationSec, SAMPLE_INTERVAL_SEC, languageCropPx, out language, out languagePts));
             sourceFrames = source ?? new List<byte[]>();
             languageFrames = language ?? new List<byte[]>();
             sourcePtsMs = sourcePts ?? Array.Empty<double>();

@@ -571,7 +571,7 @@ namespace RemuxForge.Core.Rename
         /// <returns>Testo modificato</returns>
         private static string TrimString(string text, char[] chars, int location)
         {
-            string result = text;
+            string result;
 
             if (location == 0)
             {

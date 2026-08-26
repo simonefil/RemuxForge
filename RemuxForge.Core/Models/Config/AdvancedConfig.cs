@@ -3,9 +3,9 @@ using System;
 namespace RemuxForge.Core.Models
 {
     /// <summary>
-    /// Backend SIFT disponibile per le analisi visuali
+    /// Backend delle misure visuali: dove girano SIFT e l'hash percettivo
     /// </summary>
-    public enum SiftBackendKind
+    public enum VisionBackendKind
     {
         /// <summary>
         /// Valore assente o non riconosciuto
@@ -13,12 +13,12 @@ namespace RemuxForge.Core.Models
         Unknown,
 
         /// <summary>
-        /// Implementazione OpenCV eseguita sulla CPU
+        /// Implementazioni eseguite sulla CPU
         /// </summary>
         Cpu,
 
         /// <summary>
-        /// Implementazione RemuxForge.Vulkan eseguita sulla GPU
+        /// Implementazioni RemuxForge.Vulkan eseguite sulla GPU
         /// </summary>
         Vulkan
     }
@@ -171,7 +171,7 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
-    /// Configurazione della pipeline DeepAnalysis SIFT
+    /// Configurazione della pipeline DeepAnalysis
     /// </summary>
     public class DeepAnalysisConfig
     {
@@ -293,12 +293,12 @@ namespace RemuxForge.Core.Models
         /// <summary>
         /// Valore persistito del backend CPU
         /// </summary>
-        private const string SIFT_BACKEND_CPU = "cpu";
+        private const string VISION_BACKEND_CPU = "cpu";
 
         /// <summary>
         /// Valore persistito del backend Vulkan
         /// </summary>
-        private const string SIFT_BACKEND_VULKAN = "vulkan";
+        private const string VISION_BACKEND_VULKAN = "vulkan";
 
         #endregion
 
@@ -309,7 +309,7 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public AdvancedConfig()
         {
-            this.SiftBackend = SIFT_BACKEND_CPU;
+            this.VisionBackend = VISION_BACKEND_CPU;
             this.VideoSync = new VideoSyncConfig();
             this.SpeedCorrection = new SpeedCorrectionConfig();
             this.FrameSync = new FrameSyncConfig();
@@ -325,58 +325,58 @@ namespace RemuxForge.Core.Models
         /// <summary>
         /// Converte il valore persistito nel backend operativo
         /// </summary>
-        /// <returns>Backend SIFT configurato oppure <see cref="SiftBackendKind.Unknown"/></returns>
-        public SiftBackendKind GetSiftBackendKind()
+        /// <returns>Backend configurato oppure <see cref="VisionBackendKind.Unknown"/></returns>
+        public VisionBackendKind GetVisionBackendKind()
         {
-            TryParseSiftBackend(this.SiftBackend, out SiftBackendKind backend);
+            TryParseVisionBackend(this.VisionBackend, out VisionBackendKind backend);
             return backend;
         }
 
         /// <summary>
         /// Imposta il backend operativo usando il valore persistito canonico
         /// </summary>
-        /// <param name="backend">Backend SIFT da configurare</param>
-        public void SetSiftBackendKind(SiftBackendKind backend)
+        /// <param name="backend">Backend da configurare</param>
+        public void SetVisionBackendKind(VisionBackendKind backend)
         {
-            this.SiftBackend = GetSiftBackendValue(backend);
+            this.VisionBackend = GetVisionBackendValue(backend);
         }
 
         /// <summary>
         /// Converte un valore persistito nel relativo enum operativo
         /// </summary>
         /// <param name="value">Valore letto dalla configurazione o dalla UI</param>
-        /// <param name="backend">Backend SIFT riconosciuto</param>
+        /// <param name="backend">Backend riconosciuto</param>
         /// <returns>True se il valore identifica un backend supportato</returns>
-        public static bool TryParseSiftBackend(string value, out SiftBackendKind backend)
+        public static bool TryParseVisionBackend(string value, out VisionBackendKind backend)
         {
-            if (string.Equals(value, SIFT_BACKEND_CPU, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(value, VISION_BACKEND_CPU, StringComparison.OrdinalIgnoreCase))
             {
-                backend = SiftBackendKind.Cpu;
+                backend = VisionBackendKind.Cpu;
                 return true;
             }
-            if (string.Equals(value, SIFT_BACKEND_VULKAN, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(value, VISION_BACKEND_VULKAN, StringComparison.OrdinalIgnoreCase))
             {
-                backend = SiftBackendKind.Vulkan;
+                backend = VisionBackendKind.Vulkan;
                 return true;
             }
 
-            backend = SiftBackendKind.Unknown;
+            backend = VisionBackendKind.Unknown;
             return false;
         }
 
         /// <summary>
         /// Restituisce il valore persistibile canonico di un backend operativo
         /// </summary>
-        /// <param name="backend">Backend SIFT operativo</param>
+        /// <param name="backend">Backend operativo</param>
         /// <returns>Valore in minuscolo usato da JSON e UI</returns>
-        public static string GetSiftBackendValue(SiftBackendKind backend)
+        public static string GetVisionBackendValue(VisionBackendKind backend)
         {
             switch (backend)
             {
-                case SiftBackendKind.Cpu:
-                    return SIFT_BACKEND_CPU;
-                case SiftBackendKind.Vulkan:
-                    return SIFT_BACKEND_VULKAN;
+                case VisionBackendKind.Cpu:
+                    return VISION_BACKEND_CPU;
+                case VisionBackendKind.Vulkan:
+                    return VISION_BACKEND_VULKAN;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(backend));
             }
@@ -387,9 +387,9 @@ namespace RemuxForge.Core.Models
         #region Proprietà
 
         /// <summary>
-        /// Backend SIFT condiviso da FrameSync, SpeedCorrection e DeepAnalysis
+        /// Backend condiviso da FrameSync, SpeedCorrection e DeepAnalysis
         /// </summary>
-        public string SiftBackend { get; set; }
+        public string VisionBackend { get; set; }
 
         /// <summary>
         /// Parametri base sincronizzazione video

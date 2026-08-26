@@ -140,23 +140,6 @@ namespace RemuxForge.Core.Metadata
         }
 
         /// <summary>
-        /// Restituisce operatori condizione compatibili con un campo
-        /// </summary>
-        /// <param name="fieldKey">Chiave campo</param>
-        /// <returns>Operatori condizione</returns>
-        public static List<MkvMetadataConditionOperator> GetConditionOperators(string fieldKey)
-        {
-            List<MetadataConditionOperatorItem> catalog = GetConditionOperatorCatalog(fieldKey);
-            List<MkvMetadataConditionOperator> result = new List<MkvMetadataConditionOperator>();
-            for (int i = 0; i < catalog.Count; i++)
-            {
-                result.Add(catalog[i].Operator);
-            }
-
-            return result;
-        }
-
-        /// <summary>
         /// Restituisce catalogo operatori condizione compatibili con un campo
         /// </summary>
         /// <param name="fieldKey">Chiave campo</param>

@@ -130,16 +130,16 @@ namespace RemuxForge.Core.Infrastructure
                 if (!WaitForExitOrStop(proc, timeoutMs))
                 {
                     KillProcessTree(proc);
-                    stdoutThread.Join(5000);
-                    stderrThread.Join(5000);
+                    stdoutThread.Join();
+                    stderrThread.Join();
                     result.ExitCode = -1;
                     result.Stdout = stdout;
                     result.Stderr = stderr;
                     return result;
                 }
 
-                stdoutThread.Join(5000);
-                stderrThread.Join(5000);
+                stdoutThread.Join();
+                stderrThread.Join();
 
                 result.ExitCode = proc.ExitCode;
                 result.Stdout = stdout;
@@ -231,8 +231,8 @@ namespace RemuxForge.Core.Infrastructure
                     KillProcessTree(proc);
                 }
 
-                stdoutThread.Join(5000);
-                stderrThread.Join(5000);
+                stdoutThread.Join();
+                stderrThread.Join();
                 if (proc.HasExited) { exitCode = proc.ExitCode; }
             }
             catch (Exception ex)
@@ -321,8 +321,8 @@ namespace RemuxForge.Core.Infrastructure
                     KillProcessTree(proc);
                 }
 
-                stdoutThread.Join(5000);
-                stderrThread.Join(5000);
+                stdoutThread.Join();
+                stderrThread.Join();
 
                 if (proc.HasExited)
                 {
@@ -340,90 +340,6 @@ namespace RemuxForge.Core.Infrastructure
             }
 
             return result;
-        }
-
-        /// <summary>
-        /// Esegue un processo scartando l'output, con supporto timeout e kill
-        /// </summary>
-        /// <param name="fileName">Percorso dell'eseguibile</param>
-        /// <param name="arguments">Argomenti del processo</param>
-        /// <param name="timeoutMs">Timeout in millisecondi, 0 = nessun timeout</param>
-        /// <returns>Codice di uscita del processo, -1 se timeout o errore</returns>
-        public static int RunDiscardOutput(string fileName, string[] arguments, int timeoutMs = 0)
-        {
-            int exitCode = -1;
-            Process proc = null;
-            StreamReader stdoutReader;
-            StreamReader stderrReader;
-            try
-            {
-                proc = new Process();
-                SetupStartInfo(proc, fileName);
-
-                // Argomenti via ArgumentList
-                for (int i = 0; i < arguments.Length; i++)
-                {
-                    proc.StartInfo.ArgumentList.Add(arguments[i]);
-                }
-
-                proc.Start();
-                stdoutReader = proc.StandardOutput;
-                stderrReader = proc.StandardError;
-
-                // Svuota stdout e stderr in thread separati per prevenire deadlock
-                // Pipe chiuse/disposte sono attese se il processo termina durante lo stop
-                Thread stdoutThread = new Thread(() =>
-                {
-                    try
-                    {
-                        stdoutReader.ReadToEnd();
-                    }
-                    catch (IOException)
-                    {
-                    }
-                    catch (ObjectDisposedException)
-                    {
-                    }
-                });
-                Thread stderrThread = new Thread(() =>
-                {
-                    try
-                    {
-                        stderrReader.ReadToEnd();
-                    }
-                    catch (IOException)
-                    {
-                    }
-                    catch (ObjectDisposedException)
-                    {
-                    }
-                });
-                stdoutThread.Start();
-                stderrThread.Start();
-
-                if (WaitForExitOrStop(proc, timeoutMs))
-                {
-                    exitCode = proc.ExitCode;
-                }
-                else
-                {
-                    KillProcessTree(proc);
-                }
-
-                // Attendi thread con timeout per evitare hang
-                stdoutThread.Join(5000);
-                stderrThread.Join(5000);
-            }
-            catch (Exception ex)
-            {
-                ConsoleHelper.Write(LogSection.General, LogLevel.Warning, "Errore esecuzione " + fileName + ": " + ex.Message);
-            }
-            finally
-            {
-                if (proc != null) { proc.Dispose(); }
-            }
-
-            return exitCode;
         }
 
         /// <summary>
@@ -502,8 +418,8 @@ namespace RemuxForge.Core.Infrastructure
                     KillProcessTree(proc);
                 }
 
-                stdoutThread.Join(5000);
-                stderrThread.Join(5000);
+                stdoutThread.Join();
+                stderrThread.Join();
 
                 if (proc.HasExited)
                 {

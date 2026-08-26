@@ -23,7 +23,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Delay iniziale in ms da applicare al mux, separato dagli edit iniziali materializzati in Operations

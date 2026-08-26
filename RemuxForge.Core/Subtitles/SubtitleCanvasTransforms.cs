@@ -7,7 +7,20 @@ namespace RemuxForge.Core.Subtitles
     /// </summary>
     internal class SubtitleCanvasTransform
     {
-        #region Proprieta
+        #region Costruttore
+
+        /// <summary>
+        /// Inizializza la componente geometrica residua all'identità
+        /// </summary>
+        public SubtitleCanvasTransform()
+        {
+            this.GeometryScaleX = 1.0;
+            this.GeometryScaleY = 1.0;
+        }
+
+        #endregion
+
+        #region Proprietà
 
         /// <summary>
         /// Larghezza storage input
@@ -124,7 +137,7 @@ namespace RemuxForge.Core.Subtitles
         /// <summary>
         /// Scala orizzontale active-area
         /// </summary>
-        public double ScaleX
+        public double ResolutionScaleX
         {
             get { return this.InputActiveWidth > 0 ? this.OutputActiveWidth / (double)this.InputActiveWidth : 0.0; }
         }
@@ -132,9 +145,45 @@ namespace RemuxForge.Core.Subtitles
         /// <summary>
         /// Scala verticale active-area
         /// </summary>
-        public double ScaleY
+        public double ResolutionScaleY
         {
             get { return this.InputActiveHeight > 0 ? this.OutputActiveHeight / (double)this.InputActiveHeight : 0.0; }
+        }
+
+        /// <summary>
+        /// Scala orizzontale residua misurata fra le aree attive
+        /// </summary>
+        public double GeometryScaleX { get; set; }
+
+        /// <summary>
+        /// Scala verticale residua misurata fra le aree attive
+        /// </summary>
+        public double GeometryScaleY { get; set; }
+
+        /// <summary>
+        /// Traslazione orizzontale in frazioni dell'area attiva output
+        /// </summary>
+        public double GeometryTranslateX { get; set; }
+
+        /// <summary>
+        /// Traslazione verticale in frazioni dell'area attiva output
+        /// </summary>
+        public double GeometryTranslateY { get; set; }
+
+        /// <summary>
+        /// Scala orizzontale effettiva canvas per geometria
+        /// </summary>
+        public double ScaleX
+        {
+            get { return this.ResolutionScaleX * this.GeometryScaleX; }
+        }
+
+        /// <summary>
+        /// Scala verticale effettiva canvas per geometria
+        /// </summary>
+        public double ScaleY
+        {
+            get { return this.ResolutionScaleY * this.GeometryScaleY; }
         }
 
         /// <summary>
@@ -142,7 +191,7 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         public bool RequiresScaling
         {
-            get { return this.InputActiveWidth != this.OutputActiveWidth || this.InputActiveHeight != this.OutputActiveHeight; }
+            get { return Math.Abs(this.ScaleX - 1.0) > 0.000001 || Math.Abs(this.ScaleY - 1.0) > 0.000001; }
         }
 
         /// <summary>
@@ -158,7 +207,7 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         public int OffsetX
         {
-            get { return this.OutputCropLeft - this.InputCropLeft; }
+            get { return this.MapX(0); }
         }
 
         /// <summary>
@@ -166,7 +215,7 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         public int OffsetY
         {
-            get { return this.OutputCropTop - this.InputCropTop; }
+            get { return this.MapY(0); }
         }
 
         #endregion
@@ -190,7 +239,7 @@ namespace RemuxForge.Core.Subtitles
         /// <returns>Coordinata output</returns>
         public double MapX(double x)
         {
-            return ((x - this.InputCropLeft) * this.ScaleX) + this.OutputCropLeft;
+            return ((x - this.InputCropLeft) * this.ScaleX) + this.OutputCropLeft + (this.OutputActiveWidth * this.GeometryTranslateX);
         }
 
         /// <summary>
@@ -210,7 +259,7 @@ namespace RemuxForge.Core.Subtitles
         /// <returns>Coordinata output</returns>
         public double MapY(double y)
         {
-            return ((y - this.InputCropTop) * this.ScaleY) + this.OutputCropTop;
+            return ((y - this.InputCropTop) * this.ScaleY) + this.OutputCropTop + (this.OutputActiveHeight * this.GeometryTranslateY);
         }
 
         /// <summary>
@@ -294,6 +343,10 @@ namespace RemuxForge.Core.Subtitles
             result.InputDisplayHeight = inputHeight;
             result.OutputDisplayWidth = outputWidth;
             result.OutputDisplayHeight = outputHeight;
+            result.GeometryScaleX = this.GeometryScaleX;
+            result.GeometryScaleY = this.GeometryScaleY;
+            result.GeometryTranslateX = this.GeometryTranslateX;
+            result.GeometryTranslateY = this.GeometryTranslateY;
 
             // Il crop resta quello video, ma viene proporzionato allo spazio PlayRes/LayoutRes del formato testuale
             result.InputCropLeft = this.ScaleCropValue(this.InputCropLeft, this.InputCanvasWidth, inputWidth);

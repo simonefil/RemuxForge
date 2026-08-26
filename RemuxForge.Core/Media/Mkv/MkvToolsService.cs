@@ -69,6 +69,14 @@ namespace RemuxForge.Core.Media.Mkv
         /// <returns>Info complete del file o null in caso di errore</returns>
         public MkvFileInfo GetFileInfo(string filePath)
         {
+            return this.GetFileInfo(filePath, 0);
+        }
+
+        /// <summary>
+        /// Ottiene informazioni complete su un file MKV con un timeout esplicito
+        /// </summary>
+        public MkvFileInfo GetFileInfo(string filePath, int timeoutMs)
+        {
             MkvFileInfo result = null;
             string jsonOutput = "";
             JsonDocument doc = null;
@@ -76,7 +84,7 @@ namespace RemuxForge.Core.Media.Mkv
             JsonElement tracksElement;
             try
             {
-                ProcessResult procResult = ProcessRunner.Run(this._mkvMergePath, new string[] { "-J", filePath });
+                ProcessResult procResult = ProcessRunner.Run(this._mkvMergePath, new string[] { "-J", filePath }, timeoutMs);
                 jsonOutput = procResult.Stdout;
             }
             catch

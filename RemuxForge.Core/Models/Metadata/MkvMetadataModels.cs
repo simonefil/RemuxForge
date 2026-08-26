@@ -74,7 +74,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// File o cartella input
@@ -135,7 +135,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Versione schema preset
@@ -186,7 +186,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Descrizione obbligatoria
@@ -251,7 +251,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Condizioni root in AND
@@ -266,9 +266,13 @@ namespace RemuxForge.Core.Models
     /// </summary>
     public enum MkvMetadataRuleConditionNodeType
     {
+        /// <summary>Condizione su un campo</summary>
         Field,
+        /// <summary>Confronto tra tracce</summary>
         TrackComparison,
+        /// <summary>Conteggio di un gruppo di tracce</summary>
         TrackGroupCount,
+        /// <summary>Gruppo di alternative in OR</summary>
         AlternativeAny
     }
 
@@ -293,7 +297,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Tipo nodo
@@ -344,7 +348,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Condizioni alternative in OR
@@ -377,7 +381,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Chiave campo
@@ -437,7 +441,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Campo confrontato
@@ -481,7 +485,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Gruppo tracce
@@ -506,25 +510,45 @@ namespace RemuxForge.Core.Models
     /// </summary>
     public enum MkvMetadataConditionOperator
     {
+        /// <summary>Uguaglianza</summary>
         Equals,
+        /// <summary>Disuguaglianza</summary>
         NotEquals,
+        /// <summary>Contiene il valore</summary>
         Contains,
+        /// <summary>Non contiene il valore</summary>
         NotContains,
+        /// <summary>Inizia con il valore</summary>
         StartsWith,
+        /// <summary>Termina con il valore</summary>
         EndsWith,
+        /// <summary>Corrisponde all'espressione regolare</summary>
         Regex,
+        /// <summary>Non corrisponde all'espressione regolare</summary>
         NotRegex,
+        /// <summary>Valore vuoto</summary>
         IsEmpty,
+        /// <summary>Valore non vuoto</summary>
         IsNotEmpty,
+        /// <summary>Presente nell'elenco</summary>
         InList,
+        /// <summary>Assente dall'elenco</summary>
         NotInList,
+        /// <summary>Maggiore del valore</summary>
         GreaterThan,
+        /// <summary>Maggiore o uguale al valore</summary>
         GreaterOrEqual,
+        /// <summary>Minore del valore</summary>
         LessThan,
+        /// <summary>Minore o uguale al valore</summary>
         LessOrEqual,
+        /// <summary>Compreso nell'intervallo</summary>
         Between,
+        /// <summary>Esterno all'intervallo</summary>
         NotBetween,
+        /// <summary>Valore vero</summary>
         IsTrue,
+        /// <summary>Valore falso</summary>
         IsFalse
     }
 
@@ -533,14 +557,23 @@ namespace RemuxForge.Core.Models
     /// </summary>
     public enum MkvMetadataTrackComparisonRelation
     {
+        /// <summary>Uguale ad almeno una traccia</summary>
         EqualsAny,
+        /// <summary>Diverso da tutte le tracce</summary>
         NotEqualsAll,
+        /// <summary>Maggiore di tutte le tracce</summary>
         GreaterThanAll,
+        /// <summary>Maggiore o uguale a tutte le tracce</summary>
         GreaterOrEqualAll,
+        /// <summary>Minore di tutte le tracce</summary>
         LessThanAll,
+        /// <summary>Minore o uguale a tutte le tracce</summary>
         LessOrEqualAll,
+        /// <summary>Valore massimo del gruppo</summary>
         Largest,
+        /// <summary>Valore minimo del gruppo</summary>
         Smallest,
+        /// <summary>Posizione ordinata nel gruppo</summary>
         Rank
     }
 
@@ -549,9 +582,13 @@ namespace RemuxForge.Core.Models
     /// </summary>
     public enum MkvMetadataTrackGroup
     {
+        /// <summary>Tracce con la stessa lingua</summary>
         SameLanguage,
+        /// <summary>Tracce con lo stesso formato</summary>
         SameFormat,
+        /// <summary>Tracce con la stessa lingua e lo stesso formato</summary>
         SameLanguageAndFormat,
+        /// <summary>Tutte le tracce nello scope</summary>
         AllInScope
     }
 
@@ -578,7 +615,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Tipo operazione
@@ -611,7 +648,7 @@ namespace RemuxForge.Core.Models
         public bool ClearTagsConfirmed { get; set; }
 
         /// <summary>
-        /// Gruppo esclusivita' per SetExclusiveFlag
+        /// Gruppo esclusività per SetExclusiveFlag
         /// </summary>
         public MkvMetadataExclusiveGroup ExclusiveGroup { get; set; }
 
@@ -623,14 +660,23 @@ namespace RemuxForge.Core.Models
     /// </summary>
     public enum MkvMetadataOperationType
     {
+        /// <summary>Imposta un campo</summary>
         SetField,
+        /// <summary>Svuota un campo</summary>
         ClearField,
+        /// <summary>Imposta un flag esclusivo</summary>
         SetExclusiveFlag,
+        /// <summary>Rimuove una traccia</summary>
         RemoveTrack,
+        /// <summary>Aggiunge o aggiorna i tag statistici della traccia</summary>
         AddOrUpdateTrackStatisticsTags,
+        /// <summary>Elimina i tag statistici della traccia</summary>
         DeleteTrackStatisticsTags,
+        /// <summary>Imposta un campo tag</summary>
         SetTagField,
+        /// <summary>Svuota un campo tag</summary>
         ClearTagField,
+        /// <summary>Elimina i tag nello scope</summary>
         ClearTags
     }
 
@@ -639,9 +685,13 @@ namespace RemuxForge.Core.Models
     /// </summary>
     public enum MkvMetadataTagTarget
     {
+        /// <summary>Elemento corrente</summary>
         Current,
+        /// <summary>File corrente</summary>
         File,
+        /// <summary>Traccia corrente</summary>
         CurrentTrack,
+        /// <summary>Tutte le tracce</summary>
         AllTracks
     }
 
@@ -650,9 +700,13 @@ namespace RemuxForge.Core.Models
     /// </summary>
     public enum MkvMetadataExclusiveGroup
     {
+        /// <summary>Tracce con la stessa lingua</summary>
         SameLanguage,
+        /// <summary>Tracce con lo stesso formato</summary>
         SameFormat,
+        /// <summary>Tracce con la stessa lingua e lo stesso formato</summary>
         SameLanguageAndFormat,
+        /// <summary>Tutte le tracce nello scope</summary>
         AllInScope
     }
 
@@ -682,7 +736,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// File input
@@ -780,7 +834,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Descrizione regola che ha prodotto la modifica
@@ -867,7 +921,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// File input
@@ -928,7 +982,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Percorso file
@@ -1015,7 +1069,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Tipo MediaInfo originale

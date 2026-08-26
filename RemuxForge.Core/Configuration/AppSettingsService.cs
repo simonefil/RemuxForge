@@ -204,7 +204,7 @@ namespace RemuxForge.Core.Configuration
                     this._model = JsonSerializer.Deserialize<AppSettingsModel>(json, options) ?? new AppSettingsModel();
 
                     this.MigrateSubtitleEditConfig(json);
-                    this.MigrateSiftBackendConfig(json);
+                    this.MigrateVisionBackendConfig(json);
 
                     // Assicura che sotto-oggetti non siano null
                     this.EnsureNotNull();
@@ -689,10 +689,15 @@ namespace RemuxForge.Core.Configuration
         }
 
         /// <summary>
-        /// Migra il backend SIFT dalle vecchie sezioni specifiche alla configurazione condivisa
+        /// Migra il backend di visione dalle chiavi delle generazioni precedenti
         /// </summary>
+        /// <remarks>
+        /// Due generazioni da recuperare, dalla più recente alla più vecchia: la chiave
+        /// condivisa Advanced.SiftBackend, e prima ancora le chiavi per sezione
+        /// Advanced.DeepAnalysis.SiftBackend e Advanced.SpeedCorrection.SiftBackend
+        /// </remarks>
         /// <param name="json">JSON originale delle impostazioni</param>
-        private void MigrateSiftBackendConfig(string json)
+        internal void MigrateVisionBackendConfig(string json)
         {
             JsonDocument document = null;
 
@@ -703,16 +708,28 @@ namespace RemuxForge.Core.Configuration
             {
                 document = JsonDocument.Parse(json);
                 if (!document.RootElement.TryGetProperty("Advanced", out JsonElement advancedElement) ||
-                    advancedElement.TryGetProperty("SiftBackend", out _))
+                    advancedElement.TryGetProperty("VisionBackend", out _))
                 {
                     return;
                 }
 
-                string siftBackend = this.ReadNestedSiftBackend(advancedElement, "DeepAnalysis");
-                if (string.IsNullOrEmpty(siftBackend))
-                    siftBackend = this.ReadNestedSiftBackend(advancedElement, "SpeedCorrection");
-                if (!string.IsNullOrEmpty(siftBackend))
-                    this._model.Advanced.SiftBackend = siftBackend;
+                string backend = "";
+                foreach (string sectionName in new string[] { null, "DeepAnalysis", "SpeedCorrection" })
+                {
+                    JsonElement container = advancedElement;
+                    if (sectionName != null && !advancedElement.TryGetProperty(sectionName, out container))
+                        continue;
+                    if (container.TryGetProperty("SiftBackend", out JsonElement backendElement) &&
+                        backendElement.ValueKind == JsonValueKind.String)
+                    {
+                        backend = backendElement.GetString() ?? "";
+                        if (!string.IsNullOrEmpty(backend))
+                            break;
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(backend))
+                    this._model.Advanced.VisionBackend = backend;
             }
             catch
             {
@@ -723,24 +740,6 @@ namespace RemuxForge.Core.Configuration
                 if (document != null)
                     document.Dispose();
             }
-        }
-
-        /// <summary>
-        /// Legge il backend SIFT da una vecchia sezione Advanced
-        /// </summary>
-        /// <param name="advancedElement">Sezione Advanced originale</param>
-        /// <param name="sectionName">Nome della sezione precedente</param>
-        /// <returns>Backend configurato oppure stringa vuota</returns>
-        private string ReadNestedSiftBackend(JsonElement advancedElement, string sectionName)
-        {
-            if (advancedElement.TryGetProperty(sectionName, out JsonElement sectionElement) &&
-                sectionElement.TryGetProperty("SiftBackend", out JsonElement backendElement) &&
-                backendElement.ValueKind == JsonValueKind.String)
-            {
-                return backendElement.GetString() ?? "";
-            }
-
-            return "";
         }
 
         /// <summary>
@@ -820,9 +819,9 @@ namespace RemuxForge.Core.Configuration
             fs.LangDurationSec = this.ClampInt(fs.LangDurationSec, 1, 3600);
             fs.MinValidPoints = this.ClampInt(fs.MinValidPoints, 1, 1000);
             fs.FinalMinConfidence = this.ClampDouble(fs.FinalMinConfidence, 0.0, 1.0);
-            if (!AdvancedConfig.TryParseSiftBackend(this._model.Advanced.SiftBackend, out SiftBackendKind siftBackend))
-                siftBackend = SiftBackendKind.Cpu;
-            this._model.Advanced.SetSiftBackendKind(siftBackend);
+            if (!AdvancedConfig.TryParseVisionBackend(this._model.Advanced.VisionBackend, out VisionBackendKind visionBackend))
+                visionBackend = VisionBackendKind.Cpu;
+            this._model.Advanced.SetVisionBackendKind(visionBackend);
 
             // Sanitizzazione Advanced — DeepAnalysis
             DeepAnalysisConfig da = this._model.Advanced.DeepAnalysis;

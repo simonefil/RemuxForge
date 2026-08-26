@@ -15,8 +15,10 @@ namespace RemuxForge.Core.Localization
     {
         #region Costanti
 
+        /// <summary>Codice della lingua inglese</summary>
         public const string LANG_EN = "en";
 
+        /// <summary>Codice della lingua italiana</summary>
         public const string LANG_IT = "it";
 
         private const string LANG_ENV_VAR = "REMUXFORGE_LANG";

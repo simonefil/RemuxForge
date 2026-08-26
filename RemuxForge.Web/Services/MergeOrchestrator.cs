@@ -159,12 +159,6 @@ namespace RemuxForge.Web.Services
             int refreshedCount;
             Options previousOptions;
             errorMessage = "";
-            resetCount = 0;
-            refreshedCount = 0;
-            scanInputsChanged = false;
-            analysisOptionsChanged = false;
-            renderOptionsChanged = false;
-
             if (opts == null)
             {
                 errorMessage = AppText.T("validation.invalidConfig");

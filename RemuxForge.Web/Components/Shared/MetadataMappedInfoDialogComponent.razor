@@ -722,7 +722,7 @@
     /// Aggiorna un valore manuale
     /// </summary>
     /// <param name="row">Riga sheet</param>
-    /// <param name="args">Argomenti change</param>
+    /// <param name="value">Nuovo valore</param>
     private void ChangeManualEditValue(MetadataMappedSheetRow row, string value)
     {
         this._editValues[BuildEditKey(row)] = value != null ? value : "";
@@ -829,7 +829,7 @@
             else
             {
                 MetadataFieldDefinition field;
-                string errorMessage = "";
+                string errorMessage;
                 if (!MetadataFieldRegistry.TryGet(fieldKey, out field))
                 {
                     this._editMessage = AppText.F("metadata.validation.unknownField", fieldKey);

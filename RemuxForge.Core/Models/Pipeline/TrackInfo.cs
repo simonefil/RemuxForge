@@ -23,7 +23,7 @@ namespace RemuxForge.Core.Models
 
         #endregion
 
-        #region Proprieta
+        #region Proprietà
 
         /// <summary>
         /// Identificatore della traccia all'interno del container MKV
