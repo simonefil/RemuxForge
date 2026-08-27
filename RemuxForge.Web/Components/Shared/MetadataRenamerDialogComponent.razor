@@ -1,51 +1,40 @@
-@inject IJSRuntime JSRuntime
-@implements IAsyncDisposable
+@inject DialogService DialogService
 
-<div id="metadata-renamer-window" class="renamer-window visible">
-    <div class="renamer-titlebar" id="metadata-renamer-titlebar">
-        <span>@AppText.T("web.rename.title")</span>
-        <button class="renamer-close" @onclick="this.HandleClose" title="@AppText.T("web.common.close")">X</button>
-    </div>
-
+<div class="renamer-content">
     <div class="renamer-body">
         <div class="renamer-file-list">
-            <table divide-="none">
-                <thead>
-                    <tr>
-                        <th>@AppText.T("web.rename.originalName")</th>
-                        <th>@AppText.T("web.rename.newName")</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @for (int idx = 0; idx < this._previewItems.Count; idx++)
-                    {
-                        RenamePreviewItem item = this._previewItems[idx];
-                        string rowClass = "";
-                        if (item.HasConflict)
-                        {
-                            rowClass = "conflict";
-                        }
-                        else if (item.HasError)
-                        {
-                            rowClass = "error";
-                        }
-                        else if (item.OriginalName != item.NewName)
-                        {
-                            rowClass = "changed";
-                        }
-                        <tr class="@rowClass">
-                            <td title="@item.OriginalName">@item.OriginalName</td>
-                            <td title="@(!string.IsNullOrEmpty(item.ErrorMessage) ? item.ErrorMessage : item.NewName)">@item.NewName</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+            <RadzenDataGrid TItem="RenamePreviewItem"
+                            Data="@this._previewItems"
+                            class="rf-data-grid renamer-preview-grid"
+                            AllowAlternatingRows="false"
+                            AllowColumnResize="true"
+                            AllowPaging="false"
+                            AllowSorting="false"
+                            ColumnWidth="360px"
+                            GridLines="DataGridGridLines.Both"
+                            RowRender="this.RenderPreviewRow">
+                <Columns>
+                    <RadzenDataGridColumn TItem="RenamePreviewItem"
+                                          Property="OriginalName"
+                                          Title="@AppText.T("web.rename.originalName")"
+                                          MinWidth="160px"
+                                          MaxWidth="720px" />
+                    <RadzenDataGridColumn TItem="RenamePreviewItem"
+                                          Title="@AppText.T("web.rename.newName")"
+                                          MinWidth="160px"
+                                          MaxWidth="720px">
+                        <Template Context="item">
+                            <span title="@(!string.IsNullOrEmpty(item.ErrorMessage) ? item.ErrorMessage : item.NewName)">@item.NewName</span>
+                        </Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid>
         </div>
 
         <div class="renamer-config">
             <div class="renamer-method-selector">
                 <span>@AppText.T("web.rename.methodLabel")</span>
-                <select @bind="this._selectedMethodType" @bind:after="this.HandleMethodTypeChanged">
+                <select aria-label="@AppText.T("web.rename.methodLabel")" @bind="this._selectedMethodType" @bind:after="this.HandleMethodTypeChanged">
                     <option value="@RenameMethodType.Replace">@GetRenameMethodTypeLabel(RenameMethodType.Replace)</option>
                     <option value="@RenameMethodType.Add">@GetRenameMethodTypeLabel(RenameMethodType.Add)</option>
                     <option value="@RenameMethodType.Remove">@GetRenameMethodTypeLabel(RenameMethodType.Remove)</option>
@@ -53,7 +42,7 @@
                     <option value="@RenameMethodType.NewName">@GetRenameMethodTypeLabel(RenameMethodType.NewName)</option>
                     <option value="@RenameMethodType.Trim">@GetRenameMethodTypeLabel(RenameMethodType.Trim)</option>
                 </select>
-                <button class="renamer-add-btn" @onclick="this.HandleAddMethod">@AppText.T("web.rename.add")</button>
+                <RadzenButton class="renamer-add-btn" Text="@AppText.T("web.rename.add")" Icon="add" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@this.HandleAddMethod" />
             </div>
 
             <div class="renamer-params">
@@ -73,11 +62,11 @@
                         <input type="text" @bind="this._editingMethod.ReplaceText" @bind:event="oninput" @bind:after="this.RecalculatePreview" />
                     </label>
                     <label class="renamer-checkbox-row">
-                        <input type="checkbox" @bind="this._editingMethod.CaseSensitive" @bind:after="this.RecalculatePreview" />
+                        <RadzenSwitch TValue="bool" @bind-Value="@this._editingMethod.CaseSensitive" Change="@(_ => this.RecalculatePreview())" />
                         <span>@AppText.T("web.rename.caseSensitive")</span>
                     </label>
                     <label class="renamer-checkbox-row">
-                        <input type="checkbox" @bind="this._editingMethod.UseRegex" @bind:after="this.RecalculatePreview" />
+                        <RadzenSwitch TValue="bool" @bind-Value="@this._editingMethod.UseRegex" Change="@(_ => this.RecalculatePreview())" />
                         <span>@AppText.T("web.rename.useRegex")</span>
                     </label>
                 }
@@ -92,7 +81,7 @@
                         <input type="number" @bind="this._editingMethod.InsertPosition" @bind:after="this.RecalculatePreview" />
                     </label>
                     <label class="renamer-checkbox-row">
-                        <input type="checkbox" @bind="this._editingMethod.FromEnd" @bind:after="this.RecalculatePreview" />
+                        <RadzenSwitch TValue="bool" @bind-Value="@this._editingMethod.FromEnd" Change="@(_ => this.RecalculatePreview())" />
                         <span>@AppText.T("web.rename.fromEnd")</span>
                     </label>
                 }
@@ -117,7 +106,7 @@
                             <input type="number" @bind="this._editingMethod.RemoveCount" @bind:after="this.RecalculatePreview" />
                         </label>
                         <label class="renamer-checkbox-row">
-                            <input type="checkbox" @bind="this._editingMethod.RemoveFromEnd" @bind:after="this.RecalculatePreview" />
+                            <RadzenSwitch TValue="bool" @bind-Value="@this._editingMethod.RemoveFromEnd" Change="@(_ => this.RecalculatePreview())" />
                             <span>@AppText.T("web.rename.fromEnd")</span>
                         </label>
                     }
@@ -128,11 +117,11 @@
                             <input type="text" @bind="this._editingMethod.RemovePattern" @bind:event="oninput" @bind:after="this.RecalculatePreview" />
                         </label>
                         <label class="renamer-checkbox-row">
-                            <input type="checkbox" @bind="this._editingMethod.RemovePatternCaseSensitive" @bind:after="this.RecalculatePreview" />
+                            <RadzenSwitch TValue="bool" @bind-Value="@this._editingMethod.RemovePatternCaseSensitive" Change="@(_ => this.RecalculatePreview())" />
                             <span>@AppText.T("web.rename.caseSensitive")</span>
                         </label>
                         <label class="renamer-checkbox-row">
-                            <input type="checkbox" @bind="this._editingMethod.RemovePatternUseRegex" @bind:after="this.RecalculatePreview" />
+                            <RadzenSwitch TValue="bool" @bind-Value="@this._editingMethod.RemovePatternUseRegex" Change="@(_ => this.RecalculatePreview())" />
                             <span>@AppText.T("web.rename.useRegex")</span>
                         </label>
                     }
@@ -206,13 +195,14 @@
                         <div class="renamer-stack-item-actions">
                             @if (i > 0)
                             {
-                                <button @onclick="() => this.HandleMoveUp(i)" title="@AppText.T("web.rename.moveUp")">^</button>
+                                <RadzenButton Icon="arrow_upward" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Click="@(() => this.HandleMoveUp(i))" title="@AppText.T("web.rename.moveUp")" aria-label="@AppText.T("web.rename.moveUp")" />
                             }
                             @if (i < this._methodStack.Count - 1)
                             {
-                                <button @onclick="() => this.HandleMoveDown(i)" title="@AppText.T("web.rename.moveDown")">v</button>
+                                <RadzenButton Icon="arrow_downward" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Click="@(() => this.HandleMoveDown(i))" title="@AppText.T("web.rename.moveDown")" aria-label="@AppText.T("web.rename.moveDown")" />
                             }
-                            <button @onclick="() => this.HandleRemoveMethod(i)" title="@AppText.T("web.rename.remove")">x</button>
+                            <RadzenButton Icon="content_copy" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Click="@(() => this.HandleDuplicateMethod(i))" title="@AppText.T("web.rename.duplicate")" aria-label="@AppText.T("web.rename.duplicate")" />
+                            <RadzenButton Icon="delete" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Click="@(() => this.HandleRemoveMethod(i))" title="@AppText.T("web.rename.remove")" aria-label="@AppText.T("web.rename.remove")" />
                         </div>
                     </div>
                 }
@@ -223,39 +213,18 @@
     <div class="renamer-statusbar">
         <span>@this._statusText</span>
         <div class="renamer-statusbar-actions">
-            <button @onclick="this.HandleRename" disabled="@(!this.CanRename())">@AppText.T("web.rename.rename")</button>
-            <button @onclick="this.HandleClose">@AppText.T("web.common.cancel")</button>
+            <RadzenButton Text="@AppText.T("web.rename.rename")" Icon="drive_file_rename_outline" Click="@this.HandleRename" Disabled="@(!this.CanRename())" />
+            <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@this.HandleClose" />
         </div>
     </div>
 
-    <div class="renamer-resize-handle" id="metadata-renamer-resize-handle">/</div>
 </div>
 
 @code {
     /// <summary>
-    /// Id finestra flottante
-    /// </summary>
-    private const string WINDOW_ID = "metadata-renamer-window";
-
-    /// <summary>
-    /// Id barra titolo trascinabile
-    /// </summary>
-    private const string TITLEBAR_ID = "metadata-renamer-titlebar";
-
-    /// <summary>
-    /// Id handle resize
-    /// </summary>
-    private const string RESIZE_HANDLE_ID = "metadata-renamer-resize-handle";
-
-    /// <summary>
     /// Record metadata correnti
     /// </summary>
     [Parameter] public List<MkvMetadataRecord> Records { get; set; }
-
-    /// <summary>
-    /// Evento chiusura con flag rename eseguito
-    /// </summary>
-    [Parameter] public EventCallback<bool> OnClose { get; set; }
 
     /// <summary>
     /// File sorgente da rinominare
@@ -293,11 +262,6 @@
     private string _statusText;
 
     /// <summary>
-    /// Modulo JS per drag e resize finestra
-    /// </summary>
-    private IJSObjectReference _interopModule;
-
-    /// <summary>
     /// Indica se la rinomina è stata eseguita
     /// </summary>
     private bool _didRename;
@@ -316,27 +280,6 @@
         this._statusText = "";
         this._didRename = false;
         this.RecalculatePreview();
-    }
-
-    /// <summary>
-    /// Inizializza drag/resize dopo il render
-    /// </summary>
-    /// <param name="firstRender">True se primo render</param>
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            this._interopModule = await this.JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/interop.js");
-            await this._interopModule.InvokeVoidAsync("initWindowDrag", WINDOW_ID, TITLEBAR_ID, RESIZE_HANDLE_ID);
-        }
-    }
-
-    /// <summary>
-    /// Rilascia risorse JS della finestra
-    /// </summary>
-    public async ValueTask DisposeAsync()
-    {
-        await this.DisposeInteropAsync();
     }
 
     /// <summary>
@@ -519,6 +462,20 @@
     }
 
     /// <summary>
+    /// Applica lo stato visuale alle righe dell'anteprima
+    /// </summary>
+    /// <param name="args">Argomenti rendering riga</param>
+    private void RenderPreviewRow(RowRenderEventArgs<RenamePreviewItem> args)
+    {
+        if (args.Data.HasConflict)
+            args.Attributes["class"] = "rz-data-row conflict";
+        else if (args.Data.HasError)
+            args.Attributes["class"] = "rz-data-row error";
+        else if (args.Data.OriginalName != args.Data.NewName)
+            args.Attributes["class"] = "rz-data-row changed";
+    }
+
+    /// <summary>
     /// Verifica se la rinomina può essere eseguita
     /// </summary>
     /// <returns>True se sono presenti modifiche senza conflitti</returns>
@@ -589,6 +546,19 @@
     }
 
     /// <summary>
+    /// Duplica un metodo nella posizione immediatamente successiva
+    /// </summary>
+    /// <param name="index">Indice metodo</param>
+    private void HandleDuplicateMethod(int index)
+    {
+        if (index >= 0 && index < this._methodStack.Count)
+        {
+            this._methodStack.Insert(index + 1, this._methodStack[index].Clone());
+            this.RecalculatePreview();
+        }
+    }
+
+    /// <summary>
     /// Sposta un metodo verso l'alto
     /// </summary>
     /// <param name="index">Indice metodo</param>
@@ -621,7 +591,7 @@
     /// <summary>
     /// Esegue la rinomina dei file
     /// </summary>
-    private async Task HandleRename()
+    private void HandleRename()
     {
         if (!this.CanRename())
         {
@@ -636,8 +606,7 @@
         {
             this._didRename = result.SuccessCount > 0;
             this._statusText = AppText.F("web.rename.renamedFiles", result.SuccessCount);
-            await this.DisposeInteropAsync();
-            await this.OnClose.InvokeAsync(this._didRename);
+            this.DialogService.Close(this._didRename);
         }
         else
         {
@@ -648,31 +617,8 @@
     /// <summary>
     /// Chiude la finestra rename
     /// </summary>
-    private async Task HandleClose()
+    private void HandleClose()
     {
-        await this.DisposeInteropAsync();
-        await this.OnClose.InvokeAsync(this._didRename);
-    }
-
-    /// <summary>
-    /// Rimuove listener JS e libera il modulo interop
-    /// </summary>
-    private async ValueTask DisposeInteropAsync()
-    {
-        if (this._interopModule == null)
-            return;
-
-        try
-        {
-            await this._interopModule.InvokeVoidAsync("disposeWindowDrag", WINDOW_ID);
-            await this._interopModule.DisposeAsync();
-        }
-        catch (JSDisconnectedException)
-        {
-        }
-        finally
-        {
-            this._interopModule = null;
-        }
+        this.DialogService.Close(this._didRename);
     }
 }

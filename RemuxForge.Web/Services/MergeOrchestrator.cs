@@ -261,11 +261,11 @@ namespace RemuxForge.Web.Services
                 try
                 {
                     this.BeginProgress(AppText.T("web.progress.scan"), 0, true);
-    
+
                     try
                     {
                         this.UpdateProgress("", 0, 0, 0, AppText.T("web.progress.initialization"), true, true);
-    
+
                         // Inizializza pipeline con opzioni correnti (come flusso CLI)
                         if (!this._pipeline.Initialize(this._options))
                         {
@@ -273,20 +273,20 @@ namespace RemuxForge.Web.Services
                             this.CompleteProgress(AppText.T("web.progress.initializationError"));
                             return;
                         }
-    
+
                         this.UpdateProgress("", 0, 0, 30, AppText.T("web.progress.scanFiles"), true, true);
-    
+
                         // Scan
                         List<FileProcessingRecord> scanned = this._pipeline.ScanFiles();
-    
+
                         // Ordina per EpisodeId (come flusso CLI)
                         scanned.Sort((a, b) => string.Compare(a.EpisodeId, b.EpisodeId, StringComparison.OrdinalIgnoreCase));
-    
+
                         lock (this._lock)
                         {
                             this._records = scanned;
                         }
-    
+
                         // Conta file pronti e saltati
                         int pending = 0;
                         int skipped = 0;
@@ -297,7 +297,7 @@ namespace RemuxForge.Web.Services
                             else if (scanned[i].Status == FileStatus.Skipped)
                                 skipped++;
                         }
-    
+
                         this.OnRecordsChanged?.Invoke();
                         this.AppendLog(AppText.F("web.merge.scanCompleted", scanned.Count, pending, skipped));
                         this.CompleteProgress(AppText.T("web.progress.scanCompleted"));
@@ -307,7 +307,7 @@ namespace RemuxForge.Web.Services
                         this.AppendLog(AppText.F("web.merge.scanError", ex.Message));
                         this.CompleteProgress(AppText.T("web.progress.scanError"));
                     }
-    
+
                 }
                 finally
                 {
@@ -336,7 +336,7 @@ namespace RemuxForge.Web.Services
                 try
                 {
                     this.BeginProgress(AppText.T("web.progress.analyzeEpisode"), 1, false);
-    
+
                     try
                     {
                         this.UpdateProgress(record.EpisodeId, 1, 0, 5, AppText.T("web.progress.analysis"), false, false);
@@ -384,7 +384,7 @@ namespace RemuxForge.Web.Services
                 {
                     bool stopped = false;
                     this.BeginProgress(AppText.T("web.progress.analyzeSelection"), selected.Count, false);
-    
+
                     try
                     {
                         for (int i = 0; i < selected.Count; i++)
@@ -396,13 +396,13 @@ namespace RemuxForge.Web.Services
                                 this.CompleteProgress(AppText.T("web.progress.analysisStopped"));
                                 break;
                             }
-    
+
                             this.UpdateProgress(selected[i].EpisodeId, i + 1, i, 5, AppText.T("web.progress.analysis"), false, false);
                             this._pipeline.AnalyzeFile(selected[i], this.GetOperationCancellationToken());
                             this.OnRecordsChanged?.Invoke();
                             this.UpdateProgress(selected[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
-    
+
                         if (!stopped)
                         {
                             this.CompleteProgress(AppText.T("web.progress.analysisSelectionCompleted"));
@@ -449,7 +449,7 @@ namespace RemuxForge.Web.Services
                     {
                         snapshot = new List<FileProcessingRecord>(this._records);
                     }
-    
+
                     for (int i = 0; i < snapshot.Count; i++)
                     {
                         // Includi anche file in errore per ritentare (come flusso CLI)
@@ -458,9 +458,9 @@ namespace RemuxForge.Web.Services
                             pending.Add(snapshot[i]);
                         }
                     }
-    
+
                     this.BeginProgress(AppText.T("web.progress.analyzeBatch"), pending.Count, false);
-    
+
                     try
                     {
                         for (int i = 0; i < pending.Count; i++)
@@ -472,13 +472,13 @@ namespace RemuxForge.Web.Services
                                 this.CompleteProgress(AppText.T("web.progress.analysisStopped"));
                                 break;
                             }
-    
+
                             this.UpdateProgress(pending[i].EpisodeId, i + 1, i, 5, AppText.T("web.progress.analysis"), false, false);
                             this._pipeline.AnalyzeFile(pending[i], this.GetOperationCancellationToken());
                             this.OnRecordsChanged?.Invoke();
                             this.UpdateProgress(pending[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
-    
+
                         if (!stopped)
                         {
                             this.CompleteProgress(AppText.T("web.progress.analysisBatchCompleted"));
@@ -522,7 +522,7 @@ namespace RemuxForge.Web.Services
                 try
                 {
                     this.BeginProgress(AppText.T("web.progress.mergeEpisode"), 1, false);
-    
+
                     try
                     {
                         this.UpdateProgress(record.EpisodeId, 1, 0, 10, AppText.T("web.progress.merge"), false, false);
@@ -536,7 +536,7 @@ namespace RemuxForge.Web.Services
                         this.AppendLog(AppText.F("web.merge.mergeError", ex.Message));
                         this.CompleteProgress(AppText.T("web.progress.mergeError"));
                     }
-    
+
                 }
                 finally
                 {
@@ -566,7 +566,7 @@ namespace RemuxForge.Web.Services
                 {
                     bool stopped = false;
                     this.BeginProgress(AppText.T("web.progress.mergeSelection"), selected.Count, false);
-    
+
                     try
                     {
                         for (int i = 0; i < selected.Count; i++)
@@ -578,13 +578,13 @@ namespace RemuxForge.Web.Services
                                 this.CompleteProgress(AppText.T("web.progress.mergeStopped"));
                                 break;
                             }
-    
+
                             this.UpdateProgress(selected[i].EpisodeId, i + 1, i, 10, AppText.T("web.progress.merge"), false, false);
                             this._pipeline.MergeFile(selected[i]);
                             this.OnRecordsChanged?.Invoke();
                             this.UpdateProgress(selected[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
-    
+
                         if (!stopped)
                         {
                             this.AppendLog(AppText.T("web.merge.mergeSelectionCompleted"));
@@ -596,7 +596,7 @@ namespace RemuxForge.Web.Services
                         this.AppendLog(AppText.F("web.merge.mergeSelectionError", ex.Message));
                         this.CompleteProgress(AppText.T("web.progress.mergeSelectionError"));
                     }
-    
+
                 }
                 finally
                 {
@@ -628,7 +628,7 @@ namespace RemuxForge.Web.Services
                     {
                         snapshot = new List<FileProcessingRecord>(this._records);
                     }
-    
+
                     for (int i = 0; i < snapshot.Count; i++)
                     {
                         if (snapshot[i].Status == FileStatus.Analyzed)
@@ -636,9 +636,9 @@ namespace RemuxForge.Web.Services
                             analyzed.Add(snapshot[i]);
                         }
                     }
-    
+
                     this.BeginProgress(AppText.T("web.progress.mergeBatch"), analyzed.Count, false);
-    
+
                     try
                     {
                         for (int i = 0; i < analyzed.Count; i++)
@@ -650,13 +650,13 @@ namespace RemuxForge.Web.Services
                                 this.CompleteProgress(AppText.T("web.progress.mergeStopped"));
                                 break;
                             }
-    
+
                             this.UpdateProgress(analyzed[i].EpisodeId, i + 1, i, 10, AppText.T("web.progress.merge"), false, false);
                             this._pipeline.MergeFile(analyzed[i]);
                             this.OnRecordsChanged?.Invoke();
                             this.UpdateProgress(analyzed[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
-    
+
                         if (!stopped)
                         {
                             this.AppendLog(AppText.T("web.merge.mergeBatchCompleted"));
@@ -668,7 +668,7 @@ namespace RemuxForge.Web.Services
                         this.AppendLog(AppText.F("web.merge.mergeBatchError", ex.Message));
                         this.CompleteProgress(AppText.T("web.progress.mergeBatchError"));
                     }
-    
+
                 }
                 finally
                 {
@@ -1070,6 +1070,8 @@ namespace RemuxForge.Web.Services
             }
             if (cancellation != null)
                 cancellation.Dispose();
+
+            this.OnProgressChanged?.Invoke();
         }
 
         /// <summary>
@@ -1357,21 +1359,13 @@ namespace RemuxForge.Web.Services
             int clamped = this.ClampPercent(percent);
             int result = clamped;
 
-            if (section == LogSection.Speed)
+            if (section == LogSection.Speed || section == LogSection.FrameSync || section == LogSection.Deep)
             {
-                result = 5 + clamped * 22 / 100;
-            }
-            else if (section == LogSection.FrameSync)
-            {
-                result = 28 + clamped * 60 / 100;
-            }
-            else if (section == LogSection.Deep)
-            {
-                result = 28 + clamped * 60 / 100;
+                result = 5 + clamped * 85 / 100;
             }
             else if (section == LogSection.Conv)
             {
-                result = 20 + clamped * 55 / 100;
+                result = 10 + clamped * 50 / 100;
             }
             else if (section == LogSection.Merge)
             {
@@ -1394,7 +1388,7 @@ namespace RemuxForge.Web.Services
                     return;
                 }
 
-                if (currentPercent < this._progress.CurrentPercent && this._progress.CurrentPercent < 85)
+                if (currentPercent < this._progress.CurrentPercent)
                 {
                     currentPercent = this._progress.CurrentPercent;
                 }

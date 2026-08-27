@@ -1,45 +1,44 @@
 <div class="rf-panel">
     <div class="rf-panel-title">@AppText.T("web.episode.title")</div>
-    <div class="rf-panel-body">
-        <table class="episode-table" divide-="none">
-            <thead>
-                <tr>
-                    <th>@AppText.T("web.episode.ep")</th>
-                    <th>@AppText.T("web.episode.status")</th>
-                    <th>@AppText.T("web.episode.audio")</th>
-                    <th>@AppText.T("web.episode.sub")</th>
-                    <th>@AppText.T("web.episode.delay")</th>
-                    <th>@AppText.T("web.episode.stretch")</th>
-                    <th>@AppText.T("web.episode.deep")</th>
-                    <th>@AppText.T("web.episode.size")</th>
-                </tr>
-            </thead>
-            <tbody>
-                @for (int i = 0; i < Records.Count; i++)
-                {
-                    int idx = i;
-                    FileProcessingRecord r = Records[i];
-                    string statusCss = GetStatusCss(r.Status);
-                    string selectedCss = IsIndexSelected(idx) ? " selected" : "";
-                    string focusedCss = (idx == SelectedIndex) ? " focused" : "";
-                    <tr class="@(statusCss + selectedCss + focusedCss)"
-                        data-episode-row-index="@idx"
-                        tabindex="-1"
-                        @onclick="args => SelectRow(idx, args)"
-                        @oncontextmenu="e => OnContextMenu.InvokeAsync((idx, e.ClientX, e.ClientY))"
-                        @oncontextmenu:preventDefault="true">
-                        <td>@r.EpisodeId</td>
-                        <td>@Utils.GetStatusText(r.Status)</td>
-                        <td>@Utils.FormatLangs(r.ResultAudioLangs)</td>
-                        <td>@Utils.FormatLangs(r.ResultSubLangs)</td>
-                        <td>@Utils.FormatDelay(r.AudioDelayApplied)</td>
-                        <td>@(!string.IsNullOrEmpty(r.StretchFactor) ? r.StretchFactor : "-")</td>
-                        <td>@(r.DeepAnalysisApplied && r.DeepAnalysisMap != null ? AppText.F("cli.report.deepOps", r.DeepAnalysisMap.Operations.Count) : "-")</td>
-                        <td>@Utils.FormatSize(r.SourceSize)</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+    <div class="rf-panel-body rf-grid-host">
+        <RadzenDataGrid TItem="FileProcessingRecord"
+                        Data="@Records"
+                        class="rf-data-grid episode-grid"
+                        AllowAlternatingRows="false"
+                        AllowColumnResize="true"
+                        AllowPaging="false"
+                        AllowRowSelectOnRowClick="false"
+                        AllowSorting="false"
+                        ColumnWidth="110px"
+                        CellContextMenu="HandleContextMenu"
+                        GridLines="DataGridGridLines.Both"
+                        RowClick="HandleRowClick"
+                        RowRender="RenderRow">
+            <Columns>
+                <RadzenDataGridColumn TItem="FileProcessingRecord" Property="EpisodeId" Title="@AppText.T("web.episode.ep")" Width="320px" MinWidth="180px" MaxWidth="640px" />
+                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.status")" Width="140px" MinWidth="80px" MaxWidth="280px">
+                    <Template Context="record">@Utils.GetStatusText(record.Status)</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.audio")" Width="100px" MinWidth="72px" MaxWidth="220px">
+                    <Template Context="record">@Utils.FormatLangs(record.ResultAudioLangs)</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.sub")" Width="100px" MinWidth="72px" MaxWidth="220px">
+                    <Template Context="record">@Utils.FormatLangs(record.ResultSubLangs)</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.delay")" Width="110px" MinWidth="80px" MaxWidth="220px">
+                    <Template Context="record">@Utils.FormatDelay(record.AudioDelayApplied)</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.stretch")" Width="120px" MinWidth="90px" MaxWidth="240px">
+                    <Template Context="record">@(!string.IsNullOrEmpty(record.StretchFactor) ? record.StretchFactor : "-")</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.deep")" Width="110px" MinWidth="80px" MaxWidth="220px">
+                    <Template Context="record">@(record.DeepAnalysisApplied && record.DeepAnalysisMap != null ? AppText.F("cli.report.deepOps", record.DeepAnalysisMap.Operations.Count) : "-")</Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.size")" Width="110px" MinWidth="80px" MaxWidth="220px">
+                    <Template Context="record">@Utils.FormatSize(record.SourceSize)</Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
     </div>
 </div>
 
@@ -86,11 +85,47 @@
     /// <summary>
     /// Gestisce selezione mouse con modifier stile file explorer
     /// </summary>
-    /// <param name="index">Indice riga</param>
     /// <param name="args">Argomenti mouse</param>
-    private void SelectRow(int index, MouseEventArgs args)
+    private void HandleRowClick(DataGridRowMouseEventArgs<FileProcessingRecord> args)
     {
-        OnRowSelected.InvokeAsync((index, args.CtrlKey || args.MetaKey, args.ShiftKey));
+        int index = this.Records.IndexOf(args.Data);
+        if (index < 0)
+            return;
+
+        this.OnRowSelected.InvokeAsync((index, args.CtrlKey || args.MetaKey, args.ShiftKey));
+    }
+
+    /// <summary>
+    /// Apre il menu contestuale per la riga della cella selezionata
+    /// </summary>
+    /// <param name="args">Argomenti del menu contestuale</param>
+    private void HandleContextMenu(DataGridCellMouseEventArgs<FileProcessingRecord> args)
+    {
+        int index = this.Records.IndexOf(args.Data);
+        if (index < 0)
+            return;
+
+        this.OnContextMenu.InvokeAsync((index, args.ClientX, args.ClientY));
+    }
+
+    /// <summary>
+    /// Applica alla riga gli attributi posseduti dal modello di selezione
+    /// </summary>
+    /// <param name="args">Argomenti rendering riga</param>
+    private void RenderRow(RowRenderEventArgs<FileProcessingRecord> args)
+    {
+        int index = this.Records.IndexOf(args.Data);
+        string cssClass = this.GetStatusCss(args.Data.Status);
+        if (this.IsIndexSelected(index))
+            cssClass += " selected";
+        if (index == this.SelectedIndex)
+            cssClass += " focused";
+
+        if (!string.IsNullOrWhiteSpace(cssClass))
+            args.Attributes["class"] = "rz-data-row " + cssClass.Trim();
+        args.Attributes["data-episode-row-index"] = index;
+        args.Attributes["tabindex"] = index == this.SelectedIndex ? 0 : -1;
+        args.Attributes["aria-selected"] = this.IsIndexSelected(index) ? "true" : "false";
     }
 
     /// <summary>

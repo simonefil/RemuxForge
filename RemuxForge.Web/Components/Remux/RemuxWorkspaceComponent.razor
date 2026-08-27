@@ -1,0 +1,58 @@
+<RadzenSplitter class="panels-area remux-workspace rf-workspace-splitter">
+    <RadzenSplitterPane Size="58%">
+        <div class="rf-workspace-pane rf-workspace-pane-master">
+            <EpisodeTableComponent Records="@Records"
+                                   SelectedIndex="@SelectedIndex"
+                                   SelectedIndices="@SelectedIndices"
+                                   OnRowSelected="@OnRowSelected"
+                                   OnContextMenu="@OnContextMenu" />
+        </div>
+    </RadzenSplitterPane>
+    <RadzenSplitterPane>
+        <div class="rf-workspace-pane rf-workspace-pane-detail">
+            <DetailPanelComponent Record="@SelectedRecord" Options="@Options" JsModule="@JsModule" />
+        </div>
+    </RadzenSplitterPane>
+</RadzenSplitter>
+
+@code {
+    /// <summary>
+    /// Record disponibili
+    /// </summary>
+    [Parameter] public List<FileProcessingRecord> Records { get; set; }
+
+    /// <summary>
+    /// Record focalizzato
+    /// </summary>
+    [Parameter] public FileProcessingRecord SelectedRecord { get; set; }
+
+    /// <summary>
+    /// Indice focalizzato
+    /// </summary>
+    [Parameter] public int SelectedIndex { get; set; }
+
+    /// <summary>
+    /// Indici selezionati
+    /// </summary>
+    [Parameter] public List<int> SelectedIndices { get; set; }
+
+    /// <summary>
+    /// Opzioni correnti
+    /// </summary>
+    [Parameter] public Options Options { get; set; }
+
+    /// <summary>
+    /// Modulo JavaScript condiviso
+    /// </summary>
+    [Parameter] public IJSObjectReference JsModule { get; set; }
+
+    /// <summary>
+    /// Evento selezione riga
+    /// </summary>
+    [Parameter] public EventCallback<(int Index, bool Ctrl, bool Shift)> OnRowSelected { get; set; }
+
+    /// <summary>
+    /// Evento menu contestuale
+    /// </summary>
+    [Parameter] public EventCallback<(int Index, double X, double Y)> OnContextMenu { get; set; }
+}

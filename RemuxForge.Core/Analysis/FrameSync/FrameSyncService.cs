@@ -302,6 +302,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
             this._languageFrameGeometry = geometry.LanguageCommonGeometry;
             stopwatch.Stop();
             timing.GeometryMs = stopwatch.ElapsedMilliseconds;
+            ConsoleHelper.Progress(LogSection.FrameSync, 22, AppText.T("framesync.match.geometryProgress"));
 
             string mkvMergePath = this._toolPathResolver.ResolveMkvMergePath(false);
             // FrameSync guarda finestre da sei secondi: aprire il dispositivo costa più di quanto
@@ -456,6 +457,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
                 timing.CheckpointMatchMs += point.MatchMs;
                 timing.CheckpointPairCount += point.ProcessedPairCount;
                 ConsoleHelper.Write(LogSection.FrameSync, point.Accepted ? LogLevel.Debug : LogLevel.Notice, AppText.F("framesync.match.checkpointResult", percentage, point.Accepted ? AppText.T("framesync.match.accepted") : point.RejectReason, point.BestOffsetMs == int.MinValue ? "-" : Utils.FormatDelay(point.BestOffsetMs), point.StrongPairCount, point.ProcessedPairCount));
+                ConsoleHelper.Progress(LogSection.FrameSync, 58 + (pointIndex + 1) * 27 / this._vsConfig.NumCheckPoints, AppText.T("framesync.match.checkpointProgress"));
             }
             checkpointsStopwatch.Stop();
             timing.CheckpointsMs = checkpointsStopwatch.ElapsedMilliseconds;

@@ -1,0 +1,6 @@
+{
+  "bundle": {
+    "icon": ["icons/icon.icns"],
+    "targets": ["app"]
+  }
+}

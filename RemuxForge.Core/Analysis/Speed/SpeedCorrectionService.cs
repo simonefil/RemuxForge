@@ -184,6 +184,7 @@ namespace RemuxForge.Core.Analysis.Speed
                     this._rejectReason = AppText.T("speed.sift.insufficientFrames");
                     return false;
                 }
+                ConsoleHelper.Progress(LogSection.Speed, 25, AppText.T("speed.sift.geometryProgress"));
                 FrameGeometryEstimator estimator = new FrameGeometryEstimator(this._ffmpegPath, this._ffmpegConfig, AppSettingsService.Instance.Settings.Advanced.GetVisionBackendKind(), LogSection.Speed);
                 FrameGeometryEstimationResult geometry = estimator.Estimate(sourceFile, languageFile, this._analysisCropSourcePx, this._analysisCropLanguagePx, sourceDurationMs, CancellationToken.None);
                 if (!geometry.Alignment.Success)
@@ -191,6 +192,7 @@ namespace RemuxForge.Core.Analysis.Speed
                     this._rejectReason = geometry.Alignment.RejectReason;
                     return false;
                 }
+                ConsoleHelper.Progress(LogSection.Speed, 45, AppText.T("speed.sift.frameProgress"));
                 this.ExtractInitialFrames(sourceFile, languageFile, geometry.SourceCommonGeometry.CropPx, geometry.LanguageCommonGeometry.CropPx, out List<byte[]> sourceFrames, out double[] sourcePtsMs, out List<byte[]> languageFrames, out double[] languagePtsMs);
                 if (sourceFrames.Count < 5 || languageFrames.Count < 5)
                 {
@@ -199,6 +201,7 @@ namespace RemuxForge.Core.Analysis.Speed
                 }
                 List<DeepSiftVisualAnchor> sourceAnchors = this.BuildAnchors(sourceFrames, sourcePtsMs);
                 List<DeepSiftVisualAnchor> languageAnchors = this.BuildAnchors(languageFrames, languagePtsMs);
+                ConsoleHelper.Progress(LogSection.Speed, 65, AppText.T("speed.sift.matchProgress"));
                 using (FrameFeatureBatchMatcherBase matcher = FrameFeatureBatchMatcherBase.Create(AppSettingsService.Instance.Settings.Advanced.GetVisionBackendKind()))
                 {
                     if (!matcher.IsAvailable(out string rejectReason))
@@ -219,6 +222,7 @@ namespace RemuxForge.Core.Analysis.Speed
                     this._syncDelayMs = (int)Math.Round(offsetMs);
                     this._initialDelayMs = (int)Math.Round(scale * offsetMs);
                 }
+                ConsoleHelper.Progress(LogSection.Speed, 85, AppText.T("speed.sift.resolveProgress"));
                 ConsoleHelper.Write(LogSection.Speed, LogLevel.Debug, AppText.F("speed.sift.verifiedRatio", scale.ToString("R", CultureInfo.InvariantCulture), this._stretchFactor, this._syncDelayMs));
                 return true;
             }

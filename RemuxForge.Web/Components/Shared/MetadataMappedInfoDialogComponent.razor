@@ -1,6 +1,6 @@
 <div class="dialog-overlay visible" @onclick="OnClose">
-    <div class="dialog-box dialog-fullscreen metadata-mapped-dialog-box" @onclick:stopPropagation="true">
-        <div class="dialog-title">@GetTitle()</div>
+    <div class="dialog-box dialog-fullscreen metadata-mapped-dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="metadata-mapped-dialog-title" @onclick:stopPropagation="true">
+        <div id="metadata-mapped-dialog-title" class="dialog-title">@GetTitle()</div>
         <div class="dialog-body metadata-mapped-dialog-body @(Editable ? "metadata-mapped-dialog-body-editable" : "")">
             <div class="metadata-mapped-content">
                 @if (Record == null)
@@ -18,7 +18,7 @@
                         <div class="metadata-sheet-selectors">
                             <div class="metadata-sheet-selector-row">
                                 <span class="metadata-sheet-selector-label">@AppText.T("web.metadata.mapped.containerStream")</span>
-                                <select class="form-input metadata-sheet-select" value="@CONTAINER_SELECTOR" @onfocus="ActivateContainerTags" @onchange="ChangeContainerSelection">
+                                <select class="form-input metadata-sheet-select" value="@CONTAINER_SELECTOR" aria-label="@AppText.T("web.metadata.mapped.containerStream")" @onfocus="ActivateContainerTags" @onchange="ChangeContainerSelection">
                                     <option value="@CONTAINER_SELECTOR">@BuildContainerOptionLabel(info)</option>
                                 </select>
                             </div>
@@ -27,7 +27,7 @@
                             {
                                 <div class="metadata-sheet-selector-row">
                                     <span class="metadata-sheet-selector-label">@AppText.T("web.metadata.mapped.videoStream")</span>
-                                    <select class="form-input metadata-sheet-select" value="@_selectedVideoSelector" @onfocus="ActivateVideoTags" @onchange="ChangeVideoSelection">
+                                    <select class="form-input metadata-sheet-select" value="@_selectedVideoSelector" aria-label="@AppText.T("web.metadata.mapped.videoStream")" @onfocus="ActivateVideoTags" @onchange="ChangeVideoSelection">
                                         @for (int i = 0; i < videoTracks.Count; i++)
                                         {
                                             MkvMetadataTrackInfo track = videoTracks[i];
@@ -41,7 +41,7 @@
                             {
                                 <div class="metadata-sheet-selector-row">
                                     <span class="metadata-sheet-selector-label">@AppText.T("web.metadata.mapped.audioStream")</span>
-                                    <select class="form-input metadata-sheet-select" value="@_selectedAudioSelector" @onfocus="ActivateAudioTags" @onchange="ChangeAudioSelection">
+                                    <select class="form-input metadata-sheet-select" value="@_selectedAudioSelector" aria-label="@AppText.T("web.metadata.mapped.audioStream")" @onfocus="ActivateAudioTags" @onchange="ChangeAudioSelection">
                                         @for (int i = 0; i < audioTracks.Count; i++)
                                         {
                                             MkvMetadataTrackInfo track = audioTracks[i];
@@ -55,7 +55,7 @@
                             {
                                 <div class="metadata-sheet-selector-row">
                                     <span class="metadata-sheet-selector-label">@AppText.T("web.metadata.mapped.textStream")</span>
-                                    <select class="form-input metadata-sheet-select" value="@_selectedTextSelector" @onfocus="ActivateTextTags" @onchange="ChangeTextSelection">
+                                    <select class="form-input metadata-sheet-select" value="@_selectedTextSelector" aria-label="@AppText.T("web.metadata.mapped.textStream")" @onfocus="ActivateTextTags" @onchange="ChangeTextSelection">
                                         @for (int i = 0; i < textTracks.Count; i++)
                                         {
                                             MkvMetadataTrackInfo track = textTracks[i];
@@ -65,6 +65,16 @@
                                 </div>
                             }
                         </div>
+
+                        @if (Simulated && !Editable)
+                        {
+                            <div class="metadata-sheet-actions">
+                                <div class="ui-switch">
+                                    <RadzenSwitch TValue="bool" @bind-Value="@_showChangesOnly" />
+                                    <span>@AppText.T("web.metadata.mapped.changesOnly")</span>
+                                </div>
+                            </div>
+                        }
 
                         <div class="metadata-sheet-block">
                             <div class="metadata-sheet-section-title">@AppText.T("web.metadata.mapped.fields") - @GetActiveTagContextLabel()</div>
@@ -88,12 +98,16 @@
             }
         </div>
         <div class="dialog-footer">
+            @if (!Editable && Record != null)
+            {
+                <RadzenButton Text="@AppText.T("web.metadata.mapped.copyValues")" Icon="content_copy" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@CopyValuesAsync" />
+            }
             @if (Editable)
             {
                 <span class="metadata-manual-message">@_editMessage</span>
-                <button @onclick="ApplyManualEdit">@AppText.T("web.metadata.manualEdit.apply")</button>
+                <RadzenButton Text="@AppText.T("web.metadata.manualEdit.apply")" Icon="check" Click="@ApplyManualEdit" />
             }
-            <button @onclick="OnClose">@AppText.T("web.common.close")</button>
+            <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.close")" Icon="close" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" />
         </div>
     </div>
 </div>
@@ -128,6 +142,11 @@
     /// Evento applicazione modifiche manuali
     /// </summary>
     [Parameter] public EventCallback<List<MkvMetadataChange>> OnApply { get; set; }
+
+    /// <summary>
+    /// Modulo JavaScript condiviso per la clipboard
+    /// </summary>
+    [Parameter] public IJSObjectReference JsModule { get; set; }
 
     /// <summary>
     /// Titolo helper contestuale
@@ -173,6 +192,11 @@
     /// Valori modificati manualmente indicizzati per riga
     /// </summary>
     private Dictionary<string, string> _editValues = new Dictionary<string, string>();
+
+    /// <summary>
+    /// Mostra soltanto i campi modificati nella simulazione
+    /// </summary>
+    private bool _showChangesOnly;
 
     /// <summary>
     /// Aggiorna stato derivato dai parametri
@@ -569,7 +593,7 @@
             }
             else
             {
-                <table class="metadata-mapped-sheet-table" divide-="none">
+                <table class="metadata-mapped-sheet-table">
                     @if (this.Editable)
                     {
                         <colgroup>
@@ -663,12 +687,61 @@
             return true;
         }
 
+        if (this.Simulated && this._showChangesOnly)
+        {
+            return cell.HasFieldChange || cell.IsTrackRemoved;
+        }
+
         if (!string.IsNullOrEmpty(cell.Value))
         {
             return true;
         }
 
         return this.Simulated && cell.HasFieldChange;
+    }
+
+    /// <summary>
+    /// Copia i valori visibili del contesto selezionato
+    /// </summary>
+    private async Task CopyValuesAsync()
+    {
+        if (this.JsModule == null || this.Record == null)
+            return;
+
+        System.Text.StringBuilder text = new System.Text.StringBuilder();
+        text.AppendLine(this.GetTitle());
+        text.AppendLine(this.GetActiveTagContextLabel());
+        this.AppendSheetText(text, AppText.T("web.metadata.mapped.fields"), this.GetActiveMetadataRows());
+        this.AppendSheetText(text, AppText.T("web.metadata.mapped.tags"), this.GetActiveTagRows());
+
+        try
+        {
+            await this.JsModule.InvokeVoidAsync("copyToClipboard", text.ToString().TrimEnd());
+        }
+        catch
+        {
+            // La clipboard può non essere disponibile fuori da un contesto sicuro
+        }
+    }
+
+    /// <summary>
+    /// Aggiunge al testo le righe correntemente visualizzate di una sheet
+    /// </summary>
+    /// <param name="text">Builder destinazione</param>
+    /// <param name="title">Titolo sezione</param>
+    /// <param name="rows">Righe logiche</param>
+    private void AppendSheetText(System.Text.StringBuilder text, string title, List<MetadataMappedSheetRow> rows)
+    {
+        List<MetadataMappedSheetDisplayRow> displayRows = this.BuildDisplayRows(rows);
+        text.AppendLine().AppendLine(title);
+
+        for (int i = 0; i < displayRows.Count; i++)
+        {
+            MetadataMappedSheetDisplayRow displayRow = displayRows[i];
+            text.Append(displayRow.Row.Label)
+                .Append(" (").Append(displayRow.Row.Token).Append("): ")
+                .AppendLine(FormatSheetValue(displayRow.Cell));
+        }
     }
 
     /// <summary>
@@ -683,7 +756,7 @@
         string cssClass = "form-input metadata-manual-input" + (IsManualValueChanged(row, cell) ? " metadata-manual-input-changed" : "");
         string value = this.GetManualEditValue(row, cell);
 
-        return @<MetadataInputRendererComponent @key="BuildEditKey(row)" Schema="@schema" Value="@value" ValueChanged="@((string nextValue) => ChangeManualEditValue(row, nextValue))" CssClass="@cssClass" NativeTextEditing="true" />;
+        return @<MetadataInputRendererComponent @key="BuildEditKey(row)" Schema="@schema" AriaLabel="@row.Label" Value="@value" ValueChanged="@((string nextValue) => ChangeManualEditValue(row, nextValue))" CssClass="@cssClass" NativeTextEditing="true" />;
     }
 
     /// <summary>

@@ -1,0 +1,92 @@
+<nav class="rf-mode-navigation" aria-label="@AppText.T("web.navigation.modes")">
+    <div class="rf-brand" aria-label="RemuxForge">
+        <img class="rf-brand-logo" src="apple-touch-icon.png" alt="" aria-hidden="true" />
+        <span class="rf-brand-name">RemuxForge</span>
+    </div>
+
+    <RadzenButton class="rf-navigation-toggle"
+                  Icon="@(Collapsed ? "menu_open" : "menu")"
+                  Text="@(Collapsed ? AppText.T("web.navigation.expand") : AppText.T("web.navigation.collapse"))"
+                  Variant="Variant.Text"
+                  ButtonStyle="ButtonStyle.Base"
+                  Click="@ToggleCollapsed" />
+
+    <div class="rf-mode-navigation-items">
+        <RadzenButton Icon="movie"
+                      Text="Remux"
+                      Disabled="@IsBusy"
+                      ButtonStyle="@GetButtonStyle(Options.MODE_REMUX)"
+                      Variant="Variant.Text"
+                      Click="@(() => OnModeChanged.InvokeAsync(Options.MODE_REMUX))" />
+        <RadzenButton Icon="content_cut"
+                      Text="Split"
+                      Disabled="@IsBusy"
+                      ButtonStyle="@GetButtonStyle(Options.MODE_SPLIT)"
+                      Variant="Variant.Text"
+                      Click="@(() => OnModeChanged.InvokeAsync(Options.MODE_SPLIT))" />
+        <RadzenButton Icon="tune"
+                      Text="@AppText.T("web.metadata.title")"
+                      Disabled="@IsBusy"
+                      ButtonStyle="@GetButtonStyle(Options.MODE_METADATA)"
+                      Variant="Variant.Text"
+                      Click="@(() => OnModeChanged.InvokeAsync(Options.MODE_METADATA))" />
+    </div>
+
+    <div class="rf-mode-navigation-footer">
+        <RadzenButton Icon="info"
+                      Text="@AppText.T("web.menu.info")"
+                      Variant="Variant.Text"
+                      ButtonStyle="ButtonStyle.Base"
+                      Click="@OnShowInfo" />
+    </div>
+</nav>
+
+@code {
+    /// <summary>
+    /// Modalità corrente
+    /// </summary>
+    [Parameter] public string CurrentMode { get; set; }
+
+    /// <summary>
+    /// Indica che la navigazione visualizza soltanto le icone
+    /// </summary>
+    [Parameter] public bool Collapsed { get; set; }
+
+    /// <summary>
+    /// Indica che un'operazione applicativa è in corso
+    /// </summary>
+    [Parameter] public bool IsBusy { get; set; }
+
+    /// <summary>
+    /// Evento cambio modalità
+    /// </summary>
+    [Parameter] public EventCallback<string> OnModeChanged { get; set; }
+
+    /// <summary>
+    /// Evento cambio stato compatto della navigazione
+    /// </summary>
+    [Parameter] public EventCallback<bool> OnCollapsedChanged { get; set; }
+
+    /// <summary>
+    /// Evento apertura informazioni
+    /// </summary>
+    [Parameter] public EventCallback OnShowInfo { get; set; }
+
+    /// <summary>
+    /// Restituisce lo stile del pulsante per una modalità
+    /// </summary>
+    /// <param name="mode">Modalità da confrontare</param>
+    /// <returns>Stile Radzen del pulsante</returns>
+    private ButtonStyle GetButtonStyle(string mode)
+    {
+        return string.Equals(this.CurrentMode, mode, StringComparison.Ordinal) ? ButtonStyle.Primary : ButtonStyle.Base;
+    }
+
+    /// <summary>
+    /// Commuta lo stato compatto della navigazione
+    /// </summary>
+    private async Task ToggleCollapsed()
+    {
+        await this.OnCollapsedChanged.InvokeAsync(!this.Collapsed);
+    }
+}

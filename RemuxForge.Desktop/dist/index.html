@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RemuxForge</title>
+    <style>
+        :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #111827; color: #e5e7eb; }
+        body { min-height: 100vh; margin: 0; display: grid; place-items: center; }
+        main { display: grid; justify-items: center; gap: 18px; }
+        .mark { width: 56px; height: 56px; border: 5px solid #334155; border-top-color: #38bdf8; border-radius: 50%; animation: spin 900ms linear infinite; }
+        p { margin: 0; font-size: 15px; }
+        #error { max-width: 680px; padding: 0 32px; color: #fca5a5; text-align: center; white-space: pre-wrap; }
+        #retry { display: none; min-height: 38px; padding: 0 18px; border: 1px solid #475569; border-radius: 7px; background: #1e293b; color: #e5e7eb; cursor: pointer; }
+        #retry:hover { border-color: #38bdf8; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <main>
+        <div class="mark" aria-hidden="true"></div>
+        <p>Starting RemuxForge…</p>
+        <div id="error" role="alert"></div>
+        <button id="retry" type="button">Retry</button>
+    </main>
+    <script>
+        window.__rfDesktopError = function (message) {
+            document.querySelector('.mark').style.display = 'none';
+            document.querySelector('p').textContent = 'RemuxForge could not start';
+            document.querySelector('#error').textContent = message;
+            document.querySelector('#retry').style.display = 'block';
+        };
+
+        document.querySelector('#retry').addEventListener('click', async function () {
+            document.querySelector('.mark').style.display = 'block';
+            document.querySelector('p').textContent = 'Starting RemuxForge…';
+            document.querySelector('#error').textContent = '';
+            document.querySelector('#retry').style.display = 'none';
+            try {
+                await window.__TAURI__.core.invoke('restart_sidecar');
+            }
+            catch (error) {
+                window.__rfDesktopError(String(error));
+            }
+        });
+
+        const startupError = new URLSearchParams(window.location.search).get('error');
+        if (startupError) {
+            window.__rfDesktopError(startupError);
+        }
+    </script>
+</body>
+</html>

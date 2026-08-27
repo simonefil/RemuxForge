@@ -1,0 +1,16 @@
+{
+  "name": "remuxforge-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "prepare-sidecar": "node scripts/prepare-sidecar.mjs",
+    "dev": "npm run prepare-sidecar && tauri dev",
+    "build": "npm run prepare-sidecar && tauri build",
+    "build:macos-arm64": "npm run prepare-sidecar -- osx-arm64 && tauri build --target aarch64-apple-darwin --bundles dmg",
+    "build:windows-x64": "npm run prepare-sidecar -- win-x64 && tauri build --target x86_64-pc-windows-msvc --bundles msi"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.4"
+  }
+}

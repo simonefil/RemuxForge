@@ -2,12 +2,12 @@
 @implements IAsyncDisposable
 
 <div class="dialog-overlay visible" @onclick="OnClose">
-    <div class="dialog-box dialog-fullscreen metadata-preset-dialog-box" @onclick:stopPropagation="true">
-        <div class="dialog-title">@AppText.T("web.metadata.presetDialog.title")</div>
+    <div class="dialog-box dialog-fullscreen metadata-preset-dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="metadata-preset-dialog-title" @onclick:stopPropagation="true">
+        <div id="metadata-preset-dialog-title" class="dialog-title">@AppText.T("web.metadata.presetDialog.title")</div>
         <div class="dialog-body metadata-rule-dialog-body">
             <div class="metadata-rule-preset-bar">
                 <span class="form-label">@AppText.T("web.metadata.presetLabel")</span>
-                <select class="form-input metadata-preset-select" @bind="_selectedPresetFile" @bind:after="LoadSelectedPreset" @onfocus='@(() => SetFieldHelp("preset"))' @onmouseenter='@(() => SetFieldHelp("preset"))'>
+                <select class="form-input metadata-preset-select" aria-label="@AppText.T("web.metadata.presetLabel")" @bind="_selectedPresetFile" @bind:after="LoadSelectedPreset" @onfocus='@(() => SetFieldHelp("preset"))' @onmouseenter='@(() => SetFieldHelp("preset"))'>
                     @if (_presetFiles.Count == 0)
                     {
                         <option value="">@AppText.T("web.metadata.presetDialog.newPreset")</option>
@@ -23,15 +23,15 @@
                 </select>
                 @if (string.IsNullOrEmpty(_selectedPresetFile))
                 {
-                    <input class="form-input metadata-preset-name-input" @bind="_preset.Name" placeholder="@AppText.T("web.metadata.presetDialog.presetNamePlaceholder")" @onfocus='@(() => SetFieldHelp("presetName"))' @onmouseenter='@(() => SetFieldHelp("presetName"))' />
+                    <input class="form-input metadata-preset-name-input" aria-label="@AppText.T("web.common.nameLabel")" @bind="_preset.Name" placeholder="@AppText.T("web.metadata.presetDialog.presetNamePlaceholder")" @onfocus='@(() => SetFieldHelp("presetName"))' @onmouseenter='@(() => SetFieldHelp("presetName"))' />
                 }
                 else
                 {
                     <span class="metadata-preset-current-name">@System.IO.Path.GetFileNameWithoutExtension(_selectedPresetFile)</span>
-                    <button @onclick="NewPreset">@AppText.T("web.common.new")</button>
+                    <RadzenButton Text="@AppText.T("web.common.new")" Icon="add" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@NewPreset" />
                 }
-                <button @onclick="SavePreset">@AppText.T("web.metadata.presetDialog.save")</button>
-                <button @onclick="DeletePreset" disabled="@(string.IsNullOrEmpty(_selectedPresetFile))">@AppText.T("web.common.delete")</button>
+                <RadzenButton Text="@AppText.T("web.metadata.presetDialog.save")" Icon="save" Click="@SavePreset" />
+                <RadzenButton Text="@AppText.T("web.common.delete")" Icon="delete" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Danger" Click="@DeletePreset" Disabled="@(string.IsNullOrEmpty(_selectedPresetFile))" />
             </div>
 
             @if (!string.IsNullOrEmpty(_message))
@@ -47,22 +47,24 @@
                         {
                             int idx = i;
                             MkvMetadataRule rule = _preset.Rules[idx];
-                            <div class="metadata-rule-list-item @(idx == _selectedRuleIndex ? "selected" : "")" @onclick="() => SelectRule(idx)">
-                                <div class="metadata-rule-list-name">
-                                    <span>@((idx + 1).ToString())</span>
-                                    <strong>@MetadataPresetUiHelper.GetScopeLabel(rule.TargetScope)</strong>
-                                    <span>@GetRuleListDescription(rule)</span>
-                                </div>
+                            <div class="metadata-rule-list-item @(idx == _selectedRuleIndex ? "selected" : "")">
+                                <button type="button" class="metadata-rule-list-select" aria-pressed="@(idx == _selectedRuleIndex)" @onclick="() => SelectRule(idx)">
+                                    <span class="metadata-rule-list-name">
+                                        <span>@((idx + 1).ToString())</span>
+                                        <strong>@MetadataPresetUiHelper.GetScopeLabel(rule.TargetScope)</strong>
+                                        <span>@GetRuleListDescription(rule)</span>
+                                    </span>
+                                </button>
                                 <div class="metadata-rule-list-actions">
-                                    <button @onclick:stopPropagation="true" @onclick="() => MoveRule(idx, -1)" disabled="@(idx == 0)">^</button>
-                                    <button @onclick:stopPropagation="true" @onclick="() => MoveRule(idx, 1)" disabled="@(idx >= _preset.Rules.Count - 1)">v</button>
-                                    <button @onclick:stopPropagation="true" @onclick="() => DuplicateRule(idx)">+</button>
-                                    <button @onclick:stopPropagation="true" @onclick="() => RemoveRule(idx)">x</button>
+                                    <RadzenButton Icon="arrow_upward" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.rename.moveUp")" aria-label="@AppText.T("web.rename.moveUp")" Click="@(() => MoveRule(idx, -1))" Disabled="@(idx == 0)" />
+                                    <RadzenButton Icon="arrow_downward" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.rename.moveDown")" aria-label="@AppText.T("web.rename.moveDown")" Click="@(() => MoveRule(idx, 1))" Disabled="@(idx >= _preset.Rules.Count - 1)" />
+                                    <RadzenButton Icon="content_copy" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.common.copy")" aria-label="@AppText.T("web.common.copy")" Click="@(() => DuplicateRule(idx))" />
+                                    <RadzenButton Icon="delete" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" title="@AppText.T("web.common.delete")" aria-label="@AppText.T("web.common.delete")" Click="@(() => RemoveRule(idx))" />
                                 </div>
                             </div>
                         }
                     </div>
-                    <button class="metadata-rule-add-button" @onclick="AddRule">@AppText.T("web.metadata.presetDialog.addRule")</button>
+                    <RadzenButton class="metadata-rule-add-button" Text="@AppText.T("web.metadata.presetDialog.addRule")" Icon="add" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@AddRule" />
                 </aside>
 
                 <main class="metadata-rule-editor-pane">
@@ -75,11 +77,11 @@
                         <div class="metadata-rule-header-grid">
                             <div class="form-row">
                                 <span class="form-label">@AppText.T("web.metadata.presetDialog.ruleDescription")</span>
-                                <input class="form-input" @bind="SelectedRule.Description" @onfocus='@(() => SetFieldHelp("ruleDescription"))' @onmouseenter='@(() => SetFieldHelp("ruleDescription"))' />
+                                <input class="form-input" aria-label="@AppText.T("web.metadata.presetDialog.ruleDescription")" @bind="SelectedRule.Description" @onfocus='@(() => SetFieldHelp("ruleDescription"))' @onmouseenter='@(() => SetFieldHelp("ruleDescription"))' />
                             </div>
                             <div class="form-row">
                                 <span class="form-label">@AppText.T("web.metadata.presetDialog.scopeLabel")</span>
-                                <select class="form-input metadata-rule-scope-select" value="@SelectedRule.TargetScope" @onchange="ChangeSelectedRuleScope" @onfocus='@(() => SetFieldHelp("scope"))' @onmouseenter='@(() => SetFieldHelp("scope"))'>
+                                <select class="form-input metadata-rule-scope-select" aria-label="@AppText.T("web.metadata.presetDialog.scopeLabel")" value="@SelectedRule.TargetScope" @onchange="ChangeSelectedRuleScope" @onfocus='@(() => SetFieldHelp("scope"))' @onmouseenter='@(() => SetFieldHelp("scope"))'>
                                     @foreach (MkvMetadataTargetScope scope in MetadataPresetUiHelper.GetScopeOptions())
                                     {
                                         <option value="@scope">@MetadataPresetUiHelper.GetScopeLabel(scope)</option>
@@ -87,8 +89,8 @@
                                 </select>
                             </div>
                             <div class="metadata-rule-toggle-row">
-                                <span class="ui-toggle" @onclick="() => SelectedRule.Enabled = !SelectedRule.Enabled" @onmouseenter='@(() => SetFieldHelp("ruleEnabled"))'>@(SelectedRule.Enabled ? "[X]" : "[ ]") @AppText.T("web.metadata.presetDialog.enabled")</span>
-                                <span class="ui-toggle" @onclick="ToggleAdvancedFields" @onmouseenter='@(() => SetFieldHelp("advancedFields"))'>@(_showAdvancedFields ? "[X]" : "[ ]") @AppText.T("web.metadata.presetDialog.advancedFields")</span>
+                                <div class="ui-switch" @onmouseenter='@(() => SetFieldHelp("ruleEnabled"))'><RadzenSwitch TValue="bool" @bind-Value="@SelectedRule.Enabled" /><span>@AppText.T("web.metadata.presetDialog.enabled")</span></div>
+                                <div class="ui-switch" @onmouseenter='@(() => SetFieldHelp("advancedFields"))'><RadzenSwitch TValue="bool" Value="@_showAdvancedFields" Change="@ToggleAdvancedFields" /><span>@AppText.T("web.metadata.presetDialog.advancedFields")</span></div>
                             </div>
                         </div>
 
@@ -108,7 +110,7 @@
 
                                     <div class="metadata-sentence-card">
                                         <div class="metadata-sentence-row">
-                                            <select class="form-input metadata-sentence-operator" value="@operation.Type" @onchange="@((ChangeEventArgs e) => ChangeOperationType(operation, GetChangeValue(e)))" @onfocus='@(() => SetFieldHelp("operationType"))' @onmouseenter='@(() => SetFieldHelp("operationType"))'>
+                                            <select class="form-input metadata-sentence-operator" aria-label="@AppText.T("web.metadata.presetDialog.help.operationType.title")" value="@operation.Type" @onchange="@((ChangeEventArgs e) => ChangeOperationType(operation, GetChangeValue(e)))" @onfocus='@(() => SetFieldHelp("operationType"))' @onmouseenter='@(() => SetFieldHelp("operationType"))'>
                                                 @foreach (MkvMetadataOperationType type in MetadataPresetUiHelper.GetOperationTypeOptions(SelectedRule.TargetScope))
                                                 {
                                                     <option value="@type">@MetadataPresetUiHelper.GetOperationTypeLabel(type)</option>
@@ -116,7 +118,7 @@
                                             </select>
                                             @if (operation.Type == MkvMetadataOperationType.SetField || operation.Type == MkvMetadataOperationType.ClearField)
                                             {
-                                                <select class="form-input metadata-sentence-field" @bind="operation.FieldKey" @onfocus="@(() => SetOperationFieldHelp(operation))" @onmouseenter="@(() => SetOperationFieldHelp(operation))">
+                                                <select class="form-input metadata-sentence-field" aria-label="@AppText.T("web.metadata.presetDialog.help.operationField.title")" @bind="operation.FieldKey" @onfocus="@(() => SetOperationFieldHelp(operation))" @onmouseenter="@(() => SetOperationFieldHelp(operation))">
                                                     @foreach (MetadataFieldDefinition field in MetadataPresetUiHelper.GetEditableFields(SelectedRule.TargetScope, operation, _showAdvancedFields))
                                                     {
                                                         <option value="@field.Key">@field.Label</option>
@@ -125,13 +127,13 @@
                                             }
                                             else if (operation.Type == MkvMetadataOperationType.SetExclusiveFlag)
                                             {
-                                                <select class="form-input metadata-sentence-field" @bind="operation.FieldKey" @onfocus="@(() => SetOperationFieldHelp(operation))" @onmouseenter="@(() => SetOperationFieldHelp(operation))">
+                                                <select class="form-input metadata-sentence-field" aria-label="@AppText.T("web.metadata.presetDialog.help.operationField.title")" @bind="operation.FieldKey" @onfocus="@(() => SetOperationFieldHelp(operation))" @onmouseenter="@(() => SetOperationFieldHelp(operation))">
                                                     @foreach (MetadataFieldDefinition field in MetadataPresetUiHelper.GetEditableFields(SelectedRule.TargetScope, operation, _showAdvancedFields))
                                                     {
                                                         <option value="@field.Key">@field.Label</option>
                                                     }
                                                 </select>
-                                                <select class="form-input metadata-sentence-group" @bind="operation.ExclusiveGroup" @onfocus='@(() => SetFieldHelp("exclusiveGroup"))' @onmouseenter='@(() => SetFieldHelp("exclusiveGroup"))'>
+                                                <select class="form-input metadata-sentence-group" aria-label="@AppText.T("web.metadata.presetDialog.help.exclusiveGroup.title")" @bind="operation.ExclusiveGroup" @onfocus='@(() => SetFieldHelp("exclusiveGroup"))' @onmouseenter='@(() => SetFieldHelp("exclusiveGroup"))'>
                                                     @foreach (MkvMetadataExclusiveGroup group in MetadataPresetUiHelper.GetExclusiveGroupOptions())
                                                     {
                                                         <option value="@group">@MetadataPresetUiHelper.GetExclusiveGroupLabel(group)</option>
@@ -141,13 +143,13 @@
                                             else if (operation.Type == MkvMetadataOperationType.SetTagField || operation.Type == MkvMetadataOperationType.ClearTagField)
                                             {
                                                 <div class="metadata-operation-target">
-                                                    <select class="form-input metadata-rule-select-medium" value="@operation.TagTarget" @onchange="@((ChangeEventArgs e) => ChangeOperationTagTarget(operation, GetChangeValue(e)))" @onfocus='@(() => SetFieldHelp("tagTarget"))' @onmouseenter='@(() => SetFieldHelp("tagTarget"))'>
+                                                    <select class="form-input metadata-rule-select-medium" aria-label="@AppText.T("web.metadata.presetDialog.help.tagTarget.title")" value="@operation.TagTarget" @onchange="@((ChangeEventArgs e) => ChangeOperationTagTarget(operation, GetChangeValue(e)))" @onfocus='@(() => SetFieldHelp("tagTarget"))' @onmouseenter='@(() => SetFieldHelp("tagTarget"))'>
                                                         <option value="@MkvMetadataTagTarget.Current">@AppText.T("web.metadata.tagTarget.Current")</option>
                                                         <option value="@MkvMetadataTagTarget.File">@AppText.T("web.metadata.tagTarget.File")</option>
                                                         <option value="@MkvMetadataTagTarget.CurrentTrack">@AppText.T("web.metadata.tagTarget.CurrentTrack")</option>
                                                         <option value="@MkvMetadataTagTarget.AllTracks">@AppText.T("web.metadata.tagTarget.AllTracks")</option>
                                                     </select>
-                                                    <select class="form-input metadata-rule-select-medium" @bind="operation.TagKey" @onfocus="@(() => SetOperationTagHelp(operation))" @onmouseenter="@(() => SetOperationTagHelp(operation))">
+                                                    <select class="form-input metadata-rule-select-medium" aria-label="@AppText.T("web.metadata.presetDialog.help.tagKey.title")" @bind="operation.TagKey" @onfocus="@(() => SetOperationTagHelp(operation))" @onmouseenter="@(() => SetOperationTagHelp(operation))">
                                                         @foreach (MetadataTagDefinition tag in MetadataPresetUiHelper.GetEditableTags(SelectedRule.TargetScope, operation, _showAdvancedFields))
                                                         {
                                                             <option value="@tag.Name">@tag.Label</option>
@@ -157,7 +159,7 @@
                                             }
                                             else if (operation.Type == MkvMetadataOperationType.ClearTags)
                                             {
-                                                <span class="ui-toggle" @onclick="() => operation.ClearTagsConfirmed = !operation.ClearTagsConfirmed" @onmouseenter='@(() => SetFieldHelp("clearTags"))'>@(operation.ClearTagsConfirmed ? "[X]" : "[ ]") @AppText.T("web.metadata.presetDialog.confirmClearTags")</span>
+                                                <div class="ui-switch" @onmouseenter='@(() => SetFieldHelp("clearTags"))'><RadzenSwitch TValue="bool" @bind-Value="@operation.ClearTagsConfirmed" /><span>@AppText.T("web.metadata.presetDialog.confirmClearTags")</span></div>
                                             }
                                             else
                                             {
@@ -166,7 +168,7 @@
 
                                             @if (operation.Type == MkvMetadataOperationType.SetField || operation.Type == MkvMetadataOperationType.SetTagField)
                                             {
-                                                <MetadataInputRendererComponent Schema="@GetOperationInputSchema(operation)" Value="@operation.Value" ValueChanged="@((string value) => operation.Value = value)" CssClass="form-input metadata-operation-value" OnFocus="@(() => SetOperationValueHelp(operation))" OnTextActivated="@((string inputId) => ActivateOperationTextInput(operation, inputId))" OnMouseEnter="@(() => SetOperationValueHelp(operation))" OnExpandedEditRequested="@(() => OpenOperationTextEditor(operation))" />
+                                                <MetadataInputRendererComponent Schema="@GetOperationInputSchema(operation)" AriaLabel="@AppText.T("web.metadata.presetDialog.help.operationValue.title")" Value="@operation.Value" ValueChanged="@((string value) => operation.Value = value)" CssClass="form-input metadata-operation-value" OnFocus="@(() => SetOperationValueHelp(operation))" OnTextActivated="@((string inputId) => ActivateOperationTextInput(operation, inputId))" OnMouseEnter="@(() => SetOperationValueHelp(operation))" OnExpandedEditRequested="@(() => OpenOperationTextEditor(operation))" />
                                             }
                                             else
                                             {
@@ -174,15 +176,15 @@
                                             }
 
                                             <div class="metadata-node-actions">
-                                                <button @onclick="() => MoveOperation(operationIndex, -1)" disabled="@(operationIndex == 0)">^</button>
-                                                <button @onclick="() => MoveOperation(operationIndex, 1)" disabled="@(operationIndex >= SelectedRule.Operations.Count - 1)">v</button>
-                                                <button @onclick="() => RemoveOperation(operationIndex)">x</button>
+                                                <RadzenButton Icon="arrow_upward" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="@AppText.T("web.rename.moveUp")" title="@AppText.T("web.rename.moveUp")" Click="@(() => MoveOperation(operationIndex, -1))" Disabled="@(operationIndex == 0)" />
+                                                <RadzenButton Icon="arrow_downward" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="@AppText.T("web.rename.moveDown")" title="@AppText.T("web.rename.moveDown")" Click="@(() => MoveOperation(operationIndex, 1))" Disabled="@(operationIndex >= SelectedRule.Operations.Count - 1)" />
+                                                <RadzenButton Icon="delete" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" aria-label="@AppText.T("web.common.delete")" title="@AppText.T("web.common.delete")" Click="@(() => RemoveOperation(operationIndex))" />
                                             </div>
                                         </div>
                                     </div>
                                 }
                             </div>
-                            <button @onclick="AddOperation">@AppText.T("web.metadata.presetDialog.addOperation")</button>
+                            <RadzenButton Text="@AppText.T("web.metadata.presetDialog.addOperation")" Icon="add" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@AddOperation" />
                         </div>
                     }
                 </main>
@@ -192,7 +194,7 @@
                     <div class="config-help-text">@_fieldHelpText</div>
 
                     <div class="config-help-section">@AppText.T("web.metadata.presetDialog.tokenBrowserTitle")</div>
-                    <input class="form-input metadata-token-filter" @bind="_tokenBrowserFilter" @bind:event="oninput" placeholder="@AppText.T("web.metadata.presetDialog.tokenFilterPlaceholder")" />
+                    <input class="form-input metadata-token-filter" aria-label="@AppText.T("web.metadata.presetDialog.tokenFilterPlaceholder")" @bind="_tokenBrowserFilter" @bind:event="oninput" placeholder="@AppText.T("web.metadata.presetDialog.tokenFilterPlaceholder")" />
                     <div class="metadata-token-browser">
                         @foreach (MetadataTokenBrowserItem item in GetTokenBrowserItems())
                         {
@@ -204,7 +206,7 @@
                     </div>
 
                     <div class="config-help-section">@AppText.T("web.metadata.presetDialog.functionsTitle")</div>
-                    <input class="form-input metadata-token-filter" @bind="_functionBrowserFilter" @bind:event="oninput" placeholder="@AppText.T("web.metadata.presetDialog.functionFilterPlaceholder")" />
+                    <input class="form-input metadata-token-filter" aria-label="@AppText.T("web.metadata.presetDialog.functionFilterPlaceholder")" @bind="_functionBrowserFilter" @bind:event="oninput" placeholder="@AppText.T("web.metadata.presetDialog.functionFilterPlaceholder")" />
                     <div class="metadata-token-browser">
                         @foreach (MetadataCatalogFunctionItem item in GetFunctionBrowserItems())
                         {
@@ -221,14 +223,14 @@
             </div>
         </div>
         <div class="dialog-footer">
-            <button @onclick="OnClose">@AppText.T("web.common.close")</button>
+            <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.close")" Icon="close" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" />
         </div>
     </div>
     @if (_functionExampleItem != null)
     {
         <div class="metadata-function-example-backdrop" @onclick="CloseFunctionExample" @onclick:stopPropagation="true">
-            <div class="dialog-box metadata-function-example-dialog" @onclick:stopPropagation="true">
-                <div class="dialog-title">@AppText.T("web.metadata.presetDialog.functionExampleTitle")</div>
+            <div class="dialog-box metadata-function-example-dialog" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="metadata-function-example-title" @onclick:stopPropagation="true">
+                <div id="metadata-function-example-title" class="dialog-title">@AppText.T("web.metadata.presetDialog.functionExampleTitle")</div>
                 <div class="dialog-body metadata-function-example-body">
                     <div class="metadata-function-example-name">@_functionExampleItem.Call</div>
                     <div class="metadata-function-example-description">@_functionExampleItem.Description</div>
@@ -247,7 +249,7 @@
                     </div>
                 </div>
                 <div class="dialog-footer">
-                    <button @onclick="CloseFunctionExample">@AppText.T("web.common.close")</button>
+                    <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.close")" Icon="close" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@CloseFunctionExample" />
                 </div>
             </div>
         </div>
@@ -255,14 +257,14 @@
     @if (_textEditRequest != null)
     {
         <div class="metadata-text-editor-backdrop" @onclick="CancelTextEditor" @onclick:stopPropagation="true">
-            <div class="dialog-box metadata-text-editor-dialog" @onclick:stopPropagation="true">
-                <div class="dialog-title">@_textEditRequest.Title</div>
+            <div class="dialog-box metadata-text-editor-dialog" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="metadata-text-editor-title" @onclick:stopPropagation="true">
+                <div id="metadata-text-editor-title" class="dialog-title">@_textEditRequest.Title</div>
                 <div class="dialog-body metadata-text-editor-body">
-                    <textarea class="form-input metadata-text-editor-textarea" @bind="_textEditValue" @bind:event="oninput" autofocus></textarea>
+                    <textarea class="form-input metadata-text-editor-textarea" aria-label="@_textEditRequest.Title" @bind="_textEditValue" @bind:event="oninput" autofocus></textarea>
                 </div>
                 <div class="dialog-footer">
-                    <button @onclick="ApplyTextEditor">@AppText.T("web.common.ok")</button>
-                    <button @onclick="CancelTextEditor">@AppText.T("web.common.cancel")</button>
+                    <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@ApplyTextEditor" />
+                    <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@CancelTextEditor" />
                 </div>
             </div>
         </div>
@@ -653,15 +655,15 @@
     /// <summary>
     /// Cambia stato del toggle campi avanzati
     /// </summary>
-    private void ToggleAdvancedFields()
+    private void ToggleAdvancedFields(bool value)
     {
-        if (this._showAdvancedFields && MetadataUiCatalog.PresetUsesAdvancedFields(this._preset))
+        if (!value && this._showAdvancedFields && MetadataUiCatalog.PresetUsesAdvancedFields(this._preset))
         {
             this._message = AppText.T("web.metadata.presetDialog.advancedCannotDisable");
             return;
         }
 
-        this._showAdvancedFields = !this._showAdvancedFields;
+        this._showAdvancedFields = value;
         if (this._preset != null)
             this._preset.ShowAdvancedFields = this._showAdvancedFields;
 
@@ -1039,25 +1041,22 @@
     /// <param name="operation">Operazione corrente</param>
     private void SetOperationValueHelp(MkvMetadataOperation operation)
     {
+        MetadataFieldDefinition field;
+        MetadataHelpInfo help = MetadataUiCatalog.GetPresetControlHelp("operationValue");
+        MetadataTagDefinition tag;
+
         if (operation == null)
         {
-            this.SetHelpInfo(MetadataUiCatalog.GetPresetControlHelp("operationValue"));
+            this.SetHelpInfo(help);
             return;
         }
 
-        if (operation.Type == MkvMetadataOperationType.SetTagField)
-        {
-            this.SetHelpInfo(MetadataUiCatalog.GetTagHelp(operation.TagKey));
-            return;
-        }
+        if (operation.Type == MkvMetadataOperationType.SetTagField && MetadataTagRegistry.TryGet(operation.TagKey, out tag))
+            help.Title += " — " + tag.Label;
+        else if (operation.Type == MkvMetadataOperationType.SetField && MetadataFieldRegistry.TryGet(operation.FieldKey, out field))
+            help.Title += " — " + field.Label;
 
-        if (operation.Type == MkvMetadataOperationType.SetField)
-        {
-            this.SetHelpInfo(MetadataUiCatalog.GetFieldHelp(operation.FieldKey));
-            return;
-        }
-
-        this.SetHelpInfo(MetadataUiCatalog.GetPresetControlHelp("operationValue"));
+        this.SetHelpInfo(help);
     }
 
     /// <summary>

@@ -1,100 +1,56 @@
-<div class="status-bar">
-    @if (CurrentMode == Options.MODE_METADATA)
+<div class="status-bar" role="toolbar" aria-label="@AppText.T("web.status.shortcuts")">
+    @foreach (UiCommandDefinition command in GetCommands())
     {
-        <span class="cmd-key" @onclick="OnShowConfig"><span class="key-label">F2</span>@AppText.T("web.status.metadata.path")</span>
-        <span class="cmd-key" @onclick="OnShowPreset"><span class="key-label">F3</span>@AppText.T("web.status.metadata.preset")</span>
-        <span class="cmd-key" @onclick="OnManualEdit"><span class="key-label">F4</span>@AppText.T("web.status.metadata.manualEdit")</span>
-        <span class="cmd-key" @onclick="OnScan"><span class="key-label">F5</span>@AppText.T("web.status.scan")</span>
-        <span class="cmd-key" @onclick="OnAnalyzeAll"><span class="key-label">F6</span>@AppText.T("web.status.metadata.analyze")</span>
-        <span class="cmd-key" @onclick="OnMergeSelected"><span class="key-label">F9</span>@AppText.T("web.status.metadata.apply")</span>
-        <span class="cmd-key" @onclick="OnMergeAll"><span class="key-label">F10</span>@AppText.T("web.status.all")</span>
-        <span class="cmd-key" @onclick="OnRename"><span class="key-label">F11</span>@AppText.T("web.status.metadata.rename")</span>
-        <span class="cmd-key" @onclick="OnStop"><span class="key-label">F12</span>@AppText.T("web.status.stop")</span>
-        <span class="cmd-key" @onclick="OnClear"><span class="key-label">Ctrl+L</span>@AppText.T("web.status.metadata.clear")</span>
-    }
-    else
-    {
-        <span class="cmd-key" @onclick="OnShowConfig"><span class="key-label">F2</span>@AppText.T("web.status.config")</span>
-        <span class="cmd-key" @onclick="OnScan"><span class="key-label">F5</span>@AppText.T("web.status.scan")</span>
-        @if (CurrentMode == Options.MODE_SPLIT)
-        {
-            <span class="cmd-key" @onclick="OnMergeAll"><span class="key-label">F10</span>@AppText.T("web.status.splitAll")</span>
-        }
-        else
-        {
-            <span class="cmd-key" @onclick="OnAnalyzeSelected"><span class="key-label">F6</span>@AppText.T("web.status.analyze")</span>
-            <span class="cmd-key" @onclick="OnAnalyzeAll"><span class="key-label">F7</span>@AppText.T("web.status.all")</span>
-            <span class="cmd-key" @onclick="OnSkip"><span class="key-label">F8</span>@AppText.T("web.status.skip")</span>
-            <span class="cmd-key" @onclick="OnMergeSelected"><span class="key-label">F9</span>@AppText.T("web.status.process")</span>
-            <span class="cmd-key" @onclick="OnMergeAll"><span class="key-label">F10</span>@AppText.T("web.status.all")</span>
-        }
-        <span class="cmd-key" @onclick="OnStop"><span class="key-label">F12</span>@AppText.T("web.status.stop")</span>
+        <button type="button"
+                class="cmd-key"
+                disabled="@command.Disabled"
+                @onclick="() => ExecuteCommandAsync(command)">
+            <span class="key-label">@command.Shortcut</span>@command.GetStatusLabel()
+        </button>
     }
 </div>
 
 @code {
     /// <summary>
-    /// Evento scan file
+    /// Comandi contestuali condivisi
     /// </summary>
-    [Parameter] public EventCallback OnScan { get; set; }
+    [Parameter] public IReadOnlyList<UiCommandDefinition> Commands { get; set; }
 
     /// <summary>
-    /// Evento analizza selezionato
+    /// Evento invocazione comando condiviso
     /// </summary>
-    [Parameter] public EventCallback OnAnalyzeSelected { get; set; }
+    [Parameter] public EventCallback<UiCommandDefinition> OnCommand { get; set; }
 
     /// <summary>
-    /// Evento analizza tutti
+    /// Filtra e ordina i comandi per status bar
     /// </summary>
-    [Parameter] public EventCallback OnAnalyzeAll { get; set; }
+    /// <returns>Comandi renderizzabili</returns>
+    private List<UiCommandDefinition> GetCommands()
+    {
+        List<UiCommandDefinition> result = new List<UiCommandDefinition>();
+
+        if (this.Commands != null)
+        {
+            for (int i = 0; i < this.Commands.Count; i++)
+            {
+                UiCommandDefinition command = this.Commands[i];
+                if ((command.Placement & UiCommandPlacement.Status) != 0)
+                {
+                    result.Add(command);
+                }
+            }
+        }
+
+        result.Sort((left, right) => left.StatusOrder.CompareTo(right.StatusOrder));
+        return result;
+    }
 
     /// <summary>
-    /// Evento toggle skip
+    /// Invoca un comando condiviso
     /// </summary>
-    [Parameter] public EventCallback OnSkip { get; set; }
-
-    /// <summary>
-    /// Evento merge selezionato
-    /// </summary>
-    [Parameter] public EventCallback OnMergeSelected { get; set; }
-
-    /// <summary>
-    /// Evento merge tutti
-    /// </summary>
-    [Parameter] public EventCallback OnMergeAll { get; set; }
-
-    /// <summary>
-    /// Evento stop operazione
-    /// </summary>
-    [Parameter] public EventCallback OnStop { get; set; }
-
-    /// <summary>
-    /// Evento mostra configurazione
-    /// </summary>
-    [Parameter] public EventCallback OnShowConfig { get; set; }
-
-    /// <summary>
-    /// Evento mostra preset metadata
-    /// </summary>
-    [Parameter] public EventCallback OnShowPreset { get; set; }
-
-    /// <summary>
-    /// Evento clear metadata
-    /// </summary>
-    [Parameter] public EventCallback OnClear { get; set; }
-
-    /// <summary>
-    /// Evento rinomina metadata
-    /// </summary>
-    [Parameter] public EventCallback OnRename { get; set; }
-
-    /// <summary>
-    /// Evento editor manuale metadata
-    /// </summary>
-    [Parameter] public EventCallback OnManualEdit { get; set; }
-
-    /// <summary>
-    /// Modalità corrente
-    /// </summary>
-    [Parameter] public string CurrentMode { get; set; }
+    /// <param name="command">Comando richiesto</param>
+    private async Task ExecuteCommandAsync(UiCommandDefinition command)
+    {
+        await this.OnCommand.InvokeAsync(command);
+    }
 }

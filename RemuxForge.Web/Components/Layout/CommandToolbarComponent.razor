@@ -1,0 +1,71 @@
+<div class="rf-command-toolbar" role="toolbar" aria-label="@AppText.T("web.navigation.actions")">
+    <div class="rf-command-toolbar-primary">
+        @foreach (UiCommandDefinition command in GetCommands(false))
+        {
+            <RadzenButton Icon="@command.Icon"
+                          Text="@command.GetToolbarLabel()"
+                          Disabled="@command.Disabled"
+                          Variant="@((command.Disabled || command.DangerToolbar) ? Variant.Outlined : Variant.Filled)"
+                          ButtonStyle="@(command.DangerToolbar ? ButtonStyle.Danger : ButtonStyle.Primary)"
+                          Click="@(() => ExecuteCommandAsync(command))" />
+        }
+    </div>
+
+    <div class="rf-command-toolbar-secondary">
+        @foreach (UiCommandDefinition command in GetCommands(true))
+        {
+            <RadzenButton Icon="@command.Icon"
+                          Text="@command.GetToolbarLabel()"
+                          Disabled="@command.Disabled"
+                          Variant="@((command.Disabled || command.DangerToolbar) ? Variant.Outlined : Variant.Filled)"
+                          ButtonStyle="@(command.DangerToolbar ? ButtonStyle.Danger : ButtonStyle.Primary)"
+                          Click="@(() => ExecuteCommandAsync(command))" />
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Comandi contestuali condivisi
+    /// </summary>
+    [Parameter] public IReadOnlyList<UiCommandDefinition> Commands { get; set; }
+
+    /// <summary>
+    /// Evento invocazione comando condiviso
+    /// </summary>
+    [Parameter] public EventCallback<UiCommandDefinition> OnCommand { get; set; }
+
+    /// <summary>
+    /// Filtra e ordina i comandi per area toolbar
+    /// </summary>
+    /// <param name="secondary">True per l'area secondaria</param>
+    /// <returns>Comandi renderizzabili</returns>
+    private List<UiCommandDefinition> GetCommands(bool secondary)
+    {
+        List<UiCommandDefinition> result = new List<UiCommandDefinition>();
+
+        if (this.Commands != null)
+        {
+            for (int i = 0; i < this.Commands.Count; i++)
+            {
+                UiCommandDefinition command = this.Commands[i];
+                if ((command.Placement & UiCommandPlacement.Toolbar) != 0 && command.SecondaryToolbar == secondary)
+                {
+                    result.Add(command);
+                }
+            }
+        }
+
+        result.Sort((left, right) => left.ToolbarOrder.CompareTo(right.ToolbarOrder));
+        return result;
+    }
+
+    /// <summary>
+    /// Invoca un comando condiviso
+    /// </summary>
+    /// <param name="command">Comando richiesto</param>
+    private async Task ExecuteCommandAsync(UiCommandDefinition command)
+    {
+        await this.OnCommand.InvokeAsync(command);
+    }
+}

@@ -2,11 +2,8 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG VERSION=1.0.0
 WORKDIR /src
-RUN dotnet tool install -g Microsoft.Web.LibraryManager.Cli
-ENV PATH="$PATH:/root/.dotnet/tools"
 COPY RemuxForge.Core/ ./RemuxForge.Core/
 COPY RemuxForge.Web/ ./RemuxForge.Web/
-RUN cd RemuxForge.Web && libman restore && cd ..
 RUN dotnet publish RemuxForge.Web/RemuxForge.Web.csproj -c Release -p:Version=${VERSION} -o /app
 
 # Stage 2: Runtime

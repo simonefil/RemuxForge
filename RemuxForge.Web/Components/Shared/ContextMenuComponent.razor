@@ -1,20 +1,23 @@
 <div class="ctx-menu-overlay" @onclick="OnClose">
-    <div class="ctx-menu-popup" style="left: @(X)px; top: @(Y)px;" @onclick:stopPropagation="true">
-        @for (int i = 0; i < Items.Count; i++)
+    <div class="ctx-menu-popup" role="menu" aria-label="@AppText.T("web.menu.actions")" style="left: @(X)px; top: @(Y)px;" @onclick:stopPropagation="true">
+        @for (int i = 0; i < Commands.Count; i++)
         {
             int idx = i;
-            <div class="ctx-menu-item @(idx == SelectedIndex ? "active" : "")"
-                 @onclick="() => SelectItem(idx)"
-                 @onmouseenter="() => SetActiveItem(idx)">@Items[i]</div>
+            <button type="button"
+                    role="menuitem"
+                    tabindex="@(idx == SelectedIndex ? 0 : -1)"
+                    class="ctx-menu-item @(idx == SelectedIndex ? "active" : "")"
+                    @onclick="() => SelectItem(idx)"
+                    @onmouseenter="() => SetActiveItem(idx)">@Commands[i].Label</button>
         }
     </div>
 </div>
 
 @code {
     /// <summary>
-    /// Lista voci del context menu
+    /// Comandi del context menu
     /// </summary>
-    [Parameter] public List<string> Items { get; set; }
+    [Parameter] public IReadOnlyList<UiCommandDefinition> Commands { get; set; }
 
     /// <summary>
     /// Coordinata X posizione menu (pixel)

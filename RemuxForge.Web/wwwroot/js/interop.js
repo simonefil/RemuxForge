@@ -1,5 +1,3 @@
-var windowDragStates = new Map();
-
 // Keyboard capture - filtra tasti e inoltra a .NET
 export function captureKeyboard(dotNetRef) {
     // Rimuovi handler precedente se presente
@@ -7,25 +5,10 @@ export function captureKeyboard(dotNetRef) {
         document.removeEventListener('keydown', window._rfKeyHandler);
         document.removeEventListener('keydown', window._rfKeyHandler, true);
     }
-    if (window._rfPseudoControlObserver) {
-        window._rfPseudoControlObserver.disconnect();
-        window._rfPseudoControlObserver = null;
-    }
-    if (window._rfSelectionGuard) {
-        document.removeEventListener('selectstart', window._rfSelectionGuard, true);
-        window._rfSelectionGuard = null;
-    }
-    if (window._rfSelectionChangeGuard) {
-        document.removeEventListener('selectionchange', window._rfSelectionChangeGuard, true);
-        window._rfSelectionChangeGuard = null;
-    }
-
-    setupPseudoControls();
-    setupSelectionGuard();
-    window._rfPseudoControlObserver = new MutationObserver(function () {
-        setupPseudoControls();
-    });
-    window._rfPseudoControlObserver.observe(document.body, { childList: true, subtree: true });
+    releaseDialogFocusObserver();
+    window._rfDialogFocusStack = [];
+    window._rfDialogFocusObserver = new MutationObserver(syncDialogFocus);
+    window._rfDialogFocusObserver.observe(document.body, { childList: true, subtree: true });
 
     window._rfKeyHandler = function (e) {
         var key = getNormalizedKey(e);
@@ -34,24 +17,23 @@ export function captureKeyboard(dotNetRef) {
         var alt = e.altKey;
         var tagName = document.activeElement ? document.activeElement.tagName : '';
         var activeElement = document.activeElement;
-        var modalDialogOpen = hasModalDialogOpen();
-        var renamerOpen = hasRenamerOpen();
+        var activeDialog = getActiveDialog();
 
-        if (activeElement && activeElement.classList && isPseudoControl(activeElement) && (key === 'Enter' || key === ' ')) {
-            e.preventDefault();
-            activeElement.click();
-            return;
-        }
-
-        if (modalDialogOpen) {
+        if (activeDialog) {
+            if (key === 'Tab') {
+                if (activeElement && activeElement.classList.contains('path-bar-input')) {
+                    e.preventDefault();
+                }
+                else {
+                    trapDialogFocus(e, activeDialog);
+                }
+            }
             if (key === 'Escape') {
                 e.preventDefault();
-                dotNetRef.invokeMethodAsync('OnKeyDown', key, ctrl, shift, alt);
+                if (!closeActiveDialog(activeDialog)) {
+                    dotNetRef.invokeMethodAsync('OnKeyDown', key, ctrl, shift, alt);
+                }
             }
-            return;
-        }
-
-        if (renamerOpen) {
             return;
         }
 
@@ -86,10 +68,6 @@ export function captureKeyboard(dotNetRef) {
         if (isFKey || isNavigation || isSpecial || isCtrlShortcut || alt) {
             e.preventDefault();
         }
-        if (isNavigation) {
-            clearTextSelection();
-        }
-
         // Invia a .NET
         dotNetRef.invokeMethodAsync('OnKeyDown', key, ctrl, shift, alt);
     };
@@ -129,37 +107,7 @@ export function releaseKeyboard() {
         document.removeEventListener('keydown', window._rfKeyHandler, true);
         window._rfKeyHandler = null;
     }
-    if (window._rfPseudoControlObserver) {
-        window._rfPseudoControlObserver.disconnect();
-        window._rfPseudoControlObserver = null;
-    }
-    if (window._rfSelectionGuard) {
-        document.removeEventListener('selectstart', window._rfSelectionGuard, true);
-        window._rfSelectionGuard = null;
-    }
-    if (window._rfSelectionChangeGuard) {
-        document.removeEventListener('selectionchange', window._rfSelectionChangeGuard, true);
-        window._rfSelectionChangeGuard = null;
-    }
-}
-
-// Rende focusabili i controlli custom basati su span/div, mantenendo l'ordine DOM per Tab
-function setupPseudoControls() {
-    var controls = document.querySelectorAll('.ui-toggle, .btn-browse, .cmd-key');
-    for (var i = 0; i < controls.length; i++) {
-        if (!controls[i].hasAttribute('tabindex')) {
-            controls[i].setAttribute('tabindex', '0');
-        }
-        if (!controls[i].hasAttribute('role')) {
-            controls[i].setAttribute('role', 'button');
-        }
-    }
-}
-
-function isPseudoControl(element) {
-    return element.classList.contains('ui-toggle')
-        || element.classList.contains('btn-browse')
-        || element.classList.contains('cmd-key');
+    releaseDialogFocusObserver();
 }
 
 function isEditableElement(element, tagName) {
@@ -172,12 +120,115 @@ function isEditableElement(element, tagName) {
     return element.isContentEditable === true;
 }
 
-function hasModalDialogOpen() {
-    return document.querySelector('.dialog-overlay.visible') !== null;
+function getActiveDialog() {
+    var dialogs = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+    return dialogs.length > 0 ? dialogs[dialogs.length - 1] : null;
 }
 
-function hasRenamerOpen() {
-    return document.querySelector('.renamer-window.visible') !== null;
+function closeActiveDialog(dialog) {
+    var closeButton = dialog.querySelector('[data-dialog-close], .dialog-close-button');
+    if (closeButton) {
+        closeButton.click();
+        return true;
+    }
+
+    var overlay = dialog.closest('.dialog-overlay');
+    if (overlay) {
+        overlay.click();
+        return true;
+    }
+
+    return false;
+}
+
+function trapDialogFocus(event, dialog) {
+    var focusable = getFocusableElements(dialog);
+
+    if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus({ preventScroll: true });
+        return;
+    }
+
+    var first = focusable[0];
+    var last = focusable[focusable.length - 1];
+    var current = document.activeElement;
+    if (!dialog.contains(current) || (!event.shiftKey && current === last)) {
+        event.preventDefault();
+        first.focus({ preventScroll: true });
+    }
+    else if (event.shiftKey && current === first) {
+        event.preventDefault();
+        last.focus({ preventScroll: true });
+    }
+}
+
+function getFocusableElements(container) {
+    return Array.from(container.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+    )).filter(function (element) {
+        return element.getClientRects().length > 0;
+    });
+}
+
+function syncDialogFocus() {
+    var stack = window._rfDialogFocusStack || [];
+    var activeDialog = getActiveDialog();
+    var activeIndex = stack.findIndex(function (entry) {
+        return entry.dialog === activeDialog;
+    });
+
+    if (!activeDialog) {
+        if (stack.length > 0) {
+            var originalOpener = stack[0].opener;
+            stack = [];
+            if (originalOpener && originalOpener.isConnected) {
+                originalOpener.focus({ preventScroll: true });
+            }
+        }
+        window._rfDialogFocusStack = stack;
+        return;
+    }
+
+    if (activeIndex >= 0) {
+        if (activeIndex < stack.length - 1) {
+            var closedDialog = stack[stack.length - 1];
+            stack = stack.slice(0, activeIndex + 1);
+            if (closedDialog.opener && closedDialog.opener.isConnected) {
+                closedDialog.opener.focus({ preventScroll: true });
+            }
+        }
+        window._rfDialogFocusStack = stack;
+        return;
+    }
+
+    var opener = document.activeElement;
+    while (stack.length > 0 && !stack[stack.length - 1].dialog.isConnected) {
+        var replacedDialog = stack.pop();
+        if ((!opener || opener === document.body) && replacedDialog.opener) {
+            opener = replacedDialog.opener;
+        }
+    }
+    stack.push({ dialog: activeDialog, opener: opener });
+    window._rfDialogFocusStack = stack;
+
+    requestAnimationFrame(function () {
+        var focusable = getFocusableElements(activeDialog);
+        if (focusable.length > 0) {
+            focusable[0].focus({ preventScroll: true });
+        }
+        else {
+            activeDialog.focus({ preventScroll: true });
+        }
+    });
+}
+
+function releaseDialogFocusObserver() {
+    if (window._rfDialogFocusObserver) {
+        window._rfDialogFocusObserver.disconnect();
+        window._rfDialogFocusObserver = null;
+    }
+    window._rfDialogFocusStack = [];
 }
 
 function getNormalizedKey(e) {
@@ -189,31 +240,12 @@ function getNormalizedKey(e) {
     return key;
 }
 
-function setupSelectionGuard() {
-    window._rfSelectionGuard = function (e) {
-        if (!isTextSelectionAllowed(e.target)) {
-            e.preventDefault();
-            clearTextSelection();
-        }
-    };
-    window._rfSelectionChangeGuard = function () {
-        var activeElement = document.activeElement;
-        var tagName = activeElement ? activeElement.tagName : '';
-        if (isEditableElement(activeElement, tagName)) {
-            return;
-        }
-
-        var selection = window.getSelection ? window.getSelection() : null;
-        if (selection && selection.rangeCount > 0 && !isSelectionAllowed(selection)) {
-            selection.removeAllRanges();
-        }
-    };
-    document.addEventListener('selectstart', window._rfSelectionGuard, true);
-    document.addEventListener('selectionchange', window._rfSelectionChangeGuard, true);
-}
-
 function isTextSelectionAllowed(target) {
-    var element = normalizeSelectionNode(target);
+    if (!target) {
+        return false;
+    }
+
+    var element = target.nodeType === Node.ELEMENT_NODE ? target : target.parentElement;
     if (!element || !element.closest) {
         return false;
     }
@@ -221,48 +253,6 @@ function isTextSelectionAllowed(target) {
     return element.closest('.log-panel') !== null
         || element.closest('.detail-content') !== null
         || element.closest('input, textarea, select, [contenteditable="true"]') !== null;
-}
-
-function isSelectionAllowed(selection) {
-    var anchor = normalizeSelectionNode(selection.anchorNode);
-    var focus = normalizeSelectionNode(selection.focusNode);
-    if (!anchor && !focus) {
-        return true;
-    }
-
-    return isTextSelectionAllowed(anchor) || isTextSelectionAllowed(focus);
-}
-
-function normalizeSelectionNode(node) {
-    if (!node) {
-        return null;
-    }
-    if (node.nodeType === Node.ELEMENT_NODE) {
-        return node;
-    }
-
-    return node.parentElement;
-}
-
-function clearTextSelection() {
-    var selection = window.getSelection ? window.getSelection() : null;
-    if (selection && selection.removeAllRanges) {
-        selection.removeAllRanges();
-    }
-}
-
-// Tema
-export function setTheme(themeName) {
-    document.documentElement.setAttribute('data-webtui-theme', themeName);
-    localStorage.setItem('rf-theme', themeName);
-}
-
-export function loadSavedTheme() {
-    var saved = localStorage.getItem('rf-theme');
-    if (saved) {
-        document.documentElement.setAttribute('data-webtui-theme', saved);
-    }
-    return saved || 'nord';
 }
 
 // Lingua documento
@@ -315,99 +305,4 @@ export function scrollLogToBottom() {
     if (el) {
         el.scrollTop = el.scrollHeight;
     }
-}
-
-// Inizializza drag e resize per finestre flottanti
-export function initWindowDrag(windowId, titlebarId, resizeHandleId) {
-    var win = document.getElementById(windowId);
-    var titlebar = document.getElementById(titlebarId);
-    var resizeHandle = document.getElementById(resizeHandleId);
-    if (!win || !titlebar) {
-        return;
-    }
-    if (windowDragStates.has(windowId)) {
-        return;
-    }
-
-    var state = {
-        isDragging: false,
-        isResizing: false,
-        dragOffsetX: 0,
-        dragOffsetY: 0,
-        titlebar: titlebar,
-        resizeHandle: resizeHandle,
-        handleTitleMouseDown: null,
-        handleResizeMouseDown: null,
-        handleDocumentMouseMove: null,
-        handleDocumentMouseUp: null
-    };
-
-    state.handleTitleMouseDown = function (e) {
-        state.isDragging = true;
-        state.dragOffsetX = e.clientX - win.offsetLeft;
-        state.dragOffsetY = e.clientY - win.offsetTop;
-        e.preventDefault();
-    };
-
-    state.handleResizeMouseDown = function (e) {
-        state.isResizing = true;
-        e.preventDefault();
-        e.stopPropagation();
-    };
-
-    state.handleDocumentMouseMove = function (e) {
-        if (state.isDragging) {
-            var newX = e.clientX - state.dragOffsetX;
-            var newY = e.clientY - state.dragOffsetY;
-            newX = Math.max(0, Math.min(newX, window.innerWidth - 50));
-            newY = Math.max(0, Math.min(newY, window.innerHeight - 50));
-            win.style.left = newX + 'px';
-            win.style.top = newY + 'px';
-        }
-
-        if (state.isResizing) {
-            var newWidth = e.clientX - win.offsetLeft;
-            var newHeight = e.clientY - win.offsetTop;
-            newWidth = Math.max(300, newWidth);
-            newHeight = Math.max(150, newHeight);
-            win.style.width = newWidth + 'px';
-            win.style.height = newHeight + 'px';
-            window.dispatchEvent(new Event('resize'));
-        }
-    };
-
-    state.handleDocumentMouseUp = function () {
-        state.isDragging = false;
-        state.isResizing = false;
-    };
-
-    titlebar.addEventListener('mousedown', state.handleTitleMouseDown);
-    if (resizeHandle) {
-        resizeHandle.addEventListener('mousedown', state.handleResizeMouseDown);
-    }
-    document.addEventListener('mousemove', state.handleDocumentMouseMove);
-    document.addEventListener('mouseup', state.handleDocumentMouseUp);
-    windowDragStates.set(windowId, state);
-}
-
-// Rimuove drag e resize per una finestra flottante
-export function disposeWindowDrag(windowId) {
-    var state = windowDragStates.get(windowId);
-    if (!state) {
-        return;
-    }
-
-    if (state.titlebar && state.handleTitleMouseDown) {
-        state.titlebar.removeEventListener('mousedown', state.handleTitleMouseDown);
-    }
-    if (state.resizeHandle && state.handleResizeMouseDown) {
-        state.resizeHandle.removeEventListener('mousedown', state.handleResizeMouseDown);
-    }
-    if (state.handleDocumentMouseMove) {
-        document.removeEventListener('mousemove', state.handleDocumentMouseMove);
-    }
-    if (state.handleDocumentMouseUp) {
-        document.removeEventListener('mouseup', state.handleDocumentMouseUp);
-    }
-    windowDragStates.delete(windowId);
 }

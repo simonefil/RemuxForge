@@ -99,7 +99,7 @@ namespace RemuxForge.Core.Subtitles
             int filePosStart = filePosIndex + "filepos:".Length;
             int filePosEnd;
             StringBuilder result;
-            
+
             // Mantiene struttura e spazi della riga originale sostituendo solo timestamp e filepos
             while (filePosStart < line.Length && line[filePosStart] == ' ')
             {

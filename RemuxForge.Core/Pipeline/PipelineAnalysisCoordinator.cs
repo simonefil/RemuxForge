@@ -249,7 +249,7 @@ namespace RemuxForge.Core.Pipeline
 
                         ConsoleHelper.Write(LogSection.Speed, LogLevel.Success, AppText.F("speed.pipeline.manualCompleted", speedService.InitialDelayMs, speedService.SyncDelayMs, speedService.StretchFactor, speedService.ExecutionTimeMs));
                         ConsoleHelper.Write(LogSection.Speed, LogLevel.Debug, AppText.F("speed.pipeline.verification", speedService.GetDetailSummary()));
-                        ConsoleHelper.Progress(LogSection.Speed, 72, AppText.T("speed.pipeline.progressCompleted"));
+                        ConsoleHelper.Progress(LogSection.Speed, 90, AppText.T("speed.pipeline.progressCompleted"));
                     }
                     else
                     {
@@ -262,7 +262,7 @@ namespace RemuxForge.Core.Pipeline
                 {
                     string ffmpegUnavailable = AppText.T("speed.pipeline.ffmpegUnavailable");
                     ConsoleHelper.Write(LogSection.Speed, LogLevel.Error, ffmpegUnavailable);
-                    ConsoleHelper.Progress(LogSection.Speed, 72, AppText.T("speed.pipeline.progressNotApplied"));
+                    ConsoleHelper.Progress(LogSection.Speed, 90, AppText.T("speed.pipeline.progressNotApplied"));
                     done = this.FailAndFinalizeRecord(record, ffmpegUnavailable);
                 }
             }

@@ -105,7 +105,7 @@ namespace RemuxForge.Core.Analysis.Deep
                 string mkvExtractPath = this._toolPathResolver.ResolveMkvExtractPath(mkvMergePath, false);
 
                 // La geometria comune si stima dai dati: senza, la misura non degrada, si inverte
-                ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, AppText.T("deep.temporal.log.phaseAnalysis"));
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, AppText.T("deep.temporal.log.geometryViewport"));
                 ConsoleHelper.Progress(LogSection.Deep, 8, AppText.T("deep.temporal.progress.geometry"));
                 diagnostics.Append("phase=geometry");
                 FfmpegVideoInfoReader videoInfoReader = new FfmpegVideoInfoReader(this._ffmpegPath, ffmpegConfig, LogSection.Deep);
@@ -119,6 +119,7 @@ namespace RemuxForge.Core.Analysis.Deep
                 FrameGeometry sourceFrameGeometry = viewport.SourceGeometry;
                 FrameGeometry languageFrameGeometry = viewport.LanguageGeometry;
 
+                ConsoleHelper.Progress(LogSection.Deep, 14, AppText.T("deep.temporal.progress.geometry"));
                 FrameGeometryEstimator geometryEstimator = new FrameGeometryEstimator(this._ffmpegPath, ffmpegConfig, advanced.GetVisionBackendKind(), LogSection.Deep);
                 FrameGeometryEstimationResult geometry = geometryEstimator.Estimate(sourceFile, languageFile, sourceCropPx, languageCropPx, sourceDurationMs, sourceFrameGeometry, languageFrameGeometry, cancellationToken);
                 result.SourceGeometry = geometry.SourceGeometryInfo;
@@ -149,24 +150,28 @@ namespace RemuxForge.Core.Analysis.Deep
                 cancellationToken.ThrowIfCancellationRequested();
 
                 // Una sola decodifica lineare per file: da qui escono dHash, luminanza e miniature
-                ConsoleHelper.Progress(LogSection.Deep, 20, AppText.T("deep.temporal.progress.frameSignals"));
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, AppText.T("deep.temporal.log.frameSignals"));
+                ConsoleHelper.Progress(LogSection.Deep, 24, AppText.T("deep.temporal.progress.frameSignals"));
                 diagnostics.Append("phase=frame-signals");
                 FrameSignalExtractor extractor = new FrameSignalExtractor(this._ffmpegPath, ffprobePath, mkvMergePath, mkvExtractPath, ffmpegConfig, hashBackend);
                 FrameSignals sourceSignals = extractor.Extract(sourceFile, sourceFrameGeometry, ffmpegConfig.FrameExtractionTimeoutMs, cancellationToken);
-                ConsoleHelper.Progress(LogSection.Deep, 40, AppText.T("deep.temporal.progress.frameSignals"));
+                ConsoleHelper.Progress(LogSection.Deep, 44, AppText.T("deep.temporal.progress.frameSignals"));
                 FrameSignals languageSignals = extractor.Extract(languageFile, languageFrameGeometry, ffmpegConfig.FrameExtractionTimeoutMs, cancellationToken);
+                ConsoleHelper.Progress(LogSection.Deep, 64, AppText.T("deep.temporal.progress.frameSignals"));
                 result.Source.FrameCount = sourceSignals.Count;
                 result.Language.FrameCount = languageSignals.Count;
                 diagnostics.Append("frame-signals source=" + sourceSignals.Count.ToString(CultureInfo.InvariantCulture) + " language=" + languageSignals.Count.ToString(CultureInfo.InvariantCulture));
                 cancellationToken.ThrowIfCancellationRequested();
 
                 // L'audio decide dentro il nero e giudica l'esistenza delle operazioni
-                ConsoleHelper.Progress(LogSection.Deep, 50, AppText.T("deep.temporal.progress.audioEnvelopes"));
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, AppText.T("deep.temporal.log.audioEnvelopes"));
+                ConsoleHelper.Progress(LogSection.Deep, 68, AppText.T("deep.temporal.progress.audioEnvelopes"));
                 diagnostics.Append("phase=audio-envelopes");
                 AudioEnvelopePair envelopes = this.BuildAudioEnvelopes(sourceFile, languageFile, ffprobePath, ffmpegConfig, languageToSourceStretch, diagnostics);
                 cancellationToken.ThrowIfCancellationRequested();
 
-                ConsoleHelper.Progress(LogSection.Deep, 60, AppText.T("deep.temporal.progress.detection"));
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, AppText.T("deep.temporal.log.globalSolve"));
+                ConsoleHelper.Progress(LogSection.Deep, 75, AppText.T("deep.temporal.progress.detection"));
                 diagnostics.Append("phase=detection-and-judgement");
                 PairSignals pair = new PairSignals(sourceSignals, languageSignals, languageToSourceStretch);
                 EditAnalysisOutcome outcome = new EditMapComposer(hashBackend).Compose(pair, envelopes, cancellationToken);
@@ -189,7 +194,7 @@ namespace RemuxForge.Core.Analysis.Deep
                 EditMap editMap = converter.Convert(pair, outcome, stretchFactor);
                 result.Status = DeepAnalysisStatus.Accepted;
                 editMap.AnalysisTimeMs = totalStopwatch.ElapsedMilliseconds;
-                ConsoleHelper.Progress(LogSection.Deep, 100, AppText.T("deep.temporal.progress.completed"));
+                ConsoleHelper.Progress(LogSection.Deep, 85, AppText.T("deep.temporal.progress.completed"));
                 return editMap;
             }
             catch (OperationCanceledException)

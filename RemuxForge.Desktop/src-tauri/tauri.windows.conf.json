@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "targets": ["msi"],
+    "icon": ["icons/icon.ico"],
+    "publisher": "Simone Filippini"
+  }
+}

@@ -2,6 +2,7 @@ using OpenCvSharp;
 using RemuxForge.Core.Analysis.Edit.Extraction;
 using RemuxForge.Core.Analysis.Features;
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Media.Ffmpeg;
 using RemuxForge.Core.Models;
@@ -195,6 +196,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             FrameGeometryEstimationResult result = new FrameGeometryEstimationResult();
             result.Alignment.RequiredMatchCount = REQUIRED_MATCHES;
             result.Alignment.BackendName = AdvancedConfig.GetVisionBackendValue(this._backend);
+            ConsoleHelper.Write(this._logSection, RemuxForge.Core.Models.LogLevel.Phase, AppText.T("analysis.geometry.bootstrap"));
 
             VideoGeometryAnalyzer analyzer = new VideoGeometryAnalyzer(this._ffmpegPath, this._ffmpegConfig, this._logSection);
             VideoGeometryProfile sourceProfile = analyzer.Analyze(sourceFile);
@@ -254,6 +256,15 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             }
 
             result.Alignment.Success = true;
+            ConsoleHelper.Write(this._logSection, RemuxForge.Core.Models.LogLevel.Debug, AppText.F("analysis.geometry.result",
+                result.Alignment.AcceptedMatchCount,
+                result.Alignment.SourceCommonCropPx,
+                result.Alignment.LanguageCommonCropPx,
+                result.Alignment.ScaleX,
+                result.Alignment.ScaleY,
+                result.Alignment.TranslateX,
+                result.Alignment.TranslateY,
+                result.Alignment.BackendName));
             return result;
         }
 
@@ -976,7 +987,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
         #region Metodi privati - Contratto dHash
 
         /// <summary>
-        /// Usa i match già confermati per applicare l'affine al dHash soltanto quando ripara il contratto
+        /// Usa i match già confermati per scegliere l'affine quando il viewport indipendente non tiene e l'affine lo migliora
         /// </summary>
         private void ValidateDHashContract(FrameGeometryEstimationResult result, VideoGeometryProfile sourceProfile, VideoGeometryProfile languageProfile, PixelRect sourceActive, PixelRect languageActive, FrameGeometry sourceGeometry, FrameGeometry languageGeometry, List<DeepSiftVisualAnchor> sourceAnchors, List<DeepSiftVisualAnchor> languageAnchors, GeometryConsensus consensus)
         {
@@ -1018,7 +1029,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             result.Alignment.DHashContractPairCount = pairCount;
             result.Alignment.IndependentDHashExplainedCount = independentExplained;
             result.Alignment.AffineDHashExplainedCount = affineExplained;
-            result.Alignment.UseAffineDHashViewport = affineIsInside && independentExplained * 2 <= pairCount && affineExplained * 2 > pairCount;
+            result.Alignment.UseAffineDHashViewport = affineIsInside && independentExplained * 2 <= pairCount && affineExplained > independentExplained;
             if (!result.Alignment.UseAffineDHashViewport)
                 return;
 
@@ -1031,7 +1042,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
         }
 
         /// <summary>
-        /// Proietta il viewport dHash storico nello spazio normalizzato dell'area attiva
+        /// Proietta il viewport dHash indipendente nello spazio normalizzato dell'area attiva
         /// </summary>
         private NormalizedRect BuildDHashViewport(VideoGeometryProfile profile, PixelRect active, FrameGeometry geometry)
         {
