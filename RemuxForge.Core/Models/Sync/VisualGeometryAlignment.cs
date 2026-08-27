@@ -118,6 +118,46 @@ namespace RemuxForge.Core.Models
         public long ProcessedPairCount { get; set; }
 
         /// <summary>
+        /// Millisecondi spesi nei probe della geometria e della durata native
+        /// </summary>
+        public long NativeProbeMs { get; set; }
+
+        /// <summary>
+        /// Millisecondi wall clock spesi nel rilevamento dei crop Source e Language
+        /// </summary>
+        public long CropDetectionMs { get; set; }
+
+        /// <summary>
+        /// Millisecondi wall clock spesi nell'estrazione degli anchor bootstrap
+        /// </summary>
+        public long BootstrapExtractionMs { get; set; }
+
+        /// <summary>
+        /// Millisecondi wall clock spesi nell'estrazione delle feature SIFT
+        /// </summary>
+        public long SiftFeatureExtractionMs { get; set; }
+
+        /// <summary>
+        /// Millisecondi wall clock spesi nel matching SIFT e nella verifica geometrica
+        /// </summary>
+        public long SiftMatchingMs { get; set; }
+
+        /// <summary>
+        /// Millisecondi cumulativi del lavoro di matching dei descrittori
+        /// </summary>
+        public long SiftDescriptorWorkMs { get; set; }
+
+        /// <summary>
+        /// Millisecondi cumulativi del lavoro di RANSAC e validazione geometrica
+        /// </summary>
+        public long SiftGeometryWorkMs { get; set; }
+
+        /// <summary>
+        /// Millisecondi spesi nel consenso globale e nell'affinamento geometrico
+        /// </summary>
+        public long ConsensusRefinementMs { get; set; }
+
+        /// <summary>
         /// Millisecondi spesi nell'upload Vulkan, zero sul percorso CPU
         /// </summary>
         public long UploadMs { get; set; }

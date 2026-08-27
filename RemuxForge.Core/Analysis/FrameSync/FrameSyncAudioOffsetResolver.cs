@@ -1,6 +1,7 @@
 using RemuxForge.Core.Analysis.Edit.Extraction;
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace RemuxForge.Core.Analysis.FrameSync
 {
@@ -72,21 +73,31 @@ namespace RemuxForge.Core.Analysis.FrameSync
             double durationMs = envelopes.Source.Length * AudioEnvelopeExtractor.STEP_MS;
             List<double> offsets = new List<double>();
             List<double> correlations = new List<double>();
-
-            for (int positionIndex = 0; positionIndex < POSITIONS.Length; positionIndex++)
+            bool[] accepted = new bool[POSITIONS.Length];
+            double[] measuredOffsets = new double[POSITIONS.Length];
+            double[] measuredCorrelations = new double[POSITIONS.Length];
+            Parallel.For(0, POSITIONS.Length, positionIndex =>
             {
                 double startMs = durationMs * POSITIONS[positionIndex] - WINDOW_MS / 2.0;
                 if (!this.Scan(coarseSource, coarseLanguage, coarseStepMs, startMs, WINDOW_MS, 0.0, MAX_LAG_MS, out double coarseOffsetMs, out double coarseCorrelation))
-                    continue;
+                    return;
                 if (!this.Scan(envelopes.Source, envelopes.Language, AudioEnvelopeExtractor.STEP_MS, startMs, WINDOW_MS, coarseOffsetMs, FINE_RADIUS_MS + coarseStepMs, out double windowOffsetMs, out double windowCorrelation))
                 {
                     windowOffsetMs = coarseOffsetMs;
                     windowCorrelation = coarseCorrelation;
                 }
                 if (windowCorrelation < MIN_CORRELATION)
+                    return;
+                accepted[positionIndex] = true;
+                measuredOffsets[positionIndex] = windowOffsetMs;
+                measuredCorrelations[positionIndex] = windowCorrelation;
+            });
+            for (int positionIndex = 0; positionIndex < POSITIONS.Length; positionIndex++)
+            {
+                if (!accepted[positionIndex])
                     continue;
-                offsets.Add(windowOffsetMs);
-                correlations.Add(windowCorrelation);
+                offsets.Add(measuredOffsets[positionIndex]);
+                correlations.Add(measuredCorrelations[positionIndex]);
             }
 
             // Basterebbe una coppia concorde, ma due finestre su tre che vanno d'accordo mentre
