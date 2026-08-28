@@ -189,6 +189,21 @@ namespace RemuxForge.Web.Components.Pages
         private bool _showDelay;
 
         /// <summary>
+        /// Flag: mostra editor visuale EditMap
+        /// </summary>
+        private bool _showEditMapEditor;
+
+        /// <summary>
+        /// Snapshot del record aperto nell'editor EditMap
+        /// </summary>
+        private FileProcessingRecord _editMapRecord;
+
+        /// <summary>
+        /// Indice originale del record aperto nell'editor EditMap
+        /// </summary>
+        private int _editMapRecordIndex;
+
+        /// <summary>
         /// Flag: mostra dialog profili encoding
         /// </summary>
         private bool _showEncodingProfiles;
@@ -286,6 +301,9 @@ namespace RemuxForge.Web.Components.Pages
             this._showAudioSettings = false;
             this._showAdvancedSettings = false;
             this._showDelay = false;
+            this._showEditMapEditor = false;
+            this._editMapRecord = null;
+            this._editMapRecordIndex = -1;
             this._showEncodingProfiles = false;
             this._showInfo = false;
             this._showContextMenu = false;
@@ -927,7 +945,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private bool IsBlockingDialogOpen()
         {
-            return this._showConfig || this._showMetadataPathBrowse || this._showMetadataPreset || this._showMetadataMappedInfo || this._showMetadataManualEdit || this._showMetadataRename || this._showToolPaths || this._showAudioSettings || this._showAdvancedSettings || this._showDelay || this._showEncodingProfiles || this._showInfo || this._showMediaInfo;
+            return this._showConfig || this._showMetadataPathBrowse || this._showMetadataPreset || this._showMetadataMappedInfo || this._showMetadataManualEdit || this._showMetadataRename || this._showToolPaths || this._showAudioSettings || this._showAdvancedSettings || this._showDelay || this._showEditMapEditor || this._showEncodingProfiles || this._showInfo || this._showMediaInfo;
         }
 
         /// <summary>
@@ -2425,6 +2443,55 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
+        /// Apre l'editor EditMap sul record Remux selezionato
+        /// </summary>
+        private void ShowEditMapEditor()
+        {
+            int index = this.Orchestrator.SelectedIndex;
+            if (this.Orchestrator.IsBusy || index < 0 || index >= this._records.Count)
+                return;
+
+            FileProcessingRecord record = this._records[index];
+            if (record == null || string.IsNullOrEmpty(record.SourceFilePath) || string.IsNullOrEmpty(record.LangFilePath) ||
+                (record.Status != FileStatus.Pending && record.Status != FileStatus.Analyzed && record.Status != FileStatus.Error))
+                return;
+
+            this._editMapRecordIndex = index;
+            this._editMapRecord = record;
+            this._showEditMapEditor = true;
+        }
+
+        /// <summary>
+        /// Chiude l'editor EditMap e libera lo snapshot aperto
+        /// </summary>
+        private void CloseEditMapEditor()
+        {
+            this._showEditMapEditor = false;
+            this._editMapRecord = null;
+            this._editMapRecordIndex = -1;
+        }
+
+        /// <summary>
+        /// Applica la copia validata prodotta dall'editor EditMap
+        /// </summary>
+        /// <param name="request">Mappa e durate indicizzate</param>
+        private void ApplyEditMap((EditMap Map, double SourceDurationMs, double LanguageDurationMs) request)
+        {
+            if (this._editMapRecord == null)
+                return;
+
+            bool applied = this.Orchestrator.UpdateEditMap(this._editMapRecordIndex, this._editMapRecord.EpisodeId, this._editMapRecord.SourceFilePath, this._editMapRecord.LangFilePath, request.Map, request.SourceDurationMs, request.LanguageDurationMs, out string errorMessage);
+            if (applied)
+            {
+                this.CloseEditMapEditor();
+            }
+            else
+            {
+                this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.editMap.applyFailed"), errorMessage, 8000);
+            }
+        }
+
+        /// <summary>
         /// Mostra dialog info
         /// </summary>
         private void ShowInfo()
@@ -2474,6 +2541,9 @@ namespace RemuxForge.Web.Components.Pages
             this._showAudioSettings = false;
             this._showAdvancedSettings = false;
             this._showDelay = false;
+            this._showEditMapEditor = false;
+            this._editMapRecord = null;
+            this._editMapRecordIndex = -1;
             this._showEncodingProfiles = false;
             this._showInfo = false;
             this._showContextMenu = false;

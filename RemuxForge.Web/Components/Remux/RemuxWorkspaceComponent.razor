@@ -10,7 +10,11 @@
     </RadzenSplitterPane>
     <RadzenSplitterPane>
         <div class="rf-workspace-pane rf-workspace-pane-detail">
-            <DetailPanelComponent Record="@SelectedRecord" Options="@Options" JsModule="@JsModule" />
+            <DetailPanelComponent Record="@SelectedRecord"
+                                  Options="@Options"
+                                  JsModule="@JsModule"
+                                  IsBusy="@IsBusy"
+                                  OnChangeEditMap="@OnChangeEditMap" />
         </div>
     </RadzenSplitterPane>
 </RadzenSplitter>
@@ -47,6 +51,11 @@
     [Parameter] public IJSObjectReference JsModule { get; set; }
 
     /// <summary>
+    /// Indica che la pipeline Remux è occupata
+    /// </summary>
+    [Parameter] public bool IsBusy { get; set; }
+
+    /// <summary>
     /// Evento selezione riga
     /// </summary>
     [Parameter] public EventCallback<(int Index, bool Ctrl, bool Shift)> OnRowSelected { get; set; }
@@ -55,4 +64,9 @@
     /// Evento menu contestuale
     /// </summary>
     [Parameter] public EventCallback<(int Index, double X, double Y)> OnContextMenu { get; set; }
+
+    /// <summary>
+    /// Evento apertura editor EditMap del record selezionato
+    /// </summary>
+    [Parameter] public EventCallback OnChangeEditMap { get; set; }
 }

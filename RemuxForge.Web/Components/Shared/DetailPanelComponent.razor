@@ -118,36 +118,49 @@
                             </div>
                         }
 
-                        @if (Record.DeepAnalysisApplied && Record.DeepAnalysisMap != null)
+                        @if (!string.IsNullOrEmpty(Record.LangFilePath))
                         {
                             <div class="detail-card detail-sync-card">
                                 <div class="detail-card-title">Deep analysis</div>
-                                @PropertyRow(AppText.T("web.detail.statusLabel"), AppText.T("web.detail.applied"))
-                                @if (!string.IsNullOrEmpty(Record.DeepAnalysisMap.StretchFactor))
+                                @PropertyRow(AppText.T("web.detail.statusLabel"), GetDeepAnalysisStatus())
+                                @if (Record.DeepAnalysisMapManuallyEdited)
                                 {
-                                    @PropertyRow(AppText.T("web.detail.stretchLabel"), Record.DeepAnalysisMap.StretchFactor)
+                                    @PropertyRow(AppText.T("web.editMap.modifiedLabel"), AppText.T("web.common.yes"))
                                 }
-                                @PropertyRow(AppText.T("web.detail.operationsLabel"), Record.DeepAnalysisMap.Operations.Count.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                                @if (Record.DeepAnalysisMap != null)
+                                {
+                                    @if (!string.IsNullOrEmpty(Record.DeepAnalysisMap.StretchFactor))
+                                    {
+                                        @PropertyRow(AppText.T("web.detail.stretchLabel"), Record.DeepAnalysisMap.StretchFactor)
+                                    }
+                                    @PropertyRow(AppText.T("web.detail.operationsLabel"), Record.DeepAnalysisMap.Operations.Count.ToString(System.Globalization.CultureInfo.InvariantCulture))
 
-                                @if (Record.DeepAnalysisMap.Operations.Count == 0)
-                                {
-                                    <div class="detail-card-text">@AppText.T("web.detail.noLocalEdits")</div>
+                                    @if (Record.DeepAnalysisMap.Operations.Count == 0)
+                                    {
+                                        <div class="detail-card-text">@AppText.T("web.detail.noLocalEdits")</div>
+                                    }
+                                    else
+                                    {
+                                        <div class="detail-operation-list">
+                                            @for (int i = 0; i < Record.DeepAnalysisMap.Operations.Count; i++)
+                                            {
+                                                EditOperation operation = Record.DeepAnalysisMap.Operations[i];
+                                                <div class="detail-operation-card">
+                                                    <div class="detail-operation-title">@((i + 1) + ". " + _builder.FormatEditOperationType(operation.Type))</div>
+                                                    @PropertyRow(AppText.T("web.detail.languageTimestampLabel"), _builder.FormatTimestamp(operation.LangTimestampMs))
+                                                    @PropertyRow(AppText.T("web.detail.sourceTimestampLabel"), _builder.FormatTimestamp(operation.SourceTimestampMs))
+                                                    @PropertyRow(AppText.T("web.detail.durationLabel"), (operation.DurationMs / 1000.0).ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + "s")
+                                                </div>
+                                            }
+                                        </div>
+                                    }
                                 }
-                                else
-                                {
-                                    <div class="detail-operation-list">
-                                        @for (int i = 0; i < Record.DeepAnalysisMap.Operations.Count; i++)
-                                        {
-                                            EditOperation operation = Record.DeepAnalysisMap.Operations[i];
-                                            <div class="detail-operation-card">
-                                                <div class="detail-operation-title">@((i + 1) + ". " + _builder.FormatEditOperationType(operation.Type))</div>
-                                                @PropertyRow(AppText.T("web.detail.languageTimestampLabel"), _builder.FormatTimestamp(operation.LangTimestampMs))
-                                                @PropertyRow(AppText.T("web.detail.sourceTimestampLabel"), _builder.FormatTimestamp(operation.SourceTimestampMs))
-                                                @PropertyRow(AppText.T("web.detail.durationLabel"), (operation.DurationMs / 1000.0).ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + "s")
-                                            </div>
-                                        }
-                                    </div>
-                                }
+                                <div class="detail-card-actions">
+                                    <RadzenButton Text="@AppText.T("web.editMap.change")"
+                                                  Icon="edit_timeline"
+                                                  Disabled="@(!CanOpenEditMap())"
+                                                  Click="@OnChangeEditMap" />
+                                </div>
                             </div>
                         }
                     </div>
@@ -259,6 +272,16 @@
     [Parameter] public IJSObjectReference JsModule { get; set; }
 
     /// <summary>
+    /// Indica che una pipeline incompatibile è in corso
+    /// </summary>
+    [Parameter] public bool IsBusy { get; set; }
+
+    /// <summary>
+    /// Richiede l'apertura dell'editor EditMap sul record visualizzato
+    /// </summary>
+    [Parameter] public EventCallback OnChangeEditMap { get; set; }
+
+    /// <summary>
     /// Builder del report testuale e formatter condiviso dei valori complessi
     /// </summary>
     private DetailPanelTextBuilder _builder = new DetailPanelTextBuilder();
@@ -330,6 +353,27 @@
         if (this.Record == null || this.Record.ResultSize <= 0)
             return 0;
         return 100 - this.Record.EncodedSize * 100 / this.Record.ResultSize;
+    }
+
+    /// <summary>
+    /// Restituisce lo stato sintetico della Deep Analysis
+    /// </summary>
+    private string GetDeepAnalysisStatus()
+    {
+        if (this.Record.DeepAnalysisApplied && this.Record.DeepAnalysisMap != null)
+            return AppText.T("web.detail.applied");
+        if (this.Record.DeepAnalysisResult != null)
+            return AppText.T("web.detail.failed");
+        return AppText.T("web.editMap.notAnalyzed");
+    }
+
+    /// <summary>
+    /// True quando il record può aprire l'editor manuale
+    /// </summary>
+    private bool CanOpenEditMap()
+    {
+        return !this.IsBusy && this.Record != null && !string.IsNullOrEmpty(this.Record.SourceFilePath) && !string.IsNullOrEmpty(this.Record.LangFilePath) &&
+               (this.Record.Status == FileStatus.Pending || this.Record.Status == FileStatus.Analyzed || this.Record.Status == FileStatus.Error);
     }
 
     /// <summary>

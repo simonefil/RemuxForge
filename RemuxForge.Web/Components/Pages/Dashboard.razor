@@ -72,8 +72,10 @@
                                  SelectedIndices="@_selectedIndices"
                                  Options="@Orchestrator.CurrentOptions"
                                  JsModule="@_jsModule"
+                                 IsBusy="@Orchestrator.IsBusy"
                                  OnRowSelected="SelectRow"
-                                             OnContextMenu="ShowContextMenu" />
+                                 OnContextMenu="ShowContextMenu"
+                                 OnChangeEditMap="ShowEditMapEditor" />
                 }
                 </div>
             </RadzenSplitterPane>
@@ -161,6 +163,15 @@
     <DelayDialogComponent Record="@_selectedRecord"
                            OnClose="CloseDelay"
                            OnApply="ApplyDelay" />
+}
+
+@* Editor visuale EditMap *@
+@if (_showEditMapEditor && _editMapRecord != null)
+{
+    <EditMapEditorDialogComponent RecordIndex="@_editMapRecordIndex"
+                                  Record="@_editMapRecord"
+                                  OnClose="CloseEditMapEditor"
+                                  OnApply="ApplyEditMap" />
 }
 
 @* Dialog Profili Encoding *@
