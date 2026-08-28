@@ -5,6 +5,16 @@
 @inject ThemeService ThemeService
 @implements IAsyncDisposable
 
+@if (_showEditMapEditor && _editMapRecord != null)
+{
+    <EditMapEditorPageComponent RecordIndex="@_editMapRecordIndex"
+                                Record="@_editMapRecord"
+                                IsBusy="@Orchestrator.IsBusy"
+                                OnClose="CloseEditMapEditor"
+                                OnApply="ApplyEditMap" />
+}
+else
+{
 <div class="rf-layout @(_navigationCollapsed ? "rf-navigation-collapsed" : "")">
     <ModeNavigationComponent CurrentMode="@_currentMode"
                              Collapsed="@_navigationCollapsed"
@@ -165,16 +175,6 @@
                            OnApply="ApplyDelay" />
 }
 
-@* Editor visuale EditMap *@
-@if (_showEditMapEditor && _editMapRecord != null)
-{
-    <EditMapEditorDialogComponent RecordIndex="@_editMapRecordIndex"
-                                  Record="@_editMapRecord"
-                                  IsBusy="@Orchestrator.IsBusy"
-                                  OnClose="CloseEditMapEditor"
-                                  OnApply="ApplyEditMap" />
-}
-
 @* Dialog Profili Encoding *@
 @if (_showEncodingProfiles)
 {
@@ -206,4 +206,5 @@
                                Report="@_mediaInfoReport"
                                JsModule="@_jsModule"
                                OnClose="CloseMediaInfo" />
+}
 }

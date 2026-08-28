@@ -1,42 +1,47 @@
-.edit-map-dialog .dialog-body {
-    padding: 0;
+.edit-map-page {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    overflow: hidden;
+    background: var(--rz-body-background-color);
+    color: var(--rz-text-color);
 }
 
-.edit-map-dialog .dialog-title {
-    min-height: 3rem;
-    padding-block: calc(var(--rz-gap) * 0.65);
-}
-
-.edit-map-dialog .dialog-footer {
-    min-height: 3.25rem;
-    padding-block: calc(var(--rz-gap) * 0.5);
-}
-
-.edit-map-dialog-titlebar,
-.edit-map-dialog-title-actions,
-.edit-map-dialog-footer {
+.edit-map-page-header,
+.edit-map-page-title-actions,
+.edit-map-page-footer {
     display: flex;
     align-items: center;
 }
 
-.edit-map-dialog-titlebar {
+.edit-map-page-header {
+    min-height: 3rem;
     justify-content: space-between;
     gap: var(--rz-gap);
+    padding: calc(var(--rz-gap) * 0.65) var(--rz-gap);
+    border-bottom: var(--rz-dialog-title-border);
+    background: var(--rz-dialog-title-background-color);
+    color: var(--rz-dialog-title-color);
+    font-size: var(--rz-dialog-title-font-size);
+    font-weight: var(--rz-dialog-title-font-weight);
 }
 
-.edit-map-dialog-title-actions,
+.edit-map-page-title-actions,
 .edit-map-operation-grid .rz-cell-data {
     gap: calc(var(--rz-gap) * 0.5);
 }
 
-.edit-map-dialog-subtitle,
+.edit-map-page-subtitle,
 .edit-map-preview-meta {
     color: var(--rz-text-secondary-color);
     font-size: var(--rz-body-font-size);
     font-weight: 400;
 }
 
-.edit-map-dialog-body,
+.edit-map-page-body,
 .edit-map-main-splitter,
 .edit-map-preview-section,
 .edit-map-timeline-pane,
@@ -45,6 +50,15 @@
     height: 100%;
     min-width: 0;
     min-height: 0;
+}
+
+.edit-map-page-footer {
+    min-height: 3.25rem;
+    gap: calc(var(--rz-gap) * 0.5);
+    padding: calc(var(--rz-gap) * 0.5) var(--rz-gap);
+    border-top: var(--rz-footer-border);
+    background: var(--rz-footer-background-color);
+    color: var(--rz-footer-color);
 }
 
 .edit-map-preview-section,

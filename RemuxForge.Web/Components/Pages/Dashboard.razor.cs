@@ -477,7 +477,7 @@ namespace RemuxForge.Web.Components.Pages
         [JSInvokable("OnKeyDown")]
         public async Task HandleKeyDownAsync(string key, bool ctrl, bool shift, bool alt)
         {
-            if (this.IsBlockingDialogOpen())
+            if (this.IsBlockingOverlayOpen())
             {
                 if (key == "Escape")
                 {
@@ -941,9 +941,9 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
-        /// True se c'è un dialog modale aperto che deve bloccare scorciatoie tabella
+        /// True se c'è un overlay o workspace esclusivo che deve bloccare scorciatoie tabella
         /// </summary>
-        private bool IsBlockingDialogOpen()
+        private bool IsBlockingOverlayOpen()
         {
             return this._showConfig || this._showMetadataPathBrowse || this._showMetadataPreset || this._showMetadataMappedInfo || this._showMetadataManualEdit || this._showMetadataRename || this._showToolPaths || this._showAudioSettings || this._showAdvancedSettings || this._showDelay || this._showEditMapEditor || this._showEncodingProfiles || this._showInfo || this._showMediaInfo;
         }

@@ -3,20 +3,19 @@
 @inject NotificationService NotificationService
 @implements IAsyncDisposable
 
-<div class="dialog-overlay visible" @onclick="CloseAsync">
-    <div @ref="_dialogRoot" class="dialog-box dialog-fullscreen edit-map-dialog" role="dialog" aria-modal="true" data-keyboard-owner="edit-map" tabindex="-1" aria-labelledby="edit-map-dialog-title" @onclick:stopPropagation="true">
-        <div class="dialog-title edit-map-dialog-titlebar">
+<section @ref="_pageRoot" class="edit-map-page" data-keyboard-owner="edit-map" tabindex="-1" aria-labelledby="edit-map-page-title">
+        <header class="edit-map-page-header">
             <div>
-                <div id="edit-map-dialog-title">@AppText.T("web.editMap.title")</div>
-                <div class="edit-map-dialog-subtitle">@Record?.EpisodeId · @AppText.T("web.detail.stretchLabel") @GetStretchLabel()</div>
+                <div id="edit-map-page-title">@AppText.T("web.editMap.title")</div>
+                <div class="edit-map-page-subtitle">@Record?.EpisodeId · @AppText.T("web.detail.stretchLabel") @GetStretchLabel()</div>
             </div>
-            <div class="edit-map-dialog-title-actions">
+            <div class="edit-map-page-title-actions">
                 <RadzenBadge Text="@GetStateLabel()" BadgeStyle="@GetStateStyle()" />
-                <RadzenButton class="dialog-close-button" Icon="close" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.common.close")" aria-label="@AppText.T("web.common.close")" Click="CloseAsync" />
+                <RadzenButton Icon="close" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.common.close")" aria-label="@AppText.T("web.common.close")" Click="CloseAsync" />
             </div>
-        </div>
+        </header>
 
-        <div class="dialog-body edit-map-dialog-body">
+        <main class="edit-map-page-body">
             <RadzenSplitter Orientation="Orientation.Vertical" class="edit-map-main-splitter">
                 <RadzenSplitterPane Size="44%" Min="240px">
                     <section class="edit-map-preview-section">
@@ -164,16 +163,15 @@
                     </section>
                 </RadzenSplitterPane>
             </RadzenSplitter>
-        </div>
+        </main>
 
-        <div class="dialog-footer edit-map-dialog-footer">
+        <footer class="edit-map-page-footer">
             <span class="edit-map-validation-summary">@GetValidationSummary()</span>
             <span class="edit-map-footer-spacer"></span>
             <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.cancelHelp")" Click="CloseAsync" />
             <RadzenButton Text="@AppText.T("web.editMap.apply")" Icon="check" title="@AppText.T("web.editMap.applyHelp")" Disabled="@(!CanApply())" Click="ApplyAsync" />
-        </div>
-    </div>
-</div>
+        </footer>
+</section>
 
 @code {
     /// <summary>Indice del record originale</summary>
@@ -182,7 +180,7 @@
     /// <summary>Snapshot del record aperto</summary>
     [Parameter] public FileProcessingRecord Record { get; set; }
 
-    /// <summary>Evento chiusura dialog</summary>
+    /// <summary>Evento chiusura pagina</summary>
     [Parameter] public EventCallback OnClose { get; set; }
 
     /// <summary>Evento applicazione mappa validata</summary>
@@ -203,14 +201,14 @@
     private RadzenDataGrid<EditOperation> _operationGrid;
     private ElementReference _sourceCanvas;
     private ElementReference _languageCanvas;
-    private ElementReference _dialogRoot;
+    private ElementReference _pageRoot;
     private ElementReference _timelineHost;
     private ElementReference _timelineCanvas;
     private IJSObjectReference _module;
     private IJSObjectReference _previewPair;
     private IJSObjectReference _timeline;
     private IJSObjectReference _keyboard;
-    private DotNetObjectReference<EditMapEditorDialogComponent> _dotNetReference;
+    private DotNetObjectReference<EditMapEditorPageComponent> _dotNetReference;
     private string _sourceError = "";
     private string _languageError = "";
     private string _sourcePreviewMessage = "";
@@ -274,7 +272,7 @@
 
         this._interactiveInitialized = true;
         this._dotNetReference = DotNetObjectReference.Create(this);
-        this._keyboard = await this._module.InvokeAsync<IJSObjectReference>("captureEditorKeyboard", this._dialogRoot, this._dotNetReference);
+        this._keyboard = await this._module.InvokeAsync<IJSObjectReference>("captureEditorKeyboard", this._pageRoot, this._dotNetReference);
         try
         {
             this._previewPair = await this._module.InvokeAsync<IJSObjectReference>("createPreviewPair", this._sourceCanvas, this._languageCanvas);
