@@ -2103,5 +2103,12 @@
   "web.editMap.issue.source_boundary_not_monotonic": "I boundary Source non sono monotoni",
   "web.editMap.issue.source_duration_mismatch": "La durata proiettata differisce dalla durata Source",
   "web.editMap.issue.source_boundary_normalized": "Boundary Source normalizzato dalla timeline Language",
-  "web.editMap.issue.scope_normalized": "Ambito ricalcolato dalla timeline reale"
+  "web.editMap.issue.scope_normalized": "Ambito ricalcolato dalla timeline reale",
+  "web.editMap.indexMetadata": "{0}×{1} · SAR {2} · {3} frame",
+  "web.editMap.timelineAlternative": "Timeline EditMap a {0} con {1} operazioni",
+  "web.editMap.addCutHelp": "Crea un Cut al playhead attuale quando è mappato",
+  "web.editMap.addInsertHelp": "Crea un Insert al playhead attuale quando è mappato",
+  "web.editMap.deleteHelp": "Elimina immediatamente l'operazione selezionata",
+  "web.editMap.cancelHelp": "Chiude senza applicare questa copia di lavoro",
+  "web.editMap.applyHelp": "Valida e applica questa EditMap al piano di remux corrente"
 }

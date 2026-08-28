@@ -107,7 +107,7 @@
                         </div>
                         <div @ref="_timelineHost" class="edit-map-timeline-host" aria-label="@AppText.T("web.editMap.timeline")">
                             <div class="edit-map-timeline-scroll-range"></div>
-                            <canvas @ref="_timelineCanvas" class="edit-map-timeline-canvas"></canvas>
+                            <canvas @ref="_timelineCanvas" class="edit-map-timeline-canvas" role="img" aria-label="@GetTimelineAlternative()"></canvas>
                         </div>
                     </section>
                 </RadzenSplitterPane>
@@ -140,9 +140,9 @@
                                     </Columns>
                                 </RadzenDataGrid>
                                 <div class="edit-map-operation-actions">
-                                    <RadzenButton Text="@AppText.T("web.editMap.addCut")" Icon="add" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@(!CanCreateOperation())" Click="@(() => AddOperationAsync(EditOperation.CUT_SEGMENT))" />
-                                    <RadzenButton Text="@AppText.T("web.editMap.addInsert")" Icon="add" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@(!CanCreateOperation())" Click="@(() => AddOperationAsync(EditOperation.INSERT_SILENCE))" />
-                                    <RadzenButton Text="@AppText.T("web.common.delete")" Icon="delete" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Danger" Disabled="@(_selectedOperation == null)" Click="DeleteSelectedOperationAsync" />
+                                    <RadzenButton Text="@AppText.T("web.editMap.addCut")" Icon="add" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.addCutHelp")" aria-label="@AppText.T("web.editMap.addCutHelp")" Disabled="@(!CanCreateOperation())" Click="@(() => AddOperationAsync(EditOperation.CUT_SEGMENT))" />
+                                    <RadzenButton Text="@AppText.T("web.editMap.addInsert")" Icon="add" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.addInsertHelp")" aria-label="@AppText.T("web.editMap.addInsertHelp")" Disabled="@(!CanCreateOperation())" Click="@(() => AddOperationAsync(EditOperation.INSERT_SILENCE))" />
+                                    <RadzenButton Text="@AppText.T("web.common.delete")" Icon="delete" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Danger" title="@AppText.T("web.editMap.deleteHelp")" aria-label="@AppText.T("web.editMap.deleteHelp")" Disabled="@(_selectedOperation == null)" Click="DeleteSelectedOperationAsync" />
                                 </div>
                             </section>
                         </RadzenSplitterPane>
@@ -188,8 +188,8 @@
         <div class="dialog-footer edit-map-dialog-footer">
             <span class="edit-map-validation-summary">@GetValidationSummary()</span>
             <span class="edit-map-footer-spacer"></span>
-            <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="CloseAsync" />
-            <RadzenButton Text="@AppText.T("web.editMap.apply")" Icon="check" Disabled="@(!CanApply())" Click="ApplyAsync" />
+            <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.cancelHelp")" Click="CloseAsync" />
+            <RadzenButton Text="@AppText.T("web.editMap.apply")" Icon="check" title="@AppText.T("web.editMap.applyHelp")" Disabled="@(!CanApply())" Click="ApplyAsync" />
         </div>
     </div>
 </div>
@@ -380,7 +380,7 @@
     {
         if (index == null)
             return "—";
-        return index.CodedWidth.ToString() + "×" + index.CodedHeight.ToString() + " · SAR " + index.SampleAspectRatio + " · " + index.FrameCount.ToString() + " frame";
+        return AppText.F("web.editMap.indexMetadata", index.CodedWidth, index.CodedHeight, index.SampleAspectRatio, index.FrameCount);
     }
 
     private string GetPreviewAlternative(bool source)
@@ -391,6 +391,8 @@
             return !string.IsNullOrEmpty(message) ? message : AppText.T(source ? "web.editMap.noSourceFrame" : "web.editMap.noLanguageFrame");
         return AppText.F(source ? "web.editMap.sourcePreviewAlternative" : "web.editMap.languagePreviewAlternative", frame.PresentationIndex + 1, FormatTimestamp(frame.PtsMs));
     }
+
+    private string GetTimelineAlternative() => AppText.F("web.editMap.timelineAlternative", FormatTimestamp(this._sourcePlayheadMs), this._workingMap.Operations.Count);
 
     private void RebuildProjection()
     {
@@ -777,7 +779,7 @@
         return string.Join(" · ", messages);
     }
 
-    private string GetOperationTypeLabel(EditOperation operation) => string.Equals(operation.Type, EditOperation.CUT_SEGMENT, StringComparison.Ordinal) ? "Cut" : "Insert";
+    private string GetOperationTypeLabel(EditOperation operation) => AppText.T(string.Equals(operation.Type, EditOperation.CUT_SEGMENT, StringComparison.Ordinal) ? "web.editMap.cut" : "web.editMap.insert");
 
     private void UpdateOperationSourceText(ChangeEventArgs args) => this._operationSourceText = GetEventText(args);
     private void UpdateOperationLanguageText(ChangeEventArgs args) => this._operationLanguageText = GetEventText(args);
