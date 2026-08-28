@@ -254,25 +254,20 @@ namespace RemuxForge.Web
                     return Results.NotFound();
 
                 string filePath;
-                int streamIndex;
                 int trackId;
-                bool useTrackId;
                 if (string.Equals(side, "source", StringComparison.OrdinalIgnoreCase))
                 {
                     filePath = record.SourceFilePath;
-                    if (!audioExtractor.ResolveSharedStreams(record.SourceFilePath, record.LangFilePath, AppSettingsService.Instance.Settings.Advanced.Ffmpeg.FrameExtractionTimeoutMs, out streamIndex, out _))
+                    if (record.SourceAudioTracks == null || record.SourceAudioTracks.Count == 0)
                         return Results.NoContent();
-                    trackId = -1;
-                    useTrackId = false;
+                    trackId = record.SourceAudioTracks[0].Id;
                 }
                 else if (string.Equals(side, "language", StringComparison.OrdinalIgnoreCase))
                 {
                     filePath = record.LangFilePath;
                     if (record.ImportedAudioTracks == null || record.ImportedAudioTracks.Count == 0)
                         return Results.NoContent();
-                    streamIndex = -1;
                     trackId = record.ImportedAudioTracks[0].Id;
-                    useTrackId = true;
                 }
                 else
                 {
@@ -285,9 +280,7 @@ namespace RemuxForge.Web
                 try
                 {
                     int timeoutMs = AppSettingsService.Instance.Settings.Advanced.Ffmpeg.FrameExtractionTimeoutMs;
-                    AudioWaveform waveform = await Task.Run(() => useTrackId
-                        ? audioExtractor.GenerateWaveformForTrackId(filePath, trackId, durationMs, timeoutMs, context.RequestAborted)
-                        : audioExtractor.GenerateWaveform(filePath, streamIndex, durationMs, timeoutMs, context.RequestAborted), context.RequestAborted);
+                    AudioWaveform waveform = await Task.Run(() => audioExtractor.GenerateWaveformForTrackId(filePath, trackId, durationMs, timeoutMs, context.RequestAborted), context.RequestAborted);
                     using MemoryStream payload = new MemoryStream();
                     using (BinaryWriter writer = new BinaryWriter(payload, System.Text.Encoding.UTF8, true))
                     {

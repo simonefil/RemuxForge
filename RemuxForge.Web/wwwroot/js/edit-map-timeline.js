@@ -331,9 +331,9 @@ class EditMapTimeline {
         this.sourceWaveform = null;
         this.languageWaveform = null;
         this.waveformGain = clampWaveformGain(model.waveformGain);
-        this.plotLeft = 150;
-        this.navigatorHeight = 24;
-        this.rulerHeight = 28;
+        this.plotLeft = 112;
+        this.navigatorHeight = 22;
+        this.rulerHeight = 24;
         this.waveformController = new AbortController();
         this.range = host.querySelector('.edit-map-timeline-scroll-range');
         this.pixelsPerMs = Math.max(0.000001, Math.max(1, host.clientWidth - this.plotLeft) / Math.max(1, model.durationMs));
@@ -460,8 +460,8 @@ class EditMapTimeline {
         const rulerTop = navigatorHeight;
         const rulerHeight = this.rulerHeight;
         const trackTop = rulerTop + rulerHeight;
-        const laneGap = 8;
-        const operationHeight = 22;
+        const laneGap = 4;
+        const operationHeight = 18;
         const laneHeight = Math.max(20, Math.floor((height - trackTop - laneGap * 3 - operationHeight) / 2));
         const sourceTop = trackTop + laneGap;
         const languageTop = sourceTop + laneHeight + laneGap;
@@ -470,7 +470,9 @@ class EditMapTimeline {
         ctx.clearRect(0, 0, width, height);
         ctx.fillStyle = background;
         ctx.fillRect(0, 0, width, height);
-        ctx.font = cssColor(styles, '--rz-body-font-size', '13px') + ' ' + cssColor(styles, '--rz-font-family', 'sans-serif');
+        const fontFamily = cssColor(styles, '--rz-font-family', 'sans-serif');
+        const bodyFontSize = cssColor(styles, '--rz-text-body2-font-size', '12px');
+        ctx.font = bodyFontSize + ' ' + fontFamily;
         ctx.textBaseline = 'middle';
         const startMs = this.host.scrollLeft / this.pixelsPerMs;
         const endMs = startMs + Math.max(1, width - plotLeft) / this.pixelsPerMs;
@@ -480,19 +482,15 @@ class EditMapTimeline {
         ctx.fillRect(plotLeft, sourceTop, width - plotLeft, laneHeight);
         ctx.fillRect(plotLeft, languageTop, width - plotLeft, laneHeight);
         drawTimeGrid(ctx, width, plotLeft, startMs, endMs, this.pixelsPerMs, trackTop, trackBottom, border);
-        drawAmplitudeGrid(ctx, plotLeft, width, sourceTop, laneHeight, border, secondary);
-        drawAmplitudeGrid(ctx, plotLeft, width, languageTop, laneHeight, border, secondary);
+        drawAmplitudeGrid(ctx, plotLeft, width, sourceTop, laneHeight, border, secondary, fontFamily);
+        drawAmplitudeGrid(ctx, plotLeft, width, languageTop, laneHeight, border, secondary, fontFamily);
         ctx.strokeStyle = border;
         ctx.strokeRect(plotLeft + 0.5, sourceTop + 0.5, width - plotLeft - 1, laneHeight - 1);
         ctx.strokeRect(plotLeft + 0.5, languageTop + 0.5, width - plotLeft - 1, laneHeight - 1);
         ctx.fillStyle = secondary;
-        ctx.fillText(this.model.labels?.source || 'SOURCE', 8, sourceTop + Math.min(14, laneHeight / 3));
-        ctx.fillText(this.model.labels?.language || 'LANGUAGE', 8, languageTop + Math.min(14, laneHeight / 3));
-        if (laneHeight >= 38) {
-            ctx.fillText(this.model.sourcePlayheadLabel || '—', 8, sourceTop + Math.min(34, laneHeight * 0.7));
-            ctx.fillText(this.model.languagePlayheadLabel || '—', 8, languageTop + Math.min(34, laneHeight * 0.7));
-        }
-        this.drawWaveform(this.sourceWaveform, startMs + (this.model.sourceFirstPtsMs || 0), endMs + (this.model.sourceFirstPtsMs || 0), plotLeft, width, sourceTop, laneHeight, sourceWaveformColor);
+        ctx.fillText(this.model.labels?.source || 'SOURCE', 7, sourceTop + laneHeight / 2);
+        ctx.fillText(this.model.labels?.language || 'LANGUAGE', 7, languageTop + laneHeight / 2);
+        this.drawWaveform(this.sourceWaveform, startMs, endMs, plotLeft, width, sourceTop, laneHeight, sourceWaveformColor);
         for (const segment of this.model.segments || []) {
             const x1 = this.xAtTime(segment.sourceStartMs);
             const x2 = this.xAtTime(segment.sourceEndMs);
@@ -509,8 +507,8 @@ class EditMapTimeline {
                 if (visibleEnd > visibleStart) {
                     const ratioStart = (visibleStart - segment.sourceStartMs) / Math.max(1, segment.sourceEndMs - segment.sourceStartMs);
                     const ratioEnd = (visibleEnd - segment.sourceStartMs) / Math.max(1, segment.sourceEndMs - segment.sourceStartMs);
-                    const languageStart = segment.languageStartMs + (segment.languageEndMs - segment.languageStartMs) * ratioStart + (this.model.languageFirstPtsMs || 0);
-                    const languageEnd = segment.languageStartMs + (segment.languageEndMs - segment.languageStartMs) * ratioEnd + (this.model.languageFirstPtsMs || 0);
+                    const languageStart = segment.languageStartMs + (segment.languageEndMs - segment.languageStartMs) * ratioStart;
+                    const languageEnd = segment.languageStartMs + (segment.languageEndMs - segment.languageStartMs) * ratioEnd;
                     this.drawWaveform(this.languageWaveform, languageStart, languageEnd, this.xAtTime(visibleStart), this.xAtTime(visibleEnd), languageTop, laneHeight, languageWaveformColor);
                 }
             }
@@ -573,7 +571,7 @@ class EditMapTimeline {
         ctx.save();
         ctx.fillStyle = background;
         ctx.fillRect(left, 1, availableWidth, height - 3);
-        this.drawWaveform(this.sourceWaveform, this.model.sourceFirstPtsMs || 0, (this.model.sourceFirstPtsMs || 0) + duration, left, width, 2, height - 4, waveformColor, 1.0);
+        this.drawWaveform(this.sourceWaveform, 0, duration, left, width, 2, height - 4, waveformColor, 1.0);
         const geometry = this.navigatorGeometry();
         ctx.globalAlpha = 0.58;
         ctx.fillStyle = background;
@@ -936,13 +934,14 @@ function drawTimeGrid(context, width, left, startMs, endMs, pixelsPerMs, top, bo
     context.restore();
 }
 
-function drawAmplitudeGrid(context, left, width, top, height, color, labelColor) {
+function drawAmplitudeGrid(context, left, width, top, height, color, labelColor, fontFamily) {
     const center = top + height / 2;
     const halfHeight = Math.max(1, height / 2 - 1);
     const levels = height >= 110 ? [0, -6, -12, -24, -48] : height >= 70 ? [0, -6, -12, -24] : height >= 45 ? [0, -12] : [0];
     context.save();
     context.strokeStyle = color;
     context.fillStyle = labelColor;
+    context.font = `9px ${fontFamily}`;
     context.lineWidth = 1;
     context.textAlign = 'right';
     let lastUpperLabelY = Number.NEGATIVE_INFINITY;
@@ -962,11 +961,11 @@ function drawAmplitudeGrid(context, left, width, top, height, color, labelColor)
         const label = decibels === 0 ? '0 dB' : `${decibels} dB`;
         const upperLabelY = Math.max(top + 7, upper);
         const lowerLabelY = Math.min(top + height - 7, lower);
-        if (upperLabelY - lastUpperLabelY >= 12) {
+        if (center - upperLabelY >= 12 && upperLabelY - lastUpperLabelY >= 12) {
             context.fillText(label, left - 5, upperLabelY);
             lastUpperLabelY = upperLabelY;
         }
-        if (lastLowerLabelY - lowerLabelY >= 12) {
+        if (lowerLabelY - center >= 12 && lastLowerLabelY - lowerLabelY >= 12) {
             context.fillText(label, left - 5, lowerLabelY);
             lastLowerLabelY = lowerLabelY;
         }
@@ -977,8 +976,7 @@ function drawAmplitudeGrid(context, left, width, top, height, color, labelColor)
     context.lineTo(width, Math.round(center) + 0.5);
     context.stroke();
     context.globalAlpha = 1;
-    if (center - lastUpperLabelY >= 12 && lastLowerLabelY - center >= 12)
-        context.fillText('-∞', left - 5, center);
+    context.fillText('-∞', left - 5, center);
     context.textAlign = 'start';
     context.restore();
 }

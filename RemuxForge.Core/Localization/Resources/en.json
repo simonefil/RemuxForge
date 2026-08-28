@@ -2047,6 +2047,7 @@
   "web.editMap.noLanguageFrame": "No mapped Language frame",
   "web.editMap.noSourceFrame": "No mapped Source frame",
   "web.editMap.previewError": "Frame preview failed",
+  "web.editMap.timelineError": "Timeline initialization failed",
   "web.editMap.validationErrors": "{0} structural validation errors",
   "web.editMap.validationValid": "Structurally valid · {0} operations · {1} warnings",
   "web.editMap.invalidValue": "Invalid value",
