@@ -314,7 +314,7 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public UiConfig()
         {
-            this.Theme = "nord";
+            this.Theme = "material-dark";
             this.LastMode = Options.MODE_REMUX;
             this.Language = "en";
         }
@@ -386,7 +386,19 @@ namespace RemuxForge.Core.Models
         /// <summary>
         /// Temi validi
         /// </summary>
-        public static readonly string[] VALID_THEMES = { "dark", "nord", "dos-blue", "matrix", "cyberpunk", "solarized-dark", "solarized-light", "cybergum", "everforest" };
+        public static readonly string[] VALID_THEMES =
+        {
+            "default",
+            "dark",
+            "humanistic",
+            "humanistic-dark",
+            "material",
+            "material-dark",
+            "software",
+            "software-dark",
+            "standard",
+            "standard-dark"
+        };
 
         #endregion
 

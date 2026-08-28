@@ -1,0 +1,347 @@
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct KeypointRecord { float x; float y; float scale; float response; float orientation; uint frameIndex; uint octave; uint layer; };
+struct ReciprocalMatchRecord { uint firstDescriptorIndex; uint secondDescriptorIndex; float distance; uint pairIndex; };
+struct GeometryPairRecord
+{
+    uint firstFrame; uint secondFrame; uint firstKeypointOffset; uint secondKeypointOffset;
+    uint reciprocalOffset; uint matchCountOffset; uint hypothesisOffset; uint resultIndex;
+    uint firstWidth; uint firstHeight; uint secondWidth; uint secondHeight;
+    uint stableFirstFrame; uint stableSecondFrame;
+};
+struct HypothesisRecord { vec4 row0; vec4 row1; vec4 row2; uvec4 state; };
+struct PairResultRecord { uvec4 header0; uvec4 header1; vec4 metrics0; vec4 metrics1; vec4 row0; vec4 row1; vec4 row2; };
+
+layout(std430, set = 0, binding = 0) readonly buffer FirstKeypoints { KeypointRecord firstKeypoints[]; };
+layout(std430, set = 0, binding = 1) readonly buffer SecondKeypoints { KeypointRecord secondKeypoints[]; };
+layout(std430, set = 0, binding = 2) readonly buffer FirstCounts { uint firstCounts[]; };
+layout(std430, set = 0, binding = 3) readonly buffer SecondCounts { uint secondCounts[]; };
+layout(std430, set = 0, binding = 4) readonly buffer ReciprocalMatches { ReciprocalMatchRecord matches[]; };
+layout(std430, set = 0, binding = 5) readonly buffer MatchCounts { uint matchCounts[]; };
+layout(std430, set = 0, binding = 6) readonly buffer GeometryMetadata { GeometryPairRecord pairs[]; };
+layout(std430, set = 0, binding = 7) buffer Hypotheses { HypothesisRecord hypotheses[]; };
+layout(std430, set = 0, binding = 8) writeonly buffer PairResults { PairResultRecord results[]; };
+
+layout(push_constant) uniform Parameters
+{
+    uint pairCount; uint operation; uint hypothesisCount; uint randomSeed;
+    float reprojectionThreshold; uint minimumReciprocalMatches; uint minimumInliers; float minimumInlierRatio;
+    float minimumCoverage; float maximumMeanError; float minimumAreaRatio; float maximumAreaRatio;
+    uint minimumKeypointsPerFrame;
+} parameters;
+
+const float SQRT_TWO = 1.4142135623730951;
+const float UINT_TO_UNIT = 2.3283064365386963e-10;
+
+uvec2 multiplyHighLow(uint left, uint right)
+{
+    uint leftLow = left & 65535u; uint leftHigh = left >> 16u;
+    uint rightLow = right & 65535u; uint rightHigh = right >> 16u;
+    uint low = leftLow * rightLow;
+    uint middle1 = leftHigh * rightLow;
+    uint middle2 = leftLow * rightHigh;
+    uint high = leftHigh * rightHigh;
+    uint carry = ((low >> 16u) + (middle1 & 65535u) + (middle2 & 65535u)) >> 16u;
+    uint lowResult = (low & 65535u) | ((low + (middle1 << 16u) + (middle2 << 16u)) & 0xffff0000u);
+    uint highResult = high + (middle1 >> 16u) + (middle2 >> 16u) + carry;
+    return uvec2(highResult, lowResult);
+}
+
+uvec4 philox(uvec4 counter, uvec2 key)
+{
+    for (int roundIndex = 0; roundIndex < 10; roundIndex++)
+    {
+        uvec2 product0 = multiplyHighLow(0xD2511F53u, counter.x);
+        uvec2 product1 = multiplyHighLow(0xCD9E8D57u, counter.z);
+        counter = uvec4(product1.x ^ counter.y ^ key.x, product1.y, product0.x ^ counter.w ^ key.y, product0.y);
+        key += uvec2(0x9E3779B9u, 0xBB67AE85u);
+    }
+    return counter;
+}
+
+uint sampleIndex(uint randomValue, uint count)
+{
+    return min(uint(float(randomValue) * UINT_TO_UNIT * float(count)), count - 1u);
+}
+
+bool finiteFloat(float value) { return !isnan(value) && !isinf(value); }
+bool solveHomographyClosed(vec2 source[4], vec2 target[4], out mat3 homography)
+{
+    // Soluzione chiusa deterministica sui quattro match campionati, normalizzata per stabilita' numerica.
+    vec2 sourceMean = vec2(0.0); vec2 targetMean = vec2(0.0);
+    for (int i = 0; i < 4; i++) { sourceMean += source[i]; targetMean += target[i]; }
+    sourceMean *= 0.25; targetMean *= 0.25;
+    float sourceVariance = 0.0; float targetVariance = 0.0;
+    for (int i = 0; i < 4; i++) { sourceVariance += dot(source[i] - sourceMean, source[i] - sourceMean); targetVariance += dot(target[i] - targetMean, target[i] - targetMean); }
+    sourceVariance *= 0.25; targetVariance *= 0.25;
+    if (sourceVariance < 1.0e-8 || targetVariance < 1.0e-8)
+        return false;
+    float sourceScale = SQRT_TWO / sqrt(sourceVariance);
+    float targetScale = SQRT_TWO / sqrt(targetVariance);
+    vec2 normalizedSource[4]; vec2 normalizedTarget[4];
+    for (int i = 0; i < 4; i++)
+    {
+        normalizedSource[i] = (source[i] - sourceMean) * sourceScale;
+        normalizedTarget[i] = (target[i] - targetMean) * targetScale;
+    }
+    mat3 sourceBasis = mat3(
+        vec3(normalizedSource[0], 1.0),
+        vec3(normalizedSource[1], 1.0),
+        vec3(normalizedSource[2], 1.0));
+    mat3 targetBasis = mat3(
+        vec3(normalizedTarget[0], 1.0),
+        vec3(normalizedTarget[1], 1.0),
+        vec3(normalizedTarget[2], 1.0));
+    float sourceDeterminant = determinant(sourceBasis);
+    float targetDeterminant = determinant(targetBasis);
+    if (!finiteFloat(sourceDeterminant) || !finiteFloat(targetDeterminant) || abs(sourceDeterminant) < 1.0e-8 || abs(targetDeterminant) < 1.0e-8)
+        return false;
+    mat3 inverseSourceBasis = inverse(sourceBasis);
+    vec3 sourceCoordinates = inverseSourceBasis * vec3(normalizedSource[3], 1.0);
+    vec3 targetCoordinates = inverse(targetBasis) * vec3(normalizedTarget[3], 1.0);
+    if (any(lessThan(abs(sourceCoordinates), vec3(1.0e-8))))
+        return false;
+    vec3 scales = targetCoordinates / sourceCoordinates;
+    if (any(isnan(scales)) || any(isinf(scales)))
+        return false;
+    mat3 normalizedHomography = targetBasis * mat3(scales.x, 0.0, 0.0, 0.0, scales.y, 0.0, 0.0, 0.0, scales.z) * inverseSourceBasis;
+    mat3 sourceTransform = mat3(sourceScale, 0.0, 0.0, 0.0, sourceScale, 0.0, -sourceScale * sourceMean.x, -sourceScale * sourceMean.y, 1.0);
+    mat3 targetTransform = mat3(targetScale, 0.0, 0.0, 0.0, targetScale, 0.0, -targetScale * targetMean.x, -targetScale * targetMean.y, 1.0);
+    homography = inverse(targetTransform) * normalizedHomography * sourceTransform;
+    if (!finiteFloat(homography[2][2]) || abs(homography[2][2]) < 1.0e-10)
+        return false;
+    homography /= homography[2][2];
+    return all(not(isnan(homography[0]))) && all(not(isnan(homography[1]))) && all(not(isnan(homography[2]))) && all(not(isinf(homography[0]))) && all(not(isinf(homography[1]))) && all(not(isinf(homography[2])));
+}
+
+float reprojectionSquared(mat3 homography, vec2 source, vec2 target);
+
+bool refineAxisAlignedHomography(GeometryPairRecord pair, uint matchCount, mat3 initialHomography, out mat3 refinedHomography)
+{
+    float thresholdSquared = parameters.reprojectionThreshold * parameters.reprojectionThreshold;
+    vec2 sourceMean = vec2(0.0);
+    vec2 targetMean = vec2(0.0);
+    uint inlierCount = 0u;
+    for (uint index = 0u; index < matchCount; index++)
+    {
+        ReciprocalMatchRecord matchValue = matches[pair.reciprocalOffset + index];
+        KeypointRecord first = firstKeypoints[pair.firstKeypointOffset + matchValue.firstDescriptorIndex];
+        KeypointRecord second = secondKeypoints[pair.secondKeypointOffset + matchValue.secondDescriptorIndex];
+        vec2 source = vec2(first.x, first.y);
+        vec2 target = vec2(second.x, second.y);
+        if (reprojectionSquared(initialHomography, source, target) < thresholdSquared)
+        {
+            sourceMean += source;
+            targetMean += target;
+            inlierCount++;
+        }
+    }
+    if (inlierCount < 4u)
+        return false;
+    sourceMean /= float(inlierCount);
+    targetMean /= float(inlierCount);
+    vec2 sourceVariance = vec2(0.0);
+    vec2 covariance = vec2(0.0);
+    for (uint index = 0u; index < matchCount; index++)
+    {
+        ReciprocalMatchRecord matchValue = matches[pair.reciprocalOffset + index];
+        KeypointRecord first = firstKeypoints[pair.firstKeypointOffset + matchValue.firstDescriptorIndex];
+        KeypointRecord second = secondKeypoints[pair.secondKeypointOffset + matchValue.secondDescriptorIndex];
+        vec2 source = vec2(first.x, first.y);
+        vec2 target = vec2(second.x, second.y);
+        if (reprojectionSquared(initialHomography, source, target) < thresholdSquared)
+        {
+            vec2 sourceDelta = source - sourceMean;
+            vec2 targetDelta = target - targetMean;
+            sourceVariance += sourceDelta * sourceDelta;
+            covariance += sourceDelta * targetDelta;
+        }
+    }
+    if (sourceVariance.x < 1.0e-8 || sourceVariance.y < 1.0e-8)
+        return false;
+    vec2 scale = covariance / sourceVariance;
+    vec2 translation = targetMean - scale * sourceMean;
+    if (any(isnan(scale)) || any(isinf(scale)) || any(isnan(translation)) || any(isinf(translation)))
+        return false;
+    refinedHomography = mat3(
+        scale.x, 0.0, 0.0,
+        0.0, scale.y, 0.0,
+        translation.x, translation.y, 1.0);
+    return true;
+}
+
+float reprojectionSquared(mat3 homography, vec2 source, vec2 target)
+{
+    vec3 projected = homography * vec3(source, 1.0);
+    if (!finiteFloat(projected.z) || abs(projected.z) < 1.0e-10) return 3.402823466e+38;
+    vec2 delta = projected.xy / projected.z - target;
+    return dot(delta, delta);
+}
+
+bool projectPoint(mat3 homography, vec2 source, out vec2 projected)
+{
+    vec3 homogeneous = homography * vec3(source, 1.0);
+    if (!finiteFloat(homogeneous.z) || abs(homogeneous.z) < 1.0e-10)
+        return false;
+    projected = homogeneous.xy / homogeneous.z;
+    return all(not(isnan(projected))) && all(not(isinf(projected)));
+}
+
+float crossProduct(vec2 first, vec2 second, vec2 third)
+{
+    vec2 left = second - first;
+    vec2 right = third - second;
+    return left.x * right.y - left.y * right.x;
+}
+
+bool plausibleHomography(mat3 homography, GeometryPairRecord pair, out float areaRatio)
+{
+    vec2 corners[4];
+    if (!projectPoint(homography, vec2(0.0, 0.0), corners[0]) ||
+        !projectPoint(homography, vec2(float(pair.firstWidth), 0.0), corners[1]) ||
+        !projectPoint(homography, vec2(float(pair.firstWidth), float(pair.firstHeight)), corners[2]) ||
+        !projectPoint(homography, vec2(0.0, float(pair.firstHeight)), corners[3]))
+        return false;
+    float cross0 = crossProduct(corners[0], corners[1], corners[2]);
+    float cross1 = crossProduct(corners[1], corners[2], corners[3]);
+    float cross2 = crossProduct(corners[2], corners[3], corners[0]);
+    float cross3 = crossProduct(corners[3], corners[0], corners[1]);
+    bool clockwise = cross0 < 0.0 && cross1 < 0.0 && cross2 < 0.0 && cross3 < 0.0;
+    bool counterClockwise = cross0 > 0.0 && cross1 > 0.0 && cross2 > 0.0 && cross3 > 0.0;
+    if (!clockwise && !counterClockwise)
+        return false;
+    float twiceArea = 0.0;
+    for (int i = 0; i < 4; i++)
+    {
+        vec2 current = corners[i];
+        vec2 next = corners[(i + 1) & 3];
+        twiceArea += current.x * next.y - current.y * next.x;
+    }
+    float sourceArea = float(pair.firstWidth) * float(pair.firstHeight);
+    areaRatio = abs(twiceArea) * 0.5 / max(sourceArea, 1.0);
+    return finiteFloat(areaRatio) && areaRatio >= parameters.minimumAreaRatio && areaRatio <= parameters.maximumAreaRatio;
+}
+
+void writeRejected(uint pairIndex, GeometryPairRecord pair, uint reason, uint firstCount, uint secondCount, uint forwardCount, uint reciprocalCount)
+{
+    PairResultRecord result;
+    result.header0 = uvec4(0u, reason, firstCount, secondCount);
+    result.header1 = uvec4(forwardCount, reciprocalCount, 0u, 0u);
+    result.metrics0 = vec4(0.0); result.metrics1 = vec4(0.0);
+    result.row0 = vec4(0.0); result.row1 = vec4(0.0); result.row2 = vec4(0.0);
+    results[pair.resultIndex] = result;
+}
+
+void main()
+{
+    uint pairIndex = gl_WorkGroupID.y;
+    uint hypothesisIndex = gl_GlobalInvocationID.x;
+    if (pairIndex >= parameters.pairCount)
+        return;
+    GeometryPairRecord pair = pairs[pairIndex];
+    uint matchCount = matchCounts[pair.matchCountOffset];
+    if (parameters.operation == 0u)
+    {
+        // Una invocation valuta un'ipotesi completa; le coppie sono distribuite sulla dimensione Y.
+        if (hypothesisIndex >= parameters.hypothesisCount)
+            return;
+        uint outputIndex = pair.hypothesisOffset + hypothesisIndex;
+        HypothesisRecord outputValue;
+        outputValue.row0 = vec4(0.0); outputValue.row1 = vec4(0.0); outputValue.row2 = vec4(0.0);
+        outputValue.state = uvec4(0u, hypothesisIndex, 0u, 0u);
+        if (matchCount < parameters.minimumReciprocalMatches) return;
+        uint stablePair = pair.stableFirstFrame * 0x9E3779B9u ^ pair.stableSecondFrame * 0x85EBCA6Bu;
+        uvec4 random = philox(uvec4(hypothesisIndex, stablePair, matchCount, parameters.randomSeed), uvec2(parameters.randomSeed ^ pair.stableFirstFrame, 0xD1B54A35u ^ pair.stableSecondFrame));
+        uint indices[4];
+        for (int i = 0; i < 4; i++) indices[i] = sampleIndex(random[i], matchCount);
+        if (indices[0] == indices[1] || indices[0] == indices[2] || indices[0] == indices[3] || indices[1] == indices[2] || indices[1] == indices[3] || indices[2] == indices[3]) { hypotheses[outputIndex] = outputValue; return; }
+        vec2 source[4]; vec2 target[4];
+        for (int i = 0; i < 4; i++)
+        {
+            ReciprocalMatchRecord matchValue = matches[pair.reciprocalOffset + indices[i]];
+            KeypointRecord first = firstKeypoints[pair.firstKeypointOffset + matchValue.firstDescriptorIndex];
+            KeypointRecord second = secondKeypoints[pair.secondKeypointOffset + matchValue.secondDescriptorIndex];
+            source[i] = vec2(first.x, first.y); target[i] = vec2(second.x, second.y);
+        }
+        mat3 homography;
+        if (!solveHomographyClosed(source, target, homography)) { hypotheses[outputIndex] = outputValue; return; }
+        uint inliers = 0u; float error = 0.0; float thresholdSquared = parameters.reprojectionThreshold * parameters.reprojectionThreshold;
+        for (uint i = 0u; i < matchCount; i++)
+        {
+            ReciprocalMatchRecord matchValue = matches[pair.reciprocalOffset + i];
+            KeypointRecord first = firstKeypoints[pair.firstKeypointOffset + matchValue.firstDescriptorIndex];
+            KeypointRecord second = secondKeypoints[pair.secondKeypointOffset + matchValue.secondDescriptorIndex];
+            float distance = reprojectionSquared(homography, vec2(first.x, first.y), vec2(second.x, second.y));
+            if (distance < thresholdSquared) { inliers++; error += distance; }
+        }
+        outputValue.row0 = vec4(homography[0][0], homography[1][0], homography[2][0], 0.0);
+        outputValue.row1 = vec4(homography[0][1], homography[1][1], homography[2][1], 0.0);
+        outputValue.row2 = vec4(homography[0][2], homography[1][2], homography[2][2], 0.0);
+        outputValue.state = uvec4(inliers, hypothesisIndex, 1u, floatBitsToUint(error));
+        hypotheses[outputIndex] = outputValue;
+        return;
+    }
+    if (hypothesisIndex != 0u)
+        return;
+    // La seconda dispatch riduce tutte le ipotesi della coppia e applica i gate geometrici finali.
+    uint firstCount = firstCounts[pair.firstFrame]; uint secondCount = secondCounts[pair.secondFrame];
+    uint forwardCount = matchCounts[pair.matchCountOffset + 1u];
+    if (firstCount < parameters.minimumKeypointsPerFrame) { writeRejected(pairIndex, pair, 1u, firstCount, secondCount, forwardCount, matchCount); return; }
+    if (secondCount < parameters.minimumKeypointsPerFrame) { writeRejected(pairIndex, pair, 2u, firstCount, secondCount, forwardCount, matchCount); return; }
+    if (matchCount < parameters.minimumReciprocalMatches) { writeRejected(pairIndex, pair, 4u, firstCount, secondCount, forwardCount, matchCount); return; }
+    uint best = 0xffffffffu; uint bestInliers = 0u;
+    for (uint i = 0u; i < parameters.hypothesisCount; i++)
+    {
+        HypothesisRecord candidate = hypotheses[pair.hypothesisOffset + i];
+        if (candidate.state.z != 0u && candidate.state.x > bestInliers) { bestInliers = candidate.state.x; best = i; }
+    }
+    if (best == 0xffffffffu) { writeRejected(pairIndex, pair, 6u, firstCount, secondCount, forwardCount, matchCount); return; }
+    HypothesisRecord selected = hypotheses[pair.hypothesisOffset + best];
+    mat3 homography = mat3(selected.row0.x, selected.row1.x, selected.row2.x, selected.row0.y, selected.row1.y, selected.row2.y, selected.row0.z, selected.row1.z, selected.row2.z);
+    mat3 refinedHomography;
+    if (refineAxisAlignedHomography(pair, matchCount, homography, refinedHomography))
+        homography = refinedHomography;
+    float thresholdSquared = parameters.reprojectionThreshold * parameters.reprojectionThreshold;
+    float totalError = 0.0;
+    vec2 firstMin = vec2(3.402823466e+38); vec2 firstMax = vec2(-3.402823466e+38);
+    vec2 secondMin = vec2(3.402823466e+38); vec2 secondMax = vec2(-3.402823466e+38);
+    uint inliers = 0u;
+    for (uint i = 0u; i < matchCount; i++)
+    {
+        ReciprocalMatchRecord matchValue = matches[pair.reciprocalOffset + i];
+        KeypointRecord first = firstKeypoints[pair.firstKeypointOffset + matchValue.firstDescriptorIndex];
+        KeypointRecord second = secondKeypoints[pair.secondKeypointOffset + matchValue.secondDescriptorIndex];
+        float distance = reprojectionSquared(homography, vec2(first.x, first.y), vec2(second.x, second.y));
+        if (distance < thresholdSquared)
+        {
+            inliers++; totalError += sqrt(distance);
+            firstMin = min(firstMin, vec2(first.x, first.y)); firstMax = max(firstMax, vec2(first.x, first.y));
+            secondMin = min(secondMin, vec2(second.x, second.y)); secondMax = max(secondMax, vec2(second.x, second.y));
+        }
+    }
+    float inlierRatio = matchCount > 0u ? float(inliers) / float(matchCount) : 0.0;
+    float firstCoverage = inliers > 0u ? max(0.0, firstMax.x - firstMin.x) * max(0.0, firstMax.y - firstMin.y) / float(pair.firstWidth * pair.firstHeight) : 0.0;
+    float secondCoverage = inliers > 0u ? max(0.0, secondMax.x - secondMin.x) * max(0.0, secondMax.y - secondMin.y) / float(pair.secondWidth * pair.secondHeight) : 0.0;
+    float meanError = inliers > 0u ? totalError / float(inliers) : 3.402823466e+38;
+    uint reason = 0u;
+    if (inliers < parameters.minimumInliers) reason = 7u;
+    else if (inlierRatio < parameters.minimumInlierRatio) reason = 8u;
+    else if (min(firstCoverage, secondCoverage) < parameters.minimumCoverage) reason = 9u;
+    else if (!finiteFloat(meanError) || meanError > parameters.maximumMeanError) reason = 10u;
+    float areaRatio = 0.0;
+    if (reason == 0u && !plausibleHomography(homography, pair, areaRatio)) reason = 11u;
+    float quantityScore = min(1.0, float(inliers) / 30.0);
+    float coverageScore = min(1.0, min(firstCoverage, secondCoverage) / 0.25);
+    float score = reason == 0u ? clamp(inlierRatio * 0.55 + quantityScore * 0.25 + coverageScore * 0.20, 0.0, 1.0) : 0.0;
+    PairResultRecord result;
+    result.header0 = uvec4(reason == 0u ? 1u : 0u, reason, firstCount, secondCount);
+    result.header1 = uvec4(forwardCount, matchCount, inliers, 0u);
+    result.metrics0 = vec4(inlierRatio, firstCoverage, secondCoverage, meanError);
+    result.metrics1 = vec4(score, 0.0, 0.0, 0.0);
+    result.row0 = vec4(homography[0][0], homography[1][0], homography[2][0], 0.0);
+    result.row1 = vec4(homography[0][1], homography[1][1], homography[2][1], 0.0);
+    result.row2 = vec4(homography[0][2], homography[1][2], homography[2][2], 0.0);
+    results[pair.resultIndex] = result;
+}

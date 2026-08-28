@@ -1,12 +1,12 @@
 <div class="dialog-overlay visible" @onclick="OnClose">
-    <div class="dialog-box" style="min-width: 80ch; max-width: 100ch; max-height: 80vh;" @onclick:stopPropagation="true">
-        <div class="dialog-title">@AppText.F("web.mediaInfo.title", Title)</div>
+    <div class="dialog-box dialog-box-wide" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="mediainfo-dialog-title" @onclick:stopPropagation="true">
+        <div id="mediainfo-dialog-title" class="dialog-title">@AppText.F("web.mediaInfo.title", Title)</div>
         <div class="dialog-body" style="max-height: 60vh; overflow-y: auto;">
-            <pre style="white-space: pre-wrap; font-size: 0.9em; color: var(--foreground0);">@(!string.IsNullOrEmpty(Report) ? Report : AppText.T("web.mediaInfo.noReport"))</pre>
+            <pre style="white-space: pre-wrap; font-size: 0.9em; color: var(--rz-text-color);">@(!string.IsNullOrEmpty(Report) ? Report : AppText.T("web.mediaInfo.noReport"))</pre>
         </div>
         <div class="dialog-footer">
-            <button @onclick="CopyReportAsync">@AppText.T("web.common.copy")</button>
-            <button @onclick="OnClose">@AppText.T("web.common.close")</button>
+            <RadzenButton Text="@AppText.T("web.common.copy")" Icon="content_copy" Variant="Variant.Outlined" Click="@CopyReportAsync" />
+            <RadzenButton Text="@AppText.T("web.common.close")" Icon="close" Click="@OnClose" />
         </div>
     </div>
 </div>

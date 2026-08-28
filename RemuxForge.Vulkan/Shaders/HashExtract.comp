@@ -1,0 +1,139 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+// Il quadrato di analisi e' 72x72 perche' 72 e' divisibile per otto e per nove: il gradiente
+// orizzontale nasce da 8x9 celle da 9x8 pixel, quello verticale da 9x8 celle da 8x9 pixel.
+const uint SIDE = 72u;
+const uint FRAME_UINTS = 1296u;
+const uint HORIZONTAL_CELLS = 72u;
+const uint VERTICAL_CELLS = 72u;
+const uint THUMB_SIDE = 12u;
+const uint THUMB_CELLS = 144u;
+const uint THUMB_BLOCK = 6u;
+const uint THUMB_WORDS = 36u;
+
+layout(std430, set = 0, binding = 0) readonly buffer FrameBuffer { uint frames[]; };
+layout(std430, set = 0, binding = 1) writeonly buffer SignalBuffer { uint signals[]; };
+
+layout(push_constant) uniform Parameters
+{
+    uint frameCount;
+} parameters;
+
+shared uint horizontalCells[HORIZONTAL_CELLS];
+shared uint verticalCells[VERTICAL_CELLS];
+shared uint thumbnailCells[THUMB_CELLS];
+
+/// Legge un pixel del quadrato grigio dai quattro impacchettati in ogni uint
+uint pixel(uint frameBase, uint row, uint column)
+{
+    uint index = row * SIDE + column;
+    return (frames[frameBase + (index >> 2u)] >> ((index & 3u) * 8u)) & 255u;
+}
+
+void main()
+{
+    uint frameIndex = gl_WorkGroupID.x;
+    if (frameIndex >= parameters.frameCount)
+        return;
+    uint frameBase = frameIndex * FRAME_UINTS;
+    uint lane = gl_LocalInvocationID.x;
+
+    // Le prime 72 lane sommano le celle orizzontali, le 72 successive quelle verticali: sono
+    // somme di interi, quindi confrontarle da' lo stesso bit che calcola il percorso CPU
+    if (lane < HORIZONTAL_CELLS)
+    {
+        uint cellRow = lane / 9u;
+        uint cellColumn = lane - cellRow * 9u;
+        uint sum = 0u;
+        for (uint row = 0u; row < 9u; row++)
+        {
+            for (uint column = 0u; column < 8u; column++)
+                sum += pixel(frameBase, cellRow * 9u + row, cellColumn * 8u + column);
+        }
+        horizontalCells[lane] = sum;
+    }
+    else if (lane < HORIZONTAL_CELLS + VERTICAL_CELLS)
+    {
+        uint cell = lane - HORIZONTAL_CELLS;
+        uint cellRow = cell / 8u;
+        uint cellColumn = cell - cellRow * 8u;
+        uint sum = 0u;
+        for (uint row = 0u; row < 8u; row++)
+        {
+            for (uint column = 0u; column < 9u; column++)
+                sum += pixel(frameBase, cellRow * 8u + row, cellColumn * 9u + column);
+        }
+        verticalCells[cell] = sum;
+    }
+    if (lane < THUMB_CELLS)
+    {
+        uint cellRow = lane / THUMB_SIDE;
+        uint cellColumn = lane - cellRow * THUMB_SIDE;
+        uint sum = 0u;
+        for (uint row = 0u; row < THUMB_BLOCK; row++)
+        {
+            for (uint column = 0u; column < THUMB_BLOCK; column++)
+                sum += pixel(frameBase, cellRow * THUMB_BLOCK + row, cellColumn * THUMB_BLOCK + column);
+        }
+        thumbnailCells[lane] = sum;
+    }
+    barrier();
+
+    if (lane != 0u)
+        return;
+
+    // Il primo confronto occupa il bit piu' significativo, come nell'impacchettamento a
+    // sessantaquattro bit del percorso CPU: word0 e word2 ne portano la meta' alta
+    uint words[4] = uint[4](0u, 0u, 0u, 0u);
+    uint bit = 0u;
+    for (uint cellRow = 0u; cellRow < 8u; cellRow++)
+    {
+        for (uint cellColumn = 0u; cellColumn < 8u; cellColumn++)
+        {
+            if (horizontalCells[cellRow * 9u + cellColumn + 1u] > horizontalCells[cellRow * 9u + cellColumn])
+                words[bit >> 5u] |= 1u << (31u - (bit & 31u));
+            bit++;
+        }
+    }
+    bit = 0u;
+    for (uint cellRow = 0u; cellRow < 8u; cellRow++)
+    {
+        for (uint cellColumn = 0u; cellColumn < 8u; cellColumn++)
+        {
+            if (verticalCells[(cellRow + 1u) * 8u + cellColumn] > verticalCells[cellRow * 8u + cellColumn])
+                words[2u + (bit >> 5u)] |= 1u << (31u - (bit & 31u));
+            bit++;
+        }
+    }
+    uint hashBase = frameIndex * 4u;
+    signals[hashBase] = words[0];
+    signals[hashBase + 1u] = words[1];
+    signals[hashBase + 2u] = words[2];
+    signals[hashBase + 3u] = words[3];
+
+    float thumbnailTotal = 0.0;
+    float thumbnailSquares = 0.0;
+    uint lumaSum = 0u;
+    uint thumbnailBase = parameters.frameCount * 6u + frameIndex * THUMB_WORDS;
+    for (uint word = 0u; word < THUMB_WORDS; word++)
+    {
+        uint packed = 0u;
+        for (uint component = 0u; component < 4u; component++)
+        {
+            uint cellSum = thumbnailCells[word * 4u + component];
+            uint value = cellSum / (THUMB_BLOCK * THUMB_BLOCK);
+            packed |= value << (component * 8u);
+            float preciseValue = float(cellSum) / float(THUMB_BLOCK * THUMB_BLOCK);
+            thumbnailTotal += preciseValue;
+            thumbnailSquares += preciseValue * preciseValue;
+            lumaSum += cellSum;
+        }
+        signals[thumbnailBase + word] = packed;
+    }
+    float thumbnailMean = thumbnailTotal / float(THUMB_CELLS);
+    uint measurementBase = parameters.frameCount * 4u + frameIndex * 2u;
+    signals[measurementBase] = floatBitsToUint(float(lumaSum) / float(SIDE * SIDE));
+    signals[measurementBase + 1u] = floatBitsToUint(sqrt(max(thumbnailSquares / float(THUMB_CELLS) - thumbnailMean * thumbnailMean, 0.0)));
+}

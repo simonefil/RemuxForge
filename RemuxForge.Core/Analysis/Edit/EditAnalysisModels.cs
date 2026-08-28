@@ -38,9 +38,9 @@ namespace RemuxForge.Core.Analysis.Edit
         BlackRunStart,
 
         /// <summary>
-        /// La fine della run di nero, perché l'operazione non ci stava dentro
+        /// Lo stacco visivo netto dentro un intervallo equivalente
         /// </summary>
-        BlackRunEnd,
+        SceneChange,
 
         /// <summary>
         /// L'ultimo fotogramma che solo l'offset di sinistra spiega
@@ -51,122 +51,6 @@ namespace RemuxForge.Core.Analysis.Edit
         /// L'estremo sinistro della finestra ambigua
         /// </summary>
         AmbiguousExtreme
-    }
-
-    /// <summary>
-    /// Un punto del profilo offset(t)
-    /// </summary>
-    internal class OffsetProfilePoint
-    {
-        #region Costruttore
-
-        /// <summary>
-        /// Costruttore
-        /// </summary>
-        /// <param name="timeMs">Istante di misura</param>
-        /// <param name="offsetMs">Offset misurato</param>
-        /// <param name="explained">Frazione di fotogrammi spiegati</param>
-        public OffsetProfilePoint(double timeMs, double offsetMs, double explained)
-        {
-            this.TimeMs = timeMs;
-            this.OffsetMs = offsetMs;
-            this.Explained = explained;
-        }
-
-        #endregion
-
-        #region Proprietà
-
-        /// <summary>
-        /// Istante di misura in millisecondi
-        /// </summary>
-        public double TimeMs { get; private set; }
-
-        /// <summary>
-        /// Offset misurato in millisecondi
-        /// </summary>
-        public double OffsetMs { get; private set; }
-
-        /// <summary>
-        /// Frazione di fotogrammi della finestra spiegati dall'offset
-        /// </summary>
-        public double Explained { get; private set; }
-
-        #endregion
-    }
-
-    /// <summary>
-    /// Un tratto rettilineo del profilo, con la sua incertezza
-    /// </summary>
-    internal class OffsetSegment
-    {
-        #region Proprietà
-
-        /// <summary>
-        /// Indice del primo punto di profilo incluso
-        /// </summary>
-        public int FirstIndex { get; set; }
-
-        /// <summary>
-        /// Indice del primo punto di profilo escluso
-        /// </summary>
-        public int EndIndex { get; set; }
-
-        /// <summary>
-        /// Intercetta della retta
-        /// </summary>
-        public double Intercept { get; set; }
-
-        /// <summary>
-        /// Pendenza della retta, in millisecondi di offset per millisecondo di tempo
-        /// </summary>
-        public double Slope { get; set; }
-
-        /// <summary>
-        /// Varianza residua della regressione
-        /// </summary>
-        public double ResidualVariance { get; set; }
-
-        /// <summary>
-        /// Punti di profilo del tratto
-        /// </summary>
-        public int PointCount { get; set; }
-
-        /// <summary>
-        /// Media dei tempi del tratto
-        /// </summary>
-        public double TimeMean { get; set; }
-
-        /// <summary>
-        /// Devianza dei tempi del tratto
-        /// </summary>
-        public double TimeVariation { get; set; }
-
-        /// <summary>
-        /// Istante del primo punto del tratto
-        /// </summary>
-        public double StartMs { get; set; }
-
-        /// <summary>
-        /// Istante dell'ultimo punto del tratto
-        /// </summary>
-        public double EndMs { get; set; }
-
-        #endregion
-
-        #region Metodi pubblici
-
-        /// <summary>
-        /// Valuta la retta del tratto in un istante
-        /// </summary>
-        /// <param name="timeMs">Istante di valutazione</param>
-        /// <returns>Offset previsto dalla retta</returns>
-        public double ValueAt(double timeMs)
-        {
-            return this.Intercept + this.Slope * timeMs;
-        }
-
-        #endregion
     }
 
     /// <summary>
@@ -284,11 +168,6 @@ namespace RemuxForge.Core.Analysis.Edit
         #region Proprietà
 
         /// <summary>
-        /// Ultimo fotogramma spiegato dall'offset di sinistra
-        /// </summary>
-        public double LastCommonMs { get; set; }
-
-        /// <summary>
         /// Primo fotogramma dopo l'ultimo comune: è il confine proposto
         /// </summary>
         public double NextAfterLastMs { get; set; }
@@ -299,14 +178,14 @@ namespace RemuxForge.Core.Analysis.Edit
         public double FirstCommonMs { get; set; }
 
         /// <summary>
-        /// Fotogrammi che nessuno dei due offset spiega
+        /// True quando il minimo è censurato dall'inizio della finestra
         /// </summary>
-        public int UnexplainedFrames { get; set; }
+        public bool TouchesWindowStart { get; set; }
 
         /// <summary>
-        /// True quando l'intervallo ambiguo è tutto nero
+        /// True quando il minimo è censurato dalla fine della finestra
         /// </summary>
-        public bool IsBlack { get; set; }
+        public bool TouchesWindowEnd { get; set; }
 
         #endregion
     }

@@ -123,6 +123,7 @@ namespace RemuxForge.Core.Analysis.Features
                 long descriptorMatchingTicks = 0;
                 long geometryTicks = 0;
                 int completedTiles = 0;
+                ConcurrentDictionary<string, int> rejectionCounts = new ConcurrentDictionary<string, int>(StringComparer.Ordinal);
                 if (activeSourceIndexes.Count > 0 && activeLanguageIndexes.Count > 0)
                 {
                     Parallel.ForEach<Tuple<int, int>, OpenCvSiftFeatureMatcher>(Partitioner.Create(0, activeSourceIndexes.Count, TILE_ROW_COUNT), options, this.CreateMatcher, (range, _, matcher) =>
@@ -139,6 +140,11 @@ namespace RemuxForge.Core.Analysis.Features
                                     continue;
                                 int randomSeed = this.GetStablePairSeed(sourceAnchors[originalSourceIndex], languageAnchors[originalLanguageIndex]);
                                 FrameFeatureMatchResult match = matcher.Match(sourceFeatures[originalSourceIndex], languageFeatures[originalLanguageIndex], randomSeed);
+                                if (match == null || !match.Accepted)
+                                {
+                                    string reason = match != null && !string.IsNullOrEmpty(match.RejectReason) ? match.RejectReason : "NoResult";
+                                    rejectionCounts.AddOrUpdate(reason, 1, (_, count) => count + 1);
+                                }
                                 if (match != null)
                                 {
                                     Interlocked.Add(ref descriptorMatchingTicks, match.DescriptorMatchingTicks);
@@ -173,6 +179,8 @@ namespace RemuxForge.Core.Analysis.Features
                 result.WorkerCount = workerThreads.Count;
                 result.ProcessedCellCount = result.Matrix.ProcessedCellCount;
                 result.AcceptedCellCount = result.Matrix.AcceptedCellCount;
+                foreach (KeyValuePair<string, int> entry in rejectionCounts)
+                    result.RejectionCounts[entry.Key] = entry.Value;
                 result.MatrixSizeBytes = result.Matrix.CompactSizeBytes;
                 result.CompletedTileCount = completedTiles;
                 result.PeakWorkingSetBytes = Process.GetCurrentProcess().PeakWorkingSet64;

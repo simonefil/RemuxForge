@@ -1,50 +1,104 @@
 <div class="dialog-overlay visible" @onclick="OnClose">
-    <div class="dialog-box dialog-browse" @onclick:stopPropagation="true">
-        <div class="dialog-title">@GetDialogTitle()</div>
+    <div class="dialog-box dialog-browse" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="folder-browser-dialog-title" @onclick:stopPropagation="true">
+        <div id="folder-browser-dialog-title" class="dialog-title">@GetDialogTitle()</div>
         <div class="dialog-body" style="display: flex; flex-direction: column; padding: 0;">
 
-            @* Barra percorso con autocomplete (pattern Bivium) *@
             <div class="browse-path-bar">
+                <div class="browse-navigation" role="toolbar" aria-label="@AppText.T("web.folder.navigation")">
+                    <RadzenButton Icon="arrow_back"
+                                  Size="ButtonSize.Small"
+                                  Variant="Variant.Text"
+                                  ButtonStyle="ButtonStyle.Base"
+                                  Disabled="@(!CanNavigateBack())"
+                                  title="@AppText.T("web.folder.back")"
+                                  aria-label="@AppText.T("web.folder.back")"
+                                  Click="@NavigateBack" />
+                    <RadzenButton Icon="arrow_upward"
+                                  Size="ButtonSize.Small"
+                                  Variant="Variant.Text"
+                                  ButtonStyle="ButtonStyle.Base"
+                                  Disabled="@(!CanNavigateUp())"
+                                  title="@AppText.T("web.folder.up")"
+                                  aria-label="@AppText.T("web.folder.up")"
+                                  Click="@NavigateToParent" />
+                    <RadzenButton Icon="home"
+                                  Size="ButtonSize.Small"
+                                  Variant="Variant.Text"
+                                  ButtonStyle="ButtonStyle.Base"
+                                  title="@AppText.T("web.folder.root")"
+                                  aria-label="@AppText.T("web.folder.root")"
+                                  Click="@LoadDefaultRoot" />
+                    <RadzenButton Icon="refresh"
+                                  Size="ButtonSize.Small"
+                                  Variant="Variant.Text"
+                                  ButtonStyle="ButtonStyle.Base"
+                                  title="@AppText.T("web.folder.refresh")"
+                                  aria-label="@AppText.T("web.folder.refresh")"
+                                  Click="@RefreshDirectory" />
+                </div>
                 <div class="path-bar-edit">
                     <input type="text"
                            id="browse-path-input"
                            class="path-bar-input"
+                           aria-label="@AppText.T("web.folder.path")"
                            value="@_editPath"
                            @oninput="HandlePathInput"
                            @onkeydown="HandlePathKeyDown" />
                     @if (_autocompleteMatches.Count > 1)
                     {
-                        <div class="path-autocomplete">
+                        <div class="path-autocomplete" role="listbox" aria-label="@AppText.T("web.folder.pathSuggestions")">
                             @for (int i = 0; i < _autocompleteMatches.Count; i++)
                             {
                                 int idx = i;
-                                <div class="path-autocomplete-item @(idx == _autocompleteIndex ? "active" : "")"
-                                     @onmousedown="() => SelectAutocompleteItem(idx)">
+                                <button type="button"
+                                        class="path-autocomplete-item @(idx == _autocompleteIndex ? "active" : "")"
+                                        role="option"
+                                        aria-selected="@(idx == _autocompleteIndex)"
+                                        @onmousedown="() => SelectAutocompleteItem(idx)">
                                     @_autocompleteMatches[idx]
-                                </div>
+                                </button>
                             }
                         </div>
                     }
                 </div>
             </div>
 
-            @* Tabella 4 colonne come dialog browser *@
-            <div class="browse-list">
-                <table class="browse-table" divide-="none">
+            <div class="browse-content">
+                <aside class="browse-roots" aria-label="@AppText.T("web.folder.roots")">
+                    <div class="browse-roots-title">@AppText.T("web.folder.roots")</div>
+                    @for (int i = 0; i < _rootEntries.Count; i++)
+                    {
+                        int rootIndex = i;
+                        DirEntry root = _rootEntries[rootIndex];
+                        <button type="button"
+                                class="browse-root-item @(IsCurrentRoot(root) ? "active" : "")"
+                                aria-current="@(IsCurrentRoot(root) ? "location" : null)"
+                                @onclick="() => NavigateToRoot(rootIndex)">
+                            <RadzenIcon Icon="@GetRootIcon(root)" />
+                            <span>@root.Name</span>
+                        </button>
+                    }
+                </aside>
+
+                @* Tabella 4 colonne come dialog browser *@
+                <div class="browse-list">
+                <table class="browse-table">
                     <thead>
                         <tr>
-                            <th class="browse-col-name" @onclick="() => ToggleSort(BrowserSortColumn.Name)">@AppText.T("web.folder.filename") @GetSortIndicator(BrowserSortColumn.Name)</th>
-                            <th class="browse-col-size" @onclick="() => ToggleSort(BrowserSortColumn.Size)">@AppText.T("web.folder.size") @GetSortIndicator(BrowserSortColumn.Size)</th>
-                            <th class="browse-col-date" @onclick="() => ToggleSort(BrowserSortColumn.Modified)">@AppText.T("web.folder.modified") @GetSortIndicator(BrowserSortColumn.Modified)</th>
-                            <th class="browse-col-type" @onclick="() => ToggleSort(BrowserSortColumn.Type)">@AppText.T("web.folder.type") @GetSortIndicator(BrowserSortColumn.Type)</th>
+                            <th class="browse-col-name"><button type="button" class="browse-sort-button" @onclick="() => ToggleSort(BrowserSortColumn.Name)">@AppText.T("web.folder.filename") @GetSortIndicator(BrowserSortColumn.Name)</button></th>
+                            <th class="browse-col-size"><button type="button" class="browse-sort-button" @onclick="() => ToggleSort(BrowserSortColumn.Size)">@AppText.T("web.folder.size") @GetSortIndicator(BrowserSortColumn.Size)</button></th>
+                            <th class="browse-col-date"><button type="button" class="browse-sort-button" @onclick="() => ToggleSort(BrowserSortColumn.Modified)">@AppText.T("web.folder.modified") @GetSortIndicator(BrowserSortColumn.Modified)</button></th>
+                            <th class="browse-col-type"><button type="button" class="browse-sort-button" @onclick="() => ToggleSort(BrowserSortColumn.Type)">@AppText.T("web.folder.type") @GetSortIndicator(BrowserSortColumn.Type)</button></th>
                         </tr>
                     </thead>
                     <tbody>
                         @* Cartella parent *@
                         @if (!string.IsNullOrEmpty(_parentPath) || _canNavigateToDriveRoots)
                         {
-                            <tr class="browse-row" @ondblclick="NavigateToParent">
-                                <td class="browse-col-name">..</td>
+                            <tr class="browse-row" tabindex="0" @ondblclick="NavigateToParent" @onkeydown="HandleParentKeyDown">
+                                <td class="browse-col-name">
+                                    <span class="browse-name-content"><RadzenIcon Icon="folder_open" /><span>..</span></span>
+                                </td>
                                 <td class="browse-col-size"></td>
                                 <td class="browse-col-date"></td>
                                 <td class="browse-col-type">@AppText.T("web.folder.directory")</td>
@@ -57,9 +111,14 @@
                             int idx = i;
                             DirEntry entry = _entries[idx];
                             <tr class="browse-row @(idx == _selectedIndex ? "selected" : "")"
+                                tabindex="0"
+                                aria-selected="@(idx == _selectedIndex)"
                                 @onclick="() => SelectEntry(idx)"
-                                @ondblclick="() => ActivateEntry(idx)">
-                                <td class="browse-col-name">@(entry.IsDirectory ? "/" : "")@entry.Name</td>
+                                @ondblclick="() => ActivateEntry(idx)"
+                                @onkeydown="args => HandleEntryKeyDown(args, idx)">
+                                <td class="browse-col-name">
+                                    <span class="browse-name-content"><RadzenIcon Icon="@GetEntryIcon(entry)" /><span>@entry.Name</span></span>
+                                </td>
                                 <td class="browse-col-size">@entry.SizeText</td>
                                 <td class="browse-col-date">@entry.ModifiedText</td>
                                 <td class="browse-col-type">@entry.TypeText</td>
@@ -69,17 +128,18 @@
                         @if (_entries.Count == 0 && string.IsNullOrEmpty(_parentPath))
                         {
                             <tr>
-                                <td colspan="4" style="color: var(--foreground2); text-align: center;">@AppText.T("web.common.empty")</td>
+                                <td colspan="4" style="color: var(--rz-text-disabled-color); text-align: center;">@AppText.T("web.common.empty")</td>
                             </tr>
                         }
                     </tbody>
                 </table>
+                </div>
             </div>
 
             @* Campo Find *@
             <div class="browse-find-bar">
                 <span class="browse-find-label">@AppText.T("web.folder.find")</span>
-                <input class="form-input" value="@_filterText" @oninput="HandleFilterInput" />
+                <input class="form-input" aria-label="@AppText.T("web.folder.find")" value="@_filterText" @oninput="HandleFilterInput" />
             </div>
 
             @* Messaggio errore *@
@@ -89,19 +149,19 @@
             }
         </div>
         <div class="dialog-footer">
-            <button @onclick="OnClose">@AppText.T("web.common.cancel")</button>
+            <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" />
             @if (this.ShowFiles && this.AllowCurrentFolderSelection)
             {
-                <button @onclick="ConfirmFolder" disabled="@_showingDriveRoots">@AppText.T("web.folder.selectFolderButton")</button>
-                <button @onclick="ConfirmFile" disabled="@(!CanSelectFile())">@AppText.T("web.folder.selectFileButton")</button>
+                <RadzenButton Text="@AppText.T("web.folder.selectFolderButton")" Icon="folder" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@ConfirmFolder" Disabled="@_showingDriveRoots" />
+                <RadzenButton Text="@AppText.T("web.folder.selectFileButton")" Icon="description" Click="@ConfirmFile" Disabled="@(!CanSelectFile())" />
             }
             else if (this.ShowFiles)
             {
-                <button @onclick="ConfirmFile" disabled="@(!CanSelectFile())">@AppText.T("web.folder.selectFileButton")</button>
+                <RadzenButton Text="@AppText.T("web.folder.selectFileButton")" Icon="description" Click="@ConfirmFile" Disabled="@(!CanSelectFile())" />
             }
             else
             {
-                <button @onclick="ConfirmFolder" disabled="@_showingDriveRoots">@AppText.T("web.folder.selectFolderButton")</button>
+                <RadzenButton Text="@AppText.T("web.folder.selectFolderButton")" Icon="folder" Click="@ConfirmFolder" Disabled="@_showingDriveRoots" />
             }
         </div>
     </div>
@@ -164,6 +224,21 @@
     /// Lista entries completa (prima del filtro)
     /// </summary>
     private List<DirEntry> _allEntries = new List<DirEntry>();
+
+    /// <summary>
+    /// Root e drive disponibili nella sidebar
+    /// </summary>
+    private List<DirEntry> _rootEntries = new List<DirEntry>();
+
+    /// <summary>
+    /// Posizioni visitate nella sessione del browser
+    /// </summary>
+    private List<string> _history = new List<string>();
+
+    /// <summary>
+    /// Indice della posizione corrente nella cronologia
+    /// </summary>
+    private int _historyIndex = -1;
 
     /// <summary>
     /// Indice entry selezionata
@@ -299,6 +374,7 @@
             return;
 
         this._loaded = true;
+        this.LoadRootEntries();
 
         if (!string.IsNullOrEmpty(this.InitialPath))
         {
@@ -344,7 +420,7 @@
     /// Carica il contenuto della cartella specificata
     /// </summary>
     /// <param name="path">Percorso cartella</param>
-    private void LoadDirectory(string path)
+    private void LoadDirectory(string path, bool recordHistory = true)
     {
         this._errorMessage = "";
         this._selectedIndex = -1;
@@ -432,6 +508,8 @@
             // Ordina
             this.SortEntries();
             this._entries = new List<DirEntry>(this._allEntries);
+            if (recordHistory)
+                this.RecordHistory(this._currentPath);
         }
         catch (UnauthorizedAccessException)
         {
@@ -455,6 +533,89 @@
         else if (this._canNavigateToDriveRoots)
         {
             this.LoadDriveRoots();
+        }
+    }
+
+    /// <summary>
+    /// Torna alla posizione precedente nella cronologia valida
+    /// </summary>
+    private void NavigateBack()
+    {
+        while (this._historyIndex > 0)
+        {
+            string target = this._history[this._historyIndex - 1];
+            if (string.IsNullOrEmpty(target) || System.IO.Directory.Exists(target))
+            {
+                this._historyIndex--;
+                if (string.IsNullOrEmpty(target))
+                    this.LoadDriveRoots(false);
+                else
+                    this.LoadDirectory(target, false);
+                return;
+            }
+
+            this._history.RemoveAt(this._historyIndex - 1);
+            this._historyIndex--;
+        }
+    }
+
+    /// <summary>
+    /// Indica se la cronologia contiene una posizione precedente
+    /// </summary>
+    /// <returns>True quando il comando Indietro è disponibile</returns>
+    private bool CanNavigateBack()
+    {
+        return this._historyIndex > 0;
+    }
+
+    /// <summary>
+    /// Ricarica la posizione corrente senza cambiare percorso.
+    /// </summary>
+    private void RefreshDirectory()
+    {
+        if (this._showingDriveRoots)
+        {
+            this.LoadRootEntries();
+            this.LoadDriveRoots(false);
+            return;
+        }
+
+        this.LoadDirectory(this._currentPath, false);
+    }
+
+    /// <summary>
+    /// Indica se è disponibile una posizione superiore.
+    /// </summary>
+    /// <returns>True quando il comando Su è disponibile.</returns>
+    private bool CanNavigateUp()
+    {
+        return !string.IsNullOrEmpty(this._parentPath) || this._canNavigateToDriveRoots;
+    }
+
+    /// <summary>
+    /// Gestisce l'attivazione da tastiera della cartella superiore.
+    /// </summary>
+    /// <param name="args">Evento tastiera.</param>
+    private void HandleParentKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+            this.NavigateToParent();
+    }
+
+    /// <summary>
+    /// Gestisce selezione e attivazione da tastiera di una entry.
+    /// </summary>
+    /// <param name="args">Evento tastiera.</param>
+    /// <param name="index">Indice della entry.</param>
+    private void HandleEntryKeyDown(KeyboardEventArgs args, int index)
+    {
+        if (args.Key == "Enter")
+        {
+            this.ActivateEntry(index);
+        }
+        else if (args.Key == " ")
+        {
+            this.SelectEntry(index);
         }
     }
 
@@ -865,7 +1026,8 @@
     /// <summary>
     /// Carica l'elenco dei drive Windows disponibili
     /// </summary>
-    private void LoadDriveRoots()
+    /// <param name="recordHistory">True per registrare la posizione nella cronologia</param>
+    private void LoadDriveRoots(bool recordHistory = true)
     {
         this._errorMessage = "";
         this._selectedIndex = -1;
@@ -878,22 +1040,101 @@
         this._allEntries.Clear();
         this._entries.Clear();
 
-        System.IO.DriveInfo[] drives = System.IO.DriveInfo.GetDrives();
-        for (int i = 0; i < drives.Length; i++)
+        for (int i = 0; i < this._rootEntries.Count; i++)
         {
-            if (!drives[i].IsReady)
-                continue;
-
-            DirEntry entry = new DirEntry();
-            entry.Name = drives[i].Name;
-            entry.FullPath = drives[i].RootDirectory.FullName;
-            entry.TypeText = AppText.T("web.folder.drive");
-            entry.IsDirectory = true;
-            this._allEntries.Add(entry);
+            this._allEntries.Add(this._rootEntries[i]);
         }
 
         this.SortEntries();
         this._entries = new List<DirEntry>(this._allEntries);
+        if (recordHistory)
+            this.RecordHistory("");
+    }
+
+    /// <summary>
+    /// Aggiorna le root disponibili per il sistema operativo corrente
+    /// </summary>
+    private void LoadRootEntries()
+    {
+        this._rootEntries.Clear();
+
+        if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+        {
+            System.IO.DriveInfo[] drives = System.IO.DriveInfo.GetDrives();
+            for (int i = 0; i < drives.Length; i++)
+            {
+                if (!drives[i].IsReady)
+                    continue;
+
+                DirEntry entry = new DirEntry();
+                entry.Name = drives[i].Name;
+                entry.FullPath = drives[i].RootDirectory.FullName;
+                entry.TypeText = AppText.T("web.folder.drive");
+                entry.IsDirectory = true;
+                this._rootEntries.Add(entry);
+            }
+        }
+        else
+        {
+            DirEntry entry = new DirEntry();
+            entry.Name = "/";
+            entry.FullPath = "/";
+            entry.TypeText = AppText.T("web.folder.directory");
+            entry.IsDirectory = true;
+            this._rootEntries.Add(entry);
+        }
+    }
+
+    /// <summary>
+    /// Naviga alla root selezionata nella sidebar
+    /// </summary>
+    /// <param name="index">Indice della root</param>
+    private void NavigateToRoot(int index)
+    {
+        if (index < 0 || index >= this._rootEntries.Count)
+            return;
+
+        this.LoadDirectory(this._rootEntries[index].FullPath);
+    }
+
+    /// <summary>
+    /// Registra una posizione visitata eliminando l'eventuale ramo futuro
+    /// </summary>
+    /// <param name="location">Percorso o stringa vuota per l'elenco drive</param>
+    private void RecordHistory(string location)
+    {
+        if (this._historyIndex >= 0 && string.Equals(this._history[this._historyIndex], location, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        if (this._historyIndex + 1 < this._history.Count)
+            this._history.RemoveRange(this._historyIndex + 1, this._history.Count - this._historyIndex - 1);
+
+        this._history.Add(location);
+        this._historyIndex = this._history.Count - 1;
+    }
+
+    /// <summary>
+    /// Indica se la root rappresenta la posizione corrente
+    /// </summary>
+    /// <param name="root">Root da confrontare</param>
+    /// <returns>True quando la posizione corrente appartiene alla root</returns>
+    private bool IsCurrentRoot(DirEntry root)
+    {
+        if (this._showingDriveRoots || string.IsNullOrEmpty(this._currentPath))
+            return false;
+
+        string currentRoot = System.IO.Path.GetPathRoot(this._currentPath);
+        return string.Equals(currentRoot, root.FullPath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Restituisce l'icona per una root del filesystem
+    /// </summary>
+    /// <param name="root">Root da rappresentare</param>
+    /// <returns>Nome icona Material</returns>
+    private static string GetRootIcon(DirEntry root)
+    {
+        return root.TypeText == AppText.T("web.folder.drive") ? "hard_drive" : "folder_open";
     }
 
     /// <summary>
@@ -915,6 +1156,16 @@
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Restituisce l'icona appropriata per una entry del browser.
+    /// </summary>
+    /// <param name="entry">Entry da rappresentare.</param>
+    /// <returns>Nome icona Material.</returns>
+    private static string GetEntryIcon(DirEntry entry)
+    {
+        return entry.IsDirectory ? "folder" : "description";
     }
 
     /// <summary>

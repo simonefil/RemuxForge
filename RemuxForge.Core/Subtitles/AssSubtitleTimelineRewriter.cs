@@ -155,7 +155,7 @@ namespace RemuxForge.Core.Subtitles
             long m;
             long s;
             long centi;
-            
+
             // Clamp difensivo: gli eventi ASS non possono iniziare prima di zero
             if (ms < 0)
             {

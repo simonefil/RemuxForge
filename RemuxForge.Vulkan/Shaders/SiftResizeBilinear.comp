@@ -1,0 +1,54 @@
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(std430, set = 0, binding = 0) readonly buffer FloatInput
+{
+    float inputPixels[];
+};
+
+layout(std430, set = 0, binding = 1) writeonly buffer FloatOutput
+{
+    float outputPixels[];
+};
+
+layout(push_constant) uniform Parameters
+{
+    uint inputOffset;
+    uint outputOffset;
+    uint inputWidth;
+    uint inputHeight;
+    uint outputWidth;
+    uint outputHeight;
+    uint inputFrameStride;
+    uint outputFrameStride;
+    uint frameCount;
+} parameters;
+
+uint frameIndex;
+
+float samplePixel(int x, int y)
+{
+    x = clamp(x, 0, int(parameters.inputWidth) - 1);
+    y = clamp(y, 0, int(parameters.inputHeight) - 1);
+    return inputPixels[parameters.inputOffset + frameIndex * parameters.inputFrameStride + uint(y) * parameters.inputWidth + uint(x)];
+}
+
+void main()
+{
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+    frameIndex = gl_GlobalInvocationID.z;
+    uint frames = max(parameters.frameCount, 1u);
+    if (x >= parameters.outputWidth || y >= parameters.outputHeight || frameIndex >= frames)
+        return;
+    float sourceX = (float(x) + 0.5) * float(parameters.inputWidth) / float(parameters.outputWidth) - 0.5;
+    float sourceY = (float(y) + 0.5) * float(parameters.inputHeight) / float(parameters.outputHeight) - 0.5;
+    int x0 = int(floor(sourceX));
+    int y0 = int(floor(sourceY));
+    float tx = sourceX - float(x0);
+    float ty = sourceY - float(y0);
+    float top = mix(samplePixel(x0, y0), samplePixel(x0 + 1, y0), tx);
+    float bottom = mix(samplePixel(x0, y0 + 1), samplePixel(x0 + 1, y0 + 1), tx);
+    outputPixels[parameters.outputOffset + frameIndex * parameters.outputFrameStride + y * parameters.outputWidth + x] = mix(top, bottom, ty);
+}

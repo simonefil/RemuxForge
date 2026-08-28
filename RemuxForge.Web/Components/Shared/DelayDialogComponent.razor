@@ -1,24 +1,24 @@
 <div class="dialog-overlay visible" @onclick="OnClose">
-    <div class="dialog-box" style="min-width: 45ch;" @onclick:stopPropagation="true">
-        <div class="dialog-title">@AppText.F("web.delay.title", Record.EpisodeId)</div>
+    <div class="dialog-box dialog-box-compact" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="delay-dialog-title" @onclick:stopPropagation="true">
+        <div id="delay-dialog-title" class="dialog-title">@AppText.F("web.delay.title", Record.EpisodeId)</div>
         <div class="dialog-body">
-            <div style="color: var(--foreground2);">@AppText.F("web.delay.syncOffset", Record.SyncOffsetMs)</div>
+            <div style="color: var(--rz-text-disabled-color);">@AppText.F("web.delay.syncOffset", Record.SyncOffsetMs)</div>
             <br />
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.delay.audio")</span>
-                <input class="form-input" style="width: 10ch;" @bind="_audioDelay" />
+                <RadzenTextBox class="form-input" Style="width: 10rem" @bind-Value="_audioDelay" />
             </div>
             <br />
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.delay.sub")</span>
-                <input class="form-input" style="width: 10ch;" @bind="_subDelay" />
+                <RadzenTextBox class="form-input" Style="width: 10rem" @bind-Value="_subDelay" />
             </div>
             <br />
-            <div style="color: var(--foreground2);">@AppText.F("web.delay.effective", Record.AudioDelayApplied, Record.SubDelayApplied)</div>
+            <div style="color: var(--rz-text-disabled-color);">@AppText.F("web.delay.effective", Record.AudioDelayApplied, Record.SubDelayApplied)</div>
         </div>
         <div class="dialog-footer">
-            <button @onclick="Apply">@AppText.T("web.common.ok")</button>
-            <button @onclick="OnClose">@AppText.T("web.common.cancel")</button>
+            <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@Apply" />
+            <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" />
         </div>
     </div>
 </div>

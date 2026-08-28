@@ -125,7 +125,7 @@ namespace RemuxForge.Web.Services
         /// <summary>
         /// Formatta tracce audio importate con piano processing effettivo
         /// </summary>
-        private string FormatImportedAudioTrackList(List<TrackInfo> tracks, AudioProcessingPlan plan, Options options)
+        public string FormatImportedAudioTrackList(List<TrackInfo> tracks, AudioProcessingPlan plan, Options options)
         {
             StringBuilder sb = new StringBuilder();
 
@@ -147,7 +147,7 @@ namespace RemuxForge.Web.Services
         /// <summary>
         /// Formatta il risultato audio finale con piano processing effettivo
         /// </summary>
-        private string FormatResultAudioTrackList(FileProcessingRecord record, Options options, bool filterAudio)
+        public string FormatResultAudioTrackList(FileProcessingRecord record, Options options, bool filterAudio)
         {
             StringBuilder sb = new StringBuilder();
             int count = 0;
@@ -227,7 +227,7 @@ namespace RemuxForge.Web.Services
         /// <summary>
         /// Formatta il motivo operativo di una traccia audio
         /// </summary>
-        private string FormatAudioProcessingSummary(AudioTrackProcessingPlan plan, Options options, bool includeSkip)
+        public string FormatAudioProcessingSummary(AudioTrackProcessingPlan plan, Options options, bool includeSkip)
         {
             List<string> parts = new List<string>();
             string target;
@@ -575,7 +575,7 @@ namespace RemuxForge.Web.Services
         /// <summary>
         /// Formatta un delay opzionale
         /// </summary>
-        private string FormatOptionalDelay(int value)
+        public string FormatOptionalDelay(int value)
         {
             if (value == int.MinValue)
             {
@@ -588,7 +588,7 @@ namespace RemuxForge.Web.Services
         /// <summary>
         /// Formatta tipo operazione edit
         /// </summary>
-        private string FormatEditOperationType(string operationType)
+        public string FormatEditOperationType(string operationType)
         {
             string result = operationType;
 
@@ -607,7 +607,7 @@ namespace RemuxForge.Web.Services
         /// <summary>
         /// Formatta timestamp in minutaggio
         /// </summary>
-        private string FormatTimestamp(int timestampMs)
+        public string FormatTimestamp(int timestampMs)
         {
             if (timestampMs < 0)
                 timestampMs = 0;

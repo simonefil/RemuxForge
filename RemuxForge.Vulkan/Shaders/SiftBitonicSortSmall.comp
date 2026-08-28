@@ -1,0 +1,83 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct KeypointRecord
+{
+    float x; float y; float scale; float response; float orientation;
+    uint frameIndex; uint octave; uint layer;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer InputKeypoints { KeypointRecord inputKeypoints[]; };
+layout(std430, set = 0, binding = 1) writeonly buffer OutputKeypoints { KeypointRecord outputKeypoints[]; };
+layout(std430, set = 0, binding = 2) readonly buffer Counters { uint counters[]; };
+
+layout(push_constant) uniform Parameters
+{
+    uint inputOffset; uint outputOffset; uint capacity; uint counterOffset;
+    uint keySelector; uint byteIndex; uint operation;
+    uint scratchOffset; uint inputFrameStride; uint outputFrameStride; uint counterFrameStride;
+    uint scratchFrameStride; uint frameCount;
+} parameters;
+
+shared uint indexes[2048];
+uint frame;
+
+int quantized(float value) { return int(round(value * 10000.0)); }
+
+int compareKeypoints(uint leftIndex, uint rightIndex, uint count)
+{
+    if (leftIndex >= count) return rightIndex >= count ? 0 : 1;
+    if (rightIndex >= count) return -1;
+    KeypointRecord left = inputKeypoints[parameters.inputOffset + frame * parameters.inputFrameStride + leftIndex];
+    KeypointRecord right = inputKeypoints[parameters.inputOffset + frame * parameters.inputFrameStride + rightIndex];
+    int leftValue = quantized(left.scale); int rightValue = quantized(right.scale);
+    if (leftValue != rightValue) return leftValue < rightValue ? -1 : 1;
+    leftValue = quantized(left.response); rightValue = quantized(right.response);
+    if (leftValue != rightValue) return leftValue < rightValue ? -1 : 1;
+    if (left.layer != right.layer) return left.layer < right.layer ? -1 : 1;
+    leftValue = quantized(left.y); rightValue = quantized(right.y);
+    if (leftValue != rightValue) return leftValue < rightValue ? -1 : 1;
+    leftValue = quantized(left.x); rightValue = quantized(right.x);
+    if (leftValue != rightValue) return leftValue < rightValue ? -1 : 1;
+    return leftIndex < rightIndex ? -1 : leftIndex > rightIndex ? 1 : 0;
+}
+
+void main()
+{
+    uint lane = gl_LocalInvocationID.x;
+    frame = gl_WorkGroupID.z;
+    uint frames = max(parameters.frameCount, 1u);
+    if (frame >= frames)
+        return;
+    uint count = min(counters[parameters.counterOffset + frame * parameters.counterFrameStride], parameters.capacity);
+    uint sortCount = 1u;
+    while (sortCount < parameters.capacity) sortCount <<= 1u;
+    for (uint index = lane; index < sortCount; index += 256u)
+        indexes[index] = index < count ? index : 0xffffffffu;
+    barrier();
+    for (uint sequence = 2u; sequence <= sortCount; sequence <<= 1u)
+    {
+        for (uint distance = sequence >> 1u; distance > 0u; distance >>= 1u)
+        {
+            for (uint index = lane; index < sortCount; index += 256u)
+            {
+                uint partner = index ^ distance;
+                if (partner > index)
+                {
+                    bool ascending = (index & sequence) == 0u;
+                    int comparison = compareKeypoints(indexes[index], indexes[partner], count);
+                    if ((ascending && comparison > 0) || (!ascending && comparison < 0))
+                    {
+                        uint temporary = indexes[index];
+                        indexes[index] = indexes[partner];
+                        indexes[partner] = temporary;
+                    }
+                }
+            }
+            barrier();
+        }
+    }
+    for (uint index = lane; index < count; index += 256u)
+        outputKeypoints[parameters.outputOffset + frame * parameters.outputFrameStride + index] = inputKeypoints[parameters.inputOffset + frame * parameters.inputFrameStride + indexes[index]];
+}

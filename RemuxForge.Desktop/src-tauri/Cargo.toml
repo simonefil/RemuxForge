@@ -1,0 +1,20 @@
+[package]
+name = "remuxforge-desktop"
+version = "0.1.0"
+description = "Desktop host for RemuxForge"
+authors = ["Simone"]
+edition = "2024"
+
+[lib]
+name = "remuxforge_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.5.4", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.11.5", features = [] }
+tauri-plugin-shell = "2.3.5"
+tauri-plugin-single-instance = "2.4.3"

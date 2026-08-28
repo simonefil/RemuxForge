@@ -2,15 +2,18 @@ using OpenCvSharp;
 using RemuxForge.Core.Analysis.Edit.Extraction;
 using RemuxForge.Core.Analysis.Features;
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Media.Ffmpeg;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace RemuxForge.Core.Analysis.Edit.Geometry
 {
@@ -195,7 +198,9 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             FrameGeometryEstimationResult result = new FrameGeometryEstimationResult();
             result.Alignment.RequiredMatchCount = REQUIRED_MATCHES;
             result.Alignment.BackendName = AdvancedConfig.GetVisionBackendValue(this._backend);
+            ConsoleHelper.Write(this._logSection, RemuxForge.Core.Models.LogLevel.Phase, AppText.T("analysis.geometry.bootstrap"));
 
+            Stopwatch phaseStopwatch = Stopwatch.StartNew();
             VideoGeometryAnalyzer analyzer = new VideoGeometryAnalyzer(this._ffmpegPath, this._ffmpegConfig, this._logSection);
             VideoGeometryProfile sourceProfile = analyzer.Analyze(sourceFile);
             VideoGeometryProfile languageProfile = analyzer.Analyze(languageFile);
@@ -204,20 +209,45 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
 
             FfmpegVideoInfoReader reader = new FfmpegVideoInfoReader(this._ffmpegPath, this._ffmpegConfig, this._logSection);
             reader.TryRead(languageFile, out int languageDurationMs, out _);
+            result.Alignment.NativeProbeMs = phaseStopwatch.ElapsedMilliseconds;
             if (sourceDurationMs <= 0 || languageDurationMs <= 0)
                 return this.Reject(result, "Durata video non disponibile per il bootstrap geometrico");
 
             cancellationToken.ThrowIfCancellationRequested();
-            if (!this.TryResolveActiveRect(sourceFile, sourceProfile, sourceDurationMs, sourceManualCropPx, cancellationToken, out PixelRect sourceActive, out CropDetectionDiagnostics sourceCropDiagnostics, out string sourceMode, out string cropRejectReason))
-                return this.Reject(result, cropRejectReason);
-            if (!this.TryResolveActiveRect(languageFile, languageProfile, languageDurationMs, languageManualCropPx, cancellationToken, out PixelRect languageActive, out CropDetectionDiagnostics languageCropDiagnostics, out string languageMode, out cropRejectReason))
-                return this.Reject(result, cropRejectReason);
+            phaseStopwatch.Restart();
+            PixelRect sourceActive = new PixelRect();
+            PixelRect languageActive = new PixelRect();
+            CropDetectionDiagnostics sourceCropDiagnostics = null;
+            CropDetectionDiagnostics languageCropDiagnostics = null;
+            string sourceMode = "";
+            string languageMode = "";
+            string sourceCropRejectReason = "";
+            string languageCropRejectReason = "";
+            bool sourceCropResolved = false;
+            bool languageCropResolved = false;
+            int cropDecodeConcurrency = Math.Max(1, ParallelismHelper.ResolveDefaultMaxDegree() / 2);
+            using (SemaphoreSlim cropDecodeBudget = new SemaphoreSlim(cropDecodeConcurrency, cropDecodeConcurrency))
+            {
+                Parallel.Invoke(
+                    () => sourceCropResolved = this.TryResolveActiveRect(sourceFile, sourceProfile, sourceDurationMs, sourceManualCropPx, cropDecodeBudget, cancellationToken, out sourceActive, out sourceCropDiagnostics, out sourceMode, out sourceCropRejectReason),
+                    () => languageCropResolved = this.TryResolveActiveRect(languageFile, languageProfile, languageDurationMs, languageManualCropPx, cropDecodeBudget, cancellationToken, out languageActive, out languageCropDiagnostics, out languageMode, out languageCropRejectReason));
+            }
+            result.Alignment.CropDetectionMs = phaseStopwatch.ElapsedMilliseconds;
+            if (!sourceCropResolved)
+                return this.Reject(result, sourceCropRejectReason);
+            if (!languageCropResolved)
+                return this.Reject(result, languageCropRejectReason);
 
             result.SourceGeometryInfo = this.BuildGeometryInfo(sourceProfile, sourceActive, sourceCropDiagnostics, sourceManualCropPx, sourceMode);
             result.LanguageGeometryInfo = this.BuildGeometryInfo(languageProfile, languageActive, languageCropDiagnostics, languageManualCropPx, languageMode);
 
-            List<DeepSiftVisualAnchor> sourceAnchors = this.ExtractBootstrapAnchors(sourceFile, sourceDurationMs, sourceProfile, sourceActive, cancellationToken);
-            List<DeepSiftVisualAnchor> languageAnchors = this.ExtractBootstrapAnchors(languageFile, languageDurationMs, languageProfile, languageActive, cancellationToken);
+            List<DeepSiftVisualAnchor> sourceAnchors = null;
+            List<DeepSiftVisualAnchor> languageAnchors = null;
+            phaseStopwatch.Restart();
+            Parallel.Invoke(
+                () => sourceAnchors = this.ExtractBootstrapAnchors(sourceFile, sourceDurationMs, sourceProfile, sourceActive, cancellationToken),
+                () => languageAnchors = this.ExtractBootstrapAnchors(languageFile, languageDurationMs, languageProfile, languageActive, cancellationToken));
+            result.Alignment.BootstrapExtractionMs = phaseStopwatch.ElapsedMilliseconds;
             if (sourceAnchors.Count < REQUIRED_MATCHES || languageAnchors.Count < REQUIRED_MATCHES)
                 return this.Reject(result, "Frame informativi insufficienti nei primi tre minuti");
 
@@ -235,13 +265,23 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
                 DeepSiftBatchMatchResult batch = matcher.BuildMatrix(sourceAnchors, languageAnchors, ParallelismHelper.ResolveDefaultMaxDegree(), cancellationToken);
                 result.Alignment.BackendName = batch.BackendName;
                 result.Alignment.ProcessedPairCount = batch.ProcessedCellCount;
+                result.Alignment.SiftFeatureExtractionMs = batch.FeatureExtractionMs;
+                result.Alignment.SiftMatchingMs = batch.MatchingMs;
+                result.Alignment.SiftDescriptorWorkMs = batch.DescriptorMatchingMs;
+                result.Alignment.SiftGeometryWorkMs = batch.GeometryMs;
+                result.Alignment.SiftAcceptedPairCount = batch.AcceptedCellCount;
+                result.Alignment.SiftSourceFeaturelessAnchorCount = batch.SourceFeaturelessAnchorCount;
+                result.Alignment.SiftLanguageFeaturelessAnchorCount = batch.LanguageFeaturelessAnchorCount;
+                result.Alignment.SiftRejectionCounts = new Dictionary<string, int>(batch.RejectionCounts);
                 result.Alignment.UploadMs = batch.UploadMs;
                 result.Alignment.ReadbackMs = batch.ReadbackMs;
                 if (batch.Cancelled)
                     cancellationToken.ThrowIfCancellationRequested();
                 if (!string.IsNullOrEmpty(batch.RejectReason))
                     return this.Reject(result, batch.RejectReason);
+                phaseStopwatch.Restart();
                 List<GeometryCandidate> candidates = this.BuildCandidates(batch.AcceptedPairs, sourceAnchors, languageAnchors);
+                this.PopulateCandidateDiagnostics(result.Alignment.SiftCandidateMatches, candidates);
                 if (!this.TryBuildConsensus(candidates, out GeometryConsensus consensus))
                     return this.Reject(result, "Meno di cinque match SIFT/RANSAC geometricamente concordi nei primi tre minuti");
 
@@ -251,9 +291,19 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
                 result.LanguageCommonGeometry.CropPx = result.Alignment.LanguageCommonCropPx;
                 if (sourceDHashGeometry != null && languageDHashGeometry != null)
                     this.ValidateDHashContract(result, sourceProfile, languageProfile, sourceActive, languageActive, sourceDHashGeometry, languageDHashGeometry, sourceAnchors, languageAnchors, consensus);
+                result.Alignment.ConsensusRefinementMs = phaseStopwatch.ElapsedMilliseconds;
             }
 
             result.Alignment.Success = true;
+            ConsoleHelper.Write(this._logSection, RemuxForge.Core.Models.LogLevel.Debug, AppText.F("analysis.geometry.result",
+                result.Alignment.AcceptedMatchCount,
+                result.Alignment.SourceCommonCropPx,
+                result.Alignment.LanguageCommonCropPx,
+                result.Alignment.ScaleX,
+                result.Alignment.ScaleY,
+                result.Alignment.TranslateX,
+                result.Alignment.TranslateY,
+                result.Alignment.BackendName));
             return result;
         }
 
@@ -264,7 +314,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
         /// <summary>
         /// Risolve il rettangolo attivo da crop manuale o campioni nativi distribuiti
         /// </summary>
-        private bool TryResolveActiveRect(string filePath, VideoGeometryProfile profile, int durationMs, string manualCropPx, CancellationToken cancellationToken, out PixelRect rect, out CropDetectionDiagnostics diagnostics, out string mode, out string rejectReason)
+        private bool TryResolveActiveRect(string filePath, VideoGeometryProfile profile, int durationMs, string manualCropPx, SemaphoreSlim cropDecodeBudget, CancellationToken cancellationToken, out PixelRect rect, out CropDetectionDiagnostics diagnostics, out string mode, out string rejectReason)
         {
             rect = new PixelRect(0, 0, profile.Width, profile.Height);
             diagnostics = new CropDetectionDiagnostics();
@@ -283,12 +333,27 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
                 return rect.IsValid;
             }
 
-            List<byte[]> frames = new List<byte[]>();
-            for (int i = 0; i < CROP_SAMPLE_COUNT; i++)
+            byte[][] sampledFrames = new byte[CROP_SAMPLE_COUNT][];
+            ParallelOptions options = new ParallelOptions();
+            options.CancellationToken = cancellationToken;
+            options.MaxDegreeOfParallelism = CROP_SAMPLE_COUNT;
+            Parallel.For(0, CROP_SAMPLE_COUNT, options, i =>
             {
-                cancellationToken.ThrowIfCancellationRequested();
                 double fraction = (i + 1.0) / (CROP_SAMPLE_COUNT + 1.0);
-                byte[] frame = this.ExtractNativeFrame(filePath, durationMs * fraction, profile.Width, profile.Height);
+                cropDecodeBudget.Wait(cancellationToken);
+                try
+                {
+                    sampledFrames[i] = this.ExtractNativeFrame(filePath, durationMs * fraction, profile.Width, profile.Height);
+                }
+                finally
+                {
+                    cropDecodeBudget.Release();
+                }
+            });
+            List<byte[]> frames = new List<byte[]>();
+            for (int i = 0; i < sampledFrames.Length; i++)
+            {
+                byte[] frame = sampledFrames[i];
                 if (frame != null)
                     frames.Add(frame);
             }
@@ -592,6 +657,30 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
         }
 
         /// <summary>
+        /// Converte le trasformazioni candidate nel contratto diagnostico pubblico
+        /// </summary>
+        /// <param name="diagnostics">Lista diagnostica da riempire</param>
+        /// <param name="candidates">Candidate geometriche prima del consenso</param>
+        private void PopulateCandidateDiagnostics(List<VisualGeometryMatch> diagnostics, List<GeometryCandidate> candidates)
+        {
+            diagnostics.Clear();
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                GeometryCandidate candidate = candidates[i];
+                diagnostics.Add(new VisualGeometryMatch
+                {
+                    SourcePtsMs = candidate.SourcePtsMs,
+                    LanguagePtsMs = candidate.LanguagePtsMs,
+                    Score = candidate.Score,
+                    ScaleX = candidate.ScaleX,
+                    ScaleY = candidate.ScaleY,
+                    TranslateX = candidate.TranslateX,
+                    TranslateY = candidate.TranslateY
+                });
+            }
+        }
+
+        /// <summary>
         /// Inverte l'omografia source-language e ne conserva la componente axis-aligned
         /// </summary>
         private bool TryConvertHomography(double[] homography, out GeometryCandidate result)
@@ -757,8 +846,9 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
                     consensus.TranslateX * REFINE_SIDE,
                     consensus.TranslateY * REFINE_SIDE
                 };
-                for (int i = 0; i < allPairs.Count; i++)
-                    allPairs[i].InitialQuality = this.PixelQuality(new List<RefinementPair> { allPairs[i] }, parameters);
+                ParallelOptions options = new ParallelOptions();
+                options.MaxDegreeOfParallelism = Math.Min(allPairs.Count, ParallelismHelper.ResolveDefaultMaxDegree());
+                Parallel.For(0, allPairs.Count, options, i => allPairs[i].InitialQuality = this.PixelQuality(allPairs[i], parameters));
                 allPairs.Sort((left, right) => right.InitialQuality.CompareTo(left.InitialQuality));
                 int trainingCount = Math.Min(8, Math.Max(3, (allPairs.Count + 1) / 2));
                 List<RefinementPair> pairs = allPairs.Take(trainingCount).ToList();
@@ -816,6 +906,24 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
         /// </summary>
         private double PixelQuality(List<RefinementPair> pairs, double[] parameters)
         {
+            double[] pairQualities = new double[pairs.Count];
+            ParallelOptions options = new ParallelOptions();
+            options.MaxDegreeOfParallelism = Math.Min(pairs.Count, ParallelismHelper.ResolveDefaultMaxDegree());
+            Parallel.For(0, pairs.Count, options, i => pairQualities[i] = this.PixelQuality(pairs[i], parameters));
+            List<double> qualities = new List<double>();
+            for (int i = 0; i < pairQualities.Length; i++)
+            {
+                if (pairQualities[i] >= -1.0)
+                    qualities.Add(pairQualities[i]);
+            }
+            return qualities.Count > 0 ? this.Median(qualities) : -1.0;
+        }
+
+        /// <summary>
+        /// Misura la qualità di una trasformazione su una singola coppia
+        /// </summary>
+        private double PixelQuality(RefinementPair pair, double[] parameters)
+        {
             using (Mat transform = new Mat(2, 3, MatType.CV_64FC1))
             {
                 transform.Set(0, 0, parameters[0]);
@@ -824,24 +932,18 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
                 transform.Set(1, 0, 0.0);
                 transform.Set(1, 1, parameters[1]);
                 transform.Set(1, 2, parameters[3]);
-                List<double> qualities = new List<double>();
-                for (int i = 0; i < pairs.Count; i++)
+                using (Mat warped = new Mat())
+                using (Mat mask = new Mat())
+                using (Mat gradientX = new Mat())
+                using (Mat gradientY = new Mat())
                 {
-                    using (Mat warped = new Mat())
-                    using (Mat mask = new Mat())
-                    using (Mat gradientX = new Mat())
-                    using (Mat gradientY = new Mat())
-                    {
-                        Cv2.WarpAffine(pairs[i].Language, warped, transform, new Size(REFINE_SIDE, REFINE_SIDE), InterpolationFlags.Linear, BorderTypes.Constant, Scalar.Black);
-                        Cv2.WarpAffine(pairs[i].Valid, mask, transform, new Size(REFINE_SIDE, REFINE_SIDE), InterpolationFlags.Nearest, BorderTypes.Constant, Scalar.Black);
-                        Cv2.Sobel(warped, gradientX, MatType.CV_32FC1, 1, 0, 3);
-                        Cv2.Sobel(warped, gradientY, MatType.CV_32FC1, 0, 1, 3);
-                        double quality = this.TileCorrelation(pairs[i], warped, mask, gradientX, gradientY, out int tiles);
-                        if (tiles >= 8)
-                            qualities.Add(quality);
-                    }
+                    Cv2.WarpAffine(pair.Language, warped, transform, new Size(REFINE_SIDE, REFINE_SIDE), InterpolationFlags.Linear, BorderTypes.Constant, Scalar.Black);
+                    Cv2.WarpAffine(pair.Valid, mask, transform, new Size(REFINE_SIDE, REFINE_SIDE), InterpolationFlags.Nearest, BorderTypes.Constant, Scalar.Black);
+                    Cv2.Sobel(warped, gradientX, MatType.CV_32FC1, 1, 0, 3);
+                    Cv2.Sobel(warped, gradientY, MatType.CV_32FC1, 0, 1, 3);
+                    double quality = this.TileCorrelation(pair, warped, mask, gradientX, gradientY, out int tiles);
+                    return tiles >= 8 ? quality : -2.0;
                 }
-                return qualities.Count > 0 ? this.Median(qualities) : -1.0;
             }
         }
 
@@ -976,7 +1078,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
         #region Metodi privati - Contratto dHash
 
         /// <summary>
-        /// Usa i match già confermati per applicare l'affine al dHash soltanto quando ripara il contratto
+        /// Usa i match già confermati per scegliere l'affine quando il viewport indipendente non tiene e l'affine lo migliora
         /// </summary>
         private void ValidateDHashContract(FrameGeometryEstimationResult result, VideoGeometryProfile sourceProfile, VideoGeometryProfile languageProfile, PixelRect sourceActive, PixelRect languageActive, FrameGeometry sourceGeometry, FrameGeometry languageGeometry, List<DeepSiftVisualAnchor> sourceAnchors, List<DeepSiftVisualAnchor> languageAnchors, GeometryConsensus consensus)
         {
@@ -987,8 +1089,6 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
                 (sourceViewport.Top - consensus.TranslateY) / consensus.ScaleY,
                 (sourceViewport.Right - consensus.TranslateX) / consensus.ScaleX,
                 (sourceViewport.Bottom - consensus.TranslateY) / consensus.ScaleY);
-            double viewportEpsilon = 1.0 / SIFT_SIDE;
-            bool affineIsInside = mappedLanguageViewport.Left >= -viewportEpsilon && mappedLanguageViewport.Top >= -viewportEpsilon && mappedLanguageViewport.Right <= 1.0 + viewportEpsilon && mappedLanguageViewport.Bottom <= 1.0 + viewportEpsilon;
             NormalizedRect affineLanguageViewport = new NormalizedRect(
                 Math.Clamp(mappedLanguageViewport.Left, 0.0, 1.0),
                 Math.Clamp(mappedLanguageViewport.Top, 0.0, 1.0),
@@ -1018,7 +1118,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             result.Alignment.DHashContractPairCount = pairCount;
             result.Alignment.IndependentDHashExplainedCount = independentExplained;
             result.Alignment.AffineDHashExplainedCount = affineExplained;
-            result.Alignment.UseAffineDHashViewport = affineIsInside && independentExplained * 2 <= pairCount && affineExplained * 2 > pairCount;
+            result.Alignment.UseAffineDHashViewport = independentExplained * 2 <= pairCount && affineExplained > independentExplained;
             if (!result.Alignment.UseAffineDHashViewport)
                 return;
 
@@ -1031,7 +1131,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
         }
 
         /// <summary>
-        /// Proietta il viewport dHash storico nello spazio normalizzato dell'area attiva
+        /// Proietta il viewport dHash indipendente nello spazio normalizzato dell'area attiva
         /// </summary>
         private NormalizedRect BuildDHashViewport(VideoGeometryProfile profile, PixelRect active, FrameGeometry geometry)
         {

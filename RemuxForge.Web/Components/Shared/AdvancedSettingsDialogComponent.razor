@@ -1,10 +1,10 @@
 <div class="dialog-overlay visible" @onclick="OnClose">
-    <div class="dialog-box" style="min-width: 60ch; max-height: 80vh; overflow-y: auto;" @onclick:stopPropagation="true">
-        <div class="dialog-title">@AppText.T("web.advanced.title")</div>
+    <div class="dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="advanced-settings-dialog-title" style="min-width: 60ch; max-height: 80vh; overflow-y: auto;" @onclick:stopPropagation="true">
+        <div id="advanced-settings-dialog-title" class="dialog-title">@AppText.T("web.advanced.title")</div>
         <div class="dialog-body">
 
             <AdvancedSettingsSection Title="@AppText.T("web.advanced.section.analysis")">
-                <AdvancedSettingsToggleRow Label="@AppText.T("web.advanced.hardwareAcceleration")" Value="_ffHardwareAcceleration" ValueChanged="ChangeHardwareAcceleration" />
+                <AdvancedSettingsToggleRow Label="@AppText.T("web.advanced.hardwareAcceleration")" Value="_ffHardwareAcceleration" ValueChanged="ChangeHardwareAcceleration" Disabled="_ffHardwareProbeRunning" />
                 @if (_ffHardwareProbeRunning)
                 {
                     <div class="form-row">
@@ -16,7 +16,7 @@
                 {
                     <div class="form-row">
                         <span class="form-label">@AppText.T("web.advanced.hardwareBackend")</span>
-                        <select class="form-input" style="width: 18ch;" value="@_ffHardwareAccelerationMethod" @onchange="ChangeHardwareAccelerationMethod">
+                        <select class="form-input" style="width: 18ch;" aria-label="@AppText.T("web.advanced.hardwareBackend")" value="@_ffHardwareAccelerationMethod" @onchange="ChangeHardwareAccelerationMethod">
                             <option value="">@AppText.T("web.advanced.select")</option>
                             @for (int i = 0; i < _ffHardwareAccelerationMethods.Count; i++)
                             {
@@ -27,7 +27,7 @@
                 }
                 <div class="form-row">
                     <span class="form-label">@AppText.T("web.advanced.visionBackend")</span>
-                    <select class="form-input" style="width: 18ch;" value="@AdvancedConfig.GetVisionBackendValue(_visionBackend)" @onchange="ChangeVisionBackend" disabled="@_siftVulkanProbeRunning">
+                    <select class="form-input" style="width: 18ch;" aria-label="@AppText.T("web.advanced.visionBackend")" value="@AdvancedConfig.GetVisionBackendValue(_visionBackend)" @onchange="ChangeVisionBackend" disabled="@_siftVulkanProbeRunning">
                         <option value="@AdvancedConfig.GetVisionBackendValue(VisionBackendKind.Cpu)">CPU</option>
                         <option value="@AdvancedConfig.GetVisionBackendValue(VisionBackendKind.Vulkan)">Vulkan</option>
                     </select>
@@ -45,12 +45,12 @@
         </div>
         @if (!string.IsNullOrEmpty(_validationError))
         {
-            <div style="padding: 0.5em 1em; color: var(--color-error); white-space: pre-line;">@_validationError</div>
+            <div style="padding: 0.5em 1em; color: var(--rz-danger); white-space: pre-line;">@_validationError</div>
         }
         <div class="dialog-footer">
-            <button @onclick="Save" disabled="@(_ffHardwareProbeRunning || _siftVulkanProbeRunning)">@AppText.T("web.common.ok")</button>
-            <button @onclick="ResetDefaults" disabled="@(_ffHardwareProbeRunning || _siftVulkanProbeRunning)">@AppText.T("web.advanced.resetDefault")</button>
-            <button @onclick="OnClose" disabled="@(_ffHardwareProbeRunning || _siftVulkanProbeRunning)">@AppText.T("web.common.cancel")</button>
+            <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@Save" Disabled="@(_ffHardwareProbeRunning || _siftVulkanProbeRunning)" />
+            <RadzenButton Text="@AppText.T("web.advanced.resetDefault")" Icon="restart_alt" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@ResetDefaults" Disabled="@(_ffHardwareProbeRunning || _siftVulkanProbeRunning)" />
+            <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" Disabled="@(_ffHardwareProbeRunning || _siftVulkanProbeRunning)" />
         </div>
     </div>
 </div>
@@ -344,7 +344,7 @@
             return;
         }
 
-        this._ffHardwareAcceleration = false;
+        this._ffHardwareAcceleration = true;
         this._ffHardwareAccelerationMethod = "";
         this._ffHardwareAccelerationMethods.Clear();
         this._ffHardwareProbeRunning = true;

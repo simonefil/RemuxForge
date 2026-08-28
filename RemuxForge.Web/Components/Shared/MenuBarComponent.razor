@@ -1,50 +1,63 @@
-<div class="menu-bar" tabindex="0">
+<nav class="menu-bar" aria-label="@AppText.T("web.navigation.menu")">
     @for (int i = 0; i < _menus.Count; i++)
     {
         int idx = i;
         MenuDef menu = _menus[i];
         int mnemonicIndex = FindMnemonicIndex(menu.Label, menu.Mnemonic);
-        <div class="menu-bar-item @(_activeIndex == idx ? "active" : "")"
-             @onclick="() => ToggleMenu(idx)"
-             @onmouseenter="() => HoverMenu(idx)">
-            @if (mnemonicIndex >= 0)
-            {
-                @menu.Label.Substring(0, mnemonicIndex)<span class="menu-mnemonic">@menu.Label.Substring(mnemonicIndex, 1)</span>@menu.Label.Substring(mnemonicIndex + 1)
-            }
-            else
-            {
-                @menu.Label
-            }
-        </div>
-    }
-</div>
+        <div class="menu-bar-entry">
+            <button type="button"
+                    class="menu-bar-item @(_activeIndex == idx ? "active" : "")"
+                    aria-haspopup="menu"
+                    aria-expanded="@(_activeIndex == idx)"
+                    @onclick="() => ToggleMenu(idx)"
+                    @onmouseenter="() => HoverMenu(idx)">
+                @if (mnemonicIndex >= 0)
+                {
+                    @menu.Label.Substring(0, mnemonicIndex)<span class="menu-mnemonic">@menu.Label.Substring(mnemonicIndex, 1)</span>@menu.Label.Substring(mnemonicIndex + 1)
+                }
+                else
+                {
+                    @menu.Label
+                }
+            </button>
 
-@if (_activeIndex >= 0)
-{
-    <div class="menu-overlay" @onclick="CloseMenu"></div>
-    <div class="menu-dropdown" style="left: @(_menuPositions[_activeIndex])ch;">
-        @for (int i = 0; i < _menus[_activeIndex].Items.Count; i++)
-        {
-            int itemIndex = i;
-            MenuItemDef item = _menus[_activeIndex].Items[i];
-            if (item.IsSeparator)
+            @if (_activeIndex == idx)
             {
-                <hr />
-            }
-            else
-            {
-                <div class="menu-dropdown-item @(_activeItemIndex == itemIndex ? "active" : "")"
-                     @onclick="() => InvokeItemAsync(item)"
-                     @onmouseenter="() => SetActiveItem(itemIndex)">
-                    <span>@item.Label</span>
-                    @if (!string.IsNullOrEmpty(item.Shortcut))
+                <div class="menu-dropdown" role="menu">
+                    @for (int itemIndex = 0; itemIndex < menu.Items.Count; itemIndex++)
                     {
-                        <span class="shortcut">@item.Shortcut</span>
+                        int currentItemIndex = itemIndex;
+                        MenuItemDef item = menu.Items[itemIndex];
+                        if (item.IsSeparator)
+                        {
+                            <hr role="separator" />
+                        }
+                        else
+                        {
+                            <button type="button"
+                                    role="menuitem"
+                                    disabled="@item.Disabled"
+                                    tabindex="@(_activeItemIndex == currentItemIndex ? 0 : -1)"
+                                    class="menu-dropdown-item @(_activeItemIndex == currentItemIndex ? "active" : "")"
+                                    @onclick="() => InvokeItemAsync(item)"
+                                    @onmouseenter="() => SetActiveItem(currentItemIndex)">
+                                <span>@item.Label</span>
+                                @if (!string.IsNullOrEmpty(item.Shortcut))
+                                {
+                                    <span class="shortcut">@item.Shortcut</span>
+                                }
+                            </button>
+                        }
                     }
                 </div>
             }
-        }
-    </div>
+        </div>
+    }
+</nav>
+
+@if (_activeIndex >= 0)
+{
+    <div class="menu-overlay" aria-hidden="true" @onclick="CloseMenu"></div>
 }
 
 @code {
@@ -93,97 +106,22 @@
         /// Flag separatore
         /// </summary>
         public bool IsSeparator;
+
+        /// <summary>
+        /// Flag voce disabilitata durante un'operazione
+        /// </summary>
+        public bool Disabled;
     }
 
     /// <summary>
-    /// Evento scan file
+    /// Comandi contestuali condivisi
     /// </summary>
-    [Parameter] public EventCallback OnScan { get; set; }
+    [Parameter] public IReadOnlyList<UiCommandDefinition> Commands { get; set; }
 
     /// <summary>
-    /// Evento analizza selezionato
+    /// Evento invocazione comando condiviso
     /// </summary>
-    [Parameter] public EventCallback OnAnalyzeSelected { get; set; }
-
-    /// <summary>
-    /// Evento analizza tutti
-    /// </summary>
-    [Parameter] public EventCallback OnAnalyzeAll { get; set; }
-
-    /// <summary>
-    /// Evento toggle skip
-    /// </summary>
-    [Parameter] public EventCallback OnSkip { get; set; }
-
-    /// <summary>
-    /// Evento merge selezionato
-    /// </summary>
-    [Parameter] public EventCallback OnMergeSelected { get; set; }
-
-    /// <summary>
-    /// Evento merge tutti
-    /// </summary>
-    [Parameter] public EventCallback OnMergeAll { get; set; }
-
-    /// <summary>
-    /// Evento richiesta stop operazione
-    /// </summary>
-    [Parameter] public EventCallback OnStop { get; set; }
-
-    /// <summary>
-    /// Evento mostra configurazione
-    /// </summary>
-    [Parameter] public EventCallback OnShowConfig { get; set; }
-
-    /// <summary>
-    /// Evento mostra preset metadata
-    /// </summary>
-    [Parameter] public EventCallback OnShowPreset { get; set; }
-
-    /// <summary>
-    /// Evento clear metadata
-    /// </summary>
-    [Parameter] public EventCallback OnClear { get; set; }
-
-    /// <summary>
-    /// Evento rinomina metadata
-    /// </summary>
-    [Parameter] public EventCallback OnRename { get; set; }
-
-    /// <summary>
-    /// Evento editor manuale metadata
-    /// </summary>
-    [Parameter] public EventCallback OnManualEdit { get; set; }
-
-    /// <summary>
-    /// Evento mostra percorsi tool
-    /// </summary>
-    [Parameter] public EventCallback OnShowToolPaths { get; set; }
-
-    /// <summary>
-    /// Evento mostra impostazioni audio
-    /// </summary>
-    [Parameter] public EventCallback OnShowAudioSettings { get; set; }
-
-    /// <summary>
-    /// Evento mostra impostazioni avanzate
-    /// </summary>
-    [Parameter] public EventCallback OnShowAdvancedSettings { get; set; }
-
-    /// <summary>
-    /// Evento mostra profili encoding
-    /// </summary>
-    [Parameter] public EventCallback OnShowEncodingProfiles { get; set; }
-
-    /// <summary>
-    /// Evento mostra info
-    /// </summary>
-    [Parameter] public EventCallback OnShowInfo { get; set; }
-
-    /// <summary>
-    /// Evento mostra pipeline
-    /// </summary>
-    [Parameter] public EventCallback OnShowPipeline { get; set; }
+    [Parameter] public EventCallback<UiCommandDefinition> OnCommand { get; set; }
 
     /// <summary>
     /// Evento cambio tema
@@ -206,11 +144,6 @@
     [Parameter] public string CurrentLanguage { get; set; }
 
     /// <summary>
-    /// Modalità corrente
-    /// </summary>
-    [Parameter] public string CurrentMode { get; set; }
-
-    /// <summary>
     /// Indice menu attualmente aperto (-1 = nessuno)
     /// </summary>
     private int _activeIndex = -1;
@@ -226,174 +159,64 @@
     private List<MenuDef> _menus;
 
     /// <summary>
-    /// Posizioni orizzontali dei menu in unità ch
-    /// </summary>
-    private List<int> _menuPositions;
-
-    /// <summary>
-    /// Inizializzazione definizioni menu e calcolo posizioni
+    /// Inizializzazione definizioni menu
     /// </summary>
     protected override void OnParametersSet()
     {
-        if (this.CurrentMode == RemuxForge.Core.Models.Options.MODE_METADATA)
+        this._menus = new List<MenuDef>
         {
-            this._menus = new List<MenuDef>
-            {
-                new MenuDef { Label = AppText.T("web.menu.file"), Mnemonic = AppText.T("web.menu.file.mnemonic"), Items = new List<MenuItemDef>
-                {
-                    new MenuItemDef { Label = AppText.T("web.menu.metadata.inputPath"), Shortcut = "F2", Callback = () => OnShowConfig.InvokeAsync() },
-                    new MenuItemDef { Label = AppText.T("web.menu.metadata.clear"), Shortcut = "Ctrl+L", Callback = () => OnClear.InvokeAsync() },
-                    new MenuItemDef { Label = AppText.T("web.menu.metadata.loadPreset"), Shortcut = "F3", Callback = () => OnShowPreset.InvokeAsync() },
-                }},
-                new MenuDef { Label = AppText.T("web.menu.actions"), Mnemonic = AppText.T("web.menu.actions.mnemonic"), Items = new List<MenuItemDef>
-                {
-                    new MenuItemDef { Label = AppText.T("web.menu.metadata.manualEdit"), Shortcut = "F4", Callback = () => OnManualEdit.InvokeAsync() },
-                    new MenuItemDef { Label = AppText.T("web.menu.metadata.scanInput"), Shortcut = "F5", Callback = () => OnScan.InvokeAsync() },
-                    new MenuItemDef { Label = AppText.T("web.menu.metadata.analyze"), Shortcut = "F6", Callback = () => OnAnalyzeAll.InvokeAsync() },
-                    new MenuItemDef { Label = AppText.T("web.menu.metadata.applySelected"), Shortcut = "F9", Callback = () => OnMergeSelected.InvokeAsync() },
-                    new MenuItemDef { Label = AppText.T("web.menu.metadata.applyAll"), Shortcut = "F10", Callback = () => OnMergeAll.InvokeAsync() },
-                    new MenuItemDef { Label = AppText.T("web.menu.metadata.advancedRename"), Shortcut = "F11", Callback = () => OnRename.InvokeAsync() },
-                    new MenuItemDef { Label = AppText.T("web.menu.stop"), Shortcut = "F12", Callback = () => OnStop.InvokeAsync() },
-                }},
-                new MenuDef { Label = AppText.T("web.menu.settings"), Mnemonic = AppText.T("web.menu.settings.mnemonic"), Items = new List<MenuItemDef>
-                {
-                    new MenuItemDef { Label = AppText.T("web.menu.toolPaths"), Shortcut = "", Callback = () => OnShowToolPaths.InvokeAsync() },
-                }},
-                new MenuDef { Label = AppText.T("web.menu.view"), Mnemonic = AppText.T("web.menu.view.mnemonic"), Items = new List<MenuItemDef>
-                {
-                    new MenuItemDef { Label = AppText.T("web.menu.metadata.pipeline"), Shortcut = "", Callback = () => OnShowPreset.InvokeAsync() },
-                }},
-                new MenuDef { Label = AppText.T("web.menu.theme"), Mnemonic = AppText.T("web.menu.theme.mnemonic"), Items = new List<MenuItemDef>
-                {
-                    new MenuItemDef { Label = "Nord", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("nord") },
-                    new MenuItemDef { Label = "DOS Blue", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("dos-blue") },
-                    new MenuItemDef { Label = "Matrix", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("matrix") },
-                    new MenuItemDef { Label = "Cyberpunk", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("cyberpunk") },
-                    new MenuItemDef { Label = "Solarized Dark", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("solarized-dark") },
-                    new MenuItemDef { Label = "Solarized Light", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("solarized-light") },
-                    new MenuItemDef { Label = "Cybergum", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("cybergum") },
-                    new MenuItemDef { Label = "Everforest", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("everforest") },
-                }},
-                new MenuDef { Label = AppText.T("web.menu.language"), Mnemonic = AppText.T("web.menu.language.mnemonic"), Items = new List<MenuItemDef>
-                {
-                    new MenuItemDef { Label = FormatLanguageLabel(AppText.T("web.language.english"), AppText.LANG_EN), Shortcut = "", Callback = () => OnLanguageChanged.InvokeAsync(AppText.LANG_EN) },
-                    new MenuItemDef { Label = FormatLanguageLabel(AppText.T("web.language.italian"), AppText.LANG_IT), Shortcut = "", Callback = () => OnLanguageChanged.InvokeAsync(AppText.LANG_IT) },
-                }},
-                new MenuDef { Label = AppText.T("web.menu.help"), Mnemonic = AppText.T("web.menu.help.mnemonic"), Items = new List<MenuItemDef>
-                {
-                    new MenuItemDef { Label = AppText.T("web.menu.info"), Shortcut = "", Callback = () => OnShowInfo.InvokeAsync() },
-                }},
-            };
-        }
-        else if (this.CurrentMode == RemuxForge.Core.Models.Options.MODE_SPLIT)
-        {
-            this._menus = new List<MenuDef>
-            {
-                new MenuDef { Label = AppText.T("web.menu.file"), Mnemonic = AppText.T("web.menu.file.mnemonic"), Items = new List<MenuItemDef>
-                {
-                    new MenuItemDef { Label = AppText.T("web.menu.configSplit"), Shortcut = "F2", Callback = () => OnShowConfig.InvokeAsync() },
-                }},
-                new MenuDef { Label = AppText.T("web.menu.actions"), Mnemonic = AppText.T("web.menu.actions.mnemonic"), Items = new List<MenuItemDef>
-                {
-                    new MenuItemDef { Label = AppText.T("web.menu.scanInput"), Shortcut = "F5", Callback = () => OnScan.InvokeAsync() },
-                    new MenuItemDef { Label = AppText.T("web.menu.splitAll"), Shortcut = "F10", Callback = () => OnMergeAll.InvokeAsync() },
-                    new MenuItemDef { Label = AppText.T("web.menu.stop"), Shortcut = "F12", Callback = () => OnStop.InvokeAsync() },
-                }},
-                new MenuDef { Label = AppText.T("web.menu.settings"), Mnemonic = AppText.T("web.menu.settings.mnemonic"), Items = new List<MenuItemDef>
-                {
-                    new MenuItemDef { Label = AppText.T("web.menu.toolPaths"), Shortcut = "", Callback = () => OnShowToolPaths.InvokeAsync() },
-                }},
-                new MenuDef { Label = AppText.T("web.menu.view"), Mnemonic = AppText.T("web.menu.view.mnemonic"), Items = new List<MenuItemDef>
-                {
-                    new MenuItemDef { Label = AppText.T("web.menu.pipeline"), Shortcut = "", Callback = () => OnShowPipeline.InvokeAsync() },
-                }},
-                new MenuDef { Label = AppText.T("web.menu.theme"), Mnemonic = AppText.T("web.menu.theme.mnemonic"), Items = new List<MenuItemDef>
-                {
-                    new MenuItemDef { Label = "Nord", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("nord") },
-                    new MenuItemDef { Label = "DOS Blue", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("dos-blue") },
-                    new MenuItemDef { Label = "Matrix", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("matrix") },
-                    new MenuItemDef { Label = "Cyberpunk", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("cyberpunk") },
-                    new MenuItemDef { Label = "Solarized Dark", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("solarized-dark") },
-                    new MenuItemDef { Label = "Solarized Light", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("solarized-light") },
-                    new MenuItemDef { Label = "Cybergum", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("cybergum") },
-                    new MenuItemDef { Label = "Everforest", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("everforest") },
-                }},
-                new MenuDef { Label = AppText.T("web.menu.language"), Mnemonic = AppText.T("web.menu.language.mnemonic"), Items = new List<MenuItemDef>
-                {
-                    new MenuItemDef { Label = FormatLanguageLabel(AppText.T("web.language.english"), AppText.LANG_EN), Shortcut = "", Callback = () => OnLanguageChanged.InvokeAsync(AppText.LANG_EN) },
-                    new MenuItemDef { Label = FormatLanguageLabel(AppText.T("web.language.italian"), AppText.LANG_IT), Shortcut = "", Callback = () => OnLanguageChanged.InvokeAsync(AppText.LANG_IT) },
-                }},
-                new MenuDef { Label = AppText.T("web.menu.help"), Mnemonic = AppText.T("web.menu.help.mnemonic"), Items = new List<MenuItemDef>
-                {
-                    new MenuItemDef { Label = AppText.T("web.menu.info"), Shortcut = "", Callback = () => OnShowInfo.InvokeAsync() },
-                }},
-            };
-        }
-        else
-        {
-            this._menus = new List<MenuDef>
-        {
-            new MenuDef { Label = AppText.T("web.menu.file"), Mnemonic = AppText.T("web.menu.file.mnemonic"), Items = new List<MenuItemDef>
-            {
-                new MenuItemDef { Label = AppText.T("web.menu.config"), Shortcut = "F2", Callback = () => OnShowConfig.InvokeAsync() },
-            }},
-            new MenuDef { Label = AppText.T("web.menu.actions"), Mnemonic = AppText.T("web.menu.actions.mnemonic"), Items = new List<MenuItemDef>
-            {
-                new MenuItemDef { Label = AppText.T("web.menu.scanFile"), Shortcut = "F5", Callback = () => OnScan.InvokeAsync() },
-                new MenuItemDef { Label = AppText.T("web.menu.analyzeSelected"), Shortcut = "F6", Callback = () => OnAnalyzeSelected.InvokeAsync() },
-                new MenuItemDef { Label = AppText.T("web.menu.analyzeAll"), Shortcut = "F7", Callback = () => OnAnalyzeAll.InvokeAsync() },
-                new MenuItemDef { Label = "IsSeparator", IsSeparator = true, Shortcut = "", Callback = null },
-                new MenuItemDef { Label = AppText.T("web.menu.skipUnskip"), Shortcut = "F8", Callback = () => OnSkip.InvokeAsync() },
-                new MenuItemDef { Label = "IsSeparator", IsSeparator = true, Shortcut = "", Callback = null },
-                new MenuItemDef { Label = AppText.T("web.menu.processSelected"), Shortcut = "F9", Callback = () => OnMergeSelected.InvokeAsync() },
-                new MenuItemDef { Label = AppText.T("web.menu.processAll"), Shortcut = "F10", Callback = () => OnMergeAll.InvokeAsync() },
-                new MenuItemDef { Label = AppText.T("web.menu.stop"), Shortcut = "F12", Callback = () => OnStop.InvokeAsync() },
-            }},
-            new MenuDef { Label = AppText.T("web.menu.settings"), Mnemonic = AppText.T("web.menu.settings.mnemonic"), Items = new List<MenuItemDef>
-            {
-                new MenuItemDef { Label = AppText.T("web.menu.toolPaths"), Shortcut = "", Callback = () => OnShowToolPaths.InvokeAsync() },
-                new MenuItemDef { Label = AppText.T("web.menu.audio"), Shortcut = "", Callback = () => OnShowAudioSettings.InvokeAsync() },
-                new MenuItemDef { Label = AppText.T("web.menu.advancedSettings"), Shortcut = "", Callback = () => OnShowAdvancedSettings.InvokeAsync() },
-                new MenuItemDef { Label = AppText.T("web.menu.encodingProfiles"), Shortcut = "", Callback = () => OnShowEncodingProfiles.InvokeAsync() },
-            }},
-            new MenuDef { Label = AppText.T("web.menu.view"), Mnemonic = AppText.T("web.menu.view.mnemonic"), Items = new List<MenuItemDef>
-            {
-                new MenuItemDef { Label = AppText.T("web.menu.pipeline"), Shortcut = "", Callback = () => OnShowPipeline.InvokeAsync() },
-            }},
-            new MenuDef { Label = AppText.T("web.menu.theme"), Mnemonic = AppText.T("web.menu.theme.mnemonic"), Items = new List<MenuItemDef>
-            {
-                new MenuItemDef { Label = "Nord", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("nord") },
-                new MenuItemDef { Label = "DOS Blue", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("dos-blue") },
-                new MenuItemDef { Label = "Matrix", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("matrix") },
-                new MenuItemDef { Label = "Cyberpunk", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("cyberpunk") },
-                new MenuItemDef { Label = "Solarized Dark", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("solarized-dark") },
-                new MenuItemDef { Label = "Solarized Light", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("solarized-light") },
-                new MenuItemDef { Label = "Cybergum", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("cybergum") },
-                new MenuItemDef { Label = "Everforest", Shortcut = "", Callback = () => OnThemeChanged.InvokeAsync("everforest") },
-            }},
+            this.CreateMenu(AppText.T("web.menu.file"), AppText.T("web.menu.file.mnemonic"), UiCommandMenuSection.File),
+            this.CreateMenu(AppText.T("web.menu.actions"), AppText.T("web.menu.actions.mnemonic"), UiCommandMenuSection.Actions),
+            this.CreateMenu(AppText.T("web.menu.settings"), AppText.T("web.menu.settings.mnemonic"), UiCommandMenuSection.Settings),
+            new MenuDef { Label = AppText.T("web.menu.theme"), Mnemonic = AppText.T("web.menu.theme.mnemonic"), Items = this.CreateThemeMenuItems() },
             new MenuDef { Label = AppText.T("web.menu.language"), Mnemonic = AppText.T("web.menu.language.mnemonic"), Items = new List<MenuItemDef>
             {
-                new MenuItemDef { Label = FormatLanguageLabel(AppText.T("web.language.english"), AppText.LANG_EN), Shortcut = "", Callback = () => OnLanguageChanged.InvokeAsync(AppText.LANG_EN) },
-                new MenuItemDef { Label = FormatLanguageLabel(AppText.T("web.language.italian"), AppText.LANG_IT), Shortcut = "", Callback = () => OnLanguageChanged.InvokeAsync(AppText.LANG_IT) },
+                new MenuItemDef { Label = FormatLanguageLabel(AppText.T("web.language.english"), AppText.LANG_EN), Shortcut = "", Callback = () => OnLanguageChanged.InvokeAsync(AppText.LANG_EN), Disabled = this.IsCommandMenuBusy() },
+                new MenuItemDef { Label = FormatLanguageLabel(AppText.T("web.language.italian"), AppText.LANG_IT), Shortcut = "", Callback = () => OnLanguageChanged.InvokeAsync(AppText.LANG_IT), Disabled = this.IsCommandMenuBusy() },
             }},
-            new MenuDef { Label = AppText.T("web.menu.help"), Mnemonic = AppText.T("web.menu.help.mnemonic"), Items = new List<MenuItemDef>
-            {
-                new MenuItemDef { Label = AppText.T("web.menu.info"), Shortcut = "", Callback = () => OnShowInfo.InvokeAsync() },
-            }},
+            this.CreateMenu(AppText.T("web.menu.help"), AppText.T("web.menu.help.mnemonic"), UiCommandMenuSection.Help)
         };
-        }
-
-        // Calcola posizioni orizzontali: ogni label + 2ch padding (1ch per lato)
-        this._menuPositions = new List<int>();
-        int pos = 0;
-        for (int i = 0; i < this._menus.Count; i++)
-        {
-            this._menuPositions.Add(pos);
-            // Larghezza = lunghezza label + 2 (padding 1ch per lato)
-            pos = pos + this._menus[i].Label.Length + 2;
-        }
 
         this.NormalizeActiveMenu();
+    }
+
+    /// <summary>
+    /// Crea una sezione menu dai comandi condivisi
+    /// </summary>
+    /// <param name="label">Etichetta sezione</param>
+    /// <param name="mnemonic">Mnemonico sezione</param>
+    /// <param name="section">Sezione richiesta</param>
+    /// <returns>Definizione menu pronta per il renderer</returns>
+    private MenuDef CreateMenu(string label, string mnemonic, UiCommandMenuSection section)
+    {
+        List<MenuItemDef> items = new List<MenuItemDef>();
+
+        if (this.Commands != null)
+        {
+            for (int i = 0; i < this.Commands.Count; i++)
+            {
+                UiCommandDefinition command = this.Commands[i];
+                if ((command.Placement & UiCommandPlacement.Menu) == 0 || command.MenuSection != section)
+                {
+                    continue;
+                }
+
+                if (command.SeparatorBefore && items.Count > 0)
+                {
+                    items.Add(new MenuItemDef { Label = "", Shortcut = "", Callback = null, IsSeparator = true });
+                }
+
+                items.Add(new MenuItemDef
+                {
+                    Label = command.Label,
+                    Shortcut = command.Shortcut,
+                    Callback = () => this.OnCommand.InvokeAsync(command),
+                    Disabled = command.Disabled
+                });
+            }
+        }
+
+        return new MenuDef { Label = label, Mnemonic = mnemonic, Items = items };
     }
 
     /// <summary>
@@ -517,7 +340,7 @@
     private async Task InvokeItemAsync(MenuItemDef item)
     {
         this.CloseMenu();
-        if (item.Callback != null)
+        if (!item.Disabled && item.Callback != null)
         {
             await item.Callback.Invoke();
         }
@@ -590,7 +413,7 @@
                 index = 0;
             attempts++;
         }
-        while (attempts <= items.Count && items[index].IsSeparator);
+        while (attempts <= items.Count && (items[index].IsSeparator || items[index].Disabled));
 
         if (attempts <= items.Count)
         {
@@ -626,7 +449,12 @@
     /// <param name="itemIndex">Indice voce</param>
     private void SetActiveItem(int itemIndex)
     {
-        this._activeItemIndex = itemIndex;
+        if (this._activeIndex >= 0 && this._activeIndex < this._menus.Count &&
+            itemIndex >= 0 && itemIndex < this._menus[this._activeIndex].Items.Count &&
+            !this._menus[this._activeIndex].Items[itemIndex].Disabled)
+        {
+            this._activeItemIndex = itemIndex;
+        }
     }
 
     /// <summary>
@@ -644,7 +472,7 @@
             return;
         }
 
-        if (this._menus[this._activeIndex].Items[this._activeItemIndex].IsSeparator)
+        if (this._menus[this._activeIndex].Items[this._activeItemIndex].IsSeparator || this._menus[this._activeIndex].Items[this._activeItemIndex].Disabled)
         {
             return;
         }
@@ -668,7 +496,7 @@
         items = this._menus[this._activeIndex].Items;
         for (int i = startIndex; i >= 0 && i < items.Count; i += direction)
         {
-            if (!items[i].IsSeparator)
+            if (!items[i].IsSeparator && !items[i].Disabled)
             {
                 result = i;
                 break;
@@ -747,7 +575,64 @@
     private string FormatLanguageLabel(string label, string language)
     {
         string current = AppText.NormalizeLanguage(this.CurrentLanguage);
-        string prefix = string.Equals(current, language, StringComparison.OrdinalIgnoreCase) ? "[X] " : "[ ] ";
+        string prefix = string.Equals(current, language, StringComparison.OrdinalIgnoreCase) ? "✓ " : "";
         return prefix + label;
+    }
+
+    /// <summary>
+    /// Crea le voci per tutti i temi gratuiti inclusi in Radzen
+    /// </summary>
+    /// <returns>Voci del menu temi</returns>
+    private List<MenuItemDef> CreateThemeMenuItems()
+    {
+        string[] labels =
+        {
+            "Default",
+            "Dark",
+            "Humanistic",
+            "Humanistic Dark",
+            "Material",
+            "Material Dark",
+            "Software",
+            "Software Dark",
+            "Standard",
+            "Standard Dark"
+        };
+        List<MenuItemDef> items = new List<MenuItemDef>();
+
+        for (int i = 0; i < AppSettingsModel.VALID_THEMES.Length; i++)
+        {
+            string theme = AppSettingsModel.VALID_THEMES[i];
+            string prefix = string.Equals(this.CurrentTheme, theme, StringComparison.Ordinal) ? "✓ " : "";
+            items.Add(new MenuItemDef
+            {
+                Label = prefix + labels[i],
+                Shortcut = "",
+                Callback = () => this.OnThemeChanged.InvokeAsync(theme),
+                Disabled = this.IsCommandMenuBusy()
+            });
+        }
+
+        return items;
+    }
+
+    /// <summary>
+    /// Verifica lo stato busy dalla definizione condivisa del comando Stop
+    /// </summary>
+    /// <returns>True se Stop è attivo</returns>
+    private bool IsCommandMenuBusy()
+    {
+        if (this.Commands != null)
+        {
+            for (int i = 0; i < this.Commands.Count; i++)
+            {
+                if (this.Commands[i].Shortcut == "F12")
+                {
+                    return !this.Commands[i].Disabled;
+                }
+            }
+        }
+
+        return false;
     }
 }

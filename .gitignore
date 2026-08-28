@@ -63,6 +63,17 @@ project.lock.json
 project.fragment.lock.json
 artifacts/
 
+# Tauri desktop build output
+RemuxForge.Desktop/node_modules/
+RemuxForge.Desktop/src-tauri/target/
+RemuxForge.Desktop/src-tauri/binaries/
+RemuxForge.Desktop/src-tauri/resources/
+RemuxForge.Desktop/src-tauri/gen/
+
+# Local release configuration and output
+/.env
+/release-artifacts/
+
 # Local test project
 RemuxForge.Tests/
 

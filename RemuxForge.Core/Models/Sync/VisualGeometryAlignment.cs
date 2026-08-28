@@ -21,6 +21,8 @@ namespace RemuxForge.Core.Models
             this.SourceCommonCropPx = "";
             this.LanguageCommonCropPx = "";
             this.AcceptedMatches = new List<VisualGeometryMatch>();
+            this.SiftCandidateMatches = new List<VisualGeometryMatch>();
+            this.SiftRejectionCounts = new Dictionary<string, int>();
         }
 
         #endregion
@@ -116,6 +118,71 @@ namespace RemuxForge.Core.Models
         /// Coppie SIFT elaborate dal backend durante il bootstrap
         /// </summary>
         public long ProcessedPairCount { get; set; }
+
+        /// <summary>
+        /// Millisecondi spesi nei probe della geometria e della durata native
+        /// </summary>
+        public long NativeProbeMs { get; set; }
+
+        /// <summary>
+        /// Millisecondi wall clock spesi nel rilevamento dei crop Source e Language
+        /// </summary>
+        public long CropDetectionMs { get; set; }
+
+        /// <summary>
+        /// Millisecondi wall clock spesi nell'estrazione degli anchor bootstrap
+        /// </summary>
+        public long BootstrapExtractionMs { get; set; }
+
+        /// <summary>
+        /// Millisecondi wall clock spesi nell'estrazione delle feature SIFT
+        /// </summary>
+        public long SiftFeatureExtractionMs { get; set; }
+
+        /// <summary>
+        /// Millisecondi wall clock spesi nel matching SIFT e nella verifica geometrica
+        /// </summary>
+        public long SiftMatchingMs { get; set; }
+
+        /// <summary>
+        /// Millisecondi cumulativi del lavoro di matching dei descrittori
+        /// </summary>
+        public long SiftDescriptorWorkMs { get; set; }
+
+        /// <summary>
+        /// Millisecondi cumulativi del lavoro di RANSAC e validazione geometrica
+        /// </summary>
+        public long SiftGeometryWorkMs { get; set; }
+
+        /// <summary>
+        /// Numero di coppie SIFT accettate prima del consenso globale
+        /// </summary>
+        public int SiftAcceptedPairCount { get; set; }
+
+        /// <summary>
+        /// Numero di anchor Source senza feature sufficienti
+        /// </summary>
+        public int SiftSourceFeaturelessAnchorCount { get; set; }
+
+        /// <summary>
+        /// Numero di anchor Language senza feature sufficienti
+        /// </summary>
+        public int SiftLanguageFeaturelessAnchorCount { get; set; }
+
+        /// <summary>
+        /// Coppie SIFT rifiutate raggruppate per motivo del backend
+        /// </summary>
+        public Dictionary<string, int> SiftRejectionCounts { get; set; }
+
+        /// <summary>
+        /// Trasformazioni candidate convertite dalle coppie accettate dal backend, prima del consenso globale
+        /// </summary>
+        public List<VisualGeometryMatch> SiftCandidateMatches { get; set; }
+
+        /// <summary>
+        /// Millisecondi spesi nel consenso globale e nell'affinamento geometrico
+        /// </summary>
+        public long ConsensusRefinementMs { get; set; }
 
         /// <summary>
         /// Millisecondi spesi nell'upload Vulkan, zero sul percorso CPU

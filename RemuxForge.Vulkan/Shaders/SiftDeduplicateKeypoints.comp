@@ -1,0 +1,80 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct KeypointRecord
+{
+    float x; float y; float scale; float response; float orientation;
+    uint frameIndex; uint octave; uint layer;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer InputKeypoints { KeypointRecord inputKeypoints[]; };
+layout(std430, set = 0, binding = 1) buffer Flags { uint flags[]; };
+layout(std430, set = 0, binding = 2) readonly buffer Prefix { uint prefix[]; };
+layout(std430, set = 0, binding = 3) writeonly buffer OutputKeypoints { KeypointRecord outputKeypoints[]; };
+layout(std430, set = 0, binding = 4) buffer Counters { uint counters[]; };
+
+layout(push_constant) uniform Parameters
+{
+    uint inputOffset;
+    uint outputOffset;
+    uint flagOffset;
+    uint prefixOffset;
+    uint capacity;
+    uint counterOffset;
+    uint operation;
+    uint inputFrameStride;
+    uint outputFrameStride;
+    uint flagFrameStride;
+    uint prefixFrameStride;
+    uint counterFrameStride;
+    uint frameCount;
+} parameters;
+
+int quantized(float value)
+{
+    return int(round(value * 10000.0));
+}
+
+bool equivalent(KeypointRecord left, KeypointRecord right)
+{
+    return quantized(left.x) == quantized(right.x) &&
+        quantized(left.y) == quantized(right.y) &&
+        left.layer == right.layer &&
+        quantized(left.response) == quantized(right.response) &&
+        quantized(left.scale) == quantized(right.scale);
+}
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    uint frame = gl_GlobalInvocationID.z;
+    uint frames = max(parameters.frameCount, 1u);
+    if (frame >= frames)
+        return;
+    uint inputBase = parameters.inputOffset + frame * parameters.inputFrameStride;
+    uint outputBase = parameters.outputOffset + frame * parameters.outputFrameStride;
+    uint flagBase = parameters.flagOffset + frame * parameters.flagFrameStride;
+    uint prefixBase = parameters.prefixOffset + frame * parameters.prefixFrameStride;
+    uint counterBase = parameters.counterOffset + frame * parameters.counterFrameStride;
+    uint count = min(counters[counterBase], parameters.capacity);
+    if (parameters.operation == 0u)
+    {
+        if (index >= parameters.capacity)
+            return;
+        bool keep = index < count && (index == 0u || !equivalent(inputKeypoints[inputBase + index - 1u], inputKeypoints[inputBase + index]));
+        flags[flagBase + index] = keep ? 1u : 0u;
+        return;
+    }
+    if (index < count && flags[flagBase + index] != 0u)
+    {
+        uint destination = prefix[prefixBase + index];
+        outputKeypoints[outputBase + destination] = inputKeypoints[inputBase + index];
+    }
+    if (index == 0u)
+    {
+        uint deduplicatedCount = count == 0u ? 0u : prefix[prefixBase + count - 1u] + flags[flagBase + count - 1u];
+        counters[counterBase + 4u] = count;
+        counters[counterBase] = min(deduplicatedCount, parameters.capacity);
+    }
+}

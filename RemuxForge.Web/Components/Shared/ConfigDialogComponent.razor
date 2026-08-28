@@ -1,6 +1,8 @@
+@inject NotificationService NotificationService
+
 <div class="dialog-overlay visible" @onclick="OnClose">
-    <div class="dialog-box config-dialog-box" @onclick:stopPropagation="true">
-        <div class="dialog-title">@AppText.T("web.config.title")</div>
+    <div class="dialog-box config-dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="config-dialog-title" @onclick:stopPropagation="true">
+        <div id="config-dialog-title" class="dialog-title">@AppText.T("web.config.title")</div>
         <div class="dialog-body config-dialog-body">
             <div class="config-form-pane">
             @if (_isSplitMode)
@@ -9,30 +11,30 @@
                 <div class="form-section">@AppText.T("web.config.section.splitSource")</div>
                 <div class="form-row">
                     <span class="form-label">@AppText.T("web.config.label.sourceRequired")</span>
-                    <input class="form-input" @bind="_splitSource" @onfocus="@(() => SetFieldHelp("split.source"))" @onmouseenter="@(() => SetFieldHelp("split.source"))" />
-                    <span class="btn-browse" @onclick="() => BrowseSplit(10, true, true)">[ .. ]</span>
+                    <input class="form-input" aria-label="@AppText.T("web.config.label.sourceRequired")" @bind="_splitSource" @onfocus="@(() => SetFieldHelp("split.source"))" @onmouseenter="@(() => SetFieldHelp("split.source"))" />
+                    <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="@AppText.T("web.config.label.sourceRequired")" Click="@(() => BrowseSplit(10, true, true))" />
                 </div>
                 <div class="form-row">
                     <span class="form-label">@AppText.T("web.config.label.output")</span>
-                    <input class="form-input" @bind="_splitOutputDir" @onfocus="@(() => SetFieldHelp("split.output"))" @onmouseenter="@(() => SetFieldHelp("split.output"))" />
-                    <span class="btn-browse" @onclick="() => BrowseSplit(11, false, true)">[ .. ]</span>
+                    <input class="form-input" aria-label="@AppText.T("web.config.label.output")" @bind="_splitOutputDir" @onfocus="@(() => SetFieldHelp("split.output"))" @onmouseenter="@(() => SetFieldHelp("split.output"))" />
+                    <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="@AppText.T("web.config.label.output")" Click="@(() => BrowseSplit(11, false, true))" />
                 </div>
                 <div class="form-row">
                     <span class="form-label">@AppText.T("web.config.label.sourceRaw")</span>
-                    <input class="form-input" @bind="_splitSourceRaw" @onfocus="@(() => SetFieldHelp("split.sourceRaw"))" @onmouseenter="@(() => SetFieldHelp("split.sourceRaw"))" />
-                    <span class="btn-browse" @onclick="() => BrowseSplit(12, true, false)">[ .. ]</span>
+                    <input class="form-input" aria-label="@AppText.T("web.config.label.sourceRaw")" @bind="_splitSourceRaw" @onfocus="@(() => SetFieldHelp("split.sourceRaw"))" @onmouseenter="@(() => SetFieldHelp("split.sourceRaw"))" />
+                    <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="@AppText.T("web.config.label.sourceRaw")" Click="@(() => BrowseSplit(12, true, false))" />
                 </div>
                 <div class="form-row">
-                    <span class="ui-toggle" @onclick="() => _recursive = !_recursive" @onmouseenter="@(() => SetFieldHelp("split.recursive"))">@(_recursive ? "[X]" : "[ ]") @AppText.T("web.config.toggle.recursive")</span>
-                    <span class="ui-toggle" style="margin-left: 2ch;" @onclick="() => _splitForce = !_splitForce" @onmouseenter="@(() => SetFieldHelp("split.force"))">@(_splitForce ? "[X]" : "[ ]") @AppText.T("web.config.toggle.force")</span>
-                    <span class="ui-toggle" style="margin-left: 2ch;" @onclick="() => _splitDryRun = !_splitDryRun" @onmouseenter="@(() => SetFieldHelp("split.dryRun"))">@(_splitDryRun ? "[X]" : "[ ]") @AppText.T("web.config.toggle.dryRun")</span>
+                    <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("split.recursive"))"><RadzenSwitch TValue="bool" @bind-Value="@_recursive" /><span>@AppText.T("web.config.toggle.recursive")</span></div>
+                    <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("split.force"))"><RadzenSwitch TValue="bool" @bind-Value="@_splitForce" /><span>@AppText.T("web.config.toggle.force")</span></div>
+                    <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("split.dryRun"))"><RadzenSwitch TValue="bool" @bind-Value="@_splitDryRun" /><span>@AppText.T("web.config.toggle.dryRun")</span></div>
                 </div>
 
                 @* Modalita taglio *@
                 <div class="form-section">@AppText.T("web.config.section.cutting")</div>
                 <div class="form-row">
                     <span class="form-label">@AppText.T("web.config.label.modeRequired")</span>
-                    <select class="form-input" style="width: 22ch;" @bind="_splitCutMode" @onfocus="@(() => SetFieldHelp("split.mode"))" @onmouseenter="@(() => SetFieldHelp("split.mode"))">
+                    <select class="form-input" style="width: 22ch;" aria-label="@AppText.T("web.config.label.modeRequired")" @bind="_splitCutMode" @onfocus="@(() => SetFieldHelp("split.mode"))" @onmouseenter="@(() => SetFieldHelp("split.mode"))">
                         <option value="">@AppText.T("web.common.choose")</option>
                         <option value="@SPLIT_CUT_PATTERN">@AppText.T("web.config.option.chapterPattern")</option>
                         <option value="@SPLIT_CUT_RANGES">@AppText.T("web.config.option.ranges")</option>
@@ -45,32 +47,32 @@
                 {
                     <div class="form-row">
                         <span class="form-label">@AppText.T("web.config.label.patternRequired")</span>
-                        <input class="form-input" @bind="_splitPattern" placeholder="5,5,5" @onfocus="@(() => SetFieldHelp("split.pattern"))" @onmouseenter="@(() => SetFieldHelp("split.pattern"))" />
+                        <input class="form-input" aria-label="@AppText.T("web.config.label.patternRequired")" @bind="_splitPattern" placeholder="5,5,5" @onfocus="@(() => SetFieldHelp("split.pattern"))" @onmouseenter="@(() => SetFieldHelp("split.pattern"))" />
                     </div>
                 }
                 else if (_splitCutMode == SPLIT_CUT_RANGES)
                 {
                     <div class="form-row">
                         <span class="form-label">@AppText.T("web.config.label.rangesRequired")</span>
-                        <input class="form-input" @bind="_splitRanges" placeholder="0-00:24:00.000,00:24:00.000-END" @onfocus="@(() => SetFieldHelp("split.ranges"))" @onmouseenter="@(() => SetFieldHelp("split.ranges"))" />
+                        <input class="form-input" aria-label="@AppText.T("web.config.label.rangesRequired")" @bind="_splitRanges" placeholder="0-00:24:00.000,00:24:00.000-END" @onfocus="@(() => SetFieldHelp("split.ranges"))" @onmouseenter="@(() => SetFieldHelp("split.ranges"))" />
                     </div>
                 }
                 else if (_splitCutMode == SPLIT_CUT_SPLIT_AT)
                 {
                     <div class="form-row">
                         <span class="form-label">@AppText.T("web.config.label.splitAtRequired")</span>
-                        <input class="form-input" @bind="_splitAt" placeholder="00:24:00.000" @onfocus="@(() => SetFieldHelp("split.splitAt"))" @onmouseenter="@(() => SetFieldHelp("split.splitAt"))" />
+                        <input class="form-input" aria-label="@AppText.T("web.config.label.splitAtRequired")" @bind="_splitAt" placeholder="00:24:00.000" @onfocus="@(() => SetFieldHelp("split.splitAt"))" @onmouseenter="@(() => SetFieldHelp("split.splitAt"))" />
                     </div>
                 }
                 else if (_splitCutMode == SPLIT_CUT_TRIM)
                 {
                     <div class="form-row">
                         <span class="form-label">@AppText.T("web.config.label.trimStart")</span>
-                        <input class="form-input" @bind="_splitTrimStart" @onfocus="@(() => SetFieldHelp("split.trimStart"))" @onmouseenter="@(() => SetFieldHelp("split.trimStart"))" />
+                        <input class="form-input" aria-label="@AppText.T("web.config.label.trimStart")" @bind="_splitTrimStart" @onfocus="@(() => SetFieldHelp("split.trimStart"))" @onmouseenter="@(() => SetFieldHelp("split.trimStart"))" />
                     </div>
                     <div class="form-row">
                         <span class="form-label">@AppText.T("web.config.label.trimEnd")</span>
-                        <input class="form-input" @bind="_splitTrimEnd" @onfocus="@(() => SetFieldHelp("split.trimEnd"))" @onmouseenter="@(() => SetFieldHelp("split.trimEnd"))" />
+                        <input class="form-input" aria-label="@AppText.T("web.config.label.trimEnd")" @bind="_splitTrimEnd" @onfocus="@(() => SetFieldHelp("split.trimEnd"))" @onmouseenter="@(() => SetFieldHelp("split.trimEnd"))" />
                     </div>
                 }
                 else if (_splitCutMode == SPLIT_CUT_CHAPTERS_EACH)
@@ -79,7 +81,7 @@
 
                 <div class="form-row">
                     <span class="form-label">@AppText.T("web.config.label.snap")</span>
-                    <select class="form-input" style="width: 14ch;" @bind="_splitSnap" @onfocus="@(() => SetFieldHelp("split.snap"))" @onmouseenter="@(() => SetFieldHelp("split.snap"))">
+                    <select class="form-input" style="width: 14ch;" aria-label="@AppText.T("web.config.label.snap")" @bind="_splitSnap" @onfocus="@(() => SetFieldHelp("split.snap"))" @onmouseenter="@(() => SetFieldHelp("split.snap"))">
                         <option value="@RemuxForge.Core.Models.MkvSplitSnapMode.Off">off</option>
                         <option value="@RemuxForge.Core.Models.MkvSplitSnapMode.Before">before</option>
                         <option value="@RemuxForge.Core.Models.MkvSplitSnapMode.After">after</option>
@@ -91,14 +93,14 @@
                 <div class="form-section">@AppText.T("web.config.section.naming")</div>
                 <div class="form-row">
                     <span class="form-label">@AppText.T("web.config.label.template")</span>
-                    <input class="form-input" @bind="_splitOutputTemplate" placeholder="{source_name}.part{n:02d}.mkv" @onfocus="@(() => SetFieldHelp("split.template"))" @onmouseenter="@(() => SetFieldHelp("split.template"))" />
+                    <input class="form-input" aria-label="@AppText.T("web.config.label.template")" @bind="_splitOutputTemplate" placeholder="{source_name}.part{n:02d}.mkv" @onfocus="@(() => SetFieldHelp("split.template"))" @onmouseenter="@(() => SetFieldHelp("split.template"))" />
                 </div>
 
                 @* Opzioni *@
                 <div class="form-section">@AppText.T("web.config.section.options")</div>
                 <div class="form-row">
                     <span class="form-label">@AppText.T("web.config.label.extensions")</span>
-                    <input class="form-input" @bind="_extensions" @onfocus="@(() => SetFieldHelp("split.extensions"))" @onmouseenter="@(() => SetFieldHelp("split.extensions"))" />
+                    <input class="form-input" aria-label="@AppText.T("web.config.label.extensions")" @bind="_extensions" @onfocus="@(() => SetFieldHelp("split.extensions"))" @onmouseenter="@(() => SetFieldHelp("split.extensions"))" />
                 </div>
             }
             else
@@ -107,58 +109,58 @@
             <div class="form-section">@AppText.T("web.config.section.folders")</div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.sourceRequired")</span>
-                <input class="form-input" @bind="_sourceFolder" @onfocus="@(() => SetFieldHelp("remux.source"))" @onmouseenter="@(() => SetFieldHelp("remux.source"))" />
-                <span class="btn-browse" @onclick="() => BrowseFolder(0)">[ .. ]</span>
+                <input class="form-input" aria-label="@AppText.T("web.config.label.sourceRequired")" @bind="_sourceFolder" @onfocus="@(() => SetFieldHelp("remux.source"))" @onmouseenter="@(() => SetFieldHelp("remux.source"))" />
+                <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="@AppText.T("web.config.label.sourceRequired")" Click="@(() => BrowseFolder(0))" />
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.language")</span>
-                <input class="form-input" @bind="_languageFolder" @onfocus="@(() => SetFieldHelp("remux.language"))" @onmouseenter="@(() => SetFieldHelp("remux.language"))" />
-                <span class="btn-browse" @onclick="() => BrowseFolder(1)">[ .. ]</span>
+                <input class="form-input" aria-label="@AppText.T("web.config.label.language")" @bind="_languageFolder" @onfocus="@(() => SetFieldHelp("remux.language"))" @onmouseenter="@(() => SetFieldHelp("remux.language"))" />
+                <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="@AppText.T("web.config.label.language")" Click="@(() => BrowseFolder(1))" />
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.destination")@(_overwrite ? "" : "*"):</span>
-                <input class="form-input" @bind="_destFolder" @onfocus="@(() => SetFieldHelp("remux.destination"))" @onmouseenter="@(() => SetFieldHelp("remux.destination"))" />
-                <span class="btn-browse" @onclick="() => BrowseFolder(2)">[ .. ]</span>
+                <input class="form-input" aria-label="@AppText.T("web.config.label.destination")" @bind="_destFolder" @onfocus="@(() => SetFieldHelp("remux.destination"))" @onmouseenter="@(() => SetFieldHelp("remux.destination"))" />
+                <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="@AppText.T("web.config.label.destination")" Click="@(() => BrowseFolder(2))" />
             </div>
             <div class="form-row">
-                <span class="ui-toggle" @onclick="() => _overwrite = !_overwrite" @onmouseenter="@(() => SetFieldHelp("remux.overwrite"))">@(_overwrite ? "[X]" : "[ ]") @AppText.T("web.config.toggle.overwrite")</span>
+                <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.overwrite"))"><RadzenSwitch TValue="bool" @bind-Value="@_overwrite" /><span>@AppText.T("web.config.toggle.overwrite")</span></div>
             </div>
             <div class="form-row">
-                <span class="ui-toggle" @onclick="() => _recursive = !_recursive" @onmouseenter="@(() => SetFieldHelp("remux.recursive"))">@(_recursive ? "[X]" : "[ ]") @AppText.T("web.config.toggle.recursive")</span>
+                <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.recursive"))"><RadzenSwitch TValue="bool" @bind-Value="@_recursive" /><span>@AppText.T("web.config.toggle.recursive")</span></div>
             </div>
 
             @* Lingua e Tracce *@
             <div class="form-section">@AppText.T("web.config.section.languageTracks")</div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.targetLanguage")</span>
-                <input class="form-input" @bind="_targetLang" @onfocus="@(() => SetFieldHelp("remux.target"))" @onmouseenter="@(() => SetFieldHelp("remux.target"))" />
+                <input class="form-input" aria-label="@AppText.T("web.config.label.targetLanguage")" @bind="_targetLang" @onfocus="@(() => SetFieldHelp("remux.target"))" @onmouseenter="@(() => SetFieldHelp("remux.target"))" />
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.audioCodec")</span>
-                <input class="form-input" @bind="_audioCodec" @onfocus="@(() => SetFieldHelp("remux.audioCodec"))" @onmouseenter="@(() => SetFieldHelp("remux.audioCodec"))" />
+                <input class="form-input" aria-label="@AppText.T("web.config.label.audioCodec")" @bind="_audioCodec" @onfocus="@(() => SetFieldHelp("remux.audioCodec"))" @onmouseenter="@(() => SetFieldHelp("remux.audioCodec"))" />
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.keepAudio")</span>
-                <input class="form-input" @bind="_keepSrcAudio" @onfocus="@(() => SetFieldHelp("remux.keepAudio"))" @onmouseenter="@(() => SetFieldHelp("remux.keepAudio"))" />
+                <input class="form-input" aria-label="@AppText.T("web.config.label.keepAudio")" @bind="_keepSrcAudio" @onfocus="@(() => SetFieldHelp("remux.keepAudio"))" @onmouseenter="@(() => SetFieldHelp("remux.keepAudio"))" />
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.keepCodec")</span>
-                <input class="form-input" @bind="_keepSrcCodec" @onfocus="@(() => SetFieldHelp("remux.keepCodec"))" @onmouseenter="@(() => SetFieldHelp("remux.keepCodec"))" />
+                <input class="form-input" aria-label="@AppText.T("web.config.label.keepCodec")" @bind="_keepSrcCodec" @onfocus="@(() => SetFieldHelp("remux.keepCodec"))" @onmouseenter="@(() => SetFieldHelp("remux.keepCodec"))" />
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.keepSub")</span>
-                <input class="form-input" @bind="_keepSrcSub" @onfocus="@(() => SetFieldHelp("remux.keepSub"))" @onmouseenter="@(() => SetFieldHelp("remux.keepSub"))" />
+                <input class="form-input" aria-label="@AppText.T("web.config.label.keepSub")" @bind="_keepSrcSub" @onfocus="@(() => SetFieldHelp("remux.keepSub"))" @onmouseenter="@(() => SetFieldHelp("remux.keepSub"))" />
             </div>
             <div class="form-row">
-                <span class="ui-toggle" @onclick="ToggleSubOnly" @onmouseenter="@(() => SetFieldHelp("remux.subOnly"))">@(_subOnly ? "[X]" : "[ ]") @AppText.T("web.config.toggle.subOnly")</span>
-                <span class="ui-toggle" style="margin-left: 2ch;" @onclick="() => _audioOnly = !_audioOnly" @onmouseenter="@(() => SetFieldHelp("remux.audioOnly"))">@(_audioOnly ? "[X]" : "[ ]") @AppText.T("web.config.toggle.audioOnly")</span>
+                <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.subOnly"))"><RadzenSwitch TValue="bool" Value="@_subOnly" Change="@ToggleSubOnly" /><span>@AppText.T("web.config.toggle.subOnly")</span></div>
+                <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audioOnly"))"><RadzenSwitch TValue="bool" @bind-Value="@_audioOnly" /><span>@AppText.T("web.config.toggle.audioOnly")</span></div>
             </div>
 
             @* Sincronizzazione *@
             <div class="form-section">@AppText.T("web.config.section.sync")</div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.speed")</span>
-                <select class="form-input" style="width: 34ch;" value="@_speedCorrectionPreset" @onchange="OnSpeedCorrectionChanged" @onfocus="@(() => SetFieldHelp("remux.speed"))" @onmouseenter="@(() => SetFieldHelp("remux.speed"))">
+                <select class="form-input" style="width: 34ch;" aria-label="@AppText.T("web.config.label.speed")" value="@_speedCorrectionPreset" @onchange="OnSpeedCorrectionChanged" @onfocus="@(() => SetFieldHelp("remux.speed"))" @onmouseenter="@(() => SetFieldHelp("remux.speed"))">
                     <option value="">@AppText.T("web.config.option.off")</option>
                     @if (!string.IsNullOrEmpty(_customSpeedCorrectionFactor))
                     {
@@ -173,27 +175,27 @@
                 </select>
             </div>
             <div class="form-row">
-                <span class="ui-toggle" @onclick="ToggleFrameSync" @onmouseenter="@(() => SetFieldHelp("remux.framesync"))">@(_frameSync ? "[X]" : "[ ]") @AppText.T("web.config.toggle.frameSync")</span>
+                <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.framesync"))"><RadzenSwitch TValue="bool" Value="@_frameSync" Change="@ToggleFrameSync" /><span>@AppText.T("web.config.toggle.frameSync")</span></div>
             </div>
             <div class="form-row">
-                <span class="ui-toggle" @onclick="ToggleDeepAnalysis" @onmouseenter="@(() => SetFieldHelp("remux.deep"))">@(_deepAnalysis ? "[X]" : "[ ]") @AppText.T("web.config.toggle.deepAnalysis")</span>
+                <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.deep"))"><RadzenSwitch TValue="bool" Value="@_deepAnalysis" Change="@ToggleDeepAnalysis" /><span>@AppText.T("web.config.toggle.deepAnalysis")</span></div>
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.cropSource")</span>
-                <input class="form-input" style="width: 18ch;" @bind="_analysisCropSourcePx" placeholder="L:R:T:B" @onfocus="@(() => SetFieldHelp("remux.cropSource"))" @onmouseenter="@(() => SetFieldHelp("remux.cropSource"))" />
+                <input class="form-input" style="width: 18ch;" aria-label="@AppText.T("web.config.label.cropSource")" @bind="_analysisCropSourcePx" placeholder="L:R:T:B" @onfocus="@(() => SetFieldHelp("remux.cropSource"))" @onmouseenter="@(() => SetFieldHelp("remux.cropSource"))" />
                 <span style="margin-left: 2ch;">@AppText.T("web.config.label.langShort")</span>
-                <input class="form-input" style="width: 18ch;" @bind="_analysisCropLanguagePx" placeholder="L:R:T:B" @onfocus="@(() => SetFieldHelp("remux.cropLang"))" @onmouseenter="@(() => SetFieldHelp("remux.cropLang"))" />
+                <input class="form-input" style="width: 18ch;" aria-label="@AppText.T("web.config.label.langShort")" @bind="_analysisCropLanguagePx" placeholder="L:R:T:B" @onfocus="@(() => SetFieldHelp("remux.cropLang"))" @onmouseenter="@(() => SetFieldHelp("remux.cropLang"))" />
             </div>
             <div class="form-row">
-                <span class="ui-toggle" @onclick="() => _subtitleCanvasRewrite = !_subtitleCanvasRewrite" @onmouseenter="@(() => SetFieldHelp("remux.subCanvas"))">@(_subtitleCanvasRewrite ? "[X]" : "[ ]") @AppText.T("web.config.toggle.subtitleCanvasRewrite")</span>
+                <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.subCanvas"))"><RadzenSwitch TValue="bool" @bind-Value="@_subtitleCanvasRewrite" /><span>@AppText.T("web.config.toggle.subtitleCanvasRewrite")</span></div>
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.audioDelay")</span>
-                <input class="form-input" style="width: 8ch;" @bind="_audioDelay" @onfocus="@(() => SetFieldHelp("remux.audioDelay"))" @onmouseenter="@(() => SetFieldHelp("remux.audioDelay"))" /> <span style="margin-left: 0.5ch;">ms</span>
+                <input class="form-input" style="width: 8ch;" aria-label="@AppText.T("web.config.label.audioDelay")" @bind="_audioDelay" @onfocus="@(() => SetFieldHelp("remux.audioDelay"))" @onmouseenter="@(() => SetFieldHelp("remux.audioDelay"))" /> <span style="margin-left: 0.5ch;">ms</span>
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.subDelay")</span>
-                <input class="form-input" style="width: 8ch;" @bind="_subDelay" @onfocus="@(() => SetFieldHelp("remux.subDelay"))" @onmouseenter="@(() => SetFieldHelp("remux.subDelay"))" /> <span style="margin-left: 0.5ch;">ms</span>
+                <input class="form-input" style="width: 8ch;" aria-label="@AppText.T("web.config.label.subDelay")" @bind="_subDelay" @onfocus="@(() => SetFieldHelp("remux.subDelay"))" @onmouseenter="@(() => SetFieldHelp("remux.subDelay"))" /> <span style="margin-left: 0.5ch;">ms</span>
             </div>
 
             @* Matching *@
@@ -202,19 +204,19 @@
             {
                 <div class="form-row">
                     <span class="form-label">@AppText.T("web.config.label.matchPattern")</span>
-                    <input class="form-input" @bind="_matchPattern" @onfocus="@(() => SetFieldHelp("remux.match"))" @onmouseenter="@(() => SetFieldHelp("remux.match"))" />
+                    <input class="form-input" aria-label="@AppText.T("web.config.label.matchPattern")" @bind="_matchPattern" @onfocus="@(() => SetFieldHelp("remux.match"))" @onmouseenter="@(() => SetFieldHelp("remux.match"))" />
                 </div>
             }
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.extensions")</span>
-                <input class="form-input" @bind="_extensions" @onfocus="@(() => SetFieldHelp("remux.extensions"))" @onmouseenter="@(() => SetFieldHelp("remux.extensions"))" />
+                <input class="form-input" aria-label="@AppText.T("web.config.label.extensions")" @bind="_extensions" @onfocus="@(() => SetFieldHelp("remux.extensions"))" @onmouseenter="@(() => SetFieldHelp("remux.extensions"))" />
             </div>
 
             @* Post-Processing audio *@
             <div class="form-section">@AppText.T("web.config.section.audioPost")</div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.audioFormat")@((_audioSourceFillEnabled || RequiresTimelineAudioProcessing()) ? "*" : ""):</span>
-                <select class="form-input" style="width: 12ch;" value="@_audioFormat" @onchange="OnAudioFormatChanged" @onfocus="@(() => SetFieldHelp("remux.audioFormat"))" @onmouseenter="@(() => SetFieldHelp("remux.audioFormat"))">
+                <select class="form-input" style="width: 12ch;" aria-label="@AppText.T("web.config.label.audioFormat")" value="@_audioFormat" @onchange="OnAudioFormatChanged" @onfocus="@(() => SetFieldHelp("remux.audioFormat"))" @onmouseenter="@(() => SetFieldHelp("remux.audioFormat"))">
                     <option value="">@AppText.T("web.common.no")</option>
                     <option value="flac">FLAC</option>
                     <option value="lpcm">LPCM</option>
@@ -227,7 +229,7 @@
             {
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.audioScope")@((_audioSourceFillEnabled || RequiresTimelineAudioProcessing()) ? "*" : ""):</span>
-                <select class="form-input" style="width: 14ch;" @bind="_audioProcessingScope" @onfocus="@(() => SetFieldHelp("remux.audioScope"))" @onmouseenter="@(() => SetFieldHelp("remux.audioScope"))">
+                <select class="form-input" style="width: 14ch;" aria-label="@AppText.T("web.config.label.audioScope")" @bind="_audioProcessingScope" @onfocus="@(() => SetFieldHelp("remux.audioScope"))" @onmouseenter="@(() => SetFieldHelp("remux.audioScope"))">
                     @if (!RequiresTimelineAudioProcessing())
                     {
                     <option value="disabled">@AppText.T("web.config.option.disabled")</option>
@@ -240,42 +242,42 @@
             @if (!string.IsNullOrEmpty(_audioFormat))
             {
                 <div class="form-row">
-                    <span class="ui-toggle" @onclick="ToggleAudioSourceFill" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFill"))">@(_audioSourceFillEnabled ? "[X]" : "[ ]") @AppText.T("web.config.toggle.audioSourceFill")</span>
+                    <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFill"))"><RadzenSwitch TValue="bool" Value="@_audioSourceFillEnabled" Change="@ToggleAudioSourceFill" /><span>@AppText.T("web.config.toggle.audioSourceFill")</span></div>
                 </div>
             }
             @if (!string.IsNullOrEmpty(_audioFormat) && _audioSourceFillEnabled)
             {
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.thresholdRequired")</span>
-                <input class="form-input" style="width: 8ch;" @bind="_audioSourceFillThresholdMs" @onfocus="@(() => SetFieldHelp("remux.audioSourceFillThreshold"))" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillThreshold"))" /> <span style="margin-left: 0.5ch;">ms</span>
+                <input class="form-input" style="width: 8ch;" aria-label="@AppText.T("web.config.label.thresholdRequired")" @bind="_audioSourceFillThresholdMs" @onfocus="@(() => SetFieldHelp("remux.audioSourceFillThreshold"))" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillThreshold"))" /> <span style="margin-left: 0.5ch;">ms</span>
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.sourceLanguageRequired")</span>
-                <input class="form-input" style="width: 10ch;" @bind="_audioSourceFillLanguage" @onfocus="@(() => SetFieldHelp("remux.audioSourceFillLang"))" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillLang"))" />
+                <input class="form-input" style="width: 10ch;" aria-label="@AppText.T("web.config.label.sourceLanguageRequired")" @bind="_audioSourceFillLanguage" @onfocus="@(() => SetFieldHelp("remux.audioSourceFillLang"))" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillLang"))" />
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.modeRequired")</span>
-                <span class="ui-toggle" @onclick="() => _audioSourceFillStart = !_audioSourceFillStart" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillStart"))">@(_audioSourceFillStart ? "[X]" : "[ ]") @AppText.T("web.config.toggle.start")</span>
-                <span class="ui-toggle" style="margin-left: 2ch;" @onclick="() => _audioSourceFillEnd = !_audioSourceFillEnd" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillEnd"))">@(_audioSourceFillEnd ? "[X]" : "[ ]") @AppText.T("web.config.toggle.end")</span>
+                <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillStart"))"><RadzenSwitch TValue="bool" @bind-Value="@_audioSourceFillStart" /><span>@AppText.T("web.config.toggle.start")</span></div>
+                <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillEnd"))"><RadzenSwitch TValue="bool" @bind-Value="@_audioSourceFillEnd" /><span>@AppText.T("web.config.toggle.end")</span></div>
                 @if (_deepAnalysis)
                 {
-                    <span class="ui-toggle" style="margin-left: 2ch;" @onclick="() => _audioSourceFillInsertSilence = !_audioSourceFillInsertSilence" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillInsert"))">@(_audioSourceFillInsertSilence ? "[X]" : "[ ]") @AppText.T("web.config.toggle.insertSilence")</span>
+                    <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillInsert"))"><RadzenSwitch TValue="bool" @bind-Value="@_audioSourceFillInsertSilence" /><span>@AppText.T("web.config.toggle.insertSilence")</span></div>
                 }
             </div>
             }
             @if ((_audioFormat == "flac" || _audioFormat == "lpcm") && _audioProcessingScope != "disabled")
             {
             <div class="form-row">
-                <span class="ui-toggle" @onclick="() => _audioDownsample24To16 = !_audioDownsample24To16" @onmouseenter="@(() => SetFieldHelp("remux.audio24"))">@(_audioDownsample24To16 ? "[X]" : "[ ]") @AppText.T("web.config.toggle.audio24")</span>
+                <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audio24"))"><RadzenSwitch TValue="bool" @bind-Value="@_audioDownsample24To16" /><span>@AppText.T("web.config.toggle.audio24")</span></div>
             </div>
             }
             @if (!string.IsNullOrEmpty(_audioFormat) && _audioProcessingScope != "disabled")
             {
             <div class="form-row">
-                <span class="ui-toggle" @onclick="() => _audioPeakNormalize = !_audioPeakNormalize" @onmouseenter="@(() => SetFieldHelp("remux.audioNormalize"))">@(_audioPeakNormalize ? "[X]" : "[ ]") @AppText.T("web.config.toggle.normalization")</span>
+                <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audioNormalize"))"><RadzenSwitch TValue="bool" @bind-Value="@_audioPeakNormalize" /><span>@AppText.T("web.config.toggle.normalization")</span></div>
                 @if (_audioPeakNormalize)
                 {
-                    <input class="form-input" style="width: 8ch;" @bind="_audioPeakTargetDb" @onfocus="@(() => SetFieldHelp("remux.audioNormalize"))" @onmouseenter="@(() => SetFieldHelp("remux.audioNormalize"))" />
+                    <input class="form-input" style="width: 8ch;" aria-label="@AppText.T("web.config.toggle.normalization")" @bind="_audioPeakTargetDb" @onfocus="@(() => SetFieldHelp("remux.audioNormalize"))" @onmouseenter="@(() => SetFieldHelp("remux.audioNormalize"))" />
                     <span>dB</span>
                 }
             </div>
@@ -284,7 +286,7 @@
             <div class="form-section">@AppText.T("web.config.section.videoPost")</div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.videoEncoding")</span>
-                <select class="form-input" style="width: 30ch;" @bind="_encodingProfile" @onfocus="@(() => SetFieldHelp("remux.encoding"))" @onmouseenter="@(() => SetFieldHelp("remux.encoding"))">
+                <select class="form-input" style="width: 30ch;" aria-label="@AppText.T("web.config.label.videoEncoding")" @bind="_encodingProfile" @onfocus="@(() => SetFieldHelp("remux.encoding"))" @onmouseenter="@(() => SetFieldHelp("remux.encoding"))">
                     <option value="">@AppText.T("web.common.none")</option>
                     @for (int i = 0; i < AppSettingsService.Instance.Settings.EncodingProfiles.Count; i++)
                     {
@@ -301,11 +303,11 @@
         </div>
         @if (!string.IsNullOrEmpty(_validationError))
         {
-            <div style="padding: 0.5em 1em; color: var(--color-error); white-space: pre-line;">@_validationError</div>
+            <div style="padding: 0.5em 1em; color: var(--rz-danger); white-space: pre-line;">@_validationError</div>
         }
         <div class="dialog-footer">
-            <button @onclick="Apply">@AppText.T("web.common.ok")</button>
-            <button @onclick="OnClose">@AppText.T("web.common.cancel")</button>
+            <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@Apply" />
+            <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" />
         </div>
     </div>
 </div>
@@ -829,7 +831,7 @@
         validation = OptionsValidator.Validate(opts, false, false);
         if (!validation.IsValid)
         {
-            _validationError = validation.ErrorMessage;
+            ShowValidationError(validation.ErrorMessage);
             return;
         }
 
@@ -895,7 +897,7 @@
         validation = OptionsValidator.Validate(opts, false, false);
         if (!validation.IsValid)
         {
-            _validationError = validation.ErrorMessage;
+            ShowValidationError(validation.ErrorMessage);
             return;
         }
 
@@ -982,7 +984,7 @@
 
         if (errors.Count > 0)
         {
-            _validationError = string.Join("\n", errors);
+            ShowValidationError(string.Join("\n", errors));
             return false;
         }
 
@@ -1033,11 +1035,21 @@
 
         if (errors.Count > 0)
         {
-            _validationError = string.Join("\n", errors);
+            ShowValidationError(string.Join("\n", errors));
             return false;
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Mostra l'errore di validazione nella dialog e come notifica Radzen
+    /// </summary>
+    /// <param name="errorMessage">Errore da mostrare</param>
+    private void ShowValidationError(string errorMessage)
+    {
+        _validationError = errorMessage;
+        NotificationService.Notify(NotificationSeverity.Error, AppText.T("validation.invalidConfig"), errorMessage, 8000);
     }
 
     /// <summary>
@@ -1283,18 +1295,18 @@
     /// <summary>
     /// Toggle SubOnly e riallinea la policy audio della timeline
     /// </summary>
-    private void ToggleSubOnly()
+    private void ToggleSubOnly(bool value)
     {
-        _subOnly = !_subOnly;
+        _subOnly = value;
         NormalizeMandatoryAudioScope();
     }
 
     /// <summary>
     /// Toggle frame-sync con mutua esclusione deep analysis
     /// </summary>
-    private void ToggleFrameSync()
+    private void ToggleFrameSync(bool value)
     {
-        _frameSync = !_frameSync;
+        _frameSync = value;
         if (_frameSync && _deepAnalysis)
         {
             _deepAnalysis = false;
@@ -1304,9 +1316,9 @@
     /// <summary>
     /// Toggle deep analysis con mutua esclusione frame-sync
     /// </summary>
-    private void ToggleDeepAnalysis()
+    private void ToggleDeepAnalysis(bool value)
     {
-        _deepAnalysis = !_deepAnalysis;
+        _deepAnalysis = value;
         if (_deepAnalysis && _frameSync)
         {
             _frameSync = false;
@@ -1344,9 +1356,9 @@
     /// <summary>
     /// Toggle audio source fill e azzera lo stato nascosto quando viene disabilitato
     /// </summary>
-    private void ToggleAudioSourceFill()
+    private void ToggleAudioSourceFill(bool value)
     {
-        _audioSourceFillEnabled = !_audioSourceFillEnabled;
+        _audioSourceFillEnabled = value;
         if (!_audioSourceFillEnabled)
         {
             ResetAudioSourceFill();

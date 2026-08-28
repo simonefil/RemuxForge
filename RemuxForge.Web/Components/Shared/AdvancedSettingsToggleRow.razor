@@ -1,5 +1,8 @@
 <div class="form-row">
-    <span class="ui-toggle" @onclick="Toggle">@((Value ? "[X]" : "[ ]") + " " + Label)</span>
+    <div class="ui-switch">
+        <RadzenSwitch TValue="bool" Value="@Value" Change="@ValueChanged" Disabled="@Disabled" AriaLabel="@Label" />
+        <span>@Label</span>
+    </div>
 </div>
 
 @code {
@@ -19,10 +22,8 @@
     [Parameter] public EventCallback<bool> ValueChanged { get; set; }
 
     /// <summary>
-    /// Commuta il valore corrente
+    /// True quando il toggle non accetta modifiche
     /// </summary>
-    private async System.Threading.Tasks.Task Toggle()
-    {
-        await this.ValueChanged.InvokeAsync(!this.Value);
-    }
+    [Parameter] public bool Disabled { get; set; }
+
 }

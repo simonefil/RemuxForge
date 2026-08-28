@@ -29,75 +29,12 @@ namespace RemuxForge.Core.Analysis.Edit
 
         #endregion
 
-        #region Profilo largo
-
-        /// <summary>
-        /// Passo della griglia su cui si misura offset(t), in millisecondi
-        /// </summary>
-        public const double PROFILE_STEP_MS = 4000.0;
-
-        /// <summary>
-        /// Semiampiezza della finestra di misura del profilo, in millisecondi
-        /// </summary>
-        public const double PROFILE_WINDOW_MS = 8000.0;
-
-        /// <summary>
-        /// Passo della scansione fine attorno al valore precedente, in millisecondi
-        /// </summary>
-        public const double PROFILE_FINE_STEP_MS = 20.0;
-
-        /// <summary>
-        /// Quanto cercare attorno al valore precedente quando l'aggancio tiene
-        /// </summary>
-        public const double PROFILE_NEAR_RADIUS_MS = 600.0;
-
-        /// <summary>
-        /// Quanto cercare quando l'aggancio è perso
-        /// </summary>
-        public const double PROFILE_WIDE_RADIUS_MS = 30000.0;
-
-        /// <summary>
-        /// Passo della scansione larga, in millisecondi
-        /// </summary>
-        public const double PROFILE_COARSE_STEP_MS = 500.0;
-
-        /// <summary>
-        /// Frazione di fotogrammi spiegati sotto cui la misura del profilo non vale
-        /// </summary>
-        public const double PROFILE_GOOD_FRACTION = 0.55;
-
-        /// <summary>
-        /// Fotogrammi minimi nella finestra perché la frazione sia significativa
-        /// </summary>
-        public const int PROFILE_MIN_FRAMES = 50;
-
-        #endregion
-
-        #region Segmentazione
-
-        /// <summary>
-        /// Punti minimi di profilo per segmento
-        /// </summary>
-        public const int SEGMENT_MIN_POINTS = 3;
-
-        /// <summary>
-        /// Pendenza massima ammessa: può venire solo dal residuo dello stretch, poche centinaia di ppm
-        /// </summary>
-        public const double SEGMENT_MAX_SLOPE = 3e-4;
-
-        /// <summary>
-        /// Costo di un punto di rottura, in residui quadri
-        /// </summary>
-        public const double SEGMENT_BREAK_PENALTY = 1e5;
-
-        /// <summary>
-        /// Quanto allargare oltre gli estremi dei due segmenti per cercare il confine
-        /// </summary>
-        public const double SEGMENT_REFINE_MARGIN_MS = 8000.0;
-
-        #endregion
-
         #region Changepoint
+
+        /// <summary>
+        /// Incremento iniziale e adattivo del bracket di raffinamento
+        /// </summary>
+        public const double CHANGEPOINT_MARGIN_MS = 8000.0;
 
         /// <summary>
         /// Millisecondi su cui si media il margine fra le due distanze
@@ -113,65 +50,6 @@ namespace RemuxForge.Core.Analysis.Edit
         /// Sotto questa larghezza il pianoro di costo è un punto, non un'ambiguità
         /// </summary>
         public const double CHANGEPOINT_MIN_PLATEAU_MS = 500.0;
-
-        #endregion
-
-        #region Scala fine
-
-        /// <summary>
-        /// Sotto questo scarto due punti del profilo largo dicono la stessa cosa
-        /// </summary>
-        public const double FINE_STILL_MS = 60.0;
-
-        /// <summary>
-        /// Quanto allargare l'intervallo da rimisurare a scala fine
-        /// </summary>
-        public const double FINE_WIDEN_MS = 8000.0;
-
-        /// <summary>
-        /// Di quanto cercare intorno all'offset del profilo largo
-        /// </summary>
-        public const double FINE_RADIUS_MS = 4000.0;
-
-        /// <summary>
-        /// Durata minima di un pianoro nella scala fine
-        /// </summary>
-        public const double FINE_PLATEAU_MS = 1500.0;
-
-        /// <summary>
-        /// Quanto due offset devono differire per essere due pianori distinti
-        /// </summary>
-        public const double FINE_GAP_MS = 80.0;
-
-        /// <summary>
-        /// Passo temporale della scala fine
-        /// </summary>
-        public const double FINE_TIME_STEP_MS = 250.0;
-
-        /// <summary>
-        /// Finestra della scala fine
-        /// </summary>
-        public const double FINE_WINDOW_MS = 1000.0;
-
-        /// <summary>
-        /// Passo grezzo della scansione di offset nella scala fine
-        /// </summary>
-        public const double FINE_COARSE_STEP_MS = 20.0;
-
-        /// <summary>
-        /// Quanto deve essere netto il minimo perché il punto della scala fine valga
-        /// </summary>
-        public const double FINE_MIN_CONTRAST = 30.0;
-
-        /// <summary>
-        /// Durata minima di un'operazione recuperata dalla scala fine
-        /// </summary>
-        public const double FINE_MIN_DURATION_MS = 80.0;
-
-        /// <summary>
-        /// Entro questa distanza è la stessa operazione già trovata dal profilo largo
-        /// </summary>
-        public const double FINE_SAME_OPERATION_MS = 15000.0;
 
         #endregion
 
@@ -201,16 +79,6 @@ namespace RemuxForge.Core.Analysis.Edit
         /// Sotto questa escursione di luminanza non c'è nessuna transizione da inseguire
         /// </summary>
         public const double BLACK_EXCURSION = 20.0;
-
-        /// <summary>
-        /// Oltre questa distanza la run trovata non è lo stesso confine
-        /// </summary>
-        public const double BLACK_NEAR_MS = 1500.0;
-
-        /// <summary>
-        /// Quanto può sporgere dal nero un'operazione che il nero lo sta togliendo
-        /// </summary>
-        public const double BLACK_OVERHANG_MS = 400.0;
 
         /// <summary>
         /// Deviazione standard della miniatura sotto cui un fotogramma è scuro
@@ -296,16 +164,6 @@ namespace RemuxForge.Core.Analysis.Edit
         public const double DURATION_FINE_RADIUS_MS = 30.0;
 
         /// <summary>
-        /// Quanto il salto deve valere rispetto all'incertezza dei suoi offset
-        /// </summary>
-        public const double CONFIDENCE_RATIO = 0.3;
-
-        /// <summary>
-        /// Sotto metà dello scalino dichiarato l'operazione non si misura
-        /// </summary>
-        public const double PLATEAU_STEP_RATIO = 0.5;
-
-        /// <summary>
         /// Oltre questo stacco fra due fotogrammi solo-A non è più la stessa run
         /// </summary>
         public const double EXCLUSIVE_GAP_MS = 250.0;
@@ -323,11 +181,6 @@ namespace RemuxForge.Core.Analysis.Edit
         /// Entro quanto cercare l'offset del primo tratto
         /// </summary>
         public const double COVERAGE_INITIAL_RADIUS_MS = 30000.0;
-
-        /// <summary>
-        /// Su quanto tempo misurare l'offset iniziale
-        /// </summary>
-        public const double COVERAGE_HEAD_MS = 60000.0;
 
         /// <summary>
         /// Campo di ricerca della costante di ancoraggio della scala

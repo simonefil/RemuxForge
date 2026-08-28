@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Radzen.Blazor" Version="11.2.7" />
     <ProjectReference Include="..\RemuxForge.Core\RemuxForge.Core.csproj" />
   </ItemGroup>
 

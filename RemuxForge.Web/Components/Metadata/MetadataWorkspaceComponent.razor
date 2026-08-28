@@ -1,0 +1,254 @@
+<RadzenSplitter class="panels-area metadata-panels metadata-workspace rf-workspace-splitter">
+    <RadzenSplitterPane Size="58%">
+        <div class="rf-workspace-pane rf-workspace-pane-master">
+        <div class="rf-panel">
+        <div class="rf-panel-title">@AppText.T("web.metadata.panel.files")</div>
+        <div class="rf-panel-body split-input-body">
+            <div class="metadata-toolbar">
+                <div class="metadata-toolbar-row metadata-toolbar-main-row">
+                    <label class="metadata-toolbar-field metadata-toolbar-preset-field">
+                        <span class="metadata-toolbar-label">@AppText.T("web.metadata.presetLabel")</span>
+                        <select class="form-input metadata-preset-select" value="@Options.Metadata.PresetPath" @onchange="OnPresetChanged">
+                            <option value="">@AppText.T("web.metadata.noPreset")</option>
+                            @for (int i = 0; i < PresetFiles.Count; i++)
+                            {
+                                <option value="@PresetFiles[i]">@System.IO.Path.GetFileNameWithoutExtension(PresetFiles[i])</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="metadata-toolbar-field metadata-toolbar-path-field">
+                        <span class="metadata-toolbar-label">@AppText.T("web.metadata.toolbar.inputPath")</span>
+                        <span class="metadata-path-control">
+                            <input class="form-input metadata-path-input" value="@Options.Metadata.SourcePath" @onchange="OnSourcePathChanged" />
+                            <RadzenButton Icon="folder_open" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.metadata.toolbar.inputPath")" aria-label="@AppText.T("web.metadata.toolbar.inputPath")" Click="@OnBrowseSource" />
+                        </span>
+                    </label>
+                </div>
+                <div class="metadata-toolbar-row metadata-toolbar-options-row">
+                    <label class="metadata-toolbar-field metadata-toolbar-policy-field">
+                        <span class="metadata-toolbar-label">@AppText.T("web.metadata.toolbar.output")</span>
+                        <select class="form-input metadata-output-policy-select" value="@GetOutputPolicyValue()" @onchange="OnOutputPolicyChanged">
+                            <option value="overwrite">@AppText.T("web.metadata.toolbar.overwrite")</option>
+                            <option value="output">@AppText.T("web.metadata.toolbar.outputPath")</option>
+                        </select>
+                    </label>
+                    <div class="ui-switch metadata-toolbar-toggle">
+                        <RadzenSwitch TValue="bool" Value="@Options.Metadata.Recursive" Change="@((bool _) => OnToggleRecursive.InvokeAsync())" />
+                        <span>@AppText.T("web.metadata.toolbar.recursive")</span>
+                    </div>
+                    @if (Options.Metadata.OutputPolicy == MkvMetadataOutputPolicy.OutputPath)
+                    {
+                        <div class="ui-switch metadata-toolbar-toggle">
+                            <RadzenSwitch TValue="bool" Value="@Options.Metadata.PreserveFolderStructure" Change="@((bool _) => OnTogglePreserveFolders.InvokeAsync())" />
+                            <span>@AppText.T("web.metadata.toolbar.preserveFolders")</span>
+                        </div>
+                    }
+                </div>
+                @if (Options.Metadata.OutputPolicy == MkvMetadataOutputPolicy.OutputPath)
+                {
+                    <div class="metadata-toolbar-row metadata-toolbar-output-row">
+                        <label class="metadata-toolbar-field metadata-toolbar-path-field">
+                            <span class="metadata-toolbar-label">@AppText.T("web.metadata.toolbar.outputDir")</span>
+                            <span class="metadata-path-control">
+                                <input class="form-input metadata-path-input" value="@Options.Metadata.OutputDir" @onchange="OnOutputPathChanged" />
+                                <RadzenButton Icon="folder_open" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.metadata.toolbar.outputDir")" aria-label="@AppText.T("web.metadata.toolbar.outputDir")" Click="@OnBrowseOutput" />
+                            </span>
+                        </label>
+                    </div>
+                }
+            </div>
+
+            <RadzenDataGrid TItem="MkvMetadataRecord"
+                            Data="@Records"
+                            class="rf-data-grid metadata-grid"
+                            AllowAlternatingRows="false"
+                            AllowColumnResize="true"
+                            AllowPaging="false"
+                            AllowRowSelectOnRowClick="false"
+                            AllowSorting="false"
+                            ColumnWidth="130px"
+                            GridLines="DataGridGridLines.Both"
+                            RowClick="HandleRowClick"
+                            RowRender="RenderRow">
+                <Columns>
+                    <RadzenDataGridColumn TItem="MkvMetadataRecord" Title="@AppText.T("web.dashboard.file")" Width="300px" MinWidth="180px" MaxWidth="600px">
+                        <Template Context="record">@System.IO.Path.GetFileName(record.InputFile)</Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="MkvMetadataRecord" Title="@AppText.T("web.metadata.container")" Width="110px" MinWidth="80px" MaxWidth="200px">
+                        <Template Context="record">@System.IO.Path.GetExtension(record.InputFile).TrimStart('.').ToUpperInvariant()</Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="MkvMetadataRecord" Title="@AppText.T("web.metadata.tracks")" Width="220px" MinWidth="140px" MaxWidth="440px">
+                        <Template Context="record">@BuildTrackSummary(record)</Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="MkvMetadataRecord" Property="AnalysisStatus" Title="@AppText.T("web.metadata.analysis")" MinWidth="90px" MaxWidth="260px" />
+                    <RadzenDataGridColumn TItem="MkvMetadataRecord" Property="ExecutionMode" Title="@AppText.T("web.metadata.mode")" MinWidth="90px" MaxWidth="260px" />
+                    <RadzenDataGridColumn TItem="MkvMetadataRecord" Property="ChangeCount" Title="@AppText.T("web.metadata.changesShort")" MinWidth="80px" MaxWidth="220px" />
+                    <RadzenDataGridColumn TItem="MkvMetadataRecord" Property="ErrorMessage" Title="@AppText.T("web.dashboard.warningError")" Width="180px" MinWidth="100px" MaxWidth="440px" />
+                </Columns>
+            </RadzenDataGrid>
+        </div>
+        </div>
+        </div>
+    </RadzenSplitterPane>
+
+    <RadzenSplitterPane>
+        <div class="rf-workspace-pane rf-workspace-pane-detail">
+            <div class="rf-panel">
+                <div class="rf-panel-title">@AppText.T("web.metadata.panel.preview")</div>
+                <div class="rf-panel-body detail-content metadata-detail-content">
+                    @if (SelectedRecord == null)
+                    {
+                        <div class="empty-detail">@AppText.T("web.dashboard.noFileSelected")</div>
+                    }
+                    else
+                    {
+                        <RadzenSplitter Orientation="Orientation.Vertical" class="metadata-preview-splitter">
+                            <RadzenSplitterPane Size="48%" Min="135px">
+                                <div class="metadata-detail-pane">
+                                    <div class="metadata-detail-section">
+                                        <div class="metadata-detail-section-title">@AppText.T("web.metadata.detail.currentSection")</div>
+                                        <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.dashboard.fileLabel")</span> <span class="metadata-detail-value">@SelectedRecord.InputFile</span></div>
+                                        <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.dashboard.statusLabel")</span> <span class="metadata-detail-value">@SelectedRecord.Status</span></div>
+                                        <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.detail.size")</span> <span class="metadata-detail-value">@Utils.FormatSize(SelectedRecord.FileSize)</span></div>
+                                        <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.detail.video")</span> <span class="metadata-detail-value">@BuildVideoSummary(SelectedRecord, false)</span></div>
+                                        <MetadataTrackSummaryTableComponent Record="@SelectedRecord" Simulated="false" />
+                                        <RadzenButton Text="@AppText.T("web.metadata.detail.openMappedInfo")" Icon="open_in_new" Variant="Variant.Outlined" Click="@(() => OnShowMappedInfo.InvokeAsync(false))" />
+                                    </div>
+                                </div>
+                            </RadzenSplitterPane>
+                            <RadzenSplitterPane Min="105px">
+                                <div class="metadata-detail-pane">
+                                    <div class="metadata-detail-section metadata-detail-section-simulated">
+                                        <div class="metadata-detail-section-title">@AppText.T("web.metadata.detail.simulatedSection")</div>
+                                        @if (SelectedRecord.AnalysisStatus == MkvMetadataAnalysisStatus.Analyzed)
+                                        {
+                                            <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.rulesLabel")</span> <span class="metadata-detail-value">@SelectedRecord.MatchCount</span></div>
+                                            <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.changesLabel")</span> <span class="metadata-detail-value">@SelectedRecord.ChangeCount</span></div>
+                                            <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.executionLabel")</span> <span class="metadata-detail-value">@SelectedRecord.ExecutionMode</span></div>
+                                            <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.outputLabel")</span> <span class="metadata-detail-value">@MetadataExecutionService.BuildOutputFile(SelectedRecord, Options.Metadata)</span></div>
+                                            <MetadataTrackSummaryTableComponent Record="@SelectedRecord" Simulated="true" />
+                                            <RadzenButton Text="@AppText.T("web.metadata.detail.openSimulationDetail")" Icon="open_in_new" Variant="Variant.Outlined" Click="@(() => OnShowMappedInfo.InvokeAsync(true))" />
+                                        }
+                                        else
+                                        {
+                                            <div>@AppText.T("web.metadata.detail.notAnalyzed")</div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(SelectedRecord.ErrorMessage))
+                                        {
+                                            <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.dashboard.errorLabel")</span> <span class="metadata-detail-value">@SelectedRecord.ErrorMessage</span></div>
+                                        }
+                                    </div>
+                                </div>
+                            </RadzenSplitterPane>
+                        </RadzenSplitter>
+                    }
+                </div>
+            </div>
+        </div>
+    </RadzenSplitterPane>
+</RadzenSplitter>
+
+@code {
+    /// <summary>
+    /// Opzioni correnti
+    /// </summary>
+    [Parameter] public Options Options { get; set; }
+
+    /// <summary>
+    /// Preset disponibili
+    /// </summary>
+    [Parameter] public List<string> PresetFiles { get; set; }
+
+    /// <summary>
+    /// Record disponibili
+    /// </summary>
+    [Parameter] public List<MkvMetadataRecord> Records { get; set; }
+
+    /// <summary>
+    /// Record selezionato
+    /// </summary>
+    [Parameter] public MkvMetadataRecord SelectedRecord { get; set; }
+
+    /// <summary>
+    /// Indice selezionato
+    /// </summary>
+    [Parameter] public int SelectedIndex { get; set; }
+
+    /// <summary>
+    /// Costruisce il riepilogo tracce
+    /// </summary>
+    [Parameter] public Func<MkvMetadataRecord, string> TrackSummaryBuilder { get; set; }
+
+    /// <summary>
+    /// Costruisce il riepilogo video
+    /// </summary>
+    [Parameter] public Func<MkvMetadataRecord, bool, string> VideoSummaryBuilder { get; set; }
+
+    /// <summary>
+    /// Restituisce il valore corrente della policy output
+    /// </summary>
+    [Parameter] public Func<string> OutputPolicyValueProvider { get; set; }
+
+    /// <summary>
+    /// Eventi della toolbar e della selezione
+    /// </summary>
+    [Parameter] public EventCallback<ChangeEventArgs> OnPresetChanged { get; set; }
+    [Parameter] public EventCallback<ChangeEventArgs> OnSourcePathChanged { get; set; }
+    [Parameter] public EventCallback<ChangeEventArgs> OnOutputPolicyChanged { get; set; }
+    [Parameter] public EventCallback<ChangeEventArgs> OnOutputPathChanged { get; set; }
+    [Parameter] public EventCallback OnBrowseSource { get; set; }
+    [Parameter] public EventCallback OnBrowseOutput { get; set; }
+    [Parameter] public EventCallback OnToggleRecursive { get; set; }
+    [Parameter] public EventCallback OnTogglePreserveFolders { get; set; }
+    [Parameter] public EventCallback<int> OnRowSelected { get; set; }
+    [Parameter] public EventCallback<bool> OnShowMappedInfo { get; set; }
+
+    /// <summary>
+    /// Costruisce il riepilogo tracce richiesto dal workspace
+    /// </summary>
+    private string BuildTrackSummary(MkvMetadataRecord record)
+    {
+        return this.TrackSummaryBuilder != null ? this.TrackSummaryBuilder(record) : "";
+    }
+
+    /// <summary>
+    /// Costruisce il riepilogo video richiesto dal workspace
+    /// </summary>
+    private string BuildVideoSummary(MkvMetadataRecord record, bool simulated)
+    {
+        return this.VideoSummaryBuilder != null ? this.VideoSummaryBuilder(record, simulated) : "";
+    }
+
+    /// <summary>
+    /// Restituisce il valore serializzato della policy output
+    /// </summary>
+    private string GetOutputPolicyValue()
+    {
+        return this.OutputPolicyValueProvider != null ? this.OutputPolicyValueProvider() : "overwrite";
+    }
+
+    /// <summary>
+    /// Propaga la selezione della riga al coordinator
+    /// </summary>
+    /// <param name="args">Argomenti click riga</param>
+    private void HandleRowClick(DataGridRowMouseEventArgs<MkvMetadataRecord> args)
+    {
+        int index = this.Records.IndexOf(args.Data);
+        if (index >= 0)
+            this.OnRowSelected.InvokeAsync(index);
+    }
+
+    /// <summary>
+    /// Applica gli attributi di focus e selezione posseduti dall'orchestrator
+    /// </summary>
+    /// <param name="args">Argomenti rendering riga</param>
+    private void RenderRow(RowRenderEventArgs<MkvMetadataRecord> args)
+    {
+        int index = this.Records.IndexOf(args.Data);
+        if (index == this.SelectedIndex)
+            args.Attributes["class"] = "rz-data-row selected focused";
+        args.Attributes["data-metadata-row-index"] = index;
+        args.Attributes["tabindex"] = index == this.SelectedIndex ? 0 : -1;
+        args.Attributes["aria-selected"] = index == this.SelectedIndex ? "true" : "false";
+    }
+}

@@ -1,59 +1,28 @@
-/* Renamer floating window styles */
-.renamer-window {
-    display: none;
-    position: fixed;
-    left: 5vw;
-    top: 5vh;
-    width: 90vw;
-    height: 90vh;
-    z-index: 2000;
-    background-color: var(--background0);
-    border: 1px solid var(--foreground2);
-    box-shadow: 2px 2px 0 var(--background3);
+/* Metadata renamer */
+.renamer-content {
+    display: flex;
+    width: 100%;
+    height: 100%;
     flex-direction: column;
-    min-width: 60ch;
-    min-height: 20lh;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--rz-base-background-color);
+    color: var(--rz-text-color);
 }
 
-.renamer-window.visible {
-    display: flex;
-}
-
-.renamer-titlebar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background-color: var(--foreground0);
-    color: var(--background0);
-    padding: 0 1ch;
-    line-height: 1lh;
-    cursor: move;
-    user-select: none;
-    flex-shrink: 0;
-    border-bottom: 1px solid var(--foreground2);
-}
-
-.renamer-close {
-    cursor: pointer;
-    color: var(--background0);
-    background: none;
-    border: none;
-    font-family: var(--font-family);
-    font-size: var(--font-size);
-    padding: 0 0.5ch;
-    height: 1lh;
-    line-height: 1lh;
-}
-
-.renamer-close:hover {
-    background-color: var(--background2);
-    color: var(--foreground0);
+.rf-renamer-dialog-content {
+    height: 100%;
+    padding: 0 !important;
+    overflow: hidden !important;
 }
 
 .renamer-body {
     display: flex;
     flex: 1;
+    gap: var(--rz-gap);
     min-height: 0;
+    padding: var(--rz-gap);
     overflow: hidden;
 }
 
@@ -62,77 +31,32 @@
     overflow-y: auto;
     overflow-x: hidden;
     min-width: 0;
-    border-right: 1px solid var(--foreground2);
+    border: 1px solid var(--rz-base-300);
+    border-radius: var(--rz-panel-border-radius);
 }
 
-.renamer-file-list table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
+.renamer-preview-grid .rz-data-row.conflict td:nth-child(2) {
+    color: var(--rz-danger);
 }
 
-.renamer-file-list table:before,
-.renamer-file-list table tr th:before,
-.renamer-file-list table tr th:after,
-.renamer-file-list table tr td:before,
-.renamer-file-list table tr td:after {
-    display: none;
-}
-
-.renamer-file-list table :first-child > tr:first-child > td,
-.renamer-file-list table :first-child > tr:first-child > th {
-    padding-top: 0;
-}
-
-.renamer-file-list table tr th,
-.renamer-file-list table tr td {
-    padding-bottom: 0;
-}
-
-.renamer-file-list th {
-    text-align: left;
-    background-color: var(--background1);
-    position: sticky;
-    top: 0;
-    padding: 0 1ch;
-    line-height: 1lh;
-    border-bottom: 1px solid var(--foreground2);
-}
-
-.renamer-file-list td {
-    padding: 0 1ch;
-    line-height: 1lh;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.renamer-file-list tr:hover {
-    background-color: var(--background1);
-}
-
-.renamer-file-list tr.conflict td:nth-child(2) {
-    color: red;
-}
-
-.renamer-file-list tr.error td:nth-child(2) {
-    color: var(--foreground2);
+.renamer-preview-grid .rz-data-row.error td:nth-child(2) {
+    color: var(--rz-text-disabled-color);
     text-decoration: line-through;
 }
 
-.renamer-file-list tr.changed td:nth-child(1) {
+.renamer-preview-grid .rz-data-row.changed td:nth-child(1) {
     text-decoration: line-through;
-    color: var(--foreground2);
+    color: var(--rz-text-disabled-color);
 }
 
-.renamer-file-list tr.changed td:nth-child(2) {
-    color: var(--accent, #88c0d0);
+.renamer-preview-grid .rz-data-row.changed td:nth-child(2) {
+    color: var(--rz-primary);
 }
 
 .renamer-config {
     flex: 4;
     overflow-y: auto;
-    padding: 0 1ch;
+    padding: 0;
     min-width: 0;
     display: flex;
     flex-direction: column;
@@ -142,32 +66,32 @@
     display: flex;
     gap: 1ch;
     align-items: center;
-    line-height: 2lh;
+    line-height: 2em;
     flex-shrink: 0;
 }
 
 .renamer-method-selector select {
     flex: 1;
     min-width: 20ch;
-    background-color: var(--background1);
-    color: var(--foreground0);
-    border: 1px solid var(--foreground2);
-    font-family: var(--font-family);
-    font-size: var(--font-size);
-    line-height: 1lh;
+    background-color: var(--rz-base-background-color);
+    color: var(--rz-text-color);
+    border: 1px solid var(--rz-text-disabled-color);
+    font-family: var(--rz-text-font-family);
+    font-size: var(--rz-body-font-size);
+    line-height: 1em;
 }
 
 .renamer-params {
     flex-shrink: 0;
-    padding-bottom: 1lh;
-    border-bottom: 1px solid var(--foreground2);
+    padding-bottom: 1em;
+    border-bottom: 1px solid var(--rz-text-disabled-color);
 }
 
 .renamer-params label {
     display: flex;
     align-items: center;
     gap: 1ch;
-    line-height: 1.5lh;
+    line-height: 1.5em;
 }
 
 .renamer-params label > span:first-child {
@@ -177,13 +101,13 @@
 
 .renamer-params input[type="text"],
 .renamer-params input[type="number"] {
-    background-color: var(--background1);
-    color: var(--foreground0);
-    border: 1px solid var(--foreground2);
-    font-family: var(--font-family);
-    font-size: var(--font-size);
+    background-color: var(--rz-base-background-color);
+    color: var(--rz-text-color);
+    border: 1px solid var(--rz-text-disabled-color);
+    font-family: var(--rz-text-font-family);
+    font-size: var(--rz-body-font-size);
     padding: 0 0.5ch;
-    line-height: 1lh;
+    line-height: 1em;
     flex: 1;
     min-width: 0;
 }
@@ -191,12 +115,12 @@
 .renamer-params select {
     flex: 1;
     min-width: 18ch;
-    background-color: var(--background1);
-    color: var(--foreground0);
-    border: 1px solid var(--foreground2);
-    font-family: var(--font-family);
-    font-size: var(--font-size);
-    line-height: 1lh;
+    background-color: var(--rz-base-background-color);
+    color: var(--rz-text-color);
+    border: 1px solid var(--rz-text-disabled-color);
+    font-family: var(--rz-text-font-family);
+    font-size: var(--rz-body-font-size);
+    line-height: 1em;
 }
 
 .renamer-params label.renamer-checkbox-row {
@@ -207,32 +131,32 @@
     min-width: 0;
 }
 
-.renamer-params input[type="checkbox"] {
+.renamer-params .rz-switch {
     flex: 0 0 auto;
     margin: 0;
 }
 
 .renamer-params-error {
-    color: red;
-    line-height: 1lh;
+    color: var(--rz-danger);
+    line-height: 1em;
 }
 
 .renamer-tag-help {
-    color: var(--foreground2);
-    line-height: 1.2lh;
-    font-size: 0.9em;
+    color: var(--rz-text-disabled-color);
+    line-height: 1.2em;
+    font-size: var(--rz-text-caption-font-size);
 }
 
 .renamer-stack-header {
-    line-height: 2lh;
+    line-height: 2em;
     flex-shrink: 0;
 }
 
 .renamer-stack {
     flex: 1;
-    min-height: 3lh;
+    min-height: 3em;
     overflow-y: auto;
-    border: 1px solid var(--foreground2);
+    border: 1px solid var(--rz-text-disabled-color);
 }
 
 .renamer-stack-item {
@@ -240,13 +164,13 @@
     justify-content: space-between;
     align-items: center;
     padding: 0 1ch;
-    line-height: 1lh;
+    line-height: 1em;
     gap: 1ch;
 }
 
 .renamer-stack-item:hover,
 .renamer-stack-item.selected {
-    background-color: var(--background2);
+    background-color: var(--rz-panel-menu-item-hover-background-color);
 }
 
 .renamer-stack-item-name {
@@ -262,102 +186,37 @@
     flex-shrink: 0;
 }
 
-.renamer-stack-item-actions button {
-    background: none;
-    background-image: none;
-    color: var(--foreground2);
-    border: none;
-    padding: 0 0.5ch;
-    font-family: var(--font-family);
-    font-size: var(--font-size);
-    cursor: pointer;
-    line-height: 1lh;
-}
-
-.renamer-stack-item-actions button:hover {
-    color: var(--foreground0);
-    background-color: var(--background1);
-}
-
 .renamer-statusbar {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background-color: var(--background1);
-    padding: 0 1ch;
-    line-height: 1lh;
-    border-top: 1px solid var(--foreground2);
+    min-height: 4.25rem;
+    background: var(--rz-base-background-color);
+    padding: 0.75rem 1.25rem;
+    line-height: 1.4;
+    border-top: 1px solid var(--rz-base-300);
     flex-shrink: 0;
 }
 
 .renamer-statusbar-actions {
     display: flex;
-    gap: 1ch;
+    gap: calc(var(--rz-gap) * 0.5);
 }
 
-.renamer-statusbar button,
-.renamer-config button.renamer-add-btn {
-    background: none;
-    background-image: none;
-    color: var(--foreground0);
-    border: none;
-    padding: 0;
-    height: 1lh;
-    line-height: 1lh;
-    font-family: var(--font-family);
-    font-size: var(--font-size);
-    cursor: pointer;
-}
+@media (max-width: 900px) {
+    .rf-renamer-dialog {
+        width: calc(100vw - 2rem) !important;
+        height: calc(100vh - 2rem) !important;
+        max-width: none !important;
+        max-height: none !important;
+    }
 
-.renamer-statusbar button::before,
-.renamer-config button.renamer-add-btn::before {
-    content: "[ ";
-    color: var(--foreground2);
-}
+    .renamer-body {
+        flex-direction: column;
+    }
 
-.renamer-statusbar button::after,
-.renamer-config button.renamer-add-btn::after {
-    content: " ]";
-    color: var(--foreground2);
-}
-
-.renamer-statusbar button:hover,
-.renamer-config button.renamer-add-btn:hover {
-    background-color: var(--foreground0);
-    color: var(--background0);
-}
-
-.renamer-statusbar button:hover::before,
-.renamer-statusbar button:hover::after,
-.renamer-config button.renamer-add-btn:hover::before,
-.renamer-config button.renamer-add-btn:hover::after {
-    color: var(--background0);
-}
-
-.renamer-statusbar button:disabled {
-    color: var(--foreground2);
-    cursor: not-allowed;
-}
-
-.renamer-statusbar button:disabled:hover {
-    background: none;
-    color: var(--foreground2);
-}
-
-.renamer-statusbar button:disabled::before,
-.renamer-statusbar button:disabled::after {
-    color: var(--foreground2);
-}
-
-.renamer-resize-handle {
-    position: absolute;
-    bottom: 0;
-    right: 0;
-    width: 2ch;
-    height: 1lh;
-    cursor: nwse-resize;
-    text-align: right;
-    color: var(--foreground2);
-    user-select: none;
-    line-height: 1lh;
+    .renamer-file-list,
+    .renamer-config {
+        flex: 1 1 50%;
+    }
 }

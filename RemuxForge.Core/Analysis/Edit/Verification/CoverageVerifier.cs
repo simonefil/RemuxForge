@@ -33,47 +33,6 @@ namespace RemuxForge.Core.Analysis.Edit.Verification
         #region Metodi pubblici
 
         /// <summary>
-        /// Offset del primo tratto, cercato sulla testa del film
-        /// </summary>
-        /// <param name="pair">Coppia di tracce</param>
-        /// <param name="untilMs">Istante oltre il quale non guardare</param>
-        /// <returns>Offset iniziale grezzo</returns>
-        public double InitialOffset(PairSignals pair, double untilMs)
-        {
-            double[] sourcePts = pair.Source.PtsMs;
-            HashOps.Range(pair, sourcePts[0], Math.Min(untilMs, sourcePts[0] + EditAnalysisProfile.COVERAGE_HEAD_MS), EditAnalysisProfile.SAMPLING_STRIDE, out int first, out int indexCount);
-            if (indexCount < 20)
-                return 0.0;
-
-            double bestOffsetMs = 0.0;
-            double bestFraction = -1.0;
-            int coarseCount = (int)(2.0 * EditAnalysisProfile.COVERAGE_INITIAL_RADIUS_MS / 200.0) + 1;
-            double[] coarse = this._hashBackend.Scan(first, EditAnalysisProfile.SAMPLING_STRIDE, indexCount, -EditAnalysisProfile.COVERAGE_INITIAL_RADIUS_MS, 200.0, coarseCount, EditAnalysisProfile.VERIFICATION_RADIUS, EditAnalysisProfile.VERIFICATION_THRESHOLD);
-            for (int i = 0; i < coarseCount; i++)
-            {
-                if (coarse[i] > bestFraction)
-                {
-                    bestFraction = coarse[i];
-                    bestOffsetMs = -EditAnalysisProfile.COVERAGE_INITIAL_RADIUS_MS + i * 200.0;
-                }
-            }
-
-            double refinedMs = bestOffsetMs;
-            bestFraction = -1.0;
-            double[] fine = this._hashBackend.Scan(first, EditAnalysisProfile.SAMPLING_STRIDE, indexCount, bestOffsetMs - 200.0, 10.0, 41, EditAnalysisProfile.VERIFICATION_RADIUS, EditAnalysisProfile.VERIFICATION_THRESHOLD);
-            for (int i = 0; i <= 40; i++)
-            {
-                if (fine[i] > bestFraction)
-                {
-                    bestFraction = fine[i];
-                    refinedMs = bestOffsetMs - 200.0 + i * 10.0;
-                }
-            }
-
-            return refinedMs;
-        }
-
-        /// <summary>
         /// La costante di ancoraggio che massimizza la copertura complessiva
         /// </summary>
         /// <param name="pair">Coppia di tracce</param>
@@ -82,8 +41,8 @@ namespace RemuxForge.Core.Analysis.Edit.Verification
         /// <returns>Offset del primo tratto che aggancia di più tutto il film</returns>
         public double Anchor(PairSignals pair, IReadOnlyList<EditOperationCandidate> operations, double initialOffsetMs)
         {
-            // L'EditMap descrive la scala a meno di una costante, e stimarla sui primi sessanta
-            // secondi la lega a com'è fatta la testa del film
+            // L'EditMap descrive la scala a meno di una costante: la copertura dell'intero film
+            // la ancora senza dipendere da come è fatta la testa
             int[] indices = HashOps.RangeIndices(pair, pair.Source.PtsMs[0], double.MaxValue, 4 * EditAnalysisProfile.SAMPLING_STRIDE);
             double[] boundaries = BuildBoundaries(operations);
             double[] offsets = BuildOffsets(operations, 0.0);
@@ -91,52 +50,30 @@ namespace RemuxForge.Core.Analysis.Edit.Verification
             // La costante si cerca prima da lontano e a passo grosso: se la testa del film ha
             // mentito, un campo stretto attorno a lei resta chiuso dentro l'errore che deve curare
             double centerMs = initialOffsetMs;
-            double bestFraction = -1.0;
             int sweepCount = (int)(2.0 * EditAnalysisProfile.COVERAGE_ANCHOR_SWEEP_MS / EditAnalysisProfile.COVERAGE_ANCHOR_SWEEP_STEP_MS) + 1;
+            double[] sweepFractions = new double[sweepCount];
             for (int i = 0; i < sweepCount; i++)
             {
                 double candidateMs = initialOffsetMs - EditAnalysisProfile.COVERAGE_ANCHOR_SWEEP_MS + i * EditAnalysisProfile.COVERAGE_ANCHOR_SWEEP_STEP_MS;
-                double fraction = this.Explained(pair, indices, boundaries, offsets, candidateMs);
-                if (fraction > bestFraction)
-                {
-                    bestFraction = fraction;
-                    centerMs = candidateMs;
-                }
+                sweepFractions[i] = this.Explained(pair, indices, boundaries, offsets, candidateMs);
             }
+            centerMs = PeakNearest(initialOffsetMs - EditAnalysisProfile.COVERAGE_ANCHOR_SWEEP_MS,
+                EditAnalysisProfile.COVERAGE_ANCHOR_SWEEP_STEP_MS, sweepFractions, initialOffsetMs);
 
-            double bestOffsetMs = centerMs;
-            bestFraction = -1.0;
             int coarseCount = (int)(2.0 * EditAnalysisProfile.COVERAGE_ANCHOR_FIELD_MS / 5.0) + 1;
+            double[] coarseFractions = new double[coarseCount];
             for (int i = 0; i < coarseCount; i++)
             {
                 double candidateMs = centerMs - EditAnalysisProfile.COVERAGE_ANCHOR_FIELD_MS + i * 5.0;
-                double fraction = this.Explained(pair, indices, boundaries, offsets, candidateMs);
-                if (fraction > bestFraction)
-                {
-                    bestFraction = fraction;
-                    bestOffsetMs = candidateMs;
-                }
+                coarseFractions[i] = this.Explained(pair, indices, boundaries, offsets, candidateMs);
             }
+            double bestOffsetMs = PeakNearest(centerMs - EditAnalysisProfile.COVERAGE_ANCHOR_FIELD_MS, 5.0, coarseFractions, centerMs);
 
             double[] fractions = new double[11];
-            double peak = -1.0;
             for (int i = 0; i <= 10; i++)
-            {
                 fractions[i] = this.Explained(pair, indices, boundaries, offsets, bestOffsetMs - 5.0 + i);
-                peak = Math.Max(peak, fractions[i]);
-            }
 
-            double total = 0.0;
-            int members = 0;
-            for (int i = 0; i <= 10; i++)
-            {
-                if (fractions[i] < peak - 1e-12)
-                    continue;
-                total += bestOffsetMs - 5.0 + i;
-                members++;
-            }
-
-            return total / members;
+            return PeakNearest(bestOffsetMs - 5.0, 1.0, fractions, bestOffsetMs);
         }
 
         /// <summary>
@@ -155,6 +92,36 @@ namespace RemuxForge.Core.Analysis.Edit.Verification
         #endregion
 
         #region Metodi privati
+
+        /// <summary>
+        /// Campione massimo più vicino alla stima che ha guidato la scansione
+        /// </summary>
+        /// <param name="startMs">Valore del primo campione</param>
+        /// <param name="stepMs">Passo fra i campioni</param>
+        /// <param name="fractions">Coperture misurate</param>
+        /// <param name="referenceMs">Stima da conservare in caso di parità</param>
+        /// <returns>Campione scelto sulla cima piatta</returns>
+        private static double PeakNearest(double startMs, double stepMs, double[] fractions, double referenceMs)
+        {
+            double peak = -1.0;
+            for (int i = 0; i < fractions.Length; i++)
+                peak = Math.Max(peak, fractions[i]);
+
+            double result = startMs;
+            double nearest = double.MaxValue;
+            for (int i = 0; i < fractions.Length; i++)
+            {
+                if (fractions[i] < peak - 1e-12)
+                    continue;
+                double candidateMs = startMs + i * stepMs;
+                double distanceMs = Math.Abs(candidateMs - referenceMs);
+                if (distanceMs >= nearest)
+                    continue;
+                result = candidateMs;
+                nearest = distanceMs;
+            }
+            return result;
+        }
 
         /// <summary>
         /// Confini della funzione a gradini che l'EditMap descrive

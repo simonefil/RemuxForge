@@ -1,0 +1,264 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct KeypointRecord
+{
+    float x;
+    float y;
+    float scale;
+    float response;
+    float orientation;
+    uint frameIndex;
+    int octave;
+    int layer;
+};
+
+struct SelectionFrameRecord
+{
+    uint sourceOffset;
+    uint sourceCapacity;
+    uint targetOffset;
+    uint targetCapacity;
+};
+
+struct SelectionStateRecord
+{
+    uint lower;
+    uint upper;
+    uint count;
+    uint greater;
+    uint equal;
+};
+
+layout(std430, binding = 0) readonly buffer SourceKeypointsBuffer { KeypointRecord sourceKeypoints[]; };
+layout(std430, binding = 1) readonly buffer SourceDescriptorsBuffer { uint sourceDescriptors[]; };
+layout(std430, binding = 2) readonly buffer SourceCountsBuffer { uint sourceCounts[]; };
+layout(std430, binding = 3) readonly buffer SourceDiagnosticsBuffer { uvec4 sourceDiagnostics[]; };
+layout(std430, binding = 4) writeonly buffer TargetKeypointsBuffer { KeypointRecord targetKeypoints[]; };
+layout(std430, binding = 5) writeonly buffer TargetDescriptorsBuffer { uint targetDescriptors[]; };
+layout(std430, binding = 6) writeonly buffer TargetCountsBuffer { uint targetCounts[]; };
+layout(std430, binding = 7) writeonly buffer TargetDiagnosticsBuffer { uvec4 targetDiagnostics[]; };
+layout(std430, binding = 8) readonly buffer MetadataBuffer { SelectionFrameRecord frames[]; };
+layout(std430, binding = 9) buffer StateBuffer { SelectionStateRecord states[]; };
+layout(std430, binding = 10) readonly buffer SourceNormsBuffer { uint sourceNorms[]; };
+layout(std430, binding = 11) writeonly buffer TargetNormsBuffer { uint targetNorms[]; };
+layout(std430, binding = 12) buffer SelectionFlagsBuffer { uint selectionFlags[]; };
+layout(std430, binding = 13) readonly buffer SelectionPrefixBuffer { uint selectionPrefix[]; };
+layout(std430, binding = 14) buffer SelectionHistogramBuffer { uint selectionHistogram[]; };
+
+layout(push_constant) uniform PushConstants
+{
+    uint frameCount;
+    uint workgroupsPerFrame;
+    uint phase;
+    uint shift;
+} pushData;
+
+uint responseKey(float response)
+{
+    if (isnan(response) || response <= 0.0)
+        return 0u;
+    return floatBitsToUint(response);
+}
+
+uint tieKey(uint sourceIndex)
+{
+    uint value = sourceIndex + 0x9e3779b9u;
+    value ^= value >> 16u;
+    value *= 0x7feb352du;
+    value ^= value >> 15u;
+    value *= 0x846ca68bu;
+    value ^= value >> 16u;
+    return value;
+}
+
+void initializeFrame(uint frameIndex)
+{
+    states[frameIndex].lower = 0u;
+    states[frameIndex].upper = 0u;
+    SelectionFrameRecord frame = frames[frameIndex];
+    states[frameIndex].count = min(min(sourceCounts[frameIndex], frame.sourceCapacity), frame.targetCapacity);
+    states[frameIndex].greater = 0u;
+    states[frameIndex].equal = 0u;
+}
+
+uint highMask(uint shift)
+{
+    return shift == 24u ? 0u : 0xffffffffu << (shift + 8u);
+}
+
+void clearHistogram(uint histogramIndex)
+{
+    uint histogramCount = pushData.frameCount * 256u;
+    if (histogramIndex < histogramCount)
+        selectionHistogram[histogramIndex] = 0u;
+}
+
+void histogramResponse(uint frameIndex, uint sourceIndex)
+{
+    SelectionFrameRecord frame = frames[frameIndex];
+    uint sourceCount = min(sourceCounts[frameIndex], frame.sourceCapacity);
+    if (sourceIndex >= sourceCount)
+        return;
+    uint key = responseKey(sourceKeypoints[frame.sourceOffset + sourceIndex].response);
+    uint mask = highMask(pushData.shift);
+    if ((key & mask) == (states[frameIndex].lower & mask))
+        atomicAdd(selectionHistogram[frameIndex * 256u + ((key >> pushData.shift) & 0xffu)], 1u);
+}
+
+void selectResponseBucket(uint frameIndex)
+{
+    SelectionStateRecord state = states[frameIndex];
+    if (state.count == 0u)
+        return;
+    uint preceding = 0u;
+    for (int bucket = 255; bucket >= 0; bucket--)
+    {
+        uint bucketCount = selectionHistogram[frameIndex * 256u + uint(bucket)];
+        if (preceding + bucketCount >= state.count)
+        {
+            state.lower |= uint(bucket) << pushData.shift;
+            state.count -= preceding;
+            state.greater += preceding;
+            break;
+        }
+        preceding += bucketCount;
+    }
+    states[frameIndex] = state;
+}
+
+void initializeTieSearch(uint frameIndex)
+{
+    SelectionFrameRecord frame = frames[frameIndex];
+    SelectionStateRecord state = states[frameIndex];
+    uint targetCount = min(min(sourceCounts[frameIndex], frame.sourceCapacity), frame.targetCapacity);
+    state.upper = 0u;
+    state.equal = targetCount > state.greater ? targetCount - state.greater : 0u;
+    states[frameIndex] = state;
+}
+
+void histogramTie(uint frameIndex, uint sourceIndex)
+{
+    SelectionFrameRecord frame = frames[frameIndex];
+    uint sourceCount = min(sourceCounts[frameIndex], frame.sourceCapacity);
+    if (sourceIndex >= sourceCount)
+        return;
+    uint key = responseKey(sourceKeypoints[frame.sourceOffset + sourceIndex].response);
+    uint tie = tieKey(sourceIndex);
+    uint mask = highMask(pushData.shift);
+    if (key == states[frameIndex].lower && (tie & mask) == (states[frameIndex].upper & mask))
+        atomicAdd(selectionHistogram[frameIndex * 256u + ((tie >> pushData.shift) & 0xffu)], 1u);
+}
+
+void selectTieBucket(uint frameIndex)
+{
+    SelectionStateRecord state = states[frameIndex];
+    if (state.equal == 0u)
+        return;
+    uint preceding = 0u;
+    for (uint bucket = 0u; bucket < 256u; bucket++)
+    {
+        uint bucketCount = selectionHistogram[frameIndex * 256u + bucket];
+        if (preceding + bucketCount >= state.equal)
+        {
+            state.upper |= bucket << pushData.shift;
+            state.equal -= preceding;
+            break;
+        }
+        preceding += bucketCount;
+    }
+    states[frameIndex] = state;
+}
+
+void markFeature(uint frameIndex, uint sourceIndex)
+{
+    SelectionFrameRecord frame = frames[frameIndex];
+    uint sourceCount = min(sourceCounts[frameIndex], frame.sourceCapacity);
+    if (sourceIndex >= frame.sourceCapacity)
+        return;
+    uint sourceAbsolute = frame.sourceOffset + sourceIndex;
+    uint selectionIndex = frame.sourceOffset + sourceIndex;
+    selectionFlags[selectionIndex] = 0u;
+    if (sourceIndex >= sourceCount)
+        return;
+    uint key = responseKey(sourceKeypoints[sourceAbsolute].response);
+    if (key > states[frameIndex].lower || (key == states[frameIndex].lower && tieKey(sourceIndex) <= states[frameIndex].upper))
+        selectionFlags[selectionIndex] = 1u;
+}
+
+void scatterFeature(uint frameIndex, uint sourceIndex)
+{
+    SelectionFrameRecord frame = frames[frameIndex];
+    uint sourceCount = min(sourceCounts[frameIndex], frame.sourceCapacity);
+    uint targetCount = min(sourceCount, frame.targetCapacity);
+    if (sourceIndex >= sourceCount || targetCount == 0u)
+        return;
+    uint sourceAbsolute = frame.sourceOffset + sourceIndex;
+    uint selectionIndex = frame.sourceOffset + sourceIndex;
+    if (selectionFlags[selectionIndex] == 0u)
+        return;
+    uint targetLocal = selectionPrefix[selectionIndex] - selectionPrefix[frame.sourceOffset];
+    if (targetLocal >= targetCount)
+        return;
+    uint targetAbsolute = frame.targetOffset + targetLocal;
+    targetKeypoints[targetAbsolute] = sourceKeypoints[sourceAbsolute];
+    uint sourceDescriptorOffset = sourceAbsolute * 32u;
+    uint targetDescriptorOffset = targetAbsolute * 32u;
+    for (uint component = 0u; component < 32u; component++)
+        targetDescriptors[targetDescriptorOffset + component] = sourceDescriptors[sourceDescriptorOffset + component];
+    targetNorms[targetAbsolute] = sourceNorms[sourceAbsolute];
+}
+
+void finalizeFrame(uint frameIndex)
+{
+    SelectionFrameRecord frame = frames[frameIndex];
+    uint sourceCount = min(sourceCounts[frameIndex], frame.sourceCapacity);
+    uint targetCount = min(sourceCount, frame.targetCapacity);
+    targetCounts[frameIndex] = targetCount;
+    uvec4 diagnostic = sourceDiagnostics[frameIndex];
+    diagnostic.y = targetCount;
+    diagnostic.z += sourceCount - targetCount;
+    targetDiagnostics[frameIndex] = diagnostic;
+}
+
+void main()
+{
+    if (pushData.phase == 13u)
+    {
+        clearHistogram(gl_GlobalInvocationID.x);
+        return;
+    }
+
+    if (pushData.phase == 0u || pushData.phase == 8u || pushData.phase == 15u || pushData.phase == 16u || pushData.phase == 18u)
+    {
+        uint frameIndex = gl_GlobalInvocationID.x;
+        if (frameIndex >= pushData.frameCount)
+            return;
+        if (pushData.phase == 0u)
+            initializeFrame(frameIndex);
+        else if (pushData.phase == 15u)
+            selectResponseBucket(frameIndex);
+        else if (pushData.phase == 16u)
+            initializeTieSearch(frameIndex);
+        else if (pushData.phase == 18u)
+            selectTieBucket(frameIndex);
+        else
+            finalizeFrame(frameIndex);
+        return;
+    }
+
+    uint frameIndex = gl_WorkGroupID.x / pushData.workgroupsPerFrame;
+    if (frameIndex >= pushData.frameCount)
+        return;
+    uint groupInFrame = gl_WorkGroupID.x - frameIndex * pushData.workgroupsPerFrame;
+    uint sourceIndex = groupInFrame * 256u + gl_LocalInvocationID.x;
+    if (pushData.phase == 14u)
+        histogramResponse(frameIndex, sourceIndex);
+    else if (pushData.phase == 17u)
+        histogramTie(frameIndex, sourceIndex);
+    else if (pushData.phase == 7u)
+        markFeature(frameIndex, sourceIndex);
+    else if (pushData.phase == 9u)
+        scatterFeature(frameIndex, sourceIndex);
+}

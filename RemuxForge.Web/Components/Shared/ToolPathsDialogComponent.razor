@@ -1,60 +1,60 @@
 <div class="dialog-overlay visible" @onclick="OnClose">
-    <div class="dialog-box" style="min-width: 60ch;" @onclick:stopPropagation="true">
-        <div class="dialog-title">@AppText.T("web.toolPaths.title")</div>
+    <div class="dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="tool-paths-dialog-title" style="min-width: 60ch;" @onclick:stopPropagation="true">
+        <div id="tool-paths-dialog-title" class="dialog-title">@AppText.T("web.toolPaths.title")</div>
         <div class="dialog-body">
             <div class="form-row">
                 <span class="form-label">mkvmerge:</span>
-                <input class="form-input" @bind="_mkvPath" />
-                <span class="btn-browse" @onclick="() => BrowseFolder(0)">[ .. ]</span>
-                <span style="margin-left: 0.5ch; color: var(@(_mkvFound ? "--color-ok" : "--color-error"));">@(_mkvFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusNotFound"))</span>
+                <input class="form-input" aria-label="mkvmerge" @bind="_mkvPath" />
+                <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="mkvmerge" Click="@(() => BrowseFolder(0))" />
+                <span style="margin-left: 0.5ch; color: @(_mkvFound ? "var(--rz-success)" : "var(--rz-danger)");">@(_mkvFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusNotFound"))</span>
             </div>
             <div class="form-row">
                 <span class="form-label">mkvextract:</span>
-                <input class="form-input" @bind="_mkvExtractPath" />
-                <span class="btn-browse" @onclick="() => BrowseFolder(4)">[ .. ]</span>
-                <span style="margin-left: 0.5ch; color: var(@(_mkvExtractFound ? "--color-ok" : "--color-error"));">@(_mkvExtractFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusNotFound"))</span>
+                <input class="form-input" aria-label="mkvextract" @bind="_mkvExtractPath" />
+                <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="mkvextract" Click="@(() => BrowseFolder(4))" />
+                <span style="margin-left: 0.5ch; color: @(_mkvExtractFound ? "var(--rz-success)" : "var(--rz-danger)");">@(_mkvExtractFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusNotFound"))</span>
             </div>
             <div class="form-row">
                 <span class="form-label">mkvpropedit:</span>
-                <input class="form-input" @bind="_mkvPropEditPath" />
-                <span class="btn-browse" @onclick="() => BrowseFolder(5)">[ .. ]</span>
-                <span style="margin-left: 0.5ch; color: var(@(_mkvPropEditFound ? "--color-ok" : "--color-error"));">@(_mkvPropEditFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusNotFound"))</span>
+                <input class="form-input" aria-label="mkvpropedit" @bind="_mkvPropEditPath" />
+                <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="mkvpropedit" Click="@(() => BrowseFolder(5))" />
+                <span style="margin-left: 0.5ch; color: @(_mkvPropEditFound ? "var(--rz-success)" : "var(--rz-danger)");">@(_mkvPropEditFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusNotFound"))</span>
             </div>
             <div class="form-row">
                 <span class="form-label">ffmpeg:</span>
-                <input class="form-input" @bind="_ffmpegPath" />
-                <span class="btn-browse" @onclick="() => BrowseFolder(1)">[ .. ]</span>
-                <span style="margin-left: 0.5ch; color: var(@(_ffmpegFound ? "--color-ok" : "--color-error"));">@(_ffmpegStatusText)</span>
+                <input class="form-input" aria-label="ffmpeg" @bind="_ffmpegPath" />
+                <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="ffmpeg" Click="@(() => BrowseFolder(1))" />
+                <span style="margin-left: 0.5ch; color: @(_ffmpegFound ? "var(--rz-success)" : "var(--rz-danger)");">@(_ffmpegStatusText)</span>
                 @if (!_ffmpegFound && !_ffmpegDownloading)
                 {
-                    <span class="btn-browse" style="margin-left: 0.5ch;" @onclick="DownloadFfmpeg">@AppText.T("web.common.downloadButton")</span>
+                    <RadzenButton class="btn-browse" Text="@AppText.T("web.common.downloadButton")" Icon="download" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@DownloadFfmpeg" />
                 }
             </div>
             <div class="form-row">
                 <span class="form-label">ffprobe:</span>
-                <input class="form-input" @bind="_ffprobePath" />
-                <span class="btn-browse" @onclick="() => BrowseFolder(6)">[ .. ]</span>
-                <span style="margin-left: 0.5ch; color: var(@(_ffprobeFound ? "--color-ok" : "--color-error"));">@(_ffprobeFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusNotFound"))</span>
+                <input class="form-input" aria-label="ffprobe" @bind="_ffprobePath" />
+                <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="ffprobe" Click="@(() => BrowseFolder(6))" />
+                <span style="margin-left: 0.5ch; color: @(_ffprobeFound ? "var(--rz-success)" : "var(--rz-danger)");">@(_ffprobeFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusNotFound"))</span>
             </div>
             <div class="form-row">
                 <span class="form-label">mediainfo:</span>
-                <input class="form-input" @bind="_mediaInfoPath" />
-                <span class="btn-browse" @onclick="() => BrowseFolder(2)">[ .. ]</span>
-                <span style="margin-left: 0.5ch; color: var(@(_mediaInfoFound ? "--color-ok" : "--color-error"));">@(_mediaInfoFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusCliNotFound"))</span>
+                <input class="form-input" aria-label="mediainfo" @bind="_mediaInfoPath" />
+                <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="mediainfo" Click="@(() => BrowseFolder(2))" />
+                <span style="margin-left: 0.5ch; color: @(_mediaInfoFound ? "var(--rz-success)" : "var(--rz-danger)");">@(_mediaInfoFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusCliNotFound"))</span>
             </div>
             <div class="form-row" style="margin-top: 0.5em;">
                 <span class="form-label">temp:</span>
-                <input class="form-input" @bind="_tempFolder" />
-                <span class="btn-browse" @onclick="() => BrowseFolder(3)">[ .. ]</span>
+                <input class="form-input" aria-label="temp" @bind="_tempFolder" />
+                <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="temp" Click="@(() => BrowseFolder(3))" />
             </div>
         </div>
         @if (!string.IsNullOrEmpty(_validationError))
         {
-            <div style="padding: 0.5em 1em; color: var(--color-error); white-space: pre-line;">@_validationError</div>
+            <div style="padding: 0.5em 1em; color: var(--rz-danger); white-space: pre-line;">@_validationError</div>
         }
         <div class="dialog-footer">
-            <button @onclick="Save">@AppText.T("web.common.ok")</button>
-            <button @onclick="OnClose">@AppText.T("web.common.cancel")</button>
+            <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@Save" />
+            <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" />
         </div>
     </div>
 </div>

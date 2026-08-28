@@ -1,82 +1,82 @@
 <div class="dialog-overlay visible" @onclick="OnClose">
-    <div class="dialog-box" style="min-width: 40ch;" @onclick:stopPropagation="true">
-        <div class="dialog-title">@AppText.T("web.audioSettings.title")</div>
+    <div class="dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="audio-settings-dialog-title" style="min-width: 40ch;" @onclick:stopPropagation="true">
+        <div id="audio-settings-dialog-title" class="dialog-title">@AppText.T("web.audioSettings.title")</div>
         <div class="dialog-body">
             <div class="form-section">@AppText.T("web.audioSettings.flacSection")</div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.audioSettings.compression")</span>
-                <input class="form-input" style="width: 6ch;" @bind="_flacCompression" />
+                <input class="form-input" style="width: 6ch;" aria-label="@(AppText.T("web.audioSettings.flacSection") + " - " + AppText.T("web.audioSettings.compression"))" @bind="_flacCompression" />
             </div>
-            <div class="form-row" style="color: var(--foreground2);">
+            <div class="form-row" style="color: var(--rz-text-disabled-color);">
                 @AppText.T("web.common.range"): @AppSettingsModel.FLAC_COMPRESSION_MIN-@AppSettingsModel.FLAC_COMPRESSION_MAX
             </div>
 
             <div class="form-section">@AppText.T("web.audioSettings.opusSection")</div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.audioSettings.mono")</span>
-                <input class="form-input" style="width: 8ch;" @bind="_opusMono" />
+                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.opusSection") + " - " + AppText.T("web.audioSettings.mono"))" @bind="_opusMono" />
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.audioSettings.stereo")</span>
-                <input class="form-input" style="width: 8ch;" @bind="_opusStereo" />
+                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.opusSection") + " - " + AppText.T("web.audioSettings.stereo"))" @bind="_opusStereo" />
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.audioSettings.surround51")</span>
-                <input class="form-input" style="width: 8ch;" @bind="_opusS51" />
+                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.opusSection") + " - " + AppText.T("web.audioSettings.surround51"))" @bind="_opusS51" />
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.audioSettings.surround71")</span>
-                <input class="form-input" style="width: 8ch;" @bind="_opusS71" />
+                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.opusSection") + " - " + AppText.T("web.audioSettings.surround71"))" @bind="_opusS71" />
             </div>
-            <div class="form-row" style="color: var(--foreground2);">
+            <div class="form-row" style="color: var(--rz-text-disabled-color);">
                 @AppText.T("web.common.range"): @AppSettingsModel.OPUS_BITRATE_MIN-@AppSettingsModel.OPUS_BITRATE_MAX kbps
             </div>
 
             <div class="form-section">@AppText.T("web.audioSettings.aacSection")</div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.audioSettings.mono")</span>
-                <input class="form-input" style="width: 8ch;" @bind="_aacMono" />
+                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.aacSection") + " - " + AppText.T("web.audioSettings.mono"))" @bind="_aacMono" />
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.audioSettings.stereo")</span>
-                <input class="form-input" style="width: 8ch;" @bind="_aacStereo" />
+                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.aacSection") + " - " + AppText.T("web.audioSettings.stereo"))" @bind="_aacStereo" />
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.audioSettings.surround51")</span>
-                <input class="form-input" style="width: 8ch;" @bind="_aacS51" />
+                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.aacSection") + " - " + AppText.T("web.audioSettings.surround51"))" @bind="_aacS51" />
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.audioSettings.surround71")</span>
-                <input class="form-input" style="width: 8ch;" @bind="_aacS71" />
+                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.aacSection") + " - " + AppText.T("web.audioSettings.surround71"))" @bind="_aacS71" />
             </div>
-            <div class="form-row" style="color: var(--foreground2);">
+            <div class="form-row" style="color: var(--rz-text-disabled-color);">
                 @AppText.T("web.common.range"): @AppSettingsModel.AAC_BITRATE_MIN-@AppSettingsModel.AAC_BITRATE_MAX kbps
             </div>
 
             <div class="form-section">@AppText.T("web.audioSettings.ac3Section")</div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.audioSettings.mono")</span>
-                <input class="form-input" style="width: 8ch;" @bind="_ac3Mono" />
+                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.ac3Section") + " - " + AppText.T("web.audioSettings.mono"))" @bind="_ac3Mono" />
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.audioSettings.stereo")</span>
-                <input class="form-input" style="width: 8ch;" @bind="_ac3Stereo" />
+                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.ac3Section") + " - " + AppText.T("web.audioSettings.stereo"))" @bind="_ac3Stereo" />
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.audioSettings.surround51")</span>
-                <input class="form-input" style="width: 8ch;" @bind="_ac3S51" />
+                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.ac3Section") + " - " + AppText.T("web.audioSettings.surround51"))" @bind="_ac3S51" />
             </div>
-            <div class="form-row" style="color: var(--foreground2);">
+            <div class="form-row" style="color: var(--rz-text-disabled-color);">
                 @AppText.T("web.audioSettings.validBitrates"): @System.String.Join(", ", AppSettingsModel.AC3_VALID_BITRATES_KBPS) kbps
             </div>
         </div>
         @if (!string.IsNullOrEmpty(_validationError))
         {
-            <div style="padding: 0.5em 1em; color: var(--color-error); white-space: pre-line;">@_validationError</div>
+            <div style="padding: 0.5em 1em; color: var(--rz-danger); white-space: pre-line;">@_validationError</div>
         }
         <div class="dialog-footer">
-            <button @onclick="Save">@AppText.T("web.common.ok")</button>
-            <button @onclick="OnClose">@AppText.T("web.common.cancel")</button>
+            <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@Save" />
+            <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" />
         </div>
     </div>
 </div>

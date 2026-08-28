@@ -1,0 +1,79 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct GeometryPairRecord
+{
+    uint firstFrame; uint secondFrame; uint firstKeypointOffset; uint secondKeypointOffset;
+    uint reciprocalOffset; uint matchCountOffset; uint hypothesisOffset; uint resultIndex;
+    uint firstWidth; uint firstHeight; uint secondWidth; uint secondHeight;
+    uint stableFirstFrame; uint stableSecondFrame;
+};
+struct PairResultRecord { uvec4 header0; uvec4 header1; vec4 metrics0; vec4 metrics1; vec4 row0; vec4 row1; vec4 row2; };
+
+layout(std430, set = 0, binding = 0) readonly buffer FirstCounts { uint firstCounts[]; };
+layout(std430, set = 0, binding = 1) readonly buffer SecondCounts { uint secondCounts[]; };
+layout(std430, set = 0, binding = 2) readonly buffer MatchCounts { uint matchCounts[]; };
+layout(std430, set = 0, binding = 3) readonly buffer InputPairs { GeometryPairRecord inputPairs[]; };
+layout(std430, set = 0, binding = 4) writeonly buffer CompactPairs { GeometryPairRecord compactPairs[]; };
+layout(std430, set = 0, binding = 5) writeonly buffer PairResults { PairResultRecord results[]; };
+layout(std430, set = 0, binding = 6) buffer Control { uint control[]; };
+
+layout(push_constant) uniform Parameters
+{
+    uint pairCount;
+    uint operation;
+    uint hypothesisCount;
+    uint minimumKeypointsPerFrame;
+    uint minimumReciprocalMatches;
+} parameters;
+
+void writeRejected(GeometryPairRecord pair, uint reason, uint firstCount, uint secondCount, uint forwardCount, uint reciprocalCount)
+{
+    PairResultRecord result;
+    result.header0 = uvec4(0u, reason, firstCount, secondCount);
+    result.header1 = uvec4(forwardCount, reciprocalCount, 0u, 0u);
+    result.metrics0 = vec4(0.0); result.metrics1 = vec4(0.0);
+    result.row0 = vec4(0.0); result.row1 = vec4(0.0); result.row2 = vec4(0.0);
+    results[pair.resultIndex] = result;
+}
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    if (parameters.operation == 1u)
+    {
+        if (index != 0u)
+            return;
+        uint eligibleCount = control[0];
+        control[1] = (parameters.hypothesisCount + 63u) / 64u;
+        control[2] = eligibleCount;
+        control[3] = 1u;
+        control[4] = 1u;
+        control[5] = eligibleCount;
+        control[6] = 1u;
+        return;
+    }
+    if (index >= parameters.pairCount)
+        return;
+    GeometryPairRecord pair = inputPairs[index];
+    uint firstCount = firstCounts[pair.firstFrame];
+    uint secondCount = secondCounts[pair.secondFrame];
+    uint reciprocalCount = matchCounts[pair.matchCountOffset];
+    uint forwardCount = matchCounts[pair.matchCountOffset + 1u];
+    uint reason = 0u;
+    if (firstCount < parameters.minimumKeypointsPerFrame)
+        reason = 1u;
+    else if (secondCount < parameters.minimumKeypointsPerFrame)
+        reason = 2u;
+    else if (reciprocalCount < parameters.minimumReciprocalMatches)
+        reason = 4u;
+    if (reason != 0u)
+    {
+        writeRejected(pair, reason, firstCount, secondCount, forwardCount, reciprocalCount);
+        return;
+    }
+    uint compactIndex = atomicAdd(control[0], 1u);
+    pair.hypothesisOffset = compactIndex * parameters.hypothesisCount;
+    compactPairs[compactIndex] = pair;
+}

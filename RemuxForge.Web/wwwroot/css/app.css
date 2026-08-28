@@ -1,24 +1,16 @@
-/* WebTUI layer ordering */
-@layer base, utils, components;
-
-/* WebTUI full bundle */
-@import '../lib/webtui/dist/full.css';
-
-/* Custom themes */
-@import 'themes.css';
-
-/* Application styles */
 @import 'layout.css';
 @import 'metadata.css';
-@import 'components.css';
 @import 'renamer.css';
+@import 'base.css';
+@import 'shell.css';
 
-/* Global overrides */
+/* Document root */
 html, body {
     height: 100%;
     width: 100%;
     margin: 0;
     padding: 0;
+    font-size: 15px;
     overflow: hidden;
     word-break: normal;
 }

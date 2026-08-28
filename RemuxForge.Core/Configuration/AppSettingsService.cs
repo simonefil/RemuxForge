@@ -615,7 +615,7 @@ namespace RemuxForge.Core.Configuration
                 this._model.Tools.TempFolder = "";
 
             if (this._model.Ui.Theme == null)
-                this._model.Ui.Theme = "nord";
+                this._model.Ui.Theme = "material-dark";
 
             if (this._model.Ui.LastMode == null)
                 this._model.Ui.LastMode = Options.MODE_REMUX;
@@ -774,7 +774,7 @@ namespace RemuxForge.Core.Configuration
             this._model.Ac3.Bitrate.Stereo = this.ClampAc3Bitrate(this._model.Ac3.Bitrate.Stereo);
             this._model.Ac3.Bitrate.Surround51 = this.ClampAc3Bitrate(this._model.Ac3.Bitrate.Surround51);
 
-            // Validazione tema: se non è tra quelli validi, reset a "nord"
+            // Validazione tema: se non è tra quelli validi, reset al tema predefinito
             bool themeValid = false;
             for (int i = 0; i < AppSettingsModel.VALID_THEMES.Length; i++)
             {
@@ -786,7 +786,7 @@ namespace RemuxForge.Core.Configuration
             }
             if (!themeValid)
             {
-                this._model.Ui.Theme = "nord";
+                this._model.Ui.Theme = "material-dark";
             }
 
             if (this._model.Ui.LastMode != Options.MODE_REMUX && this._model.Ui.LastMode != Options.MODE_SPLIT && this._model.Ui.LastMode != Options.MODE_METADATA)

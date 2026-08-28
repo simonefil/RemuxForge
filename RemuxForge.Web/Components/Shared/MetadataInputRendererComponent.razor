@@ -1,6 +1,6 @@
 @if (ShouldRenderSelect())
 {
-    <select id="@_inputId" class="@CssClass" value="@_currentValue" @onchange="CommitChangedValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter">
+    <select id="@_inputId" class="@CssClass" aria-label="@AriaLabel" value="@_currentValue" @onchange="CommitChangedValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter">
         @if (EffectiveSchema.AllowsEmpty)
         {
             <option value=""></option>
@@ -15,11 +15,11 @@ else if (ShouldRenderDatalist())
 {
     @if (UseNativeTextEditing())
     {
-        <input id="@_inputId" class="@CssClass" type="@GetHtmlInputType()" step="@EffectiveSchema.Step" list="@_listId" value="@_currentValue" placeholder="@EffectiveSchema.Placeholder" @onchange="CommitChangedValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" />
+        <input id="@_inputId" class="@CssClass" aria-label="@AriaLabel" type="@GetHtmlInputType()" step="@EffectiveSchema.Step" list="@_listId" value="@_currentValue" placeholder="@EffectiveSchema.Placeholder" @onchange="CommitChangedValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" />
     }
     else
     {
-        <input id="@_inputId" class="@CssClass" type="@GetHtmlInputType()" step="@EffectiveSchema.Step" list="@_listId" value="@_currentValue" placeholder="@EffectiveSchema.Placeholder" @oninput="UpdateLocalValue" @onchange="CommitChangedValue" @onblur="CommitCurrentValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" @onkeydown="HandleKeyDown" />
+        <input id="@_inputId" class="@CssClass" aria-label="@AriaLabel" type="@GetHtmlInputType()" step="@EffectiveSchema.Step" list="@_listId" value="@_currentValue" placeholder="@EffectiveSchema.Placeholder" @oninput="UpdateLocalValue" @onchange="CommitChangedValue" @onblur="CommitCurrentValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" @onkeydown="HandleKeyDown" />
     }
     <datalist id="@_listId">
         @foreach (MetadataInputOption option in EffectiveSchema.Options)
@@ -32,11 +32,11 @@ else
 {
     @if (UseNativeTextEditing())
     {
-        <input id="@_inputId" class="@CssClass" type="@GetHtmlInputType()" step="@EffectiveSchema.Step" value="@_currentValue" placeholder="@EffectiveSchema.Placeholder" @onchange="CommitChangedValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" />
+        <input id="@_inputId" class="@CssClass" aria-label="@AriaLabel" type="@GetHtmlInputType()" step="@EffectiveSchema.Step" value="@_currentValue" placeholder="@EffectiveSchema.Placeholder" @onchange="CommitChangedValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" />
     }
     else
     {
-        <input id="@_inputId" class="@CssClass" type="@GetHtmlInputType()" step="@EffectiveSchema.Step" value="@_currentValue" placeholder="@EffectiveSchema.Placeholder" @oninput="UpdateLocalValue" @onchange="CommitChangedValue" @onblur="CommitCurrentValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" @onkeydown="HandleKeyDown" />
+        <input id="@_inputId" class="@CssClass" aria-label="@AriaLabel" type="@GetHtmlInputType()" step="@EffectiveSchema.Step" value="@_currentValue" placeholder="@EffectiveSchema.Placeholder" @oninput="UpdateLocalValue" @onchange="CommitChangedValue" @onblur="CommitCurrentValue" @onfocus="HandleFocus" @onmouseenter="HandleMouseEnter" @onkeydown="HandleKeyDown" />
     }
 }
 
@@ -60,6 +60,11 @@ else
     /// Classe CSS input
     /// </summary>
     [Parameter] public string CssClass { get; set; } = "form-input";
+
+    /// <summary>
+    /// Nome accessibile del controllo
+    /// </summary>
+    [Parameter] public string AriaLabel { get; set; } = "";
 
     /// <summary>
     /// Lascia la digitazione testuale al browser e propaga il valore solo alla conferma

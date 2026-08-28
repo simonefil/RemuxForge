@@ -1,0 +1,130 @@
+#version 450
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+struct KeypointRecord
+{
+    float x; float y; float scale; float response; float orientation;
+    uint frameIndex; uint octave; uint layer;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer GradientInput { vec2 gradients[]; };
+layout(std430, set = 0, binding = 1) readonly buffer KeypointInput { KeypointRecord keypoints[]; };
+layout(std430, set = 0, binding = 2) writeonly buffer OrientationCandidates { KeypointRecord orientedCandidates[]; };
+layout(std430, set = 0, binding = 3) writeonly buffer OrientationFlags { uint orientationFlags[]; };
+layout(std430, set = 0, binding = 4) readonly buffer Counters { uint counters[]; };
+
+layout(push_constant) uniform Parameters
+{
+    uint gaussianOffset; uint keypointOffset; uint candidateOffset; uint flagOffset;
+    uint keypointCapacity; uint width; uint height; uint layerStride;
+    uint doubleInput; uint counterOffset;
+    uint gradientFrameStride; uint keypointFrameStride; uint candidateFrameStride;
+    uint flagFrameStride; uint counterFrameStride; uint frameCount;
+} parameters;
+
+const float PI = 3.14159265358979323846;
+const float ORI_PEAK_RATIO = 0.8;
+
+shared KeypointRecord sharedKeypoint;
+shared int sharedCenterX;
+shared int sharedCenterY;
+shared int sharedRadius;
+shared float sharedDenominator;
+shared float sharedHistogram[36 * 32];
+uint frame;
+
+vec2 gradient(int x, int y, uint layer)
+{
+    return gradients[parameters.gaussianOffset + frame * parameters.gradientFrameStride + layer * parameters.layerStride + uint(y) * parameters.width + uint(x)];
+}
+
+void main()
+{
+    uint lane = gl_LocalInvocationID.x;
+    frame = gl_WorkGroupID.z;
+    uint frames = max(parameters.frameCount, 1u);
+    if (frame >= frames)
+        return;
+    uint index = gl_WorkGroupID.y * gl_NumWorkGroups.x + gl_WorkGroupID.x;
+    if (index >= parameters.keypointCapacity)
+        return;
+    uint base = parameters.flagOffset + frame * parameters.flagFrameStride + index * 3u;
+    if (lane == 0u)
+    {
+        orientationFlags[base] = 0u;
+        orientationFlags[base + 1u] = 0u;
+        orientationFlags[base + 2u] = 0u;
+    }
+    uint keypointCount = min(counters[parameters.counterOffset + frame * parameters.counterFrameStride], parameters.keypointCapacity);
+    if (index >= keypointCount)
+        return;
+    if (lane == 0u)
+    {
+        sharedKeypoint = keypoints[parameters.keypointOffset + frame * parameters.keypointFrameStride + index];
+        float coordinateFactor = exp2(float(sharedKeypoint.octave)) * (parameters.doubleInput != 0u ? 0.5 : 1.0);
+        sharedCenterX = int(round(sharedKeypoint.x / coordinateFactor));
+        sharedCenterY = int(round(sharedKeypoint.y / coordinateFactor));
+        float localScale = sharedKeypoint.scale / coordinateFactor * 0.5;
+        float sigma = 1.5 * localScale;
+        sharedRadius = int(round(4.5 * localScale));
+        sharedDenominator = 2.0 * sigma * sigma;
+    }
+    for (int bin = 0; bin < 36; bin++)
+        sharedHistogram[bin * 32 + int(lane)] = 0.0;
+    barrier();
+
+    int diameter = sharedRadius * 2 + 1;
+    int sampleCount = diameter * diameter;
+    for (int sampleIndex = int(lane); sampleIndex < sampleCount; sampleIndex += 32)
+    {
+        int dx = sampleIndex % diameter - sharedRadius;
+        int dy = sampleIndex / diameter - sharedRadius;
+        int x = sharedCenterX + dx;
+        int y = sharedCenterY + dy;
+        if (x >= 1 && x < int(parameters.width) - 1 && y >= 1 && y < int(parameters.height) - 1)
+        {
+            vec2 sampleGradient = gradient(x, y, sharedKeypoint.layer);
+            float magnitude = sampleGradient.x;
+            float angle = sampleGradient.y;
+            int bin = int(round(36.0 * (angle + PI) / (2.0 * PI))) % 36;
+            sharedHistogram[bin * 32 + int(lane)] += exp(-float(dx * dx + dy * dy) / sharedDenominator) * magnitude;
+        }
+    }
+    barrier();
+    if (lane != 0u)
+        return;
+
+    float histogram[36];
+    for (int bin = 0; bin < 36; bin++)
+    {
+        float sum = 0.0;
+        for (int sourceLane = 0; sourceLane < 32; sourceLane++)
+            sum += sharedHistogram[bin * 32 + sourceLane];
+        histogram[bin] = sum;
+    }
+    for (int pass = 0; pass < 2; pass++)
+    {
+        float temporary[36];
+        for (int i = 0; i < 36; i++) temporary[i] = histogram[i];
+        for (int i = 0; i < 36; i++) histogram[i] = 0.25 * temporary[(i + 35) % 36] + 0.5 * temporary[i] + 0.25 * temporary[(i + 1) % 36];
+    }
+    float maximum = 0.0;
+    for (int i = 0; i < 36; i++) maximum = max(maximum, histogram[i]);
+    uint peak = 0u;
+    for (int i = 0; i < 36 && peak < 3u; i++)
+    {
+        int left = (i + 35) % 36;
+        int right = (i + 1) % 36;
+        if (histogram[i] <= histogram[left] || histogram[i] <= histogram[right] || histogram[i] < maximum * ORI_PEAK_RATIO)
+            continue;
+        float bin = float(i) + 0.5 * (histogram[left] - histogram[right]) / (histogram[left] - 2.0 * histogram[i] + histogram[right]);
+        if (bin < 0.0) bin += 36.0;
+        if (bin >= 36.0) bin -= 36.0;
+        KeypointRecord oriented = sharedKeypoint;
+        oriented.orientation = 360.0 - 10.0 * bin;
+        orientedCandidates[parameters.candidateOffset + frame * parameters.candidateFrameStride + index * 3u + peak] = oriented;
+        orientationFlags[base + peak] = 1u;
+        peak++;
+    }
+}

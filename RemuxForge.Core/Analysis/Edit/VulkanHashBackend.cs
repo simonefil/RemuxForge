@@ -48,6 +48,11 @@ namespace RemuxForge.Core.Analysis.Edit
         /// </summary>
         private string _availabilityRejectReason;
 
+        /// <summary>
+        /// Serializza i produttori che condividono la pipeline
+        /// </summary>
+        private readonly object _analysisLock = new object();
+
         #endregion
 
         #region Metodi pubblici
@@ -100,6 +105,34 @@ namespace RemuxForge.Core.Analysis.Edit
             {
                 hash0.Add(hashes[i].Horizontal);
                 hash1.Add(hashes[i].Vertical);
+            }
+        }
+
+        /// <summary>
+        /// Deriva dHash, luminanza e miniature nella stessa dispatch Vulkan
+        /// </summary>
+        /// <param name="frames">Quadrati grigi di analisi, uno dopo l'altro</param>
+        /// <param name="frameCount">Quadrati effettivamente contenuti nel blocco</param>
+        /// <param name="hash0">Accumulatore dei dHash orizzontali</param>
+        /// <param name="hash1">Accumulatore dei dHash verticali</param>
+        /// <param name="lumaMean">Accumulatore delle luminanze medie</param>
+        /// <param name="thumbStd">Accumulatore delle deviazioni standard delle miniature</param>
+        /// <param name="thumbPixels">Accumulatore dei pixel delle miniature</param>
+        public override void Analyze(byte[] frames, int frameCount, List<ulong> hash0, List<ulong> hash1, List<float> lumaMean, List<float> thumbStd, List<byte> thumbPixels)
+        {
+            lock (this._analysisLock)
+            {
+                if (!this.IsAvailable(out string rejectReason))
+                    throw new InvalidOperationException(AppText.F("deep.temporal.hashBackend.unavailable", VisionBackendKind.Vulkan, rejectReason));
+                VulkanFrameSignalBatch signals = this._pipeline.ExtractSignals(new ReadOnlySpan<byte>(frames, 0, frameCount * VulkanHashPipeline.FrameBytes));
+                for (int i = 0; i < signals.Count; i++)
+                {
+                    hash0.Add(signals.Hashes[i].Horizontal);
+                    hash1.Add(signals.Hashes[i].Vertical);
+                }
+                lumaMean.AddRange(signals.LumaMeans);
+                thumbStd.AddRange(signals.ThumbnailStandardDeviations);
+                thumbPixels.AddRange(signals.ThumbnailPixels);
             }
         }
 

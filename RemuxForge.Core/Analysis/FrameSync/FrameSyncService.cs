@@ -14,6 +14,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace RemuxForge.Core.Analysis.FrameSync
 {
@@ -109,9 +110,19 @@ namespace RemuxForge.Core.Analysis.FrameSync
         private readonly ToolPathResolverService _toolPathResolver;
 
         /// <summary>
-        /// Estrattore dei segnali per fotogramma, valorizzato all'avvio della misura
+        /// Percorso di ffprobe usato dagli estrattori concorrenti
         /// </summary>
-        private FrameSignalExtractor _extractor;
+        private string _ffprobePath;
+
+        /// <summary>
+        /// Percorso di mkvmerge usato dagli estrattori concorrenti
+        /// </summary>
+        private string _mkvMergePath;
+
+        /// <summary>
+        /// Percorso di mkvextract usato dagli estrattori concorrenti
+        /// </summary>
+        private string _mkvExtractPath;
 
         /// <summary>
         /// Fattore che riporta i tempi della copia doppiata nel dominio della sorgente
@@ -302,11 +313,13 @@ namespace RemuxForge.Core.Analysis.FrameSync
             this._languageFrameGeometry = geometry.LanguageCommonGeometry;
             stopwatch.Stop();
             timing.GeometryMs = stopwatch.ElapsedMilliseconds;
+            ConsoleHelper.Progress(LogSection.FrameSync, 22, AppText.T("framesync.match.geometryProgress"));
 
-            string mkvMergePath = this._toolPathResolver.ResolveMkvMergePath(false);
             // FrameSync guarda finestre da sei secondi: aprire il dispositivo costa più di quanto
             // farebbe risparmiare, e gli hash restano sul processore
-            this._extractor = new FrameSignalExtractor(this._ffmpegPath, this._toolPathResolver.ResolveFfprobePath(this._ffmpegPath, false), mkvMergePath, this._toolPathResolver.ResolveMkvExtractPath(mkvMergePath, false), this._ffmpegConfig, new CpuHashBackend());
+            this._ffprobePath = this._toolPathResolver.ResolveFfprobePath(this._ffmpegPath, false);
+            this._mkvMergePath = this._toolPathResolver.ResolveMkvMergePath(false);
+            this._mkvExtractPath = this._toolPathResolver.ResolveMkvExtractPath(this._mkvMergePath, false);
             return true;
         }
 
@@ -365,8 +378,11 @@ namespace RemuxForge.Core.Analysis.FrameSync
             ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Phase, AppText.T("framesync.match.audioPhase"));
             ConsoleHelper.Progress(LogSection.FrameSync, 24, AppText.T("framesync.match.audioProgress"));
             Stopwatch stopwatch = Stopwatch.StartNew();
-            AudioEnvelope source = extractor.Extract(sourceFile, sourceStream, this._ffmpegConfig.FrameExtractionTimeoutMs);
-            AudioEnvelope language = extractor.Extract(languageFile, languageStream, this._ffmpegConfig.FrameExtractionTimeoutMs);
+            AudioEnvelope source = null;
+            AudioEnvelope language = null;
+            Parallel.Invoke(
+                () => source = extractor.Extract(sourceFile, sourceStream, this._ffmpegConfig.FrameExtractionTimeoutMs),
+                () => language = extractor.Extract(languageFile, languageStream, this._ffmpegConfig.FrameExtractionTimeoutMs));
             timing.InitialExtractMs += stopwatch.ElapsedMilliseconds;
             if (!new FrameSyncAudioOffsetResolver().TryResolve(new AudioEnvelopePair(source, language, this._stretch), out double offsetMs, out double correlation))
             {
@@ -399,18 +415,29 @@ namespace RemuxForge.Core.Analysis.FrameSync
             ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Phase, AppText.T("framesync.match.searchPhase"));
             ConsoleHelper.Progress(LogSection.FrameSync, 30, AppText.T("framesync.match.searchProgress"));
             List<FrameSyncCandidate> candidates = new List<FrameSyncCandidate>();
-            for (int positionIndex = 0; positionIndex < SEARCH_POSITIONS.Length; positionIndex++)
+            FrameSyncCandidate[] measuredCandidates = new FrameSyncCandidate[SEARCH_POSITIONS.Length];
+            long[] extractTimes = new long[SEARCH_POSITIONS.Length];
+            long[] matchTimes = new long[SEARCH_POSITIONS.Length];
+            ParallelOptions options = new ParallelOptions();
+            options.MaxDegreeOfParallelism = Math.Max(1, Math.Min(SEARCH_POSITIONS.Length, Math.Max(1, ParallelismHelper.ResolveDefaultMaxDegree() / 4)));
+            Parallel.For(0, SEARCH_POSITIONS.Length, options, positionIndex =>
             {
                 double sourceStartMs = Math.Max(0.0, durationMs * SEARCH_POSITIONS[positionIndex] - SEARCH_WINDOW_MS / 2.0);
                 Stopwatch stopwatch = Stopwatch.StartNew();
                 PairSignals pair = this.ExtractPair(sourceFile, languageFile, sourceStartMs, SEARCH_WINDOW_MS, 0.0, SEARCH_CORRIDOR_MS);
-                timing.InitialExtractMs += stopwatch.ElapsedMilliseconds;
+                extractTimes[positionIndex] = stopwatch.ElapsedMilliseconds;
                 if (pair == null)
-                    continue;
+                    return;
 
                 stopwatch.Restart();
-                FrameSyncCandidate candidate = this.VotePair(pair);
-                timing.InitialMatchMs += stopwatch.ElapsedMilliseconds;
+                measuredCandidates[positionIndex] = this.VotePair(pair);
+                matchTimes[positionIndex] = stopwatch.ElapsedMilliseconds;
+            });
+            for (int positionIndex = 0; positionIndex < SEARCH_POSITIONS.Length; positionIndex++)
+            {
+                timing.InitialExtractMs += extractTimes[positionIndex];
+                timing.InitialMatchMs += matchTimes[positionIndex];
+                FrameSyncCandidate candidate = measuredCandidates[positionIndex];
                 if (candidate == null)
                     continue;
                 timing.InitialPairCount += candidate.ProcessedPairCount;
@@ -447,15 +474,24 @@ namespace RemuxForge.Core.Analysis.FrameSync
         private void ResolveCheckpoints(string sourceFile, string languageFile, int durationMs, FrameSyncCandidate initial, FrameSyncResult result, FrameSyncTimingInfo timing)
         {
             Stopwatch checkpointsStopwatch = Stopwatch.StartNew();
-            for (int pointIndex = 0; pointIndex < this._vsConfig.NumCheckPoints; pointIndex++)
+            FrameSyncPointResult[] points = new FrameSyncPointResult[this._vsConfig.NumCheckPoints];
+            ParallelOptions options = new ParallelOptions();
+            options.MaxDegreeOfParallelism = Math.Max(1, Math.Min(this._vsConfig.NumCheckPoints, Math.Max(1, ParallelismHelper.ResolveDefaultMaxDegree() / 4)));
+            Parallel.For(0, this._vsConfig.NumCheckPoints, options, pointIndex =>
             {
                 int percentage = (int)Math.Round((pointIndex + 1) * 100.0 / (this._vsConfig.NumCheckPoints + 1));
-                FrameSyncPointResult point = this.ResolveCheckpoint(sourceFile, languageFile, durationMs * percentage / 100.0, percentage, initial.OffsetMs);
+                points[pointIndex] = this.ResolveCheckpoint(sourceFile, languageFile, durationMs * percentage / 100.0, percentage, initial.OffsetMs);
+            });
+
+            for (int pointIndex = 0; pointIndex < this._vsConfig.NumCheckPoints; pointIndex++)
+            {
+                FrameSyncPointResult point = points[pointIndex];
                 result.Points.Add(point);
                 timing.CheckpointExtractMs += point.ExtractMs;
                 timing.CheckpointMatchMs += point.MatchMs;
                 timing.CheckpointPairCount += point.ProcessedPairCount;
-                ConsoleHelper.Write(LogSection.FrameSync, point.Accepted ? LogLevel.Debug : LogLevel.Notice, AppText.F("framesync.match.checkpointResult", percentage, point.Accepted ? AppText.T("framesync.match.accepted") : point.RejectReason, point.BestOffsetMs == int.MinValue ? "-" : Utils.FormatDelay(point.BestOffsetMs), point.StrongPairCount, point.ProcessedPairCount));
+                ConsoleHelper.Write(LogSection.FrameSync, point.Accepted ? LogLevel.Debug : LogLevel.Notice, AppText.F("framesync.match.checkpointResult", point.CheckpointPercent, point.Accepted ? AppText.T("framesync.match.accepted") : point.RejectReason, point.BestOffsetMs == int.MinValue ? "-" : Utils.FormatDelay(point.BestOffsetMs), point.StrongPairCount, point.ProcessedPairCount));
+                ConsoleHelper.Progress(LogSection.FrameSync, 58 + (pointIndex + 1) * 27 / this._vsConfig.NumCheckPoints, AppText.T("framesync.match.checkpointProgress"));
             }
             checkpointsStopwatch.Stop();
             timing.CheckpointsMs = checkpointsStopwatch.ElapsedMilliseconds;
@@ -693,8 +729,13 @@ namespace RemuxForge.Core.Analysis.FrameSync
             // La finestra della copia si cerca sul suo orologio, non su quello della sorgente
             double languageStartMs = Math.Max(0.0, (sourceStartMs - expectedOffsetMs - corridorMs) / this._stretch);
             double languageWindowMs = (windowMs + 2.0 * corridorMs) / this._stretch;
-            FrameSignals source = this._extractor.Extract(sourceFile, this._sourceFrameGeometry, sourceStartMs, windowMs, FrameBudget(windowMs, this._sourceFps), this._ffmpegConfig.FrameExtractionTimeoutMs, CancellationToken.None);
-            FrameSignals language = this._extractor.Extract(languageFile, this._languageFrameGeometry, languageStartMs, languageWindowMs, FrameBudget(languageWindowMs, this._languageFps), this._ffmpegConfig.FrameExtractionTimeoutMs, CancellationToken.None);
+            FrameSignalExtractor sourceExtractor = new FrameSignalExtractor(this._ffmpegPath, this._ffprobePath, this._mkvMergePath, this._mkvExtractPath, this._ffmpegConfig, new CpuHashBackend());
+            FrameSignalExtractor languageExtractor = new FrameSignalExtractor(this._ffmpegPath, this._ffprobePath, this._mkvMergePath, this._mkvExtractPath, this._ffmpegConfig, new CpuHashBackend());
+            FrameSignals source = null;
+            FrameSignals language = null;
+            Parallel.Invoke(
+                () => source = sourceExtractor.Extract(sourceFile, this._sourceFrameGeometry, sourceStartMs, windowMs, FrameBudget(windowMs, this._sourceFps), this._ffmpegConfig.FrameExtractionTimeoutMs, CancellationToken.None),
+                () => language = languageExtractor.Extract(languageFile, this._languageFrameGeometry, languageStartMs, languageWindowMs, FrameBudget(languageWindowMs, this._languageFps), this._ffmpegConfig.FrameExtractionTimeoutMs, CancellationToken.None));
             if (source.Count < MIN_WINDOW_FRAMES || language.Count < MIN_WINDOW_FRAMES)
                 return null;
             return new PairSignals(source, language, this._stretch);

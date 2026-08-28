@@ -280,7 +280,7 @@ namespace RemuxForge.Core.Metadata
             result.Title = field.Label;
             result.Text = ResolveHelpText(field.HelpKey, "metadata.fieldHelp." + field.Key, field.Description);
             if (string.IsNullOrEmpty(result.Text))
-                result.Text = GetSectorLabel(field.Sector);
+                result.Text = BuildFieldFallbackHelp(field);
 
             return result;
         }
@@ -299,8 +299,8 @@ namespace RemuxForge.Core.Metadata
             MetadataHelpInfo result = new MetadataHelpInfo();
             result.Title = tag.Label;
             result.Text = ResolveHelpText(tag.HelpKey, "metadata.tagHelp." + tag.Name, tag.Description);
-            if (string.IsNullOrEmpty(result.Text))
-                result.Text = tag.Name;
+            if (string.IsNullOrEmpty(result.Text) || string.Equals(result.Text, tag.Name, StringComparison.OrdinalIgnoreCase))
+                result.Text = BuildTagFallbackHelp(tag);
 
             return result;
         }
@@ -694,6 +694,40 @@ namespace RemuxForge.Core.Metadata
                 return text;
 
             return fallback != null ? fallback : "";
+        }
+
+        /// <summary>
+        /// Costruisce un help informativo quando il campo non dispone di una descrizione specifica
+        /// </summary>
+        /// <param name="field">Definizione del campo</param>
+        /// <returns>Help localizzato</returns>
+        private static string BuildFieldFallbackHelp(MetadataFieldDefinition field)
+        {
+            string access = field.IsEditable ? AppText.T("web.metadata.help.editable") : AppText.T("web.metadata.help.readOnly");
+            return AppText.F("web.metadata.help.fieldFallback", field.Key, GetSectorLabel(field.Sector), GetValueTypeLabel(field.ValueType), access);
+        }
+
+        /// <summary>
+        /// Costruisce un help informativo quando il tag non dispone di una descrizione specifica
+        /// </summary>
+        /// <param name="tag">Definizione del tag</param>
+        /// <returns>Help localizzato</returns>
+        private static string BuildTagFallbackHelp(MetadataTagDefinition tag)
+        {
+            string clearability = tag.IsClearable ? AppText.T("web.metadata.help.clearable") : AppText.T("web.metadata.help.notClearable");
+            return AppText.F("web.metadata.help.tagFallback", tag.Name, GetValueTypeLabel(tag.ValueType), clearability);
+        }
+
+        /// <summary>
+        /// Restituisce il nome localizzato del tipo valore metadata
+        /// </summary>
+        /// <param name="valueType">Tipo valore</param>
+        /// <returns>Nome localizzato</returns>
+        private static string GetValueTypeLabel(MetadataFieldValueType valueType)
+        {
+            string key = "web.metadata.valueType." + valueType.ToString();
+            string result = GetOptionalText(key);
+            return !string.IsNullOrEmpty(result) ? result : valueType.ToString();
         }
 
         /// <summary>

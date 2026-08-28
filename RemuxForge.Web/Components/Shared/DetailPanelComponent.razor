@@ -1,7 +1,244 @@
 <div class="rf-panel">
-    <div class="rf-panel-title">@AppText.T("web.detail.title")</div>
+    <div class="rf-panel-title detail-panel-title">
+        <span>@AppText.T("web.detail.title")</span>
+        <RadzenButton Icon="content_copy"
+                      Text="@AppText.T("web.common.copy")"
+                      Size="ButtonSize.Small"
+                      Variant="Variant.Text"
+                      ButtonStyle="ButtonStyle.Base"
+                      Disabled="@(Record == null)"
+                      Click="@CopyDetailAsync" />
+    </div>
     <div class="rf-panel-body">
-        <div class="detail-content">@(Record != null ? BuildDetail() : AppText.T("web.detail.selectEpisode"))</div>
+        @if (Record == null)
+        {
+            <div class="detail-content">@AppText.T("web.detail.selectEpisode")</div>
+        }
+        else
+        {
+            bool filterAudio = Options.KeepSourceAudioLangs.Count > 0 || Options.KeepSourceAudioCodec.Count > 0;
+            bool filterSub = Options.KeepSourceSubtitleLangs.Count > 0;
+            bool hasImportedTracks = Record.ImportedAudioTracks.Count > 0 || Record.ImportedSubTracks.Count > 0;
+            bool hasFinalTrackPlan = hasImportedTracks || filterAudio || filterSub;
+            List<AudioTrackProcessingPlan> audioPlans = Record.AudioProcessingPreview != null ? Record.AudioProcessingPreview.GetAllTracks() : new List<AudioTrackProcessingPlan>();
+
+            <div class="detail-content detail-structured">
+                <div class="detail-record-header">
+                    <span class="detail-record-title">@Record.EpisodeId</span>
+                    <span class="detail-status-badge">@Utils.GetStatusText(Record.Status)</span>
+                </div>
+
+                <details class="detail-section" open>
+                    <summary>@AppText.T("web.detail.files")</summary>
+                    <div class="detail-section-body detail-file-grid">
+                        <div class="detail-card">
+                            <div class="detail-card-title">@AppText.T("web.detail.sourceFile")</div>
+                            @PropertyRow(AppText.T("web.detail.fileLabel"), Record.SourceFileName)
+                            @PropertyRow(AppText.T("web.detail.sizeLabel"), Utils.FormatSize(Record.SourceSize))
+                        </div>
+                        <div class="detail-card">
+                            <div class="detail-card-title">@AppText.T("web.detail.languageFile")</div>
+                            @PropertyRow(AppText.T("web.detail.fileLabel"), !string.IsNullOrEmpty(Record.LangFileName) ? Record.LangFileName : AppText.T("web.common.none"))
+                            @if (Record.LangSize > 0)
+                            {
+                                @PropertyRow(AppText.T("web.detail.sizeLabel"), Utils.FormatSize(Record.LangSize))
+                            }
+                        </div>
+                    </div>
+                </details>
+
+                <details class="detail-section" open>
+                    <summary>@AppText.T("web.detail.tracks")</summary>
+                    <div class="detail-section-body detail-card-stack">
+                        @TrackGroup(AppText.T("web.detail.sourceTracks"), Utils.FormatTrackList(Record.SourceAudioTracks), Utils.FormatTrackList(Record.SourceSubTracks))
+                        @if (filterAudio || filterSub)
+                        {
+                            @TrackGroup(AppText.T("web.detail.keptSourceTracks"), Utils.FormatTrackListByIds(Record.SourceAudioTracks, Record.KeptSourceAudioIds), Utils.FormatTrackListByIds(Record.SourceSubTracks, Record.KeptSourceSubIds))
+                        }
+                        @if (hasImportedTracks)
+                        {
+                            @TrackGroup(AppText.T("web.detail.importTracks"), _builder.FormatImportedAudioTrackList(Record.ImportedAudioTracks, Record.AudioProcessingPreview, Options), Utils.FormatTrackList(Record.ImportedSubTracks))
+                        }
+                        @if (hasFinalTrackPlan)
+                        {
+                            @TrackGroup(AppText.T("web.detail.finalResult"), _builder.FormatResultAudioTrackList(Record, Options, filterAudio), Utils.FormatResultTrackList(Record.SourceSubTracks, Record.KeptSourceSubIds, Record.ImportedSubTracks, "", filterSub))
+                        }
+                    </div>
+                </details>
+
+                @if (audioPlans.Count > 0)
+                {
+                    <details class="detail-section" open>
+                        <summary>@AppText.T("web.detail.audioProcessing")</summary>
+                        <div class="detail-section-body detail-card-stack">
+                            @for (int i = 0; i < audioPlans.Count; i++)
+                            {
+                                AudioTrackProcessingPlan plan = audioPlans[i];
+                                string summary = _builder.FormatAudioProcessingSummary(plan, Options, true);
+                                <div class="detail-card">
+                                    <div class="detail-card-title">@((plan.IsSource ? "SRC" : "LANG") + " · " + AppText.T("web.detail.trackLabel") + " " + plan.Track.Id)</div>
+                                    <div class="detail-card-text">@(!string.IsNullOrEmpty(summary) ? summary : AppText.T("web.detail.audioNoRender"))</div>
+                                </div>
+                            }
+                        </div>
+                    </details>
+                }
+
+                <details class="detail-section" open>
+                    <summary>@AppText.T("web.detail.sync")</summary>
+                    <div class="detail-section-body">
+                        <div class="detail-property-grid">
+                            @PropertyRow(AppText.T("web.detail.audioDelayLabel"), Utils.FormatDelay(Record.AudioDelayApplied))
+                            @PropertyRow(AppText.T("web.detail.subDelayLabel"), Utils.FormatDelay(Record.SubDelayApplied))
+                            @if (!string.IsNullOrEmpty(Record.StretchFactor))
+                            {
+                                @PropertyRow(AppText.T("web.detail.stretchLabel"), Record.StretchFactor)
+                            }
+                            @if (Record.SpeedCorrectionApplied)
+                            {
+                                @PropertyRow(AppText.T("web.detail.speedCorrectionLabel"), AppText.T("web.detail.applied"))
+                            }
+                        </div>
+
+                        @if (Record.FrameSyncResult != null)
+                        {
+                            <div class="detail-card detail-sync-card">
+                                <div class="detail-card-title">Frame-sync</div>
+                                @PropertyRow(AppText.T("web.detail.statusLabel"), Record.FrameSyncResult.Success ? AppText.T("web.common.statusOk") : AppText.T("web.detail.failed"))
+                                @PropertyRow(AppText.T("web.detail.offsetLabel"), _builder.FormatOptionalDelay(Record.FrameSyncResult.OffsetMs))
+                                @PropertyRow(AppText.T("web.detail.confidenceLabel"), Record.FrameSyncResult.Confidence.ToString("P0", System.Globalization.CultureInfo.InvariantCulture))
+                                @if (Record.FrameSyncResult.Points != null && Record.FrameSyncResult.Points.Count > 0)
+                                {
+                                    @PropertyRow(AppText.T("web.detail.checkpointsLabel"), CountAcceptedCheckpoints() + "/" + Record.FrameSyncResult.Points.Count)
+                                }
+                                @if (!string.IsNullOrEmpty(Record.FrameSyncResult.FailureReason))
+                                {
+                                    @PropertyRow(AppText.T("web.detail.reasonLabel"), Record.FrameSyncResult.FailureReason)
+                                }
+                            </div>
+                        }
+
+                        @if (Record.DeepAnalysisApplied && Record.DeepAnalysisMap != null)
+                        {
+                            <div class="detail-card detail-sync-card">
+                                <div class="detail-card-title">Deep analysis</div>
+                                @PropertyRow(AppText.T("web.detail.statusLabel"), AppText.T("web.detail.applied"))
+                                @if (!string.IsNullOrEmpty(Record.DeepAnalysisMap.StretchFactor))
+                                {
+                                    @PropertyRow(AppText.T("web.detail.stretchLabel"), Record.DeepAnalysisMap.StretchFactor)
+                                }
+                                @PropertyRow(AppText.T("web.detail.operationsLabel"), Record.DeepAnalysisMap.Operations.Count.ToString(System.Globalization.CultureInfo.InvariantCulture))
+
+                                @if (Record.DeepAnalysisMap.Operations.Count == 0)
+                                {
+                                    <div class="detail-card-text">@AppText.T("web.detail.noLocalEdits")</div>
+                                }
+                                else
+                                {
+                                    <div class="detail-operation-list">
+                                        @for (int i = 0; i < Record.DeepAnalysisMap.Operations.Count; i++)
+                                        {
+                                            EditOperation operation = Record.DeepAnalysisMap.Operations[i];
+                                            <div class="detail-operation-card">
+                                                <div class="detail-operation-title">@((i + 1) + ". " + _builder.FormatEditOperationType(operation.Type))</div>
+                                                @PropertyRow(AppText.T("web.detail.languageTimestampLabel"), _builder.FormatTimestamp(operation.LangTimestampMs))
+                                                @PropertyRow(AppText.T("web.detail.sourceTimestampLabel"), _builder.FormatTimestamp(operation.SourceTimestampMs))
+                                                @PropertyRow(AppText.T("web.detail.durationLabel"), (operation.DurationMs / 1000.0).ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + "s")
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </details>
+
+                @if (!string.IsNullOrEmpty(Record.ErrorMessage) || !string.IsNullOrEmpty(Record.SkipReason))
+                {
+                    <details class="detail-section" open>
+                        <summary>@AppText.T("web.detail.messages")</summary>
+                        <div class="detail-section-body detail-card-stack">
+                            @if (!string.IsNullOrEmpty(Record.ErrorMessage))
+                            {
+                                <div class="detail-card detail-card-danger">
+                                    <div class="detail-card-title">@AppText.T("web.detail.error")</div>
+                                    <div class="detail-card-text">@Record.ErrorMessage</div>
+                                </div>
+                            }
+                            @if (!string.IsNullOrEmpty(Record.SkipReason))
+                            {
+                                <div class="detail-card">
+                                    <div class="detail-card-title">@AppText.T("web.detail.skipped")</div>
+                                    <div class="detail-card-text">@Record.SkipReason</div>
+                                </div>
+                            }
+                        </div>
+                    </details>
+                }
+
+                @if (HasProcessingTimes())
+                {
+                    <details class="detail-section" open>
+                        <summary>@AppText.T("web.detail.processingTimes")</summary>
+                        <div class="detail-section-body detail-property-grid">
+                            @if (Record.SpeedCorrectionTimeMs > 0)
+                            {
+                                @PropertyRow(AppText.T("web.detail.speedCorrectionLabel"), Record.SpeedCorrectionTimeMs + " ms")
+                            }
+                            @if (Record.FrameSyncTimeMs > 0)
+                            {
+                                @PropertyRow("Frame-sync", Record.FrameSyncTimeMs + " ms")
+                            }
+                            @if (Record.DeepAnalysisTimeMs > 0)
+                            {
+                                @PropertyRow("Deep analysis", Record.DeepAnalysisTimeMs + " ms")
+                            }
+                            @if (Record.MergeTimeMs > 0)
+                            {
+                                @PropertyRow("Merge", Record.MergeTimeMs + " ms")
+                            }
+                        </div>
+                    </details>
+                }
+
+                @if (Record.ResultSize > 0)
+                {
+                    <details class="detail-section" open>
+                        <summary>@AppText.T("web.detail.result")</summary>
+                        <div class="detail-section-body detail-property-grid">
+                            @PropertyRow(AppText.T("web.detail.sizeLabel"), Utils.FormatSize(Record.ResultSize))
+                            @if (!string.IsNullOrEmpty(Record.ResultFilePath))
+                            {
+                                @PropertyRow(AppText.T("web.detail.fileLabel"), Record.ResultFilePath)
+                            }
+                        </div>
+                    </details>
+                }
+
+                @if (!string.IsNullOrEmpty(Record.EncodingProfileName))
+                {
+                    <details class="detail-section" open>
+                        <summary>@AppText.T("web.detail.encoding")</summary>
+                        <div class="detail-section-body detail-property-grid">
+                            @PropertyRow(AppText.T("web.detail.profileLabel"), Record.EncodingProfileName)
+                            @if (Record.EncodedSize > 0 && Record.ResultSize > 0)
+                            {
+                                @PropertyRow(AppText.T("web.detail.sizeLabel"), Utils.FormatSize(Record.ResultSize) + " → " + Utils.FormatSize(Record.EncodedSize))
+                                @PropertyRow(AppText.T("web.detail.reductionLabel"), GetEncodingReduction() + "%")
+                            }
+                            @if (Record.EncodingTimeMs > 0)
+                            {
+                                @PropertyRow(AppText.T("web.detail.timeLabel"), Record.EncodingTimeMs + " ms")
+                            }
+                            @if (!string.IsNullOrEmpty(Record.EncodingCommand))
+                            {
+                                @PropertyRow(AppText.T("web.detail.commandLabel"), AppText.T("web.detail.commandAvailableValue"))
+                            }
+                        </div>
+                    </details>
+                }
+            </div>
+        }
     </div>
 </div>
 
@@ -17,16 +254,107 @@
     [Parameter] public Options Options { get; set; }
 
     /// <summary>
-    /// Builder testo dettaglio episodio
+    /// Modulo JavaScript condiviso per la clipboard
+    /// </summary>
+    [Parameter] public IJSObjectReference JsModule { get; set; }
+
+    /// <summary>
+    /// Builder del report testuale e formatter condiviso dei valori complessi
     /// </summary>
     private DetailPanelTextBuilder _builder = new DetailPanelTextBuilder();
 
     /// <summary>
-    /// Costruisce il testo dettaglio per il record selezionato
+    /// Riga semantica etichetta-valore
     /// </summary>
-    /// <returns>Stringa con dettaglio completo</returns>
+    private RenderFragment PropertyRow(string label, string value) => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "detail-property-row");
+        builder.OpenElement(2, "span");
+        builder.AddAttribute(3, "class", "detail-property-label");
+        builder.AddContent(4, label);
+        builder.CloseElement();
+        builder.OpenElement(5, "span");
+        builder.AddAttribute(6, "class", "detail-property-value");
+        builder.AddContent(7, value);
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    /// <summary>
+    /// Card di riepilogo tracce audio e sottotitoli
+    /// </summary>
+    private RenderFragment TrackGroup(string title, string audio, string subtitles) => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "detail-card");
+        builder.OpenElement(2, "div");
+        builder.AddAttribute(3, "class", "detail-card-title");
+        builder.AddContent(4, title);
+        builder.CloseElement();
+        builder.AddContent(5, this.PropertyRow(AppText.T("web.detail.audioLabel"), audio));
+        builder.AddContent(6, this.PropertyRow(AppText.T("web.detail.subtitlesLabel"), subtitles));
+        builder.CloseElement();
+    };
+
+    /// <summary>
+    /// Conta i checkpoint FrameSync accettati
+    /// </summary>
+    private int CountAcceptedCheckpoints()
+    {
+        int result = 0;
+        if (this.Record == null || this.Record.FrameSyncResult == null || this.Record.FrameSyncResult.Points == null)
+            return result;
+        for (int i = 0; i < this.Record.FrameSyncResult.Points.Count; i++)
+        {
+            if (this.Record.FrameSyncResult.Points[i].Accepted)
+                result++;
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// True quando almeno un tempo di elaborazione è disponibile
+    /// </summary>
+    private bool HasProcessingTimes()
+    {
+        return this.Record != null &&
+               (this.Record.SpeedCorrectionTimeMs > 0 || this.Record.FrameSyncTimeMs > 0 || this.Record.DeepAnalysisTimeMs > 0 || this.Record.MergeTimeMs > 0);
+    }
+
+    /// <summary>
+    /// Percentuale di riduzione prodotta dall'encoding
+    /// </summary>
+    private long GetEncodingReduction()
+    {
+        if (this.Record == null || this.Record.ResultSize <= 0)
+            return 0;
+        return 100 - this.Record.EncodedSize * 100 / this.Record.ResultSize;
+    }
+
+    /// <summary>
+    /// Costruisce il report testuale copiabile
+    /// </summary>
     private string BuildDetail()
     {
-        return this._builder.Build(Record, Options);
+        return this._builder.Build(this.Record, this.Options);
+    }
+
+    /// <summary>
+    /// Copia nella clipboard il report testuale completo
+    /// </summary>
+    private async Task CopyDetailAsync()
+    {
+        if (this.JsModule == null || this.Record == null)
+            return;
+
+        try
+        {
+            await this.JsModule.InvokeVoidAsync("copyToClipboard", this.BuildDetail());
+        }
+        catch
+        {
+            // La clipboard può non essere disponibile fuori da un contesto sicuro
+        }
     }
 }

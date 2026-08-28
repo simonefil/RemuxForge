@@ -1,0 +1,163 @@
+#version 450
+
+layout(local_size_x = 16, local_size_y = 8, local_size_z = 1) in;
+
+struct KeypointRecord
+{
+    float x;
+    float y;
+    float scale;
+    float response;
+    float orientation;
+    uint frameIndex;
+    uint octave;
+    uint layer;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer DogInput
+{
+    float dogPixels[];
+};
+
+layout(std430, set = 0, binding = 1) writeonly buffer CandidateFlags
+{
+    uint flags[];
+};
+
+layout(std430, set = 0, binding = 2) writeonly buffer CandidateOutput
+{
+    KeypointRecord candidates[];
+};
+
+layout(push_constant) uniform Parameters
+{
+    uint dogOffset;
+    uint flagOffset;
+    uint candidateOffset;
+    uint width;
+    uint height;
+    uint dogLayerCount;
+    uint octave;
+    uint frameIndex;
+    uint octaveLayers;
+    uint doubleInput;
+    float extremaThreshold;
+    float contrastThreshold;
+    float edgeThreshold;
+    float sigma;
+    uint dogFrameStride;
+    uint flagFrameStride;
+    uint candidateFrameStride;
+    uint frameCount;
+} parameters;
+
+const int IMG_BORDER = 5;
+const int MAX_INTERP_STEPS = 5;
+uint frame;
+
+float dog(int x, int y, int layer)
+{
+    return dogPixels[parameters.dogOffset + frame * parameters.dogFrameStride + uint(layer) * parameters.width * parameters.height + uint(y) * parameters.width + uint(x)];
+}
+
+bool solve3(mat3 matrix, vec3 right, out vec3 result)
+{
+    float determinant = determinant(matrix);
+    if (isnan(determinant) || isinf(determinant) || abs(determinant) < 1.0e-10)
+        return false;
+    result = inverse(matrix) * right;
+    return !any(isnan(result)) && !any(isinf(result));
+}
+
+void main()
+{
+    int x = int(gl_GlobalInvocationID.x);
+    int y = int(gl_GlobalInvocationID.y);
+    uint combinedLayer = gl_GlobalInvocationID.z;
+    frame = combinedLayer / parameters.octaveLayers;
+    int layer = int(combinedLayer - frame * parameters.octaveLayers) + 1;
+    uint frames = max(parameters.frameCount, 1u);
+    if (x >= int(parameters.width) || y >= int(parameters.height) || layer >= int(parameters.dogLayerCount) - 1 || frame >= frames)
+        return;
+    uint logicalLayer = uint(layer - 1);
+    uint logicalIndex = (logicalLayer * parameters.height + uint(y)) * parameters.width + uint(x);
+    uint index = parameters.flagOffset + frame * parameters.flagFrameStride + logicalIndex;
+    flags[index] = 0u;
+    if (x < IMG_BORDER || x >= int(parameters.width) - IMG_BORDER || y < IMG_BORDER || y >= int(parameters.height) - IMG_BORDER)
+        return;
+    float center = dog(x, y, layer);
+    if (abs(center) <= parameters.extremaThreshold)
+        return;
+    bool maximum = center > 0.0;
+    for (int dz = -1; dz <= 1; dz++)
+    {
+        for (int dy = -1; dy <= 1; dy++)
+        {
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                if (dx == 0 && dy == 0 && dz == 0)
+                    continue;
+                float other = dog(x + dx, y + dy, layer + dz);
+                if ((maximum && center <= other) || (!maximum && center >= other))
+                    return;
+            }
+        }
+    }
+
+    vec3 offset = vec3(0.0);
+    vec3 gradient = vec3(0.0);
+    mat3 hessian = mat3(0.0);
+    bool converged = false;
+    for (int step = 0; step < MAX_INTERP_STEPS; step++)
+    {
+        center = dog(x, y, layer);
+        gradient = vec3(
+            (dog(x + 1, y, layer) - dog(x - 1, y, layer)) * 0.5,
+            (dog(x, y + 1, layer) - dog(x, y - 1, layer)) * 0.5,
+            (dog(x, y, layer + 1) - dog(x, y, layer - 1)) * 0.5);
+        float dxx = dog(x + 1, y, layer) + dog(x - 1, y, layer) - 2.0 * center;
+        float dyy = dog(x, y + 1, layer) + dog(x, y - 1, layer) - 2.0 * center;
+        float dss = dog(x, y, layer + 1) + dog(x, y, layer - 1) - 2.0 * center;
+        float dxy = (dog(x + 1, y + 1, layer) - dog(x + 1, y - 1, layer) - dog(x - 1, y + 1, layer) + dog(x - 1, y - 1, layer)) * 0.25;
+        float dxs = (dog(x + 1, y, layer + 1) - dog(x + 1, y, layer - 1) - dog(x - 1, y, layer + 1) + dog(x - 1, y, layer - 1)) * 0.25;
+        float dys = (dog(x, y + 1, layer + 1) - dog(x, y + 1, layer - 1) - dog(x, y - 1, layer + 1) + dog(x, y - 1, layer - 1)) * 0.25;
+        hessian = mat3(dxx, dxy, dxs, dxy, dyy, dys, dxs, dys, dss);
+        if (!solve3(hessian, -gradient, offset))
+            return;
+        if (all(lessThan(abs(offset), vec3(0.5))))
+        {
+            converged = true;
+            break;
+        }
+        x += int(round(offset.x));
+        y += int(round(offset.y));
+        layer += int(round(offset.z));
+        if (x < IMG_BORDER || x >= int(parameters.width) - IMG_BORDER || y < IMG_BORDER || y >= int(parameters.height) - IMG_BORDER || layer < 1 || layer >= int(parameters.dogLayerCount) - 1)
+            return;
+    }
+    if (!converged)
+        return;
+    float response = center + 0.5 * dot(gradient, offset);
+    if (abs(response) * float(parameters.octaveLayers) < parameters.contrastThreshold)
+        return;
+    float dxx = hessian[0][0];
+    float dyy = hessian[1][1];
+    float dxy = hessian[1][0];
+    float determinant2 = dxx * dyy - dxy * dxy;
+    float trace = dxx + dyy;
+    if (determinant2 <= 0.0 || trace * trace * parameters.edgeThreshold >= (parameters.edgeThreshold + 1.0) * (parameters.edgeThreshold + 1.0) * determinant2)
+        return;
+    float octaveFactor = exp2(float(parameters.octave));
+    float inputFactor = parameters.doubleInput != 0u ? 0.5 : 1.0;
+    KeypointRecord keypoint;
+    keypoint.x = (float(x) + offset.x) * octaveFactor * inputFactor;
+    keypoint.y = (float(y) + offset.y) * octaveFactor * inputFactor;
+    keypoint.scale = parameters.sigma * exp2((float(layer) + offset.z) / float(parameters.octaveLayers)) * octaveFactor * inputFactor * 2.0;
+    keypoint.response = abs(response);
+    keypoint.orientation = 0.0;
+    keypoint.frameIndex = parameters.frameIndex + frame;
+    keypoint.octave = parameters.octave;
+    keypoint.layer = uint(layer);
+    candidates[parameters.candidateOffset + frame * parameters.candidateFrameStride + logicalIndex] = keypoint;
+    flags[index] = 1u;
+}

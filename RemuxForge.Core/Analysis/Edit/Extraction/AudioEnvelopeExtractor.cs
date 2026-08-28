@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace RemuxForge.Core.Analysis.Edit.Extraction
 {
@@ -172,8 +173,11 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             // stessa lingua l'inviluppo aggancia molto meglio
             sourceStream = 0;
             languageStream = 0;
-            List<string> sourceLanguages = this.ReadStreamLanguages(sourceFile, timeoutMs);
-            List<string> languageLanguages = this.ReadStreamLanguages(languageFile, timeoutMs);
+            List<string> sourceLanguages = null;
+            List<string> languageLanguages = null;
+            Parallel.Invoke(
+                () => sourceLanguages = this.ReadStreamLanguages(sourceFile, timeoutMs),
+                () => languageLanguages = this.ReadStreamLanguages(languageFile, timeoutMs));
             if (sourceLanguages.Count == 0 || languageLanguages.Count == 0 || string.IsNullOrEmpty(sourceLanguages[0]))
                 return false;
 

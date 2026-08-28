@@ -14,6 +14,28 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		.editorconfig = .editorconfig
 	EndProjectSection
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "RemuxForge.Desktop", "RemuxForge.Desktop", "{B7AB29DB-1E32-4882-BF57-7DE1CE803E27}"
+	ProjectSection(SolutionItems) = preProject
+		.run\RemuxForge Desktop.run.xml = .run\RemuxForge Desktop.run.xml
+		RemuxForge.Desktop\dist\index.html = RemuxForge.Desktop\dist\index.html
+		RemuxForge.Desktop\package-lock.json = RemuxForge.Desktop\package-lock.json
+		RemuxForge.Desktop\package.json = RemuxForge.Desktop\package.json
+		RemuxForge.Desktop\scripts\prepare-sidecar.mjs = RemuxForge.Desktop\scripts\prepare-sidecar.mjs
+		RemuxForge.Desktop\src-tauri\build.rs = RemuxForge.Desktop\src-tauri\build.rs
+		RemuxForge.Desktop\src-tauri\capabilities\default.json = RemuxForge.Desktop\src-tauri\capabilities\default.json
+		RemuxForge.Desktop\src-tauri\Cargo.lock = RemuxForge.Desktop\src-tauri\Cargo.lock
+		RemuxForge.Desktop\src-tauri\Cargo.toml = RemuxForge.Desktop\src-tauri\Cargo.toml
+		RemuxForge.Desktop\src-tauri\src\lib.rs = RemuxForge.Desktop\src-tauri\src\lib.rs
+		RemuxForge.Desktop\src-tauri\src\main.rs = RemuxForge.Desktop\src-tauri\src\main.rs
+		RemuxForge.Desktop\src-tauri\tauri.conf.json = RemuxForge.Desktop\src-tauri\tauri.conf.json
+		RemuxForge.Desktop\src-tauri\tauri.macos.conf.json = RemuxForge.Desktop\src-tauri\tauri.macos.conf.json
+		RemuxForge.Desktop\src-tauri\tauri.windows.conf.json = RemuxForge.Desktop\src-tauri\tauri.windows.conf.json
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RemuxForge.Vulkan", "RemuxForge.Vulkan\RemuxForge.Vulkan.csproj", "{4CA3C009-44CE-4019-B0DD-599951ABA00E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RemuxForge.Vulkan.ShaderManifestTool", "RemuxForge.Vulkan.ShaderManifestTool\RemuxForge.Vulkan.ShaderManifestTool.csproj", "{B43CCEA7-65F7-4869-973B-4FE9B467E6ED}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -60,6 +82,30 @@ Global
 		{BA21F808-0834-46EA-836B-BCEC3260BCEE}.Release|x64.Build.0 = Release|Any CPU
 		{BA21F808-0834-46EA-836B-BCEC3260BCEE}.Release|x86.ActiveCfg = Release|Any CPU
 		{BA21F808-0834-46EA-836B-BCEC3260BCEE}.Release|x86.Build.0 = Release|Any CPU
+		{4CA3C009-44CE-4019-B0DD-599951ABA00E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4CA3C009-44CE-4019-B0DD-599951ABA00E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4CA3C009-44CE-4019-B0DD-599951ABA00E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{4CA3C009-44CE-4019-B0DD-599951ABA00E}.Debug|x64.Build.0 = Debug|Any CPU
+		{4CA3C009-44CE-4019-B0DD-599951ABA00E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{4CA3C009-44CE-4019-B0DD-599951ABA00E}.Debug|x86.Build.0 = Debug|Any CPU
+		{4CA3C009-44CE-4019-B0DD-599951ABA00E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4CA3C009-44CE-4019-B0DD-599951ABA00E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4CA3C009-44CE-4019-B0DD-599951ABA00E}.Release|x64.ActiveCfg = Release|Any CPU
+		{4CA3C009-44CE-4019-B0DD-599951ABA00E}.Release|x64.Build.0 = Release|Any CPU
+		{4CA3C009-44CE-4019-B0DD-599951ABA00E}.Release|x86.ActiveCfg = Release|Any CPU
+		{4CA3C009-44CE-4019-B0DD-599951ABA00E}.Release|x86.Build.0 = Release|Any CPU
+		{B43CCEA7-65F7-4869-973B-4FE9B467E6ED}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B43CCEA7-65F7-4869-973B-4FE9B467E6ED}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B43CCEA7-65F7-4869-973B-4FE9B467E6ED}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B43CCEA7-65F7-4869-973B-4FE9B467E6ED}.Debug|x64.Build.0 = Debug|Any CPU
+		{B43CCEA7-65F7-4869-973B-4FE9B467E6ED}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B43CCEA7-65F7-4869-973B-4FE9B467E6ED}.Debug|x86.Build.0 = Debug|Any CPU
+		{B43CCEA7-65F7-4869-973B-4FE9B467E6ED}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B43CCEA7-65F7-4869-973B-4FE9B467E6ED}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B43CCEA7-65F7-4869-973B-4FE9B467E6ED}.Release|x64.ActiveCfg = Release|Any CPU
+		{B43CCEA7-65F7-4869-973B-4FE9B467E6ED}.Release|x64.Build.0 = Release|Any CPU
+		{B43CCEA7-65F7-4869-973B-4FE9B467E6ED}.Release|x86.ActiveCfg = Release|Any CPU
+		{B43CCEA7-65F7-4869-973B-4FE9B467E6ED}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

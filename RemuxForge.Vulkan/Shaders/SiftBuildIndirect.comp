@@ -1,0 +1,31 @@
+#version 450
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, set = 0, binding = 0) readonly buffer Counters
+{
+    uint counters[];
+};
+
+layout(std430, set = 0, binding = 1) writeonly buffer IndirectCommands
+{
+    uint commands[];
+};
+
+layout(push_constant) uniform Parameters
+{
+    uint counterOffset;
+    uint commandOffset;
+    uint localSize;
+    uint multiplier;
+    uint capacity;
+} parameters;
+
+void main()
+{
+    uint count = min(counters[parameters.counterOffset], parameters.capacity);
+    count *= parameters.multiplier;
+    commands[parameters.commandOffset] = (count + parameters.localSize - 1u) / parameters.localSize;
+    commands[parameters.commandOffset + 1u] = 1u;
+    commands[parameters.commandOffset + 2u] = 1u;
+}

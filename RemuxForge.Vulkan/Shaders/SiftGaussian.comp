@@ -1,0 +1,76 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, set = 0, binding = 0) readonly buffer FloatInput
+{
+    float inputPixels[];
+};
+
+layout(std430, set = 0, binding = 1) writeonly buffer FloatOutput
+{
+    float outputPixels[];
+};
+
+layout(std430, set = 0, binding = 2) readonly buffer GaussianWeights
+{
+    float weights[];
+};
+
+layout(push_constant) uniform Parameters
+{
+    uint inputOffset;
+    uint outputOffset;
+    uint width;
+    uint height;
+    uint filterOffset;
+    uint filterLength;
+    uint vertical;
+    uint inputFrameStride;
+    uint outputFrameStride;
+    uint frameCount;
+} parameters;
+
+shared float localPixels[286];
+uint frameIndex;
+
+float loadPixel(int position, uint line)
+{
+    if (position < 0)
+        return 0.0;
+    if (parameters.vertical == 0u)
+    {
+        if (position >= int(parameters.width) || line >= parameters.height)
+            return 0.0;
+        return inputPixels[parameters.inputOffset + frameIndex * parameters.inputFrameStride + line * parameters.width + uint(position)];
+    }
+    if (position >= int(parameters.height) || line >= parameters.width)
+        return 0.0;
+    return inputPixels[parameters.inputOffset + frameIndex * parameters.inputFrameStride + uint(position) * parameters.width + line];
+}
+
+void main()
+{
+    uint lane = gl_LocalInvocationID.x;
+    uint group = gl_WorkGroupID.x;
+    uint line = gl_WorkGroupID.y;
+    frameIndex = gl_WorkGroupID.z;
+    uint frames = max(parameters.frameCount, 1u);
+    uint lineLength = parameters.vertical == 0u ? parameters.width : parameters.height;
+    uint lineCount = parameters.vertical == 0u ? parameters.height : parameters.width;
+    if (line >= lineCount || frameIndex >= frames)
+        return;
+    int radius = int(parameters.filterLength >> 1);
+    int groupStart = int(group * 256u);
+    for (uint localIndex = lane; localIndex < 256u + uint(radius * 2); localIndex += 256u)
+        localPixels[localIndex] = loadPixel(groupStart + int(localIndex) - radius, line);
+    barrier();
+    uint position = group * 256u + lane;
+    if (position >= lineLength)
+        return;
+    float result = 0.0;
+    for (uint i = 0; i < parameters.filterLength; i++)
+        result += localPixels[lane + i] * weights[parameters.filterOffset + i];
+    uint outputIndex = parameters.vertical == 0u ? line * parameters.width + position : position * parameters.width + line;
+    outputPixels[parameters.outputOffset + frameIndex * parameters.outputFrameStride + outputIndex] = result;
+}

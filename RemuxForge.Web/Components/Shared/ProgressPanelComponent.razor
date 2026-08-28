@@ -1,16 +1,12 @@
-<div class="progress-panel @(IsActive() ? "" : "inactive")">
+<div class="progress-panel @(IsActive() ? "" : "inactive")" role="status" aria-live="polite" aria-atomic="true">
     <div class="progress-line">
         <div class="progress-label">@AppText.T("web.progress.global")</div>
-        <div class="progress-track @(IsGlobalIndeterminate() ? "indeterminate" : "")">
-            <div class="progress-fill" style="width: @(IsGlobalIndeterminate() ? 35 : GetGlobalPercent())%"></div>
-        </div>
+        <RadzenProgressBar Value="@GetGlobalPercent()" ShowValue="false" Mode="@(IsGlobalIndeterminate() ? ProgressBarMode.Indeterminate : ProgressBarMode.Determinate)" />
         <div class="progress-value">@BuildGlobalText()</div>
     </div>
     <div class="progress-line">
         <div class="progress-label">@AppText.T("web.progress.episode")</div>
-        <div class="progress-track @(IsCurrentIndeterminate() ? "indeterminate" : "")">
-            <div class="progress-fill" style="width: @(IsCurrentIndeterminate() ? 35 : GetCurrentPercent())%"></div>
-        </div>
+        <RadzenProgressBar Value="@GetCurrentPercent()" ShowValue="false" Mode="@(IsCurrentIndeterminate() ? ProgressBarMode.Indeterminate : ProgressBarMode.Determinate)" />
         <div class="progress-value">@BuildCurrentText()</div>
     </div>
 </div>

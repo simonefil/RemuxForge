@@ -1,8 +1,8 @@
 <div class="dialog-overlay visible" @onclick="OnClose">
-    <div class="dialog-box" style="min-width: 55ch;" @onclick:stopPropagation="true">
-        <div class="dialog-title">@AppText.T("web.info.title")</div>
+    <div class="dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="info-dialog-title" @onclick:stopPropagation="true">
+        <div id="info-dialog-title" class="dialog-title">@AppText.T("web.info.title")</div>
         <div class="dialog-body">
-            <table class="info-table" divide-="none">
+            <table class="info-table">
                 <tr><td class="info-label">@AppText.T("web.info.name")</td><td><img src="favicon-32x32.png" alt="icon" style="vertical-align: middle; margin-right: 0.5ch;" />RemuxForge</td></tr>
                 <tr><td class="info-label">@AppText.T("web.info.version")</td><td>@_version</td></tr>
                 <tr><td class="info-label">@AppText.T("web.info.license")</td><td>GNU General Public License v3.0</td></tr>
@@ -12,7 +12,7 @@
             </table>
         </div>
         <div class="dialog-footer">
-            <button @onclick="OnClose">@AppText.T("web.common.close")</button>
+            <RadzenButton Text="@AppText.T("web.common.close")" Icon="close" Click="@OnClose" />
         </div>
     </div>
 </div>
@@ -33,9 +33,8 @@
         padding-top: 0 !important;
     }
     .info-table tr td {
-        padding: 0 1ch;
-        line-height: 1lh;
-        padding-bottom: 0 !important;
+        padding: calc(var(--rz-gap) * 0.4) 1ch;
+        line-height: var(--rz-body-line-height);
     }
     .info-label {
         font-weight: bold;
