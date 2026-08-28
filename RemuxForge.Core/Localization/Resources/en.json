@@ -2028,6 +2028,7 @@
   "web.editMap.previousOperation": "Previous operation",
   "web.editMap.nextOperation": "Next operation",
   "web.editMap.timeline": "Timeline",
+  "web.editMap.waveformHeight": "Waveform height",
   "web.editMap.type": "Type",
   "web.editMap.scope": "Scope",
   "web.editMap.addCut": "Add Cut",

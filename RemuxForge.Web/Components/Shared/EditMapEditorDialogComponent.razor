@@ -18,31 +18,33 @@
 
         <div class="dialog-body edit-map-dialog-body">
             <RadzenSplitter Orientation="Orientation.Vertical" class="edit-map-main-splitter">
-                <RadzenSplitterPane Size="62%" Min="360px">
+                <RadzenSplitterPane Size="50%" Min="300px">
                     <section class="edit-map-preview-section">
                         <div class="edit-map-preview-grid">
                             <section class="edit-map-preview-pane">
                                 <div class="edit-map-section-title">@AppText.T("web.editMap.source")</div>
-                                <div class="edit-map-preview-canvas-host">
-                                    <canvas @ref="_sourceCanvas" class="edit-map-preview-canvas" role="img" aria-label="@GetPreviewAlternative(true)"></canvas>
-                                    @if (_sourceIndexing)
-                                    {
-                                        <div class="edit-map-preview-overlay"><span>@AppText.T("web.editMap.indexingSource")</span></div>
-                                    }
-                                    else if (!string.IsNullOrEmpty(_sourceError))
-                                    {
-                                        <div class="edit-map-preview-overlay"><span>@AppText.F("web.editMap.indexingFailed", _sourceError)</span></div>
-                                    }
-                                    else if (!string.IsNullOrEmpty(_sourcePreviewMessage))
-                                    {
-                                        <div class="edit-map-preview-overlay">
-                                            <span>@_sourcePreviewMessage</span>
-                                            @if (_previewFailed)
-                                            {
-                                                <RadzenButton Text="@AppText.T("web.editMap.retry")" Size="ButtonSize.Small" Click="RetryPreviewAsync" />
-                                            }
-                                        </div>
-                                    }
+                                <div class="edit-map-preview-stage">
+                                    <div class="edit-map-preview-canvas-host">
+                                        <canvas @ref="_sourceCanvas" class="edit-map-preview-canvas" role="img" aria-label="@GetPreviewAlternative(true)"></canvas>
+                                        @if (_sourceIndexing)
+                                        {
+                                            <div class="edit-map-preview-overlay"><span>@AppText.T("web.editMap.indexingSource")</span></div>
+                                        }
+                                        else if (!string.IsNullOrEmpty(_sourceError))
+                                        {
+                                            <div class="edit-map-preview-overlay"><span>@AppText.F("web.editMap.indexingFailed", _sourceError)</span></div>
+                                        }
+                                        else if (!string.IsNullOrEmpty(_sourcePreviewMessage))
+                                        {
+                                            <div class="edit-map-preview-overlay">
+                                                <span>@_sourcePreviewMessage</span>
+                                                @if (_previewFailed)
+                                                {
+                                                    <RadzenButton Text="@AppText.T("web.editMap.retry")" Size="ButtonSize.Small" Click="RetryPreviewAsync" />
+                                                }
+                                            </div>
+                                        }
+                                    </div>
                                 </div>
                                 <div class="edit-map-preview-controls">
                                     <div class="edit-map-frame-control">
@@ -57,26 +59,28 @@
                             </section>
                             <section class="edit-map-preview-pane">
                                 <div class="edit-map-section-title">@AppText.T("web.editMap.language")</div>
-                                <div class="edit-map-preview-canvas-host">
-                                    <canvas @ref="_languageCanvas" class="edit-map-preview-canvas" role="img" aria-label="@GetPreviewAlternative(false)"></canvas>
-                                    @if (_languageIndexing)
-                                    {
-                                        <div class="edit-map-preview-overlay"><span>@AppText.T("web.editMap.indexingLanguage")</span></div>
-                                    }
-                                    else if (!string.IsNullOrEmpty(_languageError))
-                                    {
-                                        <div class="edit-map-preview-overlay"><span>@AppText.F("web.editMap.indexingFailed", _languageError)</span></div>
-                                    }
-                                    else if (!string.IsNullOrEmpty(_languagePreviewMessage))
-                                    {
-                                        <div class="edit-map-preview-overlay">
-                                            <span>@_languagePreviewMessage</span>
-                                            @if (_previewFailed)
-                                            {
-                                                <RadzenButton Text="@AppText.T("web.editMap.retry")" Size="ButtonSize.Small" Click="RetryPreviewAsync" />
-                                            }
-                                        </div>
-                                    }
+                                <div class="edit-map-preview-stage">
+                                    <div class="edit-map-preview-canvas-host">
+                                        <canvas @ref="_languageCanvas" class="edit-map-preview-canvas" role="img" aria-label="@GetPreviewAlternative(false)"></canvas>
+                                        @if (_languageIndexing)
+                                        {
+                                            <div class="edit-map-preview-overlay"><span>@AppText.T("web.editMap.indexingLanguage")</span></div>
+                                        }
+                                        else if (!string.IsNullOrEmpty(_languageError))
+                                        {
+                                            <div class="edit-map-preview-overlay"><span>@AppText.F("web.editMap.indexingFailed", _languageError)</span></div>
+                                        }
+                                        else if (!string.IsNullOrEmpty(_languagePreviewMessage))
+                                        {
+                                            <div class="edit-map-preview-overlay">
+                                                <span>@_languagePreviewMessage</span>
+                                                @if (_previewFailed)
+                                                {
+                                                    <RadzenButton Text="@AppText.T("web.editMap.retry")" Size="ButtonSize.Small" Click="RetryPreviewAsync" />
+                                                }
+                                            </div>
+                                        }
+                                    </div>
                                 </div>
                                 <div class="edit-map-preview-controls">
                                     <div class="edit-map-frame-control">
@@ -92,8 +96,15 @@
                         </div>
                     </section>
                 </RadzenSplitterPane>
-                <RadzenSplitterPane Size="18%" Min="150px">
+                <RadzenSplitterPane Size="32%" Min="260px">
                     <section class="edit-map-timeline-pane">
+                        <div class="edit-map-waveform-toolbar">
+                            <label>
+                                <span>@AppText.T("web.editMap.waveformHeight")</span>
+                                <RadzenSlider TValue="double" Value="@_waveformGain" Change="SetWaveformGainAsync" Min="1" Max="12" Step="0.25" aria-label="@AppText.T("web.editMap.waveformHeight")" />
+                                <output>@_waveformGain.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)×</output>
+                            </label>
+                        </div>
                         <div @ref="_timelineHost" class="edit-map-timeline-host" aria-label="@AppText.T("web.editMap.timeline")">
                             <div class="edit-map-timeline-scroll-range"></div>
                             <canvas @ref="_timelineCanvas" class="edit-map-timeline-canvas" role="img" aria-label="@GetTimelineAlternative()"></canvas>
@@ -218,6 +229,7 @@
     private string _durationEditAuthority = "";
     private double _sourcePlayheadMs;
     private double _languageCursorMs;
+    private double _waveformGain = 3.0;
     private bool _sourceIndexing = true;
     private bool _languageIndexing = true;
     private bool _interactiveInitialized;
@@ -485,7 +497,15 @@
         string languageWaveformUrl = this.Record != null && this.Record.ImportedAudioTracks != null && this.Record.ImportedAudioTracks.Count > 0
             ? "/api/edit-map-waveform/" + this.RecordIndex.ToString() + "/language?durationMs=" + languageDurationMs.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
             : null;
-        return new { durationMs = sourceDurationMs, frameDurationMs = this._sourceIndex != null ? this._sourceIndex.MedianFrameDurationMs : 40.0, sourceFirstPtsMs = this._sourceIndex != null ? this._sourceIndex.FirstPtsMs : 0.0, languageFirstPtsMs = this._languageIndex != null ? this._languageIndex.FirstPtsMs : 0.0, sourceWaveformUrl = sourceWaveformUrl, languageWaveformUrl = languageWaveformUrl, playheadMs = this._sourcePlayheadMs, sourcePlayheadLabel = sourcePlayheadLabel, languagePlayheadLabel = languagePlayheadLabel, labels = labels, segments = segments, operations = operations };
+        return new { durationMs = sourceDurationMs, frameDurationMs = this._sourceIndex != null ? this._sourceIndex.MedianFrameDurationMs : 40.0, sourceFirstPtsMs = this._sourceIndex != null ? this._sourceIndex.FirstPtsMs : 0.0, languageFirstPtsMs = this._languageIndex != null ? this._languageIndex.FirstPtsMs : 0.0, sourceWaveformUrl = sourceWaveformUrl, languageWaveformUrl = languageWaveformUrl, waveformGain = this._waveformGain, playheadMs = this._sourcePlayheadMs, sourcePlayheadLabel = sourcePlayheadLabel, languagePlayheadLabel = languagePlayheadLabel, labels = labels, segments = segments, operations = operations };
+    }
+
+    /// <summary>Aggiorna il solo ingrandimento verticale delle waveform</summary>
+    private async Task SetWaveformGainAsync(double value)
+    {
+        this._waveformGain = Math.Max(1.0, Math.Min(12.0, value));
+        if (this._timeline != null)
+            await this._timeline.InvokeVoidAsync("setWaveformGain", this._waveformGain);
     }
 
     private async Task UpdateTimelineAsync(bool centerPlayhead = false)

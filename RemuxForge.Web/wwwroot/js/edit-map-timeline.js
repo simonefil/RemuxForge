@@ -280,9 +280,13 @@ class EditMapTimeline {
         this.model = model;
         this.sourceWaveform = null;
         this.languageWaveform = null;
+        this.waveformGain = clampWaveformGain(model.waveformGain);
+        this.plotLeft = 112;
+        this.navigatorHeight = 24;
+        this.rulerHeight = 28;
         this.waveformController = new AbortController();
         this.range = host.querySelector('.edit-map-timeline-scroll-range');
-        this.pixelsPerMs = Math.max(0.000001, host.clientWidth / Math.max(1, model.durationMs));
+        this.pixelsPerMs = Math.max(0.000001, Math.max(1, host.clientWidth - this.plotLeft) / Math.max(1, model.durationMs));
         this.drag = null;
         this.hoverX = null;
         this.pendingDrag = null;
@@ -331,13 +335,14 @@ class EditMapTimeline {
 
     update(model, centerPlayhead) {
         this.model = model;
+        this.waveformGain = clampWaveformGain(model.waveformGain);
         this.updateRange();
         if (centerPlayhead) this.center(model.playheadMs);
         this.draw();
     }
 
     setZoom(preset) {
-        const viewport = Math.max(1, this.host.clientWidth - 88);
+        const viewport = Math.max(1, this.host.clientWidth - this.plotLeft);
         this.pixelsPerMs = viewport / (this.model.durationMs || 1);
         this.updateRange();
         this.center(this.model.playheadMs);
@@ -348,15 +353,20 @@ class EditMapTimeline {
         const rect = this.canvas.getBoundingClientRect();
         const anchorX = anchorClientX === undefined ? rect.width / 2 : anchorClientX - rect.left;
         const anchorTime = this.timeAtX(anchorX);
-        const minimum = Math.max(0.000001, (this.host.clientWidth - 88) / Math.max(1, this.model.durationMs));
+        const minimum = Math.max(0.000001, (this.host.clientWidth - this.plotLeft) / Math.max(1, this.model.durationMs));
         this.pixelsPerMs = Math.max(minimum, Math.min(1, this.pixelsPerMs * factor));
         this.updateRange();
-        this.host.scrollLeft = Math.max(0, anchorTime * this.pixelsPerMs - Math.max(0, anchorX - 88));
+        this.host.scrollLeft = Math.max(0, anchorTime * this.pixelsPerMs - Math.max(0, anchorX - this.plotLeft));
         this.draw();
     }
 
     center(timeMs) {
-        this.host.scrollLeft = Math.max(0, timeMs * this.pixelsPerMs - Math.max(1, this.host.clientWidth - 88) / 2);
+        this.host.scrollLeft = Math.max(0, timeMs * this.pixelsPerMs - Math.max(1, this.host.clientWidth - this.plotLeft) / 2);
+    }
+
+    setWaveformGain(value) {
+        this.waveformGain = clampWaveformGain(value);
+        this.draw();
     }
 
     resize() {
@@ -373,7 +383,8 @@ class EditMapTimeline {
     }
 
     updateRange() {
-        const width = Math.max(this.host.clientWidth, Math.min(20000000, Math.ceil((this.model.durationMs || 1) * Math.max(this.pixelsPerMs, 0.000001))));
+        const timelineWidth = this.plotLeft + (this.model.durationMs || 1) * Math.max(this.pixelsPerMs, 0.000001);
+        const width = Math.max(this.host.clientWidth, Math.min(20000000, Math.ceil(timelineWidth)));
         this.range.style.width = `${width}px`;
     }
 
@@ -388,16 +399,22 @@ class EditMapTimeline {
         const secondary = cssColor(styles, '--rz-text-secondary-color', text);
         const border = cssColor(styles, '--rz-border-color', secondary);
         const primary = cssColor(styles, '--rz-primary', text);
+        const sourceWaveformColor = cssColor(styles, '--rz-info', primary);
+        const languageWaveformColor = cssColor(styles, '--rz-success', primary);
         const danger = cssColor(styles, '--rz-danger', primary);
         const warning = cssColor(styles, '--rz-warning', primary);
-        const surface = cssColor(styles, '--rz-base-100', background);
-        const plotLeft = 88;
-        const rulerHeight = 30;
+        const plotLeft = this.plotLeft;
+        const navigatorHeight = this.navigatorHeight;
+        const rulerTop = navigatorHeight;
+        const rulerHeight = this.rulerHeight;
+        const trackTop = rulerTop + rulerHeight;
         const laneGap = 8;
-        const laneHeight = Math.max(46, Math.floor((height - rulerHeight - laneGap * 3 - 26) / 2));
-        const sourceTop = rulerHeight + laneGap;
+        const operationHeight = 22;
+        const laneHeight = Math.max(20, Math.floor((height - trackTop - laneGap * 3 - operationHeight) / 2));
+        const sourceTop = trackTop + laneGap;
         const languageTop = sourceTop + laneHeight + laneGap;
-        const operationY = height - 14;
+        const trackBottom = languageTop + laneHeight;
+        const operationY = Math.min(height - 11, trackBottom + laneGap + 6);
         ctx.clearRect(0, 0, width, height);
         ctx.fillStyle = background;
         ctx.fillRect(0, 0, width, height);
@@ -405,17 +422,21 @@ class EditMapTimeline {
         ctx.textBaseline = 'middle';
         const startMs = this.host.scrollLeft / this.pixelsPerMs;
         const endMs = startMs + Math.max(1, width - plotLeft) / this.pixelsPerMs;
-        drawRuler(ctx, width, plotLeft, startMs, endMs, this.pixelsPerMs, text, border);
-        ctx.fillStyle = surface;
+        this.drawNavigator(ctx, width, navigatorHeight, background, border, primary, sourceWaveformColor);
+        drawRuler(ctx, width, plotLeft, startMs, endMs, this.pixelsPerMs, rulerTop, rulerHeight, text, border);
+        ctx.fillStyle = background;
         ctx.fillRect(plotLeft, sourceTop, width - plotLeft, laneHeight);
         ctx.fillRect(plotLeft, languageTop, width - plotLeft, laneHeight);
+        drawTimeGrid(ctx, width, plotLeft, startMs, endMs, this.pixelsPerMs, trackTop, trackBottom, border);
+        drawAmplitudeGrid(ctx, plotLeft, width, sourceTop, laneHeight, border, secondary);
+        drawAmplitudeGrid(ctx, plotLeft, width, languageTop, laneHeight, border, secondary);
         ctx.strokeStyle = border;
         ctx.strokeRect(plotLeft + 0.5, sourceTop + 0.5, width - plotLeft - 1, laneHeight - 1);
         ctx.strokeRect(plotLeft + 0.5, languageTop + 0.5, width - plotLeft - 1, laneHeight - 1);
         ctx.fillStyle = secondary;
         ctx.fillText(this.model.labels?.source || 'SOURCE', 8, sourceTop + laneHeight / 2);
         ctx.fillText(this.model.labels?.language || 'LANGUAGE', 8, languageTop + laneHeight / 2);
-        this.drawWaveform(this.sourceWaveform, startMs + (this.model.sourceFirstPtsMs || 0), endMs + (this.model.sourceFirstPtsMs || 0), plotLeft, width, sourceTop, laneHeight, primary);
+        this.drawWaveform(this.sourceWaveform, startMs + (this.model.sourceFirstPtsMs || 0), endMs + (this.model.sourceFirstPtsMs || 0), plotLeft, width, sourceTop, laneHeight, sourceWaveformColor);
         for (const segment of this.model.segments || []) {
             const x1 = this.xAtTime(segment.sourceStartMs);
             const x2 = this.xAtTime(segment.sourceEndMs);
@@ -434,7 +455,7 @@ class EditMapTimeline {
                     const ratioEnd = (visibleEnd - segment.sourceStartMs) / Math.max(1, segment.sourceEndMs - segment.sourceStartMs);
                     const languageStart = segment.languageStartMs + (segment.languageEndMs - segment.languageStartMs) * ratioStart + (this.model.languageFirstPtsMs || 0);
                     const languageEnd = segment.languageStartMs + (segment.languageEndMs - segment.languageStartMs) * ratioEnd + (this.model.languageFirstPtsMs || 0);
-                    this.drawWaveform(this.languageWaveform, languageStart, languageEnd, this.xAtTime(visibleStart), this.xAtTime(visibleEnd), languageTop, laneHeight, primary);
+                    this.drawWaveform(this.languageWaveform, languageStart, languageEnd, this.xAtTime(visibleStart), this.xAtTime(visibleEnd), languageTop, laneHeight, languageWaveformColor);
                 }
             }
         }
@@ -452,7 +473,7 @@ class EditMapTimeline {
             if (x < plotLeft - 80 || x > width + 80) continue;
             ctx.strokeStyle = operation.selected ? warning : danger;
             ctx.lineWidth = operation.selected ? 3 : 2;
-            ctx.beginPath(); ctx.moveTo(x, rulerHeight); ctx.lineTo(x, height); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x, trackTop); ctx.lineTo(x, height); ctx.stroke();
             ctx.fillStyle = operation.selected ? warning : danger;
             const durationEndX = x + Math.max(8, temporaryDuration * this.pixelsPerMs);
             ctx.fillRect(x, operationY - 3, Math.max(2, durationEndX - x), 6);
@@ -464,9 +485,9 @@ class EditMapTimeline {
         const playheadX = this.xAtTime(this.model.playheadMs);
         ctx.strokeStyle = primary;
         ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(playheadX, rulerHeight); ctx.lineTo(playheadX, height); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(playheadX, rulerTop); ctx.lineTo(playheadX, height); ctx.stroke();
         ctx.fillStyle = primary;
-        ctx.beginPath(); ctx.moveTo(playheadX - 5, rulerHeight); ctx.lineTo(playheadX + 5, rulerHeight); ctx.lineTo(playheadX, rulerHeight + 7); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(playheadX - 5, trackTop); ctx.lineTo(playheadX + 5, trackTop); ctx.lineTo(playheadX, trackTop + 7); ctx.closePath(); ctx.fill();
         ctx.fillStyle = text;
         const sourceLabel = `${this.model.labels?.sourcePts || 'Source PTS'} ${this.model.sourcePlayheadLabel || '—'}`;
         const languageLabel = `${this.model.labels?.languagePts || 'Language PTS'} ${this.model.languagePlayheadLabel || '—'}`;
@@ -481,7 +502,101 @@ class EditMapTimeline {
         ctx.lineWidth = 1;
     }
 
-    drawWaveform(waveform, mediaStartMs, mediaEndMs, destinationStartX, destinationEndX, top, height, color) {
+    drawNavigator(ctx, width, height, background, border, primary, waveformColor) {
+        const left = this.plotLeft;
+        const availableWidth = Math.max(1, width - left);
+        const duration = Math.max(1, this.model.durationMs || 1);
+        ctx.save();
+        ctx.fillStyle = background;
+        ctx.fillRect(left, 1, availableWidth, height - 3);
+        this.drawWaveform(this.sourceWaveform, this.model.sourceFirstPtsMs || 0, (this.model.sourceFirstPtsMs || 0) + duration, left, width, 2, height - 4, waveformColor, 1.0);
+        const geometry = this.navigatorGeometry();
+        ctx.globalAlpha = 0.58;
+        ctx.fillStyle = background;
+        ctx.fillRect(left, 1, Math.max(0, geometry.left - left), height - 3);
+        ctx.fillRect(geometry.right, 1, Math.max(0, width - geometry.right), height - 3);
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = primary;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(geometry.left + 1, 1, Math.max(1, geometry.right - geometry.left - 2), height - 3);
+        ctx.fillStyle = primary;
+        ctx.fillRect(geometry.left, 1, 4, height - 3);
+        ctx.fillRect(geometry.right - 4, 1, 4, height - 3);
+        ctx.restore();
+        ctx.strokeStyle = border;
+        ctx.beginPath();
+        ctx.moveTo(left, height - 0.5);
+        ctx.lineTo(width, height - 0.5);
+        ctx.stroke();
+    }
+
+    navigatorGeometry() {
+        const left = this.plotLeft;
+        const width = Math.max(1, this.host.clientWidth - left);
+        const duration = Math.max(1, this.model.durationMs || 1);
+        const startMs = Math.max(0, this.host.scrollLeft / this.pixelsPerMs);
+        const viewDurationMs = Math.min(duration, width / this.pixelsPerMs);
+        const endMs = Math.min(duration, startMs + viewDurationMs);
+        return {
+            left: left + startMs / duration * width,
+            right: left + endMs / duration * width,
+            startMs,
+            endMs,
+            viewDurationMs
+        };
+    }
+
+    navigatorTimeAtX(x) {
+        const width = Math.max(1, this.host.clientWidth - this.plotLeft);
+        const ratio = Math.max(0, Math.min(1, (x - this.plotLeft) / width));
+        return ratio * Math.max(1, this.model.durationMs || 1);
+    }
+
+    applyViewport(startMs, endMs) {
+        const duration = Math.max(1, this.model.durationMs || 1);
+        const viewportWidth = Math.max(1, this.host.clientWidth - this.plotLeft);
+        const minimumDuration = viewportWidth;
+        let clampedStart = Math.max(0, Math.min(duration, startMs));
+        let clampedEnd = Math.max(clampedStart, Math.min(duration, endMs));
+        if (clampedEnd - clampedStart < minimumDuration) {
+            if (clampedStart === 0)
+                clampedEnd = Math.min(duration, minimumDuration);
+            else
+                clampedStart = Math.max(0, clampedEnd - minimumDuration);
+        }
+        const viewDuration = Math.max(1, clampedEnd - clampedStart);
+        this.pixelsPerMs = Math.min(1, viewportWidth / viewDuration);
+        this.updateRange();
+        this.host.scrollLeft = clampedStart * this.pixelsPerMs;
+        this.draw();
+    }
+
+    beginNavigatorDrag(x, pointerId) {
+        const geometry = this.navigatorGeometry();
+        const timeMs = this.navigatorTimeAtX(x);
+        const edgeTolerance = 9;
+        if (Math.abs(x - geometry.left) <= edgeTolerance) {
+            this.drag = { kind: 'navigator-left', fixedEndMs: geometry.endMs, pointerId };
+            return;
+        }
+        if (Math.abs(x - geometry.right) <= edgeTolerance) {
+            this.drag = { kind: 'navigator-right', fixedStartMs: geometry.startMs, pointerId };
+            return;
+        }
+        const offsetMs = x >= geometry.left && x <= geometry.right ? timeMs - geometry.startMs : geometry.viewDurationMs / 2;
+        this.drag = { kind: 'navigator-pan', viewDurationMs: geometry.viewDurationMs, offsetMs, pointerId };
+        if (x < geometry.left || x > geometry.right)
+            this.panNavigator(timeMs, this.drag);
+    }
+
+    panNavigator(timeMs, drag) {
+        const duration = Math.max(1, this.model.durationMs || 1);
+        const startMs = Math.max(0, Math.min(duration - drag.viewDurationMs, timeMs - drag.offsetMs));
+        this.host.scrollLeft = startMs * this.pixelsPerMs;
+        this.draw();
+    }
+
+    drawWaveform(waveform, mediaStartMs, mediaEndMs, destinationStartX, destinationEndX, top, height, color, gain) {
         if (!waveform || mediaEndMs <= mediaStartMs || destinationEndX <= destinationStartX) {
             this.context.strokeStyle = color;
             this.context.globalAlpha = 0.35;
@@ -497,6 +612,9 @@ class EditMapTimeline {
         const span = relativeEnd - relativeStart;
         const targetWidth = Math.max(1, Math.ceil(destinationEndX - destinationStartX));
         const targetHeight = Math.max(1, Math.ceil(height - 6));
+        const waveformGain = gain === undefined ? this.waveformGain : clampWaveformGain(gain);
+        const sourceHeight = waveform.tileHeight / waveformGain;
+        const sourceY = (waveform.tileHeight - sourceHeight) / 2;
         if (!waveform.scratch) waveform.scratch = document.createElement('canvas');
         waveform.scratch.width = targetWidth;
         waveform.scratch.height = targetHeight;
@@ -515,24 +633,24 @@ class EditMapTimeline {
             const sourceWidth = Math.max(1, (visibleEnd - visibleStart) / waveform.millisecondsPerPixel);
             const destinationX = destinationStartX + (visibleStart - relativeStart) / span * (destinationEndX - destinationStartX);
             const destinationWidth = (visibleEnd - visibleStart) / span * (destinationEndX - destinationStartX);
-            scratch.drawImage(waveform.tiles[index], sourceX, 0, sourceWidth, waveform.tileHeight, destinationX - destinationStartX, 0, destinationWidth, targetHeight);
+            scratch.drawImage(waveform.tiles[index], sourceX, sourceY, sourceWidth, sourceHeight, destinationX - destinationStartX, 0, destinationWidth, targetHeight);
         }
         scratch.globalCompositeOperation = 'source-in';
         scratch.fillStyle = color;
         scratch.fillRect(0, 0, targetWidth, targetHeight);
         scratch.globalCompositeOperation = 'source-over';
         this.context.save();
-        this.context.globalAlpha = 0.72;
+        this.context.globalAlpha = 1;
         this.context.drawImage(waveform.scratch, destinationStartX, top + 3);
         this.context.restore();
     }
 
     xAtTime(timeMs) {
-        return 88 + timeMs * this.pixelsPerMs - this.host.scrollLeft;
+        return this.plotLeft + timeMs * this.pixelsPerMs - this.host.scrollLeft;
     }
 
     timeAtX(x) {
-        return (this.host.scrollLeft + Math.max(0, x - 88)) / this.pixelsPerMs;
+        return (this.host.scrollLeft + Math.max(0, x - this.plotLeft)) / this.pixelsPerMs;
     }
 
     hitOperation(x) {
@@ -562,15 +680,21 @@ class EditMapTimeline {
     handlePointerDown(event) {
         const rect = this.canvas.getBoundingClientRect();
         const x = event.clientX - rect.left;
-        const hit = this.hitOperation(x);
+        const y = event.clientY - rect.top;
         this.canvas.setPointerCapture(event.pointerId);
+        if (y <= this.navigatorHeight) {
+            this.beginNavigatorDrag(x, event.pointerId);
+            this.draw();
+            return;
+        }
+        const hit = this.hitOperation(x);
         if (hit) {
             const operation = hit.operation;
             this.drag = hit.kind === 'duration'
                 ? { kind: 'duration', operationIndex: operation.index, sourceMs: operation.sourceMs, durationMs: Math.abs(operation.durationMs), pointerId: event.pointerId }
                 : { kind: 'operation', operationIndex: operation.index, timeMs: operation.sourceMs, pointerId: event.pointerId };
             this.drag.selectionPromise = this.dotNetReference.invokeMethodAsync('OnTimelineOperationSelected', operation.index);
-        } else if (event.offsetY < 30) {
+        } else if (y < this.navigatorHeight + this.rulerHeight) {
             this.drag = { kind: 'pan', startX: event.clientX, startScroll: this.host.scrollLeft, pointerId: event.pointerId };
         } else {
             this.drag = { kind: 'seek', timeMs: this.timeAtX(x), pointerId: event.pointerId };
@@ -580,9 +704,25 @@ class EditMapTimeline {
     handlePointerMove(event) {
         const rect = this.canvas.getBoundingClientRect();
         const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
         this.hoverX = x;
-        if (!this.drag) { this.draw(); return; }
-        if (this.drag.kind === 'pan') {
+        if (!this.drag) {
+            if (y <= this.navigatorHeight) {
+                const geometry = this.navigatorGeometry();
+                this.canvas.style.cursor = Math.abs(x - geometry.left) <= 9 || Math.abs(x - geometry.right) <= 9 ? 'ew-resize' : 'grab';
+            } else {
+                this.canvas.style.cursor = 'default';
+            }
+            this.draw();
+            return;
+        }
+        if (this.drag.kind === 'navigator-left') {
+            this.applyViewport(this.navigatorTimeAtX(x), this.drag.fixedEndMs);
+        } else if (this.drag.kind === 'navigator-right') {
+            this.applyViewport(this.drag.fixedStartMs, this.navigatorTimeAtX(x));
+        } else if (this.drag.kind === 'navigator-pan') {
+            this.panNavigator(this.navigatorTimeAtX(x), this.drag);
+        } else if (this.drag.kind === 'pan') {
             this.host.scrollLeft = this.drag.startScroll - (event.clientX - this.drag.startX);
         } else if (this.drag.kind === 'operation') {
             const raw = Math.max(0, Math.min(this.model.durationMs, this.timeAtX(x)));
@@ -642,6 +782,7 @@ class EditMapTimeline {
         if (!this.drag) return;
         const drag = this.drag;
         this.drag = null;
+        this.canvas.style.cursor = 'default';
         if (this.dragFrame) {
             cancelAnimationFrame(this.dragFrame);
             this.dragFrame = null;
@@ -681,22 +822,96 @@ function cssColor(styles, variable, fallback) {
     return value || fallback;
 }
 
-function drawRuler(context, width, left, startMs, endMs, pixelsPerMs, color, border) {
-    const candidates = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 30000, 60000, 300000, 600000];
+function clampWaveformGain(value) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.max(1, Math.min(12, numeric)) : 3;
+}
+
+function timelineGridStep(pixelsPerMs) {
+    const candidates = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 30000, 60000, 120000, 300000, 600000];
     let step = candidates[candidates.length - 1];
     for (const candidate of candidates) {
-        if (candidate * pixelsPerMs >= 75) { step = candidate; break; }
+        if (candidate * pixelsPerMs >= 105) { step = candidate; break; }
     }
+    return step;
+}
+
+function drawRuler(context, width, left, startMs, endMs, pixelsPerMs, top, height, color, border) {
+    const step = timelineGridStep(pixelsPerMs);
     const first = Math.floor(startMs / step) * step;
     context.strokeStyle = border;
     context.fillStyle = color;
     context.beginPath();
     for (let time = first; time <= endMs + step; time += step) {
         const x = left + (time - startMs) * pixelsPerMs;
-        context.moveTo(x, 18); context.lineTo(x, 28);
-        context.fillText(formatTimelineTime(time), x + 3, 10);
+        if (x < left || x > width) continue;
+        context.moveTo(x, top + height - 10);
+        context.lineTo(x, top + height - 1);
+        context.fillText(formatTimelineTime(time), x + 3, top + 9);
     }
     context.stroke();
+}
+
+function drawTimeGrid(context, width, left, startMs, endMs, pixelsPerMs, top, bottom, color) {
+    const majorStep = timelineGridStep(pixelsPerMs);
+    const minorStep = majorStep / 5;
+    const firstMinor = Math.floor(startMs / minorStep) * minorStep;
+    context.save();
+    context.strokeStyle = color;
+    context.lineWidth = 1;
+    for (let time = firstMinor; time <= endMs + minorStep; time += minorStep) {
+        const x = left + (time - startMs) * pixelsPerMs;
+        if (x < left || x > width) continue;
+        const major = Math.abs(time / majorStep - Math.round(time / majorStep)) < 0.0001;
+        context.globalAlpha = major ? 0.55 : 0.22;
+        context.beginPath();
+        context.moveTo(Math.round(x) + 0.5, top);
+        context.lineTo(Math.round(x) + 0.5, bottom);
+        context.stroke();
+    }
+    context.restore();
+}
+
+function drawAmplitudeGrid(context, left, width, top, height, color, labelColor) {
+    const center = top + height / 2;
+    const halfHeight = Math.max(1, height / 2 - 1);
+    const levels = height >= 54 ? [0, -6, -12, -24] : [0, -12];
+    context.save();
+    context.strokeStyle = color;
+    context.fillStyle = labelColor;
+    context.lineWidth = 1;
+    context.textAlign = 'right';
+    let lastLabelY = Number.NEGATIVE_INFINITY;
+    for (const decibels of levels) {
+        const amplitude = Math.pow(10, decibels / 20);
+        const upper = center - amplitude * halfHeight;
+        const lower = center + amplitude * halfHeight;
+        context.globalAlpha = decibels === 0 ? 0.5 : 0.32;
+        context.beginPath();
+        context.moveTo(left, Math.round(upper) + 0.5);
+        context.lineTo(width, Math.round(upper) + 0.5);
+        if (decibels !== 0) {
+            context.moveTo(left, Math.round(lower) + 0.5);
+            context.lineTo(width, Math.round(lower) + 0.5);
+        }
+        context.stroke();
+        context.globalAlpha = 1;
+        const labelY = Math.max(top + 7, upper);
+        if (labelY - lastLabelY >= 12) {
+            context.fillText(decibels === 0 ? '0 dB' : `${decibels} dB`, left - 5, labelY);
+            lastLabelY = labelY;
+        }
+    }
+    context.globalAlpha = 0.45;
+    context.beginPath();
+    context.moveTo(left, Math.round(center) + 0.5);
+    context.lineTo(width, Math.round(center) + 0.5);
+    context.stroke();
+    context.globalAlpha = 1;
+    if (center - lastLabelY >= 12)
+        context.fillText('-∞', left - 5, center);
+    context.textAlign = 'start';
+    context.restore();
 }
 
 async function parseWaveform(buffer) {
