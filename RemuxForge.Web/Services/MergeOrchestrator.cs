@@ -5,6 +5,7 @@ using RemuxForge.Core.Models;
 using RemuxForge.Core.Pipeline;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 
 namespace RemuxForge.Web.Services
@@ -746,6 +747,104 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
+        /// Valida e applica atomicamente una EditMap manuale al record corrente
+        /// </summary>
+        /// <param name="index">Indice del record nella lista corrente</param>
+        /// <param name="expectedEpisodeId">Identità episodio vista all'apertura della dialog</param>
+        /// <param name="expectedSourcePath">Path Source visto all'apertura della dialog</param>
+        /// <param name="expectedLanguagePath">Path Language visto all'apertura della dialog</param>
+        /// <param name="editedMap">Copia della mappa modificata</param>
+        /// <param name="sourceDurationMs">Durata indicizzata Source</param>
+        /// <param name="languageDurationMs">Durata indicizzata Language</param>
+        /// <param name="errorMessage">Errore di validazione o applicazione</param>
+        /// <returns>True quando il record è stato sostituito con la versione ricalcolata</returns>
+        public bool UpdateEditMap(int index, string expectedEpisodeId, string expectedSourcePath, string expectedLanguagePath, EditMap editedMap, double sourceDurationMs, double languageDurationMs, out string errorMessage)
+        {
+            errorMessage = "";
+            if (editedMap == null || editedMap.Operations == null || editedMap.Operations.Count == 0)
+            {
+                errorMessage = "La EditMap deve contenere almeno un'operazione";
+                return false;
+            }
+            if (!double.IsFinite(sourceDurationMs) || sourceDurationMs <= 0.0 || !double.IsFinite(languageDurationMs) || languageDurationMs <= 0.0)
+            {
+                errorMessage = "Le timeline indicizzate non sono più disponibili";
+                return false;
+            }
+            if (!this.TryBeginOperation())
+            {
+                errorMessage = AppText.T("web.merge.busyRetry");
+                return false;
+            }
+
+            try
+            {
+                FileProcessingRecord original;
+                lock (this._lock)
+                {
+                    original = index >= 0 && index < this._records.Count ? this._records[index] : null;
+                }
+                if (original == null || !string.Equals(original.EpisodeId, expectedEpisodeId, StringComparison.Ordinal) || !string.Equals(original.SourceFilePath, expectedSourcePath, StringComparison.Ordinal) || !string.Equals(original.LangFilePath, expectedLanguagePath, StringComparison.Ordinal))
+                {
+                    errorMessage = "Il record aperto non coincide più con quello corrente";
+                    return false;
+                }
+                if (original.Status == FileStatus.Done || original.Status == FileStatus.Processing || original.Status == FileStatus.Skipped)
+                {
+                    errorMessage = "La EditMap non può essere modificata nello stato corrente";
+                    return false;
+                }
+                if (!File.Exists(original.SourceFilePath) || !File.Exists(original.LangFilePath))
+                {
+                    errorMessage = "I file del record non sono più disponibili";
+                    return false;
+                }
+
+                EditMapProjection projection = EditMapTimelineHelper.BuildProjection(EditMapTimelineHelper.Clone(editedMap), sourceDurationMs, languageDurationMs);
+                if (!projection.Validation.IsValid)
+                {
+                    errorMessage = "La EditMap contiene " + projection.Validation.Errors.Count.ToString() + " errori strutturali";
+                    return false;
+                }
+
+                FileProcessingRecord updated = this.CloneRecord(original);
+                updated.DeepAnalysisMap = EditMapTimelineHelper.Clone(projection.Map);
+                updated.DeepAnalysisApplied = true;
+                updated.DeepAnalysisMapManuallyEdited = true;
+                updated.StretchFactor = projection.Map.StretchFactor;
+                updated.SpeedCorrectionApplied = !string.IsNullOrEmpty(projection.Map.StretchFactor);
+                updated.SyncOffsetMs = projection.Map.InitialDelayMs;
+                updated.Status = FileStatus.Analyzed;
+                updated.ErrorMessage = "";
+                this._pipeline.RecalculateDelays(updated);
+                this._pipeline.BuildMergeCommand(updated);
+                if (updated.Status != FileStatus.Analyzed)
+                {
+                    errorMessage = !string.IsNullOrEmpty(updated.ErrorMessage) ? updated.ErrorMessage : "Impossibile ricostruire il piano di remux";
+                    return false;
+                }
+
+                lock (this._lock)
+                {
+                    if (index < 0 || index >= this._records.Count || !object.ReferenceEquals(this._records[index], original))
+                    {
+                        errorMessage = "Il record è cambiato durante l'applicazione";
+                        return false;
+                    }
+                    this._records[index] = updated;
+                }
+
+                this.AppendLog("EditMap manuale applicata a " + updated.EpisodeId + ": " + updated.DeepAnalysisMap.Operations.Count.ToString() + " operazioni");
+                this.OnRecordsChanged?.Invoke();
+                return true;
+            }
+            finally
+            {
+                this.SetBusy(false);
+            }
+        }
+
+        /// <summary>
         /// Richiede stop cooperativo dell'operazione corrente
         /// </summary>
         public void RequestStop()
@@ -1170,9 +1269,10 @@ namespace RemuxForge.Web.Services
             result.ImportedAudioTracks = new List<TrackInfo>(record.ImportedAudioTracks);
             result.ImportedSubTracks = new List<TrackInfo>(record.ImportedSubTracks);
             result.DisplayAudioFormat = record.DisplayAudioFormat;
-            result.DeepAnalysisMap = record.DeepAnalysisMap;
+            result.DeepAnalysisMap = EditMapTimelineHelper.Clone(record.DeepAnalysisMap);
             result.DeepAnalysisTimeMs = record.DeepAnalysisTimeMs;
             result.DeepAnalysisApplied = record.DeepAnalysisApplied;
+            result.DeepAnalysisMapManuallyEdited = record.DeepAnalysisMapManuallyEdited;
             result.DeepAnalysisResult = record.DeepAnalysisResult;
             result.AudioProcessingPreview = this.CloneAudioProcessingPlan(record.AudioProcessingPreview);
 

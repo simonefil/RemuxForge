@@ -61,6 +61,7 @@ namespace RemuxForge.Core.Models
             this.DeepAnalysisMap = null;
             this.DeepAnalysisTimeMs = 0;
             this.DeepAnalysisApplied = false;
+            this.DeepAnalysisMapManuallyEdited = false;
             this.DeepAnalysisResult = null;
             this.FrameSyncResult = null;
             this.AudioProcessingPreview = null;
@@ -112,6 +113,7 @@ namespace RemuxForge.Core.Models
             this.DeepAnalysisMap = null;
             this.DeepAnalysisTimeMs = 0;
             this.DeepAnalysisApplied = false;
+            this.DeepAnalysisMapManuallyEdited = false;
             this.DeepAnalysisResult = null;
             this.AudioProcessingPreview = null;
         }
@@ -354,6 +356,11 @@ namespace RemuxForge.Core.Models
         /// Indica se la deep analysis è stata eseguita con successo
         /// </summary>
         public bool DeepAnalysisApplied { get; set; }
+
+        /// <summary>
+        /// Indica che la EditMap attiva è stata sostituita manualmente dopo lo scan
+        /// </summary>
+        public bool DeepAnalysisMapManuallyEdited { get; set; }
 
         /// <summary>
         /// Risultato diagnostico DeepAnalysis, null se la modalità non è stata eseguita
