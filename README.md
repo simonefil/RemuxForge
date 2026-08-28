@@ -18,7 +18,7 @@ It ships as a scriptable CLI, a WebUI for local browsers or headless servers, an
 
 The optional Vulkan SIFT backend for Deep Analysis requires a Vulkan 1.2 loader and a compatible compute device with timeline semaphore support. CPU SIFT is the default and does not require Vulkan. On macOS, Vulkan is provided through MoltenVK.
 
-Tool paths are auto-detected or configurable from the WebUI under **Settings > Tool paths**. On Windows and Linux, ffmpeg and ffprobe are downloaded automatically when missing; on macOS they must be installed manually.
+Tool paths are auto-detected or configurable from the WebUI under **Settings > Tool paths**. On Windows and Linux, FFmpeg 9 stable and ffprobe are downloaded automatically when missing; on macOS install the FFmpeg 9 full build with `brew install ffmpeg-full`.
 
 Supported targets:
 

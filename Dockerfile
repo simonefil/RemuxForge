@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-resolute AS build
 ARG VERSION=1.0.0
 WORKDIR /src
 RUN apt-get update && apt-get install -y --no-install-recommends glslc spirv-tools \
@@ -14,7 +14,7 @@ RUN dotnet publish RemuxForge.Web/RemuxForge.Web.csproj -c Release -p:Version=${
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 ENV LANG=C.UTF-8
-ARG FFMPEG_RELEASE_BRANCH=8.1
+ARG FFMPEG_RELEASE_BRANCH=9.0
 RUN apt-get update && apt-get install -y --no-install-recommends \
     mkvtoolnix mediainfo curl xz-utils libvulkan1 mesa-vulkan-drivers \
     && curl -L -o /tmp/ffmpeg.tar.xz https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n${FFMPEG_RELEASE_BRANCH}-latest-linux64-gpl-${FFMPEG_RELEASE_BRANCH}.tar.xz \

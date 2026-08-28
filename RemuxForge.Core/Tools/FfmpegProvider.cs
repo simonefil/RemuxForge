@@ -19,13 +19,13 @@ namespace RemuxForge.Core.Tools
         /// <summary>
         /// Versione FFmpeg stabile usata dove il provider pubblica release versionate permanenti
         /// </summary>
-        private const string FFMPEG_PINNED_VERSION = "8.1.1";
+        private const string FFMPEG_PINNED_VERSION = "9.0.1";
 
         /// <summary>
         /// Release branch FFmpeg stabile usata per i download BtbN.
         /// BtbN mantiene solo poche autobuild, quindi su Linux si usa latest del branch stabile.
         /// </summary>
-        private const string FFMPEG_STABLE_BRANCH = "8.1";
+        private const string FFMPEG_STABLE_BRANCH = "9.0";
 
         /// <summary>
         /// URL download Windows x64
@@ -95,10 +95,18 @@ namespace RemuxForge.Core.Tools
                 resolved = true;
             }
 
-            if (resolved && requireLibSoxr && allowDownload && this.IsManagedFfmpegPath(this._resolvedPath, toolsFfmpeg) && !RuntimeInformation.IsOSPlatform(OSPlatform.OSX) && !SupportsLibSoxr(this._resolvedPath))
+            if (resolved && allowDownload && this.IsManagedFfmpegPath(this._resolvedPath, toolsFfmpeg) && !RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
-                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Warning, "  ffmpeg gestito da RemuxForge senza libsoxr: download build aggiornata");
-                resolved = false;
+                if (!IsManagedStableVersion(this._resolvedPath))
+                {
+                    ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Warning, "  ffmpeg gestito da RemuxForge non appartenente al branch stabile " + FFMPEG_STABLE_BRANCH + ": download build aggiornata");
+                    resolved = false;
+                }
+                else if (requireLibSoxr && !SupportsLibSoxr(this._resolvedPath))
+                {
+                    ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Warning, "  ffmpeg gestito da RemuxForge senza libsoxr: download build aggiornata");
+                    resolved = false;
+                }
             }
 
             // Controlla posizioni note del sistema
@@ -201,7 +209,7 @@ namespace RemuxForge.Core.Tools
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
-                paths = new string[] { "/usr/local/bin", "/opt/homebrew/bin" };
+                paths = new string[] { "/usr/local/bin", "/opt/homebrew/bin", "/usr/local/opt/ffmpeg-full/bin", "/opt/homebrew/opt/ffmpeg-full/bin" };
             }
             else
             {
@@ -317,7 +325,7 @@ namespace RemuxForge.Core.Tools
             {
                 // Download o estrazione fallita
                 ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Warning, "Impossibile scaricare ffmpeg: " + ex.Message);
-                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, "  Scaricalo manualmente da https://www.gyan.dev/ffmpeg/builds/");
+                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, "  Scaricalo manualmente da " + WINDOWS_X64_URL);
             }
             finally
             {
@@ -400,7 +408,7 @@ namespace RemuxForge.Core.Tools
             {
                 // Download o estrazione fallita
                 ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Warning, "Impossibile scaricare ffmpeg: " + ex.Message);
-                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, "  Scaricalo manualmente da https://github.com/BtbN/FFmpeg-Builds/releases");
+                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, "  Scaricalo manualmente da " + downloadUrl);
                 ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, "  Oppure installa con: sudo apt install ffmpeg");
             }
             finally
@@ -421,7 +429,7 @@ namespace RemuxForge.Core.Tools
         private bool DownloadMacOS()
         {
             ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Warning, "  Download automatico ffmpeg disabilitato su macOS");
-            ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, "  Installa ffmpeg con Homebrew: brew install ffmpeg");
+            ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, "  Installa FFmpeg 9 full con Homebrew: brew install ffmpeg-full");
             ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, "  Oppure specifica manualmente il percorso di ffmpeg nelle impostazioni.");
             return false;
         }
@@ -459,6 +467,27 @@ namespace RemuxForge.Core.Tools
             output = result.Stdout + "\n" + result.Stderr;
 
             return result.ExitCode == 0 && !string.IsNullOrEmpty(output);
+        }
+
+        /// <summary>
+        /// Indica se il binario gestito appartiene al branch FFmpeg stabile supportato
+        /// </summary>
+        /// <param name="ffmpegPath">Percorso ffmpeg gestito</param>
+        /// <returns>True se la versione appartiene al branch stabile</returns>
+        private static bool IsManagedStableVersion(string ffmpegPath)
+        {
+            const string VERSION_PREFIX = "ffmpeg version ";
+            string versionLine = ReadVersionLine(ffmpegPath);
+            string version;
+
+            if (!versionLine.StartsWith(VERSION_PREFIX, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            version = versionLine.Substring(VERSION_PREFIX.Length);
+            return version.Equals(FFMPEG_STABLE_BRANCH, StringComparison.OrdinalIgnoreCase) ||
+                   version.StartsWith(FFMPEG_STABLE_BRANCH + ".", StringComparison.OrdinalIgnoreCase) ||
+                   version.Equals("n" + FFMPEG_STABLE_BRANCH, StringComparison.OrdinalIgnoreCase) ||
+                   version.StartsWith("n" + FFMPEG_STABLE_BRANCH + ".", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
