@@ -214,24 +214,23 @@
 }
 
 .edit-map-waveform-toolbar {
-    display: flex;
+    display: grid;
+    width: 100%;
     min-width: 0;
     flex: 0 0 auto;
-    justify-content: flex-start;
+    grid-template-columns: max-content minmax(6.5rem, 1fr) max-content minmax(6.5rem, 1fr) repeat(2, minmax(6.5rem, 1fr)) max-content minmax(6rem, 1fr) max-content;
     align-items: center;
-    flex-wrap: wrap;
     gap: calc(var(--rz-gap) * 0.45);
 }
 
 .edit-map-audio-track-select {
-    display: grid;
-    min-width: 12rem;
-    max-width: 18rem;
-    flex: 1 1 13rem;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-    gap: calc(var(--rz-gap) * 0.35);
+    display: contents;
     color: var(--rz-text-secondary-color);
+}
+
+.edit-map-audio-track-select > span,
+.edit-map-waveform-height > span {
+    white-space: nowrap;
 }
 
 .edit-map-audio-track-select .form-input {
@@ -241,26 +240,17 @@
 }
 
 .edit-map-audio-mode {
-    display: flex;
-    min-height: var(--rz-input-height);
-    align-items: center;
-    flex: 0 0 auto;
-    gap: calc(var(--rz-gap) * 0.25);
+    display: contents;
 }
 
 .edit-map-audio-mode .rz-button {
+    width: 100%;
+    min-width: 0;
     height: var(--rz-input-height);
 }
 
 .edit-map-waveform-height {
-    display: grid;
-    width: min(100%, 17rem);
-    min-height: var(--rz-input-height);
-    min-width: 0;
-    flex: 1 1 14rem;
-    grid-template-columns: auto minmax(7rem, 1fr) 2.5rem;
-    align-items: center;
-    gap: calc(var(--rz-gap) * 0.5);
+    display: contents;
     color: var(--rz-text-secondary-color);
 }
 
