@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace RemuxForge.Core.Analysis.Edit.Extraction
@@ -54,7 +55,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
     /// <summary>
     /// Estrae l'inviluppo di energia di una traccia audio con un solo comando ffmpeg
     /// </summary>
-    internal class AudioEnvelopeExtractor
+    public class AudioEnvelopeExtractor
     {
         #region Costanti
 
@@ -118,7 +119,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         /// <param name="streamIndex">Indice della traccia audio nell'ordine del contenitore</param>
         /// <param name="timeoutMs">Timeout del comando in millisecondi</param>
         /// <returns>Inviluppo in dB con l'origine di contenitore già risolta</returns>
-        public AudioEnvelope Extract(string filePath, int streamIndex, int timeoutMs)
+        internal AudioEnvelope Extract(string filePath, int streamIndex, int timeoutMs)
         {
             List<float> decibel = new List<float>();
             byte[] pending = new byte[HOP * sizeof(float)];
@@ -192,6 +193,105 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             return false;
         }
 
+        /// <summary>
+        /// Genera in un solo decode le tile PNG dell'intera forma d'onda mono
+        /// </summary>
+        /// <param name="filePath">File multimediale</param>
+        /// <param name="streamIndex">Indice della traccia audio nell'ordine del contenitore</param>
+        /// <param name="durationMs">Durata da rappresentare in millisecondi</param>
+        /// <param name="timeoutMs">Timeout del comando in millisecondi</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Tile della forma d'onda e relativa scala temporale</returns>
+        public AudioWaveform GenerateWaveform(string filePath, int streamIndex, double durationMs, int timeoutMs, CancellationToken cancellationToken)
+        {
+            return this.GenerateWaveform(filePath, "0:a:" + streamIndex.ToString(CultureInfo.InvariantCulture), "a:" + streamIndex.ToString(CultureInfo.InvariantCulture), durationMs, timeoutMs, cancellationToken);
+        }
+
+        /// <summary>
+        /// Genera la forma d'onda della traccia identificata dal suo ID Matroska
+        /// </summary>
+        /// <param name="filePath">File multimediale</param>
+        /// <param name="trackId">ID della traccia nel contenitore</param>
+        /// <param name="durationMs">Durata da rappresentare in millisecondi</param>
+        /// <param name="timeoutMs">Timeout del comando in millisecondi</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Tile della forma d'onda e relativa scala temporale</returns>
+        public AudioWaveform GenerateWaveformForTrackId(string filePath, int trackId, double durationMs, int timeoutMs, CancellationToken cancellationToken)
+        {
+            string selector = trackId.ToString(CultureInfo.InvariantCulture);
+            return this.GenerateWaveform(filePath, "0:" + selector, selector, durationMs, timeoutMs, cancellationToken);
+        }
+
+        /// <summary>
+        /// Genera le tile usando i selettori FFmpeg e ffprobe già risolti
+        /// </summary>
+        private AudioWaveform GenerateWaveform(string filePath, string ffmpegSelector, string ffprobeSelector, double durationMs, int timeoutMs, CancellationToken cancellationToken)
+        {
+            const int tileWidth = 8192;
+            const int tileHeight = 96;
+            const int maximumTileCount = 32;
+            double safeDurationMs = Math.Max(1.0, durationMs);
+            double millisecondsPerPixel = Math.Max(1.0, safeDurationMs / (tileWidth * maximumTileCount));
+            double tileDurationMs = tileWidth * millisecondsPerPixel;
+            int tileCount = Math.Max(1, Math.Min(maximumTileCount, (int)Math.Ceiling(safeDurationMs / tileDurationMs)));
+            string representedSeconds = (tileCount * tileDurationMs / 1000.0).ToString("0.######", CultureInfo.InvariantCulture);
+            string normalizedInput = "[" + ffmpegSelector + "]aformat=channel_layouts=mono,apad=whole_dur=" + representedSeconds + ",atrim=end=" + representedSeconds;
+            string temporaryDirectory = Path.Combine(Path.GetTempPath(), "remuxforge-waveform-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(temporaryDirectory);
+
+            try
+            {
+                List<string> outputs = new List<string>();
+                List<string> filters = new List<string>();
+                if (tileCount == 1)
+                {
+                    filters.Add(normalizedInput + ",showwavespic=s=" + tileWidth.ToString(CultureInfo.InvariantCulture) + "x" + tileHeight.ToString(CultureInfo.InvariantCulture) + ":split_channels=0:colors=white:filter=peak:draw=full,format=rgba,colorkey=0x000000:0.01:0.0[w0]");
+                }
+                else
+                {
+                    List<string> timestamps = new List<string>();
+                    List<string> segmentLabels = new List<string>();
+                    for (int i = 1; i < tileCount; i++)
+                        timestamps.Add((i * tileDurationMs / 1000.0).ToString("0.######", CultureInfo.InvariantCulture));
+                    for (int i = 0; i < tileCount; i++)
+                        segmentLabels.Add("[a" + i.ToString(CultureInfo.InvariantCulture) + "]");
+                    filters.Add(normalizedInput + ",asegment=timestamps=" + string.Join("|", timestamps) + string.Join("", segmentLabels));
+                    for (int i = 0; i < tileCount; i++)
+                        filters.Add("[a" + i.ToString(CultureInfo.InvariantCulture) + "]showwavespic=s=" + tileWidth.ToString(CultureInfo.InvariantCulture) + "x" + tileHeight.ToString(CultureInfo.InvariantCulture) + ":split_channels=0:colors=white:filter=peak:draw=full,format=rgba,colorkey=0x000000:0.01:0.0[w" + i.ToString(CultureInfo.InvariantCulture) + "]");
+                }
+
+                List<string> arguments = new List<string> { "-nostdin", "-v", "error", "-i", filePath, "-filter_complex", string.Join(";", filters) };
+                for (int i = 0; i < tileCount; i++)
+                {
+                    string outputPath = Path.Combine(temporaryDirectory, i.ToString("D2", CultureInfo.InvariantCulture) + ".png");
+                    outputs.Add(outputPath);
+                    arguments.Add("-map");
+                    arguments.Add("[w" + i.ToString(CultureInfo.InvariantCulture) + "]");
+                    arguments.Add("-frames:v");
+                    arguments.Add("1");
+                    arguments.Add(outputPath);
+                }
+
+                ProcessResult run = ProcessRunner.Run(this._ffmpegPath, arguments.ToArray(), timeoutMs, cancellationToken);
+                if (run.ExitCode != 0)
+                    throw new InvalidOperationException("Impossibile generare la forma d'onda di " + Path.GetFileName(filePath) + ": " + run.Stderr);
+
+                List<byte[]> tiles = new List<byte[]>();
+                for (int i = 0; i < outputs.Count; i++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    tiles.Add(File.ReadAllBytes(outputs[i]));
+                }
+
+                return new AudioWaveform(tileWidth, tileHeight, millisecondsPerPixel, tileDurationMs, this.ReadOriginMs(filePath, ffprobeSelector, timeoutMs), tiles);
+            }
+            finally
+            {
+                if (Directory.Exists(temporaryDirectory))
+                    Directory.Delete(temporaryDirectory, true);
+            }
+        }
+
         #endregion
 
         #region Metodi privati
@@ -242,6 +342,14 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         /// <returns>Origine in millisecondi, al netto del ritardo di codec</returns>
         private double ReadOriginMs(string filePath, int streamIndex, int timeoutMs)
         {
+            return this.ReadOriginMs(filePath, "a:" + streamIndex.ToString(CultureInfo.InvariantCulture), timeoutMs);
+        }
+
+        /// <summary>
+        /// Legge l'origine tramite un selettore ffprobe già risolto
+        /// </summary>
+        private double ReadOriginMs(string filePath, string streamSelector, int timeoutMs)
+        {
             // ffmpeg estrae il PCM dal campione zero e butta via l'origine: senza rimetterla
             // l'offset audio e quello video non stanno sulla stessa origine
             double result = 0.0;
@@ -249,7 +357,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                 return result;
 
             ProcessResult run = ProcessRunner.Run(this._ffprobePath, new string[] {
-                "-v", "error", "-select_streams", "a:" + streamIndex.ToString(CultureInfo.InvariantCulture),
+                "-v", "error", "-select_streams", streamSelector,
                 "-show_entries", "stream=start_time,initial_padding", "-of", "json", filePath }, timeoutMs);
             if (run.ExitCode != 0)
                 return result;
@@ -276,5 +384,42 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         }
 
         #endregion
+    }
+
+    /// <summary>
+    /// Forma d'onda completa suddivisa in tile PNG ad alta risoluzione
+    /// </summary>
+    public class AudioWaveform
+    {
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public AudioWaveform(int tileWidth, int tileHeight, double millisecondsPerPixel, double tileDurationMs, double originMs, List<byte[]> tiles)
+        {
+            this.TileWidth = tileWidth;
+            this.TileHeight = tileHeight;
+            this.MillisecondsPerPixel = millisecondsPerPixel;
+            this.TileDurationMs = tileDurationMs;
+            this.OriginMs = originMs;
+            this.Tiles = tiles;
+        }
+
+        /// <summary>Larghezza di ogni tile</summary>
+        public int TileWidth { get; private set; }
+
+        /// <summary>Altezza di ogni tile</summary>
+        public int TileHeight { get; private set; }
+
+        /// <summary>Scala temporale orizzontale</summary>
+        public double MillisecondsPerPixel { get; private set; }
+
+        /// <summary>Durata rappresentata da ogni tile</summary>
+        public double TileDurationMs { get; private set; }
+
+        /// <summary>Origine della traccia nel contenitore</summary>
+        public double OriginMs { get; private set; }
+
+        /// <summary>Tile PNG ordinate temporalmente</summary>
+        public List<byte[]> Tiles { get; private set; }
     }
 }

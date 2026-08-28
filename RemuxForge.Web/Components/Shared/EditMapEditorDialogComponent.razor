@@ -18,7 +18,7 @@
 
         <div class="dialog-body edit-map-dialog-body">
             <RadzenSplitter Orientation="Orientation.Vertical" class="edit-map-main-splitter">
-                <RadzenSplitterPane Size="61%" Min="300px">
+                <RadzenSplitterPane Size="70%" Min="480px">
                     <section class="edit-map-visual-pane">
                         <div class="edit-map-preview-grid">
                             <section class="edit-map-preview-pane">
@@ -46,10 +46,10 @@
                                 </div>
                                 <div class="edit-map-preview-controls">
                                     <div class="edit-map-frame-control">
-                                        <RadzenButton Icon="chevron_left" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.previousSourceFrame")" aria-label="@AppText.T("web.editMap.previousSourceFrame")" Disabled="@(!CanStepSource(-1))" Click="@(() => StepSourceAsync(-1))" />
+                                        <RadzenButton Icon="chevron_left" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.previousSourceFrame")" aria-label="@AppText.T("web.editMap.previousSourceFrame")" data-frame-side="source" data-frame-delta="-1" Disabled="@(!CanStepSource(-1))" />
                                         <label>@AppText.T("web.editMap.frame") <input class="form-input" inputmode="numeric" value="@_sourceFrameText" aria-label="@AppText.T("web.editMap.sourceFrame")" @oninput="UpdateSourceFrameText" @onblur="CommitSourceFrameAsync" @onkeydown="HandleSourceFrameKeyAsync" disabled="@(!IndexesReady)" /></label>
                                         <span>/ @(_sourceIndex?.FrameCount.ToString() ?? "—")</span>
-                                        <RadzenButton Icon="chevron_right" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.nextSourceFrame")" aria-label="@AppText.T("web.editMap.nextSourceFrame")" Disabled="@(!CanStepSource(1))" Click="@(() => StepSourceAsync(1))" />
+                                        <RadzenButton Icon="chevron_right" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.nextSourceFrame")" aria-label="@AppText.T("web.editMap.nextSourceFrame")" data-frame-side="source" data-frame-delta="1" Disabled="@(!CanStepSource(1))" />
                                     </div>
                                     <label>@AppText.T("web.editMap.pts") <input class="form-input" value="@_sourceTimestampText" aria-label="@AppText.T("web.editMap.sourcePts")" @oninput="UpdateSourceTimestampText" @onblur="CommitSourceTimestampAsync" @onkeydown="HandleSourceTimestampKeyAsync" disabled="@(!IndexesReady)" /></label>
                                 </div>
@@ -80,30 +80,15 @@
                                 </div>
                                 <div class="edit-map-preview-controls">
                                     <div class="edit-map-frame-control">
-                                        <RadzenButton Icon="chevron_left" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.previousLanguageFrame")" aria-label="@AppText.T("web.editMap.previousLanguageFrame")" Disabled="@(!CanStepLanguage(-1))" Click="@(() => StepLanguageAsync(-1))" />
+                                        <RadzenButton Icon="chevron_left" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.previousLanguageFrame")" aria-label="@AppText.T("web.editMap.previousLanguageFrame")" data-frame-side="language" data-frame-delta="-1" Disabled="@(!CanStepLanguage(-1))" />
                                         <label>@AppText.T("web.editMap.frame") <input class="form-input" inputmode="numeric" value="@_languageFrameText" aria-label="@AppText.T("web.editMap.languageFrame")" @oninput="UpdateLanguageFrameText" @onblur="CommitLanguageFrameAsync" @onkeydown="HandleLanguageFrameKeyAsync" disabled="@(!IndexesReady)" /></label>
                                         <span>/ @(_languageIndex?.FrameCount.ToString() ?? "—")</span>
-                                        <RadzenButton Icon="chevron_right" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.nextLanguageFrame")" aria-label="@AppText.T("web.editMap.nextLanguageFrame")" Disabled="@(!CanStepLanguage(1))" Click="@(() => StepLanguageAsync(1))" />
+                                        <RadzenButton Icon="chevron_right" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.nextLanguageFrame")" aria-label="@AppText.T("web.editMap.nextLanguageFrame")" data-frame-side="language" data-frame-delta="1" Disabled="@(!CanStepLanguage(1))" />
                                     </div>
                                     <label>@AppText.T("web.editMap.pts") <input class="form-input" value="@_languageTimestampText" aria-label="@AppText.T("web.editMap.languagePts")" @oninput="UpdateLanguageTimestampText" @onblur="CommitLanguageTimestampAsync" @onkeydown="HandleLanguageTimestampKeyAsync" disabled="@(!IndexesReady)" /></label>
                                 </div>
                                 <div class="edit-map-preview-meta">@GetIndexMetadata(_languageIndex)</div>
                             </section>
-                        </div>
-                        <div class="edit-map-navigation-bar">
-                            <div class="edit-map-navigation-group">
-                                <RadzenButton Icon="remove" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.zoomOut")" aria-label="@AppText.T("web.editMap.zoomOut")" Disabled="@(!IndexesReady)" Click="@(() => ChangeZoomAsync(0.8))" />
-                                <RadzenButton Icon="add" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.zoomIn")" aria-label="@AppText.T("web.editMap.zoomIn")" Disabled="@(!IndexesReady)" Click="@(() => ChangeZoomAsync(1.25))" />
-                                <RadzenButton Text="@AppText.T("web.editMap.fit")" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@(!IndexesReady)" Click="@(() => SetZoomAsync("fit"))" />
-                                <RadzenButton Text="10 s" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@(!IndexesReady)" Click="@(() => SetZoomAsync("10s"))" />
-                                <RadzenButton Text="1 s" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@(!IndexesReady)" Click="@(() => SetZoomAsync("1s"))" />
-                                <RadzenButton Text="@AppText.T("web.editMap.frame")" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@(!IndexesReady)" Click="@(() => SetZoomAsync("frame"))" />
-                            </div>
-                            <strong>@FormatTimestamp(_sourcePlayheadMs)</strong>
-                            <div class="edit-map-navigation-group">
-                                <RadzenButton Text="@AppText.T("web.editMap.previousOperation")" Icon="skip_previous" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@(_workingMap.Operations.Count == 0)" Click="@(() => SelectAdjacentOperationAsync(-1))" />
-                                <RadzenButton Text="@AppText.T("web.editMap.nextOperation")" Icon="skip_next" IconPosition="IconPosition.Right" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@(_workingMap.Operations.Count == 0)" Click="@(() => SelectAdjacentOperationAsync(1))" />
-                            </div>
                         </div>
                         <div @ref="_timelineHost" class="edit-map-timeline-host" aria-label="@AppText.T("web.editMap.timeline")">
                             <div class="edit-map-timeline-scroll-range"></div>
@@ -111,76 +96,57 @@
                         </div>
                     </section>
                 </RadzenSplitterPane>
-                <RadzenSplitterPane Min="190px">
-                    <RadzenSplitter class="edit-map-editor-splitter">
-                        <RadzenSplitterPane Size="62%" Min="420px">
-                            <section class="edit-map-operations-pane">
-                                <div class="edit-map-section-title">@AppText.T("web.detail.operationsLabel")</div>
-                                <RadzenDataGrid @ref="_operationGrid" Data="@_workingMap.Operations" TItem="EditOperation" AllowSorting="false" AllowFiltering="false" AllowColumnResize="true" AllowRowSelectOnRowClick="false" GridLines="DataGridGridLines.Both" Density="Density.Compact" RowClick="SelectOperationRowAsync" RowRender="RenderOperationRow" class="edit-map-operation-grid">
-                                    <Columns>
-                                        <RadzenDataGridColumn TItem="EditOperation" Title="#" Width="3.5rem">
-                                            <Template Context="operation">@((_workingMap.Operations.IndexOf(operation) + 1).ToString())</Template>
-                                        </RadzenDataGridColumn>
-                                        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.type")">
-                                            <Template Context="operation">@GetOperationTypeLabel(operation)</Template>
-                                        </RadzenDataGridColumn>
-                                        <RadzenDataGridColumn TItem="EditOperation" Property="Scope" Title="@AppText.T("web.editMap.scope")" />
-                                        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.source")">
-                                            <Template Context="operation">@FormatTimestamp(operation.SourceTimestampMs)</Template>
-                                        </RadzenDataGridColumn>
-                                        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.language")">
-                                            <Template Context="operation">@FormatTimestamp(operation.LangTimestampMs)</Template>
-                                        </RadzenDataGridColumn>
-                                        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.languageDurationShort")">
-                                            <Template Context="operation">@FormatDuration(operation.DurationMs)</Template>
-                                        </RadzenDataGridColumn>
-                                        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.renderedDurationShort")">
-                                            <Template Context="operation">@FormatDuration(GetRenderedDurationMs(operation))</Template>
-                                        </RadzenDataGridColumn>
-                                    </Columns>
-                                </RadzenDataGrid>
-                                <div class="edit-map-operation-actions">
-                                    <RadzenButton Text="@AppText.T("web.editMap.addCut")" Icon="add" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.addCutHelp")" aria-label="@AppText.T("web.editMap.addCutHelp")" Disabled="@(!CanCreateOperation())" Click="@(() => AddOperationAsync(EditOperation.CUT_SEGMENT))" />
-                                    <RadzenButton Text="@AppText.T("web.editMap.addInsert")" Icon="add" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.addInsertHelp")" aria-label="@AppText.T("web.editMap.addInsertHelp")" Disabled="@(!CanCreateOperation())" Click="@(() => AddOperationAsync(EditOperation.INSERT_SILENCE))" />
-                                    <RadzenButton Text="@AppText.T("web.common.delete")" Icon="delete" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Danger" title="@AppText.T("web.editMap.deleteHelp")" aria-label="@AppText.T("web.editMap.deleteHelp")" Disabled="@(_selectedOperation == null)" Click="DeleteSelectedOperationAsync" />
-                                </div>
-                            </section>
-                        </RadzenSplitterPane>
-                        <RadzenSplitterPane Min="270px">
-                            <section class="edit-map-inspector-pane">
-                                <div class="edit-map-section-title">@AppText.T("web.editMap.selectedOperation")</div>
-                                @if (_selectedOperation == null)
-                                {
-                                    <div class="edit-map-empty-state">@AppText.T("web.editMap.noOperationSelected")</div>
-                                }
-                                else
-                                {
-                                    <div class="edit-map-inspector-form">
-                                        <label><span>@AppText.T("web.editMap.type")</span><input class="form-input" value="@GetOperationTypeLabel(_selectedOperation)" readonly /></label>
-                                        <label><span>@AppText.T("web.editMap.source")</span><input class="form-input" value="@_operationSourceText" @oninput="UpdateOperationSourceText" @onblur="CommitOperationSourceAsync" @onkeydown="HandleOperationSourceKeyAsync" /></label>
-                                        <label><span>@AppText.T("web.editMap.language")</span><input class="form-input" value="@_operationLanguageText" @oninput="UpdateOperationLanguageText" @onblur="CommitOperationLanguageAsync" @onkeydown="HandleOperationLanguageKeyAsync" /></label>
-                                        <label><span>@AppText.T("web.editMap.languageDuration")</span><input @ref="_operationDurationInput" class="form-input" inputmode="numeric" value="@_operationLanguageDurationText" @oninput="UpdateOperationLanguageDurationText" @onblur="CommitOperationLanguageDurationAsync" @onkeydown="HandleOperationLanguageDurationKeyAsync" /></label>
-                                        <label><span>@AppText.T("web.editMap.renderedDuration")</span><input class="form-input" inputmode="numeric" value="@_operationRenderedDurationText" @oninput="UpdateOperationRenderedDurationText" @onblur="CommitOperationRenderedDurationAsync" @onkeydown="HandleOperationRenderedDurationKeyAsync" /></label>
-                                        <label><span>@AppText.T("web.editMap.scope")</span><input class="form-input" value="@_selectedOperation.Scope" readonly /></label>
-                                        <div class="edit-map-field-help">@AppText.T("web.editMap.scopeHelp")</div>
-                                        <label><span>@AppText.T("web.editMap.sourceFrame")</span><input class="form-input" inputmode="numeric" value="@_operationSourceFrameText" @oninput="UpdateOperationSourceFrameText" @onblur="CommitOperationSourceFrameAsync" @onkeydown="HandleOperationSourceFrameKeyAsync" /></label>
-                                        <label><span>@AppText.T("web.editMap.languageFrame")</span><input class="form-input" inputmode="numeric" value="@_operationLanguageFrameText" @oninput="UpdateOperationLanguageFrameText" @onblur="CommitOperationLanguageFrameAsync" @onkeydown="HandleOperationLanguageFrameKeyAsync" /></label>
-                                        @if (IsSelectedCut())
-                                        {
-                                            <label><span>@AppText.T("web.editMap.cutBeforeFrame")</span><input class="form-input" value="@_cutBeforeFrameText" readonly /></label>
-                                            <label><span>@AppText.T("web.editMap.cutFirstRemovedFrame")</span><input class="form-input" value="@_cutFirstRemovedFrameText" readonly /></label>
-                                            <label><span>@AppText.T("web.editMap.cutLastRemovedFrame")</span><input class="form-input" value="@_cutLastRemovedFrameText" readonly /></label>
-                                            <label><span>@AppText.T("web.editMap.cutResumeFrame")</span><input class="form-input" value="@_cutResumeFrameText" readonly /></label>
-                                        }
-                                        @if (!string.IsNullOrEmpty(GetSelectedIssueSummary()))
-                                        {
-                                            <div class="edit-map-operation-issues">@GetSelectedIssueSummary()</div>
-                                        }
-                                    </div>
-                                }
-                            </section>
-                        </RadzenSplitterPane>
-                    </RadzenSplitter>
+                <RadzenSplitterPane Min="220px">
+                    <section class="edit-map-operations-pane">
+                        <div class="edit-map-section-title">@AppText.T("web.detail.operationsLabel")</div>
+                        <RadzenDataGrid @ref="_operationGrid" Data="@_workingMap.Operations" TItem="EditOperation" EditMode="DataGridEditMode.Single" AllowSorting="false" AllowFiltering="false" AllowColumnResize="true" AllowRowSelectOnRowClick="true" GridLines="DataGridGridLines.Both" Density="Density.Compact" RowClick="SelectOperationRowAsync" RowRender="RenderOperationRow" class="edit-map-operation-grid">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="EditOperation" Title="#" Width="3.5rem" Resizable="false"><Template Context="operation">@((_workingMap.Operations.IndexOf(operation) + 1).ToString())</Template></RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.type")" Width="8rem"><Template Context="operation">@GetOperationTypeLabel(operation)</Template></RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="EditOperation" Property="Scope" Title="@AppText.T("web.editMap.scope")" Width="6rem" />
+                                <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.source")" Width="10rem">
+                                    <Template Context="operation">@FormatTimestamp((_sourceIndex?.FirstPtsMs ?? 0.0) + operation.SourceTimestampMs)</Template>
+                                    <EditTemplate Context="operation"><input class="form-input" value="@_operationSourceText" @oninput="UpdateOperationSourceText" @onblur="@(() => CommitInlineOperationRowAsync(operation))" /></EditTemplate>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.sourceFrame")" Width="8rem">
+                                    <Template Context="operation">@GetOperationSourceFrame(operation)</Template>
+                                    <EditTemplate Context="operation"><input class="form-input" inputmode="numeric" value="@_operationSourceFrameText" @oninput="UpdateOperationSourceFrameText" @onblur="@(() => CommitInlineOperationRowAsync(operation))" /></EditTemplate>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.language")" Width="10rem">
+                                    <Template Context="operation">@FormatTimestamp((_languageIndex?.FirstPtsMs ?? 0.0) + operation.LangTimestampMs)</Template>
+                                    <EditTemplate Context="operation"><input class="form-input" value="@_operationLanguageText" @oninput="UpdateOperationLanguageText" @onblur="@(() => CommitInlineOperationRowAsync(operation))" /></EditTemplate>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.languageFrame")" Width="8rem">
+                                    <Template Context="operation">@GetOperationLanguageFrame(operation)</Template>
+                                    <EditTemplate Context="operation"><input class="form-input" inputmode="numeric" value="@_operationLanguageFrameText" @oninput="UpdateOperationLanguageFrameText" @onblur="@(() => CommitInlineOperationRowAsync(operation))" /></EditTemplate>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.languageDurationShort")" Width="9rem">
+                                    <Template Context="operation">@FormatDuration(operation.DurationMs)</Template>
+                                    <EditTemplate Context="operation"><input class="form-input" inputmode="numeric" value="@_operationLanguageDurationText" @oninput="UpdateOperationLanguageDurationText" @onblur="@(() => CommitInlineOperationRowAsync(operation))" /></EditTemplate>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.renderedDurationShort")" Width="9rem">
+                                    <Template Context="operation">@FormatDuration(GetRenderedDurationMs(operation))</Template>
+                                    <EditTemplate Context="operation"><input class="form-input" inputmode="numeric" value="@_operationRenderedDurationText" @oninput="UpdateOperationRenderedDurationText" @onblur="@(() => CommitInlineOperationRowAsync(operation))" /></EditTemplate>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="EditOperation" Width="12rem" Frozen="true" FrozenPosition="FrozenColumnPosition.Right" Resizable="false" TextAlign="TextAlign.Center">
+                                    <HeaderTemplate>
+                                        <RadzenButton Icon="content_cut" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.addCutHelp")" Disabled="@(!CanCreateOperation())" Click="@(() => AddOperationAsync(EditOperation.CUT_SEGMENT))" @onclick:stopPropagation="true" />
+                                        <RadzenButton Icon="add_to_queue" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.addInsertHelp")" Disabled="@(!CanCreateOperation())" Click="@(() => AddOperationAsync(EditOperation.INSERT_SILENCE))" @onclick:stopPropagation="true" />
+                                    </HeaderTemplate>
+                                    <Template Context="operation">
+                                        <RadzenButton Icon="content_cut" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.addCutHelp")" Disabled="@(!CanCreateOperation())" Click="@(() => AddOperationAsync(EditOperation.CUT_SEGMENT))" @onclick:stopPropagation="true" />
+                                        <RadzenButton Icon="add_to_queue" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.addInsertHelp")" Disabled="@(!CanCreateOperation())" Click="@(() => AddOperationAsync(EditOperation.INSERT_SILENCE))" @onclick:stopPropagation="true" />
+                                        <RadzenButton Icon="edit" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.common.edit")" Click="@(() => EditOperationRowAsync(operation))" @onclick:stopPropagation="true" />
+                                        <RadzenButton Icon="delete" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" title="@AppText.T("web.editMap.deleteHelp")" Click="@(() => DeleteOperationAsync(operation))" @onclick:stopPropagation="true" />
+                                    </Template>
+                                    <EditTemplate Context="operation">
+                                        <RadzenButton Icon="check" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Success" title="@AppText.T("web.common.apply")" Click="@(() => SaveOperationRowAsync(operation))" @onclick:stopPropagation="true" />
+                                        <RadzenButton Icon="close" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.common.cancel")" Click="@(() => CancelOperationRowAsync(operation))" @onclick:stopPropagation="true" />
+                                    </EditTemplate>
+                                </RadzenDataGridColumn>
+                            </Columns>
+                        </RadzenDataGrid>
+                    </section>
                 </RadzenSplitterPane>
             </RadzenSplitter>
         </div>
@@ -225,7 +191,6 @@
     private ElementReference _dialogRoot;
     private ElementReference _timelineHost;
     private ElementReference _timelineCanvas;
-    private ElementReference _operationDurationInput;
     private IJSObjectReference _module;
     private IJSObjectReference _previewPair;
     private IJSObjectReference _timeline;
@@ -245,10 +210,8 @@
     private string _operationRenderedDurationText = "";
     private string _operationSourceFrameText = "";
     private string _operationLanguageFrameText = "";
-    private string _cutBeforeFrameText = "";
-    private string _cutFirstRemovedFrameText = "";
-    private string _cutLastRemovedFrameText = "";
-    private string _cutResumeFrameText = "";
+    private string _timestampEditAuthority = "";
+    private string _durationEditAuthority = "";
     private double _sourcePlayheadMs;
     private double _languageCursorMs;
     private bool _sourceIndexing = true;
@@ -257,7 +220,6 @@
     private bool _dirty;
     private bool _isApplying;
     private bool _previewFailed;
-    private bool _focusDurationAfterRender;
 
     private bool IndexesReady { get { return this._sourceIndex != null && this._languageIndex != null && string.IsNullOrEmpty(this._sourceError) && string.IsNullOrEmpty(this._languageError); } }
 
@@ -291,11 +253,6 @@
     {
         if (firstRender)
             this._module = await this.JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/edit-map-timeline.js");
-        if (this._focusDurationAfterRender && this._module != null)
-        {
-            this._focusDurationAfterRender = false;
-            await this._module.InvokeVoidAsync("focusElement", this._operationDurationInput);
-        }
         if (!this.IndexesReady || this._interactiveInitialized || this._module == null)
             return;
 
@@ -518,7 +475,13 @@
         };
         string sourcePlayheadLabel = this._sourceFrame != null ? FormatTimestamp(this._sourceFrame.PtsMs) : "—";
         string languagePlayheadLabel = this._languageFrame != null ? FormatTimestamp(this._languageFrame.PtsMs) : "—";
-        return new { durationMs = this._sourceIndex != null ? this._sourceIndex.DurationMs : 0.0, frameDurationMs = this._sourceIndex != null ? this._sourceIndex.MedianFrameDurationMs : 40.0, playheadMs = this._sourcePlayheadMs, sourcePlayheadLabel = sourcePlayheadLabel, languagePlayheadLabel = languagePlayheadLabel, labels = labels, segments = segments, operations = operations };
+        double sourceDurationMs = this._sourceIndex != null ? this._sourceIndex.DurationMs : 0.0;
+        double languageDurationMs = this._languageIndex != null ? this._languageIndex.DurationMs : 0.0;
+        string sourceWaveformUrl = "/api/edit-map-waveform/" + this.RecordIndex.ToString() + "/source?durationMs=" + sourceDurationMs.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        string languageWaveformUrl = this.Record != null && this.Record.ImportedAudioTracks != null && this.Record.ImportedAudioTracks.Count > 0
+            ? "/api/edit-map-waveform/" + this.RecordIndex.ToString() + "/language?durationMs=" + languageDurationMs.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
+            : null;
+        return new { durationMs = sourceDurationMs, frameDurationMs = this._sourceIndex != null ? this._sourceIndex.MedianFrameDurationMs : 40.0, sourceFirstPtsMs = this._sourceIndex != null ? this._sourceIndex.FirstPtsMs : 0.0, languageFirstPtsMs = this._languageIndex != null ? this._languageIndex.FirstPtsMs : 0.0, sourceWaveformUrl = sourceWaveformUrl, languageWaveformUrl = languageWaveformUrl, playheadMs = this._sourcePlayheadMs, sourcePlayheadLabel = sourcePlayheadLabel, languagePlayheadLabel = languagePlayheadLabel, labels = labels, segments = segments, operations = operations };
     }
 
     private async Task UpdateTimelineAsync(bool centerPlayhead = false)
@@ -666,11 +629,166 @@
         await this.RefreshAfterNavigationAsync(center);
     }
 
-    private async Task SelectAdjacentOperationAsync(int direction)
+    private string GetOperationSourceFrame(EditOperation operation)
     {
-        int index = this._selectedOperation != null ? this._workingMap.Operations.IndexOf(this._selectedOperation) : direction > 0 ? -1 : this._workingMap.Operations.Count;
-        index = Math.Max(0, Math.Min(this._workingMap.Operations.Count - 1, index + direction));
-        await this.SelectOperationAsync(index, true);
+        VideoFrameIndexEntry frame = this._sourceIndex != null ? this._sourceIndex.FindNearestFrame(this._sourceIndex.FirstPtsMs + operation.SourceTimestampMs) : null;
+        return frame != null ? (frame.PresentationIndex + 1).ToString() : "—";
+    }
+
+    private string GetOperationLanguageFrame(EditOperation operation)
+    {
+        VideoFrameIndexEntry frame = this._languageIndex != null ? this._languageIndex.FindNearestFrame(this._languageIndex.FirstPtsMs + operation.LangTimestampMs) : null;
+        return frame != null ? (frame.PresentationIndex + 1).ToString() : "—";
+    }
+
+    private async Task EditOperationRowAsync(EditOperation operation)
+    {
+        await this.SelectOperationAsync(this._workingMap.Operations.IndexOf(operation), true);
+        this._timestampEditAuthority = "";
+        this._durationEditAuthority = "";
+        await this._operationGrid.EditRow(this._selectedOperation);
+    }
+
+    private async Task CancelOperationRowAsync(EditOperation operation)
+    {
+        this._operationGrid.CancelEditRow(operation);
+        this.RefreshOperationFields();
+        await this._operationGrid.Reload();
+    }
+
+    private async Task SaveOperationRowAsync(EditOperation operation)
+    {
+        await this.CommitOperationRowAsync(operation, true);
+    }
+
+    private async Task CommitInlineOperationRowAsync(EditOperation operation)
+    {
+        if (!string.IsNullOrEmpty(this._timestampEditAuthority) || !string.IsNullOrEmpty(this._durationEditAuthority))
+            await this.CommitOperationRowAsync(operation, false);
+    }
+
+    private async Task CommitOperationRowAsync(EditOperation operation, bool finishEditing)
+    {
+        if (!this.TryResolveEditedLanguageTimestamp(out int languageTimestamp) || !this.TryResolveEditedLanguageDuration(languageTimestamp, out int languageDuration))
+        {
+            this.WarnInvalidValue();
+            this.RefreshOperationFields();
+            return;
+        }
+
+        EditMap backup = EditMapTimelineHelper.Clone(this._workingMap);
+        operation.LangTimestampMs = languageTimestamp;
+        operation.DurationMs = languageDuration;
+        EditMapProjection candidate = EditMapTimelineHelper.BuildProjection(this._workingMap, this._sourceIndex.DurationMs, this._languageIndex.DurationMs);
+        if (!candidate.Validation.IsValid)
+        {
+            int index = this._workingMap.Operations.IndexOf(operation);
+            EditOperation restored = index >= 0 && index < backup.Operations.Count ? backup.Operations[index] : null;
+            if (restored != null)
+                CopyOperation(restored, operation);
+            this.RebuildProjection();
+            this._selectedOperation = operation;
+            this.WarnInvalidValue();
+            this.RefreshOperationFields();
+            if (finishEditing)
+                await this._operationGrid.Reload();
+            return;
+        }
+
+        string type = operation.Type;
+        EditOperation normalized = FindOperation(candidate.Map.Operations, type, languageTimestamp, languageDuration);
+        if (finishEditing)
+        {
+            this._workingMap = candidate.Map;
+            this._projection = candidate;
+            this._selectedOperation = normalized;
+            this._operationGrid.CancelEditRow(operation);
+            await this.FinishMapMutationAsync();
+            return;
+        }
+
+        CopyOperation(normalized, operation);
+        this._workingMap.Operations.Sort((left, right) => left.LangTimestampMs.CompareTo(right.LangTimestampMs));
+        this.RebuildProjection();
+        this._selectedOperation = operation;
+        this._timestampEditAuthority = "";
+        this._durationEditAuthority = "";
+        this.UpdateDirtyState();
+        this.RefreshOperationFields();
+        this.NavigateFromSource(operation.SourceTimestampMs);
+        this.StateHasChanged();
+        await this.UpdateTimelineAsync(true);
+        await this.RefreshPreviewAsync();
+    }
+
+    private bool TryResolveEditedLanguageTimestamp(out int timestampMs)
+    {
+        timestampMs = this._selectedOperation != null ? this._selectedOperation.LangTimestampMs : 0;
+        if (this._selectedOperation == null || string.IsNullOrEmpty(this._timestampEditAuthority))
+            return this._selectedOperation != null;
+
+        VideoFrameIndexEntry languageFrame = null;
+        if (string.Equals(this._timestampEditAuthority, "language-time", StringComparison.Ordinal))
+        {
+            if (!TryParseTimestamp(this._operationLanguageText, out double ptsMs))
+                return false;
+            languageFrame = this._languageIndex.FindNearestFrame(ptsMs);
+        }
+        else if (string.Equals(this._timestampEditAuthority, "language-frame", StringComparison.Ordinal))
+        {
+            if (!int.TryParse(this._operationLanguageFrameText, out int frameNumber) || frameNumber < 1 || frameNumber > this._languageIndex.FrameCount)
+                return false;
+            languageFrame = this._languageIndex.Frames[frameNumber - 1];
+        }
+        else
+        {
+            VideoFrameIndexEntry sourceFrame;
+            if (string.Equals(this._timestampEditAuthority, "source-time", StringComparison.Ordinal))
+            {
+                if (!TryParseTimestamp(this._operationSourceText, out double ptsMs))
+                    return false;
+                sourceFrame = this._sourceIndex.FindNearestFrame(ptsMs);
+            }
+            else
+            {
+                if (!int.TryParse(this._operationSourceFrameText, out int frameNumber) || frameNumber < 1 || frameNumber > this._sourceIndex.FrameCount)
+                    return false;
+                sourceFrame = this._sourceIndex.Frames[frameNumber - 1];
+            }
+            if (sourceFrame == null)
+                return false;
+            EditMapMappingResult mapping = this._projection.MapSourceToLanguage(sourceFrame.PtsMs - this._sourceIndex.FirstPtsMs);
+            if (!mapping.IsMapped)
+                return false;
+            languageFrame = this._languageIndex.FindNearestFrame(this._languageIndex.FirstPtsMs + mapping.LanguageTimestampMs);
+        }
+
+        if (languageFrame == null)
+            return false;
+        timestampMs = Math.Max(0, (int)Math.Round(languageFrame.PtsMs - this._languageIndex.FirstPtsMs));
+        return true;
+    }
+
+    private bool TryResolveEditedLanguageDuration(int timestampMs, out int durationMs)
+    {
+        durationMs = this._selectedOperation != null ? this._selectedOperation.DurationMs : 0;
+        if (this._selectedOperation == null || string.IsNullOrEmpty(this._durationEditAuthority))
+            return this._selectedOperation != null;
+
+        int requestedDuration;
+        if (string.Equals(this._durationEditAuthority, "rendered-duration", StringComparison.Ordinal))
+        {
+            if (!int.TryParse(this._operationRenderedDurationText, out int renderedDuration) || renderedDuration <= 0)
+                return false;
+            requestedDuration = Math.Max(1, (int)Math.Round(renderedDuration / this._projection.StretchRatio));
+        }
+        else if (!int.TryParse(this._operationLanguageDurationText, out requestedDuration) || requestedDuration <= 0)
+        {
+            return false;
+        }
+
+        durationMs = this.SnapLanguageDuration(timestampMs, requestedDuration);
+        return true;
     }
 
     private bool CanCreateOperation()
@@ -698,8 +816,9 @@
             Scope = EditOperation.SCOPE_BODY
         };
         this._workingMap.Operations.Add(operation);
-        this._focusDurationAfterRender = true;
         await this.NormalizeWorkingMapAsync(operation);
+        if (this._selectedOperation != null && this._operationGrid != null)
+            await this._operationGrid.EditRow(this._selectedOperation);
     }
 
     private async Task DeleteSelectedOperationAsync()
@@ -717,6 +836,12 @@
         await this.RefreshAfterNavigationAsync();
     }
 
+    private async Task DeleteOperationAsync(EditOperation operation)
+    {
+        this._selectedOperation = operation;
+        await this.DeleteSelectedOperationAsync();
+    }
+
     private void RefreshOperationFields()
     {
         if (this._selectedOperation == null)
@@ -729,181 +854,18 @@
         VideoFrameIndexEntry languageFrame = this._languageIndex.FindNearestFrame(this._languageIndex.FirstPtsMs + this._selectedOperation.LangTimestampMs);
         this._operationSourceFrameText = sourceFrame != null ? (sourceFrame.PresentationIndex + 1).ToString() : "";
         this._operationLanguageFrameText = languageFrame != null ? (languageFrame.PresentationIndex + 1).ToString() : "";
-        this.RefreshCutInspectionFields();
     }
-
-    private bool IsSelectedCut() => this._selectedOperation != null && string.Equals(this._selectedOperation.Type, EditOperation.CUT_SEGMENT, StringComparison.Ordinal);
 
     private int GetRenderedDurationMs(EditOperation operation) => EditMapTimelineHelper.LanguageDurationToRenderedDurationMs(operation.DurationMs, this._projection != null ? this._projection.StretchRatio : 1.0);
 
-    private void RefreshCutInspectionFields()
-    {
-        this._cutBeforeFrameText = "";
-        this._cutFirstRemovedFrameText = "";
-        this._cutLastRemovedFrameText = "";
-        this._cutResumeFrameText = "";
-        if (!this.IsSelectedCut())
-            return;
-
-        VideoFrameIndexEntry first = this._languageIndex.FindContainingFrame(this._languageIndex.FirstPtsMs + this._selectedOperation.LangTimestampMs) ?? this._languageIndex.FindNearestFrame(this._languageIndex.FirstPtsMs + this._selectedOperation.LangTimestampMs);
-        VideoFrameIndexEntry resume = this._languageIndex.FindContainingFrame(this._languageIndex.FirstPtsMs + this._selectedOperation.LangTimestampMs + this._selectedOperation.DurationMs) ?? this._languageIndex.FindNearestFrame(this._languageIndex.FirstPtsMs + this._selectedOperation.LangTimestampMs + this._selectedOperation.DurationMs);
-        if (first == null || resume == null)
-            return;
-
-        int beforeIndex = first.PresentationIndex - 1;
-        int lastIndex = Math.Max(first.PresentationIndex, resume.PresentationIndex - 1);
-        this._cutBeforeFrameText = beforeIndex >= 0 ? (beforeIndex + 1).ToString() : "—";
-        this._cutFirstRemovedFrameText = (first.PresentationIndex + 1).ToString();
-        this._cutLastRemovedFrameText = (lastIndex + 1).ToString();
-        this._cutResumeFrameText = (resume.PresentationIndex + 1).ToString();
-    }
-
-    private string GetSelectedIssueSummary()
-    {
-        if (this._selectedOperation == null || this._projection == null)
-            return "";
-        int operationIndex = this._workingMap.Operations.IndexOf(this._selectedOperation);
-        List<string> messages = new List<string>();
-        for (int i = 0; i < this._projection.Validation.Errors.Count; i++)
-        {
-            EditMapValidationIssue issue = this._projection.Validation.Errors[i];
-            if (issue.OperationIndex == operationIndex)
-                messages.Add(AppText.T("web.editMap.issue." + issue.Code));
-        }
-        for (int i = 0; i < this._projection.Validation.Warnings.Count; i++)
-        {
-            EditMapValidationIssue issue = this._projection.Validation.Warnings[i];
-            if (issue.OperationIndex == operationIndex)
-                messages.Add(AppText.T("web.editMap.issue." + issue.Code));
-        }
-        return string.Join(" · ", messages);
-    }
-
     private string GetOperationTypeLabel(EditOperation operation) => AppText.T(string.Equals(operation.Type, EditOperation.CUT_SEGMENT, StringComparison.Ordinal) ? "web.editMap.cut" : "web.editMap.insert");
 
-    private void UpdateOperationSourceText(ChangeEventArgs args) => this._operationSourceText = GetEventText(args);
-    private void UpdateOperationLanguageText(ChangeEventArgs args) => this._operationLanguageText = GetEventText(args);
-    private void UpdateOperationLanguageDurationText(ChangeEventArgs args) => this._operationLanguageDurationText = GetEventText(args);
-    private void UpdateOperationRenderedDurationText(ChangeEventArgs args) => this._operationRenderedDurationText = GetEventText(args);
-    private void UpdateOperationSourceFrameText(ChangeEventArgs args) => this._operationSourceFrameText = GetEventText(args);
-    private void UpdateOperationLanguageFrameText(ChangeEventArgs args) => this._operationLanguageFrameText = GetEventText(args);
-
-    private async Task CommitOperationSourceAsync()
-    {
-        if (this._selectedOperation == null || !TryParseTimestamp(this._operationSourceText, out double ptsMs))
-        {
-            this.RollbackOperationField();
-            return;
-        }
-        VideoFrameIndexEntry sourceFrame = this._sourceIndex.FindNearestFrame(ptsMs);
-        EditMapMappingResult mapping = sourceFrame != null ? this._projection.MapSourceToLanguage(sourceFrame.PtsMs - this._sourceIndex.FirstPtsMs) : null;
-        if (sourceFrame == null || mapping == null || !mapping.IsMapped)
-        {
-            this.RollbackOperationField();
-            return;
-        }
-        VideoFrameIndexEntry languageFrame = this._languageIndex.FindNearestFrame(this._languageIndex.FirstPtsMs + mapping.LanguageTimestampMs);
-        await this.MutateSelectedOperationAsync(operation => operation.LangTimestampMs = Math.Max(0, (int)Math.Round(languageFrame.PtsMs - this._languageIndex.FirstPtsMs)));
-    }
-
-    private async Task CommitOperationLanguageAsync()
-    {
-        if (this._selectedOperation == null || !TryParseTimestamp(this._operationLanguageText, out double ptsMs))
-        {
-            this.RollbackOperationField();
-            return;
-        }
-        VideoFrameIndexEntry frame = this._languageIndex.FindNearestFrame(ptsMs);
-        if (frame == null)
-        {
-            this.RollbackOperationField();
-            return;
-        }
-        await this.MutateSelectedOperationAsync(operation => operation.LangTimestampMs = Math.Max(0, (int)Math.Round(frame.PtsMs - this._languageIndex.FirstPtsMs)));
-    }
-
-    private async Task CommitOperationLanguageDurationAsync()
-    {
-        if (this._selectedOperation == null || !int.TryParse(this._operationLanguageDurationText, out int durationMs) || durationMs <= 0)
-        {
-            this.RollbackOperationField();
-            return;
-        }
-        int snappedDuration = this.SnapLanguageDuration(this._selectedOperation.LangTimestampMs, durationMs);
-        await this.MutateSelectedOperationAsync(operation => operation.DurationMs = snappedDuration);
-    }
-
-    private async Task CommitOperationRenderedDurationAsync()
-    {
-        if (this._selectedOperation == null || !int.TryParse(this._operationRenderedDurationText, out int renderedMs) || renderedMs <= 0)
-        {
-            this.RollbackOperationField();
-            return;
-        }
-        int languageMs = Math.Max(1, (int)Math.Round(renderedMs / this._projection.StretchRatio));
-        int snappedDuration = this.SnapLanguageDuration(this._selectedOperation.LangTimestampMs, languageMs);
-        await this.MutateSelectedOperationAsync(operation => operation.DurationMs = snappedDuration);
-    }
-
-    private async Task CommitOperationSourceFrameAsync()
-    {
-        if (this._selectedOperation == null || !int.TryParse(this._operationSourceFrameText, out int number) || number < 1 || number > this._sourceIndex.FrameCount)
-        {
-            this.RollbackOperationField();
-            return;
-        }
-        VideoFrameIndexEntry sourceFrame = this._sourceIndex.Frames[number - 1];
-        EditMapMappingResult mapping = this._projection.MapSourceToLanguage(sourceFrame.PtsMs - this._sourceIndex.FirstPtsMs);
-        if (!mapping.IsMapped)
-        {
-            this.RollbackOperationField();
-            return;
-        }
-        VideoFrameIndexEntry languageFrame = this._languageIndex.FindNearestFrame(this._languageIndex.FirstPtsMs + mapping.LanguageTimestampMs);
-        await this.MutateSelectedOperationAsync(operation => operation.LangTimestampMs = Math.Max(0, (int)Math.Round(languageFrame.PtsMs - this._languageIndex.FirstPtsMs)));
-    }
-
-    private async Task CommitOperationLanguageFrameAsync()
-    {
-        if (this._selectedOperation == null || !int.TryParse(this._operationLanguageFrameText, out int number) || number < 1 || number > this._languageIndex.FrameCount)
-        {
-            this.RollbackOperationField();
-            return;
-        }
-        VideoFrameIndexEntry frame = this._languageIndex.Frames[number - 1];
-        await this.MutateSelectedOperationAsync(operation => operation.LangTimestampMs = Math.Max(0, (int)Math.Round(frame.PtsMs - this._languageIndex.FirstPtsMs)));
-    }
-
-    private Task HandleOperationSourceKeyAsync(KeyboardEventArgs args) => string.Equals(args.Key, "Enter", StringComparison.Ordinal) ? this.CommitOperationSourceAsync() : Task.CompletedTask;
-    private Task HandleOperationLanguageKeyAsync(KeyboardEventArgs args) => string.Equals(args.Key, "Enter", StringComparison.Ordinal) ? this.CommitOperationLanguageAsync() : Task.CompletedTask;
-    private Task HandleOperationLanguageDurationKeyAsync(KeyboardEventArgs args) => string.Equals(args.Key, "Enter", StringComparison.Ordinal) ? this.CommitOperationLanguageDurationAsync() : Task.CompletedTask;
-    private Task HandleOperationRenderedDurationKeyAsync(KeyboardEventArgs args) => string.Equals(args.Key, "Enter", StringComparison.Ordinal) ? this.CommitOperationRenderedDurationAsync() : Task.CompletedTask;
-    private Task HandleOperationSourceFrameKeyAsync(KeyboardEventArgs args) => string.Equals(args.Key, "Enter", StringComparison.Ordinal) ? this.CommitOperationSourceFrameAsync() : Task.CompletedTask;
-    private Task HandleOperationLanguageFrameKeyAsync(KeyboardEventArgs args) => string.Equals(args.Key, "Enter", StringComparison.Ordinal) ? this.CommitOperationLanguageFrameAsync() : Task.CompletedTask;
-
-    private async Task MutateSelectedOperationAsync(Action<EditOperation> mutation)
-    {
-        int selectedIndex = this._workingMap.Operations.IndexOf(this._selectedOperation);
-        EditMap backup = EditMapTimelineHelper.Clone(this._workingMap);
-        mutation(this._selectedOperation);
-        EditMapProjection candidate = EditMapTimelineHelper.BuildProjection(this._workingMap, this._sourceIndex.DurationMs, this._languageIndex.DurationMs);
-        if (!candidate.Validation.IsValid)
-        {
-            this._workingMap = backup;
-            this.RebuildProjection();
-            this._selectedOperation = selectedIndex >= 0 && selectedIndex < this._workingMap.Operations.Count ? this._workingMap.Operations[selectedIndex] : null;
-            this.RollbackOperationField();
-            return;
-        }
-
-        string type = this._selectedOperation.Type;
-        int timestamp = this._selectedOperation.LangTimestampMs;
-        int duration = this._selectedOperation.DurationMs;
-        this._workingMap = candidate.Map;
-        this._projection = candidate;
-        this._selectedOperation = FindOperation(this._workingMap.Operations, type, timestamp, duration);
-        await this.FinishMapMutationAsync();
-    }
+    private void UpdateOperationSourceText(ChangeEventArgs args) { this._operationSourceText = GetEventText(args); this._timestampEditAuthority = "source-time"; }
+    private void UpdateOperationLanguageText(ChangeEventArgs args) { this._operationLanguageText = GetEventText(args); this._timestampEditAuthority = "language-time"; }
+    private void UpdateOperationLanguageDurationText(ChangeEventArgs args) { this._operationLanguageDurationText = GetEventText(args); this._durationEditAuthority = "language-duration"; }
+    private void UpdateOperationRenderedDurationText(ChangeEventArgs args) { this._operationRenderedDurationText = GetEventText(args); this._durationEditAuthority = "rendered-duration"; }
+    private void UpdateOperationSourceFrameText(ChangeEventArgs args) { this._operationSourceFrameText = GetEventText(args); this._timestampEditAuthority = "source-frame"; }
+    private void UpdateOperationLanguageFrameText(ChangeEventArgs args) { this._operationLanguageFrameText = GetEventText(args); this._timestampEditAuthority = "language-frame"; }
 
     private async Task NormalizeWorkingMapAsync(EditOperation selected)
     {
@@ -947,13 +909,6 @@
         return Math.Max(1, (int)Math.Round(end.PtsMs - start.PtsMs));
     }
 
-    private void RollbackOperationField()
-    {
-        this.WarnInvalidValue();
-        this.RefreshOperationFields();
-        this.StateHasChanged();
-    }
-
     private void WarnInvalidValue() => this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.editMap.invalidValue"), AppText.T("web.editMap.valueRestored"), 5000);
 
     private void UpdateDirtyState() => this._dirty = !MapsEqual(this._originalMap, this._workingMap);
@@ -981,7 +936,46 @@
     public async Task OnTimelineSeek(double sourceMs)
     {
         this.NavigateFromSource(sourceMs);
+        this.SelectOperationAtPlayhead();
         await this.InvokeAsync(async () => await this.RefreshAfterNavigationAsync());
+    }
+
+    /// <summary>Naviga rapidamente i frame da tastiera o pressione prolungata</summary>
+    /// <param name="side">Lato Source o Language</param>
+    /// <param name="delta">Numero di frame da percorrere</param>
+    [JSInvokable]
+    public async Task OnFrameStep(string side, int delta)
+    {
+        if (string.Equals(side, "language", StringComparison.Ordinal))
+            await this.StepLanguageAsync(delta);
+        else
+            await this.StepSourceAsync(delta);
+        if (this.SelectOperationAtPlayhead())
+        {
+            this.StateHasChanged();
+            await this.UpdateTimelineAsync();
+        }
+    }
+
+    private bool SelectOperationAtPlayhead()
+    {
+        EditOperation selected = null;
+        double tolerance = this._sourceIndex != null ? Math.Max(1.0, this._sourceIndex.MedianFrameDurationMs) : 40.0;
+        for (int i = 0; i < this._workingMap.Operations.Count; i++)
+        {
+            EditOperation operation = this._workingMap.Operations[i];
+            double end = operation.SourceTimestampMs + Math.Max(tolerance, Math.Abs(GetRenderedDurationMs(operation)));
+            if (this._sourcePlayheadMs >= operation.SourceTimestampMs - tolerance * 0.5 && this._sourcePlayheadMs <= end)
+            {
+                selected = operation;
+                break;
+            }
+        }
+        if (object.ReferenceEquals(selected, this._selectedOperation))
+            return false;
+        this._selectedOperation = selected;
+        this.RefreshOperationFields();
+        return true;
     }
 
     /// <summary>Seleziona una operazione dal marker della timeline</summary>
@@ -1112,10 +1106,6 @@
             await this.StepSourceAsync(shift ? -10 : -1);
         else if (string.Equals(key, "ArrowRight", StringComparison.Ordinal))
             await this.StepSourceAsync(shift ? 10 : 1);
-        else if (string.Equals(key, "PageUp", StringComparison.Ordinal))
-            await this.SelectAdjacentOperationAsync(-1);
-        else if (string.Equals(key, "PageDown", StringComparison.Ordinal))
-            await this.SelectAdjacentOperationAsync(1);
         else if (string.Equals(key, "Home", StringComparison.Ordinal) && this.IndexesReady)
         {
             this.NavigateFromSource(0.0);
@@ -1133,9 +1123,6 @@
             await this.CloseAsync();
     }
 
-    private Task ChangeZoomAsync(double factor) => this._timeline != null ? this._timeline.InvokeVoidAsync("zoomBy", factor).AsTask() : Task.CompletedTask;
-    private Task SetZoomAsync(string preset) => this._timeline != null ? this._timeline.InvokeVoidAsync("setZoom", preset).AsTask() : Task.CompletedTask;
-
     private static string GetEventText(ChangeEventArgs args) => args.Value != null ? args.Value.ToString() : "";
 
     private static EditOperation FindOperation(List<EditOperation> operations, string type, int timestamp, int duration)
@@ -1146,6 +1133,18 @@
                 return operations[i];
         }
         return null;
+    }
+
+    private static void CopyOperation(EditOperation source, EditOperation destination)
+    {
+        if (source == null || destination == null)
+            return;
+        destination.Type = source.Type;
+        destination.LangTimestampMs = source.LangTimestampMs;
+        destination.DurationMs = source.DurationMs;
+        destination.SourceTimestampMs = source.SourceTimestampMs;
+        destination.VisualSourceTimestampMs = source.VisualSourceTimestampMs;
+        destination.Scope = source.Scope;
     }
 
     private static bool MapsEqual(EditMap left, EditMap right)

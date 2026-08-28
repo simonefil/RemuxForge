@@ -1,3 +1,4 @@
+using RemuxForge.Core.Analysis.Edit.Extraction;
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
@@ -162,6 +163,7 @@ namespace RemuxForge.Web
 
             // Registra servizi
             builder.Services.AddSingleton(new VideoFrameAccessService(ffprobePath, mkvMergePath, mkvExtractPath, ffmpegPath, AppSettingsService.Instance.Settings.Advanced.Ffmpeg));
+            builder.Services.AddSingleton(new AudioEnvelopeExtractor(ffmpegPath, ffprobePath));
             builder.Services.AddSingleton<MergeOrchestrator>();
             builder.Services.AddSingleton<SplitOrchestrator>();
             builder.Services.AddSingleton<MetadataOrchestrator>();
@@ -236,6 +238,78 @@ namespace RemuxForge.Web
                 catch (ArgumentOutOfRangeException exception)
                 {
                     return Results.BadRequest(exception.Message);
+                }
+                catch (InvalidOperationException exception)
+                {
+                    return Results.Problem(exception.Message, statusCode: StatusCodes.Status422UnprocessableEntity);
+                }
+            });
+            app.MapGet("/api/edit-map-waveform/{recordIndex:int}/{side}", async (int recordIndex, string side, double durationMs, HttpContext context, MergeOrchestrator orchestrator, AudioEnvelopeExtractor audioExtractor) =>
+            {
+                if (!double.IsFinite(durationMs) || durationMs <= 0.0 || durationMs > TimeSpan.FromDays(1).TotalMilliseconds)
+                    return Results.BadRequest("Invalid waveform duration");
+
+                FileProcessingRecord record = orchestrator.GetRecord(recordIndex);
+                if (record == null)
+                    return Results.NotFound();
+
+                string filePath;
+                int streamIndex;
+                int trackId;
+                bool useTrackId;
+                if (string.Equals(side, "source", StringComparison.OrdinalIgnoreCase))
+                {
+                    filePath = record.SourceFilePath;
+                    if (!audioExtractor.ResolveSharedStreams(record.SourceFilePath, record.LangFilePath, AppSettingsService.Instance.Settings.Advanced.Ffmpeg.FrameExtractionTimeoutMs, out streamIndex, out _))
+                        return Results.NoContent();
+                    trackId = -1;
+                    useTrackId = false;
+                }
+                else if (string.Equals(side, "language", StringComparison.OrdinalIgnoreCase))
+                {
+                    filePath = record.LangFilePath;
+                    if (record.ImportedAudioTracks == null || record.ImportedAudioTracks.Count == 0)
+                        return Results.NoContent();
+                    streamIndex = -1;
+                    trackId = record.ImportedAudioTracks[0].Id;
+                    useTrackId = true;
+                }
+                else
+                {
+                    return Results.BadRequest("Invalid waveform side");
+                }
+
+                if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+                    return Results.NotFound();
+
+                try
+                {
+                    int timeoutMs = AppSettingsService.Instance.Settings.Advanced.Ffmpeg.FrameExtractionTimeoutMs;
+                    AudioWaveform waveform = await Task.Run(() => useTrackId
+                        ? audioExtractor.GenerateWaveformForTrackId(filePath, trackId, durationMs, timeoutMs, context.RequestAborted)
+                        : audioExtractor.GenerateWaveform(filePath, streamIndex, durationMs, timeoutMs, context.RequestAborted), context.RequestAborted);
+                    using MemoryStream payload = new MemoryStream();
+                    using (BinaryWriter writer = new BinaryWriter(payload, System.Text.Encoding.UTF8, true))
+                    {
+                        writer.Write(new byte[] { (byte)'R', (byte)'F', (byte)'W', (byte)'1' });
+                        writer.Write(waveform.TileWidth);
+                        writer.Write(waveform.TileHeight);
+                        writer.Write(waveform.MillisecondsPerPixel);
+                        writer.Write(waveform.TileDurationMs);
+                        writer.Write(waveform.OriginMs);
+                        writer.Write(waveform.Tiles.Count);
+                        for (int i = 0; i < waveform.Tiles.Count; i++)
+                        {
+                            writer.Write(waveform.Tiles[i].Length);
+                            writer.Write(waveform.Tiles[i]);
+                        }
+                    }
+                    context.Response.Headers.CacheControl = "no-store";
+                    return Results.Bytes(payload.ToArray(), "application/vnd.remuxforge.waveform");
+                }
+                catch (OperationCanceledException)
+                {
+                    return Results.StatusCode(499);
                 }
                 catch (InvalidOperationException exception)
                 {
