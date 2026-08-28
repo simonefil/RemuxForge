@@ -537,7 +537,7 @@ nav.rf-mode-navigation .rz-button.rz-primary.rz-variant-text {
 }
 
 .rz-notification {
-    z-index: 9999;
+    z-index: 9999 !important;
 }
 
 .rz-notification-message {

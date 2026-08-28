@@ -205,7 +205,7 @@ namespace RemuxForge.Web
                     CancellationToken cancellationToken = context.RequestAborted;
                     List<VideoRawFrame> frames = await Task.Run(() => frameAccess.ExtractFrameRange(filePath, frameIndex, frameCount, width, height, cancellationToken), cancellationToken);
                     VideoRawFrame frame = frames[0];
-                    string etag = frame.ETag.Substring(0, frame.ETag.Length - 1) + "-" + frameCount.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\"";
+                    string etag = frame.ETag.Substring(0, frame.ETag.Length - 1) + "-" + frames.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\"";
                     if (string.Equals(context.Request.Headers.IfNoneMatch.ToString(), etag, StringComparison.Ordinal))
                         return Results.StatusCode(StatusCodes.Status304NotModified);
 

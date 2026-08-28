@@ -30,6 +30,9 @@ export function captureKeyboard(dotNetRef) {
             }
             if (key === 'Escape') {
                 e.preventDefault();
+                if (activeDialog.hasAttribute('data-keyboard-owner')) {
+                    return;
+                }
                 if (!closeActiveDialog(activeDialog)) {
                     dotNetRef.invokeMethodAsync('OnKeyDown', key, ctrl, shift, alt);
                 }

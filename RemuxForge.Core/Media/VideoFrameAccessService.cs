@@ -366,8 +366,9 @@ namespace RemuxForge.Core.Media
 
             int timeoutMs = Math.Max(1000, this._ffmpegConfig.FrameExtractionTimeoutMs);
             VideoFrameIndex index = this.GetOrBuildIndex(filePath, timeoutMs, cancellationToken);
+            count = Math.Min(count, Math.Max(0, index.FrameCount - presentationIndex));
             VideoFrameIndexEntry requested = index.GetFrame(presentationIndex);
-            if (requested == null || presentationIndex + count > index.FrameCount)
+            if (requested == null || count <= 0)
                 throw new ArgumentOutOfRangeException(nameof(presentationIndex), "Frame fuori indice");
 
             ResolveOutputDimensions(index, maximumWidth, maximumHeight, out int width, out int height);

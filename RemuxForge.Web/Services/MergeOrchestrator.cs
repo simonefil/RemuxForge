@@ -763,12 +763,12 @@ namespace RemuxForge.Web.Services
             errorMessage = "";
             if (editedMap == null || editedMap.Operations == null || editedMap.Operations.Count == 0)
             {
-                errorMessage = "La EditMap deve contenere almeno un'operazione";
+                errorMessage = AppText.T("web.editMap.mapRequired");
                 return false;
             }
             if (!double.IsFinite(sourceDurationMs) || sourceDurationMs <= 0.0 || !double.IsFinite(languageDurationMs) || languageDurationMs <= 0.0)
             {
-                errorMessage = "Le timeline indicizzate non sono più disponibili";
+                errorMessage = AppText.T("web.editMap.indexesUnavailable");
                 return false;
             }
             if (!this.TryBeginOperation())
@@ -786,24 +786,24 @@ namespace RemuxForge.Web.Services
                 }
                 if (original == null || !string.Equals(original.EpisodeId, expectedEpisodeId, StringComparison.Ordinal) || !string.Equals(original.SourceFilePath, expectedSourcePath, StringComparison.Ordinal) || !string.Equals(original.LangFilePath, expectedLanguagePath, StringComparison.Ordinal))
                 {
-                    errorMessage = "Il record aperto non coincide più con quello corrente";
+                    errorMessage = AppText.T("web.editMap.recordChanged");
                     return false;
                 }
                 if (original.Status == FileStatus.Done || original.Status == FileStatus.Processing || original.Status == FileStatus.Skipped)
                 {
-                    errorMessage = "La EditMap non può essere modificata nello stato corrente";
+                    errorMessage = AppText.T("web.editMap.stateNotEditable");
                     return false;
                 }
                 if (!File.Exists(original.SourceFilePath) || !File.Exists(original.LangFilePath))
                 {
-                    errorMessage = "I file del record non sono più disponibili";
+                    errorMessage = AppText.T("web.editMap.filesUnavailable");
                     return false;
                 }
 
                 EditMapProjection projection = EditMapTimelineHelper.BuildProjection(EditMapTimelineHelper.Clone(editedMap), sourceDurationMs, languageDurationMs);
                 if (!projection.Validation.IsValid)
                 {
-                    errorMessage = "La EditMap contiene " + projection.Validation.Errors.Count.ToString() + " errori strutturali";
+                    errorMessage = AppText.F("web.editMap.structuralErrorCount", projection.Validation.Errors.Count);
                     return false;
                 }
 
@@ -820,7 +820,7 @@ namespace RemuxForge.Web.Services
                 this._pipeline.BuildMergeCommand(updated);
                 if (updated.Status != FileStatus.Analyzed)
                 {
-                    errorMessage = !string.IsNullOrEmpty(updated.ErrorMessage) ? updated.ErrorMessage : "Impossibile ricostruire il piano di remux";
+                    errorMessage = !string.IsNullOrEmpty(updated.ErrorMessage) ? updated.ErrorMessage : AppText.T("web.editMap.rebuildFailed");
                     return false;
                 }
 
@@ -828,13 +828,13 @@ namespace RemuxForge.Web.Services
                 {
                     if (index < 0 || index >= this._records.Count || !object.ReferenceEquals(this._records[index], original))
                     {
-                        errorMessage = "Il record è cambiato durante l'applicazione";
+                        errorMessage = AppText.T("web.editMap.changedWhileApplying");
                         return false;
                     }
                     this._records[index] = updated;
                 }
 
-                this.AppendLog("EditMap manuale applicata a " + updated.EpisodeId + ": " + updated.DeepAnalysisMap.Operations.Count.ToString() + " operazioni");
+                this.AppendLog(AppText.F("web.editMap.appliedLog", updated.EpisodeId, updated.DeepAnalysisMap.Operations.Count));
                 this.OnRecordsChanged?.Invoke();
                 return true;
             }
