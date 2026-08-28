@@ -128,30 +128,14 @@ namespace RemuxForge.Core.Analysis.Speed
         /// </summary>
         public static bool TryParseStretchFactor(string value, out double ratio, out string normalized)
         {
-            ratio = 0.0;
-            normalized = "";
-            string text = value != null ? value.Trim() : "";
-            if (string.IsNullOrEmpty(text))
-                return false;
-            int separatorIndex = text.IndexOf('/');
-            if (separatorIndex >= 0)
+            if (string.IsNullOrEmpty(value != null ? value.Trim() : null))
             {
-                if (separatorIndex == 0 || separatorIndex == text.Length - 1 || text.IndexOf('/', separatorIndex + 1) >= 0)
-                    return false;
-                if (!double.TryParse(text.Substring(0, separatorIndex), NumberStyles.Float, CultureInfo.InvariantCulture, out double numerator) ||
-                    !double.TryParse(text.Substring(separatorIndex + 1), NumberStyles.Float, CultureInfo.InvariantCulture, out double denominator) ||
-                    numerator <= 0.0 || denominator <= 0.0 || double.IsNaN(numerator) || double.IsInfinity(numerator) || double.IsNaN(denominator) || double.IsInfinity(denominator))
-                    return false;
-                ratio = numerator / denominator;
-                if (!double.IsFinite(ratio) || ratio <= 0.0)
-                    return false;
-                normalized = text;
-                return true;
-            }
-            if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out ratio) || ratio <= 0.0 || double.IsNaN(ratio) || double.IsInfinity(ratio))
+                ratio = 0.0;
+                normalized = "";
                 return false;
-            normalized = ratio.ToString("R", CultureInfo.InvariantCulture);
-            return true;
+            }
+
+            return EditMapTimelineHelper.TryParseStretchFactor(value, out ratio, out normalized);
         }
 
         /// <summary>
