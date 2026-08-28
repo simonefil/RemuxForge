@@ -41,7 +41,13 @@
     font-weight: 400;
 }
 
-.edit-map-page-body,
+.edit-map-page-body {
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
 .edit-map-main-splitter,
 .edit-map-preview-section,
 .edit-map-timeline-pane,

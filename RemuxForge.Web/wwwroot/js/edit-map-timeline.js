@@ -939,13 +939,14 @@ function drawTimeGrid(context, width, left, startMs, endMs, pixelsPerMs, top, bo
 function drawAmplitudeGrid(context, left, width, top, height, color, labelColor) {
     const center = top + height / 2;
     const halfHeight = Math.max(1, height / 2 - 1);
-    const levels = height >= 54 ? [0, -6, -12, -24] : [0, -12];
+    const levels = height >= 110 ? [0, -6, -12, -24, -48] : height >= 70 ? [0, -6, -12, -24] : height >= 45 ? [0, -12] : [0];
     context.save();
     context.strokeStyle = color;
     context.fillStyle = labelColor;
     context.lineWidth = 1;
     context.textAlign = 'right';
-    let lastLabelY = Number.NEGATIVE_INFINITY;
+    let lastUpperLabelY = Number.NEGATIVE_INFINITY;
+    let lastLowerLabelY = Number.POSITIVE_INFINITY;
     for (const decibels of levels) {
         const amplitude = Math.pow(10, decibels / 20);
         const upper = center - amplitude * halfHeight;
@@ -954,16 +955,20 @@ function drawAmplitudeGrid(context, left, width, top, height, color, labelColor)
         context.beginPath();
         context.moveTo(left, Math.round(upper) + 0.5);
         context.lineTo(width, Math.round(upper) + 0.5);
-        if (decibels !== 0) {
-            context.moveTo(left, Math.round(lower) + 0.5);
-            context.lineTo(width, Math.round(lower) + 0.5);
-        }
+        context.moveTo(left, Math.round(lower) + 0.5);
+        context.lineTo(width, Math.round(lower) + 0.5);
         context.stroke();
         context.globalAlpha = 1;
-        const labelY = Math.max(top + 7, upper);
-        if (labelY - lastLabelY >= 12) {
-            context.fillText(decibels === 0 ? '0 dB' : `${decibels} dB`, left - 5, labelY);
-            lastLabelY = labelY;
+        const label = decibels === 0 ? '0 dB' : `${decibels} dB`;
+        const upperLabelY = Math.max(top + 7, upper);
+        const lowerLabelY = Math.min(top + height - 7, lower);
+        if (upperLabelY - lastUpperLabelY >= 12) {
+            context.fillText(label, left - 5, upperLabelY);
+            lastUpperLabelY = upperLabelY;
+        }
+        if (lastLowerLabelY - lowerLabelY >= 12) {
+            context.fillText(label, left - 5, lowerLabelY);
+            lastLowerLabelY = lowerLabelY;
         }
     }
     context.globalAlpha = 0.45;
@@ -972,7 +977,7 @@ function drawAmplitudeGrid(context, left, width, top, height, color, labelColor)
     context.lineTo(width, Math.round(center) + 0.5);
     context.stroke();
     context.globalAlpha = 1;
-    if (center - lastLabelY >= 12)
+    if (center - lastUpperLabelY >= 12 && lastLowerLabelY - center >= 12)
         context.fillText('-∞', left - 5, center);
     context.textAlign = 'start';
     context.restore();
