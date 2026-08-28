@@ -1139,6 +1139,13 @@ namespace RemuxForge.Core.Audio
                 result.BitsPerSample = 16;
             }
 
+            // Il file temporaneo descrive il formato prodotto, non l'identità della traccia originale.
+            result.Language = fallback.Language;
+            result.LanguageIetf = fallback.LanguageIetf;
+            result.Name = fallback.Name;
+            result.DefaultTrack = fallback.DefaultTrack;
+            result.ForcedTrack = fallback.ForcedTrack;
+
             return result;
         }
 

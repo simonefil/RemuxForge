@@ -381,7 +381,7 @@ namespace RemuxForge.Core.Media.Mkv
                         // Imposta lingua e titolo sulla traccia convertita (trackId 0 nel file standalone)
                         if (origTrack != null)
                         {
-                            AddAudioLanguageMetadata(mkvArgs, origTrack);
+                            AddStandaloneAudioMetadata(mkvArgs, origTrack);
                         }
 
                         mkvArgs.Add(req.ConvertedSourceTracks[srcId]);
@@ -498,7 +498,7 @@ namespace RemuxForge.Core.Media.Mkv
                             TrackInfo origLangTrack = req.ProcessedLangAudioInfo != null && req.ProcessedLangAudioInfo.TryGetValue(langId, out TrackInfo processedLangTrack) ? processedLangTrack : FindTrackById(req.LangAudioTracks, langId);
                             if (origLangTrack != null)
                             {
-                                AddAudioLanguageMetadata(mkvArgs, origLangTrack);
+                                AddStandaloneAudioMetadata(mkvArgs, origLangTrack);
                             }
 
                             mkvArgs.Add(req.ConvertedLangTracks[langId]);
@@ -810,11 +810,11 @@ namespace RemuxForge.Core.Media.Mkv
         }
 
         /// <summary>
-        /// Aggiunge solo la lingua per una traccia audio standalone
+        /// Aggiunge i metadati originali per una traccia audio standalone
         /// </summary>
         /// <param name="mkvArgs">Lista argomenti mkvmerge in costruzione</param>
         /// <param name="origTrack">Traccia originale con metadati lingua</param>
-        private static void AddAudioLanguageMetadata(List<string> mkvArgs, TrackInfo origTrack)
+        private static void AddStandaloneAudioMetadata(List<string> mkvArgs, TrackInfo origTrack)
         {
             // Lingua: usa IETF se disponibile, altrimenti ISO 639-2
             if (!string.IsNullOrEmpty(origTrack.LanguageIetf))
@@ -827,6 +827,17 @@ namespace RemuxForge.Core.Media.Mkv
                 mkvArgs.Add("--language");
                 mkvArgs.Add("0:" + origTrack.Language);
             }
+
+            if (!string.IsNullOrEmpty(origTrack.Name))
+            {
+                mkvArgs.Add("--track-name");
+                mkvArgs.Add("0:" + origTrack.Name);
+            }
+
+            mkvArgs.Add("--default-track");
+            mkvArgs.Add("0:" + (origTrack.DefaultTrack ? "yes" : "no"));
+            mkvArgs.Add("--forced-display-flag");
+            mkvArgs.Add("0:" + (origTrack.ForcedTrack ? "yes" : "no"));
         }
 
         /// <summary>
