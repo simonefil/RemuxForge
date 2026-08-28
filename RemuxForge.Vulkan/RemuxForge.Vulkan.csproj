@@ -38,7 +38,7 @@
     <MakeDir Directories="$(VulkanShaderOutputDirectory)" />
     <Exec Command="glslc --target-env=$(VulkanShaderTargetEnvironment) $(VulkanShaderOptimization) &quot;%(VulkanShader.Identity)&quot; -o &quot;$(VulkanShaderOutputDirectory)/%(VulkanShader.Filename).spv&quot;" />
     <Exec Command="spirv-val --target-env $(VulkanShaderTargetEnvironment) &quot;$(VulkanShaderOutputDirectory)/%(VulkanShader.Filename).spv&quot;" />
-    <MSBuild Projects="$(VulkanShaderManifestToolProject)" Targets="Build" Properties="Configuration=$(Configuration)" />
+    <MSBuild Projects="$(VulkanShaderManifestToolProject)" Targets="Restore;Build" Properties="Configuration=$(Configuration)" RemoveProperties="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSingleFile" />
     <Exec Command="dotnet &quot;$(VulkanShaderManifestTool)&quot; &quot;$(MSBuildProjectDirectory)/Shaders&quot; &quot;$(VulkanShaderOutputDirectory)&quot; &quot;$(MSBuildProjectDirectory)/Shaders/ShaderAbi.txt&quot; &quot;$(VulkanShaderManifest)&quot; &quot;$(VulkanShaderTargetEnvironment)&quot; &quot;$(VulkanShaderOptimization)&quot;" />
   </Target>
 
