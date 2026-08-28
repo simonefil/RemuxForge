@@ -41,7 +41,7 @@
                                                     <span>@_sourcePreviewMessage</span>
                                                     @if (_previewFailed)
                                                     {
-                                                        <RadzenButton Text="@AppText.T("web.editMap.retry")" Size="ButtonSize.Small" Click="RetryPreviewAsync" />
+                                                        <RadzenButton Text="@AppText.T("web.editMap.retry")" Size="ButtonSize.Small" Click="RefreshPreviewAsync" />
                                                     }
                                                 </div>
                                             }
@@ -77,7 +77,7 @@
                                                     <span>@_languagePreviewMessage</span>
                                                     @if (_previewFailed)
                                                     {
-                                                        <RadzenButton Text="@AppText.T("web.editMap.retry")" Size="ButtonSize.Small" Click="RetryPreviewAsync" />
+                                                        <RadzenButton Text="@AppText.T("web.editMap.retry")" Size="ButtonSize.Small" Click="RefreshPreviewAsync" />
                                                     }
                                                 </div>
                                             }
@@ -123,34 +123,26 @@
                 <RadzenSplitter class="edit-map-row-splitter">
                     <RadzenSplitterPane Size="66.6667%" Min="540px">
                         <section class="edit-map-timeline-pane">
-                            <div class="edit-map-waveform-toolbar">
-                                <label class="edit-map-audio-track-select">
-                                    <span>@AppText.T("web.editMap.sourceAudio")</span>
-                                    <select class="form-input" value="@_selectedSourceAudioTrackId" @onchange="ChangeSourceAudioTrackAsync" disabled="@(Record?.SourceAudioTracks == null || Record.SourceAudioTracks.Count == 0)">
-                                        @foreach (TrackInfo track in Record?.SourceAudioTracks ?? new List<TrackInfo>())
-                                        {
-                                            <option value="@track.Id">@Utils.FormatTrackCompact(track)</option>
-                                        }
-                                    </select>
-                                </label>
-                                <label class="edit-map-audio-track-select">
-                                    <span>@AppText.T("web.editMap.languageAudio")</span>
-                                    <select class="form-input" value="@_selectedLanguageAudioTrackId" @onchange="ChangeLanguageAudioTrackAsync" disabled="@(Record?.ImportedAudioTracks == null || Record.ImportedAudioTracks.Count == 0)">
-                                        @foreach (TrackInfo track in Record?.ImportedAudioTracks ?? new List<TrackInfo>())
-                                        {
-                                            <option value="@track.Id">@Utils.FormatTrackCompact(track)</option>
-                                        }
-                                    </select>
-                                </label>
-                                <div class="edit-map-audio-mode" role="group" aria-label="@AppText.T("web.editMap.audioVisualization")">
-                                    <RadzenButton Text="@AppText.T("web.editMap.waveform")" Size="ButtonSize.Small" Variant="@GetAudioModeButtonVariant(AUDIO_MODE_WAVEFORM)" ButtonStyle="@GetAudioModeButtonStyle(AUDIO_MODE_WAVEFORM)" Click="@(() => SetAudioModeAsync(AUDIO_MODE_WAVEFORM))" />
-                                    <RadzenButton Text="@AppText.T("web.editMap.spectrogram")" Size="ButtonSize.Small" Variant="@GetAudioModeButtonVariant(AUDIO_MODE_SPECTROGRAM)" ButtonStyle="@GetAudioModeButtonStyle(AUDIO_MODE_SPECTROGRAM)" Click="@(() => SetAudioModeAsync(AUDIO_MODE_SPECTROGRAM))" />
-                                </div>
-                                <label class="edit-map-waveform-height">
-                                    <span>@AppText.T("web.editMap.waveformHeight")</span>
-                                    <RadzenSlider TValue="double" Value="@_waveformGain" Change="SetWaveformGainAsync" Min="1" Max="12" Step="0.25" Disabled="@IsSpectrogram" aria-label="@AppText.T("web.editMap.waveformHeight")" />
-                                    <output>@_waveformGain.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)×</output>
-                                </label>
+                            <div class="edit-map-waveform-toolbar" role="group" aria-label="@AppText.T("web.editMap.audioVisualization")">
+                                <label class="edit-map-audio-label" for="edit-map-source-audio">@AppText.T("web.editMap.sourceAudio")</label>
+                                <select id="edit-map-source-audio" class="form-input edit-map-audio-control" value="@_selectedSourceAudioTrackId" @onchange="@(args => ChangeAudioTrackAsync(args, true))" disabled="@(Record?.SourceAudioTracks == null || Record.SourceAudioTracks.Count == 0)">
+                                    @foreach (TrackInfo track in Record?.SourceAudioTracks ?? new List<TrackInfo>())
+                                    {
+                                        <option value="@track.Id">@Utils.FormatTrackCompact(track)</option>
+                                    }
+                                </select>
+                                <label class="edit-map-audio-label" for="edit-map-language-audio">@AppText.T("web.editMap.languageAudio")</label>
+                                <select id="edit-map-language-audio" class="form-input edit-map-audio-control" value="@_selectedLanguageAudioTrackId" @onchange="@(args => ChangeAudioTrackAsync(args, false))" disabled="@(Record?.ImportedAudioTracks == null || Record.ImportedAudioTracks.Count == 0)">
+                                    @foreach (TrackInfo track in Record?.ImportedAudioTracks ?? new List<TrackInfo>())
+                                    {
+                                        <option value="@track.Id">@Utils.FormatTrackCompact(track)</option>
+                                    }
+                                </select>
+                                <RadzenButton class="edit-map-audio-mode-button" Text="@AppText.T("web.editMap.waveform")" Size="ButtonSize.Small" Variant="@GetAudioModeButtonVariant(AUDIO_MODE_WAVEFORM)" ButtonStyle="@GetAudioModeButtonStyle(AUDIO_MODE_WAVEFORM)" Click="@(() => SetAudioModeAsync(AUDIO_MODE_WAVEFORM))" />
+                                <RadzenButton class="edit-map-audio-mode-button" Text="@AppText.T("web.editMap.spectrogram")" Size="ButtonSize.Small" Variant="@GetAudioModeButtonVariant(AUDIO_MODE_SPECTROGRAM)" ButtonStyle="@GetAudioModeButtonStyle(AUDIO_MODE_SPECTROGRAM)" Click="@(() => SetAudioModeAsync(AUDIO_MODE_SPECTROGRAM))" />
+                                <span class="edit-map-waveform-height-label">@AppText.T("web.editMap.waveformHeight")</span>
+                                <RadzenSlider TValue="double" Value="@_waveformGain" Change="SetWaveformGainAsync" Min="1" Max="12" Step="0.25" Disabled="@IsSpectrogram" aria-label="@AppText.T("web.editMap.waveformHeight")" />
+                                <output>@_waveformGain.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)×</output>
                             </div>
                             <div @ref="_timelineHost" class="edit-map-timeline-host" aria-label="@AppText.T("web.editMap.timeline")">
                                 <div class="edit-map-timeline-scroll-range"></div>
@@ -214,7 +206,7 @@
     /// <summary>Indica che la pipeline è occupata da una operazione incompatibile</summary>
     [Parameter] public bool IsBusy { get; set; }
 
-    private CancellationTokenSource _cancellation = new CancellationTokenSource();
+    private readonly CancellationTokenSource _cancellation = new CancellationTokenSource();
     private EditMap _originalMap = new EditMap();
     private EditMap _workingMap = new EditMap();
     private EditMapProjection _projection;
@@ -287,7 +279,6 @@
         if (this.IndexesReady)
         {
             this.RebuildProjection();
-            this._workingMap = this._projection.Map;
             this._originalMap = EditMapTimelineHelper.Clone(this._workingMap);
             this.NavigateFromSource(0.0);
         }
@@ -375,7 +366,14 @@
         return AppText.T("web.editMap.ready");
     }
 
-    private BadgeStyle GetStateStyle() => !string.IsNullOrEmpty(this._sourceError) || !string.IsNullOrEmpty(this._languageError) || (this._projection != null && !this._projection.Validation.IsValid) ? BadgeStyle.Danger : this._sourceIndexing || this._languageIndexing ? BadgeStyle.Info : this._dirty ? BadgeStyle.Warning : BadgeStyle.Success;
+    private BadgeStyle GetStateStyle()
+    {
+        if (!string.IsNullOrEmpty(this._sourceError) || !string.IsNullOrEmpty(this._languageError) || (this._projection != null && !this._projection.Validation.IsValid))
+            return BadgeStyle.Danger;
+        if (this._sourceIndexing || this._languageIndexing)
+            return BadgeStyle.Info;
+        return this._dirty ? BadgeStyle.Warning : BadgeStyle.Success;
+    }
 
     private string GetValidationSummary()
     {
@@ -406,8 +404,6 @@
 
     private void RebuildProjection()
     {
-        EditMapProjection normalized = EditMapTimelineHelper.BuildProjection(this._workingMap, this._sourceIndex.EndPtsMs, this._languageIndex.EndPtsMs);
-        this._workingMap = normalized.Map;
         this._projection = EditMapTimelineHelper.BuildProjection(this._workingMap, this._sourceIndex.EndPtsMs, this._languageIndex.EndPtsMs);
         this._workingMap = this._projection.Map;
     }
@@ -501,8 +497,6 @@
         this.StateHasChanged();
     }
 
-    private Task RetryPreviewAsync() => this.RefreshPreviewAsync();
-
     private object BuildTimelineModel()
     {
         List<object> segments = new List<object>();
@@ -557,18 +551,6 @@
             return 0.0;
         TrackInfo track = tracks.Find(candidate => candidate.Id == trackId.Value);
         return track != null && track.SamplingFrequency > 0 ? track.SamplingFrequency / 2.0 : 0.0;
-    }
-
-    /// <summary>Aggiorna la traccia Source e rigenera la visualizzazione audio</summary>
-    private async Task ChangeSourceAudioTrackAsync(ChangeEventArgs args)
-    {
-        await this.ChangeAudioTrackAsync(args, true);
-    }
-
-    /// <summary>Aggiorna la traccia Language e rigenera la visualizzazione audio</summary>
-    private async Task ChangeLanguageAudioTrackAsync(ChangeEventArgs args)
-    {
-        await this.ChangeAudioTrackAsync(args, false);
     }
 
     /// <summary>Valida il cambio traccia contro l'elenco del record corrente</summary>
@@ -730,7 +712,7 @@
     private Task HandleSourceTimestampKeyAsync(KeyboardEventArgs args) => string.Equals(args.Key, "Enter", StringComparison.Ordinal) ? this.CommitSourceTimestampAsync() : Task.CompletedTask;
     private Task HandleLanguageTimestampKeyAsync(KeyboardEventArgs args) => string.Equals(args.Key, "Enter", StringComparison.Ordinal) ? this.CommitLanguageTimestampAsync() : Task.CompletedTask;
 
-    private async Task SelectOperationRowAsync(DataGridRowMouseEventArgs<EditOperation> args) => await this.SelectOperationAsync(this._workingMap.Operations.IndexOf(args.Data), true);
+    private Task SelectOperationRowAsync(DataGridRowMouseEventArgs<EditOperation> args) => this.SelectOperationAsync(this._workingMap.Operations.IndexOf(args.Data), true);
 
     private void RenderOperationRow(RowRenderEventArgs<EditOperation> args)
     {
@@ -789,8 +771,8 @@
         }
 
         string type = operation.Type;
+        this._projection = candidate;
         this._workingMap = candidate.Map;
-        this.RebuildProjection();
         this._selectedOperation = FindOperation(this._workingMap.Operations, type, languageTimestamp, languageDuration);
         this._timestampEditAuthority = "";
         this._durationEditAuthority = "";
@@ -902,7 +884,6 @@
         this._workingMap.Operations.Remove(this._selectedOperation);
         this._selectedOperation = null;
         this.RebuildProjection();
-        this._workingMap = this._projection.Map;
         this.UpdateDirtyState();
         this.NavigateFromSource(this._sourcePlayheadMs);
         if (this._operationGrid != null)
@@ -945,8 +926,8 @@
             this.WarnInvalidValue();
             return;
         }
+        this._projection = candidate;
         this._workingMap = candidate.Map;
-        this.RebuildProjection();
         this._selectedOperation = FindOperation(this._workingMap.Operations, selected.Type, selected.LangTimestampMs, selected.DurationMs);
         await this.FinishMapMutationAsync();
     }
@@ -1086,8 +1067,8 @@
         }
         string type = this._selectedOperation.Type;
         int duration = this._selectedOperation.DurationMs;
+        this._projection = candidate;
         this._workingMap = candidate.Map;
-        this.RebuildProjection();
         this._selectedOperation = FindOperation(this._workingMap.Operations, type, timestamp, duration);
         this.UpdateDirtyState();
         this.RefreshOperationFields();
@@ -1133,8 +1114,8 @@
         }
 
         int duration = this._selectedOperation.DurationMs;
+        this._projection = candidate;
         this._workingMap = candidate.Map;
-        this.RebuildProjection();
         this._selectedOperation = FindOperation(this._workingMap.Operations, originalType, originalTimestamp, duration);
         this.UpdateDirtyState();
         this.RefreshOperationFields();

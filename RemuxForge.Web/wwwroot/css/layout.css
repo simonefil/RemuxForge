@@ -165,6 +165,12 @@
     background: var(--rz-base-background-color);
 }
 
+.detail-card-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: calc(var(--rz-gap) * 0.5);
+}
+
 .detail-card-danger {
     border-color: var(--rz-danger);
 }

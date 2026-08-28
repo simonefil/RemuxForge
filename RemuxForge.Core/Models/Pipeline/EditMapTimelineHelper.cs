@@ -121,21 +121,6 @@ namespace RemuxForge.Core.Models
 
         /// <summary>Fine nella timeline Language originale</summary>
         public double LanguageEndMs { get; set; }
-
-        /// <summary>Indice dell'operazione che genera il segmento, -1 per gli estremi impliciti</summary>
-        public int OperationIndex { get; set; }
-
-        /// <summary>Operazione normalizzata collegata al segmento, null per gli estremi impliciti</summary>
-        public EditOperation Operation { get; set; }
-
-        /// <summary>
-        /// Costruttore
-        /// </summary>
-        public EditMapTimelineSegment()
-        {
-            this.OperationIndex = -1;
-            this.Operation = null;
-        }
     }
 
     /// <summary>
@@ -151,9 +136,6 @@ namespace RemuxForge.Core.Models
 
         /// <summary>Timestamp Language richiesto o risolto</summary>
         public double LanguageTimestampMs { get; set; }
-
-        /// <summary>Segmento responsabile del risultato</summary>
-        public EditMapTimelineSegment Segment { get; set; }
 
         /// <summary>True quando entrambi i timestamp sono associati</summary>
         public bool IsMapped { get { return this.Kind == EditMapMappingKind.Mapped; } }
@@ -202,7 +184,6 @@ namespace RemuxForge.Core.Models
                 if (segment.Kind == EditMapTimelineSegmentKind.InsertedGap && ContainsSource(segment, sourceTimestampMs, false))
                 {
                     result.Kind = EditMapMappingKind.NoLanguageFrame;
-                    result.Segment = segment;
                     return result;
                 }
 
@@ -211,7 +192,6 @@ namespace RemuxForge.Core.Models
 
                 result.Kind = EditMapMappingKind.Mapped;
                 result.LanguageTimestampMs = segment.LanguageStartMs + (sourceTimestampMs - segment.SourceStartMs) / this.StretchRatio;
-                result.Segment = segment;
                 return result;
             }
 
@@ -240,7 +220,6 @@ namespace RemuxForge.Core.Models
                 {
                     result.Kind = EditMapMappingKind.NoSourceFrame;
                     result.SourceTimestampMs = segment.SourceStartMs;
-                    result.Segment = segment;
                     return result;
                 }
 
@@ -252,7 +231,6 @@ namespace RemuxForge.Core.Models
                     return result;
 
                 result.Kind = EditMapMappingKind.Mapped;
-                result.Segment = segment;
                 return result;
             }
 
@@ -550,7 +528,7 @@ namespace RemuxForge.Core.Models
             List<EditOperation> operations = projection.Map.Operations;
 
             if (currentSourceMs > 0.0)
-                projection.Segments.Add(CreateSegment(EditMapTimelineSegmentKind.InsertedGap, 0.0, currentSourceMs, 0.0, 0.0, -1, null));
+                projection.Segments.Add(CreateSegment(EditMapTimelineSegmentKind.InsertedGap, 0.0, currentSourceMs, 0.0, 0.0));
 
             for (int i = 0; i < operations.Count; i++)
             {
@@ -558,19 +536,19 @@ namespace RemuxForge.Core.Models
                 double boundaryLanguageMs = Math.Max(currentLanguageMs, operation.LangTimestampMs);
                 double mappedSourceEndMs = currentSourceMs + (boundaryLanguageMs - currentLanguageMs) * projection.StretchRatio;
                 if (boundaryLanguageMs > currentLanguageMs)
-                    projection.Segments.Add(CreateSegment(EditMapTimelineSegmentKind.Mapped, currentSourceMs, mappedSourceEndMs, currentLanguageMs, boundaryLanguageMs, -1, null));
+                    projection.Segments.Add(CreateSegment(EditMapTimelineSegmentKind.Mapped, currentSourceMs, mappedSourceEndMs, currentLanguageMs, boundaryLanguageMs));
                 currentLanguageMs = boundaryLanguageMs;
                 currentSourceMs = mappedSourceEndMs;
 
                 double renderedDurationMs = Math.Max(0.0, operation.DurationMs * projection.StretchRatio);
                 if (string.Equals(operation.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal))
                 {
-                    projection.Segments.Add(CreateSegment(EditMapTimelineSegmentKind.InsertedGap, currentSourceMs, currentSourceMs + renderedDurationMs, currentLanguageMs, currentLanguageMs, i, operation));
+                    projection.Segments.Add(CreateSegment(EditMapTimelineSegmentKind.InsertedGap, currentSourceMs, currentSourceMs + renderedDurationMs, currentLanguageMs, currentLanguageMs));
                     currentSourceMs += renderedDurationMs;
                 }
                 else if (string.Equals(operation.Type, EditOperation.CUT_SEGMENT, StringComparison.Ordinal))
                 {
-                    projection.Segments.Add(CreateSegment(EditMapTimelineSegmentKind.CutJump, currentSourceMs, currentSourceMs, currentLanguageMs, currentLanguageMs + operation.DurationMs, i, operation));
+                    projection.Segments.Add(CreateSegment(EditMapTimelineSegmentKind.CutJump, currentSourceMs, currentSourceMs, currentLanguageMs, currentLanguageMs + operation.DurationMs));
                     currentLanguageMs += operation.DurationMs;
                 }
             }
@@ -578,12 +556,12 @@ namespace RemuxForge.Core.Models
             if (projection.LanguageDurationMs > currentLanguageMs)
             {
                 double sourceEndMs = currentSourceMs + (projection.LanguageDurationMs - currentLanguageMs) * projection.StretchRatio;
-                projection.Segments.Add(CreateSegment(EditMapTimelineSegmentKind.Mapped, currentSourceMs, sourceEndMs, currentLanguageMs, projection.LanguageDurationMs, -1, null));
+                projection.Segments.Add(CreateSegment(EditMapTimelineSegmentKind.Mapped, currentSourceMs, sourceEndMs, currentLanguageMs, projection.LanguageDurationMs));
                 currentSourceMs = sourceEndMs;
             }
 
             if (projection.SourceDurationMs > currentSourceMs)
-                projection.Segments.Add(CreateSegment(EditMapTimelineSegmentKind.InsertedGap, Math.Max(0.0, currentSourceMs), projection.SourceDurationMs, projection.LanguageDurationMs, projection.LanguageDurationMs, -1, null));
+                projection.Segments.Add(CreateSegment(EditMapTimelineSegmentKind.InsertedGap, Math.Max(0.0, currentSourceMs), projection.SourceDurationMs, projection.LanguageDurationMs, projection.LanguageDurationMs));
         }
 
         /// <summary>
@@ -604,7 +582,7 @@ namespace RemuxForge.Core.Models
         /// <summary>
         /// Crea un segmento temporale
         /// </summary>
-        private static EditMapTimelineSegment CreateSegment(EditMapTimelineSegmentKind kind, double sourceStartMs, double sourceEndMs, double languageStartMs, double languageEndMs, int operationIndex, EditOperation operation)
+        private static EditMapTimelineSegment CreateSegment(EditMapTimelineSegmentKind kind, double sourceStartMs, double sourceEndMs, double languageStartMs, double languageEndMs)
         {
             return new EditMapTimelineSegment
             {
@@ -612,9 +590,7 @@ namespace RemuxForge.Core.Models
                 SourceStartMs = sourceStartMs,
                 SourceEndMs = sourceEndMs,
                 LanguageStartMs = languageStartMs,
-                LanguageEndMs = languageEndMs,
-                OperationIndex = operationIndex,
-                Operation = operation
+                LanguageEndMs = languageEndMs
             };
         }
 

@@ -79,8 +79,8 @@ class RawFrameRenderer {
         if (!this.gl) throw new Error('WebGL2 is required for raw video preview');
         this.program = createProgram(this.gl, vertexSource, fragmentSource);
         this.textures = [this.gl.createTexture(), this.gl.createTexture(), this.gl.createTexture(), this.gl.createTexture()];
-        const positions = this.gl.createBuffer();
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, positions);
+        this.positionBuffer = this.gl.createBuffer();
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.positionBuffer);
         this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), this.gl.STATIC_DRAW);
         const location = this.gl.getAttribLocation(this.program, 'a_position');
         this.gl.enableVertexAttribArray(location);
@@ -160,6 +160,7 @@ class RawFrameRenderer {
         this.gl.deleteTexture(this.textures[1]);
         this.gl.deleteTexture(this.textures[2]);
         this.gl.deleteTexture(this.textures[3]);
+        this.gl.deleteBuffer(this.positionBuffer);
         this.gl.deleteProgram(this.program);
     }
 }
@@ -354,7 +355,7 @@ class EditMapTimeline {
         this.onPointerMove = event => this.handlePointerMove(event);
         this.onPointerUp = event => this.handlePointerUp(event);
         this.onPointerLeave = () => { this.hoverX = null; this.draw(); };
-        this.onDoubleClick = () => this.setZoom('fit');
+        this.onDoubleClick = () => this.fitTimeline();
         host.addEventListener('scroll', this.onScroll, { passive: true });
         canvas.addEventListener('wheel', this.onWheel, { passive: false });
         canvas.addEventListener('pointerdown', this.onPointerDown);
@@ -364,7 +365,7 @@ class EditMapTimeline {
         canvas.addEventListener('pointerleave', this.onPointerLeave);
         canvas.addEventListener('dblclick', this.onDoubleClick);
         this.resize();
-        this.setZoom('fit');
+        this.fitTimeline();
         this.loadAudioImage(true);
         this.loadAudioImage(false);
     }
@@ -426,7 +427,7 @@ class EditMapTimeline {
         if (reloadLanguageAudio) this.loadAudioImage(false);
     }
 
-    setZoom(preset) {
+    fitTimeline() {
         const viewport = Math.max(1, this.host.clientWidth - this.plotLeft);
         this.pixelsPerMs = viewport / (this.model.durationMs || 1);
         this.updateRange();
@@ -1040,13 +1041,18 @@ async function parseAudioTimelineImage(buffer) {
     if (tileWidth < 1 || tileHeight < 1 || count < 1 || count > 64)
         throw new Error('Invalid audio timeline metadata');
     const tiles = [];
-    for (let index = 0; index < count; index++) {
-        if (offset + 4 > view.byteLength) throw new Error('Truncated audio timeline payload');
-        const length = view.getInt32(offset, true); offset += 4;
-        if (length < 1 || offset + length > view.byteLength) throw new Error('Truncated audio timeline tile');
-        const blob = new Blob([buffer.slice(offset, offset + length)], { type: 'image/png' });
-        tiles.push(await createImageBitmap(blob));
-        offset += length;
+    try {
+        for (let index = 0; index < count; index++) {
+            if (offset + 4 > view.byteLength) throw new Error('Truncated audio timeline payload');
+            const length = view.getInt32(offset, true); offset += 4;
+            if (length < 1 || offset + length > view.byteLength) throw new Error('Truncated audio timeline tile');
+            const blob = new Blob([buffer.slice(offset, offset + length)], { type: 'image/png' });
+            tiles.push(await createImageBitmap(blob));
+            offset += length;
+        }
+    } catch (error) {
+        for (const tile of tiles) tile.close();
+        throw error;
     }
     return { tileWidth, tileHeight, millisecondsPerPixel, tileDurationMs, originMs, tiles };
 }

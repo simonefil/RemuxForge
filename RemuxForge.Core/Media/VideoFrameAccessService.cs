@@ -45,7 +45,6 @@ namespace RemuxForge.Core.Media
             this.Frames = new List<VideoFrameIndexEntry>();
             this.PixelFormat = "";
             this.SampleAspectRatio = "1:1";
-            this.DisplayAspectRatio = "";
             this.ColorSpace = "";
             this.ColorRange = "";
             this.ColorPrimaries = "";
@@ -139,14 +138,8 @@ namespace RemuxForge.Core.Media
         /// <summary>Primo PTS originale</summary>
         public double FirstPtsMs { get; set; }
 
-        /// <summary>Ultimo PTS originale</summary>
-        public double LastPtsMs { get; set; }
-
         /// <summary>Fine stimata dell'ultimo intervallo di presentazione</summary>
         public double EndPtsMs { get; set; }
-
-        /// <summary>Durata della timeline relativa al primo PTS</summary>
-        public double DurationMs { get; set; }
 
         /// <summary>Passo mediano fra frame in millisecondi</summary>
         public double MedianFrameDurationMs { get; set; }
@@ -159,9 +152,6 @@ namespace RemuxForge.Core.Media
 
         /// <summary>Sample aspect ratio dichiarato</summary>
         public string SampleAspectRatio { get; set; }
-
-        /// <summary>Display aspect ratio dichiarato</summary>
-        public string DisplayAspectRatio { get; set; }
 
         /// <summary>Pixel format FFmpeg</summary>
         public string PixelFormat { get; set; }
@@ -320,9 +310,7 @@ namespace RemuxForge.Core.Media
             }
 
             result.FirstPtsMs = timestamps[0];
-            result.LastPtsMs = timestamps[timestamps.Count - 1];
-            result.EndPtsMs = result.LastPtsMs + medianDurationMs;
-            result.DurationMs = Math.Max(0.0, result.EndPtsMs - result.FirstPtsMs);
+            result.EndPtsMs = timestamps[timestamps.Count - 1] + medianDurationMs;
             lock (this._indices)
             {
                 this._indices[filePath] = result;
@@ -342,14 +330,6 @@ namespace RemuxForge.Core.Media
             }
 
             return this.BuildIndex(filePath, timeoutMs, cancellationToken);
-        }
-
-        /// <summary>
-        /// Estrae un frame esatto alla risoluzione utile della preview rispettando la configurazione hardware utente
-        /// </summary>
-        public VideoRawFrame ExtractFrame(string filePath, int presentationIndex, int maximumWidth, int maximumHeight, CancellationToken cancellationToken)
-        {
-            return this.ExtractFrameRange(filePath, presentationIndex, 1, maximumWidth, maximumHeight, cancellationToken)[0];
         }
 
         /// <summary>
@@ -565,7 +545,7 @@ namespace RemuxForge.Core.Media
                 return;
             ProcessResult run = ProcessRunner.Run(this._ffprobePath, new string[] {
                 "-v", "error", "-select_streams", "v:0",
-                "-show_entries", "stream=width,height,sample_aspect_ratio,display_aspect_ratio,pix_fmt,bits_per_raw_sample,color_space,color_range,color_primaries,color_transfer",
+                "-show_entries", "stream=width,height,sample_aspect_ratio,pix_fmt,bits_per_raw_sample,color_space,color_range,color_primaries,color_transfer",
                 "-of", "json", filePath }, timeoutMs, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             if (run.ExitCode != 0 || string.IsNullOrWhiteSpace(run.Stdout))
@@ -580,7 +560,6 @@ namespace RemuxForge.Core.Media
                 index.CodedWidth = ReadInt(stream, "width");
                 index.CodedHeight = ReadInt(stream, "height");
                 index.SampleAspectRatio = ReadString(stream, "sample_aspect_ratio", "1:1");
-                index.DisplayAspectRatio = ReadString(stream, "display_aspect_ratio", "");
                 index.PixelFormat = ReadString(stream, "pix_fmt", "");
                 index.BitDepth = ReadInt(stream, "bits_per_raw_sample");
                 if (index.BitDepth <= 0)

@@ -53,7 +53,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
     }
 
     /// <summary>
-    /// Estrae l'inviluppo di energia di una traccia audio con un solo comando ffmpeg
+    /// Estrae segnali di analisi e visualizzazioni complete da una traccia audio
     /// </summary>
     public class AudioEnvelopeExtractor
     {
@@ -205,24 +205,16 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         /// <returns>Tile della visualizzazione e relativa scala temporale</returns>
         public AudioTimelineImage GenerateTimelineImageForTrackId(string filePath, int trackId, double durationMs, bool spectrogram, int timeoutMs, CancellationToken cancellationToken)
         {
-            string selector = trackId.ToString(CultureInfo.InvariantCulture);
-            return this.GenerateTimelineImage(filePath, "0:" + selector, selector, durationMs, spectrogram, timeoutMs, cancellationToken);
-        }
-
-        /// <summary>
-        /// Genera le tile usando i selettori FFmpeg e ffprobe già risolti
-        /// </summary>
-        private AudioTimelineImage GenerateTimelineImage(string filePath, string ffmpegSelector, string ffprobeSelector, double durationMs, bool spectrogram, int timeoutMs, CancellationToken cancellationToken)
-        {
             const int tileWidth = 8192;
             const int tileHeight = 96;
             const int maximumTileCount = 32;
+            string selector = trackId.ToString(CultureInfo.InvariantCulture);
             double safeDurationMs = Math.Max(1.0, durationMs);
             double millisecondsPerPixel = Math.Max(1.0, safeDurationMs / (tileWidth * maximumTileCount));
             double tileDurationMs = tileWidth * millisecondsPerPixel;
             int tileCount = Math.Max(1, Math.Min(maximumTileCount, (int)Math.Ceiling(safeDurationMs / tileDurationMs)));
             string representedSeconds = (tileCount * tileDurationMs / 1000.0).ToString("0.######", CultureInfo.InvariantCulture);
-            string normalizedInput = "[" + ffmpegSelector + "]aformat=channel_layouts=mono,apad=whole_dur=" + representedSeconds + ",atrim=end=" + representedSeconds;
+            string normalizedInput = "[0:" + selector + "]aformat=channel_layouts=mono,apad=whole_dur=" + representedSeconds + ",atrim=end=" + representedSeconds;
             string temporaryDirectory = Path.Combine(Path.GetTempPath(), "remuxforge-audio-timeline-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(temporaryDirectory);
 
@@ -270,7 +262,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                     tiles.Add(File.ReadAllBytes(outputs[i]));
                 }
 
-                return new AudioTimelineImage(tileWidth, tileHeight, millisecondsPerPixel, tileDurationMs, this.ReadOriginMs(filePath, ffprobeSelector, timeoutMs), tiles);
+                return new AudioTimelineImage(tileWidth, tileHeight, millisecondsPerPixel, tileDurationMs, this.ReadOriginMs(filePath, selector, timeoutMs), tiles);
             }
             finally
             {

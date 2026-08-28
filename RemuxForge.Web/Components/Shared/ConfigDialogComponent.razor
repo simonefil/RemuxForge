@@ -166,10 +166,16 @@
                     {
                         <option value="@_customSpeedCorrectionFactor">@AppText.F("web.config.option.speedCustom", _customSpeedCorrectionFactor)</option>
                     }
+                    <option value="1001/1000">@AppText.T("web.config.option.speed23976To24")</option>
+                    <option value="1000/1001">@AppText.T("web.config.option.speed24To23976")</option>
                     <option value="1001/960">@AppText.T("web.config.option.speed23976To25")</option>
                     <option value="960/1001">@AppText.T("web.config.option.speed25To23976")</option>
                     <option value="5/4">@AppText.T("web.config.option.speed23976To2997")</option>
                     <option value="4/5">@AppText.T("web.config.option.speed2997To23976")</option>
+                    <option value="25/24">@AppText.T("web.config.option.speed24To25")</option>
+                    <option value="24/25">@AppText.T("web.config.option.speed25To24")</option>
+                    <option value="1250/1001">@AppText.T("web.config.option.speed24To2997")</option>
+                    <option value="1001/1250">@AppText.T("web.config.option.speed2997To24")</option>
                     <option value="1200/1001">@AppText.T("web.config.option.speed25To2997")</option>
                     <option value="1001/1200">@AppText.T("web.config.option.speed2997To25")</option>
                 </select>
@@ -1287,7 +1293,7 @@
     private static string NormalizeSpeedCorrectionPreset(string value)
     {
         string preset = value != null ? value.Trim() : "";
-        if (preset == "1001/960" || preset == "960/1001" || preset == "5/4" || preset == "4/5" || preset == "1200/1001" || preset == "1001/1200")
+        if (preset == "1001/1000" || preset == "1000/1001" || preset == "1001/960" || preset == "960/1001" || preset == "5/4" || preset == "4/5" || preset == "25/24" || preset == "24/25" || preset == "1250/1001" || preset == "1001/1250" || preset == "1200/1001" || preset == "1001/1200")
             return preset;
         return "";
     }

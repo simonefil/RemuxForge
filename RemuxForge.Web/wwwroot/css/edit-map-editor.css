@@ -223,35 +223,22 @@
     gap: calc(var(--rz-gap) * 0.45);
 }
 
-.edit-map-audio-track-select {
-    display: contents;
+.edit-map-audio-label,
+.edit-map-waveform-height-label {
     color: var(--rz-text-secondary-color);
-}
-
-.edit-map-audio-track-select > span,
-.edit-map-waveform-height > span {
     white-space: nowrap;
 }
 
-.edit-map-audio-track-select .form-input {
+.edit-map-audio-control {
     width: 100%;
     min-width: 0;
     font-size: var(--rz-text-caption-font-size);
 }
 
-.edit-map-audio-mode {
-    display: contents;
-}
-
-.edit-map-audio-mode .rz-button {
+.edit-map-audio-mode-button.rz-button {
     width: 100%;
     min-width: 0;
     height: var(--rz-input-height);
-}
-
-.edit-map-waveform-height {
-    display: contents;
-    color: var(--rz-text-secondary-color);
 }
 
 .edit-map-waveform-toolbar output {
@@ -334,10 +321,4 @@
 
 .edit-map-footer-spacer {
     flex: 1 1 auto;
-}
-
-.detail-card-actions {
-    display: flex;
-    justify-content: flex-end;
-    padding-top: calc(var(--rz-gap) * 0.5);
 }
