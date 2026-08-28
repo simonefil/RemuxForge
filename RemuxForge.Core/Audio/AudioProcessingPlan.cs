@@ -118,6 +118,7 @@ namespace RemuxForge.Core.Audio
             this.StretchRatio = 1.0;
             this.AudioTempo = 1.0;
             this.AudioTempoFilter = "";
+            this.InitialTimelineOffsetMs = 0;
             this.ErrorMessage = "";
         }
 
@@ -174,6 +175,11 @@ namespace RemuxForge.Core.Audio
         /// Catena atempo FFmpeg risolta
         /// </summary>
         public string AudioTempoFilter { get; set; }
+
+        /// <summary>
+        /// Origine temporale iniziale della traccia nel container, in millisecondi nel dominio nativo
+        /// </summary>
+        public int InitialTimelineOffsetMs { get; set; }
 
         /// <summary>
         /// True se la traccia language deve materializzare la EditMap
@@ -239,6 +245,8 @@ namespace RemuxForge.Core.Audio
             this.SourceFilledOperations = new List<EditOperation>();
             this.StretchRatio = 1.0;
             this.LangTempo = 1.0;
+            this.SourceInitialTimelineOffsetMs = 0;
+            this.LangInitialTimelineOffsetMs = 0;
             this.InitialSilenceMs = 0;
             this.InitialTrimMs = 0;
         }
@@ -271,6 +279,16 @@ namespace RemuxForge.Core.Audio
         /// Tempo ffmpeg corrispondente allo stretch richiesto
         /// </summary>
         public double LangTempo { get; set; }
+
+        /// <summary>
+        /// Origine della traccia source rispetto al video source, in millisecondi
+        /// </summary>
+        public int SourceInitialTimelineOffsetMs { get; set; }
+
+        /// <summary>
+        /// Origine della traccia language rispetto al video language, in millisecondi
+        /// </summary>
+        public int LangInitialTimelineOffsetMs { get; set; }
 
         /// <summary>
         /// Silenzio iniziale da materializzare quando il sync esterno viene bypassato

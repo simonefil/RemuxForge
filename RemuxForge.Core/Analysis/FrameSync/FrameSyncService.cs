@@ -204,7 +204,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
                 if (!this.TryPrepare(sourceFile, languageFile, result, timing, out int durationMs))
                     return int.MinValue;
 
-                FrameSyncCandidate initial = this.ResolveInitial(sourceFile, languageFile, durationMs, result, timing);
+                FrameSyncCandidate initial = this.ResolveInitial(sourceFile, languageFile, durationMs, result, timing, out bool initialFromAudio);
                 if (initial == null)
                     return int.MinValue;
 
@@ -212,7 +212,27 @@ namespace RemuxForge.Core.Analysis.FrameSync
                 ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Phase, AppText.F("framesync.match.checkpointPhase", this._vsConfig.NumCheckPoints));
                 ConsoleHelper.Progress(LogSection.FrameSync, 58, AppText.T("framesync.match.checkpointProgress"));
                 this.ResolveCheckpoints(sourceFile, languageFile, durationMs, initial, result, timing);
-                return this.FinalizeOffset(initial, result);
+                int finalOffset = this.FinalizeOffset(initial, result);
+                if (finalOffset != int.MinValue || !initialFromAudio)
+                    return finalOffset;
+
+                // L'audio serve solo ad accelerare la ricerca: un'origine di traccia diversa
+                // dal video non deve impedire al percorso visivo autorevole di risolvere l'offset
+                Stopwatch visualFallbackStopwatch = Stopwatch.StartNew();
+                FrameSyncCandidate visualInitial = this.ResolveVisualOffset(sourceFile, languageFile, durationMs, timing);
+                visualFallbackStopwatch.Stop();
+                timing.InitialSearchMs += visualFallbackStopwatch.ElapsedMilliseconds;
+                if (visualInitial == null || Math.Abs(visualInitial.OffsetMs - initial.OffsetMs) <= CHECKPOINT_TOLERANCE_MS)
+                    return finalOffset;
+
+                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Notice, AppText.F("framesync.match.audioFallbackVisual", Utils.FormatDelay(initial.OffsetMs), Utils.FormatDelay(visualInitial.OffsetMs)));
+                result.Initial.Candidates.Add(visualInitial);
+                result.Initial.BestCandidate = visualInitial;
+                this.ResetCheckpointResult(result);
+                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Phase, AppText.F("framesync.match.checkpointPhase", this._vsConfig.NumCheckPoints));
+                ConsoleHelper.Progress(LogSection.FrameSync, 58, AppText.T("framesync.match.checkpointProgress"));
+                this.ResolveCheckpoints(sourceFile, languageFile, durationMs, visualInitial, result, timing);
+                return this.FinalizeOffset(visualInitial, result);
             }
             catch (Exception ex)
             {
@@ -331,11 +351,13 @@ namespace RemuxForge.Core.Analysis.FrameSync
         /// <param name="durationMs">Durata della sorgente in millisecondi</param>
         /// <param name="result">Risultato diagnostico in costruzione</param>
         /// <param name="timing">Tempi della sessione</param>
+        /// <param name="fromAudio">True quando il candidato arriva dalla traccia audio condivisa</param>
         /// <returns>Candidato iniziale oppure null</returns>
-        private FrameSyncCandidate ResolveInitial(string sourceFile, string languageFile, int durationMs, FrameSyncResult result, FrameSyncTimingInfo timing)
+        private FrameSyncCandidate ResolveInitial(string sourceFile, string languageFile, int durationMs, FrameSyncResult result, FrameSyncTimingInfo timing, out bool fromAudio)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
             FrameSyncCandidate candidate = this.ResolveAudioOffset(sourceFile, languageFile, timing);
+            fromAudio = candidate != null;
             if (candidate == null)
                 candidate = this.ResolveVisualOffset(sourceFile, languageFile, durationMs, timing);
             timing.InitialSearchMs = stopwatch.ElapsedMilliseconds;
@@ -351,6 +373,22 @@ namespace RemuxForge.Core.Analysis.FrameSync
             result.Initial.BestCandidate = candidate;
             result.Initial.Success = true;
             return candidate;
+        }
+
+        /// <summary>
+        /// Azzera soltanto l'esito dei checkpoint prima del retry con candidato visivo
+        /// </summary>
+        /// <param name="result">Risultato FrameSync da riutilizzare</param>
+        private void ResetCheckpointResult(FrameSyncResult result)
+        {
+            result.Success = false;
+            result.OffsetMs = int.MinValue;
+            result.Confidence = 0.0;
+            result.InitialToFinalDeltaMs = int.MinValue;
+            result.FailureReason = "";
+            result.Points.Clear();
+            result.PrecisionCandidate = null;
+            result.PrecisionCheckpointPercent = -1;
         }
 
         /// <summary>
@@ -494,7 +532,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
                 ConsoleHelper.Progress(LogSection.FrameSync, 58 + (pointIndex + 1) * 27 / this._vsConfig.NumCheckPoints, AppText.T("framesync.match.checkpointProgress"));
             }
             checkpointsStopwatch.Stop();
-            timing.CheckpointsMs = checkpointsStopwatch.ElapsedMilliseconds;
+            timing.CheckpointsMs += checkpointsStopwatch.ElapsedMilliseconds;
         }
 
         /// <summary>

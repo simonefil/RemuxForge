@@ -104,6 +104,15 @@ namespace RemuxForge.Core.Audio
             {
                 result.TrackDurationNs = (long)System.Math.Round(result.TrackDurationNs * trackPlan.StretchRatio);
             }
+            if (trackPlan != null && trackPlan.RenderRequired)
+            {
+                if (result.TrackDurationNs > 0)
+                {
+                    long renderedOriginNs = (long)System.Math.Round(trackPlan.InitialTimelineOffsetMs * trackPlan.StretchRatio * 1000000.0);
+                    result.TrackDurationNs = System.Math.Max(0, result.TrackDurationNs + renderedOriginNs);
+                }
+                result.MinimumTimestampNs = 0;
+            }
             result.Channels = source.Channels;
             result.BitsPerSample = options.AudioDownsample24To16 ? 16 : source.BitsPerSample;
             result.SamplingFrequency = source.SamplingFrequency;

@@ -528,34 +528,16 @@ namespace RemuxForge.Core.Audio
         /// <returns>Lista argomenti ffmpeg</returns>
         private List<string> BuildSourceFillArgs(AudioProcessingRequest request, TrackInfo sourceTrack, TrackInfo langTrack, AudioSourceFillPlan plan, string outputFile, bool forPeakTemp)
         {
-            return this.BuildSourceFillArgs(request, langTrack, plan, outputFile, forPeakTemp, request.SourceFilePath, sourceTrack.Id, request.LanguageFilePath, langTrack.Id);
-        }
-
-        /// <summary>
-        /// Costruisce gli argomenti ffmpeg per render source fill usando input espliciti
-        /// </summary>
-        /// <param name="request">Richiesta audio corrente</param>
-        /// <param name="langTrack">Traccia lang da renderizzare</param>
-        /// <param name="plan">Piano source fill calcolato</param>
-        /// <param name="outputFile">File di output</param>
-        /// <param name="forPeakTemp">True se l'output è un PCM temporaneo per peak</param>
-        /// <param name="sourceInputFile">File source di input</param>
-        /// <param name="sourceInputTrackId">ID della traccia source nell'input</param>
-        /// <param name="langInputFile">File language di input</param>
-        /// <param name="langInputTrackId">ID della traccia language nell'input</param>
-        /// <returns>Lista argomenti ffmpeg</returns>
-        private List<string> BuildSourceFillArgs(AudioProcessingRequest request, TrackInfo langTrack, AudioSourceFillPlan plan, string outputFile, bool forPeakTemp, string sourceInputFile, int sourceInputTrackId, string langInputFile, int langInputTrackId)
-        {
             List<string> args = new List<string>();
-            string filter = this.BuildSourceFillFilter(sourceInputTrackId, langTrack, langInputTrackId, plan, request.Options, forPeakTemp);
+            string filter = this.BuildSourceFillFilter(sourceTrack, langTrack, plan, request.Options, forPeakTemp);
 
             args.Add("-nostdin");
             args.Add("-hide_banner");
             args.Add("-y");
             args.Add("-i");
-            args.Add(sourceInputFile);
+            args.Add(request.SourceFilePath);
             args.Add("-i");
-            args.Add(langInputFile);
+            args.Add(request.LanguageFilePath);
             args.Add("-filter_complex");
             args.Add(filter);
             args.Add("-map");
@@ -589,7 +571,7 @@ namespace RemuxForge.Core.Audio
                 if (operation.LangTimestampMs > currentLangMs)
                 {
                     // Copia la parte lang valida fino al prossimo punto operativo
-                    segments.Add(new AudioFilterSegment(0, track.Id, currentLangMs, operation.LangTimestampMs, false));
+                    this.AddTimelineIntervalSegments(segments, 0, track, trackPlan.InitialTimelineOffsetMs, currentLangMs, operation.LangTimestampMs, 1.0, 1.0);
                 }
 
                 if (string.Equals(operation.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal))
@@ -610,7 +592,7 @@ namespace RemuxForge.Core.Audio
             }
 
             // Aggiunge la coda lang non coperta da operazioni esplicite
-            segments.Add(new AudioFilterSegment(0, track.Id, currentLangMs, -1, false));
+            this.AddTimelineIntervalSegments(segments, 0, track, trackPlan.InitialTimelineOffsetMs, currentLangMs, -1, 1.0, 1.0);
 
             return this.BuildConcatFilter(segments, track, options, forPeakTemp, 0, trackPlan != null ? trackPlan.AudioTempoFilter : "");
         }
@@ -618,14 +600,13 @@ namespace RemuxForge.Core.Audio
         /// <summary>
         /// Costruisce il filtro ffmpeg concat per combinare audio lang e porzioni source con ID di stream espliciti
         /// </summary>
-        /// <param name="sourceTrackId">ID della traccia source nell'input</param>
+        /// <param name="sourceTrack">Traccia source nell'input</param>
         /// <param name="langTrack">Traccia language da usare per il filtro</param>
-        /// <param name="langTrackId">ID della traccia language nell'input</param>
         /// <param name="plan">Piano source fill calcolato</param>
         /// <param name="options">Opzioni correnti</param>
         /// <param name="forPeakTemp">True se il filtro produce PCM temporaneo per peak</param>
         /// <returns>Filtro ffmpeg completo con output [outa]</returns>
-        private string BuildSourceFillFilter(int sourceTrackId, TrackInfo langTrack, int langTrackId, AudioSourceFillPlan plan, Options options, bool forPeakTemp)
+        private string BuildSourceFillFilter(TrackInfo sourceTrack, TrackInfo langTrack, AudioSourceFillPlan plan, Options options, bool forPeakTemp)
         {
             List<AudioFilterSegment> segments = new List<AudioFilterSegment>();
             int currentLangMs = 0;
@@ -633,12 +614,12 @@ namespace RemuxForge.Core.Audio
             if (plan.StartFillMs > 0)
             {
                 // Delay positivo: l'inizio mancante viene preso dalla traccia source
-                segments.Add(new AudioFilterSegment(0, sourceTrackId, 0, plan.StartFillMs, false));
+                this.AddTimelineIntervalSegments(segments, 0, sourceTrack, plan.SourceInitialTimelineOffsetMs, 0, plan.StartFillMs, 1.0, 1.0);
             }
             else if (plan.InitialSilenceMs > 0)
             {
                 // Se lo stretch viene materializzato nel render, anche il delay va incorporato nel file
-                segments.Add(new AudioFilterSegment(1, langTrackId, 0, plan.InitialSilenceMs, true));
+                segments.Add(new AudioFilterSegment(1, langTrack.Id, 0, plan.InitialSilenceMs, true));
             }
 
             plan.InsertOperations.Sort((a, b) => a.LangTimestampMs.CompareTo(b.LangTimestampMs));
@@ -649,7 +630,7 @@ namespace RemuxForge.Core.Audio
                 if (operation.LangTimestampMs > currentLangMs)
                 {
                     // Mantiene lang fino al gap rilevato dalla deep-analysis
-                    segments.Add(new AudioFilterSegment(1, langTrackId, currentLangMs, operation.LangTimestampMs, false, plan.LangTempo));
+                    this.AddTimelineIntervalSegments(segments, 1, langTrack, plan.LangInitialTimelineOffsetMs, currentLangMs, operation.LangTimestampMs, plan.StretchRatio, plan.LangTempo);
                 }
 
                 if (string.Equals(operation.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal))
@@ -657,12 +638,12 @@ namespace RemuxForge.Core.Audio
                     if (plan.SourceFilledOperations.Contains(operation))
                     {
                         // Dove il piano lo ammette usa lo stesso intervallo temporale della source invece di generare silenzio
-                        segments.Add(new AudioFilterSegment(0, sourceTrackId, operation.SourceTimestampMs, operation.SourceTimestampMs + sourceOperationDurationMs, false));
+                        this.AddTimelineIntervalSegments(segments, 0, sourceTrack, plan.SourceInitialTimelineOffsetMs, operation.SourceTimestampMs, operation.SourceTimestampMs + sourceOperationDurationMs, 1.0, 1.0);
                     }
                     else
                     {
                         // Qui lo stretch è già materializzato dal filtro, quindi il silenzio deve durare quanto l'output
-                        segments.Add(new AudioFilterSegment(1, langTrackId, 0, sourceOperationDurationMs, true));
+                        segments.Add(new AudioFilterSegment(1, langTrack.Id, 0, sourceOperationDurationMs, true));
                     }
                     currentLangMs = operation.LangTimestampMs;
                 }
@@ -672,15 +653,49 @@ namespace RemuxForge.Core.Audio
                 }
             }
 
-            segments.Add(new AudioFilterSegment(1, langTrackId, currentLangMs, -1, false, plan.LangTempo));
+            this.AddTimelineIntervalSegments(segments, 1, langTrack, plan.LangInitialTimelineOffsetMs, currentLangMs, -1, plan.StretchRatio, plan.LangTempo);
 
             if (plan.EndFillMs > 0 && plan.SourceDurationMs > plan.EndFillMs)
             {
                 // Se lang finisce prima della source, completa la coda usando gli ultimi ms source
-                segments.Add(new AudioFilterSegment(0, sourceTrackId, plan.SourceDurationMs - plan.EndFillMs, plan.SourceDurationMs, false));
+                this.AddTimelineIntervalSegments(segments, 0, sourceTrack, plan.SourceInitialTimelineOffsetMs, plan.SourceDurationMs - plan.EndFillMs, plan.SourceDurationMs, 1.0, 1.0);
             }
 
             return this.BuildConcatFilter(segments, langTrack, options, forPeakTemp, plan.InitialTrimMs, "");
+        }
+
+        /// <summary>
+        /// Aggiunge un intervallo conservando il gap che precede il primo packet della traccia
+        /// </summary>
+        /// <param name="segments">Segmenti audio in costruzione</param>
+        /// <param name="inputIndex">Indice input ffmpeg</param>
+        /// <param name="track">Traccia originale con timestamp minimo</param>
+        /// <param name="trackStartMs">Origine della traccia rispetto alla timeline video</param>
+        /// <param name="startMs">Inizio richiesto nel dominio nativo</param>
+        /// <param name="endMs">Fine richiesta nel dominio nativo, oppure -1 per la coda</param>
+        /// <param name="silenceScale">Moltiplicatore con cui materializzare il gap</param>
+        /// <param name="tempo">Tempo ffmpeg da applicare alla parte con campioni</param>
+        private void AddTimelineIntervalSegments(List<AudioFilterSegment> segments, int inputIndex, TrackInfo track, int trackStartMs, int startMs, int endMs, double silenceScale, double tempo)
+        {
+            int intervalStartMs = Math.Max(0, startMs);
+            int gapEndMs = endMs >= 0 ? Math.Min(endMs, trackStartMs) : trackStartMs;
+
+            if (gapEndMs > intervalStartMs)
+            {
+                int silenceDurationMs = (int)Math.Round((gapEndMs - intervalStartMs) * silenceScale, MidpointRounding.AwayFromZero);
+                if (silenceDurationMs > 0)
+                    segments.Add(new AudioFilterSegment(inputIndex, track.Id, 0, silenceDurationMs, true));
+            }
+
+            int mediaTimelineStartMs = Math.Max(intervalStartMs, trackStartMs);
+            if (endMs < 0 || endMs > mediaTimelineStartMs)
+            {
+                // FFmpeg ribasa il primo packet audio a zero: i trim vanno riportati
+                // dal dominio del container al dominio dei campioni decodificati
+                int decodedStartMs = Math.Max(0, mediaTimelineStartMs - trackStartMs);
+                int decodedEndMs = endMs >= 0 ? Math.Max(0, endMs - trackStartMs) : -1;
+                segments.Add(new AudioFilterSegment(inputIndex, track.Id, decodedStartMs, decodedEndMs, false, tempo));
+            }
         }
 
         /// <summary>
@@ -759,7 +774,21 @@ namespace RemuxForge.Core.Audio
         private string BuildSimpleFilter(TrackInfo track, Options options, AudioTrackProcessingPlan trackPlan, bool forPeakTemp)
         {
             string filter = trackPlan != null ? trackPlan.AudioTempoFilter : "";
+            int renderedTimelineOffsetMs = trackPlan != null ? (int)Math.Round(trackPlan.InitialTimelineOffsetMs * trackPlan.StretchRatio, MidpointRounding.AwayFromZero) : 0;
             string postFilter = this.BuildPostFilter(track, options, forPeakTemp);
+
+            if (renderedTimelineOffsetMs > 0)
+            {
+                if (!string.IsNullOrEmpty(filter))
+                    filter += ",";
+                filter += "adelay=" + renderedTimelineOffsetMs.ToString(CultureInfo.InvariantCulture) + ":all=1";
+            }
+            else if (renderedTimelineOffsetMs < 0)
+            {
+                if (!string.IsNullOrEmpty(filter))
+                    filter += ",";
+                filter += "atrim=start=" + (-renderedTimelineOffsetMs / 1000.0).ToString("F3", CultureInfo.InvariantCulture) + ",asetpts=PTS-STARTPTS";
+            }
 
             if (!string.IsNullOrEmpty(filter) && !string.IsNullOrEmpty(postFilter))
             {
@@ -1168,6 +1197,7 @@ namespace RemuxForge.Core.Audio
             result.DefaultDurationNs = source.DefaultDurationNs;
             result.VideoFrameCount = source.VideoFrameCount;
             result.TrackDurationNs = source.TrackDurationNs;
+            result.MinimumTimestampNs = 0;
             result.Channels = source.Channels;
             result.BitsPerSample = source.BitsPerSample;
             result.SamplingFrequency = source.SamplingFrequency;
@@ -1230,6 +1260,7 @@ namespace RemuxForge.Core.Audio
                     ", generic=" + (generic ? "si" : "no") +
                     ", render=" + (render ? "si" : "no") +
                     ", motivo=" + reason +
+                    ", track-start=" + (jobs[i].Plan != null ? jobs[i].Plan.InitialTimelineOffsetMs.ToString(CultureInfo.InvariantCulture) : "0") + "ms" +
                     this.FormatAudioTempoLog(jobs[i].Plan));
             }
         }

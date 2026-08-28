@@ -81,6 +81,11 @@ namespace RemuxForge.Core.Models
         public long TrackDurationNs { get; set; }
 
         /// <summary>
+        /// Primo timestamp della traccia nel container in nanosecondi
+        /// </summary>
+        public long MinimumTimestampNs { get; set; }
+
+        /// <summary>
         /// Numero di canali audio della traccia
         /// </summary>
         public int Channels { get; set; }

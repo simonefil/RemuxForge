@@ -286,6 +286,10 @@ namespace RemuxForge.Web.Services
             {
                 parts.Add(AppText.T("web.detail.audioDelayMaterialized"));
             }
+            if (plan.RenderRequired && plan.InitialTimelineOffsetMs != 0)
+            {
+                parts.Add(AppText.F("web.detail.audioTrackOriginMaterialized", Utils.FormatDelay(plan.InitialTimelineOffsetMs)));
+            }
             if (plan.RenderRequired && !plan.GenericRenderRequired)
             {
                 this.AddRenderPostProcessingReasons(parts, plan, options);

@@ -1323,6 +1323,7 @@ namespace RemuxForge.Web.Services
             result.StretchRatio = source.StretchRatio;
             result.AudioTempo = source.AudioTempo;
             result.AudioTempoFilter = source.AudioTempoFilter;
+            result.InitialTimelineOffsetMs = source.InitialTimelineOffsetMs;
             result.DeepEditRender = source.DeepEditRender;
             result.SourceFillConfigured = source.SourceFillConfigured;
             result.SourceFillHasWork = source.SourceFillHasWork;
@@ -1354,6 +1355,8 @@ namespace RemuxForge.Web.Services
             result.SourceDurationMs = source.SourceDurationMs;
             result.StretchRatio = source.StretchRatio;
             result.LangTempo = source.LangTempo;
+            result.SourceInitialTimelineOffsetMs = source.SourceInitialTimelineOffsetMs;
+            result.LangInitialTimelineOffsetMs = source.LangInitialTimelineOffsetMs;
             result.InitialSilenceMs = source.InitialSilenceMs;
             result.InitialTrimMs = source.InitialTrimMs;
             result.InsertOperations = new List<EditOperation>(source.InsertOperations);

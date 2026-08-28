@@ -125,6 +125,8 @@ namespace RemuxForge.Core.Audio
                 return result;
             }
 
+            result.InitialTimelineOffsetMs = this.ResolveTrackTimelineOffsetMs(isSource ? request.SourceInfo : request.LangInfo, track);
+
             if (CodecMapping.IsSpatialCodec(track))
             {
                 result.ErrorMessage = "Traccia audio spaziale/object selezionata per processing";
@@ -213,6 +215,7 @@ namespace RemuxForge.Core.Audio
             int sourceDurationMs = this.ResolveTrackDurationMs(request.SourceInfo, sourceTrack);
             double stretchRatio = this.ResolveStretchRatio(request, out _);
             int langDurationMs;
+            int langStartMs = this.ResolveTrackTimelineOffsetMs(request.LangInfo, langTrack);
 
             if (sourceDurationMs <= 0)
             {
@@ -228,6 +231,8 @@ namespace RemuxForge.Core.Audio
             result.StretchRatio = stretchRatio;
             AudioTempoFilterBuilder.TryBuild(stretchRatio, out double audioTempo, out _, out _);
             result.LangTempo = audioTempo;
+            result.SourceInitialTimelineOffsetMs = this.ResolveTrackTimelineOffsetMs(request.SourceInfo, sourceTrack);
+            result.LangInitialTimelineOffsetMs = langStartMs;
             result.InitialSilenceMs = !AudioTempoFilterBuilder.IsIdentity(stretchRatio) && request.EffectiveAudioDelayMs > 0 ? request.EffectiveAudioDelayMs : 0;
             result.InitialTrimMs = !AudioTempoFilterBuilder.IsIdentity(stretchRatio) && request.EffectiveAudioDelayMs < 0 ? -request.EffectiveAudioDelayMs : 0;
 
@@ -245,7 +250,7 @@ namespace RemuxForge.Core.Audio
                 {
                     materializedDelayMs = request.EffectiveAudioDelayMs;
                 }
-                int renderedLangDurationMs = (int)Math.Round(langDurationMs * stretchRatio) + materializedDelayMs + this.ComputeEditMapDurationDeltaMs(editOperations, stretchRatio);
+                int renderedLangDurationMs = (int)Math.Round((langDurationMs + langStartMs) * stretchRatio) + materializedDelayMs + this.ComputeEditMapDurationDeltaMs(editOperations, stretchRatio);
                 int endFillMs = sourceDurationMs - renderedLangDurationMs;
                 if (endFillMs > request.Options.AudioSourceFillThresholdMs)
                 {
@@ -483,6 +488,36 @@ namespace RemuxForge.Core.Audio
             }
 
             return fileInfo != null && fileInfo.ContainerDurationNs > 0 ? (int)Math.Round(fileInfo.ContainerDurationNs / 1000000.0) : 0;
+        }
+
+        /// <summary>
+        /// Risolve l'origine di una traccia rispetto alla timeline video dello stesso file
+        /// </summary>
+        /// <param name="fileInfo">Info del file contenente la traccia</param>
+        /// <param name="track">Traccia da misurare</param>
+        /// <returns>Scarto iniziale in millisecondi</returns>
+        private int ResolveTrackTimelineOffsetMs(MkvFileInfo fileInfo, TrackInfo track)
+        {
+            long videoOriginNs = 0;
+            if (track == null)
+            {
+                return 0;
+            }
+
+            if (fileInfo != null && fileInfo.Tracks != null)
+            {
+                for (int i = 0; i < fileInfo.Tracks.Count; i++)
+                {
+                    TrackInfo candidate = fileInfo.Tracks[i];
+                    if (string.Equals(candidate.Type, "video", StringComparison.OrdinalIgnoreCase))
+                    {
+                        videoOriginNs = candidate.MinimumTimestampNs;
+                        break;
+                    }
+                }
+            }
+
+            return (int)Math.Round((track.MinimumTimestampNs - videoOriginNs) / 1000000.0, MidpointRounding.AwayFromZero);
         }
 
         #endregion

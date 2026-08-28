@@ -687,6 +687,11 @@ namespace RemuxForge.Core.Media.Mkv
                     }
                 }
 
+                if (propsEl.TryGetProperty("minimum_timestamp", out JsonElement minimumTimestampEl) && minimumTimestampEl.ValueKind == JsonValueKind.Number)
+                {
+                    track.MinimumTimestampNs = minimumTimestampEl.GetInt64();
+                }
+
                 if (propsEl.TryGetProperty("audio_channels", out JsonElement chEl))
                 {
                     track.Channels = chEl.GetInt32();
