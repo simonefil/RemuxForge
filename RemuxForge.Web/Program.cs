@@ -244,61 +244,66 @@ namespace RemuxForge.Web
                     return Results.Problem(exception.Message, statusCode: StatusCodes.Status422UnprocessableEntity);
                 }
             });
-            app.MapGet("/api/edit-map-waveform/{recordIndex:int}/{side}", async (int recordIndex, string side, double durationMs, HttpContext context, MergeOrchestrator orchestrator, AudioEnvelopeExtractor audioExtractor) =>
+            app.MapGet("/api/edit-map-audio/{recordIndex:int}/{side}", async (int recordIndex, string side, int trackId, double durationMs, string mode, HttpContext context, MergeOrchestrator orchestrator, AudioEnvelopeExtractor audioExtractor) =>
             {
                 if (!double.IsFinite(durationMs) || durationMs <= 0.0 || durationMs > TimeSpan.FromDays(1).TotalMilliseconds)
-                    return Results.BadRequest("Invalid waveform duration");
+                    return Results.BadRequest("Invalid audio timeline duration");
+                bool spectrogram;
+                if (string.Equals(mode, "waveform", StringComparison.OrdinalIgnoreCase))
+                    spectrogram = false;
+                else if (string.Equals(mode, "spectrogram", StringComparison.OrdinalIgnoreCase))
+                    spectrogram = true;
+                else
+                    return Results.BadRequest("Invalid audio timeline mode");
 
                 FileProcessingRecord record = orchestrator.GetRecord(recordIndex);
                 if (record == null)
                     return Results.NotFound();
 
                 string filePath;
-                int trackId;
+                List<TrackInfo> tracks;
                 if (string.Equals(side, "source", StringComparison.OrdinalIgnoreCase))
                 {
                     filePath = record.SourceFilePath;
-                    if (record.SourceAudioTracks == null || record.SourceAudioTracks.Count == 0)
-                        return Results.NoContent();
-                    trackId = record.SourceAudioTracks[0].Id;
+                    tracks = record.SourceAudioTracks;
                 }
                 else if (string.Equals(side, "language", StringComparison.OrdinalIgnoreCase))
                 {
                     filePath = record.LangFilePath;
-                    if (record.ImportedAudioTracks == null || record.ImportedAudioTracks.Count == 0)
-                        return Results.NoContent();
-                    trackId = record.ImportedAudioTracks[0].Id;
+                    tracks = record.ImportedAudioTracks;
                 }
                 else
                 {
-                    return Results.BadRequest("Invalid waveform side");
+                    return Results.BadRequest("Invalid audio timeline side");
                 }
 
+                if (tracks == null || tracks.Find(track => track.Id == trackId) == null)
+                    return Results.BadRequest("Invalid audio track");
                 if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
                     return Results.NotFound();
 
                 try
                 {
                     int timeoutMs = AppSettingsService.Instance.Settings.Advanced.Ffmpeg.FrameExtractionTimeoutMs;
-                    AudioWaveform waveform = await Task.Run(() => audioExtractor.GenerateWaveformForTrackId(filePath, trackId, durationMs, timeoutMs, context.RequestAborted), context.RequestAborted);
+                    AudioTimelineImage image = await Task.Run(() => audioExtractor.GenerateTimelineImageForTrackId(filePath, trackId, durationMs, spectrogram, timeoutMs, context.RequestAborted), context.RequestAborted);
                     using MemoryStream payload = new MemoryStream();
                     using (BinaryWriter writer = new BinaryWriter(payload, System.Text.Encoding.UTF8, true))
                     {
-                        writer.Write(new byte[] { (byte)'R', (byte)'F', (byte)'W', (byte)'1' });
-                        writer.Write(waveform.TileWidth);
-                        writer.Write(waveform.TileHeight);
-                        writer.Write(waveform.MillisecondsPerPixel);
-                        writer.Write(waveform.TileDurationMs);
-                        writer.Write(waveform.OriginMs);
-                        writer.Write(waveform.Tiles.Count);
-                        for (int i = 0; i < waveform.Tiles.Count; i++)
+                        writer.Write(new byte[] { (byte)'R', (byte)'F', (byte)'A', (byte)'1' });
+                        writer.Write(image.TileWidth);
+                        writer.Write(image.TileHeight);
+                        writer.Write(image.MillisecondsPerPixel);
+                        writer.Write(image.TileDurationMs);
+                        writer.Write(image.OriginMs);
+                        writer.Write(image.Tiles.Count);
+                        for (int i = 0; i < image.Tiles.Count; i++)
                         {
-                            writer.Write(waveform.Tiles[i].Length);
-                            writer.Write(waveform.Tiles[i]);
+                            writer.Write(image.Tiles[i].Length);
+                            writer.Write(image.Tiles[i]);
                         }
                     }
                     context.Response.Headers.CacheControl = "no-store";
-                    return Results.Bytes(payload.ToArray(), "application/vnd.remuxforge.waveform");
+                    return Results.Bytes(payload.ToArray(), "application/vnd.remuxforge.audio-timeline");
                 }
                 catch (OperationCanceledException)
                 {

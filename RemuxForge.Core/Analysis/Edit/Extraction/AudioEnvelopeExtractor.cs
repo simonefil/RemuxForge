@@ -194,38 +194,25 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         }
 
         /// <summary>
-        /// Genera in un solo decode le tile PNG dell'intera forma d'onda mono
-        /// </summary>
-        /// <param name="filePath">File multimediale</param>
-        /// <param name="streamIndex">Indice della traccia audio nell'ordine del contenitore</param>
-        /// <param name="durationMs">Durata da rappresentare in millisecondi</param>
-        /// <param name="timeoutMs">Timeout del comando in millisecondi</param>
-        /// <param name="cancellationToken">Token di annullamento</param>
-        /// <returns>Tile della forma d'onda e relativa scala temporale</returns>
-        public AudioWaveform GenerateWaveform(string filePath, int streamIndex, double durationMs, int timeoutMs, CancellationToken cancellationToken)
-        {
-            return this.GenerateWaveform(filePath, "0:a:" + streamIndex.ToString(CultureInfo.InvariantCulture), "a:" + streamIndex.ToString(CultureInfo.InvariantCulture), durationMs, timeoutMs, cancellationToken);
-        }
-
-        /// <summary>
-        /// Genera la forma d'onda della traccia identificata dal suo ID Matroska
+        /// Genera in un solo decode le tile PNG della visualizzazione audio richiesta
         /// </summary>
         /// <param name="filePath">File multimediale</param>
         /// <param name="trackId">ID della traccia nel contenitore</param>
         /// <param name="durationMs">Durata da rappresentare in millisecondi</param>
+        /// <param name="spectrogram">True per lo spettrogramma, false per la forma d'onda</param>
         /// <param name="timeoutMs">Timeout del comando in millisecondi</param>
         /// <param name="cancellationToken">Token di annullamento</param>
-        /// <returns>Tile della forma d'onda e relativa scala temporale</returns>
-        public AudioWaveform GenerateWaveformForTrackId(string filePath, int trackId, double durationMs, int timeoutMs, CancellationToken cancellationToken)
+        /// <returns>Tile della visualizzazione e relativa scala temporale</returns>
+        public AudioTimelineImage GenerateTimelineImageForTrackId(string filePath, int trackId, double durationMs, bool spectrogram, int timeoutMs, CancellationToken cancellationToken)
         {
             string selector = trackId.ToString(CultureInfo.InvariantCulture);
-            return this.GenerateWaveform(filePath, "0:" + selector, selector, durationMs, timeoutMs, cancellationToken);
+            return this.GenerateTimelineImage(filePath, "0:" + selector, selector, durationMs, spectrogram, timeoutMs, cancellationToken);
         }
 
         /// <summary>
         /// Genera le tile usando i selettori FFmpeg e ffprobe già risolti
         /// </summary>
-        private AudioWaveform GenerateWaveform(string filePath, string ffmpegSelector, string ffprobeSelector, double durationMs, int timeoutMs, CancellationToken cancellationToken)
+        private AudioTimelineImage GenerateTimelineImage(string filePath, string ffmpegSelector, string ffprobeSelector, double durationMs, bool spectrogram, int timeoutMs, CancellationToken cancellationToken)
         {
             const int tileWidth = 8192;
             const int tileHeight = 96;
@@ -236,7 +223,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             int tileCount = Math.Max(1, Math.Min(maximumTileCount, (int)Math.Ceiling(safeDurationMs / tileDurationMs)));
             string representedSeconds = (tileCount * tileDurationMs / 1000.0).ToString("0.######", CultureInfo.InvariantCulture);
             string normalizedInput = "[" + ffmpegSelector + "]aformat=channel_layouts=mono,apad=whole_dur=" + representedSeconds + ",atrim=end=" + representedSeconds;
-            string temporaryDirectory = Path.Combine(Path.GetTempPath(), "remuxforge-waveform-" + Guid.NewGuid().ToString("N"));
+            string temporaryDirectory = Path.Combine(Path.GetTempPath(), "remuxforge-audio-timeline-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(temporaryDirectory);
 
             try
@@ -245,7 +232,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                 List<string> filters = new List<string>();
                 if (tileCount == 1)
                 {
-                    filters.Add(normalizedInput + ",showwavespic=s=" + tileWidth.ToString(CultureInfo.InvariantCulture) + "x" + tileHeight.ToString(CultureInfo.InvariantCulture) + ":split_channels=0:colors=white:filter=peak:draw=full,format=rgba,colorkey=0x000000:0.01:0.0[w0]");
+                    filters.Add(BuildTimelineImageFilter(normalizedInput, "[w0]", tileWidth, tileHeight, spectrogram));
                 }
                 else
                 {
@@ -257,7 +244,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                         segmentLabels.Add("[a" + i.ToString(CultureInfo.InvariantCulture) + "]");
                     filters.Add(normalizedInput + ",asegment=timestamps=" + string.Join("|", timestamps) + string.Join("", segmentLabels));
                     for (int i = 0; i < tileCount; i++)
-                        filters.Add("[a" + i.ToString(CultureInfo.InvariantCulture) + "]showwavespic=s=" + tileWidth.ToString(CultureInfo.InvariantCulture) + "x" + tileHeight.ToString(CultureInfo.InvariantCulture) + ":split_channels=0:colors=white:filter=peak:draw=full,format=rgba,colorkey=0x000000:0.01:0.0[w" + i.ToString(CultureInfo.InvariantCulture) + "]");
+                        filters.Add(BuildTimelineImageFilter("[a" + i.ToString(CultureInfo.InvariantCulture) + "]", "[w" + i.ToString(CultureInfo.InvariantCulture) + "]", tileWidth, tileHeight, spectrogram));
                 }
 
                 List<string> arguments = new List<string> { "-nostdin", "-v", "error", "-i", filePath, "-filter_complex", string.Join(";", filters) };
@@ -274,7 +261,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
 
                 ProcessResult run = ProcessRunner.Run(this._ffmpegPath, arguments.ToArray(), timeoutMs, cancellationToken);
                 if (run.ExitCode != 0)
-                    throw new InvalidOperationException("Impossibile generare la forma d'onda di " + Path.GetFileName(filePath) + ": " + run.Stderr);
+                    throw new InvalidOperationException("Impossibile generare la visualizzazione audio di " + Path.GetFileName(filePath) + ": " + run.Stderr);
 
                 List<byte[]> tiles = new List<byte[]>();
                 for (int i = 0; i < outputs.Count; i++)
@@ -283,7 +270,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                     tiles.Add(File.ReadAllBytes(outputs[i]));
                 }
 
-                return new AudioWaveform(tileWidth, tileHeight, millisecondsPerPixel, tileDurationMs, this.ReadOriginMs(filePath, ffprobeSelector, timeoutMs), tiles);
+                return new AudioTimelineImage(tileWidth, tileHeight, millisecondsPerPixel, tileDurationMs, this.ReadOriginMs(filePath, ffprobeSelector, timeoutMs), tiles);
             }
             finally
             {
@@ -295,6 +282,17 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         #endregion
 
         #region Metodi privati
+
+        /// <summary>
+        /// Costruisce il filtro della singola tile senza legende o cornici generate da FFmpeg
+        /// </summary>
+        private static string BuildTimelineImageFilter(string inputLabel, string outputLabel, int width, int height, bool spectrogram)
+        {
+            string size = width.ToString(CultureInfo.InvariantCulture) + "x" + height.ToString(CultureInfo.InvariantCulture);
+            if (spectrogram)
+                return inputLabel + "showspectrumpic=s=" + size + ":legend=0:mode=combined:color=intensity:scale=log:fscale=lin:orientation=vertical" + outputLabel;
+            return inputLabel + "showwavespic=s=" + size + ":split_channels=0:colors=white:filter=peak:draw=full,format=rgba,colorkey=0x000000:0.01:0.0" + outputLabel;
+        }
 
         /// <summary>
         /// Legge i tag di lingua delle tracce audio nell'ordine del contenitore
@@ -387,14 +385,14 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
     }
 
     /// <summary>
-    /// Forma d'onda completa suddivisa in tile PNG ad alta risoluzione
+    /// Visualizzazione audio completa suddivisa in tile PNG ad alta risoluzione
     /// </summary>
-    public class AudioWaveform
+    public class AudioTimelineImage
     {
         /// <summary>
         /// Costruttore
         /// </summary>
-        public AudioWaveform(int tileWidth, int tileHeight, double millisecondsPerPixel, double tileDurationMs, double originMs, List<byte[]> tiles)
+        public AudioTimelineImage(int tileWidth, int tileHeight, double millisecondsPerPixel, double tileDurationMs, double originMs, List<byte[]> tiles)
         {
             this.TileWidth = tileWidth;
             this.TileHeight = tileHeight;

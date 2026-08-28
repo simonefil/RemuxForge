@@ -218,12 +218,39 @@
     min-width: 0;
     flex: 0 0 auto;
     justify-content: flex-start;
+    align-items: end;
+    flex-wrap: wrap;
+    gap: calc(var(--rz-gap) * 0.45);
 }
 
-.edit-map-waveform-toolbar label {
+.edit-map-audio-track-select {
     display: grid;
-    width: min(100%, 19rem);
+    min-width: 12rem;
+    max-width: 18rem;
+    flex: 1 1 13rem;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.35);
+    color: var(--rz-text-secondary-color);
+}
+
+.edit-map-audio-track-select .form-input {
+    width: 100%;
     min-width: 0;
+    font-size: var(--rz-text-caption-font-size);
+}
+
+.edit-map-audio-mode {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+}
+
+.edit-map-waveform-height {
+    display: grid;
+    width: min(100%, 17rem);
+    min-width: 0;
+    flex: 1 1 14rem;
     grid-template-columns: auto minmax(7rem, 1fr) 2.5rem;
     align-items: center;
     gap: calc(var(--rz-gap) * 0.5);

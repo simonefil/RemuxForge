@@ -124,9 +124,31 @@
                     <RadzenSplitterPane Size="66.6667%" Min="540px">
                         <section class="edit-map-timeline-pane">
                             <div class="edit-map-waveform-toolbar">
-                                <label>
+                                <label class="edit-map-audio-track-select">
+                                    <span>@AppText.T("web.editMap.sourceAudio")</span>
+                                    <select class="form-input" value="@_selectedSourceAudioTrackId" @onchange="ChangeSourceAudioTrackAsync" disabled="@(Record?.SourceAudioTracks == null || Record.SourceAudioTracks.Count == 0)">
+                                        @foreach (TrackInfo track in Record?.SourceAudioTracks ?? new List<TrackInfo>())
+                                        {
+                                            <option value="@track.Id">@Utils.FormatTrackCompact(track)</option>
+                                        }
+                                    </select>
+                                </label>
+                                <label class="edit-map-audio-track-select">
+                                    <span>@AppText.T("web.editMap.languageAudio")</span>
+                                    <select class="form-input" value="@_selectedLanguageAudioTrackId" @onchange="ChangeLanguageAudioTrackAsync" disabled="@(Record?.ImportedAudioTracks == null || Record.ImportedAudioTracks.Count == 0)">
+                                        @foreach (TrackInfo track in Record?.ImportedAudioTracks ?? new List<TrackInfo>())
+                                        {
+                                            <option value="@track.Id">@Utils.FormatTrackCompact(track)</option>
+                                        }
+                                    </select>
+                                </label>
+                                <div class="edit-map-audio-mode" role="group" aria-label="@AppText.T("web.editMap.audioVisualization")">
+                                    <RadzenButton Text="@AppText.T("web.editMap.waveform")" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="@GetAudioModeButtonStyle(AUDIO_MODE_WAVEFORM)" Click="@(() => SetAudioModeAsync(AUDIO_MODE_WAVEFORM))" />
+                                    <RadzenButton Text="@AppText.T("web.editMap.spectrogram")" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="@GetAudioModeButtonStyle(AUDIO_MODE_SPECTROGRAM)" Click="@(() => SetAudioModeAsync(AUDIO_MODE_SPECTROGRAM))" />
+                                </div>
+                                <label class="edit-map-waveform-height">
                                     <span>@AppText.T("web.editMap.waveformHeight")</span>
-                                    <RadzenSlider TValue="double" Value="@_waveformGain" Change="SetWaveformGainAsync" Min="1" Max="12" Step="0.25" aria-label="@AppText.T("web.editMap.waveformHeight")" />
+                                    <RadzenSlider TValue="double" Value="@_waveformGain" Change="SetWaveformGainAsync" Min="1" Max="12" Step="0.25" Disabled="@IsSpectrogram" aria-label="@AppText.T("web.editMap.waveformHeight")" />
                                     <output>@_waveformGain.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)×</output>
                                 </label>
                             </div>
@@ -174,6 +196,9 @@
 </section>
 
 @code {
+    private const string AUDIO_MODE_WAVEFORM = "waveform";
+    private const string AUDIO_MODE_SPECTROGRAM = "spectrogram";
+
     /// <summary>Indice del record originale</summary>
     [Parameter] public int RecordIndex { get; set; }
 
@@ -225,6 +250,9 @@
     private string _operationLanguageFrameText = "";
     private string _timestampEditAuthority = "";
     private string _durationEditAuthority = "";
+    private string _audioMode = AUDIO_MODE_WAVEFORM;
+    private int? _selectedSourceAudioTrackId;
+    private int? _selectedLanguageAudioTrackId;
     private double _sourcePlayheadMs;
     private double _languageCursorMs;
     private double _waveformGain = 6.0;
@@ -236,6 +264,7 @@
     private bool _previewFailed;
 
     private bool IndexesReady { get { return this._sourceIndex != null && this._languageIndex != null && string.IsNullOrEmpty(this._sourceError) && string.IsNullOrEmpty(this._languageError); } }
+    private bool IsSpectrogram { get { return string.Equals(this._audioMode, AUDIO_MODE_SPECTROGRAM, StringComparison.Ordinal); } }
 
     /// <summary>Inizializza copia di lavoro e indicizza i due video in parallelo</summary>
     protected override async Task OnInitializedAsync()
@@ -247,6 +276,8 @@
             this._workingMap.StretchFactor = this.Record.StretchFactor ?? "";
         }
         this._originalMap = EditMapTimelineHelper.Clone(this._workingMap);
+        this._selectedSourceAudioTrackId = GetFirstTrackId(this.Record?.SourceAudioTracks);
+        this._selectedLanguageAudioTrackId = GetFirstTrackId(this.Record?.ImportedAudioTracks);
         this._sourcePlayheadMs = 0.0;
         this._languageCursorMs = double.NaN;
 
@@ -498,11 +529,74 @@
         };
         double sourceDurationMs = this._sourceIndex != null ? this._sourceIndex.EndPtsMs : 0.0;
         double languageDurationMs = this._languageIndex != null ? this._languageIndex.EndPtsMs : 0.0;
-        string sourceWaveformUrl = "/api/edit-map-waveform/" + this.RecordIndex.ToString() + "/source?durationMs=" + sourceDurationMs.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
-        string languageWaveformUrl = this.Record != null && this.Record.ImportedAudioTracks != null && this.Record.ImportedAudioTracks.Count > 0
-            ? "/api/edit-map-waveform/" + this.RecordIndex.ToString() + "/language?durationMs=" + languageDurationMs.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
-            : null;
-        return new { durationMs = sourceDurationMs, frameDurationMs = this._sourceIndex != null ? this._sourceIndex.MedianFrameDurationMs : 40.0, sourceWaveformUrl = sourceWaveformUrl, languageWaveformUrl = languageWaveformUrl, waveformGain = this._waveformGain, playheadMs = this._sourcePlayheadMs, labels = labels, segments = segments, operations = operations };
+        string sourceAudioUrl = this.BuildAudioTimelineUrl("source", this._selectedSourceAudioTrackId, sourceDurationMs);
+        string languageAudioUrl = this.BuildAudioTimelineUrl("language", this._selectedLanguageAudioTrackId, languageDurationMs);
+        double sourceNyquistHz = GetNyquistFrequency(this.Record?.SourceAudioTracks, this._selectedSourceAudioTrackId);
+        double languageNyquistHz = GetNyquistFrequency(this.Record?.ImportedAudioTracks, this._selectedLanguageAudioTrackId);
+        return new { durationMs = sourceDurationMs, frameDurationMs = this._sourceIndex != null ? this._sourceIndex.MedianFrameDurationMs : 40.0, sourceAudioUrl = sourceAudioUrl, languageAudioUrl = languageAudioUrl, audioMode = this._audioMode, sourceNyquistHz = sourceNyquistHz, languageNyquistHz = languageNyquistHz, waveformGain = this._waveformGain, playheadMs = this._sourcePlayheadMs, labels = labels, segments = segments, operations = operations };
+    }
+
+    /// <summary>Costruisce l'endpoint stateless per traccia e modalità selezionate</summary>
+    private string BuildAudioTimelineUrl(string side, int? trackId, double durationMs)
+    {
+        if (!trackId.HasValue)
+            return null;
+        return "/api/edit-map-audio/" + this.RecordIndex.ToString() + "/" + side + "?trackId=" + trackId.Value.ToString() + "&durationMs=" + durationMs.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "&mode=" + this._audioMode;
+    }
+
+    /// <summary>Restituisce la prima traccia, che è l'autorità predefinita della timeline</summary>
+    private static int? GetFirstTrackId(List<TrackInfo> tracks)
+    {
+        return tracks != null && tracks.Count > 0 ? tracks[0].Id : null;
+    }
+
+    /// <summary>Calcola la frequenza di Nyquist della traccia selezionata</summary>
+    private static double GetNyquistFrequency(List<TrackInfo> tracks, int? trackId)
+    {
+        if (tracks == null || !trackId.HasValue)
+            return 0.0;
+        TrackInfo track = tracks.Find(candidate => candidate.Id == trackId.Value);
+        return track != null && track.SamplingFrequency > 0 ? track.SamplingFrequency / 2.0 : 0.0;
+    }
+
+    /// <summary>Aggiorna la traccia Source e rigenera la visualizzazione audio</summary>
+    private async Task ChangeSourceAudioTrackAsync(ChangeEventArgs args)
+    {
+        await this.ChangeAudioTrackAsync(args, true);
+    }
+
+    /// <summary>Aggiorna la traccia Language e rigenera la visualizzazione audio</summary>
+    private async Task ChangeLanguageAudioTrackAsync(ChangeEventArgs args)
+    {
+        await this.ChangeAudioTrackAsync(args, false);
+    }
+
+    /// <summary>Valida il cambio traccia contro l'elenco del record corrente</summary>
+    private async Task ChangeAudioTrackAsync(ChangeEventArgs args, bool source)
+    {
+        List<TrackInfo> tracks = source ? this.Record?.SourceAudioTracks : this.Record?.ImportedAudioTracks;
+        if (!int.TryParse(args.Value != null ? args.Value.ToString() : "", out int trackId) || tracks == null || tracks.Find(track => track.Id == trackId) == null)
+            return;
+        if (source)
+            this._selectedSourceAudioTrackId = trackId;
+        else
+            this._selectedLanguageAudioTrackId = trackId;
+        await this.UpdateTimelineAsync();
+    }
+
+    /// <summary>Seleziona Waveform o Spectrogram e ricarica entrambe le lane</summary>
+    private async Task SetAudioModeAsync(string mode)
+    {
+        if (string.Equals(this._audioMode, mode, StringComparison.Ordinal))
+            return;
+        this._audioMode = mode;
+        await this.UpdateTimelineAsync();
+    }
+
+    /// <summary>Restituisce lo stile Radzen della modalità audio attiva</summary>
+    private ButtonStyle GetAudioModeButtonStyle(string mode)
+    {
+        return string.Equals(this._audioMode, mode, StringComparison.Ordinal) ? ButtonStyle.Primary : ButtonStyle.Base;
     }
 
     /// <summary>Aggiorna il solo ingrandimento verticale delle waveform</summary>

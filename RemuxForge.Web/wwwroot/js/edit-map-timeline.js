@@ -328,13 +328,16 @@ class EditMapTimeline {
         this.context = canvas.getContext('2d');
         this.dotNetReference = dotNetReference;
         this.model = model;
-        this.sourceWaveform = null;
-        this.languageWaveform = null;
+        this.sourceAudioImage = null;
+        this.languageAudioImage = null;
         this.waveformGain = clampWaveformGain(model.waveformGain);
         this.plotLeft = 112;
         this.navigatorHeight = 22;
         this.rulerHeight = 24;
-        this.waveformController = new AbortController();
+        this.sourceAudioImageController = null;
+        this.languageAudioImageController = null;
+        this.sourceAudioImageGeneration = 0;
+        this.languageAudioImageGeneration = 0;
         this.range = host.querySelector('.edit-map-timeline-scroll-range');
         this.pixelsPerMs = Math.max(0.000001, Math.max(1, host.clientWidth - this.plotLeft) / Math.max(1, model.durationMs));
         this.drag = null;
@@ -362,33 +365,65 @@ class EditMapTimeline {
         canvas.addEventListener('dblclick', this.onDoubleClick);
         this.resize();
         this.setZoom('fit');
-        this.loadWaveforms();
+        this.loadAudioImage(true);
+        this.loadAudioImage(false);
     }
 
-    async loadWaveforms() {
-        const load = async url => {
-            if (!url) return null;
-            const response = await fetch(url, { signal: this.waveformController.signal, cache: 'no-store' });
-            if (response.status === 204) return null;
-            if (!response.ok) throw new Error(await response.text() || `Waveform request failed: ${response.status}`);
-            return parseWaveform(await response.arrayBuffer());
-        };
+    async loadAudioImage(source) {
+        const previousController = source ? this.sourceAudioImageController : this.languageAudioImageController;
+        if (previousController) previousController.abort();
+        const controller = new AbortController();
+        const generation = source ? ++this.sourceAudioImageGeneration : ++this.languageAudioImageGeneration;
+        if (source)
+            this.sourceAudioImageController = controller;
+        else
+            this.languageAudioImageController = controller;
+        const url = source ? this.model.sourceAudioUrl : this.model.languageAudioUrl;
         try {
-            const [source, language] = await Promise.all([load(this.model.sourceWaveformUrl), load(this.model.languageWaveformUrl)]);
-            this.sourceWaveform = source;
-            this.languageWaveform = language;
+            let image = null;
+            if (url) {
+                const response = await fetch(url, { signal: controller.signal, cache: 'no-store' });
+                if (response.status !== 204) {
+                    if (!response.ok) throw new Error(await response.text() || `Audio timeline request failed: ${response.status}`);
+                    image = await parseAudioTimelineImage(await response.arrayBuffer());
+                }
+            }
+            const currentGeneration = source ? this.sourceAudioImageGeneration : this.languageAudioImageGeneration;
+            if (generation !== currentGeneration) {
+                disposeAudioTimelineImage(image);
+                return;
+            }
+            if (source) {
+                disposeAudioTimelineImage(this.sourceAudioImage);
+                this.sourceAudioImage = image;
+            } else {
+                disposeAudioTimelineImage(this.languageAudioImage);
+                this.languageAudioImage = image;
+            }
             this.draw();
         } catch (error) {
-            if (error?.name !== 'AbortError') console.warn('EditMap waveform unavailable', error);
+            if (error?.name !== 'AbortError') console.warn('EditMap audio timeline unavailable', error);
         }
     }
 
     update(model, centerPlayhead) {
+        const reloadSourceAudio = this.model.sourceAudioUrl !== model.sourceAudioUrl;
+        const reloadLanguageAudio = this.model.languageAudioUrl !== model.languageAudioUrl;
         this.model = model;
         this.waveformGain = clampWaveformGain(model.waveformGain);
+        if (reloadSourceAudio) {
+            disposeAudioTimelineImage(this.sourceAudioImage);
+            this.sourceAudioImage = null;
+        }
+        if (reloadLanguageAudio) {
+            disposeAudioTimelineImage(this.languageAudioImage);
+            this.languageAudioImage = null;
+        }
         this.updateRange();
         if (centerPlayhead) this.center(model.playheadMs);
         this.draw();
+        if (reloadSourceAudio) this.loadAudioImage(true);
+        if (reloadLanguageAudio) this.loadAudioImage(false);
     }
 
     setZoom(preset) {
@@ -482,15 +517,21 @@ class EditMapTimeline {
         ctx.fillRect(plotLeft, sourceTop, width - plotLeft, laneHeight);
         ctx.fillRect(plotLeft, languageTop, width - plotLeft, laneHeight);
         drawTimeGrid(ctx, width, plotLeft, startMs, endMs, this.pixelsPerMs, trackTop, trackBottom, border);
-        drawAmplitudeGrid(ctx, plotLeft, width, sourceTop, laneHeight, border, secondary, fontFamily);
-        drawAmplitudeGrid(ctx, plotLeft, width, languageTop, laneHeight, border, secondary, fontFamily);
+        const spectrogram = this.model.audioMode === 'spectrogram';
+        if (spectrogram) {
+            drawFrequencyScale(ctx, plotLeft, sourceTop, laneHeight, secondary, fontFamily, this.model.sourceNyquistHz);
+            drawFrequencyScale(ctx, plotLeft, languageTop, laneHeight, secondary, fontFamily, this.model.languageNyquistHz);
+        } else {
+            drawAmplitudeGrid(ctx, plotLeft, width, sourceTop, laneHeight, border, secondary, fontFamily);
+            drawAmplitudeGrid(ctx, plotLeft, width, languageTop, laneHeight, border, secondary, fontFamily);
+        }
         ctx.strokeStyle = border;
         ctx.strokeRect(plotLeft + 0.5, sourceTop + 0.5, width - plotLeft - 1, laneHeight - 1);
         ctx.strokeRect(plotLeft + 0.5, languageTop + 0.5, width - plotLeft - 1, laneHeight - 1);
         ctx.fillStyle = secondary;
         ctx.fillText(this.model.labels?.source || 'SOURCE', 7, sourceTop + laneHeight / 2);
         ctx.fillText(this.model.labels?.language || 'LANGUAGE', 7, languageTop + laneHeight / 2);
-        this.drawWaveform(this.sourceWaveform, startMs, endMs, plotLeft, width, sourceTop, laneHeight, sourceWaveformColor);
+        this.drawAudioImage(this.sourceAudioImage, startMs, endMs, plotLeft, width, sourceTop, laneHeight, sourceWaveformColor, !spectrogram);
         for (const segment of this.model.segments || []) {
             const x1 = this.xAtTime(segment.sourceStartMs);
             const x2 = this.xAtTime(segment.sourceEndMs);
@@ -509,11 +550,11 @@ class EditMapTimeline {
                     const ratioEnd = (visibleEnd - segment.sourceStartMs) / Math.max(1, segment.sourceEndMs - segment.sourceStartMs);
                     const languageStart = segment.languageStartMs + (segment.languageEndMs - segment.languageStartMs) * ratioStart;
                     const languageEnd = segment.languageStartMs + (segment.languageEndMs - segment.languageStartMs) * ratioEnd;
-                    this.drawWaveform(this.languageWaveform, languageStart, languageEnd, this.xAtTime(visibleStart), this.xAtTime(visibleEnd), languageTop, laneHeight, languageWaveformColor);
+                    this.drawAudioImage(this.languageAudioImage, languageStart, languageEnd, this.xAtTime(visibleStart), this.xAtTime(visibleEnd), languageTop, laneHeight, languageWaveformColor, !spectrogram);
                 }
             }
         }
-        if (!this.languageWaveform) {
+        if (!this.languageAudioImage) {
             ctx.strokeStyle = secondary;
             ctx.beginPath();
             ctx.moveTo(plotLeft, languageTop + laneHeight / 2);
@@ -571,7 +612,7 @@ class EditMapTimeline {
         ctx.save();
         ctx.fillStyle = background;
         ctx.fillRect(left, 1, availableWidth, height - 3);
-        this.drawWaveform(this.sourceWaveform, 0, duration, left, width, 2, height - 4, waveformColor, 1.0);
+        this.drawAudioImage(this.sourceAudioImage, 0, duration, left, width, 2, height - 4, waveformColor, this.model.audioMode !== 'spectrogram', 1.0);
         const geometry = this.navigatorGeometry();
         ctx.globalAlpha = 0.58;
         ctx.fillStyle = background;
@@ -658,8 +699,8 @@ class EditMapTimeline {
         this.draw();
     }
 
-    drawWaveform(waveform, mediaStartMs, mediaEndMs, destinationStartX, destinationEndX, top, height, color, gain) {
-        if (!waveform || mediaEndMs <= mediaStartMs || destinationEndX <= destinationStartX) {
+    drawAudioImage(image, mediaStartMs, mediaEndMs, destinationStartX, destinationEndX, top, height, color, tint, gain) {
+        if (!image || mediaEndMs <= mediaStartMs || destinationEndX <= destinationStartX) {
             this.context.strokeStyle = color;
             this.context.globalAlpha = 0.35;
             this.context.beginPath();
@@ -669,41 +710,43 @@ class EditMapTimeline {
             this.context.globalAlpha = 1;
             return;
         }
-        const relativeStart = mediaStartMs - waveform.originMs;
-        const relativeEnd = mediaEndMs - waveform.originMs;
+        const relativeStart = mediaStartMs - image.originMs;
+        const relativeEnd = mediaEndMs - image.originMs;
         const span = relativeEnd - relativeStart;
         const targetWidth = Math.max(1, Math.ceil(destinationEndX - destinationStartX));
         const targetHeight = Math.max(1, Math.ceil(height - 6));
-        const waveformGain = gain === undefined ? this.waveformGain : clampWaveformGain(gain);
-        const sourceHeight = waveform.tileHeight / waveformGain;
-        const sourceY = (waveform.tileHeight - sourceHeight) / 2;
-        if (!waveform.scratch) waveform.scratch = document.createElement('canvas');
-        waveform.scratch.width = targetWidth;
-        waveform.scratch.height = targetHeight;
-        const scratch = waveform.scratch.getContext('2d');
+        const waveformGain = tint ? (gain === undefined ? this.waveformGain : clampWaveformGain(gain)) : 1.0;
+        const sourceHeight = image.tileHeight / waveformGain;
+        const sourceY = (image.tileHeight - sourceHeight) / 2;
+        if (!image.scratch) image.scratch = document.createElement('canvas');
+        image.scratch.width = targetWidth;
+        image.scratch.height = targetHeight;
+        const scratch = image.scratch.getContext('2d');
         scratch.clearRect(0, 0, targetWidth, targetHeight);
-        for (let index = Math.max(0, Math.floor(relativeStart / waveform.tileDurationMs)); index < waveform.tiles.length; index++) {
-            const tileStart = index * waveform.tileDurationMs;
-            const tileEnd = tileStart + waveform.tileDurationMs;
+        for (let index = Math.max(0, Math.floor(relativeStart / image.tileDurationMs)); index < image.tiles.length; index++) {
+            const tileStart = index * image.tileDurationMs;
+            const tileEnd = tileStart + image.tileDurationMs;
             const visibleStart = Math.max(relativeStart, tileStart);
             const visibleEnd = Math.min(relativeEnd, tileEnd);
             if (visibleEnd <= visibleStart) {
                 if (tileStart >= relativeEnd) break;
                 continue;
             }
-            const sourceX = (visibleStart - tileStart) / waveform.millisecondsPerPixel;
-            const sourceWidth = Math.max(1, (visibleEnd - visibleStart) / waveform.millisecondsPerPixel);
+            const sourceX = (visibleStart - tileStart) / image.millisecondsPerPixel;
+            const sourceWidth = Math.max(1, (visibleEnd - visibleStart) / image.millisecondsPerPixel);
             const destinationX = destinationStartX + (visibleStart - relativeStart) / span * (destinationEndX - destinationStartX);
             const destinationWidth = (visibleEnd - visibleStart) / span * (destinationEndX - destinationStartX);
-            scratch.drawImage(waveform.tiles[index], sourceX, sourceY, sourceWidth, sourceHeight, destinationX - destinationStartX, 0, destinationWidth, targetHeight);
+            scratch.drawImage(image.tiles[index], sourceX, sourceY, sourceWidth, sourceHeight, destinationX - destinationStartX, 0, destinationWidth, targetHeight);
         }
-        scratch.globalCompositeOperation = 'source-in';
-        scratch.fillStyle = color;
-        scratch.fillRect(0, 0, targetWidth, targetHeight);
-        scratch.globalCompositeOperation = 'source-over';
+        if (tint) {
+            scratch.globalCompositeOperation = 'source-in';
+            scratch.fillStyle = color;
+            scratch.fillRect(0, 0, targetWidth, targetHeight);
+            scratch.globalCompositeOperation = 'source-over';
+        }
         this.context.save();
         this.context.globalAlpha = 1;
-        this.context.drawImage(waveform.scratch, destinationStartX, top + 3);
+        this.context.drawImage(image.scratch, destinationStartX, top + 3);
         this.context.restore();
     }
 
@@ -859,9 +902,12 @@ class EditMapTimeline {
 
     dispose() {
         if (this.dragFrame) cancelAnimationFrame(this.dragFrame);
-        this.waveformController.abort();
-        disposeWaveform(this.sourceWaveform);
-        disposeWaveform(this.languageWaveform);
+        this.sourceAudioImageGeneration++;
+        this.languageAudioImageGeneration++;
+        if (this.sourceAudioImageController) this.sourceAudioImageController.abort();
+        if (this.languageAudioImageController) this.languageAudioImageController.abort();
+        disposeAudioTimelineImage(this.sourceAudioImage);
+        disposeAudioTimelineImage(this.languageAudioImage);
         this.resizeObserver.disconnect();
         this.themeObserver.disconnect();
         this.host.removeEventListener('scroll', this.onScroll);
@@ -936,55 +982,54 @@ function drawTimeGrid(context, width, left, startMs, endMs, pixelsPerMs, top, bo
 
 function drawAmplitudeGrid(context, left, width, top, height, color, labelColor, fontFamily) {
     const center = top + height / 2;
-    const halfHeight = Math.max(1, height / 2 - 1);
-    const levels = height >= 110 ? [0, -6, -12, -24, -48] : height >= 70 ? [0, -6, -12, -24] : height >= 45 ? [0, -12] : [0];
     context.save();
     context.strokeStyle = color;
     context.fillStyle = labelColor;
     context.font = `9px ${fontFamily}`;
     context.lineWidth = 1;
     context.textAlign = 'right';
-    let lastUpperLabelY = Number.NEGATIVE_INFINITY;
-    let lastLowerLabelY = Number.POSITIVE_INFINITY;
-    for (const decibels of levels) {
-        const amplitude = Math.pow(10, decibels / 20);
-        const upper = center - amplitude * halfHeight;
-        const lower = center + amplitude * halfHeight;
-        context.globalAlpha = decibels === 0 ? 0.5 : 0.32;
-        context.beginPath();
-        context.moveTo(left, Math.round(upper) + 0.5);
-        context.lineTo(width, Math.round(upper) + 0.5);
-        context.moveTo(left, Math.round(lower) + 0.5);
-        context.lineTo(width, Math.round(lower) + 0.5);
-        context.stroke();
-        context.globalAlpha = 1;
-        const label = decibels === 0 ? '0 dB' : `${decibels} dB`;
-        const upperLabelY = Math.max(top + 7, upper);
-        const lowerLabelY = Math.min(top + height - 7, lower);
-        if (center - upperLabelY >= 12 && upperLabelY - lastUpperLabelY >= 12) {
-            context.fillText(label, left - 5, upperLabelY);
-            lastUpperLabelY = upperLabelY;
-        }
-        if (lowerLabelY - center >= 12 && lastLowerLabelY - lowerLabelY >= 12) {
-            context.fillText(label, left - 5, lowerLabelY);
-            lastLowerLabelY = lowerLabelY;
-        }
-    }
-    context.globalAlpha = 0.45;
+    context.globalAlpha = 0.5;
     context.beginPath();
+    context.moveTo(left, Math.round(top) + 0.5);
+    context.lineTo(width, Math.round(top) + 0.5);
     context.moveTo(left, Math.round(center) + 0.5);
     context.lineTo(width, Math.round(center) + 0.5);
+    context.moveTo(left, Math.round(top + height) - 0.5);
+    context.lineTo(width, Math.round(top + height) - 0.5);
     context.stroke();
     context.globalAlpha = 1;
+    context.fillText('0 dB', left - 5, top + 7);
     context.fillText('-∞', left - 5, center);
+    context.fillText('0 dB', left - 5, top + height - 7);
     context.textAlign = 'start';
     context.restore();
 }
 
-async function parseWaveform(buffer) {
+function drawFrequencyScale(context, left, top, height, labelColor, fontFamily, nyquistHz) {
+    context.save();
+    context.fillStyle = labelColor;
+    context.font = `9px ${fontFamily}`;
+    context.textAlign = 'right';
+    context.fillText(formatFrequency(nyquistHz), left - 5, top + 7);
+    context.fillText('0 Hz', left - 5, top + height - 7);
+    context.textAlign = 'start';
+    context.restore();
+}
+
+function formatFrequency(hertz) {
+    const value = Number(hertz);
+    if (!Number.isFinite(value) || value <= 0) return '— Hz';
+    if (value >= 1000) {
+        const kilohertz = value / 1000;
+        return `${kilohertz.toFixed(Number.isInteger(kilohertz) ? 0 : 2).replace(/\.?0+$/, '')} kHz`;
+    }
+    return `${Math.round(value)} Hz`;
+}
+
+async function parseAudioTimelineImage(buffer) {
     const view = new DataView(buffer);
-    if (view.byteLength < 40 || view.getUint8(0) !== 82 || view.getUint8(1) !== 70 || view.getUint8(2) !== 87 || view.getUint8(3) !== 49)
-        throw new Error('Invalid waveform payload');
+    if (view.byteLength < 40 || view.getUint8(0) !== 82 || view.getUint8(1) !== 70 || view.getUint8(2) !== 65 || view.getUint8(3) !== 49)
+        throw new Error('Invalid audio timeline payload');
     let offset = 4;
     const tileWidth = view.getInt32(offset, true); offset += 4;
     const tileHeight = view.getInt32(offset, true); offset += 4;
@@ -993,12 +1038,12 @@ async function parseWaveform(buffer) {
     const originMs = view.getFloat64(offset, true); offset += 8;
     const count = view.getInt32(offset, true); offset += 4;
     if (tileWidth < 1 || tileHeight < 1 || count < 1 || count > 64)
-        throw new Error('Invalid waveform metadata');
+        throw new Error('Invalid audio timeline metadata');
     const tiles = [];
     for (let index = 0; index < count; index++) {
-        if (offset + 4 > view.byteLength) throw new Error('Truncated waveform payload');
+        if (offset + 4 > view.byteLength) throw new Error('Truncated audio timeline payload');
         const length = view.getInt32(offset, true); offset += 4;
-        if (length < 1 || offset + length > view.byteLength) throw new Error('Truncated waveform tile');
+        if (length < 1 || offset + length > view.byteLength) throw new Error('Truncated audio timeline tile');
         const blob = new Blob([buffer.slice(offset, offset + length)], { type: 'image/png' });
         tiles.push(await createImageBitmap(blob));
         offset += length;
@@ -1006,8 +1051,8 @@ async function parseWaveform(buffer) {
     return { tileWidth, tileHeight, millisecondsPerPixel, tileDurationMs, originMs, tiles };
 }
 
-function disposeWaveform(waveform) {
-    for (const tile of waveform?.tiles || []) tile.close();
+function disposeAudioTimelineImage(image) {
+    for (const tile of image?.tiles || []) tile.close();
 }
 
 function formatTimelineTime(milliseconds) {
