@@ -2,7 +2,11 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG VERSION=1.0.0
 WORKDIR /src
+RUN apt-get update && apt-get install -y --no-install-recommends glslc spirv-tools \
+    && rm -rf /var/lib/apt/lists/*
 COPY RemuxForge.Core/ ./RemuxForge.Core/
+COPY RemuxForge.Vulkan/ ./RemuxForge.Vulkan/
+COPY RemuxForge.Vulkan.ShaderManifestTool/ ./RemuxForge.Vulkan.ShaderManifestTool/
 COPY RemuxForge.Web/ ./RemuxForge.Web/
 RUN dotnet publish RemuxForge.Web/RemuxForge.Web.csproj -c Release -p:Version=${VERSION} -o /app
 

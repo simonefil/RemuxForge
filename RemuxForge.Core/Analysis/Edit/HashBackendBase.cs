@@ -47,6 +47,18 @@ namespace RemuxForge.Core.Analysis.Edit
         public abstract void Hash(byte[] frames, int frameCount, List<ulong> hash0, List<ulong> hash1);
 
         /// <summary>
+        /// Deriva tutti i segnali visuali di un blocco di quadrati di analisi contigui
+        /// </summary>
+        /// <param name="frames">Quadrati grigi di analisi, uno dopo l'altro</param>
+        /// <param name="frameCount">Quadrati effettivamente contenuti nel blocco</param>
+        /// <param name="hash0">Accumulatore dei dHash orizzontali</param>
+        /// <param name="hash1">Accumulatore dei dHash verticali</param>
+        /// <param name="lumaMean">Accumulatore delle luminanze medie</param>
+        /// <param name="thumbStd">Accumulatore delle deviazioni standard delle miniature</param>
+        /// <param name="thumbPixels">Accumulatore dei pixel delle miniature 12x12</param>
+        public abstract void Analyze(byte[] frames, int frameCount, List<ulong> hash0, List<ulong> hash1, List<float> lumaMean, List<float> thumbStd, List<byte> thumbPixels);
+
+        /// <summary>
         /// Lega il backend alla coppia su cui misurerà, una volta sola
         /// </summary>
         /// <param name="pair">Coppia di tracce</param>

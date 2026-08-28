@@ -1,0 +1,78 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, set = 0, binding = 0) readonly buffer PackedGray8Input
+{
+    uint packedPixels[];
+};
+
+layout(std430, set = 0, binding = 1) writeonly buffer FloatOutput
+{
+    float pixels[];
+};
+
+layout(push_constant) uniform Parameters
+{
+    uint inputByteOffset;
+    uint inputStride;
+    uint outputOffset;
+    uint width;
+    uint height;
+    float intensityScale;
+    uint inputFrameStride;
+    uint outputFrameStride;
+    uint frameCount;
+    uint pixelFormat;
+    uint rgbToGrayMatrix;
+} parameters;
+
+uint readInputByte(uint byteIndex)
+{
+    uint packed = packedPixels[byteIndex >> 2];
+    uint shift = (byteIndex & 3u) * 8u;
+    return (packed >> shift) & 255u;
+}
+
+vec3 resolveRgbWeights()
+{
+    if (parameters.rgbToGrayMatrix == 1u)
+        return vec3(0.2990, 0.5870, 0.1140);
+    if (parameters.rgbToGrayMatrix == 2u)
+        return vec3(0.2126, 0.7152, 0.0722);
+    if (parameters.rgbToGrayMatrix == 3u)
+        return vec3(0.2627, 0.6780, 0.0593);
+    return vec3(0.0);
+}
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    uint frame = gl_GlobalInvocationID.z;
+    uint count = parameters.width * parameters.height;
+    uint frames = max(parameters.frameCount, 1u);
+    if (index >= count || frame >= frames)
+        return;
+    uint x = index % parameters.width;
+    uint y = index / parameters.width;
+    uint rowOffset = parameters.inputByteOffset + frame * parameters.inputFrameStride + y * parameters.inputStride;
+    float intensity;
+    if (parameters.pixelFormat == 0u)
+    {
+        intensity = float(readInputByte(rowOffset + x));
+    }
+    else
+    {
+        uint bytesPerPixel = parameters.pixelFormat <= 2u ? 3u : 4u;
+        uint pixelOffset = rowOffset + x * bytesPerPixel;
+        bool blueFirst = parameters.pixelFormat == 2u || parameters.pixelFormat == 4u;
+        float first = float(readInputByte(pixelOffset));
+        float green = float(readInputByte(pixelOffset + 1u));
+        float third = float(readInputByte(pixelOffset + 2u));
+        float red = blueFirst ? third : first;
+        float blue = blueFirst ? first : third;
+        vec3 weights = resolveRgbWeights();
+        intensity = red * weights.x + green * weights.y + blue * weights.z;
+    }
+    pixels[parameters.outputOffset + frame * parameters.outputFrameStride + index] = intensity * parameters.intensityScale;
+}

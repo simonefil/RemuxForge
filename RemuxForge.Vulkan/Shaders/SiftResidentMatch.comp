@@ -1,0 +1,203 @@
+#version 450
+#define REMUXFORGE_INTEGER_DOT 0
+#if REMUXFORGE_INTEGER_DOT
+#extension GL_EXT_integer_dot_product : require
+#endif
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct PairRecord
+{
+    uint firstFrame; uint secondFrame; uint firstOffset; uint secondOffset;
+    uint forwardOffset; uint reverseOffset; uint flagOffset; uint candidateOffset;
+    uint outputOffset; uint firstCapacity; uint secondCapacity;
+};
+
+struct NearestNeighborRecord { uint bestIndex; uint secondIndex; float bestDistance; float secondDistance; };
+struct ReciprocalMatchRecord { uint firstDescriptorIndex; uint secondDescriptorIndex; float distance; uint pairIndex; };
+
+layout(std430, set = 0, binding = 0) readonly buffer FirstDescriptors { uint firstDescriptors[]; };
+layout(std430, set = 0, binding = 1) readonly buffer SecondDescriptors { uint secondDescriptors[]; };
+layout(std430, set = 0, binding = 2) readonly buffer FirstCounts { uint firstCounts[]; };
+layout(std430, set = 0, binding = 3) readonly buffer SecondCounts { uint secondCounts[]; };
+layout(std430, set = 0, binding = 4) readonly buffer PairMetadata { PairRecord pairs[]; };
+layout(std430, set = 0, binding = 5) buffer NearestOutput { NearestNeighborRecord nearest[]; };
+layout(std430, set = 0, binding = 6) buffer ReciprocalFlags { uint reciprocalFlags[]; };
+layout(std430, set = 0, binding = 7) readonly buffer ReciprocalPrefix { uint reciprocalPrefix[]; };
+layout(std430, set = 0, binding = 8) buffer ReciprocalCandidates { ReciprocalMatchRecord reciprocalCandidates[]; };
+layout(std430, set = 0, binding = 9) writeonly buffer ReciprocalOutput { ReciprocalMatchRecord reciprocalOutput[]; };
+layout(std430, set = 0, binding = 10) buffer MatchCounts { uint matchCounts[]; };
+struct QueryJobRecord { uint pairIndex; uint queryIndex; };
+layout(std430, set = 0, binding = 11) readonly buffer QueryJobs { QueryJobRecord jobs[]; };
+layout(std430, set = 0, binding = 12) readonly buffer MatchControl { uint control[]; };
+
+layout(push_constant) uniform Parameters
+{
+    uint pairCount;
+    uint operation;
+    float loweRatio;
+    uint forwardJobCapacity;
+} parameters;
+
+shared uint bestDistances[256];
+shared uint secondDistances[256];
+shared uint bestIndexes[256];
+shared uint secondIndexes[256];
+shared uint queryDescriptors[512];
+shared uint trainDescriptors[1024];
+
+uint packedSquaredDistance(uint first, uint second)
+{
+#if REMUXFORGE_INTEGER_DOT
+    return dotPacked4x8EXT(first, first) + dotPacked4x8EXT(second, second) - 2u * dotPacked4x8EXT(first, second);
+#else
+    uint result = 0u;
+    for (uint shift = 0u; shift < 32u; shift += 8u)
+    {
+        int delta = int((first >> shift) & 255u) - int((second >> shift) & 255u);
+        result += uint(delta * delta);
+    }
+    return result;
+#endif
+}
+
+void addCandidate(inout uint best, inout uint second, inout uint bestIndex, inout uint secondIndex, uint distance, uint index)
+{
+    if (distance < best || (distance == best && index < bestIndex))
+    {
+        second = best; secondIndex = bestIndex; best = distance; bestIndex = index;
+    }
+    else if (distance < second || (distance == second && index < secondIndex))
+    {
+        second = distance; secondIndex = index;
+    }
+}
+
+void main()
+{
+    uint lane = gl_LocalInvocationID.x;
+
+    if (parameters.operation == 2u)
+    {
+        // Applica Lowe in entrambe le direzioni e marca soltanto i match reciproci.
+        uint pairIndex = gl_WorkGroupID.y;
+        if (pairIndex >= parameters.pairCount)
+            return;
+        PairRecord pair = pairs[pairIndex];
+        uint firstCount = min(firstCounts[pair.firstFrame], pair.firstCapacity);
+        uint queryIndex = gl_WorkGroupID.x * 256u + lane;
+        if (queryIndex == 0u)
+            matchCounts[pairIndex * 2u + 1u] = 0u;
+        if (queryIndex >= pair.firstCapacity)
+            return;
+        uint flagIndex = pair.flagOffset + queryIndex;
+        reciprocalFlags[flagIndex] = 0u;
+        if (queryIndex >= firstCount)
+            return;
+        NearestNeighborRecord forward = nearest[pair.forwardOffset + queryIndex];
+        float squaredLoweRatio = parameters.loweRatio * parameters.loweRatio;
+        if (forward.bestIndex == 0xffffffffu || forward.secondIndex == 0xffffffffu || !(forward.bestDistance < forward.secondDistance * squaredLoweRatio))
+            return;
+        atomicAdd(matchCounts[pairIndex * 2u + 1u], 1u);
+        NearestNeighborRecord reverse = nearest[pair.reverseOffset + forward.bestIndex];
+        if (reverse.bestIndex != queryIndex || reverse.secondIndex == 0xffffffffu || !(reverse.bestDistance < reverse.secondDistance * squaredLoweRatio))
+            return;
+        reciprocalFlags[flagIndex] = 1u;
+        reciprocalCandidates[pair.candidateOffset + queryIndex] = ReciprocalMatchRecord(queryIndex, forward.bestIndex, sqrt(forward.bestDistance), pairIndex);
+        return;
+    }
+
+    if (parameters.operation == 3u)
+    {
+        // Compatta i match reciproci usando il prefix scan condiviso con la pipeline SIFT.
+        uint pairIndex = gl_WorkGroupID.y;
+        if (pairIndex >= parameters.pairCount)
+            return;
+        PairRecord pair = pairs[pairIndex];
+        uint queryIndex = gl_WorkGroupID.x * 256u + lane;
+        if (queryIndex == 0u)
+            matchCounts[pairIndex * 2u] = 0u;
+        if (queryIndex >= pair.firstCapacity)
+            return;
+        uint flagIndex = pair.flagOffset + queryIndex;
+        uint basePrefix = reciprocalPrefix[pair.flagOffset];
+        if (queryIndex == 0u)
+        {
+            uint last = pair.flagOffset + pair.firstCapacity - 1u;
+            matchCounts[pairIndex * 2u] = reciprocalPrefix[last] + reciprocalFlags[last] - basePrefix;
+        }
+        if (reciprocalFlags[flagIndex] != 0u)
+        {
+            uint destination = reciprocalPrefix[flagIndex] - basePrefix;
+            reciprocalOutput[pair.outputOffset + destination] = reciprocalCandidates[pair.candidateOffset + queryIndex];
+        }
+        return;
+    }
+
+    bool reverse = parameters.operation == 1u;
+    // Ogni workgroup elabora sedici query; sedici lane cooperano sulla riduzione top-2 di ciascuna query.
+    uint queryGroup = lane >> 4u;
+    uint queryLane = lane & 15u;
+    uint jobIndex = gl_WorkGroupID.x * 16u + queryGroup;
+    uint jobCount = control[reverse ? 1u : 0u];
+    bool validJob = jobIndex < jobCount;
+    uint jobOffset = reverse ? parameters.forwardJobCapacity : 0u;
+    QueryJobRecord job = validJob ? jobs[jobOffset + jobIndex] : QueryJobRecord(0u, 0xffffffffu);
+    bool validQuery = validJob && job.queryIndex != 0xffffffffu;
+    uint workgroupJobIndex = gl_WorkGroupID.x * 16u;
+    uint pairIndex = jobs[jobOffset + workgroupJobIndex].pairIndex;
+    PairRecord pair = pairs[pairIndex];
+    uint firstCount = min(firstCounts[pair.firstFrame], pair.firstCapacity);
+    uint secondCount = min(secondCounts[pair.secondFrame], pair.secondCapacity);
+    uint trainCount = reverse ? firstCount : secondCount;
+    uint queryIndex = job.queryIndex;
+    uint queryBase = validQuery ? (reverse ? pair.secondOffset : pair.firstOffset) + queryIndex : 0u;
+    for (uint component = queryLane; component < 32u; component += 16u)
+        queryDescriptors[queryGroup * 32u + component] = validQuery ? (reverse ? secondDescriptors[queryBase * 32u + component] : firstDescriptors[queryBase * 32u + component]) : 0u;
+    barrier();
+    uint best = 0xffffffffu;
+    uint second = 0xffffffffu;
+    uint bestIndex = 0xffffffffu;
+    uint secondIndex = 0xffffffffu;
+    for (uint tileBase = 0u; tileBase < trainCount; tileBase += 32u)
+    {
+        for (uint sharedIndex = lane; sharedIndex < 1024u; sharedIndex += 256u)
+        {
+            uint tileIndex = sharedIndex >> 5u;
+            uint component = sharedIndex & 31u;
+            uint trainIndex = tileBase + tileIndex;
+            uint trainBase = (reverse ? pair.firstOffset : pair.secondOffset) + trainIndex;
+            trainDescriptors[sharedIndex] = trainIndex < trainCount ? (reverse ? firstDescriptors[trainBase * 32u + component] : secondDescriptors[trainBase * 32u + component]) : 0u;
+        }
+        barrier();
+        for (uint tileIndex = queryLane; validQuery && tileIndex < 32u; tileIndex += 16u)
+        {
+            uint trainIndex = tileBase + tileIndex;
+            if (trainIndex < trainCount)
+            {
+                uint distanceSquared = 0u;
+                for (uint component = 0u; component < 32u; component++)
+                    distanceSquared += packedSquaredDistance(queryDescriptors[queryGroup * 32u + component], trainDescriptors[tileIndex * 32u + component]);
+                addCandidate(best, second, bestIndex, secondIndex, distanceSquared, trainIndex);
+            }
+        }
+        barrier();
+    }
+    bestDistances[lane] = best; secondDistances[lane] = second; bestIndexes[lane] = bestIndex; secondIndexes[lane] = secondIndex;
+    barrier();
+    for (uint stride = 8u; stride > 0u; stride >>= 1u)
+    {
+        if (queryLane < stride)
+        {
+            best = bestDistances[lane]; second = secondDistances[lane]; bestIndex = bestIndexes[lane]; secondIndex = secondIndexes[lane];
+            addCandidate(best, second, bestIndex, secondIndex, bestDistances[lane + stride], bestIndexes[lane + stride]);
+            addCandidate(best, second, bestIndex, secondIndex, secondDistances[lane + stride], secondIndexes[lane + stride]);
+            bestDistances[lane] = best; secondDistances[lane] = second; bestIndexes[lane] = bestIndex; secondIndexes[lane] = secondIndex;
+        }
+        barrier();
+    }
+    if (queryLane == 0u && validQuery)
+    {
+        uint outputIndex = (reverse ? pair.reverseOffset : pair.forwardOffset) + queryIndex;
+        nearest[outputIndex] = NearestNeighborRecord(bestIndexes[lane], secondIndexes[lane], float(bestDistances[lane]), float(secondDistances[lane]));
+    }
+}

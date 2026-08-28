@@ -491,6 +491,8 @@ namespace RemuxForge.Core.Analysis.Features
             for (int i = 0; i < batch.PairResults.Count; i++)
             {
                 VulkanSiftPairResult pairResult = batch.PairResults[i];
+                if (pairResult.Status != VulkanSiftPairStatus.Accepted)
+                    this.AddRejectionCount(result, pairResult.RejectReason.ToString());
                 if (!sourceMatrixIndexes.TryGetValue(pairResult.Pair.FirstFrameIndex, out int sourceIndex) || !languageMatrixIndexes.TryGetValue(pairResult.Pair.SecondFrameIndex, out int languageIndex))
                     continue;
                 DeepSiftMatchCell cell = this.CreateCell(pairResult);
@@ -539,6 +541,8 @@ namespace RemuxForge.Core.Analysis.Features
             for (int pairIndex = 0; pairIndex < batch.PairResults.Count; pairIndex++)
             {
                 VulkanSiftPairResult pairResult = batch.PairResults[pairIndex];
+                if (pairResult.Status != VulkanSiftPairStatus.Accepted)
+                    this.AddRejectionCount(result, pairResult.RejectReason.ToString());
                 int sourceIndex = packed.SourceOriginalIndexes[pairResult.Pair.FirstFrameIndex];
                 int languageIndex = packed.LanguageOriginalIndexes[pairResult.Pair.SecondFrameIndex];
                 DeepSiftMatchCell cell = this.CreateCell(pairResult);
@@ -669,6 +673,18 @@ namespace RemuxForge.Core.Analysis.Features
             result.LanguageCoverage = match.SecondCoverage;
             result.MeanReprojectionError = match.MeanReprojectionError;
             return result;
+        }
+
+        /// <summary>
+        /// Incrementa il contatore deterministico del motivo di rifiuto Vulkan
+        /// </summary>
+        /// <param name="result">Risultato batch da aggiornare</param>
+        /// <param name="reason">Motivo esposto dalla pipeline Vulkan</param>
+        private void AddRejectionCount(DeepSiftBatchMatchResult result, string reason)
+        {
+            string key = string.IsNullOrEmpty(reason) ? "Unknown" : reason;
+            result.RejectionCounts.TryGetValue(key, out int count);
+            result.RejectionCounts[key] = count + 1;
         }
 
         /// <summary>

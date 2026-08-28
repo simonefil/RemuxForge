@@ -22,16 +22,6 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         /// </summary>
         private const int FRAME_BYTES = FrameSignals.SIDE * FrameSignals.SIDE;
 
-        /// <summary>
-        /// Lato del blocco che genera un pixel della miniatura
-        /// </summary>
-        private const int THUMB_BLOCK = FrameSignals.SIDE / FrameSignals.THUMB_SIDE;
-
-        /// <summary>
-        /// Numero di pixel della miniatura
-        /// </summary>
-        private const int THUMB_PIXELS = FrameSignals.THUMB_SIDE * FrameSignals.THUMB_SIDE;
-
         #endregion
 
         #region Variabili di classe
@@ -169,21 +159,16 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                     if (pending < FRAME_BYTES)
                         continue;
                     pending = 0;
-                    AppendThumbnail(batch, origin, thumbPixels, thumbStd);
-                    long sum = 0;
-                    for (int i = 0; i < FRAME_BYTES; i++)
-                        sum += batch[origin + i];
-                    lumaMean.Add((float)((double)sum / FRAME_BYTES));
                     batchCount++;
                     if (batchCount < batchFrames)
                         continue;
-                    this._hashBackend.Hash(batch, batchCount, hash0, hash1);
+                    this._hashBackend.Analyze(batch, batchCount, hash0, hash1, lumaMean, thumbStd, thumbPixels);
                     batchCount = 0;
                 }
             }, timeoutMs);
 
             if (batchCount > 0)
-                this._hashBackend.Hash(batch, batchCount, hash0, hash1);
+                this._hashBackend.Analyze(batch, batchCount, hash0, hash1, lumaMean, thumbStd, thumbPixels);
 
             cancellation.ThrowIfCancellationRequested();
             // Una decodifica interrotta consegna comunque i fotogrammi letti fino a lì: senza
@@ -478,39 +463,6 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         }
 
 
-
-        /// <summary>
-        /// Riduce il fotogramma alla miniatura 12x12 e ne accumula pixel e deviazione standard
-        /// </summary>
-        /// <param name="frames">Blocco che contiene il quadrato di analisi</param>
-        /// <param name="origin">Primo byte del quadrato dentro il blocco</param>
-        /// <param name="thumbPixels">Accumulatore delle miniature</param>
-        /// <param name="thumbStd">Accumulatore delle deviazioni standard</param>
-        private static void AppendThumbnail(byte[] frames, int origin, List<byte> thumbPixels, List<float> thumbStd)
-        {
-            int[] sums = new int[THUMB_PIXELS];
-            for (int row = 0; row < FrameSignals.SIDE; row++)
-            {
-                int cellRow = row / THUMB_BLOCK;
-                int offset = origin + row * FrameSignals.SIDE;
-                for (int column = 0; column < FrameSignals.SIDE; column++)
-                    sums[cellRow * FrameSignals.THUMB_SIDE + column / THUMB_BLOCK] += frames[offset + column];
-            }
-
-            const double CELL_PIXELS = THUMB_BLOCK * THUMB_BLOCK;
-            double total = 0.0;
-            double totalSquares = 0.0;
-            for (int i = 0; i < THUMB_PIXELS; i++)
-            {
-                double value = sums[i] / CELL_PIXELS;
-                total += value;
-                totalSquares += value * value;
-                thumbPixels.Add((byte)(sums[i] / (THUMB_BLOCK * THUMB_BLOCK)));
-            }
-
-            double mean = total / THUMB_PIXELS;
-            thumbStd.Add((float)Math.Sqrt(Math.Max(totalSquares / THUMB_PIXELS - mean * mean, 0.0)));
-        }
 
         /// <summary>
         /// Recupera l'ultima riga non vuota della diagnostica di un processo

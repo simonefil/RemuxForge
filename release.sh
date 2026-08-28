@@ -92,6 +92,11 @@ require_command() {
     fi
 }
 
+if [ "$BUILD_TARGET" = "all" ]; then
+    require_command glslc
+    require_command spirv-val
+fi
+
 build_macos_desktop() {
     local identity_file
     local password

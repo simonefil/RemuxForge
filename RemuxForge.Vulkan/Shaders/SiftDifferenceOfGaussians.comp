@@ -1,0 +1,35 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, set = 0, binding = 0) readonly buffer GaussianInput
+{
+    float gaussianPixels[];
+};
+
+layout(std430, set = 0, binding = 1) writeonly buffer DogOutput
+{
+    float dogPixels[];
+};
+
+layout(push_constant) uniform Parameters
+{
+    uint firstOffset;
+    uint secondOffset;
+    uint outputOffset;
+    uint elementCount;
+    uint inputFrameStride;
+    uint outputFrameStride;
+    uint frameCount;
+} parameters;
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    uint frame = gl_GlobalInvocationID.z;
+    uint frames = max(parameters.frameCount, 1u);
+    if (index >= parameters.elementCount || frame >= frames)
+        return;
+    uint inputBase = frame * parameters.inputFrameStride;
+    dogPixels[parameters.outputOffset + frame * parameters.outputFrameStride + index] = gaussianPixels[parameters.secondOffset + inputBase + index] - gaussianPixels[parameters.firstOffset + inputBase + index];
+}

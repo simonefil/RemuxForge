@@ -1,0 +1,34 @@
+# shader|name|push-constant-size
+shader|HashExtract|4
+shader|HashMatch|16
+shader|HomographyRansac|52
+shader|RansacCompactPairs|20
+shader|SiftAssignOrientations|64
+shader|SiftBitonicSortSmall|52
+shader|SiftBuildDescriptors|56
+shader|SiftBuildGradients|32
+shader|SiftBuildIndirect|20
+shader|SiftCompactKeypoints|52
+shader|SiftDeduplicateKeypoints|52
+shader|SiftDetectRefine|72
+shader|SiftDifferenceOfGaussians|28
+shader|SiftGaussian|40
+shader|SiftMergeFeatures|60
+shader|SiftSelectTopFeatures|16
+shader|SiftNormalizeInput|44
+shader|SiftPrefixScan|36
+shader|SiftRadixSort|52
+shader|SiftRadixSortSmall|52
+shader|SiftRadixSortSubgroup|52
+shader|SiftResidentMatch|16
+shader|SiftResidentMatchIntegerDot|16
+shader|SiftBuildMatchJobs|12
+shader|SiftResizeBilinear|36
+
+# abi|record|size|field=offset,...
+abi|HashRecord|16|word0=0,word1=4,word2=8,word3=12
+abi|KeypointRecord|32|x=0,y=4,scale=8,response=12,orientation=16,frameIndex=20,octave=24,layer=28
+abi|ReciprocalMatchRecord|16|firstDescriptorIndex=0,secondDescriptorIndex=4,distance=8,pairIndex=12
+abi|GeometryPairRecord|56|firstFrame=0,secondFrame=4,firstKeypointOffset=8,secondKeypointOffset=12,reciprocalOffset=16,matchCountOffset=20,hypothesisOffset=24,resultIndex=28,firstWidth=32,firstHeight=36,secondWidth=40,secondHeight=44,stableFirstFrame=48,stableSecondFrame=52
+abi|RansacHypothesisRecord|64|row0=0,row1=16,row2=32,state=48
+abi|PairResultRecord|112|header0=0,header1=16,metrics0=32,metrics1=48,row0=64,row1=80,row2=96

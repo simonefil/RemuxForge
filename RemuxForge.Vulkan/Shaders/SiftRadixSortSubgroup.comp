@@ -1,0 +1,143 @@
+#version 450
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_ballot : require
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct KeypointRecord
+{
+    float x; float y; float scale; float response; float orientation;
+    uint frameIndex; uint octave; uint layer;
+};
+
+layout(std430, set = 0, binding = 0) buffer InputKeypoints { KeypointRecord inputKeypoints[]; };
+layout(std430, set = 0, binding = 1) buffer OutputKeypoints { KeypointRecord outputKeypoints[]; };
+layout(std430, set = 0, binding = 2) readonly buffer Counters { uint counters[]; };
+
+layout(push_constant) uniform Parameters
+{
+    uint inputOffset; uint outputOffset; uint capacity; uint counterOffset;
+    uint keySelector; uint byteIndex; uint operation;
+    uint scratchOffset; uint inputFrameStride; uint outputFrameStride; uint counterFrameStride;
+    uint scratchFrameStride; uint frameCount;
+} parameters;
+
+shared uint subgroupOffsets[1024];
+shared uint subgroupRunning[1024];
+shared uint bucketBases[16];
+uint frame;
+
+uint quantizedSigned(float value) { return uint(int(round(value * 10000.0))) ^ 0x80000000u; }
+
+uint keyFor(KeypointRecord keypoint, uint keySelector)
+{
+    if (keySelector == 0u) return quantizedSigned(keypoint.x);
+    if (keySelector == 1u) return quantizedSigned(keypoint.y);
+    if (keySelector == 2u) return keypoint.layer;
+    if (keySelector == 3u) return quantizedSigned(keypoint.response);
+    return quantizedSigned(keypoint.scale);
+}
+
+KeypointRecord readKeypoint(uint index, bool forward)
+{
+    return forward ? inputKeypoints[parameters.inputOffset + frame * parameters.inputFrameStride + index] : outputKeypoints[parameters.outputOffset + frame * parameters.outputFrameStride + index];
+}
+
+void writeKeypoint(uint index, KeypointRecord keypoint, bool forward)
+{
+    if (forward) outputKeypoints[parameters.outputOffset + frame * parameters.outputFrameStride + index] = keypoint;
+    else inputKeypoints[parameters.inputOffset + frame * parameters.inputFrameStride + index] = keypoint;
+}
+
+void main()
+{
+    frame = gl_WorkGroupID.z;
+    uint frames = max(parameters.frameCount, 1u);
+    if (frame >= frames)
+        return;
+    uint count = min(counters[parameters.counterOffset + frame * parameters.counterFrameStride], parameters.capacity);
+    uint lane = gl_LocalInvocationID.x;
+    uint subgroup = gl_SubgroupID;
+    uint subgroupLane = gl_SubgroupInvocationID;
+    uint subgroupCount = gl_NumSubgroups;
+    uint begin = count * subgroup / subgroupCount;
+    uint end = count * (subgroup + 1u) / subgroupCount;
+    uint iterationTotal = (end - begin + gl_SubgroupSize - 1u) / gl_SubgroupSize;
+    uint passCount = parameters.operation == 4u ? 40u : 1u;
+    for (uint pass = 0u; pass < passCount; pass++)
+    {
+        uint keySelector = parameters.operation == 4u ? pass / 8u : parameters.keySelector;
+        uint byteIndex = parameters.operation == 4u ? pass & 7u : parameters.byteIndex;
+        bool forward = (pass & 1u) == 0u;
+        uint sharedCount = subgroupCount * 16u;
+        for (uint index = lane; index < sharedCount; index += 256u)
+        {
+            subgroupOffsets[index] = 0u;
+            subgroupRunning[index] = 0u;
+        }
+        barrier();
+        uint shift = byteIndex * 4u;
+        for (uint iteration = 0u; iteration < iterationTotal; iteration++)
+        {
+            uint index = begin + iteration * gl_SubgroupSize + subgroupLane;
+            bool validElement = index < end;
+            uint bucket = validElement ? (keyFor(readKeypoint(index, forward), keySelector) >> shift) & 15u : 0u;
+            for (uint candidateBucket = 0u; candidateBucket < 16u; candidateBucket++)
+            {
+                uvec4 mask = subgroupBallot(validElement && bucket == candidateBucket);
+                if (subgroupElect()) subgroupOffsets[subgroup * 16u + candidateBucket] += subgroupBallotBitCount(mask);
+            }
+        }
+        barrier();
+        if (lane == 0u)
+        {
+            uint globalBase = 0u;
+            for (uint bucket = 0u; bucket < 16u; bucket++)
+            {
+                bucketBases[bucket] = globalBase;
+                uint subgroupBase = 0u;
+                for (uint group = 0u; group < subgroupCount; group++)
+                {
+                    uint offset = group * 16u + bucket;
+                    uint groupCount = subgroupOffsets[offset];
+                    subgroupOffsets[offset] = subgroupBase;
+                    subgroupBase += groupCount;
+                }
+                globalBase += subgroupBase;
+            }
+        }
+        barrier();
+        for (uint iteration = 0u; iteration < iterationTotal; iteration++)
+        {
+            uint index = begin + iteration * gl_SubgroupSize + subgroupLane;
+            bool validElement = index < end;
+            KeypointRecord keypoint;
+            uint bucket = 0u;
+            if (validElement)
+            {
+                keypoint = readKeypoint(index, forward);
+                bucket = (keyFor(keypoint, keySelector) >> shift) & 15u;
+            }
+            uint rank = 0u;
+            uint bucketCounts[16];
+            for (uint candidateBucket = 0u; candidateBucket < 16u; candidateBucket++)
+            {
+                uvec4 mask = subgroupBallot(validElement && bucket == candidateBucket);
+                bucketCounts[candidateBucket] = subgroupBallotBitCount(mask);
+                if (bucket == candidateBucket) rank = subgroupBallotExclusiveBitCount(mask);
+            }
+            uint sharedOffset = subgroup * 16u + bucket;
+            uint destination = bucketBases[bucket] + subgroupOffsets[sharedOffset] + subgroupRunning[sharedOffset] + rank;
+            if (validElement) writeKeypoint(destination, keypoint, forward);
+            if (subgroupElect())
+            {
+                for (uint candidateBucket = 0u; candidateBucket < 16u; candidateBucket++)
+                    subgroupRunning[subgroup * 16u + candidateBucket] += bucketCounts[candidateBucket];
+            }
+            subgroupMemoryBarrierShared();
+            subgroupBarrier();
+        }
+        memoryBarrierBuffer();
+        barrier();
+    }
+}

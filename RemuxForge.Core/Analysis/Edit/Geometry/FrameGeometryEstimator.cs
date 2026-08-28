@@ -269,6 +269,10 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
                 result.Alignment.SiftMatchingMs = batch.MatchingMs;
                 result.Alignment.SiftDescriptorWorkMs = batch.DescriptorMatchingMs;
                 result.Alignment.SiftGeometryWorkMs = batch.GeometryMs;
+                result.Alignment.SiftAcceptedPairCount = batch.AcceptedCellCount;
+                result.Alignment.SiftSourceFeaturelessAnchorCount = batch.SourceFeaturelessAnchorCount;
+                result.Alignment.SiftLanguageFeaturelessAnchorCount = batch.LanguageFeaturelessAnchorCount;
+                result.Alignment.SiftRejectionCounts = new Dictionary<string, int>(batch.RejectionCounts);
                 result.Alignment.UploadMs = batch.UploadMs;
                 result.Alignment.ReadbackMs = batch.ReadbackMs;
                 if (batch.Cancelled)
@@ -277,6 +281,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
                     return this.Reject(result, batch.RejectReason);
                 phaseStopwatch.Restart();
                 List<GeometryCandidate> candidates = this.BuildCandidates(batch.AcceptedPairs, sourceAnchors, languageAnchors);
+                this.PopulateCandidateDiagnostics(result.Alignment.SiftCandidateMatches, candidates);
                 if (!this.TryBuildConsensus(candidates, out GeometryConsensus consensus))
                     return this.Reject(result, "Meno di cinque match SIFT/RANSAC geometricamente concordi nei primi tre minuti");
 
@@ -649,6 +654,30 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
                 result.Add(candidate);
             }
             return result;
+        }
+
+        /// <summary>
+        /// Converte le trasformazioni candidate nel contratto diagnostico pubblico
+        /// </summary>
+        /// <param name="diagnostics">Lista diagnostica da riempire</param>
+        /// <param name="candidates">Candidate geometriche prima del consenso</param>
+        private void PopulateCandidateDiagnostics(List<VisualGeometryMatch> diagnostics, List<GeometryCandidate> candidates)
+        {
+            diagnostics.Clear();
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                GeometryCandidate candidate = candidates[i];
+                diagnostics.Add(new VisualGeometryMatch
+                {
+                    SourcePtsMs = candidate.SourcePtsMs,
+                    LanguagePtsMs = candidate.LanguagePtsMs,
+                    Score = candidate.Score,
+                    ScaleX = candidate.ScaleX,
+                    ScaleY = candidate.ScaleY,
+                    TranslateX = candidate.TranslateX,
+                    TranslateY = candidate.TranslateY
+                });
+            }
         }
 
         /// <summary>
@@ -1060,8 +1089,6 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
                 (sourceViewport.Top - consensus.TranslateY) / consensus.ScaleY,
                 (sourceViewport.Right - consensus.TranslateX) / consensus.ScaleX,
                 (sourceViewport.Bottom - consensus.TranslateY) / consensus.ScaleY);
-            double viewportEpsilon = 1.0 / SIFT_SIDE;
-            bool affineIsInside = mappedLanguageViewport.Left >= -viewportEpsilon && mappedLanguageViewport.Top >= -viewportEpsilon && mappedLanguageViewport.Right <= 1.0 + viewportEpsilon && mappedLanguageViewport.Bottom <= 1.0 + viewportEpsilon;
             NormalizedRect affineLanguageViewport = new NormalizedRect(
                 Math.Clamp(mappedLanguageViewport.Left, 0.0, 1.0),
                 Math.Clamp(mappedLanguageViewport.Top, 0.0, 1.0),
@@ -1091,7 +1118,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             result.Alignment.DHashContractPairCount = pairCount;
             result.Alignment.IndependentDHashExplainedCount = independentExplained;
             result.Alignment.AffineDHashExplainedCount = affineExplained;
-            result.Alignment.UseAffineDHashViewport = affineIsInside && independentExplained * 2 <= pairCount && affineExplained > independentExplained;
+            result.Alignment.UseAffineDHashViewport = independentExplained * 2 <= pairCount && affineExplained > independentExplained;
             if (!result.Alignment.UseAffineDHashViewport)
                 return;
 

@@ -1,0 +1,64 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, set = 0, binding = 0) readonly buffer InputValues
+{
+    uint inputValues[];
+};
+
+layout(std430, set = 0, binding = 1) buffer OutputValues
+{
+    uint outputValues[];
+};
+
+layout(std430, set = 0, binding = 2) buffer BlockValues
+{
+    uint blockValues[];
+};
+
+layout(push_constant) uniform Parameters
+{
+    uint inputOffset;
+    uint outputOffset;
+    uint blockOffset;
+    uint elementCount;
+    uint operation;
+    uint inputFrameStride;
+    uint outputFrameStride;
+    uint blockFrameStride;
+    uint frameCount;
+} parameters;
+
+shared uint scanValues[256];
+
+void main()
+{
+    uint lane = gl_LocalInvocationID.x;
+    uint group = gl_WorkGroupID.x;
+    uint frame = gl_WorkGroupID.z;
+    uint frames = max(parameters.frameCount, 1u);
+    if (frame >= frames)
+        return;
+    uint index = group * 256u + lane;
+    if (parameters.operation == 2u)
+    {
+        if (index < parameters.elementCount)
+            outputValues[parameters.outputOffset + frame * parameters.outputFrameStride + index] += blockValues[parameters.blockOffset + frame * parameters.blockFrameStride + group];
+        return;
+    }
+    uint value = index < parameters.elementCount ? inputValues[parameters.inputOffset + frame * parameters.inputFrameStride + index] : 0u;
+    scanValues[lane] = value;
+    barrier();
+    for (uint offset = 1u; offset < 256u; offset <<= 1u)
+    {
+        uint addend = lane >= offset ? scanValues[lane - offset] : 0u;
+        barrier();
+        scanValues[lane] += addend;
+        barrier();
+    }
+    if (index < parameters.elementCount)
+        outputValues[parameters.outputOffset + frame * parameters.outputFrameStride + index] = lane == 0u ? 0u : scanValues[lane - 1u];
+    if (lane == 255u)
+        blockValues[parameters.blockOffset + frame * parameters.blockFrameStride + group] = scanValues[255];
+}

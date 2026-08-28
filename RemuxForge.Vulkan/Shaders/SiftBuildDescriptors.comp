@@ -1,0 +1,155 @@
+#version 450
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+struct KeypointRecord
+{
+    float x; float y; float scale; float response; float orientation;
+    uint frameIndex; uint octave; uint layer;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer GradientInput { vec2 gradients[]; };
+layout(std430, set = 0, binding = 1) readonly buffer KeypointInput { KeypointRecord keypoints[]; };
+layout(std430, set = 0, binding = 2) writeonly buffer DescriptorOutput { uint descriptors[]; };
+layout(std430, set = 0, binding = 3) readonly buffer Counters { uint counters[]; };
+
+layout(push_constant) uniform Parameters
+{
+    uint gaussianOffset; uint keypointOffset; uint descriptorOffset; uint keypointCapacity;
+    uint width; uint height; uint layerStride; uint doubleInput; uint counterOffset;
+    uint gradientFrameStride; uint keypointFrameStride; uint descriptorFrameStride;
+    uint counterFrameStride; uint frameCount;
+} parameters;
+
+const float PI = 3.14159265358979323846;
+shared float partialDescriptors[4096];
+shared float descriptorValues[128];
+shared float normValues[32];
+shared KeypointRecord sharedKeypoint;
+shared float sharedCoordinateFactor;
+shared float sharedCosine;
+shared float sharedSine;
+shared float sharedHistogramWidth;
+shared float sharedOrientation;
+shared int sharedCenterX;
+shared int sharedCenterY;
+shared int sharedRadius;
+uint frame;
+
+vec2 gradient(int x, int y, uint layer)
+{
+    return gradients[parameters.gaussianOffset + frame * parameters.gradientFrameStride + layer * parameters.layerStride + uint(y) * parameters.width + uint(x)];
+}
+
+void main()
+{
+    uint feature = gl_WorkGroupID.x;
+    uint lane = gl_LocalInvocationID.x;
+    frame = gl_WorkGroupID.z;
+    uint frames = max(parameters.frameCount, 1u);
+    if (frame >= frames)
+        return;
+    uint keypointCount = min(counters[parameters.counterOffset + frame * parameters.counterFrameStride], parameters.keypointCapacity);
+    if (feature >= keypointCount)
+        return;
+    if (lane == 0u)
+    {
+        sharedKeypoint = keypoints[parameters.keypointOffset + frame * parameters.keypointFrameStride + feature];
+        sharedCoordinateFactor = exp2(float(sharedKeypoint.octave)) * (parameters.doubleInput != 0u ? 0.5 : 1.0);
+        sharedCenterX = int(round(sharedKeypoint.x / sharedCoordinateFactor));
+        sharedCenterY = int(round(sharedKeypoint.y / sharedCoordinateFactor));
+        float localScale = sharedKeypoint.scale / sharedCoordinateFactor * 0.5;
+        float orientation = (360.0 - sharedKeypoint.orientation) * PI / 180.0;
+        if (orientation > PI) orientation -= 2.0 * PI;
+        sharedOrientation = orientation;
+        sharedCosine = cos(orientation);
+        sharedSine = sin(orientation);
+        sharedHistogramWidth = 3.0 * localScale;
+        sharedRadius = int(sharedHistogramWidth * sqrt(2.0) * 2.5 + 0.5);
+    }
+    barrier();
+    KeypointRecord keypoint = sharedKeypoint;
+    for (uint bin = 0u; bin < 128u; bin++) partialDescriptors[bin * 32u + lane] = 0.0;
+    int centerX = sharedCenterX;
+    int centerY = sharedCenterY;
+    float orientation = sharedOrientation;
+    float cosine = sharedCosine;
+    float sine = sharedSine;
+    float histogramWidth = sharedHistogramWidth;
+    int radius = sharedRadius;
+    uint side = uint(radius * 2 + 1);
+    uint sampleCount = side * side;
+    for (uint sampleIndex = lane; sampleIndex < sampleCount; sampleIndex += 32u)
+    {
+        int dx = int(sampleIndex % side) - radius;
+        int dy = int(sampleIndex / side) - radius;
+        int x = centerX + dx;
+        int y = centerY + dy;
+        if (x <= 0 || x >= int(parameters.width) - 1 || y <= 0 || y >= int(parameters.height) - 1)
+            continue;
+        float xRotated = (float(dx) * cosine - float(dy) * sine) / histogramWidth;
+        float yRotated = (float(dx) * sine + float(dy) * cosine) / histogramWidth;
+        float xBin = xRotated + 1.5;
+        float yBin = yRotated + 1.5;
+        if (xBin <= -1.0 || xBin >= 4.0 || yBin <= -1.0 || yBin >= 4.0)
+            continue;
+        vec2 sampleGradient = gradient(x, y, keypoint.layer);
+        float angle = sampleGradient.y - orientation;
+        while (angle < 0.0) angle += 2.0 * PI;
+        while (angle >= 2.0 * PI) angle -= 2.0 * PI;
+        float orientationBin = angle * 8.0 / (2.0 * PI);
+        float magnitude = sampleGradient.x * exp(-(xRotated * xRotated + yRotated * yRotated) / 8.0);
+        int x0 = int(floor(xBin)); int y0 = int(floor(yBin)); int o0 = int(floor(orientationBin));
+        float tx = xBin - float(x0); float ty = yBin - float(y0); float to = orientationBin - float(o0);
+        for (int yi = 0; yi <= 1; yi++) for (int xi = 0; xi <= 1; xi++) for (int oi = 0; oi <= 1; oi++)
+        {
+            int xb = x0 + xi; int yb = y0 + yi; int ob = (o0 + oi) & 7;
+            if (xb < 0 || xb >= 4 || yb < 0 || yb >= 4) continue;
+            float weight = magnitude * (yi == 0 ? 1.0 - ty : ty) * (xi == 0 ? 1.0 - tx : tx) * (oi == 0 ? 1.0 - to : to);
+            uint bin = uint((yb * 4 + xb) * 8 + ob);
+            partialDescriptors[bin * 32u + lane] += weight;
+        }
+    }
+    barrier();
+    float laneNorm = 0.0;
+    for (uint bin = lane; bin < 128u; bin += 32u)
+    {
+        float value = 0.0;
+        for (uint sourceLane = 0u; sourceLane < 32u; sourceLane++) value += partialDescriptors[bin * 32u + sourceLane];
+        descriptorValues[bin] = value;
+        laneNorm += value * value;
+    }
+    barrier();
+    normValues[lane] = laneNorm;
+    barrier();
+    for (uint stride = 16u; stride > 0u; stride >>= 1u)
+    {
+        if (lane < stride) normValues[lane] += normValues[lane + stride];
+        barrier();
+    }
+    float norm = sqrt(max(normValues[0], 1.0e-12));
+    laneNorm = 0.0;
+    for (uint bin = lane; bin < 128u; bin += 32u)
+    {
+        float value = min(descriptorValues[bin] / norm, 0.2);
+        descriptorValues[bin] = value;
+        laneNorm += value * value;
+    }
+    normValues[lane] = laneNorm;
+    barrier();
+    for (uint stride = 16u; stride > 0u; stride >>= 1u)
+    {
+        if (lane < stride) normValues[lane] += normValues[lane + stride];
+        barrier();
+    }
+    norm = sqrt(max(normValues[0], 1.0e-12));
+    uint outputIndex = parameters.descriptorOffset + frame * parameters.descriptorFrameStride + feature * 32u;
+    uint firstBin = lane * 4u;
+    uint packed = 0u;
+    for (uint component = 0u; component < 4u; component++)
+    {
+        uint value = uint(round(min(255.0, descriptorValues[firstBin + component] / norm * 512.0)));
+        packed |= value << (component * 8u);
+    }
+    descriptors[outputIndex + lane] = packed;
+}

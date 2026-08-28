@@ -1,0 +1,270 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+const uint OPERATION_CLEAR = 0u;
+const uint OPERATION_ACCUMULATE = 1u;
+
+struct HashRecord
+{
+    uint word0;
+    uint word1;
+    uint word2;
+    uint word3;
+};
+
+/// Una scansione: un intervallo di fotogrammi sorgente contro una griglia di offset candidati
+struct ScanRecord
+{
+    uint firstIndex;
+    uint stride;
+    uint indexCount;
+    uint candidateOffset;
+    uint radius;
+    uint threshold;
+};
+
+/// Un lavoro: la scansione e quale dei suoi candidati misura questo gruppo
+struct JobRecord
+{
+    uint scanIndex;
+    uint candidateIndex;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer SourceHashBuffer { HashRecord sourceHashes[]; };
+layout(std430, set = 0, binding = 1) readonly buffer LanguageHashBuffer { HashRecord languageHashes[]; };
+// I tempi e gli offset viaggiano come i bit dei double da cui vengono: cosi' il confronto
+// e' quello che il percorso CPU ha fatto, non una sua approssimazione
+layout(std430, set = 0, binding = 2) readonly buffer SourceTimeBuffer { uvec2 sourceTimes[]; };
+layout(std430, set = 0, binding = 3) readonly buffer LanguageTimeBuffer { uvec2 languageTimes[]; };
+layout(std430, set = 0, binding = 4) readonly buffer ScanBuffer { ScanRecord scans[]; };
+layout(std430, set = 0, binding = 5) readonly buffer JobBuffer { JobRecord jobs[]; };
+layout(std430, set = 0, binding = 6) readonly buffer CandidateBuffer { uvec2 candidates[]; };
+layout(std430, set = 0, binding = 7) buffer ResultBuffer { uint results[]; };
+
+layout(push_constant) uniform Parameters
+{
+    uint jobCount;
+    uint operation;
+    uint languageCount;
+    uint resultCount;
+} parameters;
+
+shared uint groupExplained;
+
+/// Vero quando il double vale zero, di qualunque segno
+bool isZeroDouble(uvec2 value)
+{
+    return (value.y & 0x7fffffffu) == 0u && value.x == 0u;
+}
+
+/// Confronto fra due double letti come coppie di interi, in ordine segno-modulo
+bool lessDouble(uvec2 left, uvec2 right)
+{
+    bool negativeLeft = (left.y & 0x80000000u) != 0u;
+    bool negativeRight = (right.y & 0x80000000u) != 0u;
+    if (negativeLeft != negativeRight)
+        return negativeLeft && !(isZeroDouble(left) && isZeroDouble(right));
+    uvec2 leftMagnitude = uvec2(left.x, left.y & 0x7fffffffu);
+    uvec2 rightMagnitude = uvec2(right.x, right.y & 0x7fffffffu);
+    bool smaller = leftMagnitude.y != rightMagnitude.y ? leftMagnitude.y < rightMagnitude.y : leftMagnitude.x < rightMagnitude.x;
+    bool larger = leftMagnitude.y != rightMagnitude.y ? leftMagnitude.y > rightMagnitude.y : leftMagnitude.x > rightMagnitude.x;
+    return negativeLeft ? larger : smaller;
+}
+
+/// Scorrimento a sinistra di un intero a sessantaquattro bit
+void shiftLeftWide(inout uvec2 value, int amount)
+{
+    if (amount == 0)
+        return;
+    if (amount >= 32)
+    {
+        value = uvec2(0u, value.x << (amount - 32));
+        return;
+    }
+    value = uvec2(value.x << amount, (value.y << amount) | (value.x >> (32 - amount)));
+}
+
+/// Scorrimento a destra di un intero a sessantaquattro bit, con la traccia di cio' che esce
+bool shiftRightWide(inout uvec2 value, int amount)
+{
+    if (amount == 0)
+        return false;
+    if (amount >= 64)
+    {
+        bool lost = (value.x | value.y) != 0u;
+        value = uvec2(0u, 0u);
+        return lost;
+    }
+    if (amount >= 32)
+    {
+        bool lost = value.x != 0u || (amount > 32 && (value.y & ((1u << (amount - 32)) - 1u)) != 0u);
+        value = uvec2(amount == 32 ? value.y : (value.y >> (amount - 32)), 0u);
+        return lost;
+    }
+    bool lostLow = (value.x & ((1u << amount) - 1u)) != 0u;
+    value = uvec2((value.x >> amount) | (value.y << (32 - amount)), value.y >> amount);
+    return lostLow;
+}
+
+/// Somma di due interi a sessantaquattro bit
+uvec2 addWide(uvec2 left, uvec2 right)
+{
+    uint carry;
+    uint low = uaddCarry(left.x, right.x, carry);
+    return uvec2(low, left.y + right.y + carry);
+}
+
+/// Differenza di due interi a sessantaquattro bit
+uvec2 subWide(uvec2 left, uvec2 right)
+{
+    uint borrow;
+    uint low = usubBorrow(left.x, right.x, borrow);
+    return uvec2(low, left.y - right.y - borrow);
+}
+
+/// Posizione del bit piu' alto acceso, meno uno se il valore e' nullo
+int msbWide(uvec2 value)
+{
+    return value.y != 0u ? 32 + findMSB(value.y) : findMSB(value.x);
+}
+
+// La somma si fa come la fa l'unita' in virgola mobile, arrotondata al pari: sommare esatto
+// darebbe un confine diverso da quello del percorso CPU, e con esso un altro fotogramma
+uvec2 addDouble(uvec2 left, uvec2 right)
+{
+    if (isZeroDouble(left))
+        return right;
+    if (isZeroDouble(right))
+        return left;
+    uint signLeft = left.y >> 31u;
+    uint signRight = right.y >> 31u;
+    int exponentLeft = int((left.y >> 20u) & 0x7ffu);
+    int exponentRight = int((right.y >> 20u) & 0x7ffu);
+    uvec2 mantissaLeft = uvec2(left.x, (left.y & 0x000fffffu) | (exponentLeft != 0 ? 0x00100000u : 0u));
+    uvec2 mantissaRight = uvec2(right.x, (right.y & 0x000fffffu) | (exponentRight != 0 ? 0x00100000u : 0u));
+    exponentLeft = max(exponentLeft, 1);
+    exponentRight = max(exponentRight, 1);
+
+    // Il termine di modulo maggiore detta segno ed esponente del risultato
+    if (exponentLeft < exponentRight || (exponentLeft == exponentRight && (mantissaLeft.y < mantissaRight.y || (mantissaLeft.y == mantissaRight.y && mantissaLeft.x < mantissaRight.x))))
+    {
+        uint swappedSign = signLeft;
+        signLeft = signRight;
+        signRight = swappedSign;
+        int swappedExponent = exponentLeft;
+        exponentLeft = exponentRight;
+        exponentRight = swappedExponent;
+        uvec2 swappedMantissa = mantissaLeft;
+        mantissaLeft = mantissaRight;
+        mantissaRight = swappedMantissa;
+    }
+
+    shiftLeftWide(mantissaLeft, 3);
+    shiftLeftWide(mantissaRight, 3);
+    if (shiftRightWide(mantissaRight, exponentLeft - exponentRight))
+        mantissaRight.x |= 1u;
+
+    int exponent = exponentLeft;
+    uvec2 sum = signLeft == signRight ? addWide(mantissaLeft, mantissaRight) : subWide(mantissaLeft, mantissaRight);
+    if (sum.x == 0u && sum.y == 0u)
+        return uvec2(0u, 0u);
+
+    int highest = msbWide(sum);
+    if (highest > 55)
+    {
+        if (shiftRightWide(sum, highest - 55))
+            sum.x |= 1u;
+        exponent += highest - 55;
+    }
+    else if (highest < 55)
+    {
+        int shift = 55 - highest;
+        if (exponent - shift < 1)
+            return uvec2(0u, 0u);
+        shiftLeftWide(sum, shift);
+        exponent -= shift;
+    }
+
+    uint guard = sum.x & 7u;
+    shiftRightWide(sum, 3);
+    if (guard > 4u || (guard == 4u && (sum.x & 1u) != 0u))
+    {
+        sum = addWide(sum, uvec2(1u, 0u));
+        if (msbWide(sum) > 52)
+        {
+            shiftRightWide(sum, 1);
+            exponent++;
+        }
+    }
+    return uvec2(sum.x, (signLeft << 31u) | (uint(exponent) << 20u) | (sum.y & 0x000fffffu));
+}
+
+/// Indice del primo tempo della copia doppiata non minore del valore cercato
+uint lowerBound(uvec2 target)
+{
+    uint low = 0u;
+    uint high = parameters.languageCount;
+    while (low < high)
+    {
+        uint middle = (low + high) / 2u;
+        if (lessDouble(languageTimes[middle], target))
+            low = middle + 1u;
+        else
+            high = middle;
+    }
+    return low;
+}
+
+/// Distanza di Hamming minima nell'intorno di tolleranza attorno al tempo cercato
+uint nearestDistance(uint sourceIndex, uvec2 target, uint radius)
+{
+    int center = int(lowerBound(target));
+    int last = int(parameters.languageCount) - 1;
+    HashRecord source = sourceHashes[sourceIndex];
+    uint best = 128u;
+    for (int shift = -int(radius); shift <= int(radius); shift++)
+    {
+        HashRecord other = languageHashes[clamp(center + shift, 0, last)];
+        uint distance = uint(bitCount(source.word0 ^ other.word0) + bitCount(source.word1 ^ other.word1) +
+                             bitCount(source.word2 ^ other.word2) + bitCount(source.word3 ^ other.word3));
+        best = min(best, distance);
+    }
+    return best;
+}
+
+void main()
+{
+    if (parameters.operation == OPERATION_CLEAR)
+    {
+        uint index = gl_GlobalInvocationID.x;
+        if (index < parameters.resultCount)
+            results[index] = 0u;
+        return;
+    }
+
+    uint jobIndex = gl_WorkGroupID.y;
+    if (jobIndex >= parameters.jobCount)
+        return;
+
+    uint lane = gl_LocalInvocationID.x;
+    if (lane == 0u)
+        groupExplained = 0u;
+    barrier();
+
+    JobRecord job = jobs[jobIndex];
+    ScanRecord scan = scans[job.scanIndex];
+    uint slot = gl_WorkGroupID.x * gl_WorkGroupSize.x + lane;
+    if (slot < scan.indexCount)
+    {
+        uint sourceIndex = scan.firstIndex + slot * scan.stride;
+        uvec2 target = addDouble(sourceTimes[sourceIndex], candidates[scan.candidateOffset + job.candidateIndex]);
+        if (nearestDistance(sourceIndex, target, scan.radius) <= scan.threshold)
+            atomicAdd(groupExplained, 1u);
+    }
+    barrier();
+
+    // Ogni gruppo porta il proprio parziale: il totale del candidato e' la somma dei gruppi
+    if (lane == 0u && groupExplained != 0u)
+        atomicAdd(results[scan.candidateOffset + job.candidateIndex], groupExplained);
+}

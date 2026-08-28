@@ -1,0 +1,41 @@
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(std430, set = 0, binding = 0) readonly buffer GaussianInput { float gaussianPixels[]; };
+layout(std430, set = 0, binding = 1) writeonly buffer GradientOutput { vec2 gradients[]; };
+
+layout(push_constant) uniform Parameters
+{
+    uint pixelOffset;
+    uint width;
+    uint height;
+    uint layerCount;
+    uint inputFrameStride;
+    uint outputFrameStride;
+    uint frameCount;
+    uint outputOffset;
+} parameters;
+
+void main()
+{
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+    uint combinedLayer = gl_GlobalInvocationID.z;
+    uint frame = combinedLayer / parameters.layerCount;
+    uint layer = combinedLayer - frame * parameters.layerCount;
+    uint frames = max(parameters.frameCount, 1u);
+    if (x >= parameters.width || y >= parameters.height || layer >= parameters.layerCount || frame >= frames)
+        return;
+    uint area = parameters.width * parameters.height;
+    uint inputIndex = parameters.pixelOffset + frame * parameters.inputFrameStride + layer * area + y * parameters.width + x;
+    uint outputIndex = parameters.outputOffset + frame * parameters.outputFrameStride + layer * area + y * parameters.width + x;
+    if (x == 0u || x + 1u >= parameters.width || y == 0u || y + 1u >= parameters.height)
+    {
+        gradients[outputIndex] = vec2(0.0);
+        return;
+    }
+    float gx = gaussianPixels[inputIndex + 1u] - gaussianPixels[inputIndex - 1u];
+    float gy = gaussianPixels[inputIndex - parameters.width] - gaussianPixels[inputIndex + parameters.width];
+    gradients[outputIndex] = vec2(sqrt(gx * gx + gy * gy), atan(gy, gx));
+}

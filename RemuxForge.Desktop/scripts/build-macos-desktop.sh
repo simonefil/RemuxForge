@@ -19,6 +19,11 @@ if [ "$(uname -s)" != "Darwin" ] || [ "$(uname -m)" != "arm64" ]; then
     exit 1
 fi
 
+if ! command -v glslc > /dev/null 2>&1 || ! command -v spirv-val > /dev/null 2>&1; then
+    echo "The macOS desktop worker requires glslc and spirv-val."
+    exit 1
+fi
+
 rm -rf "$WORK_DIRECTORY" "$ARTIFACTS_DIRECTORY"
 mkdir -p "$WORK_DIRECTORY" "$ARTIFACTS_DIRECTORY"
 ditto -x -k "$SOURCE_ARCHIVE" "$WORK_DIRECTORY"

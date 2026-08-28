@@ -321,6 +321,7 @@ namespace RemuxForge.Core.Models
             this.RejectReason = "";
             this.VulkanDeviceName = "";
             this.AcceptedPairs = new List<DeepSiftAcceptedPairDiagnostic>();
+            this.RejectionCounts = new Dictionary<string, int>(StringComparer.Ordinal);
         }
 
         #endregion
@@ -389,6 +390,11 @@ namespace RemuxForge.Core.Models
         /// Numero di celle accettate, persistito fuori dalla matrice
         /// </summary>
         public int AcceptedCellCount { get; set; }
+
+        /// <summary>
+        /// Coppie rifiutate raggruppate per motivo diagnostico del backend
+        /// </summary>
+        public Dictionary<string, int> RejectionCounts { get; set; }
 
         /// <summary>
         /// Evidenze visuali accettate persistite per il replay del solver temporale

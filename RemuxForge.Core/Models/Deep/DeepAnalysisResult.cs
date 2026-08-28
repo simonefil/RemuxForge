@@ -190,6 +190,56 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
+    /// Timing diagnostici delle fasi materiali della Deep Analysis
+    /// </summary>
+    public class DeepAnalysisTimingInfo
+    {
+        #region Proprietà
+
+        /// <summary>
+        /// Tempo di preparazione del backend, dello stretch e degli strumenti
+        /// </summary>
+        public long PreparationMs { get; set; }
+
+        /// <summary>
+        /// Tempo complessivo di discovery del viewport e bootstrap geometrico
+        /// </summary>
+        public long GeometryMs { get; set; }
+
+        /// <summary>
+        /// Tempo complessivo di costruzione dei segnali video Source e Language
+        /// </summary>
+        public long FrameSignalsMs { get; set; }
+
+        /// <summary>
+        /// Tempo di costruzione dei segnali video Source
+        /// </summary>
+        public long SourceFrameSignalsMs { get; set; }
+
+        /// <summary>
+        /// Tempo di costruzione dei segnali video Language
+        /// </summary>
+        public long LanguageFrameSignalsMs { get; set; }
+
+        /// <summary>
+        /// Tempo di estrazione e preparazione degli inviluppi audio condivisi
+        /// </summary>
+        public long AudioEnvelopesMs { get; set; }
+
+        /// <summary>
+        /// Tempo di ricostruzione dei pianori, delle operazioni e della copertura
+        /// </summary>
+        public long SolverMs { get; set; }
+
+        /// <summary>
+        /// Tempo totale della Deep Analysis
+        /// </summary>
+        public long TotalMs { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
     /// Risultato diagnostico completo prodotto dalla pipeline DeepAnalysis
     /// </summary>
     public class DeepAnalysisResult
@@ -209,6 +259,7 @@ namespace RemuxForge.Core.Models
             this.Source = new DeepAnalysisGeometry();
             this.Language = new DeepAnalysisGeometry();
             this.GeometryAlignment = new VisualGeometryAlignment();
+            this.Timing = new DeepAnalysisTimingInfo();
             this.Plateaus = new List<DeepAnalysisPlateau>();
             this.Operations = new List<DeepAnalysisOperationDiagnostic>();
             this.RejectedOperations = new List<DeepAnalysisOperationDiagnostic>();
@@ -309,6 +360,11 @@ namespace RemuxForge.Core.Models
         /// Operazioni scartate, con il filtro che le ha respinte
         /// </summary>
         public List<DeepAnalysisOperationDiagnostic> RejectedOperations { get; set; }
+
+        /// <summary>
+        /// Timing diagnostici delle fasi materiali della pipeline
+        /// </summary>
+        public DeepAnalysisTimingInfo Timing { get; set; }
 
         /// <summary>
         /// Tempo totale di esecuzione della pipeline in millisecondi

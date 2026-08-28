@@ -21,6 +21,8 @@ namespace RemuxForge.Core.Models
             this.SourceCommonCropPx = "";
             this.LanguageCommonCropPx = "";
             this.AcceptedMatches = new List<VisualGeometryMatch>();
+            this.SiftCandidateMatches = new List<VisualGeometryMatch>();
+            this.SiftRejectionCounts = new Dictionary<string, int>();
         }
 
         #endregion
@@ -151,6 +153,31 @@ namespace RemuxForge.Core.Models
         /// Millisecondi cumulativi del lavoro di RANSAC e validazione geometrica
         /// </summary>
         public long SiftGeometryWorkMs { get; set; }
+
+        /// <summary>
+        /// Numero di coppie SIFT accettate prima del consenso globale
+        /// </summary>
+        public int SiftAcceptedPairCount { get; set; }
+
+        /// <summary>
+        /// Numero di anchor Source senza feature sufficienti
+        /// </summary>
+        public int SiftSourceFeaturelessAnchorCount { get; set; }
+
+        /// <summary>
+        /// Numero di anchor Language senza feature sufficienti
+        /// </summary>
+        public int SiftLanguageFeaturelessAnchorCount { get; set; }
+
+        /// <summary>
+        /// Coppie SIFT rifiutate raggruppate per motivo del backend
+        /// </summary>
+        public Dictionary<string, int> SiftRejectionCounts { get; set; }
+
+        /// <summary>
+        /// Trasformazioni candidate convertite dalle coppie accettate dal backend, prima del consenso globale
+        /// </summary>
+        public List<VisualGeometryMatch> SiftCandidateMatches { get; set; }
 
         /// <summary>
         /// Millisecondi spesi nel consenso globale e nell'affinamento geometrico

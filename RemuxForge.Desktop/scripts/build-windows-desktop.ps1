@@ -14,6 +14,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+if (-not (Get-Command "glslc" -ErrorAction SilentlyContinue) -or -not (Get-Command "spirv-val" -ErrorAction SilentlyContinue)) {
+    throw "The Windows desktop worker requires glslc and spirv-val."
+}
+
 if (Test-Path -LiteralPath $WorkDirectory) {
     Remove-Item -LiteralPath $WorkDirectory -Recurse -Force
 }

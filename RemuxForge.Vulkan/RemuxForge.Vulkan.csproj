@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <VulkanShaderTargetEnvironment>vulkan1.2</VulkanShaderTargetEnvironment>
+    <VulkanShaderOptimization Condition="'$(VulkanShaderDebug)' == 'true'">-O0 -g</VulkanShaderOptimization>
+    <VulkanShaderOptimization Condition="'$(VulkanShaderDebug)' != 'true'">-O</VulkanShaderOptimization>
+    <VulkanShaderOutputDirectory>$(MSBuildProjectDirectory)/obj/$(Configuration)/$(TargetFramework)/vulkan-shaders</VulkanShaderOutputDirectory>
+    <VulkanShaderManifest>$(VulkanShaderOutputDirectory)/shader-manifest.txt</VulkanShaderManifest>
+    <VulkanShaderManifestToolProject>$(MSBuildProjectDirectory)/../RemuxForge.Vulkan.ShaderManifestTool/RemuxForge.Vulkan.ShaderManifestTool.csproj</VulkanShaderManifestToolProject>
+    <VulkanShaderManifestTool>$(MSBuildProjectDirectory)/../RemuxForge.Vulkan.ShaderManifestTool/bin/$(Configuration)/net10.0/RemuxForge.Vulkan.ShaderManifestTool.dll</VulkanShaderManifestTool>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Vortice.Vulkan" Version="3.2.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <VulkanShader Include="Shaders\*.comp" />
+    <VulkanShaderOutput Include="@(VulkanShader->'$(VulkanShaderOutputDirectory)/%(Filename).spv')" />
+    <EmbeddedResource Include="@(VulkanShaderOutput)">
+      <LogicalName>RemuxForge.Vulkan.Shaders.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="$(VulkanShaderManifest)">
+      <LogicalName>RemuxForge.Vulkan.Shaders.shader-manifest.txt</LogicalName>
+    </EmbeddedResource>
+    <None Include="@(VulkanShader)" />
+    <None Include="THIRD-PARTY-NOTICES.md" />
+    <None Include="Shaders\ShaderAbi.txt" />
+  </ItemGroup>
+
+  <Target Name="CompileVulkanShaders" BeforeTargets="PrepareResources">
+    <MakeDir Directories="$(VulkanShaderOutputDirectory)" />
+    <Exec Command="glslc --target-env=$(VulkanShaderTargetEnvironment) $(VulkanShaderOptimization) &quot;%(VulkanShader.Identity)&quot; -o &quot;$(VulkanShaderOutputDirectory)/%(VulkanShader.Filename).spv&quot;" />
+    <Exec Command="spirv-val --target-env $(VulkanShaderTargetEnvironment) &quot;$(VulkanShaderOutputDirectory)/%(VulkanShader.Filename).spv&quot;" />
+    <MSBuild Projects="$(VulkanShaderManifestToolProject)" Targets="Build" Properties="Configuration=$(Configuration)" />
+    <Exec Command="dotnet &quot;$(VulkanShaderManifestTool)&quot; &quot;$(MSBuildProjectDirectory)/Shaders&quot; &quot;$(VulkanShaderOutputDirectory)&quot; &quot;$(MSBuildProjectDirectory)/Shaders/ShaderAbi.txt&quot; &quot;$(VulkanShaderManifest)&quot; &quot;$(VulkanShaderTargetEnvironment)&quot; &quot;$(VulkanShaderOptimization)&quot;" />
+  </Target>
+
+</Project>

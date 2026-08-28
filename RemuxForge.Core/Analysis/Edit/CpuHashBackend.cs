@@ -1,4 +1,5 @@
 using RemuxForge.Core.Analysis.Edit.Extraction;
+using System;
 using System.Collections.Generic;
 
 namespace RemuxForge.Core.Analysis.Edit
@@ -15,6 +16,16 @@ namespace RemuxForge.Core.Analysis.Edit
         /// </summary>
         private const int FRAME_BYTES = FrameSignals.SIDE * FrameSignals.SIDE;
 
+        /// <summary>
+        /// Lato del blocco che genera un pixel della miniatura
+        /// </summary>
+        private const int THUMB_BLOCK = FrameSignals.SIDE / FrameSignals.THUMB_SIDE;
+
+        /// <summary>
+        /// Numero di pixel della miniatura
+        /// </summary>
+        private const int THUMB_PIXELS = FrameSignals.THUMB_SIDE * FrameSignals.THUMB_SIDE;
+
         #endregion
 
         #region Variabili di classe
@@ -23,6 +34,11 @@ namespace RemuxForge.Core.Analysis.Edit
         /// Coppia su cui si misura
         /// </summary>
         private PairSignals _pair;
+
+        /// <summary>
+        /// Serializza i produttori che condividono questa istanza
+        /// </summary>
+        private readonly object _analysisLock = new object();
 
         #endregion
 
@@ -53,6 +69,30 @@ namespace RemuxForge.Core.Analysis.Edit
                 int origin = frame * FRAME_BYTES;
                 hash0.Add(ComputeHorizontalHash(frames, origin));
                 hash1.Add(ComputeVerticalHash(frames, origin));
+            }
+        }
+
+        /// <summary>
+        /// Deriva dHash, luminanza e miniatura sul processore conservando l'ordine dei frame
+        /// </summary>
+        /// <param name="frames">Quadrati grigi di analisi, uno dopo l'altro</param>
+        /// <param name="frameCount">Quadrati effettivamente contenuti nel blocco</param>
+        /// <param name="hash0">Accumulatore dei dHash orizzontali</param>
+        /// <param name="hash1">Accumulatore dei dHash verticali</param>
+        /// <param name="lumaMean">Accumulatore delle luminanze medie</param>
+        /// <param name="thumbStd">Accumulatore delle deviazioni standard delle miniature</param>
+        /// <param name="thumbPixels">Accumulatore dei pixel delle miniature</param>
+        public override void Analyze(byte[] frames, int frameCount, List<ulong> hash0, List<ulong> hash1, List<float> lumaMean, List<float> thumbStd, List<byte> thumbPixels)
+        {
+            lock (this._analysisLock)
+            {
+                for (int frame = 0; frame < frameCount; frame++)
+                {
+                    int origin = frame * FRAME_BYTES;
+                    hash0.Add(ComputeHorizontalHash(frames, origin));
+                    hash1.Add(ComputeVerticalHash(frames, origin));
+                    AppendMeasurements(frames, origin, lumaMean, thumbStd, thumbPixels);
+                }
             }
         }
 
@@ -171,6 +211,46 @@ namespace RemuxForge.Core.Analysis.Edit
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Calcola luminanza, miniatura 12x12 e deviazione standard di un quadrato
+        /// </summary>
+        /// <param name="frames">Blocco che contiene il quadrato di analisi</param>
+        /// <param name="origin">Primo byte del quadrato dentro il blocco</param>
+        /// <param name="lumaMean">Accumulatore delle luminanze medie</param>
+        /// <param name="thumbStd">Accumulatore delle deviazioni standard</param>
+        /// <param name="thumbPixels">Accumulatore delle miniature</param>
+        private static void AppendMeasurements(byte[] frames, int origin, List<float> lumaMean, List<float> thumbStd, List<byte> thumbPixels)
+        {
+            int[] sums = new int[THUMB_PIXELS];
+            long lumaSum = 0;
+            for (int row = 0; row < FrameSignals.SIDE; row++)
+            {
+                int cellRow = row / THUMB_BLOCK;
+                int offset = origin + row * FrameSignals.SIDE;
+                for (int column = 0; column < FrameSignals.SIDE; column++)
+                {
+                    byte value = frames[offset + column];
+                    lumaSum += value;
+                    sums[cellRow * FrameSignals.THUMB_SIDE + column / THUMB_BLOCK] += value;
+                }
+            }
+
+            const double CELL_PIXELS = THUMB_BLOCK * THUMB_BLOCK;
+            double total = 0.0;
+            double totalSquares = 0.0;
+            for (int i = 0; i < THUMB_PIXELS; i++)
+            {
+                double value = sums[i] / CELL_PIXELS;
+                total += value;
+                totalSquares += value * value;
+                thumbPixels.Add((byte)(sums[i] / (THUMB_BLOCK * THUMB_BLOCK)));
+            }
+
+            double mean = total / THUMB_PIXELS;
+            lumaMean.Add((float)((double)lumaSum / FRAME_BYTES));
+            thumbStd.Add((float)Math.Sqrt(Math.Max(totalSquares / THUMB_PIXELS - mean * mean, 0.0)));
         }
 
         #endregion

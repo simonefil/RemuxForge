@@ -1,0 +1,171 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct KeypointRecord
+{
+    float x; float y; float scale; float response; float orientation;
+    uint frameIndex; uint octave; uint layer;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer InputKeypoints { KeypointRecord inputKeypoints[]; };
+layout(std430, set = 0, binding = 1) writeonly buffer OutputKeypoints { KeypointRecord outputKeypoints[]; };
+layout(std430, set = 0, binding = 2) readonly buffer Counters { uint counters[]; };
+layout(std430, set = 0, binding = 3) buffer Scratch { uint scratch[]; };
+
+layout(push_constant) uniform Parameters
+{
+    uint inputOffset;
+    uint outputOffset;
+    uint capacity;
+    uint counterOffset;
+    uint keySelector;
+    uint byteIndex;
+    uint operation;
+    uint scratchOffset;
+    uint inputFrameStride;
+    uint outputFrameStride;
+    uint counterFrameStride;
+    uint scratchFrameStride;
+    uint frameCount;
+} parameters;
+
+uint quantizedSigned(float value)
+{
+    return uint(int(round(value * 10000.0))) ^ 0x80000000u;
+}
+
+uint keyFor(KeypointRecord keypoint)
+{
+    if (parameters.keySelector == 0u) return quantizedSigned(keypoint.x);
+    if (parameters.keySelector == 1u) return quantizedSigned(keypoint.y);
+    if (parameters.keySelector == 2u) return keypoint.layer;
+    if (parameters.keySelector == 3u) return quantizedSigned(keypoint.response);
+    return quantizedSigned(keypoint.scale);
+}
+
+shared uint laneHistograms[4096];
+shared uint bucketBases[16];
+shared uint blockHistogram[16];
+
+void main()
+{
+    uint frame = gl_WorkGroupID.z;
+    uint frames = max(parameters.frameCount, 1u);
+    if (frame >= frames)
+        return;
+    uint inputBase = parameters.inputOffset + frame * parameters.inputFrameStride;
+    uint outputBase = parameters.outputOffset + frame * parameters.outputFrameStride;
+    uint counterBase = parameters.counterOffset + frame * parameters.counterFrameStride;
+    uint scratchBase = parameters.scratchOffset + frame * parameters.scratchFrameStride;
+    uint count = min(counters[counterBase], parameters.capacity);
+    uint lane = gl_LocalInvocationID.x;
+    uint shift = parameters.byteIndex * 4u;
+    uint blockCount = (parameters.capacity + 255u) / 256u;
+    uint baseOffset = blockCount * 16u;
+    if (parameters.operation == 3u)
+    {
+        uint histogramOffset = lane * 16u;
+        for (uint bucket = 0u; bucket < 16u; bucket++) laneHistograms[histogramOffset + bucket] = 0u;
+        uint begin = count * lane / 256u;
+        uint end = count * (lane + 1u) / 256u;
+        for (uint index = begin; index < end; index++)
+        {
+            uint bucket = (keyFor(inputKeypoints[inputBase + index]) >> shift) & 15u;
+            laneHistograms[histogramOffset + bucket]++;
+        }
+        barrier();
+        for (uint offset = 1u; offset < 256u; offset <<= 1u)
+        {
+            uint addends[16];
+            for (uint bucket = 0u; bucket < 16u; bucket++) addends[bucket] = lane >= offset ? laneHistograms[(lane - offset) * 16u + bucket] : 0u;
+            barrier();
+            for (uint bucket = 0u; bucket < 16u; bucket++) laneHistograms[histogramOffset + bucket] += addends[bucket];
+            barrier();
+        }
+        if (lane == 0u)
+        {
+            uint running = 0u;
+            for (uint bucket = 0u; bucket < 16u; bucket++)
+            {
+                bucketBases[bucket] = running;
+                running += laneHistograms[255u * 16u + bucket];
+            }
+        }
+        barrier();
+        uint destinations[16];
+        for (uint bucket = 0u; bucket < 16u; bucket++) destinations[bucket] = bucketBases[bucket] + (lane == 0u ? 0u : laneHistograms[(lane - 1u) * 16u + bucket]);
+        for (uint index = begin; index < end; index++)
+        {
+            KeypointRecord keypoint = inputKeypoints[inputBase + index];
+            uint bucket = (keyFor(keypoint) >> shift) & 15u;
+            outputKeypoints[outputBase + destinations[bucket]] = keypoint;
+            destinations[bucket]++;
+        }
+        return;
+    }
+    if (parameters.operation == 0u)
+    {
+        if (lane < 16u) blockHistogram[lane] = 0u;
+        barrier();
+        uint index = gl_WorkGroupID.x * 256u + lane;
+        if (index < count)
+        {
+            uint bucket = (keyFor(inputKeypoints[inputBase + index]) >> shift) & 15u;
+            atomicAdd(blockHistogram[bucket], 1u);
+        }
+        barrier();
+        if (lane < 16u) scratch[scratchBase + gl_WorkGroupID.x * 16u + lane] = blockHistogram[lane];
+        return;
+    }
+    if (parameters.operation == 1u)
+    {
+        if (lane < 16u)
+        {
+            uint running = 0u;
+            for (uint block = 0u; block < blockCount; block++)
+            {
+                uint index = block * 16u + lane;
+                uint value = scratch[scratchBase + index];
+                scratch[scratchBase + index] = running;
+                running += value;
+            }
+            blockHistogram[lane] = running;
+        }
+        barrier();
+        if (lane == 0u)
+        {
+            uint running = 0u;
+            for (uint bucket = 0u; bucket < 16u; bucket++)
+            {
+                scratch[scratchBase + baseOffset + bucket] = running;
+                running += blockHistogram[bucket];
+            }
+        }
+        return;
+    }
+    uint histogramOffset = lane * 16u;
+    for (uint bucket = 0u; bucket < 16u; bucket++) laneHistograms[histogramOffset + bucket] = 0u;
+    uint elementIndex = gl_WorkGroupID.x * 256u + lane;
+    uint elementBucket = 0u;
+    if (elementIndex < count)
+    {
+        elementBucket = (keyFor(inputKeypoints[inputBase + elementIndex]) >> shift) & 15u;
+        laneHistograms[histogramOffset + elementBucket] = 1u;
+    }
+    barrier();
+    for (uint offset = 1u; offset < 256u; offset <<= 1u)
+    {
+        uint addends[16];
+        for (uint bucket = 0u; bucket < 16u; bucket++) addends[bucket] = lane >= offset ? laneHistograms[(lane - offset) * 16u + bucket] : 0u;
+        barrier();
+        for (uint bucket = 0u; bucket < 16u; bucket++) laneHistograms[histogramOffset + bucket] += addends[bucket];
+        barrier();
+    }
+    if (elementIndex < count)
+    {
+        uint priorInBlock = lane == 0u ? 0u : laneHistograms[(lane - 1u) * 16u + elementBucket];
+        uint destination = scratch[scratchBase + baseOffset + elementBucket] + scratch[scratchBase + gl_WorkGroupID.x * 16u + elementBucket] + priorInBlock;
+        outputKeypoints[outputBase + destination] = inputKeypoints[inputBase + elementIndex];
+    }
+}

@@ -1,0 +1,115 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct KeypointRecord
+{
+    float x; float y; float scale; float response; float orientation;
+    uint frameIndex; uint octave; uint layer;
+};
+
+struct OctaveMergeRecord
+{
+    uint keypointOffset;
+    uint descriptorOffset;
+    uint counterOffset;
+    uint capacity;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer SourceKeypoints { KeypointRecord sourceKeypoints[]; };
+layout(std430, set = 0, binding = 1) readonly buffer SourceDescriptors { uint sourceDescriptors[]; };
+layout(std430, set = 0, binding = 2) readonly buffer SourceCounters { uint sourceCounters[]; };
+layout(std430, set = 0, binding = 3) readonly buffer MergeMetadata { OctaveMergeRecord octaves[]; };
+layout(std430, set = 0, binding = 4) writeonly buffer TargetKeypoints { KeypointRecord targetKeypoints[]; };
+layout(std430, set = 0, binding = 5) writeonly buffer TargetDescriptors { uint targetDescriptors[]; };
+layout(std430, set = 0, binding = 6) buffer TargetCounts { uint targetCounts[]; };
+layout(std430, set = 0, binding = 7) buffer TargetDiagnostics { uvec4 targetDiagnostics[]; };
+layout(std430, set = 0, binding = 8) writeonly buffer TargetNorms { uint targetNorms[]; };
+
+layout(push_constant) uniform Parameters
+{
+    uint metadataOffset;
+    uint octaveCount;
+    uint sourceCapacity;
+    uint targetKeypointOffset;
+    uint targetDescriptorOffset;
+    uint targetCounterOffset;
+    uint frameIndex;
+    uint sourceKeypointFrameStride;
+    uint sourceDescriptorFrameStride;
+    uint sourceCounterFrameStride;
+    uint metadataFrameStride;
+    uint targetKeypointFrameStride;
+    uint targetDescriptorFrameStride;
+    uint targetCounterFrameStride;
+    uint frameCount;
+} parameters;
+
+void main()
+{
+    uint logicalIndex = gl_GlobalInvocationID.x;
+    uint frame = gl_GlobalInvocationID.z;
+    uint frames = max(parameters.frameCount, 1u);
+    if (frame >= frames)
+        return;
+    uint metadataOffset = parameters.metadataOffset + frame * parameters.metadataFrameStride;
+    uint sourceKeypointOffset = frame * parameters.sourceKeypointFrameStride;
+    uint sourceDescriptorOffset = frame * parameters.sourceDescriptorFrameStride;
+    uint sourceCounterOffset = frame * parameters.sourceCounterFrameStride;
+    uint targetKeypointOffset = parameters.targetKeypointOffset + frame * parameters.targetKeypointFrameStride;
+    uint targetDescriptorOffset = parameters.targetDescriptorOffset + frame * parameters.targetDescriptorFrameStride;
+    uint targetCounterOffset = parameters.targetCounterOffset + frame * parameters.targetCounterFrameStride;
+    if (logicalIndex == 0u)
+    {
+        uint total = 0u;
+        uvec4 diagnostic = uvec4(0u);
+        for (uint octave = 0u; octave < parameters.octaveCount; octave++)
+        {
+            OctaveMergeRecord record = octaves[metadataOffset + octave];
+            total += min(sourceCounters[sourceCounterOffset + record.counterOffset + 2u], record.capacity);
+            uint refined = sourceCounters[sourceCounterOffset + record.counterOffset + 4u];
+            uint detectionTruncated = sourceCounters[sourceCounterOffset + record.counterOffset + 1u];
+            uint descriptors = min(sourceCounters[sourceCounterOffset + record.counterOffset + 2u], record.capacity);
+            uint orientationTruncated = sourceCounters[sourceCounterOffset + record.counterOffset + 3u];
+            diagnostic += uvec4(refined + detectionTruncated, descriptors, detectionTruncated + orientationTruncated, refined);
+        }
+        targetCounts[targetCounterOffset] = total;
+        targetDiagnostics[targetCounterOffset] = diagnostic;
+    }
+    if (logicalIndex >= parameters.sourceCapacity)
+        return;
+    uint base = 0u;
+    uint destinationBase = 0u;
+    for (uint octave = 0u; octave < parameters.octaveCount; octave++)
+    {
+        OctaveMergeRecord record = octaves[metadataOffset + octave];
+        uint count = min(sourceCounters[sourceCounterOffset + record.counterOffset + 2u], record.capacity);
+        if (logicalIndex >= base && logicalIndex < base + record.capacity)
+        {
+            uint localIndex = logicalIndex - base;
+            if (localIndex < count)
+            {
+                KeypointRecord keypoint = sourceKeypoints[sourceKeypointOffset + record.keypointOffset + localIndex];
+                keypoint.frameIndex = parameters.frameIndex + frame;
+                targetKeypoints[targetKeypointOffset + destinationBase + localIndex] = keypoint;
+                uint sourceDescriptor = sourceDescriptorOffset + record.descriptorOffset + localIndex * 32u;
+                uint targetDescriptor = targetDescriptorOffset + (destinationBase + localIndex) * 32u;
+                uint descriptorNorm = 0u;
+                for (uint component = 0u; component < 32u; component++)
+                {
+                    uint packed = sourceDescriptors[sourceDescriptor + component];
+                    targetDescriptors[targetDescriptor + component] = sourceDescriptors[sourceDescriptor + component];
+                    for (uint shift = 0u; shift < 32u; shift += 8u)
+                    {
+                        uint value = (packed >> shift) & 255u;
+                        descriptorNorm += value * value;
+                    }
+                }
+                targetNorms[targetKeypointOffset + destinationBase + localIndex] = descriptorNorm;
+            }
+            return;
+        }
+        base += record.capacity;
+        destinationBase += count;
+    }
+}

@@ -1,0 +1,46 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct PairRecord
+{
+    uint firstFrame; uint secondFrame; uint firstOffset; uint secondOffset;
+    uint forwardOffset; uint reverseOffset; uint flagOffset; uint candidateOffset;
+    uint outputOffset; uint firstCapacity; uint secondCapacity;
+};
+struct QueryJobRecord { uint pairIndex; uint queryIndex; };
+
+layout(std430, set = 0, binding = 0) readonly buffer FirstCounts { uint firstCounts[]; };
+layout(std430, set = 0, binding = 1) readonly buffer SecondCounts { uint secondCounts[]; };
+layout(std430, set = 0, binding = 2) readonly buffer PairMetadata { PairRecord pairs[]; };
+layout(std430, set = 0, binding = 3) writeonly buffer QueryJobs { QueryJobRecord jobs[]; };
+layout(std430, set = 0, binding = 4) buffer Control { uint control[]; };
+
+layout(push_constant) uniform Parameters { uint pairCount; uint forwardJobCapacity; uint operation; } parameters;
+shared uint jobBase;
+
+void main()
+{
+    uint lane = gl_LocalInvocationID.x;
+    if (parameters.operation == 2u)
+    {
+        if (gl_WorkGroupID.x == 0u && lane == 0u)
+        {
+            control[2] = (control[0] + 15u) / 16u; control[3] = 1u; control[4] = 1u;
+            control[5] = (control[1] + 15u) / 16u; control[6] = 1u; control[7] = 1u;
+        }
+        return;
+    }
+    uint pairIndex = gl_WorkGroupID.x;
+    if (pairIndex >= parameters.pairCount)
+        return;
+    PairRecord pair = pairs[pairIndex];
+    bool reverse = parameters.operation == 1u;
+    uint count = reverse ? min(secondCounts[pair.secondFrame], pair.secondCapacity) : min(firstCounts[pair.firstFrame], pair.firstCapacity);
+    uint alignedCount = (count + 15u) & ~15u;
+    if (lane == 0u) jobBase = atomicAdd(control[reverse ? 1u : 0u], alignedCount);
+    barrier();
+    uint outputBase = reverse ? parameters.forwardJobCapacity : 0u;
+    for (uint queryIndex = lane; queryIndex < alignedCount; queryIndex += 256u)
+        jobs[outputBase + jobBase + queryIndex] = QueryJobRecord(pairIndex, queryIndex < count ? queryIndex : 0xffffffffu);
+}

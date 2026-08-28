@@ -1,0 +1,62 @@
+#version 450
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct KeypointRecord
+{
+    float x;
+    float y;
+    float scale;
+    float response;
+    float orientation;
+    uint frameIndex;
+    uint octave;
+    uint layer;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer Flags { uint flags[]; };
+layout(std430, set = 0, binding = 1) readonly buffer Prefix { uint prefix[]; };
+layout(std430, set = 0, binding = 2) readonly buffer CandidateInput { KeypointRecord candidates[]; };
+layout(std430, set = 0, binding = 3) writeonly buffer KeypointOutput { KeypointRecord keypoints[]; };
+layout(std430, set = 0, binding = 4) buffer Counters { uint counters[]; };
+
+layout(push_constant) uniform Parameters
+{
+    uint flagOffset;
+    uint prefixOffset;
+    uint candidateOffset;
+    uint outputOffset;
+    uint elementCount;
+    uint capacity;
+    uint counterOffset;
+    uint flagFrameStride;
+    uint prefixFrameStride;
+    uint candidateFrameStride;
+    uint outputFrameStride;
+    uint counterFrameStride;
+    uint frameCount;
+} parameters;
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    uint frame = gl_GlobalInvocationID.z;
+    uint frames = max(parameters.frameCount, 1u);
+    if (frame >= frames)
+        return;
+    uint flagBase = parameters.flagOffset + frame * parameters.flagFrameStride;
+    uint prefixBase = parameters.prefixOffset + frame * parameters.prefixFrameStride;
+    if (index < parameters.elementCount && flags[flagBase + index] != 0u)
+    {
+        uint destination = prefix[prefixBase + index];
+        if (destination < parameters.capacity)
+            keypoints[parameters.outputOffset + frame * parameters.outputFrameStride + destination] = candidates[parameters.candidateOffset + frame * parameters.candidateFrameStride + index];
+    }
+    if (index == 0u)
+    {
+        uint total = parameters.elementCount == 0u ? 0u : prefix[prefixBase + parameters.elementCount - 1u] + flags[flagBase + parameters.elementCount - 1u];
+        uint counterBase = parameters.counterOffset + frame * parameters.counterFrameStride;
+        counters[counterBase] = min(total, parameters.capacity);
+        counters[counterBase + 1u] = total > parameters.capacity ? total - parameters.capacity : 0u;
+    }
+}
