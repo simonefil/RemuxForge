@@ -18,8 +18,8 @@
 
         <div class="dialog-body edit-map-dialog-body">
             <RadzenSplitter Orientation="Orientation.Vertical" class="edit-map-main-splitter">
-                <RadzenSplitterPane Size="70%" Min="480px">
-                    <section class="edit-map-visual-pane">
+                <RadzenSplitterPane Size="62%" Min="360px">
+                    <section class="edit-map-preview-section">
                         <div class="edit-map-preview-grid">
                             <section class="edit-map-preview-pane">
                                 <div class="edit-map-section-title">@AppText.T("web.editMap.source")</div>
@@ -90,13 +90,17 @@
                                 <div class="edit-map-preview-meta">@GetIndexMetadata(_languageIndex)</div>
                             </section>
                         </div>
+                    </section>
+                </RadzenSplitterPane>
+                <RadzenSplitterPane Size="18%" Min="150px">
+                    <section class="edit-map-timeline-pane">
                         <div @ref="_timelineHost" class="edit-map-timeline-host" aria-label="@AppText.T("web.editMap.timeline")">
                             <div class="edit-map-timeline-scroll-range"></div>
                             <canvas @ref="_timelineCanvas" class="edit-map-timeline-canvas" role="img" aria-label="@GetTimelineAlternative()"></canvas>
                         </div>
                     </section>
                 </RadzenSplitterPane>
-                <RadzenSplitterPane Min="220px">
+                <RadzenSplitterPane Min="180px">
                     <section class="edit-map-operations-pane">
                         <div class="edit-map-section-title">@AppText.T("web.detail.operationsLabel")</div>
                         <RadzenDataGrid @ref="_operationGrid" Data="@_workingMap.Operations" TItem="EditOperation" EditMode="DataGridEditMode.Single" AllowSorting="false" AllowFiltering="false" AllowColumnResize="true" AllowRowSelectOnRowClick="true" GridLines="DataGridGridLines.Both" Density="Density.Compact" RowClick="SelectOperationRowAsync" RowRender="RenderOperationRow" class="edit-map-operation-grid">
