@@ -1,5 +1,5 @@
 using RemuxForge.Core.Infrastructure;
-using RemuxForge.Core.Media.Mkv;
+using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -41,26 +41,6 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         private string _ffmpegPath;
 
         /// <summary>
-        /// Percorso dell'eseguibile ffprobe
-        /// </summary>
-        private string _ffprobePath;
-
-        /// <summary>
-        /// Origine del contenitore per file, letta una sola volta
-        /// </summary>
-        private readonly Dictionary<string, double> _startTimes = new Dictionary<string, double>();
-
-        /// <summary>
-        /// Percorso dell'eseguibile mkvmerge
-        /// </summary>
-        private string _mkvMergePath;
-
-        /// <summary>
-        /// Percorso dell'eseguibile mkvextract
-        /// </summary>
-        private string _mkvExtractPath;
-
-        /// <summary>
         /// Configurazione ffmpeg con accelerazione hardware e timeout
         /// </summary>
         private FfmpegConfig _ffmpegConfig;
@@ -69,6 +49,11 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         /// Backend che calcola i dHash dei fotogrammi decodificati
         /// </summary>
         private HashBackendBase _hashBackend;
+
+        /// <summary>
+        /// Servizio condiviso per PTS e origine temporale dei video
+        /// </summary>
+        private VideoFrameAccessService _frameAccessService;
 
         #endregion
 
@@ -87,10 +72,8 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         {
             this._hashBackend = hashBackend;
             this._ffmpegPath = ffmpegPath ?? "";
-            this._ffprobePath = ffprobePath ?? "";
-            this._mkvMergePath = mkvMergePath ?? "";
-            this._mkvExtractPath = mkvExtractPath ?? "";
             this._ffmpegConfig = ffmpegConfig ?? new FfmpegConfig();
+            this._frameAccessService = new VideoFrameAccessService(ffprobePath, mkvMergePath, mkvExtractPath);
         }
 
         #endregion
@@ -128,8 +111,8 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             bool windowed = durationMs > 0.0;
             // -ss conta dall'inizio del file, non dallo zero dell'orologio: su un contenitore
             // che parte dopo lo zero la finestra chiesta e quella decodificata non coincidono
-            double seekMs = windowed ? Math.Max(0.0, startMs - this.ResolveStartTimeMs(filePath, timeoutMs)) : 0.0;
-            List<double> containerTimestamps = windowed ? new List<double>() : this.ReadContainerTimestamps(filePath, timeoutMs);
+            double seekMs = windowed ? Math.Max(0.0, startMs - this._frameAccessService.ReadStartTimeMs(filePath, timeoutMs, cancellation)) : 0.0;
+            List<double> containerTimestamps = windowed ? new List<double>() : this._frameAccessService.ReadPresentationTimestamps(filePath, timeoutMs, cancellation);
             bool needsShowInfo = containerTimestamps.Count == 0;
 
             List<ulong> hash0 = new List<ulong>();
@@ -311,122 +294,6 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                 filters.Add("showinfo");
 
             return string.Join(",", filters);
-        }
-
-        /// <summary>
-        /// Legge i PTS dal contenitore, senza ridecodificare il video
-        /// </summary>
-        /// <param name="filePath">File multimediale</param>
-        /// <param name="timeoutMs">Timeout dei processi ausiliari</param>
-        /// <returns>PTS in millisecondi oppure lista vuota quando non sono disponibili</returns>
-        private List<double> ReadContainerTimestamps(string filePath, int timeoutMs)
-        {
-            if (string.Equals(Path.GetExtension(filePath), ".mkv", StringComparison.OrdinalIgnoreCase))
-                return this.ReadMatroskaTimestamps(filePath, timeoutMs);
-            return this.ReadPacketTimestamps(filePath, timeoutMs);
-        }
-
-        /// <summary>
-        /// Estrae la timeline timestamps_v2 del primo track video Matroska
-        /// </summary>
-        /// <param name="filePath">Contenitore Matroska</param>
-        /// <param name="timeoutMs">Timeout dei processi ausiliari</param>
-        /// <returns>PTS in millisecondi oppure lista vuota</returns>
-        private List<double> ReadMatroskaTimestamps(string filePath, int timeoutMs)
-        {
-            List<double> result = new List<double>();
-            string temporaryPath = Path.Combine(Path.GetTempPath(), "remuxforge-signals-" + Guid.NewGuid().ToString("N") + ".timestamps");
-            try
-            {
-                MkvFileInfo fileInfo = new MkvToolsService(this._mkvMergePath).GetFileInfo(filePath, timeoutMs);
-                if (fileInfo == null || fileInfo.Tracks == null)
-                    return result;
-                TrackInfo videoTrack = null;
-                for (int i = 0; i < fileInfo.Tracks.Count && videoTrack == null; i++)
-                {
-                    if (string.Equals(fileInfo.Tracks[i].Type, "video", StringComparison.OrdinalIgnoreCase))
-                        videoTrack = fileInfo.Tracks[i];
-                }
-                if (videoTrack == null)
-                    return result;
-
-                ProcessResult run = ProcessRunner.Run(this._mkvExtractPath, new string[] { filePath, "timestamps_v2", videoTrack.Id.ToString(CultureInfo.InvariantCulture) + ":" + temporaryPath }, timeoutMs);
-                if (run.ExitCode != 0 || !File.Exists(temporaryPath))
-                    return result;
-
-                foreach (string line in File.ReadLines(temporaryPath))
-                {
-                    string value = line.Trim().TrimStart('﻿');
-                    if (value.Length == 0 || !char.IsDigit(value[0]))
-                        continue;
-                    if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double timestampMs))
-                        result.Add(timestampMs);
-                }
-            }
-            catch
-            {
-                result.Clear();
-            }
-            finally
-            {
-                if (File.Exists(temporaryPath))
-                    File.Delete(temporaryPath);
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Istante in cui la traccia video parte nel contenitore, in millisecondi
-        /// </summary>
-        /// <param name="filePath">File multimediale</param>
-        /// <param name="timeoutMs">Timeout del comando in millisecondi</param>
-        /// <returns>Origine del contenitore, zero quando non è dichiarata</returns>
-        private double ResolveStartTimeMs(string filePath, int timeoutMs)
-        {
-            if (this._startTimes.TryGetValue(filePath, out double cached))
-                return cached;
-
-            double result = 0.0;
-            if (!string.IsNullOrEmpty(this._ffprobePath))
-            {
-                ProcessResult run = ProcessRunner.Run(this._ffprobePath, new string[] {
-                    "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=start_time", "-of", "csv=p=0", filePath }, timeoutMs);
-                if (run.ExitCode == 0 && double.TryParse(run.Stdout.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double seconds))
-                    result = seconds * 1000.0;
-            }
-
-            this._startTimes[filePath] = result;
-            return result;
-        }
-
-        /// <summary>
-        /// Legge i pts_time dei pacchetti video e li riordina in tempo di presentazione
-        /// </summary>
-        /// <param name="filePath">File multimediale non Matroska</param>
-        /// <param name="timeoutMs">Timeout del processo ffprobe</param>
-        /// <returns>PTS in millisecondi ordinati crescenti oppure lista vuota</returns>
-        private List<double> ReadPacketTimestamps(string filePath, int timeoutMs)
-        {
-            List<double> result = new List<double>();
-            if (string.IsNullOrEmpty(this._ffprobePath))
-                return result;
-            ProcessResult run = ProcessRunner.Run(this._ffprobePath, new string[] {
-                "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time", "-of", "csv=p=0", filePath }, timeoutMs);
-            if (run.ExitCode != 0)
-                return result;
-
-            string[] lines = run.Stdout.Replace("\r", "").Split('\n');
-            for (int i = 0; i < lines.Length; i++)
-            {
-                string value = lines[i].Trim().TrimEnd(',');
-                if (value.Length == 0 || !char.IsDigit(value[0]))
-                    continue;
-                if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double seconds))
-                    result.Add(seconds * 1000.0);
-            }
-            result.Sort();
-            return result;
         }
 
         /// <summary>

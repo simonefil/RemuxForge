@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 
 namespace RemuxForge.Core.Media.Mkv
 {
@@ -77,6 +78,14 @@ namespace RemuxForge.Core.Media.Mkv
         /// </summary>
         public MkvFileInfo GetFileInfo(string filePath, int timeoutMs)
         {
+            return this.GetFileInfo(filePath, timeoutMs, CancellationToken.None);
+        }
+
+        /// <summary>
+        /// Ottiene informazioni complete su un file MKV con timeout e cancellazione della singola richiesta
+        /// </summary>
+        public MkvFileInfo GetFileInfo(string filePath, int timeoutMs, CancellationToken cancellationToken)
+        {
             MkvFileInfo result = null;
             string jsonOutput = "";
             JsonDocument doc = null;
@@ -84,8 +93,13 @@ namespace RemuxForge.Core.Media.Mkv
             JsonElement tracksElement;
             try
             {
-                ProcessResult procResult = ProcessRunner.Run(this._mkvMergePath, new string[] { "-J", filePath }, timeoutMs);
+                ProcessResult procResult = ProcessRunner.Run(this._mkvMergePath, new string[] { "-J", filePath }, timeoutMs, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
                 jsonOutput = procResult.Stdout;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch
             {

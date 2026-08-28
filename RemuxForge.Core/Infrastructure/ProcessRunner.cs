@@ -98,6 +98,19 @@ namespace RemuxForge.Core.Infrastructure
         /// <returns>Risultato con exit code, stdout e stderr</returns>
         public static ProcessResult Run(string fileName, string[] arguments, int timeoutMs = 0)
         {
+            return Run(fileName, arguments, timeoutMs, CancellationToken.None);
+        }
+
+        /// <summary>
+        /// Esegue un processo e lo interrompe quando la singola richiesta viene annullata
+        /// </summary>
+        /// <param name="fileName">Percorso dell'eseguibile</param>
+        /// <param name="arguments">Argomenti del processo</param>
+        /// <param name="timeoutMs">Timeout in millisecondi, 0 = nessun timeout</param>
+        /// <param name="cancellationToken">Token della singola esecuzione</param>
+        /// <returns>Risultato con exit code, stdout e stderr</returns>
+        public static ProcessResult Run(string fileName, string[] arguments, int timeoutMs, CancellationToken cancellationToken)
+        {
             ProcessResult result = new ProcessResult();
             Process proc = null;
             string stdout = "";
@@ -127,7 +140,7 @@ namespace RemuxForge.Core.Infrastructure
                 stdoutThread.Start();
                 stderrThread.Start();
 
-                if (!WaitForExitOrStop(proc, timeoutMs))
+                if (!WaitForExitOrStop(proc, timeoutMs, cancellationToken))
                 {
                     KillProcessTree(proc);
                     stdoutThread.Join();
@@ -512,13 +525,13 @@ namespace RemuxForge.Core.Infrastructure
         /// <summary>
         /// Attende terminazione, timeout o richiesta stop
         /// </summary>
-        private static bool WaitForExitOrStop(Process proc, int timeoutMs)
+        private static bool WaitForExitOrStop(Process proc, int timeoutMs, CancellationToken cancellationToken = default)
         {
             DateTime start = DateTime.UtcNow;
 
             while (!proc.HasExited)
             {
-                if (IsStopRequested())
+                if (cancellationToken.IsCancellationRequested || IsStopRequested())
                 {
                     return false;
                 }
