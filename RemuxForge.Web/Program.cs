@@ -1,9 +1,12 @@
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
+using RemuxForge.Core.Media;
+using RemuxForge.Core.Models;
 using RemuxForge.Core.Tools;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace RemuxForge.Web
@@ -157,6 +161,7 @@ namespace RemuxForge.Web
             }
 
             // Registra servizi
+            builder.Services.AddSingleton(new VideoFrameAccessService(ffprobePath, mkvMergePath, mkvExtractPath, ffmpegPath, AppSettingsService.Instance.Settings.Advanced.Ffmpeg));
             builder.Services.AddSingleton<MergeOrchestrator>();
             builder.Services.AddSingleton<SplitOrchestrator>();
             builder.Services.AddSingleton<MetadataOrchestrator>();
@@ -172,6 +177,71 @@ namespace RemuxForge.Web
 
             app.UseAntiforgery();
             app.UseStaticFiles();
+            app.MapGet("/api/edit-map-preview/{recordIndex:int}/{side}/{frameIndex:int}", async (int recordIndex, string side, int frameIndex, int width, int height, int? count, HttpContext context, MergeOrchestrator orchestrator, VideoFrameAccessService frameAccess) =>
+            {
+                if (width < 2 || height < 2 || width > 4096 || height > 4096)
+                    return Results.BadRequest("Invalid preview dimensions");
+                int frameCount = count ?? 1;
+                if (frameCount < 1 || frameCount > 60)
+                    return Results.BadRequest("Invalid preview frame count");
+
+                FileProcessingRecord record = orchestrator.GetRecord(recordIndex);
+                if (record == null)
+                    return Results.NotFound();
+
+                string filePath;
+                if (string.Equals(side, "source", StringComparison.OrdinalIgnoreCase))
+                    filePath = record.SourceFilePath;
+                else if (string.Equals(side, "language", StringComparison.OrdinalIgnoreCase))
+                    filePath = record.LangFilePath;
+                else
+                    return Results.BadRequest("Invalid preview side");
+
+                if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+                    return Results.NotFound();
+
+                try
+                {
+                    CancellationToken cancellationToken = context.RequestAborted;
+                    List<VideoRawFrame> frames = await Task.Run(() => frameAccess.ExtractFrameRange(filePath, frameIndex, frameCount, width, height, cancellationToken), cancellationToken);
+                    VideoRawFrame frame = frames[0];
+                    string etag = frame.ETag.Substring(0, frame.ETag.Length - 1) + "-" + frameCount.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\"";
+                    if (string.Equals(context.Request.Headers.IfNoneMatch.ToString(), etag, StringComparison.Ordinal))
+                        return Results.StatusCode(StatusCodes.Status304NotModified);
+
+                    context.Response.Headers.ETag = etag;
+                    context.Response.Headers.CacheControl = "private, max-age=3600";
+                    context.Response.Headers["X-Frame-Index"] = frame.PresentationIndex.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    context.Response.Headers["X-Frame-Pts-Ms"] = frame.PtsMs.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
+                    context.Response.Headers["X-Frame-Width"] = frame.Width.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    context.Response.Headers["X-Frame-Height"] = frame.Height.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    context.Response.Headers["X-Frame-Count"] = frames.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    context.Response.Headers["X-Frame-Bytes"] = frame.Data.Length.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    context.Response.Headers["X-Pixel-Format"] = frame.PixelFormat;
+                    context.Response.Headers["X-Color-Space"] = frame.ColorSpace ?? "";
+                    context.Response.Headers["X-Color-Range"] = frame.ColorRange ?? "";
+                    context.Response.Headers["X-Color-Primaries"] = frame.ColorPrimaries ?? "";
+                    context.Response.Headers["X-Color-Transfer"] = frame.ColorTransfer ?? "";
+                    if (frames.Count == 1)
+                        return Results.Bytes(frame.Data, "application/octet-stream");
+                    byte[] payload = new byte[frame.Data.Length * frames.Count];
+                    for (int i = 0; i < frames.Count; i++)
+                        Buffer.BlockCopy(frames[i].Data, 0, payload, i * frame.Data.Length, frame.Data.Length);
+                    return Results.Bytes(payload, "application/octet-stream");
+                }
+                catch (OperationCanceledException)
+                {
+                    return Results.StatusCode(499);
+                }
+                catch (ArgumentOutOfRangeException exception)
+                {
+                    return Results.BadRequest(exception.Message);
+                }
+                catch (InvalidOperationException exception)
+                {
+                    return Results.Problem(exception.Message, statusCode: StatusCodes.Status422UnprocessableEntity);
+                }
+            });
             app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
             if (!desktopMode)

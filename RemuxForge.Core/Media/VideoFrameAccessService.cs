@@ -5,7 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 
 namespace RemuxForge.Core.Media
@@ -188,7 +190,52 @@ namespace RemuxForge.Core.Media
         /// <summary>Path interno usato soltanto dal servizio server-side</summary>
         internal string FilePath { get; set; }
 
+        /// <summary>Dimensione file usata per invalidare la cache</summary>
+        internal long FileLength { get; set; }
+
+        /// <summary>Ultima modifica file usata per invalidare la cache</summary>
+        internal long FileLastWriteTicks { get; set; }
+
         #endregion
+    }
+
+    /// <summary>
+    /// Frame video raw pronto per il rendering WebGL2
+    /// </summary>
+    public class VideoRawFrame
+    {
+        /// <summary>Payload NV12 o P010 little-endian</summary>
+        public byte[] Data { get; set; }
+
+        /// <summary>Indice di presentazione realmente estratto</summary>
+        public int PresentationIndex { get; set; }
+
+        /// <summary>PTS realmente estratto in millisecondi</summary>
+        public double PtsMs { get; set; }
+
+        /// <summary>Larghezza del frame raw</summary>
+        public int Width { get; set; }
+
+        /// <summary>Altezza del frame raw</summary>
+        public int Height { get; set; }
+
+        /// <summary>Pixel format del payload: nv12 o p010le</summary>
+        public string PixelFormat { get; set; }
+
+        /// <summary>Matrice colore dichiarata dal video</summary>
+        public string ColorSpace { get; set; }
+
+        /// <summary>Range colore dichiarato dal video</summary>
+        public string ColorRange { get; set; }
+
+        /// <summary>Primarie colore dichiarate dal video</summary>
+        public string ColorPrimaries { get; set; }
+
+        /// <summary>Transfer function dichiarata dal video</summary>
+        public string ColorTransfer { get; set; }
+
+        /// <summary>Identificatore stabile per cache HTTP</summary>
+        public string ETag { get; set; }
     }
 
     /// <summary>
@@ -198,10 +245,19 @@ namespace RemuxForge.Core.Media
     {
         #region Variabili di classe
 
+        private const long RAW_CACHE_LIMIT_BYTES = 256L * 1024L * 1024L;
+        private static readonly Regex s_ptsTimeRegex = new Regex(@"pts_time:([-+0-9.eE]+)", RegexOptions.Compiled);
+
+        private readonly string _ffmpegPath;
         private readonly string _ffprobePath;
         private readonly string _mkvMergePath;
         private readonly string _mkvExtractPath;
+        private readonly FfmpegConfig _ffmpegConfig;
         private readonly Dictionary<string, double> _startTimes;
+        private readonly Dictionary<string, VideoFrameIndex> _indices;
+        private readonly Dictionary<string, RawCacheEntry> _rawFrames;
+        private readonly LinkedList<string> _rawFrameOrder;
+        private long _rawCacheBytes;
 
         #endregion
 
@@ -210,12 +266,17 @@ namespace RemuxForge.Core.Media
         /// <summary>
         /// Costruttore
         /// </summary>
-        public VideoFrameAccessService(string ffprobePath, string mkvMergePath, string mkvExtractPath)
+        public VideoFrameAccessService(string ffprobePath, string mkvMergePath, string mkvExtractPath, string ffmpegPath = "", FfmpegConfig ffmpegConfig = null)
         {
+            this._ffmpegPath = ffmpegPath ?? "";
             this._ffprobePath = ffprobePath ?? "";
             this._mkvMergePath = mkvMergePath ?? "";
             this._mkvExtractPath = mkvExtractPath ?? "";
+            this._ffmpegConfig = ffmpegConfig ?? new FfmpegConfig();
             this._startTimes = new Dictionary<string, double>(StringComparer.Ordinal);
+            this._indices = new Dictionary<string, VideoFrameIndex>(StringComparer.Ordinal);
+            this._rawFrames = new Dictionary<string, RawCacheEntry>(StringComparer.Ordinal);
+            this._rawFrameOrder = new LinkedList<string>();
         }
 
         #endregion
@@ -237,6 +298,9 @@ namespace RemuxForge.Core.Media
 
             VideoFrameIndex result = new VideoFrameIndex();
             result.FilePath = filePath;
+            FileInfo sourceFile = new FileInfo(filePath);
+            result.FileLength = sourceFile.Length;
+            result.FileLastWriteTicks = sourceFile.LastWriteTimeUtc.Ticks;
             this.ReadVideoProperties(filePath, result, timeoutMs, cancellationToken);
             List<bool> keyframes = this.ReadKeyframeFlags(filePath, timeoutMs, cancellationToken);
             double medianDurationMs = ComputeMedianFrameDuration(timestamps);
@@ -259,6 +323,86 @@ namespace RemuxForge.Core.Media
             result.LastPtsMs = timestamps[timestamps.Count - 1];
             result.EndPtsMs = result.LastPtsMs + medianDurationMs;
             result.DurationMs = Math.Max(0.0, result.EndPtsMs - result.FirstPtsMs);
+            lock (this._indices)
+            {
+                this._indices[filePath] = result;
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Restituisce l'indice PTS condiviso costruendolo soltanto al primo accesso
+        /// </summary>
+        public VideoFrameIndex GetOrBuildIndex(string filePath, int timeoutMs, CancellationToken cancellationToken)
+        {
+            lock (this._indices)
+            {
+                if (this._indices.TryGetValue(filePath, out VideoFrameIndex cached) && IsCurrentFile(cached, filePath))
+                    return cached;
+            }
+
+            return this.BuildIndex(filePath, timeoutMs, cancellationToken);
+        }
+
+        /// <summary>
+        /// Estrae un frame esatto alla risoluzione utile della preview rispettando la configurazione hardware utente
+        /// </summary>
+        public VideoRawFrame ExtractFrame(string filePath, int presentationIndex, int maximumWidth, int maximumHeight, CancellationToken cancellationToken)
+        {
+            return this.ExtractFrameRange(filePath, presentationIndex, 1, maximumWidth, maximumHeight, cancellationToken)[0];
+        }
+
+        /// <summary>
+        /// Estrae frame consecutivi con una sola decodifica per lo stepping rapido
+        /// </summary>
+        public List<VideoRawFrame> ExtractFrameRange(string filePath, int presentationIndex, int count, int maximumWidth, int maximumHeight, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrEmpty(this._ffmpegPath) || !File.Exists(this._ffmpegPath))
+                throw new InvalidOperationException("FFmpeg non disponibile per la preview EditMap");
+            if (maximumWidth < 2 || maximumHeight < 2)
+                throw new ArgumentOutOfRangeException(nameof(maximumWidth), "Le dimensioni preview devono essere positive");
+            if (count < 1 || count > 60)
+                throw new ArgumentOutOfRangeException(nameof(count), "Il numero di frame deve essere compreso fra 1 e 60");
+
+            int timeoutMs = Math.Max(1000, this._ffmpegConfig.FrameExtractionTimeoutMs);
+            VideoFrameIndex index = this.GetOrBuildIndex(filePath, timeoutMs, cancellationToken);
+            VideoFrameIndexEntry requested = index.GetFrame(presentationIndex);
+            if (requested == null || presentationIndex + count > index.FrameCount)
+                throw new ArgumentOutOfRangeException(nameof(presentationIndex), "Frame fuori indice");
+
+            ResolveOutputDimensions(index, maximumWidth, maximumHeight, out int width, out int height);
+            string pixelFormat = index.RequiresP010 ? "p010le" : "nv12";
+            List<VideoRawFrame> result = new List<VideoRawFrame>();
+            bool completelyCached = true;
+            for (int i = 0; i < count; i++)
+            {
+                VideoRawFrame cached = this.ReadCachedFrame(BuildCacheKey(filePath, presentationIndex + i, width, height, pixelFormat));
+                if (cached == null)
+                {
+                    completelyCached = false;
+                    break;
+                }
+                result.Add(cached);
+            }
+            if (completelyCached)
+                return result;
+
+            bool hardware = this._ffmpegConfig.HardwareAcceleration && FfmpegConfig.IsValidHardwareAccelerationMethod(this._ffmpegConfig.HardwareAccelerationMethod);
+            result = this.DecodeExactFrames(filePath, index, requested, count, width, height, pixelFormat, hardware, timeoutMs, cancellationToken);
+            if (result == null && hardware)
+                result = this.DecodeExactFrames(filePath, index, requested, count, width, height, pixelFormat, false, timeoutMs, cancellationToken);
+            if (result == null || result.Count != count)
+                throw new InvalidOperationException("FFmpeg non ha restituito i frame richiesti");
+
+            for (int i = 0; i < result.Count; i++)
+            {
+                result[i].ColorSpace = index.ColorSpace;
+                result[i].ColorRange = index.ColorRange;
+                result[i].ColorPrimaries = index.ColorPrimaries;
+                result[i].ColorTransfer = index.ColorTransfer;
+                result[i].ETag = BuildETag(filePath, result[i].PresentationIndex, width, height, pixelFormat);
+                this.CacheFrame(BuildCacheKey(filePath, result[i].PresentationIndex, width, height, pixelFormat), result[i]);
+            }
             return result;
         }
 
@@ -452,6 +596,221 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
+        /// Decodifica dal keyframe precedente e verifica il PTS ottenuto; in caso di seek impreciso riparte dall'inizio
+        /// </summary>
+        private List<VideoRawFrame> DecodeExactFrames(string filePath, VideoFrameIndex index, VideoFrameIndexEntry requested, int count, int width, int height, string pixelFormat, bool hardware, int timeoutMs, CancellationToken cancellationToken)
+        {
+            int keyFrameIndex = FindPreviousKeyFrame(index, requested.PresentationIndex);
+            List<VideoRawFrame> result = this.RunFrameDecode(filePath, index, requested, count, keyFrameIndex, width, height, pixelFormat, hardware, timeoutMs, cancellationToken);
+            if (FramesMatchIndex(result, index, requested.PresentationIndex))
+                return result;
+
+            result = this.RunFrameDecode(filePath, index, requested, count, 0, width, height, pixelFormat, hardware, timeoutMs, cancellationToken);
+            return FramesMatchIndex(result, index, requested.PresentationIndex) ? result : null;
+        }
+
+        /// <summary>
+        /// Esegue una singola decodifica raw a partire da un frame noto
+        /// </summary>
+        private List<VideoRawFrame> RunFrameDecode(string filePath, VideoFrameIndex index, VideoFrameIndexEntry requested, int count, int decodeStartIndex, int width, int height, string pixelFormat, bool hardware, int timeoutMs, CancellationToken cancellationToken)
+        {
+            List<string> arguments = new List<string>();
+            arguments.Add("-nostdin");
+            arguments.Add("-hide_banner");
+            arguments.Add("-loglevel");
+            arguments.Add("info");
+            if (hardware)
+            {
+                arguments.Add("-hwaccel");
+                arguments.Add(this._ffmpegConfig.HardwareAccelerationMethod);
+            }
+            if (decodeStartIndex > 0)
+            {
+                arguments.Add("-seek_timestamp");
+                arguments.Add("1");
+                arguments.Add("-ss");
+                arguments.Add((index.Frames[decodeStartIndex].PtsMs / 1000.0).ToString("0.######", CultureInfo.InvariantCulture));
+            }
+            arguments.Add("-i");
+            arguments.Add(filePath);
+            arguments.Add("-copyts");
+            arguments.Add("-map");
+            arguments.Add("0:v:0");
+            arguments.Add("-an");
+            arguments.Add("-sn");
+            arguments.Add("-dn");
+            arguments.Add("-vf");
+            string targetSeconds = (requested.PtsMs / 1000.0).ToString("0.######", CultureInfo.InvariantCulture);
+            arguments.Add("select='gte(pts*TB," + targetSeconds + ")',scale=" + width.ToString(CultureInfo.InvariantCulture) + ":" + height.ToString(CultureInfo.InvariantCulture) + ":flags=lanczos,setsar=1,format=" + pixelFormat + ",showinfo");
+            arguments.Add("-frames:v");
+            arguments.Add(count.ToString(CultureInfo.InvariantCulture));
+            arguments.Add("-fps_mode");
+            arguments.Add("passthrough");
+            arguments.Add("-f");
+            arguments.Add("rawvideo");
+            arguments.Add("-");
+
+            using (MemoryStream output = new MemoryStream())
+            {
+                ProcessBinaryResult run = ProcessRunner.RunBinaryStdout(this._ffmpegPath, arguments.ToArray(), (buffer, count) => output.Write(buffer, 0, count), timeoutMs, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                int frameBytes = pixelFormat == "p010le" ? width * height * 3 : width * height * 3 / 2;
+                if (run.ExitCode != 0 || output.Length != (long)frameBytes * count)
+                    return null;
+
+                MatchCollection matches = s_ptsTimeRegex.Matches(run.Stderr ?? "");
+                if (matches.Count < count)
+                    return null;
+                byte[] raw = output.ToArray();
+                List<VideoRawFrame> result = new List<VideoRawFrame>();
+                for (int i = 0; i < count; i++)
+                {
+                    if (!double.TryParse(matches[i].Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double ptsSeconds))
+                        return null;
+                    VideoFrameIndexEntry actual = index.FindNearestFrame(ptsSeconds * 1000.0);
+                    if (actual == null)
+                        return null;
+                    byte[] frameData = new byte[frameBytes];
+                    Buffer.BlockCopy(raw, i * frameBytes, frameData, 0, frameBytes);
+                    result.Add(new VideoRawFrame
+                    {
+                        Data = frameData,
+                        PresentationIndex = actual.PresentationIndex,
+                        PtsMs = ptsSeconds * 1000.0,
+                        Width = width,
+                        Height = height,
+                        PixelFormat = pixelFormat
+                    });
+                }
+                return result;
+            }
+        }
+
+        /// <summary>
+        /// Verifica che una sequenza decodificata corrisponda agli indici PTS richiesti
+        /// </summary>
+        private static bool FramesMatchIndex(List<VideoRawFrame> frames, VideoFrameIndex index, int startIndex)
+        {
+            if (frames == null || startIndex < 0 || startIndex + frames.Count > index.FrameCount)
+                return false;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                VideoFrameIndexEntry expected = index.Frames[startIndex + i];
+                if (frames[i].PresentationIndex != expected.PresentationIndex || Math.Abs(frames[i].PtsMs - expected.PtsMs) > Math.Max(0.5, expected.DurationMs * 0.1))
+                    return false;
+            }
+            return frames.Count > 0;
+        }
+
+        /// <summary>
+        /// Calcola dimensioni pari contenute nel box preservando SAR e aspect ratio
+        /// </summary>
+        private static void ResolveOutputDimensions(VideoFrameIndex index, int maximumWidth, int maximumHeight, out int width, out int height)
+        {
+            double sampleAspectRatio = ParseRatio(index.SampleAspectRatio, 1.0);
+            double displayWidth = Math.Max(2.0, index.CodedWidth * sampleAspectRatio);
+            double displayHeight = Math.Max(2.0, index.CodedHeight);
+            double scale = Math.Min(maximumWidth / displayWidth, maximumHeight / displayHeight);
+            scale = Math.Min(1.0, scale);
+            width = Math.Max(2, (int)Math.Floor(displayWidth * scale / 2.0) * 2);
+            height = Math.Max(2, (int)Math.Floor(displayHeight * scale / 2.0) * 2);
+        }
+
+        /// <summary>
+        /// Converte un rapporto FFmpeg num:den in valore decimale
+        /// </summary>
+        private static double ParseRatio(string value, double fallback)
+        {
+            if (string.IsNullOrEmpty(value))
+                return fallback;
+            string[] parts = value.Split(':');
+            if (parts.Length != 2 || !double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double numerator) || !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double denominator) || denominator == 0.0)
+                return fallback;
+            return numerator / denominator;
+        }
+
+        /// <summary>
+        /// Trova il keyframe precedente più vicino
+        /// </summary>
+        private static int FindPreviousKeyFrame(VideoFrameIndex index, int presentationIndex)
+        {
+            for (int i = presentationIndex; i > 0; i--)
+            {
+                if (index.Frames[i].IsKeyFrame)
+                    return i;
+            }
+            return 0;
+        }
+
+        /// <summary>
+        /// Verifica che l'indice appartenga ancora alla stessa versione del file
+        /// </summary>
+        private static bool IsCurrentFile(VideoFrameIndex index, string filePath)
+        {
+            if (index == null || !string.Equals(index.FilePath, filePath, StringComparison.Ordinal) || !File.Exists(filePath))
+                return false;
+            FileInfo file = new FileInfo(filePath);
+            return index.FileLength == file.Length && index.FileLastWriteTicks == file.LastWriteTimeUtc.Ticks;
+        }
+
+        /// <summary>
+        /// Compone la chiave della cache raw
+        /// </summary>
+        private static string BuildCacheKey(string filePath, int frameIndex, int width, int height, string pixelFormat)
+        {
+            FileInfo file = new FileInfo(filePath);
+            return filePath + "|" + file.Length.ToString(CultureInfo.InvariantCulture) + "|" + file.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture) + "|" + frameIndex.ToString(CultureInfo.InvariantCulture) + "|" + width.ToString(CultureInfo.InvariantCulture) + "x" + height.ToString(CultureInfo.InvariantCulture) + "|" + pixelFormat;
+        }
+
+        /// <summary>
+        /// Compone un ETag senza esporre il path nel protocollo
+        /// </summary>
+        private static string BuildETag(string filePath, int frameIndex, int width, int height, string pixelFormat)
+        {
+            FileInfo file = new FileInfo(filePath);
+            string value = file.Length.ToString("x", CultureInfo.InvariantCulture) + "-" + file.LastWriteTimeUtc.Ticks.ToString("x", CultureInfo.InvariantCulture) + "-" + frameIndex.ToString("x", CultureInfo.InvariantCulture) + "-" + width.ToString("x", CultureInfo.InvariantCulture) + "-" + height.ToString("x", CultureInfo.InvariantCulture) + "-" + pixelFormat;
+            return "\"" + Convert.ToBase64String(Encoding.UTF8.GetBytes(value)).TrimEnd('=') + "\"";
+        }
+
+        /// <summary>
+        /// Legge e promuove un frame nella cache LRU
+        /// </summary>
+        private VideoRawFrame ReadCachedFrame(string key)
+        {
+            lock (this._rawFrames)
+            {
+                if (!this._rawFrames.TryGetValue(key, out RawCacheEntry entry))
+                    return null;
+                this._rawFrameOrder.Remove(entry.Node);
+                this._rawFrameOrder.AddFirst(entry.Node);
+                return entry.Frame;
+            }
+        }
+
+        /// <summary>
+        /// Inserisce un frame nella cache LRU entro il limite di memoria
+        /// </summary>
+        private void CacheFrame(string key, VideoRawFrame frame)
+        {
+            lock (this._rawFrames)
+            {
+                if (this._rawFrames.ContainsKey(key))
+                    return;
+                LinkedListNode<string> node = this._rawFrameOrder.AddFirst(key);
+                this._rawFrames[key] = new RawCacheEntry { Frame = frame, Node = node };
+                this._rawCacheBytes += frame.Data.Length;
+                while (this._rawCacheBytes > RAW_CACHE_LIMIT_BYTES && this._rawFrameOrder.Last != null)
+                {
+                    string expiredKey = this._rawFrameOrder.Last.Value;
+                    RawCacheEntry expired = this._rawFrames[expiredKey];
+                    this._rawCacheBytes -= expired.Frame.Data.Length;
+                    this._rawFrames.Remove(expiredKey);
+                    this._rawFrameOrder.RemoveLast();
+                }
+            }
+        }
+
+        /// <summary>
         /// Calcola il passo mediano sui soli intervalli positivi
         /// </summary>
         private static double ComputeMedianFrameDuration(List<double> timestamps)
@@ -553,6 +912,12 @@ namespace RemuxForge.Core.Media
             public double PtsMs { get; set; }
             public bool KeyFrame { get; set; }
             public int OriginalIndex { get; set; }
+        }
+
+        private class RawCacheEntry
+        {
+            public VideoRawFrame Frame { get; set; }
+            public LinkedListNode<string> Node { get; set; }
         }
 
         #endregion

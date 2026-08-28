@@ -365,6 +365,20 @@ namespace RemuxForge.Core.Infrastructure
         /// <returns>Risultato con exit code e stderr</returns>
         public static ProcessBinaryResult RunBinaryStdout(string fileName, string[] arguments, Action<byte[], int> onStdoutBytes, int timeoutMs = 0)
         {
+            return RunBinaryStdout(fileName, arguments, onStdoutBytes, timeoutMs, CancellationToken.None);
+        }
+
+        /// <summary>
+        /// Esegue un processo leggendo stdout binario e lo interrompe quando la richiesta viene annullata
+        /// </summary>
+        /// <param name="fileName">Percorso dell'eseguibile</param>
+        /// <param name="arguments">Argomenti del processo</param>
+        /// <param name="onStdoutBytes">Callback invocato per ogni blocco stdout letto</param>
+        /// <param name="timeoutMs">Timeout in millisecondi, 0 = nessun timeout</param>
+        /// <param name="cancellationToken">Token della singola esecuzione</param>
+        /// <returns>Risultato con exit code e stderr</returns>
+        public static ProcessBinaryResult RunBinaryStdout(string fileName, string[] arguments, Action<byte[], int> onStdoutBytes, int timeoutMs, CancellationToken cancellationToken)
+        {
             ProcessBinaryResult result = new ProcessBinaryResult();
             Process proc = null;
             Thread stdoutThread;
@@ -425,7 +439,7 @@ namespace RemuxForge.Core.Infrastructure
                 stdoutThread.Start();
                 stderrThread.Start();
 
-                completed = WaitForExitOrStop(proc, timeoutMs);
+                completed = WaitForExitOrStop(proc, timeoutMs, cancellationToken);
                 if (!completed)
                 {
                     KillProcessTree(proc);
@@ -450,6 +464,7 @@ namespace RemuxForge.Core.Infrastructure
                     result.Stderr = result.Stderr + "Processo interrotto per timeout o richiesta stop";
                     result.ExitCode = -1;
                 }
+                cancellationToken.ThrowIfCancellationRequested();
                 if (stdoutException != null)
                 {
                     result.ExitCode = -1;
