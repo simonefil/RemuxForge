@@ -218,7 +218,7 @@
     min-width: 0;
     flex: 0 0 auto;
     justify-content: flex-start;
-    align-items: end;
+    align-items: center;
     flex-wrap: wrap;
     gap: calc(var(--rz-gap) * 0.45);
 }
@@ -242,13 +242,20 @@
 
 .edit-map-audio-mode {
     display: flex;
+    min-height: var(--rz-input-height);
     align-items: center;
     flex: 0 0 auto;
+    gap: calc(var(--rz-gap) * 0.25);
+}
+
+.edit-map-audio-mode .rz-button {
+    height: var(--rz-input-height);
 }
 
 .edit-map-waveform-height {
     display: grid;
     width: min(100%, 17rem);
+    min-height: var(--rz-input-height);
     min-width: 0;
     flex: 1 1 14rem;
     grid-template-columns: auto minmax(7rem, 1fr) 2.5rem;

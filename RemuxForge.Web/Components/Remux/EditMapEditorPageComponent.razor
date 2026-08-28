@@ -143,8 +143,8 @@
                                     </select>
                                 </label>
                                 <div class="edit-map-audio-mode" role="group" aria-label="@AppText.T("web.editMap.audioVisualization")">
-                                    <RadzenButton Text="@AppText.T("web.editMap.waveform")" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="@GetAudioModeButtonStyle(AUDIO_MODE_WAVEFORM)" Click="@(() => SetAudioModeAsync(AUDIO_MODE_WAVEFORM))" />
-                                    <RadzenButton Text="@AppText.T("web.editMap.spectrogram")" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="@GetAudioModeButtonStyle(AUDIO_MODE_SPECTROGRAM)" Click="@(() => SetAudioModeAsync(AUDIO_MODE_SPECTROGRAM))" />
+                                    <RadzenButton Text="@AppText.T("web.editMap.waveform")" Size="ButtonSize.Small" Variant="@GetAudioModeButtonVariant(AUDIO_MODE_WAVEFORM)" ButtonStyle="@GetAudioModeButtonStyle(AUDIO_MODE_WAVEFORM)" Click="@(() => SetAudioModeAsync(AUDIO_MODE_WAVEFORM))" />
+                                    <RadzenButton Text="@AppText.T("web.editMap.spectrogram")" Size="ButtonSize.Small" Variant="@GetAudioModeButtonVariant(AUDIO_MODE_SPECTROGRAM)" ButtonStyle="@GetAudioModeButtonStyle(AUDIO_MODE_SPECTROGRAM)" Click="@(() => SetAudioModeAsync(AUDIO_MODE_SPECTROGRAM))" />
                                 </div>
                                 <label class="edit-map-waveform-height">
                                     <span>@AppText.T("web.editMap.waveformHeight")</span>
@@ -597,6 +597,12 @@
     private ButtonStyle GetAudioModeButtonStyle(string mode)
     {
         return string.Equals(this._audioMode, mode, StringComparison.Ordinal) ? ButtonStyle.Primary : ButtonStyle.Base;
+    }
+
+    /// <summary>Rende piena la modalità audio attiva e contornata quella alternativa</summary>
+    private Variant GetAudioModeButtonVariant(string mode)
+    {
+        return string.Equals(this._audioMode, mode, StringComparison.Ordinal) ? Variant.Filled : Variant.Outlined;
     }
 
     /// <summary>Aggiorna il solo ingrandimento verticale delle waveform</summary>
