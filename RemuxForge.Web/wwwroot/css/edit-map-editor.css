@@ -2,6 +2,16 @@
     padding: 0;
 }
 
+.edit-map-dialog .dialog-title {
+    min-height: 3rem;
+    padding-block: calc(var(--rz-gap) * 0.65);
+}
+
+.edit-map-dialog .dialog-footer {
+    min-height: 3.25rem;
+    padding-block: calc(var(--rz-gap) * 0.5);
+}
+
 .edit-map-dialog-titlebar,
 .edit-map-dialog-title-actions,
 .edit-map-dialog-footer {
@@ -42,7 +52,7 @@
 .edit-map-operations-pane {
     display: flex;
     flex-direction: column;
-    padding: var(--rz-gap);
+    padding: calc(var(--rz-gap) * 0.75);
     overflow: hidden;
 }
 
@@ -120,10 +130,12 @@
 }
 
 .edit-map-preview-controls {
-    display: grid;
+    display: flex;
     flex: 0 0 auto;
-    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
-    gap: calc(var(--rz-gap) * 0.5);
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: calc(var(--rz-gap) * 0.75);
 }
 
 .edit-map-preview-controls label,
@@ -135,13 +147,13 @@
 }
 
 .edit-map-preview-controls label {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(7rem, 10rem);
 }
 
 .edit-map-frame-control {
     display: grid;
     min-width: 0;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-columns: auto auto auto auto;
     align-items: center;
     gap: calc(var(--rz-gap) * 0.25);
     color: var(--rz-text-secondary-color);
@@ -149,6 +161,7 @@
 
 .edit-map-frame-control label {
     min-width: 0;
+    grid-template-columns: auto 7.5rem;
 }
 
 .edit-map-preview-controls .form-input,
@@ -178,12 +191,12 @@
     display: flex;
     min-width: 0;
     flex: 0 0 auto;
-    justify-content: flex-end;
+    justify-content: flex-start;
 }
 
 .edit-map-waveform-toolbar label {
     display: grid;
-    width: min(100%, 24rem);
+    width: min(100%, 22rem);
     min-width: 0;
     grid-template-columns: auto minmax(8rem, 1fr) 3rem;
     align-items: center;

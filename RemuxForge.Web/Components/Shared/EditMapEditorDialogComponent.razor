@@ -18,7 +18,7 @@
 
         <div class="dialog-body edit-map-dialog-body">
             <RadzenSplitter Orientation="Orientation.Vertical" class="edit-map-main-splitter">
-                <RadzenSplitterPane Size="50%" Min="300px">
+                <RadzenSplitterPane Size="44%" Min="240px">
                     <section class="edit-map-preview-section">
                         <div class="edit-map-preview-grid">
                             <section class="edit-map-preview-pane">
@@ -96,7 +96,7 @@
                         </div>
                     </section>
                 </RadzenSplitterPane>
-                <RadzenSplitterPane Size="32%" Min="260px">
+                <RadzenSplitterPane Size="64%" Min="240px">
                     <section class="edit-map-timeline-pane">
                         <div class="edit-map-waveform-toolbar">
                             <label>
@@ -111,7 +111,7 @@
                         </div>
                     </section>
                 </RadzenSplitterPane>
-                <RadzenSplitterPane Min="180px">
+                <RadzenSplitterPane Min="130px">
                     <section class="edit-map-operations-pane">
                         <div class="edit-map-section-title">@AppText.T("web.detail.operationsLabel")</div>
                         <RadzenDataGrid @ref="_operationGrid" Data="@_workingMap.Operations" TItem="EditOperation" EditMode="DataGridEditMode.Single" AllowSorting="false" AllowFiltering="false" AllowColumnResize="true" AllowRowSelectOnRowClick="true" GridLines="DataGridGridLines.Both" Density="Density.Compact" RowClick="SelectOperationRowAsync" RowRender="RenderOperationRow" class="edit-map-operation-grid">
@@ -229,7 +229,7 @@
     private string _durationEditAuthority = "";
     private double _sourcePlayheadMs;
     private double _languageCursorMs;
-    private double _waveformGain = 3.0;
+    private double _waveformGain = 6.0;
     private bool _sourceIndexing = true;
     private bool _languageIndexing = true;
     private bool _interactiveInitialized;

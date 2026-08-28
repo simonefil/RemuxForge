@@ -85,10 +85,24 @@ class RawFrameRenderer {
         const location = this.gl.getAttribLocation(this.program, 'a_position');
         this.gl.enableVertexAttribArray(location);
         this.gl.vertexAttribPointer(location, 2, this.gl.FLOAT, false, 0, 0);
+        this.currentBuffer = null;
+        this.currentMetadata = null;
     }
 
     render(buffer, metadata) {
+        this.currentBuffer = buffer;
+        this.currentMetadata = metadata;
+        this.renderCurrent();
+    }
+
+    renderCurrent() {
+        if (!this.currentBuffer || !this.currentMetadata) {
+            this.clear();
+            return;
+        }
         const gl = this.gl;
+        const buffer = this.currentBuffer;
+        const metadata = this.currentMetadata;
         const width = Number(metadata.width);
         const height = Number(metadata.height);
         const p010 = metadata.pixelFormat === 'p010le';
@@ -128,9 +142,17 @@ class RawFrameRenderer {
 
     clear() {
         const gl = this.gl;
+        this.currentBuffer = null;
+        this.currentMetadata = null;
+        this.canvas.width = Math.max(2, Math.floor(this.canvas.clientWidth / 2) * 2);
+        this.canvas.height = Math.max(2, Math.floor(this.canvas.clientHeight / 2) * 2);
         gl.viewport(0, 0, this.canvas.width, this.canvas.height);
         gl.clearColor(0, 0, 0, 1);
         gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+
+    resize() {
+        this.renderCurrent();
     }
 
     dispose() {
@@ -143,6 +165,8 @@ class RawFrameRenderer {
 }
 
 export function createPreviewPair(sourceCanvas, languageCanvas) {
+    fitPreviewCanvas(sourceCanvas);
+    fitPreviewCanvas(languageCanvas);
     const source = new RawFrameRenderer(sourceCanvas);
     const language = new RawFrameRenderer(languageCanvas);
     const sourceCache = new Map();
@@ -151,6 +175,8 @@ export function createPreviewPair(sourceCanvas, languageCanvas) {
     let lastLanguageIndex = null;
     let generation = 0;
     let controller = null;
+    const sourceResizeObserver = observePreviewCanvas(sourceCanvas, source);
+    const languageResizeObserver = observePreviewCanvas(languageCanvas, language);
     return {
         async loadPair(sourceUrl, languageUrl) {
             generation++;
@@ -187,10 +213,34 @@ export function createPreviewPair(sourceCanvas, languageCanvas) {
             this.cancel();
             sourceCache.clear();
             languageCache.clear();
+            sourceResizeObserver.disconnect();
+            languageResizeObserver.disconnect();
             source.dispose();
             language.dispose();
         }
     };
+}
+
+function fitPreviewCanvas(canvas) {
+    const host = canvas.parentElement;
+    const stage = host?.parentElement;
+    if (!host || !stage) return;
+    const availableWidth = Math.max(2, stage.clientWidth);
+    const availableHeight = Math.max(2, stage.clientHeight);
+    const width = Math.min(availableWidth, availableHeight * 16 / 9);
+    const height = width * 9 / 16;
+    host.style.width = `${Math.floor(width)}px`;
+    host.style.height = `${Math.floor(height)}px`;
+}
+
+function observePreviewCanvas(canvas, renderer) {
+    const stage = canvas.parentElement?.parentElement;
+    const observer = new ResizeObserver(() => {
+        fitPreviewCanvas(canvas);
+        renderer.resize();
+    });
+    if (stage) observer.observe(stage);
+    return observer;
 }
 
 function withCanvasSize(url, canvas) {
@@ -281,7 +331,7 @@ class EditMapTimeline {
         this.sourceWaveform = null;
         this.languageWaveform = null;
         this.waveformGain = clampWaveformGain(model.waveformGain);
-        this.plotLeft = 112;
+        this.plotLeft = 150;
         this.navigatorHeight = 24;
         this.rulerHeight = 28;
         this.waveformController = new AbortController();
@@ -403,6 +453,8 @@ class EditMapTimeline {
         const languageWaveformColor = cssColor(styles, '--rz-success', primary);
         const danger = cssColor(styles, '--rz-danger', primary);
         const warning = cssColor(styles, '--rz-warning', primary);
+        const onDanger = cssColor(styles, '--rz-on-danger', background);
+        const onWarning = cssColor(styles, '--rz-on-warning', background);
         const plotLeft = this.plotLeft;
         const navigatorHeight = this.navigatorHeight;
         const rulerTop = navigatorHeight;
@@ -434,8 +486,12 @@ class EditMapTimeline {
         ctx.strokeRect(plotLeft + 0.5, sourceTop + 0.5, width - plotLeft - 1, laneHeight - 1);
         ctx.strokeRect(plotLeft + 0.5, languageTop + 0.5, width - plotLeft - 1, laneHeight - 1);
         ctx.fillStyle = secondary;
-        ctx.fillText(this.model.labels?.source || 'SOURCE', 8, sourceTop + laneHeight / 2);
-        ctx.fillText(this.model.labels?.language || 'LANGUAGE', 8, languageTop + laneHeight / 2);
+        ctx.fillText(this.model.labels?.source || 'SOURCE', 8, sourceTop + Math.min(14, laneHeight / 3));
+        ctx.fillText(this.model.labels?.language || 'LANGUAGE', 8, languageTop + Math.min(14, laneHeight / 3));
+        if (laneHeight >= 38) {
+            ctx.fillText(this.model.sourcePlayheadLabel || '—', 8, sourceTop + Math.min(34, laneHeight * 0.7));
+            ctx.fillText(this.model.languagePlayheadLabel || '—', 8, languageTop + Math.min(34, laneHeight * 0.7));
+        }
         this.drawWaveform(this.sourceWaveform, startMs + (this.model.sourceFirstPtsMs || 0), endMs + (this.model.sourceFirstPtsMs || 0), plotLeft, width, sourceTop, laneHeight, sourceWaveformColor);
         for (const segment of this.model.segments || []) {
             const x1 = this.xAtTime(segment.sourceStartMs);
@@ -476,11 +532,24 @@ class EditMapTimeline {
             ctx.beginPath(); ctx.moveTo(x, trackTop); ctx.lineTo(x, height); ctx.stroke();
             ctx.fillStyle = operation.selected ? warning : danger;
             const durationEndX = x + Math.max(8, temporaryDuration * this.pixelsPerMs);
-            ctx.fillRect(x, operationY - 3, Math.max(2, durationEndX - x), 6);
-            ctx.fillRect(durationEndX - 4, operationY - 7, 8, 14);
+            ctx.fillRect(x, operationY - 2, Math.max(2, durationEndX - x), 4);
+            ctx.fillRect(durationEndX - 3, operationY - 6, 6, 12);
             const label = operation.type === 'CUT_SEGMENT' ? `${this.model.labels?.cut || 'CUT'} −${Math.round(temporaryDuration)} ms` : `${this.model.labels?.insert || 'INSERT'} +${Math.round(temporaryDuration)} ms`;
-            const labelWidth = ctx.measureText(label).width;
-            ctx.fillText(label, Math.max(plotLeft + 4, Math.min(width - labelWidth - 4, x + 6)), operationY);
+            if (operation.selected) {
+                const labelWidth = ctx.measureText(label).width;
+                const labelX = Math.max(plotLeft + 3, Math.min(width - labelWidth - 11, x + 5));
+                ctx.fillStyle = warning;
+                ctx.fillRect(labelX - 4, operationY - 9, labelWidth + 8, 18);
+                ctx.fillStyle = onWarning;
+                ctx.fillText(label, labelX, operationY);
+            } else {
+                const compactLabel = operation.type === 'CUT_SEGMENT' ? 'C' : 'I';
+                const compactX = Math.max(plotLeft + 2, Math.min(width - 17, x + 3));
+                ctx.fillStyle = danger;
+                ctx.fillRect(compactX, operationY - 8, 14, 16);
+                ctx.fillStyle = onDanger;
+                ctx.fillText(compactLabel, compactX + 4, operationY);
+            }
         }
         const playheadX = this.xAtTime(this.model.playheadMs);
         ctx.strokeStyle = primary;
@@ -488,11 +557,6 @@ class EditMapTimeline {
         ctx.beginPath(); ctx.moveTo(playheadX, rulerTop); ctx.lineTo(playheadX, height); ctx.stroke();
         ctx.fillStyle = primary;
         ctx.beginPath(); ctx.moveTo(playheadX - 5, trackTop); ctx.lineTo(playheadX + 5, trackTop); ctx.lineTo(playheadX, trackTop + 7); ctx.closePath(); ctx.fill();
-        ctx.fillStyle = text;
-        const sourceLabel = `${this.model.labels?.sourcePts || 'Source PTS'} ${this.model.sourcePlayheadLabel || '—'}`;
-        const languageLabel = `${this.model.labels?.languagePts || 'Language PTS'} ${this.model.languagePlayheadLabel || '—'}`;
-        ctx.fillText(sourceLabel, Math.max(plotLeft + 4, Math.min(width - ctx.measureText(sourceLabel).width - 4, playheadX + 8)), sourceTop + 12);
-        ctx.fillText(languageLabel, Math.max(plotLeft + 4, Math.min(width - ctx.measureText(languageLabel).width - 4, playheadX + 8)), languageTop + 12);
         if (this.hoverX !== null && !this.drag) {
             const hoverTime = Math.max(0, Math.min(this.model.durationMs, this.timeAtX(this.hoverX)));
             const label = formatTimelineTime(hoverTime);
