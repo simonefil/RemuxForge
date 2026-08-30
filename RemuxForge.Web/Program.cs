@@ -179,141 +179,16 @@ namespace RemuxForge.Web
 
             app.UseAntiforgery();
             app.UseStaticFiles();
-            app.MapGet("/api/edit-map-preview/{recordIndex:int}/{side}/{frameIndex:int}", async (int recordIndex, string side, int frameIndex, int width, int height, int? count, HttpContext context, MergeOrchestrator orchestrator, VideoFrameAccessService frameAccess) =>
-            {
-                if (width < 2 || height < 2 || width > 4096 || height > 4096)
-                    return Results.BadRequest("Invalid preview dimensions");
-                int frameCount = count ?? 1;
-                if (frameCount < 1 || frameCount > 60)
-                    return Results.BadRequest("Invalid preview frame count");
-
-                FileProcessingRecord record = orchestrator.GetRecord(recordIndex);
-                if (record == null)
-                    return Results.NotFound();
-
-                string filePath;
-                if (string.Equals(side, "source", StringComparison.OrdinalIgnoreCase))
-                    filePath = record.SourceFilePath;
-                else if (string.Equals(side, "language", StringComparison.OrdinalIgnoreCase))
-                    filePath = record.LangFilePath;
-                else
-                    return Results.BadRequest("Invalid preview side");
-
-                if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
-                    return Results.NotFound();
-
-                try
-                {
-                    CancellationToken cancellationToken = context.RequestAborted;
-                    List<VideoRawFrame> frames = await Task.Run(() => frameAccess.ExtractFrameRange(filePath, frameIndex, frameCount, width, height, cancellationToken), cancellationToken);
-                    VideoRawFrame frame = frames[0];
-                    string etag = frame.ETag.Substring(0, frame.ETag.Length - 1) + "-" + frames.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\"";
-                    if (string.Equals(context.Request.Headers.IfNoneMatch.ToString(), etag, StringComparison.Ordinal))
-                        return Results.StatusCode(StatusCodes.Status304NotModified);
-
-                    context.Response.Headers.ETag = etag;
-                    context.Response.Headers.CacheControl = "private, max-age=3600";
-                    context.Response.Headers["X-Frame-Index"] = frame.PresentationIndex.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                    context.Response.Headers["X-Frame-Pts-Ms"] = frame.PtsMs.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
-                    context.Response.Headers["X-Frame-Width"] = frame.Width.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                    context.Response.Headers["X-Frame-Height"] = frame.Height.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                    context.Response.Headers["X-Frame-Count"] = frames.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                    context.Response.Headers["X-Frame-Bytes"] = frame.Data.Length.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                    context.Response.Headers["X-Pixel-Format"] = frame.PixelFormat;
-                    context.Response.Headers["X-Color-Space"] = frame.ColorSpace ?? "";
-                    context.Response.Headers["X-Color-Range"] = frame.ColorRange ?? "";
-                    context.Response.Headers["X-Color-Primaries"] = frame.ColorPrimaries ?? "";
-                    context.Response.Headers["X-Color-Transfer"] = frame.ColorTransfer ?? "";
-                    if (frames.Count == 1)
-                        return Results.Bytes(frame.Data, "application/octet-stream");
-                    byte[] payload = new byte[frame.Data.Length * frames.Count];
-                    for (int i = 0; i < frames.Count; i++)
-                        Buffer.BlockCopy(frames[i].Data, 0, payload, i * frame.Data.Length, frame.Data.Length);
-                    return Results.Bytes(payload, "application/octet-stream");
-                }
-                catch (OperationCanceledException)
-                {
-                    return Results.StatusCode(499);
-                }
-                catch (ArgumentOutOfRangeException exception)
-                {
-                    return Results.BadRequest(exception.Message);
-                }
-                catch (InvalidOperationException exception)
-                {
-                    return Results.Problem(exception.Message, statusCode: StatusCodes.Status422UnprocessableEntity);
-                }
-            });
-            app.MapGet("/api/edit-map-audio/{recordIndex:int}/{side}", async (int recordIndex, string side, int trackId, double durationMs, string mode, HttpContext context, MergeOrchestrator orchestrator, AudioEnvelopeExtractor audioExtractor) =>
-            {
-                if (!double.IsFinite(durationMs) || durationMs <= 0.0 || durationMs > TimeSpan.FromDays(1).TotalMilliseconds)
-                    return Results.BadRequest("Invalid audio timeline duration");
-                bool spectrogram;
-                if (string.Equals(mode, "waveform", StringComparison.OrdinalIgnoreCase))
-                    spectrogram = false;
-                else if (string.Equals(mode, "spectrogram", StringComparison.OrdinalIgnoreCase))
-                    spectrogram = true;
-                else
-                    return Results.BadRequest("Invalid audio timeline mode");
-
-                FileProcessingRecord record = orchestrator.GetRecord(recordIndex);
-                if (record == null)
-                    return Results.NotFound();
-
-                string filePath;
-                List<TrackInfo> tracks;
-                if (string.Equals(side, "source", StringComparison.OrdinalIgnoreCase))
-                {
-                    filePath = record.SourceFilePath;
-                    tracks = record.SourceAudioTracks;
-                }
-                else if (string.Equals(side, "language", StringComparison.OrdinalIgnoreCase))
-                {
-                    filePath = record.LangFilePath;
-                    tracks = record.ImportedAudioTracks;
-                }
-                else
-                {
-                    return Results.BadRequest("Invalid audio timeline side");
-                }
-
-                if (tracks == null || tracks.Find(track => track.Id == trackId) == null)
-                    return Results.BadRequest("Invalid audio track");
-                if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
-                    return Results.NotFound();
-
-                try
-                {
-                    int timeoutMs = AppSettingsService.Instance.Settings.Advanced.Ffmpeg.FrameExtractionTimeoutMs;
-                    AudioTimelineImage image = await Task.Run(() => audioExtractor.GenerateTimelineImageForTrackId(filePath, trackId, durationMs, spectrogram, timeoutMs, context.RequestAborted), context.RequestAborted);
-                    using MemoryStream payload = new MemoryStream();
-                    using (BinaryWriter writer = new BinaryWriter(payload, System.Text.Encoding.UTF8, true))
-                    {
-                        writer.Write(new byte[] { (byte)'R', (byte)'F', (byte)'A', (byte)'1' });
-                        writer.Write(image.TileWidth);
-                        writer.Write(image.TileHeight);
-                        writer.Write(image.MillisecondsPerPixel);
-                        writer.Write(image.TileDurationMs);
-                        writer.Write(image.OriginMs);
-                        writer.Write(image.Tiles.Count);
-                        for (int i = 0; i < image.Tiles.Count; i++)
-                        {
-                            writer.Write(image.Tiles[i].Length);
-                            writer.Write(image.Tiles[i]);
-                        }
-                    }
-                    context.Response.Headers.CacheControl = "no-store";
-                    return Results.Bytes(payload.ToArray(), "application/vnd.remuxforge.audio-timeline");
-                }
-                catch (OperationCanceledException)
-                {
-                    return Results.StatusCode(499);
-                }
-                catch (InvalidOperationException exception)
-                {
-                    return Results.Problem(exception.Message, statusCode: StatusCodes.Status422UnprocessableEntity);
-                }
-            });
+            app.MapGet("/api/edit-map-preview/{recordIndex:int}/{side}/{frameIndex:int}", (int recordIndex, string side, int frameIndex, int width, int height, int? count, HttpContext context, MergeOrchestrator orchestrator, VideoFrameAccessService frameAccess) =>
+                MediaEndpoints.ServePreview(orchestrator, recordIndex, side, frameIndex, width, height, count, context, frameAccess));
+            app.MapGet("/api/edit-map-audio/{recordIndex:int}/{side}", (int recordIndex, string side, int trackId, double durationMs, string mode, string quality, HttpContext context, MergeOrchestrator orchestrator, AudioEnvelopeExtractor audioExtractor, VideoFrameAccessService frameAccess) =>
+                MediaEndpoints.ServeAudioTimeline(orchestrator, recordIndex, side, trackId, durationMs, mode, quality, context, audioExtractor, frameAccess));
+            app.MapGet("/api/split-preview/{recordIndex:int}/{side}/{frameIndex:int}", (int recordIndex, string side, int frameIndex, int width, int height, int? count, HttpContext context, SplitOrchestrator orchestrator, VideoFrameAccessService frameAccess) =>
+                MediaEndpoints.ServePreview(orchestrator, recordIndex, side, frameIndex, width, height, count, context, frameAccess));
+            app.MapGet("/api/split-audio/{recordIndex:int}/{side}", (int recordIndex, string side, int trackId, double durationMs, string mode, string quality, HttpContext context, SplitOrchestrator orchestrator, AudioEnvelopeExtractor audioExtractor, VideoFrameAccessService frameAccess) =>
+                MediaEndpoints.ServeAudioTimeline(orchestrator, recordIndex, side, trackId, durationMs, mode, quality, context, audioExtractor, frameAccess));
+            app.MapGet("/api/metadata-attachment/{recordIndex:int}/{attachmentId:int}", (int recordIndex, int attachmentId, HttpContext context, MetadataOrchestrator orchestrator) =>
+                MediaEndpoints.ServeMetadataAttachment(orchestrator, recordIndex, attachmentId, context));
             app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
             if (!desktopMode)

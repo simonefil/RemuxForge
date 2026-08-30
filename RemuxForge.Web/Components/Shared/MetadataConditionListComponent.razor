@@ -25,7 +25,7 @@
                         </div>
                         @NodeActions(Nodes, nodeIndex)
                     </div>
-                    <MetadataConditionListComponent Rule="Rule" Nodes="node.Alternative.Any" Nested="true" AllowAlternative="false" IncludeAdvancedFields="IncludeAdvancedFields" OnFieldActivated="OnFieldActivated" OnInputActivated="OnInputActivated" OnHelpChanged="OnHelpChanged" OnTextEditRequested="OnTextEditRequested" />
+                    <MetadataConditionListComponent Rule="Rule" Nodes="node.Alternative.Any" Nested="true" AllowAlternative="false" IncludeAdvancedFields="IncludeAdvancedFields" OnFieldActivated="OnFieldActivated" OnInputActivated="OnInputActivated" OnHelpChanged="OnHelpChanged" OnTextEditRequested="OnTextEditRequested" OnChanged="OnChanged" />
                 }
                 else if (node.NodeType == MkvMetadataRuleConditionNodeType.TrackComparison)
                 {
@@ -46,9 +46,9 @@
                         </select>
                         @if (condition.Relation == MkvMetadataTrackComparisonRelation.Rank)
                         {
-                            <input type="number" min="1" class="form-input metadata-rank-input" aria-label="@AppText.T("web.metadata.presetDialog.trackComparisonShort")" @bind="condition.Rank" @onfocus='@(() => SetFieldHelp("trackComparison"))' @onmouseenter='@(() => SetFieldHelp("trackComparison"))' />
+                            <input type="number" min="1" class="form-input metadata-rank-input" aria-label="@AppText.T("web.metadata.presetDialog.trackComparisonShort")" @bind="condition.Rank" @bind:after="NotifyChanged" @onfocus='@(() => SetFieldHelp("trackComparison"))' @onmouseenter='@(() => SetFieldHelp("trackComparison"))' />
                         }
-                        <select class="form-input metadata-sentence-group" aria-label="@AppText.T("web.metadata.presetDialog.help.trackGroup.title")" @bind="condition.Group" @onfocus='@(() => SetFieldHelp("trackGroup"))' @onmouseenter='@(() => SetFieldHelp("trackGroup"))'>
+                        <select class="form-input metadata-sentence-group" aria-label="@AppText.T("web.metadata.presetDialog.help.trackGroup.title")" @bind="condition.Group" @bind:after="NotifyChanged" @onfocus='@(() => SetFieldHelp("trackGroup"))' @onmouseenter='@(() => SetFieldHelp("trackGroup"))'>
                             @foreach (MkvMetadataTrackGroup group in MetadataPresetUiHelper.GetTrackGroupOptions())
                             {
                                 <option value="@group">@MetadataPresetUiHelper.GetTrackGroupLabel(group)</option>
@@ -62,19 +62,19 @@
                     MkvMetadataTrackGroupCountCondition condition = node.TrackGroupCount;
                     <div class="metadata-sentence-row">
                         <span class="metadata-sentence-kind">@AppText.T("web.metadata.presetDialog.trackCountPrefix")</span>
-                        <select class="form-input metadata-sentence-group" aria-label="@AppText.T("web.metadata.presetDialog.help.trackGroup.title")" @bind="condition.Group" @onfocus='@(() => SetFieldHelp("trackGroup"))' @onmouseenter='@(() => SetFieldHelp("trackGroup"))'>
+                        <select class="form-input metadata-sentence-group" aria-label="@AppText.T("web.metadata.presetDialog.help.trackGroup.title")" @bind="condition.Group" @bind:after="NotifyChanged" @onfocus='@(() => SetFieldHelp("trackGroup"))' @onmouseenter='@(() => SetFieldHelp("trackGroup"))'>
                             @foreach (MkvMetadataTrackGroup group in MetadataPresetUiHelper.GetTrackGroupOptions())
                             {
                                 <option value="@group">@MetadataPresetUiHelper.GetTrackGroupLabel(group)</option>
                             }
                         </select>
-                        <select class="form-input metadata-sentence-operator" aria-label="@AppText.T("web.metadata.presetDialog.help.conditionOperator.title")" @bind="condition.Operator" @onfocus='@(() => SetFieldHelp("conditionOperator"))' @onmouseenter='@(() => SetFieldHelp("conditionOperator"))'>
+                        <select class="form-input metadata-sentence-operator" aria-label="@AppText.T("web.metadata.presetDialog.help.conditionOperator.title")" @bind="condition.Operator" @bind:after="NotifyChanged" @onfocus='@(() => SetFieldHelp("conditionOperator"))' @onmouseenter='@(() => SetFieldHelp("conditionOperator"))'>
                             @foreach (MkvMetadataConditionOperator op in MetadataPresetUiHelper.GetNumericOperatorOptions(false))
                             {
                                 <option value="@op">@MetadataPresetUiHelper.GetConditionOperatorLabel(op)</option>
                             }
                         </select>
-                        <input type="number" min="0" class="form-input metadata-rank-input" aria-label="@AppText.T("web.metadata.presetDialog.help.trackGroupCount.title")" @bind="condition.Value" @onfocus='@(() => SetFieldHelp("trackGroupCount"))' @onmouseenter='@(() => SetFieldHelp("trackGroupCount"))' />
+                        <input type="number" min="0" class="form-input metadata-rank-input" aria-label="@AppText.T("web.metadata.presetDialog.help.trackGroupCount.title")" @bind="condition.Value" @bind:after="NotifyChanged" @onfocus='@(() => SetFieldHelp("trackGroupCount"))' @onmouseenter='@(() => SetFieldHelp("trackGroupCount"))' />
                         @NodeActions(Nodes, nodeIndex)
                     </div>
                 }
@@ -103,7 +103,7 @@
                                     {
                                         int valueIndex = j;
                                         <span class="metadata-chip">
-                                            <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" AriaLabel="@AppText.T("web.metadata.presetDialog.help.conditionValue.title")" Value="@condition.Values[valueIndex]" ValueChanged="@((string value) => ChangeListValue(condition, valueIndex, value))" CssClass="" OnFocus="@(() => SetFieldHelp("conditionValue"))" OnTextActivated="@((string inputId) => ActivateTextInputAsync(condition, MetadataConditionTextTarget.ListValue, valueIndex, inputId))" OnMouseEnter="@(() => SetFieldHelp("conditionValue"))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.ListValue, valueIndex))" />
+                                            <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" AriaLabel="@AppText.T("web.metadata.presetDialog.help.conditionValue.title")" Value="@condition.Values[valueIndex]" ValueChanged="@((string value) => { ChangeListValue(condition, valueIndex, value); NotifyChanged(); })" CssClass="" OnFocus="@(() => SetFieldHelp("conditionValue"))" OnTextActivated="@((string inputId) => ActivateTextInputAsync(condition, MetadataConditionTextTarget.ListValue, valueIndex, inputId))" OnMouseEnter="@(() => SetFieldHelp("conditionValue"))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.ListValue, valueIndex))" />
                                             <RadzenButton Icon="close" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" aria-label="@AppText.T("web.common.delete")" title="@AppText.T("web.common.delete")" Click="@(() => RemoveListValue(condition, valueIndex))" />
                                         </span>
                                     }
@@ -113,16 +113,16 @@
                             else if (MetadataPresetUiHelper.OperatorNeedsRange(condition.Operator))
                             {
                                 <div class="metadata-range-editor">
-                                    <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" AriaLabel="@AppText.T("web.metadata.presetDialog.help.conditionValue.title")" Value="@condition.FromValue" ValueChanged="@((string value) => condition.FromValue = value)" CssClass="form-input" OnFocus="@(() => SetFieldHelp("conditionValue"))" OnTextActivated="@((string inputId) => ActivateTextInputAsync(condition, MetadataConditionTextTarget.FromValue, -1, inputId))" OnMouseEnter="@(() => SetFieldHelp("conditionValue"))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.FromValue, -1))" />
+                                    <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" AriaLabel="@AppText.T("web.metadata.presetDialog.help.conditionValue.title")" Value="@condition.FromValue" ValueChanged="@((string value) => { condition.FromValue = value; NotifyChanged(); })" CssClass="form-input" OnFocus="@(() => SetFieldHelp("conditionValue"))" OnTextActivated="@((string inputId) => ActivateTextInputAsync(condition, MetadataConditionTextTarget.FromValue, -1, inputId))" OnMouseEnter="@(() => SetFieldHelp("conditionValue"))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.FromValue, -1))" />
                                     <span>@AppText.T("web.metadata.presetDialog.rangeTo")</span>
-                                    <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" AriaLabel="@AppText.T("web.metadata.presetDialog.help.conditionValue.title")" Value="@condition.ToValue" ValueChanged="@((string value) => condition.ToValue = value)" CssClass="form-input" OnFocus="@(() => SetFieldHelp("conditionValue"))" OnTextActivated="@((string inputId) => ActivateTextInputAsync(condition, MetadataConditionTextTarget.ToValue, -1, inputId))" OnMouseEnter="@(() => SetFieldHelp("conditionValue"))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.ToValue, -1))" />
+                                    <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" AriaLabel="@AppText.T("web.metadata.presetDialog.help.conditionValue.title")" Value="@condition.ToValue" ValueChanged="@((string value) => { condition.ToValue = value; NotifyChanged(); })" CssClass="form-input" OnFocus="@(() => SetFieldHelp("conditionValue"))" OnTextActivated="@((string inputId) => ActivateTextInputAsync(condition, MetadataConditionTextTarget.ToValue, -1, inputId))" OnMouseEnter="@(() => SetFieldHelp("conditionValue"))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.ToValue, -1))" />
                                     @UnitSelector(condition)
                                 </div>
                             }
                             else
                             {
                                 <div class="metadata-value-editor">
-                                    <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" AriaLabel="@AppText.T("web.metadata.presetDialog.help.conditionValue.title")" Value="@condition.Value" ValueChanged="@((string value) => condition.Value = value)" CssClass="form-input" OnFocus="@(() => SetFieldHelp("conditionValue"))" OnTextActivated="@((string inputId) => ActivateTextInputAsync(condition, MetadataConditionTextTarget.Value, -1, inputId))" OnMouseEnter="@(() => SetFieldHelp("conditionValue"))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.Value, -1))" />
+                                    <MetadataInputRendererComponent Schema="@MetadataPresetUiHelper.GetFieldInputSchema(condition.FieldKey, MetadataCatalogInputUsage.ConditionValue)" AriaLabel="@AppText.T("web.metadata.presetDialog.help.conditionValue.title")" Value="@condition.Value" ValueChanged="@((string value) => { condition.Value = value; NotifyChanged(); })" CssClass="form-input" OnFocus="@(() => SetFieldHelp("conditionValue"))" OnTextActivated="@((string inputId) => ActivateTextInputAsync(condition, MetadataConditionTextTarget.Value, -1, inputId))" OnMouseEnter="@(() => SetFieldHelp("conditionValue"))" OnExpandedEditRequested="@(() => RequestTextEditor(condition, MetadataConditionTextTarget.Value, -1))" />
                                     @UnitSelector(condition)
                                 </div>
                             }
@@ -199,6 +199,19 @@
     [Parameter] public EventCallback<MetadataTextEditRequest> OnTextEditRequested { get; set; }
 
     /// <summary>
+    /// Evento emesso quando una condizione cambia, per rivalutare l'anteprima nel dialog padre
+    /// </summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    /// <summary>
+    /// Segnala al dialog padre che le condizioni sono cambiate
+    /// </summary>
+    private void NotifyChanged()
+    {
+        this.OnChanged.InvokeAsync();
+    }
+
+    /// <summary>
     /// Target valore condizione per editor espanso
     /// </summary>
     private enum MetadataConditionTextTarget
@@ -260,7 +273,7 @@
             }
             @if (schema.UnitOptions.Count > 1)
             {
-                <select class="form-input metadata-rule-select-unit" aria-label="@AppText.T("web.metadata.presetDialog.help.conditionUnit.title")" @bind="condition.Unit" @onfocus='@(() => this.SetFieldHelp("conditionUnit"))' @onmouseenter='@(() => this.SetFieldHelp("conditionUnit"))'>
+                <select class="form-input metadata-rule-select-unit" aria-label="@AppText.T("web.metadata.presetDialog.help.conditionUnit.title")" @bind="condition.Unit" @bind:after="NotifyChanged" @onfocus='@(() => this.SetFieldHelp("conditionUnit"))' @onmouseenter='@(() => this.SetFieldHelp("conditionUnit"))'>
                     @foreach (MetadataInputOption unit in schema.UnitOptions)
                     {
                         <option value="@unit.Value">@unit.Label</option>

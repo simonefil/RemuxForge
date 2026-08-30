@@ -1,0 +1,179 @@
+/* Componenti condivisi degli editor visuali: anteprima fotogramma e pannello timeline. */
+
+.media-preview-meta {
+    color: var(--rz-text-secondary-color);
+    font-size: var(--rz-text-caption-font-size);
+    font-weight: 400;
+}
+
+.media-timeline-pane {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: calc(var(--rz-gap) * 0.5);
+    gap: calc(var(--rz-gap) * 0.25);
+    overflow: hidden;
+}
+
+.media-preview-pane {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    gap: calc(var(--rz-gap) * 0.3);
+}
+
+.media-section-title {
+    flex: 0 0 auto;
+    color: var(--rz-text-color);
+    font-weight: var(--rz-text-title-font-weight);
+    font-size: var(--rz-text-subtitle2-font-size);
+}
+
+.media-preview-stage,
+.media-preview-canvas-host,
+.media-timeline-host {
+    position: relative;
+}
+
+.media-preview-stage {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    place-items: center;
+    container-type: size;
+    overflow: hidden;
+}
+
+.media-preview-canvas-host {
+    display: grid;
+    width: min(100cqw, 177.7778cqh);
+    height: min(100cqh, 56.25cqw);
+    max-width: 100%;
+    max-height: 100%;
+    aspect-ratio: 16 / 9;
+    min-height: 0;
+    place-items: center;
+    border: var(--rz-border-normal);
+    border-radius: var(--rz-border-radius);
+    background: var(--rz-base-900);
+    color: var(--rz-base-50);
+    overflow: hidden;
+}
+
+.media-preview-canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.media-preview-overlay {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: var(--rz-gap);
+    background: color-mix(in srgb, var(--rz-base-900) 78%, transparent);
+    color: var(--rz-base-50);
+    text-align: center;
+    gap: calc(var(--rz-gap) * 0.5);
+}
+
+.media-preview-controls {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: calc(var(--rz-gap) * 0.45);
+}
+
+.media-preview-controls label {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: auto minmax(6rem, 8.5rem);
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.35);
+}
+
+.media-frame-control {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: auto auto auto auto;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.25);
+    color: var(--rz-text-secondary-color);
+}
+
+.media-frame-control label {
+    min-width: 0;
+    grid-template-columns: auto 6.5rem;
+}
+
+.media-preview-controls .form-input {
+    width: 100%;
+    min-width: 0;
+    font-size: var(--rz-text-body2-font-size);
+}
+
+.media-timeline-host {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border: var(--rz-border-normal);
+    border-radius: var(--rz-border-radius);
+    background: var(--rz-base-background-color);
+    color: var(--rz-text-secondary-color);
+}
+
+.media-audio-label,
+.media-waveform-height-label {
+    color: var(--rz-text-secondary-color);
+    white-space: nowrap;
+}
+
+.media-audio-control {
+    width: 100%;
+    min-width: 0;
+    font-size: var(--rz-text-caption-font-size);
+}
+
+.media-audio-mode-button.rz-button {
+    width: 100%;
+    min-width: 0;
+    height: var(--rz-input-height);
+}
+
+/* Le colonne le imposta il pannello: dipendono da quante corsie audio mostra. */
+.media-timeline-toolbar {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.45);
+}
+
+.media-timeline-toolbar output {
+    color: var(--rz-text-color);
+    text-align: end;
+}
+
+.timeline-scroll-range {
+    height: 1px;
+}
+
+.media-timeline-canvas {
+    position: sticky;
+    left: 0;
+    display: block;
+    touch-action: none;
+}

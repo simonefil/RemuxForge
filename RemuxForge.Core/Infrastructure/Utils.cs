@@ -163,6 +163,102 @@ namespace RemuxForge.Core.Infrastructure
         }
 
         /// <summary>
+        /// Restituisce il testo localizzato di uno stato split
+        /// </summary>
+        /// <param name="status">Stato del record split</param>
+        /// <returns>Testo localizzato</returns>
+        public static string GetSplitStatusText(MkvSplitStatus status)
+        {
+            string result = "";
+            if (status == MkvSplitStatus.Pending) { result = AppText.T("web.split.status.pending"); }
+            else if (status == MkvSplitStatus.Analyzing) { result = AppText.T("web.split.status.analyzing"); }
+            else if (status == MkvSplitStatus.Planned) { result = AppText.T("web.split.status.planned"); }
+            else if (status == MkvSplitStatus.PlanInvalid) { result = AppText.T("web.split.status.planInvalid"); }
+            else if (status == MkvSplitStatus.Undefined) { result = AppText.T("web.split.status.undefined"); }
+            else if (status == MkvSplitStatus.Running) { result = AppText.T("web.split.status.running"); }
+            else if (status == MkvSplitStatus.Done) { result = AppText.T("web.split.status.done"); }
+            else if (status == MkvSplitStatus.Error) { result = AppText.T("web.split.status.error"); }
+            else if (status == MkvSplitStatus.Stopped) { result = AppText.T("web.split.status.stopped"); }
+            else if (status == MkvSplitStatus.Skipped) { result = AppText.T("web.split.status.skipped"); }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Restituisce il testo localizzato di uno stato metadata
+        /// </summary>
+        /// <param name="status">Stato del record</param>
+        /// <returns>Testo localizzato</returns>
+        public static string GetMetadataStatusText(MkvMetadataStatus status)
+        {
+            string result = "";
+            if (status == MkvMetadataStatus.Pending) { result = AppText.T("web.metadata.status.pending"); }
+            else if (status == MkvMetadataStatus.Scanned) { result = AppText.T("web.metadata.status.scanned"); }
+            else if (status == MkvMetadataStatus.Analyzing) { result = AppText.T("web.metadata.status.analyzing"); }
+            else if (status == MkvMetadataStatus.Analyzed) { result = AppText.T("web.metadata.status.analyzed"); }
+            else if (status == MkvMetadataStatus.Stale) { result = AppText.T("web.metadata.status.stale"); }
+            else if (status == MkvMetadataStatus.Running) { result = AppText.T("web.metadata.status.running"); }
+            else if (status == MkvMetadataStatus.Completed) { result = AppText.T("web.metadata.status.completed"); }
+            else if (status == MkvMetadataStatus.DryRun) { result = AppText.T("web.metadata.status.dryRun"); }
+            else if (status == MkvMetadataStatus.Error) { result = AppText.T("web.metadata.status.error"); }
+            else if (status == MkvMetadataStatus.Skipped) { result = AppText.T("web.metadata.status.skipped"); }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Restituisce il testo localizzato di uno stato di analisi metadata
+        /// </summary>
+        /// <param name="status">Stato dell'analisi</param>
+        /// <returns>Testo localizzato</returns>
+        public static string GetMetadataAnalysisStatusText(MkvMetadataAnalysisStatus status)
+        {
+            string result = "";
+            if (status == MkvMetadataAnalysisStatus.NotAnalyzed) { result = AppText.T("web.metadata.analysisStatus.notAnalyzed"); }
+            else if (status == MkvMetadataAnalysisStatus.Analyzed) { result = AppText.T("web.metadata.analysisStatus.analyzed"); }
+            else if (status == MkvMetadataAnalysisStatus.Stale) { result = AppText.T("web.metadata.analysisStatus.stale"); }
+            else if (status == MkvMetadataAnalysisStatus.Error) { result = AppText.T("web.metadata.analysisStatus.error"); }
+            else if (status == MkvMetadataAnalysisStatus.Applied) { result = AppText.T("web.metadata.analysisStatus.applied"); }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Restituisce il testo localizzato di una modalità di esecuzione metadata
+        /// </summary>
+        /// <param name="mode">Modalità prevista dal piano</param>
+        /// <returns>Testo localizzato</returns>
+        public static string GetMetadataExecutionModeText(MkvMetadataExecutionMode mode)
+        {
+            string result = "";
+            if (mode == MkvMetadataExecutionMode.NoOp) { result = AppText.T("web.metadata.executionMode.noOp"); }
+            else if (mode == MkvMetadataExecutionMode.PropEdit) { result = AppText.T("web.metadata.executionMode.propEdit"); }
+            else if (mode == MkvMetadataExecutionMode.CopyPropEdit) { result = AppText.T("web.metadata.executionMode.copyPropEdit"); }
+            else if (mode == MkvMetadataExecutionMode.MkvMerge) { result = AppText.T("web.metadata.executionMode.mkvMerge"); }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Restituisce il testo localizzato di una modalità di split
+        /// </summary>
+        /// <param name="mode">Modalità applicata dal piano</param>
+        /// <returns>Testo localizzato</returns>
+        public static string GetSplitModeText(MkvSplitMode mode)
+        {
+            string result = "";
+            if (mode == MkvSplitMode.Pattern) { result = AppText.T("web.config.option.chapterPattern"); }
+            else if (mode == MkvSplitMode.Ranges) { result = AppText.T("web.config.option.ranges"); }
+            else if (mode == MkvSplitMode.Trim) { result = AppText.T("web.config.option.trim"); }
+            else if (mode == MkvSplitMode.SplitAt) { result = AppText.T("web.config.option.splitAt"); }
+            else if (mode == MkvSplitMode.ChaptersEach) { result = AppText.T("web.config.option.chaptersEach"); }
+            else if (mode == MkvSplitMode.ChaptersPerEpisode) { result = AppText.T("web.config.option.chaptersPerEpisode"); }
+            else if (mode == MkvSplitMode.Manual) { result = AppText.T("web.config.option.manual"); }
+
+            return result;
+        }
+
+        /// <summary>
         /// Formatta una traccia in formato compatto per display
         /// Es: "1: ita AC-3 5.1" oppure "3: eng DTS-HD MA 7.1"
         /// </summary>

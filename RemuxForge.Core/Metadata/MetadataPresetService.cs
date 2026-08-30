@@ -629,11 +629,63 @@ namespace RemuxForge.Core.Metadata
                     result.AddError(AppText.F("metadata.preset.operationError", ruleIndex, operationIndex, AppText.F("web.metadata.manualEdit.fieldNotClearable", tag.Label)));
             }
 
+            if (operation.Type == MkvMetadataOperationType.SetTagField || operation.Type == MkvMetadataOperationType.ClearTagField)
+            {
+                bool knownLevel = operation.TagTargetTypeValue == MetadataTagTargetLevels.TRACK ||
+                    operation.TagTargetTypeValue == MetadataTagTargetLevels.EPISODE ||
+                    operation.TagTargetTypeValue == MetadataTagTargetLevels.SEASON ||
+                    operation.TagTargetTypeValue == MetadataTagTargetLevels.COLLECTION;
+
+                if (!knownLevel)
+                    result.AddError(AppText.F("metadata.preset.tagLevelUnknown", ruleIndex, operationIndex, operation.TagTargetTypeValue));
+            }
+
             if (operation.Type == MkvMetadataOperationType.ClearTags && !operation.ClearTagsConfirmed)
                 result.AddError(AppText.F("metadata.preset.clearTagsNeedsConfirmation", ruleIndex, operationIndex));
 
             if (operation.Type == MkvMetadataOperationType.RemoveTrack && rule.TargetScope == MkvMetadataTargetScope.Container)
                 result.AddError(AppText.F("metadata.preset.removeTrackRequiresTrackScope", ruleIndex, operationIndex));
+
+            if (operation.Type == MkvMetadataOperationType.SetAttachment || operation.Type == MkvMetadataOperationType.DeleteAttachment)
+            {
+                if (rule.TargetScope != MkvMetadataTargetScope.Container)
+                    result.AddError(AppText.F("metadata.preset.attachmentRequiresContainerScope", ruleIndex, operationIndex));
+
+                if (operation.Type == MkvMetadataOperationType.SetAttachment && string.IsNullOrEmpty(operation.AttachmentSourcePath))
+                    result.AddError(AppText.F("metadata.preset.attachmentSourceRequired", ruleIndex, operationIndex));
+
+                // Senza nome esplicito quello dell'allegato lo decide il file sorgente,
+                // quindi manca solo se manca anche la sorgente da cui ricavarlo
+                if (operation.Type == MkvMetadataOperationType.DeleteAttachment && string.IsNullOrEmpty(operation.AttachmentName))
+                    result.AddError(AppText.F("metadata.preset.attachmentNameRequired", ruleIndex, operationIndex));
+
+                AddExpressionErrors(expressionEngine.Validate(operation.AttachmentSourcePath), AppText.F("metadata.preset.ruleOperationPath", ruleIndex, operationIndex), result);
+            }
+
+            if (operation.Type == MkvMetadataOperationType.SetTrackOrder)
+            {
+                if (rule.TargetScope != MkvMetadataTargetScope.Container)
+                    result.AddError(AppText.F("metadata.preset.trackOrderRequiresContainerScope", ruleIndex, operationIndex));
+
+                // Senza criteri l'ordinamento e' l'identita': l'operazione costerebbe
+                // un remux intero per non spostare niente
+                if (string.IsNullOrEmpty(operation.TrackOrderKinds) && string.IsNullOrEmpty(operation.TrackOrderLanguages))
+                    result.AddError(AppText.F("metadata.preset.trackOrderRequiresCriteria", ruleIndex, operationIndex));
+            }
+
+            if (operation.Type == MkvMetadataOperationType.RenameChapters || operation.Type == MkvMetadataOperationType.ClearChapters)
+            {
+                if (rule.TargetScope != MkvMetadataTargetScope.Container)
+                    result.AddError(AppText.F("metadata.preset.chaptersRequireContainerScope", ruleIndex, operationIndex));
+
+                // Un pattern senza {n} rinominerebbe tutti i capitoli allo stesso modo,
+                // che e' esattamente il risultato che nessuno vuole
+                if (operation.Type == MkvMetadataOperationType.RenameChapters &&
+                    (string.IsNullOrEmpty(operation.ChapterNamePattern) || (!operation.ChapterNamePattern.Contains("{n}") && !operation.ChapterNamePattern.Contains("{n:02}") && !operation.ChapterNamePattern.Contains("{name}"))))
+                {
+                    result.AddError(AppText.F("metadata.preset.chapterPatternRequiresNumber", ruleIndex, operationIndex));
+                }
+            }
 
             if (operation.Type == MkvMetadataOperationType.SetField ||
                 operation.Type == MkvMetadataOperationType.SetTagField)

@@ -1,6 +1,7 @@
 using RemuxForge.Core.Analysis.Speed;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Splitting;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -238,11 +239,6 @@ namespace RemuxForge.Core.Configuration
             if (active && !anyMode)
             {
                 result.AddError(AppText.T("validation.sourceFillModeRequired"));
-            }
-
-            if (options.AudioSourceFillInsertSilence && !options.DeepAnalysis)
-            {
-                result.AddError(AppText.T("validation.sourceFillInsertSilenceNeedsDeep"));
             }
 
             if (!string.IsNullOrEmpty(options.AudioSourceFillLanguage))
@@ -565,7 +561,6 @@ namespace RemuxForge.Core.Configuration
         private static void ValidateSplitOptions(Options options, bool requireSourceFolder, bool validateFolderExists, OptionsValidationResult result)
         {
             int modes = 0;
-            bool sourceIsFolder = false;
             bool sourceIsFile;
 
             ValidateExtensions(options, result);
@@ -584,9 +579,8 @@ namespace RemuxForge.Core.Configuration
             if (!string.IsNullOrEmpty(options.Split.SourcePath))
             {
                 sourceIsFile = File.Exists(options.Split.SourcePath);
-                sourceIsFolder = Directory.Exists(options.Split.SourcePath);
 
-                if (validateFolderExists && !sourceIsFile && !sourceIsFolder)
+                if (validateFolderExists && !sourceIsFile && !Directory.Exists(options.Split.SourcePath))
                 {
                     result.AddError(AppText.F("validation.splitSourceNotFound", options.Split.SourcePath));
                 }
@@ -602,6 +596,10 @@ namespace RemuxForge.Core.Configuration
                 modes++;
             if (options.Split.ChaptersEach)
                 modes++;
+            if (options.Split.ChaptersPerEpisode > 0)
+                modes++;
+            if (options.Split.Manual)
+                modes++;
 
             if (modes == 0)
             {
@@ -612,9 +610,9 @@ namespace RemuxForge.Core.Configuration
                 result.AddError(AppText.T("validation.splitModesExclusive"));
             }
 
-            if (sourceIsFolder && !string.IsNullOrEmpty(options.Split.SourceRaw))
+            foreach (string templateError in MkvSplitSegmentService.ValidateTemplate(options.Split.OutputTemplate))
             {
-                result.AddError(AppText.T("validation.sourceRawSingleFileOnly"));
+                result.AddError(templateError);
             }
         }
 

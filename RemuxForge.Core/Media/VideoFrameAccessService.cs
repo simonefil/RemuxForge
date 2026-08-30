@@ -236,6 +236,10 @@ namespace RemuxForge.Core.Media
         #region Variabili di classe
 
         private const long RAW_CACHE_LIMIT_BYTES = 256L * 1024L * 1024L;
+        private const long RAW_RESPONSE_LIMIT_BYTES = 64L * 1024L * 1024L;
+        private const long INDEX_CACHE_LIMIT_BYTES = 256L * 1024L * 1024L;
+        private const int INDEX_FRAME_SIZE_BYTES = 48;
+        private const int START_TIME_CACHE_LIMIT = 256;
         private static readonly Regex s_ptsTimeRegex = new Regex(@"pts_time:([-+0-9.eE]+)", RegexOptions.Compiled);
 
         private readonly string _ffmpegPath;
@@ -243,8 +247,13 @@ namespace RemuxForge.Core.Media
         private readonly string _mkvMergePath;
         private readonly string _mkvExtractPath;
         private readonly FfmpegConfig _ffmpegConfig;
-        private readonly Dictionary<string, double> _startTimes;
-        private readonly Dictionary<string, VideoFrameIndex> _indices;
+        private readonly Dictionary<string, StartTimeCacheEntry> _startTimes;
+        private readonly LinkedList<string> _startTimeOrder;
+        private readonly Dictionary<string, string> _startTimePathKeys;
+        private readonly Dictionary<string, IndexCacheEntry> _indices;
+        private readonly LinkedList<string> _indexOrder;
+        private readonly Dictionary<string, string> _indexPathKeys;
+        private long _indexCacheBytes;
         private readonly Dictionary<string, RawCacheEntry> _rawFrames;
         private readonly LinkedList<string> _rawFrameOrder;
         private long _rawCacheBytes;
@@ -263,8 +272,12 @@ namespace RemuxForge.Core.Media
             this._mkvMergePath = mkvMergePath ?? "";
             this._mkvExtractPath = mkvExtractPath ?? "";
             this._ffmpegConfig = ffmpegConfig ?? new FfmpegConfig();
-            this._startTimes = new Dictionary<string, double>(StringComparer.Ordinal);
-            this._indices = new Dictionary<string, VideoFrameIndex>(StringComparer.Ordinal);
+            this._startTimes = new Dictionary<string, StartTimeCacheEntry>(StringComparer.Ordinal);
+            this._startTimeOrder = new LinkedList<string>();
+            this._startTimePathKeys = new Dictionary<string, string>(StringComparer.Ordinal);
+            this._indices = new Dictionary<string, IndexCacheEntry>(StringComparer.Ordinal);
+            this._indexOrder = new LinkedList<string>();
+            this._indexPathKeys = new Dictionary<string, string>(StringComparer.Ordinal);
             this._rawFrames = new Dictionary<string, RawCacheEntry>(StringComparer.Ordinal);
             this._rawFrameOrder = new LinkedList<string>();
         }
@@ -311,10 +324,7 @@ namespace RemuxForge.Core.Media
 
             result.FirstPtsMs = timestamps[0];
             result.EndPtsMs = timestamps[timestamps.Count - 1] + medianDurationMs;
-            lock (this._indices)
-            {
-                this._indices[filePath] = result;
-            }
+            this.CacheIndex(result);
             return result;
         }
 
@@ -323,10 +333,15 @@ namespace RemuxForge.Core.Media
         /// </summary>
         public VideoFrameIndex GetOrBuildIndex(string filePath, int timeoutMs, CancellationToken cancellationToken)
         {
+            string key = BuildFileVersionKey(filePath);
             lock (this._indices)
             {
-                if (this._indices.TryGetValue(filePath, out VideoFrameIndex cached) && IsCurrentFile(cached, filePath))
-                    return cached;
+                if (this._indices.TryGetValue(key, out IndexCacheEntry cached))
+                {
+                    this._indexOrder.Remove(cached.Node);
+                    this._indexOrder.AddFirst(cached.Node);
+                    return cached.Index;
+                }
             }
 
             return this.BuildIndex(filePath, timeoutMs, cancellationToken);
@@ -353,6 +368,9 @@ namespace RemuxForge.Core.Media
 
             ResolveOutputDimensions(index, maximumWidth, maximumHeight, out int width, out int height);
             string pixelFormat = index.RequiresP010 ? "p010le" : "nv12";
+            long bytesPerFrame = index.RequiresP010 ? (long)width * height * 3 : (long)width * height * 3 / 2;
+            int budgetedCount = Math.Max(1, (int)Math.Min(int.MaxValue, RAW_RESPONSE_LIMIT_BYTES / Math.Max(1L, bytesPerFrame)));
+            count = Math.Min(count, budgetedCount);
             List<VideoRawFrame> result = new List<VideoRawFrame>();
             bool completelyCached = true;
             for (int i = 0; i < count; i++)
@@ -405,10 +423,15 @@ namespace RemuxForge.Core.Media
         /// </summary>
         public double ReadStartTimeMs(string filePath, int timeoutMs, CancellationToken cancellationToken)
         {
+            string key = BuildFileVersionKey(filePath);
             lock (this._startTimes)
             {
-                if (this._startTimes.TryGetValue(filePath, out double cached))
-                    return cached;
+                if (this._startTimes.TryGetValue(key, out StartTimeCacheEntry cached))
+                {
+                    this._startTimeOrder.Remove(cached.Node);
+                    this._startTimeOrder.AddFirst(cached.Node);
+                    return cached.ValueMs;
+                }
             }
 
             double result = 0.0;
@@ -423,7 +446,16 @@ namespace RemuxForge.Core.Media
 
             lock (this._startTimes)
             {
-                this._startTimes[filePath] = result;
+                if (this._startTimes.TryGetValue(key, out StartTimeCacheEntry cached))
+                    return cached.ValueMs;
+                string fullPath = new FileInfo(filePath).FullName;
+                if (this._startTimePathKeys.TryGetValue(fullPath, out string previousKey))
+                    this.RemoveStartTimeEntry(previousKey);
+                LinkedListNode<string> node = this._startTimeOrder.AddFirst(key);
+                this._startTimes[key] = new StartTimeCacheEntry { FilePath = fullPath, ValueMs = result, Node = node };
+                this._startTimePathKeys[fullPath] = key;
+                while (this._startTimes.Count > START_TIME_CACHE_LIMIT && this._startTimeOrder.Last != null)
+                    this.RemoveStartTimeEntry(this._startTimeOrder.Last.Value);
             }
             return result;
         }
@@ -722,15 +754,59 @@ namespace RemuxForge.Core.Media
             return 0;
         }
 
-        /// <summary>
-        /// Verifica che l'indice appartenga ancora alla stessa versione del file
-        /// </summary>
-        private static bool IsCurrentFile(VideoFrameIndex index, string filePath)
+        /// <summary>Compone la chiave versionata comune alle cache metadata</summary>
+        private static string BuildFileVersionKey(string filePath)
         {
-            if (index == null || !string.Equals(index.FilePath, filePath, StringComparison.Ordinal) || !File.Exists(filePath))
-                return false;
             FileInfo file = new FileInfo(filePath);
-            return index.FileLength == file.Length && index.FileLastWriteTicks == file.LastWriteTimeUtc.Ticks;
+            return file.FullName + "|" + file.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture) + "|" + file.Length.ToString(CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>Inserisce un indice video nella cache LRU</summary>
+        private void CacheIndex(VideoFrameIndex index)
+        {
+            string fullPath = new FileInfo(index.FilePath).FullName;
+            string key = fullPath + "|" + index.FileLastWriteTicks.ToString(CultureInfo.InvariantCulture) + "|" + index.FileLength.ToString(CultureInfo.InvariantCulture);
+            long sizeBytes = Math.Max(1L, (long)index.FrameCount * INDEX_FRAME_SIZE_BYTES);
+            lock (this._indices)
+            {
+                if (this._indices.TryGetValue(key, out IndexCacheEntry cached))
+                {
+                    this._indexOrder.Remove(cached.Node);
+                    this._indexOrder.AddFirst(cached.Node);
+                    return;
+                }
+                if (this._indexPathKeys.TryGetValue(fullPath, out string previousKey))
+                    this.RemoveIndexEntry(previousKey);
+                LinkedListNode<string> node = this._indexOrder.AddFirst(key);
+                this._indices[key] = new IndexCacheEntry { FilePath = fullPath, Index = index, Node = node, SizeBytes = sizeBytes };
+                this._indexPathKeys[fullPath] = key;
+                this._indexCacheBytes += sizeBytes;
+                while (this._indexCacheBytes > INDEX_CACHE_LIMIT_BYTES && this._indexOrder.Last != null)
+                    this.RemoveIndexEntry(this._indexOrder.Last.Value);
+            }
+        }
+
+        /// <summary>Rimuove un indice e i relativi metadati LRU</summary>
+        private void RemoveIndexEntry(string key)
+        {
+            if (!this._indices.TryGetValue(key, out IndexCacheEntry entry))
+                return;
+            this._indices.Remove(key);
+            this._indexOrder.Remove(entry.Node);
+            this._indexCacheBytes -= entry.SizeBytes;
+            if (this._indexPathKeys.TryGetValue(entry.FilePath, out string currentKey) && string.Equals(currentKey, key, StringComparison.Ordinal))
+                this._indexPathKeys.Remove(entry.FilePath);
+        }
+
+        /// <summary>Rimuove uno start time e i relativi metadati LRU</summary>
+        private void RemoveStartTimeEntry(string key)
+        {
+            if (!this._startTimes.TryGetValue(key, out StartTimeCacheEntry entry))
+                return;
+            this._startTimes.Remove(key);
+            this._startTimeOrder.Remove(entry.Node);
+            if (this._startTimePathKeys.TryGetValue(entry.FilePath, out string currentKey) && string.Equals(currentKey, key, StringComparison.Ordinal))
+                this._startTimePathKeys.Remove(entry.FilePath);
         }
 
         /// <summary>
@@ -897,6 +973,21 @@ namespace RemuxForge.Core.Media
         private class RawCacheEntry
         {
             public VideoRawFrame Frame { get; set; }
+            public LinkedListNode<string> Node { get; set; }
+        }
+
+        private class IndexCacheEntry
+        {
+            public string FilePath { get; set; }
+            public VideoFrameIndex Index { get; set; }
+            public LinkedListNode<string> Node { get; set; }
+            public long SizeBytes { get; set; }
+        }
+
+        private class StartTimeCacheEntry
+        {
+            public string FilePath { get; set; }
+            public double ValueMs { get; set; }
             public LinkedListNode<string> Node { get; set; }
         }
 

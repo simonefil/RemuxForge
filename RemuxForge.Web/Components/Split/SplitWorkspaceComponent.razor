@@ -3,7 +3,7 @@
         <div class="rf-workspace-pane rf-workspace-pane-master">
         <div class="rf-panel">
         <div class="rf-panel-title">@AppText.T("web.dashboard.input")</div>
-        <div class="rf-panel-body split-input-body">
+        <div class="rf-panel-body rf-grid-host">
             <RadzenDataGrid TItem="MkvSplitRecord"
                             Data="@Records"
                             class="rf-data-grid split-grid"
@@ -12,7 +12,8 @@
                             AllowPaging="false"
                             AllowRowSelectOnRowClick="false"
                             AllowSorting="false"
-                            ColumnWidth="140px"
+                            ColumnWidth="120px"
+                            CellContextMenu="HandleContextMenu"
                             GridLines="DataGridGridLines.Both"
                             RowClick="HandleRowClick"
                             RowRender="RenderRow">
@@ -20,12 +21,26 @@
                     <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.dashboard.file")" Width="280px" MinWidth="160px" MaxWidth="560px">
                         <Template Context="record">@System.IO.Path.GetFileName(record.InputFile)</Template>
                     </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.dashboard.path")" Width="360px" MinWidth="200px" MaxWidth="720px">
-                        <Template Context="record">@System.IO.Path.GetDirectoryName(record.InputFile)</Template>
+                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.dashboard.status")" Width="130px" MinWidth="90px" MaxWidth="280px">
+                        <Template Context="record">@Utils.GetSplitStatusText(record.Status)</Template>
                     </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="MkvSplitRecord" Property="Status" Title="@AppText.T("web.dashboard.status")" MinWidth="90px" MaxWidth="280px" />
-                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.segments")" Width="110px" MinWidth="80px" MaxWidth="220px">
-                        <Template Context="record">@record.Segments.Count</Template>
+                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.mode")" Width="180px" MinWidth="110px" MaxWidth="320px">
+                        <Template Context="record">@ModeCell(record)</Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.segments")" Width="100px" MinWidth="70px" MaxWidth="200px">
+                        <Template Context="record">@(record.Plan != null ? record.Plan.Segments.Count.ToString() : "-")</Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.outputDuration")" Width="130px" MinWidth="90px" MaxWidth="220px">
+                        <Template Context="record">@OutputDurationCell(record)</Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.planOutcome")" Width="150px" MinWidth="100px" MaxWidth="320px">
+                        <Template Context="record">@PlanOutcomeCell(record)</Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.warnings")" Width="100px" MinWidth="70px" MaxWidth="200px">
+                        <Template Context="record">@(record.Plan != null && record.Plan.Warnings.Count > 0 ? record.Plan.Warnings.Count.ToString() : "-")</Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.existingOutputs")" Width="130px" MinWidth="90px" MaxWidth="240px">
+                        <Template Context="record">@ExistingOutputsCell(record)</Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="MkvSplitRecord" Property="ErrorMessage" Title="@AppText.T("web.dashboard.warningError")" Width="220px" MinWidth="120px" MaxWidth="440px" />
                 </Columns>
@@ -37,70 +52,12 @@
 
     <RadzenSplitterPane>
         <div class="rf-workspace-pane rf-workspace-pane-detail">
-        <div class="rf-panel">
-        <div class="rf-panel-title">@AppText.T("web.dashboard.fileDetail")</div>
-        <div class="rf-panel-body detail-content split-detail-content">
-            @if (SelectedRecord == null)
-            {
-                <div class="empty-detail">@AppText.T("web.dashboard.noFileSelected")</div>
-            }
-            else
-            {
-                <div class="split-detail-line">
-                    <span class="detail-label">@AppText.T("web.dashboard.fileLabel")</span>
-                    <span class="split-detail-value">@SelectedRecord.InputFile</span>
-                </div>
-                <div class="split-detail-line">
-                    <span class="detail-label">@AppText.T("web.dashboard.statusLabel")</span>
-                    <span class="split-detail-value">@SelectedRecord.Status</span>
-                </div>
-                @if (!string.IsNullOrEmpty(SelectedRecord.ErrorMessage))
-                {
-                    <div class="split-detail-line">
-                        <span class="detail-label">@AppText.T("web.dashboard.errorLabel")</span>
-                        <span class="split-detail-value">@SelectedRecord.ErrorMessage</span>
-                    </div>
-                }
-                @if (SelectedRecord.Segments.Count > 0)
-                {
-                    <div class="split-detail-section">
-                        <div class="split-detail-section-title">@AppText.F("web.split.detail.segments", SelectedRecord.Segments.Count)</div>
-                        @foreach (MkvSplitSegment segment in SelectedRecord.Segments)
-                        {
-                            double duration = Math.Max(0.0, segment.EndTs - segment.StartTs);
-                            <div class="split-segment-card">
-                                <div class="split-segment-title">@AppText.F("web.split.detail.segment", segment.Num)</div>
-                                <div class="split-detail-line">
-                                    <span class="detail-label">@AppText.T("web.split.detail.output"):</span>
-                                    <span class="split-detail-value">@segment.File</span>
-                                </div>
-                                <div class="split-detail-line">
-                                    <span class="detail-label">@AppText.T("web.split.detail.start"):</span>
-                                    <span class="split-detail-value">@RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(segment.StartTs)</span>
-                                </div>
-                                <div class="split-detail-line">
-                                    <span class="detail-label">@AppText.T("web.split.detail.end"):</span>
-                                    <span class="split-detail-value">@RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(segment.EndTs)</span>
-                                </div>
-                                <div class="split-detail-line">
-                                    <span class="detail-label">@AppText.T("web.split.detail.duration"):</span>
-                                    <span class="split-detail-value">@RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(duration)</span>
-                                </div>
-                                <div class="split-detail-line">
-                                    <span class="detail-label">@AppText.T("web.split.detail.chapters"):</span>
-                                    <span class="split-detail-value">@segment.Chapters.Count</span>
-                                </div>
-                                <div class="split-detail-line">
-                                    <span class="detail-label">@AppText.T("web.split.detail.frames"):</span>
-                                    <span class="split-detail-value">@segment.FrameCount</span>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-            }
-        </div>
-        </div>
+            <SplitDetailPanelComponent Record="@SelectedRecord"
+                                       SelectedSegmentNum="@SelectedSegmentNum"
+                                       IsBusy="@IsBusy"
+                                       OnAnalyze="@OnAnalyze"
+                                       OnSegmentSelected="@OnSegmentSelected"
+                                       OnOpenEditor="@OnOpenEditor" />
         </div>
     </RadzenSplitterPane>
 </RadzenSplitter>
@@ -112,29 +69,147 @@
     [Parameter] public List<MkvSplitRecord> Records { get; set; }
 
     /// <summary>
-    /// Record selezionato
+    /// Record focalizzato
     /// </summary>
     [Parameter] public MkvSplitRecord SelectedRecord { get; set; }
 
     /// <summary>
-    /// Indice selezionato
+    /// Indice focalizzato
     /// </summary>
     [Parameter] public int SelectedIndex { get; set; }
 
     /// <summary>
-    /// Evento selezione riga
+    /// Indici selezionati
     /// </summary>
-    [Parameter] public EventCallback<int> OnRowSelected { get; set; }
+    [Parameter] public List<int> SelectedIndices { get; set; }
 
     /// <summary>
-    /// Propaga la selezione della riga al coordinator
+    /// Numero del segmento evidenziato nel dettaglio
+    /// </summary>
+    [Parameter] public int SelectedSegmentNum { get; set; }
+
+    /// <summary>
+    /// Indica che la pipeline Split è occupata
+    /// </summary>
+    [Parameter] public bool IsBusy { get; set; }
+
+    /// <summary>
+    /// Evento selezione riga
+    /// </summary>
+    [Parameter] public EventCallback<(int Index, bool Ctrl, bool Shift)> OnRowSelected { get; set; }
+
+    /// <summary>
+    /// Evento menu contestuale
+    /// </summary>
+    [Parameter] public EventCallback<(int Index, double X, double Y)> OnContextMenu { get; set; }
+
+    /// <summary>
+    /// Evento richiesta di analisi del record selezionato
+    /// </summary>
+    [Parameter] public EventCallback OnAnalyze { get; set; }
+
+    /// <summary>
+    /// Evento selezione di un segmento nel dettaglio
+    /// </summary>
+    [Parameter] public EventCallback<int> OnSegmentSelected { get; set; }
+
+    /// <summary>
+    /// Evento apertura editor su un segmento
+    /// </summary>
+    [Parameter] public EventCallback<int> OnOpenEditor { get; set; }
+
+    /// <summary>
+    /// Testo della colonna modalità applicata
+    /// </summary>
+    /// <param name="record">Record della riga</param>
+    /// <returns>Modalità del piano oppure trattino</returns>
+    private string ModeCell(MkvSplitRecord record)
+    {
+        if (record.Plan == null)
+            return "-";
+
+        // Un file in override non risponde più alla configurazione globale, e dirne la modalità
+        // sarebbe fuorviante: i segmenti li ha messi l'utente
+        return record.IsOverride ? AppText.T("web.split.overrideBadge") : Utils.GetSplitModeText(record.Plan.Mode);
+    }
+
+    /// <summary>
+    /// Testo della colonna durata complessiva in uscita
+    /// </summary>
+    /// <param name="record">Record della riga</param>
+    /// <returns>Durata totale dei segmenti</returns>
+    private string OutputDurationCell(MkvSplitRecord record)
+    {
+        double total = 0.0;
+
+        if (record.Plan == null)
+            return "-";
+
+        foreach (MkvSplitSegment segment in record.Plan.Segments)
+        {
+            total += System.Math.Max(0.0, segment.EndTs - segment.StartTs);
+        }
+
+        return RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(total);
+    }
+
+    /// <summary>
+    /// Testo della colonna esito del piano
+    /// </summary>
+    /// <param name="record">Record della riga</param>
+    /// <returns>Esito sintetico</returns>
+    private string PlanOutcomeCell(MkvSplitRecord record)
+    {
+        if (record.Plan == null)
+            return "-";
+
+        if (record.Plan.IsValid)
+            return record.Plan.TotalReencodeFrames == 0 ? AppText.T("web.split.detail.costCopy") : AppText.F("web.split.detail.costReencode", record.Plan.TotalReencodeFrames);
+
+        return AppText.T("web.split.column.planInvalid");
+    }
+
+    /// <summary>
+    /// Testo della colonna output già esistenti
+    /// </summary>
+    /// <param name="record">Record della riga</param>
+    /// <returns>Conteggio degli output già presenti su disco</returns>
+    private string ExistingOutputsCell(MkvSplitRecord record)
+    {
+        int existing = 0;
+
+        if (record.Plan == null)
+            return "-";
+
+        foreach (MkvSplitSegment segment in record.Plan.Segments)
+        {
+            if (segment.OutputState != MkvSplitOutputState.New)
+                existing++;
+        }
+
+        return existing > 0 ? existing.ToString() : "-";
+    }
+
+    /// <summary>
+    /// Propaga la selezione della riga con i modifier
     /// </summary>
     /// <param name="args">Argomenti click riga</param>
     private void HandleRowClick(DataGridRowMouseEventArgs<MkvSplitRecord> args)
     {
         int index = this.Records.IndexOf(args.Data);
         if (index >= 0)
-            this.OnRowSelected.InvokeAsync(index);
+            this.OnRowSelected.InvokeAsync((index, args.CtrlKey || args.MetaKey, args.ShiftKey));
+    }
+
+    /// <summary>
+    /// Apre il menu contestuale sulla riga della cella
+    /// </summary>
+    /// <param name="args">Argomenti del menu contestuale</param>
+    private void HandleContextMenu(DataGridCellMouseEventArgs<MkvSplitRecord> args)
+    {
+        int index = this.Records.IndexOf(args.Data);
+        if (index >= 0)
+            this.OnContextMenu.InvokeAsync((index, args.ClientX, args.ClientY));
     }
 
     /// <summary>
@@ -144,10 +219,41 @@
     private void RenderRow(RowRenderEventArgs<MkvSplitRecord> args)
     {
         int index = this.Records.IndexOf(args.Data);
+        string cssClass = this.GetStatusCss(args.Data.Status);
+
+        if (this.IsIndexSelected(index))
+            cssClass += " selected";
         if (index == this.SelectedIndex)
-            args.Attributes["class"] = "rz-data-row selected focused";
+            cssClass += " focused";
+
+        if (!string.IsNullOrWhiteSpace(cssClass))
+            args.Attributes["class"] = "rz-data-row " + cssClass.Trim();
         args.Attributes["data-split-row-index"] = index;
         args.Attributes["tabindex"] = index == this.SelectedIndex ? 0 : -1;
-        args.Attributes["aria-selected"] = index == this.SelectedIndex ? "true" : "false";
+        args.Attributes["aria-selected"] = this.IsIndexSelected(index) ? "true" : "false";
+    }
+
+    /// <summary>
+    /// Classe CSS dello stato
+    /// </summary>
+    /// <param name="status">Stato del record</param>
+    /// <returns>Nome classe</returns>
+    private string GetStatusCss(MkvSplitStatus status)
+    {
+        string result = "";
+        if (status == MkvSplitStatus.Done) result = "status-done";
+        else if (status == MkvSplitStatus.Error || status == MkvSplitStatus.PlanInvalid) result = "status-error";
+        else if (status == MkvSplitStatus.Skipped || status == MkvSplitStatus.Undefined) result = "status-skipped";
+        return result;
+    }
+
+    /// <summary>
+    /// True se la riga è nella selezione multi
+    /// </summary>
+    /// <param name="index">Indice riga</param>
+    /// <returns>True se selezionata</returns>
+    private bool IsIndexSelected(int index)
+    {
+        return this.SelectedIndices != null && this.SelectedIndices.Contains(index);
     }
 }

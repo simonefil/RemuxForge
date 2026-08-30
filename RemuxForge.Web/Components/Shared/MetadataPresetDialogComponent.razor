@@ -32,6 +32,14 @@
                 }
                 <RadzenButton Text="@AppText.T("web.metadata.presetDialog.save")" Icon="save" Click="@SavePreset" />
                 <RadzenButton Text="@AppText.T("web.common.delete")" Icon="delete" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Danger" Click="@DeletePreset" Disabled="@(string.IsNullOrEmpty(_selectedPresetFile))" />
+                <span class="form-label metadata-preview-file-label">@AppText.T("web.metadata.presetDialog.previewFile")</span>
+                <select class="form-input metadata-preview-file-select" aria-label="@AppText.T("web.metadata.presetDialog.previewFile")" @bind="_previewFile" @bind:after="ChangePreviewFile">
+                    <option value="">@AppText.T("web.metadata.presetDialog.previewNoFile")</option>
+                    @for (int i = 0; Records != null && i < Records.Count; i++)
+                    {
+                        <option value="@Records[i].InputFile">@System.IO.Path.GetFileName(Records[i].InputFile)</option>
+                    }
+                </select>
             </div>
 
             @if (!string.IsNullOrEmpty(_message))
@@ -97,7 +105,7 @@
                         <div class="metadata-rule-section">
                             <div class="form-section">@AppText.T("web.metadata.presetDialog.sectionWhen")</div>
                             <div class="metadata-rule-section-caption">@AppText.T("web.metadata.presetDialog.whenAllCaption")</div>
-                            <MetadataConditionListComponent Rule="SelectedRule" Nodes="SelectedRule.When.All" IncludeAdvancedFields="_showAdvancedFields" OnFieldActivated="ActivateFieldCondition" OnInputActivated="ActivateTextInput" OnHelpChanged="SetFieldHelp" OnTextEditRequested="OpenTextEditor" />
+                            <MetadataConditionListComponent Rule="SelectedRule" Nodes="SelectedRule.When.All" IncludeAdvancedFields="_showAdvancedFields" OnFieldActivated="ActivateFieldCondition" OnInputActivated="ActivateTextInput" OnHelpChanged="SetFieldHelp" OnTextEditRequested="OpenTextEditor" OnChanged="StateHasChanged" />
                         </div>
 
                         <div class="metadata-rule-section">
@@ -149,13 +157,34 @@
                                                         <option value="@MkvMetadataTagTarget.CurrentTrack">@AppText.T("web.metadata.tagTarget.CurrentTrack")</option>
                                                         <option value="@MkvMetadataTagTarget.AllTracks">@AppText.T("web.metadata.tagTarget.AllTracks")</option>
                                                     </select>
-                                                    <select class="form-input metadata-rule-select-medium" aria-label="@AppText.T("web.metadata.presetDialog.help.tagKey.title")" @bind="operation.TagKey" @onfocus="@(() => SetOperationTagHelp(operation))" @onmouseenter="@(() => SetOperationTagHelp(operation))">
+                                                    <select class="form-input metadata-rule-select-medium" aria-label="@AppText.T("web.metadata.presetDialog.help.tagKey.title")" value="@operation.TagKey" @onchange="@((ChangeEventArgs e) => ChangeOperationTagKey(operation, GetChangeValue(e)))" @onfocus="@(() => SetOperationTagHelp(operation))" @onmouseenter="@(() => SetOperationTagHelp(operation))">
                                                         @foreach (MetadataTagDefinition tag in MetadataPresetUiHelper.GetEditableTags(SelectedRule.TargetScope, operation, _showAdvancedFields))
                                                         {
                                                             <option value="@tag.Name">@tag.Label</option>
                                                         }
                                                     </select>
+                                                    @if (SelectedRule.TargetScope == MkvMetadataTargetScope.Container && operation.TagTarget != MkvMetadataTagTarget.CurrentTrack && operation.TagTarget != MkvMetadataTagTarget.AllTracks)
+                                                    {
+                                                        <select class="form-input metadata-rule-select-medium" aria-label="@AppText.T("web.metadata.presetDialog.help.tagLevel.title")" @bind="operation.TagTargetTypeValue" @bind:after="StateHasChanged" @onfocus='@(() => SetFieldHelp("tagLevel"))' @onmouseenter='@(() => SetFieldHelp("tagLevel"))'>
+                                                            @foreach (int level in MetadataPresetUiHelper.GetTagTargetLevelOptions())
+                                                            {
+                                                                <option value="@level">@MetadataPresetUiHelper.GetTagTargetLevelLabel(level)</option>
+                                                            }
+                                                        </select>
+                                                    }
                                                 </div>
+                                            }
+                                            else if (operation.Type == MkvMetadataOperationType.SetAttachment || operation.Type == MkvMetadataOperationType.DeleteAttachment)
+                                            {
+                                                <input class="form-input metadata-sentence-field" aria-label="@AppText.T("web.metadata.presetDialog.help.attachmentName.title")" placeholder="@AppText.T("web.metadata.presetDialog.attachmentNamePlaceholder")" @bind="operation.AttachmentName" @bind:after="StateHasChanged" @onfocus='@(() => SetFieldHelp("attachmentName"))' @onmouseenter='@(() => SetFieldHelp("attachmentName"))' />
+                                            }
+                                            else if (operation.Type == MkvMetadataOperationType.SetTrackOrder)
+                                            {
+                                                <input class="form-input metadata-sentence-field" aria-label="@AppText.T("web.metadata.presetDialog.help.trackOrderKinds.title")" placeholder="video,audio,subtitles" @bind="operation.TrackOrderKinds" @bind:after="StateHasChanged" @onfocus='@(() => SetFieldHelp("trackOrderKinds"))' @onmouseenter='@(() => SetFieldHelp("trackOrderKinds"))' />
+                                            }
+                                            else if (operation.Type == MkvMetadataOperationType.RenameChapters)
+                                            {
+                                                <input class="form-input metadata-sentence-field" aria-label="@AppText.T("web.metadata.presetDialog.help.chapterPattern.title")" placeholder="@AppText.T("web.metadata.presetDialog.chapterPatternPlaceholder")" @bind="operation.ChapterNamePattern" @bind:after="StateHasChanged" @onfocus='@(() => SetFieldHelp("chapterPattern"))' @onmouseenter='@(() => SetFieldHelp("chapterPattern"))' />
                                             }
                                             else if (operation.Type == MkvMetadataOperationType.ClearTags)
                                             {
@@ -166,7 +195,18 @@
                                                 <span class="metadata-sentence-placeholder"></span>
                                             }
 
-                                            @if (operation.Type == MkvMetadataOperationType.SetField || operation.Type == MkvMetadataOperationType.SetTagField)
+                                            @if (operation.Type == MkvMetadataOperationType.SetTrackOrder)
+                                            {
+                                                <input class="form-input metadata-operation-value" aria-label="@AppText.T("web.metadata.presetDialog.help.trackOrderLanguages.title")" placeholder="@AppText.T("web.metadata.presetDialog.trackOrderLanguagesPlaceholder")" @bind="operation.TrackOrderLanguages" @bind:after="StateHasChanged" @onfocus='@(() => SetFieldHelp("trackOrderLanguages"))' @onmouseenter='@(() => SetFieldHelp("trackOrderLanguages"))' />
+                                            }
+                                            else if (operation.Type == MkvMetadataOperationType.SetAttachment)
+                                            {
+                                                <div class="metadata-operation-target">
+                                                    <input class="form-input metadata-operation-value" aria-label="@AppText.T("web.metadata.presetDialog.help.attachmentSource.title")" placeholder="@AppText.T("web.metadata.presetDialog.attachmentSourcePlaceholder")" @bind="operation.AttachmentSourcePath" @bind:after="StateHasChanged" @onfocus='@(() => SetFieldHelp("attachmentSource"))' @onmouseenter='@(() => SetFieldHelp("attachmentSource"))' />
+                                                    <input class="form-input metadata-rule-select-medium" aria-label="@AppText.T("web.metadata.presetDialog.help.attachmentMime.title")" placeholder="@AppText.T("web.metadata.presetDialog.attachmentMimePlaceholder")" @bind="operation.AttachmentMimeType" @bind:after="StateHasChanged" @onfocus='@(() => SetFieldHelp("attachmentMime"))' @onmouseenter='@(() => SetFieldHelp("attachmentMime"))' />
+                                                </div>
+                                            }
+                                            else if (operation.Type == MkvMetadataOperationType.SetField || operation.Type == MkvMetadataOperationType.SetTagField)
                                             {
                                                 <MetadataInputRendererComponent Schema="@GetOperationInputSchema(operation)" AriaLabel="@AppText.T("web.metadata.presetDialog.help.operationValue.title")" Value="@operation.Value" ValueChanged="@((string value) => operation.Value = value)" CssClass="form-input metadata-operation-value" OnFocus="@(() => SetOperationValueHelp(operation))" OnTextActivated="@((string inputId) => ActivateOperationTextInput(operation, inputId))" OnMouseEnter="@(() => SetOperationValueHelp(operation))" OnExpandedEditRequested="@(() => OpenOperationTextEditor(operation))" />
                                             }
@@ -185,6 +225,53 @@
                                 }
                             </div>
                             <RadzenButton Text="@AppText.T("web.metadata.presetDialog.addOperation")" Icon="add" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@AddOperation" />
+                        </div>
+
+                        <div class="metadata-rule-section metadata-preview-section">
+                            <div class="form-section">@AppText.T("web.metadata.presetDialog.previewTitle")</div>
+                            @if (string.IsNullOrEmpty(_previewFile))
+                            {
+                                <div class="metadata-preview-empty">@AppText.T("web.metadata.presetDialog.previewPickFile")</div>
+                            }
+                            else if (!string.IsNullOrEmpty(_previewError))
+                            {
+                                <div class="renamer-params-error">@_previewError</div>
+                            }
+                            else if (_previewResult != null)
+                            {
+                                <div class="metadata-preview-summary">
+                                    <span>@AppText.F("web.metadata.presetDialog.previewTotals", _previewResult.MatchCount, _previewResult.ChangeCount)</span>
+                                    <span>@Utils.GetMetadataExecutionModeText(_previewResult.ExecutionMode)</span>
+                                </div>
+                                @if (GetSelectedRuleChanges().Count == 0)
+                                {
+                                    <div class="metadata-preview-empty">@AppText.T("web.metadata.presetDialog.previewRuleNoMatch")</div>
+                                }
+                                else
+                                {
+                                    <table class="metadata-preview-table">
+                                        <thead>
+                                            <tr>
+                                                <th>@AppText.T("web.metadata.presetDialog.previewTarget")</th>
+                                                <th>@AppText.T("web.metadata.mapped.field")</th>
+                                                <th>@AppText.T("web.metadata.presetDialog.previewBefore")</th>
+                                                <th>@AppText.T("web.metadata.presetDialog.previewAfter")</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (MkvMetadataChange change in GetSelectedRuleChanges())
+                                            {
+                                                <tr>
+                                                    <td>@(!string.IsNullOrEmpty(change.TrackSelector) ? change.TrackSelector : AppText.T("web.metadata.mapped.general"))</td>
+                                                    <td>@(!string.IsNullOrEmpty(change.FieldKey) ? change.FieldKey : MetadataPresetUiHelper.GetOperationTypeLabel(change.OperationType))</td>
+                                                    <td class="metadata-preview-before">@change.BeforeValue</td>
+                                                    <td class="metadata-preview-after">@(!string.IsNullOrEmpty(change.AfterValue) ? change.AfterValue : change.Message)</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                }
+                            }
                         </div>
                     }
                 </main>
@@ -318,6 +405,26 @@
     private string _message;
 
     /// <summary>
+    /// File di riferimento su cui valutare il preset in anteprima
+    /// </summary>
+    private string _previewFile;
+
+    /// <summary>
+    /// Esito della valutazione in memoria sul file di riferimento
+    /// </summary>
+    private MkvMetadataRecord _previewResult;
+
+    /// <summary>
+    /// Errore prodotto dalla valutazione in anteprima
+    /// </summary>
+    private string _previewError;
+
+    /// <summary>
+    /// Firma del preset già valutato, per non rivalutarlo a ogni render
+    /// </summary>
+    private string _previewSignature;
+
+    /// <summary>
     /// Indica se mostrare campi avanzati
     /// </summary>
     private bool _showAdvancedFields;
@@ -385,6 +492,10 @@
         this._textEditRequest = null;
         this._textEditValue = "";
         this._activeTextInput = null;
+        this._previewFile = this.Records != null && this.Records.Count > 0 ? this.Records[0].InputFile : "";
+        this._previewResult = null;
+        this._previewError = "";
+        this._previewSignature = null;
         this.SetFieldHelp("default");
 
         if (!string.IsNullOrEmpty(this._selectedPresetFile) && System.IO.File.Exists(this._selectedPresetFile))
@@ -403,8 +514,20 @@
     /// <param name="firstRender">True al primo render</param>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        string signature;
+
         if (firstRender)
             this._interopModule = await this.JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/interop.js");
+
+        // Il preset viene rivalutato solo quando cambia davvero: senza la firma ogni render
+        // rilancerebbe la valutazione, e con essa un altro render
+        signature = this.BuildPresetSignature();
+        if (string.Equals(signature, this._previewSignature, StringComparison.Ordinal))
+            return;
+
+        this._previewSignature = signature;
+        this.EvaluatePreview();
+        this.StateHasChanged();
     }
 
     /// <summary>
@@ -582,6 +705,97 @@
     }
 
     /// <summary>
+    /// Rivaluta l'anteprima quando cambia il file di riferimento
+    /// </summary>
+    private void ChangePreviewFile()
+    {
+        this._previewSignature = null;
+        this.EvaluatePreview();
+    }
+
+    /// <summary>
+    /// Valuta il preset corrente sul file di riferimento senza scrivere niente
+    /// </summary>
+    private void EvaluatePreview()
+    {
+        MkvMetadataRecord source = null;
+        MkvMetadataRecord clone;
+        MkvMetadataOutputPolicy policy;
+
+        this._previewResult = null;
+        this._previewError = "";
+
+        if (string.IsNullOrEmpty(this._previewFile) || this.Records == null)
+            return;
+
+        for (int i = 0; i < this.Records.Count; i++)
+        {
+            if (string.Equals(this.Records[i].InputFile, this._previewFile, StringComparison.OrdinalIgnoreCase))
+            {
+                source = this.Records[i];
+                break;
+            }
+        }
+
+        if (source == null || source.OriginalFileInfo == null)
+            return;
+
+        try
+        {
+            // Valuta su una copia: l'anteprima non deve toccare il record della griglia,
+            // e i tag sono quelli gia' letti dallo scan, senza rilanciare mkvextract dal dialog
+            policy = this.Options != null && this.Options.Metadata != null ? this.Options.Metadata.OutputPolicy : MkvMetadataOutputPolicy.Overwrite;
+            clone = new MkvMetadataRecord();
+            clone.InputFile = source.InputFile;
+            clone.RelativeFolder = source.RelativeFolder;
+            clone.OriginalFileInfo = MetadataModelCloner.CloneFileInfo(source.OriginalFileInfo);
+            clone.FileInfo = MetadataModelCloner.CloneFileInfo(clone.OriginalFileInfo);
+            new MetadataPipelineEvaluator().AnalyzeRecord(clone, this._preset, policy);
+            this._previewResult = clone;
+        }
+        catch (Exception ex)
+        {
+            this._previewError = ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Restituisce le modifiche prodotte dalla sola regola selezionata
+    /// </summary>
+    /// <returns>Modifiche attribuite alla regola corrente</returns>
+    private List<MkvMetadataChange> GetSelectedRuleChanges()
+    {
+        List<MkvMetadataChange> result = new List<MkvMetadataChange>();
+
+        if (this._previewResult == null || this._previewResult.Changes == null)
+            return result;
+
+        for (int i = 0; i < this._previewResult.Changes.Count; i++)
+        {
+            if (this._previewResult.Changes[i].RuleIndex == this._selectedRuleIndex)
+                result.Add(this._previewResult.Changes[i]);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Restituisce la firma del preset corrente, usata per rivalutare solo quando cambia davvero
+    /// </summary>
+    /// <returns>Firma serializzata</returns>
+    private string BuildPresetSignature()
+    {
+        try
+        {
+            return System.Text.Json.JsonSerializer.Serialize(this._preset) + "|" + this._previewFile;
+        }
+        catch (Exception)
+        {
+            return Guid.NewGuid().ToString();
+        }
+    }
+
+    /// <summary>
     /// Sposta una regola nella lista
     /// </summary>
     /// <param name="index">Indice regola</param>
@@ -728,6 +942,26 @@
     /// </summary>
     /// <param name="operation">Operazione da aggiornare</param>
     /// <param name="value">Nuovo tipo testuale</param>
+    /// <summary>
+    /// Cambia il tag di una operazione allineando il livello di target al default del tag
+    /// </summary>
+    /// <param name="operation">Operazione</param>
+    /// <param name="value">Nome del tag</param>
+    private void ChangeOperationTagKey(MkvMetadataOperation operation, string value)
+    {
+        MetadataTagDefinition tag;
+
+        if (operation == null)
+            return;
+
+        operation.TagKey = value != null ? value : "";
+
+        // Il livello segue il tag scelto: TVDB nasce a livello collezione, e chiederlo
+        // ogni volta all'utente sarebbe chiedere di sapere a memoria lo standard
+        if (MetadataTagRegistry.TryGet(operation.TagKey, out tag))
+            operation.TagTargetTypeValue = tag.DefaultTargetTypeValue;
+    }
+
     private void ChangeOperationType(MkvMetadataOperation operation, string value)
     {
         MkvMetadataOperationType parsed;

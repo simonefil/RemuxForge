@@ -46,6 +46,19 @@ namespace RemuxForge.Core.Metadata
         /// <returns>Record metadata</returns>
         public List<MkvMetadataRecord> Scan(string sourcePath, bool recursive)
         {
+            return this.Scan(sourcePath, recursive, null, null);
+        }
+
+        /// <summary>
+        /// Scansiona l'input riportando l'avanzamento e onorando la richiesta di stop
+        /// </summary>
+        /// <param name="sourcePath">File o cartella di input</param>
+        /// <param name="recursive">Vero per scansionare le sottocartelle</param>
+        /// <param name="progressCallback">Chiamata con il file appena letto e il conteggio corrente</param>
+        /// <param name="stopRequested">Interroga se lo stop è stato richiesto</param>
+        /// <returns>Record trovati</returns>
+        public List<MkvMetadataRecord> Scan(string sourcePath, bool recursive, Action<string, int> progressCallback, Func<bool> stopRequested)
+        {
             List<MkvMetadataRecord> records = new List<MkvMetadataRecord>();
             string source = sourcePath != null ? sourcePath.Trim() : "";
             string rootFolder;
@@ -62,7 +75,7 @@ namespace RemuxForge.Core.Metadata
             else if (Directory.Exists(source))
             {
                 rootFolder = Path.GetFullPath(source);
-                this.ScanFolder(records, rootFolder, rootFolder, recursive, true);
+                this.ScanFolder(records, rootFolder, rootFolder, recursive, true, progressCallback, stopRequested);
             }
             else
             {
@@ -85,7 +98,9 @@ namespace RemuxForge.Core.Metadata
         /// <param name="currentFolder">Cartella corrente</param>
         /// <param name="recursive">Vero per scansionare sottocartelle</param>
         /// <param name="isRoot">Vero se la cartella corrente è la root selezionata</param>
-        private void ScanFolder(List<MkvMetadataRecord> records, string rootFolder, string currentFolder, bool recursive, bool isRoot)
+        /// <param name="progressCallback">Chiamata con il file appena letto e il conteggio corrente</param>
+        /// <param name="stopRequested">Interroga se lo stop è stato richiesto</param>
+        private void ScanFolder(List<MkvMetadataRecord> records, string rootFolder, string currentFolder, bool recursive, bool isRoot, Action<string, int> progressCallback, Func<bool> stopRequested)
         {
             string[] files;
             string[] directories;
@@ -111,7 +126,14 @@ namespace RemuxForge.Core.Metadata
 
             for (int i = 0; i < files.Length; i++)
             {
+                // Lo stop si controlla per file perché ognuno costa una chiamata a mediainfo:
+                // su una cartella grande è l'unico punto in cui la richiesta può essere onorata
+                if (stopRequested != null && stopRequested())
+                    return;
+
                 records.Add(this.CreateRecord(Path.GetFullPath(files[i]), rootFolder));
+                if (progressCallback != null)
+                    progressCallback(files[i], records.Count);
             }
 
             if (!recursive)
@@ -138,7 +160,10 @@ namespace RemuxForge.Core.Metadata
 
             for (int i = 0; i < directories.Length; i++)
             {
-                this.ScanFolder(records, rootFolder, directories[i], true, false);
+                if (stopRequested != null && stopRequested())
+                    return;
+
+                this.ScanFolder(records, rootFolder, directories[i], true, false, progressCallback, stopRequested);
             }
         }
 
@@ -156,17 +181,17 @@ namespace RemuxForge.Core.Metadata
             record.InputFile = filePath;
             record.FileSize = fileInfo.Length;
             record.RelativeFolder = BuildRelativeFolder(fileInfo.DirectoryName, rootFolder);
-            record.Status = AppText.T("metadata.status.pending");
+            record.Status = MkvMetadataStatus.Pending;
 
             try
             {
                 record.FileInfo = this._reader.ReadFile(filePath);
                 record.OriginalFileInfo = MetadataModelCloner.CloneFileInfo(record.FileInfo);
-                record.Status = AppText.T("metadata.status.scanned");
+                record.Status = MkvMetadataStatus.Scanned;
             }
             catch (Exception ex)
             {
-                record.Status = AppText.T("metadata.status.error");
+                record.Status = MkvMetadataStatus.Error;
                 record.ErrorMessage = ex.Message;
                 record.AnalysisStatus = MkvMetadataAnalysisStatus.Error;
             }

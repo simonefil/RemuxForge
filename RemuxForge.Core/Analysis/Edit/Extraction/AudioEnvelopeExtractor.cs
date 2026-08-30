@@ -152,7 +152,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                 }
             }, timeoutMs);
 
-            if (decibel.Count == 0 && run.ExitCode != 0)
+            if (run.ExitCode != 0)
                 throw new InvalidOperationException("Nessun campione audio estratto da " + Path.GetFileName(filePath) + ": " + run.Stderr);
 
             return new AudioEnvelope(decibel.ToArray(), this.ReadOriginMs(filePath, streamIndex, timeoutMs));
@@ -200,14 +200,15 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         /// <param name="trackId">ID della traccia nel contenitore</param>
         /// <param name="durationMs">Durata da rappresentare in millisecondi</param>
         /// <param name="spectrogram">True per lo spettrogramma, false per la forma d'onda</param>
+        /// <param name="highQuality">True per una risoluzione orizzontale e verticale maggiore</param>
         /// <param name="timeoutMs">Timeout del comando in millisecondi</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Tile della visualizzazione e relativa scala temporale</returns>
-        public AudioTimelineImage GenerateTimelineImageForTrackId(string filePath, int trackId, double durationMs, bool spectrogram, int timeoutMs, CancellationToken cancellationToken)
+        public AudioTimelineImage GenerateTimelineImageForTrackId(string filePath, int trackId, double durationMs, bool spectrogram, bool highQuality, int timeoutMs, CancellationToken cancellationToken)
         {
             const int tileWidth = 8192;
-            const int tileHeight = 96;
-            const int maximumTileCount = 32;
+            int maximumTileCount = highQuality ? 24 : 16;
+            int tileHeight = highQuality ? 128 : 96;
             string selector = trackId.ToString(CultureInfo.InvariantCulture);
             double safeDurationMs = Math.Max(1.0, durationMs);
             double millisecondsPerPixel = Math.Max(1.0, safeDurationMs / (tileWidth * maximumTileCount));
@@ -271,6 +272,77 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             }
         }
 
+        /// <summary>
+        /// Genera l'inviluppo min/max completo usato dal renderer vettoriale della waveform
+        /// </summary>
+        /// <param name="filePath">File multimediale</param>
+        /// <param name="trackId">ID della traccia nel contenitore</param>
+        /// <param name="durationMs">Durata da rappresentare in millisecondi</param>
+        /// <param name="highQuality">True per un bucket ogni millisecondo</param>
+        /// <param name="timeoutMs">Timeout del comando in millisecondi</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Inviluppo temporale quantizzato a 16 bit</returns>
+        public AudioTimelineWaveform GenerateTimelineWaveformForTrackId(string filePath, int trackId, double durationMs, bool highQuality, int timeoutMs, CancellationToken cancellationToken)
+        {
+            const int maximumLowQualityPoints = 262144;
+            const int maximumHighQualityPoints = 4194304;
+            string selector = trackId.ToString(CultureInfo.InvariantCulture);
+            double safeDurationMs = Math.Max(1.0, durationMs);
+            int maximumPoints = highQuality ? maximumHighQualityPoints : maximumLowQualityPoints;
+            double requestedStepMs = Math.Max(1.0, safeDurationMs / maximumPoints);
+            int bucketSamples = Math.Max(1, (int)Math.Ceiling(requestedStepMs * SAMPLE_RATE / 1000.0));
+            double stepMs = bucketSamples * 1000.0 / SAMPLE_RATE;
+            List<short> minimum = new List<short>();
+            List<short> maximum = new List<short>();
+            byte[] pending = new byte[sizeof(float)];
+            int pendingBytes = 0;
+            int samplesInBucket = 0;
+            float bucketMinimum = 0.0f;
+            float bucketMaximum = 0.0f;
+            short peak = 0;
+            string representedSeconds = (safeDurationMs / 1000.0).ToString("0.######", CultureInfo.InvariantCulture);
+            string[] arguments = new string[] {
+                "-nostdin", "-v", "error", "-i", filePath,
+                "-map", "0:" + selector,
+                "-af", "aformat=channel_layouts=mono,aresample=" + SAMPLE_RATE.ToString(CultureInfo.InvariantCulture) + ",apad=whole_dur=" + representedSeconds + ",atrim=end=" + representedSeconds,
+                "-f", "f32le", "-" };
+            ProcessBinaryResult run = ProcessRunner.RunBinaryStdout(this._ffmpegPath, arguments, (buffer, count) =>
+            {
+                int consumed = 0;
+                while (consumed < count)
+                {
+                    int copied = Math.Min(sizeof(float) - pendingBytes, count - consumed);
+                    Buffer.BlockCopy(buffer, consumed, pending, pendingBytes, copied);
+                    pendingBytes += copied;
+                    consumed += copied;
+                    if (pendingBytes < sizeof(float))
+                        continue;
+                    pendingBytes = 0;
+                    float sample = BitConverter.ToSingle(pending, 0);
+                    if (samplesInBucket == 0)
+                    {
+                        bucketMinimum = sample;
+                        bucketMaximum = sample;
+                    }
+                    else
+                    {
+                        bucketMinimum = Math.Min(bucketMinimum, sample);
+                        bucketMaximum = Math.Max(bucketMaximum, sample);
+                    }
+                    samplesInBucket++;
+                    if (samplesInBucket < bucketSamples)
+                        continue;
+                    AddWaveformBucket(minimum, maximum, bucketMinimum, bucketMaximum, ref peak);
+                    samplesInBucket = 0;
+                }
+            }, timeoutMs, cancellationToken);
+            if (samplesInBucket > 0)
+                AddWaveformBucket(minimum, maximum, bucketMinimum, bucketMaximum, ref peak);
+            if (run.ExitCode != 0)
+                throw new InvalidOperationException("Nessun campione audio estratto da " + Path.GetFileName(filePath) + ": " + run.Stderr);
+            return new AudioTimelineWaveform(stepMs, this.ReadOriginMs(filePath, selector, timeoutMs), peak, minimum.ToArray(), maximum.ToArray());
+        }
+
         #endregion
 
         #region Metodi privati
@@ -284,6 +356,18 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             if (spectrogram)
                 return inputLabel + "showspectrumpic=s=" + size + ":legend=0:mode=combined:color=intensity:scale=log:fscale=lin:orientation=vertical" + outputLabel;
             return inputLabel + "showwavespic=s=" + size + ":split_channels=0:colors=white:filter=peak:draw=full,format=rgba,colorkey=0x000000:0.01:0.0" + outputLabel;
+        }
+
+        /// <summary>Aggiunge un bucket min/max quantizzato alla waveform</summary>
+        private static void AddWaveformBucket(List<short> minimum, List<short> maximum, float bucketMinimum, float bucketMaximum, ref short peak)
+        {
+            short quantizedMinimum = (short)Math.Round(Math.Max(-1.0f, Math.Min(1.0f, bucketMinimum)) * short.MaxValue);
+            short quantizedMaximum = (short)Math.Round(Math.Max(-1.0f, Math.Min(1.0f, bucketMaximum)) * short.MaxValue);
+            minimum.Add(quantizedMinimum);
+            maximum.Add(quantizedMaximum);
+            int bucketPeak = Math.Max(Math.Abs((int)quantizedMinimum), Math.Abs((int)quantizedMaximum));
+            if (bucketPeak > peak)
+                peak = (short)bucketPeak;
         }
 
         /// <summary>
@@ -411,5 +495,36 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
 
         /// <summary>Tile PNG ordinate temporalmente</summary>
         public List<byte[]> Tiles { get; private set; }
+    }
+
+    /// <summary>
+    /// Inviluppo min/max completo per il rendering vettoriale della waveform
+    /// </summary>
+    public class AudioTimelineWaveform
+    {
+        /// <summary>Costruttore</summary>
+        public AudioTimelineWaveform(double millisecondsPerPoint, double originMs, short peak, short[] minimum, short[] maximum)
+        {
+            this.MillisecondsPerPoint = millisecondsPerPoint;
+            this.OriginMs = originMs;
+            this.Peak = peak;
+            this.Minimum = minimum;
+            this.Maximum = maximum;
+        }
+
+        /// <summary>Passo temporale fra due bucket</summary>
+        public double MillisecondsPerPoint { get; private set; }
+
+        /// <summary>Origine della traccia nel contenitore</summary>
+        public double OriginMs { get; private set; }
+
+        /// <summary>Picco assoluto globale quantizzato</summary>
+        public short Peak { get; private set; }
+
+        /// <summary>Minimi dei bucket</summary>
+        public short[] Minimum { get; private set; }
+
+        /// <summary>Massimi dei bucket</summary>
+        public short[] Maximum { get; private set; }
     }
 }

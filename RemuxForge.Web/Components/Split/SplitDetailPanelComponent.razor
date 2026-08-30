@@ -1,0 +1,356 @@
+@using RemuxForge.Core.Infrastructure
+@using RemuxForge.Core.Localization
+@using RemuxForge.Core.Models
+@using RemuxForge.Core.Splitting
+
+<div class="rf-panel">
+    <div class="rf-panel-title">@AppText.T("web.dashboard.fileDetail")</div>
+    <div class="rf-panel-body">
+        @if (Record == null)
+        {
+            <div class="detail-content">@AppText.T("web.dashboard.noFileSelected")</div>
+        }
+        else
+        {
+            <div class="detail-content detail-structured">
+                <div class="detail-record-header">
+                    <span class="detail-record-title">@System.IO.Path.GetFileName(Record.InputFile)</span>
+                    <span class="detail-status-badge">@Utils.GetSplitStatusText(Record.Status)</span>
+                </div>
+
+                <details class="detail-section" open>
+                    <summary>@AppText.T("web.split.detail.file")</summary>
+                    <div class="detail-section-body detail-card-stack">
+                        <div class="detail-card">
+                            @PropertyRow(AppText.T("web.split.detail.path"), System.IO.Path.GetDirectoryName(Record.InputFile))
+                            @PropertyRow(AppText.T("web.detail.sizeLabel"), Utils.FormatSize(Record.SourceSize))
+                            @if (Record.SourceInfo != null && Record.SourceInfo.ContainerDurationNs > 0)
+                            {
+                                @PropertyRow(AppText.T("web.split.detail.duration"), MkvSplitSegmentService.SecsToTs(Record.SourceInfo.ContainerDurationNs / 1000000000.0))
+                            }
+                            @if (Record.Plan != null)
+                            {
+                                @PropertyRow(AppText.T("web.split.detail.videoCodec"), DescribeVideo(Record.Plan))
+                                @PropertyRow(AppText.T("web.split.detail.frameRateMode"), Record.Plan.FrameRateMode.ToString())
+                                @PropertyRow(AppText.T("web.split.detail.frames"), Record.Plan.FrameCount.ToString())
+                                @PropertyRow(AppText.T("web.split.detail.chapters"), Record.Plan.Chapters.Count.ToString())
+                            }
+                        </div>
+                        @if (Record.SourceInfo != null)
+                        {
+                            <div class="detail-card">
+                                <div class="detail-card-title">@AppText.T("web.detail.sourceTracks")</div>
+                                @PropertyRow(AppText.T("web.episode.audio"), Utils.FormatTrackList(FilterTracks("audio")))
+                                @PropertyRow(AppText.T("web.episode.sub"), Utils.FormatTrackList(FilterTracks("subtitles")))
+                            </div>
+                        }
+                    </div>
+                </details>
+
+                @if (Record.Plan == null)
+                {
+                    <div class="split-detail-empty">
+                        <div>@AppText.T("web.split.detail.notAnalyzed")</div>
+                        <RadzenButton Icon="manage_search"
+                                      Text="@AppText.T("web.menu.split.analyzeSelected")"
+                                      Size="ButtonSize.Small"
+                                      Variant="Variant.Flat"
+                                      ButtonStyle="ButtonStyle.Primary"
+                                      Disabled="@IsBusy"
+                                      Click="@OnAnalyze" />
+                    </div>
+                }
+                else
+                {
+                    <details class="detail-section" open>
+                        <summary>@AppText.T("web.split.detail.plan")</summary>
+                        <div class="detail-section-body detail-card-stack">
+                            <div class="detail-card">
+                                @PropertyRow(AppText.T("web.split.detail.mode"), Utils.GetSplitModeText(Record.Plan.Mode))
+                                @PropertyRow(AppText.T("web.split.detail.outcome"), Record.Plan.IsValid ? AppText.T("web.split.detail.outcomeValid") : Record.Plan.ErrorMessage)
+                                @PropertyRow(AppText.T("web.split.segments"), Record.Plan.Segments.Count.ToString())
+                                @PropertyRow(AppText.T("web.split.detail.coverage"), DescribeCoverage(Record.Plan))
+                                @PropertyRow(AppText.T("web.split.detail.cost"), DescribeCost(Record.Plan))
+                                @PropertyRow(AppText.T("web.split.detail.outputDir"), Record.Plan.OutputDir)
+                            </div>
+                        </div>
+                    </details>
+
+                    @if (Record.Plan.Segments.Count > 0)
+                    {
+                        <details class="detail-section" open>
+                            <summary>@AppText.T("web.split.detail.map")</summary>
+                            <div class="detail-section-body">
+                                <div class="split-map" role="img" aria-label="@AppText.T("web.split.detail.map")">
+                                    @foreach (MkvSplitSegment segment in Record.Plan.Segments)
+                                    {
+                                        <div class="split-map-block @(segment.Num == SelectedSegmentNum ? "selected" : "")"
+                                             style="@BlockStyle(segment)"
+                                             title="@segment.File"
+                                             @onclick="@(() => OnSegmentSelected.InvokeAsync(segment.Num))"
+                                             @ondblclick="@(() => OnOpenEditor.InvokeAsync(segment.Num))">
+                                            <span class="split-map-block-label">@segment.Num</span>
+                                        </div>
+                                    }
+                                    @foreach (MkvSplitChapter chapter in Record.Plan.Chapters)
+                                    {
+                                        <div class="split-map-chapter" style="@ChapterStyle(chapter)" title="@chapter.Name"></div>
+                                    }
+                                </div>
+                            </div>
+                        </details>
+
+                        <details class="detail-section" open>
+                            <summary>@AppText.F("web.split.detail.segments", Record.Plan.Segments.Count)</summary>
+                            <div class="detail-section-body detail-card-stack">
+                                @foreach (MkvSplitSegment segment in Record.Plan.Segments)
+                                {
+                                    <div class="detail-card @(segment.Num == SelectedSegmentNum ? "selected" : "")" @onclick="@(() => OnSegmentSelected.InvokeAsync(segment.Num))">
+                                        <div class="detail-card-title">@AppText.F("web.split.detail.segment", segment.Num) — @AppText.F("web.split.detail.episodeNum", segment.Episode)</div>
+                                        @PropertyRow(AppText.T("web.split.detail.output"), segment.File)
+                                        @PropertyRow(AppText.T("web.split.detail.start"), MkvSplitSegmentService.SecsToTs(segment.StartTs))
+                                        @PropertyRow(AppText.T("web.split.detail.end"), MkvSplitSegmentService.SecsToTs(segment.EndTs))
+                                        @PropertyRow(AppText.T("web.split.detail.duration"), MkvSplitSegmentService.SecsToTs(System.Math.Max(0.0, segment.EndTs - segment.StartTs)))
+                                        @PropertyRow(AppText.T("web.split.detail.frames"), segment.FrameCount.ToString())
+                                        @PropertyRow(AppText.T("web.split.detail.chapters"), segment.Chapters.Count.ToString())
+                                        <div class="split-segment-badges">
+                                            <span class="split-badge @OutputStateCss(segment.OutputState)">@OutputStateText(segment.OutputState)</span>
+                                            <span class="split-badge @(segment.ReencodeFrames > 0 ? "warn" : "ok")">@CostBadge(segment)</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </details>
+                    }
+
+                    @if (Record.Plan.Warnings.Count > 0)
+                    {
+                        <details class="detail-section" open>
+                            <summary>@AppText.F("web.split.detail.warnings", Record.Plan.Warnings.Count)</summary>
+                            <div class="detail-section-body detail-card-stack">
+                                <div class="detail-card">
+                                    @foreach (MkvSplitWarning warning in Record.Plan.Warnings)
+                                    {
+                                        <div class="detail-property-row split-warning-row">@warning.Message</div>
+                                    }
+                                </div>
+                            </div>
+                        </details>
+                    }
+
+                    @if (Record.Status == MkvSplitStatus.Done)
+                    {
+                        <details class="detail-section" open>
+                            <summary>@AppText.T("web.split.detail.result")</summary>
+                            <div class="detail-section-body detail-card-stack">
+                                <div class="detail-card">
+                                    @foreach (MkvSplitSegment segment in Record.Plan.Segments)
+                                    {
+                                        @PropertyRow(segment.File, DescribeProduced(segment))
+                                    }
+                                </div>
+                            </div>
+                        </details>
+                    }
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>Segnaposto delle proprietà che non hanno ancora un valore.</summary>
+    private const string NOT_AVAILABLE = "-";
+
+    /// <summary>
+    /// Record selezionato
+    /// </summary>
+    [Parameter] public MkvSplitRecord Record { get; set; }
+
+    /// <summary>
+    /// Numero del segmento evidenziato
+    /// </summary>
+    [Parameter] public int SelectedSegmentNum { get; set; }
+
+    /// <summary>
+    /// Indica che la pipeline Split è occupata
+    /// </summary>
+    [Parameter] public bool IsBusy { get; set; }
+
+    /// <summary>
+    /// Evento richiesta di analisi del record corrente
+    /// </summary>
+    [Parameter] public EventCallback OnAnalyze { get; set; }
+
+    /// <summary>
+    /// Evento selezione di un segmento
+    /// </summary>
+    [Parameter] public EventCallback<int> OnSegmentSelected { get; set; }
+
+    /// <summary>
+    /// Evento apertura editor su un segmento
+    /// </summary>
+    [Parameter] public EventCallback<int> OnOpenEditor { get; set; }
+
+    /// <summary>
+    /// Restituisce le tracce del tipo richiesto
+    /// </summary>
+    /// <param name="type">Tipo traccia mkvmerge</param>
+    /// <returns>Tracce del tipo richiesto</returns>
+    private List<TrackInfo> FilterTracks(string type)
+    {
+        List<TrackInfo> result = new List<TrackInfo>();
+        foreach (TrackInfo track in this.Record.SourceInfo.Tracks)
+        {
+            if (track.Type == type)
+                result.Add(track);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Descrive codec e formato del video
+    /// </summary>
+    /// <param name="plan">Piano del record</param>
+    /// <returns>Riga descrittiva</returns>
+    private string DescribeVideo(MkvSplitPlan plan)
+    {
+        if (plan.VideoParams == null)
+            return AppText.T("web.common.none");
+
+        return plan.VideoParams.CodecName + " " + plan.VideoParams.PixFmt;
+    }
+
+    /// <summary>
+    /// Descrive la copertura del sorgente
+    /// </summary>
+    /// <param name="plan">Piano del record</param>
+    /// <returns>Riga descrittiva</returns>
+    private string DescribeCoverage(MkvSplitPlan plan)
+    {
+        // Senza segmenti non c'è niente da coprire: un file manuale ancora da definire non scarta nulla
+        if (plan.Segments == null || plan.Segments.Count == 0)
+            return NOT_AVAILABLE;
+
+        if (plan.Coverage == MkvSplitCoverage.Partition)
+            return AppText.T("split.plan.coveragePartition");
+
+        return AppText.F("web.split.detail.coverageDiscarded", plan.DiscardedFrames);
+    }
+
+    /// <summary>
+    /// Descrive il costo di esecuzione del piano
+    /// </summary>
+    /// <param name="plan">Piano del record</param>
+    /// <returns>Riga descrittiva</returns>
+    private string DescribeCost(MkvSplitPlan plan)
+    {
+        if (plan.Segments == null || plan.Segments.Count == 0)
+            return NOT_AVAILABLE;
+
+        if (plan.TotalReencodeFrames == 0)
+            return AppText.T("web.split.detail.costCopy");
+
+        return AppText.F("web.split.detail.costReencode", plan.TotalReencodeFrames);
+    }
+
+    /// <summary>
+    /// Descrive il file prodotto da un segmento
+    /// </summary>
+    /// <param name="segment">Segmento eseguito</param>
+    /// <returns>Dimensione su disco oppure assenza</returns>
+    private string DescribeProduced(MkvSplitSegment segment)
+    {
+        string path = System.IO.Path.Combine(this.Record.Plan.OutputDir, segment.File);
+        if (!System.IO.File.Exists(path))
+            return AppText.T("web.split.detail.missing");
+
+        return Utils.FormatSize(new System.IO.FileInfo(path).Length);
+    }
+
+    /// <summary>
+    /// Larghezza e posizione proporzionali del blocco di un segmento
+    /// </summary>
+    /// <param name="segment">Segmento da posizionare</param>
+    /// <returns>Stile inline</returns>
+    private string BlockStyle(MkvSplitSegment segment)
+    {
+        double duration = this.Record.Plan.Duration > 0.0 ? this.Record.Plan.Duration : 1.0;
+        double left = 100.0 * segment.StartTs / duration;
+        double width = 100.0 * System.Math.Max(0.0, segment.EndTs - segment.StartTs) / duration;
+        return string.Format(System.Globalization.CultureInfo.InvariantCulture, "left:{0:F3}%;width:{1:F3}%;", left, width);
+    }
+
+    /// <summary>
+    /// Posizione proporzionale della tacca di un capitolo
+    /// </summary>
+    /// <param name="chapter">Capitolo da posizionare</param>
+    /// <returns>Stile inline</returns>
+    private string ChapterStyle(MkvSplitChapter chapter)
+    {
+        double duration = this.Record.Plan.Duration > 0.0 ? this.Record.Plan.Duration : 1.0;
+        return string.Format(System.Globalization.CultureInfo.InvariantCulture, "left:{0:F3}%;", 100.0 * chapter.Timestamp / duration);
+    }
+
+    /// <summary>
+    /// Testo dello stato su disco del file di output
+    /// </summary>
+    /// <param name="state">Stato del file</param>
+    /// <returns>Testo localizzato</returns>
+    private string OutputStateText(MkvSplitOutputState state)
+    {
+        if (state == MkvSplitOutputState.ExistsOverwrite)
+            return AppText.T("web.split.detail.outputOverwrite");
+        if (state == MkvSplitOutputState.ExistsSkip)
+            return AppText.T("web.split.detail.outputSkip");
+        return AppText.T("web.split.detail.outputNew");
+    }
+
+    /// <summary>
+    /// Classe CSS dello stato su disco
+    /// </summary>
+    /// <param name="state">Stato del file</param>
+    /// <returns>Nome classe</returns>
+    private string OutputStateCss(MkvSplitOutputState state)
+    {
+        if (state == MkvSplitOutputState.ExistsOverwrite)
+            return "warn";
+        if (state == MkvSplitOutputState.ExistsSkip)
+            return "muted";
+        return "ok";
+    }
+
+    /// <summary>
+    /// Badge del costo del segmento
+    /// </summary>
+    /// <param name="segment">Segmento</param>
+    /// <returns>Testo localizzato</returns>
+    private string CostBadge(MkvSplitSegment segment)
+    {
+        if (segment.ReencodeFrames > 0)
+            return AppText.F("web.split.detail.costReencode", segment.ReencodeFrames);
+
+        return AppText.T("web.split.detail.startsOnKeyframe");
+    }
+
+    /// <summary>
+    /// Riga etichetta-valore del dettaglio
+    /// </summary>
+    /// <param name="label">Etichetta</param>
+    /// <param name="value">Valore</param>
+    /// <returns>Frammento di rendering</returns>
+    private RenderFragment PropertyRow(string label, string value) => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "detail-property-row");
+        builder.OpenElement(2, "span");
+        builder.AddAttribute(3, "class", "detail-property-label");
+        builder.AddContent(4, label);
+        builder.CloseElement();
+        builder.OpenElement(5, "span");
+        builder.AddAttribute(6, "class", "detail-property-value");
+        builder.AddContent(7, value);
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+}

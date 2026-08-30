@@ -1,5 +1,6 @@
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
@@ -119,7 +120,7 @@ namespace RemuxForge.Core.Splitting
 
             if (missing.Count > 0)
             {
-                throw new InvalidOperationException("Tool mancanti: " + string.Join(", ", missing));
+                throw new InvalidOperationException(AppText.F("split.tools.missing", string.Join(", ", missing)));
             }
         }
 
@@ -213,7 +214,7 @@ namespace RemuxForge.Core.Splitting
             string line;
             double value;
 
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "Extracting source PTS...");
+            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.T("split.tools.extractingPts"));
             tempFile = Path.Combine(Path.GetTempPath(), "mkv_pts_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".txt");
             try
             {
@@ -250,8 +251,34 @@ namespace RemuxForge.Core.Splitting
 
             double[] arr = pts.ToArray();
             Array.Sort(arr);
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "  " + arr.Length + " PTS extracted");
+            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.tools.ptsExtracted", arr.Length));
             return arr;
+        }
+
+        /// <summary>
+        /// Legge i PTS video nell'ordine in cui i packet stanno nel file, cioè in ordine di decodifica.
+        /// Serve a passare dagli indici di presentazione, con cui il piano descrive i segmenti, agli
+        /// indici del raw bitstream, che è scritto in ordine di decodifica: con i B-frame i due ordini
+        /// non coincidono.
+        /// </summary>
+        /// <param name="inputFile">File sorgente MKV</param>
+        /// <returns>PTS in secondi, in ordine di decodifica</returns>
+        public List<double> GetDecodeOrderPts(string inputFile)
+        {
+            List<double> pts = new List<double>(1 << 17);
+            double value;
+
+            this.RunStreamed(this._ffprobe, new string[]
+            {
+                "-v", "quiet", "-select_streams", "v:0",
+                "-show_entries", "packet=pts_time", "-of", "csv=p=0", inputFile
+            }, delegate (string line)
+            {
+                if (double.TryParse(line.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out value))
+                    pts.Add(value);
+            });
+
+            return pts;
         }
 
         /// <summary>
@@ -262,7 +289,7 @@ namespace RemuxForge.Core.Splitting
         public List<MkvSplitFrameInfo> GetFrameByteMap(string rawFile)
         {
             List<MkvSplitFrameInfo> frames = new List<MkvSplitFrameInfo>(1 << 17);
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "Mapping frame byte positions...");
+            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.T("split.tools.mappingBytes"));
 
             this.RunStreamed(this._ffprobe, new string[]
             {
@@ -282,7 +309,7 @@ namespace RemuxForge.Core.Splitting
                 frames.Add(f);
             });
 
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "  " + frames.Count + " frames mapped");
+            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.tools.framesMapped", frames.Count));
             return frames;
         }
 
@@ -294,26 +321,42 @@ namespace RemuxForge.Core.Splitting
         public List<MkvSplitFrameInfo> GetKeyFlags(string inputFile)
         {
             List<MkvSplitFrameInfo> frames = new List<MkvSplitFrameInfo>(1 << 17);
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "Probing keyframe flags...");
+            List<double> pts = new List<double>(1 << 17);
+            MkvSplitFrameInfo[] byPresentation;
+            double[] keys;
+            double value;
+
+            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.T("split.tools.probingKeyflags"));
 
             this.RunStreamed(this._ffprobe, new string[]
             {
                 "-v", "quiet", "-select_streams", "v:0",
-                "-show_entries", "packet=flags", "-of", "csv=p=0", inputFile
+                "-show_entries", "packet=pts_time,flags", "-of", "csv=p=0", inputFile
             }, delegate (string line)
             {
                 MkvSplitFrameInfo f;
-                line = line.Trim();
-                if (string.IsNullOrEmpty(line))
+                string[] parts = line.Split(',');
+                if (parts.Length < 2)
+                    return;
+
+                if (!double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out value))
                     return;
 
                 f = new MkvSplitFrameInfo();
-                f.Key = line.IndexOf('K') >= 0;
+                f.Key = parts[1].IndexOf('K') >= 0;
                 frames.Add(f);
+                pts.Add(value);
             });
 
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "  " + frames.Count + " packets probed");
-            return frames;
+            // ffprobe elenca i packet in ordine di decodifica, ma il piano indicizza i fotogrammi per
+            // presentazione: con i B-frame i due ordini differiscono e senza riordino lo snap finirebbe
+            // su un fotogramma che keyframe non è.
+            keys = pts.ToArray();
+            byPresentation = frames.ToArray();
+            Array.Sort(keys, byPresentation);
+
+            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.tools.packetsProbed", byPresentation.Length));
+            return new List<MkvSplitFrameInfo>(byPresentation);
         }
 
         /// <summary>
@@ -524,14 +567,14 @@ namespace RemuxForge.Core.Splitting
             ProcessResult result = ProcessRunner.Run(exe, list.ToArray());
             if (result.ExitCode != 0)
             {
-                ConsoleHelper.Write(LogSection.Split, LogLevel.Error, "  FAILED (exit " + result.ExitCode + ")");
+                ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("split.tools.commandFailedExit", result.ExitCode));
                 if (!string.IsNullOrEmpty(result.Stdout))
-                    ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "  stdout: " + Truncate(result.Stdout, 2000));
+                    ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.tools.stdout", Truncate(result.Stdout, 2000)));
 
                 if (!string.IsNullOrEmpty(result.Stderr))
-                    ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "  stderr: " + Truncate(result.Stderr, 2000));
+                    ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.tools.stderr", Truncate(result.Stderr, 2000)));
 
-                throw new InvalidOperationException("Command failed: " + Path.GetFileName(exe));
+                throw new InvalidOperationException(AppText.F("split.tools.commandFailed", Path.GetFileName(exe)));
             }
 
             return result;
@@ -565,9 +608,9 @@ namespace RemuxForge.Core.Splitting
             if (result.ExitCode != 0)
             {
                 if (!string.IsNullOrEmpty(result.Stderr))
-                    ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "  stderr: " + Truncate(result.Stderr, 2000));
+                    ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.tools.stderr", Truncate(result.Stderr, 2000)));
 
-                throw new InvalidOperationException("Command failed: " + Path.GetFileName(exe));
+                throw new InvalidOperationException(AppText.F("split.tools.commandFailed", Path.GetFileName(exe)));
             }
         }
 

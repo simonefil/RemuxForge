@@ -42,6 +42,10 @@
                             <RadzenSwitch TValue="bool" Value="@Options.Metadata.PreserveFolderStructure" Change="@((bool _) => OnTogglePreserveFolders.InvokeAsync())" />
                             <span>@AppText.T("web.metadata.toolbar.preserveFolders")</span>
                         </div>
+                        <div class="ui-switch metadata-toolbar-toggle">
+                            <RadzenSwitch TValue="bool" Value="@Options.Metadata.OverwriteOutput" Change="@((bool _) => OnToggleOverwriteOutput.InvokeAsync())" />
+                            <span>@AppText.T("web.metadata.toolbar.overwriteOutput")</span>
+                        </div>
                     }
                 </div>
                 @if (Options.Metadata.OutputPolicy == MkvMetadataOutputPolicy.OutputPath)
@@ -80,8 +84,15 @@
                     <RadzenDataGridColumn TItem="MkvMetadataRecord" Title="@AppText.T("web.metadata.tracks")" Width="220px" MinWidth="140px" MaxWidth="440px">
                         <Template Context="record">@BuildTrackSummary(record)</Template>
                     </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="MkvMetadataRecord" Property="AnalysisStatus" Title="@AppText.T("web.metadata.analysis")" MinWidth="90px" MaxWidth="260px" />
-                    <RadzenDataGridColumn TItem="MkvMetadataRecord" Property="ExecutionMode" Title="@AppText.T("web.metadata.mode")" MinWidth="90px" MaxWidth="260px" />
+                    <RadzenDataGridColumn TItem="MkvMetadataRecord" Title="@AppText.T("web.dashboard.statusLabel")" MinWidth="90px" MaxWidth="260px">
+                        <Template Context="record">@Utils.GetMetadataStatusText(record.Status)</Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="MkvMetadataRecord" Title="@AppText.T("web.metadata.analysis")" MinWidth="90px" MaxWidth="260px">
+                        <Template Context="record">@Utils.GetMetadataAnalysisStatusText(record.AnalysisStatus)</Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="MkvMetadataRecord" Title="@AppText.T("web.metadata.mode")" MinWidth="90px" MaxWidth="260px">
+                        <Template Context="record">@Utils.GetMetadataExecutionModeText(record.ExecutionMode)</Template>
+                    </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="MkvMetadataRecord" Property="ChangeCount" Title="@AppText.T("web.metadata.changesShort")" MinWidth="80px" MaxWidth="220px" />
                     <RadzenDataGridColumn TItem="MkvMetadataRecord" Property="ErrorMessage" Title="@AppText.T("web.dashboard.warningError")" Width="180px" MinWidth="100px" MaxWidth="440px" />
                 </Columns>
@@ -108,10 +119,34 @@
                                     <div class="metadata-detail-section">
                                         <div class="metadata-detail-section-title">@AppText.T("web.metadata.detail.currentSection")</div>
                                         <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.dashboard.fileLabel")</span> <span class="metadata-detail-value">@SelectedRecord.InputFile</span></div>
-                                        <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.dashboard.statusLabel")</span> <span class="metadata-detail-value">@SelectedRecord.Status</span></div>
+                                        <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.dashboard.statusLabel")</span> <span class="metadata-detail-value">@Utils.GetMetadataStatusText(SelectedRecord.Status)</span></div>
                                         <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.detail.size")</span> <span class="metadata-detail-value">@Utils.FormatSize(SelectedRecord.FileSize)</span></div>
                                         <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.detail.video")</span> <span class="metadata-detail-value">@BuildVideoSummary(SelectedRecord, false)</span></div>
                                         <MetadataTrackSummaryTableComponent Record="@SelectedRecord" Simulated="false" />
+                                        @if (SelectedRecord.FileInfo != null && SelectedRecord.FileInfo.Attachments != null && SelectedRecord.FileInfo.Attachments.Count > 0)
+                                        {
+                                            <div class="metadata-attachments">
+                                                <div class="detail-label">@AppText.F("web.metadata.detail.attachments", SelectedRecord.FileInfo.Attachments.Count)</div>
+                                                @if (GetCoverAttachment(SelectedRecord) != null)
+                                                {
+                                                    <img class="metadata-attachment-cover" src="@("/api/metadata-attachment/" + SelectedIndex + "/" + GetCoverAttachment(SelectedRecord).Id)" alt="@GetCoverAttachment(SelectedRecord).FileName" />
+                                                }
+                                                @foreach (MkvMetadataAttachmentInfo attachment in SelectedRecord.FileInfo.Attachments)
+                                                {
+                                                    <div class="metadata-detail-line"><span class="metadata-detail-value">@attachment.FileName</span> <span class="detail-label">@attachment.MimeType @Utils.FormatSize(attachment.Size)</span></div>
+                                                }
+                                            </div>
+                                        }
+                                        @if (SelectedRecord.FileInfo != null && SelectedRecord.FileInfo.Chapters != null && SelectedRecord.FileInfo.Chapters.Count > 0)
+                                        {
+                                            <div class="metadata-attachments">
+                                                <div class="detail-label">@AppText.F("web.metadata.mapped.chapters", SelectedRecord.FileInfo.Chapters.Count)</div>
+                                                @foreach (MkvMetadataChapterInfo chapter in SelectedRecord.FileInfo.Chapters)
+                                                {
+                                                    <div class="metadata-detail-line"><span class="metadata-chapter-time">@TimeSpan.FromMilliseconds(chapter.StartMs).ToString(@"hh\:mm\:ss")</span> <span class="metadata-detail-value">@chapter.Name</span></div>
+                                                }
+                                            </div>
+                                        }
                                         <RadzenButton Text="@AppText.T("web.metadata.detail.openMappedInfo")" Icon="open_in_new" Variant="Variant.Outlined" Click="@(() => OnShowMappedInfo.InvokeAsync(false))" />
                                     </div>
                                 </div>
@@ -124,10 +159,29 @@
                                         {
                                             <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.rulesLabel")</span> <span class="metadata-detail-value">@SelectedRecord.MatchCount</span></div>
                                             <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.changesLabel")</span> <span class="metadata-detail-value">@SelectedRecord.ChangeCount</span></div>
-                                            <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.executionLabel")</span> <span class="metadata-detail-value">@SelectedRecord.ExecutionMode</span></div>
+                                            <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.executionLabel")</span> <span class="metadata-detail-value">@Utils.GetMetadataExecutionModeText(SelectedRecord.ExecutionMode)</span></div>
                                             <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.outputLabel")</span> <span class="metadata-detail-value">@MetadataExecutionService.BuildOutputFile(SelectedRecord, Options.Metadata)</span></div>
                                             <MetadataTrackSummaryTableComponent Record="@SelectedRecord" Simulated="true" />
+                                            @if (GetContainerChanges(SelectedRecord).Count > 0)
+                                            {
+                                                <div class="metadata-attachments">
+                                                    <div class="detail-label">@AppText.T("web.metadata.detail.containerChanges")</div>
+                                                    @foreach (MkvMetadataChange change in GetContainerChanges(SelectedRecord))
+                                                    {
+                                                        <div class="metadata-detail-line"><span class="metadata-detail-value">@change.Message</span></div>
+                                                        @if (change.OperationType == MkvMetadataOperationType.SetTrackOrder)
+                                                        {
+                                                            <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.detail.orderBefore")</span> <span class="metadata-detail-value">@change.BeforeValue</span></div>
+                                                            <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.detail.orderAfter")</span> <span class="metadata-detail-value">@change.AfterValue</span></div>
+                                                        }
+                                                    }
+                                                </div>
+                                            }
                                             <RadzenButton Text="@AppText.T("web.metadata.detail.openSimulationDetail")" Icon="open_in_new" Variant="Variant.Outlined" Click="@(() => OnShowMappedInfo.InvokeAsync(true))" />
+                                        }
+                                        else if (SelectedRecord.AnalysisStatus == MkvMetadataAnalysisStatus.Applied)
+                                        {
+                                            <div>@AppText.F("web.metadata.detail.applied", SelectedRecord.ChangeCount)</div>
                                         }
                                         else
                                         {
@@ -175,6 +229,58 @@
     [Parameter] public int SelectedIndex { get; set; }
 
     /// <summary>
+    /// Restituisce le modifiche di contenitore che nessuna tabella per traccia mostra
+    /// </summary>
+    /// <param name="record">Record metadata</param>
+    /// <returns>Modifiche su allegati, capitoli e ordine delle tracce</returns>
+    private List<MkvMetadataChange> GetContainerChanges(MkvMetadataRecord record)
+    {
+        List<MkvMetadataChange> result = new List<MkvMetadataChange>();
+
+        for (int i = 0; record.Changes != null && i < record.Changes.Count; i++)
+        {
+            MkvMetadataOperationType type = record.Changes[i].OperationType;
+            if (type == MkvMetadataOperationType.SetAttachment || type == MkvMetadataOperationType.DeleteAttachment ||
+                type == MkvMetadataOperationType.RenameChapters || type == MkvMetadataOperationType.ClearChapters ||
+                type == MkvMetadataOperationType.SetTrackOrder)
+            {
+                result.Add(record.Changes[i]);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Restituisce l'allegato che vale come copertina, null se non c'e'
+    /// </summary>
+    /// <param name="record">Record metadata</param>
+    /// <returns>Allegato copertina</returns>
+    private MkvMetadataAttachmentInfo GetCoverAttachment(MkvMetadataRecord record)
+    {
+        List<MkvMetadataAttachmentInfo> attachments = record.FileInfo != null ? record.FileInfo.Attachments : null;
+        MkvMetadataAttachmentInfo fallback = null;
+
+        for (int i = 0; attachments != null && i < attachments.Count; i++)
+        {
+            string name = (attachments[i].FileName != null ? attachments[i].FileName : "").ToLowerInvariant();
+            bool isImage = (attachments[i].MimeType != null ? attachments[i].MimeType : "").StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+            if (!isImage)
+                continue;
+
+            // La convenzione Matroska nomina la copertina cover.*, e small_cover.* e'
+            // solo la sua miniatura: se c'e' quella grande vince lei
+            if (name.StartsWith("cover.", StringComparison.Ordinal))
+                return attachments[i];
+
+            if (fallback == null)
+                fallback = attachments[i];
+        }
+
+        return fallback;
+    }
+
+    /// <summary>
     /// Costruisce il riepilogo tracce
     /// </summary>
     [Parameter] public Func<MkvMetadataRecord, string> TrackSummaryBuilder { get; set; }
@@ -200,6 +306,7 @@
     [Parameter] public EventCallback OnBrowseOutput { get; set; }
     [Parameter] public EventCallback OnToggleRecursive { get; set; }
     [Parameter] public EventCallback OnTogglePreserveFolders { get; set; }
+    [Parameter] public EventCallback OnToggleOverwriteOutput { get; set; }
     [Parameter] public EventCallback<int> OnRowSelected { get; set; }
     [Parameter] public EventCallback<bool> OnShowMappedInfo { get; set; }
 

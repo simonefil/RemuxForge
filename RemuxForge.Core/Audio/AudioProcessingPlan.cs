@@ -266,7 +266,7 @@ namespace RemuxForge.Core.Audio
         public int EndFillMs { get; set; }
 
         /// <summary>
-        /// Durata source usata per limitare il fill di coda
+        /// Durata video Source autorevole per il fill di coda
         /// </summary>
         public int SourceDurationMs { get; set; }
 

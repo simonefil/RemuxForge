@@ -30,7 +30,46 @@ namespace RemuxForge.Core.Models
         Stale,
 
         /// <summary>Errore analisi</summary>
-        Error
+        Error,
+
+        /// <summary>Piano già eseguito su questo file</summary>
+        Applied
+    }
+
+    /// <summary>
+    /// Stato operativo di un record metadata
+    /// </summary>
+    public enum MkvMetadataStatus
+    {
+        /// <summary>Trovato, non ancora letto</summary>
+        Pending,
+
+        /// <summary>Letto da MediaInfo</summary>
+        Scanned,
+
+        /// <summary>Analisi della pipeline in corso</summary>
+        Analyzing,
+
+        /// <summary>Analizzato, pronto da applicare</summary>
+        Analyzed,
+
+        /// <summary>Analisi obsoleta dopo un cambio di configurazione</summary>
+        Stale,
+
+        /// <summary>Applicazione in corso</summary>
+        Running,
+
+        /// <summary>Applicato</summary>
+        Completed,
+
+        /// <summary>Simulato senza scritture</summary>
+        DryRun,
+
+        /// <summary>Errore</summary>
+        Error,
+
+        /// <summary>Saltato per un conflitto sull'output</summary>
+        Skipped
     }
 
     /// <summary>
@@ -69,6 +108,7 @@ namespace RemuxForge.Core.Models
             this.OutputDir = "";
             this.Recursive = true;
             this.PreserveFolderStructure = true;
+            this.OverwriteOutput = false;
             this.DryRun = false;
         }
 
@@ -105,6 +145,11 @@ namespace RemuxForge.Core.Models
         /// Mantiene struttura relativa con output path ricorsivo
         /// </summary>
         public bool PreserveFolderStructure { get; set; }
+
+        /// <summary>
+        /// Sovrascrive i file già presenti nella cartella di output
+        /// </summary>
+        public bool OverwriteOutput { get; set; }
 
         /// <summary>
         /// Analizza senza eseguire scritture
@@ -611,6 +656,13 @@ namespace RemuxForge.Core.Models
             this.TagTarget = MkvMetadataTagTarget.Current;
             this.ClearTagsConfirmed = false;
             this.ExclusiveGroup = MkvMetadataExclusiveGroup.AllInScope;
+            this.AttachmentSourcePath = "";
+            this.AttachmentName = "";
+            this.AttachmentMimeType = "";
+            this.ChapterNamePattern = "";
+            this.TrackOrderKinds = "video,audio,subtitles";
+            this.TrackOrderLanguages = "";
+            this.TagTargetTypeValue = MetadataTagTargetLevels.EPISODE;
         }
 
         #endregion
@@ -652,6 +704,41 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public MkvMetadataExclusiveGroup ExclusiveGroup { get; set; }
 
+        /// <summary>
+        /// Percorso del file da allegare per SetAttachment
+        /// </summary>
+        public string AttachmentSourcePath { get; set; }
+
+        /// <summary>
+        /// Nome con cui l'allegato viene scritto nel contenitore
+        /// </summary>
+        public string AttachmentName { get; set; }
+
+        /// <summary>
+        /// Tipo MIME dell'allegato, dedotto dall'estensione se vuoto
+        /// </summary>
+        public string AttachmentMimeType { get; set; }
+
+        /// <summary>
+        /// Pattern con cui rinominare i capitoli, con i segnaposto {n} e {name}
+        /// </summary>
+        public string ChapterNamePattern { get; set; }
+
+        /// <summary>
+        /// Ordine dei tipi di traccia, separati da virgola
+        /// </summary>
+        public string TrackOrderKinds { get; set; }
+
+        /// <summary>
+        /// Priorità delle lingue dentro ogni tipo, separate da virgola
+        /// </summary>
+        public string TrackOrderLanguages { get; set; }
+
+        /// <summary>
+        /// Livello di target Matroska con cui scrivere il tag: 70 collezione, 60 stagione, 50 episodio, 30 traccia
+        /// </summary>
+        public int TagTargetTypeValue { get; set; }
+
         #endregion
     }
 
@@ -677,7 +764,17 @@ namespace RemuxForge.Core.Models
         /// <summary>Svuota un campo tag</summary>
         ClearTagField,
         /// <summary>Elimina i tag nello scope</summary>
-        ClearTags
+        ClearTags,
+        /// <summary>Aggiunge o sostituisce un allegato</summary>
+        SetAttachment,
+        /// <summary>Elimina un allegato</summary>
+        DeleteAttachment,
+        /// <summary>Rinomina i capitoli con un pattern</summary>
+        RenameChapters,
+        /// <summary>Elimina il blocco capitoli</summary>
+        ClearChapters,
+        /// <summary>Riordina le tracce per criterio</summary>
+        SetTrackOrder
     }
 
     /// <summary>
@@ -724,14 +821,13 @@ namespace RemuxForge.Core.Models
         {
             this.InputFile = "";
             this.RelativeFolder = "";
-            this.Status = "Pending";
+            this.Status = MkvMetadataStatus.Pending;
             this.ErrorMessage = "";
             this.AnalysisStatus = MkvMetadataAnalysisStatus.NotAnalyzed;
             this.ExecutionMode = MkvMetadataExecutionMode.NoOp;
             this.FileInfo = new MkvMetadataFileInfo();
             this.OriginalFileInfo = new MkvMetadataFileInfo();
             this.Changes = new List<MkvMetadataChange>();
-            this.CommandPreview = "";
         }
 
         #endregion
@@ -754,9 +850,9 @@ namespace RemuxForge.Core.Models
         public long FileSize { get; set; }
 
         /// <summary>
-        /// Stato testuale
+        /// Stato operativo corrente, tradotto al momento del render
         /// </summary>
-        public string Status { get; set; }
+        public MkvMetadataStatus Status { get; set; }
 
         /// <summary>
         /// Messaggio errore
@@ -798,11 +894,6 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public List<MkvMetadataChange> Changes { get; set; }
 
-        /// <summary>
-        /// Anteprima comando/piano esecuzione
-        /// </summary>
-        public string CommandPreview { get; set; }
-
         #endregion
     }
 
@@ -828,7 +919,14 @@ namespace RemuxForge.Core.Models
             this.BeforeValue = "";
             this.AfterValue = "";
             this.OperationType = MkvMetadataOperationType.SetField;
+            this.RuleIndex = -1;
             this.RequiresRemux = false;
+            this.AttachmentName = "";
+            this.AttachmentSourcePath = "";
+            this.AttachmentMimeType = "";
+            this.Chapters = new List<MkvMetadataChapterInfo>();
+            this.TrackOrder = new List<string>();
+            this.TagTargetTypeValue = MetadataTagTargetLevels.EPISODE;
             this.Message = "";
         }
 
@@ -840,6 +938,11 @@ namespace RemuxForge.Core.Models
         /// Descrizione regola che ha prodotto la modifica
         /// </summary>
         public string RuleDescription { get; set; }
+
+        /// <summary>
+        /// Indice della regola che ha prodotto la modifica, -1 se sconosciuto
+        /// </summary>
+        public int RuleIndex { get; set; }
 
         /// <summary>
         /// Scope modifica
@@ -890,6 +993,36 @@ namespace RemuxForge.Core.Models
         /// True se richiede remux
         /// </summary>
         public bool RequiresRemux { get; set; }
+
+        /// <summary>
+        /// Nome dell'allegato coinvolto, per le operazioni sugli allegati
+        /// </summary>
+        public string AttachmentName { get; set; }
+
+        /// <summary>
+        /// Percorso del file da allegare
+        /// </summary>
+        public string AttachmentSourcePath { get; set; }
+
+        /// <summary>
+        /// Tipo MIME con cui scrivere l'allegato
+        /// </summary>
+        public string AttachmentMimeType { get; set; }
+
+        /// <summary>
+        /// Capitoli come devono risultare dopo la modifica, vuoto se il blocco va eliminato
+        /// </summary>
+        public List<MkvMetadataChapterInfo> Chapters { get; set; }
+
+        /// <summary>
+        /// Selector logici nell'ordine in cui le tracce vanno scritte
+        /// </summary>
+        public List<string> TrackOrder { get; set; }
+
+        /// <summary>
+        /// Livello di target Matroska del tag scritto
+        /// </summary>
+        public int TagTargetTypeValue { get; set; }
 
         /// <summary>
         /// Messaggio descrittivo
@@ -957,6 +1090,110 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
+    /// Allegato presente nel contenitore MKV
+    /// </summary>
+    public class MkvMetadataAttachmentInfo
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public MkvMetadataAttachmentInfo()
+        {
+            this.FileName = "";
+            this.MimeType = "";
+            this.Description = "";
+            this.Uid = "";
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Identificativo mkvmerge dell'allegato, 1-based
+        /// </summary>
+        public int Id { get; set; }
+
+        /// <summary>
+        /// Nome del file allegato
+        /// </summary>
+        public string FileName { get; set; }
+
+        /// <summary>
+        /// Tipo MIME dichiarato
+        /// </summary>
+        public string MimeType { get; set; }
+
+        /// <summary>
+        /// Descrizione dell'allegato
+        /// </summary>
+        public string Description { get; set; }
+
+        /// <summary>
+        /// Dimensione in byte
+        /// </summary>
+        public long Size { get; set; }
+
+        /// <summary>
+        /// UID dell'allegato
+        /// </summary>
+        public string Uid { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Capitolo presente nel contenitore MKV
+    /// </summary>
+    public class MkvMetadataChapterInfo
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public MkvMetadataChapterInfo()
+        {
+            this.Uid = "";
+            this.Name = "";
+            this.Language = "";
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// UID del capitolo, conservato per riscrivere il blocco senza inventarne di nuovi
+        /// </summary>
+        public string Uid { get; set; }
+
+        /// <summary>
+        /// Istante di inizio in millisecondi
+        /// </summary>
+        public double StartMs { get; set; }
+
+        /// <summary>
+        /// Istante di fine in millisecondi, zero se non dichiarato
+        /// </summary>
+        public double EndMs { get; set; }
+
+        /// <summary>
+        /// Nome del capitolo
+        /// </summary>
+        public string Name { get; set; }
+
+        /// <summary>
+        /// Lingua del nome, in forma ISO 639-2
+        /// </summary>
+        public string Language { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
     /// Informazioni metadata lette da MediaInfo
     /// </summary>
     public class MkvMetadataFileInfo
@@ -976,8 +1213,11 @@ namespace RemuxForge.Core.Models
             this.RawGeneral = new Dictionary<string, string>();
             this.Fields = new Dictionary<string, string>();
             this.Tags = new Dictionary<string, string>();
+            this.LeveledTags = new Dictionary<string, string>();
             this.Tracks = new List<MkvMetadataTrackInfo>();
             this.OtherStreams = new List<MkvMetadataTrackInfo>();
+            this.Attachments = new List<MkvMetadataAttachmentInfo>();
+            this.Chapters = new List<MkvMetadataChapterInfo>();
         }
 
         #endregion
@@ -988,6 +1228,16 @@ namespace RemuxForge.Core.Models
         /// Percorso file
         /// </summary>
         public string FilePath { get; set; }
+
+        /// <summary>
+        /// Allegati presenti nel contenitore
+        /// </summary>
+        public List<MkvMetadataAttachmentInfo> Attachments { get; set; }
+
+        /// <summary>
+        /// Capitoli presenti nel contenitore
+        /// </summary>
+        public List<MkvMetadataChapterInfo> Chapters { get; set; }
 
         /// <summary>
         /// Nome file
@@ -1028,6 +1278,11 @@ namespace RemuxForge.Core.Models
         /// Tag globali MKV gestiti da UI
         /// </summary>
         public Dictionary<string, string> Tags { get; set; }
+
+        /// <summary>
+        /// Tag di contenitore scritti a un livello diverso da 50, indicizzati come livello:NOME
+        /// </summary>
+        public Dictionary<string, string> LeveledTags { get; set; }
 
         /// <summary>
         /// Tracce

@@ -5,10 +5,21 @@
 @inject ThemeService ThemeService
 @implements IAsyncDisposable
 
-@if (_showEditMapEditor && _editMapRecord != null)
+@if (_showSplitEditor && _splitEditorRecord != null)
+{
+    <SplitEditorPageComponent RecordIndex="@_splitEditorIndex"
+                              Record="@_splitEditorRecord"
+                              Override="@_splitEditorOverride"
+                              InitialSegmentNum="@_splitEditorSegmentNum"
+                              OnClose="CloseSplitEditor"
+                              OnApply="ApplySplitOverride"
+                              OnReset="ClearSplitOverride" />
+}
+else if (_showEditMapEditor && _editMapRecord != null)
 {
     <EditMapEditorPageComponent RecordIndex="@_editMapRecordIndex"
                                 Record="@_editMapRecord"
+                                CurrentOptions="@Orchestrator.CurrentOptions"
                                 IsBusy="@Orchestrator.IsBusy"
                                 OnClose="CloseEditMapEditor"
                                 OnApply="ApplyEditMap" />
@@ -64,6 +75,7 @@ else
                                     OnBrowseOutput="@(() => BrowseMetadataPath(1, false, true))"
                                     OnToggleRecursive="ToggleMetadataRecursive"
                                     OnTogglePreserveFolders="ToggleMetadataPreserveFolderStructure"
+                                    OnToggleOverwriteOutput="ToggleMetadataOverwriteOutput"
                                     OnRowSelected="SelectMetadataRow"
                                                 OnShowMappedInfo="ShowMetadataMappedInfo" />
                 }
@@ -72,14 +84,21 @@ else
                     <SplitWorkspaceComponent Records="@_splitRecords"
                                  SelectedRecord="@_selectedSplitRecord"
                                  SelectedIndex="@SplitOrchestrator.SelectedIndex"
-                                 OnRowSelected="SelectSplitRow" />
+                                 SelectedIndices="@_splitSelection.Indices"
+                                 SelectedSegmentNum="@_selectedSplitSegmentNum"
+                                 IsBusy="@SplitOrchestrator.IsBusy"
+                                 OnRowSelected="SelectSplitRowWithModifiers"
+                                 OnContextMenu="ShowSplitContextMenu"
+                                 OnAnalyze="DoAnalyzeSplitSelected"
+                                 OnSegmentSelected="SelectSplitSegment"
+                                 OnOpenEditor="OpenSplitEditor" />
                 }
                 else
                 {
                     <RemuxWorkspaceComponent Records="@_records"
                                  SelectedRecord="@_selectedRecord"
                                  SelectedIndex="@Orchestrator.SelectedIndex"
-                                 SelectedIndices="@_selectedIndices"
+                                 SelectedIndices="@_selection.Indices"
                                  Options="@Orchestrator.CurrentOptions"
                                  JsModule="@_jsModule"
                                  IsBusy="@Orchestrator.IsBusy"

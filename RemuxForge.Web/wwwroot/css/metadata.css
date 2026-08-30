@@ -1019,3 +1019,100 @@ tr.metadata-diff-removed > td {
     max-height: none;
     font-size: var(--rz-text-body2-font-size);
 }
+
+/* Anteprima del preset sul file di riferimento */
+.metadata-preview-file-label {
+    margin-left: 1rem;
+}
+
+.metadata-preview-file-select {
+    max-width: 20rem;
+}
+
+.metadata-preview-summary {
+    display: flex;
+    gap: 1rem;
+    align-items: baseline;
+    margin-bottom: .5rem;
+    font-size: .85rem;
+    opacity: .9;
+}
+
+.metadata-preview-empty {
+    font-size: .85rem;
+    opacity: .7;
+    padding: .35rem 0;
+}
+
+.metadata-preview-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .82rem;
+}
+
+.metadata-preview-table th,
+.metadata-preview-table td {
+    text-align: left;
+    padding: .2rem .5rem;
+    border-bottom: 1px solid var(--rf-border, rgba(128, 128, 128, .25));
+    vertical-align: top;
+}
+
+.metadata-preview-before {
+    opacity: .65;
+    text-decoration: line-through;
+}
+
+.metadata-preview-after {
+    font-weight: 600;
+}
+
+.metadata-attachments {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 6px;
+}
+
+.metadata-attachment-cover {
+    max-width: 110px;
+    max-height: 160px;
+    align-self: flex-start;
+    border: 1px solid var(--rz-border-normal);
+    border-radius: 3px;
+    margin: 4px 0;
+}
+
+.metadata-chapter-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.metadata-chapter-toolbar .metadata-chapter-pattern {
+    flex: 0 0 240px;
+    width: 240px;
+}
+
+.metadata-chapter-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.metadata-chapter-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.metadata-chapter-time {
+    font-family: var(--rz-text-code-font-family, monospace);
+    opacity: 0.75;
+    min-width: 72px;
+}
+
+.metadata-chapter-name {
+    flex: 1;
+}

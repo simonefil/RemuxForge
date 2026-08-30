@@ -32,6 +32,7 @@ namespace RemuxForge.Core.Metadata
             clone.RawGeneral = CloneDictionary(source.RawGeneral);
             clone.Fields = CloneDictionary(source.Fields);
             clone.Tags = CloneDictionary(source.Tags);
+            clone.LeveledTags = CloneDictionary(source.LeveledTags);
             clone.Tracks = new List<MkvMetadataTrackInfo>();
             for (int i = 0; i < source.Tracks.Count; i++)
             {
@@ -44,6 +45,8 @@ namespace RemuxForge.Core.Metadata
                 clone.OtherStreams.Add(CloneTrackInfo(source.OtherStreams[i]));
             }
 
+            clone.Attachments = MetadataContainerReader.CloneAttachments(source.Attachments);
+            clone.Chapters = MetadataContainerReader.CloneChapters(source.Chapters);
             return clone;
         }
 

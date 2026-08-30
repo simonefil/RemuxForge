@@ -12,17 +12,8 @@ namespace RemuxForge.Web.Services
     /// <summary>
     /// Orchestratore WebUI per modalità Metadata
     /// </summary>
-    public class MetadataOrchestrator
+    public class MetadataOrchestrator : MediaOrchestratorBase
     {
-        #region Costanti
-
-        /// <summary>
-        /// Limite massimo dimensione log in caratteri
-        /// </summary>
-        private const int LOG_MAX_LENGTH = 500000;
-
-        #endregion
-
         #region Variabili di classe
 
         /// <summary>
@@ -35,54 +26,24 @@ namespace RemuxForge.Web.Services
         /// </summary>
         private List<MkvMetadataRecord> _records;
 
-        /// <summary>
-        /// Lock per accesso thread-safe allo stato
-        /// </summary>
-        private object _lock;
-
-        /// <summary>
-        /// Stato avanzamento operazione corrente
-        /// </summary>
-        private ProcessingProgressState _progress;
-
-        /// <summary>
-        /// True se è in corso un'operazione
-        /// </summary>
-        private volatile bool _isBusy;
-
-        /// <summary>
-        /// True se è stato richiesto lo stop cooperativo
-        /// </summary>
-        private volatile bool _stopRequested;
-
-        /// <summary>
-        /// Buffer log accumulato
-        /// </summary>
-        private string _logText;
-
-        /// <summary>
-        /// Indice record selezionato
-        /// </summary>
-        private int _selectedIndex;
-
         #endregion
 
         #region Eventi
 
         /// <summary>
-        /// Evento emesso per ogni messaggio di log
+        /// Evento emesso a fine analisi con i conteggi di file analizzati e falliti
         /// </summary>
-        public event Action<string> OnLog;
+        public event Action<int, int> OnAnalysisCompleted;
 
         /// <summary>
-        /// Evento emesso quando i record vengono aggiornati
+        /// Evento emesso a fine applicazione con i conteggi di file scritti e falliti
         /// </summary>
-        public event Action OnRecordsChanged;
+        public event Action<int, int> OnApplyCompleted;
 
         /// <summary>
-        /// Evento emesso quando cambia lo stato avanzamento
+        /// Evento emesso quando un'operazione non parte o si interrompe per un errore globale
         /// </summary>
-        public event Action OnProgressChanged;
+        public event Action<string> OnOperationFailed;
 
         #endregion
 
@@ -91,17 +52,11 @@ namespace RemuxForge.Web.Services
         /// <summary>
         /// Costruttore
         /// </summary>
-        public MetadataOrchestrator()
+        public MetadataOrchestrator() : base(AppText.T("web.metadata.ready"), true)
         {
             this._options = new Options();
             this._options.Mode = Options.MODE_METADATA;
             this._records = new List<MkvMetadataRecord>();
-            this._lock = new object();
-            this._progress = new ProcessingProgressState();
-            this._isBusy = false;
-            this._stopRequested = false;
-            this._logText = AppText.T("web.metadata.ready");
-            this._selectedIndex = -1;
         }
 
         #endregion
@@ -143,14 +98,14 @@ namespace RemuxForge.Web.Services
                 return false;
             }
 
-            lock (this._lock)
+            lock (this.StateLock)
             {
                 this._options = options;
                 this.MarkAnalysisStaleLocked();
             }
 
             this.AppendLog(AppText.T("web.metadata.configApplied"));
-            this.OnRecordsChanged?.Invoke();
+            this.NotifyRecordsChanged();
             return true;
         }
 
@@ -159,7 +114,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void Scan()
         {
-            if (this._isBusy)
+            if (this.BusyState)
                 return;
 
             Thread thread = new Thread(this.ScanWorker);
@@ -172,7 +127,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void AnalyzeAll()
         {
-            if (this._isBusy)
+            if (this.BusyState)
                 return;
 
             Thread thread = new Thread(this.AnalyzeAllWorker);
@@ -185,7 +140,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void ApplyAll()
         {
-            if (this._isBusy)
+            if (this.BusyState)
                 return;
 
             Thread thread = new Thread(() => this.ApplyWorker(-1));
@@ -199,7 +154,7 @@ namespace RemuxForge.Web.Services
         /// <param name="index">Indice record</param>
         public void ApplySelected(int index)
         {
-            if (this._isBusy)
+            if (this.BusyState)
                 return;
 
             Thread thread = new Thread(() => this.ApplyWorker(index));
@@ -217,10 +172,10 @@ namespace RemuxForge.Web.Services
             MetadataExecutionService tagReader;
             string mkvExtractPath;
 
-            if (this._isBusy)
+            if (this.BusyState)
                 return;
 
-            lock (this._lock)
+            lock (this.StateLock)
             {
                 if (index < 0 || index >= this._records.Count)
                     return;
@@ -233,7 +188,8 @@ namespace RemuxForge.Web.Services
                 mkvExtractPath = AppSettingsService.Instance.Settings.Tools.MkvExtractPath;
                 tagReader = new MetadataExecutionService("", "", mkvExtractPath);
                 tagReader.PopulateExistingTags(record);
-                this.OnRecordsChanged?.Invoke();
+                new MetadataContainerReader(AppSettingsService.Instance.Settings.Tools.MkvMergePath, mkvExtractPath).PopulateContainerInfo(record);
+                this.NotifyRecordsChanged();
             }
             catch (Exception ex)
             {
@@ -248,7 +204,7 @@ namespace RemuxForge.Web.Services
         /// <param name="changes">Modifiche manuali</param>
         public void ApplyManualChanges(int index, List<MkvMetadataChange> changes)
         {
-            if (this._isBusy)
+            if (this.BusyState)
                 return;
 
             Thread thread = new Thread(() => this.ApplyManualWorker(index, changes));
@@ -257,18 +213,59 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
+        /// Indica se l'applicazione richiede una conferma esplicita e ne descrive la portata
+        /// </summary>
+        /// <param name="selectedIndex">Indice record selezionato, oppure -1 per tutti i record</param>
+        /// <param name="fileCount">Numero di file che verranno scritti</param>
+        /// <param name="trackRemovalCount">Numero di tracce che verranno eliminate</param>
+        /// <param name="inPlace">True se i file sorgente vengono sovrascritti</param>
+        /// <returns>True se serve conferma</returns>
+        public bool NeedsApplyConfirmation(int selectedIndex, out int fileCount, out int trackRemovalCount, out bool inPlace)
+        {
+            MkvMetadataRecord record;
+
+            fileCount = 0;
+            trackRemovalCount = 0;
+            inPlace = this._options.Metadata.OutputPolicy == MkvMetadataOutputPolicy.Overwrite;
+
+            lock (this.StateLock)
+            {
+                for (int i = 0; i < this._records.Count; i++)
+                {
+                    if (selectedIndex >= 0 && i != selectedIndex)
+                        continue;
+
+                    record = this._records[i];
+                    if (record.AnalysisStatus != MkvMetadataAnalysisStatus.Analyzed || record.ExecutionMode == MkvMetadataExecutionMode.NoOp)
+                        continue;
+
+                    fileCount++;
+                    for (int j = 0; record.Changes != null && j < record.Changes.Count; j++)
+                    {
+                        if (record.Changes[j].OperationType == MkvMetadataOperationType.RemoveTrack)
+                            trackRemovalCount++;
+                    }
+                }
+            }
+
+            // La sovrascrittura non ha ritorno, e una rimozione di traccia non ce l'ha nemmeno
+            // scrivendo su un percorso di output: la traccia nel file prodotto non c'è più
+            return fileCount > 0 && (inPlace || trackRemovalCount > 0) && !this._options.Metadata.DryRun;
+        }
+
+        /// <summary>
         /// Pulisce stato corrente
         /// </summary>
         public void Clear()
         {
-            lock (this._lock)
+            lock (this.StateLock)
             {
                 this._records.Clear();
-                this._selectedIndex = -1;
+                this.SelectedIndexState = -1;
             }
 
             this.AppendLog(AppText.T("web.metadata.stateCleared"));
-            this.OnRecordsChanged?.Invoke();
+            this.NotifyRecordsChanged();
         }
 
         /// <summary>
@@ -276,17 +273,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void Stop()
         {
-            this._stopRequested = true;
-            this.AppendLog(AppText.T("web.metadata.stopRequested"));
-        }
-
-        /// <summary>
-        /// Scrive log
-        /// </summary>
-        /// <param name="message">Messaggio</param>
-        public void Log(string message)
-        {
-            this.AppendLog(message);
+            this.RequestStop(AppText.T("web.metadata.stopRequested"));
         }
 
         /// <summary>
@@ -295,7 +282,7 @@ namespace RemuxForge.Web.Services
         /// <returns>Record correnti</returns>
         public List<MkvMetadataRecord> GetRecords()
         {
-            lock (this._lock)
+            lock (this.StateLock)
             {
                 return new List<MkvMetadataRecord>(this._records);
             }
@@ -334,16 +321,20 @@ namespace RemuxForge.Web.Services
 
                 reader = new MetadataMediaInfoReader(mediaInfoPath);
                 scanner = new MetadataFileScanner(reader);
-                records = scanner.Scan(this._options.Metadata.SourcePath, this._options.Metadata.Recursive);
+                records = scanner.Scan(
+                    this._options.Metadata.SourcePath,
+                    this._options.Metadata.Recursive,
+                    (file, count) => this.ReportScanProgress(file, count),
+                    () => this.StopRequested);
 
-                lock (this._lock)
+                lock (this.StateLock)
                 {
                     this._records = records;
-                    this._selectedIndex = records.Count > 0 ? 0 : -1;
+                    this.SelectedIndexState = records.Count > 0 ? 0 : -1;
                 }
 
                 this.AppendLog(AppText.F("web.metadata.scanCompleted", records.Count));
-                this.OnRecordsChanged?.Invoke();
+                this.NotifyRecordsChanged();
             }
             catch (Exception ex)
             {
@@ -364,7 +355,12 @@ namespace RemuxForge.Web.Services
             MkvMetadataPresetValidationResult validation;
             MetadataPipelineEvaluator evaluator = new MetadataPipelineEvaluator();
             MetadataExecutionService tagReader;
+            MetadataContainerReader containerReader;
+            MkvMetadataRecord record;
+            List<MkvMetadataRecord> targets;
             string mkvExtractPath;
+            int analyzedCount = 0;
+            int errorCount = 0;
 
             this.SetBusy(true, AppText.T("web.metadata.progress.analysis"));
             try
@@ -380,29 +376,49 @@ namespace RemuxForge.Web.Services
 
                 mkvExtractPath = AppSettingsService.Instance.Settings.Tools.MkvExtractPath;
                 tagReader = new MetadataExecutionService("", "", mkvExtractPath);
+                containerReader = new MetadataContainerReader(AppSettingsService.Instance.Settings.Tools.MkvMergePath);
+                targets = this.GetRecords();
 
-                lock (this._lock)
+                for (int i = 0; i < targets.Count; i++)
                 {
-                    for (int i = 0; i < this._records.Count; i++)
-                    {
-                        if (this._stopRequested)
-                            break;
+                    if (this.StopRequested)
+                        break;
 
-                        tagReader.PopulateExistingTags(this._records[i]);
-                        evaluator.AnalyzeRecord(this._records[i], preset, this._options.Metadata.OutputPolicy);
-                        this._records[i].CommandPreview = MetadataExecutionService.BuildCommandPreview(this._records[i], this._options.Metadata);
-                        this._records[i].Status = AppText.T("web.metadata.status.analyzed");
-                        this._records[i].ErrorMessage = "";
+                    record = targets[i];
+                    this.ReportProgress(i, targets.Count, Path.GetFileName(record.InputFile));
+
+                    // Il try sta dentro il ciclo: un file illeggibile va in errore da solo invece
+                    // di abortire l'analisi e marcare in errore anche i file sani
+                    try
+                    {
+                        record.Status = MkvMetadataStatus.Analyzing;
+                        tagReader.PopulateExistingTags(record);
+                        containerReader.PopulateContainerInfo(record);
+                        evaluator.AnalyzeRecord(record, preset, this._options.Metadata.OutputPolicy);
+                        record.Status = MkvMetadataStatus.Analyzed;
+                        record.ErrorMessage = "";
+                        analyzedCount++;
                     }
+                    catch (Exception ex)
+                    {
+                        errorCount++;
+                        record.AnalysisStatus = MkvMetadataAnalysisStatus.Error;
+                        record.Status = MkvMetadataStatus.Error;
+                        record.ErrorMessage = ex.Message;
+                        this.AppendLog(AppText.F("web.metadata.recordAnalysisError", Path.GetFileName(record.InputFile), ex.Message));
+                    }
+
+                    this.NotifyRecordsChanged();
                 }
 
-                this.AppendLog(AppText.T("web.metadata.analysisCompleted"));
-                this.OnRecordsChanged?.Invoke();
+                this.AppendLog(AppText.F("web.metadata.analysisCompletedCounts", analyzedCount, errorCount));
+                this.OnAnalysisCompleted?.Invoke(analyzedCount, errorCount);
+                this.NotifyRecordsChanged();
             }
             catch (Exception ex)
             {
-                this.MarkRecordsError(ex.Message);
                 this.AppendLog(AppText.F("web.metadata.analysisError", ex.Message));
+                this.OnOperationFailed?.Invoke(ex.Message);
             }
             finally
             {
@@ -418,52 +434,86 @@ namespace RemuxForge.Web.Services
         {
             MetadataExecutionService executor;
             MkvMetadataExecutionResult result;
+            List<MkvMetadataRecord> targets;
+            HashSet<string> skipped;
             string mkvMergePath;
             string mkvPropEditPath;
             string mkvExtractPath;
             int successCount = 0;
             int errorCount = 0;
+            int skippedCount = 0;
 
             this.SetBusy(true, selectedIndex >= 0 ? AppText.T("web.metadata.progress.applySelected") : AppText.T("web.metadata.progress.apply"));
             try
             {
-                this.ValidateOutputTargets(selectedIndex);
+                skipped = this.MarkOutputConflicts(selectedIndex);
 
                 mkvMergePath = AppSettingsService.Instance.Settings.Tools.MkvMergePath;
                 mkvPropEditPath = AppSettingsService.Instance.Settings.Tools.MkvPropEditPath;
                 mkvExtractPath = AppSettingsService.Instance.Settings.Tools.MkvExtractPath;
                 executor = new MetadataExecutionService(mkvMergePath, mkvPropEditPath, mkvExtractPath);
 
-                for (int i = 0; i < this._records.Count; i++)
+                targets = this.GetRecords();
+                for (int i = 0; i < targets.Count; i++)
                 {
                     if (selectedIndex >= 0 && i != selectedIndex)
                         continue;
 
-                    if (this._stopRequested)
+                    if (this.StopRequested)
                         break;
 
-                    if (this._records[i].AnalysisStatus != MkvMetadataAnalysisStatus.Analyzed)
+                    if (targets[i].AnalysisStatus != MkvMetadataAnalysisStatus.Analyzed)
                         continue;
 
-                    this.UpdateRecordStatus(i, AppText.T("web.metadata.status.running"), "");
-                    result = executor.Execute(this._records[i], this._options.Metadata);
+                    if (skipped.Contains(targets[i].InputFile))
+                    {
+                        skippedCount++;
+                        continue;
+                    }
+
+                    this.ReportProgress(i, targets.Count, Path.GetFileName(targets[i].InputFile));
+                    this.UpdateRecordStatus(i, MkvMetadataStatus.Running, "");
+
+                    // Il try sta dentro il ciclo: un file che esplode non deve fermare il lotto
+                    try
+                    {
+                        result = executor.Execute(targets[i], this._options.Metadata);
+                    }
+                    catch (Exception ex)
+                    {
+                        errorCount++;
+                        this.UpdateRecordStatus(i, MkvMetadataStatus.Error, ex.Message);
+                        this.AppendLog(AppText.F("web.metadata.recordApplyError", Path.GetFileName(targets[i].InputFile), ex.Message));
+                        continue;
+                    }
+
                     if (result.ExitCode == 0)
                     {
                         successCount++;
-                        this.UpdateRecordStatus(i, result.DryRun ? AppText.T("web.metadata.status.dryRun") : AppText.T("web.metadata.status.completed"), "");
+                        this.UpdateRecordStatus(i, result.DryRun ? MkvMetadataStatus.DryRun : MkvMetadataStatus.Completed, "");
+
+                        // Un dry-run non ha scritto niente e lascia il piano spendibile, e un NoOp
+                        // non ha toccato il file: consumare il piano vale solo per un'applicazione
+                        // vera, perche' rieseguirla su un file gia' modificato risolverebbe i
+                        // selector di traccia sul file nuovo, cancellando una traccia diversa
+                        if (!result.DryRun && targets[i].ExecutionMode != MkvMetadataExecutionMode.NoOp)
+                            this.MarkRecordApplied(i, executor);
                     }
                     else
                     {
                         errorCount++;
-                        this.UpdateRecordStatus(i, AppText.T("web.metadata.status.error"), result.ErrorMessage);
+                        this.UpdateRecordStatus(i, MkvMetadataStatus.Error, result.ErrorMessage);
+                        this.AppendLog(AppText.F("web.metadata.recordApplyError", Path.GetFileName(targets[i].InputFile), result.ErrorMessage));
                     }
                 }
 
-                this.AppendLog(AppText.F("web.metadata.applyCompleted", successCount, errorCount));
+                this.AppendLog(AppText.F("web.metadata.applyCompletedCounts", successCount, errorCount, skippedCount));
+                this.OnApplyCompleted?.Invoke(successCount, errorCount + skippedCount);
             }
             catch (Exception ex)
             {
                 this.AppendLog(AppText.F("web.metadata.applyError", ex.Message));
+                this.OnOperationFailed?.Invoke(ex.Message);
             }
             finally
             {
@@ -550,16 +600,21 @@ namespace RemuxForge.Web.Services
                         continue;
                     }
 
+                    // I capitoli si riscrivono in blocco e non hanno un campo da validare:
+                    // la lista che arriva dall'editor e' gia' quella da scrivere
+                    if (change.OperationType == MkvMetadataOperationType.RenameChapters || change.OperationType == MkvMetadataOperationType.ClearChapters)
+                        continue;
+
                     throw new InvalidOperationException(AppText.T("web.metadata.manualEdit.operationNotAllowed"));
                 }
 
-                lock (this._lock)
+                lock (this.StateLock)
                 {
                     if (selectedIndex < 0 || selectedIndex >= this._records.Count)
                         throw new InvalidOperationException(AppText.T("web.dashboard.noFileSelected"));
 
                     sourceRecord = this._records[selectedIndex];
-                    sourceRecord.Status = AppText.T("web.metadata.status.running");
+                    sourceRecord.Status = MkvMetadataStatus.Running;
                     sourceRecord.ErrorMessage = "";
 
                     manualRecord = new MkvMetadataRecord();
@@ -576,7 +631,7 @@ namespace RemuxForge.Web.Services
                     manualRecord.MatchCount = 0;
                 }
 
-                this.OnRecordsChanged?.Invoke();
+                this.NotifyRecordsChanged();
 
                 runtimeOptions = new MkvMetadataOptions();
                 runtimeOptions.SourcePath = this._options.Metadata.SourcePath;
@@ -599,7 +654,7 @@ namespace RemuxForge.Web.Services
                 result = executor.Execute(manualRecord, runtimeOptions);
                 if (result.ExitCode != 0)
                 {
-                    this.UpdateRecordStatus(selectedIndex, AppText.T("web.metadata.status.error"), result.ErrorMessage);
+                    this.UpdateRecordStatus(selectedIndex, MkvMetadataStatus.Error, result.ErrorMessage);
                     this.AppendLog(AppText.F("web.metadata.manualEdit.error", result.ErrorMessage));
                     return;
                 }
@@ -615,29 +670,29 @@ namespace RemuxForge.Web.Services
                     if (refreshedRecords.Count > 0)
                     {
                         executor.PopulateExistingTags(refreshedRecords[0]);
-                        refreshedRecords[0].Status = AppText.T("web.metadata.status.completed");
-                        lock (this._lock)
+                        refreshedRecords[0].Status = MkvMetadataStatus.Completed;
+                        lock (this.StateLock)
                         {
                             this._records[selectedIndex] = refreshedRecords[0];
                         }
 
-                        this.OnRecordsChanged?.Invoke();
+                        this.NotifyRecordsChanged();
                     }
                     else
                     {
-                        this.UpdateRecordStatus(selectedIndex, AppText.T("web.metadata.status.completed"), "");
+                        this.UpdateRecordStatus(selectedIndex, MkvMetadataStatus.Completed, "");
                     }
                 }
                 else
                 {
-                    this.UpdateRecordStatus(selectedIndex, AppText.T("web.metadata.status.completed"), "");
+                    this.UpdateRecordStatus(selectedIndex, MkvMetadataStatus.Completed, "");
                 }
 
                 this.AppendLog(AppText.F("web.metadata.manualEdit.completed", result.OutputFile));
             }
             catch (Exception ex)
             {
-                this.UpdateRecordStatus(selectedIndex, AppText.T("web.metadata.status.error"), ex.Message);
+                this.UpdateRecordStatus(selectedIndex, MkvMetadataStatus.Error, ex.Message);
                 this.AppendLog(AppText.F("web.metadata.manualEdit.error", ex.Message));
             }
             finally
@@ -647,47 +702,125 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
-        /// Valida che gli output previsti non collidano e non esistano già
+        /// Marca un record come già applicato e ne rilegge lo stato quando il file è stato modificato in place
+        /// </summary>
+        /// <param name="index">Indice record</param>
+        /// <param name="executor">Servizio di esecuzione usato per rileggere i tag</param>
+        private void MarkRecordApplied(int index, MetadataExecutionService executor)
+        {
+            MkvMetadataRecord record;
+            MetadataFileScanner scanner;
+            List<MkvMetadataRecord> refreshed;
+            string mediaInfoPath;
+
+            lock (this.StateLock)
+            {
+                if (index < 0 || index >= this._records.Count)
+                    return;
+
+                record = this._records[index];
+                record.AnalysisStatus = MkvMetadataAnalysisStatus.Applied;
+            }
+
+            if (this._options.Metadata.OutputPolicy != MkvMetadataOutputPolicy.Overwrite)
+            {
+                this.NotifyRecordsChanged();
+                return;
+            }
+
+            // In sovrascrittura il file su disco non è più quello letto da MediaInfo: senza
+            // rilettura il pannello continuerebbe a mostrare i valori di prima come se fossero attuali
+            try
+            {
+                mediaInfoPath = AppSettingsService.Instance.Settings.Tools.MediaInfoPath;
+                if (string.IsNullOrEmpty(mediaInfoPath))
+                    mediaInfoPath = "mediainfo";
+
+                scanner = new MetadataFileScanner(new MetadataMediaInfoReader(mediaInfoPath));
+                refreshed = scanner.Scan(record.InputFile, false);
+                if (refreshed.Count > 0)
+                {
+                    executor.PopulateExistingTags(refreshed[0]);
+                    refreshed[0].Status = record.Status;
+                    refreshed[0].AnalysisStatus = MkvMetadataAnalysisStatus.Applied;
+                    refreshed[0].MatchCount = record.MatchCount;
+                    refreshed[0].ChangeCount = record.ChangeCount;
+                    refreshed[0].ExecutionMode = record.ExecutionMode;
+
+                    lock (this.StateLock)
+                    {
+                        if (index < this._records.Count)
+                            this._records[index] = refreshed[0];
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                this.AppendLog(AppText.F("web.metadata.refreshError", ex.Message));
+            }
+
+            this.NotifyRecordsChanged();
+        }
+
+        /// <summary>
+        /// Marca i record il cui output è in conflitto e ne restituisce i file da saltare
         /// </summary>
         /// <param name="selectedIndex">Indice record selezionato, oppure -1 per tutti i record</param>
-        private void ValidateOutputTargets(int selectedIndex)
+        /// <returns>File di input da saltare</returns>
+        private HashSet<string> MarkOutputConflicts(int selectedIndex)
         {
-            Dictionary<string, string> targets = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            MkvMetadataRecord record;
-            string outputFile;
+            HashSet<string> skipped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            List<MkvMetadataRecord> candidates = new List<MkvMetadataRecord>();
+            List<MetadataOutputValidator.MetadataOutputConflict> conflicts;
+            List<MkvMetadataRecord> all = this.GetRecords();
+            string message;
 
-            if (this._options.Metadata.OutputPolicy != MkvMetadataOutputPolicy.OutputPath)
-                return;
-
-            for (int i = 0; i < this._records.Count; i++)
+            for (int i = 0; i < all.Count; i++)
             {
                 if (selectedIndex >= 0 && i != selectedIndex)
                     continue;
 
-                record = this._records[i];
-                if (record.AnalysisStatus != MkvMetadataAnalysisStatus.Analyzed || record.ExecutionMode == MkvMetadataExecutionMode.NoOp)
-                    continue;
-
-                outputFile = MetadataExecutionService.BuildOutputFile(record, this._options.Metadata);
-                if (targets.ContainsKey(outputFile))
-                    throw new InvalidOperationException(AppText.F("metadata.error.outputCollision", outputFile));
-
-                if (File.Exists(outputFile))
-                    throw new InvalidOperationException(AppText.F("metadata.error.outputExists", outputFile));
-
-                targets[outputFile] = record.InputFile;
+                candidates.Add(all[i]);
             }
+
+            conflicts = MetadataOutputValidator.Validate(candidates, this._options.Metadata);
+
+            // Un output in conflitto salta quel file soltanto: prima il primo conflitto
+            // abortiva l'intero lotto e nessun file veniva scritto
+            for (int i = 0; i < conflicts.Count; i++)
+            {
+                message = MetadataOutputValidator.DescribeConflict(conflicts[i]);
+                skipped.Add(conflicts[i].InputFile);
+                this.AppendLog(AppText.F("web.metadata.outputConflict", Path.GetFileName(conflicts[i].InputFile), message));
+
+                lock (this.StateLock)
+                {
+                    for (int j = 0; j < this._records.Count; j++)
+                    {
+                        if (!string.Equals(this._records[j].InputFile, conflicts[i].InputFile, StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        this._records[j].Status = MkvMetadataStatus.Skipped;
+                        this._records[j].ErrorMessage = message;
+                    }
+                }
+            }
+
+            if (conflicts.Count > 0)
+                this.NotifyRecordsChanged();
+
+            return skipped;
         }
 
         /// <summary>
         /// Aggiorna stato ed errore di un record
         /// </summary>
         /// <param name="index">Indice record</param>
-        /// <param name="status">Stato visualizzato</param>
+        /// <param name="status">Stato operativo</param>
         /// <param name="errorMessage">Messaggio di errore</param>
-        private void UpdateRecordStatus(int index, string status, string errorMessage)
+        private void UpdateRecordStatus(int index, MkvMetadataStatus status, string errorMessage)
         {
-            lock (this._lock)
+            lock (this.StateLock)
             {
                 if (index < 0 || index >= this._records.Count)
                     return;
@@ -696,26 +829,7 @@ namespace RemuxForge.Web.Services
                 this._records[index].ErrorMessage = errorMessage != null ? errorMessage : "";
             }
 
-            this.OnRecordsChanged?.Invoke();
-        }
-
-        /// <summary>
-        /// Segna tutti i record come errore analisi
-        /// </summary>
-        /// <param name="errorMessage">Messaggio di errore</param>
-        private void MarkRecordsError(string errorMessage)
-        {
-            lock (this._lock)
-            {
-                for (int i = 0; i < this._records.Count; i++)
-                {
-                    this._records[i].AnalysisStatus = MkvMetadataAnalysisStatus.Error;
-                    this._records[i].Status = AppText.T("web.metadata.status.error");
-                    this._records[i].ErrorMessage = errorMessage;
-                }
-            }
-
-            this.OnRecordsChanged?.Invoke();
+            this.NotifyRecordsChanged();
         }
 
         /// <summary>
@@ -728,45 +842,9 @@ namespace RemuxForge.Web.Services
                 if (this._records[i].AnalysisStatus == MkvMetadataAnalysisStatus.Analyzed)
                 {
                     this._records[i].AnalysisStatus = MkvMetadataAnalysisStatus.Stale;
-                    this._records[i].Status = AppText.T("web.metadata.status.stale");
+                    this._records[i].Status = MkvMetadataStatus.Stale;
                 }
             }
-        }
-
-        /// <summary>
-        /// Aggiorna stato busy e progress corrente
-        /// </summary>
-        /// <param name="busy">True se è in corso un'operazione</param>
-        /// <param name="operation">Descrizione operazione corrente</param>
-        private void SetBusy(bool busy, string operation)
-        {
-            this._stopRequested = false;
-            this._isBusy = busy;
-            this._progress.IsActive = busy;
-            this._progress.Operation = operation;
-            this._progress.CurrentStatus = busy ? operation : "";
-            this._progress.CurrentIndeterminate = busy;
-            this._progress.GlobalIndeterminate = busy;
-            this.OnProgressChanged?.Invoke();
-        }
-
-        /// <summary>
-        /// Aggiunge un messaggio al log interno
-        /// </summary>
-        /// <param name="message">Messaggio</param>
-        private void AppendLog(string message)
-        {
-            lock (this._lock)
-            {
-                if (!string.IsNullOrEmpty(this._logText))
-                    this._logText += Environment.NewLine;
-
-                this._logText += "[" + DateTime.Now.ToString("HH:mm:ss") + "] " + message;
-                if (this._logText.Length > LOG_MAX_LENGTH)
-                    this._logText = this._logText.Substring(this._logText.Length - LOG_MAX_LENGTH);
-            }
-
-            this.OnLog?.Invoke(message);
         }
 
         #endregion
@@ -781,54 +859,6 @@ namespace RemuxForge.Web.Services
             get
             {
                 return this._options;
-            }
-        }
-
-        /// <summary>
-        /// Stato busy
-        /// </summary>
-        public bool IsBusy
-        {
-            get
-            {
-                return this._isBusy;
-            }
-        }
-
-        /// <summary>
-        /// Log accumulato
-        /// </summary>
-        public string LogText
-        {
-            get
-            {
-                return this._logText;
-            }
-        }
-
-        /// <summary>
-        /// Stato progresso
-        /// </summary>
-        public ProcessingProgressState Progress
-        {
-            get
-            {
-                return this._progress;
-            }
-        }
-
-        /// <summary>
-        /// Indice selezionato
-        /// </summary>
-        public int SelectedIndex
-        {
-            get
-            {
-                return this._selectedIndex;
-            }
-            set
-            {
-                this._selectedIndex = value;
             }
         }
 

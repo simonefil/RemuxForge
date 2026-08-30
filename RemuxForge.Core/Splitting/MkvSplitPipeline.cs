@@ -50,19 +50,6 @@ namespace RemuxForge.Core.Splitting
             return result;
         }
 
-        /// <summary>
-        /// Esegue la pipeline split su un singolo file già risolto
-        /// </summary>
-        /// <param name="options">Opzioni globali</param>
-        /// <param name="inputFile">File da elaborare</param>
-        /// <param name="batch">True se parte di un batch</param>
-        /// <returns>Risultato per-file</returns>
-        public MkvSplitExecutionResult ExecuteFile(Options options, string inputFile, bool batch)
-        {
-            MkvSplitExternalTools.Instance.ResolveBinaries();
-            return this.ExecuteFileInternal(options, inputFile, batch);
-        }
-
         #endregion
 
         #region Metodi privati
@@ -74,7 +61,7 @@ namespace RemuxForge.Core.Splitting
         {
             MkvSplitExecutionResult result = new MkvSplitExecutionResult();
             MkvSplitOptions splitOptions;
-            List<MkvSplitSegment> segments;
+            MkvSplitPlan plan;
 
             result.InputFile = inputFile;
             try
@@ -82,8 +69,13 @@ namespace RemuxForge.Core.Splitting
                 splitOptions = CloneSplitOptions(options.Split);
                 splitOptions.InputFile = inputFile;
                 splitOptions.Batch = batch;
-                result.ExitCode = this.ExecuteSingle(splitOptions, out segments);
-                result.Segments = segments;
+                plan = new MkvSplitPlanner().BuildPlan(splitOptions, inputFile, null);
+                result.Segments = plan.Segments;
+                result.ExitCode = this.ExecutePlan(plan, splitOptions);
+                if (result.ExitCode != 0 && !plan.IsValid)
+                {
+                    result.ErrorMessage = plan.ErrorMessage;
+                }
                 if (result.ExitCode != 0 && string.IsNullOrEmpty(result.ErrorMessage))
                 {
                     result.ErrorMessage = AppText.T("split.error.generic");
@@ -132,181 +124,116 @@ namespace RemuxForge.Core.Splitting
         }
 
         /// <summary>
-        /// Esegue la pipeline completa su un singolo file
+        /// Esegue un piano già costruito, senza ricalcolare segmenti, snap o nomi
         /// </summary>
-        private int ExecuteSingle(MkvSplitOptions args, out List<MkvSplitSegment> resultSegments)
+        /// <param name="plan">Piano da eseguire</param>
+        /// <param name="args">Opzioni split del file</param>
+        /// <returns>Exit code 0/1</returns>
+        public int ExecutePlan(MkvSplitPlan plan, MkvSplitOptions args)
         {
-            string inputFile;
-            string sourceRaw;
-            string outputDir;
-            List<MkvSplitChapter> chapters;
-            double[] sourcePts;
-            int inputFrames;
-            double duration;
-            MkvSplitSegmentService segmentService;
             MkvSplitExecutor splitter;
-            (List<MkvSplitSegment> segments, MkvSplitMode mode) built;
-            List<MkvSplitSegment> segments;
-            MkvSplitMode mode;
-            MkvSplitVideoParams vp;
             MkvSplitCodec codec;
             List<string> headArgs;
-            string absInput;
-            bool canFastPath;
-            bool sameSource;
-            MkvSplitFrameRateMode frameRateMode = MkvSplitFrameRateMode.Unknown;
+            MkvSplitPlanner planner = new MkvSplitPlanner();
 
-            resultSegments = new List<MkvSplitSegment>();
-            inputFile = Path.GetFullPath(args.InputFile);
-            if (!File.Exists(inputFile))
+            ConsoleHelper.Write(LogSection.Split, LogLevel.Phase, AppText.F("split.input", plan.InputFile));
+            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.output", plan.OutputDir));
+            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.foundChapters", plan.Chapters.Count));
+            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.frameCount", plan.FrameCount));
+
+            planner.PrintPlan(plan);
+
+            if (!plan.IsValid)
             {
-                ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("split.fileNotFound", inputFile));
+                ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("split.plan.invalid", plan.ErrorMessage));
                 return 1;
             }
 
-            sourceRaw = !string.IsNullOrEmpty(args.SourceRaw) ? Path.GetFullPath(args.SourceRaw) : inputFile;
-            if (!File.Exists(sourceRaw))
-            {
-                ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("split.fileNotFound", sourceRaw));
-                return 1;
-            }
-
-            outputDir = !string.IsNullOrEmpty(args.OutputDir) ? args.OutputDir : Path.GetDirectoryName(inputFile);
-            Directory.CreateDirectory(outputDir);
-
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Phase, AppText.F("split.input", inputFile));
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.sourceRaw", sourceRaw));
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.output", outputDir));
-
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.T("split.extractingChapters"));
-            chapters = MkvSplitExternalTools.Instance.GetChapters(inputFile);
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.foundChapters", chapters.Count));
-
-            sourcePts = MkvSplitExternalTools.Instance.ExtractSourcePts(sourceRaw);
-            inputFrames = MkvSplitExternalTools.Instance.CountPackets(inputFile);
-            if (inputFrames != sourcePts.Length)
-            {
-                ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("split.frameCountMismatch", sourcePts.Length, inputFrames));
-                return 1;
-            }
-
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.frameCount", inputFrames));
-            duration = MkvSplitExternalTools.Instance.GetDuration(inputFile);
-
-            segmentService = new MkvSplitSegmentService();
-            segmentService.NormalizeShortcuts(args, duration, sourcePts.Length);
-            built = segmentService.Build(args, chapters, sourcePts, duration);
-            segments = built.segments;
-            mode = built.mode;
-            segmentService.ApplyNaming(segments, args, mode, inputFile);
-            resultSegments = segments;
-
-            vp = MkvSplitExternalTools.Instance.GetVideoParams(inputFile);
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.videoParams", vp.CodecName, vp.PixFmt, vp.ColorSpace, vp.ColorPrimaries, vp.ColorTransfer, vp.ColorRange));
-
-            absInput = Path.GetFullPath(inputFile);
-            foreach (MkvSplitSegment seg in segments)
-            {
-                string outPath = Path.GetFullPath(Path.Combine(outputDir, seg.File));
-                if (string.Equals(outPath, absInput, StringComparison.OrdinalIgnoreCase))
-                {
-                    ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("split.segmentWouldOverwriteInput", seg.Num, seg.File));
-                    return 1;
-                }
-            }
-
-            this.PrintSegments(segments);
             if (args.DryRun)
             {
                 ConsoleHelper.Write(LogSection.Split, LogLevel.Notice, AppText.T("split.dryRun"));
                 return 0;
             }
 
-            canFastPath = false;
-            sameSource = string.Equals(sourceRaw, inputFile, StringComparison.OrdinalIgnoreCase);
-            if (args.Snap != MkvSplitSnapMode.Off && sameSource)
-            {
-                frameRateMode = MkvSplitExternalTools.Instance.DetectFrameRateMode(inputFile);
-                ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.frameRateMode", frameRateMode));
-                if (frameRateMode == MkvSplitFrameRateMode.Unknown)
-                {
-                    ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.T("split.frameRateUnknown"));
-                    return 1;
-                }
-                canFastPath = true;
-            }
-            else if (args.Snap != MkvSplitSnapMode.Off && !sameSource)
-            {
-                ConsoleHelper.Write(LogSection.Split, LogLevel.Notice, AppText.T("split.fastPathDisabledSourceRaw"));
-            }
+            Directory.CreateDirectory(plan.OutputDir);
+            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.videoParams", plan.VideoParams.CodecName, plan.VideoParams.PixFmt, plan.VideoParams.ColorSpace, plan.VideoParams.ColorPrimaries, plan.VideoParams.ColorTransfer, plan.VideoParams.ColorRange));
 
             splitter = new MkvSplitExecutor();
-            if (canFastPath)
+            if (plan.UsesFastPath)
             {
-                return this.RunFastPath(args, segments, inputFile, sourcePts, outputDir, absInput, splitter, frameRateMode == MkvSplitFrameRateMode.Vfr);
+                ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.frameRateMode", plan.FrameRateMode));
+                return this.RunFastPath(args, plan, splitter);
             }
 
-            codec = ParseCodec(vp.CodecName);
-            headArgs = BuildHeadEncodeArgs(vp, codec);
-            return this.RunSlowPath(args, segments, inputFile, sourcePts, outputDir, absInput, splitter, headArgs, codec);
+            if (args.Snap != MkvSplitSnapMode.Off && plan.FrameRateMode == MkvSplitFrameRateMode.Unknown)
+            {
+                ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.T("split.frameRateUnknown"));
+                return 1;
+            }
+
+            if (!TryParseCodec(plan.VideoParams.CodecName, out codec))
+            {
+                throw new ArgumentException(AppText.F("split.unsupportedVideoCodec", plan.VideoParams.CodecName));
+            }
+
+            headArgs = BuildHeadEncodeArgs(plan.VideoParams, codec);
+            return this.RunSlowPath(args, plan, splitter, headArgs, codec);
         }
 
         /// <summary>
         /// Esegue fast path
         /// </summary>
-        private int RunFastPath(MkvSplitOptions args, List<MkvSplitSegment> segments, string inputFile, double[] sourcePts, string outputDir, string absInput, MkvSplitExecutor splitter, bool isVfr)
+        private int RunFastPath(MkvSplitOptions args, MkvSplitPlan plan, MkvSplitExecutor splitter)
         {
-            List<MkvSplitFrameInfo> keyFlags;
-            MkvSplitSegmentService segmentService;
             bool hasFlac;
 
-            hasFlac = MkvSplitExternalTools.Instance.HasFlacAudio(inputFile);
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Phase, AppText.F("split.fastPath", isVfr ? "VFR" : "CFR", hasFlac ? " + mkvmerge video / ffmpeg AV (FLAC)" : " + mkvmerge"));
+            hasFlac = MkvSplitExternalTools.Instance.HasFlacAudio(plan.InputFile);
+            ConsoleHelper.Write(LogSection.Split, LogLevel.Phase, AppText.F("split.fastPath", plan.FrameRateMode == MkvSplitFrameRateMode.Vfr ? "VFR" : "CFR", hasFlac ? " + mkvmerge video / ffmpeg AV (FLAC)" : " + mkvmerge"));
 
-            keyFlags = MkvSplitExternalTools.Instance.GetKeyFlags(inputFile);
-            segmentService = new MkvSplitSegmentService();
-            segmentService.ApplySnap(segments, keyFlags, sourcePts, args.Snap);
-
-            foreach (MkvSplitSegment seg in segments)
+            foreach (MkvSplitSegment seg in plan.Segments)
             {
-                if (!this.ProcessSegment(seg, outputDir, absInput, args.Force, tmp => splitter.SplitFast(seg, inputFile, Path.Combine(outputDir, seg.File), tmp, hasFlac)))
+                if (!this.ProcessSegment(seg, plan.OutputDir, plan.InputFile, args.Force, tmp => splitter.SplitFast(seg, plan.InputFile, Path.Combine(plan.OutputDir, seg.File), tmp, hasFlac)))
                 {
                     return 1;
                 }
             }
 
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Success, AppText.F("split.doneFastPath", segments.Count, outputDir));
+            ConsoleHelper.Write(LogSection.Split, LogLevel.Success, AppText.F("split.doneFastPath", plan.Segments.Count, plan.OutputDir));
             return 0;
         }
 
         /// <summary>
         /// Esegue slow path
         /// </summary>
-        private int RunSlowPath(MkvSplitOptions args, List<MkvSplitSegment> segments, string inputFile, double[] sourcePts, string outputDir, string absInput, MkvSplitExecutor splitter, List<string> headArgs, MkvSplitCodec codec)
+        private int RunSlowPath(MkvSplitOptions args, MkvSplitPlan plan, MkvSplitExecutor splitter, List<string> headArgs, MkvSplitCodec codec)
         {
-            string rawExt = codec == MkvSplitCodec.Hevc ? "h265" : "h264";
-            string rawFile = Path.Combine(outputDir, "_raw_temp." + rawExt);
+            string rawExt = RawExtension(codec);
+            string rawFile = Path.Combine(plan.OutputDir, "_raw_temp." + rawExt);
             List<MkvSplitFrameInfo> frameMap;
-            MkvSplitSegmentService segmentService;
+            int[] presentationToDecode;
 
             ConsoleHelper.Write(LogSection.Split, LogLevel.Phase, AppText.T("split.slowPath"));
             try
             {
                 ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.T("split.extractingRawVideo"));
-                MkvSplitExternalTools.Instance.ExtractRawTrack(inputFile, 0, rawFile);
+                MkvSplitExternalTools.Instance.ExtractRawTrack(plan.InputFile, 0, rawFile);
                 frameMap = MkvSplitExternalTools.Instance.GetFrameByteMap(rawFile);
-                if (frameMap.Count != sourcePts.Length)
+                if (frameMap.Count != plan.SourcePts.Length)
                 {
-                    ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("split.frameMapMismatch", frameMap.Count, sourcePts.Length));
+                    ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("split.frameMapMismatch", frameMap.Count, plan.SourcePts.Length));
                     return 1;
                 }
 
-                segmentService = new MkvSplitSegmentService();
-                segmentService.ApplySnap(segments, frameMap, sourcePts, args.Snap);
-
-                foreach (MkvSplitSegment seg in segments)
+                presentationToDecode = BuildPresentationToDecodeMap(plan.InputFile, frameMap.Count);
+                if (presentationToDecode == null)
                 {
-                    if (!this.ProcessSegment(seg, outputDir, absInput, args.Force, tmp => splitter.SplitSlow(seg, inputFile, rawFile, frameMap, sourcePts, headArgs, codec, Path.Combine(outputDir, seg.File), tmp)))
+                    ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("split.frameMapMismatch", frameMap.Count, plan.SourcePts.Length));
+                    return 1;
+                }
+
+                foreach (MkvSplitSegment seg in plan.Segments)
+                {
+                    if (!this.ProcessSegment(seg, plan.OutputDir, plan.InputFile, args.Force, tmp => splitter.SplitSlow(seg, plan.InputFile, rawFile, frameMap, plan.SourcePts, presentationToDecode, headArgs, codec, Path.Combine(plan.OutputDir, seg.File), tmp)))
                     {
                         return 1;
                     }
@@ -320,7 +247,7 @@ namespace RemuxForge.Core.Splitting
                 }
             }
 
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Success, AppText.F("split.done", segments.Count, outputDir));
+            ConsoleHelper.Write(LogSection.Split, LogLevel.Success, AppText.F("split.done", plan.Segments.Count, plan.OutputDir));
             return 0;
         }
 
@@ -335,6 +262,7 @@ namespace RemuxForge.Core.Splitting
 
             ConsoleHelper.Write(LogSection.Split, LogLevel.Phase, AppText.F("split.segment", seg.Num, seg.File));
             outPath = Path.Combine(outputDir, seg.File);
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath)));
             if (File.Exists(outPath) && !force)
             {
                 sizeMb = new FileInfo(outPath).Length / 1048576.0;
@@ -365,28 +293,12 @@ namespace RemuxForge.Core.Splitting
         }
 
         /// <summary>
-        /// Stampa segmenti
-        /// </summary>
-        private void PrintSegments(List<MkvSplitSegment> segments)
-        {
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Info, AppText.T("split.segments"));
-            foreach (MkvSplitSegment seg in segments)
-            {
-                double d = seg.EndTs - seg.StartTs;
-                int min = (int)(d / 60.0);
-                double secRem = d - min * 60.0;
-                ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.segmentLine", PadRight(seg.File, 40), MkvSplitSegmentService.SecsToTs(seg.StartTs), MkvSplitSegmentService.SecsToTs(seg.EndTs), min.ToString(CultureInfo.InvariantCulture), secRem.ToString("00.00", CultureInfo.InvariantCulture), seg.Chapters.Count, seg.FrameCount));
-            }
-        }
-
-        /// <summary>
         /// Clona opzioni split per batch
         /// </summary>
         private static MkvSplitOptions CloneSplitOptions(MkvSplitOptions source)
         {
             MkvSplitOptions result = new MkvSplitOptions();
             result.SourcePath = source.SourcePath;
-            result.SourceRaw = source.SourceRaw;
             result.OutputDir = source.OutputDir;
             result.Pattern = source.Pattern;
             result.Ranges = source.Ranges;
@@ -394,23 +306,30 @@ namespace RemuxForge.Core.Splitting
             result.TrimStart = source.TrimStart;
             result.TrimEnd = source.TrimEnd;
             result.ChaptersEach = source.ChaptersEach;
+            result.ChaptersPerEpisode = source.ChaptersPerEpisode;
+            result.Manual = source.Manual;
             result.OutputTemplate = source.OutputTemplate;
+            result.StartNumber = source.StartNumber;
             result.Snap = source.Snap;
             result.Force = source.Force;
-            result.Log = source.Log;
             result.DryRun = source.DryRun;
             return result;
         }
 
         /// <summary>
-        /// Parsa codec video supportati
+        /// Parsa i codec video che il taglio esatto sa manipolare a livello di bitstream
         /// </summary>
-        private static MkvSplitCodec ParseCodec(string codecName)
+        /// <param name="codecName">Nome del codec come lo riporta ffprobe</param>
+        /// <param name="codec">Codec canonico, valorizzato solo in caso di successo</param>
+        /// <returns>true se il codec è supportato dallo slow path</returns>
+        public static bool TryParseCodec(string codecName, out MkvSplitCodec codec)
         {
-            string codec = codecName ?? "hevc";
-            if (codec == "h264") { return MkvSplitCodec.H264; }
-            if (codec == "hevc") { return MkvSplitCodec.Hevc; }
-            throw new ArgumentException(AppText.F("split.unsupportedVideoCodec", codecName));
+            string name = codecName ?? "hevc";
+            codec = MkvSplitCodec.Hevc;
+            if (name == "h264") { codec = MkvSplitCodec.H264; return true; }
+            if (name == "hevc") { return true; }
+            if (name == "mpeg2video") { codec = MkvSplitCodec.Mpeg2; return true; }
+            return false;
         }
 
         /// <summary>
@@ -431,6 +350,12 @@ namespace RemuxForge.Core.Splitting
                 paramsFlag = "-x264-params";
                 defaultPixFmt = "yuv420p";
             }
+            else if (codec == MkvSplitCodec.Mpeg2)
+            {
+                encoder = "mpeg2video";
+                paramsFlag = null;
+                defaultPixFmt = "yuv420p";
+            }
             else
             {
                 encoder = "libx265";
@@ -440,11 +365,22 @@ namespace RemuxForge.Core.Splitting
 
             pixFmt = p.PixFmt != null ? p.PixFmt : defaultPixFmt;
             args.Add("-c:v"); args.Add(encoder);
-            args.Add("-crf"); args.Add("14");
-            args.Add("-preset"); args.Add("medium");
+            if (codec == MkvSplitCodec.Mpeg2)
+            {
+                // MPEG-2 non ha CRF: la qualità si esprime con il quantizzatore, e l'all-intra
+                // si ottiene con i flag dell'encoder invece che con i parametri di x264/x265
+                args.Add("-q:v"); args.Add("2");
+                args.Add("-g"); args.Add("1");
+                args.Add("-bf"); args.Add("0");
+            }
+            else
+            {
+                args.Add("-crf"); args.Add("14");
+                args.Add("-preset"); args.Add("medium");
+                encParams.Add("keyint=1");
+                encParams.Add("bframes=0");
+            }
             args.Add("-pix_fmt"); args.Add(pixFmt);
-            encParams.Add("keyint=1");
-            encParams.Add("bframes=0");
 
             if (p.ColorSpace != null)
             {
@@ -467,19 +403,54 @@ namespace RemuxForge.Core.Splitting
                 encParams.Add("range=" + (p.ColorRange == "pc" ? "full" : "limited"));
             }
 
-            args.Add(paramsFlag);
-            args.Add(string.Join(":", encParams));
+            if (paramsFlag != null)
+            {
+                args.Add(paramsFlag);
+                args.Add(string.Join(":", encParams));
+            }
+
             return args;
         }
 
         /// <summary>
-        /// Pad destra
+        /// Costruisce la corrispondenza fra indice di presentazione e indice nel raw bitstream,
+        /// ordinando per PTS i packet letti in ordine di decodifica. Senza B-frame è l'identità.
         /// </summary>
-        private static string PadRight(string text, int width)
+        /// <param name="inputFile">File sorgente MKV</param>
+        /// <param name="frameCount">Numero di frame atteso, per verificare la coerenza</param>
+        /// <returns>Mappa indicizzata per presentazione, oppure null se i conteggi non tornano</returns>
+        private static int[] BuildPresentationToDecodeMap(string inputFile, int frameCount)
         {
-            if (text == null) { return new string(' ', width); }
-            if (text.Length >= width) { return text; }
-            return text + new string(' ', width - text.Length);
+            List<double> decodePts = MkvSplitExternalTools.Instance.GetDecodeOrderPts(inputFile);
+            double[] keys;
+            int[] map;
+
+            if (decodePts.Count != frameCount)
+            {
+                return null;
+            }
+
+            keys = decodePts.ToArray();
+            map = new int[frameCount];
+            for (int i = 0; i < frameCount; i++)
+            {
+                map[i] = i;
+            }
+
+            Array.Sort(keys, map);
+            return map;
+        }
+
+        /// <summary>
+        /// Estensione dell'elementary stream raw per il codec indicato
+        /// </summary>
+        /// <param name="codec">Codec video canonico</param>
+        /// <returns>Estensione senza punto</returns>
+        private static string RawExtension(MkvSplitCodec codec)
+        {
+            if (codec == MkvSplitCodec.Hevc) { return "h265"; }
+            if (codec == MkvSplitCodec.H264) { return "h264"; }
+            return "m2v";
         }
 
         #endregion

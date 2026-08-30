@@ -290,19 +290,33 @@ namespace RemuxForge.Cli
                 mkvExtractPath = AppSettingsService.Instance.Settings.Tools.MkvExtractPath;
                 MetadataExecutionService executor = new MetadataExecutionService(mkvMergePath, mkvPropEditPath, mkvExtractPath);
 
+                MetadataContainerReader containerReader = new MetadataContainerReader(mkvMergePath);
                 for (int i = 0; i < records.Count; i++)
                 {
                     executor.PopulateExistingTags(records[i]);
+                    containerReader.PopulateContainerInfo(records[i]);
                     evaluator.AnalyzeRecord(records[i], preset, opts.Metadata.OutputPolicy);
                 }
 
-                ValidateMetadataOutputTargets(records, opts.Metadata);
+                List<MetadataOutputValidator.MetadataOutputConflict> conflicts = MetadataOutputValidator.Validate(records, opts.Metadata);
+                HashSet<string> skipped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < conflicts.Count; i++)
+                {
+                    skipped.Add(conflicts[i].InputFile);
+                    ConsoleHelper.Write(LogSection.General, LogLevel.Warning, AppText.F("cli.metadata.skipped", conflicts[i].InputFile, MetadataOutputValidator.DescribeConflict(conflicts[i])));
+                }
 
                 ConsoleHelper.Write(LogSection.General, LogLevel.Success, AppText.F("cli.metadata.scanned", records.Count));
                 ConsoleHelper.Write(LogSection.General, LogLevel.Info, AppText.F("cli.metadata.presetLoaded", preset.Name));
 
                 for (int i = 0; i < records.Count; i++)
                 {
+                    // Un output in conflitto salta quel file soltanto, il resto del lotto prosegue
+                    if (skipped.Contains(records[i].InputFile))
+                    {
+                        continue;
+                    }
+
                     MkvMetadataExecutionResult result = executor.Execute(records[i], opts.Metadata);
                     if (result.ExitCode == 0)
                     {
@@ -322,39 +336,6 @@ namespace RemuxForge.Cli
             }
 
             return exitCode;
-        }
-
-        /// <summary>
-        /// Valida collisioni output metadata
-        /// </summary>
-        private static void ValidateMetadataOutputTargets(List<MkvMetadataRecord> records, MkvMetadataOptions options)
-        {
-            Dictionary<string, string> targets = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-            if (options.OutputPolicy != MkvMetadataOutputPolicy.OutputPath)
-            {
-                return;
-            }
-
-            for (int i = 0; i < records.Count; i++)
-            {
-                if (records[i].ExecutionMode == MkvMetadataExecutionMode.NoOp)
-                {
-                    continue;
-                }
-
-                string outputFile = MetadataExecutionService.BuildOutputFile(records[i], options);
-                if (targets.ContainsKey(outputFile))
-                {
-                    throw new InvalidOperationException(AppText.F("metadata.error.outputCollision", outputFile));
-                }
-                if (System.IO.File.Exists(outputFile))
-                {
-                    throw new InvalidOperationException(AppText.F("metadata.error.outputExists", outputFile));
-                }
-
-                targets[outputFile] = records[i].InputFile;
-            }
         }
 
         /// <summary>

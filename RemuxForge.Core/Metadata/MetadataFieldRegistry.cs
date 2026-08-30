@@ -263,6 +263,10 @@ namespace RemuxForge.Core.Metadata
             AddReadable(fields, "tagged_application", MetadataFieldSector.Container, MetadataFieldValueType.String);
             AddReadable(fields, "encoded_date", MetadataFieldSector.Container, MetadataFieldValueType.Date);
             AddReadable(fields, "tagged_date", MetadataFieldSector.Container, MetadataFieldValueType.Date);
+            AddReadable(fields, "attachment_count", MetadataFieldSector.Container, MetadataFieldValueType.Integer);
+            AddReadable(fields, "attachment_names", MetadataFieldSector.Container, MetadataFieldValueType.String);
+            AddReadable(fields, "chapter_count", MetadataFieldSector.Container, MetadataFieldValueType.Integer);
+            AddReadable(fields, "chapter_first_name", MetadataFieldSector.Container, MetadataFieldValueType.String);
 
             AddEditable(fields, "container_title", MetadataFieldSector.Container, MkvMetadataTargetScope.Container, MetadataFieldValueType.String, "title", true, MetadataFieldRiskLevel.Normal);
             AddEditable(fields, "container_date", MetadataFieldSector.Container, MkvMetadataTargetScope.Container, MetadataFieldValueType.Date, "date", true, MetadataFieldRiskLevel.Normal);
@@ -346,6 +350,10 @@ namespace RemuxForge.Core.Metadata
             Configure(fields, "tagged_application", MetadataFieldVisibility.Technical, MetadataFieldInputKind.Text, "", "Tagged_Application");
             Configure(fields, "encoded_date", MetadataFieldVisibility.Advanced, MetadataFieldInputKind.DateInput, "", "Encoded_Date");
             Configure(fields, "tagged_date", MetadataFieldVisibility.Advanced, MetadataFieldInputKind.DateInput, "", "Tagged_Date");
+            Configure(fields, "attachment_count", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Number, "");
+            Configure(fields, "attachment_names", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Text, "");
+            Configure(fields, "chapter_count", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Number, "");
+            Configure(fields, "chapter_first_name", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Text, "");
             Configure(fields, "container_title", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Text, "", "Title");
             Configure(fields, "container_date", MetadataFieldVisibility.Advanced, MetadataFieldInputKind.DateInput, "", "Recorded_Date", "Encoded_Date");
             Configure(fields, "segment_filename", MetadataFieldVisibility.Advanced, MetadataFieldInputKind.Text, "", "SegmentFilename");

@@ -20,30 +20,40 @@
                     <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="@AppText.T("web.config.label.output")" Click="@(() => BrowseSplit(11, false, true))" />
                 </div>
                 <div class="form-row">
-                    <span class="form-label">@AppText.T("web.config.label.sourceRaw")</span>
-                    <input class="form-input" aria-label="@AppText.T("web.config.label.sourceRaw")" @bind="_splitSourceRaw" @onfocus="@(() => SetFieldHelp("split.sourceRaw"))" @onmouseenter="@(() => SetFieldHelp("split.sourceRaw"))" />
-                    <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="@AppText.T("web.config.label.sourceRaw")" Click="@(() => BrowseSplit(12, true, false))" />
-                </div>
-                <div class="form-row">
                     <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("split.recursive"))"><RadzenSwitch TValue="bool" @bind-Value="@_recursive" /><span>@AppText.T("web.config.toggle.recursive")</span></div>
                     <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("split.force"))"><RadzenSwitch TValue="bool" @bind-Value="@_splitForce" /><span>@AppText.T("web.config.toggle.force")</span></div>
-                    <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("split.dryRun"))"><RadzenSwitch TValue="bool" @bind-Value="@_splitDryRun" /><span>@AppText.T("web.config.toggle.dryRun")</span></div>
                 </div>
 
                 @* Modalita taglio *@
                 <div class="form-section">@AppText.T("web.config.section.cutting")</div>
                 <div class="form-row">
                     <span class="form-label">@AppText.T("web.config.label.modeRequired")</span>
-                    <select class="form-input" style="width: 22ch;" aria-label="@AppText.T("web.config.label.modeRequired")" @bind="_splitCutMode" @onfocus="@(() => SetFieldHelp("split.mode"))" @onmouseenter="@(() => SetFieldHelp("split.mode"))">
+                    <select class="form-input" style="width: 34ch;" aria-label="@AppText.T("web.config.label.modeRequired")" @bind="_splitCutMode" @bind:after="OnSplitCutModeChanged" @onfocus="@(() => SetFieldHelp("split.mode"))" @onmouseenter="@(() => SetFieldHelp("split.mode"))">
                         <option value="">@AppText.T("web.common.choose")</option>
+                        <option value="@SPLIT_CUT_CHAPTERS_PER_EPISODE">@AppText.T("web.config.option.chaptersPerEpisode")</option>
                         <option value="@SPLIT_CUT_PATTERN">@AppText.T("web.config.option.chapterPattern")</option>
-                        <option value="@SPLIT_CUT_RANGES">@AppText.T("web.config.option.ranges")</option>
-                        <option value="@SPLIT_CUT_SPLIT_AT">@AppText.T("web.config.option.splitAt")</option>
-                        <option value="@SPLIT_CUT_TRIM">@AppText.T("web.config.option.trim")</option>
                         <option value="@SPLIT_CUT_CHAPTERS_EACH">@AppText.T("web.config.option.chaptersEach")</option>
+                        <option value="@SPLIT_CUT_SPLIT_AT">@AppText.T("web.config.option.splitAt")</option>
+                        <option value="@SPLIT_CUT_RANGES">@AppText.T("web.config.option.ranges")</option>
+                        <option value="@SPLIT_CUT_TRIM">@AppText.T("web.config.option.trim")</option>
+                        <option value="@SPLIT_CUT_MANUAL">@AppText.T("web.config.option.manual")</option>
                     </select>
                 </div>
-                @if (_splitCutMode == SPLIT_CUT_PATTERN)
+                @if (!string.IsNullOrEmpty(_splitCutMode))
+                {
+                    <div class="form-row">
+                        <span class="form-label"></span>
+                        <span class="split-mode-note">@AppText.T("web.config.modeNote." + _splitCutMode)</span>
+                    </div>
+                }
+                @if (_splitCutMode == SPLIT_CUT_CHAPTERS_PER_EPISODE)
+                {
+                    <div class="form-row">
+                        <span class="form-label">@AppText.T("web.config.label.chaptersPerEpisode")</span>
+                        <input class="form-input" type="number" min="1" style="width: 10ch;" aria-label="@AppText.T("web.config.label.chaptersPerEpisode")" @bind="_splitChaptersPerEpisode" @onfocus="@(() => SetFieldHelp("split.chaptersPerEpisode"))" @onmouseenter="@(() => SetFieldHelp("split.chaptersPerEpisode"))" />
+                    </div>
+                }
+                else if (_splitCutMode == SPLIT_CUT_PATTERN)
                 {
                     <div class="form-row">
                         <span class="form-label">@AppText.T("web.config.label.patternRequired")</span>
@@ -75,17 +85,17 @@
                         <input class="form-input" aria-label="@AppText.T("web.config.label.trimEnd")" @bind="_splitTrimEnd" @onfocus="@(() => SetFieldHelp("split.trimEnd"))" @onmouseenter="@(() => SetFieldHelp("split.trimEnd"))" />
                     </div>
                 }
-                else if (_splitCutMode == SPLIT_CUT_CHAPTERS_EACH)
+                else if (_splitCutMode == SPLIT_CUT_CHAPTERS_EACH || _splitCutMode == SPLIT_CUT_MANUAL)
                 {
                 }
 
                 <div class="form-row">
                     <span class="form-label">@AppText.T("web.config.label.snap")</span>
-                    <select class="form-input" style="width: 14ch;" aria-label="@AppText.T("web.config.label.snap")" @bind="_splitSnap" @onfocus="@(() => SetFieldHelp("split.snap"))" @onmouseenter="@(() => SetFieldHelp("split.snap"))">
-                        <option value="@RemuxForge.Core.Models.MkvSplitSnapMode.Off">off</option>
-                        <option value="@RemuxForge.Core.Models.MkvSplitSnapMode.Before">before</option>
-                        <option value="@RemuxForge.Core.Models.MkvSplitSnapMode.After">after</option>
-                        <option value="@RemuxForge.Core.Models.MkvSplitSnapMode.Nearest">nearest</option>
+                    <select class="form-input" style="width: 28ch;" aria-label="@AppText.T("web.config.label.snap")" @bind="_splitSnap" @onfocus="@(() => SetFieldHelp("split.snap"))" @onmouseenter="@(() => SetFieldHelp("split.snap"))">
+                        <option value="@RemuxForge.Core.Models.MkvSplitSnapMode.Nearest">@AppText.T("web.config.snap.nearest")</option>
+                        <option value="@RemuxForge.Core.Models.MkvSplitSnapMode.Before">@AppText.T("web.config.snap.before")</option>
+                        <option value="@RemuxForge.Core.Models.MkvSplitSnapMode.After">@AppText.T("web.config.snap.after")</option>
+                        <option value="@RemuxForge.Core.Models.MkvSplitSnapMode.Off">@AppText.T("web.config.snap.off")</option>
                     </select>
                 </div>
 
@@ -93,7 +103,20 @@
                 <div class="form-section">@AppText.T("web.config.section.naming")</div>
                 <div class="form-row">
                     <span class="form-label">@AppText.T("web.config.label.template")</span>
-                    <input class="form-input" aria-label="@AppText.T("web.config.label.template")" @bind="_splitOutputTemplate" placeholder="{source_name}.part{n:02d}.mkv" @onfocus="@(() => SetFieldHelp("split.template"))" @onmouseenter="@(() => SetFieldHelp("split.template"))" />
+                    <input class="form-input" aria-label="@AppText.T("web.config.label.template")" @bind="_splitOutputTemplate" @bind:event="oninput" placeholder="@SplitDefaultTemplate()" @onfocus="@(() => SetFieldHelp("split.template"))" @onmouseenter="@(() => SetFieldHelp("split.template"))" />
+                </div>
+                <div class="form-row">
+                    <span class="form-label">@AppText.T("web.config.label.startNumber")</span>
+                    <input class="form-input" type="number" min="0" style="width: 10ch;" aria-label="@AppText.T("web.config.label.startNumber")" @bind="_splitStartNumber" @bind:event="oninput" @onfocus="@(() => SetFieldHelp("split.startNumber"))" @onmouseenter="@(() => SetFieldHelp("split.startNumber"))" />
+                </div>
+                <div class="form-row form-row-preview">
+                    <span class="form-label">@AppText.T("web.config.label.namePreview")</span>
+                    <div class="split-name-preview">
+                        @foreach (string line in SplitNamePreview())
+                        {
+                            <div class="split-name-preview-line">@line</div>
+                        }
+                    </div>
                 </div>
 
                 @* Opzioni *@
@@ -265,10 +288,7 @@
                 <span class="form-label">@AppText.T("web.config.label.modeRequired")</span>
                 <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillStart"))"><RadzenSwitch TValue="bool" @bind-Value="@_audioSourceFillStart" /><span>@AppText.T("web.config.toggle.start")</span></div>
                 <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillEnd"))"><RadzenSwitch TValue="bool" @bind-Value="@_audioSourceFillEnd" /><span>@AppText.T("web.config.toggle.end")</span></div>
-                @if (_deepAnalysis)
-                {
-                    <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillInsert"))"><RadzenSwitch TValue="bool" @bind-Value="@_audioSourceFillInsertSilence" /><span>@AppText.T("web.config.toggle.insertSilence")</span></div>
-                }
+                <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillInsert"))"><RadzenSwitch TValue="bool" @bind-Value="@_audioSourceFillInsertSilence" /><span>@AppText.T("web.config.toggle.insertSilence")</span></div>
             </div>
             }
             @if ((_audioFormat == "flac" || _audioFormat == "lpcm") && _audioProcessingScope != "disabled")
@@ -336,6 +356,16 @@
     /// Split per pattern capitoli
     /// </summary>
     private const string SPLIT_CUT_PATTERN = "pattern";
+
+    /// <summary>
+    /// Split in blocchi di k capitoli
+    /// </summary>
+    private const string SPLIT_CUT_CHAPTERS_PER_EPISODE = "chapters-per-episode";
+
+    /// <summary>
+    /// Segmenti costruiti a mano nell'editor
+    /// </summary>
+    private const string SPLIT_CUT_MANUAL = "manual";
 
     /// <summary>
     /// Split per range espliciti
@@ -540,7 +570,7 @@
     private bool _audioSourceFillEnd;
 
     /// <summary>
-    /// Audio source fill: INSERT_SILENCE DeepAnalysis
+    /// Audio source fill: operazioni INSERT_SILENCE
     /// </summary>
     private bool _audioSourceFillInsertSilence;
 
@@ -590,11 +620,6 @@
     private string _splitSource = "";
 
     /// <summary>
-    /// Source raw split
-    /// </summary>
-    private string _splitSourceRaw = "";
-
-    /// <summary>
     /// Cartella output split
     /// </summary>
     private string _splitOutputDir = "";
@@ -608,6 +633,16 @@
     /// Modalità di taglio split selezionata
     /// </summary>
     private string _splitCutMode = "";
+
+    /// <summary>
+    /// Numero da cui parte la numerazione degli episodi
+    /// </summary>
+    private int _splitStartNumber = 1;
+
+    /// <summary>
+    /// Numero di capitoli per episodio
+    /// </summary>
+    private int _splitChaptersPerEpisode = 1;
 
     /// <summary>
     /// Ranges split
@@ -637,7 +672,7 @@
     /// <summary>
     /// Modalita snap split
     /// </summary>
-    private MkvSplitSnapMode _splitSnap = MkvSplitSnapMode.Off;
+    private MkvSplitSnapMode _splitSnap = MkvSplitSnapMode.Nearest;
 
     /// <summary>
     /// Flag force split
@@ -647,12 +682,6 @@
     /// <summary>
     /// Flag dry-run split
     /// </summary>
-    private bool _splitDryRun;
-
-    /// <summary>
-    /// File log split
-    /// </summary>
-    private string _splitLog = "";
 
     /// <summary>
     /// Errore di validazione configurazione
@@ -726,7 +755,6 @@
             if (_isSplitMode)
             {
                 _splitSource = !string.IsNullOrEmpty(Options.SourceFolder) ? Options.SourceFolder : Options.Split.SourcePath;
-                _splitSourceRaw = Options.Split.SourceRaw;
                 _splitOutputDir = Options.Split.OutputDir;
                 _splitPattern = Options.Split.Pattern;
                 _splitRanges = Options.Split.Ranges;
@@ -735,10 +763,10 @@
                 _splitTrimEnd = Options.Split.TrimEnd;
                 _splitCutMode = DetectSplitCutMode(Options.Split);
                 _splitOutputTemplate = Options.Split.OutputTemplate;
+                _splitStartNumber = Options.Split.StartNumber;
+                _splitChaptersPerEpisode = Options.Split.ChaptersPerEpisode > 0 ? Options.Split.ChaptersPerEpisode : 1;
                 _splitSnap = Options.Split.Snap;
                 _splitForce = Options.Split.Force;
-                _splitDryRun = Options.Split.DryRun || Options.DryRun;
-                _splitLog = Options.Split.Log;
             }
 
             SetFieldHelp(_isSplitMode ? "split.source" : "remux.source");
@@ -805,7 +833,7 @@
             opts.AudioSourceFillLanguage = _audioSourceFillLanguage.Trim();
             opts.AudioSourceFillStart = _audioSourceFillStart;
             opts.AudioSourceFillEnd = _audioSourceFillEnd;
-            opts.AudioSourceFillInsertSilence = _deepAnalysis && _audioSourceFillInsertSilence;
+            opts.AudioSourceFillInsertSilence = _audioSourceFillInsertSilence;
         }
 
         opts.MatchPattern = _matchPattern;
@@ -860,9 +888,7 @@
         opts.Mode = RemuxForge.Core.Models.Options.MODE_SPLIT;
         opts.SourceFolder = _splitSource.Trim();
         opts.Recursive = _recursive;
-        opts.DryRun = _splitDryRun;
         opts.Split.SourcePath = opts.SourceFolder;
-        opts.Split.SourceRaw = _splitSourceRaw.Trim();
         opts.Split.OutputDir = _splitOutputDir.Trim();
         if (_splitCutMode == SPLIT_CUT_PATTERN)
         {
@@ -885,11 +911,18 @@
         {
             opts.Split.ChaptersEach = true;
         }
+        else if (_splitCutMode == SPLIT_CUT_CHAPTERS_PER_EPISODE)
+        {
+            opts.Split.ChaptersPerEpisode = _splitChaptersPerEpisode;
+        }
+        else if (_splitCutMode == SPLIT_CUT_MANUAL)
+        {
+            opts.Split.Manual = true;
+        }
         opts.Split.OutputTemplate = _splitOutputTemplate.Trim();
+        opts.Split.StartNumber = _splitStartNumber;
         opts.Split.Snap = _splitSnap;
         opts.Split.Force = _splitForce;
-        opts.Split.DryRun = _splitDryRun;
-        opts.Split.Log = _splitLog.Trim();
 
         opts.FileExtensions.Clear();
         parts = _extensions.Split(',');
@@ -943,7 +976,7 @@
             errors.Add(AppText.T("web.config.validation.audioSourceLanguageRequired"));
         }
 
-        if (_audioSourceFillEnabled && !_audioSourceFillStart && !_audioSourceFillEnd && !(_deepAnalysis && _audioSourceFillInsertSilence))
+        if (_audioSourceFillEnabled && !_audioSourceFillStart && !_audioSourceFillEnd && !_audioSourceFillInsertSilence)
         {
             errors.Add(AppText.T("web.config.validation.audioSourceModeRequired"));
         }
@@ -1009,11 +1042,6 @@
             errors.Add(AppText.T("web.config.validation.sourceRequired"));
         }
 
-        if (!string.IsNullOrEmpty(_splitSourceRaw.Trim()) && System.IO.Directory.Exists(_splitSourceRaw.Trim()))
-        {
-            errors.Add(AppText.T("web.config.validation.sourceRawMustBeFile"));
-        }
-
         if (string.IsNullOrEmpty(_splitCutMode))
         {
             errors.Add(AppText.T("web.config.validation.cutModeRequired"));
@@ -1032,6 +1060,11 @@
         if (_splitCutMode == SPLIT_CUT_SPLIT_AT && string.IsNullOrEmpty(_splitAt.Trim()))
         {
             errors.Add(AppText.T("web.config.validation.splitAtRequired"));
+        }
+
+        if (_splitCutMode == SPLIT_CUT_CHAPTERS_PER_EPISODE && _splitChaptersPerEpisode < 1)
+        {
+            errors.Add(AppText.T("web.config.validation.chaptersPerEpisodeRequired"));
         }
 
         if (_splitCutMode == SPLIT_CUT_TRIM && string.IsNullOrEmpty(_splitTrimStart.Trim()) && string.IsNullOrEmpty(_splitTrimEnd.Trim()))
@@ -1118,6 +1151,12 @@
         if (split.ChaptersEach)
             return SPLIT_CUT_CHAPTERS_EACH;
 
+        if (split.ChaptersPerEpisode > 0)
+            return SPLIT_CUT_CHAPTERS_PER_EPISODE;
+
+        if (split.Manual)
+            return SPLIT_CUT_MANUAL;
+
         return "";
     }
 
@@ -1160,8 +1199,6 @@
             _browseInitialPath = _splitSource;
         else if (fieldIndex == 11)
             _browseInitialPath = _splitOutputDir;
-        else if (fieldIndex == 12)
-            _browseInitialPath = _splitSourceRaw;
 
         _showBrowse = true;
     }
@@ -1196,8 +1233,100 @@
             _splitSource = selectedPath;
         else if (_browseFieldIndex == 11)
             _splitOutputDir = selectedPath;
-        else if (_browseFieldIndex == 12)
-            _splitSourceRaw = selectedPath;
+    }
+
+    /// <summary>
+    /// Traduce la voce di modalità del dialog nella modalità di split del core
+    /// </summary>
+    /// <returns>Modalità di split corrispondente alla scelta corrente</returns>
+    private RemuxForge.Core.Models.MkvSplitMode SplitCoreMode()
+    {
+        if (_splitCutMode == SPLIT_CUT_PATTERN)
+            return RemuxForge.Core.Models.MkvSplitMode.Pattern;
+        if (_splitCutMode == SPLIT_CUT_TRIM)
+            return RemuxForge.Core.Models.MkvSplitMode.Trim;
+        if (_splitCutMode == SPLIT_CUT_CHAPTERS_EACH)
+            return RemuxForge.Core.Models.MkvSplitMode.ChaptersEach;
+        if (_splitCutMode == SPLIT_CUT_CHAPTERS_PER_EPISODE)
+            return RemuxForge.Core.Models.MkvSplitMode.ChaptersPerEpisode;
+        if (_splitCutMode == SPLIT_CUT_MANUAL)
+            return RemuxForge.Core.Models.MkvSplitMode.Manual;
+        if (_splitCutMode == SPLIT_CUT_SPLIT_AT)
+            return RemuxForge.Core.Models.MkvSplitMode.SplitAt;
+        return RemuxForge.Core.Models.MkvSplitMode.Ranges;
+    }
+
+    /// <summary>
+    /// Template di default della modalità corrente
+    /// </summary>
+    /// <returns>Template che verrà usato se il campo resta vuoto</returns>
+    private string SplitDefaultTemplate()
+    {
+        return RemuxForge.Core.Splitting.MkvSplitSegmentService.DefaultTemplate(SplitCoreMode());
+    }
+
+    /// <summary>
+    /// Precompila il template con quello della modalità appena scelta, senza sovrascrivere una modifica dell'utente
+    /// </summary>
+    private void OnSplitCutModeChanged()
+    {
+        bool isUntouched = string.IsNullOrEmpty(_splitOutputTemplate.Trim());
+
+        foreach (RemuxForge.Core.Models.MkvSplitMode mode in System.Enum.GetValues<RemuxForge.Core.Models.MkvSplitMode>())
+        {
+            if (_splitOutputTemplate.Trim() == RemuxForge.Core.Splitting.MkvSplitSegmentService.DefaultTemplate(mode))
+                isUntouched = true;
+        }
+
+        if (isUntouched)
+            _splitOutputTemplate = SplitDefaultTemplate();
+    }
+
+    /// <summary>
+    /// Calcola i primi nomi di output prodotti dal template corrente
+    /// </summary>
+    /// <returns>Righe di anteprima oppure gli errori di validazione del template</returns>
+    private List<string> SplitNamePreview()
+    {
+        List<string> result = new List<string>();
+        List<string> errors = RemuxForge.Core.Splitting.MkvSplitSegmentService.ValidateTemplate(_splitOutputTemplate.Trim());
+        List<RemuxForge.Core.Models.MkvSplitSegment> samples = new List<RemuxForge.Core.Models.MkvSplitSegment>();
+        RemuxForge.Core.Models.MkvSplitOptions preview = new RemuxForge.Core.Models.MkvSplitOptions();
+        string sourceFile = !string.IsNullOrEmpty(_splitSource.Trim()) ? _splitSource.Trim() : "Sorgente.mkv";
+
+        if (errors.Count > 0)
+            return errors;
+
+        // Segmenti d'esempio: mostrano variabili, padding e numerazione senza dover analizzare il file
+        for (int i = 0; i < 3; i++)
+        {
+            RemuxForge.Core.Models.MkvSplitSegment segment = new RemuxForge.Core.Models.MkvSplitSegment();
+            segment.Num = i + 1;
+            segment.Episode = i + 1;
+            segment.StartTs = i * 1300.0;
+            segment.EndTs = (i + 1) * 1300.0;
+            segment.Chapters.Add(new RemuxForge.Core.Models.MkvSplitChapter { Name = AppText.F("web.config.preview.chapter", i + 1), Timestamp = i * 1300.0 });
+            samples.Add(segment);
+        }
+
+        preview.OutputTemplate = _splitOutputTemplate.Trim();
+        preview.StartNumber = _splitStartNumber;
+
+        try
+        {
+            new RemuxForge.Core.Splitting.MkvSplitSegmentService().ApplyNaming(samples, preview, SplitCoreMode(), System.IO.File.Exists(sourceFile) ? sourceFile : System.IO.Path.Combine(sourceFile, "Sorgente.mkv"));
+        }
+        catch (System.FormatException ex)
+        {
+            result.Add(ex.Message);
+            return result;
+        }
+
+        foreach (RemuxForge.Core.Models.MkvSplitSegment segment in samples)
+        {
+            result.Add(segment.File);
+        }
+        return result;
     }
 
     /// <summary>
@@ -1328,11 +1457,6 @@
         if (_deepAnalysis && _frameSync)
         {
             _frameSync = false;
-        }
-
-        if (!_deepAnalysis)
-        {
-            _audioSourceFillInsertSilence = false;
         }
 
         NormalizeMandatoryAudioScope();

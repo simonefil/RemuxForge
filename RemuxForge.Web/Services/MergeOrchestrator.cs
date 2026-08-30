@@ -13,7 +13,7 @@ namespace RemuxForge.Web.Services
     /// <summary>
     /// Orchestratore singleton che gestisce il ProcessingPipeline per la WebUI
     /// </summary>
-    public class MergeOrchestrator
+    public class MergeOrchestrator : MediaOrchestratorBase, IMediaSourceResolver
     {
         #region Variabili di classe
 
@@ -33,63 +33,9 @@ namespace RemuxForge.Web.Services
         private Options _options;
 
         /// <summary>
-        /// Lock per accesso thread-safe ai record
-        /// </summary>
-        private object _lock;
-
-        /// <summary>
-        /// Stato avanzamento operazione corrente
-        /// </summary>
-        private ProcessingProgressState _progress;
-
-        /// <summary>
-        /// Flag: indica se un'operazione è in corso
-        /// </summary>
-        private volatile bool _isBusy;
-
-        /// <summary>
-        /// Flag: richiesta di stop cooperativo
-        /// </summary>
-        private volatile bool _stopRequested;
-
-        /// <summary>
         /// Sorgente di cancellazione posseduta dall'operazione corrente
         /// </summary>
         private CancellationTokenSource _operationCancellation;
-
-        /// <summary>
-        /// Buffer log accumulato
-        /// </summary>
-        private string _logText;
-
-        /// <summary>
-        /// Limite massimo dimensione log in caratteri (~500 KB)
-        /// </summary>
-        private const int LOG_MAX_LENGTH = 500000;
-
-        /// <summary>
-        /// Indice riga selezionata nella tabella episodi
-        /// </summary>
-        private int _selectedIndex;
-
-        #endregion
-
-        #region Eventi
-
-        /// <summary>
-        /// Evento emesso per ogni messaggio di log
-        /// </summary>
-        public event Action<string> OnLog;
-
-        /// <summary>
-        /// Evento emesso quando i record vengono aggiornati
-        /// </summary>
-        public event Action OnRecordsChanged;
-
-        /// <summary>
-        /// Evento emesso quando cambia lo stato avanzamento
-        /// </summary>
-        public event Action OnProgressChanged;
 
         #endregion
 
@@ -98,18 +44,12 @@ namespace RemuxForge.Web.Services
         /// <summary>
         /// Costruttore
         /// </summary>
-        public MergeOrchestrator()
+        public MergeOrchestrator() : base(AppText.T("web.merge.ready"), false)
         {
             this._pipeline = new ProcessingPipeline();
             this._records = new List<FileProcessingRecord>();
             this._options = new Options();
-            this._lock = new object();
-            this._progress = new ProcessingProgressState();
-            this._isBusy = false;
-            this._stopRequested = false;
             this._operationCancellation = null;
-            this._logText = AppText.T("web.merge.ready");
-            this._selectedIndex = -1;
 
             // Abilita file log se configurato via env var
             string logFilePath = Environment.GetEnvironmentVariable("REMUXFORGE_LOG_FILE");
@@ -129,7 +69,7 @@ namespace RemuxForge.Web.Services
 
             this._pipeline.OnFileUpdated += _ =>
             {
-                this.OnRecordsChanged?.Invoke();
+                this.NotifyRecordsChanged();
             };
 
             ConsoleHelper.SetProgressCallback((section, percent, status) =>
@@ -166,13 +106,13 @@ namespace RemuxForge.Web.Services
                 return result;
             }
 
-            if (this._isBusy)
+            if (this.BusyState)
             {
                 errorMessage = AppText.T("web.merge.busyRetry");
                 return result;
             }
 
-            lock (this._lock)
+            lock (this.StateLock)
             {
                 previousOptions = this._options;
                 scanInputsChanged = this.ScanInputsChanged(previousOptions, opts);
@@ -197,17 +137,17 @@ namespace RemuxForge.Web.Services
             {
                 if (scanInputsChanged)
                 {
-                    lock (this._lock)
+                    lock (this.StateLock)
                     {
                         this._options = opts;
                         this._records.Clear();
-                        this._selectedIndex = -1;
+                        this.SelectedIndexState = -1;
                     }
                     this.AppendLog(AppText.T("web.merge.configAppliedScanInvalidated"));
                 }
                 else if (analysisOptionsChanged)
                 {
-                    lock (this._lock)
+                    lock (this.StateLock)
                     {
                         this._options = opts;
                         resetCount = this.ResetAnalyzedRecordsAfterConfigChange();
@@ -219,7 +159,7 @@ namespace RemuxForge.Web.Services
                 }
                 else if (renderOptionsChanged)
                 {
-                    lock (this._lock)
+                    lock (this.StateLock)
                     {
                         this._options = opts;
                     }
@@ -230,14 +170,14 @@ namespace RemuxForge.Web.Services
                 }
                 else
                 {
-                    lock (this._lock)
+                    lock (this.StateLock)
                     {
                         this._options = opts;
                     }
 
                     this.AppendLog(AppText.T("web.merge.configApplied"));
                 }
-                this.OnRecordsChanged?.Invoke();
+                this.NotifyRecordsChanged();
             }
 
             return result;
@@ -283,7 +223,7 @@ namespace RemuxForge.Web.Services
                         // Ordina per EpisodeId (come flusso CLI)
                         scanned.Sort((a, b) => string.Compare(a.EpisodeId, b.EpisodeId, StringComparison.OrdinalIgnoreCase));
 
-                        lock (this._lock)
+                        lock (this.StateLock)
                         {
                             this._records = scanned;
                         }
@@ -299,7 +239,7 @@ namespace RemuxForge.Web.Services
                                 skipped++;
                         }
 
-                        this.OnRecordsChanged?.Invoke();
+                        this.NotifyRecordsChanged();
                         this.AppendLog(AppText.F("web.merge.scanCompleted", scanned.Count, pending, skipped));
                         this.CompleteProgress(AppText.T("web.progress.scanCompleted"));
                     }
@@ -342,7 +282,7 @@ namespace RemuxForge.Web.Services
                     {
                         this.UpdateProgress(record.EpisodeId, 1, 0, 5, AppText.T("web.progress.analysis"), false, false);
                         this._pipeline.AnalyzeFile(record, this.GetOperationCancellationToken());
-                        this.OnRecordsChanged?.Invoke();
+                        this.NotifyRecordsChanged();
                         this.UpdateProgress(record.EpisodeId, 1, 1, 100, AppText.T("web.progress.completed"), false, false);
                         this.CompleteProgress(AppText.T("web.progress.analysisCompleted"));
                     }
@@ -400,7 +340,7 @@ namespace RemuxForge.Web.Services
 
                             this.UpdateProgress(selected[i].EpisodeId, i + 1, i, 5, AppText.T("web.progress.analysis"), false, false);
                             this._pipeline.AnalyzeFile(selected[i], this.GetOperationCancellationToken());
-                            this.OnRecordsChanged?.Invoke();
+                            this.NotifyRecordsChanged();
                             this.UpdateProgress(selected[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
 
@@ -446,7 +386,7 @@ namespace RemuxForge.Web.Services
                     List<FileProcessingRecord> snapshot;
                     List<FileProcessingRecord> pending = new List<FileProcessingRecord>();
                     bool stopped = false;
-                    lock (this._lock)
+                    lock (this.StateLock)
                     {
                         snapshot = new List<FileProcessingRecord>(this._records);
                     }
@@ -476,7 +416,7 @@ namespace RemuxForge.Web.Services
 
                             this.UpdateProgress(pending[i].EpisodeId, i + 1, i, 5, AppText.T("web.progress.analysis"), false, false);
                             this._pipeline.AnalyzeFile(pending[i], this.GetOperationCancellationToken());
-                            this.OnRecordsChanged?.Invoke();
+                            this.NotifyRecordsChanged();
                             this.UpdateProgress(pending[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
 
@@ -528,7 +468,7 @@ namespace RemuxForge.Web.Services
                     {
                         this.UpdateProgress(record.EpisodeId, 1, 0, 10, AppText.T("web.progress.merge"), false, false);
                         this._pipeline.MergeFile(record);
-                        this.OnRecordsChanged?.Invoke();
+                        this.NotifyRecordsChanged();
                         this.UpdateProgress(record.EpisodeId, 1, 1, 100, AppText.T("web.progress.completed"), false, false);
                         this.CompleteProgress(AppText.T("web.progress.mergeCompleted"));
                     }
@@ -582,7 +522,7 @@ namespace RemuxForge.Web.Services
 
                             this.UpdateProgress(selected[i].EpisodeId, i + 1, i, 10, AppText.T("web.progress.merge"), false, false);
                             this._pipeline.MergeFile(selected[i]);
-                            this.OnRecordsChanged?.Invoke();
+                            this.NotifyRecordsChanged();
                             this.UpdateProgress(selected[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
 
@@ -625,7 +565,7 @@ namespace RemuxForge.Web.Services
                     List<FileProcessingRecord> snapshot;
                     List<FileProcessingRecord> analyzed = new List<FileProcessingRecord>();
                     bool stopped = false;
-                    lock (this._lock)
+                    lock (this.StateLock)
                     {
                         snapshot = new List<FileProcessingRecord>(this._records);
                     }
@@ -654,7 +594,7 @@ namespace RemuxForge.Web.Services
 
                             this.UpdateProgress(analyzed[i].EpisodeId, i + 1, i, 10, AppText.T("web.progress.merge"), false, false);
                             this._pipeline.MergeFile(analyzed[i]);
-                            this.OnRecordsChanged?.Invoke();
+                            this.NotifyRecordsChanged();
                             this.UpdateProgress(analyzed[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
 
@@ -686,7 +626,7 @@ namespace RemuxForge.Web.Services
         /// <param name="index">Indice del record nella lista</param>
         public void ToggleSkip(int index)
         {
-            if (this._isBusy)
+            if (this.BusyState)
                 return;
             FileProcessingRecord record = this.GetRecord(index);
 
@@ -696,7 +636,7 @@ namespace RemuxForge.Web.Services
             }
 
             this.ToggleSkipInternal(record);
-            this.OnRecordsChanged?.Invoke();
+            this.NotifyRecordsChanged();
         }
 
         /// <summary>
@@ -705,7 +645,7 @@ namespace RemuxForge.Web.Services
         /// <param name="indices">Indici dei record nella lista</param>
         public void ToggleSkip(List<int> indices)
         {
-            if (this._isBusy)
+            if (this.BusyState)
                 return;
             List<FileProcessingRecord> selected = this.GetRecordsByIndices(indices);
 
@@ -719,7 +659,7 @@ namespace RemuxForge.Web.Services
                 this.ToggleSkipInternal(selected[i]);
             }
 
-            this.OnRecordsChanged?.Invoke();
+            this.NotifyRecordsChanged();
         }
 
         /// <summary>
@@ -730,7 +670,7 @@ namespace RemuxForge.Web.Services
         /// <param name="subDelayMs">Delay sottotitoli in ms</param>
         public void UpdateDelay(int index, int audioDelayMs, int subDelayMs)
         {
-            if (this._isBusy)
+            if (this.BusyState)
                 return;
             FileProcessingRecord record = this.GetRecord(index);
 
@@ -743,7 +683,7 @@ namespace RemuxForge.Web.Services
             record.ManualSubDelayMs = subDelayMs;
             this._pipeline.RecalculateDelays(record);
             this._pipeline.BuildMergeCommand(record);
-            this.OnRecordsChanged?.Invoke();
+            this.NotifyRecordsChanged();
         }
 
         /// <summary>
@@ -756,9 +696,10 @@ namespace RemuxForge.Web.Services
         /// <param name="editedMap">Copia della mappa modificata</param>
         /// <param name="sourceDurationMs">Durata indicizzata Source</param>
         /// <param name="languageDurationMs">Durata indicizzata Language</param>
+        /// <param name="sourceTailToleranceMs">Durata dell'ultimo frame Source per riconoscere lo scope Tail</param>
         /// <param name="errorMessage">Errore di validazione o applicazione</param>
         /// <returns>True quando il record è stato sostituito con la versione ricalcolata</returns>
-        public bool UpdateEditMap(int index, string expectedEpisodeId, string expectedSourcePath, string expectedLanguagePath, EditMap editedMap, double sourceDurationMs, double languageDurationMs, out string errorMessage)
+        public bool UpdateEditMap(int index, string expectedEpisodeId, string expectedSourcePath, string expectedLanguagePath, EditMap editedMap, double sourceDurationMs, double languageDurationMs, double sourceTailToleranceMs, out string errorMessage)
         {
             errorMessage = "";
             if (editedMap == null || editedMap.Operations == null || editedMap.Operations.Count == 0)
@@ -780,7 +721,7 @@ namespace RemuxForge.Web.Services
             try
             {
                 FileProcessingRecord original;
-                lock (this._lock)
+                lock (this.StateLock)
                 {
                     original = index >= 0 && index < this._records.Count ? this._records[index] : null;
                 }
@@ -800,7 +741,7 @@ namespace RemuxForge.Web.Services
                     return false;
                 }
 
-                EditMapProjection projection = EditMapTimelineHelper.BuildProjection(EditMapTimelineHelper.Clone(editedMap), sourceDurationMs, languageDurationMs);
+                EditMapProjection projection = EditMapTimelineHelper.BuildProjection(EditMapTimelineHelper.Clone(editedMap), sourceDurationMs, languageDurationMs, sourceTailToleranceMs);
                 if (!projection.Validation.IsValid)
                 {
                     errorMessage = AppText.F("web.editMap.structuralErrorCount", projection.Validation.Errors.Count);
@@ -824,7 +765,7 @@ namespace RemuxForge.Web.Services
                     return false;
                 }
 
-                lock (this._lock)
+                lock (this.StateLock)
                 {
                     if (index < 0 || index >= this._records.Count || !object.ReferenceEquals(this._records[index], original))
                     {
@@ -835,7 +776,7 @@ namespace RemuxForge.Web.Services
                 }
 
                 this.AppendLog(AppText.F("web.editMap.appliedLog", updated.EpisodeId, updated.DeepAnalysisMap.Operations.Count));
-                this.OnRecordsChanged?.Invoke();
+                this.NotifyRecordsChanged();
                 return true;
             }
             finally
@@ -849,9 +790,9 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void RequestStop()
         {
-            lock (this._lock)
+            lock (this.StateLock)
             {
-                this._stopRequested = true;
+                this.StopRequested = true;
                 if (this._operationCancellation != null)
                     this._operationCancellation.Cancel();
             }
@@ -866,7 +807,7 @@ namespace RemuxForge.Web.Services
         public List<FileProcessingRecord> GetRecords()
         {
             List<FileProcessingRecord> result;
-            lock (this._lock)
+            lock (this.StateLock)
             {
                 result = new List<FileProcessingRecord>();
                 for (int i = 0; i < this._records.Count; i++)
@@ -879,6 +820,34 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
+        /// Indica se lo scope remux espone il lato richiesto
+        /// </summary>
+        /// <param name="side">Nome del lato</param>
+        /// <returns>True per source e language</returns>
+        public bool SupportsSide(string side)
+        {
+            return string.Equals(side, "source", StringComparison.OrdinalIgnoreCase) || string.Equals(side, "language", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Risolve il file sorgente o quello di lingua di un record
+        /// </summary>
+        /// <param name="recordIndex">Indice del record</param>
+        /// <param name="side">Nome del lato</param>
+        /// <returns>Sorgente multimediale, null se il record non esiste</returns>
+        public MediaSource ResolveMediaSource(int recordIndex, string side)
+        {
+            FileProcessingRecord record = this.GetRecord(recordIndex);
+            if (record == null)
+                return null;
+            if (string.Equals(side, "source", StringComparison.OrdinalIgnoreCase))
+                return new MediaSource(record.SourceFilePath, record.SourceAudioTracks);
+            if (string.Equals(side, "language", StringComparison.OrdinalIgnoreCase))
+                return new MediaSource(record.LangFilePath, record.ImportedAudioTracks);
+            return null;
+        }
+
+        /// <summary>
         /// Restituisce un record per indice
         /// </summary>
         /// <param name="index">Indice nella lista</param>
@@ -886,7 +855,7 @@ namespace RemuxForge.Web.Services
         public FileProcessingRecord GetRecord(int index)
         {
             FileProcessingRecord result = null;
-            lock (this._lock)
+            lock (this.StateLock)
             {
                 if (index >= 0 && index < this._records.Count)
                 {
@@ -915,7 +884,7 @@ namespace RemuxForge.Web.Services
                 return result;
             }
 
-            lock (this._lock)
+            lock (this.StateLock)
             {
                 for (int i = 0; i < indices.Count; i++)
                 {
@@ -1034,7 +1003,7 @@ namespace RemuxForge.Web.Services
             List<FileProcessingRecord> records;
             int result = 0;
 
-            lock (this._lock)
+            lock (this.StateLock)
             {
                 records = new List<FileProcessingRecord>(this._records);
             }
@@ -1157,10 +1126,10 @@ namespace RemuxForge.Web.Services
         private void SetBusy(bool busy)
         {
             CancellationTokenSource cancellation = null;
-            lock (this._lock)
+            lock (this.StateLock)
             {
-                this._isBusy = busy;
-                this._stopRequested = false;
+                this.BusyState = busy;
+                this.StopRequested = false;
                 if (!busy)
                 {
                     cancellation = this._operationCancellation;
@@ -1170,7 +1139,7 @@ namespace RemuxForge.Web.Services
             if (cancellation != null)
                 cancellation.Dispose();
 
-            this.OnProgressChanged?.Invoke();
+            this.NotifyProgressChanged();
         }
 
         /// <summary>
@@ -1179,12 +1148,12 @@ namespace RemuxForge.Web.Services
         /// <returns>True se il chiamante ha acquisito la riserva</returns>
         private bool TryBeginOperation()
         {
-            lock (this._lock)
+            lock (this.StateLock)
             {
-                if (this._isBusy)
+                if (this.BusyState)
                     return false;
-                this._isBusy = true;
-                this._stopRequested = false;
+                this.BusyState = true;
+                this.StopRequested = false;
                 this._operationCancellation = new CancellationTokenSource();
                 return true;
             }
@@ -1196,24 +1165,10 @@ namespace RemuxForge.Web.Services
         /// <returns>Token cooperativo oppure token non cancellabile</returns>
         private CancellationToken GetOperationCancellationToken()
         {
-            lock (this._lock)
+            lock (this.StateLock)
             {
                 return this._operationCancellation != null ? this._operationCancellation.Token : CancellationToken.None;
             }
-        }
-
-        /// <summary>
-        /// True se è stato richiesto stop cooperativo
-        /// </summary>
-        private bool IsStopRequested()
-        {
-            bool result;
-            lock (this._lock)
-            {
-                result = this._stopRequested;
-            }
-
-            return result;
         }
 
         /// <summary>
@@ -1360,6 +1315,7 @@ namespace RemuxForge.Web.Services
             result.InitialSilenceMs = source.InitialSilenceMs;
             result.InitialTrimMs = source.InitialTrimMs;
             result.InsertOperations = new List<EditOperation>(source.InsertOperations);
+            result.SourceFilledOperations = new List<EditOperation>(source.SourceFilledOperations);
             return result;
         }
 
@@ -1371,22 +1327,22 @@ namespace RemuxForge.Web.Services
         /// <param name="indeterminate">True se durata non determinabile</param>
         private void BeginProgress(string operation, int total, bool indeterminate)
         {
-            lock (this._lock)
+            lock (this.StateLock)
             {
-                this._progress.IsActive = true;
-                this._progress.Operation = operation;
-                this._progress.CurrentEpisode = "";
-                this._progress.CurrentStatus = "";
-                this._progress.CurrentIndex = 0;
-                this._progress.Total = total;
-                this._progress.Completed = 0;
-                this._progress.CurrentPercent = 0;
-                this._progress.GlobalPercent = 0;
-                this._progress.CurrentIndeterminate = indeterminate;
-                this._progress.GlobalIndeterminate = indeterminate || total <= 0;
+                this.ProgressState.IsActive = true;
+                this.ProgressState.Operation = operation;
+                this.ProgressState.CurrentEpisode = "";
+                this.ProgressState.CurrentStatus = "";
+                this.ProgressState.CurrentIndex = 0;
+                this.ProgressState.Total = total;
+                this.ProgressState.Completed = 0;
+                this.ProgressState.CurrentPercent = 0;
+                this.ProgressState.GlobalPercent = 0;
+                this.ProgressState.CurrentIndeterminate = indeterminate;
+                this.ProgressState.GlobalIndeterminate = indeterminate || total <= 0;
             }
 
-            this.OnProgressChanged?.Invoke();
+            this.NotifyProgressChanged();
         }
 
         /// <summary>
@@ -1395,24 +1351,24 @@ namespace RemuxForge.Web.Services
         private void UpdateProgress(string currentEpisode, int currentIndex, int completed, int currentPercent, string currentStatus, bool currentIndeterminate, bool globalIndeterminate)
         {
             int globalPercent = 0;
-            lock (this._lock)
+            lock (this.StateLock)
             {
-                if (this._progress.Total > 0)
+                if (this.ProgressState.Total > 0)
                 {
-                    globalPercent = completed * 100 / this._progress.Total;
+                    globalPercent = completed * 100 / this.ProgressState.Total;
                 }
 
-                this._progress.CurrentEpisode = currentEpisode != null ? currentEpisode : "";
-                this._progress.CurrentStatus = currentStatus != null ? currentStatus : "";
-                this._progress.CurrentIndex = currentIndex;
-                this._progress.Completed = completed;
-                this._progress.CurrentPercent = this.ClampPercent(currentPercent);
-                this._progress.GlobalPercent = this.ClampPercent(globalPercent);
-                this._progress.CurrentIndeterminate = currentIndeterminate;
-                this._progress.GlobalIndeterminate = globalIndeterminate || this._progress.Total <= 0;
+                this.ProgressState.CurrentEpisode = currentEpisode != null ? currentEpisode : "";
+                this.ProgressState.CurrentStatus = currentStatus != null ? currentStatus : "";
+                this.ProgressState.CurrentIndex = currentIndex;
+                this.ProgressState.Completed = completed;
+                this.ProgressState.CurrentPercent = this.ClampPercent(currentPercent);
+                this.ProgressState.GlobalPercent = this.ClampPercent(globalPercent);
+                this.ProgressState.CurrentIndeterminate = currentIndeterminate;
+                this.ProgressState.GlobalIndeterminate = globalIndeterminate || this.ProgressState.Total <= 0;
             }
 
-            this.OnProgressChanged?.Invoke();
+            this.NotifyProgressChanged();
         }
 
         /// <summary>
@@ -1421,22 +1377,22 @@ namespace RemuxForge.Web.Services
         /// <param name="status">Stato finale</param>
         private void CompleteProgress(string status)
         {
-            lock (this._lock)
+            lock (this.StateLock)
             {
-                this._progress.IsActive = false;
-                this._progress.CurrentStatus = status != null ? status : "";
-                this._progress.CurrentPercent = 100;
-                this._progress.CurrentIndeterminate = false;
-                this._progress.GlobalIndeterminate = false;
+                this.ProgressState.IsActive = false;
+                this.ProgressState.CurrentStatus = status != null ? status : "";
+                this.ProgressState.CurrentPercent = 100;
+                this.ProgressState.CurrentIndeterminate = false;
+                this.ProgressState.GlobalIndeterminate = false;
 
-                if (this._progress.Total > 0)
+                if (this.ProgressState.Total > 0)
                 {
-                    this._progress.Completed = this._progress.Total;
-                    this._progress.GlobalPercent = 100;
+                    this.ProgressState.Completed = this.ProgressState.Total;
+                    this.ProgressState.GlobalPercent = 100;
                 }
             }
 
-            this.OnProgressChanged?.Invoke();
+            this.NotifyProgressChanged();
         }
 
         /// <summary>
@@ -1446,7 +1402,7 @@ namespace RemuxForge.Web.Services
         {
             int mappedPercent = this.MapPipelineStepPercent(section, percent);
 
-            if (!this._isBusy)
+            if (!this.BusyState)
             {
                 return;
             }
@@ -1484,31 +1440,31 @@ namespace RemuxForge.Web.Services
         private void UpdateCurrentProgress(int currentPercent, string currentStatus)
         {
             int globalPercent;
-            lock (this._lock)
+            lock (this.StateLock)
             {
-                if (!this._progress.IsActive)
+                if (!this.ProgressState.IsActive)
                 {
                     return;
                 }
 
-                if (currentPercent < this._progress.CurrentPercent)
+                if (currentPercent < this.ProgressState.CurrentPercent)
                 {
-                    currentPercent = this._progress.CurrentPercent;
+                    currentPercent = this.ProgressState.CurrentPercent;
                 }
 
-                this._progress.CurrentPercent = this.ClampPercent(currentPercent);
-                this._progress.CurrentStatus = currentStatus != null ? currentStatus : "";
-                this._progress.CurrentIndeterminate = false;
+                this.ProgressState.CurrentPercent = this.ClampPercent(currentPercent);
+                this.ProgressState.CurrentStatus = currentStatus != null ? currentStatus : "";
+                this.ProgressState.CurrentIndeterminate = false;
 
-                if (this._progress.Total > 0)
+                if (this.ProgressState.Total > 0)
                 {
-                    globalPercent = ((this._progress.Completed * 100) + this._progress.CurrentPercent) / this._progress.Total;
-                    this._progress.GlobalPercent = this.ClampPercent(globalPercent);
-                    this._progress.GlobalIndeterminate = false;
+                    globalPercent = ((this.ProgressState.Completed * 100) + this.ProgressState.CurrentPercent) / this.ProgressState.Total;
+                    this.ProgressState.GlobalPercent = this.ClampPercent(globalPercent);
+                    this.ProgressState.GlobalIndeterminate = false;
                 }
             }
 
-            this.OnProgressChanged?.Invoke();
+            this.NotifyProgressChanged();
         }
 
         /// <summary>
@@ -1529,64 +1485,9 @@ namespace RemuxForge.Web.Services
             return value;
         }
 
-        /// <summary>
-        /// Accoda un messaggio al log e notifica i client connessi
-        /// </summary>
-        /// <param name="message">Messaggio log</param>
-        private void AppendLog(string message)
-        {
-            lock (this._lock)
-            {
-                if (!string.IsNullOrEmpty(this._logText))
-                {
-                    this._logText = this._logText + "\n" + message;
-                }
-                else
-                {
-                    this._logText = message;
-                }
-
-                // Tronca log se supera il limite, mantieni la parte più recente
-                if (this._logText.Length > LOG_MAX_LENGTH)
-                {
-                    int cutIndex = this._logText.IndexOf('\n', this._logText.Length - LOG_MAX_LENGTH);
-                    if (cutIndex >= 0)
-                    {
-                        this._logText = this._logText.Substring(cutIndex + 1);
-                    }
-                }
-            }
-
-            this.OnLog?.Invoke(message);
-        }
-
-        #endregion
-
-        #region Metodi pubblici di stato
-
-        /// <summary>
-        /// Accoda un messaggio al log dall'esterno (es. Dashboard)
-        /// </summary>
-        /// <param name="message">Messaggio log</param>
-        public void Log(string message)
-        {
-            this.AppendLog(message);
-        }
-
         #endregion
 
         #region Proprietà
-
-        /// <summary>
-        /// Indica se un'operazione è in corso
-        /// </summary>
-        public bool IsBusy
-        {
-            get
-            {
-                return this._isBusy;
-            }
-        }
 
         /// <summary>
         /// Opzioni correnti
@@ -1596,49 +1497,6 @@ namespace RemuxForge.Web.Services
             get
             {
                 return this._options;
-            }
-        }
-
-        /// <summary>
-        /// Testo log accumulato
-        /// </summary>
-        public string LogText
-        {
-            get
-            {
-                lock (this._lock)
-                {
-                    return this._logText;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Indice riga selezionata
-        /// </summary>
-        public int SelectedIndex
-        {
-            get
-            {
-                return this._selectedIndex;
-            }
-            set
-            {
-                this._selectedIndex = value;
-            }
-        }
-
-        /// <summary>
-        /// Stato avanzamento corrente
-        /// </summary>
-        public ProcessingProgressState Progress
-        {
-            get
-            {
-                lock (this._lock)
-                {
-                    return this._progress.Clone();
-                }
             }
         }
 

@@ -388,6 +388,16 @@ namespace RemuxForge.Web.Services
                 result.Add(MkvMetadataOperationType.SetExclusiveFlag);
                 result.Add(MkvMetadataOperationType.RemoveTrack);
             }
+            else
+            {
+                // Gli allegati appartengono al file, non alla traccia: fuori dallo
+                // scope contenitore non ci sarebbe niente su cui applicarli
+                result.Add(MkvMetadataOperationType.SetAttachment);
+                result.Add(MkvMetadataOperationType.DeleteAttachment);
+                result.Add(MkvMetadataOperationType.RenameChapters);
+                result.Add(MkvMetadataOperationType.ClearChapters);
+                result.Add(MkvMetadataOperationType.SetTrackOrder);
+            }
             result.Add(MkvMetadataOperationType.SetTagField);
             result.Add(MkvMetadataOperationType.ClearTagField);
             result.Add(MkvMetadataOperationType.ClearTags);
@@ -509,6 +519,25 @@ namespace RemuxForge.Web.Services
         public static string GetOperationTypeLabel(MkvMetadataOperationType operationType)
         {
             return AppText.T("web.metadata.operation." + operationType.ToString());
+        }
+
+        /// <summary>
+        /// Restituisce i livelli di target selezionabili per un tag di contenitore
+        /// </summary>
+        /// <returns>Livelli disponibili</returns>
+        public static List<int> GetTagTargetLevelOptions()
+        {
+            return new List<int> { MetadataTagTargetLevels.EPISODE, MetadataTagTargetLevels.SEASON, MetadataTagTargetLevels.COLLECTION };
+        }
+
+        /// <summary>
+        /// Restituisce la label di un livello di target
+        /// </summary>
+        /// <param name="targetTypeValue">Livello di target</param>
+        /// <returns>Label localizzata</returns>
+        public static string GetTagTargetLevelLabel(int targetTypeValue)
+        {
+            return AppText.T("web.metadata.tagLevel." + targetTypeValue.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
 
         /// <summary>

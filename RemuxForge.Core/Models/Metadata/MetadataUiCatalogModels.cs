@@ -104,6 +104,49 @@ namespace RemuxForge.Core.Models
     /// <summary>
     /// Definizione tag Matroska gestito dalla UI
     /// </summary>
+    /// <summary>
+    /// Livelli di target Matroska per i tag
+    /// </summary>
+    public static class MetadataTagTargetLevels
+    {
+        #region Costanti
+
+        /// <summary>Traccia o brano</summary>
+        public const int TRACK = 30;
+
+        /// <summary>Film o episodio, il livello che Matroska assume quando manca</summary>
+        public const int EPISODE = 50;
+
+        /// <summary>Stagione o volume</summary>
+        public const int SEASON = 60;
+
+        /// <summary>Collezione o serie</summary>
+        public const int COLLECTION = 70;
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Chiave con cui un tag di contenitore viene indicizzato quando non sta al livello 50
+    /// </summary>
+    public static class MetadataTagKey
+    {
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Costruisce la chiave livello:NOME
+        /// </summary>
+        /// <param name="targetTypeValue">Livello di target</param>
+        /// <param name="tagName">Nome del tag</param>
+        /// <returns>Chiave indicizzata</returns>
+        public static string Build(int targetTypeValue, string tagName)
+        {
+            return targetTypeValue.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":" + (tagName != null ? tagName.Trim().ToUpperInvariant() : "");
+        }
+
+        #endregion
+    }
+
     public class MetadataTagDefinition
     {
         #region Costruttore
@@ -126,11 +169,17 @@ namespace RemuxForge.Core.Models
             this.AllowedValues = new List<MetadataInputOption>();
             this.HelpKey = "";
             this.SortGroup = 0;
+            this.DefaultTargetTypeValue = MetadataTagTargetLevels.EPISODE;
         }
 
         #endregion
 
         #region Proprietà
+
+        /// <summary>
+        /// Livello di target con cui il tag va scritto se non specificato altrimenti
+        /// </summary>
+        public int DefaultTargetTypeValue { get; set; }
 
         /// <summary>
         /// Chiave interna tag

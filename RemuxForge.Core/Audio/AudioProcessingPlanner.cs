@@ -212,14 +212,15 @@ namespace RemuxForge.Core.Audio
         {
             AudioSourceFillPlan result = new AudioSourceFillPlan();
             List<EditOperation> editOperations = this.GetSourceFillEditOperations(request.LangEditMap);
-            int sourceDurationMs = this.ResolveTrackDurationMs(request.SourceInfo, sourceTrack);
+            int sourceDurationMs = this.ResolveVideoDurationMs(request.SourceInfo);
+            int sourceTrackDurationMs = this.ResolveDeclaredTrackDurationMs(sourceTrack);
             double stretchRatio = this.ResolveStretchRatio(request, out _);
             int langDurationMs;
             int langStartMs = this.ResolveTrackTimelineOffsetMs(request.LangInfo, langTrack);
 
             if (sourceDurationMs <= 0)
             {
-                sourceDurationMs = this.ResolveVideoDurationMs(request.SourceInfo);
+                sourceDurationMs = sourceTrackDurationMs;
             }
 
             langDurationMs = this.ResolveTrackDurationMs(request.LangInfo, langTrack);
@@ -460,12 +461,21 @@ namespace RemuxForge.Core.Audio
         /// <returns>Durata in millisecondi, oppure zero</returns>
         private int ResolveTrackDurationMs(MkvFileInfo fileInfo, TrackInfo track)
         {
-            if (track != null && track.TrackDurationNs > 0)
-            {
-                return (int)Math.Round(track.TrackDurationNs / 1000000.0);
-            }
+            int trackDurationMs = this.ResolveDeclaredTrackDurationMs(track);
+            if (trackDurationMs > 0)
+                return trackDurationMs;
 
             return this.ResolveVideoDurationMs(fileInfo);
+        }
+
+        /// <summary>
+        /// Risolve soltanto la durata dichiarata della traccia, senza fallback ad altre timeline
+        /// </summary>
+        /// <param name="track">Traccia da misurare</param>
+        /// <returns>Durata dichiarata in millisecondi, oppure zero</returns>
+        private int ResolveDeclaredTrackDurationMs(TrackInfo track)
+        {
+            return track != null && track.TrackDurationNs > 0 ? (int)Math.Round(track.TrackDurationNs / 1000000.0) : 0;
         }
 
         /// <summary>

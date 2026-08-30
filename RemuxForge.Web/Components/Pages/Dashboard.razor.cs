@@ -54,6 +54,31 @@ namespace RemuxForge.Web.Components.Pages
         private List<MkvSplitRecord> _splitRecords;
 
         /// <summary>
+        /// True quando l'editor visuale dei segmenti Split è aperto
+        /// </summary>
+        private bool _showSplitEditor;
+
+        /// <summary>
+        /// Record Split aperto nell'editor visuale
+        /// </summary>
+        private MkvSplitRecord _splitEditorRecord;
+
+        /// <summary>
+        /// Indice del record Split aperto nell'editor visuale
+        /// </summary>
+        private int _splitEditorIndex = -1;
+
+        /// <summary>
+        /// Segmento su cui aprire l'editor visuale
+        /// </summary>
+        private int _splitEditorSegmentNum;
+
+        /// <summary>
+        /// Segmenti già costruiti nell'editor per il record aperto, null quando comanda la configurazione
+        /// </summary>
+        private List<MkvSplitOverrideSegment> _splitEditorOverride;
+
+        /// <summary>
         /// Lista record metadata correnti
         /// </summary>
         private List<MkvMetadataRecord> _metadataRecords;
@@ -74,6 +99,11 @@ namespace RemuxForge.Web.Components.Pages
         private MkvSplitRecord _selectedSplitRecord;
 
         /// <summary>
+        /// Numero del segmento evidenziato nel dettaglio Split
+        /// </summary>
+        private int _selectedSplitSegmentNum;
+
+        /// <summary>
         /// Record metadata selezionato
         /// </summary>
         private MkvMetadataRecord _selectedMetadataRecord;
@@ -81,12 +111,12 @@ namespace RemuxForge.Web.Components.Pages
         /// <summary>
         /// Indici episodi selezionati in modalità multi-select
         /// </summary>
-        private List<int> _selectedIndices;
+        private RowSelectionState _selection;
 
         /// <summary>
-        /// Anchor per selezione range con Shift
+        /// Selezione multipla della griglia Split
         /// </summary>
-        private int _selectionAnchorIndex;
+        private RowSelectionState _splitSelection;
 
         /// <summary>
         /// Tema corrente
@@ -311,8 +341,8 @@ namespace RemuxForge.Web.Components.Pages
             this._showMediaInfo = false;
             this._mediaInfoTitle = "";
             this._mediaInfoReport = "";
-            this._selectedIndices = new List<int>();
-            this._selectionAnchorIndex = -1;
+            this._selection = new RowSelectionState();
+            this._splitSelection = new RowSelectionState();
             this._contextMenuSelectedIndex = 0;
 
             // Carica stato corrente dall'orchestratore
@@ -331,9 +361,15 @@ namespace RemuxForge.Web.Components.Pages
             this.SplitOrchestrator.OnLog += this.HandleLog;
             this.SplitOrchestrator.OnRecordsChanged += this.HandleSplitRecordsChanged;
             this.SplitOrchestrator.OnProgressChanged += this.HandleProgressChanged;
+            this.SplitOrchestrator.OnAnalysisCompleted += this.HandleSplitAnalysisCompleted;
+            this.SplitOrchestrator.OnSplitCompleted += this.HandleSplitCompleted;
+            this.SplitOrchestrator.OnOperationFailed += this.HandleSplitOperationFailed;
             this.MetadataOrchestrator.OnLog += this.HandleLog;
             this.MetadataOrchestrator.OnRecordsChanged += this.HandleMetadataRecordsChanged;
             this.MetadataOrchestrator.OnProgressChanged += this.HandleProgressChanged;
+            this.MetadataOrchestrator.OnAnalysisCompleted += this.HandleMetadataAnalysisCompleted;
+            this.MetadataOrchestrator.OnApplyCompleted += this.HandleMetadataApplyCompleted;
+            this.MetadataOrchestrator.OnOperationFailed += this.HandleMetadataOperationFailed;
         }
 
         /// <summary>
@@ -373,9 +409,15 @@ namespace RemuxForge.Web.Components.Pages
                 this.SplitOrchestrator.OnLog -= this.HandleLog;
                 this.SplitOrchestrator.OnRecordsChanged -= this.HandleSplitRecordsChanged;
                 this.SplitOrchestrator.OnProgressChanged -= this.HandleProgressChanged;
+                this.SplitOrchestrator.OnAnalysisCompleted -= this.HandleSplitAnalysisCompleted;
+                this.SplitOrchestrator.OnSplitCompleted -= this.HandleSplitCompleted;
+                this.SplitOrchestrator.OnOperationFailed -= this.HandleSplitOperationFailed;
                 this.MetadataOrchestrator.OnLog -= this.HandleLog;
                 this.MetadataOrchestrator.OnRecordsChanged -= this.HandleMetadataRecordsChanged;
                 this.MetadataOrchestrator.OnProgressChanged -= this.HandleProgressChanged;
+                this.MetadataOrchestrator.OnAnalysisCompleted -= this.HandleMetadataAnalysisCompleted;
+                this.MetadataOrchestrator.OnApplyCompleted -= this.HandleMetadataApplyCompleted;
+                this.MetadataOrchestrator.OnOperationFailed -= this.HandleMetadataOperationFailed;
             }
 
             // Dispose riferimento .NET per JS interop
@@ -420,6 +462,93 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
+        /// Riassume in un toast l'esito dell'analisi Split e gli avvisi dei piani
+        /// </summary>
+        /// <param name="summary">Riassunto dell'analisi conclusa</param>
+        private void HandleSplitAnalysisCompleted(SplitOrchestrator.OperationSummary summary)
+        {
+            this.InvokeAsync(() =>
+            {
+                if (summary == null)
+                    return;
+
+                NotificationSeverity severity = summary.Failed > 0 ? NotificationSeverity.Warning : NotificationSeverity.Success;
+                this.NotificationService.Notify(severity, AppText.T("web.split.notify.analyzeTitle"), AppText.F("web.split.notify.analyzeBody", summary.Succeeded, summary.Failed), 6000);
+                this.NotifySplitWarnings();
+                this.StateHasChanged();
+            });
+        }
+
+        /// <summary>
+        /// Riassume in un toast l'esito dello split
+        /// </summary>
+        /// <param name="summary">Riassunto dello split concluso</param>
+        private void HandleSplitCompleted(SplitOrchestrator.OperationSummary summary)
+        {
+            this.InvokeAsync(() =>
+            {
+                if (summary == null)
+                    return;
+
+                NotificationSeverity severity = summary.Failed > 0 ? NotificationSeverity.Error : (summary.Stopped ? NotificationSeverity.Warning : NotificationSeverity.Success);
+                string body = summary.Stopped
+                    ? AppText.F("web.split.notify.splitStopped", summary.Succeeded, summary.Failed)
+                    : AppText.F("web.split.notify.splitBody", summary.Succeeded, summary.Failed, summary.Skipped);
+                this.NotificationService.Notify(severity, AppText.T("web.split.notify.splitTitle"), body, 8000);
+                this.StateHasChanged();
+            });
+        }
+
+        /// <summary>
+        /// Notifica un'operazione Split che non può partire
+        /// </summary>
+        /// <param name="message">Motivo del rifiuto</param>
+        private void HandleSplitOperationFailed(string message)
+        {
+            this.InvokeAsync(() =>
+            {
+                this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.split.notify.failedTitle"), message, 6000);
+                this.StateHasChanged();
+            });
+        }
+
+        /// <summary>
+        /// Riassume gli avvisi dei piani in un solo toast, per categoria
+        /// </summary>
+        private void NotifySplitWarnings()
+        {
+            List<MkvSplitRecord> records = this.SplitOrchestrator.GetRecords();
+            List<string> categories = new List<string>();
+            int files = 0;
+            int outputs = 0;
+            int collisions = 0;
+            int reencodes = 0;
+
+            foreach (MkvSplitRecord record in records)
+            {
+                if (record.Plan == null || record.Plan.Warnings.Count == 0)
+                    continue;
+                files++;
+                foreach (MkvSplitWarning warning in record.Plan.Warnings)
+                {
+                    if (warning.Kind == MkvSplitWarningKind.OutputExists) { outputs++; }
+                    else if (warning.Kind == MkvSplitWarningKind.NameCollision) { collisions++; }
+                    else if (warning.Kind == MkvSplitWarningKind.Reencode) { reencodes++; }
+                }
+            }
+
+            if (files == 0)
+                return;
+
+            if (outputs > 0) { categories.Add(AppText.F("web.split.notify.catOutputs", outputs)); }
+            if (collisions > 0) { categories.Add(AppText.F("web.split.notify.catCollisions", collisions)); }
+            if (reencodes > 0) { categories.Add(AppText.F("web.split.notify.catReencode", reencodes)); }
+            if (categories.Count == 0) { categories.Add(AppText.T("web.split.notify.catOther")); }
+
+            this.NotificationService.Notify(NotificationSeverity.Info, AppText.T("web.split.notify.warningsTitle"), AppText.F("web.split.notify.warningsBody", files, string.Join(", ", categories)), 8000);
+        }
+
+        /// <summary>
         /// Gestisce aggiornamento record dall'orchestratore
         /// </summary>
         private void HandleRecordsChanged()
@@ -442,6 +571,49 @@ namespace RemuxForge.Web.Components.Pages
             {
                 this._splitRecords = this.SplitOrchestrator.GetRecords();
                 this.SyncSelectedFromSplitOrchestrator();
+                this.StateHasChanged();
+            });
+        }
+
+        /// <summary>
+        /// Notifica l'esito dell'analisi metadata
+        /// </summary>
+        /// <param name="analyzed">File analizzati</param>
+        /// <param name="failed">File falliti</param>
+        private void HandleMetadataAnalysisCompleted(int analyzed, int failed)
+        {
+            this.InvokeAsync(() =>
+            {
+                NotificationSeverity severity = failed > 0 ? NotificationSeverity.Warning : NotificationSeverity.Success;
+                this.NotificationService.Notify(severity, AppText.T("web.metadata.notify.analyzeTitle"), AppText.F("web.metadata.notify.analyzeBody", analyzed, failed), 6000);
+                this.StateHasChanged();
+            });
+        }
+
+        /// <summary>
+        /// Notifica l'esito dell'applicazione metadata
+        /// </summary>
+        /// <param name="applied">File scritti</param>
+        /// <param name="failed">File falliti</param>
+        private void HandleMetadataApplyCompleted(int applied, int failed)
+        {
+            this.InvokeAsync(() =>
+            {
+                NotificationSeverity severity = failed > 0 ? NotificationSeverity.Error : NotificationSeverity.Success;
+                this.NotificationService.Notify(severity, AppText.T("web.metadata.notify.applyTitle"), AppText.F("web.metadata.notify.applyBody", applied, failed), 6000);
+                this.StateHasChanged();
+            });
+        }
+
+        /// <summary>
+        /// Notifica un errore che ha impedito all'operazione metadata di partire o di concludersi
+        /// </summary>
+        /// <param name="errorMessage">Messaggio di errore</param>
+        private void HandleMetadataOperationFailed(string errorMessage)
+        {
+            this.InvokeAsync(() =>
+            {
+                this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.metadata.notify.failedTitle"), errorMessage, 10000);
                 this.StateHasChanged();
             });
         }
@@ -502,7 +674,15 @@ namespace RemuxForge.Web.Components.Pages
 
             if (this.IsAnyBusy() && ((key.StartsWith("F", StringComparison.Ordinal) && key.Length <= 3) || ctrl))
             {
-                if (key == "F12")
+                if (this._currentMode == Options.MODE_SPLIT && key == "F6")
+                    this.SplitOrchestrator.Analyze(this.GetSplitActionIndices());
+                else if (this._currentMode == Options.MODE_SPLIT && key == "F7")
+                    this.SplitOrchestrator.Analyze(null);
+                else if (this._currentMode == Options.MODE_SPLIT && key == "F9")
+                    this.SplitOrchestrator.Split(this.GetSplitActionIndices());
+                else if (this._currentMode == Options.MODE_SPLIT && key == "F10")
+                    this.SplitOrchestrator.SplitAll();
+                else if (key == "F12")
                     this.DoStop();
 
                 return;
@@ -514,20 +694,32 @@ namespace RemuxForge.Web.Components.Pages
                     this.ShowConfig();
                 else if (key == "F5")
                     this.DoScan();
+                else if (key == "F6")
+                    this.DoAnalyzeSplitSelected();
+                else if (key == "F7")
+                    this.DoAnalyzeSplitAll();
+                else if (key == "F8")
+                    this.ToggleSplitSkip();
+                else if (key == "F9")
+                    this.DoSplitSelected(false);
                 else if (key == "F10")
                     this.DoMergeAll();
                 else if (key == "F12")
                     this.DoStop();
+                else if (key == "Enter")
+                    this.ShowSplitContextMenuForSelected();
                 else if (key == "Escape")
                     this.CloseAllDialogs();
+                else if (ctrl && string.Equals(key, "a", StringComparison.OrdinalIgnoreCase))
+                    this.SelectAllSplitRows();
                 else if (key == "ArrowUp")
-                    this.MoveSplitSelection(-1);
+                    this.MoveSplitSelection(-1, shift, ctrl);
                 else if (key == "ArrowDown")
-                    this.MoveSplitSelection(1);
+                    this.MoveSplitSelection(1, shift, ctrl);
                 else if (key == "Home")
-                    this.SelectSplitRow(0);
+                    this.SelectSplitRowWithModifiers((0, ctrl, shift));
                 else if (key == "End")
-                    this.SelectSplitRow(this._splitRecords.Count - 1);
+                    this.SelectSplitRowWithModifiers((this._splitRecords.Count - 1, ctrl, shift));
             }
             else if (this._currentMode == Options.MODE_METADATA)
             {
@@ -631,6 +823,129 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
+        /// Notifica un errore con un toast, oltre alla riga di log
+        /// </summary>
+        /// <param name="message">Messaggio da mostrare</param>
+        private void NotifyError(string message)
+        {
+            this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.common.statusError"), message, 8000);
+        }
+
+        /// <summary>
+        /// Seleziona una riga Split applicando i modifier
+        /// </summary>
+        /// <param name="args">Indice riga e modifier</param>
+        private void SelectSplitRowWithModifiers((int Index, bool Ctrl, bool Shift) args)
+        {
+            this._splitSelection.Apply(args.Index, args.Ctrl, args.Shift, this._splitRecords.Count, this.SplitOrchestrator.SelectedIndex);
+            this.SelectSplitRow(args.Index);
+        }
+
+        /// <summary>
+        /// Evidenzia un segmento nel pannello di dettaglio Split
+        /// </summary>
+        /// <param name="segmentNum">Numero del segmento</param>
+        private void SelectSplitSegment(int segmentNum)
+        {
+            this._selectedSplitSegmentNum = segmentNum;
+        }
+
+        /// <summary>
+        /// Indici Split su cui applicare un'azione
+        /// </summary>
+        /// <returns>Indici selezionati oppure il solo indice a fuoco</returns>
+        private List<int> GetSplitActionIndices()
+        {
+            return this._splitSelection.GetActionIndices(this._splitRecords.Count, this.SplitOrchestrator.SelectedIndex);
+        }
+
+        /// <summary>
+        /// Mostra il menu contestuale della griglia Split
+        /// </summary>
+        /// <param name="args">Indice riga e posizione del puntatore</param>
+        private void ShowSplitContextMenu((int Index, double X, double Y) args)
+        {
+            if (!this._splitSelection.IsSelected(args.Index))
+            {
+                this._splitSelection.Apply(args.Index, false, false, this._splitRecords.Count, this.SplitOrchestrator.SelectedIndex);
+            }
+
+            this.SelectSplitRow(args.Index);
+            if (this._selectedSplitRecord == null)
+                return;
+
+            this._contextMenuX = args.X;
+            this._contextMenuY = args.Y;
+            this.BuildSplitContextMenu(this._selectedSplitRecord);
+            this._contextMenuSelectedIndex = 0;
+            this._showContextMenu = true;
+        }
+
+        /// <summary>
+        /// Costruisce le voci del menu contestuale Split
+        /// </summary>
+        /// <param name="record">Record della riga</param>
+        private void BuildSplitContextMenu(MkvSplitRecord record)
+        {
+            bool busy = this.SplitOrchestrator.IsBusy;
+
+            this._contextMenuCommands = new List<UiCommandDefinition>();
+
+            this._contextMenuCommands.Add(new UiCommandDefinition(
+                AppText.T("web.menu.split.analyzeSelected"), "F6", "", UiCommandPlacement.ContextMenu, UiCommandMenuSection.None, busy,
+                () => { this._showContextMenu = false; this.DoSplitSelected(true); }));
+
+            this._contextMenuCommands.Add(new UiCommandDefinition(
+                AppText.T("web.menu.split.splitSelected"), "F9", "", UiCommandPlacement.ContextMenu, UiCommandMenuSection.None, busy,
+                () => { this._showContextMenu = false; this.DoSplitSelected(false); }));
+
+            this._contextMenuCommands.Add(new UiCommandDefinition(
+                record.Skipped ? AppText.T("web.context.split.include") : AppText.T("web.context.split.skip"), "", "", UiCommandPlacement.ContextMenu, UiCommandMenuSection.None, busy,
+                () => { this._showContextMenu = false; this.ToggleSplitSkip(); }));
+
+            this._contextMenuCommands.Add(new UiCommandDefinition(
+                AppText.T("web.split.openEditor"), "", "", UiCommandPlacement.ContextMenu, UiCommandMenuSection.None, busy || record.Plan == null,
+                () => { this._showContextMenu = false; this.OpenSplitEditor(0); }));
+
+            this._contextMenuCommands.Add(new UiCommandDefinition(
+                AppText.T("web.split.clearOverride"), "", "", UiCommandPlacement.ContextMenu, UiCommandMenuSection.None, busy || !record.IsOverride,
+                () => { this._showContextMenu = false; this.ClearSplitOverride(); }));
+        }
+
+        /// <summary>
+        /// Inverte l'esclusione dei record Split selezionati
+        /// </summary>
+        private void ToggleSplitSkip()
+        {
+            List<int> targets = this.GetSplitActionIndices();
+            bool skip = this._selectedSplitRecord != null && !this._selectedSplitRecord.Skipped;
+
+            this.SplitOrchestrator.SetSkipped(targets, skip);
+        }
+
+        /// <summary>
+        /// Analizza o taglia i record Split selezionati
+        /// </summary>
+        /// <param name="analyzeOnly">True per costruire solo il piano</param>
+        private void DoSplitSelected(bool analyzeOnly)
+        {
+            List<int> targets;
+
+            if (!this.ApplySplitConfig())
+                return;
+
+            targets = this.GetSplitActionIndices();
+            if (analyzeOnly)
+            {
+                this.SplitOrchestrator.Analyze(targets);
+            }
+            else
+            {
+                this.SplitOrchestrator.Split(targets);
+            }
+        }
+
+        /// <summary>
         /// Seleziona riga metadata
         /// </summary>
         /// <param name="index">Indice riga</param>
@@ -656,40 +971,7 @@ namespace RemuxForge.Web.Components.Pages
         /// <param name="shift">True se selezione range</param>
         private void ApplyRowSelection(int index, bool ctrl, bool shift)
         {
-            if (index < 0 || index >= this._records.Count)
-                return;
-
-            if (shift)
-            {
-                if (this._selectionAnchorIndex < 0 || this._selectionAnchorIndex >= this._records.Count)
-                    this._selectionAnchorIndex = this.Orchestrator.SelectedIndex >= 0 ? this.Orchestrator.SelectedIndex : index;
-
-                if (!ctrl)
-                    this._selectedIndices.Clear();
-
-                this.AddSelectionRange(this._selectionAnchorIndex, index);
-            }
-            else if (ctrl)
-            {
-                if (this.IsRowSelected(index))
-                {
-                    this._selectedIndices.Remove(index);
-                }
-                else
-                {
-                    this._selectedIndices.Add(index);
-                    this.SortSelectedIndices();
-                }
-
-                this._selectionAnchorIndex = index;
-            }
-            else
-            {
-                this._selectedIndices.Clear();
-                this._selectedIndices.Add(index);
-                this._selectionAnchorIndex = index;
-            }
-
+            this._selection.Apply(index, ctrl, shift, this._records.Count, this.Orchestrator.SelectedIndex);
             this.SetFocusedRow(index);
         }
 
@@ -767,7 +1049,7 @@ namespace RemuxForge.Web.Components.Pages
         /// Muove selezione split con frecce
         /// </summary>
         /// <param name="delta">Spostamento relativo</param>
-        private void MoveSplitSelection(int delta)
+        private void MoveSplitSelection(int delta, bool shift, bool ctrl)
         {
             int currentIndex = this.SplitOrchestrator.SelectedIndex;
             int targetIndex;
@@ -787,7 +1069,43 @@ namespace RemuxForge.Web.Components.Pages
             if (targetIndex >= this._splitRecords.Count)
                 targetIndex = this._splitRecords.Count - 1;
 
-            this.SelectSplitRow(targetIndex);
+            // Ctrl senza Shift muove il solo fuoco, come nella griglia Remux
+            if (ctrl && !shift)
+            {
+                this.SelectSplitRow(targetIndex);
+                return;
+            }
+
+            this.SelectSplitRowWithModifiers((targetIndex, ctrl, shift));
+        }
+
+        /// <summary>
+        /// Seleziona tutte le righe Split
+        /// </summary>
+        private void SelectAllSplitRows()
+        {
+            this._splitSelection.SelectAll(this._splitRecords.Count);
+
+            if (this._splitRecords.Count > 0 && this.SplitOrchestrator.SelectedIndex < 0)
+            {
+                this.SelectSplitRow(0);
+                this._splitSelection.SetAnchor(0);
+            }
+        }
+
+        /// <summary>
+        /// Mostra il menu contestuale Split sulla riga a fuoco
+        /// </summary>
+        private void ShowSplitContextMenuForSelected()
+        {
+            if (this._selectedSplitRecord == null)
+                return;
+
+            this._contextMenuX = 400;
+            this._contextMenuY = 300;
+            this.BuildSplitContextMenu(this._selectedSplitRecord);
+            this._contextMenuSelectedIndex = 0;
+            this._showContextMenu = true;
         }
 
         /// <summary>
@@ -822,16 +1140,12 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private void SelectAllRows()
         {
-            this._selectedIndices.Clear();
-            for (int i = 0; i < this._records.Count; i++)
-            {
-                this._selectedIndices.Add(i);
-            }
+            this._selection.SelectAll(this._records.Count);
 
             if (this._records.Count > 0 && this.Orchestrator.SelectedIndex < 0)
             {
                 this.SetFocusedRow(0);
-                this._selectionAnchorIndex = 0;
+                this._selection.SetAnchor(0);
             }
         }
 
@@ -844,85 +1158,26 @@ namespace RemuxForge.Web.Components.Pages
             if (index < 0 || index >= this._records.Count)
                 return;
 
-            if (this.IsRowSelected(index))
-            {
-                this._selectedIndices.Remove(index);
-            }
-            else
-            {
-                this._selectedIndices.Add(index);
-                this.SortSelectedIndices();
-            }
-
-            this._selectionAnchorIndex = index;
-        }
-
-        /// <summary>
-        /// Aggiunge range selezione inclusivo
-        /// </summary>
-        private void AddSelectionRange(int startIndex, int endIndex)
-        {
-            int first = Math.Min(startIndex, endIndex);
-            int last = Math.Max(startIndex, endIndex);
-
-            for (int i = first; i <= last; i++)
-            {
-                if (!this.IsRowSelected(i))
-                    this._selectedIndices.Add(i);
-            }
-
-            this.SortSelectedIndices();
+            this._selection.Toggle(index);
         }
 
         /// <summary>
         /// True se una riga è nella selezione multi
         /// </summary>
+        /// <param name="index">Indice riga</param>
+        /// <returns>True se la riga è selezionata</returns>
         private bool IsRowSelected(int index)
         {
-            bool result = false;
-
-            for (int i = 0; i < this._selectedIndices.Count; i++)
-            {
-                if (this._selectedIndices[i] == index)
-                {
-                    result = true;
-                    break;
-                }
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Ordina gli indici selezionati
-        /// </summary>
-        private void SortSelectedIndices()
-        {
-            this._selectedIndices.Sort();
+            return this._selection.IsSelected(index);
         }
 
         /// <summary>
         /// Restituisce gli indici su cui applicare un'azione selezionata
         /// </summary>
+        /// <returns>Indici validi in ordine crescente</returns>
         private List<int> GetActionSelectionIndices()
         {
-            List<int> result = new List<int>();
-
-            for (int i = 0; i < this._selectedIndices.Count; i++)
-            {
-                if (this._selectedIndices[i] >= 0 && this._selectedIndices[i] < this._records.Count && !result.Contains(this._selectedIndices[i]))
-                {
-                    result.Add(this._selectedIndices[i]);
-                }
-            }
-
-            if (result.Count == 0 && this.Orchestrator.SelectedIndex >= 0 && this.Orchestrator.SelectedIndex < this._records.Count)
-            {
-                result.Add(this.Orchestrator.SelectedIndex);
-            }
-
-            result.Sort();
-            return result;
+            return this._selection.GetActionIndices(this._records.Count, this.Orchestrator.SelectedIndex);
         }
 
         /// <summary>
@@ -930,14 +1185,8 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private void NormalizeSelection()
         {
-            for (int i = this._selectedIndices.Count - 1; i >= 0; i--)
-            {
-                if (this._selectedIndices[i] < 0 || this._selectedIndices[i] >= this._records.Count)
-                    this._selectedIndices.RemoveAt(i);
-            }
-
-            if (this._selectionAnchorIndex >= this._records.Count)
-                this._selectionAnchorIndex = this._records.Count - 1;
+            this._selection.Normalize(this._records.Count);
+            this._splitSelection.Normalize(this._splitRecords != null ? this._splitRecords.Count : 0);
         }
 
         /// <summary>
@@ -945,7 +1194,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private bool IsBlockingOverlayOpen()
         {
-            return this._showConfig || this._showMetadataPathBrowse || this._showMetadataPreset || this._showMetadataMappedInfo || this._showMetadataManualEdit || this._showMetadataRename || this._showToolPaths || this._showAudioSettings || this._showAdvancedSettings || this._showDelay || this._showEditMapEditor || this._showEncodingProfiles || this._showInfo || this._showMediaInfo;
+            return this._showConfig || this._showSplitEditor || this._showMetadataPathBrowse || this._showMetadataPreset || this._showMetadataMappedInfo || this._showMetadataManualEdit || this._showMetadataRename || this._showToolPaths || this._showAudioSettings || this._showAdvancedSettings || this._showDelay || this._showEditMapEditor || this._showEncodingProfiles || this._showInfo || this._showMediaInfo;
         }
 
         /// <summary>
@@ -1506,11 +1755,31 @@ namespace RemuxForge.Web.Components.Pages
             if (!this.SplitOrchestrator.ApplyOptions(opts, out errorMessage) && !string.IsNullOrEmpty(errorMessage))
             {
                 this.SplitOrchestrator.Log(errorMessage);
+                this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.split.notify.configTitle"), errorMessage, 8000);
                 this.StateHasChanged();
                 return false;
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Costruisce il piano del record split selezionato
+        /// </summary>
+        private void DoAnalyzeSplitSelected()
+        {
+            this.DoSplitSelected(true);
+        }
+
+        /// <summary>
+        /// Costruisce il piano di tutti i record split
+        /// </summary>
+        private void DoAnalyzeSplitAll()
+        {
+            if (!this.ApplySplitConfig())
+                return;
+
+            this.SplitOrchestrator.Analyze(null);
         }
 
         /// <summary>
@@ -1537,6 +1806,13 @@ namespace RemuxForge.Web.Components.Pages
             {
                 if (!this.ApplySplitConfig())
                     return;
+
+                // Un nuovo scan azzera i segmenti costruiti nell'editor: non deve succedere in silenzio
+                if (this.SplitOrchestrator.CountOverrides() > 0)
+                {
+                    _ = this.ConfirmSplitScanAsync();
+                    return;
+                }
 
                 if (!this.SplitOrchestrator.IsBusy)
                 {
@@ -1653,7 +1929,7 @@ namespace RemuxForge.Web.Components.Pages
             {
                 if (!this.MetadataOrchestrator.IsBusy)
                 {
-                    this.MetadataOrchestrator.ApplySelected(this.MetadataOrchestrator.SelectedIndex);
+                    _ = this.ApplyMetadataAsync(this.MetadataOrchestrator.SelectedIndex);
                 }
                 return;
             }
@@ -1692,7 +1968,7 @@ namespace RemuxForge.Web.Components.Pages
             {
                 if (!this.MetadataOrchestrator.IsBusy)
                 {
-                    this.MetadataOrchestrator.ApplyAll();
+                    _ = this.ApplyMetadataAsync(-1);
                 }
                 return;
             }
@@ -1702,10 +1978,7 @@ namespace RemuxForge.Web.Components.Pages
                 if (!this.ApplySplitConfig())
                     return;
 
-                if (!this.SplitOrchestrator.IsBusy)
-                {
-                    this.SplitOrchestrator.SplitAll();
-                }
+                this.SplitOrchestrator.SplitAll();
                 return;
             }
 
@@ -1908,7 +2181,33 @@ namespace RemuxForge.Web.Components.Pages
                 ToolbarOrder = 10,
                 StatusOrder = 20
             });
-            commands.Add(new UiCommandDefinition(AppText.T("web.menu.splitAll"), "F10", "content_cut", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoMergeAll)
+            commands.Add(new UiCommandDefinition(AppText.T("web.menu.split.analyzeSelected"), "F6", "manage_search", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoAnalyzeSplitSelected)
+            {
+                ToolbarLabel = AppText.T("web.status.split.analyzeSelected"),
+                StatusLabel = AppText.T("web.status.split.analyzeSelected"),
+                ToolbarOrder = 15,
+                StatusOrder = 22
+            });
+            commands.Add(new UiCommandDefinition(AppText.T("web.menu.split.analyzeAll"), "F7", "checklist", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoAnalyzeSplitAll)
+            {
+                ToolbarLabel = AppText.T("web.status.split.analyzeAll"),
+                StatusLabel = AppText.T("web.status.split.analyzeAll"),
+                ToolbarOrder = 17,
+                StatusOrder = 24
+            });
+            commands.Add(new UiCommandDefinition(AppText.T("web.context.split.skip"), "F8", "block", UiCommandPlacement.Menu | UiCommandPlacement.Status, UiCommandMenuSection.Actions, busy, this.ToggleSplitSkip)
+            {
+                StatusLabel = AppText.T("web.status.skip"),
+                StatusOrder = 25
+            });
+            commands.Add(new UiCommandDefinition(AppText.T("web.menu.split.splitSelected"), "F9", "content_cut", allSurfaces, UiCommandMenuSection.Actions, busy, () => this.DoSplitSelected(false))
+            {
+                ToolbarLabel = AppText.T("web.status.split.splitSelected"),
+                StatusLabel = AppText.T("web.status.split.splitSelected"),
+                ToolbarOrder = 19,
+                StatusOrder = 26
+            });
+            commands.Add(new UiCommandDefinition(AppText.T("web.menu.splitAll"), "F10", "call_split", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoMergeAll)
             {
                 ToolbarLabel = AppText.T("web.status.splitAll"),
                 StatusLabel = AppText.T("web.status.splitAll"),
@@ -2107,6 +2406,7 @@ namespace RemuxForge.Web.Components.Pages
             else if (!string.IsNullOrEmpty(errorMessage))
             {
                 this.MetadataOrchestrator.Log(errorMessage);
+                this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.metadata.notify.invalidConfigTitle"), errorMessage, 8000);
             }
         }
 
@@ -2170,6 +2470,16 @@ namespace RemuxForge.Web.Components.Pages
         {
             MkvMetadataOptions metadata = this.GetMetadataOptions();
             metadata.PreserveFolderStructure = !metadata.PreserveFolderStructure;
+            this.ApplyMetadataRuntimeOptions(false);
+        }
+
+        /// <summary>
+        /// Alterna la sovrascrittura degli output metadata già presenti
+        /// </summary>
+        private void ToggleMetadataOverwriteOutput()
+        {
+            MkvMetadataOptions metadata = this.GetMetadataOptions();
+            metadata.OverwriteOutput = !metadata.OverwriteOutput;
             this.ApplyMetadataRuntimeOptions(false);
         }
 
@@ -2278,6 +2588,7 @@ namespace RemuxForge.Web.Components.Pages
             else if (!string.IsNullOrEmpty(errorMessage))
             {
                 this.MetadataOrchestrator.Log(errorMessage);
+                this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.metadata.notify.invalidConfigTitle"), errorMessage, 8000);
             }
         }
 
@@ -2462,6 +2773,122 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
+        /// Apre l'editor visuale dei segmenti sul record Split selezionato
+        /// </summary>
+        /// <param name="segmentNum">Segmento da preselezionare, 0 per il primo</param>
+        private void OpenSplitEditor(int segmentNum)
+        {
+            int index = this.SplitOrchestrator.SelectedIndex;
+
+            if (this.SplitOrchestrator.IsBusy || index < 0 || index >= this._splitRecords.Count)
+                return;
+
+            MkvSplitRecord record = this._splitRecords[index];
+            if (record == null || record.Plan == null)
+            {
+                this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.splitEditor.notAnalyzed"), AppText.T("web.splitEditor.analyzeFirst"), 6000);
+                return;
+            }
+
+            this._splitEditorIndex = index;
+            this._splitEditorRecord = record;
+            this._splitEditorSegmentNum = segmentNum;
+            this._splitEditorOverride = this.SplitOrchestrator.GetOverride(index);
+            this._showSplitEditor = true;
+        }
+
+        /// <summary>
+        /// Chiude l'editor visuale dei segmenti
+        /// </summary>
+        private void CloseSplitEditor()
+        {
+            this._showSplitEditor = false;
+            this._splitEditorRecord = null;
+            this._splitEditorOverride = null;
+            this._splitEditorIndex = -1;
+            this._splitEditorSegmentNum = 0;
+        }
+
+        /// <summary>
+        /// Applica i segmenti costruiti nell'editor al record Split aperto
+        /// </summary>
+        /// <param name="segments">Segmenti costruiti nell'editor</param>
+        private void ApplySplitOverride(List<MkvSplitOverrideSegment> segments)
+        {
+            string fileName = this._splitEditorRecord != null ? System.IO.Path.GetFileName(this._splitEditorRecord.InputFile) : "";
+
+            if (this._splitEditorIndex < 0)
+                return;
+
+            this.SplitOrchestrator.SetOverride(this._splitEditorIndex, segments);
+            this.NotificationService.Notify(NotificationSeverity.Success, AppText.T("web.split.overrideBadge"), AppText.F("web.split.overrideApplied", fileName), 5000);
+            this.CloseSplitEditor();
+        }
+
+        /// <summary>
+        /// Riporta il record Split selezionato sotto la configurazione globale
+        /// </summary>
+        private void ClearSplitOverride()
+        {
+            int index = this._showSplitEditor ? this._splitEditorIndex : this.SplitOrchestrator.SelectedIndex;
+            MkvSplitRecord record = index >= 0 && index < this._splitRecords.Count ? this._splitRecords[index] : null;
+
+            if (record == null || !record.IsOverride)
+                return;
+
+            this.SplitOrchestrator.ClearOverride(index);
+            this.NotificationService.Notify(NotificationSeverity.Info, AppText.T("web.split.clearOverride"), AppText.F("web.split.overrideCleared", System.IO.Path.GetFileName(record.InputFile)), 5000);
+            if (this._showSplitEditor)
+                this.CloseSplitEditor();
+        }
+
+        /// <summary>
+        /// Applica i metadata chiedendo conferma quando l'operazione non è reversibile
+        /// </summary>
+        /// <param name="selectedIndex">Indice record selezionato, oppure -1 per tutti i record</param>
+        private async Task ApplyMetadataAsync(int selectedIndex)
+        {
+            int fileCount;
+            int trackRemovalCount;
+            bool inPlace;
+            string message;
+
+            if (this.MetadataOrchestrator.NeedsApplyConfirmation(selectedIndex, out fileCount, out trackRemovalCount, out inPlace))
+            {
+                message = inPlace
+                    ? AppText.F("web.metadata.confirmOverwrite", fileCount)
+                    : AppText.F("web.metadata.confirmApply", fileCount);
+
+                if (trackRemovalCount > 0)
+                    message += Environment.NewLine + AppText.F("web.metadata.confirmTrackRemoval", trackRemovalCount);
+
+                if (!await this.JsRuntime.InvokeAsync<bool>("confirm", message))
+                    return;
+            }
+
+            if (this.MetadataOrchestrator.IsBusy)
+                return;
+
+            if (selectedIndex >= 0)
+                this.MetadataOrchestrator.ApplySelected(selectedIndex);
+            else
+                this.MetadataOrchestrator.ApplyAll();
+        }
+
+        /// <summary>
+        /// Chiede conferma prima di uno scan che azzera i segmenti costruiti nell'editor
+        /// </summary>
+        private async Task ConfirmSplitScanAsync()
+        {
+            bool confirmed = await this.JsRuntime.InvokeAsync<bool>("confirm", AppText.F("web.split.scanClearsOverrides", this.SplitOrchestrator.CountOverrides()));
+
+            if (!confirmed)
+                return;
+            if (!this.SplitOrchestrator.IsBusy)
+                this.SplitOrchestrator.Scan();
+        }
+
+        /// <summary>
         /// Chiude l'editor EditMap e libera lo snapshot aperto
         /// </summary>
         private void CloseEditMapEditor()
@@ -2475,12 +2902,12 @@ namespace RemuxForge.Web.Components.Pages
         /// Applica la copia validata prodotta dall'editor EditMap
         /// </summary>
         /// <param name="request">Mappa e durate indicizzate</param>
-        private void ApplyEditMap((EditMap Map, double SourceDurationMs, double LanguageDurationMs) request)
+        private void ApplyEditMap((EditMap Map, double SourceDurationMs, double LanguageDurationMs, double SourceTailToleranceMs) request)
         {
             if (this._editMapRecord == null)
                 return;
 
-            bool applied = this.Orchestrator.UpdateEditMap(this._editMapRecordIndex, this._editMapRecord.EpisodeId, this._editMapRecord.SourceFilePath, this._editMapRecord.LangFilePath, request.Map, request.SourceDurationMs, request.LanguageDurationMs, out string errorMessage);
+            bool applied = this.Orchestrator.UpdateEditMap(this._editMapRecordIndex, this._editMapRecord.EpisodeId, this._editMapRecord.SourceFilePath, this._editMapRecord.LangFilePath, request.Map, request.SourceDurationMs, request.LanguageDurationMs, request.SourceTailToleranceMs, out string errorMessage);
             if (applied)
             {
                 this.CloseEditMapEditor();

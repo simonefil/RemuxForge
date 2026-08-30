@@ -1,0 +1,800 @@
+@inject IJSRuntime JsRuntime
+@inject NotificationService NotificationService
+@implements IAsyncDisposable
+
+@* Editor visuale dei segmenti di uno split: anteprima al playhead, timeline con capitoli, keyframe e blocchi. *@
+
+<section @ref="_pageRoot" class="edit-map-page" data-keyboard-owner="split-editor" tabindex="-1" aria-labelledby="split-editor-title">
+    <header class="edit-map-page-header">
+        <div>
+            <div id="split-editor-title">@AppText.T("web.splitEditor.title")</div>
+            <div class="edit-map-page-subtitle">@GetFileName() · @GetModeLabel()</div>
+        </div>
+        <div class="edit-map-page-title-actions">
+            <RadzenBadge Text="@GetStateLabel()" BadgeStyle="@GetStateStyle()" />
+            <RadzenButton Icon="close" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.common.close")" aria-label="@AppText.T("web.common.close")" Click="CloseAsync" />
+        </div>
+    </header>
+
+    <main class="edit-map-page-body">
+        <RadzenSplitter Orientation="Orientation.Vertical" class="edit-map-main-splitter">
+            <RadzenSplitterPane Size="60%" Min="260px">
+                <RadzenSplitter class="edit-map-row-splitter">
+                    <RadzenSplitterPane Size="50%" Min="380px">
+                        <section class="edit-map-preview-section">
+                            <div class="split-editor-preview-grid">
+                                <FramePreviewPaneComponent @ref="_preview"
+                                                           Title="@AppText.T("web.splitEditor.preview")"
+                                                           CanvasAlternative="@GetPreviewAlternative()"
+                                                           OverlayMessage="@_previewMessage"
+                                                           Meta="@GetPreviewMeta()">
+                                    <Controls>
+                                        <div class="media-frame-control">
+                                            <RadzenButton Icon="chevron_left" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.splitEditor.previousFrame")" aria-label="@AppText.T("web.splitEditor.previousFrame")" data-frame-side="source" data-frame-delta="-1" Disabled="@(_playheadFrame <= 0)" />
+                                            <label>@AppText.T("web.editMap.frame") <input class="form-input" inputmode="numeric" value="@_frameText" aria-label="@AppText.T("web.splitEditor.frame")" @oninput="UpdateFrameText" @onblur="CommitFrameAsync" /></label>
+                                            <span>/ @GetFrameCount()</span>
+                                            <RadzenButton Icon="chevron_right" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.splitEditor.nextFrame")" aria-label="@AppText.T("web.splitEditor.nextFrame")" data-frame-side="source" data-frame-delta="1" Disabled="@(_playheadFrame >= GetFrameCount() - 1)" />
+                                        </div>
+                                        <span class="split-editor-playhead-time">@FormatTs(_playheadMs / 1000.0)</span>
+                                    </Controls>
+                                </FramePreviewPaneComponent>
+                            </div>
+                        </section>
+                    </RadzenSplitterPane>
+                    <RadzenSplitterPane Min="300px">
+                        <section class="edit-map-operations-pane">
+                            <div class="edit-map-panel-toolbar">
+                                <div class="media-section-title">@AppText.T("web.splitEditor.segments")</div>
+                                <span class="edit-map-toolbar-spacer"></span>
+                                <RadzenButton Icon="content_cut" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.splitEditor.addCutHelp")" aria-label="@AppText.T("web.splitEditor.addCutHelp")" Disabled="@(!IsReady)" Click="AddCutAsync" />
+                                <RadzenButton Icon="visibility_off" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.splitEditor.excludeHelp")" aria-label="@AppText.T("web.splitEditor.excludeHelp")" Disabled="@(_selectedIndex < 0)" Click="ToggleExcludeAsync" />
+                                <RadzenButton Icon="vertical_align_center" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.splitEditor.snapStartHelp")" aria-label="@AppText.T("web.splitEditor.snapStartHelp")" Disabled="@(_selectedIndex < 0)" Click="SnapStartAsync" />
+                                <RadzenButton Icon="delete" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" title="@AppText.T("web.splitEditor.deleteHelp")" aria-label="@AppText.T("web.splitEditor.deleteHelp")" Disabled="@(_selectedIndex < 0)" Click="DeleteSelectedAsync" />
+                            </div>
+                            @if (_segments.Count == 0)
+                            {
+                                <div class="edit-map-inspector-empty">@AppText.T("web.splitEditor.noSegments")</div>
+                            }
+                            else
+                            {
+                                <RadzenDataGrid @ref="_segmentGrid" Data="@_segments" TItem="MkvSplitOverrideSegment" AllowSorting="false" AllowFiltering="false" AllowColumnResize="true" AllowRowSelectOnRowClick="true" GridLines="DataGridGridLines.Both" Density="Density.Compact" RowClick="SelectSegmentRowAsync" RowRender="RenderSegmentRow" class="edit-map-operation-grid">
+                                    <Columns>
+                                        <RadzenDataGridColumn TItem="MkvSplitOverrideSegment" Title="#" Width="2.5rem" Resizable="false"><Template Context="segment">@((_segments.IndexOf(segment) + 1).ToString())</Template></RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="MkvSplitOverrideSegment" Title="@AppText.T("web.splitEditor.start")" Width="6.5rem"><Template Context="segment">@FormatTs(FrameToSeconds(segment.StartFrame))</Template></RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="MkvSplitOverrideSegment" Title="@AppText.T("web.splitEditor.end")" Width="6.5rem"><Template Context="segment">@FormatTs(FrameToSeconds(segment.StartFrame + segment.FrameCount))</Template></RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="MkvSplitOverrideSegment" Title="@AppText.T("web.splitEditor.frames")" Width="5rem"><Template Context="segment">@segment.FrameCount.ToString()</Template></RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="MkvSplitOverrideSegment" Title="@AppText.T("web.splitEditor.stateColumn")" Width="6rem"><Template Context="segment">@GetSegmentStateLabel(segment)</Template></RadzenDataGridColumn>
+                                    </Columns>
+                                </RadzenDataGrid>
+                            }
+                        </section>
+                    </RadzenSplitterPane>
+                </RadzenSplitter>
+            </RadzenSplitterPane>
+            <RadzenSplitterPane Min="220px">
+                <MediaTimelinePanelComponent @ref="_timelinePanel"
+                                             AudioLanes="@GetAudioLanes()"
+                                             ToolbarLabel="@AppText.T("web.editMap.audioVisualization")"
+                                             WaveformText="@AppText.T("web.editMap.waveform")"
+                                             SpectrogramText="@AppText.T("web.editMap.spectrogram")"
+                                             WaveformHeightText="@AppText.T("web.editMap.waveformHeight")"
+                                             AudioMode="@_audioMode"
+                                             AudioModeChanged="SetAudioModeAsync"
+                                             WaveformGain="@_waveformGain"
+                                             WaveformGainChanged="SetWaveformGain"
+                                             HostAlternative="@AppText.T("web.splitEditor.timeline")"
+                                             CanvasAlternative="@GetTimelineAlternative()" />
+            </RadzenSplitterPane>
+        </RadzenSplitter>
+    </main>
+
+    <footer class="edit-map-page-footer">
+        <span class="edit-map-validation-summary">@GetSummary()</span>
+        <span class="edit-map-footer-spacer"></span>
+        @if (IsOverride)
+        {
+            <RadzenButton Text="@AppText.T("web.splitEditor.reset")" Icon="settings_backup_restore" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.splitEditor.resetHelp")" Click="ResetAsync" />
+        }
+        <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.splitEditor.cancelHelp")" Click="CloseAsync" />
+        <RadzenButton Text="@AppText.T("web.splitEditor.apply")" Icon="check" title="@AppText.T("web.splitEditor.applyHelp")" Disabled="@(!CanApply())" Click="ApplyAsync" />
+    </footer>
+</section>
+
+@code {
+
+    #region Costanti
+
+    private const string AUDIO_MODE_WAVEFORM = "waveform";
+
+    #endregion
+
+    #region Fields
+
+    private List<MkvSplitOverrideSegment> _segments = new List<MkvSplitOverrideSegment>();
+    private List<MkvSplitOverrideSegment> _originalSegments = new List<MkvSplitOverrideSegment>();
+    private ElementReference _pageRoot;
+    private FramePreviewPaneComponent _preview;
+    private RadzenDataGrid<MkvSplitOverrideSegment> _segmentGrid;
+    private MediaTimelinePanelComponent _timelinePanel;
+    private IJSObjectReference _module;
+    private IJSObjectReference _framePreview;
+    private IJSObjectReference _keyboard;
+    private DotNetObjectReference<SplitEditorPageComponent> _dotNetReference;
+    private string _audioMode = AUDIO_MODE_WAVEFORM;
+    private string _previewMessage = "";
+    private string _frameText = "0";
+    private double _playheadMs;
+    private double _waveformGain = 1.0;
+    private int _playheadFrame;
+    private int _selectedIndex = -1;
+    private int? _audioTrackId;
+    private bool _interactiveInitialized;
+
+    #endregion
+
+    #region Properties
+
+    /// <summary>Indice del record split in lavorazione</summary>
+    [Parameter] public int RecordIndex { get; set; }
+
+    /// <summary>Record split in lavorazione</summary>
+    [Parameter] public MkvSplitRecord Record { get; set; }
+
+    /// <summary>Segmenti già costruiti nell'editor, null quando comanda la configurazione globale</summary>
+    [Parameter] public List<MkvSplitOverrideSegment> Override { get; set; }
+
+    /// <summary>Numero del segmento da preselezionare all'apertura, 0 per il primo</summary>
+    [Parameter] public int InitialSegmentNum { get; set; }
+
+    /// <summary>Invocata alla chiusura senza applicare</summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>Invocata all'applicazione dei segmenti costruiti nell'editor</summary>
+    [Parameter] public EventCallback<List<MkvSplitOverrideSegment>> OnApply { get; set; }
+
+    /// <summary>Invocata quando il file torna sotto la configurazione globale</summary>
+    [Parameter] public EventCallback OnReset { get; set; }
+
+    private MkvSplitPlan Plan { get { return this.Record != null ? this.Record.Plan : null; } }
+
+    private bool IsReady { get { return this.Plan != null && this.Plan.SourcePts != null && this.Plan.SourcePts.Length > 0; } }
+
+    private bool IsOverride { get { return this.Record != null && this.Record.IsOverride; } }
+
+    #endregion
+
+    #region Ciclo di vita
+
+    /// <summary>Costruisce la copia di lavoro dei segmenti dal piano o dall'override</summary>
+    protected override void OnInitialized()
+    {
+        this._segments = CloneSegments(this.Override != null ? this.Override : BuildFromPlan(this.Plan));
+        this._originalSegments = CloneSegments(this._segments);
+        this._selectedIndex = this._segments.Count > 0 ? Math.Max(0, Math.Min(this._segments.Count - 1, this.InitialSegmentNum - 1)) : -1;
+        this.MovePlayhead(this._selectedIndex >= 0 ? this._segments[this._selectedIndex].StartFrame : 0);
+    }
+
+    /// <summary>Aggancia anteprima, timeline e tastiera quando il piano è disponibile</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            this._module = await this.JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/split-timeline.js");
+        if (!this.IsReady || this._interactiveInitialized || this._module == null)
+            return;
+
+        this._interactiveInitialized = true;
+        this._dotNetReference = DotNetObjectReference.Create(this);
+        this._keyboard = await this._module.InvokeAsync<IJSObjectReference>("captureEditorKeyboard", this._pageRoot, this._dotNetReference);
+        try
+        {
+            this._framePreview = await this._module.InvokeAsync<IJSObjectReference>("createFramePreview", this._preview.Canvas);
+        }
+        catch (JSException exception)
+        {
+            this._previewMessage = AppText.T("web.editMap.previewUnavailable");
+            this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.editMap.previewError"), exception.Message, 8000);
+        }
+        try
+        {
+            await this._timelinePanel.AttachAsync(this._module, this._dotNetReference, this.BuildTimelineModel());
+        }
+        catch (JSException exception)
+        {
+            this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.editMap.timelineError"), exception.Message, 8000);
+        }
+        await this.RefreshPreviewAsync();
+    }
+
+    /// <summary>Rilascia timeline, anteprima e tastiera</summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (this._keyboard != null) { try { await this._keyboard.InvokeVoidAsync("dispose"); } catch (JSException) { } await this._keyboard.DisposeAsync(); }
+        if (this._framePreview != null) { try { await this._framePreview.InvokeVoidAsync("dispose"); } catch (JSException) { } await this._framePreview.DisposeAsync(); }
+        if (this._module != null) { await this._module.DisposeAsync(); }
+        this._dotNetReference?.Dispose();
+    }
+
+    #endregion
+
+    #region Callback della timeline
+
+    /// <summary>Sposta il playhead dalla timeline</summary>
+    /// <param name="timeMs">Posizione richiesta in millisecondi</param>
+    [JSInvokable]
+    public async Task OnTimelineSeek(double timeMs)
+    {
+        this.MovePlayhead(this.MsToFrame(timeMs));
+        await this.InvokeAsync(async () => await this.RefreshAfterChangeAsync(false));
+    }
+
+    /// <summary>Naviga di un numero di fotogrammi da tastiera o pressione prolungata</summary>
+    /// <param name="side">Lato richiesto, ignorato: l'editor ha una sola anteprima</param>
+    /// <param name="delta">Numero di fotogrammi da percorrere</param>
+    [JSInvokable]
+    public async Task OnFrameStep(string side, int delta)
+    {
+        this.MovePlayhead(this._playheadFrame + delta);
+        await this.InvokeAsync(async () => await this.RefreshAfterChangeAsync(false));
+    }
+
+    /// <summary>Seleziona un segmento dalla timeline</summary>
+    /// <param name="segmentIndex">Indice del segmento</param>
+    [JSInvokable]
+    public async Task OnSegmentSelected(int segmentIndex)
+    {
+        if (segmentIndex < 0 || segmentIndex >= this._segments.Count)
+            return;
+        this._selectedIndex = segmentIndex;
+        await this.InvokeAsync(async () => await this.RefreshAfterChangeAsync(false));
+    }
+
+    /// <summary>Sposta il confine di inizio o di fine di un segmento</summary>
+    /// <param name="segmentIndex">Indice del segmento</param>
+    /// <param name="isStart">True quando si trascina l'inizio</param>
+    /// <param name="timeMs">Posizione richiesta in millisecondi</param>
+    /// <param name="final">True al rilascio del puntatore</param>
+    [JSInvokable]
+    public async Task OnSegmentBoundaryDrag(int segmentIndex, bool isStart, double timeMs, bool final)
+    {
+        if (segmentIndex < 0 || segmentIndex >= this._segments.Count)
+            return;
+
+        MkvSplitOverrideSegment segment = this._segments[segmentIndex];
+        int frame = this.MsToFrame(timeMs);
+        int end = segment.StartFrame + segment.FrameCount;
+
+        if (isStart)
+        {
+            // Il confine condiviso con il segmento precedente si sposta insieme, altrimenti il
+            // partizionamento perde o duplica i fotogrammi che stanno in mezzo
+            frame = Math.Max(0, Math.Min(end - 1, frame));
+            MkvSplitOverrideSegment previous = this.FindEndingAt(segment.StartFrame, segmentIndex);
+            if (previous != null) { previous.FrameCount = Math.Max(1, frame - previous.StartFrame); }
+            segment.FrameCount = end - frame;
+            segment.StartFrame = frame;
+        }
+        else
+        {
+            frame = Math.Max(segment.StartFrame + 1, Math.Min(this.GetFrameCount(), frame));
+            MkvSplitOverrideSegment next = this.FindStartingAt(end, segmentIndex);
+            if (next != null)
+            {
+                int nextEnd = next.StartFrame + next.FrameCount;
+                frame = Math.Min(frame, nextEnd - 1);
+                next.FrameCount = nextEnd - frame;
+                next.StartFrame = frame;
+            }
+            segment.FrameCount = frame - segment.StartFrame;
+        }
+
+        this._selectedIndex = segmentIndex;
+        this.MovePlayhead(isStart ? segment.StartFrame : segment.StartFrame + segment.FrameCount - 1);
+        await this.InvokeAsync(async () => await this.RefreshAfterChangeAsync(final));
+    }
+
+    /// <summary>Gestisce le scorciatoie locali dell'editor</summary>
+    /// <param name="key">Tasto normalizzato dal browser</param>
+    /// <param name="shift">True quando Shift è premuto</param>
+    /// <param name="editing">True quando il focus è in un campo editabile</param>
+    [JSInvokable]
+    public async Task OnEditorKey(string key, bool shift, bool editing)
+    {
+        if (editing)
+            return;
+        if (string.Equals(key, "Delete", StringComparison.Ordinal))
+            await this.DeleteSelectedAsync();
+        else if (string.Equals(key, "Escape", StringComparison.Ordinal))
+            await this.CloseAsync();
+        else if (string.Equals(key, "Home", StringComparison.Ordinal))
+        {
+            this.MovePlayhead(0);
+            await this.RefreshAfterChangeAsync(false);
+        }
+        else if (string.Equals(key, "End", StringComparison.Ordinal))
+        {
+            this.MovePlayhead(this.GetFrameCount() - 1);
+            await this.RefreshAfterChangeAsync(false);
+        }
+    }
+
+    #endregion
+
+    #region Comandi
+
+    /// <summary>Taglia il segmento sotto il playhead, o ne crea uno nuovo se il playhead è su materiale scartato</summary>
+    private async Task AddCutAsync()
+    {
+        if (!this.IsReady)
+            return;
+
+        int frame = this._playheadFrame;
+        int hit = this.FindSegmentAt(frame);
+        if (hit >= 0)
+        {
+            MkvSplitOverrideSegment segment = this._segments[hit];
+            if (frame <= segment.StartFrame || frame >= segment.StartFrame + segment.FrameCount)
+            {
+                this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.splitEditor.cannotCut"), AppText.T("web.splitEditor.cannotCutHere"), 5000);
+                return;
+            }
+            MkvSplitOverrideSegment tail = new MkvSplitOverrideSegment();
+            tail.StartFrame = frame;
+            tail.FrameCount = segment.StartFrame + segment.FrameCount - frame;
+            tail.Excluded = segment.Excluded;
+            segment.FrameCount = frame - segment.StartFrame;
+            this._segments.Insert(hit + 1, tail);
+            this._selectedIndex = hit + 1;
+        }
+        else
+        {
+            // Il playhead è fuori da ogni segmento: nasce un segmento nuovo che arriva al prossimo
+            // inizio, oppure alla fine del file
+            MkvSplitOverrideSegment created = new MkvSplitOverrideSegment();
+            created.StartFrame = frame;
+            created.FrameCount = this.FindNextStart(frame) - frame;
+            this._segments.Add(created);
+            this._segments.Sort((a, b) => a.StartFrame.CompareTo(b.StartFrame));
+            this._selectedIndex = this._segments.IndexOf(created);
+        }
+
+        await this.RefreshAfterChangeAsync(true);
+    }
+
+    /// <summary>Elimina il segmento selezionato</summary>
+    private async Task DeleteSelectedAsync()
+    {
+        if (this._selectedIndex < 0 || this._selectedIndex >= this._segments.Count)
+            return;
+        this._segments.RemoveAt(this._selectedIndex);
+        this._selectedIndex = this._segments.Count > 0 ? Math.Min(this._selectedIndex, this._segments.Count - 1) : -1;
+        await this.RefreshAfterChangeAsync(true);
+    }
+
+    /// <summary>Esclude o reinserisce il segmento selezionato</summary>
+    private async Task ToggleExcludeAsync()
+    {
+        if (this._selectedIndex < 0 || this._selectedIndex >= this._segments.Count)
+            return;
+        this._segments[this._selectedIndex].Excluded = !this._segments[this._selectedIndex].Excluded;
+        await this.RefreshAfterChangeAsync(true);
+    }
+
+    /// <summary>Porta l'inizio del segmento selezionato sul keyframe più vicino</summary>
+    private async Task SnapStartAsync()
+    {
+        if (this._selectedIndex < 0 || this.Plan == null || this.Plan.KeyframeIndexes == null || this.Plan.KeyframeIndexes.Length == 0)
+            return;
+
+        MkvSplitOverrideSegment segment = this._segments[this._selectedIndex];
+        int end = segment.StartFrame + segment.FrameCount;
+        int best = this.Plan.KeyframeIndexes[0];
+        foreach (int candidate in this.Plan.KeyframeIndexes)
+        {
+            if (Math.Abs(candidate - segment.StartFrame) < Math.Abs(best - segment.StartFrame)) { best = candidate; }
+        }
+        if (best >= end)
+        {
+            this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.splitEditor.cannotSnap"), AppText.T("web.splitEditor.snapWouldEat"), 5000);
+            return;
+        }
+
+        MkvSplitOverrideSegment previous = this.FindEndingAt(segment.StartFrame, this._selectedIndex);
+        if (previous != null) { previous.FrameCount = Math.Max(1, best - previous.StartFrame); }
+        segment.FrameCount = end - best;
+        segment.StartFrame = best;
+        this.MovePlayhead(best);
+        await this.RefreshAfterChangeAsync(true);
+    }
+
+    /// <summary>Applica i segmenti costruiti nell'editor</summary>
+    private async Task ApplyAsync()
+    {
+        await this.OnApply.InvokeAsync(CloneSegments(this._segments));
+    }
+
+    /// <summary>Riporta il file sotto la configurazione globale</summary>
+    private async Task ResetAsync()
+    {
+        await this.OnReset.InvokeAsync();
+    }
+
+    /// <summary>Chiude l'editor, chiedendo conferma quando ci sono modifiche non applicate</summary>
+    private async Task CloseAsync()
+    {
+        if (this.IsDirty() && this._module != null)
+        {
+            bool discard = await this._module.InvokeAsync<bool>("confirmDiscard", AppText.T("web.splitEditor.discardChanges"));
+            if (!discard)
+                return;
+        }
+        await this.OnClose.InvokeAsync();
+    }
+
+    #endregion
+
+    #region Metodi privati
+
+    private async Task RefreshAfterChangeAsync(bool centerPlayhead)
+    {
+        this._frameText = this._playheadFrame.ToString();
+        this.StateHasChanged();
+
+        // La griglia lega una List: senza Reload resta al conteggio di righe precedente
+        if (this._segmentGrid != null)
+            await this._segmentGrid.Reload();
+        if (this._timelinePanel != null && this._timelinePanel.IsAttached)
+            await this._timelinePanel.UpdateAsync(this.BuildTimelineModel(), centerPlayhead);
+        await this.RefreshPreviewAsync();
+    }
+
+    private async Task RefreshPreviewAsync()
+    {
+        if (this._framePreview == null)
+            return;
+        string url = "/api/split-preview/" + this.RecordIndex.ToString() + "/input/" + this._playheadFrame.ToString();
+        this._previewMessage = AppText.F("web.editMap.loadingFrame", this._playheadFrame + 1);
+        this.StateHasChanged();
+        try
+        {
+            await this._framePreview.InvokeAsync<bool>("load", url);
+            this._previewMessage = "";
+        }
+        catch (JSException exception)
+        {
+            if (exception.Message.IndexOf("abort", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                this._previewMessage = AppText.T("web.editMap.previewError");
+                this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.editMap.previewError"), exception.Message, 8000);
+            }
+        }
+        this.StateHasChanged();
+    }
+
+    private object BuildTimelineModel()
+    {
+        List<object> segments = new List<object>();
+        List<object> chapters = new List<object>();
+        List<double> keyframes = new List<double>();
+        MkvSplitPlan plan = this.Plan;
+        double durationMs = plan != null ? plan.Duration * 1000.0 : 0.0;
+
+        for (int i = 0; i < this._segments.Count; i++)
+        {
+            MkvSplitOverrideSegment segment = this._segments[i];
+            segments.Add(new
+            {
+                index = i,
+                startMs = this.FrameToSeconds(segment.StartFrame) * 1000.0,
+                endMs = this.FrameToSeconds(segment.StartFrame + segment.FrameCount) * 1000.0,
+                label = (i + 1).ToString() + " · " + FormatTs(this.FrameToSeconds(segment.StartFrame + segment.FrameCount) - this.FrameToSeconds(segment.StartFrame)),
+                selected = i == this._selectedIndex,
+                excluded = segment.Excluded
+            });
+        }
+        if (plan != null)
+        {
+            foreach (MkvSplitChapter chapter in plan.Chapters)
+                chapters.Add(new { timeMs = chapter.Timestamp * 1000.0, name = chapter.Name });
+            if (plan.KeyframeIndexes != null)
+            {
+                foreach (int keyframe in plan.KeyframeIndexes)
+                    keyframes.Add(this.FrameToSeconds(keyframe) * 1000.0);
+            }
+        }
+        object labels = new
+        {
+            audio = AppText.T("web.splitEditor.audioLane").ToUpperInvariant(),
+            chapters = AppText.T("web.splitEditor.chaptersLane").ToUpperInvariant(),
+            keyframes = AppText.T("web.splitEditor.keyframesLane").ToUpperInvariant(),
+            segments = AppText.T("web.splitEditor.segmentsLane").ToUpperInvariant()
+        };
+        return new
+        {
+            durationMs = durationMs,
+            frameDurationMs = this.GetFrameCount() > 1 ? durationMs / this.GetFrameCount() : 40.0,
+            audioUrl = this.BuildAudioTimelineUrl(durationMs),
+            audioMode = this._audioMode,
+            nyquistHz = this.GetNyquistFrequency(),
+            waveformGain = this._waveformGain,
+            playheadMs = this._playheadMs,
+            labels = labels,
+            segments = segments,
+            chapters = chapters,
+            keyframes = keyframes
+        };
+    }
+
+    private string BuildAudioTimelineUrl(double durationMs)
+    {
+        if (!this._audioTrackId.HasValue)
+        {
+            List<TrackInfo> tracks = this.GetAudioTracks();
+            if (tracks.Count == 0)
+                return null;
+            this._audioTrackId = tracks[0].Id;
+        }
+        return "/api/split-audio/" + this.RecordIndex.ToString() + "/input?trackId=" + this._audioTrackId.Value.ToString()
+            + "&durationMs=" + durationMs.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "&mode=" + this._audioMode + "&quality=low";
+    }
+
+    private List<TrackInfo> GetAudioTracks()
+    {
+        if (this.Record == null || this.Record.SourceInfo == null)
+            return new List<TrackInfo>();
+        return this.Record.SourceInfo.Tracks.FindAll(track => string.Equals(track.Type, "audio", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private double GetNyquistFrequency()
+    {
+        List<TrackInfo> tracks = this.GetAudioTracks();
+        if (!this._audioTrackId.HasValue)
+            return 0.0;
+        TrackInfo track = tracks.Find(candidate => candidate.Id == this._audioTrackId.Value);
+        return track != null && track.SamplingFrequency > 0 ? track.SamplingFrequency / 2.0 : 0.0;
+    }
+
+    private List<MediaTimelinePanelComponent.AudioLane> GetAudioLanes()
+    {
+        List<TrackInfo> tracks = this.GetAudioTracks();
+        MediaTimelinePanelComponent.AudioLane lane = new MediaTimelinePanelComponent.AudioLane();
+        lane.ElementId = "split-editor-audio";
+        lane.Label = AppText.T("web.splitEditor.audioTrack");
+        lane.Tracks = tracks;
+        lane.SelectedTrackId = this._audioTrackId;
+        lane.OnTrackChanged = EventCallback.Factory.Create<ChangeEventArgs>(this, this.ChangeAudioTrackAsync);
+        return new List<MediaTimelinePanelComponent.AudioLane> { lane };
+    }
+
+    private async Task ChangeAudioTrackAsync(ChangeEventArgs args)
+    {
+        List<TrackInfo> tracks = this.GetAudioTracks();
+        if (!int.TryParse(args.Value != null ? args.Value.ToString() : "", out int trackId) || tracks.Find(track => track.Id == trackId) == null)
+            return;
+        this._audioTrackId = trackId;
+        await this.RefreshAfterChangeAsync(false);
+    }
+
+    private async Task SetAudioModeAsync(string mode)
+    {
+        this._audioMode = mode;
+        await this.RefreshAfterChangeAsync(false);
+    }
+
+    private void SetWaveformGain(double value)
+    {
+        this._waveformGain = value;
+    }
+
+    private async Task SelectSegmentRowAsync(DataGridRowMouseEventArgs<MkvSplitOverrideSegment> args)
+    {
+        this._selectedIndex = this._segments.IndexOf(args.Data);
+        this.MovePlayhead(args.Data.StartFrame);
+        await this.RefreshAfterChangeAsync(true);
+    }
+
+    private void RenderSegmentRow(RowRenderEventArgs<MkvSplitOverrideSegment> args)
+    {
+        if (this._selectedIndex >= 0 && this._selectedIndex < this._segments.Count && object.ReferenceEquals(this._segments[this._selectedIndex], args.Data))
+            args.Attributes["class"] = "rz-state-highlight";
+    }
+
+    private void UpdateFrameText(ChangeEventArgs args)
+    {
+        this._frameText = args.Value != null ? args.Value.ToString() : "";
+    }
+
+    private async Task CommitFrameAsync()
+    {
+        if (int.TryParse(this._frameText, out int frame))
+            this.MovePlayhead(frame);
+        await this.RefreshAfterChangeAsync(true);
+    }
+
+    private void MovePlayhead(int frame)
+    {
+        int count = this.GetFrameCount();
+        this._playheadFrame = count > 0 ? Math.Max(0, Math.Min(count - 1, frame)) : 0;
+        this._playheadMs = this.FrameToSeconds(this._playheadFrame) * 1000.0;
+        this._frameText = this._playheadFrame.ToString();
+    }
+
+    private int MsToFrame(double timeMs)
+    {
+        if (this.Plan == null || this.Plan.SourcePts == null || this.Plan.SourcePts.Length == 0)
+            return 0;
+        int frame = MkvSplitSegmentService.BisectLeft(this.Plan.SourcePts, timeMs / 1000.0);
+        return Math.Max(0, Math.Min(this.Plan.SourcePts.Length - 1, frame));
+    }
+
+    private double FrameToSeconds(int frame)
+    {
+        if (this.Plan == null || this.Plan.SourcePts == null || this.Plan.SourcePts.Length == 0)
+            return 0.0;
+        if (frame >= this.Plan.SourcePts.Length)
+            return this.Plan.Duration;
+        return this.Plan.SourcePts[Math.Max(0, frame)];
+    }
+
+    private int GetFrameCount()
+    {
+        return this.Plan != null ? this.Plan.FrameCount : 0;
+    }
+
+    private int FindSegmentAt(int frame)
+    {
+        for (int i = 0; i < this._segments.Count; i++)
+        {
+            if (frame >= this._segments[i].StartFrame && frame < this._segments[i].StartFrame + this._segments[i].FrameCount)
+                return i;
+        }
+        return -1;
+    }
+
+    private int FindNextStart(int frame)
+    {
+        int result = this.GetFrameCount();
+        foreach (MkvSplitOverrideSegment segment in this._segments)
+        {
+            if (segment.StartFrame > frame && segment.StartFrame < result)
+                result = segment.StartFrame;
+        }
+        return result;
+    }
+
+    private MkvSplitOverrideSegment FindEndingAt(int frame, int excludeIndex)
+    {
+        for (int i = 0; i < this._segments.Count; i++)
+        {
+            if (i != excludeIndex && this._segments[i].StartFrame + this._segments[i].FrameCount == frame)
+                return this._segments[i];
+        }
+        return null;
+    }
+
+    private MkvSplitOverrideSegment FindStartingAt(int frame, int excludeIndex)
+    {
+        for (int i = 0; i < this._segments.Count; i++)
+        {
+            if (i != excludeIndex && this._segments[i].StartFrame == frame)
+                return this._segments[i];
+        }
+        return null;
+    }
+
+    private bool IsDirty()
+    {
+        if (this._segments.Count != this._originalSegments.Count)
+            return true;
+        for (int i = 0; i < this._segments.Count; i++)
+        {
+            if (this._segments[i].StartFrame != this._originalSegments[i].StartFrame
+                || this._segments[i].FrameCount != this._originalSegments[i].FrameCount
+                || this._segments[i].Excluded != this._originalSegments[i].Excluded)
+                return true;
+        }
+        return false;
+    }
+
+    private bool CanApply()
+    {
+        return this.IsReady && this.IsDirty() && this._segments.Exists(segment => !segment.Excluded);
+    }
+
+    private static List<MkvSplitOverrideSegment> CloneSegments(List<MkvSplitOverrideSegment> source)
+    {
+        List<MkvSplitOverrideSegment> result = new List<MkvSplitOverrideSegment>();
+        if (source == null)
+            return result;
+        foreach (MkvSplitOverrideSegment segment in source)
+        {
+            MkvSplitOverrideSegment copy = new MkvSplitOverrideSegment();
+            copy.StartFrame = segment.StartFrame;
+            copy.FrameCount = segment.FrameCount;
+            copy.Excluded = segment.Excluded;
+            result.Add(copy);
+        }
+        return result;
+    }
+
+    private static List<MkvSplitOverrideSegment> BuildFromPlan(MkvSplitPlan plan)
+    {
+        List<MkvSplitOverrideSegment> result = new List<MkvSplitOverrideSegment>();
+        if (plan == null)
+            return result;
+        foreach (MkvSplitSegment segment in plan.Segments)
+        {
+            MkvSplitOverrideSegment copy = new MkvSplitOverrideSegment();
+            copy.StartFrame = segment.StartFrame;
+            copy.FrameCount = segment.FrameCount;
+            result.Add(copy);
+        }
+        return result;
+    }
+
+    private static string FormatTs(double seconds)
+    {
+        return MkvSplitSegmentService.SecsToTs(seconds);
+    }
+
+    private string GetFileName()
+    {
+        return this.Record != null ? System.IO.Path.GetFileName(this.Record.InputFile) : "";
+    }
+
+    private string GetModeLabel()
+    {
+        if (this.IsOverride)
+            return AppText.T("web.splitEditor.overrideBadge");
+        return this.Plan != null ? Utils.GetSplitModeText(this.Plan.Mode) : AppText.T("web.splitEditor.notAnalyzed");
+    }
+
+    private string GetSegmentStateLabel(MkvSplitOverrideSegment segment)
+    {
+        return segment.Excluded ? AppText.T("web.splitEditor.excluded") : AppText.T("web.splitEditor.included");
+    }
+
+    private string GetStateLabel()
+    {
+        if (!this.IsReady)
+            return AppText.T("web.splitEditor.notAnalyzed");
+        return this.IsDirty() ? AppText.T("web.editMap.unsaved") : AppText.T("web.editMap.ready");
+    }
+
+    private BadgeStyle GetStateStyle()
+    {
+        if (!this.IsReady)
+            return BadgeStyle.Danger;
+        return this.IsDirty() ? BadgeStyle.Warning : BadgeStyle.Success;
+    }
+
+    private string GetSummary()
+    {
+        int produced = this._segments.FindAll(segment => !segment.Excluded).Count;
+        int covered = 0;
+        foreach (MkvSplitOverrideSegment segment in this._segments)
+        {
+            if (!segment.Excluded) { covered += segment.FrameCount; }
+        }
+        if (!this.IsReady)
+            return AppText.T("web.splitEditor.analyzeFirst");
+        return AppText.F("web.splitEditor.summary", produced, covered, Math.Max(0, this.GetFrameCount() - covered));
+    }
+
+    private string GetPreviewAlternative()
+    {
+        return AppText.F("web.splitEditor.previewAlternative", this._playheadFrame + 1);
+    }
+
+    private string GetPreviewMeta()
+    {
+        return this.Plan != null && this.Plan.VideoParams != null ? this.Plan.VideoParams.CodecName + " · " + this.Plan.VideoParams.PixFmt : "";
+    }
+
+    private string GetTimelineAlternative()
+    {
+        return AppText.F("web.splitEditor.timelineAlternative", this._segments.Count, this.Plan != null ? this.Plan.Chapters.Count : 0);
+    }
+
+    #endregion
+
+}

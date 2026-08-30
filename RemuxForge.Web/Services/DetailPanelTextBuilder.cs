@@ -460,7 +460,13 @@ namespace RemuxForge.Web.Services
                 sb.Append(this.FormatTimestamp(op.LangTimestampMs)).Append(", ");
                 sb.Append(AppText.T("web.detail.sourceShort")).Append(' ');
                 sb.Append(this.FormatTimestamp(op.SourceTimestampMs)).Append(", ");
-                sb.Append(AppText.F("web.detail.durationSeconds", (op.DurationMs / 1000.0).ToString("F3", CultureInfo.InvariantCulture))).Append('\n');
+                sb.Append(AppText.F("web.detail.durationSeconds", (op.DurationMs / 1000.0).ToString("F3", CultureInfo.InvariantCulture)));
+                if (string.Equals(op.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal))
+                {
+                    sb.Append(", ").Append(AppText.T("web.editMap.insertGain")).Append(' ');
+                    sb.Append(op.GainDb.ToString("0.######", CultureInfo.InvariantCulture)).Append(" dB");
+                }
+                sb.Append('\n');
             }
         }
 

@@ -17,7 +17,6 @@ namespace RemuxForge.Core.Models
             this.InputFile = "";
             this.InputFolder = "";
             this.SourcePath = "";
-            this.SourceRaw = "";
             this.OutputDir = "";
             this.Pattern = "";
             this.Ranges = "";
@@ -25,10 +24,12 @@ namespace RemuxForge.Core.Models
             this.TrimStart = "";
             this.TrimEnd = "";
             this.ChaptersEach = false;
+            this.ChaptersPerEpisode = 0;
+            this.Manual = false;
             this.OutputTemplate = "";
-            this.Snap = MkvSplitSnapMode.Off;
+            this.StartNumber = 1;
+            this.Snap = MkvSplitSnapMode.Nearest;
             this.Force = false;
-            this.Log = "";
             this.Batch = false;
             this.DryRun = false;
         }
@@ -51,11 +52,6 @@ namespace RemuxForge.Core.Models
         /// Path sorgente ricevuto da CLI/UI, file o cartella
         /// </summary>
         public string SourcePath { get; set; }
-
-        /// <summary>
-        /// File alternativo da cui leggere i PTS, solo single file
-        /// </summary>
-        public string SourceRaw { get; set; }
 
         /// <summary>
         /// Directory output
@@ -93,9 +89,24 @@ namespace RemuxForge.Core.Models
         public bool ChaptersEach { get; set; }
 
         /// <summary>
+        /// Numero di capitoli per episodio, 0 quando la modalità non è in uso
+        /// </summary>
+        public int ChaptersPerEpisode { get; set; }
+
+        /// <summary>
+        /// True quando i segmenti si costruiscono nell'editor invece che dalla configurazione
+        /// </summary>
+        public bool Manual { get; set; }
+
+        /// <summary>
         /// Template custom per nomi output
         /// </summary>
         public string OutputTemplate { get; set; }
+
+        /// <summary>
+        /// Numero da cui parte la numerazione degli episodi
+        /// </summary>
+        public int StartNumber { get; set; }
 
         /// <summary>
         /// Strategia snap su keyframe
@@ -106,11 +117,6 @@ namespace RemuxForge.Core.Models
         /// Sovrascrive output esistenti
         /// </summary>
         public bool Force { get; set; }
-
-        /// <summary>
-        /// File log opzionale
-        /// </summary>
-        public string Log { get; set; }
 
         /// <summary>
         /// True quando l'input è una cartella batch
@@ -157,8 +163,17 @@ namespace RemuxForge.Core.Models
         /// <summary>Trim singolo</summary>
         Trim,
 
+        /// <summary>Taglio in uno o più punti: i segmenti coprono tutto il file</summary>
+        SplitAt,
+
         /// <summary>Un segmento per capitolo</summary>
-        ChaptersEach
+        ChaptersEach,
+
+        /// <summary>Blocchi di k capitoli per episodio</summary>
+        ChaptersPerEpisode,
+
+        /// <summary>Segmenti costruiti a mano nell'editor</summary>
+        Manual
     }
 
     /// <summary>
@@ -170,7 +185,10 @@ namespace RemuxForge.Core.Models
         Hevc,
 
         /// <summary>AVC / H.264</summary>
-        H264
+        H264,
+
+        /// <summary>MPEG-2 Video</summary>
+        Mpeg2
     }
 
     /// <summary>
@@ -186,6 +204,42 @@ namespace RemuxForge.Core.Models
 
         /// <summary>Variable Frame Rate</summary>
         Vfr
+    }
+
+    /// <summary>
+    /// Stato operativo di un record split
+    /// </summary>
+    public enum MkvSplitStatus
+    {
+        /// <summary>Scansionato, non ancora analizzato</summary>
+        Pending,
+
+        /// <summary>Analisi del piano in corso</summary>
+        Analyzing,
+
+        /// <summary>Piano costruito e valido</summary>
+        Planned,
+
+        /// <summary>Piano costruito ma non eseguibile</summary>
+        PlanInvalid,
+
+        /// <summary>Segmenti ancora da definire nell'editor</summary>
+        Undefined,
+
+        /// <summary>Split in corso</summary>
+        Running,
+
+        /// <summary>Split completato</summary>
+        Done,
+
+        /// <summary>Split fallito</summary>
+        Error,
+
+        /// <summary>Interrotto su richiesta</summary>
+        Stopped,
+
+        /// <summary>Escluso dall'elaborazione</summary>
+        Skipped
     }
 
     /// <summary>
@@ -229,8 +283,17 @@ namespace RemuxForge.Core.Models
         /// <summary>Capitoli contenuti</summary>
         public List<MkvSplitChapter> Chapters { get; set; }
 
-        /// <summary>Nome file output</summary>
+        /// <summary>Nome file output, relativo alla cartella di output</summary>
         public string File { get; set; }
+
+        /// <summary>True se il primo frame del segmento è un keyframe</summary>
+        public bool StartsOnKeyframe { get; set; }
+
+        /// <summary>Frame che andranno ricodificati per aprire il segmento</summary>
+        public int ReencodeFrames { get; set; }
+
+        /// <summary>Stato del file di output su disco</summary>
+        public MkvSplitOutputState OutputState { get; set; }
 
         /// <summary>Costruttore</summary>
         public MkvSplitSegment()
@@ -287,8 +350,8 @@ namespace RemuxForge.Core.Models
         /// <summary>File input</summary>
         public string InputFile { get; set; }
 
-        /// <summary>Stato testuale</summary>
-        public string Status { get; set; }
+        /// <summary>Stato corrente del record</summary>
+        public MkvSplitStatus Status { get; set; }
 
         /// <summary>Messaggio errore</summary>
         public string ErrorMessage { get; set; }
@@ -299,11 +362,26 @@ namespace RemuxForge.Core.Models
         /// <summary>True se completato con successo</summary>
         public bool Success { get; set; }
 
+        /// <summary>Piano di taglio calcolato, null finché il file non è stato analizzato</summary>
+        public MkvSplitPlan Plan { get; set; }
+
+        /// <summary>Dimensione del sorgente in byte</summary>
+        public long SourceSize { get; set; }
+
+        /// <summary>Info di contenitore e tracce lette allo scan, null se la lettura è fallita</summary>
+        public MkvFileInfo SourceInfo { get; set; }
+
+        /// <summary>True se il record è escluso dalle operazioni</summary>
+        public bool Skipped { get; set; }
+
+        /// <summary>True quando i segmenti del file arrivano dall'editor invece che dalla configurazione globale</summary>
+        public bool IsOverride { get; set; }
+
         /// <summary>Costruttore</summary>
         public MkvSplitRecord()
         {
             this.InputFile = "";
-            this.Status = "Pending";
+            this.Status = MkvSplitStatus.Pending;
             this.ErrorMessage = "";
             this.Segments = new List<MkvSplitSegment>();
             this.Success = false;

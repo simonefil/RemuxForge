@@ -103,7 +103,7 @@ namespace RemuxForge.Core.Models
         public const string AUDIO_SOURCE_FILL_END = "end";
 
         /// <summary>
-        /// Modalità audio source fill: INSERT_SILENCE DeepAnalysis
+        /// Modalità audio source fill: operazioni INSERT_SILENCE
         /// </summary>
         public const string AUDIO_SOURCE_FILL_INSERT_SILENCE = "insert-silence";
 
@@ -356,6 +356,11 @@ namespace RemuxForge.Core.Models
             {
                 options.Overwrite = true;
                 options.Metadata.OutputPolicy = MkvMetadataOutputPolicy.Overwrite;
+                i++;
+            }
+            else if (key == "overwrite-output")
+            {
+                options.Metadata.OverwriteOutput = true;
                 i++;
             }
             else if (key == "preserve-folder-structure")
@@ -712,10 +717,6 @@ namespace RemuxForge.Core.Models
                         options.SourceFolder = value;
                         options.Split.SourcePath = value;
                     }
-                    else if (key == "source-raw")
-                    {
-                        options.Split.SourceRaw = value;
-                    }
                     else if (key == "d" || key == "destination" || key == "o" || key == "output-dir")
                     {
                         options.DestinationFolder = value;
@@ -745,13 +746,17 @@ namespace RemuxForge.Core.Models
                     {
                         options.Split.OutputTemplate = value;
                     }
+                    else if (key == "chapters-per-episode")
+                    {
+                        options.Split.ChaptersPerEpisode = int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int chaptersPerEpisode) ? chaptersPerEpisode : 0;
+                    }
+                    else if (key == "start-number")
+                    {
+                        options.Split.StartNumber = int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int startNumber) ? startNumber : 1;
+                    }
                     else if (key == "snap")
                     {
                         options.Split.Snap = ParseSnapMode(value, options);
-                    }
-                    else if (key == "log")
-                    {
-                        options.Split.Log = value;
                     }
                     i += 2;
                 }
@@ -772,7 +777,6 @@ namespace RemuxForge.Core.Models
         private static bool IsSplitValueArgument(string key)
         {
             return key == "s" || key == "source" ||
-                key == "source-raw" ||
                 key == "d" || key == "destination" || key == "o" || key == "output-dir" ||
                 key == "pattern" ||
                 key == "ranges" ||
@@ -780,8 +784,9 @@ namespace RemuxForge.Core.Models
                 key == "trim-start" ||
                 key == "trim-end" ||
                 key == "output-template" ||
-                key == "snap" ||
-                key == "log";
+                key == "start-number" ||
+                key == "chapters-per-episode" ||
+                key == "snap";
         }
 
         /// <summary>

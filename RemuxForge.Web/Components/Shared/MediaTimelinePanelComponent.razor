@@ -1,0 +1,203 @@
+@implements IAsyncDisposable
+
+@* Pannello di una timeline su canvas: barra audio, commutazione della visualizzazione e wiring dell'interop. *@
+
+<section class="media-timeline-pane">
+    <div class="media-timeline-toolbar" role="group" aria-label="@ToolbarLabel" style="@GetToolbarColumns()">
+        @foreach (AudioLane lane in AudioLanes)
+        {
+            <label class="media-audio-label" for="@lane.ElementId">@lane.Label</label>
+            <select id="@lane.ElementId" class="form-input media-audio-control" value="@lane.SelectedTrackId" @onchange="lane.OnTrackChanged" disabled="@(lane.Tracks.Count == 0)">
+                @foreach (TrackInfo track in lane.Tracks)
+                {
+                    <option value="@track.Id">@Utils.FormatTrackCompact(track)</option>
+                }
+            </select>
+        }
+        <RadzenButton class="media-audio-mode-button" Text="@WaveformText" Size="ButtonSize.Small" Variant="@GetModeVariant(AUDIO_MODE_WAVEFORM)" ButtonStyle="@GetModeStyle(AUDIO_MODE_WAVEFORM)" Click="@(() => ChangeModeAsync(AUDIO_MODE_WAVEFORM))" />
+        <RadzenButton class="media-audio-mode-button" Text="@SpectrogramText" Size="ButtonSize.Small" Variant="@GetModeVariant(AUDIO_MODE_SPECTROGRAM)" ButtonStyle="@GetModeStyle(AUDIO_MODE_SPECTROGRAM)" Click="@(() => ChangeModeAsync(AUDIO_MODE_SPECTROGRAM))" />
+        <span class="media-waveform-height-label">@WaveformHeightText</span>
+        <RadzenSlider TValue="double" Value="@WaveformGain" Change="ChangeGainAsync" Min="1" Max="12" Step="0.25" Disabled="@IsSpectrogram" aria-label="@WaveformHeightText" />
+        <output>@WaveformGain.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)×</output>
+    </div>
+    <div @ref="_host" class="media-timeline-host" aria-label="@HostAlternative">
+        <div class="timeline-scroll-range"></div>
+        <canvas @ref="_canvas" class="media-timeline-canvas" role="img" aria-label="@CanvasAlternative"></canvas>
+    </div>
+</section>
+
+@code {
+
+    #region Costanti
+
+    /// <summary>Modalità di visualizzazione a forma d'onda</summary>
+    public const string AUDIO_MODE_WAVEFORM = "waveform";
+
+    /// <summary>Modalità di visualizzazione a spettrogramma</summary>
+    public const string AUDIO_MODE_SPECTROGRAM = "spectrogram";
+
+    #endregion
+
+    #region Fields
+
+    private ElementReference _host;
+    private ElementReference _canvas;
+    private IJSObjectReference _timeline;
+
+    #endregion
+
+    #region Properties
+
+    /// <summary>Corsie audio mostrate nella barra degli strumenti.</summary>
+    [Parameter] public List<AudioLane> AudioLanes { get; set; } = new List<AudioLane>();
+
+    /// <summary>Etichetta del gruppo di controlli, per la lettura assistita.</summary>
+    [Parameter] public string ToolbarLabel { get; set; } = string.Empty;
+
+    /// <summary>Etichetta del pulsante della forma d'onda.</summary>
+    [Parameter] public string WaveformText { get; set; } = string.Empty;
+
+    /// <summary>Etichetta del pulsante dello spettrogramma.</summary>
+    [Parameter] public string SpectrogramText { get; set; } = string.Empty;
+
+    /// <summary>Etichetta dell'ingrandimento verticale della forma d'onda.</summary>
+    [Parameter] public string WaveformHeightText { get; set; } = string.Empty;
+
+    /// <summary>Modalità di visualizzazione attiva.</summary>
+    [Parameter] public string AudioMode { get; set; } = AUDIO_MODE_WAVEFORM;
+
+    /// <summary>Invocata quando l'utente commuta la modalità di visualizzazione.</summary>
+    [Parameter] public EventCallback<string> AudioModeChanged { get; set; }
+
+    /// <summary>Ingrandimento verticale della forma d'onda.</summary>
+    [Parameter] public double WaveformGain { get; set; } = 1.0;
+
+    /// <summary>Invocata quando l'utente cambia l'ingrandimento verticale.</summary>
+    [Parameter] public EventCallback<double> WaveformGainChanged { get; set; }
+
+    /// <summary>Testo alternativo dell'area scorrevole.</summary>
+    [Parameter] public string HostAlternative { get; set; } = string.Empty;
+
+    /// <summary>Testo alternativo del canvas, per chi non vede la timeline.</summary>
+    [Parameter] public string CanvasAlternative { get; set; } = string.Empty;
+
+    /// <summary>Indica se la timeline è già stata creata lato JavaScript.</summary>
+    public bool IsAttached { get { return this._timeline != null; } }
+
+    private bool IsSpectrogram { get { return string.Equals(this.AudioMode, AUDIO_MODE_SPECTROGRAM, StringComparison.Ordinal); } }
+
+    #endregion
+
+    #region Metodi pubblici
+
+    /// <summary>
+    /// Crea la timeline JavaScript sul canvas del pannello
+    /// </summary>
+    /// <param name="module">Modulo che esporta createTimeline</param>
+    /// <param name="dotNetReference">Riferimento .NET su cui la timeline richiama le callback</param>
+    /// <param name="model">Modello opaco costruito dalla pagina</param>
+    public async Task AttachAsync(IJSObjectReference module, object dotNetReference, object model)
+    {
+        if (this._timeline != null || module == null)
+            return;
+        this._timeline = await module.InvokeAsync<IJSObjectReference>("createTimeline", this._host, this._canvas, dotNetReference, model);
+    }
+
+    /// <summary>
+    /// Ridisegna la timeline con un modello aggiornato
+    /// </summary>
+    /// <param name="model">Modello opaco costruito dalla pagina</param>
+    /// <param name="centerPlayhead">Se true riporta la vista sul playhead</param>
+    public async Task UpdateAsync(object model, bool centerPlayhead)
+    {
+        if (this._timeline != null)
+            await this._timeline.InvokeVoidAsync("update", model, centerPlayhead);
+    }
+
+    #endregion
+
+    #region Metodi privati
+
+    private ButtonStyle GetModeStyle(string mode)
+    {
+        return string.Equals(this.AudioMode, mode, StringComparison.Ordinal) ? ButtonStyle.Primary : ButtonStyle.Base;
+    }
+
+    private Variant GetModeVariant(string mode)
+    {
+        return string.Equals(this.AudioMode, mode, StringComparison.Ordinal) ? Variant.Filled : Variant.Outlined;
+    }
+
+    private string GetToolbarColumns()
+    {
+        return "grid-template-columns: repeat(" + this.AudioLanes.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + ", max-content minmax(6.5rem, 1fr)) repeat(2, minmax(6.5rem, 1fr)) max-content minmax(6rem, 1fr) max-content;";
+    }
+
+    private async Task ChangeModeAsync(string mode)
+    {
+        if (string.Equals(this.AudioMode, mode, StringComparison.Ordinal))
+            return;
+        await this.AudioModeChanged.InvokeAsync(mode);
+    }
+
+    private async Task ChangeGainAsync(double value)
+    {
+        double gain = Math.Max(1.0, Math.Min(12.0, value));
+        if (this._timeline != null)
+            await this._timeline.InvokeVoidAsync("setWaveformGain", gain);
+        await this.WaveformGainChanged.InvokeAsync(gain);
+    }
+
+    #endregion
+
+    #region IAsyncDisposable
+
+    /// <summary>
+    /// Distrugge la timeline JavaScript
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (this._timeline == null)
+            return;
+        IJSObjectReference timeline = this._timeline;
+        this._timeline = null;
+        try { await timeline.InvokeVoidAsync("dispose"); } catch { }
+        try { await timeline.DisposeAsync(); } catch { }
+    }
+
+    #endregion
+
+    #region Tipi annidati
+
+    /// <summary>
+    /// Contratto di una corsia audio mostrata dalla barra della timeline
+    /// </summary>
+    public class AudioLane
+    {
+        /// <summary>Costruttore</summary>
+        public AudioLane()
+        {
+            this.Label = "";
+            this.ElementId = "";
+            this.Tracks = new List<TrackInfo>();
+        }
+
+        /// <summary>Etichetta mostrata accanto al selettore</summary>
+        public string Label { get; set; }
+
+        /// <summary>Identificativo HTML del selettore</summary>
+        public string ElementId { get; set; }
+
+        /// <summary>Tracce audio selezionabili</summary>
+        public List<TrackInfo> Tracks { get; set; }
+
+        /// <summary>Identificativo della traccia selezionata</summary>
+        public int? SelectedTrackId { get; set; }
+
+        /// <summary>Callback invocata quando cambia la traccia</summary>
+        public EventCallback<ChangeEventArgs> OnTrackChanged { get; set; }
+    }
+
+    #endregion
+
+}

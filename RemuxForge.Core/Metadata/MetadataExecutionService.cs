@@ -92,7 +92,6 @@ namespace RemuxForge.Core.Metadata
             {
                 result.DryRun = true;
                 result.OutputFile = BuildOutputFile(record, options);
-                result.CommandText = BuildCommandPreview(record, options);
                 return result;
             }
 
@@ -123,58 +122,6 @@ namespace RemuxForge.Core.Metadata
             }
 
             return result;
-        }
-
-        /// <summary>
-        /// Costruisce anteprima comando per il pannello di analisi
-        /// </summary>
-        /// <param name="record">Record metadata</param>
-        /// <param name="options">Opzioni runtime metadata</param>
-        /// <returns>Anteprima testuale comando</returns>
-        public static string BuildCommandPreview(MkvMetadataRecord record, MkvMetadataOptions options)
-        {
-            StringBuilder sb = new StringBuilder();
-            string outputFile = BuildOutputFile(record, options);
-            bool hasPropEditOperations = false;
-
-            if (record.ExecutionMode == MkvMetadataExecutionMode.NoOp)
-                return "NoOp";
-
-            if (record.ExecutionMode == MkvMetadataExecutionMode.CopyPropEdit)
-            {
-                sb.AppendLine("copy \"" + record.InputFile + "\" \"" + outputFile + "\"");
-            }
-            else if (record.ExecutionMode == MkvMetadataExecutionMode.MkvMerge)
-            {
-                sb.AppendLine("mkvmerge -o \"" + outputFile + "\" ... \"" + record.InputFile + "\"");
-            }
-
-            for (int i = 0; record.Changes != null && i < record.Changes.Count; i++)
-            {
-                MkvMetadataOperationType type = record.Changes[i].OperationType;
-
-                switch (type)
-                {
-                    case MkvMetadataOperationType.SetField:
-                    case MkvMetadataOperationType.ClearField:
-                    case MkvMetadataOperationType.SetExclusiveFlag:
-                    case MkvMetadataOperationType.AddOrUpdateTrackStatisticsTags:
-                    case MkvMetadataOperationType.DeleteTrackStatisticsTags:
-                    case MkvMetadataOperationType.SetTagField:
-                    case MkvMetadataOperationType.ClearTagField:
-                    case MkvMetadataOperationType.ClearTags:
-                        hasPropEditOperations = true;
-                        break;
-                }
-
-                if (hasPropEditOperations)
-                    break;
-            }
-
-            if (hasPropEditOperations)
-                sb.Append("mkvpropedit \"" + outputFile + "\" ...");
-
-            return sb.ToString();
         }
 
         /// <summary>
@@ -231,6 +178,7 @@ namespace RemuxForge.Core.Metadata
             List<string> removedSelectors = new List<string>();
             Dictionary<string, string> selectorMap;
             Dictionary<string, string> trackUidMap;
+            List<string> trackOrder;
 
             // Usa un file temporaneo per overwrite, così l'originale viene sostituito solo a operazione completata
             if (options == null || options.OutputPolicy == MkvMetadataOutputPolicy.Overwrite)
@@ -254,8 +202,9 @@ namespace RemuxForge.Core.Metadata
             }
 
             // Esegue prima il remux, poi applica eventuali modifiche metadata rimaste sul file prodotto
-            selectorMap = BuildTrackSelectorMap(record.FileInfo.Tracks, removedSelectors);
-            args = this.BuildRemuxArguments(record.InputFile, remuxOutput, removedSelectors);
+            trackOrder = FindTrackOrder(record.Changes);
+            selectorMap = BuildTrackSelectorMap(SortTracksByOrder(record.FileInfo.Tracks, trackOrder), removedSelectors);
+            args = this.BuildRemuxArguments(record.InputFile, remuxOutput, removedSelectors, trackOrder);
             commandText = FormatCommand(this._mkvMergePath, args);
             processResult = ProcessRunner.Run(this._mkvMergePath, args.ToArray());
             if (processResult.ExitCode != 0)
@@ -366,6 +315,64 @@ namespace RemuxForge.Core.Metadata
                     args.Add("all:" + tagFile);
                 }
 
+                // Gli allegati li gestisce mkvpropedit in place, quindi non forzano un remux
+                for (int i = 0; i < changes.Count; i++)
+                {
+                    MkvMetadataChange change = changes[i];
+
+                    if (change.OperationType == MkvMetadataOperationType.SetAttachment)
+                    {
+                        if (string.IsNullOrEmpty(change.AttachmentSourcePath) || !File.Exists(change.AttachmentSourcePath))
+                            throw new InvalidOperationException(AppText.F("metadata.execution.attachmentSourceMissing", change.AttachmentSourcePath));
+
+                        args.Add("--attachment-name");
+                        args.Add(change.AttachmentName);
+                        if (!string.IsNullOrEmpty(change.AttachmentMimeType))
+                        {
+                            args.Add("--attachment-mime-type");
+                            args.Add(change.AttachmentMimeType);
+                        }
+
+                        // Sostituisce per nome quando l'allegato c'è già, altrimenti lo aggiunge:
+                        // con --add-attachment si accumulerebbero due allegati con lo stesso nome
+                        if (!string.IsNullOrEmpty(change.BeforeValue))
+                        {
+                            args.Add("--replace-attachment");
+                            args.Add("name:" + change.AttachmentName + ":" + change.AttachmentSourcePath);
+                        }
+                        else
+                        {
+                            args.Add("--add-attachment");
+                            args.Add(change.AttachmentSourcePath);
+                        }
+                    }
+                    else if (change.OperationType == MkvMetadataOperationType.DeleteAttachment)
+                    {
+                        args.Add("--delete-attachment");
+                        args.Add("name:" + change.AttachmentName);
+                    }
+                }
+
+                // I capitoli si sostituiscono in blocco: mkvpropedit non ne modifica uno
+                for (int i = 0; i < changes.Count; i++)
+                {
+                    MkvMetadataChange change = changes[i];
+
+                    if (change.OperationType == MkvMetadataOperationType.ClearChapters)
+                    {
+                        args.Add("--chapters");
+                        args.Add("");
+                    }
+                    else if (change.OperationType == MkvMetadataOperationType.RenameChapters)
+                    {
+                        string chapterFile = Path.Combine(Path.GetTempPath(), "remuxforge-chapters-" + Guid.NewGuid().ToString("N") + ".xml");
+                        File.WriteAllText(chapterFile, MetadataContainerReader.BuildChaptersXml(change.Chapters));
+                        tempFiles.Add(chapterFile);
+                        args.Add("--chapters");
+                        args.Add(chapterFile);
+                    }
+                }
+
                 if (addStatisticsTags)
                     args.Add("--add-track-statistics-tags");
 
@@ -394,8 +401,9 @@ namespace RemuxForge.Core.Metadata
         /// <summary>
         /// Costruisce gli argomenti mkvmerge conservando solo le tracce non rimosse
         /// </summary>
-        private List<string> BuildRemuxArguments(string inputFile, string outputFile, List<string> removedSelectors)
+        private List<string> BuildRemuxArguments(string inputFile, string outputFile, List<string> removedSelectors, List<string> trackOrder)
         {
+            Dictionary<string, int> selectorToId = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             List<string> args = new List<string>();
             MkvToolsService mkvTools = new MkvToolsService(this._mkvMergePath);
             MkvFileInfo info = mkvTools.GetFileInfo(inputFile);
@@ -423,18 +431,21 @@ namespace RemuxForge.Core.Metadata
                 if (track.Type == "video")
                 {
                     videoIndex++;
+                    selectorToId["track:v" + videoIndex.ToString(CultureInfo.InvariantCulture)] = track.Id;
                     if (!removedSelectors.Contains("track:v" + videoIndex.ToString(CultureInfo.InvariantCulture)))
                         videoKeep.Add(track.Id);
                 }
                 else if (track.Type == "audio")
                 {
                     audioIndex++;
+                    selectorToId["track:a" + audioIndex.ToString(CultureInfo.InvariantCulture)] = track.Id;
                     if (!removedSelectors.Contains("track:a" + audioIndex.ToString(CultureInfo.InvariantCulture)))
                         audioKeep.Add(track.Id);
                 }
                 else if (track.Type == "subtitles")
                 {
                     subtitleIndex++;
+                    selectorToId["track:s" + subtitleIndex.ToString(CultureInfo.InvariantCulture)] = track.Id;
                     if (!removedSelectors.Contains("track:s" + subtitleIndex.ToString(CultureInfo.InvariantCulture)))
                         subtitleKeep.Add(track.Id);
                 }
@@ -444,9 +455,95 @@ namespace RemuxForge.Core.Metadata
             AddTrackSelection(args, removeVideo, videoKeep, "--video-tracks", "-D");
             AddTrackSelection(args, removeAudio, audioKeep, "--audio-tracks", "-A");
             AddTrackSelection(args, removeSubtitle, subtitleKeep, "--subtitle-tracks", "-S");
+            AddTrackOrder(args, trackOrder, removedSelectors, selectorToId);
             args.Add(inputFile);
 
             return args;
+        }
+
+        /// <summary>
+        /// Aggiunge l'ordine delle tracce agli argomenti mkvmerge
+        /// </summary>
+        /// <param name="args">Argomenti in costruzione</param>
+        /// <param name="trackOrder">Selector logici nell'ordine voluto</param>
+        /// <param name="removedSelectors">Selector rimossi dal remux</param>
+        /// <param name="selectorToId">Mappa dal selector logico all'id mkvmerge</param>
+        private static void AddTrackOrder(List<string> args, List<string> trackOrder, List<string> removedSelectors, Dictionary<string, int> selectorToId)
+        {
+            StringBuilder order = new StringBuilder();
+
+            if (trackOrder == null || trackOrder.Count == 0)
+                return;
+
+            for (int i = 0; i < trackOrder.Count; i++)
+            {
+                int id;
+                if (removedSelectors != null && removedSelectors.Contains(trackOrder[i]))
+                    continue;
+
+                if (!selectorToId.TryGetValue(trackOrder[i], out id))
+                    continue;
+
+                if (order.Length > 0)
+                    order.Append(",");
+
+                order.Append("0:" + id.ToString(CultureInfo.InvariantCulture));
+            }
+
+            if (order.Length == 0)
+                return;
+
+            args.Add("--track-order");
+            args.Add(order.ToString());
+        }
+
+        /// <summary>
+        /// Cerca l'ordine delle tracce dichiarato dalle modifiche
+        /// </summary>
+        /// <param name="changes">Modifiche del record</param>
+        /// <returns>Selector nell'ordine voluto, vuoto se nessuna modifica riordina</returns>
+        private static List<string> FindTrackOrder(List<MkvMetadataChange> changes)
+        {
+            for (int i = 0; changes != null && i < changes.Count; i++)
+            {
+                if (changes[i].OperationType == MkvMetadataOperationType.SetTrackOrder && changes[i].TrackOrder != null && changes[i].TrackOrder.Count > 0)
+                    return changes[i].TrackOrder;
+            }
+
+            return new List<string>();
+        }
+
+        /// <summary>
+        /// Riordina le tracce del modello secondo l'ordine dichiarato
+        /// </summary>
+        /// <param name="tracks">Tracce del modello analizzato</param>
+        /// <param name="trackOrder">Selector nell'ordine voluto</param>
+        /// <returns>Tracce nell'ordine in cui il remux le scrivera'</returns>
+        private static List<MkvMetadataTrackInfo> SortTracksByOrder(List<MkvMetadataTrackInfo> tracks, List<string> trackOrder)
+        {
+            List<MkvMetadataTrackInfo> result = new List<MkvMetadataTrackInfo>();
+
+            if (tracks == null || trackOrder == null || trackOrder.Count == 0)
+                return tracks;
+
+            // Le posizioni post-remux servono a mkvpropedit: se le tracce escono
+            // riordinate, la mappa dei selector va costruita sull'ordine nuovo
+            for (int i = 0; i < trackOrder.Count; i++)
+            {
+                for (int t = 0; t < tracks.Count; t++)
+                {
+                    if (string.Equals(tracks[t].TrackSelector, trackOrder[i], StringComparison.OrdinalIgnoreCase) && !result.Contains(tracks[t]))
+                        result.Add(tracks[t]);
+                }
+            }
+
+            for (int t = 0; t < tracks.Count; t++)
+            {
+                if (!result.Contains(tracks[t]))
+                    result.Add(tracks[t]);
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -831,7 +928,14 @@ namespace RemuxForge.Core.Metadata
                 // I tag senza TrackUID sono considerati tag container
                 if (IsGlobalTag(tag))
                 {
-                    ReadManagedSimpleTags(tag, fileInfo.Tags);
+                    // I tag di stagione o collezione non sono dell'episodio: tenerli
+                    // nello stesso dizionario li farebbe leggere come tag dell'episodio
+                    int level = GetTargetTypeValue(tag);
+                    if (level == MetadataTagTargetLevels.EPISODE)
+                        ReadManagedSimpleTags(tag, fileInfo.Tags);
+                    else
+                        ReadManagedSimpleTags(tag, fileInfo.LeveledTags, level);
+
                     continue;
                 }
 
@@ -868,6 +972,17 @@ namespace RemuxForge.Core.Metadata
         /// </summary>
         private static void ReadManagedSimpleTags(XElement tag, Dictionary<string, string> target)
         {
+            ReadManagedSimpleTags(tag, target, MetadataTagTargetLevels.EPISODE);
+        }
+
+        /// <summary>
+        /// Legge i tag gestiti di un nodo Tag indicizzandoli per livello quando serve
+        /// </summary>
+        /// <param name="tag">Nodo Tag</param>
+        /// <param name="target">Dizionario da popolare</param>
+        /// <param name="targetTypeValue">Livello di target del nodo</param>
+        private static void ReadManagedSimpleTags(XElement tag, Dictionary<string, string> target, int targetTypeValue)
+        {
             foreach (XElement simple in tag.Elements("Simple"))
             {
                 XElement nameElement = simple.Element("Name");
@@ -876,8 +991,11 @@ namespace RemuxForge.Core.Metadata
                     continue;
 
                 string name = NormalizeTagName(nameElement.Value);
-                if (MetadataTagRegistry.IsAllowed(name))
-                    target[name] = valueElement.Value != null ? valueElement.Value : "";
+                if (!MetadataTagRegistry.IsAllowed(name))
+                    continue;
+
+                string key = targetTypeValue == MetadataTagTargetLevels.EPISODE ? name : MetadataTagKey.Build(targetTypeValue, name);
+                target[key] = valueElement.Value != null ? valueElement.Value : "";
             }
         }
 
@@ -929,10 +1047,12 @@ namespace RemuxForge.Core.Metadata
                 root = document.Root;
             }
 
-            // Riusa un nodo Tag esistente quando punta allo stesso target
+            // Riusa un nodo Tag esistente quando punta allo stesso target: per il
+            // contenitore contano il livello, perche' stagione ed episodio sono due
+            // target diversi e fonderli scriverebbe il titolo della serie sull'episodio
             foreach (XElement tag in root.Elements("Tag"))
             {
-                if (change.Scope == MkvMetadataTargetScope.Container && IsGlobalTag(tag))
+                if (change.Scope == MkvMetadataTargetScope.Container && IsGlobalTag(tag) && GetTargetTypeValue(tag) == change.TagTargetTypeValue)
                     return tag;
 
                 if (change.Scope != MkvMetadataTargetScope.Container && !string.IsNullOrEmpty(trackUid) && string.Equals(GetTrackUid(tag), trackUid, StringComparison.OrdinalIgnoreCase))
@@ -949,9 +1069,55 @@ namespace RemuxForge.Core.Metadata
 
                 targets.Add(new XElement("TrackUID", trackUid));
             }
+            else if (change.TagTargetTypeValue != MetadataTagTargetLevels.EPISODE)
+            {
+                // 50 e' quello che Matroska assume quando il livello manca: non scriverlo
+                // lascia i preset gia' esistenti a produrre esattamente il file di prima
+                targets.Add(new XElement("TargetTypeValue", change.TagTargetTypeValue.ToString(CultureInfo.InvariantCulture)));
+                if (!string.IsNullOrEmpty(DescribeTargetType(change.TagTargetTypeValue)))
+                    targets.Add(new XElement("TargetType", DescribeTargetType(change.TagTargetTypeValue)));
+            }
 
             root.Add(result);
             return result;
+        }
+
+        /// <summary>
+        /// Legge il livello di target di un nodo Tag
+        /// </summary>
+        /// <param name="tag">Nodo Tag</param>
+        /// <returns>Livello dichiarato, 50 se assente come vuole Matroska</returns>
+        private static int GetTargetTypeValue(XElement tag)
+        {
+            XElement targets = tag.Element("Targets");
+            XElement value = targets != null ? targets.Element("TargetTypeValue") : null;
+            int parsed;
+
+            if (value == null || !int.TryParse(value.Value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed))
+                return MetadataTagTargetLevels.EPISODE;
+
+            return parsed;
+        }
+
+        /// <summary>
+        /// Restituisce il nome del livello di target, vuoto quando e' ambiguo
+        /// </summary>
+        /// <param name="targetTypeValue">Livello di target</param>
+        /// <returns>Nome del livello</returns>
+        private static string DescribeTargetType(int targetTypeValue)
+        {
+            if (targetTypeValue == MetadataTagTargetLevels.COLLECTION)
+                return "COLLECTION";
+
+            if (targetTypeValue == MetadataTagTargetLevels.SEASON)
+                return "SEASON";
+
+            if (targetTypeValue == MetadataTagTargetLevels.TRACK)
+                return "TRACK";
+
+            // A 50 Matroska ammette MOVIE, EPISODE e CONCERT: senza sapere che cosa
+            // contiene il file, scrivere il nome sbagliato e' peggio che ometterlo
+            return "";
         }
 
         /// <summary>

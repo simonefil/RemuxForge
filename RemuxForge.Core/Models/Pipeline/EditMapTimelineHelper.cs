@@ -41,6 +41,7 @@ namespace RemuxForge.Core.Models
         public const string UNKNOWN_OPERATION = "unknown_operation";
         public const string NEGATIVE_TIMESTAMP = "negative_timestamp";
         public const string INVALID_DURATION = "invalid_duration";
+        public const string INVALID_GAIN = "invalid_gain";
         public const string LANGUAGE_TIMESTAMP_OUT_OF_RANGE = "language_timestamp_out_of_range";
         public const string CUT_OUT_OF_RANGE = "cut_out_of_range";
         public const string DUPLICATE_BOUNDARY = "duplicate_boundary";
@@ -259,6 +260,9 @@ namespace RemuxForge.Core.Models
         /// <summary>Durata Language indicizzata</summary>
         public double LanguageDurationMs { get; internal set; }
 
+        /// <summary>Tolleranza Source usata per riconoscere un'operazione di coda</summary>
+        internal double SourceTailToleranceMs { get; set; }
+
         #endregion
 
         #region Metodi privati
@@ -295,14 +299,16 @@ namespace RemuxForge.Core.Models
         /// <param name="editMap">Mappa sorgente</param>
         /// <param name="sourceDurationMs">Durata Source indicizzata</param>
         /// <param name="languageDurationMs">Durata Language indicizzata</param>
+        /// <param name="sourceTailToleranceMs">Durata dell'ultimo frame Source, usata come tolleranza di coda</param>
         /// <returns>Proiezione compilata con validazione e copia normalizzata</returns>
-        public static EditMapProjection BuildProjection(EditMap editMap, double sourceDurationMs, double languageDurationMs)
+        public static EditMapProjection BuildProjection(EditMap editMap, double sourceDurationMs, double languageDurationMs, double sourceTailToleranceMs = 0.0)
         {
             EditMapProjection result = new EditMapProjection();
             EditMap normalizedMap = Clone(editMap);
             result.Map = normalizedMap;
             result.SourceDurationMs = Math.Max(0.0, sourceDurationMs);
             result.LanguageDurationMs = Math.Max(0.0, languageDurationMs);
+            result.SourceTailToleranceMs = double.IsFinite(sourceTailToleranceMs) ? Math.Max(0.0, sourceTailToleranceMs) : 0.0;
 
             if (!TryParseStretchFactor(normalizedMap.StretchFactor, out double stretchRatio, out string normalizedStretch))
             {
@@ -348,6 +354,7 @@ namespace RemuxForge.Core.Models
                     Type = operation.Type ?? "",
                     LangTimestampMs = operation.LangTimestampMs,
                     DurationMs = operation.DurationMs,
+                    GainDb = operation.GainDb,
                     SourceTimestampMs = operation.SourceTimestampMs,
                     VisualSourceTimestampMs = operation.VisualSourceTimestampMs,
                     Scope = operation.Scope ?? EditOperation.SCOPE_BODY
@@ -485,6 +492,8 @@ namespace RemuxForge.Core.Models
                     AddIssue(projection.Validation.Errors, EditMapValidationCode.NEGATIVE_TIMESTAMP, i, operation.LangTimestampMs);
                 if (operation.DurationMs <= 0)
                     AddIssue(projection.Validation.Errors, EditMapValidationCode.INVALID_DURATION, i, operation.DurationMs);
+                if (!double.IsFinite(operation.GainDb))
+                    AddIssue(projection.Validation.Errors, EditMapValidationCode.INVALID_GAIN, i, operation.GainDb);
                 if (projection.LanguageDurationMs > 0.0 && operation.LangTimestampMs > projection.LanguageDurationMs)
                     AddIssue(projection.Validation.Errors, EditMapValidationCode.LANGUAGE_TIMESTAMP_OUT_OF_RANGE, i, operation.LangTimestampMs);
                 if (isCut && projection.LanguageDurationMs > 0.0 && operation.LangTimestampMs + operation.DurationMs > projection.LanguageDurationMs)
@@ -506,7 +515,7 @@ namespace RemuxForge.Core.Models
                 operation.SourceTimestampMs = normalizedSourceTimestampMs;
                 operation.VisualSourceTimestampMs = normalizedSourceTimestampMs;
 
-                string normalizedScope = ResolveScope(operation, projection.LanguageDurationMs);
+                string normalizedScope = ResolveScope(operation, projection, sourceBoundaryMs);
                 if (!string.Equals(operation.Scope, normalizedScope, StringComparison.Ordinal))
                     AddIssue(projection.Validation.Warnings, EditMapValidationCode.SCOPE_NORMALIZED, i, 0.0);
                 operation.Scope = normalizedScope;
@@ -597,18 +606,27 @@ namespace RemuxForge.Core.Models
         /// <summary>
         /// Calcola lo scope derivato dalla posizione reale dell'operazione
         /// </summary>
-        private static string ResolveScope(EditOperation operation, double languageDurationMs)
+        private static string ResolveScope(EditOperation operation, EditMapProjection projection, double sourceBoundaryMs)
         {
             if (operation.LangTimestampMs == 0)
                 return EditOperation.SCOPE_HEAD;
-            if (languageDurationMs > 0.0)
+
+            if (string.Equals(operation.Type, EditOperation.CUT_SEGMENT, StringComparison.Ordinal))
             {
-                double endMs = string.Equals(operation.Type, EditOperation.CUT_SEGMENT, StringComparison.Ordinal)
-                    ? operation.LangTimestampMs + operation.DurationMs
-                    : operation.LangTimestampMs;
-                if (endMs >= languageDurationMs)
+                if (projection.LanguageDurationMs > 0.0 && operation.LangTimestampMs + operation.DurationMs >= projection.LanguageDurationMs)
                     return EditOperation.SCOPE_TAIL;
             }
+            else if (projection.SourceDurationMs > 0.0)
+            {
+                double sourceEndMs = sourceBoundaryMs + operation.DurationMs * projection.StretchRatio;
+                if (sourceEndMs >= projection.SourceDurationMs - projection.SourceTailToleranceMs)
+                    return EditOperation.SCOPE_TAIL;
+            }
+            else if (projection.LanguageDurationMs > 0.0 && operation.LangTimestampMs >= projection.LanguageDurationMs)
+            {
+                return EditOperation.SCOPE_TAIL;
+            }
+
             return EditOperation.SCOPE_BODY;
         }
 

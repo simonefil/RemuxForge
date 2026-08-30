@@ -203,6 +203,17 @@ namespace RemuxForge.Core.Metadata
             AddTag(result, "SOURCE", MetadataFieldValueType.String, MetadataFieldInputKind.Text, MetadataFieldVisibility.Advanced, true, MkvMetadataTargetScope.Container);
             AddTag(result, "LANGUAGE", MetadataFieldValueType.Language, MetadataFieldInputKind.LanguageSelect, MetadataFieldVisibility.Advanced, true, MkvMetadataTargetScope.Container, MkvMetadataTargetScope.Video, MkvMetadataTargetScope.Audio, MkvMetadataTargetScope.Subtitle);
             AddTag(result, "ORIGINAL_MEDIA_TYPE", MetadataFieldValueType.String, MetadataFieldInputKind.Text, MetadataFieldVisibility.Advanced, true, MkvMetadataTargetScope.Container);
+            AddTag(result, "ORIGINAL_TITLE", MetadataFieldValueType.String, MetadataFieldInputKind.Text, MetadataFieldVisibility.Primary, true, MkvMetadataTargetScope.Container);
+            AddTag(result, "ACTOR", MetadataFieldValueType.String, MetadataFieldInputKind.Text, MetadataFieldVisibility.Primary, true, MkvMetadataTargetScope.Container);
+            AddTag(result, "PERFORMER", MetadataFieldValueType.String, MetadataFieldInputKind.Text, MetadataFieldVisibility.Advanced, true, MkvMetadataTargetScope.Container);
+            AddTag(result, "ARTIST", MetadataFieldValueType.String, MetadataFieldInputKind.Text, MetadataFieldVisibility.Advanced, true, MkvMetadataTargetScope.Container, MkvMetadataTargetScope.Audio);
+            AddTag(result, "ALBUM", MetadataFieldValueType.String, MetadataFieldInputKind.Text, MetadataFieldVisibility.Advanced, true, MkvMetadataTargetScope.Container);
+            AddTag(result, "TVDB", MetadataFieldValueType.String, MetadataFieldInputKind.Text, MetadataFieldVisibility.Primary, true, MkvMetadataTargetScope.Container);
+
+            // Il titolo della serie e la stagione non sono dell'episodio: senza il livello
+            // giusto finirebbero a 50 e ogni episodio direbbe di chiamarsi come la serie
+            SetDefaultTargetLevel(result, "TVDB", MetadataTagTargetLevels.COLLECTION);
+            SetDefaultTargetLevel(result, "ALBUM", MetadataTagTargetLevels.SEASON);
             return result;
         }
 
@@ -239,6 +250,21 @@ namespace RemuxForge.Core.Metadata
         }
 
         /// <summary>
+        /// Imposta il livello di target di default di un tag
+        /// </summary>
+        /// <param name="tags">Lista tag in costruzione</param>
+        /// <param name="name">Nome del tag</param>
+        /// <param name="targetTypeValue">Livello di target</param>
+        private static void SetDefaultTargetLevel(List<MetadataTagDefinition> tags, string name, int targetTypeValue)
+        {
+            for (int i = 0; i < tags.Count; i++)
+            {
+                if (string.Equals(tags[i].Name, name, StringComparison.OrdinalIgnoreCase))
+                    tags[i].DefaultTargetTypeValue = targetTypeValue;
+            }
+        }
+
+        /// <summary>
         /// Clona una definizione tag
         /// </summary>
         /// <param name="source">Tag sorgente</param>
@@ -259,6 +285,7 @@ namespace RemuxForge.Core.Metadata
             result.AllowedValues = MetadataInputOptionCloner.CloneList(source.AllowedValues);
             result.HelpKey = source.HelpKey;
             result.SortGroup = source.SortGroup;
+            result.DefaultTargetTypeValue = source.DefaultTargetTypeValue;
             return result;
         }
 

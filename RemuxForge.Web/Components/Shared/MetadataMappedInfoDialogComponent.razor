@@ -85,6 +85,28 @@
                             <div class="metadata-sheet-section-title">@AppText.T("web.metadata.mapped.tags") - @GetActiveTagContextLabel()</div>
                             @FieldSheet(GetActiveTagRows(), AppText.T("web.metadata.mapped.noTags"))
                         </div>
+
+                        @if (Editable && info != null && info.Chapters != null && info.Chapters.Count > 0)
+                        {
+                            <div class="metadata-sheet-block">
+                                <div class="metadata-sheet-section-title">@AppText.F("web.metadata.mapped.chapters", info.Chapters.Count)</div>
+                                <div class="metadata-chapter-toolbar">
+                                    <input class="form-input metadata-chapter-pattern" aria-label="@AppText.T("web.metadata.mapped.chapterPattern")" placeholder="@AppText.T("web.metadata.presetDialog.chapterPatternPlaceholder")" @bind="_chapterPattern" />
+                                    <RadzenButton Text="@AppText.T("web.metadata.mapped.chapterRenumber")" Icon="format_list_numbered" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@ApplyChapterPattern" />
+                                    <div class="ui-switch"><RadzenSwitch TValue="bool" @bind-Value="@_clearChapters" /><span>@AppText.T("web.metadata.mapped.chapterClear")</span></div>
+                                </div>
+                                <div class="metadata-chapter-list">
+                                    @for (int i = 0; i < info.Chapters.Count; i++)
+                                    {
+                                        int chapterIndex = i;
+                                        <div class="metadata-chapter-row">
+                                            <span class="metadata-chapter-time">@FormatChapterStart(info.Chapters[chapterIndex].StartMs)</span>
+                                            <input class="form-input metadata-chapter-name @(IsChapterNameChanged(chapterIndex) ? "metadata-manual-input-changed" : "")" aria-label="@AppText.F("web.metadata.mapped.chapterName", chapterIndex + 1)" disabled="@_clearChapters" value="@GetChapterName(chapterIndex)" @onchange="@((ChangeEventArgs e) => ChangeChapterName(chapterIndex, e.Value != null ? e.Value.ToString() : ""))" />
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
                     </div>
                 }
             </div>
@@ -192,6 +214,21 @@
     /// Valori modificati manualmente indicizzati per riga
     /// </summary>
     private Dictionary<string, string> _editValues = new Dictionary<string, string>();
+
+    /// <summary>
+    /// Nomi di capitolo modificati, per indice
+    /// </summary>
+    private Dictionary<int, string> _chapterNames = new Dictionary<int, string>();
+
+    /// <summary>
+    /// Pattern di rinumerazione dei capitoli
+    /// </summary>
+    private string _chapterPattern = "";
+
+    /// <summary>
+    /// Indica se il blocco capitoli va eliminato
+    /// </summary>
+    private bool _clearChapters;
 
     /// <summary>
     /// Mostra soltanto i campi modificati nella simulazione
@@ -814,6 +851,133 @@
     }
 
     /// <summary>
+    /// Restituisce il nome corrente del capitolo, modificato o originale
+    /// </summary>
+    /// <param name="index">Indice del capitolo</param>
+    /// <returns>Nome del capitolo</returns>
+    private string GetChapterName(int index)
+    {
+        MkvMetadataFileInfo info = this.GetInfo();
+        string value;
+
+        if (this._chapterNames.TryGetValue(index, out value))
+            return value != null ? value : "";
+
+        return info != null && info.Chapters != null && index < info.Chapters.Count ? info.Chapters[index].Name : "";
+    }
+
+    /// <summary>
+    /// Aggiorna il nome di un capitolo
+    /// </summary>
+    /// <param name="index">Indice del capitolo</param>
+    /// <param name="value">Nuovo nome</param>
+    private void ChangeChapterName(int index, string value)
+    {
+        this._chapterNames[index] = value != null ? value : "";
+        this._editMessage = "";
+    }
+
+    /// <summary>
+    /// Indica se il nome di un capitolo e' stato modificato
+    /// </summary>
+    /// <param name="index">Indice del capitolo</param>
+    /// <returns>True se modificato</returns>
+    private bool IsChapterNameChanged(int index)
+    {
+        MkvMetadataFileInfo info = this.GetInfo();
+        string original = info != null && info.Chapters != null && index < info.Chapters.Count ? info.Chapters[index].Name : "";
+
+        return !string.Equals(this.GetChapterName(index), original, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Applica il pattern di rinumerazione a tutti i capitoli
+    /// </summary>
+    private void ApplyChapterPattern()
+    {
+        MkvMetadataFileInfo info = this.GetInfo();
+
+        if (info == null || info.Chapters == null || string.IsNullOrEmpty(this._chapterPattern))
+            return;
+
+        for (int i = 0; i < info.Chapters.Count; i++)
+        {
+            string name = this._chapterPattern;
+            name = name.Replace("{n:02}", (i + 1).ToString("00", System.Globalization.CultureInfo.InvariantCulture));
+            name = name.Replace("{n}", (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            name = name.Replace("{name}", this.GetChapterName(i));
+            this._chapterNames[i] = name;
+        }
+
+        this._editMessage = "";
+    }
+
+    /// <summary>
+    /// Formatta l'inizio di un capitolo come hh:mm:ss
+    /// </summary>
+    /// <param name="startMs">Inizio in millisecondi</param>
+    /// <returns>Testo formattato</returns>
+    private string FormatChapterStart(double startMs)
+    {
+        TimeSpan span = TimeSpan.FromMilliseconds(startMs >= 0 ? startMs : 0);
+
+        return ((int)span.TotalHours).ToString("00", System.Globalization.CultureInfo.InvariantCulture) + ":" +
+            span.Minutes.ToString("00", System.Globalization.CultureInfo.InvariantCulture) + ":" +
+            span.Seconds.ToString("00", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Costruisce la modifica sui capitoli, null se non ce n'e' nessuna
+    /// </summary>
+    /// <returns>Modifica capitoli</returns>
+    private MkvMetadataChange BuildChapterChange()
+    {
+        MkvMetadataFileInfo info = this.GetInfo();
+        MkvMetadataChange change;
+        List<MkvMetadataChapterInfo> renamed;
+        bool changed = false;
+
+        if (info == null || info.Chapters == null || info.Chapters.Count == 0)
+            return null;
+
+        change = new MkvMetadataChange();
+        change.RuleDescription = AppText.T("web.metadata.manualEdit.ruleDescription");
+        change.Scope = MkvMetadataTargetScope.Container;
+        change.RequiresRemux = false;
+
+        if (this._clearChapters)
+        {
+            change.OperationType = MkvMetadataOperationType.ClearChapters;
+            change.BeforeValue = info.Chapters.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            change.AfterValue = "0";
+            change.Message = AppText.F("metadata.change.chaptersCleared", info.Chapters.Count);
+            return change;
+        }
+
+        renamed = MetadataContainerReader.CloneChapters(info.Chapters);
+        for (int i = 0; i < renamed.Count; i++)
+        {
+            string name = this.GetChapterName(i);
+            if (string.Equals(name, renamed[i].Name, StringComparison.Ordinal))
+                continue;
+
+            renamed[i].Name = name;
+            changed = true;
+        }
+
+        if (!changed)
+            return null;
+
+        change.OperationType = MkvMetadataOperationType.RenameChapters;
+        change.BeforeValue = info.Chapters[0].Name;
+        change.AfterValue = renamed[0].Name;
+        change.Chapters = renamed;
+        change.Message = AppText.F("metadata.change.chaptersRenamed", renamed.Count);
+
+        return change;
+    }
+
+    /// <summary>
     /// Applica modifiche manuali validate
     /// </summary>
     private async System.Threading.Tasks.Task ApplyManualEdit()
@@ -839,6 +1003,10 @@
     private List<MkvMetadataChange> BuildManualChanges()
     {
         List<MkvMetadataChange> changes = new List<MkvMetadataChange>();
+        MkvMetadataChange chapterChange = this.BuildChapterChange();
+
+        if (chapterChange != null)
+            changes.Add(chapterChange);
 
         foreach (KeyValuePair<string, string> pair in this._editValues)
         {

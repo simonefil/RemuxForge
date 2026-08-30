@@ -150,6 +150,10 @@
                                                     @PropertyRow(AppText.T("web.detail.languageTimestampLabel"), _builder.FormatTimestamp(operation.LangTimestampMs))
                                                     @PropertyRow(AppText.T("web.detail.sourceTimestampLabel"), _builder.FormatTimestamp(operation.SourceTimestampMs))
                                                     @PropertyRow(AppText.T("web.detail.durationLabel"), (operation.DurationMs / 1000.0).ToString("F3", System.Globalization.CultureInfo.InvariantCulture) + "s")
+                                                    @if (string.Equals(operation.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal))
+                                                    {
+                                                        @PropertyRow(AppText.T("web.editMap.insertGain"), operation.GainDb.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture) + " dB")
+                                                    }
                                                 </div>
                                             }
                                         </div>

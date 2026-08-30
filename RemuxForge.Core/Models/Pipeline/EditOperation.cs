@@ -14,6 +14,7 @@ namespace RemuxForge.Core.Models
         {
             this.Type = "";
             this.Scope = SCOPE_BODY;
+            this.GainDb = 0.0;
         }
 
         #endregion
@@ -66,6 +67,11 @@ namespace RemuxForge.Core.Models
         /// Espressa sempre nella timeline originale del lang, prima del render dello stretch
         /// </summary>
         public int DurationMs { get; set; }
+
+        /// <summary>
+        /// Gain in decibel applicato all'audio Source che riempie questa operazione Insert
+        /// </summary>
+        public double GainDb { get; set; }
 
         /// <summary>
         /// Timestamp corrispondente nel source/finale in millisecondi, per log, debug e source-fill

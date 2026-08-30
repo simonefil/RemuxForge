@@ -638,7 +638,7 @@ namespace RemuxForge.Core.Audio
                     if (plan.SourceFilledOperations.Contains(operation))
                     {
                         // Dove il piano lo ammette usa lo stesso intervallo temporale della source invece di generare silenzio
-                        this.AddTimelineIntervalSegments(segments, 0, sourceTrack, plan.SourceInitialTimelineOffsetMs, operation.SourceTimestampMs, operation.SourceTimestampMs + sourceOperationDurationMs, 1.0, 1.0);
+                        this.AddTimelineIntervalSegments(segments, 0, sourceTrack, plan.SourceInitialTimelineOffsetMs, operation.SourceTimestampMs, operation.SourceTimestampMs + sourceOperationDurationMs, 1.0, 1.0, operation.GainDb);
                     }
                     else
                     {
@@ -675,10 +675,13 @@ namespace RemuxForge.Core.Audio
         /// <param name="endMs">Fine richiesta nel dominio nativo, oppure -1 per la coda</param>
         /// <param name="silenceScale">Moltiplicatore con cui materializzare il gap</param>
         /// <param name="tempo">Tempo ffmpeg da applicare alla parte con campioni</param>
-        private void AddTimelineIntervalSegments(List<AudioFilterSegment> segments, int inputIndex, TrackInfo track, int trackStartMs, int startMs, int endMs, double silenceScale, double tempo)
+        /// <param name="gainDb">Gain in decibel da applicare alla parte con campioni</param>
+        private void AddTimelineIntervalSegments(List<AudioFilterSegment> segments, int inputIndex, TrackInfo track, int trackStartMs, int startMs, int endMs, double silenceScale, double tempo, double gainDb = 0.0)
         {
             int intervalStartMs = Math.Max(0, startMs);
             int gapEndMs = endMs >= 0 ? Math.Min(endMs, trackStartMs) : trackStartMs;
+            int trackDurationMs = track != null && track.TrackDurationNs > 0 ? (int)Math.Round(track.TrackDurationNs / 1000000.0) : 0;
+            int trackEndMs = trackDurationMs > 0 ? trackStartMs + trackDurationMs : -1;
 
             if (gapEndMs > intervalStartMs)
             {
@@ -688,13 +691,27 @@ namespace RemuxForge.Core.Audio
             }
 
             int mediaTimelineStartMs = Math.Max(intervalStartMs, trackStartMs);
-            if (endMs < 0 || endMs > mediaTimelineStartMs)
+            int mediaTimelineEndMs = endMs;
+            if (trackEndMs >= 0 && (mediaTimelineEndMs < 0 || mediaTimelineEndMs > trackEndMs))
+                mediaTimelineEndMs = trackEndMs;
+            if (mediaTimelineEndMs < 0 || mediaTimelineEndMs > mediaTimelineStartMs)
             {
                 // FFmpeg ribasa il primo packet audio a zero: i trim vanno riportati
                 // dal dominio del container al dominio dei campioni decodificati
                 int decodedStartMs = Math.Max(0, mediaTimelineStartMs - trackStartMs);
-                int decodedEndMs = endMs >= 0 ? Math.Max(0, endMs - trackStartMs) : -1;
-                segments.Add(new AudioFilterSegment(inputIndex, track.Id, decodedStartMs, decodedEndMs, false, tempo));
+                int decodedEndMs = mediaTimelineEndMs >= 0 ? Math.Max(0, mediaTimelineEndMs - trackStartMs) : -1;
+                segments.Add(new AudioFilterSegment(inputIndex, track.Id, decodedStartMs, decodedEndMs, false, tempo, gainDb));
+            }
+
+            if (endMs >= 0 && trackEndMs >= 0)
+            {
+                int missingStartMs = Math.Max(intervalStartMs, trackEndMs);
+                if (endMs > missingStartMs)
+                {
+                    int silenceDurationMs = (int)Math.Round((endMs - missingStartMs) * silenceScale, MidpointRounding.AwayFromZero);
+                    if (silenceDurationMs > 0)
+                        segments.Add(new AudioFilterSegment(inputIndex, track.Id, 0, silenceDurationMs, true));
+                }
             }
         }
 
@@ -739,6 +756,10 @@ namespace RemuxForge.Core.Audio
                             throw new InvalidOperationException("Tempo audio FFmpeg non valido");
                         }
                         filter += "," + segmentTempoFilter;
+                    }
+                    if (Math.Abs(segment.GainDb) > 0.000001)
+                    {
+                        filter += ",volume=" + segment.GainDb.ToString("0.######", CultureInfo.InvariantCulture) + "dB";
                     }
                     filter += ",aformat=sample_fmts=flt:sample_rates=" + sampleRate + ":channel_layouts=" + layout + "[" + label + "];";
                 }
@@ -1573,7 +1594,21 @@ namespace RemuxForge.Core.Audio
             /// <param name="endMs">Fine segmento in millisecondi, oppure -1 per la coda</param>
             /// <param name="isSilence">True se il segmento è silenzio generato</param>
             /// <param name="tempo">Tempo ffmpeg da applicare al segmento</param>
-            public AudioFilterSegment(int inputIndex, int trackId, int startMs, int endMs, bool isSilence, double tempo)
+            public AudioFilterSegment(int inputIndex, int trackId, int startMs, int endMs, bool isSilence, double tempo) : this(inputIndex, trackId, startMs, endMs, isSilence, tempo, 0.0)
+            {
+            }
+
+            /// <summary>
+            /// Costruttore segmento audio con tempo e gain espliciti
+            /// </summary>
+            /// <param name="inputIndex">Indice input ffmpeg</param>
+            /// <param name="trackId">ID traccia nell'input</param>
+            /// <param name="startMs">Inizio segmento in millisecondi</param>
+            /// <param name="endMs">Fine segmento in millisecondi, oppure -1 per la coda</param>
+            /// <param name="isSilence">True se il segmento è silenzio generato</param>
+            /// <param name="tempo">Tempo ffmpeg da applicare al segmento</param>
+            /// <param name="gainDb">Gain in decibel da applicare al segmento</param>
+            public AudioFilterSegment(int inputIndex, int trackId, int startMs, int endMs, bool isSilence, double tempo, double gainDb)
             {
                 this.InputIndex = inputIndex;
                 this.TrackId = trackId;
@@ -1581,6 +1616,7 @@ namespace RemuxForge.Core.Audio
                 this.EndMs = endMs;
                 this.IsSilence = isSilence;
                 this.Tempo = tempo;
+                this.GainDb = gainDb;
             }
 
             /// <summary>
@@ -1612,6 +1648,11 @@ namespace RemuxForge.Core.Audio
             /// Tempo ffmpeg da applicare al segmento
             /// </summary>
             public double Tempo { get; set; }
+
+            /// <summary>
+            /// Gain in decibel da applicare al segmento
+            /// </summary>
+            public double GainDb { get; set; }
         }
 
         #endregion

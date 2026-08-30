@@ -1,0 +1,60 @@
+@* Anteprima di un fotogramma: titolo, canvas WebGL con overlay di stato, controlli e metadati. *@
+
+<section class="media-preview-pane">
+    <div class="media-section-title">@Title</div>
+    <div class="media-preview-stage">
+        <div class="media-preview-canvas-host">
+            <canvas @ref="_canvas" class="media-preview-canvas" role="img" aria-label="@CanvasAlternative"></canvas>
+            @if (!string.IsNullOrEmpty(OverlayMessage))
+            {
+                <div class="media-preview-overlay">
+                    <span>@OverlayMessage</span>
+                    @if (!string.IsNullOrEmpty(RetryText))
+                    {
+                        <RadzenButton Text="@RetryText" Size="ButtonSize.Small" Click="OnRetry" />
+                    }
+                </div>
+            }
+        </div>
+    </div>
+    <div class="media-preview-controls">@Controls</div>
+    <div class="media-preview-meta">@Meta</div>
+</section>
+
+@code {
+
+    #region Fields
+
+    private ElementReference _canvas;
+
+    #endregion
+
+    #region Properties
+
+    /// <summary>Titolo mostrato sopra l'anteprima.</summary>
+    [Parameter] public string Title { get; set; } = string.Empty;
+
+    /// <summary>Testo alternativo del canvas, per chi non vede l'immagine.</summary>
+    [Parameter] public string CanvasAlternative { get; set; } = string.Empty;
+
+    /// <summary>Messaggio sovrapposto al canvas: indicizzazione in corso, errore o anteprima non disponibile.</summary>
+    [Parameter] public string OverlayMessage { get; set; } = string.Empty;
+
+    /// <summary>Etichetta del pulsante di ritentativo nell'overlay; se vuota il pulsante non compare.</summary>
+    [Parameter] public string RetryText { get; set; } = string.Empty;
+
+    /// <summary>Invocato quando si preme il pulsante di ritentativo.</summary>
+    [Parameter] public EventCallback OnRetry { get; set; }
+
+    /// <summary>Controlli di navigazione mostrati sotto l'anteprima.</summary>
+    [Parameter] public RenderFragment Controls { get; set; }
+
+    /// <summary>Riga di metadati mostrata in fondo al riquadro.</summary>
+    [Parameter] public string Meta { get; set; } = string.Empty;
+
+    /// <summary>Canvas su cui il renderer WebGL disegna il fotogramma.</summary>
+    public ElementReference Canvas => this._canvas;
+
+    #endregion
+
+}
