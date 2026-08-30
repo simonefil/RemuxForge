@@ -338,7 +338,7 @@ namespace RemuxForge.Core.Metadata
                         if (!string.IsNullOrEmpty(change.BeforeValue))
                         {
                             args.Add("--replace-attachment");
-                            args.Add("name:" + change.AttachmentName + ":" + change.AttachmentSourcePath);
+                            args.Add("name:" + EscapeAttachmentNameSelector(change.AttachmentName) + ":" + change.AttachmentSourcePath);
                         }
                         else
                         {
@@ -396,6 +396,16 @@ namespace RemuxForge.Core.Metadata
                     CleanupTemp(tempFiles[i]);
                 }
             }
+        }
+
+        /// <summary>
+        /// Esegue l'escaping dei due punti richiesto dai selettori nome di mkvpropedit usati in sostituzione
+        /// </summary>
+        /// <param name="attachmentName">Nome allegato</param>
+        /// <returns>Nome utilizzabile nel selettore</returns>
+        private static string EscapeAttachmentNameSelector(string attachmentName)
+        {
+            return !string.IsNullOrEmpty(attachmentName) ? attachmentName.Replace(":", "\\c") : "";
         }
 
         /// <summary>

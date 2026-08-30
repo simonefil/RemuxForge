@@ -290,7 +290,7 @@ namespace RemuxForge.Cli
                 mkvExtractPath = AppSettingsService.Instance.Settings.Tools.MkvExtractPath;
                 MetadataExecutionService executor = new MetadataExecutionService(mkvMergePath, mkvPropEditPath, mkvExtractPath);
 
-                MetadataContainerReader containerReader = new MetadataContainerReader(mkvMergePath);
+                MetadataContainerReader containerReader = new MetadataContainerReader(mkvMergePath, mkvExtractPath);
                 for (int i = 0; i < records.Count; i++)
                 {
                     executor.PopulateExistingTags(records[i]);

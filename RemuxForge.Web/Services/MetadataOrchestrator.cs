@@ -376,7 +376,7 @@ namespace RemuxForge.Web.Services
 
                 mkvExtractPath = AppSettingsService.Instance.Settings.Tools.MkvExtractPath;
                 tagReader = new MetadataExecutionService("", "", mkvExtractPath);
-                containerReader = new MetadataContainerReader(AppSettingsService.Instance.Settings.Tools.MkvMergePath);
+                containerReader = new MetadataContainerReader(AppSettingsService.Instance.Settings.Tools.MkvMergePath, mkvExtractPath);
                 targets = this.GetRecords();
 
                 for (int i = 0; i < targets.Count; i++)
@@ -640,10 +640,11 @@ namespace RemuxForge.Web.Services
                 runtimeOptions.OutputDir = this._options.Metadata.OutputDir;
                 runtimeOptions.Recursive = this._options.Metadata.Recursive;
                 runtimeOptions.PreserveFolderStructure = this._options.Metadata.PreserveFolderStructure;
+                runtimeOptions.OverwriteOutput = this._options.Metadata.OverwriteOutput;
                 runtimeOptions.DryRun = false;
 
                 outputFile = MetadataExecutionService.BuildOutputFile(manualRecord, runtimeOptions);
-                if (runtimeOptions.OutputPolicy == MkvMetadataOutputPolicy.OutputPath && File.Exists(outputFile))
+                if (runtimeOptions.OutputPolicy == MkvMetadataOutputPolicy.OutputPath && !runtimeOptions.OverwriteOutput && File.Exists(outputFile))
                     throw new InvalidOperationException(AppText.F("metadata.error.outputExists", outputFile));
 
                 executor = new MetadataExecutionService(

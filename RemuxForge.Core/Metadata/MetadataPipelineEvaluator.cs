@@ -631,9 +631,13 @@ namespace RemuxForge.Core.Metadata
             MkvMetadataChange change;
             MkvMetadataAttachmentInfo existing = null;
             string name;
+            string sourcePath = "";
+
+            if (operation.Type == MkvMetadataOperationType.SetAttachment)
+                sourcePath = this._expressionEngine.Evaluate(operation.AttachmentSourcePath, record.FileInfo, null, record.OriginalFileInfo, null);
 
             name = operation.Type == MkvMetadataOperationType.SetAttachment
-                ? ResolveAttachmentName(operation)
+                ? ResolveAttachmentName(operation, sourcePath)
                 : (operation.AttachmentName != null ? operation.AttachmentName : "");
 
             if (string.IsNullOrEmpty(name))
@@ -661,7 +665,7 @@ namespace RemuxForge.Core.Metadata
             change.BeforeValue = existing != null ? existing.FileName : "";
             change.AfterValue = operation.Type == MkvMetadataOperationType.SetAttachment ? name : "";
             change.AttachmentName = name;
-            change.AttachmentSourcePath = this._expressionEngine.Evaluate(operation.AttachmentSourcePath, record.FileInfo, null, record.OriginalFileInfo, null);
+            change.AttachmentSourcePath = sourcePath;
             change.AttachmentMimeType = !string.IsNullOrEmpty(operation.AttachmentMimeType)
                 ? operation.AttachmentMimeType
                 : MetadataContainerReader.GuessMimeType(name);
@@ -917,14 +921,15 @@ namespace RemuxForge.Core.Metadata
         /// Restituisce il nome con cui scrivere l'allegato, ricavandolo dal file sorgente se non dichiarato
         /// </summary>
         /// <param name="operation">Operazione allegato</param>
+        /// <param name="sourcePath">Percorso sorgente già risolto</param>
         /// <returns>Nome dell'allegato</returns>
-        private static string ResolveAttachmentName(MkvMetadataOperation operation)
+        private static string ResolveAttachmentName(MkvMetadataOperation operation, string sourcePath)
         {
             if (!string.IsNullOrEmpty(operation.AttachmentName))
                 return operation.AttachmentName;
 
-            if (!string.IsNullOrEmpty(operation.AttachmentSourcePath))
-                return System.IO.Path.GetFileName(operation.AttachmentSourcePath);
+            if (!string.IsNullOrEmpty(sourcePath))
+                return System.IO.Path.GetFileName(sourcePath);
 
             return "";
         }
