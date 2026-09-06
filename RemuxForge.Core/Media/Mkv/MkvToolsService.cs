@@ -398,6 +398,11 @@ namespace RemuxForge.Core.Media.Mkv
                             AddStandaloneAudioMetadata(mkvArgs, origTrack);
                         }
 
+                        // Il file standalone eredita chapters e metadati del contenitore di partenza, che ffmpeg riversa
+                        // anche come tag di traccia: qui resta solo la traccia, con i metadati impostati esplicitamente
+                        mkvArgs.Add("--no-chapters");
+                        mkvArgs.Add("--no-global-tags");
+                        mkvArgs.Add("--no-track-tags");
                         mkvArgs.Add(req.ConvertedSourceTracks[srcId]);
                     }
                 }
@@ -483,8 +488,10 @@ namespace RemuxForge.Core.Media.Mkv
                     mkvArgs.Add("-S");
                 }
 
-                // Percorso file lingua (senza chapters per evitare duplicati con quelli del source)
+                // Percorso file lingua: chapters e tag globali restano quelli del source, dal file lingua
+                // entrano solo le tracce importate con i loro metadati di traccia
                 mkvArgs.Add("--no-chapters");
+                mkvArgs.Add("--no-global-tags");
                 mkvArgs.Add(req.LanguageFile);
 
                 // File convertiti da lingua: aggiunti come input separati con il solo delay residuo
@@ -515,6 +522,11 @@ namespace RemuxForge.Core.Media.Mkv
                                 AddStandaloneAudioMetadata(mkvArgs, origLangTrack);
                             }
 
+                            // Il file standalone eredita chapters e metadati del contenitore di partenza, che ffmpeg riversa
+                            // anche come tag di traccia: qui resta solo la traccia, con i metadati impostati esplicitamente
+                            mkvArgs.Add("--no-chapters");
+                            mkvArgs.Add("--no-global-tags");
+                            mkvArgs.Add("--no-track-tags");
                             mkvArgs.Add(req.ConvertedLangTracks[langId]);
                         }
                     }
@@ -546,6 +558,11 @@ namespace RemuxForge.Core.Media.Mkv
 
                             AddStandaloneSubtitleMetadata(mkvArgs, req.LangSubTracks[i]);
 
+                            // Il file standalone eredita chapters e metadati del contenitore di partenza, che ffmpeg riversa
+                            // anche come tag di traccia: qui resta solo la traccia, con i metadati impostati esplicitamente
+                            mkvArgs.Add("--no-chapters");
+                            mkvArgs.Add("--no-global-tags");
+                            mkvArgs.Add("--no-track-tags");
                             mkvArgs.Add(req.ProcessedLangSubTracks[subId]);
                         }
                     }
