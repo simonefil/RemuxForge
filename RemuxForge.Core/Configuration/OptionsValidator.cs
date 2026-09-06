@@ -65,6 +65,11 @@ namespace RemuxForge.Core.Configuration
             needsRemux = needsMerge || needsFilter || !string.IsNullOrEmpty(options.AudioFormat);
             needsEncode = !string.IsNullOrEmpty(options.EncodingProfileName);
 
+            if (requireSourceFolder && !needsMerge)
+            {
+                result.AddError(AppText.T("validation.targetLanguageRequired"));
+            }
+
             if (options.FrameSync && options.DeepAnalysis)
             {
                 result.AddError(AppText.T("validation.frameSyncDeepExclusive"));
@@ -91,11 +96,6 @@ namespace RemuxForge.Core.Configuration
             ValidateLanguages(options, needsMerge, result);
             ValidateCodecs(options, result);
             ValidateFolders(options, requireSourceFolder, validateFolderExists, needsMerge, result);
-
-            if (requireSourceFolder && !needsRemux && !needsEncode)
-            {
-                result.AddError(AppText.T("validation.noOperation"));
-            }
 
             if (requireSourceFolder && !options.Overwrite && string.IsNullOrEmpty(options.DestinationFolder) && !(needsEncode && !needsRemux))
             {

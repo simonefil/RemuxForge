@@ -155,8 +155,8 @@
             @* Lingua e Tracce *@
             <div class="form-section">@AppText.T("web.config.section.languageTracks")</div>
             <div class="form-row">
-                <span class="form-label">@AppText.T("web.config.label.targetLanguage")</span>
-                <input class="form-input" aria-label="@AppText.T("web.config.label.targetLanguage")" @bind="_targetLang" @onfocus="@(() => SetFieldHelp("remux.target"))" @onmouseenter="@(() => SetFieldHelp("remux.target"))" />
+                <span class="form-label">@AppText.T("web.config.label.targetLanguageRequired")</span>
+                <input class="form-input" aria-label="@AppText.T("web.config.label.targetLanguageRequired")" @bind="_targetLang" @onfocus="@(() => SetFieldHelp("remux.target"))" @onmouseenter="@(() => SetFieldHelp("remux.target"))" />
             </div>
             <div class="form-row">
                 <span class="form-label">@AppText.T("web.config.label.audioCodec")</span>
@@ -951,6 +951,11 @@
     {
         List<string> errors = new List<string>();
         int audioSourceFillThresholdMs = 0;
+
+        if (string.IsNullOrEmpty(_targetLang.Trim()))
+        {
+            errors.Add(AppText.T("web.config.validation.targetLanguageRequired"));
+        }
 
         if (!int.TryParse(_audioDelay, out _))
         {

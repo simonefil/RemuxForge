@@ -28,6 +28,11 @@ namespace RemuxForge.Web.Services
         private List<FileProcessingRecord> _records;
 
         /// <summary>
+        /// Numero di file sorgente trovati dall'ultimo scan, comprese le righe scartate perche' senza file lingua
+        /// </summary>
+        private int _scannedFileCount;
+
+        /// <summary>
         /// Opzioni correnti
         /// </summary>
         private Options _options;
@@ -48,6 +53,7 @@ namespace RemuxForge.Web.Services
         {
             this._pipeline = new ProcessingPipeline();
             this._records = new List<FileProcessingRecord>();
+            this._scannedFileCount = 0;
             this._options = new Options();
             this._operationCancellation = null;
 
@@ -141,6 +147,7 @@ namespace RemuxForge.Web.Services
                     {
                         this._options = opts;
                         this._records.Clear();
+                        this._scannedFileCount = 0;
                         this.SelectedIndexState = -1;
                     }
                     this.AppendLog(AppText.T("web.merge.configAppliedScanInvalidated"));
@@ -223,9 +230,21 @@ namespace RemuxForge.Web.Services
                         // Ordina per EpisodeId (come flusso CLI)
                         scanned.Sort((a, b) => string.Compare(a.EpisodeId, b.EpisodeId, StringComparison.OrdinalIgnoreCase));
 
+                        // I file senza corrispondenza lingua non entrano nella lista esposta alla UI:
+                        // resta il solo conteggio totale per il contatore degli abbinamenti
+                        List<FileProcessingRecord> matched = new List<FileProcessingRecord>();
+                        for (int i = 0; i < scanned.Count; i++)
+                        {
+                            if (string.IsNullOrEmpty(scanned[i].LangFilePath))
+                                continue;
+
+                            matched.Add(scanned[i]);
+                        }
+
                         lock (this.StateLock)
                         {
-                            this._records = scanned;
+                            this._records = matched;
+                            this._scannedFileCount = scanned.Count;
                         }
 
                         // Conta file pronti e saltati
@@ -798,6 +817,20 @@ namespace RemuxForge.Web.Services
             }
 
             this.AppendLog(AppText.T("web.merge.stopRequested"));
+        }
+
+        /// <summary>
+        /// Numero di file sorgente trovati dall'ultimo scan, comprese le righe scartate perche' senza file lingua
+        /// </summary>
+        public int ScannedFileCount
+        {
+            get
+            {
+                lock (this.StateLock)
+                {
+                    return this._scannedFileCount;
+                }
+            }
         }
 
         /// <summary>

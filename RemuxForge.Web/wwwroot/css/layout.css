@@ -842,3 +842,17 @@ textarea.form-input {
     background-color: var(--rz-menu-item-hover-background-color);
     color: var(--rz-menu-item-hover-color);
 }
+
+.episode-panel-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.episode-match-count {
+    flex: 0 0 auto;
+    color: var(--rz-text-secondary-color);
+    font-size: var(--rz-text-caption-font-size);
+    font-weight: normal;
+}

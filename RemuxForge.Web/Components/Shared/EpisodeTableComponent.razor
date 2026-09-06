@@ -1,5 +1,8 @@
 <div class="rf-panel">
-    <div class="rf-panel-title">@AppText.T("web.episode.title")</div>
+    <div class="rf-panel-title episode-panel-title">
+        <span>@AppText.T("web.episode.title")</span>
+        <span class="episode-match-count">@AppText.F("web.episode.matched", Records != null ? Records.Count : 0, ScannedFileCount)</span>
+    </div>
     <div class="rf-panel-body rf-grid-host">
         <RadzenDataGrid TItem="FileProcessingRecord"
                         Data="@Records"
@@ -11,6 +14,7 @@
                         AllowSorting="false"
                         ColumnWidth="110px"
                         CellContextMenu="HandleContextMenu"
+                        Density="Density.Compact"
                         GridLines="DataGridGridLines.Both"
                         RowClick="HandleRowClick"
                         RowRender="RenderRow">
@@ -47,6 +51,11 @@
     /// Lista record episodi
     /// </summary>
     [Parameter] public List<FileProcessingRecord> Records { get; set; }
+
+    /// <summary>
+    /// File sorgente trovati dall'ultimo scan, comprese le righe scartate perche' senza file lingua
+    /// </summary>
+    [Parameter] public int ScannedFileCount { get; set; }
 
     /// <summary>
     /// Indice riga selezionata

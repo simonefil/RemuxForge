@@ -2,6 +2,7 @@
     <RadzenSplitterPane Size="58%">
         <div class="rf-workspace-pane rf-workspace-pane-master">
             <EpisodeTableComponent Records="@Records"
+                                   ScannedFileCount="@ScannedFileCount"
                                    SelectedIndex="@SelectedIndex"
                                    SelectedIndices="@SelectedIndices"
                                    OnRowSelected="@OnRowSelected"
@@ -24,6 +25,11 @@
     /// Record disponibili
     /// </summary>
     [Parameter] public List<FileProcessingRecord> Records { get; set; }
+
+    /// <summary>
+    /// File sorgente trovati dall'ultimo scan, comprese le righe scartate perche' senza file lingua
+    /// </summary>
+    [Parameter] public int ScannedFileCount { get; set; }
 
     /// <summary>
     /// Record focalizzato
