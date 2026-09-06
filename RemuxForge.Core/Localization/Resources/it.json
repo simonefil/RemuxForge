@@ -2179,6 +2179,7 @@
   "web.editMap.mapRequired": "La EditMap deve contenere almeno un'operazione",
   "web.editMap.indexesUnavailable": "Le timeline indicizzate non sono più disponibili",
   "web.editMap.recordChanged": "Il record aperto non coincide più con quello corrente",
+  "web.editMap.busyPendingNotEditable": "Con un'analisi in corso non si possono modificare gli episodi ancora in coda",
   "web.editMap.stateNotEditable": "La EditMap non può essere modificata nello stato corrente",
   "web.editMap.filesUnavailable": "I file del record non sono più disponibili",
   "web.editMap.structuralErrorCount": "La EditMap contiene {0} errori strutturali",

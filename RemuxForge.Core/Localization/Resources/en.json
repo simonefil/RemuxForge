@@ -2179,6 +2179,7 @@
   "web.editMap.mapRequired": "The EditMap must contain at least one operation",
   "web.editMap.indexesUnavailable": "The indexed timelines are no longer available",
   "web.editMap.recordChanged": "The open record no longer matches the current record",
+  "web.editMap.busyPendingNotEditable": "While an analysis is running episodes still queued cannot be edited",
   "web.editMap.stateNotEditable": "The EditMap cannot be changed in the current state",
   "web.editMap.filesUnavailable": "The record files are no longer available",
   "web.editMap.structuralErrorCount": "The EditMap contains {0} structural errors",

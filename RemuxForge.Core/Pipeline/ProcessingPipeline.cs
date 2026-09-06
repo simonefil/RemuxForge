@@ -91,6 +91,11 @@ namespace RemuxForge.Core.Pipeline
         private Dictionary<string, MkvFileInfo> _fileInfoCache;
 
         /// <summary>
+        /// Lock della cache: la WebUI puo' ricostruire un comando di merge mentre un'analisi e' in corso su un altro thread
+        /// </summary>
+        private object _fileInfoCacheLock = new object();
+
+        /// <summary>
         /// Mapper tracce/lingue pipeline
         /// </summary>
         private PipelineTrackMapper _trackMapper;
@@ -346,7 +351,10 @@ namespace RemuxForge.Core.Pipeline
                     }
 
                     // Pulisci cache da inizializzazioni precedenti
-                    this._fileInfoCache.Clear();
+                    lock (this._fileInfoCacheLock)
+                    {
+                        this._fileInfoCache.Clear();
+                    }
                 }
             }
 
@@ -994,14 +1002,18 @@ namespace RemuxForge.Core.Pipeline
         private MkvFileInfo GetCachedFileInfo(string filePath)
         {
             MkvFileInfo info;
-            if (this._fileInfoCache.ContainsKey(filePath))
+            lock (this._fileInfoCacheLock)
             {
-                info = this._fileInfoCache[filePath];
+                if (this._fileInfoCache.ContainsKey(filePath))
+                {
+                    return this._fileInfoCache[filePath];
+                }
             }
-            else
+
+            info = this._mkvService.GetFileInfo(filePath);
+            if (info != null)
             {
-                info = this._mkvService.GetFileInfo(filePath);
-                if (info != null)
+                lock (this._fileInfoCacheLock)
                 {
                     this._fileInfoCache[filePath] = info;
                 }

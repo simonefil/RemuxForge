@@ -33,6 +33,11 @@ namespace RemuxForge.Web.Services
         private int _scannedFileCount;
 
         /// <summary>
+        /// Serializza i salvataggi di edit map fra loro, senza occupare il flag busy dell'orchestrator
+        /// </summary>
+        private object _editMapLock;
+
+        /// <summary>
         /// Opzioni correnti
         /// </summary>
         private Options _options;
@@ -54,6 +59,7 @@ namespace RemuxForge.Web.Services
             this._pipeline = new ProcessingPipeline();
             this._records = new List<FileProcessingRecord>();
             this._scannedFileCount = 0;
+            this._editMapLock = new object();
             this._options = new Options();
             this._operationCancellation = null;
 
@@ -731,13 +737,7 @@ namespace RemuxForge.Web.Services
                 errorMessage = AppText.T("web.editMap.indexesUnavailable");
                 return false;
             }
-            if (!this.TryBeginOperation())
-            {
-                errorMessage = AppText.T("web.merge.busyRetry");
-                return false;
-            }
-
-            try
+            lock (this._editMapLock)
             {
                 FileProcessingRecord original;
                 lock (this.StateLock)
@@ -752,6 +752,11 @@ namespace RemuxForge.Web.Services
                 if (original.Status == FileStatus.Done || original.Status == FileStatus.Processing || original.Status == FileStatus.Skipped)
                 {
                     errorMessage = AppText.T("web.editMap.stateNotEditable");
+                    return false;
+                }
+                if (this.IsBusy && original.Status != FileStatus.Analyzed && original.Status != FileStatus.Error)
+                {
+                    errorMessage = AppText.T("web.editMap.busyPendingNotEditable");
                     return false;
                 }
                 if (!File.Exists(original.SourceFilePath) || !File.Exists(original.LangFilePath))
@@ -797,10 +802,6 @@ namespace RemuxForge.Web.Services
                 this.AppendLog(AppText.F("web.editMap.appliedLog", updated.EpisodeId, updated.DeepAnalysisMap.Operations.Count));
                 this.NotifyRecordsChanged();
                 return true;
-            }
-            finally
-            {
-                this.SetBusy(false);
             }
         }
 

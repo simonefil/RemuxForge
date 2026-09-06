@@ -1,13 +1,22 @@
 <div class="rf-panel">
     <div class="rf-panel-title detail-panel-title">
         <span>@AppText.T("web.detail.title")</span>
-        <RadzenButton Icon="content_copy"
-                      Text="@AppText.T("web.common.copy")"
-                      Size="ButtonSize.Small"
-                      Variant="Variant.Text"
-                      ButtonStyle="ButtonStyle.Base"
-                      Disabled="@(Record == null)"
-                      Click="@CopyDetailAsync" />
+        <div class="detail-panel-actions">
+            <RadzenButton Icon="edit"
+                          Text="@AppText.T("web.editMap.change")"
+                          Size="ButtonSize.Small"
+                          Variant="Variant.Text"
+                          ButtonStyle="ButtonStyle.Base"
+                          Disabled="@(!CanOpenEditMap())"
+                          Click="@OnChangeEditMap" />
+            <RadzenButton Icon="content_copy"
+                          Text="@AppText.T("web.common.copy")"
+                          Size="ButtonSize.Small"
+                          Variant="Variant.Text"
+                          ButtonStyle="ButtonStyle.Base"
+                          Disabled="@(Record == null)"
+                          Click="@CopyDetailAsync" />
+        </div>
     </div>
     <div class="rf-panel-body">
         @if (Record == null)
@@ -159,12 +168,6 @@
                                         </div>
                                     }
                                 }
-                                <div class="detail-card-actions">
-                                    <RadzenButton Text="@AppText.T("web.editMap.change")"
-                                                  Icon="edit"
-                                                  Disabled="@(!CanOpenEditMap())"
-                                                  Click="@OnChangeEditMap" />
-                                </div>
                             </div>
                         }
                     </div>
@@ -376,8 +379,15 @@
     /// </summary>
     private bool CanOpenEditMap()
     {
-        return !this.IsBusy && this.Record != null && !string.IsNullOrEmpty(this.Record.SourceFilePath) && !string.IsNullOrEmpty(this.Record.LangFilePath) &&
-               (this.Record.Status == FileStatus.Pending || this.Record.Status == FileStatus.Analyzed || this.Record.Status == FileStatus.Error);
+        if (this.Record == null || string.IsNullOrEmpty(this.Record.SourceFilePath) || string.IsNullOrEmpty(this.Record.LangFilePath))
+            return false;
+
+        // Con un'operazione in corso gli episodi ancora in coda non sono modificabili: la coda di AnalyzeAll e'
+        // fotografata all'avvio e i record che deve ancora processare vengono mutati in place, cancellando la mappa manuale
+        if (this.IsBusy)
+            return this.Record.Status == FileStatus.Analyzed || this.Record.Status == FileStatus.Error;
+
+        return this.Record.Status == FileStatus.Pending || this.Record.Status == FileStatus.Analyzed || this.Record.Status == FileStatus.Error;
     }
 
     /// <summary>

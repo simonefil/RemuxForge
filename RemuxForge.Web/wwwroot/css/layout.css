@@ -102,6 +102,13 @@
     flex: 0 0 auto;
 }
 
+.detail-panel-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 0.25rem;
+}
+
 .detail-structured {
     padding: 0.65rem 0.8rem;
     white-space: normal;
@@ -167,12 +174,6 @@
 
 .detail-card.selected {
     border-color: var(--rz-primary);
-}
-
-.detail-card-actions {
-    display: flex;
-    justify-content: flex-end;
-    padding-top: calc(var(--rz-gap) * 0.5);
 }
 
 .detail-card-danger {

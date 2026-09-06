@@ -236,9 +236,6 @@
     /// <summary>Evento applicazione mappa validata</summary>
     [Parameter] public EventCallback<(EditMap Map, double SourceDurationMs, double LanguageDurationMs, double SourceTailToleranceMs)> OnApply { get; set; }
 
-    /// <summary>Indica che la pipeline è occupata da una operazione incompatibile</summary>
-    [Parameter] public bool IsBusy { get; set; }
-
     private readonly CancellationTokenSource _cancellation = new CancellationTokenSource();
     private EditMap _originalMap = new EditMap();
     private EditMap _workingMap = new EditMap();
@@ -1307,7 +1304,7 @@
 
     private void UpdateDirtyState() => this._dirty = !MapsEqual(this._originalMap, this._workingMap);
 
-    private bool CanApply() => this.IndexesReady && !this.IsBusy && !this._isApplying && this._workingMap.Operations.Count > 0 && this._projection != null && this._projection.Validation.IsValid;
+    private bool CanApply() => this.IndexesReady && !this._isApplying && this._workingMap.Operations.Count > 0 && this._projection != null && this._projection.Validation.IsValid;
 
     private async Task ApplyAsync()
     {

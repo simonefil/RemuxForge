@@ -2759,13 +2759,24 @@ namespace RemuxForge.Web.Components.Pages
         private void ShowEditMapEditor()
         {
             int index = this.Orchestrator.SelectedIndex;
-            if (this.Orchestrator.IsBusy || index < 0 || index >= this._records.Count)
+            if (index < 0 || index >= this._records.Count)
                 return;
 
             FileProcessingRecord record = this._records[index];
-            if (record == null || string.IsNullOrEmpty(record.SourceFilePath) || string.IsNullOrEmpty(record.LangFilePath) ||
-                (record.Status != FileStatus.Pending && record.Status != FileStatus.Analyzed && record.Status != FileStatus.Error))
+            if (record == null || string.IsNullOrEmpty(record.SourceFilePath) || string.IsNullOrEmpty(record.LangFilePath))
                 return;
+
+            // Con un'operazione in corso gli episodi ancora in coda non sono modificabili: la coda di AnalyzeAll e'
+            // fotografata all'avvio e i record che deve ancora processare vengono mutati in place, cancellando la mappa manuale
+            if (this.Orchestrator.IsBusy)
+            {
+                if (record.Status != FileStatus.Analyzed && record.Status != FileStatus.Error)
+                    return;
+            }
+            else if (record.Status != FileStatus.Pending && record.Status != FileStatus.Analyzed && record.Status != FileStatus.Error)
+            {
+                return;
+            }
 
             this._editMapRecordIndex = index;
             this._editMapRecord = record;
