@@ -221,19 +221,29 @@
     private const string AUDIO_MODE_WAVEFORM = "waveform";
     private const string AUDIO_MODE_SPECTROGRAM = "spectrogram";
 
-    /// <summary>Indice del record originale</summary>
+    /// <summary>
+    /// Indice del record originale
+    /// </summary>
     [Parameter] public int RecordIndex { get; set; }
 
-    /// <summary>Snapshot del record aperto</summary>
+    /// <summary>
+    /// Snapshot del record aperto
+    /// </summary>
     [Parameter] public FileProcessingRecord Record { get; set; }
 
-    /// <summary>Opzioni correnti usate per determinare il source-fill effettivo</summary>
+    /// <summary>
+    /// Opzioni correnti usate per determinare il source-fill effettivo
+    /// </summary>
     [Parameter] public Options CurrentOptions { get; set; }
 
-    /// <summary>Evento chiusura pagina</summary>
+    /// <summary>
+    /// Evento chiusura pagina
+    /// </summary>
     [Parameter] public EventCallback OnClose { get; set; }
 
-    /// <summary>Evento applicazione mappa validata</summary>
+    /// <summary>
+    /// Evento applicazione mappa validata
+    /// </summary>
     [Parameter] public EventCallback<(EditMap Map, double SourceDurationMs, double LanguageDurationMs, double SourceTailToleranceMs)> OnApply { get; set; }
 
     private readonly CancellationTokenSource _cancellation = new CancellationTokenSource();
@@ -291,12 +301,26 @@
     private bool _precisionEditorOpen;
     private bool _gainEditPending;
 
+    /// <summary>
+    /// True quando entrambi gli indici sono pronti e nessuno dei due è fallito
+    /// </summary>
     private bool IndexesReady { get { return this._sourceIndex != null && this._languageIndex != null && string.IsNullOrEmpty(this._sourceError) && string.IsNullOrEmpty(this._languageError); } }
+    /// <summary>
+    /// True quando le corsie audio mostrano lo spettrogramma invece della forma d'onda
+    /// </summary>
     private bool IsSpectrogram { get { return string.Equals(this._audioMode, AUDIO_MODE_SPECTROGRAM, StringComparison.Ordinal); } }
+    /// <summary>
+    /// True quando l'operazione selezionata è un INSERT_SILENCE
+    /// </summary>
     private bool IsSelectedInsert { get { return this._selectedOperation != null && string.Equals(this._selectedOperation.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal); } }
+    /// <summary>
+    /// True quando la timeline ha un intervallo selezionato valido su entrambe le corsie
+    /// </summary>
     private bool HasTimelineSelection { get { return double.IsFinite(this._selectionSourceStartMs) && double.IsFinite(this._selectionSourceEndMs) && double.IsFinite(this._selectionLanguageStartMs) && double.IsFinite(this._selectionLanguageEndMs) && this._selectionSourceEndMs > this._selectionSourceStartMs && this._selectionLanguageEndMs > this._selectionLanguageStartMs; } }
 
-    /// <summary>Inizializza copia di lavoro e indicizza i due video in parallelo</summary>
+    /// <summary>
+    /// Inizializza copia di lavoro e indicizza i due video in parallelo
+    /// </summary>
     protected override async Task OnInitializedAsync()
     {
         this._workingMap = EditMapTimelineHelper.Clone(this.Record != null ? this.Record.DeepAnalysisMap : null);
@@ -322,7 +346,10 @@
         }
     }
 
-    /// <summary>Inizializza canvas WebGL e timeline quando gli indici sono pronti</summary>
+    /// <summary>
+    /// Inizializza canvas WebGL e timeline quando gli indici sono pronti
+    /// </summary>
+    /// <param name="firstRender">True alla prima renderizzazione del componente</param>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -357,7 +384,10 @@
             await this.RefreshPreviewAsync();
     }
 
-    /// <summary>Costruisce uno dei due indici senza bloccare il circuito</summary>
+    /// <summary>
+    /// Costruisce uno dei due indici senza bloccare il circuito
+    /// </summary>
+    /// <param name="source">True per indicizzare il video Source, false per quello Language</param>
     private async Task BuildIndexAsync(bool source)
     {
         try
@@ -389,8 +419,16 @@
         }
     }
 
+    /// <summary>
+    /// Descrive il fattore di stretch della mappa in lavorazione
+    /// </summary>
+    /// <returns>Fattore dichiarato, 1 quando la mappa non lo specifica</returns>
     private string GetStretchLabel() => string.IsNullOrEmpty(this._workingMap.StretchFactor) ? "1" : this._workingMap.StretchFactor;
 
+    /// <summary>
+    /// Descrive lo stato dell'editor nella barra del titolo
+    /// </summary>
+    /// <returns>Testo localizzato dello stato</returns>
     private string GetStateLabel()
     {
         if (this._sourceIndexing || this._languageIndexing)
@@ -404,6 +442,10 @@
         return AppText.T("web.editMap.ready");
     }
 
+    /// <summary>
+    /// Sceglie il colore del badge di stato
+    /// </summary>
+    /// <returns>Stile del badge coerente con lo stato dell'editor</returns>
     private BadgeStyle GetStateStyle()
     {
         if (!string.IsNullOrEmpty(this._sourceError) || !string.IsNullOrEmpty(this._languageError) || (this._projection != null && !this._projection.Validation.IsValid))
@@ -413,16 +455,27 @@
         return this._dirty ? BadgeStyle.Warning : BadgeStyle.Success;
     }
 
-    /// <summary>Restituisce il contenitore normale o l'overlay della dialog di precisione</summary>
+    /// <summary>
+    /// Restituisce il contenitore normale o l'overlay della dialog di precisione
+    /// </summary>
+    /// <returns>Classe CSS del contenitore della timeline</returns>
     private string GetTimelineOverlayClass() => this._precisionEditorOpen ? "dialog-overlay visible edit-map-precision-overlay" : "edit-map-timeline-slot";
 
-    /// <summary>Restituisce il box normale o fullscreen della timeline</summary>
+    /// <summary>
+    /// Restituisce il box normale o fullscreen della timeline
+    /// </summary>
+    /// <returns>Classe CSS del box della timeline</returns>
     private string GetTimelineBoxClass() => this._precisionEditorOpen ? "dialog-box dialog-fullscreen edit-map-precision-box" : "edit-map-timeline-box";
 
-    /// <summary>Restituisce il layout interno della timeline secondo la modalità corrente</summary>
+    /// <summary>
+    /// Restituisce il layout interno della timeline secondo la modalità corrente
+    /// </summary>
+    /// <returns>Classe CSS del layout interno della timeline</returns>
     private string GetTimelineBodyClass() => this._precisionEditorOpen ? "dialog-body edit-map-precision-body" : "edit-map-timeline-body";
 
-    /// <summary>Apre la dialog di precisione conservando timeline e copia di lavoro correnti</summary>
+    /// <summary>
+    /// Apre la dialog di precisione conservando timeline e copia di lavoro correnti
+    /// </summary>
     private async Task OpenPrecisionEditorAsync()
     {
         if (!this.IndexesReady || this._precisionEditorOpen)
@@ -432,7 +485,9 @@
         await this.UpdateTimelineAsync(true);
     }
 
-    /// <summary>Chiude la dialog di precisione senza applicare o scartare modifiche</summary>
+    /// <summary>
+    /// Chiude la dialog di precisione senza applicare o scartare modifiche
+    /// </summary>
     private async Task ClosePrecisionEditorAsync()
     {
         if (!this._precisionEditorOpen)
@@ -443,7 +498,10 @@
         await this.UpdateTimelineAsync(true);
     }
 
-    /// <summary>Formatta l'intervallo Language selezionato nella timeline</summary>
+    /// <summary>
+    /// Formatta l'intervallo Language selezionato nella timeline
+    /// </summary>
+    /// <returns>Testo localizzato dell'intervallo, o l'avviso di selezione assente</returns>
     private string GetSelectionSummary()
     {
         if (!this.HasTimelineSelection)
@@ -451,6 +509,10 @@
         return AppText.F("web.editMap.selectionSummary", FormatTimestamp(this._selectionLanguageStartMs), FormatTimestamp(this._selectionLanguageEndMs), FormatDuration((int)Math.Round(this._selectionLanguageEndMs - this._selectionLanguageStartMs)));
     }
 
+    /// <summary>
+    /// Riassume l'esito della validazione della mappa in lavorazione
+    /// </summary>
+    /// <returns>Testo localizzato con il conteggio di errori o di operazioni e avvisi</returns>
     private string GetValidationSummary()
     {
         if (!this.IndexesReady)
@@ -460,6 +522,11 @@
         return AppText.F("web.editMap.validationValid", this._workingMap.Operations.Count, this._projection.Validation.Warnings.Count);
     }
 
+    /// <summary>
+    /// Descrive risoluzione, rapporto pixel e numero di fotogrammi di un indice
+    /// </summary>
+    /// <param name="index">Indice del video, null quando non è ancora pronto</param>
+    /// <returns>Riga di metadati localizzata</returns>
     private string GetIndexMetadata(VideoFrameIndex index)
     {
         if (index == null)
@@ -467,6 +534,11 @@
         return AppText.F("web.editMap.indexMetadata", index.CodedWidth, index.CodedHeight, index.SampleAspectRatio, index.FrameCount);
     }
 
+    /// <summary>
+    /// Testo alternativo di una delle due anteprime per i lettori di schermo
+    /// </summary>
+    /// <param name="source">True per l'anteprima Source, false per quella Language</param>
+    /// <returns>Descrizione del fotogramma mostrato o il motivo per cui manca</returns>
     private string GetPreviewAlternative(bool source)
     {
         VideoFrameIndexEntry frame = source ? this._sourceFrame : this._languageFrame;
@@ -476,6 +548,11 @@
         return AppText.F(source ? "web.editMap.sourcePreviewAlternative" : "web.editMap.languagePreviewAlternative", frame.PresentationIndex + 1, FormatTimestamp(frame.PtsMs));
     }
 
+    /// <summary>
+    /// Messaggio sovrapposto a una delle due anteprime durante indicizzazione o errore
+    /// </summary>
+    /// <param name="source">True per l'anteprima Source, false per quella Language</param>
+    /// <returns>Testo da sovrapporre, vuoto quando l'anteprima è a posto</returns>
     private string GetPreviewOverlay(bool source)
     {
         if (source ? this._sourceIndexing : this._languageIndexing)
@@ -486,6 +563,11 @@
         return source ? this._sourcePreviewMessage : this._languagePreviewMessage;
     }
 
+    /// <summary>
+    /// Testo del comando di riprova, mostrato solo dopo un decode fallito
+    /// </summary>
+    /// <param name="source">True per l'anteprima Source, false per quella Language</param>
+    /// <returns>Etichetta di riprova, vuota quando non c'è nulla da riprovare</returns>
     private string GetPreviewRetryText(bool source)
     {
         bool indexing = source ? this._sourceIndexing : this._languageIndexing;
@@ -496,14 +578,25 @@
         return AppText.T("web.editMap.retry");
     }
 
+    /// <summary>
+    /// Testo alternativo della timeline per i lettori di schermo
+    /// </summary>
+    /// <returns>Descrizione di playhead e operazioni rappresentate</returns>
     private string GetTimelineAlternative() => AppText.F("web.editMap.timelineAlternative", FormatTimestamp(this._sourcePlayheadMs), this._workingMap.Operations.Count);
 
+    /// <summary>
+    /// Ricalcola la proiezione e adotta il clone normalizzato come copia di lavoro
+    /// </summary>
     private void RebuildProjection()
     {
         this._projection = EditMapTimelineHelper.BuildProjection(this._workingMap, this._sourceIndex.EndPtsMs, this._languageIndex.EndPtsMs, this._sourceIndex.MedianFrameDurationMs);
         this._workingMap = this._projection.Map;
     }
 
+    /// <summary>
+    /// Porta il playhead su un istante Source e ne deriva la posizione Language
+    /// </summary>
+    /// <param name="sourceTimeMs">Istante Source in millisecondi</param>
     private void NavigateFromSource(double sourceTimeMs)
     {
         this._sourcePlayheadMs = Math.Max(0.0, Math.Min(this._sourceIndex.EndPtsMs, sourceTimeMs));
@@ -525,7 +618,10 @@
         this.RefreshNavigationFields();
     }
 
-    /// <summary>Naviga da un frame Source preservandone l'ordinale anche con PTS duplicato</summary>
+    /// <summary>
+    /// Naviga da un frame Source preservandone l'ordinale anche con PTS duplicato
+    /// </summary>
+    /// <param name="frame">Fotogramma Source su cui portare il playhead</param>
     private void NavigateFromSourceFrame(VideoFrameIndexEntry frame)
     {
         if (frame == null)
@@ -536,6 +632,10 @@
         this.RefreshNavigationFields();
     }
 
+    /// <summary>
+    /// Porta il cursore su un istante Language e ne deriva la posizione Source
+    /// </summary>
+    /// <param name="languageTimeMs">Istante Language in millisecondi</param>
     private void NavigateFromLanguage(double languageTimeMs)
     {
         this._languageCursorMs = Math.Max(0.0, Math.Min(this._languageIndex.EndPtsMs, languageTimeMs));
@@ -556,7 +656,10 @@
         this.RefreshNavigationFields();
     }
 
-    /// <summary>Naviga da un frame Language preservandone l'ordinale anche con PTS duplicato</summary>
+    /// <summary>
+    /// Naviga da un frame Language preservandone l'ordinale anche con PTS duplicato
+    /// </summary>
+    /// <param name="frame">Fotogramma Language su cui portare il cursore</param>
     private void NavigateFromLanguageFrame(VideoFrameIndexEntry frame)
     {
         if (frame == null)
@@ -567,6 +670,9 @@
         this.RefreshNavigationFields();
     }
 
+    /// <summary>
+    /// Riallinea i campi di fotogramma e timestamp ai frame correnti
+    /// </summary>
     private void RefreshNavigationFields()
     {
         this._sourceFrameText = this._sourceFrame != null ? (this._sourceFrame.PresentationIndex + 1).ToString() : "";
@@ -575,6 +681,9 @@
         this._languageTimestampText = this._languageFrame != null ? FormatTimestamp(this._languageFrame.PtsMs) : "";
     }
 
+    /// <summary>
+    /// Ricarica le due anteprime sui fotogrammi correnti con una sola chiamata
+    /// </summary>
     private async Task RefreshPreviewAsync()
     {
         if (this._previewPair == null)
@@ -615,6 +724,10 @@
         this.StateHasChanged();
     }
 
+    /// <summary>
+    /// Costruisce il modello che il pannello timeline disegna
+    /// </summary>
+    /// <returns>Oggetto anonimo con durate, URL audio, segmenti e operazioni</returns>
     private object BuildTimelineModel()
     {
         List<object> segments = new List<object>();
@@ -651,7 +764,10 @@
         return new { durationMs = sourceDurationMs, frameDurationMs = this._sourceIndex != null ? this._sourceIndex.MedianFrameDurationMs : 40.0, sourceAudioUrl = sourceAudioUrl, languageAudioUrl = languageAudioUrl, sourceFillAudioUrl = sourceFillAudioUrl, audioMode = this._audioMode, sourceNyquistHz = sourceNyquistHz, languageNyquistHz = languageNyquistHz, waveformGain = this._waveformGain, playheadMs = this._sourcePlayheadMs, precisionMode = this._precisionEditorOpen, selectionEnabled = this._precisionEditorOpen, selectionStartMs = this.HasTimelineSelection ? (double?)this._selectionSourceStartMs : null, selectionEndMs = this.HasTimelineSelection ? (double?)this._selectionSourceEndMs : null, labels = labels, segments = segments, operations = operations };
     }
 
-    /// <summary>Restituisce il piano audio della traccia Language visualizzata</summary>
+    /// <summary>
+    /// Restituisce il piano audio della traccia Language visualizzata
+    /// </summary>
+    /// <returns>Piano della traccia, null quando manca l'anteprima audio</returns>
     private AudioTrackProcessingPlan GetSelectedLanguageAudioPlan()
     {
         if (!this._selectedLanguageAudioTrackId.HasValue || this.Record?.AudioProcessingPreview == null)
@@ -660,7 +776,15 @@
         return this.Record.AudioProcessingPreview.FindLangTrack(this._selectedLanguageAudioTrackId.Value);
     }
 
-    /// <summary>Determina se un gap della proiezione verrà riempito con audio Source</summary>
+    /// <summary>
+    /// Determina se un gap della proiezione verrà riempito con audio Source
+    /// </summary>
+    /// <param name="segment">Gap della proiezione da riempire</param>
+    /// <param name="languagePlan">Piano audio della traccia Language visualizzata</param>
+    /// <param name="sourceStartMs">Inizio Source del riempimento</param>
+    /// <param name="sourceEndMs">Fine Source del riempimento</param>
+    /// <param name="gainDb">Guadagno applicato al riempimento</param>
+    /// <returns>True quando il gap verrà riempito con audio Source</returns>
     private bool TryResolveSourceFillRange(EditMapTimelineSegment segment, AudioTrackProcessingPlan languagePlan, out double sourceStartMs, out double sourceEndMs, out double gainDb)
     {
         sourceStartMs = 0.0;
@@ -700,7 +824,11 @@
         return false;
     }
 
-    /// <summary>Trova l'operazione INSERT_SILENCE che ha prodotto un gap della proiezione</summary>
+    /// <summary>
+    /// Trova l'operazione INSERT_SILENCE che ha prodotto un gap della proiezione
+    /// </summary>
+    /// <param name="segment">Gap della proiezione</param>
+    /// <returns>Operazione che ha prodotto il gap, null quando non esiste</returns>
     private EditOperation FindInsertOperation(EditMapTimelineSegment segment)
     {
         double stretchRatio = this._projection != null ? this._projection.StretchRatio : 1.0;
@@ -718,7 +846,11 @@
         return null;
     }
 
-    /// <summary>Applica alla mappa modificata le stesse regole source-fill del planner audio</summary>
+    /// <summary>
+    /// Applica alla mappa modificata le stesse regole source-fill del planner audio
+    /// </summary>
+    /// <param name="operation">Operazione da valutare</param>
+    /// <returns>True quando il planner audio la riempirebbe con audio Source</returns>
     private bool ShouldSourceFillOperation(EditOperation operation)
     {
         if (this.CurrentOptions == null || this.CurrentOptions.AudioSourceFillThresholdMs <= 0 || string.IsNullOrEmpty(this.CurrentOptions.AudioSourceFillLanguage))
@@ -735,7 +867,13 @@
         return this.CurrentOptions.AudioSourceFillInsertSilence;
     }
 
-    /// <summary>Costruisce l'endpoint stateless per traccia e modalità selezionate</summary>
+    /// <summary>
+    /// Costruisce l'endpoint stateless per traccia e modalità selezionate
+    /// </summary>
+    /// <param name="side">Lato richiesto, source o language</param>
+    /// <param name="trackId">ID della traccia, null quando non è selezionata</param>
+    /// <param name="durationMs">Durata da rappresentare in millisecondi</param>
+    /// <returns>URL della visualizzazione, null senza traccia selezionata</returns>
     private string BuildAudioTimelineUrl(string side, int? trackId, double durationMs)
     {
         if (!trackId.HasValue)
@@ -743,13 +881,22 @@
         return "/api/edit-map-audio/" + this.RecordIndex.ToString() + "/" + side + "?trackId=" + trackId.Value.ToString() + "&durationMs=" + durationMs.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "&mode=" + this._audioMode + "&quality=" + (this._precisionEditorOpen ? "high" : "low");
     }
 
-    /// <summary>Restituisce la prima traccia, che è l'autorità predefinita della timeline</summary>
+    /// <summary>
+    /// Restituisce la prima traccia, che è l'autorità predefinita della timeline
+    /// </summary>
+    /// <param name="tracks">Tracce audio del lato</param>
+    /// <returns>ID della prima traccia, null quando l'elenco è vuoto</returns>
     private static int? GetFirstTrackId(List<TrackInfo> tracks)
     {
         return tracks != null && tracks.Count > 0 ? tracks[0].Id : null;
     }
 
-    /// <summary>Calcola la frequenza di Nyquist della traccia selezionata</summary>
+    /// <summary>
+    /// Calcola la frequenza di Nyquist della traccia selezionata
+    /// </summary>
+    /// <param name="tracks">Tracce audio del lato</param>
+    /// <param name="trackId">ID della traccia selezionata</param>
+    /// <returns>Metà della frequenza di campionamento, 0 quando non è dichiarata</returns>
     private static double GetNyquistFrequency(List<TrackInfo> tracks, int? trackId)
     {
         if (tracks == null || !trackId.HasValue)
@@ -758,7 +905,11 @@
         return track != null && track.SamplingFrequency > 0 ? track.SamplingFrequency / 2.0 : 0.0;
     }
 
-    /// <summary>Valida il cambio traccia contro l'elenco del record corrente</summary>
+    /// <summary>
+    /// Valida il cambio traccia contro l'elenco del record corrente
+    /// </summary>
+    /// <param name="args">Evento della select con l'ID della traccia richiesta</param>
+    /// <param name="source">True per la corsia Source, false per quella Language</param>
     private async Task ChangeAudioTrackAsync(ChangeEventArgs args, bool source)
     {
         List<TrackInfo> tracks = source ? this.Record?.SourceAudioTracks : this.Record?.ImportedAudioTracks;
@@ -771,7 +922,10 @@
         await this.UpdateTimelineAsync();
     }
 
-    /// <summary>Descrive le due corsie audio, sorgente e lingua, per la barra del pannello timeline</summary>
+    /// <summary>
+    /// Descrive le due corsie audio, sorgente e lingua, per la barra del pannello timeline
+    /// </summary>
+    /// <returns>Elenco con la corsia Source e quella Language</returns>
     private List<MediaTimelinePanelComponent.AudioLane> GetAudioLanes()
     {
         List<MediaTimelinePanelComponent.AudioLane> lanes = new List<MediaTimelinePanelComponent.AudioLane>();
@@ -794,7 +948,10 @@
         return lanes;
     }
 
-    /// <summary>Seleziona Waveform o Spectrogram e ricarica entrambe le lane</summary>
+    /// <summary>
+    /// Seleziona Waveform o Spectrogram e ricarica entrambe le lane
+    /// </summary>
+    /// <param name="mode">Modalità richiesta</param>
     private async Task SetAudioModeAsync(string mode)
     {
         if (string.Equals(this._audioMode, mode, StringComparison.Ordinal))
@@ -803,18 +960,29 @@
         await this.UpdateTimelineAsync();
     }
 
-    /// <summary>Registra l'ingrandimento verticale già applicato dal pannello alla waveform</summary>
+    /// <summary>
+    /// Registra l'ingrandimento verticale già applicato dal pannello alla waveform
+    /// </summary>
+    /// <param name="value">Fattore di ingrandimento corrente</param>
     private void SetWaveformGainAsync(double value)
     {
         this._waveformGain = value;
     }
 
+    /// <summary>
+    /// Spinge il modello aggiornato alla timeline quando è agganciata
+    /// </summary>
+    /// <param name="centerPlayhead">True per riportare la timeline al centro sul playhead</param>
     private async Task UpdateTimelineAsync(bool centerPlayhead = false)
     {
         if (this._timelinePanel != null)
             await this._timelinePanel.UpdateAsync(this.BuildTimelineModel(), centerPlayhead);
     }
 
+    /// <summary>
+    /// Riallinea interfaccia, timeline e anteprime dopo uno spostamento del playhead
+    /// </summary>
+    /// <param name="centerPlayhead">True per riportare la timeline al centro sul playhead</param>
     private async Task RefreshAfterNavigationAsync(bool centerPlayhead = false)
     {
         this.StateHasChanged();
@@ -822,11 +990,30 @@
         await this.RefreshPreviewAsync();
     }
 
+    /// <summary>
+    /// Registra il numero di fotogramma Source digitato
+    /// </summary>
+    /// <param name="args">Evento del campo di testo</param>
     private void UpdateSourceFrameText(ChangeEventArgs args) => this._sourceFrameText = args.Value != null ? args.Value.ToString() : "";
+    /// <summary>
+    /// Registra il numero di fotogramma Language digitato
+    /// </summary>
+    /// <param name="args">Evento del campo di testo</param>
     private void UpdateLanguageFrameText(ChangeEventArgs args) => this._languageFrameText = args.Value != null ? args.Value.ToString() : "";
+    /// <summary>
+    /// Registra il timestamp Source digitato
+    /// </summary>
+    /// <param name="args">Evento del campo di testo</param>
     private void UpdateSourceTimestampText(ChangeEventArgs args) => this._sourceTimestampText = args.Value != null ? args.Value.ToString() : "";
+    /// <summary>
+    /// Registra il timestamp Language digitato
+    /// </summary>
+    /// <param name="args">Evento del campo di testo</param>
     private void UpdateLanguageTimestampText(ChangeEventArgs args) => this._languageTimestampText = args.Value != null ? args.Value.ToString() : "";
 
+    /// <summary>
+    /// Naviga al fotogramma Source digitato, segnalando un numero fuori indice
+    /// </summary>
     private async Task CommitSourceFrameAsync()
     {
         if (!int.TryParse(this._sourceFrameText, out int frameNumber) || frameNumber < 1 || frameNumber > this._sourceIndex.FrameCount)
@@ -842,6 +1029,9 @@
         await this.RefreshAfterNavigationAsync(true);
     }
 
+    /// <summary>
+    /// Naviga al fotogramma Language digitato, segnalando un numero fuori indice
+    /// </summary>
     private async Task CommitLanguageFrameAsync()
     {
         if (!int.TryParse(this._languageFrameText, out int frameNumber) || frameNumber < 1 || frameNumber > this._languageIndex.FrameCount)
@@ -857,6 +1047,9 @@
         await this.RefreshAfterNavigationAsync(true);
     }
 
+    /// <summary>
+    /// Naviga al fotogramma Source più vicino al timestamp digitato
+    /// </summary>
     private async Task CommitSourceTimestampAsync()
     {
         if (!TryParseTimestamp(this._sourceTimestampText, out double ptsMs))
@@ -875,6 +1068,9 @@
         await this.RefreshAfterNavigationAsync(true);
     }
 
+    /// <summary>
+    /// Naviga al fotogramma Language più vicino al timestamp digitato
+    /// </summary>
     private async Task CommitLanguageTimestampAsync()
     {
         if (!TryParseTimestamp(this._languageTimestampText, out double ptsMs))
@@ -893,10 +1089,24 @@
         await this.RefreshAfterNavigationAsync(true);
     }
 
+    /// <summary>
+    /// Determina se il passo di fotogrammi resta dentro la timeline Source
+    /// </summary>
+    /// <param name="delta">Fotogrammi da percorrere, negativi per andare indietro</param>
+    /// <returns>True quando il fotogramma di arrivo esiste</returns>
     private bool CanStepSource(int delta) => this.IndexesReady && this._sourceFrame != null && this._sourceFrame.PresentationIndex + delta >= 0 && this._sourceFrame.PresentationIndex + delta < this._sourceIndex.FrameCount;
 
+    /// <summary>
+    /// Determina se il passo di fotogrammi resta dentro la timeline Language
+    /// </summary>
+    /// <param name="delta">Fotogrammi da percorrere, negativi per andare indietro</param>
+    /// <returns>True quando il fotogramma di arrivo esiste</returns>
     private bool CanStepLanguage(int delta) => this.IndexesReady && this._languageFrame != null && this._languageFrame.PresentationIndex + delta >= 0 && this._languageFrame.PresentationIndex + delta < this._languageIndex.FrameCount;
 
+    /// <summary>
+    /// Percorre la timeline Source di un numero di fotogrammi
+    /// </summary>
+    /// <param name="delta">Fotogrammi da percorrere, negativi per andare indietro</param>
     private async Task StepSourceAsync(int delta)
     {
         if (!this.IndexesReady || this._sourceFrame == null)
@@ -909,6 +1119,10 @@
         await this.RefreshAfterNavigationAsync(true);
     }
 
+    /// <summary>
+    /// Percorre la timeline Language di un numero di fotogrammi
+    /// </summary>
+    /// <param name="delta">Fotogrammi da percorrere, negativi per andare indietro</param>
     private async Task StepLanguageAsync(int delta)
     {
         if (!this.IndexesReady || this._languageFrame == null)
@@ -921,20 +1135,51 @@
         await this.RefreshAfterNavigationAsync(true);
     }
 
+    /// <summary>
+    /// Conferma il fotogramma Source alla pressione di Invio
+    /// </summary>
+    /// <param name="args">Evento di tastiera del campo</param>
+    /// <returns>Task della conferma, già completato quando il tasto non è Invio</returns>
     private Task HandleSourceFrameKeyAsync(KeyboardEventArgs args) => string.Equals(args.Key, "Enter", StringComparison.Ordinal) ? this.CommitSourceFrameAsync() : Task.CompletedTask;
+    /// <summary>
+    /// Conferma il fotogramma Language alla pressione di Invio
+    /// </summary>
+    /// <param name="args">Evento di tastiera del campo</param>
+    /// <returns>Task della conferma, già completato quando il tasto non è Invio</returns>
     private Task HandleLanguageFrameKeyAsync(KeyboardEventArgs args) => string.Equals(args.Key, "Enter", StringComparison.Ordinal) ? this.CommitLanguageFrameAsync() : Task.CompletedTask;
+    /// <summary>
+    /// Conferma il timestamp Source alla pressione di Invio
+    /// </summary>
+    /// <param name="args">Evento di tastiera del campo</param>
+    /// <returns>Task della conferma, già completato quando il tasto non è Invio</returns>
     private Task HandleSourceTimestampKeyAsync(KeyboardEventArgs args) => string.Equals(args.Key, "Enter", StringComparison.Ordinal) ? this.CommitSourceTimestampAsync() : Task.CompletedTask;
+    /// <summary>
+    /// Conferma il timestamp Language alla pressione di Invio
+    /// </summary>
+    /// <param name="args">Evento di tastiera del campo</param>
+    /// <returns>Task della conferma, già completato quando il tasto non è Invio</returns>
     private Task HandleLanguageTimestampKeyAsync(KeyboardEventArgs args) => string.Equals(args.Key, "Enter", StringComparison.Ordinal) ? this.CommitLanguageTimestampAsync() : Task.CompletedTask;
 
+    /// <summary>
+    /// Seleziona l'operazione della riga cliccata nella griglia
+    /// </summary>
+    /// <param name="args">Evento della riga cliccata</param>
+    /// <returns>Task della selezione</returns>
     private Task SelectOperationRowAsync(DataGridRowMouseEventArgs<EditOperation> args) => this.SelectOperationAsync(this._workingMap.Operations.IndexOf(args.Data), true);
 
+    /// <summary>
+    /// Evidenzia nella griglia la riga dell'operazione selezionata
+    /// </summary>
+    /// <param name="args">Contesto di rendering della riga</param>
     private void RenderOperationRow(RowRenderEventArgs<EditOperation> args)
     {
         if (object.ReferenceEquals(args.Data, this._selectedOperation))
             args.Attributes["class"] = "rz-data-row selected focused";
     }
 
-    /// <summary>Aggiorna entrambe le viste della lista operazioni quando presenti</summary>
+    /// <summary>
+    /// Aggiorna entrambe le viste della lista operazioni quando presenti
+    /// </summary>
     private async Task ReloadOperationGridsAsync()
     {
         if (this._operationGrid != null)
@@ -943,6 +1188,11 @@
             await this._precisionOperationGrid.Reload();
     }
 
+    /// <summary>
+    /// Seleziona un'operazione e porta le anteprime sul suo confine
+    /// </summary>
+    /// <param name="index">Indice dell'operazione nella mappa di lavoro</param>
+    /// <param name="center">True per riportare la timeline al centro sull'operazione</param>
     private async Task SelectOperationAsync(int index, bool center)
     {
         if (index < 0 || index >= this._workingMap.Operations.Count)
@@ -963,6 +1213,9 @@
         await this.RefreshAfterNavigationAsync(center);
     }
 
+    /// <summary>
+    /// Applica alla mappa i valori digitati sull'operazione selezionata, ripristinandoli se rifiutati
+    /// </summary>
     private async Task CommitSelectedOperationAsync()
     {
         if (this._selectedOperation == null || (string.IsNullOrEmpty(this._timestampEditAuthority) && string.IsNullOrEmpty(this._durationEditAuthority) && !this._gainEditPending))
@@ -1001,7 +1254,7 @@
             this._timestampEditAuthority = "";
             this._durationEditAuthority = "";
             this._gainEditPending = false;
-            this.WarnInvalidValue();
+            this.WarnInvalidValue(DescribeValidationFailure(candidate.Validation));
             this.RefreshOperationFields();
             await this.ReloadOperationGridsAsync();
             return;
@@ -1017,6 +1270,11 @@
         await this.FinishMapMutationAsync();
     }
 
+    /// <summary>
+    /// Converte in timestamp Language il campo che l'utente ha effettivamente modificato
+    /// </summary>
+    /// <param name="timestampMs">Timestamp Language risolto</param>
+    /// <returns>True quando il valore digitato è leggibile e mappabile</returns>
     private bool TryResolveEditedLanguageTimestamp(out int timestampMs)
     {
         timestampMs = this._selectedOperation != null ? this._selectedOperation.LangTimestampMs : 0;
@@ -1065,6 +1323,12 @@
         return true;
     }
 
+    /// <summary>
+    /// Converte in durata Language il campo di durata che l'utente ha modificato
+    /// </summary>
+    /// <param name="timestampMs">Timestamp Language già risolto dell'operazione</param>
+    /// <param name="durationMs">Durata Language risolta</param>
+    /// <returns>True quando il valore digitato è leggibile</returns>
     private bool TryResolveEditedLanguageDuration(int timestampMs, out int durationMs)
     {
         durationMs = this._selectedOperation != null ? this._selectedOperation.DurationMs : 0;
@@ -1089,7 +1353,11 @@
         return true;
     }
 
-    /// <summary>Aggancia la fine di un Insert alla timeline Source/finale</summary>
+    /// <summary>
+    /// Aggancia la fine di un Insert alla timeline Source/finale
+    /// </summary>
+    /// <param name="requestedLanguageDurationMs">Durata Language richiesta in millisecondi</param>
+    /// <returns>Durata agganciata al confine di fotogramma Source</returns>
     private int SnapInsertDuration(int requestedLanguageDurationMs)
     {
         double stretchRatio = this._projection != null ? this._projection.StretchRatio : 1.0;
@@ -1103,6 +1371,10 @@
         return Math.Max(1, (int)Math.Round(renderedDurationMs / stretchRatio));
     }
 
+    /// <summary>
+    /// True quando il playhead cade su materiale Source mappato, dove si può creare un'operazione
+    /// </summary>
+    /// <returns>True quando la posizione corrente accetta una nuova operazione</returns>
     private bool CanCreateOperation()
     {
         if (!this.IndexesReady || this._projection == null)
@@ -1110,7 +1382,10 @@
         return this._projection.MapSourceToLanguage(this._sourcePlayheadMs).IsMapped;
     }
 
-    /// <summary>True quando la selezione corrente può diventare un singolo CUT_SEGMENT</summary>
+    /// <summary>
+    /// True quando la selezione corrente può diventare un singolo CUT_SEGMENT
+    /// </summary>
+    /// <returns>True quando la selezione produce un Cut valido</returns>
     private bool CanCreateCutFromSelection()
     {
         if (!this.HasTimelineSelection || this._projection == null)
@@ -1120,13 +1395,18 @@
         return durationMs > 0 && startMs + durationMs <= this._languageIndex.EndPtsMs;
     }
 
-    /// <summary>Indica se il Cut può essere creato dalla selezione o dal playhead</summary>
+    /// <summary>
+    /// Indica se il Cut può essere creato dalla selezione o dal playhead
+    /// </summary>
+    /// <returns>True quando il Cut può nascere dalla selezione o dal playhead</returns>
     private bool CanAddCut()
     {
         return this.CanCreateCutFromSelection() || this.CanCreateOperation();
     }
 
-    /// <summary>Crea il Cut dalla selezione corrente oppure dal playhead</summary>
+    /// <summary>
+    /// Crea il Cut dalla selezione corrente oppure dal playhead
+    /// </summary>
     private async Task AddCutAsync()
     {
         if (this.CanCreateCutFromSelection())
@@ -1137,7 +1417,9 @@
         await this.AddOperationAsync(EditOperation.CUT_SEGMENT);
     }
 
-    /// <summary>Crea un taglio esatto dall'intervallo Language selezionato</summary>
+    /// <summary>
+    /// Crea un taglio esatto dall'intervallo Language selezionato
+    /// </summary>
     private async Task CreateCutFromSelectionAsync()
     {
         if (!this.CanCreateCutFromSelection())
@@ -1156,7 +1438,9 @@
         await this.NormalizeWorkingMapAsync(operation);
     }
 
-    /// <summary>Rimuove l'intervallo selezionato dalla sola UI</summary>
+    /// <summary>
+    /// Rimuove l'intervallo selezionato dalla sola UI
+    /// </summary>
     private void ClearTimelineSelection()
     {
         this._selectionSourceStartMs = double.NaN;
@@ -1165,6 +1449,10 @@
         this._selectionLanguageEndMs = double.NaN;
     }
 
+    /// <summary>
+    /// Crea al playhead un'operazione lunga un fotogramma e normalizza la mappa
+    /// </summary>
+    /// <param name="type">Tipo di operazione da creare</param>
     private async Task AddOperationAsync(string type)
     {
         EditMapMappingResult mapping = this._projection.MapSourceToLanguage(this._sourcePlayheadMs);
@@ -1186,6 +1474,9 @@
         await this.NormalizeWorkingMapAsync(operation);
     }
 
+    /// <summary>
+    /// Elimina l'operazione selezionata e ricostruisce la proiezione
+    /// </summary>
     private async Task DeleteSelectedOperationAsync()
     {
         if (this._selectedOperation == null)
@@ -1200,6 +1491,9 @@
         await this.RefreshAfterNavigationAsync();
     }
 
+    /// <summary>
+    /// Riallinea i campi del pannello operazione ai valori di quella selezionata
+    /// </summary>
     private void RefreshOperationFields()
     {
         if (this._selectedOperation == null)
@@ -1216,26 +1510,72 @@
         this._operationLanguageFrameText = languageFrame != null ? (languageFrame.PresentationIndex + 1).ToString() : "";
     }
 
+    /// <summary>
+    /// Converte la durata Language di un'operazione nella durata resa
+    /// </summary>
+    /// <param name="operation">Operazione da misurare</param>
+    /// <returns>Durata resa in millisecondi</returns>
     private int GetRenderedDurationMs(EditOperation operation) => EditMapTimelineHelper.LanguageDurationToRenderedDurationMs(operation.DurationMs, this._projection != null ? this._projection.StretchRatio : 1.0);
 
+    /// <summary>
+    /// Descrive il tipo di un'operazione nella griglia
+    /// </summary>
+    /// <param name="operation">Operazione da descrivere</param>
+    /// <returns>Testo localizzato del tipo</returns>
     private string GetOperationTypeLabel(EditOperation operation) => AppText.T(string.Equals(operation.Type, EditOperation.CUT_SEGMENT, StringComparison.Ordinal) ? "web.editMap.cut" : "web.editMap.insert");
 
+    /// <summary>
+    /// Registra il timestamp Source digitato, che diventa l'autorità della posizione
+    /// </summary>
+    /// <param name="args">Evento del campo di testo</param>
     private void UpdateOperationSourceText(ChangeEventArgs args) { this._operationSourceText = GetEventText(args); this._timestampEditAuthority = "source-time"; }
+    /// <summary>
+    /// Registra il timestamp Language digitato, che diventa l'autorità della posizione
+    /// </summary>
+    /// <param name="args">Evento del campo di testo</param>
     private void UpdateOperationLanguageText(ChangeEventArgs args) { this._operationLanguageText = GetEventText(args); this._timestampEditAuthority = "language-time"; }
+    /// <summary>
+    /// Registra la durata Language digitata, che diventa l'autorità della durata
+    /// </summary>
+    /// <param name="args">Evento del campo di testo</param>
     private void UpdateOperationLanguageDurationText(ChangeEventArgs args) { this._operationLanguageDurationText = GetEventText(args); this._durationEditAuthority = "language-duration"; }
+    /// <summary>
+    /// Registra la durata resa digitata, che diventa l'autorità della durata
+    /// </summary>
+    /// <param name="args">Evento del campo di testo</param>
     private void UpdateOperationRenderedDurationText(ChangeEventArgs args) { this._operationRenderedDurationText = GetEventText(args); this._durationEditAuthority = "rendered-duration"; }
+    /// <summary>
+    /// Registra il fotogramma Source digitato, che diventa l'autorità della posizione
+    /// </summary>
+    /// <param name="args">Evento del campo di testo</param>
     private void UpdateOperationSourceFrameText(ChangeEventArgs args) { this._operationSourceFrameText = GetEventText(args); this._timestampEditAuthority = "source-frame"; }
+    /// <summary>
+    /// Registra il fotogramma Language digitato, che diventa l'autorità della posizione
+    /// </summary>
+    /// <param name="args">Evento del campo di testo</param>
     private void UpdateOperationLanguageFrameText(ChangeEventArgs args) { this._operationLanguageFrameText = GetEventText(args); this._timestampEditAuthority = "language-frame"; }
+    /// <summary>
+    /// Registra il guadagno digitato, marcandolo come modifica da applicare
+    /// </summary>
+    /// <param name="args">Evento del campo di testo</param>
     private void UpdateOperationGainText(ChangeEventArgs args) { this._operationGainText = GetEventText(args); this._gainEditPending = true; }
 
+    /// <summary>
+    /// Adotta la mappa modificata solo se la proiezione la accetta, altrimenti ritira l'operazione
+    /// </summary>
+    /// <param name="selected">Operazione appena creata o modificata</param>
     private async Task NormalizeWorkingMapAsync(EditOperation selected)
     {
         EditMapProjection candidate = EditMapTimelineHelper.BuildProjection(this._workingMap, this._sourceIndex.EndPtsMs, this._languageIndex.EndPtsMs, this._sourceIndex.MedianFrameDurationMs);
         if (!candidate.Validation.IsValid)
         {
+            // RebuildProjection sostituisce la mappa con un clone: la selezione va riagganciata alla copia nuova,
+            // altrimenti IndexOf non la trova più e ogni edit successivo finisce fuori strada
+            EditOperation previous = this._selectedOperation;
             this._workingMap.Operations.Remove(selected);
             this.RebuildProjection();
-            this.WarnInvalidValue();
+            this._selectedOperation = previous != null ? FindOperation(this._workingMap.Operations, previous.Type, previous.LangTimestampMs, previous.DurationMs) : null;
+            this.WarnInvalidValue(DescribeValidationFailure(candidate.Validation));
             return;
         }
         this._projection = candidate;
@@ -1244,6 +1584,9 @@
         await this.FinishMapMutationAsync();
     }
 
+    /// <summary>
+    /// Chiude una mutazione della mappa riallineando stato sporco, griglie e timeline
+    /// </summary>
     private async Task FinishMapMutationAsync()
     {
         this.ClearTimelineSelection();
@@ -1257,6 +1600,12 @@
         this.StateHasChanged();
     }
 
+    /// <summary>
+    /// Aggancia la fine di un Cut al confine di fotogramma Language più vicino
+    /// </summary>
+    /// <param name="startMs">Inizio dell'operazione in millisecondi Language</param>
+    /// <param name="requestedDurationMs">Durata richiesta in millisecondi</param>
+    /// <returns>Durata agganciata, quella richiesta quando l'indice non offre un confine</returns>
     private int SnapLanguageDuration(int startMs, int requestedDurationMs)
     {
         VideoFrameIndexEntry start = this._languageIndex.FindNearestFrame(startMs);
@@ -1272,7 +1621,12 @@
         return Math.Max(1, (int)Math.Round(snappedEndMs - start.PtsMs));
     }
 
-    /// <summary>Aggancia un estremo a un PTS frame o alla fine dell'ultimo intervallo</summary>
+    /// <summary>
+    /// Aggancia un estremo a un PTS frame o alla fine dell'ultimo intervallo
+    /// </summary>
+    /// <param name="index">Indice su cui agganciare l'istante</param>
+    /// <param name="requestedEndMs">Istante di fine richiesto in millisecondi</param>
+    /// <returns>Istante agganciato, NaN quando l'indice non è utilizzabile</returns>
     private double SnapToFrameBoundary(VideoFrameIndex index, double requestedEndMs)
     {
         if (index == null || index.FrameCount == 0 || !double.IsFinite(requestedEndMs))
@@ -1285,27 +1639,65 @@
         return frame != null ? frame.PtsMs : double.NaN;
     }
 
-    /// <summary>Mappa un boundary Source senza far influenzare il risultato dall'operazione spostata</summary>
+    /// <summary>
+    /// Mappa un boundary Source senza far influenzare il risultato dall'operazione spostata
+    /// </summary>
+    /// <param name="sourceTimestampMs">Confine Source da convertire</param>
+    /// <returns>Esito della conversione, non mappato quando la selezione non è nella mappa</returns>
     private EditMapMappingResult MapSourceBoundaryExcludingSelectedOperation(double sourceTimestampMs)
     {
         if (this._selectedOperation == null)
             return this._projection.MapSourceToLanguage(sourceTimestampMs);
         int selectedIndex = this._workingMap.Operations.IndexOf(this._selectedOperation);
+        // Senza l'operazione nella mappa la conversione non è definita: mapparla sulla proiezione completa
+        // significherebbe farle attraversare il proprio stesso salto
         if (selectedIndex < 0)
-            return this._projection.MapSourceToLanguage(sourceTimestampMs);
+            return new EditMapMappingResult { Kind = EditMapMappingKind.OutsideTimeline, SourceTimestampMs = sourceTimestampMs, LanguageTimestampMs = double.NaN };
 
+        // La mappa ridotta serve solo da righello Source/Language e non viene mai applicata: pretenderne la
+        // validità strutturale la boccerebbe sempre, perché togliere un Cut sfonda la durata Source
         EditMap mapWithoutSelected = EditMapTimelineHelper.Clone(this._workingMap);
         mapWithoutSelected.Operations.RemoveAt(selectedIndex);
         EditMapProjection projectionWithoutSelected = EditMapTimelineHelper.BuildProjection(mapWithoutSelected, this._sourceIndex.EndPtsMs, this._languageIndex.EndPtsMs, this._sourceIndex.MedianFrameDurationMs);
-        return projectionWithoutSelected.Validation.IsValid ? projectionWithoutSelected.MapSourceToLanguage(sourceTimestampMs) : new EditMapMappingResult { Kind = EditMapMappingKind.OutsideTimeline, SourceTimestampMs = sourceTimestampMs, LanguageTimestampMs = double.NaN };
+        return projectionWithoutSelected.MapSourceToLanguage(sourceTimestampMs);
     }
 
-    private void WarnInvalidValue() => this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.editMap.invalidValue"), AppText.T("web.editMap.valueRestored"), 5000);
+    /// <summary>
+    /// Segnala il rifiuto di un valore, indicando la regola violata quando è nota
+    /// </summary>
+    /// <param name="reason">Testo della regola violata, vuoto quando il valore era semplicemente illeggibile</param>
+    private void WarnInvalidValue(string reason = "")
+    {
+        string detail = !string.IsNullOrEmpty(reason) ? reason : AppText.T("web.editMap.valueRestored");
+        this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.editMap.invalidValue"), detail, 5000);
+    }
 
+    /// <summary>
+    /// Descrive la prima regola strutturale violata
+    /// </summary>
+    /// <param name="validation">Esito della validazione</param>
+    /// <returns>Testo localizzato della regola, vuoto quando non ci sono errori</returns>
+    private static string DescribeValidationFailure(EditMapValidationResult validation)
+    {
+        if (validation == null || validation.Errors.Count == 0)
+            return "";
+        return AppText.T("web.editMap.rule." + validation.Errors[0].Code);
+    }
+
+    /// <summary>
+    /// Ricalcola lo stato sporco confrontando la copia di lavoro con la mappa di partenza
+    /// </summary>
     private void UpdateDirtyState() => this._dirty = !MapsEqual(this._originalMap, this._workingMap);
 
+    /// <summary>
+    /// Determina se la mappa può essere applicata
+    /// </summary>
+    /// <returns>True con indici pronti, operazioni presenti e proiezione valida</returns>
     private bool CanApply() => this.IndexesReady && !this._isApplying && this._workingMap.Operations.Count > 0 && this._projection != null && this._projection.Validation.IsValid;
 
+    /// <summary>
+    /// Consegna al chiamante una copia della mappa validata
+    /// </summary>
     private async Task ApplyAsync()
     {
         if (!this.CanApply())
@@ -1321,7 +1713,9 @@
         }
     }
 
-    /// <summary>Sposta il playhead Source dalla timeline JavaScript</summary>
+    /// <summary>
+    /// Sposta il playhead Source dalla timeline JavaScript
+    /// </summary>
     /// <param name="sourceMs">Timestamp Source relativo</param>
     [JSInvokable]
     public async Task OnTimelineSeek(double sourceMs)
@@ -1331,7 +1725,9 @@
         await this.InvokeAsync(async () => await this.RefreshAfterNavigationAsync());
     }
 
-    /// <summary>Conferma una selezione trascinata nella lane Language</summary>
+    /// <summary>
+    /// Conferma una selezione trascinata nella lane Language
+    /// </summary>
     /// <param name="sourceStartMs">Inizio selezione nel dominio Source/finale</param>
     /// <param name="sourceEndMs">Fine selezione nel dominio Source/finale</param>
     [JSInvokable]
@@ -1398,7 +1794,9 @@
         });
     }
 
-    /// <summary>Naviga rapidamente i frame da tastiera o pressione prolungata</summary>
+    /// <summary>
+    /// Naviga rapidamente i frame da tastiera o pressione prolungata
+    /// </summary>
     /// <param name="side">Lato Source o Language</param>
     /// <param name="delta">Numero di frame da percorrere</param>
     [JSInvokable]
@@ -1415,6 +1813,10 @@
         }
     }
 
+    /// <summary>
+    /// Seleziona l'operazione che ricade sotto il playhead Source
+    /// </summary>
+    /// <returns>True quando la selezione è cambiata</returns>
     private bool SelectOperationAtPlayhead()
     {
         EditOperation selected = null;
@@ -1437,7 +1839,9 @@
         return true;
     }
 
-    /// <summary>Seleziona una operazione dal marker della timeline</summary>
+    /// <summary>
+    /// Seleziona una operazione dal marker della timeline
+    /// </summary>
     /// <param name="operationIndex">Indice corrente dell'operazione</param>
     [JSInvokable]
     public async Task OnTimelineOperationSelected(int operationIndex)
@@ -1445,7 +1849,9 @@
         await this.InvokeAsync(async () => await this.SelectOperationAsync(operationIndex, false));
     }
 
-    /// <summary>Aggiorna il boundary di una operazione durante o al termine del drag</summary>
+    /// <summary>
+    /// Aggiorna il boundary di una operazione durante o al termine del drag
+    /// </summary>
     /// <param name="operationIndex">Indice corrente dell'operazione</param>
     /// <param name="sourceMs">Nuovo boundary Source</param>
     /// <param name="final">True al rilascio del puntatore</param>
@@ -1495,7 +1901,9 @@
         });
     }
 
-    /// <summary>Aggiorna la durata renderizzata durante o al termine del drag</summary>
+    /// <summary>
+    /// Aggiorna la durata renderizzata durante o al termine del drag
+    /// </summary>
     /// <param name="operationIndex">Indice corrente dell'operazione</param>
     /// <param name="renderedDurationMs">Durata nel dominio Source renderizzato</param>
     /// <param name="final">True al rilascio del puntatore</param>
@@ -1544,7 +1952,9 @@
         });
     }
 
-    /// <summary>Gestisce le scorciatoie locali dell'editor prima della tastiera globale</summary>
+    /// <summary>
+    /// Gestisce le scorciatoie locali dell'editor prima della tastiera globale
+    /// </summary>
     /// <param name="key">Tasto normalizzato dal browser</param>
     /// <param name="shift">True quando Shift è premuto</param>
     /// <param name="editing">True quando il focus è in un campo editabile</param>
@@ -1588,8 +1998,21 @@
         }
     }
 
+    /// <summary>
+    /// Estrae il testo digitato da un evento di campo
+    /// </summary>
+    /// <param name="args">Evento del campo di testo</param>
+    /// <returns>Testo digitato, vuoto quando l'evento non porta valore</returns>
     private static string GetEventText(ChangeEventArgs args) => args.Value != null ? args.Value.ToString() : "";
 
+    /// <summary>
+    /// Ritrova un'operazione dopo che la mappa è stata sostituita da un clone
+    /// </summary>
+    /// <param name="operations">Operazioni in cui cercare</param>
+    /// <param name="type">Tipo dell'operazione</param>
+    /// <param name="timestamp">Timestamp Language dell'operazione</param>
+    /// <param name="duration">Durata Language dell'operazione</param>
+    /// <returns>Operazione corrispondente, null quando non esiste più</returns>
     private static EditOperation FindOperation(List<EditOperation> operations, string type, int timestamp, int duration)
     {
         for (int i = 0; i < operations.Count; i++)
@@ -1600,6 +2023,12 @@
         return null;
     }
 
+    /// <summary>
+    /// Confronta due mappe campo per campo per determinare lo stato sporco
+    /// </summary>
+    /// <param name="left">Prima mappa</param>
+    /// <param name="right">Seconda mappa</param>
+    /// <returns>True quando le due mappe descrivono la stessa riconciliazione</returns>
     private static bool MapsEqual(EditMap left, EditMap right)
     {
         if (left == null || right == null || left.InitialDelayMs != right.InitialDelayMs || !string.Equals(left.StretchFactor ?? "", right.StretchFactor ?? "", StringComparison.Ordinal) || left.Operations.Count != right.Operations.Count)
@@ -1614,6 +2043,12 @@
         return true;
     }
 
+    /// <summary>
+    /// Interpreta un timestamp digitato nel formato hh:mm:ss.fff
+    /// </summary>
+    /// <param name="text">Testo digitato</param>
+    /// <param name="milliseconds">Istante risolto in millisecondi</param>
+    /// <returns>True quando il testo è un istante non negativo leggibile</returns>
     private static bool TryParseTimestamp(string text, out double milliseconds)
     {
         milliseconds = 0.0;
@@ -1625,6 +2060,11 @@
         return double.IsFinite(milliseconds);
     }
 
+    /// <summary>
+    /// Formatta un istante nel formato hh:mm:ss.fff usato dai campi dell'editor
+    /// </summary>
+    /// <param name="timestampMs">Istante in millisecondi</param>
+    /// <returns>Timestamp formattato, un trattino quando l'istante non è definito</returns>
     private static string FormatTimestamp(double timestampMs)
     {
         if (!double.IsFinite(timestampMs) || timestampMs < 0.0)
@@ -1633,24 +2073,28 @@
         return ((int)value.TotalHours).ToString("00") + ":" + value.Minutes.ToString("00") + ":" + value.Seconds.ToString("00") + "." + value.Milliseconds.ToString("000");
     }
 
+    /// <summary>
+    /// Formatta una durata per la griglia delle operazioni
+    /// </summary>
+    /// <param name="durationMs">Durata in millisecondi</param>
+    /// <returns>Durata formattata in millisecondi</returns>
     private static string FormatDuration(int durationMs)
     {
         return durationMs.ToString(System.Globalization.CultureInfo.InvariantCulture) + " ms";
     }
 
+    /// <summary>
+    /// Chiude l'editor annullando indicizzazione e decode in corso
+    /// </summary>
     private async Task CloseAsync()
     {
-        if (this._dirty && this._module != null)
-        {
-            bool confirmed = await this._module.InvokeAsync<bool>("confirmDiscard", AppText.T("web.editMap.discardConfirm"));
-            if (!confirmed)
-                return;
-        }
         this._cancellation.Cancel();
         await this.OnClose.InvokeAsync();
     }
 
-    /// <summary>Cancella indicizzazione e decode ancora in corso</summary>
+    /// <summary>
+    /// Cancella indicizzazione e decode ancora in corso
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         this._cancellation.Cancel();

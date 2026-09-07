@@ -91,6 +91,11 @@ namespace RemuxForge.Web.Services
         /// <summary>
         /// Serve il contenuto di un allegato di un record metadata, per mostrarne l'anteprima
         /// </summary>
+        /// <param name="orchestrator">Orchestratore che possiede i record metadata</param>
+        /// <param name="recordIndex">Indice del record</param>
+        /// <param name="attachmentId">ID dell'allegato nel record</param>
+        /// <param name="context">Contesto della richiesta HTTP</param>
+        /// <returns>Contenuto dell'allegato, o l'esito negativo quando non esiste</returns>
         public static async Task<IResult> ServeMetadataAttachment(MetadataOrchestrator orchestrator, int recordIndex, int attachmentId, HttpContext context)
         {
             List<MkvMetadataRecord> records = orchestrator.GetRecords();
@@ -127,6 +132,16 @@ namespace RemuxForge.Web.Services
         /// <summary>
         /// Serve una finestra di fotogrammi grezzi a partire dal file risolto dallo scope
         /// </summary>
+        /// <param name="resolver">Risolutore del file secondo lo scope della richiesta</param>
+        /// <param name="recordIndex">Indice del record</param>
+        /// <param name="side">Lato richiesto</param>
+        /// <param name="frameIndex">Primo fotogramma della finestra</param>
+        /// <param name="width">Larghezza massima in pixel</param>
+        /// <param name="height">Altezza massima in pixel</param>
+        /// <param name="count">Numero di fotogrammi richiesti, uno quando manca</param>
+        /// <param name="context">Contesto della richiesta HTTP</param>
+        /// <param name="frameAccess">Servizio di indicizzazione e decodifica dei fotogrammi</param>
+        /// <returns>Finestra di fotogrammi grezzi, o l'esito negativo quando non è servibile</returns>
         public static async Task<IResult> ServePreview(IMediaSourceResolver resolver, int recordIndex, string side, int frameIndex, int width, int height, int? count, HttpContext context, VideoFrameAccessService frameAccess)
         {
             if (width < 2 || height < 2 || width > 4096 || height > 4096)
@@ -200,6 +215,17 @@ namespace RemuxForge.Web.Services
         /// <summary>
         /// Serve l'immagine della traccia audio (forma d'onda o spettrogramma) del file risolto dallo scope
         /// </summary>
+        /// <param name="resolver">Risolutore del file secondo lo scope della richiesta</param>
+        /// <param name="recordIndex">Indice del record</param>
+        /// <param name="side">Lato richiesto</param>
+        /// <param name="trackId">ID della traccia audio nel contenitore</param>
+        /// <param name="durationMs">Durata da rappresentare in millisecondi</param>
+        /// <param name="mode">Modalità richiesta, waveform o spectrogram</param>
+        /// <param name="quality">Qualità richiesta, low o high</param>
+        /// <param name="context">Contesto della richiesta HTTP</param>
+        /// <param name="audioExtractor">Estrattore delle visualizzazioni audio</param>
+        /// <param name="frameAccess">Servizio di indicizzazione dei fotogrammi, che detta la durata autorevole</param>
+        /// <returns>Visualizzazione audio, o l'esito negativo quando non è servibile</returns>
         public static async Task<IResult> ServeAudioTimeline(IMediaSourceResolver resolver, int recordIndex, string side, int trackId, double durationMs, string mode, string quality, HttpContext context, AudioEnvelopeExtractor audioExtractor, VideoFrameAccessService frameAccess)
         {
             if (!double.IsFinite(durationMs) || durationMs <= 0.0)
@@ -244,9 +270,12 @@ namespace RemuxForge.Web.Services
                 double authoritativeDurationMs = videoIndex.EndPtsMs;
                 if (!double.IsFinite(authoritativeDurationMs) || authoritativeDurationMs <= 0.0)
                     return Results.Problem("Video timeline unavailable", statusCode: StatusCodes.Status422UnprocessableEntity);
+                // Una sola decodifica alla frequenza nativa produce entrambe le visualizzazioni: la
+                // richiesta gemella dell'altra modalità la ritrova in cache
+                AudioTimelinePair timeline = await Task.Run(() => audioExtractor.GetOrGenerateTimeline(filePath, trackId, authoritativeDurationMs, highQuality, timeoutMs, cancellationToken), cancellationToken);
                 if (!spectrogram)
                 {
-                    AudioTimelineWaveform waveform = await Task.Run(() => audioExtractor.GenerateTimelineWaveformForTrackId(filePath, trackId, authoritativeDurationMs, highQuality, timeoutMs, cancellationToken), cancellationToken);
+                    AudioTimelineWaveform waveform = timeline.Waveform;
                     long waveformBytes = 26L + waveform.Minimum.LongLength * sizeof(short) * 2L;
                     if (waveformBytes > AUDIO_RESPONSE_LIMIT_BYTES)
                         return Results.Problem("Audio timeline exceeds the response budget", statusCode: StatusCodes.Status413PayloadTooLarge);
@@ -268,7 +297,7 @@ namespace RemuxForge.Web.Services
                     return Results.Bytes(waveformPayload.ToArray(), "application/vnd.remuxforge.audio-timeline");
                 }
 
-                AudioTimelineImage image = await Task.Run(() => audioExtractor.GenerateTimelineImageForTrackId(filePath, trackId, authoritativeDurationMs, true, highQuality, timeoutMs, cancellationToken), cancellationToken);
+                AudioTimelineImage image = timeline.Image;
                 long imageBytes = 40L;
                 for (int i = 0; i < image.Tiles.Count; i++)
                     imageBytes += sizeof(int) + image.Tiles[i].LongLength;

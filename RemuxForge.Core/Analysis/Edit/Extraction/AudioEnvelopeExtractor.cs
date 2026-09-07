@@ -1,5 +1,8 @@
+using OpenCvSharp;
 using RemuxForge.Core.Infrastructure;
 using System;
+using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -79,6 +82,22 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         /// </summary>
         private const double ENERGY_FLOOR = 1e-7;
 
+        /// <summary>
+        /// Finestra minima della STFT dello spettrogramma, in campioni
+        /// </summary>
+        private const int SPECTROGRAM_MINIMUM_WINDOW = 256;
+
+        /// <summary>
+        /// Finestra massima della STFT dello spettrogramma, in campioni: tenuta corta perché la
+        /// timeline chiede risoluzione temporale, non risoluzione in frequenza
+        /// </summary>
+        private const int SPECTROGRAM_MAXIMUM_WINDOW = 2048;
+
+        /// <summary>
+        /// Byte oltre i quali le visualizzazioni meno recenti vengono scartate
+        /// </summary>
+        private const long TIMELINE_CACHE_LIMIT_BYTES = 256L * 1024L * 1024L;
+
         #endregion
 
         #region Variabili di istanza
@@ -93,6 +112,26 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         /// </summary>
         private string _ffprobePath;
 
+        /// <summary>
+        /// Visualizzazioni già calcolate, indicizzate per file, traccia e qualità
+        /// </summary>
+        private readonly Dictionary<string, AudioTimelineCacheEntry> _timelines;
+
+        /// <summary>
+        /// Ordine di utilizzo delle visualizzazioni in cache, dalla più recente
+        /// </summary>
+        private readonly LinkedList<string> _timelineOrder;
+
+        /// <summary>
+        /// Calcoli in corso, per far attendere le richieste gemelle invece di ripetere l'estrazione
+        /// </summary>
+        private readonly Dictionary<string, Lazy<AudioTimelinePair>> _timelinesInFlight;
+
+        /// <summary>
+        /// Byte occupati dalle visualizzazioni in cache
+        /// </summary>
+        private long _timelineCacheBytes;
+
         #endregion
 
         #region Costruttore
@@ -106,6 +145,9 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         {
             this._ffmpegPath = ffmpegPath ?? "";
             this._ffprobePath = ffprobePath ?? "";
+            this._timelines = new Dictionary<string, AudioTimelineCacheEntry>(StringComparer.Ordinal);
+            this._timelineOrder = new LinkedList<string>();
+            this._timelinesInFlight = new Dictionary<string, Lazy<AudioTimelinePair>>(StringComparer.Ordinal);
         }
 
         #endregion
@@ -194,104 +236,88 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         }
 
         /// <summary>
-        /// Genera in un solo decode le tile PNG della visualizzazione audio richiesta
+        /// Restituisce le visualizzazioni della traccia, calcolandole soltanto al primo accesso e
+        /// facendo attendere le richieste gemelle invece di ripetere l'estrazione
         /// </summary>
         /// <param name="filePath">File multimediale</param>
         /// <param name="trackId">ID della traccia nel contenitore</param>
         /// <param name="durationMs">Durata da rappresentare in millisecondi</param>
-        /// <param name="spectrogram">True per lo spettrogramma, false per la forma d'onda</param>
         /// <param name="highQuality">True per una risoluzione orizzontale e verticale maggiore</param>
         /// <param name="timeoutMs">Timeout del comando in millisecondi</param>
         /// <param name="cancellationToken">Token di annullamento</param>
-        /// <returns>Tile della visualizzazione e relativa scala temporale</returns>
-        public AudioTimelineImage GenerateTimelineImageForTrackId(string filePath, int trackId, double durationMs, bool spectrogram, bool highQuality, int timeoutMs, CancellationToken cancellationToken)
+        /// <returns>Coppia inviluppo/spettrogramma della traccia</returns>
+        public AudioTimelinePair GetOrGenerateTimeline(string filePath, int trackId, double durationMs, bool highQuality, int timeoutMs, CancellationToken cancellationToken)
+        {
+            string key = BuildTimelineCacheKey(filePath, trackId, durationMs, highQuality);
+            Lazy<AudioTimelinePair> pending;
+            lock (this._timelines)
+            {
+                if (this._timelines.TryGetValue(key, out AudioTimelineCacheEntry cached))
+                {
+                    this._timelineOrder.Remove(cached.Node);
+                    this._timelineOrder.AddFirst(cached.Node);
+                    return cached.Timeline;
+                }
+
+                if (!this._timelinesInFlight.TryGetValue(key, out pending))
+                {
+                    pending = new Lazy<AudioTimelinePair>(() => this.GenerateTimelineForTrackId(filePath, trackId, durationMs, highQuality, timeoutMs, cancellationToken), LazyThreadSafetyMode.ExecutionAndPublication);
+                    this._timelinesInFlight.Add(key, pending);
+                }
+            }
+
+            try
+            {
+                AudioTimelinePair result = pending.Value;
+                this.CacheTimeline(key, result);
+                return result;
+            }
+            finally
+            {
+                lock (this._timelines)
+                {
+                    if (this._timelinesInFlight.TryGetValue(key, out Lazy<AudioTimelinePair> current) && ReferenceEquals(current, pending))
+                        this._timelinesInFlight.Remove(key);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Genera con una sola decodifica alla frequenza nativa della traccia sia l'inviluppo della
+        /// forma d'onda sia le tile dello spettrogramma, sulla stessa identica scala temporale
+        /// </summary>
+        /// <param name="filePath">File multimediale</param>
+        /// <param name="trackId">ID della traccia nel contenitore</param>
+        /// <param name="durationMs">Durata da rappresentare in millisecondi</param>
+        /// <param name="highQuality">True per una risoluzione orizzontale e verticale maggiore</param>
+        /// <param name="timeoutMs">Timeout del comando in millisecondi</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Coppia inviluppo/spettrogramma della traccia</returns>
+        public AudioTimelinePair GenerateTimelineForTrackId(string filePath, int trackId, double durationMs, bool highQuality, int timeoutMs, CancellationToken cancellationToken)
         {
             const int tileWidth = 8192;
+            const int maximumLowQualityPoints = 262144;
+            const int maximumHighQualityPoints = 4194304;
+            string selector = trackId.ToString(CultureInfo.InvariantCulture);
+            int sampleRate = this.ReadSampleRate(filePath, selector, timeoutMs);
             int maximumTileCount = highQuality ? 24 : 16;
             int tileHeight = highQuality ? 128 : 96;
-            string selector = trackId.ToString(CultureInfo.InvariantCulture);
             double safeDurationMs = Math.Max(1.0, durationMs);
             double millisecondsPerPixel = Math.Max(1.0, safeDurationMs / (tileWidth * maximumTileCount));
             double tileDurationMs = tileWidth * millisecondsPerPixel;
             int tileCount = Math.Max(1, Math.Min(maximumTileCount, (int)Math.Ceiling(safeDurationMs / tileDurationMs)));
             string representedSeconds = (tileCount * tileDurationMs / 1000.0).ToString("0.######", CultureInfo.InvariantCulture);
-            string normalizedInput = "[0:" + selector + "]aformat=channel_layouts=mono,apad=whole_dur=" + representedSeconds + ",atrim=end=" + representedSeconds;
-            string temporaryDirectory = Path.Combine(Path.GetTempPath(), "remuxforge-audio-timeline-" + Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(temporaryDirectory);
 
-            try
-            {
-                List<string> outputs = new List<string>();
-                List<string> filters = new List<string>();
-                if (tileCount == 1)
-                {
-                    filters.Add(BuildTimelineImageFilter(normalizedInput, "[w0]", tileWidth, tileHeight, spectrogram));
-                }
-                else
-                {
-                    List<string> timestamps = new List<string>();
-                    List<string> segmentLabels = new List<string>();
-                    for (int i = 1; i < tileCount; i++)
-                        timestamps.Add((i * tileDurationMs / 1000.0).ToString("0.######", CultureInfo.InvariantCulture));
-                    for (int i = 0; i < tileCount; i++)
-                        segmentLabels.Add("[a" + i.ToString(CultureInfo.InvariantCulture) + "]");
-                    filters.Add(normalizedInput + ",asegment=timestamps=" + string.Join("|", timestamps) + string.Join("", segmentLabels));
-                    for (int i = 0; i < tileCount; i++)
-                        filters.Add(BuildTimelineImageFilter("[a" + i.ToString(CultureInfo.InvariantCulture) + "]", "[w" + i.ToString(CultureInfo.InvariantCulture) + "]", tileWidth, tileHeight, spectrogram));
-                }
+            // Il passo fra due colonne vale esattamente un pixel: la colonna n cade a n * millisecondsPerPixel
+            // per costruzione, ed è questo che tiene lo spettrogramma allineato alla forma d'onda
+            double samplesPerColumn = Math.Max(1.0, millisecondsPerPixel * sampleRate / 1000.0);
+            int windowSamples = Math.Min(SPECTROGRAM_MAXIMUM_WINDOW, Math.Max(SPECTROGRAM_MINIMUM_WINDOW, NextPowerOfTwo((int)Math.Ceiling(samplesPerColumn))));
+            SpectrogramAccumulator spectrogram = new SpectrogramAccumulator(tileCount, tileWidth, tileHeight, samplesPerColumn, windowSamples);
 
-                List<string> arguments = new List<string> { "-nostdin", "-v", "error", "-i", filePath, "-filter_complex", string.Join(";", filters) };
-                for (int i = 0; i < tileCount; i++)
-                {
-                    string outputPath = Path.Combine(temporaryDirectory, i.ToString("D2", CultureInfo.InvariantCulture) + ".png");
-                    outputs.Add(outputPath);
-                    arguments.Add("-map");
-                    arguments.Add("[w" + i.ToString(CultureInfo.InvariantCulture) + "]");
-                    arguments.Add("-frames:v");
-                    arguments.Add("1");
-                    arguments.Add(outputPath);
-                }
-
-                ProcessResult run = ProcessRunner.Run(this._ffmpegPath, arguments.ToArray(), timeoutMs, cancellationToken);
-                if (run.ExitCode != 0)
-                    throw new InvalidOperationException("Impossibile generare la visualizzazione audio di " + Path.GetFileName(filePath) + ": " + run.Stderr);
-
-                List<byte[]> tiles = new List<byte[]>();
-                for (int i = 0; i < outputs.Count; i++)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    tiles.Add(File.ReadAllBytes(outputs[i]));
-                }
-
-                return new AudioTimelineImage(tileWidth, tileHeight, millisecondsPerPixel, tileDurationMs, this.ReadOriginMs(filePath, selector, timeoutMs), tiles);
-            }
-            finally
-            {
-                if (Directory.Exists(temporaryDirectory))
-                    Directory.Delete(temporaryDirectory, true);
-            }
-        }
-
-        /// <summary>
-        /// Genera l'inviluppo min/max completo usato dal renderer vettoriale della waveform
-        /// </summary>
-        /// <param name="filePath">File multimediale</param>
-        /// <param name="trackId">ID della traccia nel contenitore</param>
-        /// <param name="durationMs">Durata da rappresentare in millisecondi</param>
-        /// <param name="highQuality">True per un bucket ogni millisecondo</param>
-        /// <param name="timeoutMs">Timeout del comando in millisecondi</param>
-        /// <param name="cancellationToken">Token di annullamento</param>
-        /// <returns>Inviluppo temporale quantizzato a 16 bit</returns>
-        public AudioTimelineWaveform GenerateTimelineWaveformForTrackId(string filePath, int trackId, double durationMs, bool highQuality, int timeoutMs, CancellationToken cancellationToken)
-        {
-            const int maximumLowQualityPoints = 262144;
-            const int maximumHighQualityPoints = 4194304;
-            string selector = trackId.ToString(CultureInfo.InvariantCulture);
-            double safeDurationMs = Math.Max(1.0, durationMs);
             int maximumPoints = highQuality ? maximumHighQualityPoints : maximumLowQualityPoints;
             double requestedStepMs = Math.Max(1.0, safeDurationMs / maximumPoints);
-            int bucketSamples = Math.Max(1, (int)Math.Ceiling(requestedStepMs * SAMPLE_RATE / 1000.0));
-            double stepMs = bucketSamples * 1000.0 / SAMPLE_RATE;
+            int bucketSamples = Math.Max(1, (int)Math.Ceiling(requestedStepMs * sampleRate / 1000.0));
+            double stepMs = bucketSamples * 1000.0 / sampleRate;
             List<short> minimum = new List<short>();
             List<short> maximum = new List<short>();
             byte[] pending = new byte[sizeof(float)];
@@ -300,47 +326,64 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             float bucketMinimum = 0.0f;
             float bucketMaximum = 0.0f;
             short peak = 0;
-            string representedSeconds = (safeDurationMs / 1000.0).ToString("0.######", CultureInfo.InvariantCulture);
+
+            // Niente aresample: la traccia va letta alla sua frequenza, altrimenti lo spettrogramma
+            // si ferma a meta' della Nyquist dichiarata dall'editor
             string[] arguments = new string[] {
                 "-nostdin", "-v", "error", "-i", filePath,
                 "-map", "0:" + selector,
-                "-af", "aformat=channel_layouts=mono,aresample=" + SAMPLE_RATE.ToString(CultureInfo.InvariantCulture) + ",apad=whole_dur=" + representedSeconds + ",atrim=end=" + representedSeconds,
+                "-af", "aformat=channel_layouts=mono,apad=whole_dur=" + representedSeconds + ",atrim=end=" + representedSeconds,
                 "-f", "f32le", "-" };
-            ProcessBinaryResult run = ProcessRunner.RunBinaryStdout(this._ffmpegPath, arguments, (buffer, count) =>
+
+            try
             {
-                int consumed = 0;
-                while (consumed < count)
+                ProcessBinaryResult run = ProcessRunner.RunBinaryStdout(this._ffmpegPath, arguments, (buffer, count) =>
                 {
-                    int copied = Math.Min(sizeof(float) - pendingBytes, count - consumed);
-                    Buffer.BlockCopy(buffer, consumed, pending, pendingBytes, copied);
-                    pendingBytes += copied;
-                    consumed += copied;
-                    if (pendingBytes < sizeof(float))
-                        continue;
-                    pendingBytes = 0;
-                    float sample = BitConverter.ToSingle(pending, 0);
-                    if (samplesInBucket == 0)
+                    int consumed = 0;
+                    while (consumed < count)
                     {
-                        bucketMinimum = sample;
-                        bucketMaximum = sample;
+                        int copied = Math.Min(sizeof(float) - pendingBytes, count - consumed);
+                        Buffer.BlockCopy(buffer, consumed, pending, pendingBytes, copied);
+                        pendingBytes += copied;
+                        consumed += copied;
+                        if (pendingBytes < sizeof(float))
+                            continue;
+                        pendingBytes = 0;
+                        float sample = BitConverter.ToSingle(pending, 0);
+                        spectrogram.Push(sample);
+                        if (samplesInBucket == 0)
+                        {
+                            bucketMinimum = sample;
+                            bucketMaximum = sample;
+                        }
+                        else
+                        {
+                            bucketMinimum = Math.Min(bucketMinimum, sample);
+                            bucketMaximum = Math.Max(bucketMaximum, sample);
+                        }
+                        samplesInBucket++;
+                        if (samplesInBucket < bucketSamples)
+                            continue;
+                        AddWaveformBucket(minimum, maximum, bucketMinimum, bucketMaximum, ref peak);
+                        samplesInBucket = 0;
                     }
-                    else
-                    {
-                        bucketMinimum = Math.Min(bucketMinimum, sample);
-                        bucketMaximum = Math.Max(bucketMaximum, sample);
-                    }
-                    samplesInBucket++;
-                    if (samplesInBucket < bucketSamples)
-                        continue;
+                }, timeoutMs, cancellationToken);
+
+                if (samplesInBucket > 0)
                     AddWaveformBucket(minimum, maximum, bucketMinimum, bucketMaximum, ref peak);
-                    samplesInBucket = 0;
-                }
-            }, timeoutMs, cancellationToken);
-            if (samplesInBucket > 0)
-                AddWaveformBucket(minimum, maximum, bucketMinimum, bucketMaximum, ref peak);
-            if (run.ExitCode != 0)
-                throw new InvalidOperationException("Nessun campione audio estratto da " + Path.GetFileName(filePath) + ": " + run.Stderr);
-            return new AudioTimelineWaveform(stepMs, this.ReadOriginMs(filePath, selector, timeoutMs), peak, minimum.ToArray(), maximum.ToArray());
+                if (run.ExitCode != 0)
+                    throw new InvalidOperationException("Nessun campione audio estratto da " + Path.GetFileName(filePath) + ": " + run.Stderr);
+
+                double originMs = this.ReadOriginMs(filePath, selector, sampleRate, timeoutMs);
+                AudioTimelineWaveform waveform = new AudioTimelineWaveform(stepMs, originMs, peak, minimum.ToArray(), maximum.ToArray());
+                AudioTimelineImage image = new AudioTimelineImage(tileWidth, tileHeight, millisecondsPerPixel, tileDurationMs, originMs, spectrogram.Complete(cancellationToken));
+                return new AudioTimelinePair(waveform, image);
+            }
+            catch (Exception)
+            {
+                spectrogram.Abort();
+                throw;
+            }
         }
 
         #endregion
@@ -348,17 +391,13 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         #region Metodi privati
 
         /// <summary>
-        /// Costruisce il filtro della singola tile senza legende o cornici generate da FFmpeg
+        /// Aggiunge un bucket min/max quantizzato alla waveform
         /// </summary>
-        private static string BuildTimelineImageFilter(string inputLabel, string outputLabel, int width, int height, bool spectrogram)
-        {
-            string size = width.ToString(CultureInfo.InvariantCulture) + "x" + height.ToString(CultureInfo.InvariantCulture);
-            if (spectrogram)
-                return inputLabel + "showspectrumpic=s=" + size + ":legend=0:mode=combined:color=intensity:scale=log:fscale=lin:orientation=vertical" + outputLabel;
-            return inputLabel + "showwavespic=s=" + size + ":split_channels=0:colors=white:filter=peak:draw=full,format=rgba,colorkey=0x000000:0.01:0.0" + outputLabel;
-        }
-
-        /// <summary>Aggiunge un bucket min/max quantizzato alla waveform</summary>
+        /// <param name="minimum">Minimi già accumulati, a cui viene aggiunto il bucket</param>
+        /// <param name="maximum">Massimi già accumulati, a cui viene aggiunto il bucket</param>
+        /// <param name="bucketMinimum">Campione più basso del bucket corrente</param>
+        /// <param name="bucketMaximum">Campione più alto del bucket corrente</param>
+        /// <param name="peak">Picco assoluto accumulato, alzato quando il bucket lo supera</param>
         private static void AddWaveformBucket(List<short> minimum, List<short> maximum, float bucketMinimum, float bucketMaximum, ref short peak)
         {
             short quantizedMinimum = (short)Math.Round(Math.Max(-1.0f, Math.Min(1.0f, bucketMinimum)) * short.MaxValue);
@@ -416,13 +455,18 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         /// <returns>Origine in millisecondi, al netto del ritardo di codec</returns>
         private double ReadOriginMs(string filePath, int streamIndex, int timeoutMs)
         {
-            return this.ReadOriginMs(filePath, "a:" + streamIndex.ToString(CultureInfo.InvariantCulture), timeoutMs);
+            return this.ReadOriginMs(filePath, "a:" + streamIndex.ToString(CultureInfo.InvariantCulture), SAMPLE_RATE, timeoutMs);
         }
 
         /// <summary>
         /// Legge l'origine tramite un selettore ffprobe già risolto
         /// </summary>
-        private double ReadOriginMs(string filePath, string streamSelector, int timeoutMs)
+        /// <param name="filePath">File multimediale</param>
+        /// <param name="streamSelector">Selettore ffprobe della traccia</param>
+        /// <param name="sampleRate">Frequenza a cui è stato estratto il PCM</param>
+        /// <param name="timeoutMs">Timeout del comando in millisecondi</param>
+        /// <returns>Origine in millisecondi, al netto del ritardo di codec</returns>
+        private double ReadOriginMs(string filePath, string streamSelector, int sampleRate, int timeoutMs)
         {
             // ffmpeg estrae il PCM dal campione zero e butta via l'origine: senza rimetterla
             // l'offset audio e quello video non stanno sulla stessa origine
@@ -444,17 +488,430 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                 JsonElement stream = streams[0];
                 if (stream.TryGetProperty("start_time", out JsonElement startTime) && double.TryParse(startTime.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out double seconds))
                     result = seconds * 1000.0;
-                // initial_padding è ritardo di codec e va tolto. Si converte alla frequenza di
-                // analisi, come nel prototipo: lo scarto rispetto alla frequenza nativa resta
-                // molto sotto i 60 ms con cui l'audio giudica
+                // initial_padding è ritardo di codec e va tolto, convertito alla stessa frequenza
+                // con cui il chiamante ha estratto il PCM
                 if (stream.TryGetProperty("initial_padding", out JsonElement padding) && padding.TryGetInt32(out int paddingSamples))
-                    result -= paddingSamples * 1000.0 / SAMPLE_RATE;
+                    result -= paddingSamples * 1000.0 / sampleRate;
             }
             catch (JsonException)
             {
             }
 
             return result;
+        }
+
+
+        /// <summary>
+        /// Costruisce la chiave di cache di una visualizzazione, includendo la versione del file
+        /// </summary>
+        /// <param name="filePath">File multimediale</param>
+        /// <param name="trackId">ID della traccia nel contenitore</param>
+        /// <param name="durationMs">Durata rappresentata in millisecondi</param>
+        /// <param name="highQuality">True per la risoluzione maggiore</param>
+        /// <returns>Chiave univoca della visualizzazione</returns>
+        private static string BuildTimelineCacheKey(string filePath, int trackId, double durationMs, bool highQuality)
+        {
+            long length = 0L;
+            long ticks = 0L;
+            FileInfo file = new FileInfo(filePath);
+            if (file.Exists)
+            {
+                length = file.Length;
+                ticks = file.LastWriteTimeUtc.Ticks;
+            }
+
+            return filePath + "|" + length.ToString(CultureInfo.InvariantCulture) + "|" + ticks.ToString(CultureInfo.InvariantCulture)
+                + "|" + trackId.ToString(CultureInfo.InvariantCulture) + "|" + durationMs.ToString("R", CultureInfo.InvariantCulture)
+                + "|" + (highQuality ? "high" : "low");
+        }
+
+        /// <summary>
+        /// Inserisce la visualizzazione in cache scartando le meno recenti oltre il budget
+        /// </summary>
+        /// <param name="key">Chiave della visualizzazione</param>
+        /// <param name="timeline">Visualizzazione calcolata</param>
+        private void CacheTimeline(string key, AudioTimelinePair timeline)
+        {
+            long bytes = timeline.Waveform.Minimum.LongLength * sizeof(short) * 2L;
+            for (int index = 0; index < timeline.Image.Tiles.Count; index++)
+                bytes += timeline.Image.Tiles[index].LongLength;
+
+            lock (this._timelines)
+            {
+                if (this._timelines.ContainsKey(key))
+                    return;
+                LinkedListNode<string> node = this._timelineOrder.AddFirst(key);
+                this._timelines.Add(key, new AudioTimelineCacheEntry(timeline, node, bytes));
+                this._timelineCacheBytes += bytes;
+                while (this._timelineCacheBytes > TIMELINE_CACHE_LIMIT_BYTES && this._timelineOrder.Count > 1)
+                {
+                    LinkedListNode<string> oldest = this._timelineOrder.Last;
+                    this._timelineOrder.RemoveLast();
+                    if (this._timelines.TryGetValue(oldest.Value, out AudioTimelineCacheEntry evicted))
+                    {
+                        this._timelineCacheBytes -= evicted.Bytes;
+                        this._timelines.Remove(oldest.Value);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Legge la frequenza di campionamento nativa della traccia
+        /// </summary>
+        /// <param name="filePath">File multimediale</param>
+        /// <param name="streamSelector">Selettore ffprobe della traccia</param>
+        /// <param name="timeoutMs">Timeout del comando in millisecondi</param>
+        /// <returns>Frequenza dichiarata dal contenitore, o quella di analisi se manca</returns>
+        private int ReadSampleRate(string filePath, string streamSelector, int timeoutMs)
+        {
+            if (string.IsNullOrEmpty(this._ffprobePath))
+                return SAMPLE_RATE;
+
+            ProcessResult run = ProcessRunner.Run(this._ffprobePath, new string[] {
+                "-v", "error", "-select_streams", streamSelector,
+                "-show_entries", "stream=sample_rate", "-of", "json", filePath }, timeoutMs);
+            if (run.ExitCode != 0)
+                return SAMPLE_RATE;
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(run.Stdout);
+                if (!document.RootElement.TryGetProperty("streams", out JsonElement streams) || streams.GetArrayLength() == 0)
+                    return SAMPLE_RATE;
+                if (streams[0].TryGetProperty("sample_rate", out JsonElement rate) && int.TryParse(rate.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed) && parsed > 0)
+                    return parsed;
+            }
+            catch (JsonException)
+            {
+            }
+
+            return SAMPLE_RATE;
+        }
+
+        /// <summary>
+        /// Arrotonda per eccesso alla potenza di due
+        /// </summary>
+        /// <param name="value">Valore da arrotondare</param>
+        /// <returns>La più piccola potenza di due maggiore o uguale al valore</returns>
+        private static int NextPowerOfTwo(int value)
+        {
+            int result = 1;
+            while (result < value)
+                result <<= 1;
+            return result;
+        }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Costruisce le tile dello spettrogramma mentre i campioni arrivano da FFmpeg, calcolando le
+    /// colonne su thread separati
+    /// </summary>
+    internal sealed class SpectrogramAccumulator
+    {
+        #region Costanti
+
+        /// <summary>
+        /// Livello in dB sotto il quale una banda dello spettrogramma è nera
+        /// </summary>
+        private const double DECIBEL_FLOOR = -90.0;
+
+        #endregion
+
+        #region Variabili di istanza
+
+        private readonly int _tileWidth;
+        private readonly int _tileHeight;
+        private readonly double _samplesPerColumn;
+        private readonly int _windowSamples;
+        private readonly int _frameSpan;
+        private readonly int _framesPerColumn;
+        private readonly int _columnCount;
+        private readonly int _binCount;
+        private readonly float[] _window;
+        private readonly float _windowNormalization;
+        private readonly float[] _ring;
+        private readonly byte[][] _tiles;
+        private readonly BlockingCollection<KeyValuePair<int, float[]>> _columns;
+        private readonly Task _renderer;
+        private long _sampleCount;
+        private int _nextColumn;
+
+        #endregion
+
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        /// <param name="tileCount">Numero di tile affiancate</param>
+        /// <param name="tileWidth">Larghezza in pixel della singola tile</param>
+        /// <param name="tileHeight">Altezza in pixel della singola tile</param>
+        /// <param name="samplesPerColumn">Campioni fra due colonne, cioè la larghezza in campioni di un pixel</param>
+        /// <param name="windowSamples">Campioni della finestra della trasformata</param>
+        public SpectrogramAccumulator(int tileCount, int tileWidth, int tileHeight, double samplesPerColumn, int windowSamples)
+        {
+            this._tileWidth = tileWidth;
+            this._tileHeight = tileHeight;
+            this._samplesPerColumn = samplesPerColumn;
+            this._windowSamples = windowSamples;
+            // Quando il pixel è più largo della finestra la colonna copre più trasformate consecutive,
+            // altrimenti resterebbero campioni mai guardati fra un pixel e il successivo
+            this._framesPerColumn = Math.Max(1, (int)Math.Ceiling(samplesPerColumn / windowSamples));
+            this._frameSpan = this._framesPerColumn * windowSamples;
+            this._columnCount = tileCount * tileWidth;
+            this._binCount = windowSamples / 2 + 1;
+            this._ring = new float[this._frameSpan];
+            this._tiles = new byte[tileCount][];
+            for (int index = 0; index < tileCount; index++)
+                this._tiles[index] = new byte[tileWidth * tileHeight];
+
+            this._window = new float[windowSamples];
+            double sum = 0.0;
+            for (int index = 0; index < windowSamples; index++)
+            {
+                double value = 0.5 - 0.5 * Math.Cos(2.0 * Math.PI * index / windowSamples);
+                this._window[index] = (float)value;
+                sum += value;
+            }
+
+            this._windowNormalization = (float)(2.0 / Math.Max(1.0, sum));
+            this._columns = new BlockingCollection<KeyValuePair<int, float[]>>(Environment.ProcessorCount * 8);
+            this._renderer = Task.Run(() => this.RenderColumns());
+        }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Accoda un campione decodificato, emettendo le colonne via via che sono complete
+        /// </summary>
+        /// <param name="sample">Campione mono a virgola mobile</param>
+        public void Push(float sample)
+        {
+            this._ring[(int)(this._sampleCount % this._frameSpan)] = sample;
+            this._sampleCount++;
+            // Il passo resta frazionario: arrotondarlo a un numero intero di campioni farebbe scorrere
+            // lo spettrogramma di un millesimo, cioè di oltre un secondo alla fine di un film
+            while (this._nextColumn < this._columnCount && this._sampleCount >= this.ColumnStartSample(this._nextColumn) + this._frameSpan / 2)
+            {
+                this.EmitColumn(this._nextColumn);
+                this._nextColumn++;
+            }
+        }
+
+        /// <summary>
+        /// Completa le colonne rimaste, attende i calcoli e codifica le tile
+        /// </summary>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Tile PNG nell'ordine temporale</returns>
+        public List<byte[]> Complete(CancellationToken cancellationToken)
+        {
+            // La coda di FFmpeg finisce prima dell'ultima finestra: il silenzio finale chiude le colonne
+            while (this._nextColumn < this._columnCount)
+                this.Push(0.0f);
+            this._columns.CompleteAdding();
+            this._renderer.GetAwaiter().GetResult();
+
+            List<byte[]> result = new List<byte[]>();
+            byte[][] encoded = new byte[this._tiles.Length][];
+            Parallel.For(0, this._tiles.Length, new ParallelOptions { CancellationToken = cancellationToken }, index =>
+            {
+                using Mat intensity = new Mat(this._tileHeight, this._tileWidth, MatType.CV_8UC1);
+                intensity.SetArray(this._tiles[index]);
+                using Mat colored = new Mat();
+                Cv2.ApplyColorMap(intensity, colored, ColormapTypes.Inferno);
+                Cv2.ImEncode(".png", colored, out byte[] png);
+                encoded[index] = png;
+            });
+
+            result.AddRange(encoded);
+            this._columns.Dispose();
+            return result;
+        }
+
+        /// <summary>
+        /// Abbandona il calcolo quando l'estrazione fallisce
+        /// </summary>
+        public void Abort()
+        {
+            if (!this._columns.IsAddingCompleted)
+                this._columns.CompleteAdding();
+            try
+            {
+                this._renderer.GetAwaiter().GetResult();
+            }
+            catch (Exception)
+            {
+            }
+
+            this._columns.Dispose();
+        }
+
+        #endregion
+
+        #region Metodi privati
+
+        /// <summary>
+        /// Restituisce il campione su cui è centrata la colonna
+        /// </summary>
+        /// <param name="columnIndex">Indice della colonna sull'intera timeline</param>
+        /// <returns>Indice del campione, arrotondato al più vicino</returns>
+        private long ColumnStartSample(int columnIndex)
+        {
+            return (long)Math.Round(columnIndex * this._samplesPerColumn);
+        }
+
+        /// <summary>
+        /// Copia dal buffer circolare i campioni della colonna e li affida ai thread di calcolo
+        /// </summary>
+        /// <param name="columnIndex">Indice della colonna sull'intera timeline</param>
+        private void EmitColumn(int columnIndex)
+        {
+            float[] frame = ArrayPool<float>.Shared.Rent(this._frameSpan);
+            // La finestra è centrata sull'istante della colonna: allinearla a sinistra anticiperebbe
+            // ogni transiente di mezza finestra
+            int offset = (int)((this.ColumnStartSample(columnIndex) + this._frameSpan / 2) % this._frameSpan);
+            int head = this._frameSpan - offset;
+            Array.Copy(this._ring, offset, frame, 0, head);
+            if (offset > 0)
+                Array.Copy(this._ring, 0, frame, head, offset);
+            this._columns.Add(new KeyValuePair<int, float[]>(columnIndex, frame));
+        }
+
+        /// <summary>
+        /// Consuma le colonne in parallelo trasformandole in pixel
+        /// </summary>
+        private void RenderColumns()
+        {
+            try
+            {
+                OrderablePartitioner<KeyValuePair<int, float[]>> partitioner = Partitioner.Create(this._columns.GetConsumingEnumerable(), EnumerablePartitionerOptions.NoBuffering);
+                Parallel.ForEach(partitioner, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
+                    () => new SpectrogramWorkspace(this._windowSamples, this._binCount),
+                    (column, state, workspace) =>
+                    {
+                        this.RenderColumn(column.Key, column.Value, workspace);
+                        ArrayPool<float>.Shared.Return(column.Value);
+                        return workspace;
+                    },
+                    workspace => workspace.Dispose());
+            }
+            catch (Exception)
+            {
+                // Senza consumatore il produttore resterebbe fermo sulla coda piena: chiuderla lo fa fallire subito
+                if (!this._columns.IsAddingCompleted)
+                    this._columns.CompleteAdding();
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Calcola lo spettro della colonna e ne scrive i pixel nella tile
+        /// </summary>
+        /// <param name="columnIndex">Indice della colonna sull'intera timeline</param>
+        /// <param name="frame">Campioni che ricadono nel pixel</param>
+        /// <param name="workspace">Buffer riutilizzati dal thread corrente</param>
+        private void RenderColumn(int columnIndex, float[] frame, SpectrogramWorkspace workspace)
+        {
+            Array.Clear(workspace.Magnitude, 0, workspace.Magnitude.Length);
+            for (int part = 0; part < this._framesPerColumn; part++)
+            {
+                int start = part * this._windowSamples;
+                for (int index = 0; index < this._windowSamples; index++)
+                    workspace.Windowed[index] = frame[start + index] * this._window[index];
+                workspace.Input.SetArray(workspace.Windowed);
+                Cv2.Dft(workspace.Input, workspace.Output, DftFlags.ComplexOutput);
+                workspace.Output.GetArray(out Vec2f[] spectrum);
+                for (int bin = 0; bin < this._binCount; bin++)
+                {
+                    float magnitude = (float)Math.Sqrt(spectrum[bin].Item0 * spectrum[bin].Item0 + spectrum[bin].Item1 * spectrum[bin].Item1);
+                    if (magnitude > workspace.Magnitude[bin])
+                        workspace.Magnitude[bin] = magnitude;
+                }
+            }
+
+            byte[] tile = this._tiles[columnIndex / this._tileWidth];
+            int x = columnIndex % this._tileWidth;
+            // La riga zero è la Nyquist: lo spettro cresce verso l'alto come nell'immagine precedente
+            for (int row = 0; row < this._tileHeight; row++)
+            {
+                int firstBin = (this._tileHeight - 1 - row) * (this._binCount - 1) / this._tileHeight;
+                int lastBin = (this._tileHeight - row) * (this._binCount - 1) / this._tileHeight;
+                float loudest = 0.0f;
+                for (int bin = firstBin; bin <= Math.Max(firstBin, lastBin); bin++)
+                {
+                    if (workspace.Magnitude[bin] > loudest)
+                        loudest = workspace.Magnitude[bin];
+                }
+
+                double decibel = 20.0 * Math.Log10(Math.Max(1e-9, loudest * this._windowNormalization));
+                double level = (decibel - DECIBEL_FLOOR) / -DECIBEL_FLOOR;
+                tile[row * this._tileWidth + x] = (byte)Math.Round(255.0 * Math.Max(0.0, Math.Min(1.0, level)));
+            }
+        }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Buffer di lavoro di un singolo thread di calcolo dello spettrogramma
+    /// </summary>
+    internal sealed class SpectrogramWorkspace : IDisposable
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        /// <param name="windowSamples">Campioni della finestra della trasformata</param>
+        /// <param name="binCount">Numero di bande utili dello spettro</param>
+        public SpectrogramWorkspace(int windowSamples, int binCount)
+        {
+            this.Windowed = new float[windowSamples];
+            this.Magnitude = new float[binCount];
+            this.Input = new Mat(1, windowSamples, MatType.CV_32FC1);
+            this.Output = new Mat();
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Campioni della finestra già moltiplicati per la finestra di Hann
+        /// </summary>
+        public float[] Windowed { get; private set; }
+
+        /// <summary>
+        /// Ampiezza massima per banda fra le trasformate della colonna
+        /// </summary>
+        public float[] Magnitude { get; private set; }
+
+        /// <summary>
+        /// Matrice di ingresso della trasformata
+        /// </summary>
+        public Mat Input { get; private set; }
+
+        /// <summary>
+        /// Matrice di uscita della trasformata
+        /// </summary>
+        public Mat Output { get; private set; }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Rilascia le matrici native
+        /// </summary>
+        public void Dispose()
+        {
+            this.Input.Dispose();
+            this.Output.Dispose();
         }
 
         #endregion
@@ -478,22 +935,34 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             this.Tiles = tiles;
         }
 
-        /// <summary>Larghezza di ogni tile</summary>
+        /// <summary>
+        /// Larghezza di ogni tile
+        /// </summary>
         public int TileWidth { get; private set; }
 
-        /// <summary>Altezza di ogni tile</summary>
+        /// <summary>
+        /// Altezza di ogni tile
+        /// </summary>
         public int TileHeight { get; private set; }
 
-        /// <summary>Scala temporale orizzontale</summary>
+        /// <summary>
+        /// Scala temporale orizzontale
+        /// </summary>
         public double MillisecondsPerPixel { get; private set; }
 
-        /// <summary>Durata rappresentata da ogni tile</summary>
+        /// <summary>
+        /// Durata rappresentata da ogni tile
+        /// </summary>
         public double TileDurationMs { get; private set; }
 
-        /// <summary>Origine della traccia nel contenitore</summary>
+        /// <summary>
+        /// Origine della traccia nel contenitore
+        /// </summary>
         public double OriginMs { get; private set; }
 
-        /// <summary>Tile PNG ordinate temporalmente</summary>
+        /// <summary>
+        /// Tile PNG ordinate temporalmente
+        /// </summary>
         public List<byte[]> Tiles { get; private set; }
     }
 
@@ -502,7 +971,9 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
     /// </summary>
     public class AudioTimelineWaveform
     {
-        /// <summary>Costruttore</summary>
+        /// <summary>
+        /// Costruttore
+        /// </summary>
         public AudioTimelineWaveform(double millisecondsPerPoint, double originMs, short peak, short[] minimum, short[] maximum)
         {
             this.MillisecondsPerPoint = millisecondsPerPoint;
@@ -512,19 +983,106 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             this.Maximum = maximum;
         }
 
-        /// <summary>Passo temporale fra due bucket</summary>
+        /// <summary>
+        /// Passo temporale fra due bucket
+        /// </summary>
         public double MillisecondsPerPoint { get; private set; }
 
-        /// <summary>Origine della traccia nel contenitore</summary>
+        /// <summary>
+        /// Origine della traccia nel contenitore
+        /// </summary>
         public double OriginMs { get; private set; }
 
-        /// <summary>Picco assoluto globale quantizzato</summary>
+        /// <summary>
+        /// Picco assoluto globale quantizzato
+        /// </summary>
         public short Peak { get; private set; }
 
-        /// <summary>Minimi dei bucket</summary>
+        /// <summary>
+        /// Minimi dei bucket
+        /// </summary>
         public short[] Minimum { get; private set; }
 
-        /// <summary>Massimi dei bucket</summary>
+        /// <summary>
+        /// Massimi dei bucket
+        /// </summary>
         public short[] Maximum { get; private set; }
+    }
+
+    /// <summary>
+    /// Voce della cache delle visualizzazioni audio
+    /// </summary>
+    internal sealed class AudioTimelineCacheEntry
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        /// <param name="timeline">Visualizzazione calcolata</param>
+        /// <param name="node">Nodo nell'ordine di utilizzo</param>
+        /// <param name="bytes">Byte occupati</param>
+        public AudioTimelineCacheEntry(AudioTimelinePair timeline, LinkedListNode<string> node, long bytes)
+        {
+            this.Timeline = timeline;
+            this.Node = node;
+            this.Bytes = bytes;
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Visualizzazione calcolata
+        /// </summary>
+        public AudioTimelinePair Timeline { get; private set; }
+
+        /// <summary>
+        /// Nodo nell'ordine di utilizzo
+        /// </summary>
+        public LinkedListNode<string> Node { get; private set; }
+
+        /// <summary>
+        /// Byte occupati
+        /// </summary>
+        public long Bytes { get; private set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Inviluppo e spettrogramma della stessa traccia, prodotti dalla stessa decodifica
+    /// </summary>
+    public class AudioTimelinePair
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        /// <param name="waveform">Inviluppo min/max della traccia</param>
+        /// <param name="image">Spettrogramma suddiviso in tile</param>
+        public AudioTimelinePair(AudioTimelineWaveform waveform, AudioTimelineImage image)
+        {
+            this.Waveform = waveform;
+            this.Image = image;
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Inviluppo min/max della traccia
+        /// </summary>
+        public AudioTimelineWaveform Waveform { get; private set; }
+
+        /// <summary>
+        /// Spettrogramma suddiviso in tile
+        /// </summary>
+        public AudioTimelineImage Image { get; private set; }
+
+        #endregion
     }
 }

@@ -197,10 +197,6 @@ function withCanvasSize(url, canvas) {
     return `${url}${separator}width=${width}&height=${height}`;
 }
 
-export function confirmDiscard(message) {
-    return window.confirm(message);
-}
-
 export function captureEditorKeyboard(root, dotNetReference) {
     let inFlight = false;
     let pendingSide = null;
@@ -441,6 +437,22 @@ export class TimelineCanvas {
         this.fitTimeline();
         const urls = this.audioUrls(this.model);
         for (const key of Object.keys(urls)) this.loadAudioImage(key, urls[key]);
+        this.prefetchAlternateAudioMode(urls);
+    }
+
+    /** Chiede anche l'altra modalità: la decodifica del server è unica, così le quattro immagini sono pronte all'apertura. */
+    prefetchAlternateAudioMode(urls) {
+        const requested = new Set();
+        for (const key of Object.keys(urls)) {
+            const url = urls[key];
+            if (!url) continue;
+            const alternate = url.includes('mode=spectrogram')
+                ? url.replace('mode=spectrogram', 'mode=waveform')
+                : url.replace('mode=waveform', 'mode=spectrogram');
+            if (alternate === url || requested.has(alternate)) continue;
+            requested.add(alternate);
+            fetch(alternate, { cache: 'no-store' }).catch(() => {});
+        }
     }
 
     /** URL delle tracce audio da disegnare, per chiave di lane. */

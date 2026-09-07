@@ -134,25 +134,39 @@
 
     #region Properties
 
-    /// <summary>Indice del record split in lavorazione</summary>
+    /// <summary>
+    /// Indice del record split in lavorazione
+    /// </summary>
     [Parameter] public int RecordIndex { get; set; }
 
-    /// <summary>Record split in lavorazione</summary>
+    /// <summary>
+    /// Record split in lavorazione
+    /// </summary>
     [Parameter] public MkvSplitRecord Record { get; set; }
 
-    /// <summary>Segmenti già costruiti nell'editor, null quando comanda la configurazione globale</summary>
+    /// <summary>
+    /// Segmenti già costruiti nell'editor, null quando comanda la configurazione globale
+    /// </summary>
     [Parameter] public List<MkvSplitOverrideSegment> Override { get; set; }
 
-    /// <summary>Numero del segmento da preselezionare all'apertura, 0 per il primo</summary>
+    /// <summary>
+    /// Numero del segmento da preselezionare all'apertura, 0 per il primo
+    /// </summary>
     [Parameter] public int InitialSegmentNum { get; set; }
 
-    /// <summary>Invocata alla chiusura senza applicare</summary>
+    /// <summary>
+    /// Invocata alla chiusura senza applicare
+    /// </summary>
     [Parameter] public EventCallback OnClose { get; set; }
 
-    /// <summary>Invocata all'applicazione dei segmenti costruiti nell'editor</summary>
+    /// <summary>
+    /// Invocata all'applicazione dei segmenti costruiti nell'editor
+    /// </summary>
     [Parameter] public EventCallback<List<MkvSplitOverrideSegment>> OnApply { get; set; }
 
-    /// <summary>Invocata quando il file torna sotto la configurazione globale</summary>
+    /// <summary>
+    /// Invocata quando il file torna sotto la configurazione globale
+    /// </summary>
     [Parameter] public EventCallback OnReset { get; set; }
 
     private MkvSplitPlan Plan { get { return this.Record != null ? this.Record.Plan : null; } }
@@ -165,7 +179,9 @@
 
     #region Ciclo di vita
 
-    /// <summary>Costruisce la copia di lavoro dei segmenti dal piano o dall'override</summary>
+    /// <summary>
+    /// Costruisce la copia di lavoro dei segmenti dal piano o dall'override
+    /// </summary>
     protected override void OnInitialized()
     {
         this._segments = CloneSegments(this.Override != null ? this.Override : BuildFromPlan(this.Plan));
@@ -174,7 +190,10 @@
         this.MovePlayhead(this._selectedIndex >= 0 ? this._segments[this._selectedIndex].StartFrame : 0);
     }
 
-    /// <summary>Aggancia anteprima, timeline e tastiera quando il piano è disponibile</summary>
+    /// <summary>
+    /// Aggancia anteprima, timeline e tastiera quando il piano è disponibile
+    /// </summary>
+    /// <param name="firstRender">True alla prima renderizzazione del componente</param>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -205,7 +224,9 @@
         await this.RefreshPreviewAsync();
     }
 
-    /// <summary>Rilascia timeline, anteprima e tastiera</summary>
+    /// <summary>
+    /// Rilascia timeline, anteprima e tastiera
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         if (this._keyboard != null) { try { await this._keyboard.InvokeVoidAsync("dispose"); } catch (JSException) { } await this._keyboard.DisposeAsync(); }
@@ -218,7 +239,9 @@
 
     #region Callback della timeline
 
-    /// <summary>Sposta il playhead dalla timeline</summary>
+    /// <summary>
+    /// Sposta il playhead dalla timeline
+    /// </summary>
     /// <param name="timeMs">Posizione richiesta in millisecondi</param>
     [JSInvokable]
     public async Task OnTimelineSeek(double timeMs)
@@ -227,7 +250,9 @@
         await this.InvokeAsync(async () => await this.RefreshAfterChangeAsync(false));
     }
 
-    /// <summary>Naviga di un numero di fotogrammi da tastiera o pressione prolungata</summary>
+    /// <summary>
+    /// Naviga di un numero di fotogrammi da tastiera o pressione prolungata
+    /// </summary>
     /// <param name="side">Lato richiesto, ignorato: l'editor ha una sola anteprima</param>
     /// <param name="delta">Numero di fotogrammi da percorrere</param>
     [JSInvokable]
@@ -237,7 +262,9 @@
         await this.InvokeAsync(async () => await this.RefreshAfterChangeAsync(false));
     }
 
-    /// <summary>Seleziona un segmento dalla timeline</summary>
+    /// <summary>
+    /// Seleziona un segmento dalla timeline
+    /// </summary>
     /// <param name="segmentIndex">Indice del segmento</param>
     [JSInvokable]
     public async Task OnSegmentSelected(int segmentIndex)
@@ -248,7 +275,9 @@
         await this.InvokeAsync(async () => await this.RefreshAfterChangeAsync(false));
     }
 
-    /// <summary>Sposta il confine di inizio o di fine di un segmento</summary>
+    /// <summary>
+    /// Sposta il confine di inizio o di fine di un segmento
+    /// </summary>
     /// <param name="segmentIndex">Indice del segmento</param>
     /// <param name="isStart">True quando si trascina l'inizio</param>
     /// <param name="timeMs">Posizione richiesta in millisecondi</param>
@@ -292,7 +321,9 @@
         await this.InvokeAsync(async () => await this.RefreshAfterChangeAsync(final));
     }
 
-    /// <summary>Gestisce le scorciatoie locali dell'editor</summary>
+    /// <summary>
+    /// Gestisce le scorciatoie locali dell'editor
+    /// </summary>
     /// <param name="key">Tasto normalizzato dal browser</param>
     /// <param name="shift">True quando Shift è premuto</param>
     /// <param name="editing">True quando il focus è in un campo editabile</param>
@@ -321,7 +352,9 @@
 
     #region Comandi
 
-    /// <summary>Taglia il segmento sotto il playhead, o ne crea uno nuovo se il playhead è su materiale scartato</summary>
+    /// <summary>
+    /// Taglia il segmento sotto il playhead, o ne crea uno nuovo se il playhead è su materiale scartato
+    /// </summary>
     private async Task AddCutAsync()
     {
         if (!this.IsReady)
@@ -360,7 +393,9 @@
         await this.RefreshAfterChangeAsync(true);
     }
 
-    /// <summary>Elimina il segmento selezionato</summary>
+    /// <summary>
+    /// Elimina il segmento selezionato
+    /// </summary>
     private async Task DeleteSelectedAsync()
     {
         if (this._selectedIndex < 0 || this._selectedIndex >= this._segments.Count)
@@ -370,7 +405,9 @@
         await this.RefreshAfterChangeAsync(true);
     }
 
-    /// <summary>Esclude o reinserisce il segmento selezionato</summary>
+    /// <summary>
+    /// Esclude o reinserisce il segmento selezionato
+    /// </summary>
     private async Task ToggleExcludeAsync()
     {
         if (this._selectedIndex < 0 || this._selectedIndex >= this._segments.Count)
@@ -379,7 +416,9 @@
         await this.RefreshAfterChangeAsync(true);
     }
 
-    /// <summary>Porta l'inizio del segmento selezionato sul keyframe più vicino</summary>
+    /// <summary>
+    /// Porta l'inizio del segmento selezionato sul keyframe più vicino
+    /// </summary>
     private async Task SnapStartAsync()
     {
         if (this._selectedIndex < 0 || this.Plan == null || this.Plan.KeyframeIndexes == null || this.Plan.KeyframeIndexes.Length == 0)
@@ -406,27 +445,27 @@
         await this.RefreshAfterChangeAsync(true);
     }
 
-    /// <summary>Applica i segmenti costruiti nell'editor</summary>
+    /// <summary>
+    /// Applica i segmenti costruiti nell'editor
+    /// </summary>
     private async Task ApplyAsync()
     {
         await this.OnApply.InvokeAsync(CloneSegments(this._segments));
     }
 
-    /// <summary>Riporta il file sotto la configurazione globale</summary>
+    /// <summary>
+    /// Riporta il file sotto la configurazione globale
+    /// </summary>
     private async Task ResetAsync()
     {
         await this.OnReset.InvokeAsync();
     }
 
-    /// <summary>Chiude l'editor, chiedendo conferma quando ci sono modifiche non applicate</summary>
+    /// <summary>
+    /// Chiude l'editor
+    /// </summary>
     private async Task CloseAsync()
     {
-        if (this.IsDirty() && this._module != null)
-        {
-            bool discard = await this._module.InvokeAsync<bool>("confirmDiscard", AppText.T("web.splitEditor.discardChanges"));
-            if (!discard)
-                return;
-        }
         await this.OnClose.InvokeAsync();
     }
 
@@ -434,6 +473,10 @@
 
     #region Metodi privati
 
+    /// <summary>
+    /// Riallinea griglia, timeline e anteprima dopo una modifica dei segmenti
+    /// </summary>
+    /// <param name="centerPlayhead">True per riportare la timeline al centro sul playhead</param>
     private async Task RefreshAfterChangeAsync(bool centerPlayhead)
     {
         this._frameText = this._playheadFrame.ToString();
@@ -447,6 +490,9 @@
         await this.RefreshPreviewAsync();
     }
 
+    /// <summary>
+    /// Ricarica l'anteprima sul fotogramma del playhead
+    /// </summary>
     private async Task RefreshPreviewAsync()
     {
         if (this._framePreview == null)
@@ -470,6 +516,10 @@
         this.StateHasChanged();
     }
 
+    /// <summary>
+    /// Costruisce il modello che il pannello timeline disegna
+    /// </summary>
+    /// <returns>Oggetto anonimo con durata, corsie, segmenti, capitoli e keyframe</returns>
     private object BuildTimelineModel()
     {
         List<object> segments = new List<object>();
@@ -524,6 +574,11 @@
         };
     }
 
+    /// <summary>
+    /// Costruisce l'endpoint stateless della traccia audio selezionata
+    /// </summary>
+    /// <param name="durationMs">Durata da rappresentare in millisecondi</param>
+    /// <returns>URL della visualizzazione, null quando il file non ha tracce audio</returns>
     private string BuildAudioTimelineUrl(double durationMs)
     {
         if (!this._audioTrackId.HasValue)
@@ -537,6 +592,10 @@
             + "&durationMs=" + durationMs.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "&mode=" + this._audioMode + "&quality=low";
     }
 
+    /// <summary>
+    /// Restituisce le tracce audio del file in lavorazione
+    /// </summary>
+    /// <returns>Elenco delle tracce, vuoto quando il record non è ancora analizzato</returns>
     private List<TrackInfo> GetAudioTracks()
     {
         if (this.Record == null || this.Record.SourceInfo == null)
@@ -544,6 +603,10 @@
         return this.Record.SourceInfo.Tracks.FindAll(track => string.Equals(track.Type, "audio", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// Calcola la frequenza di Nyquist della traccia selezionata
+    /// </summary>
+    /// <returns>Metà della frequenza di campionamento, 0 quando non è dichiarata</returns>
     private double GetNyquistFrequency()
     {
         List<TrackInfo> tracks = this.GetAudioTracks();
@@ -553,6 +616,10 @@
         return track != null && track.SamplingFrequency > 0 ? track.SamplingFrequency / 2.0 : 0.0;
     }
 
+    /// <summary>
+    /// Descrive l'unica corsia audio per la barra del pannello timeline
+    /// </summary>
+    /// <returns>Elenco con la sola corsia dell'ingresso</returns>
     private List<MediaTimelinePanelComponent.AudioLane> GetAudioLanes()
     {
         List<TrackInfo> tracks = this.GetAudioTracks();
@@ -565,6 +632,10 @@
         return new List<MediaTimelinePanelComponent.AudioLane> { lane };
     }
 
+    /// <summary>
+    /// Valida il cambio traccia contro l'elenco del record corrente
+    /// </summary>
+    /// <param name="args">Evento della select con l'ID della traccia richiesta</param>
     private async Task ChangeAudioTrackAsync(ChangeEventArgs args)
     {
         List<TrackInfo> tracks = this.GetAudioTracks();
@@ -574,17 +645,29 @@
         await this.RefreshAfterChangeAsync(false);
     }
 
+    /// <summary>
+    /// Seleziona Waveform o Spectrogram e ricarica la corsia
+    /// </summary>
+    /// <param name="mode">Modalità richiesta</param>
     private async Task SetAudioModeAsync(string mode)
     {
         this._audioMode = mode;
         await this.RefreshAfterChangeAsync(false);
     }
 
+    /// <summary>
+    /// Registra l'ingrandimento verticale già applicato dal pannello alla waveform
+    /// </summary>
+    /// <param name="value">Fattore di ingrandimento corrente</param>
     private void SetWaveformGain(double value)
     {
         this._waveformGain = value;
     }
 
+    /// <summary>
+    /// Seleziona un segmento dalla griglia portandoci sopra il playhead
+    /// </summary>
+    /// <param name="args">Evento della riga cliccata</param>
     private async Task SelectSegmentRowAsync(DataGridRowMouseEventArgs<MkvSplitOverrideSegment> args)
     {
         this._selectedIndex = this._segments.IndexOf(args.Data);
@@ -592,17 +675,28 @@
         await this.RefreshAfterChangeAsync(true);
     }
 
+    /// <summary>
+    /// Evidenzia nella griglia la riga del segmento selezionato
+    /// </summary>
+    /// <param name="args">Contesto di rendering della riga</param>
     private void RenderSegmentRow(RowRenderEventArgs<MkvSplitOverrideSegment> args)
     {
         if (this._selectedIndex >= 0 && this._selectedIndex < this._segments.Count && object.ReferenceEquals(this._segments[this._selectedIndex], args.Data))
             args.Attributes["class"] = "rz-state-highlight";
     }
 
+    /// <summary>
+    /// Registra il testo digitato nel campo del fotogramma
+    /// </summary>
+    /// <param name="args">Evento del campo di testo</param>
     private void UpdateFrameText(ChangeEventArgs args)
     {
         this._frameText = args.Value != null ? args.Value.ToString() : "";
     }
 
+    /// <summary>
+    /// Sposta il playhead sul fotogramma digitato, ignorando un testo illeggibile
+    /// </summary>
     private async Task CommitFrameAsync()
     {
         if (int.TryParse(this._frameText, out int frame))
@@ -610,6 +704,10 @@
         await this.RefreshAfterChangeAsync(true);
     }
 
+    /// <summary>
+    /// Porta il playhead su un fotogramma, riportandolo dentro la timeline
+    /// </summary>
+    /// <param name="frame">Fotogramma richiesto</param>
     private void MovePlayhead(int frame)
     {
         int count = this.GetFrameCount();
@@ -618,6 +716,11 @@
         this._frameText = this._playheadFrame.ToString();
     }
 
+    /// <summary>
+    /// Converte un istante nel fotogramma che lo contiene
+    /// </summary>
+    /// <param name="timeMs">Istante in millisecondi</param>
+    /// <returns>Indice del fotogramma, 0 quando il piano non ha PTS</returns>
     private int MsToFrame(double timeMs)
     {
         if (this.Plan == null || this.Plan.SourcePts == null || this.Plan.SourcePts.Length == 0)
@@ -626,6 +729,11 @@
         return Math.Max(0, Math.Min(this.Plan.SourcePts.Length - 1, frame));
     }
 
+    /// <summary>
+    /// Converte un fotogramma nel suo PTS di presentazione
+    /// </summary>
+    /// <param name="frame">Indice del fotogramma</param>
+    /// <returns>PTS in secondi, la durata totale oltre l'ultimo fotogramma</returns>
     private double FrameToSeconds(int frame)
     {
         if (this.Plan == null || this.Plan.SourcePts == null || this.Plan.SourcePts.Length == 0)
@@ -635,11 +743,20 @@
         return this.Plan.SourcePts[Math.Max(0, frame)];
     }
 
+    /// <summary>
+    /// Restituisce il numero di fotogrammi del file
+    /// </summary>
+    /// <returns>Conteggio dei fotogrammi, 0 quando il piano non è disponibile</returns>
     private int GetFrameCount()
     {
         return this.Plan != null ? this.Plan.FrameCount : 0;
     }
 
+    /// <summary>
+    /// Cerca il segmento che contiene un fotogramma
+    /// </summary>
+    /// <param name="frame">Fotogramma da collocare</param>
+    /// <returns>Indice del segmento, -1 quando il fotogramma è scoperto</returns>
     private int FindSegmentAt(int frame)
     {
         for (int i = 0; i < this._segments.Count; i++)
@@ -650,6 +767,11 @@
         return -1;
     }
 
+    /// <summary>
+    /// Cerca l'inizio del primo segmento che comincia dopo un fotogramma
+    /// </summary>
+    /// <param name="frame">Fotogramma di partenza</param>
+    /// <returns>Fotogramma di inizio, la fine del file quando non ce ne sono altri</returns>
     private int FindNextStart(int frame)
     {
         int result = this.GetFrameCount();
@@ -661,6 +783,12 @@
         return result;
     }
 
+    /// <summary>
+    /// Cerca il segmento che finisce esattamente su un fotogramma
+    /// </summary>
+    /// <param name="frame">Fotogramma di confine</param>
+    /// <param name="excludeIndex">Indice del segmento da ignorare, quello in trascinamento</param>
+    /// <returns>Segmento confinante, null quando non esiste</returns>
     private MkvSplitOverrideSegment FindEndingAt(int frame, int excludeIndex)
     {
         for (int i = 0; i < this._segments.Count; i++)
@@ -671,6 +799,12 @@
         return null;
     }
 
+    /// <summary>
+    /// Cerca il segmento che comincia esattamente su un fotogramma
+    /// </summary>
+    /// <param name="frame">Fotogramma di confine</param>
+    /// <param name="excludeIndex">Indice del segmento da ignorare, quello in trascinamento</param>
+    /// <returns>Segmento confinante, null quando non esiste</returns>
     private MkvSplitOverrideSegment FindStartingAt(int frame, int excludeIndex)
     {
         for (int i = 0; i < this._segments.Count; i++)
@@ -681,6 +815,10 @@
         return null;
     }
 
+    /// <summary>
+    /// Confronta la copia di lavoro con i segmenti di partenza
+    /// </summary>
+    /// <returns>True quando c'è almeno una differenza</returns>
     private bool IsDirty()
     {
         if (this._segments.Count != this._originalSegments.Count)
@@ -695,11 +833,20 @@
         return false;
     }
 
+    /// <summary>
+    /// Determina se i segmenti costruiti possono essere applicati
+    /// </summary>
+    /// <returns>True con piano pronto, modifiche pendenti e almeno un segmento incluso</returns>
     private bool CanApply()
     {
         return this.IsReady && this.IsDirty() && this._segments.Exists(segment => !segment.Excluded);
     }
 
+    /// <summary>
+    /// Duplica i segmenti per tenere separata la copia di lavoro dall'originale
+    /// </summary>
+    /// <param name="source">Segmenti da duplicare</param>
+    /// <returns>Nuova lista di copie, vuota quando l'origine è null</returns>
     private static List<MkvSplitOverrideSegment> CloneSegments(List<MkvSplitOverrideSegment> source)
     {
         List<MkvSplitOverrideSegment> result = new List<MkvSplitOverrideSegment>();
@@ -716,6 +863,11 @@
         return result;
     }
 
+    /// <summary>
+    /// Costruisce i segmenti modificabili a partire dal piano calcolato
+    /// </summary>
+    /// <param name="plan">Piano di split del file</param>
+    /// <returns>Segmenti dell'editor, vuoti quando il piano è null</returns>
     private static List<MkvSplitOverrideSegment> BuildFromPlan(MkvSplitPlan plan)
     {
         List<MkvSplitOverrideSegment> result = new List<MkvSplitOverrideSegment>();
@@ -731,16 +883,29 @@
         return result;
     }
 
+    /// <summary>
+    /// Formatta un istante nel timestamp usato dalla configurazione di split
+    /// </summary>
+    /// <param name="seconds">Istante in secondi</param>
+    /// <returns>Timestamp formattato</returns>
     private static string FormatTs(double seconds)
     {
         return MkvSplitSegmentService.SecsToTs(seconds);
     }
 
+    /// <summary>
+    /// Restituisce il nome del file in lavorazione
+    /// </summary>
+    /// <returns>Nome del file, vuoto quando il record non è disponibile</returns>
     private string GetFileName()
     {
         return this.Record != null ? System.IO.Path.GetFileName(this.Record.InputFile) : "";
     }
 
+    /// <summary>
+    /// Descrive la modalità di split attiva sul file
+    /// </summary>
+    /// <returns>Testo localizzato della modalità o del badge di override</returns>
     private string GetModeLabel()
     {
         if (this.IsOverride)
@@ -748,11 +913,20 @@
         return this.Plan != null ? Utils.GetSplitModeText(this.Plan.Mode) : AppText.T("web.splitEditor.notAnalyzed");
     }
 
+    /// <summary>
+    /// Descrive se un segmento verrà prodotto o scartato
+    /// </summary>
+    /// <param name="segment">Segmento da descrivere</param>
+    /// <returns>Testo localizzato dello stato</returns>
     private string GetSegmentStateLabel(MkvSplitOverrideSegment segment)
     {
         return segment.Excluded ? AppText.T("web.splitEditor.excluded") : AppText.T("web.splitEditor.included");
     }
 
+    /// <summary>
+    /// Descrive lo stato dell'editor nella barra del titolo
+    /// </summary>
+    /// <returns>Testo localizzato dello stato</returns>
     private string GetStateLabel()
     {
         if (!this.IsReady)
@@ -760,6 +934,10 @@
         return this.IsDirty() ? AppText.T("web.editMap.unsaved") : AppText.T("web.editMap.ready");
     }
 
+    /// <summary>
+    /// Sceglie il colore del badge di stato
+    /// </summary>
+    /// <returns>Stile del badge coerente con lo stato dell'editor</returns>
     private BadgeStyle GetStateStyle()
     {
         if (!this.IsReady)
@@ -767,6 +945,10 @@
         return this.IsDirty() ? BadgeStyle.Warning : BadgeStyle.Success;
     }
 
+    /// <summary>
+    /// Riassume quanti segmenti verranno prodotti e quanti fotogrammi restano fuori
+    /// </summary>
+    /// <returns>Testo localizzato del riepilogo</returns>
     private string GetSummary()
     {
         int produced = this._segments.FindAll(segment => !segment.Excluded).Count;
@@ -780,16 +962,28 @@
         return AppText.F("web.splitEditor.summary", produced, covered, Math.Max(0, this.GetFrameCount() - covered));
     }
 
+    /// <summary>
+    /// Testo alternativo dell'anteprima per i lettori di schermo
+    /// </summary>
+    /// <returns>Descrizione del fotogramma mostrato</returns>
     private string GetPreviewAlternative()
     {
         return AppText.F("web.splitEditor.previewAlternative", this._playheadFrame + 1);
     }
 
+    /// <summary>
+    /// Descrive codec e formato pixel del video in lavorazione
+    /// </summary>
+    /// <returns>Riga di metadati, vuota quando il piano non è disponibile</returns>
     private string GetPreviewMeta()
     {
         return this.Plan != null && this.Plan.VideoParams != null ? this.Plan.VideoParams.CodecName + " · " + this.Plan.VideoParams.PixFmt : "";
     }
 
+    /// <summary>
+    /// Testo alternativo della timeline per i lettori di schermo
+    /// </summary>
+    /// <returns>Descrizione di segmenti e capitoli rappresentati</returns>
     private string GetTimelineAlternative()
     {
         return AppText.F("web.splitEditor.timelineAlternative", this._segments.Count, this.Plan != null ? this.Plan.Chapters.Count : 0);

@@ -5,7 +5,7 @@ import {
     drawFrequencyScale
 } from './media-timeline.js';
 
-export { createPreviewPair, createFramePreview, captureEditorKeyboard, confirmDiscard } from './media-timeline.js';
+export { createPreviewPair, createFramePreview, captureEditorKeyboard } from './media-timeline.js';
 
 /**
  * Timeline dell'editor EditMap: due corsie audio (sorgente e lingua), i segmenti della mappa

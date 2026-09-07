@@ -5,7 +5,7 @@ import {
     drawFrequencyScale
 } from './media-timeline.js';
 
-export { createFramePreview, captureEditorKeyboard, confirmDiscard } from './media-timeline.js';
+export { createFramePreview, captureEditorKeyboard } from './media-timeline.js';
 
 /**
  * Timeline dell'editor Split: una corsia audio, le tacche dei capitoli e dei keyframe e i blocchi
