@@ -183,6 +183,7 @@ namespace RemuxForge.Core.Models
         public DeepAnalysisConfig()
         {
             this.SceneExtractTimeoutMs = 600000;
+            this.OffsetSearchRadiusMs = 30000;
         }
 
         #endregion
@@ -193,6 +194,12 @@ namespace RemuxForge.Core.Models
         /// Timeout in millisecondi per estrazione scene con ffmpeg
         /// </summary>
         public int SceneExtractTimeoutMs { get; set; }
+
+        /// <summary>
+        /// Quanto lontano cercare, in millisecondi, il fotogramma lingua che corrisponde a quello sorgente:
+        /// oltre questo scarto una differenza di montaggio fra i due file non viene più vista
+        /// </summary>
+        public int OffsetSearchRadiusMs { get; set; }
 
         #endregion
     }

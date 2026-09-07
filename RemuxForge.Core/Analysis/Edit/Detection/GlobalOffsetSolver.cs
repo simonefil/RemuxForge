@@ -1,3 +1,4 @@
+using RemuxForge.Core.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -41,7 +42,8 @@ namespace RemuxForge.Core.Analysis.Edit.Detection
             if (pair.Source.Count == 0 || pair.Language.Count == 0 || languageStepMs <= 0.0)
                 return new List<EditOperationCandidate>();
 
-            List<TemporalAnchor> anchors = this.BuildAnchors(pair, languageStepMs, cancellation);
+            double offsetSearchRadiusMs = AppSettingsService.Instance.Settings.Advanced.DeepAnalysis.OffsetSearchRadiusMs;
+            List<TemporalAnchor> anchors = this.BuildAnchors(pair, languageStepMs, offsetSearchRadiusMs, cancellation);
             if (anchors.Count == 0)
                 return new List<EditOperationCandidate>();
 
@@ -105,9 +107,10 @@ namespace RemuxForge.Core.Analysis.Edit.Detection
         /// </summary>
         /// <param name="pair">Coppia di tracce</param>
         /// <param name="languageStepMs">Passo mediano dei fotogrammi lang</param>
+        /// <param name="offsetSearchRadiusMs">Scarto massimo entro cui cercare il fotogramma lang corrispondente</param>
         /// <param name="cancellation">Token di annullamento</param>
         /// <returns>Corrispondenze temporali ordinate</returns>
-        private List<TemporalAnchor> BuildAnchors(PairSignals pair, double languageStepMs, CancellationToken cancellation)
+        private List<TemporalAnchor> BuildAnchors(PairSignals pair, double languageStepMs, double offsetSearchRadiusMs, CancellationToken cancellation)
         {
             double sourceStepMs = MedianStep(pair.Source.PtsMs);
             int stride = Math.Max(1, (int)Math.Round(ANCHOR_INTERVAL_MS / sourceStepMs));
@@ -122,7 +125,7 @@ namespace RemuxForge.Core.Analysis.Edit.Detection
                 int sourceIndex = slot * stride;
                 if (sourceIndex >= pair.Source.Count)
                     return;
-                anchors[slot] = this.FindAnchor(pair, sourceIndex, languageStepMs);
+                anchors[slot] = this.FindAnchor(pair, sourceIndex, languageStepMs, offsetSearchRadiusMs);
             });
 
             List<TemporalAnchor> result = new List<TemporalAnchor>();
@@ -140,12 +143,13 @@ namespace RemuxForge.Core.Analysis.Edit.Detection
         /// <param name="pair">Coppia di tracce</param>
         /// <param name="sourceIndex">Fotogramma sorgente</param>
         /// <param name="languageStepMs">Passo mediano dei fotogrammi lang</param>
+        /// <param name="offsetSearchRadiusMs">Scarto massimo entro cui cercare il fotogramma lang corrispondente</param>
         /// <returns>Corrispondenza univoca oppure null</returns>
-        private TemporalAnchor FindAnchor(PairSignals pair, int sourceIndex, double languageStepMs)
+        private TemporalAnchor FindAnchor(PairSignals pair, int sourceIndex, double languageStepMs, double offsetSearchRadiusMs)
         {
             double sourceTimeMs = pair.Source.PtsMs[sourceIndex];
-            int first = HashOps.LowerBound(pair.LanguagePtsMs, sourceTimeMs - EditAnalysisProfile.COVERAGE_INITIAL_RADIUS_MS);
-            int end = HashOps.LowerBound(pair.LanguagePtsMs, sourceTimeMs + EditAnalysisProfile.COVERAGE_INITIAL_RADIUS_MS);
+            int first = HashOps.LowerBound(pair.LanguagePtsMs, sourceTimeMs - offsetSearchRadiusMs);
+            int end = HashOps.LowerBound(pair.LanguagePtsMs, sourceTimeMs + offsetSearchRadiusMs);
             if (first >= end)
                 return null;
 

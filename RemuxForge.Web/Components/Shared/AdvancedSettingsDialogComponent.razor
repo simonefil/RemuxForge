@@ -40,6 +40,10 @@
                         <span>@_siftVulkanDeviceName</span>
                     }
                 </div>
+                <div class="form-row">
+                    <span class="form-label">@AppText.T("web.advanced.offsetSearchRadius")</span>
+                    <input class="form-input" style="width: 8ch;" aria-label="@AppText.T("web.advanced.offsetSearchRadius")" @bind="_offsetSearchRadiusMs" /> <span style="margin-left: 0.5ch;">ms</span>
+                </div>
             </AdvancedSettingsSection>
 
         </div>
@@ -105,6 +109,11 @@
     #endregion
 
     /// <summary>
+    /// Raggio di ricerca dell'offset in ms (stringa per binding input)
+    /// </summary>
+    private string _offsetSearchRadiusMs = "";
+
+    /// <summary>
     /// Messaggio errore validazione
     /// </summary>
     private string _validationError = "";
@@ -134,6 +143,7 @@
     {
         this._visionBackend = adv.GetVisionBackendKind();
         this._siftVulkanDeviceName = "";
+        this._offsetSearchRadiusMs = adv.DeepAnalysis.OffsetSearchRadiusMs.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         // Ffmpeg: booleani
         this._ffHardwareAcceleration = adv.Ffmpeg.HardwareAcceleration;
@@ -231,6 +241,8 @@
             return;
 
         adv.SetVisionBackendKind(this._visionBackend);
+        int.TryParse(this._offsetSearchRadiusMs, out int offsetSearchRadiusMs);
+        adv.DeepAnalysis.OffsetSearchRadiusMs = offsetSearchRadiusMs;
 
         // Parsing Ffmpeg: booleani
         adv.Ffmpeg.HardwareAcceleration = this._ffHardwareAcceleration;
@@ -270,6 +282,9 @@
 
         if (this._ffHardwareAcceleration && !this._ffHardwareAccelerationMethods.Contains(this._ffHardwareAccelerationMethod))
             errors.Add(AppText.T("web.advanced.invalidHardwareBackend"));
+
+        if (!int.TryParse(this._offsetSearchRadiusMs, out int offsetSearchRadiusMs) || offsetSearchRadiusMs < 5000 || offsetSearchRadiusMs > 300000)
+            errors.Add(AppText.T("web.advanced.invalidOffsetSearchRadius"));
 
         if (errors.Count > 0)
         {

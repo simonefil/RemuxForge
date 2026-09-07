@@ -178,11 +178,6 @@ namespace RemuxForge.Core.Analysis.Edit
         #region Copertura
 
         /// <summary>
-        /// Entro quanto cercare l'offset del primo tratto
-        /// </summary>
-        public const double COVERAGE_INITIAL_RADIUS_MS = 30000.0;
-
-        /// <summary>
         /// Campo di ricerca della costante di ancoraggio della scala
         /// </summary>
         public const double COVERAGE_ANCHOR_FIELD_MS = 200.0;

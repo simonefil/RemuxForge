@@ -566,6 +566,8 @@
   "web.advanced.section.analysis": "Analysis",
   "web.advanced.hardwareAcceleration": "Hardware acceleration",
   "web.advanced.hardwareBackend": "Hardware backend:",
+  "web.advanced.offsetSearchRadius": "Offset search radius:",
+  "web.advanced.invalidOffsetSearchRadius": "The offset search radius must be between 5000 and 300000 ms.",
   "web.advanced.visionBackend": "Vision backend:",
   "web.advanced.select": "Select...",
   "web.advanced.probeRunning": "Probing...",
