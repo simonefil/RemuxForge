@@ -55,7 +55,8 @@ namespace RemuxForge.Core.Pipeline
         public void Build(FileProcessingRecord record, Options options, MkvToolsService mkvService, Func<string, MkvFileInfo> fileInfoProvider, bool needsMerge, bool needsRemux, bool filterSourceAudio, bool filterSourceSubs, string[] codecPatterns, string[] sourceAudioCodecPatterns, string ffmpegPath)
         {
             record.MergeCommand = "";
-            if (record.Status != FileStatus.Analyzed)
+            // Anche un record fallito deve avere tracce e piano audio: l'editor EditMap serve proprio a sistemarlo a mano
+            if (record.Status != FileStatus.Analyzed && record.Status != FileStatus.Error)
                 return;
             int effectiveAudioDelay = record.SyncOffsetMs + options.AudioDelay + record.ManualAudioDelayMs;
             int effectiveSubDelay = record.SyncOffsetMs + options.SubtitleDelay + record.ManualSubDelayMs;

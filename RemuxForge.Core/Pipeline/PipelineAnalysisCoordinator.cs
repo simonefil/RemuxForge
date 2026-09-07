@@ -206,7 +206,7 @@ namespace RemuxForge.Core.Pipeline
                     {
                         // Interrompe l'analisi perché senza metadata non è possibile costruire il merge
                         ConsoleHelper.Write(LogSection.General, LogLevel.Error, "  Impossibile leggere info tracce file lingua");
-                        done = this.FailAndFinalizeRecord(record, "Impossibile leggere tracce file lingua");
+                        done = this.FailAndFinalizeRecord(record, "Impossibile leggere tracce file lingua", false);
                     }
                 }
                 else
@@ -255,7 +255,7 @@ namespace RemuxForge.Core.Pipeline
                     {
                         string speedFailure = AppText.F("speed.pipeline.manualFailed", speedService.GetDetailSummary());
                         ConsoleHelper.Write(LogSection.Speed, LogLevel.Error, speedFailure);
-                        done = this.FailAndFinalizeRecord(record, speedFailure);
+                        done = this.FailAndFinalizeRecord(record, speedFailure, true);
                     }
                 }
                 else
@@ -263,7 +263,7 @@ namespace RemuxForge.Core.Pipeline
                     string ffmpegUnavailable = AppText.T("speed.pipeline.ffmpegUnavailable");
                     ConsoleHelper.Write(LogSection.Speed, LogLevel.Error, ffmpegUnavailable);
                     ConsoleHelper.Progress(LogSection.Speed, 90, AppText.T("speed.pipeline.progressNotApplied"));
-                    done = this.FailAndFinalizeRecord(record, ffmpegUnavailable);
+                    done = this.FailAndFinalizeRecord(record, ffmpegUnavailable, true);
                 }
             }
 
@@ -292,7 +292,7 @@ namespace RemuxForge.Core.Pipeline
                     string ffmpegUnavailableReason = AppText.T("deep.temporal.pipeline.ffmpegUnavailable");
                     ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, ffmpegUnavailableReason);
                     ConsoleHelper.Progress(LogSection.Deep, 98, AppText.T("deep.temporal.pipeline.progressError"));
-                    done = this.FailAndFinalizeRecord(record, ffmpegUnavailableReason.Trim());
+                    done = this.FailAndFinalizeRecord(record, ffmpegUnavailableReason.Trim(), true);
                 }
 
                 if (!done)
@@ -338,7 +338,7 @@ namespace RemuxForge.Core.Pipeline
                             ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, deepFailure);
                             ConsoleHelper.Progress(LogSection.Deep, 98, AppText.T("deep.temporal.pipeline.progressError"));
                             this._diagnosticsWriter.WriteDeepAnalysisIfEnabled(record, this._opts);
-                            done = this.FailAndFinalizeRecord(record, deepFailure.Trim());
+                            done = this.FailAndFinalizeRecord(record, deepFailure.Trim(), true);
                         }
                     }
                     else
@@ -346,7 +346,7 @@ namespace RemuxForge.Core.Pipeline
                         string insufficientVideoData = AppText.T("deep.temporal.pipeline.insufficientVideoData");
                         ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, insufficientVideoData);
                         ConsoleHelper.Progress(LogSection.Deep, 98, AppText.T("deep.temporal.pipeline.progressError"));
-                        done = this.FailAndFinalizeRecord(record, insufficientVideoData.Trim());
+                        done = this.FailAndFinalizeRecord(record, insufficientVideoData.Trim(), true);
                     }
                 }
             }
@@ -426,7 +426,7 @@ namespace RemuxForge.Core.Pipeline
                 {
                     ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Error, AppText.T("framesync.pipeline.failed"));
                     ConsoleHelper.Progress(LogSection.FrameSync, 76, AppText.T("framesync.pipeline.inconclusive"));
-                    done = this.FailAndFinalizeRecord(record, AppText.T("framesync.pipeline.failureReason"));
+                    done = this.FailAndFinalizeRecord(record, AppText.T("framesync.pipeline.failureReason"), true);
                 }
             }
 
@@ -450,13 +450,23 @@ namespace RemuxForge.Core.Pipeline
         /// </summary>
         /// <param name="record">Record da portare in errore</param>
         /// <param name="errorMessage">Messaggio da registrare nel record</param>
+        /// <param name="buildMergePreview">Indica se ricostruire l'anteprima di merge prima di chiudere in errore</param>
         /// <returns>True per indicare che il flusso è stato finalizzato</returns>
-        private bool FailAndFinalizeRecord(FileProcessingRecord record, string errorMessage)
+        private bool FailAndFinalizeRecord(FileProcessingRecord record, string errorMessage, bool buildMergePreview)
         {
             if (record != null)
             {
-                record.ErrorMessage = errorMessage;
+                // Anche un record fallito deve restare modificabile a mano nell'editor EditMap, che ha bisogno delle
+                // tracce lingua e del piano audio: lo stato va portato in errore prima, perche' l'anteprima si costruisce
+                // solo su record analizzati o falliti, e il messaggio va scritto dopo, perche' il piano audio lo azzera
                 record.Status = FileStatus.Error;
+
+                if (buildMergePreview)
+                {
+                    this._buildMergeCommand(record);
+                }
+
+                record.ErrorMessage = errorMessage;
                 if (this._fileUpdated != null)
                 {
                     this._fileUpdated(record);
