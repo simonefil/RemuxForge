@@ -282,6 +282,10 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             }
         }
 
+        #endregion
+
+        #region Metodi privati
+
         /// <summary>
         /// Genera con una sola decodifica alla frequenza nativa della traccia sia l'inviluppo della
         /// forma d'onda sia le tile dello spettrogramma, sulla stessa identica scala temporale
@@ -293,7 +297,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         /// <param name="timeoutMs">Timeout del comando in millisecondi</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Coppia inviluppo/spettrogramma della traccia</returns>
-        public AudioTimelinePair GenerateTimelineForTrackId(string filePath, int trackId, double durationMs, bool highQuality, int timeoutMs, CancellationToken cancellationToken)
+        private AudioTimelinePair GenerateTimelineForTrackId(string filePath, int trackId, double durationMs, bool highQuality, int timeoutMs, CancellationToken cancellationToken)
         {
             const int tileWidth = 8192;
             const int maximumLowQualityPoints = 262144;
@@ -385,10 +389,6 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                 throw;
             }
         }
-
-        #endregion
-
-        #region Metodi privati
 
         /// <summary>
         /// Aggiunge un bucket min/max quantizzato alla waveform
