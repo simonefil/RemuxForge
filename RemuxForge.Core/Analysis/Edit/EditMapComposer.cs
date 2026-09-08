@@ -36,6 +36,11 @@ namespace RemuxForge.Core.Analysis.Edit
         /// </summary>
         public double Coverage { get; set; }
 
+        /// <summary>
+        /// Corrispondenze univoche su cui il solver ha costruito i pianori
+        /// </summary>
+        public List<SolverAnchorDiagnostic> Anchors { get; set; }
+
         #endregion
     }
 
@@ -113,33 +118,52 @@ namespace RemuxForge.Core.Analysis.Edit
         /// <returns>Operazioni, offset iniziale e copertura</returns>
         public EditAnalysisOutcome Compose(PairSignals pair, AudioEnvelopePair envelopes, CancellationToken cancellation)
         {
+            // Rileva i cambi di offset sull'unica scala globale
             this._hashBackend.Attach(pair);
             List<EditOperationCandidate> operations = this._globalSolver.Detect(pair, cancellation, out double globalInitialOffsetMs);
+
+            // Riancora la scala sulla copertura
             double preliminaryInitialOffsetMs = this._coverageVerifier.Anchor(pair, operations, globalInitialOffsetMs);
             double offsetShiftMs = preliminaryInitialOffsetMs - globalInitialOffsetMs;
             globalInitialOffsetMs = preliminaryInitialOffsetMs;
+
+            // Propaga lo spostamento a tutte le operazioni
             foreach (EditOperationCandidate operation in operations)
             {
                 operation.OffsetBeforeMs += offsetShiftMs;
                 operation.OffsetAfterMs += offsetShiftMs;
             }
+
+            // Misura le durate
             OperationDurationRefiner operationRefiner = new OperationDurationRefiner(this._hashBackend, envelopes);
             operations = operationRefiner.Apply(pair, operations);
+
+            // Prepara la scala allineata alla fase dei fotogrammi
             List<EditOperationCandidate> phaseAlignedOperations = operationRefiner.Apply(
                 pair, operationRefiner.MeasureBoundaryOffsets(pair, operations, cancellation));
+
+            // Congela le stime di partenza
             double[] transitionEstimates = new double[operations.Count];
             for (int i = 0; i < operations.Count; i++)
                 transitionEstimates[i] = operations[i].TimestampMs;
+
+            // Decide il confine di ogni operazione
             for (int operationIndex = 0; operationIndex < operations.Count; operationIndex++)
             {
                 cancellation.ThrowIfCancellationRequested();
                 EditOperationCandidate operation = operations[operationIndex];
+
+                // Delimita il campo sulle operazioni vicine
                 double lowerLimitMs = operationIndex == 0 ? pair.Source.PtsMs[0] :
                     (transitionEstimates[operationIndex - 1] + transitionEstimates[operationIndex]) / 2.0;
                 double upperLimitMs = operationIndex + 1 == operations.Count ? pair.Source.PtsMs[pair.Source.Count - 1] :
                     (transitionEstimates[operationIndex] + transitionEstimates[operationIndex + 1]) / 2.0;
+
+                // Apre la finestra di ricerca attorno ai due pianori
                 double windowStartMs = Math.Max(lowerLimitMs, operation.PlateauEndBeforeMs - EditAnalysisProfile.CHANGEPOINT_MARGIN_MS);
                 double windowEndMs = Math.Min(upperLimitMs, operation.PlateauStartAfterMs + EditAnalysisProfile.CHANGEPOINT_MARGIN_MS);
+
+                // Cerca il changepoint, allargando finché si appoggia al bordo
                 ChangePointResult refined;
                 while (true)
                 {
@@ -158,12 +182,35 @@ namespace RemuxForge.Core.Analysis.Edit
                     windowStartMs = expandedStartMs;
                     windowEndMs = expandedEndMs;
                 }
+
+                // Registra la finestra effettivamente esplorata
+                operation.ChangePointWindowStartMs = windowStartMs;
+                operation.ChangePointWindowEndMs = windowEndMs;
                 if (refined != null)
+                {
+                    // Accetta il confine del changepoint
+                    operation.ChangePointEquivalentStartMs = refined.EquivalentBoundaryStartMs;
+                    operation.ChangePointEquivalentEndMs = refined.EquivalentBoundaryEndMs;
                     operation.TimestampMs = refined.NextAfterLastMs;
 
+                    // Fra posizioni equivalenti l'estremo è cieco: comanda la dissolvenza al nero
+                    double? equivalentRunStartMs = this._blackRunRules.FindRunStartInRange(pair, envelopes,
+                        refined.EquivalentBoundaryStartMs, refined.EquivalentBoundaryEndMs,
+                        operation.OffsetBeforeMs, operation.OffsetAfterMs, operation.DurationMs);
+                    if (equivalentRunStartMs.HasValue)
+                    {
+                        operation.TimestampMs = equivalentRunStartMs.Value;
+                        operation.Boundary = BoundaryDecision.BlackRunStart;
+                        continue;
+                    }
+                }
+
+                // Arretra dentro la run scura fin dove l'audio dà ragione all'offset di sinistra
                 double timestampMs = this._audioBoundary.Resolve(pair.Source, envelopes, operation.TimestampMs, operation.OffsetBeforeMs);
                 if (timestampMs < operation.TimestampMs)
                     operation.Boundary = BoundaryDecision.AudioInsideBlack;
+
+                // Sposta all'inizio della run di nero
                 double? runStartMs = this._blackRunRules.FindRunStart(pair.Source, timestampMs);
                 if (runStartMs.HasValue)
                 {
@@ -172,6 +219,7 @@ namespace RemuxForge.Core.Analysis.Edit
                     continue;
                 }
 
+                // Sotto il salto minimo il confine lo dà lo stacco di scena
                 if (refined != null && Math.Abs(operation.OffsetAfterMs - operation.OffsetBeforeMs) < EditAnalysisProfile.CHANGEPOINT_MIN_JUMP_MS)
                 {
                     double visualBoundaryMs = this._refiner.VisualBoundary(pair.Source, refined.NextAfterLastMs,
@@ -183,19 +231,27 @@ namespace RemuxForge.Core.Analysis.Edit
                     }
                 }
 
+                // Posticipa oltre i fotogrammi che esistono solo nella sorgente
                 double postponedMs = this._exclusiveRules.Postpone(pair, timestampMs, operation.OffsetBeforeMs, operation.OffsetAfterMs);
                 if (postponedMs != timestampMs)
                     operation.Boundary = BoundaryDecision.ExclusiveFrame;
                 operation.TimestampMs = postponedMs;
             }
 
+            // Rimisura gli offset sui confini appena decisi
             operations = operationRefiner.MeasureBoundaryOffsets(pair, operations, cancellation);
+
+            // Arretra all'estremo della finestra ambigua
             foreach (EditOperationCandidate operation in operations)
             {
                 cancellation.ThrowIfCancellationRequested();
+
+                // Dove il nero ha già deciso non si arretra
                 if (operation.Boundary == BoundaryDecision.BlackRunStart)
                     continue;
                 double extremeMs = this._exclusiveRules.LeftExtreme(pair, operation.TimestampMs, operation.OffsetBeforeMs, operation.OffsetAfterMs);
+
+                // Nemmeno quando lo stacco è già abbastanza vicino
                 if (operation.Boundary == BoundaryDecision.SceneChange && operation.TimestampMs - extremeMs <= EditAnalysisProfile.EXTREME_FORWARD_MS)
                     continue;
                 if (extremeMs != operation.TimestampMs)
@@ -203,14 +259,18 @@ namespace RemuxForge.Core.Analysis.Edit
                 operation.TimestampMs = extremeMs;
             }
 
+            // Scarta le operazioni che la misura non conferma
             List<EditOperationCandidate> rejected = new List<EditOperationCandidate>();
             operations = operationRefiner.Filter(pair, operations, rejected);
             operations = operationRefiner.Apply(pair, operations);
+
+            // Ancora la scala definitiva e misura la copertura
             double initialOffsetMs = this._coverageVerifier.Anchor(pair, operations, globalInitialOffsetMs);
             return new EditAnalysisOutcome
             {
                 Operations = operations,
                 Rejected = rejected,
+                Anchors = this._globalSolver.LastAnchors,
                 InitialOffsetMs = initialOffsetMs,
                 Coverage = this._coverageVerifier.Coverage(pair, operations, initialOffsetMs)
             };

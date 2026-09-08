@@ -100,6 +100,26 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
         private const double BOOTSTRAP_INTERVAL_SECONDS = 3.0;
 
         /// <summary>
+        /// Intervallo fra due campioni SIFT quando il primo passaggio raccoglie poche ancore
+        /// </summary>
+        private const double BOOTSTRAP_RETRY_INTERVAL_SECONDS = 1.5;
+
+        /// <summary>
+        /// Escursione di luminanza minima perché un fotogramma valga come ancora SIFT
+        /// </summary>
+        private const double ANCHOR_MINIMUM_SPREAD = 48.0;
+
+        /// <summary>
+        /// Escursione richiesta al secondo passaggio: una fotografia buia conserva il dettaglio
+        /// </summary>
+        private const double ANCHOR_RETRY_MINIMUM_SPREAD = 24.0;
+
+        /// <summary>
+        /// Frazione delle posizioni campionate sotto la quale si ritenta la raccolta delle ancore
+        /// </summary>
+        private const double BOOTSTRAP_ANCHOR_RATIO = 0.8;
+
+        /// <summary>
         /// Numero minimo di match geometrici indipendenti
         /// </summary>
         private const int REQUIRED_MATCHES = 5;
@@ -245,8 +265,19 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             List<DeepSiftVisualAnchor> languageAnchors = null;
             phaseStopwatch.Restart();
             Parallel.Invoke(
-                () => sourceAnchors = this.ExtractBootstrapAnchors(sourceFile, sourceDurationMs, sourceProfile, sourceActive, cancellationToken),
-                () => languageAnchors = this.ExtractBootstrapAnchors(languageFile, languageDurationMs, languageProfile, languageActive, cancellationToken));
+                () => sourceAnchors = this.ExtractBootstrapAnchors(sourceFile, sourceDurationMs, sourceProfile, sourceActive, BOOTSTRAP_INTERVAL_SECONDS, ANCHOR_MINIMUM_SPREAD, cancellationToken),
+                () => languageAnchors = this.ExtractBootstrapAnchors(languageFile, languageDurationMs, languageProfile, languageActive, BOOTSTRAP_INTERVAL_SECONDS, ANCHOR_MINIMUM_SPREAD, cancellationToken));
+
+            // Una fotografia buia dirada le ancore senza togliere dettaglio: si ritenta una sola
+            // volta con l'escursione richiesta più bassa e il campionamento fitto
+            double bootstrapSeconds = Math.Min(BOOTSTRAP_SECONDS, Math.Min(sourceDurationMs, languageDurationMs) / 1000.0);
+            int expectedAnchors = (int)(bootstrapSeconds / BOOTSTRAP_INTERVAL_SECONDS * BOOTSTRAP_ANCHOR_RATIO);
+            if (sourceAnchors.Count < expectedAnchors || languageAnchors.Count < expectedAnchors)
+            {
+                Parallel.Invoke(
+                    () => sourceAnchors = this.ExtractBootstrapAnchors(sourceFile, sourceDurationMs, sourceProfile, sourceActive, BOOTSTRAP_RETRY_INTERVAL_SECONDS, ANCHOR_RETRY_MINIMUM_SPREAD, cancellationToken),
+                    () => languageAnchors = this.ExtractBootstrapAnchors(languageFile, languageDurationMs, languageProfile, languageActive, BOOTSTRAP_RETRY_INTERVAL_SECONDS, ANCHOR_RETRY_MINIMUM_SPREAD, cancellationToken));
+            }
             result.Alignment.BootstrapExtractionMs = phaseStopwatch.ElapsedMilliseconds;
             if (sourceAnchors.Count < REQUIRED_MATCHES || languageAnchors.Count < REQUIRED_MATCHES)
                 return this.Reject(result, "Frame informativi insufficienti nei primi tre minuti");
@@ -459,7 +490,10 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
         /// <summary>
         /// Verifica che un frame normalizzato contenga contrasto sufficiente per SIFT
         /// </summary>
-        private bool IsInformative(byte[] frame)
+        /// <param name="frame">Fotogramma normalizzato</param>
+        /// <param name="minimumSpread">Escursione di luminanza richiesta fra i percentili 5 e 95</param>
+        /// <returns>True quando il fotogramma può reggere un'ancora</returns>
+        private bool IsInformative(byte[] frame, double minimumSpread)
         {
             int[] histogram = new int[256];
             double sum = 0.0;
@@ -475,7 +509,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             double deviation = Math.Sqrt(Math.Max(0.0, squares / frame.Length - mean * mean));
             int low = this.HistogramPercentile(histogram, frame.Length, 0.05);
             int high = this.HistogramPercentile(histogram, frame.Length, 0.95);
-            return high - low >= ACTIVE_MINIMUM && deviation >= 3.0;
+            return high - low >= minimumSpread && deviation >= 3.0;
         }
 
         /// <summary>
@@ -594,14 +628,14 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
         /// <summary>
         /// Estrae e filtra i frame informativi dei primi tre minuti
         /// </summary>
-        private List<DeepSiftVisualAnchor> ExtractBootstrapAnchors(string filePath, int durationMs, VideoGeometryProfile profile, PixelRect active, CancellationToken cancellationToken)
+        private List<DeepSiftVisualAnchor> ExtractBootstrapAnchors(string filePath, int durationMs, VideoGeometryProfile profile, PixelRect active, double intervalSeconds, double minimumSpread, CancellationToken cancellationToken)
         {
             VideoSyncConfig config = new VideoSyncConfig();
             config.FrameWidth = SIFT_SIDE;
             config.FrameHeight = SIFT_SIDE;
             FrameExtractionService extractor = new FrameExtractionService(this._ffmpegPath, config, this._ffmpegConfig, this._logSection);
             double durationSeconds = Math.Min(BOOTSTRAP_SECONDS, durationMs / 1000.0);
-            extractor.ExtractSegmentAtInterval(filePath, 0, durationSeconds, BOOTSTRAP_INTERVAL_SECONDS, false, this.FormatCrop(active, profile.Width, profile.Height), out List<byte[]> frames, out double[] timestampsMs);
+            extractor.ExtractSegmentAtInterval(filePath, 0, durationSeconds, intervalSeconds, false, this.FormatCrop(active, profile.Width, profile.Height), out List<byte[]> frames, out double[] timestampsMs);
 
             List<DeepSiftVisualAnchor> result = new List<DeepSiftVisualAnchor>();
             List<ulong> recentHashes = new List<ulong>();
@@ -609,14 +643,14 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             for (int i = 0; i < count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!this.IsInformative(frames[i]))
+                if (!this.IsInformative(frames[i], minimumSpread))
                     continue;
                 DeepSiftVisualAnchor anchor = new DeepSiftVisualAnchor();
                 anchor.Index = result.Count;
                 anchor.FrameIndex = i;
                 anchor.PtsMs = timestampsMs[i];
-                anchor.DurationMs = BOOTSTRAP_INTERVAL_SECONDS * 1000.0;
-                anchor.FrameDurationMs = BOOTSTRAP_INTERVAL_SECONDS * 1000.0;
+                anchor.DurationMs = intervalSeconds * 1000.0;
+                anchor.FrameDurationMs = intervalSeconds * 1000.0;
                 anchor.Frame = frames[i];
                 anchor.Width = SIFT_SIDE;
                 anchor.Height = SIFT_SIDE;

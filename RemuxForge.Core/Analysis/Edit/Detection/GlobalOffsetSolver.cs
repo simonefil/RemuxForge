@@ -20,9 +20,27 @@ namespace RemuxForge.Core.Analysis.Edit.Detection
         private const double ANCHOR_INTERVAL_MS = 160.0;
 
         /// <summary>
-        /// Ricompensa parziale per l'oscillazione di un solo fotogramma attorno allo stato
+        /// Ricompensa dello stato esatto: le distanze maggiori ne ricevono una frazione
         /// </summary>
-        private const double ADJACENT_STATE_REWARD = 0.5;
+        private const double EXACT_STATE_REWARD = 1.0;
+
+        #endregion
+
+        #region Variabili di istanza
+
+        /// <summary>
+        /// Corrispondenze univoche dell'ultima rilevazione, conservate per la diagnostica
+        /// </summary>
+        private List<SolverAnchorDiagnostic> _lastAnchors = new List<SolverAnchorDiagnostic>();
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Corrispondenze univoche dell'ultima rilevazione, con stato osservato e risolto
+        /// </summary>
+        public List<SolverAnchorDiagnostic> LastAnchors { get { return this._lastAnchors; } }
 
         #endregion
 
@@ -38,6 +56,7 @@ namespace RemuxForge.Core.Analysis.Edit.Detection
         public List<EditOperationCandidate> Detect(PairSignals pair, CancellationToken cancellation, out double initialOffsetMs)
         {
             initialOffsetMs = 0.0;
+            this._lastAnchors = new List<SolverAnchorDiagnostic>();
             double languageStepMs = MedianStep(pair.LanguagePtsMs);
             if (pair.Source.Count == 0 || pair.Language.Count == 0 || languageStepMs <= 0.0)
                 return new List<EditOperationCandidate>();
@@ -48,6 +67,16 @@ namespace RemuxForge.Core.Analysis.Edit.Detection
                 return new List<EditOperationCandidate>();
 
             int[] path = this.SolvePath(anchors);
+            for (int i = 0; i < anchors.Count; i++)
+            {
+                this._lastAnchors.Add(new SolverAnchorDiagnostic
+                {
+                    TimeMs = anchors[i].TimeMs,
+                    ObservedState = anchors[i].State,
+                    ResolvedState = path[i]
+                });
+            }
+
             List<OffsetRegime> regimes = this.BuildRegimes(anchors, path);
             this.AddTerminalEvidence(anchors, regimes);
             if (regimes.Count == 0)
@@ -319,12 +348,14 @@ namespace RemuxForge.Core.Analysis.Edit.Detection
         /// <summary>
         /// Ricompensa associata alla distanza fra lo stato osservato e quello ipotizzato
         /// </summary>
+        /// <param name="state">Stato ipotizzato</param>
+        /// <param name="observed">Stato letto sul fotogramma</param>
+        /// <returns>Ricompensa decrescente con la distanza</returns>
         private double Emission(int state, int observed)
         {
-            int distance = Math.Abs(state - observed);
-            if (distance == 0)
-                return 1.0;
-            return distance == 1 ? ADJACENT_STATE_REWARD : 0.0;
+            // Una misura sbagliata di pochi fotogrammi resta una prova a favore dello stato più
+            // vicino: azzerarla la rende muta e lascia decidere il vuoto invece dell'evidenza
+            return EXACT_STATE_REWARD / (1.0 + Math.Abs(state - observed));
         }
 
         /// <summary>

@@ -72,6 +72,8 @@ namespace RemuxForge.Core.Analysis.Edit.Boundary
             // miniatura sul frame previsto. Per i salti grandi resta informativo il margine dHash
             int lastIndex = Math.Min(plateauEnd, count - 1);
             int firstIndex = Math.Min(plateauStart, count - 1);
+            double equivalentStartMs = sourcePts[first + firstIndex];
+            double equivalentEndMs = sourcePts[first + lastIndex];
             if (overlappingNeighborhoods)
             {
                 double[] pixelBefore = new double[count];
@@ -124,7 +126,9 @@ namespace RemuxForge.Core.Analysis.Edit.Boundary
                 NextAfterLastMs = sourcePts[Math.Min(lastCommon + 1, sourcePts.Length - 1)],
                 FirstCommonMs = sourcePts[firstCommon],
                 TouchesWindowStart = plateauStart == 0,
-                TouchesWindowEnd = plateauEnd == count
+                TouchesWindowEnd = plateauEnd == count,
+                EquivalentBoundaryStartMs = equivalentStartMs,
+                EquivalentBoundaryEndMs = equivalentEndMs
             };
         }
 

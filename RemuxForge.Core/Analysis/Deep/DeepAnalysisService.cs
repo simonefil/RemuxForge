@@ -201,6 +201,7 @@ namespace RemuxForge.Core.Analysis.Deep
                 result.Plateaus = converter.BuildPlateaus(pair, outcome);
                 result.Operations = BuildDiagnostics(outcome.Operations);
                 result.RejectedOperations = BuildDiagnostics(outcome.Rejected);
+                result.Anchors = BuildAnchorDiagnostics(outcome.Anchors);
                 result.Timing.SolverMs = phaseStopwatch.ElapsedMilliseconds;
                 // Una mappa che non spiega il film non è un risultato con poca confidenza:
                 // è un risultato sbagliato, e va rifiutata invece che consegnata
@@ -243,6 +244,29 @@ namespace RemuxForge.Core.Analysis.Deep
         #region Metodi privati
 
         /// <summary>
+        /// Converte le corrispondenze del solver in diagnostica serializzabile
+        /// </summary>
+        /// <param name="anchors">Corrispondenze univoche su cui sono stati costruiti i pianori</param>
+        /// <returns>Diagnostica delle corrispondenze</returns>
+        private static List<DeepAnalysisAnchorDiagnostic> BuildAnchorDiagnostics(IReadOnlyList<SolverAnchorDiagnostic> anchors)
+        {
+            List<DeepAnalysisAnchorDiagnostic> result = new List<DeepAnalysisAnchorDiagnostic>();
+            if (anchors == null)
+                return result;
+
+            for (int i = 0; i < anchors.Count; i++)
+            {
+                result.Add(new DeepAnalysisAnchorDiagnostic
+                {
+                    TimeMs = anchors[i].TimeMs,
+                    ObservedState = anchors[i].ObservedState,
+                    ResolvedState = anchors[i].ResolvedState
+                });
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Converte i candidati in diagnostica serializzabile
         /// </summary>
         /// <param name="operations">Candidati accettati o scartati</param>
@@ -260,6 +284,12 @@ namespace RemuxForge.Core.Analysis.Deep
                     OffsetBeforeMs = operation.OffsetBeforeMs,
                     OffsetAfterMs = operation.OffsetAfterMs,
                     UncertaintyMs = operation.UncertaintyMs,
+                    PlateauEndBeforeMs = operation.PlateauEndBeforeMs,
+                    PlateauStartAfterMs = operation.PlateauStartAfterMs,
+                    ChangePointWindowStartMs = operation.ChangePointWindowStartMs,
+                    ChangePointWindowEndMs = operation.ChangePointWindowEndMs,
+                    ChangePointEquivalentStartMs = operation.ChangePointEquivalentStartMs,
+                    ChangePointEquivalentEndMs = operation.ChangePointEquivalentEndMs,
                     BoundaryDecidedBy = operation.Boundary.ToString(),
                     RejectReason = operation.RejectReason ?? ""
                 });

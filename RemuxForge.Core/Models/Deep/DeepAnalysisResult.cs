@@ -101,6 +101,31 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
+    /// Una corrispondenza univoca del solver, con lo stato osservato e quello risolto
+    /// </summary>
+    public class DeepAnalysisAnchorDiagnostic
+    {
+        #region Proprietà
+
+        /// <summary>
+        /// PTS sorgente della corrispondenza
+        /// </summary>
+        public double TimeMs { get; set; }
+
+        /// <summary>
+        /// Offset quantizzato letto sul fotogramma, in fotogrammi lang
+        /// </summary>
+        public int ObservedState { get; set; }
+
+        /// <summary>
+        /// Offset quantizzato assegnato dalla soluzione globale, in fotogrammi lang
+        /// </summary>
+        public int ResolvedState { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
     /// Un tratto a offset costante fra due operazioni
     /// </summary>
     public class DeepAnalysisPlateau
@@ -175,6 +200,36 @@ namespace RemuxForge.Core.Models
         /// Larghezza della cima piatta con cui sono stati misurati i due offset
         /// </summary>
         public double UncertaintyMs { get; set; }
+
+        /// <summary>
+        /// Ultimo istante affidabile del pianoro precedente
+        /// </summary>
+        public double PlateauEndBeforeMs { get; set; }
+
+        /// <summary>
+        /// Primo istante affidabile del pianoro successivo
+        /// </summary>
+        public double PlateauStartAfterMs { get; set; }
+
+        /// <summary>
+        /// Inizio della finestra entro cui il raffinatore ha cercato il confine
+        /// </summary>
+        public double ChangePointWindowStartMs { get; set; }
+
+        /// <summary>
+        /// Fine della finestra entro cui il raffinatore ha cercato il confine
+        /// </summary>
+        public double ChangePointWindowEndMs { get; set; }
+
+        /// <summary>
+        /// Prima posizione che i fotogrammi giudicano equivalente, prima dello spareggio sul margine
+        /// </summary>
+        public double ChangePointEquivalentStartMs { get; set; }
+
+        /// <summary>
+        /// Ultima posizione che i fotogrammi giudicano equivalente, prima dello spareggio sul margine
+        /// </summary>
+        public double ChangePointEquivalentEndMs { get; set; }
 
         /// <summary>
         /// Chi ha deciso la posizione finale del confine
@@ -263,6 +318,7 @@ namespace RemuxForge.Core.Models
             this.Plateaus = new List<DeepAnalysisPlateau>();
             this.Operations = new List<DeepAnalysisOperationDiagnostic>();
             this.RejectedOperations = new List<DeepAnalysisOperationDiagnostic>();
+            this.Anchors = new List<DeepAnalysisAnchorDiagnostic>();
         }
 
         #endregion
@@ -360,6 +416,11 @@ namespace RemuxForge.Core.Models
         /// Operazioni scartate, con il filtro che le ha respinte
         /// </summary>
         public List<DeepAnalysisOperationDiagnostic> RejectedOperations { get; set; }
+
+        /// <summary>
+        /// Corrispondenze univoche su cui il solver ha costruito i pianori
+        /// </summary>
+        public List<DeepAnalysisAnchorDiagnostic> Anchors { get; set; }
 
         /// <summary>
         /// Timing diagnostici delle fasi materiali della pipeline

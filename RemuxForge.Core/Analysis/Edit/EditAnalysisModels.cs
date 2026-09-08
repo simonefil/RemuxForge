@@ -110,6 +110,26 @@ namespace RemuxForge.Core.Analysis.Edit
         public double PlateauStartAfterMs { get; set; }
 
         /// <summary>
+        /// Inizio della finestra entro cui il raffinatore ha cercato il confine
+        /// </summary>
+        public double ChangePointWindowStartMs { get; set; }
+
+        /// <summary>
+        /// Fine della finestra entro cui il raffinatore ha cercato il confine
+        /// </summary>
+        public double ChangePointWindowEndMs { get; set; }
+
+        /// <summary>
+        /// Prima posizione che i fotogrammi giudicano equivalente, prima dello spareggio sul margine
+        /// </summary>
+        public double ChangePointEquivalentStartMs { get; set; }
+
+        /// <summary>
+        /// Ultima posizione che i fotogrammi giudicano equivalente, prima dello spareggio sul margine
+        /// </summary>
+        public double ChangePointEquivalentEndMs { get; set; }
+
+        /// <summary>
         /// Larghezza della cima piatta con cui sono stati misurati i due offset
         /// </summary>
         public double UncertaintyMs { get; set; }
@@ -151,11 +171,40 @@ namespace RemuxForge.Core.Analysis.Edit
                 OffsetAfterMs = this.OffsetAfterMs,
                 PlateauEndBeforeMs = this.PlateauEndBeforeMs,
                 PlateauStartAfterMs = this.PlateauStartAfterMs,
+                ChangePointWindowStartMs = this.ChangePointWindowStartMs,
+                ChangePointWindowEndMs = this.ChangePointWindowEndMs,
+                ChangePointEquivalentStartMs = this.ChangePointEquivalentStartMs,
+                ChangePointEquivalentEndMs = this.ChangePointEquivalentEndMs,
                 UncertaintyMs = this.UncertaintyMs,
                 Boundary = this.Boundary,
                 RejectReason = this.RejectReason
             };
         }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Una corrispondenza univoca del solver, con lo stato osservato e quello risolto dal percorso
+    /// </summary>
+    internal class SolverAnchorDiagnostic
+    {
+        #region Proprietà
+
+        /// <summary>
+        /// PTS sorgente della corrispondenza
+        /// </summary>
+        public double TimeMs { get; set; }
+
+        /// <summary>
+        /// Offset quantizzato letto sul fotogramma, in fotogrammi lang
+        /// </summary>
+        public int ObservedState { get; set; }
+
+        /// <summary>
+        /// Offset quantizzato assegnato dalla soluzione globale, in fotogrammi lang
+        /// </summary>
+        public int ResolvedState { get; set; }
 
         #endregion
     }
@@ -186,6 +235,16 @@ namespace RemuxForge.Core.Analysis.Edit
         /// True quando il minimo è censurato dalla fine della finestra
         /// </summary>
         public bool TouchesWindowEnd { get; set; }
+
+        /// <summary>
+        /// Prima posizione che i fotogrammi giudicano equivalente, prima dello spareggio sul margine
+        /// </summary>
+        public double EquivalentBoundaryStartMs { get; set; }
+
+        /// <summary>
+        /// Ultima posizione che i fotogrammi giudicano equivalente, prima dello spareggio sul margine
+        /// </summary>
+        public double EquivalentBoundaryEndMs { get; set; }
 
         #endregion
     }
