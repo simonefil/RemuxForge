@@ -2,6 +2,16 @@
     <div class="rf-panel-title detail-panel-title">
         <span>@AppText.T("web.detail.title")</span>
         <div class="detail-panel-actions">
+            @if (Record != null && DeepAnalysisDiagnosticsEnabled())
+            {
+                <RadzenButton Icon="download"
+                              Text="@AppText.T("web.detail.diagnostics")"
+                              Size="ButtonSize.Small"
+                              Variant="Variant.Text"
+                              ButtonStyle="ButtonStyle.Base"
+                              Disabled="@(!CanDownloadDeepAnalysisDiagnostics())"
+                              Click="@DownloadDeepAnalysisDiagnosticsAsync" />
+            }
             <RadzenButton Icon="edit"
                           Text="@AppText.T("web.editMap.change")"
                           Size="ButtonSize.Small"
@@ -269,6 +279,11 @@
     [Parameter] public FileProcessingRecord Record { get; set; }
 
     /// <summary>
+    /// Indice del record nello scope remux corrente
+    /// </summary>
+    [Parameter] public int RecordIndex { get; set; }
+
+    /// <summary>
     /// Opzioni correnti per calcolare il processing audio visualizzato
     /// </summary>
     [Parameter] public Options Options { get; set; }
@@ -388,6 +403,33 @@
             return this.Record.Status == FileStatus.Analyzed || this.Record.Status == FileStatus.Error;
 
         return this.Record.Status == FileStatus.Pending || this.Record.Status == FileStatus.Analyzed || this.Record.Status == FileStatus.Error;
+    }
+
+    /// <summary>
+    /// Indica se la diagnostica Deep Analysis è abilitata nella sessione corrente
+    /// </summary>
+    private bool DeepAnalysisDiagnosticsEnabled()
+    {
+        return PipelineDiagnosticsWriter.IsDeepAnalysisDiagnosticsEnabled(this.Options);
+    }
+
+    /// <summary>
+    /// Indica se la diagnostica dell'episodio selezionato è scaricabile
+    /// </summary>
+    private bool CanDownloadDeepAnalysisDiagnostics()
+    {
+        return this.Record != null && this.RecordIndex >= 0 && !string.IsNullOrEmpty(this.Record.DeepAnalysisDiagnosticsPath);
+    }
+
+    /// <summary>
+    /// Avvia il download dello ZIP diagnostico dell'episodio selezionato
+    /// </summary>
+    private async Task DownloadDeepAnalysisDiagnosticsAsync()
+    {
+        if (this.JsModule == null || !this.CanDownloadDeepAnalysisDiagnostics())
+            return;
+
+        await this.JsModule.InvokeVoidAsync("downloadFromUrl", "/api/deep-analysis-diagnostics/" + this.RecordIndex.ToString(System.Globalization.CultureInfo.InvariantCulture));
     }
 
     /// <summary>

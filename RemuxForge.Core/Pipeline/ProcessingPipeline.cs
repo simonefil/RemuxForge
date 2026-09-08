@@ -368,6 +368,7 @@ namespace RemuxForge.Core.Pipeline
         public List<FileProcessingRecord> ScanFiles()
         {
             ConsoleHelper.ResetFileLog();
+            this._diagnosticsWriter.ClearDeepAnalysisDiagnostics();
             PipelineFileScanner scanner = new PipelineFileScanner(this.Log);
             return scanner.Scan(this._opts, this._needsMerge);
         }

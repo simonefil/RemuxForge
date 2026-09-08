@@ -4,6 +4,7 @@
         <div class="dialog-body">
 
             <AdvancedSettingsSection Title="@AppText.T("web.advanced.section.analysis")">
+                <AdvancedSettingsToggleRow Label="@AppText.T("web.advanced.deepAnalysisDiagnostics")" Value="_deepAnalysisDiagnostics" ValueChanged="ChangeDeepAnalysisDiagnostics" />
                 <AdvancedSettingsToggleRow Label="@AppText.T("web.advanced.hardwareAcceleration")" Value="_ffHardwareAcceleration" ValueChanged="ChangeHardwareAcceleration" Disabled="_ffHardwareProbeRunning" />
                 @if (_ffHardwareProbeRunning)
                 {
@@ -114,6 +115,11 @@
     private string _offsetSearchRadiusMs = "";
 
     /// <summary>
+    /// Abilita la diagnostica JSON Deep Analysis per episodio
+    /// </summary>
+    private bool _deepAnalysisDiagnostics;
+
+    /// <summary>
     /// Messaggio errore validazione
     /// </summary>
     private string _validationError = "";
@@ -144,6 +150,7 @@
         this._visionBackend = adv.GetVisionBackendKind();
         this._siftVulkanDeviceName = "";
         this._offsetSearchRadiusMs = adv.DeepAnalysis.OffsetSearchRadiusMs.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        this._deepAnalysisDiagnostics = adv.DeepAnalysis.DiagnosticsEnabled;
 
         // Ffmpeg: booleani
         this._ffHardwareAcceleration = adv.Ffmpeg.HardwareAcceleration;
@@ -243,6 +250,7 @@
         adv.SetVisionBackendKind(this._visionBackend);
         int.TryParse(this._offsetSearchRadiusMs, out int offsetSearchRadiusMs);
         adv.DeepAnalysis.OffsetSearchRadiusMs = offsetSearchRadiusMs;
+        adv.DeepAnalysis.DiagnosticsEnabled = this._deepAnalysisDiagnostics;
 
         // Parsing Ffmpeg: booleani
         adv.Ffmpeg.HardwareAcceleration = this._ffHardwareAcceleration;
@@ -293,6 +301,15 @@
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Aggiorna l'abilitazione della diagnostica Deep Analysis
+    /// </summary>
+    /// <param name="enabled">Nuovo stato richiesto</param>
+    private void ChangeDeepAnalysisDiagnostics(bool enabled)
+    {
+        this._deepAnalysisDiagnostics = enabled;
     }
 
     /// <summary>

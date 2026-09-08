@@ -1,5 +1,6 @@
 using RemuxForge.Core.Analysis.Deep;
 using RemuxForge.Core.Analysis.FrameSync;
+using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Models;
 using System;
@@ -49,17 +50,21 @@ namespace RemuxForge.Core.Pipeline
         public void WriteDeepAnalysisIfEnabled(FileProcessingRecord record, Options options)
         {
             string diagnosticsPath;
-            if (options == null || record == null || !options.DeepAnalysisDiagnostics)
+            if (record == null)
             {
                 return;
             }
+            record.DeepAnalysisDiagnosticsPath = "";
+            if (!IsDeepAnalysisDiagnosticsEnabled(options))
+                return;
 
             try
             {
                 DeepAnalysisDiagnosticsWriter writer = new DeepAnalysisDiagnosticsWriter();
-                diagnosticsPath = writer.Write(record);
+                diagnosticsPath = writer.Write(record, options);
                 if (!string.IsNullOrEmpty(diagnosticsPath))
                 {
+                    record.DeepAnalysisDiagnosticsPath = diagnosticsPath;
                     ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  Diagnostica deep-analysis: " + diagnosticsPath);
                 }
             }
@@ -67,6 +72,25 @@ namespace RemuxForge.Core.Pipeline
             {
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Warning, "  Errore diagnostica deep-analysis: " + ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Elimina tutte le diagnostiche Deep Analysis prima di un nuovo scan
+        /// </summary>
+        public void ClearDeepAnalysisDiagnostics()
+        {
+            DeepAnalysisDiagnosticsWriter writer = new DeepAnalysisDiagnosticsWriter();
+            writer.Clear();
+        }
+
+        /// <summary>
+        /// Indica se la diagnostica Deep Analysis è abilitata dalle opzioni operative o dalle impostazioni persistite
+        /// </summary>
+        /// <param name="options">Opzioni operative correnti</param>
+        /// <returns>True quando la diagnostica deve essere prodotta ed esposta</returns>
+        public static bool IsDeepAnalysisDiagnosticsEnabled(Options options)
+        {
+            return (options != null && options.DeepAnalysisDiagnostics) || AppSettingsService.Instance.Settings.Advanced.DeepAnalysis.DiagnosticsEnabled;
         }
 
         #endregion

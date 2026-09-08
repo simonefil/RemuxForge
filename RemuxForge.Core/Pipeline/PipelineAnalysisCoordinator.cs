@@ -311,7 +311,17 @@ namespace RemuxForge.Core.Pipeline
                     {
                         EditMap editMap;
                         DeepAnalysisService deepService = new DeepAnalysisService(ffmpegPath, this._toolPathResolver);
-                        editMap = deepService.Analyze(record.SourceFilePath, record.LangFilePath, deepManualStretchFactor, this._opts.AnalysisCropSourcePx, this._opts.AnalysisCropLanguagePx, cancellationToken);
+                        try
+                        {
+                            editMap = deepService.Analyze(record.SourceFilePath, record.LangFilePath, deepManualStretchFactor, this._opts.AnalysisCropSourcePx, this._opts.AnalysisCropLanguagePx, cancellationToken);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            record.DeepAnalysisResult = deepService.LastResult;
+                            record.DeepAnalysisTimeMs = deepService.LastResult != null ? deepService.LastResult.TotalElapsedMs : 0;
+                            this._diagnosticsWriter.WriteDeepAnalysisIfEnabled(record, this._opts);
+                            throw;
+                        }
                         record.DeepAnalysisResult = deepService.LastResult;
                         record.DeepAnalysisTimeMs = deepService.LastResult != null ? deepService.LastResult.TotalElapsedMs : 0;
 

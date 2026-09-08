@@ -189,6 +189,8 @@ namespace RemuxForge.Web
                 MediaEndpoints.ServeAudioTimeline(orchestrator, recordIndex, side, trackId, durationMs, mode, quality, context, audioExtractor, frameAccess));
             app.MapGet("/api/metadata-attachment/{recordIndex:int}/{attachmentId:int}", (int recordIndex, int attachmentId, HttpContext context, MetadataOrchestrator orchestrator) =>
                 MediaEndpoints.ServeMetadataAttachment(orchestrator, recordIndex, attachmentId, context));
+            app.MapGet("/api/deep-analysis-diagnostics/{recordIndex:int}", (int recordIndex, HttpContext context, MergeOrchestrator orchestrator) =>
+                MediaEndpoints.ServeDeepAnalysisDiagnostics(orchestrator, recordIndex, context));
             app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
             if (!desktopMode)

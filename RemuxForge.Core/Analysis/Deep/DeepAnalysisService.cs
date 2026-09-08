@@ -68,7 +68,6 @@ namespace RemuxForge.Core.Analysis.Deep
             Stopwatch totalStopwatch = Stopwatch.StartNew();
             Stopwatch phaseStopwatch = Stopwatch.StartNew();
             DeepAnalysisResult result = new DeepAnalysisResult();
-            DeepAnalysisRunDiagnosticsSession diagnostics = null;
             HashBackendBase hashBackend = null;
             this.LastResult = result;
 
@@ -76,8 +75,6 @@ namespace RemuxForge.Core.Analysis.Deep
             {
                 AdvancedConfig advanced = AppSettingsService.Instance.Settings.Advanced;
                 string configuredBackend = AdvancedConfig.GetVisionBackendValue(advanced.GetVisionBackendKind());
-                diagnostics = new DeepAnalysisRunDiagnosticsSession(sourceFile, languageFile, sourceCropPx, languageCropPx, manualStretchFactor, configuredBackend);
-                result.RunDirectory = diagnostics.DirectoryPath;
                 result.BackendName = configuredBackend;
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -111,7 +108,6 @@ namespace RemuxForge.Core.Analysis.Deep
                 phaseStopwatch.Restart();
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, AppText.T("deep.temporal.log.geometryViewport"));
                 ConsoleHelper.Progress(LogSection.Deep, 8, AppText.T("deep.temporal.progress.geometry"));
-                diagnostics.Append("phase=geometry");
                 FfmpegVideoInfoReader videoInfoReader = new FfmpegVideoInfoReader(this._ffmpegPath, ffmpegConfig, LogSection.Deep);
                 if (!videoInfoReader.TryRead(sourceFile, out int sourceDurationMs, out _) ||
                     !videoInfoReader.TryRead(languageFile, out int languageDurationMs, out _))
@@ -150,7 +146,6 @@ namespace RemuxForge.Core.Analysis.Deep
                     result.Language.ViewportRight = languageFrameGeometry.ViewportRight;
                     result.Language.ViewportBottom = languageFrameGeometry.ViewportBottom;
                 }
-                diagnostics.UpdateConfiguration(sourceCropPx, languageCropPx, stretchFactor, result.SourceToLanguageScale, result.SourceGeometry, result.LanguageGeometry, result.GeometryAlignment, ffmpegConfig, advanced.VideoSync, result.Source, result.Language, result.GeometryMatchRate, result.GeometryMedianDistance, configuredBackend);
                 result.Timing.GeometryMs = phaseStopwatch.ElapsedMilliseconds;
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -158,7 +153,6 @@ namespace RemuxForge.Core.Analysis.Deep
                 Stopwatch frameSignalsStopwatch = Stopwatch.StartNew();
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, AppText.T("deep.temporal.log.frameSignals"));
                 ConsoleHelper.Progress(LogSection.Deep, 24, AppText.T("deep.temporal.progress.frameSignals"));
-                diagnostics.Append("phase=frame-signals");
                 FrameSignals sourceSignals = null;
                 FrameSignals languageSignals = null;
                 int completedFrameSignalExtractions = 0;
@@ -185,22 +179,19 @@ namespace RemuxForge.Core.Analysis.Deep
                 ConsoleHelper.Progress(LogSection.Deep, 64, AppText.T("deep.temporal.progress.frameSignals"));
                 result.Source.FrameCount = sourceSignals.Count;
                 result.Language.FrameCount = languageSignals.Count;
-                diagnostics.Append("frame-signals source=" + sourceSignals.Count.ToString(CultureInfo.InvariantCulture) + " language=" + languageSignals.Count.ToString(CultureInfo.InvariantCulture));
                 cancellationToken.ThrowIfCancellationRequested();
 
                 // L'audio decide dentro il nero e giudica l'esistenza delle operazioni
                 phaseStopwatch.Restart();
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, AppText.T("deep.temporal.log.audioEnvelopes"));
                 ConsoleHelper.Progress(LogSection.Deep, 68, AppText.T("deep.temporal.progress.audioEnvelopes"));
-                diagnostics.Append("phase=audio-envelopes");
-                AudioEnvelopePair envelopes = this.BuildAudioEnvelopes(sourceFile, languageFile, ffprobePath, ffmpegConfig, languageToSourceStretch, diagnostics);
+                AudioEnvelopePair envelopes = this.BuildAudioEnvelopes(sourceFile, languageFile, ffprobePath, ffmpegConfig, languageToSourceStretch);
                 result.Timing.AudioEnvelopesMs = phaseStopwatch.ElapsedMilliseconds;
                 cancellationToken.ThrowIfCancellationRequested();
 
                 phaseStopwatch.Restart();
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, AppText.T("deep.temporal.log.globalSolve"));
                 ConsoleHelper.Progress(LogSection.Deep, 75, AppText.T("deep.temporal.progress.detection"));
-                diagnostics.Append("phase=detection-and-judgement");
                 PairSignals pair = new PairSignals(sourceSignals, languageSignals, languageToSourceStretch);
                 EditAnalysisOutcome outcome = new EditMapComposer(hashBackend).Compose(pair, envelopes, cancellationToken);
 
@@ -211,10 +202,6 @@ namespace RemuxForge.Core.Analysis.Deep
                 result.Operations = BuildDiagnostics(outcome.Operations);
                 result.RejectedOperations = BuildDiagnostics(outcome.Rejected);
                 result.Timing.SolverMs = phaseStopwatch.ElapsedMilliseconds;
-                diagnostics.Append("operations accepted=" + outcome.Operations.Count.ToString(CultureInfo.InvariantCulture) +
-                    " rejected=" + outcome.Rejected.Count.ToString(CultureInfo.InvariantCulture) +
-                    " coverage=" + outcome.Coverage.ToString("0.0000", CultureInfo.InvariantCulture));
-
                 // Una mappa che non spiega il film non è un risultato con poca confidenza:
                 // è un risultato sbagliato, e va rifiutata invece che consegnata
                 if (outcome.Coverage < EditAnalysisProfile.COVERAGE_MINIMUM)
@@ -243,17 +230,6 @@ namespace RemuxForge.Core.Analysis.Deep
                 result.TotalElapsedMs = totalStopwatch.ElapsedMilliseconds;
                 result.Timing.TotalMs = result.TotalElapsedMs;
                 result.PeakWorkingSetBytes = Process.GetCurrentProcess().PeakWorkingSet64;
-                if (diagnostics != null)
-                {
-                    try
-                    {
-                        diagnostics.Complete(result);
-                    }
-                    catch (Exception ex)
-                    {
-                        ConsoleHelper.Write(LogSection.Deep, LogLevel.Warning, "Diagnostica Deep Analysis non completata: " + ex.Message);
-                    }
-                }
             }
         }
 
@@ -299,15 +275,13 @@ namespace RemuxForge.Core.Analysis.Deep
         /// <param name="ffprobePath">Percorso di ffprobe</param>
         /// <param name="ffmpegConfig">Configurazione ffmpeg</param>
         /// <param name="stretch">Fattore di stretch della copia doppiata</param>
-        /// <param name="diagnostics">Sessione diagnostica della run</param>
         /// <returns>Inviluppi sulla griglia comune oppure null quando l'audio non è utilizzabile</returns>
-        private AudioEnvelopePair BuildAudioEnvelopes(string sourceFile, string languageFile, string ffprobePath, FfmpegConfig ffmpegConfig, double stretch, DeepAnalysisRunDiagnosticsSession diagnostics)
+        private AudioEnvelopePair BuildAudioEnvelopes(string sourceFile, string languageFile, string ffprobePath, FfmpegConfig ffmpegConfig, double stretch)
         {
             try
             {
                 AudioEnvelopeExtractor audioExtractor = new AudioEnvelopeExtractor(this._ffmpegPath, ffprobePath);
                 audioExtractor.ResolveSharedStreams(sourceFile, languageFile, ffmpegConfig.FrameExtractionTimeoutMs, out int sourceStream, out int languageStream);
-                diagnostics.Append("audio-streams source=" + sourceStream.ToString(CultureInfo.InvariantCulture) + " language=" + languageStream.ToString(CultureInfo.InvariantCulture));
                 AudioEnvelope source = null;
                 AudioEnvelope language = null;
                 Parallel.Invoke(
@@ -317,10 +291,9 @@ namespace RemuxForge.Core.Analysis.Deep
                     return null;
                 return new AudioEnvelopePair(source, language, stretch);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 // Senza audio la catena resta corretta: perde solo il giudice sull'esistenza delle operazioni
-                diagnostics.Append("audio-unavailable " + ex.Message);
                 return null;
             }
         }

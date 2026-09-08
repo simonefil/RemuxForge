@@ -270,6 +270,17 @@ export function copyToClipboard(text) {
     }
 }
 
+// Avvia un download lasciando al server nome e Content-Type dell'allegato
+export function downloadFromUrl(url) {
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = '';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+}
+
 // Legge valore e selection di un input testuale senza dipendere dal focus corrente
 export function getTextInputSelection(elementId) {
     var element = document.getElementById(elementId);

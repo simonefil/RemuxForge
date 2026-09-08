@@ -376,11 +376,6 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public long PeakWorkingSetBytes { get; set; }
 
-        /// <summary>
-        /// Directory persistente creata prima dell'avvio della run
-        /// </summary>
-        public string RunDirectory { get; set; }
-
         #endregion
     }
 }

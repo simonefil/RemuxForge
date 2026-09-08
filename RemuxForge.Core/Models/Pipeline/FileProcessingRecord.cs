@@ -63,6 +63,7 @@ namespace RemuxForge.Core.Models
             this.DeepAnalysisApplied = false;
             this.DeepAnalysisMapManuallyEdited = false;
             this.DeepAnalysisResult = null;
+            this.DeepAnalysisDiagnosticsPath = "";
             this.FrameSyncResult = null;
             this.AudioProcessingPreview = null;
         }
@@ -115,6 +116,7 @@ namespace RemuxForge.Core.Models
             this.DeepAnalysisApplied = false;
             this.DeepAnalysisMapManuallyEdited = false;
             this.DeepAnalysisResult = null;
+            this.DeepAnalysisDiagnosticsPath = "";
             this.AudioProcessingPreview = null;
         }
 
@@ -366,6 +368,11 @@ namespace RemuxForge.Core.Models
         /// Risultato diagnostico DeepAnalysis, null se la modalità non è stata eseguita
         /// </summary>
         public DeepAnalysisResult DeepAnalysisResult { get; set; }
+
+        /// <summary>
+        /// Percorso server-side della diagnostica Deep Analysis dell'episodio
+        /// </summary>
+        public string DeepAnalysisDiagnosticsPath { get; set; }
 
         /// <summary>
         /// Piano audio usato da preview dettaglio e dry-run, null se non calcolato

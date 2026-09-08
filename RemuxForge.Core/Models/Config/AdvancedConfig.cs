@@ -182,6 +182,7 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public DeepAnalysisConfig()
         {
+            this.DiagnosticsEnabled = false;
             this.SceneExtractTimeoutMs = 600000;
             this.OffsetSearchRadiusMs = 30000;
         }
@@ -189,6 +190,11 @@ namespace RemuxForge.Core.Models
         #endregion
 
         #region Proprietà
+
+        /// <summary>
+        /// Abilita la diagnostica JSON per episodio della Deep Analysis
+        /// </summary>
+        public bool DiagnosticsEnabled { get; set; }
 
         /// <summary>
         /// Timeout in millisecondi per estrazione scene con ffmpeg

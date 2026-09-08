@@ -3,10 +3,12 @@ using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Metadata;
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Pipeline;
 using Microsoft.AspNetCore.Http;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -127,6 +129,54 @@ namespace RemuxForge.Web.Services
             // l'applicazione: la cache privata basta e risparmia una mkvextract per render
             context.Response.Headers.CacheControl = "private, max-age=60";
             return Results.Bytes(payload, !string.IsNullOrEmpty(attachment.MimeType) ? attachment.MimeType : "application/octet-stream");
+        }
+
+        /// <summary>
+        /// Crea e scarica lo ZIP della diagnostica Deep Analysis di un episodio
+        /// </summary>
+        /// <param name="orchestrator">Orchestratore che possiede i record remux</param>
+        /// <param name="recordIndex">Indice del record corrente</param>
+        /// <param name="context">Contesto della richiesta HTTP</param>
+        /// <returns>Archivio ZIP oppure l'esito negativo quando la diagnostica non è disponibile</returns>
+        public static async Task<IResult> ServeDeepAnalysisDiagnostics(MergeOrchestrator orchestrator, int recordIndex, HttpContext context)
+        {
+            if (!PipelineDiagnosticsWriter.IsDeepAnalysisDiagnosticsEnabled(orchestrator.CurrentOptions))
+                return Results.NotFound();
+
+            FileProcessingRecord record = orchestrator.GetRecord(recordIndex);
+            if (record == null || string.IsNullOrEmpty(record.DeepAnalysisDiagnosticsPath))
+                return Results.NotFound();
+
+            string diagnosticsRoot = Path.GetFullPath(Path.Combine(AppSettingsService.Instance.ConfigFolder, "deepanalysis-diagnostics"));
+            string diagnosticPath = Path.GetFullPath(record.DeepAnalysisDiagnosticsPath);
+            string relativePath = Path.GetRelativePath(diagnosticsRoot, diagnosticPath);
+            if (relativePath == ".." || relativePath.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) || Path.IsPathRooted(relativePath) || !File.Exists(diagnosticPath))
+                return Results.NotFound();
+
+            try
+            {
+                using MemoryStream archiveStream = new MemoryStream();
+                using (ZipArchive archive = new ZipArchive(archiveStream, ZipArchiveMode.Create, true))
+                {
+                    ZipArchiveEntry entry = archive.CreateEntry(Path.GetFileName(diagnosticPath), CompressionLevel.Optimal);
+                    await using FileStream diagnosticStream = File.OpenRead(diagnosticPath);
+                    await using Stream entryStream = entry.Open();
+                    await diagnosticStream.CopyToAsync(entryStream, context.RequestAborted);
+                }
+
+                string episodeName = SanitizeDownloadFileName(record.EpisodeId);
+                string downloadName = (string.IsNullOrEmpty(episodeName) ? "episodio" : episodeName) + "-diagnostica.zip";
+                context.Response.Headers.CacheControl = "no-store";
+                return Results.File(archiveStream.ToArray(), "application/zip", downloadName);
+            }
+            catch (OperationCanceledException)
+            {
+                return Results.StatusCode(499);
+            }
+            catch (IOException)
+            {
+                return Results.NotFound();
+            }
         }
 
         /// <summary>
@@ -335,6 +385,25 @@ namespace RemuxForge.Web.Services
                 if (audioBudgetAcquired)
                     s_audioRequests.Release();
             }
+        }
+
+        #endregion
+
+        #region Metodi privati
+
+        /// <summary>
+        /// Sanitizza il nome episodio usato nell'allegato HTTP
+        /// </summary>
+        /// <param name="value">Nome originale</param>
+        /// <returns>Nome compatibile con il filesystem e privo di caratteri di controllo</returns>
+        private static string SanitizeDownloadFileName(string value)
+        {
+            string result = value ?? "";
+            char[] invalidChars = Path.GetInvalidFileNameChars();
+            for (int index = 0; index < invalidChars.Length; index++)
+                result = result.Replace(invalidChars[index], '_');
+            result = result.Replace('\r', '_').Replace('\n', '_');
+            return result;
         }
 
         #endregion

@@ -1263,6 +1263,7 @@ namespace RemuxForge.Web.Services
             result.DeepAnalysisApplied = record.DeepAnalysisApplied;
             result.DeepAnalysisMapManuallyEdited = record.DeepAnalysisMapManuallyEdited;
             result.DeepAnalysisResult = record.DeepAnalysisResult;
+            result.DeepAnalysisDiagnosticsPath = record.DeepAnalysisDiagnosticsPath;
             result.AudioProcessingPreview = this.CloneAudioProcessingPlan(record.AudioProcessingPreview);
 
             return result;
