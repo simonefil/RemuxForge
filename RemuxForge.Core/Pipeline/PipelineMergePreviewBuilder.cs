@@ -188,7 +188,7 @@ namespace RemuxForge.Core.Pipeline
             bool deepAudioRequired;
             bool processingPossible;
 
-            deepAudioRequired = record.DeepAnalysisApplied && record.DeepAnalysisMap != null && record.DeepAnalysisMap.Operations.Count > 0 && !options.SubOnly;
+            deepAudioRequired = record.DeepAnalysisApplied && record.DeepAnalysisMap != null && (record.DeepAnalysisMap.Operations.Count > 0 || record.DeepAnalysisMap.LanguageAudioOffsetMs != 0) && !options.SubOnly;
             processingPossible = options.AudioProcessingScope != "disabled" || options.AudioSourceFillThresholdMs > 0 || deepAudioRequired;
             if (!processingPossible || string.IsNullOrEmpty(options.AudioFormat))
             {

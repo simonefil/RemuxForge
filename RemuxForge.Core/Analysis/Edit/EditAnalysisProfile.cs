@@ -100,34 +100,9 @@ namespace RemuxForge.Core.Analysis.Edit
         public const int AUDIO_HOLD_SAMPLES = 30;
 
         /// <summary>
-        /// Finestra di correlazione dell'inviluppo, in millisecondi
-        /// </summary>
-        public const double AUDIO_WINDOW_MS = 20000.0;
-
-        /// <summary>
-        /// Quanto stare lontani dal confine quando si misura lo scalino audio
-        /// </summary>
-        public const double AUDIO_GUARD_MS = 3000.0;
-
-        /// <summary>
         /// Semiampiezza della scansione attorno all'offset video
         /// </summary>
         public const double AUDIO_SCAN_RADIUS_MS = 1200.0;
-
-        /// <summary>
-        /// Passo della scansione dei ritardi audio
-        /// </summary>
-        public const double AUDIO_SCAN_STEP_MS = 5.0;
-
-        /// <summary>
-        /// Due finestre dello stesso pianoro devono dare lo stesso offset entro questo scarto
-        /// </summary>
-        public const double AUDIO_AGREEMENT_MS = 60.0;
-
-        /// <summary>
-        /// Sotto questa frazione del dichiarato lo scalino audio non c'è
-        /// </summary>
-        public const double AUDIO_MIN_STEP_RATIO = 0.5;
 
         #endregion
 

@@ -339,6 +339,7 @@ namespace RemuxForge.Core.Models
                 return result;
 
             result.InitialDelayMs = source.InitialDelayMs;
+            result.LanguageAudioOffsetMs = source.LanguageAudioOffsetMs;
             result.StretchFactor = source.StretchFactor ?? "";
             result.AnalysisTimeMs = source.AnalysisTimeMs;
             if (source.Operations == null)

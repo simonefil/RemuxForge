@@ -125,7 +125,7 @@ namespace RemuxForge.Core.Audio
                 return result;
             }
 
-            result.InitialTimelineOffsetMs = this.ResolveTrackTimelineOffsetMs(isSource ? request.SourceInfo : request.LangInfo, track);
+            result.InitialTimelineOffsetMs = this.ResolveTrackTimelineOffsetMs(isSource ? request.SourceInfo : request.LangInfo, track) + (!isSource && request.LangEditMap != null ? request.LangEditMap.LanguageAudioOffsetMs : 0);
 
             if (CodecMapping.IsSpatialCodec(track))
             {
@@ -181,7 +181,7 @@ namespace RemuxForge.Core.Audio
                 result.DeepEditRender = true;
                 result.RenderRequired = true;
             }
-            else if (!isSource && (result.StretchRender || result.TimelinePolicyRenderRequired))
+            else if (!isSource && (result.StretchRender || result.TimelinePolicyRenderRequired || request.LangEditMap != null && request.LangEditMap.LanguageAudioOffsetMs != 0))
             {
                 result.RenderRequired = true;
             }
@@ -216,7 +216,7 @@ namespace RemuxForge.Core.Audio
             int sourceTrackDurationMs = this.ResolveDeclaredTrackDurationMs(sourceTrack);
             double stretchRatio = this.ResolveStretchRatio(request, out _);
             int langDurationMs;
-            int langStartMs = this.ResolveTrackTimelineOffsetMs(request.LangInfo, langTrack);
+            int langStartMs = this.ResolveTrackTimelineOffsetMs(request.LangInfo, langTrack) + (request.LangEditMap != null ? request.LangEditMap.LanguageAudioOffsetMs : 0);
 
             if (sourceDurationMs <= 0)
             {

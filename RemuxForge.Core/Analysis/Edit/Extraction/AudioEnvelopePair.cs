@@ -32,6 +32,8 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         public AudioEnvelopePair(AudioEnvelope source, AudioEnvelope language, double stretch)
         {
             this.OriginMs = source.OriginMs;
+            this.LanguageStartMs = language.OriginMs * stretch;
+            this.LanguageEndMs = (language.OriginMs + language.Count * AudioEnvelopeExtractor.STEP_MS) * stretch;
             this.Source = source.Decibel;
             this.Language = new float[this.Source.Length];
 
@@ -63,6 +65,15 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         /// Istante del primo campione della griglia comune
         /// </summary>
         public double OriginMs { get; private set; }
+
+        /// <summary>Inizio dei campioni language nel dominio source</summary>
+        public double LanguageStartMs { get; private set; }
+
+        /// <summary>Fine effettiva dei campioni language, escluso il padding della griglia</summary>
+        public double LanguageEndMs { get; private set; }
+
+        /// <summary>True quando le tracce confrontate dichiarano la stessa lingua</summary>
+        public bool SharedLanguage { get; set; }
 
         /// <summary>
         /// Energia in dB della sorgente

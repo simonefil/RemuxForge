@@ -397,6 +397,9 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public double InitialOffsetMs { get; set; }
 
+        /// <summary>Misure e compensazione audio, indipendenti dalla geometria video</summary>
+        public DeepAudioOffsetDiagnostic AudioOffset { get; set; } = new DeepAudioOffsetDiagnostic();
+
         /// <summary>
         /// Frazione del film che resta agganciata applicando la EditMap prodotta
         /// </summary>

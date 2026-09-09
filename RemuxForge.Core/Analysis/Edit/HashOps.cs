@@ -62,6 +62,31 @@ namespace RemuxForge.Core.Analysis.Edit
         #region Metodi pubblici
 
         /// <summary>
+        /// Ricava il passo CFR conservando la frazione dei PTS, oppure la mediana per una timeline VFR
+        /// </summary>
+        /// <param name="values">PTS ordinati in millisecondi</param>
+        /// <param name="precisionMs">Tolleranza di quantizzazione dei PTS nel dominio corrente</param>
+        /// <returns>Passo positivo, oppure zero per meno di due fotogrammi</returns>
+        public static double FrameStep(double[] values, double precisionMs = 1.0)
+        {
+            if (values.Length < 2)
+                return 0.0;
+            double fittedStep = (values[values.Length - 1] - values[0]) / (values.Length - 1);
+            bool constantCadence = fittedStep > 0.0;
+            for (int i = 1; i < values.Length && constantCadence; i++)
+                constantCadence = values[i] > values[i - 1] && Math.Abs(values[i] - (values[0] + i * fittedStep)) <= precisionMs;
+            if (constantCadence)
+                return fittedStep;
+
+            double[] steps = new double[values.Length - 1];
+            for (int i = 1; i < values.Length; i++)
+                steps[i - 1] = values[i] - values[i - 1];
+            Array.Sort(steps);
+            int middle = steps.Length / 2;
+            return steps.Length % 2 == 1 ? steps[middle] : (steps[middle - 1] + steps[middle]) / 2.0;
+        }
+
+        /// <summary>
         /// Indice del primo elemento non minore del valore cercato
         /// </summary>
         /// <param name="values">Sequenza crescente</param>

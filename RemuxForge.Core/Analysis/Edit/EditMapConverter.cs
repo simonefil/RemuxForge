@@ -31,6 +31,7 @@ namespace RemuxForge.Core.Analysis.Edit
         {
             EditMap result = new EditMap();
             result.InitialDelayMs = 0;
+            result.LanguageAudioOffsetMs = outcome.AudioOffset != null && outcome.AudioOffset.Accepted ? outcome.AudioOffset.LanguageOffsetMs : 0;
             result.StretchFactor = stretchFactor ?? "";
 
             double stretch = pair.Stretch;

@@ -153,6 +153,7 @@
                                         @PropertyRow(AppText.T("web.detail.stretchLabel"), Record.DeepAnalysisMap.StretchFactor)
                                     }
                                     @PropertyRow(AppText.T("web.detail.operationsLabel"), Record.DeepAnalysisMap.Operations.Count.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                                    @PropertyRow(AppText.T("web.detail.deepAudioOffsetLabel"), Utils.FormatDelay(Record.DeepAnalysisMap.LanguageAudioOffsetMs))
 
                                     @if (Record.DeepAnalysisMap.Operations.Count == 0)
                                     {

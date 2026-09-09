@@ -3,6 +3,7 @@ using RemuxForge.Core.Analysis.Edit.Detection;
 using RemuxForge.Core.Analysis.Edit.Duration;
 using RemuxForge.Core.Analysis.Edit.Extraction;
 using RemuxForge.Core.Analysis.Edit.Verification;
+using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -30,6 +31,9 @@ namespace RemuxForge.Core.Analysis.Edit
         /// Offset del primo tratto, ancorato sulla copertura complessiva
         /// </summary>
         public double InitialOffsetMs { get; set; }
+
+        /// <summary>Compensazione audio misurata dopo la decisione video</summary>
+        public DeepAudioOffsetDiagnostic AudioOffset { get; set; } = new DeepAudioOffsetDiagnostic();
 
         /// <summary>
         /// Frazione del film che resta agganciata applicando l'EditMap
@@ -135,7 +139,7 @@ namespace RemuxForge.Core.Analysis.Edit
             }
 
             // Misura le durate
-            OperationDurationRefiner operationRefiner = new OperationDurationRefiner(this._hashBackend, envelopes);
+            OperationDurationRefiner operationRefiner = new OperationDurationRefiner(this._hashBackend);
             operations = operationRefiner.Apply(pair, operations);
 
             // Prepara la scala allineata alla fase dei fotogrammi
@@ -266,7 +270,7 @@ namespace RemuxForge.Core.Analysis.Edit
 
             // Ancora la scala definitiva e misura la copertura
             double initialOffsetMs = this._coverageVerifier.Anchor(pair, operations, globalInitialOffsetMs);
-            return new EditAnalysisOutcome
+            EditAnalysisOutcome outcome = new EditAnalysisOutcome
             {
                 Operations = operations,
                 Rejected = rejected,
@@ -274,6 +278,8 @@ namespace RemuxForge.Core.Analysis.Edit
                 InitialOffsetMs = initialOffsetMs,
                 Coverage = this._coverageVerifier.Coverage(pair, operations, initialOffsetMs)
             };
+            outcome.AudioOffset = new AudioOffsetEstimator().Measure(pair, outcome, envelopes, cancellation);
+            return outcome;
         }
 
         #endregion

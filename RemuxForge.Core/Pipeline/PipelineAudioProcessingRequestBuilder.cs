@@ -31,7 +31,7 @@ namespace RemuxForge.Core.Pipeline
         {
             AudioProcessingRequest request = new AudioProcessingRequest();
             List<TrackInfo> finalSourceAudioTracks = this.ResolveFinalSourceAudioTracks(sourceTracks, sourceAudioIds, filterSourceAudio);
-            bool deepAudioRequired = record.DeepAnalysisApplied && record.DeepAnalysisMap != null && record.DeepAnalysisMap.Operations.Count > 0 && !options.SubOnly;
+            bool deepAudioRequired = record.DeepAnalysisApplied && record.DeepAnalysisMap != null && (record.DeepAnalysisMap.Operations.Count > 0 || record.DeepAnalysisMap.LanguageAudioOffsetMs != 0) && !options.SubOnly;
             bool sourceFillRequired = options.AudioSourceFillThresholdMs > 0;
             bool mandatoryLangProcessing = OptionsValidator.RequiresTimelineAudioProcessing(options, needsMerge);
 

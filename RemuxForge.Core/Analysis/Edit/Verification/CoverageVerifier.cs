@@ -55,7 +55,7 @@ namespace RemuxForge.Core.Analysis.Edit.Verification
             for (int i = 0; i < sweepCount; i++)
             {
                 double candidateMs = initialOffsetMs - EditAnalysisProfile.COVERAGE_ANCHOR_SWEEP_MS + i * EditAnalysisProfile.COVERAGE_ANCHOR_SWEEP_STEP_MS;
-                sweepFractions[i] = this.Explained(pair, indices, boundaries, offsets, candidateMs);
+                sweepFractions[i] = this.Explained(pair, indices, boundaries, offsets, candidateMs, 0);
             }
             centerMs = PeakNearest(initialOffsetMs - EditAnalysisProfile.COVERAGE_ANCHOR_SWEEP_MS,
                 EditAnalysisProfile.COVERAGE_ANCHOR_SWEEP_STEP_MS, sweepFractions, initialOffsetMs);
@@ -65,13 +65,13 @@ namespace RemuxForge.Core.Analysis.Edit.Verification
             for (int i = 0; i < coarseCount; i++)
             {
                 double candidateMs = centerMs - EditAnalysisProfile.COVERAGE_ANCHOR_FIELD_MS + i * 5.0;
-                coarseFractions[i] = this.Explained(pair, indices, boundaries, offsets, candidateMs);
+                coarseFractions[i] = this.Explained(pair, indices, boundaries, offsets, candidateMs, 0);
             }
             double bestOffsetMs = PeakNearest(centerMs - EditAnalysisProfile.COVERAGE_ANCHOR_FIELD_MS, 5.0, coarseFractions, centerMs);
 
             double[] fractions = new double[11];
             for (int i = 0; i <= 10; i++)
-                fractions[i] = this.Explained(pair, indices, boundaries, offsets, bestOffsetMs - 5.0 + i);
+                fractions[i] = this.Explained(pair, indices, boundaries, offsets, bestOffsetMs - 5.0 + i, 0);
 
             return PeakNearest(bestOffsetMs - 5.0, 1.0, fractions, bestOffsetMs);
         }
@@ -159,8 +159,9 @@ namespace RemuxForge.Core.Analysis.Edit.Verification
         /// <param name="boundaries">Confini della scala</param>
         /// <param name="offsets">Offset dei tratti</param>
         /// <param name="shiftMs">Costante da sommare a tutti gli offset</param>
+        /// <param name="radius">Tolleranza in frame: zero per ancorare, permissiva per verificare</param>
         /// <returns>Quota agganciata fra zero e uno</returns>
-        private double Explained(PairSignals pair, int[] indices, double[] boundaries, double[] offsets, double shiftMs)
+        private double Explained(PairSignals pair, int[] indices, double[] boundaries, double[] offsets, double shiftMs, int radius = EditAnalysisProfile.VERIFICATION_RADIUS)
         {
             if (indices.Length == 0)
                 return 0.0;
@@ -171,7 +172,7 @@ namespace RemuxForge.Core.Analysis.Edit.Verification
                 int segment = 0;
                 while (segment < boundaries.Length && boundaries[segment] <= timeMs)
                     segment++;
-                if (HashOps.Distance(pair, indices[i], offsets[segment] + shiftMs, EditAnalysisProfile.VERIFICATION_RADIUS) <= EditAnalysisProfile.VERIFICATION_THRESHOLD)
+                if (HashOps.Distance(pair, indices[i], offsets[segment] + shiftMs, radius) <= EditAnalysisProfile.VERIFICATION_THRESHOLD)
                     explained++;
             }
             return (double)explained / indices.Length;

@@ -197,6 +197,7 @@ namespace RemuxForge.Core.Analysis.Deep
 
                 EditMapConverter converter = new EditMapConverter();
                 result.InitialOffsetMs = outcome.InitialOffsetMs;
+                result.AudioOffset = outcome.AudioOffset;
                 result.Coverage = outcome.Coverage;
                 result.Plateaus = converter.BuildPlateaus(pair, outcome);
                 result.Operations = BuildDiagnostics(outcome.Operations);
@@ -311,7 +312,7 @@ namespace RemuxForge.Core.Analysis.Deep
             try
             {
                 AudioEnvelopeExtractor audioExtractor = new AudioEnvelopeExtractor(this._ffmpegPath, ffprobePath);
-                audioExtractor.ResolveSharedStreams(sourceFile, languageFile, ffmpegConfig.FrameExtractionTimeoutMs, out int sourceStream, out int languageStream);
+                bool sharedLanguage = audioExtractor.ResolveSharedStreams(sourceFile, languageFile, ffmpegConfig.FrameExtractionTimeoutMs, out int sourceStream, out int languageStream);
                 AudioEnvelope source = null;
                 AudioEnvelope language = null;
                 Parallel.Invoke(
@@ -319,11 +320,11 @@ namespace RemuxForge.Core.Analysis.Deep
                     () => language = audioExtractor.Extract(languageFile, languageStream, ffmpegConfig.FrameExtractionTimeoutMs));
                 if (source.Count == 0 || language.Count == 0)
                     return null;
-                return new AudioEnvelopePair(source, language, stretch);
+                return new AudioEnvelopePair(source, language, stretch) { SharedLanguage = sharedLanguage };
             }
             catch (Exception)
             {
-                // Senza audio la catena resta corretta: perde solo il giudice sull'esistenza delle operazioni
+                // Senza audio restano la struttura video e i confini visivi, senza compensazione audio automatica
                 return null;
             }
         }

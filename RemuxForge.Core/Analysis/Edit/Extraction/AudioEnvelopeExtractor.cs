@@ -1,4 +1,5 @@
 using OpenCvSharp;
+using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Media.Ffmpeg;
 using System;
@@ -223,12 +224,15 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             Parallel.Invoke(
                 () => sourceLanguages = this.ReadStreamLanguages(sourceFile, timeoutMs),
                 () => languageLanguages = this.ReadStreamLanguages(languageFile, timeoutMs));
-            if (sourceLanguages.Count == 0 || languageLanguages.Count == 0 || string.IsNullOrEmpty(sourceLanguages[0]))
+            if (sourceLanguages.Count == 0 || languageLanguages.Count == 0)
+                return false;
+            string sourceLanguage = LanguageValidator.NormalizeToIso6392(sourceLanguages[0]);
+            if (string.IsNullOrEmpty(sourceLanguage) || sourceLanguage == "und" || sourceLanguage == "mul" || sourceLanguage == "zxx")
                 return false;
 
             for (int i = 0; i < languageLanguages.Count; i++)
             {
-                if (!string.Equals(languageLanguages[i], sourceLanguages[0], StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(LanguageValidator.NormalizeToIso6392(languageLanguages[i]), sourceLanguage, StringComparison.OrdinalIgnoreCase))
                     continue;
                 languageStream = i;
                 return true;

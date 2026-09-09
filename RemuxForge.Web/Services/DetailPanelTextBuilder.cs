@@ -437,6 +437,7 @@ namespace RemuxForge.Web.Services
                 sb.Append(AppText.F("web.detail.deepStretchLine", editMap.StretchFactor)).Append('\n');
             }
 
+            sb.Append(AppText.T("web.detail.deepAudioOffsetLabel")).Append(": ").Append(Utils.FormatDelay(editMap.LanguageAudioOffsetMs)).Append('\n');
             this.AppendEditOperations(sb, editMap.Operations);
         }
 

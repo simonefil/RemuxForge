@@ -30,6 +30,9 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public int InitialDelayMs { get; set; }
 
+        /// <summary>Compensazione fissa dell'audio language in millisecondi nativi: negativa anticipa, non modifica video o sottotitoli</summary>
+        public int LanguageAudioOffsetMs { get; set; }
+
         /// <summary>
         /// Stretch ratio logico della timeline, vuoto se nessuno
         /// </summary>

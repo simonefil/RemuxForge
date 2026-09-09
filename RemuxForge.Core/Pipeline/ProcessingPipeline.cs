@@ -628,7 +628,7 @@ namespace RemuxForge.Core.Pipeline
             {
                 if (!done && (this._opts.AudioProcessingScope != "disabled" ||
                     this._opts.AudioSourceFillThresholdMs > 0 ||
-                    (record.DeepAnalysisApplied && record.DeepAnalysisMap != null && record.DeepAnalysisMap.Operations.Count > 0 && !this._opts.SubOnly)))
+                    (record.DeepAnalysisApplied && record.DeepAnalysisMap != null && (record.DeepAnalysisMap.Operations.Count > 0 || record.DeepAnalysisMap.LanguageAudioOffsetMs != 0) && !this._opts.SubOnly)))
                 {
                     AudioProcessingRequest audioRequest = this._audioRequestBuilder.Build(record, this._opts, sourceInfo, langInfo, sourceTracks, sourceAudioIds, audioTracks, this._needsMerge, this._filterSourceAudio, effectiveAudioDelay);
                     if (string.IsNullOrEmpty(this._opts.AudioFormat) && (audioRequest.SourceTracksToProcess.Count > 0 || audioRequest.LangTracksToProcess.Count > 0))

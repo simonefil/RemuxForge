@@ -1,4 +1,5 @@
 {
+  "web.detail.deepAudioOffsetLabel": "Language audio compensation",
   "cli.error": "Error: {0}",
   "cli.helpHint": "Use -h to see all options.",
   "cli.splitError": "Split error: {0}",

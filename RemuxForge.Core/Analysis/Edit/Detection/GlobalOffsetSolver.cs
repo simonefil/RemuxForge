@@ -57,7 +57,7 @@ namespace RemuxForge.Core.Analysis.Edit.Detection
         {
             initialOffsetMs = 0.0;
             this._lastAnchors = new List<SolverAnchorDiagnostic>();
-            double languageStepMs = MedianStep(pair.LanguagePtsMs);
+            double languageStepMs = HashOps.FrameStep(pair.LanguagePtsMs, pair.Stretch);
             if (pair.Source.Count == 0 || pair.Language.Count == 0 || languageStepMs <= 0.0)
                 return new List<EditOperationCandidate>();
 
@@ -149,7 +149,7 @@ namespace RemuxForge.Core.Analysis.Edit.Detection
         /// <returns>Corrispondenze temporali ordinate</returns>
         private List<TemporalAnchor> BuildAnchors(PairSignals pair, double languageStepMs, double offsetSearchRadiusMs, CancellationToken cancellation)
         {
-            double sourceStepMs = MedianStep(pair.Source.PtsMs);
+            double sourceStepMs = HashOps.FrameStep(pair.Source.PtsMs);
             int stride = Math.Max(1, (int)Math.Round(ANCHOR_INTERVAL_MS / sourceStepMs));
             int slotCount = (pair.Source.Count + stride - 1) / stride;
             TemporalAnchor[] anchors = new TemporalAnchor[slotCount];
@@ -364,21 +364,6 @@ namespace RemuxForge.Core.Analysis.Edit.Detection
             // Una misura sbagliata di pochi fotogrammi resta una prova a favore dello stato più
             // vicino: azzerarla la rende muta e lascia decidere il vuoto invece dell'evidenza
             return EXACT_STATE_REWARD / (1.0 + Math.Abs(state - observed));
-        }
-
-        /// <summary>
-        /// Passo mediano di una sequenza di PTS
-        /// </summary>
-        private static double MedianStep(double[] values)
-        {
-            if (values.Length < 2)
-                return 0.0;
-            double[] steps = new double[values.Length - 1];
-            for (int i = 1; i < values.Length; i++)
-                steps[i - 1] = values[i] - values[i - 1];
-            Array.Sort(steps);
-            int middle = steps.Length / 2;
-            return steps.Length % 2 == 1 ? steps[middle] : (steps[middle - 1] + steps[middle]) / 2.0;
         }
 
         /// <summary>

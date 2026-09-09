@@ -7,7 +7,7 @@
     <header class="edit-map-page-header">
         <div>
             <div id="edit-map-page-title">@AppText.T("web.editMap.title")</div>
-            <div class="edit-map-page-subtitle">@Record?.EpisodeId · @AppText.T("web.detail.stretchLabel") @GetStretchLabel()</div>
+            <div class="edit-map-page-subtitle">@Record?.EpisodeId · @AppText.T("web.detail.stretchLabel") @GetStretchLabel() · @AppText.T("web.detail.deepAudioOffsetLabel") @Utils.FormatDelay(_workingMap.LanguageAudioOffsetMs)</div>
         </div>
         <div class="edit-map-page-title-actions">
             <RadzenBadge Text="@GetStateLabel()" BadgeStyle="@GetStateStyle()" />
@@ -739,7 +739,7 @@
             {
                 EditMapTimelineSegment segment = this._projection.Segments[i];
                 bool sourceFilled = this.TryResolveSourceFillRange(segment, languagePlan, out double fillSourceStartMs, out double fillSourceEndMs, out double gainDb);
-                segments.Add(new { kind = segment.Kind.ToString(), sourceStartMs = segment.SourceStartMs, sourceEndMs = segment.SourceEndMs, languageStartMs = segment.LanguageStartMs, languageEndMs = segment.LanguageEndMs, sourceFilled = sourceFilled, fillSourceStartMs = fillSourceStartMs, fillSourceEndMs = fillSourceEndMs, gainDb = gainDb });
+                segments.Add(new { kind = segment.Kind.ToString(), sourceStartMs = segment.SourceStartMs, sourceEndMs = segment.SourceEndMs, languageStartMs = segment.LanguageStartMs - this._workingMap.LanguageAudioOffsetMs, languageEndMs = segment.LanguageEndMs - this._workingMap.LanguageAudioOffsetMs, sourceFilled = sourceFilled, fillSourceStartMs = fillSourceStartMs, fillSourceEndMs = fillSourceEndMs, gainDb = gainDb });
             }
         }
         for (int i = 0; i < this._workingMap.Operations.Count; i++)
