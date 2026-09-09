@@ -1088,7 +1088,7 @@ export async function parseAudioTimelineImage(buffer) {
             if (offset + 4 > view.byteLength) throw new Error('Truncated audio timeline payload');
             const length = view.getInt32(offset, true); offset += 4;
             if (length < 1 || offset + length > view.byteLength) throw new Error('Truncated audio timeline tile');
-            const blob = new Blob([buffer.slice(offset, offset + length)], { type: 'image/png' });
+            const blob = new Blob([buffer.slice(offset, offset + length)], { type: 'image/webp' });
             tiles.push(await createImageBitmap(blob));
             offset += length;
         }

@@ -90,6 +90,30 @@ namespace RemuxForge.Web.Services
 
         #region Metodi pubblici
 
+        /// <summary>Prepara in RAM entrambe le visualizzazioni con la stessa cache e la stessa chiave degli endpoint</summary>
+        /// <param name="filePath">Media originale</param>
+        /// <param name="trackId">Traccia audio</param>
+        /// <param name="highQuality">Qualità dell'editor di precisione</param>
+        /// <param name="audioExtractor">Cache condivisa delle visualizzazioni</param>
+        /// <param name="frameAccess">Cache condivisa degli indici video</param>
+        /// <param name="cancellation">Annullamento dell'analisi</param>
+        /// <returns>Completamento della preparazione</returns>
+        public static async Task WarmAudioTimelineAsync(string filePath, int trackId, bool highQuality, AudioEnvelopeExtractor audioExtractor, VideoFrameAccessService frameAccess, CancellationToken cancellation)
+        {
+            await s_audioRequests.WaitAsync(cancellation);
+            try
+            {
+                int timeoutMs = AppSettingsService.Instance.Settings.Advanced.Ffmpeg.FrameExtractionTimeoutMs;
+                VideoFrameIndex index = await Task.Run(() => frameAccess.GetOrBuildIndex(filePath, timeoutMs, cancellation), cancellation);
+                if (double.IsFinite(index.EndPtsMs) && index.EndPtsMs > 0.0)
+                    await Task.Run(() => audioExtractor.PrepareTimeline(filePath, trackId, index.EndPtsMs, highQuality, timeoutMs, cancellation), cancellation);
+            }
+            finally
+            {
+                s_audioRequests.Release();
+            }
+        }
+
         /// <summary>
         /// Serve il contenuto di un allegato di un record metadata, per mostrarne l'anteprima
         /// </summary>

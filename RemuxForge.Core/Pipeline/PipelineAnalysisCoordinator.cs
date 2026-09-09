@@ -125,6 +125,9 @@ namespace RemuxForge.Core.Pipeline
 
         #region Metodi pubblici
 
+        /// <summary>Notifica i media disponibili prima dell'analisi temporale</summary>
+        public Action<FileProcessingRecord, MkvFileInfo, CancellationToken> MediaReady { get; set; }
+
         /// <summary>
         /// Restituisce il percorso di ffmpeg attualmente risolto
         /// </summary>
@@ -217,6 +220,9 @@ namespace RemuxForge.Core.Pipeline
             }
 
             speedCorrectionMode = this._opts.SpeedCorrectionMode != null ? this._opts.SpeedCorrectionMode : Options.SPEED_CORRECTION_OFF;
+
+            if (!done && sourceInfo != null && langInfo != null)
+                this.MediaReady?.Invoke(record, langInfo, cancellationToken);
 
             // Applica la correzione manuale quando non è attiva la deep analysis
             if (!done && sourceInfo != null && langInfo != null && !this._opts.DeepAnalysis && speedCorrectionMode == Options.SPEED_CORRECTION_MANUAL)

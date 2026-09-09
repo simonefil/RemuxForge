@@ -1,12 +1,15 @@
 using RemuxForge.Core.Audio;
+using RemuxForge.Core.Analysis.Edit.Extraction;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Media;
 using RemuxForge.Core.Pipeline;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace RemuxForge.Web.Services
 {
@@ -47,6 +50,15 @@ namespace RemuxForge.Web.Services
         /// </summary>
         private CancellationTokenSource _operationCancellation;
 
+        /// <summary>Una sola preparazione audio in background lascia capacità agli editor aperti</summary>
+        private readonly SemaphoreSlim _audioWarmup = new SemaphoreSlim(1, 1);
+
+        /// <summary>Cache delle visualizzazioni associata alla scansione corrente</summary>
+        private readonly AudioEnvelopeExtractor _audioExtractor;
+
+        /// <summary>Annulla anche le preparazioni accodate quando parte un nuovo scan</summary>
+        private CancellationTokenSource _audioCacheCancellation = new CancellationTokenSource();
+
         #endregion
 
         #region Costruttore
@@ -54,14 +66,32 @@ namespace RemuxForge.Web.Services
         /// <summary>
         /// Costruttore
         /// </summary>
-        public MergeOrchestrator() : base(AppText.T("web.merge.ready"), false)
+        /// <param name="audioExtractor">Cache RAM condivisa con gli endpoint audio</param>
+        /// <param name="frameAccess">Indici video condivisi con gli editor</param>
+        public MergeOrchestrator(AudioEnvelopeExtractor audioExtractor, VideoFrameAccessService frameAccess) : base(AppText.T("web.merge.ready"), false)
         {
+            this._audioExtractor = audioExtractor;
             this._pipeline = new ProcessingPipeline();
             this._records = new List<FileProcessingRecord>();
             this._scannedFileCount = 0;
             this._editMapLock = new object();
             this._options = new Options();
             this._operationCancellation = null;
+
+            this._pipeline.OnAnalysisMediaReady += (record, languageTracks, cancellation) =>
+            {
+                List<MediaSource> media = new List<MediaSource>
+                {
+                    new MediaSource(record.SourceFilePath, new List<TrackInfo>(record.SourceAudioTracks)),
+                    new MediaSource(record.LangFilePath, new List<TrackInfo>(languageTracks))
+                };
+                CancellationTokenSource warmupCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation, this._audioCacheCancellation.Token);
+                _ = Task.Run(async () =>
+                {
+                    using (warmupCancellation)
+                        await this.WarmAudioTimelinesAsync(media, audioExtractor, frameAccess, warmupCancellation.Token);
+                });
+            };
 
             // Abilita file log se configurato via env var
             string logFilePath = Environment.GetEnvironmentVariable("REMUXFORGE_LOG_FILE");
@@ -209,6 +239,11 @@ namespace RemuxForge.Web.Services
             }
             if (!this.TryBeginOperation())
                 return;
+
+            this._audioCacheCancellation.Cancel();
+            this._audioCacheCancellation.Dispose();
+            this._audioCacheCancellation = new CancellationTokenSource();
+            this._audioExtractor.ClearTimelineCache();
 
             Thread thread = new Thread(() =>
             {
@@ -903,6 +938,57 @@ namespace RemuxForge.Web.Services
         #endregion
 
         #region Metodi privati
+
+        /// <summary>Prepara prima le tracce iniziali dei due lati, poi le alternative, senza bloccare l'analisi video</summary>
+        /// <param name="media">Snapshot dei file e delle tracce selezionabili</param>
+        /// <param name="audioExtractor">Cache condivisa delle visualizzazioni</param>
+        /// <param name="frameAccess">Cache condivisa degli indici</param>
+        /// <param name="cancellation">Annullamento dell'analisi</param>
+        /// <returns>Completamento della preparazione facoltativa</returns>
+        private async Task WarmAudioTimelinesAsync(List<MediaSource> media, AudioEnvelopeExtractor audioExtractor, VideoFrameAccessService frameAccess, CancellationToken cancellation)
+        {
+            bool acquired = false;
+            try
+            {
+                await this._audioWarmup.WaitAsync(cancellation);
+                acquired = true;
+                int trackCount = 0;
+                foreach (MediaSource source in media)
+                    trackCount = Math.Max(trackCount, source.AudioTracks.Count);
+                for (int i = 0; i < trackCount; i++)
+                {
+                    foreach (bool highQuality in new bool[] { false, true })
+                    {
+                        foreach (MediaSource source in media)
+                        {
+                            cancellation.ThrowIfCancellationRequested();
+                            if (i >= source.AudioTracks.Count)
+                                continue;
+                            try
+                            {
+                                await MediaEndpoints.WarmAudioTimelineAsync(source.FilePath, source.AudioTracks[i].Id, highQuality, audioExtractor, frameAccess, cancellation);
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                throw;
+                            }
+                            catch (Exception exception)
+                            {
+                                this.AppendLog("Anteprima audio non preparata: " + Path.GetFileName(source.FilePath) + " — " + exception.Message);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                if (acquired)
+                    this._audioWarmup.Release();
+            }
+        }
 
         /// <summary>
         /// Restituisce record originali per una lista di indici, senza duplicati

@@ -170,6 +170,9 @@ namespace RemuxForge.Core.Pipeline
         /// </summary>
         public event Action<FileProcessingRecord> OnFileUpdated;
 
+        /// <summary>Media pronti per preparazioni parallele, prima dell'analisi temporale</summary>
+        public event Action<FileProcessingRecord, List<TrackInfo>, System.Threading.CancellationToken> OnAnalysisMediaReady;
+
         #endregion
 
         #region Metodi pubblici
@@ -381,6 +384,14 @@ namespace RemuxForge.Core.Pipeline
         public void AnalyzeFile(FileProcessingRecord record, System.Threading.CancellationToken cancellationToken = default)
         {
             PipelineAnalysisCoordinator coordinator = new PipelineAnalysisCoordinator(this._opts, this._needsMerge, this._ffmpegPath, this._frameSyncService, this._trackMapper, this._diagnosticsWriter, this.GetCachedFileInfo, this.SetupLogRedirect, this.ClearLogRedirect, this.OnFileUpdated, this.BuildMergeCommand, this._toolPathResolver);
+            if (this.OnAnalysisMediaReady != null)
+            {
+                coordinator.MediaReady = (current, language, cancellation) =>
+                {
+                    this._trackMapper.CollectLanguageTracks(current, language.Tracks, this._mkvService, this._opts, this._codecPatterns, out List<TrackInfo> audioTracks, out _);
+                    this.OnAnalysisMediaReady?.Invoke(current, audioTracks, cancellation);
+                };
+            }
             try
             {
                 coordinator.AnalyzeFile(record, cancellationToken);

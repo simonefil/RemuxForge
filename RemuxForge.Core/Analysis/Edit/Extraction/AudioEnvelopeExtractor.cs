@@ -1,4 +1,6 @@
 using OpenCvSharp;
+using SkiaSharp;
+using ZstdSharp;
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Media.Ffmpeg;
@@ -95,11 +97,6 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         /// </summary>
         private const int SPECTROGRAM_MAXIMUM_WINDOW = 2048;
 
-        /// <summary>
-        /// Byte oltre i quali le visualizzazioni meno recenti vengono scartate
-        /// </summary>
-        private const long TIMELINE_CACHE_LIMIT_BYTES = 256L * 1024L * 1024L;
-
         #endregion
 
         #region Variabili di istanza
@@ -120,14 +117,9 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         private readonly Dictionary<string, AudioTimelineCacheEntry> _timelines;
 
         /// <summary>
-        /// Ordine di utilizzo delle visualizzazioni in cache, dalla più recente
-        /// </summary>
-        private readonly LinkedList<string> _timelineOrder;
-
-        /// <summary>
         /// Calcoli in corso, per far attendere le richieste gemelle invece di ripetere l'estrazione
         /// </summary>
-        private readonly Dictionary<string, Lazy<AudioTimelinePair>> _timelinesInFlight;
+        private readonly Dictionary<string, Lazy<AudioTimelineCacheEntry>> _timelinesInFlight;
 
         /// <summary>
         /// Byte occupati dalle visualizzazioni in cache
@@ -148,8 +140,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             this._ffmpegPath = ffmpegPath ?? "";
             this._ffprobePath = ffprobePath ?? "";
             this._timelines = new Dictionary<string, AudioTimelineCacheEntry>(StringComparer.Ordinal);
-            this._timelineOrder = new LinkedList<string>();
-            this._timelinesInFlight = new Dictionary<string, Lazy<AudioTimelinePair>>(StringComparer.Ordinal);
+            this._timelinesInFlight = new Dictionary<string, Lazy<AudioTimelineCacheEntry>>(StringComparer.Ordinal);
         }
 
         #endregion
@@ -254,37 +245,29 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         /// <returns>Coppia inviluppo/spettrogramma della traccia</returns>
         public AudioTimelinePair GetOrGenerateTimeline(string filePath, int trackId, double durationMs, bool highQuality, int timeoutMs, CancellationToken cancellationToken)
         {
-            string key = BuildTimelineCacheKey(filePath, trackId, durationMs, highQuality);
-            Lazy<AudioTimelinePair> pending;
+            return this.GetOrGenerateCachedTimeline(filePath, trackId, durationMs, highQuality, timeoutMs, cancellationToken).Restore();
+        }
+
+        /// <summary>Prepara la cache compressa senza ricostruire gli array della waveform</summary>
+        /// <param name="filePath">File multimediale</param>
+        /// <param name="trackId">ID della traccia</param>
+        /// <param name="durationMs">Durata rappresentata</param>
+        /// <param name="highQuality">Qualità richiesta</param>
+        /// <param name="timeoutMs">Timeout dei comandi</param>
+        /// <param name="cancellationToken">Annullamento della preparazione</param>
+        public void PrepareTimeline(string filePath, int trackId, double durationMs, bool highQuality, int timeoutMs, CancellationToken cancellationToken)
+        {
+            this.GetOrGenerateCachedTimeline(filePath, trackId, durationMs, highQuality, timeoutMs, cancellationToken);
+        }
+
+        /// <summary>Svuota la cache e impedisce ai calcoli precedenti di reinserire risultati</summary>
+        public void ClearTimelineCache()
+        {
             lock (this._timelines)
             {
-                if (this._timelines.TryGetValue(key, out AudioTimelineCacheEntry cached))
-                {
-                    this._timelineOrder.Remove(cached.Node);
-                    this._timelineOrder.AddFirst(cached.Node);
-                    return cached.Timeline;
-                }
-
-                if (!this._timelinesInFlight.TryGetValue(key, out pending))
-                {
-                    pending = new Lazy<AudioTimelinePair>(() => this.GenerateTimelineForTrackId(filePath, trackId, durationMs, highQuality, timeoutMs, cancellationToken), LazyThreadSafetyMode.ExecutionAndPublication);
-                    this._timelinesInFlight.Add(key, pending);
-                }
-            }
-
-            try
-            {
-                AudioTimelinePair result = pending.Value;
-                this.CacheTimeline(key, result);
-                return result;
-            }
-            finally
-            {
-                lock (this._timelines)
-                {
-                    if (this._timelinesInFlight.TryGetValue(key, out Lazy<AudioTimelinePair> current) && ReferenceEquals(current, pending))
-                        this._timelinesInFlight.Remove(key);
-                }
+                this._timelines.Clear();
+                this._timelinesInFlight.Clear();
+                this._timelineCacheBytes = 0;
             }
         }
 
@@ -387,7 +370,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
 
                 double originMs = this.ReadOriginMs(filePath, selector, sampleRate, timeoutMs);
                 AudioTimelineWaveform waveform = new AudioTimelineWaveform(stepMs, originMs, peak, minimum.ToArray(), maximum.ToArray());
-                AudioTimelineImage image = new AudioTimelineImage(tileWidth, tileHeight, millisecondsPerPixel, tileDurationMs, originMs, spectrogram.Complete(cancellationToken));
+                AudioTimelineImage image = new AudioTimelineImage(tileWidth / 2, tileHeight, millisecondsPerPixel * 2.0, tileDurationMs, originMs, spectrogram.Complete(cancellationToken));
                 return new AudioTimelinePair(waveform, image);
             }
             catch (Exception)
@@ -529,33 +512,51 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                 + "|" + (highQuality ? "high" : "low");
         }
 
-        /// <summary>
-        /// Inserisce la visualizzazione in cache scartando le meno recenti oltre il budget
-        /// </summary>
-        /// <param name="key">Chiave della visualizzazione</param>
-        /// <param name="timeline">Visualizzazione calcolata</param>
-        private void CacheTimeline(string key, AudioTimelinePair timeline)
+        /// <summary>Accorpa i calcoli concorrenti e conserva soltanto il risultato compresso fino al rescan</summary>
+        /// <param name="filePath">File multimediale</param>
+        /// <param name="trackId">ID della traccia</param>
+        /// <param name="durationMs">Durata rappresentata</param>
+        /// <param name="highQuality">Qualità richiesta</param>
+        /// <param name="timeoutMs">Timeout dei comandi</param>
+        /// <param name="cancellationToken">Annullamento della richiesta</param>
+        /// <returns>Visualizzazione compressa</returns>
+        private AudioTimelineCacheEntry GetOrGenerateCachedTimeline(string filePath, int trackId, double durationMs, bool highQuality, int timeoutMs, CancellationToken cancellationToken)
         {
-            long bytes = timeline.Waveform.Minimum.LongLength * sizeof(short) * 2L;
-            for (int index = 0; index < timeline.Image.Tiles.Count; index++)
-                bytes += timeline.Image.Tiles[index].LongLength;
-
+            cancellationToken.ThrowIfCancellationRequested();
+            string key = BuildTimelineCacheKey(filePath, trackId, durationMs, highQuality);
+            Lazy<AudioTimelineCacheEntry> pending;
             lock (this._timelines)
             {
-                if (this._timelines.ContainsKey(key))
-                    return;
-                LinkedListNode<string> node = this._timelineOrder.AddFirst(key);
-                this._timelines.Add(key, new AudioTimelineCacheEntry(timeline, node, bytes));
-                this._timelineCacheBytes += bytes;
-                while (this._timelineCacheBytes > TIMELINE_CACHE_LIMIT_BYTES && this._timelineOrder.Count > 1)
+                if (this._timelines.TryGetValue(key, out AudioTimelineCacheEntry cached))
+                    return cached;
+                if (!this._timelinesInFlight.TryGetValue(key, out pending))
                 {
-                    LinkedListNode<string> oldest = this._timelineOrder.Last;
-                    this._timelineOrder.RemoveLast();
-                    if (this._timelines.TryGetValue(oldest.Value, out AudioTimelineCacheEntry evicted))
+                    pending = new Lazy<AudioTimelineCacheEntry>(() => new AudioTimelineCacheEntry(this.GenerateTimelineForTrackId(filePath, trackId, durationMs, highQuality, timeoutMs, cancellationToken)), LazyThreadSafetyMode.ExecutionAndPublication);
+                    this._timelinesInFlight.Add(key, pending);
+                }
+            }
+
+            try
+            {
+                AudioTimelineCacheEntry result = pending.Value;
+                cancellationToken.ThrowIfCancellationRequested();
+                lock (this._timelines)
+                {
+                    // Il rescan rimuove il pending: un risultato della scansione precedente non deve rientrare
+                    if (this._timelinesInFlight.TryGetValue(key, out Lazy<AudioTimelineCacheEntry> current) && ReferenceEquals(current, pending) && !this._timelines.ContainsKey(key))
                     {
-                        this._timelineCacheBytes -= evicted.Bytes;
-                        this._timelines.Remove(oldest.Value);
+                        this._timelines.Add(key, result);
+                        this._timelineCacheBytes += result.Bytes;
                     }
+                }
+                return result;
+            }
+            finally
+            {
+                lock (this._timelines)
+                {
+                    if (this._timelinesInFlight.TryGetValue(key, out Lazy<AudioTimelineCacheEntry> current) && ReferenceEquals(current, pending))
+                        this._timelinesInFlight.Remove(key);
                 }
             }
         }
@@ -709,7 +710,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         /// Completa le colonne rimaste, attende i calcoli e codifica le tile
         /// </summary>
         /// <param name="cancellationToken">Token di annullamento</param>
-        /// <returns>Tile PNG nell'ordine temporale</returns>
+        /// <returns>Tile WebP nell'ordine temporale</returns>
         public List<byte[]> Complete(CancellationToken cancellationToken)
         {
             // La coda di FFmpeg finisce prima dell'ultima finestra: il silenzio finale chiude le colonne
@@ -726,8 +727,17 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                 intensity.SetArray(this._tiles[index]);
                 using Mat colored = new Mat();
                 Cv2.ApplyColorMap(intensity, colored, ColormapTypes.Inferno);
-                Cv2.ImEncode(".png", colored, out byte[] png);
-                encoded[index] = png;
+                // Mantiene il medesimo spettro dello spike approvato, mediando coppie di colonne dopo la colorazione
+                using Mat resized = new Mat();
+                Cv2.Resize(colored, resized, new Size(this._tileWidth / 2, this._tileHeight), 0, 0, InterpolationFlags.Area);
+                using Mat bgra = new Mat();
+                Cv2.CvtColor(resized, bgra, ColorConversionCodes.BGR2BGRA);
+                SKImageInfo info = new SKImageInfo(bgra.Width, bgra.Height, SKColorType.Bgra8888, SKAlphaType.Opaque);
+                using SKPixmap pixels = new SKPixmap(info, bgra.Data, (int)bgra.Step());
+                using SKData webp = pixels.Encode(SKEncodedImageFormat.Webp, 75);
+                if (webp == null)
+                    throw new InvalidOperationException("Codifica WebP dello spettrogramma non riuscita");
+                encoded[index] = webp.ToArray();
             });
 
             result.AddRange(encoded);
@@ -920,7 +930,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
     }
 
     /// <summary>
-    /// Visualizzazione audio completa suddivisa in tile PNG ad alta risoluzione
+    /// Visualizzazione audio completa suddivisa in tile WebP ad alta risoluzione
     /// </summary>
     public class AudioTimelineImage
     {
@@ -963,7 +973,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         public double OriginMs { get; private set; }
 
         /// <summary>
-        /// Tile PNG ordinate temporalmente
+        /// Tile WebP ordinate temporalmente
         /// </summary>
         public List<byte[]> Tiles { get; private set; }
     }
@@ -1016,38 +1026,80 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
     /// </summary>
     internal sealed class AudioTimelineCacheEntry
     {
+        #region Variabili di classe
+
+        /// <summary>Unico buffer persistente della waveform, con byte riordinati e compressi Zstd</summary>
+        private readonly byte[] _waveform;
+        /// <summary>Numero di bucket originali</summary>
+        private readonly int _pointCount;
+        /// <summary>Passo temporale originale dei bucket</summary>
+        private readonly double _stepMs;
+        /// <summary>Origine della traccia nel contenitore</summary>
+        private readonly double _originMs;
+        /// <summary>Picco globale originale</summary>
+        private readonly short _peak;
+        /// <summary>Tile WebP condivise fra le richieste</summary>
+        private readonly AudioTimelineImage _image;
+
+        #endregion
+
         #region Costruttore
 
-        /// <summary>
-        /// Costruttore
-        /// </summary>
-        /// <param name="timeline">Visualizzazione calcolata</param>
-        /// <param name="node">Nodo nell'ordine di utilizzo</param>
-        /// <param name="bytes">Byte occupati</param>
-        public AudioTimelineCacheEntry(AudioTimelinePair timeline, LinkedListNode<string> node, long bytes)
+        /// <summary>Comprime senza perdita i minimi e i massimi a risoluzione originale</summary>
+        /// <param name="timeline">Visualizzazione appena calcolata</param>
+        public AudioTimelineCacheEntry(AudioTimelinePair timeline)
         {
-            this.Timeline = timeline;
-            this.Node = node;
-            this.Bytes = bytes;
+            AudioTimelineWaveform waveform = timeline.Waveform;
+            this._pointCount = waveform.Minimum.Length;
+            this._stepMs = waveform.MillisecondsPerPoint;
+            this._originMs = waveform.OriginMs;
+            this._peak = waveform.Peak;
+            this._image = timeline.Image;
+            byte[] shuffled = new byte[checked(this._pointCount * 4)];
+            int values = this._pointCount * 2;
+            for (int i = 0; i < this._pointCount; i++)
+            {
+                shuffled[i] = unchecked((byte)waveform.Minimum[i]);
+                shuffled[i + values] = unchecked((byte)(waveform.Minimum[i] >> 8));
+                shuffled[i + this._pointCount] = unchecked((byte)waveform.Maximum[i]);
+                shuffled[i + this._pointCount + values] = unchecked((byte)(waveform.Maximum[i] >> 8));
+            }
+            using Compressor compressor = new Compressor(9);
+            this._waveform = compressor.Wrap(shuffled).ToArray();
+            this.Bytes = this._waveform.LongLength;
+            foreach (byte[] tile in this._image.Tiles)
+                this.Bytes += tile.LongLength;
+        }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>Ricostruisce gli array solo per la richiesta corrente, senza trattenerli in cache</summary>
+        /// <returns>Visualizzazione con campioni identici agli originali</returns>
+        public AudioTimelinePair Restore()
+        {
+            using Decompressor decompressor = new Decompressor();
+            byte[] shuffled = new byte[checked(this._pointCount * 4)];
+            int length = decompressor.Unwrap(this._waveform, shuffled);
+            if (length != shuffled.Length)
+                throw new InvalidDataException("Dimensione della waveform decompressa non valida");
+            short[] minimum = new short[this._pointCount];
+            short[] maximum = new short[this._pointCount];
+            int values = this._pointCount * 2;
+            for (int i = 0; i < this._pointCount; i++)
+            {
+                minimum[i] = unchecked((short)(shuffled[i] | (shuffled[i + values] << 8)));
+                maximum[i] = unchecked((short)(shuffled[i + this._pointCount] | (shuffled[i + this._pointCount + values] << 8)));
+            }
+            return new AudioTimelinePair(new AudioTimelineWaveform(this._stepMs, this._originMs, this._peak, minimum, maximum), this._image);
         }
 
         #endregion
 
         #region Proprietà
 
-        /// <summary>
-        /// Visualizzazione calcolata
-        /// </summary>
-        public AudioTimelinePair Timeline { get; private set; }
-
-        /// <summary>
-        /// Nodo nell'ordine di utilizzo
-        /// </summary>
-        public LinkedListNode<string> Node { get; private set; }
-
-        /// <summary>
-        /// Byte occupati
-        /// </summary>
+        /// <summary>Byte compressi delle waveform e delle immagini</summary>
         public long Bytes { get; private set; }
 
         #endregion
