@@ -297,13 +297,16 @@ namespace RemuxForge.Core.Media.Ffmpeg
                     filterChain = "crop=ih*4/3:ih";
                 }
             }
+            // fast_bilinear su x86 non e' un arrotondamento diverso ma proprio un altro algoritmo,
+            // e nessun flag lo riporta sul percorso scalare di ARM: serve un kernel che lo faccia
+            string scaleChain = FfmpegFilters.LUMA_PLANE_FULL_DEPTH + ",scale=w='trunc(iw*sar/2)*2':h=ih:flags=bicubic+accurate_rnd,setsar=1,scale=" + resolution + ":flags=bicubic+accurate_rnd,format=gray";
             if (!string.IsNullOrEmpty(filterChain))
             {
-                filterChain = filterChain + ",scale=w='trunc(iw*sar/2)*2':h=ih:flags=fast_bilinear,setsar=1,scale=" + resolution + ":flags=fast_bilinear,format=gray";
+                filterChain = filterChain + "," + scaleChain;
             }
             else
             {
-                filterChain = "scale=w='trunc(iw*sar/2)*2':h=ih:flags=fast_bilinear,setsar=1,scale=" + resolution + ":flags=fast_bilinear,format=gray";
+                filterChain = scaleChain;
             }
 
             filterChain = filterChain + ",showinfo";

@@ -193,9 +193,9 @@ namespace RemuxForge.Core.Analysis.Edit
                     operation.ChangePointEquivalentEndMs = refined.EquivalentBoundaryEndMs;
                     operation.TimestampMs = refined.NextAfterLastMs;
 
-                    // Fra posizioni equivalenti l'estremo è cieco: comanda la dissolvenza al nero
+                    // Dentro la finestra cercata comanda la dissolvenza al nero, non l'estremo
                     double? equivalentRunStartMs = this._blackRunRules.FindRunStartInRange(pair, envelopes,
-                        refined.EquivalentBoundaryStartMs, refined.EquivalentBoundaryEndMs,
+                        windowStartMs, windowEndMs,
                         operation.OffsetBeforeMs, operation.OffsetAfterMs, operation.DurationMs);
                     if (equivalentRunStartMs.HasValue)
                     {

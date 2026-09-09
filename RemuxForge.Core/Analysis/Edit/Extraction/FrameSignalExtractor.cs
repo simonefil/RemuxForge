@@ -1,4 +1,5 @@
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Media.Ffmpeg;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
 using System;
@@ -264,6 +265,8 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                     ":" + left.ToString(CultureInfo.InvariantCulture) + ":" + top.ToString(CultureInfo.InvariantCulture));
             }
 
+            filters.Add(FfmpegFilters.LUMA_PLANE);
+            filters.Add(FfmpegFilters.LUMA_FULL_RANGE);
             if (geometry.UseNormalizedActiveViewport)
             {
                 string leftFraction = geometry.ViewportLeft.ToString("0.########", CultureInfo.InvariantCulture);
@@ -274,7 +277,9 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             }
             else
             {
-                filters.Add("scale=iw*sar:ih");
+                // accurate_rnd disattiva l'arrotondamento veloce della SIMD x86, che altrimenti
+                // scosta i pixel di uno rispetto al percorso scalare di ARM
+                filters.Add("scale=iw*sar:ih:flags=bicubic+accurate_rnd");
                 if (geometry.UseCentralSquare)
                 {
                     filters.Add("crop=min(iw\\,ih):min(iw\\,ih):(iw-min(iw\\,ih))/2:(ih-min(iw\\,ih))/2");
@@ -288,7 +293,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                     }
                 }
             }
-            filters.Add("scale=" + FrameSignals.SIDE.ToString(CultureInfo.InvariantCulture) + ":" + FrameSignals.SIDE.ToString(CultureInfo.InvariantCulture) + ":flags=area");
+            filters.Add("scale=" + FrameSignals.SIDE.ToString(CultureInfo.InvariantCulture) + ":" + FrameSignals.SIDE.ToString(CultureInfo.InvariantCulture) + ":flags=area+accurate_rnd");
             filters.Add("format=gray");
             if (withShowInfo)
                 filters.Add("showinfo");

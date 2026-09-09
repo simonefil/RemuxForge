@@ -237,20 +237,19 @@ namespace RemuxForge.Core.Analysis.Edit
                 }
             }
 
-            const double CELL_PIXELS = THUMB_BLOCK * THUMB_BLOCK;
-            double total = 0.0;
-            double totalSquares = 0.0;
+            // 144 volte la somma dei quadrati meno il quadrato della somma è il numeratore esatto
+            // della varianza: in intero lo riproduce anche chi i double non li ha
+            long cellTotal = 0;
+            long cellSquares = 0;
             for (int i = 0; i < THUMB_PIXELS; i++)
             {
-                double value = sums[i] / CELL_PIXELS;
-                total += value;
-                totalSquares += value * value;
+                cellTotal += sums[i];
+                cellSquares += (long)sums[i] * sums[i];
                 thumbPixels.Add((byte)(sums[i] / (THUMB_BLOCK * THUMB_BLOCK)));
             }
 
-            double mean = total / THUMB_PIXELS;
-            lumaMean.Add((float)((double)lumaSum / FRAME_BYTES));
-            thumbStd.Add((float)Math.Sqrt(Math.Max(totalSquares / THUMB_PIXELS - mean * mean, 0.0)));
+            lumaMean.Add((float)lumaSum / FRAME_BYTES);
+            thumbStd.Add(MathF.Sqrt((float)(THUMB_PIXELS * cellSquares - cellTotal * cellTotal)) / FRAME_BYTES);
         }
 
         #endregion

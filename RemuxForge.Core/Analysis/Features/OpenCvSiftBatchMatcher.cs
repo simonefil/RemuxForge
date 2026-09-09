@@ -172,6 +172,12 @@ namespace RemuxForge.Core.Analysis.Features
                     }, matcher => matcher.Dispose());
                 }
 
+                // Le celle si accodano in ordine di completamento dei thread: senza un ordine
+                // canonico il consenso a valle sceglie un cluster diverso a ogni esecuzione
+                result.AcceptedPairs.Sort((left, right) => left.SourceAnchorIndex != right.SourceAnchorIndex ?
+                    left.SourceAnchorIndex.CompareTo(right.SourceAnchorIndex) :
+                    left.LanguageAnchorIndex.CompareTo(right.LanguageAnchorIndex));
+
                 result.MatchingMs = stopwatch.ElapsedMilliseconds;
                 result.DescriptorMatchingMs = (long)Math.Round(descriptorMatchingTicks * 1000.0 / Stopwatch.Frequency);
                 result.GeometryMs = (long)Math.Round(geometryTicks * 1000.0 / Stopwatch.Frequency);

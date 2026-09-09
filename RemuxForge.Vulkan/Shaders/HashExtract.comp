@@ -1,5 +1,8 @@
 #version 450
 
+// Le somme di quadrati arrivano a mille miliardi: servono interi a sessantaquattro bit
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 // Il quadrato di analisi e' 72x72 perche' 72 e' divisibile per otto e per nove: il gradiente
@@ -113,10 +116,9 @@ void main()
     signals[hashBase + 2u] = words[2];
     signals[hashBase + 3u] = words[3];
 
-    float thumbnailTotal = 0.0;
-    float thumbnailSquares = 0.0;
-    uint lumaSum = 0u;
-    uint thumbnailBase = parameters.frameCount * 6u + frameIndex * THUMB_WORDS;
+    uint64_t cellTotal = 0ul;
+    uint64_t cellSquares = 0ul;
+    uint thumbnailBase = parameters.frameCount * 7u + frameIndex * THUMB_WORDS;
     for (uint word = 0u; word < THUMB_WORDS; word++)
     {
         uint packed = 0u;
@@ -125,15 +127,17 @@ void main()
             uint cellSum = thumbnailCells[word * 4u + component];
             uint value = cellSum / (THUMB_BLOCK * THUMB_BLOCK);
             packed |= value << (component * 8u);
-            float preciseValue = float(cellSum) / float(THUMB_BLOCK * THUMB_BLOCK);
-            thumbnailTotal += preciseValue;
-            thumbnailSquares += preciseValue * preciseValue;
-            lumaSum += cellSum;
+            cellTotal += uint64_t(cellSum);
+            cellSquares += uint64_t(cellSum) * uint64_t(cellSum);
         }
         signals[thumbnailBase + word] = packed;
     }
-    float thumbnailMean = thumbnailTotal / float(THUMB_CELLS);
-    uint measurementBase = parameters.frameCount * 4u + frameIndex * 2u;
-    signals[measurementBase] = floatBitsToUint(float(lumaSum) / float(SIDE * SIDE));
-    signals[measurementBase + 1u] = floatBitsToUint(sqrt(max(thumbnailSquares / float(THUMB_CELLS) - thumbnailMean * thumbnailMean, 0.0)));
+
+    // Somma e numeratore della varianza escono in intero: la divisione qui non e' quella del
+    // processore, e l'ultimo passo lo fa l'host
+    uint64_t variance = uint64_t(THUMB_CELLS) * cellSquares - cellTotal * cellTotal;
+    uint measurementBase = parameters.frameCount * 4u + frameIndex * 3u;
+    signals[measurementBase] = uint(cellTotal);
+    signals[measurementBase + 1u] = uint(variance & 0xFFFFFFFFul);
+    signals[measurementBase + 2u] = uint(variance >> 32);
 }

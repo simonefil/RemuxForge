@@ -409,6 +409,7 @@ namespace RemuxForge.Vulkan.Runtime
                 SubgroupSize = subgroupProperties.subgroupSize,
                 SubgroupBallot = subgroupBallot,
                 IntegerDotProduct = integerDotFeatures.shaderIntegerDotProduct && integerDotProperties.integerDotProduct4x8BitPackedUnsignedAccelerated,
+                ShaderInt64 = features2.features.shaderInt64,
                 CooperativeMatrix = cooperativeMatrix,
                 CooperativeMatrixMSize = cooperativeMatrixMSize,
                 CooperativeMatrixNSize = cooperativeMatrixNSize,
@@ -434,6 +435,8 @@ namespace RemuxForge.Vulkan.Runtime
             List<VkUtf8String> extensions = new List<VkUtf8String>();
             if (this.Capabilities.PortabilitySubset)
                 extensions.Add(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
+            // The hash measurements sum squares that overflow thirty-two bits
+            VkPhysicalDeviceFeatures coreFeatures = new VkPhysicalDeviceFeatures { shaderInt64 = this.Capabilities.ShaderInt64 };
             VkPhysicalDeviceShaderIntegerDotProductFeatures integerDotFeatures = new VkPhysicalDeviceShaderIntegerDotProductFeatures { shaderIntegerDotProduct = this.Capabilities.IntegerDotProduct };
             VkPhysicalDeviceCooperativeMatrixFeaturesKHR cooperativeMatrixFeatures = new VkPhysicalDeviceCooperativeMatrixFeaturesKHR { cooperativeMatrix = this.Capabilities.CooperativeMatrix };
             VkPhysicalDeviceVulkan12Features features12 = new VkPhysicalDeviceVulkan12Features { timelineSemaphore = true, storageBuffer8BitAccess = this.Capabilities.CooperativeMatrix };
@@ -459,7 +462,8 @@ namespace RemuxForge.Vulkan.Runtime
                     queueCreateInfoCount = 1,
                     pQueueCreateInfos = &queueInfo,
                     enabledExtensionCount = extensionNames.Length,
-                    ppEnabledExtensionNames = extensionNames
+                    ppEnabledExtensionNames = extensionNames,
+                    pEnabledFeatures = &coreFeatures
                 };
                 this._instanceApi.vkCreateDevice(this._physicalDevice, &createInfo, null, out this._device).CheckResult();
             }

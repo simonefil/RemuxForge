@@ -1,5 +1,6 @@
 using RemuxForge.Core.Analysis.Edit.Extraction;
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Media.Ffmpeg;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -240,9 +241,12 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
                     ":" + left.ToString(CultureInfo.InvariantCulture) + ":" + top.ToString(CultureInfo.InvariantCulture));
             }
             filters.Add("fps=" + SAMPLE_FPS.ToString(CultureInfo.InvariantCulture));
-            filters.Add("scale=iw*sar:ih");
+            // Stessa catena deterministica dell'estrazione dei segnali: piano Y copiato,
+            // e accurate_rnd per non far divergere l'arrotondamento della SIMD x86
+            filters.Add(FfmpegFilters.LUMA_PLANE);
+            filters.Add("scale=iw*sar:ih:flags=bicubic+accurate_rnd");
             filters.Add("crop=min(iw\\,ih):min(iw\\,ih):(iw-min(iw\\,ih))/2:(ih-min(iw\\,ih))/2");
-            filters.Add("scale=" + CALIBRATION_SIDE.ToString(CultureInfo.InvariantCulture) + ":" + CALIBRATION_SIDE.ToString(CultureInfo.InvariantCulture) + ":flags=area");
+            filters.Add("scale=" + CALIBRATION_SIDE.ToString(CultureInfo.InvariantCulture) + ":" + CALIBRATION_SIDE.ToString(CultureInfo.InvariantCulture) + ":flags=area+accurate_rnd");
             filters.Add("format=gray");
             return string.Join(",", filters);
         }

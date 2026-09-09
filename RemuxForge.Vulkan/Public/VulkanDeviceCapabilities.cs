@@ -55,6 +55,8 @@ namespace RemuxForge.Vulkan
         public bool SubgroupBallot { get; internal set; }
         /// <summary>Gets whether the required accelerated packed unsigned integer dot-product operations are supported</summary>
         public bool IntegerDotProduct { get; internal set; }
+        /// <summary>Gets whether shaders may use 64-bit integer arithmetic</summary>
+        public bool ShaderInt64 { get; internal set; }
         /// <summary>Gets whether a compatible subgroup cooperative matrix configuration is available</summary>
         public bool CooperativeMatrix { get; internal set; }
         /// <summary>Gets the M dimension of the selected cooperative matrix configuration</summary>

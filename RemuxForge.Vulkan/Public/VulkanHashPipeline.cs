@@ -98,6 +98,10 @@ namespace RemuxForge.Vulkan
             this._context = context;
             this._runtime = runtime;
             this._lifecycleLock = new object();
+
+            // Without 64-bit integers the shader would answer different numbers instead of no answer
+            if (!runtime.Capabilities.ShaderInt64)
+                throw new NotSupportedException("The selected Vulkan device does not support 64-bit integer arithmetic in shaders");
             this._extractor = new VulkanHashExtractor(runtime);
             this._matcher = new VulkanHashMatcher(runtime);
             this._disposeCancellation = new CancellationTokenSource();

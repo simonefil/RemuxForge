@@ -78,7 +78,7 @@ namespace RemuxForge.Core.Analysis.Edit.Detection
             }
 
             List<OffsetRegime> regimes = this.BuildRegimes(anchors, path);
-            this.AddTerminalEvidence(anchors, regimes);
+            this.AddTerminalEvidence(anchors, regimes, languageStepMs);
             if (regimes.Count == 0)
                 return new List<EditOperationCandidate>();
 
@@ -106,9 +106,12 @@ namespace RemuxForge.Core.Analysis.Edit.Detection
         }
 
         /// <summary>
-        /// Conserva un ultimo pianoro breve quando prova un salto maggiore dell'ambiguità di verifica
+        /// Conserva un ultimo pianoro breve quando prova un salto che il profilo non chiama rumore
         /// </summary>
-        private void AddTerminalEvidence(IReadOnlyList<TemporalAnchor> anchors, List<OffsetRegime> regimes)
+        /// <param name="anchors">Corrispondenze temporali univoche</param>
+        /// <param name="regimes">Pianori ricavati dal percorso globale</param>
+        /// <param name="languageStepMs">Passo mediano dei fotogrammi lang</param>
+        private void AddTerminalEvidence(IReadOnlyList<TemporalAnchor> anchors, List<OffsetRegime> regimes, double languageStepMs)
         {
             if (anchors.Count < 2 || regimes.Count == 0)
                 return;
@@ -116,7 +119,12 @@ namespace RemuxForge.Core.Analysis.Edit.Detection
             int first = anchors.Count - 1;
             while (first > 0 && Math.Abs(anchors[first - 1].State - state) <= 1)
                 first--;
-            if (anchors.Count - first < 2 || Math.Abs(regimes[regimes.Count - 1].State - state) <= EditAnalysisProfile.VERIFICATION_RADIUS)
+
+            // Qui il percorso globale non ha visto nessuna discontinuità, e a scavalcarlo bastano
+            // due ancore di coda: gli stati che le fondano sono la misura più esposta al rumore di
+            // quantizzazione, e l'ambiguità di verifica è larga appena due fotogrammi. Il pianoro
+            // terminale si apre solo per un salto che il profilo non considera già rumore
+            if (anchors.Count - first < 2 || Math.Abs(regimes[regimes.Count - 1].State - state) * languageStepMs < EditAnalysisProfile.CHANGEPOINT_MIN_JUMP_MS)
                 return;
 
             OffsetRegime terminal = new OffsetRegime(state, anchors[first].TimeMs, anchors[anchors.Count - 1].TimeMs);

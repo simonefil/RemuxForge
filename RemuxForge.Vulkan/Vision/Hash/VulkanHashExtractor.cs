@@ -34,7 +34,7 @@ namespace RemuxForge.Vulkan.Vision.Hash
         /// <summary>
         /// Number of 32-bit output words produced for each frame
         /// </summary>
-        private const int SIGNAL_WORDS = 42;
+        private const int SIGNAL_WORDS = 43;
 
         /// <summary>
         /// Number of packed thumbnail bytes produced for each frame
@@ -137,10 +137,13 @@ namespace RemuxForge.Vulkan.Vision.Hash
                         int resultIndex = start + i;
                         int hashOffset = i * 4;
                         hashes[resultIndex] = new VulkanFrameHash(((ulong)records[hashOffset] << 32) | records[hashOffset + 1], ((ulong)records[hashOffset + 2] << 32) | records[hashOffset + 3]);
-                        int measurementOffset = count * 4 + i * 2;
-                        lumaMeans[resultIndex] = BitConverter.Int32BitsToSingle((int)records[measurementOffset]);
-                        thumbnailStandardDeviations[resultIndex] = BitConverter.Int32BitsToSingle((int)records[measurementOffset + 1]);
-                        int thumbnailOffset = count * 6 + i * 36;
+                        // The device divides by a multiplied reciprocal, so the floating-point step is
+                        // taken here, in the same form the processor path uses
+                        int measurementOffset = count * 4 + i * 3;
+                        ulong variance = ((ulong)records[measurementOffset + 2] << 32) | records[measurementOffset + 1];
+                        lumaMeans[resultIndex] = (float)records[measurementOffset] / FRAME_BYTES;
+                        thumbnailStandardDeviations[resultIndex] = MathF.Sqrt((float)variance) / FRAME_BYTES;
+                        int thumbnailOffset = count * 7 + i * 36;
                         int thumbnailResultOffset = resultIndex * THUMBNAIL_BYTES;
                         for (int word = 0; word < 36; word++)
                         {

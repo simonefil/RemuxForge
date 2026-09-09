@@ -95,29 +95,24 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
         private const double BOOTSTRAP_SECONDS = 180.0;
 
         /// <summary>
-        /// Intervallo fra due campioni SIFT iniziali
+        /// Intervallo fra due campioni SIFT.
+        /// A tre secondi un episodio povero di dettaglio raccoglie appena una ventina di
+        /// trasformazioni candidate, e il consenso passa con un margine di un solo match:
+        /// lì bastano le poche coppie che il matching dei descrittori sposta fra architetture
+        /// diverse per ribaltare il verdetto, e la stessa analisi accetta sul Mac e rifiuta nel
+        /// container. Il campionamento fitto porta i candidati a un centinaio e il margine da
+        /// uno a diciotto, senza spostare né la copertura né i confini delle operazioni
         /// </summary>
-        private const double BOOTSTRAP_INTERVAL_SECONDS = 3.0;
+        private const double BOOTSTRAP_INTERVAL_SECONDS = 1.5;
 
         /// <summary>
-        /// Intervallo fra due campioni SIFT quando il primo passaggio raccoglie poche ancore
+        /// Escursione di luminanza minima perché un fotogramma valga come ancora SIFT.
+        /// Una fotografia buia dirada le ancore senza togliere dettaglio, e un episodio girato
+        /// scuro ne perde abbastanza da far dipendere il consenso da una manciata di coppie:
+        /// pretendere qui la stessa escursione di una fotografia luminosa costa la copertura
+        /// proprio dove serve, mentre gli episodi ben illuminati non se ne accorgono
         /// </summary>
-        private const double BOOTSTRAP_RETRY_INTERVAL_SECONDS = 1.5;
-
-        /// <summary>
-        /// Escursione di luminanza minima perché un fotogramma valga come ancora SIFT
-        /// </summary>
-        private const double ANCHOR_MINIMUM_SPREAD = 48.0;
-
-        /// <summary>
-        /// Escursione richiesta al secondo passaggio: una fotografia buia conserva il dettaglio
-        /// </summary>
-        private const double ANCHOR_RETRY_MINIMUM_SPREAD = 24.0;
-
-        /// <summary>
-        /// Frazione delle posizioni campionate sotto la quale si ritenta la raccolta delle ancore
-        /// </summary>
-        private const double BOOTSTRAP_ANCHOR_RATIO = 0.8;
+        private const double ANCHOR_MINIMUM_SPREAD = 24.0;
 
         /// <summary>
         /// Numero minimo di match geometrici indipendenti
@@ -268,16 +263,6 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
                 () => sourceAnchors = this.ExtractBootstrapAnchors(sourceFile, sourceDurationMs, sourceProfile, sourceActive, BOOTSTRAP_INTERVAL_SECONDS, ANCHOR_MINIMUM_SPREAD, cancellationToken),
                 () => languageAnchors = this.ExtractBootstrapAnchors(languageFile, languageDurationMs, languageProfile, languageActive, BOOTSTRAP_INTERVAL_SECONDS, ANCHOR_MINIMUM_SPREAD, cancellationToken));
 
-            // Una fotografia buia dirada le ancore senza togliere dettaglio: si ritenta una sola
-            // volta con l'escursione richiesta più bassa e il campionamento fitto
-            double bootstrapSeconds = Math.Min(BOOTSTRAP_SECONDS, Math.Min(sourceDurationMs, languageDurationMs) / 1000.0);
-            int expectedAnchors = (int)(bootstrapSeconds / BOOTSTRAP_INTERVAL_SECONDS * BOOTSTRAP_ANCHOR_RATIO);
-            if (sourceAnchors.Count < expectedAnchors || languageAnchors.Count < expectedAnchors)
-            {
-                Parallel.Invoke(
-                    () => sourceAnchors = this.ExtractBootstrapAnchors(sourceFile, sourceDurationMs, sourceProfile, sourceActive, BOOTSTRAP_RETRY_INTERVAL_SECONDS, ANCHOR_RETRY_MINIMUM_SPREAD, cancellationToken),
-                    () => languageAnchors = this.ExtractBootstrapAnchors(languageFile, languageDurationMs, languageProfile, languageActive, BOOTSTRAP_RETRY_INTERVAL_SECONDS, ANCHOR_RETRY_MINIMUM_SPREAD, cancellationToken));
-            }
             result.Alignment.BootstrapExtractionMs = phaseStopwatch.ElapsedMilliseconds;
             if (sourceAnchors.Count < REQUIRED_MATCHES || languageAnchors.Count < REQUIRED_MATCHES)
                 return this.Reject(result, "Frame informativi insufficienti nei primi tre minuti");
@@ -435,7 +420,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
                 arguments.Add("-frames:v");
                 arguments.Add("1");
                 arguments.Add("-vf");
-                arguments.Add("format=gray");
+                arguments.Add(FfmpegFilters.LUMA_PLANE + "," + FfmpegFilters.LUMA_FULL_RANGE + ",format=gray");
                 arguments.Add("-f");
                 arguments.Add("rawvideo");
                 arguments.Add("-");
@@ -826,7 +811,16 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             if (bestCluster.Count < REQUIRED_MATCHES)
                 return false;
 
-            bestCluster.Sort((left, right) => right.Score.CompareTo(left.Score));
+            // List.Sort non e' stabile: a parita' di punteggio gli indici delle ancore danno
+            // l'ordine totale che la scelta greedy qui sotto pretende
+            bestCluster.Sort((left, right) =>
+            {
+                int comparison = right.Score.CompareTo(left.Score);
+                if (comparison != 0)
+                    return comparison;
+                comparison = left.SourceIndex.CompareTo(right.SourceIndex);
+                return comparison != 0 ? comparison : left.LanguageIndex.CompareTo(right.LanguageIndex);
+            });
             HashSet<int> sourceIndexes = new HashSet<int>();
             HashSet<int> languageIndexes = new HashSet<int>();
             List<GeometryCandidate> independent = new List<GeometryCandidate>();
@@ -868,7 +862,8 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
                 for (int i = 0; i < consensus.Candidates.Count; i++)
                 {
                     GeometryCandidate candidate = consensus.Candidates[i];
-                    allPairs.Add(new RefinementPair(sourceAnchors[candidate.SourceIndex], languageAnchors[candidate.LanguageIndex]));
+                    allPairs.Add(new RefinementPair(sourceAnchors[candidate.SourceIndex], languageAnchors[candidate.LanguageIndex],
+                        candidate.SourceIndex, candidate.LanguageIndex));
                 }
                 if (allPairs.Count == 0)
                     return -1.0;
@@ -883,7 +878,15 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
                 ParallelOptions options = new ParallelOptions();
                 options.MaxDegreeOfParallelism = Math.Min(allPairs.Count, ParallelismHelper.ResolveDefaultMaxDegree());
                 Parallel.For(0, allPairs.Count, options, i => allPairs[i].InitialQuality = this.PixelQuality(allPairs[i], parameters));
-                allPairs.Sort((left, right) => right.InitialQuality.CompareTo(left.InitialQuality));
+                // A parita' di qualita' il taglio qui sotto prenderebbe coppie diverse a ogni giro
+                allPairs.Sort((left, right) =>
+                {
+                    int comparison = right.InitialQuality.CompareTo(left.InitialQuality);
+                    if (comparison != 0)
+                        return comparison;
+                    comparison = left.SourceIndex.CompareTo(right.SourceIndex);
+                    return comparison != 0 ? comparison : left.LanguageIndex.CompareTo(right.LanguageIndex);
+                });
                 int trainingCount = Math.Min(8, Math.Max(3, (allPairs.Count + 1) / 2));
                 List<RefinementPair> pairs = allPairs.Take(trainingCount).ToList();
                 double[] start = (double[])parameters.Clone();
@@ -1505,8 +1508,10 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
         /// </summary>
         private sealed class RefinementPair : IDisposable
         {
-            public RefinementPair(DeepSiftVisualAnchor source, DeepSiftVisualAnchor language)
+            public RefinementPair(DeepSiftVisualAnchor source, DeepSiftVisualAnchor language, int sourceIndex, int languageIndex)
             {
+                this.SourceIndex = sourceIndex;
+                this.LanguageIndex = languageIndex;
                 this.Source = new Mat();
                 this.Language = new Mat();
                 this.SourceGradientX = new Mat();
@@ -1536,6 +1541,8 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             public byte[] SourceValues { get; }
             public float[] SourceGradientXValues { get; }
             public float[] SourceGradientYValues { get; }
+            public int SourceIndex { get; }
+            public int LanguageIndex { get; }
             public double InitialQuality { get; set; }
 
             public void Dispose()
