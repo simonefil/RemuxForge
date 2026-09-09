@@ -85,14 +85,14 @@
             <RadzenSplitterPane Min="220px">
                 <RadzenSplitter class="edit-map-row-splitter">
                     <RadzenSplitterPane Size="66.6667%" Min="540px">
-                        <div class="@GetTimelineOverlayClass()" @onclick="ClosePrecisionEditorAsync">
-                            <div class="@GetTimelineBoxClass()" role="@(_precisionEditorOpen ? "dialog" : null)" aria-modal="@(_precisionEditorOpen ? "true" : null)" aria-labelledby="@(_precisionEditorOpen ? "edit-map-precision-title" : null)" tabindex="@(_precisionEditorOpen ? "-1" : null)" @onclick:stopPropagation="true">
+                        <div class="@GetTimelineOverlayClass()">
+                            <div class="@GetTimelineBoxClass()" role="@(_precisionEditorOpen ? "dialog" : null)" aria-modal="@(_precisionEditorOpen ? "true" : null)" aria-labelledby="@(_precisionEditorOpen ? "edit-map-precision-title" : null)" data-keyboard-owner="edit-map" tabindex="@(_precisionEditorOpen ? "-1" : null)" @onclick:stopPropagation="true">
                                 @if (_precisionEditorOpen)
                                 {
                                     <div id="edit-map-precision-title" class="dialog-title edit-map-precision-title">
                                         <div>
                                             <div>@AppText.T("web.editMap.precisionTitle")</div>
-                                            <div class="edit-map-page-subtitle">@Record?.EpisodeId · @AppText.T("web.detail.stretchLabel") @GetStretchLabel()</div>
+                                            <div class="edit-map-page-subtitle">@Record?.EpisodeId · @AppText.T("web.detail.stretchLabel") @GetStretchLabel() · @AppText.T("web.detail.deepAudioOffsetLabel") @Utils.FormatDelay(_workingMap.LanguageAudioOffsetMs)</div>
                                         </div>
                                         <div class="edit-map-precision-title-actions">
                                             <span class="edit-map-selection-summary">@GetSelectionSummary()</span>

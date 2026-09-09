@@ -1,4 +1,4 @@
-<div class="dialog-overlay visible" @onclick="OnClose">
+<div class="dialog-overlay visible">
     <div class="dialog-box dialog-box-wide" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="mediainfo-dialog-title" @onclick:stopPropagation="true">
         <div id="mediainfo-dialog-title" class="dialog-title">@AppText.F("web.mediaInfo.title", Title)</div>
         <div class="dialog-body" style="max-height: 60vh; overflow-y: auto;">
@@ -6,7 +6,7 @@
         </div>
         <div class="dialog-footer">
             <RadzenButton Text="@AppText.T("web.common.copy")" Icon="content_copy" Variant="Variant.Outlined" Click="@CopyReportAsync" />
-            <RadzenButton Text="@AppText.T("web.common.close")" Icon="close" Click="@OnClose" />
+            <RadzenButton Text="@AppText.T("web.common.close")" Icon="close" class="dialog-close-button" Click="@OnClose" />
         </div>
     </div>
 </div>

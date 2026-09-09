@@ -1,6 +1,6 @@
 @inject NotificationService NotificationService
 
-<div class="dialog-overlay visible" @onclick="OnClose">
+<div class="dialog-overlay visible">
     <div class="dialog-box config-dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="config-dialog-title" @onclick:stopPropagation="true">
         <div id="config-dialog-title" class="dialog-title">@AppText.T("web.config.title")</div>
         <div class="dialog-body config-dialog-body">

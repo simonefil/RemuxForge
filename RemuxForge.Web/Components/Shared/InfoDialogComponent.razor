@@ -1,4 +1,4 @@
-<div class="dialog-overlay visible" @onclick="OnClose">
+<div class="dialog-overlay visible">
     <div class="dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="info-dialog-title" @onclick:stopPropagation="true">
         <div id="info-dialog-title" class="dialog-title">@AppText.T("web.info.title")</div>
         <div class="dialog-body">
@@ -12,7 +12,7 @@
             </table>
         </div>
         <div class="dialog-footer">
-            <RadzenButton Text="@AppText.T("web.common.close")" Icon="close" Click="@OnClose" />
+            <RadzenButton Text="@AppText.T("web.common.close")" Icon="close" class="dialog-close-button" Click="@OnClose" />
         </div>
     </div>
 </div>

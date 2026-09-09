@@ -1,4 +1,4 @@
-<div class="dialog-overlay visible" @onclick="OnClose">
+<div class="dialog-overlay visible">
     <div class="dialog-box dialog-box-compact" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="delay-dialog-title" @onclick:stopPropagation="true">
         <div id="delay-dialog-title" class="dialog-title">@AppText.F("web.delay.title", Record.EpisodeId)</div>
         <div class="dialog-body">
@@ -18,7 +18,7 @@
         </div>
         <div class="dialog-footer">
             <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@Apply" />
-            <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" />
+            <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" class="dialog-close-button" Click="@OnClose" />
         </div>
     </div>
 </div>

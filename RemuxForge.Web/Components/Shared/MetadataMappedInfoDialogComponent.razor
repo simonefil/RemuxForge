@@ -1,4 +1,4 @@
-<div class="dialog-overlay visible" @onclick="OnClose">
+<div class="dialog-overlay visible">
     <div class="dialog-box dialog-fullscreen metadata-mapped-dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="metadata-mapped-dialog-title" @onclick:stopPropagation="true">
         <div id="metadata-mapped-dialog-title" class="dialog-title">@GetTitle()</div>
         <div class="dialog-body metadata-mapped-dialog-body @(Editable ? "metadata-mapped-dialog-body-editable" : "")">

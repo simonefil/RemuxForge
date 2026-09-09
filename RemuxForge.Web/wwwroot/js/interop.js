@@ -135,12 +135,6 @@ function closeActiveDialog(dialog) {
         return true;
     }
 
-    var overlay = dialog.closest('.dialog-overlay');
-    if (overlay) {
-        overlay.click();
-        return true;
-    }
-
     return false;
 }
 

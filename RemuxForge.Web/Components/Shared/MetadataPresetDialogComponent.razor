@@ -1,7 +1,7 @@
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
-<div class="dialog-overlay visible" @onclick="OnClose">
+<div class="dialog-overlay visible">
     <div class="dialog-box dialog-fullscreen metadata-preset-dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="metadata-preset-dialog-title" @onclick:stopPropagation="true">
         <div id="metadata-preset-dialog-title" class="dialog-title">@AppText.T("web.metadata.presetDialog.title")</div>
         <div class="dialog-body metadata-rule-dialog-body">
@@ -315,7 +315,7 @@
     </div>
     @if (_functionExampleItem != null)
     {
-        <div class="metadata-function-example-backdrop" @onclick="CloseFunctionExample" @onclick:stopPropagation="true">
+        <div class="metadata-function-example-backdrop" @onclick:stopPropagation="true">
             <div class="dialog-box metadata-function-example-dialog" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="metadata-function-example-title" @onclick:stopPropagation="true">
                 <div id="metadata-function-example-title" class="dialog-title">@AppText.T("web.metadata.presetDialog.functionExampleTitle")</div>
                 <div class="dialog-body metadata-function-example-body">
@@ -343,7 +343,7 @@
     }
     @if (_textEditRequest != null)
     {
-        <div class="metadata-text-editor-backdrop" @onclick="CancelTextEditor" @onclick:stopPropagation="true">
+        <div class="metadata-text-editor-backdrop" @onclick:stopPropagation="true">
             <div class="dialog-box metadata-text-editor-dialog" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="metadata-text-editor-title" @onclick:stopPropagation="true">
                 <div id="metadata-text-editor-title" class="dialog-title">@_textEditRequest.Title</div>
                 <div class="dialog-body metadata-text-editor-body">
