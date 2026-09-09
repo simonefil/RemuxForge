@@ -112,7 +112,6 @@ namespace RemuxForge.Core.Media.Ffmpeg
             string startFormatted;
             string endFormatted;
             string resolution;
-            string filterChain;
             int frameSize = this._videoSyncConfig.FrameWidth * this._videoSyncConfig.FrameHeight;
             List<byte[]> extractedFrames = frames;
             List<string> args = new List<string>();
@@ -142,29 +141,18 @@ namespace RemuxForge.Core.Media.Ffmpeg
                     extractedFrames.Clear();
                     tsList.Clear();
 
-                    args.Add("-nostdin");
-                    args.Add("-hide_banner");
+                    FfmpegCommand command = FfmpegCommand.DecodeWithoutBanner();
                     if (useHardwareAcceleration)
-                    {
-                        args.Add("-hwaccel");
-                        args.Add(this._ffmpegConfig.HardwareAccelerationMethod);
-                    }
-                    args.Add("-ss");
-                    args.Add(startFormatted);
-                    args.Add("-i");
-                    args.Add(filePath);
-                    args.Add("-copyts");
-                    args.Add("-to");
-                    args.Add(endFormatted);
-                    args.Add("-fps_mode");
-                    args.Add(useFpsFilter ? "vfr" : "passthrough");
-
-                    filterChain = this.BuildFilterChain(targetFps, sampleIntervalSec, geometryCropToFourThree, manualCropPx, useFpsFilter, resolution);
-                    args.Add("-vf");
-                    args.Add(filterChain);
-                    args.Add("-f");
-                    args.Add("rawvideo");
-                    args.Add("-");
+                        command.HardwareAcceleration(this._ffmpegConfig);
+                    args.AddRange(command
+                        .Seek(startFormatted)
+                        .Input(filePath)
+                        .CopyTimestamps()
+                        .EndTime(endFormatted)
+                        .FrameMode(useFpsFilter ? "vfr" : "passthrough")
+                        .Filter(this.BuildFilterChain(targetFps, sampleIntervalSec, geometryCropToFourThree, manualCropPx, useFpsFilter, resolution))
+                        .ToRawVideo()
+                        .Build());
 
                     RawFrameStdoutState stdoutState = new RawFrameStdoutState(frameSize, extractedFrames);
                     processResult = ProcessRunner.RunBinaryStdout(this._ffmpegPath, args.ToArray(), stdoutState.Append, timeoutMs);
@@ -256,92 +244,30 @@ namespace RemuxForge.Core.Media.Ffmpeg
         /// <param name="useFpsFilter">Indica se la catena deve selezionare i frame secondo una frequenza o un intervallo</param>
         /// <param name="resolution">Risoluzione finale nel formato larghezza:altezza</param>
         /// <returns>Catena di filtri ffmpeg completa</returns>
-        private string BuildFilterChain(double targetFps, double sampleIntervalSec, bool geometryCropToFourThree, string manualCropPx, bool useFpsFilter, string resolution)
+        private FfmpegFilterChain BuildFilterChain(double targetFps, double sampleIntervalSec, bool geometryCropToFourThree, string manualCropPx, bool useFpsFilter, string resolution)
         {
-            string filterChain = "";
-            string manualCropFilter;
-            bool hasManualCrop;
-
+            FfmpegFilterChain chain = new FfmpegFilterChain();
             if (useFpsFilter)
             {
                 if (sampleIntervalSec > 0.0)
-                {
-                    filterChain = "select='isnan(prev_selected_t)+gte(t-prev_selected_t\\," + sampleIntervalSec.ToString("R", CultureInfo.InvariantCulture) + ")'";
-                }
+                    chain.SampleInterval(sampleIntervalSec);
                 else
-                {
-                    filterChain = "fps=fps=" + targetFps.ToString("R", CultureInfo.InvariantCulture) + ":round=near";
-                }
+                    chain.TargetFps(targetFps);
             }
 
-            hasManualCrop = this.TryBuildManualCropFilter(manualCropPx, out manualCropFilter);
-            if (hasManualCrop)
-            {
-                if (!string.IsNullOrEmpty(filterChain))
-                {
-                    filterChain = filterChain + "," + manualCropFilter;
-                }
-                else
-                {
-                    filterChain = manualCropFilter;
-                }
-            }
+            if (FfmpegFilterChain.HasAnalysisCrop(manualCropPx))
+                chain.AnalysisCrop(manualCropPx);
             else if (geometryCropToFourThree)
-            {
-                if (!string.IsNullOrEmpty(filterChain))
-                {
-                    filterChain = filterChain + ",crop=ih*4/3:ih";
-                }
-                else
-                {
-                    filterChain = "crop=ih*4/3:ih";
-                }
-            }
-            // fast_bilinear su x86 non e' un arrotondamento diverso ma proprio un altro algoritmo,
+                chain.FourThreeCrop();
+
+            // fast_bilinear su x86 non è un arrotondamento diverso ma proprio un altro algoritmo,
             // e nessun flag lo riporta sul percorso scalare di ARM: serve un kernel che lo faccia
-            string scaleChain = FfmpegFilters.LUMA_PLANE_FULL_DEPTH + ",scale=w='trunc(iw*sar/2)*2':h=ih:flags=bicubic+accurate_rnd,setsar=1,scale=" + resolution + ":flags=bicubic+accurate_rnd,format=gray";
-            if (!string.IsNullOrEmpty(filterChain))
-            {
-                filterChain = filterChain + "," + scaleChain;
-            }
-            else
-            {
-                filterChain = scaleChain;
-            }
-
-            filterChain = filterChain + ",showinfo";
-            return filterChain;
-        }
-
-        /// <summary>
-        /// Costruisce il filtro crop manuale L:R:T:B se configurato
-        /// </summary>
-        /// <param name="manualCropPx">Crop manuale in pixel</param>
-        /// <param name="filter">Filtro ffmpeg risultante</param>
-        /// <returns>True se esiste un crop manuale non nullo</returns>
-        private bool TryBuildManualCropFilter(string manualCropPx, out string filter)
-        {
-            int left;
-            int right;
-            int top;
-            int bottom;
-
-            filter = "";
-            if (!Options.TryParseAnalysisCropPx(manualCropPx, out left, out right, out top, out bottom))
-            {
-                return false;
-            }
-
-            if (left == 0 && right == 0 && top == 0 && bottom == 0)
-            {
-                return false;
-            }
-
-            filter = "crop=iw-" + left.ToString(CultureInfo.InvariantCulture) + "-" + right.ToString(CultureInfo.InvariantCulture) +
-                ":ih-" + top.ToString(CultureInfo.InvariantCulture) + "-" + bottom.ToString(CultureInfo.InvariantCulture) +
-                ":" + left.ToString(CultureInfo.InvariantCulture) +
-                ":" + top.ToString(CultureInfo.InvariantCulture);
-            return true;
+            return chain
+                .LumaPlaneFullDepth()
+                .PixelAspectScaleEven()
+                .ResizeBicubic(resolution)
+                .Gray()
+                .ShowInfo();
         }
 
         #endregion

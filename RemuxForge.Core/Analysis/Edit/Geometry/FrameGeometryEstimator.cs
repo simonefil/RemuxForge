@@ -399,34 +399,22 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             int attempts = this._ffmpegConfig.HardwareAcceleration ? 2 : 1;
             for (int attempt = 0; attempt < attempts; attempt++)
             {
-                List<string> arguments = new List<string>();
-                arguments.Add("-nostdin");
-                arguments.Add("-v");
-                arguments.Add("error");
-                if (attempt == 0 && attempts > 1 && FfmpegConfig.IsValidHardwareAccelerationMethod(this._ffmpegConfig.HardwareAccelerationMethod))
-                {
-                    arguments.Add("-hwaccel");
-                    arguments.Add(this._ffmpegConfig.HardwareAccelerationMethod);
-                }
-                arguments.Add("-ss");
-                arguments.Add((Math.Max(0.0, ptsMs) / 1000.0).ToString("0.######", CultureInfo.InvariantCulture));
-                arguments.Add("-i");
-                arguments.Add(filePath);
-                arguments.Add("-an");
-                arguments.Add("-sn");
-                arguments.Add("-dn");
-                arguments.Add("-map");
-                arguments.Add("0:v:0");
-                arguments.Add("-frames:v");
-                arguments.Add("1");
-                arguments.Add("-vf");
-                arguments.Add(FfmpegFilters.LUMA_PLANE + "," + FfmpegFilters.LUMA_FULL_RANGE + ",format=gray");
-                arguments.Add("-f");
-                arguments.Add("rawvideo");
-                arguments.Add("-");
+                FfmpegCommand command = FfmpegCommand.Decode(false);
+                // Il secondo tentativo rinuncia all'accelerazione: se la GPU non consegna il
+                // fotogramma, il percorso software lo consegna comunque
+                if (attempt == 0)
+                    command.HardwareAcceleration(this._ffmpegConfig);
+                string[] arguments = command
+                    .Seek((Math.Max(0.0, ptsMs) / 1000.0).ToString("0.######", CultureInfo.InvariantCulture))
+                    .Input(filePath)
+                    .VideoStreamOnly()
+                    .FrameLimit(1)
+                    .Filter(new FfmpegFilterChain().LumaPlane().FullRange().Gray())
+                    .ToRawVideo()
+                    .Build();
 
                 NativeFrameCollector collector = new NativeFrameCollector(expectedBytes);
-                ProcessBinaryResult run = ProcessRunner.RunBinaryStdout(this._ffmpegPath, arguments.ToArray(), collector.Append, this._ffmpegConfig.FrameExtractionTimeoutMs);
+                ProcessBinaryResult run = ProcessRunner.RunBinaryStdout(this._ffmpegPath, arguments, collector.Append, this._ffmpegConfig.FrameExtractionTimeoutMs);
                 if (run.ExitCode == 0 && collector.IsComplete)
                     return collector.Frame;
             }

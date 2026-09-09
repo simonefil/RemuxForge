@@ -182,35 +182,19 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
         /// </summary>
         private RawFrameWindow DecodeWindow(string filePath, string cropPx, double startSeconds, int durationSeconds, CancellationToken cancellationToken)
         {
-            List<string> arguments = new List<string>();
-            arguments.Add("-nostdin");
-            arguments.Add("-v");
-            arguments.Add("error");
-            if (this._ffmpegConfig.HardwareAcceleration && FfmpegConfig.IsValidHardwareAccelerationMethod(this._ffmpegConfig.HardwareAccelerationMethod))
-            {
-                arguments.Add("-hwaccel");
-                arguments.Add(this._ffmpegConfig.HardwareAccelerationMethod);
-            }
-            arguments.Add("-ss");
-            arguments.Add(startSeconds.ToString("0.###", CultureInfo.InvariantCulture));
-            arguments.Add("-i");
-            arguments.Add(filePath);
-            arguments.Add("-t");
-            arguments.Add(durationSeconds.ToString(CultureInfo.InvariantCulture));
-            arguments.Add("-an");
-            arguments.Add("-sn");
-            arguments.Add("-dn");
-            arguments.Add("-map");
-            arguments.Add("0:v:0");
-            arguments.Add("-vf");
-            arguments.Add(BuildCalibrationFilter(cropPx));
-            arguments.Add("-f");
-            arguments.Add("rawvideo");
-            arguments.Add("-");
+            string[] arguments = FfmpegCommand.Decode(false)
+                .HardwareAcceleration(this._ffmpegConfig)
+                .Seek(startSeconds.ToString("0.###", CultureInfo.InvariantCulture))
+                .Input(filePath)
+                .Duration(durationSeconds.ToString(CultureInfo.InvariantCulture))
+                .VideoStreamOnly()
+                .Filter(BuildCalibrationFilter(cropPx))
+                .ToRawVideo()
+                .Build();
 
             using (MemoryStream pixels = new MemoryStream())
             {
-                ProcessBinaryResult run = ProcessRunner.RunBinaryStdout(this._ffmpegPath, arguments.ToArray(), (buffer, count) =>
+                ProcessBinaryResult run = ProcessRunner.RunBinaryStdout(this._ffmpegPath, arguments, (buffer, count) =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     pixels.Write(buffer, 0, count);
@@ -231,24 +215,16 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
         /// <summary>
         /// Costruisce la normalizzazione di base comune a tutti i viewport candidati
         /// </summary>
-        private static string BuildCalibrationFilter(string cropPx)
+        private static FfmpegFilterChain BuildCalibrationFilter(string cropPx)
         {
-            List<string> filters = new List<string>();
-            if (Options.TryParseAnalysisCropPx(cropPx, out int left, out int right, out int top, out int bottom) && (left != 0 || right != 0 || top != 0 || bottom != 0))
-            {
-                filters.Add("crop=iw-" + left.ToString(CultureInfo.InvariantCulture) + "-" + right.ToString(CultureInfo.InvariantCulture) +
-                    ":ih-" + top.ToString(CultureInfo.InvariantCulture) + "-" + bottom.ToString(CultureInfo.InvariantCulture) +
-                    ":" + left.ToString(CultureInfo.InvariantCulture) + ":" + top.ToString(CultureInfo.InvariantCulture));
-            }
-            filters.Add("fps=" + SAMPLE_FPS.ToString(CultureInfo.InvariantCulture));
-            // Stessa catena deterministica dell'estrazione dei segnali: piano Y copiato,
-            // e accurate_rnd per non far divergere l'arrotondamento della SIMD x86
-            filters.Add(FfmpegFilters.LUMA_PLANE);
-            filters.Add("scale=iw*sar:ih:flags=bicubic+accurate_rnd");
-            filters.Add("crop=min(iw\\,ih):min(iw\\,ih):(iw-min(iw\\,ih))/2:(ih-min(iw\\,ih))/2");
-            filters.Add("scale=" + CALIBRATION_SIDE.ToString(CultureInfo.InvariantCulture) + ":" + CALIBRATION_SIDE.ToString(CultureInfo.InvariantCulture) + ":flags=area+accurate_rnd");
-            filters.Add("format=gray");
-            return string.Join(",", filters);
+            return new FfmpegFilterChain()
+                .AnalysisCrop(cropPx)
+                .SampleFps(SAMPLE_FPS)
+                .LumaPlane()
+                .PixelAspectScale()
+                .CentralSquare()
+                .ResizeArea(CALIBRATION_SIDE)
+                .Gray();
         }
 
         #endregion

@@ -1,5 +1,6 @@
 using OpenCvSharp;
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Media.Ffmpeg;
 using System;
 using System.Buffers;
 using System.Collections.Concurrent;
@@ -167,11 +168,12 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             byte[] pending = new byte[HOP * sizeof(float)];
             int pendingBytes = 0;
 
-            string[] arguments = new string[] {
-                "-nostdin", "-v", "error", "-i", filePath,
-                "-map", "0:a:" + streamIndex.ToString(CultureInfo.InvariantCulture),
-                "-ac", "1", "-ar", SAMPLE_RATE.ToString(CultureInfo.InvariantCulture),
-                "-f", "f32le", "-" };
+            string[] arguments = FfmpegCommand.Decode(false)
+                .Input(filePath)
+                .AudioStream("a:" + streamIndex.ToString(CultureInfo.InvariantCulture))
+                .MonoResampled(SAMPLE_RATE)
+                .ToFloatPcm()
+                .Build();
             ProcessBinaryResult run = ProcessRunner.RunBinaryStdout(this._ffmpegPath, arguments, (buffer, count) =>
             {
                 int consumed = 0;
@@ -333,11 +335,12 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
 
             // Niente aresample: la traccia va letta alla sua frequenza, altrimenti lo spettrogramma
             // si ferma a meta' della Nyquist dichiarata dall'editor
-            string[] arguments = new string[] {
-                "-nostdin", "-v", "error", "-i", filePath,
-                "-map", "0:" + selector,
-                "-af", "aformat=channel_layouts=mono,apad=whole_dur=" + representedSeconds + ",atrim=end=" + representedSeconds,
-                "-f", "f32le", "-" };
+            string[] arguments = FfmpegCommand.Decode(false)
+                .Input(filePath)
+                .AudioStream(selector)
+                .AudioFilter("aformat=channel_layouts=mono,apad=whole_dur=" + representedSeconds + ",atrim=end=" + representedSeconds)
+                .ToFloatPcm()
+                .Build();
 
             try
             {
@@ -420,8 +423,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             List<string> result = new List<string>();
             if (string.IsNullOrEmpty(this._ffprobePath))
                 return result;
-            ProcessResult run = ProcessRunner.Run(this._ffprobePath, new string[] {
-                "-v", "error", "-select_streams", "a", "-show_entries", "stream_tags=language", "-of", "json", filePath }, timeoutMs);
+            ProcessResult run = ProcessRunner.Run(this._ffprobePath, FfmpegCommand.Probe("a", "stream_tags=language", filePath), timeoutMs);
             if (run.ExitCode != 0)
                 return result;
 
@@ -474,9 +476,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             if (string.IsNullOrEmpty(this._ffprobePath))
                 return result;
 
-            ProcessResult run = ProcessRunner.Run(this._ffprobePath, new string[] {
-                "-v", "error", "-select_streams", streamSelector,
-                "-show_entries", "stream=start_time,initial_padding", "-of", "json", filePath }, timeoutMs);
+            ProcessResult run = ProcessRunner.Run(this._ffprobePath, FfmpegCommand.Probe(streamSelector, "stream=start_time,initial_padding", filePath), timeoutMs);
             if (run.ExitCode != 0)
                 return result;
 
@@ -568,9 +568,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             if (string.IsNullOrEmpty(this._ffprobePath))
                 return SAMPLE_RATE;
 
-            ProcessResult run = ProcessRunner.Run(this._ffprobePath, new string[] {
-                "-v", "error", "-select_streams", streamSelector,
-                "-show_entries", "stream=sample_rate", "-of", "json", filePath }, timeoutMs);
+            ProcessResult run = ProcessRunner.Run(this._ffprobePath, FfmpegCommand.Probe(streamSelector, "stream=sample_rate", filePath), timeoutMs);
             if (run.ExitCode != 0)
                 return SAMPLE_RATE;
 

@@ -210,43 +210,22 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         /// <returns>Argomenti nell'ordine atteso da ffmpeg</returns>
         private string[] BuildArguments(string filePath, FrameGeometry geometry, bool withShowInfo, double startMs, double durationMs, int frameBudget)
         {
-            List<string> result = new List<string>();
-            result.Add("-nostdin");
-            result.Add("-v");
-            result.Add(withShowInfo ? "info" : "error");
-            if (this._ffmpegConfig.HardwareAcceleration && FfmpegConfig.IsValidHardwareAccelerationMethod(this._ffmpegConfig.HardwareAccelerationMethod))
-            {
-                result.Add("-hwaccel");
-                result.Add(this._ffmpegConfig.HardwareAccelerationMethod);
-            }
+            FfmpegCommand command = FfmpegCommand.Decode(withShowInfo).HardwareAcceleration(this._ffmpegConfig);
             if (durationMs > 0.0)
-            {
-                result.Add("-copyts");
-                result.Add("-ss");
-                result.Add((Math.Max(0.0, startMs) / 1000.0).ToString("0.###", CultureInfo.InvariantCulture));
-            }
-            result.Add("-i");
-            result.Add(filePath);
+                command.CopyTimestamps().Seek((Math.Max(0.0, startMs) / 1000.0).ToString("0.###", CultureInfo.InvariantCulture));
+            command.Input(filePath);
             if (durationMs > 0.0)
             {
                 // Con -copyts i limiti di durata non si applicano più in modo prevedibile, e su
                 // un file con origine diversa da zero non esce un fotogramma: si conta e basta
-                result.Add("-frames:v");
-                result.Add(frameBudget.ToString(CultureInfo.InvariantCulture));
+                command.FrameLimit(frameBudget);
             }
-            result.Add("-an");
-            result.Add("-sn");
-            result.Add("-dn");
-            result.Add("-map");
-            result.Add("0:v:0");
-            result.Add("-fps_mode");
-            result.Add("passthrough");
-            result.Add("-vf");
-            result.Add(this.BuildFilter(geometry, withShowInfo));
-            result.Add("-f");
-            result.Add("rawvideo");
-            result.Add("-");
-            return result.ToArray();
+            return command
+                .VideoStreamOnly()
+                .FrameMode("passthrough")
+                .Filter(this.BuildFilter(geometry, withShowInfo))
+                .ToRawVideo()
+                .Build();
         }
 
         /// <summary>
@@ -255,50 +234,31 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         /// <param name="geometry">Geometria di normalizzazione</param>
         /// <param name="withShowInfo">True per accodare showinfo</param>
         /// <returns>Catena di filtri separata da virgole</returns>
-        private string BuildFilter(FrameGeometry geometry, bool withShowInfo)
+        private FfmpegFilterChain BuildFilter(FrameGeometry geometry, bool withShowInfo)
         {
-            List<string> filters = new List<string>();
-            if (Options.TryParseAnalysisCropPx(geometry.CropPx, out int left, out int right, out int top, out int bottom) && (left != 0 || right != 0 || top != 0 || bottom != 0))
-            {
-                filters.Add("crop=iw-" + left.ToString(CultureInfo.InvariantCulture) + "-" + right.ToString(CultureInfo.InvariantCulture) +
-                    ":ih-" + top.ToString(CultureInfo.InvariantCulture) + "-" + bottom.ToString(CultureInfo.InvariantCulture) +
-                    ":" + left.ToString(CultureInfo.InvariantCulture) + ":" + top.ToString(CultureInfo.InvariantCulture));
-            }
-
-            filters.Add(FfmpegFilters.LUMA_PLANE);
-            filters.Add(FfmpegFilters.LUMA_FULL_RANGE);
+            FfmpegFilterChain chain = new FfmpegFilterChain()
+                .AnalysisCrop(geometry.CropPx)
+                .LumaPlane()
+                .FullRange();
             if (geometry.UseNormalizedActiveViewport)
             {
-                string leftFraction = geometry.ViewportLeft.ToString("0.########", CultureInfo.InvariantCulture);
-                string topFraction = geometry.ViewportTop.ToString("0.########", CultureInfo.InvariantCulture);
-                string widthFraction = (geometry.ViewportRight - geometry.ViewportLeft).ToString("0.########", CultureInfo.InvariantCulture);
-                string heightFraction = (geometry.ViewportBottom - geometry.ViewportTop).ToString("0.########", CultureInfo.InvariantCulture);
-                filters.Add("crop=iw*" + widthFraction + ":ih*" + heightFraction + ":iw*" + leftFraction + ":ih*" + topFraction);
+                chain.NormalizedViewport(geometry.ViewportLeft, geometry.ViewportTop, geometry.ViewportRight, geometry.ViewportBottom);
             }
             else
             {
-                // accurate_rnd disattiva l'arrotondamento veloce della SIMD x86, che altrimenti
-                // scosta i pixel di uno rispetto al percorso scalare di ARM
-                filters.Add("scale=iw*sar:ih:flags=bicubic+accurate_rnd");
+                chain.PixelAspectScale();
                 if (geometry.UseCentralSquare)
                 {
-                    filters.Add("crop=min(iw\\,ih):min(iw\\,ih):(iw-min(iw\\,ih))/2:(ih-min(iw\\,ih))/2");
+                    chain.CentralSquare();
                     if (geometry.Zoom < 0.999999 || Math.Abs(geometry.VerticalShift) > 0.000001)
-                    {
-                        string zoom = geometry.Zoom.ToString("0.######", CultureInfo.InvariantCulture);
-                        string shift = geometry.VerticalShift.ToString("0.######", CultureInfo.InvariantCulture);
-                        filters.Add("crop=iw*" + zoom + ":ih*" + zoom + ":" +
-                            "(iw-iw*" + zoom + ")/2:" +
-                            "max(0\\,min(ih-ih*" + zoom + "\\,(ih-ih*" + zoom + ")/2+" + shift + "*ih))");
-                    }
+                        chain.Zoom(geometry.Zoom, geometry.VerticalShift);
                 }
             }
-            filters.Add("scale=" + FrameSignals.SIDE.ToString(CultureInfo.InvariantCulture) + ":" + FrameSignals.SIDE.ToString(CultureInfo.InvariantCulture) + ":flags=area+accurate_rnd");
-            filters.Add("format=gray");
+            chain.ResizeArea(FrameSignals.SIDE).Gray();
             if (withShowInfo)
-                filters.Add("showinfo");
+                chain.ShowInfo();
 
-            return string.Join(",", filters);
+            return chain;
         }
 
         /// <summary>
