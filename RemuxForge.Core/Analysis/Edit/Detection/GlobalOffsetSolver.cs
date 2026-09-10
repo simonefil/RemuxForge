@@ -331,7 +331,9 @@ namespace RemuxForge.Core.Analysis.Edit.Detection
             List<OffsetRegime> result = new List<OffsetRegime>();
             foreach (OffsetRegime regime in regimes)
             {
-                if (result.Count > 0 && Math.Abs(result[result.Count - 1].State - regime.State) <= 1)
+                // Due stati entro la tolleranza della verifica descrivono lo stesso pianoro:
+                // separarli produrrebbe un'operazione che la verifica considera ininfluente
+                if (result.Count > 0 && Math.Abs(result[result.Count - 1].State - regime.State) <= EditAnalysisProfile.VERIFICATION_RADIUS)
                 {
                     result[result.Count - 1].Merge(regime);
                     continue;
