@@ -296,6 +296,9 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
                 if (!string.IsNullOrEmpty(batch.RejectReason))
                     return this.Reject(result, batch.RejectReason);
                 phaseStopwatch.Restart();
+                // Gli indici della matrice appartengono alle liste filtrate, non alle ancore prima del SIFT
+                sourceAnchors = batch.SourceAnchors;
+                languageAnchors = batch.LanguageAnchors;
                 List<GeometryCandidate> candidates = this.BuildCandidates(batch.AcceptedPairs, sourceAnchors, languageAnchors);
                 this.PopulateCandidateDiagnostics(result.Alignment.SiftCandidateMatches, candidates);
                 if (!this.TryBuildConsensus(candidates, out GeometryConsensus consensus))
@@ -1103,7 +1106,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
         #region Metodi privati - Contratto dHash
 
         /// <summary>
-        /// Usa i match già confermati per scegliere l'affine quando il viewport indipendente non tiene e l'affine lo migliora
+        /// Confronta i viewport sulle coppie SIFT per scegliere la normalizzazione dHash
         /// </summary>
         private void ValidateDHashContract(FrameGeometryEstimationResult result, VideoGeometryProfile sourceProfile, VideoGeometryProfile languageProfile, PixelRect sourceActive, PixelRect languageActive, FrameGeometry sourceGeometry, FrameGeometry languageGeometry, List<DeepSiftVisualAnchor> sourceAnchors, List<DeepSiftVisualAnchor> languageAnchors, GeometryConsensus consensus)
         {
@@ -1144,6 +1147,8 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             result.Alignment.IndependentDHashExplainedCount = independentExplained;
             result.Alignment.AffineDHashExplainedCount = affineExplained;
             result.Alignment.UseAffineDHashViewport = independentExplained * 2 <= pairCount && affineExplained > independentExplained;
+            // Le ancore campionate ogni 1,5 secondi possono condividere la geometria senza coincidere nel tempo
+            // Il confronto orienta il viewport; l'accettazione temporale usa la copertura dell'episodio completo
             if (!result.Alignment.UseAffineDHashViewport)
                 return;
 

@@ -90,6 +90,9 @@ namespace RemuxForge.Core.Analysis.Edit.Boundary
                 int bestPixelIndex = 0;
                 for (int k = 0; k <= count; k++)
                 {
+                    // Le miniature spareggiano solo fra confini che minimizzano gli errori dHash
+                    if (unexplainedBefore[k] + unexplainedAfter[count] - unexplainedAfter[k] != best)
+                        continue;
                     double cost = pixelPrefixBefore[k] + pixelPrefixAfter[count] - pixelPrefixAfter[k];
                     if (cost < bestPixelCost)
                     {

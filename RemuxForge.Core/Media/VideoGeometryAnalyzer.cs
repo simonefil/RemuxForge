@@ -16,9 +16,9 @@ namespace RemuxForge.Core.Media
         #region Variabili statiche
 
         /// <summary>
-        /// Espressione regolare compilata per estrarre la geometria video dall'output di ffmpeg
+        /// Estrae la geometria video dai formati FFmpeg con e senza parentesi attorno a SAR e DAR
         /// </summary>
-        private static readonly Regex s_videoGeometryRegex = new Regex(@"Video:.*?(\d{2,5})x(\d{2,5})(?:[^\r\n]*?\[SAR\s+(\d+):(\d+)\s+DAR\s+(\d+):(\d+)\])?", RegexOptions.Compiled);
+        private static readonly Regex s_videoGeometryRegex = new Regex(@"Video:.*?(\d{2,5})x(\d{2,5})(?:[^\r\n]*?SAR\s+(\d+):(\d+)\s+DAR\s+(\d+):(\d+))?", RegexOptions.Compiled);
 
         #endregion
 

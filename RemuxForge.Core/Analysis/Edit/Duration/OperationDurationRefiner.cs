@@ -103,7 +103,7 @@ namespace RemuxForge.Core.Analysis.Edit.Duration
         }
 
         /// <summary>
-        /// Elimina le transizioni entro la fase di un fotogramma
+        /// Misura le durate dagli offset video raffinati ed elimina le transizioni entro la fase di un fotogramma
         /// </summary>
         /// <param name="pair">Coppia di tracce</param>
         /// <param name="operations">Operazioni video ordinate</param>
@@ -118,7 +118,9 @@ namespace RemuxForge.Core.Analysis.Edit.Duration
             bool anyRejected = false;
             foreach (EditOperationCandidate operation in operations)
             {
-                int frames = (int)Math.Round(operation.DurationMs / frameStepMs);
+                // Gli offset sono stati raffinati sui frame: la durata iniziale del solver può essere imprecisa
+                double measuredJumpMs = operation.OffsetAfterMs - operation.OffsetBeforeMs;
+                int frames = (int)Math.Round(Math.Abs(measuredJumpMs) / frameStepMs);
                 if (frames <= 1)
                 {
                     operation.RejectReason = "transizione entro la fase di un fotogramma";
@@ -126,7 +128,10 @@ namespace RemuxForge.Core.Analysis.Edit.Duration
                     anyRejected = true;
                     continue;
                 }
-                accepted.Add(operation.Clone());
+                EditOperationCandidate measured = operation.Clone();
+                measured.DurationMs = Math.Abs(measuredJumpMs);
+                measured.Kind = measuredJumpMs < 0.0 ? EditOperationKind.InsertSilence : EditOperationKind.CutSegment;
+                accepted.Add(measured);
             }
 
             if (accepted.Count == 0 || !anyRejected)

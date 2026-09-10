@@ -181,7 +181,7 @@ namespace RemuxForge.Core.Analysis.Deep
                 result.Language.FrameCount = languageSignals.Count;
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // L'audio decide dentro il nero e giudica l'esistenza delle operazioni
+                // L'audio raffina i confini nel nero e misura il residuo fisso, senza decidere la struttura video
                 phaseStopwatch.Restart();
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, AppText.T("deep.temporal.log.audioEnvelopes"));
                 ConsoleHelper.Progress(LogSection.Deep, 68, AppText.T("deep.temporal.progress.audioEnvelopes"));
