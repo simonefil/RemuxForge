@@ -20,6 +20,11 @@ namespace RemuxForge.Core.Media
         /// </summary>
         private static readonly Regex s_videoGeometryRegex = new Regex(@"Video:.*?(\d{2,5})x(\d{2,5})(?:[^\r\n]*?SAR\s+(\d+):(\d+)\s+DAR\s+(\d+):(\d+))?", RegexOptions.Compiled);
 
+        /// <summary>
+        /// Estrae tutte le geometrie dichiarate sulla riga video; FFmpeg espone per ultimo il valore effettivo del container
+        /// </summary>
+        private static readonly Regex s_videoAspectRegex = new Regex(@"SAR\s+(\d+):(\d+)\s+DAR\s+(\d+):(\d+)", RegexOptions.Compiled);
+
         #endregion
 
         #region Variabili di classe
@@ -83,6 +88,9 @@ namespace RemuxForge.Core.Media
             ProcessResult processResult;
             string output;
             Match match;
+            MatchCollection aspectMatches;
+            Match effectiveAspect;
+            int lineEnd;
             int width;
             int height;
             int sarNum = 1;
@@ -121,18 +129,20 @@ namespace RemuxForge.Core.Media
                     width = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
                     height = int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
 
-                    if (match.Groups[3].Success && match.Groups[4].Success)
+                    lineEnd = output.IndexOfAny(new char[] { '\r', '\n' }, match.Index);
+                    if (lineEnd < 0)
+                        lineEnd = output.Length;
+                    aspectMatches = s_videoAspectRegex.Matches(output.Substring(match.Index, lineEnd - match.Index));
+                    effectiveAspect = aspectMatches.Count > 0 ? aspectMatches[aspectMatches.Count - 1] : Match.Empty;
+
+                    if (effectiveAspect.Success)
                     {
-                        sarNum = int.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture);
-                        sarDen = int.Parse(match.Groups[4].Value, CultureInfo.InvariantCulture);
+                        sarNum = int.Parse(effectiveAspect.Groups[1].Value, CultureInfo.InvariantCulture);
+                        sarDen = int.Parse(effectiveAspect.Groups[2].Value, CultureInfo.InvariantCulture);
                         if (sarNum <= 0) { sarNum = 1; }
                         if (sarDen <= 0) { sarDen = 1; }
-                    }
-
-                    if (match.Groups[5].Success && match.Groups[6].Success)
-                    {
-                        darNum = int.Parse(match.Groups[5].Value, CultureInfo.InvariantCulture);
-                        darDen = int.Parse(match.Groups[6].Value, CultureInfo.InvariantCulture);
+                        darNum = int.Parse(effectiveAspect.Groups[3].Value, CultureInfo.InvariantCulture);
+                        darDen = int.Parse(effectiveAspect.Groups[4].Value, CultureInfo.InvariantCulture);
                     }
 
                     profile = this.BuildProfile(filePath, width, height, sarNum, sarDen, darNum, darDen);
