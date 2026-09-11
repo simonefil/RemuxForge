@@ -41,6 +41,16 @@ namespace RemuxForge.Core.Analysis.Edit
         public double Coverage { get; set; }
 
         /// <summary>
+        /// Campioni inclusi nel denominatore della copertura
+        /// </summary>
+        public int CoverageComparedSamples { get; set; }
+
+        /// <summary>
+        /// Campioni proiettati fuori dalla timeline language
+        /// </summary>
+        public int CoverageExcludedSamples { get; set; }
+
+        /// <summary>
         /// Corrispondenze univoche su cui il solver ha costruito i pianori
         /// </summary>
         public List<SolverAnchorDiagnostic> Anchors { get; set; }
@@ -270,13 +280,16 @@ namespace RemuxForge.Core.Analysis.Edit
 
             // Ancora la scala definitiva e misura la copertura
             double initialOffsetMs = this._coverageVerifier.Anchor(pair, operations, globalInitialOffsetMs);
+            CoverageMeasurement coverage = this._coverageVerifier.MeasureCoverage(pair, operations, initialOffsetMs);
             EditAnalysisOutcome outcome = new EditAnalysisOutcome
             {
                 Operations = operations,
                 Rejected = rejected,
                 Anchors = this._globalSolver.LastAnchors,
                 InitialOffsetMs = initialOffsetMs,
-                Coverage = this._coverageVerifier.Coverage(pair, operations, initialOffsetMs)
+                Coverage = coverage.Coverage,
+                CoverageComparedSamples = coverage.ComparedSamples,
+                CoverageExcludedSamples = coverage.ExcludedSamples
             };
             outcome.AudioOffset = new AudioOffsetEstimator().Measure(pair, outcome, envelopes, cancellation);
             return outcome;

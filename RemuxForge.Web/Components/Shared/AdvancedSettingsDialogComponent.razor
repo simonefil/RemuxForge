@@ -45,6 +45,10 @@
                     <span class="form-label">@AppText.T("web.advanced.offsetSearchRadius")</span>
                     <input class="form-input" style="width: 8ch;" aria-label="@AppText.T("web.advanced.offsetSearchRadius")" @bind="_offsetSearchRadiusMs" /> <span style="margin-left: 0.5ch;">ms</span>
                 </div>
+                <div class="form-row">
+                    <span class="form-label">@AppText.T("web.advanced.minimumCoverage")</span>
+                    <input class="form-input" type="number" min="0" max="100" step="0.1" style="width: 8ch;" aria-label="@AppText.T("web.advanced.minimumCoverage")" @bind="_minimumCoveragePercent" /> <span style="margin-left: 0.5ch;">%</span>
+                </div>
             </AdvancedSettingsSection>
 
         </div>
@@ -115,6 +119,11 @@
     private string _offsetSearchRadiusMs = "";
 
     /// <summary>
+    /// Copertura minima Deep Analysis in percentuale (stringa per binding input)
+    /// </summary>
+    private string _minimumCoveragePercent = "";
+
+    /// <summary>
     /// Abilita la diagnostica JSON Deep Analysis per episodio
     /// </summary>
     private bool _deepAnalysisDiagnostics;
@@ -150,6 +159,7 @@
         this._visionBackend = adv.GetVisionBackendKind();
         this._siftVulkanDeviceName = "";
         this._offsetSearchRadiusMs = adv.DeepAnalysis.OffsetSearchRadiusMs.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        this._minimumCoveragePercent = (adv.DeepAnalysis.MinimumCoverage * 100.0).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
         this._deepAnalysisDiagnostics = adv.DeepAnalysis.DiagnosticsEnabled;
 
         // Ffmpeg: booleani
@@ -250,6 +260,8 @@
         adv.SetVisionBackendKind(this._visionBackend);
         int.TryParse(this._offsetSearchRadiusMs, out int offsetSearchRadiusMs);
         adv.DeepAnalysis.OffsetSearchRadiusMs = offsetSearchRadiusMs;
+        double.TryParse(this._minimumCoveragePercent, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double minimumCoveragePercent);
+        adv.DeepAnalysis.MinimumCoverage = minimumCoveragePercent / 100.0;
         adv.DeepAnalysis.DiagnosticsEnabled = this._deepAnalysisDiagnostics;
 
         // Parsing Ffmpeg: booleani
@@ -293,6 +305,9 @@
 
         if (!int.TryParse(this._offsetSearchRadiusMs, out int offsetSearchRadiusMs) || offsetSearchRadiusMs < 5000 || offsetSearchRadiusMs > 300000)
             errors.Add(AppText.T("web.advanced.invalidOffsetSearchRadius"));
+
+        if (!double.TryParse(this._minimumCoveragePercent, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double minimumCoveragePercent) || minimumCoveragePercent < 0.0 || minimumCoveragePercent > 100.0)
+            errors.Add(AppText.T("web.advanced.invalidMinimumCoverage"));
 
         if (errors.Count > 0)
         {

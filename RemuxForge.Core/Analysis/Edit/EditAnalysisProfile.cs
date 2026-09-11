@@ -153,16 +153,14 @@ namespace RemuxForge.Core.Analysis.Edit
         #region Copertura
 
         /// <summary>
+        /// Similarita' coseno minima fra i gradienti delle miniature per considerare due frame equivalenti
+        /// </summary>
+        public const double COVERAGE_GRADIENT_COSINE_MINIMUM = 0.475;
+
+        /// <summary>
         /// Campo di ricerca della costante di ancoraggio della scala
         /// </summary>
         public const double COVERAGE_ANCHOR_FIELD_MS = 200.0;
-
-        /// <summary>
-        /// Copertura sotto la quale l'EditMap non descrive più il film e va rifiutata
-        /// Il corpus verificato sta sopra 0,96 e le coppie che falliscono sotto 0,40: in mezzo
-        /// c'è il materiale difficile, che si consegna, e non la mappa sbagliata
-        /// </summary>
-        public const double COVERAGE_MINIMUM = 0.70;
 
         /// <summary>
         /// Campo della prima passata sulla costante di ancoraggio

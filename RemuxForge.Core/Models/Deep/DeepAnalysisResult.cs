@@ -310,6 +310,7 @@ namespace RemuxForge.Core.Models
             this.Status = DeepAnalysisStatus.NotStarted;
             this.RejectReason = "";
             this.StretchFactor = "";
+            this.CoverageMetric = "";
             this.SourceToLanguageScale = 1.0;
             this.Source = new DeepAnalysisGeometry();
             this.Language = new DeepAnalysisGeometry();
@@ -404,6 +405,26 @@ namespace RemuxForge.Core.Models
         /// Frazione del film che resta agganciata applicando la EditMap prodotta
         /// </summary>
         public double Coverage { get; set; }
+
+        /// <summary>
+        /// Metrica usata per la verifica della copertura globale
+        /// </summary>
+        public string CoverageMetric { get; set; }
+
+        /// <summary>
+        /// Soglia minima di similarita' fra due miniature
+        /// </summary>
+        public double CoverageSimilarityThreshold { get; set; }
+
+        /// <summary>
+        /// Campioni inclusi nel denominatore della copertura
+        /// </summary>
+        public int CoverageComparedSamples { get; set; }
+
+        /// <summary>
+        /// Campioni esclusi perché proiettati fuori dalla timeline language
+        /// </summary>
+        public int CoverageExcludedSamples { get; set; }
 
         /// <summary>
         /// Tratti a offset costante fra un'operazione e la successiva

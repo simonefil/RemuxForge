@@ -185,6 +185,7 @@ namespace RemuxForge.Core.Models
             this.DiagnosticsEnabled = false;
             this.SceneExtractTimeoutMs = 600000;
             this.OffsetSearchRadiusMs = 30000;
+            this.MinimumCoverage = 0.90;
         }
 
         #endregion
@@ -206,6 +207,11 @@ namespace RemuxForge.Core.Models
         /// oltre questo scarto una differenza di montaggio fra i due file non viene più vista
         /// </summary>
         public int OffsetSearchRadiusMs { get; set; }
+
+        /// <summary>
+        /// Frazione minima del film che la EditMap deve spiegare per essere applicata automaticamente
+        /// </summary>
+        public double MinimumCoverage { get; set; }
 
         #endregion
     }

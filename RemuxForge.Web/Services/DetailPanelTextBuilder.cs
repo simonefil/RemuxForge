@@ -424,6 +424,11 @@ namespace RemuxForge.Web.Services
             {
                 this.AppendDeepAnalysisSummary(sb, record.DeepAnalysisMap);
             }
+            else if (record.DeepAnalysisMap != null)
+            {
+                sb.Append(AppText.T("web.detail.deepCandidate")).Append('\n');
+                this.AppendEditOperations(sb, record.DeepAnalysisMap.Operations);
+            }
         }
 
         /// <summary>

@@ -1,13 +1,48 @@
+using RemuxForge.Core.Analysis.Edit.Extraction;
 using System;
 using System.Collections.Generic;
 
 namespace RemuxForge.Core.Analysis.Edit.Verification
 {
     /// <summary>
+    /// Esito della verifica globale con i campioni che formano il denominatore
+    /// </summary>
+    internal class CoverageMeasurement
+    {
+        #region Proprietà
+
+        /// <summary>
+        /// Frazione dei campioni confrontabili spiegata dalla EditMap
+        /// </summary>
+        public double Coverage { get; set; }
+
+        /// <summary>
+        /// Campioni source con una controparte temporale nella traccia language
+        /// </summary>
+        public int ComparedSamples { get; set; }
+
+        /// <summary>
+        /// Campioni esclusi perché la EditMap li proietta fuori dalla traccia language
+        /// </summary>
+        public int ExcludedSamples { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
     /// Quanto un'EditMap tiene agganciato il film, dal primo fotogramma all'ultimo
     /// </summary>
     internal class CoverageVerifier
     {
+        #region Costanti
+
+        /// <summary>
+        /// Identificatore stabile della metrica esposto nella diagnostica
+        /// </summary>
+        public const string METRIC_NAME = "thumbnail-gradient-cosine";
+
+        #endregion
+
         #region Variabili di classe
 
         /// <summary>
@@ -85,8 +120,57 @@ namespace RemuxForge.Core.Analysis.Edit.Verification
         /// <returns>Quota agganciata fra zero e uno</returns>
         public double Coverage(PairSignals pair, IReadOnlyList<EditOperationCandidate> operations, double initialOffsetMs)
         {
+            return this.MeasureCoverage(pair, operations, initialOffsetMs).Coverage;
+        }
+
+        /// <summary>
+        /// Misura la copertura sui gradienti delle miniature e registra il denominatore effettivo
+        /// </summary>
+        /// <param name="pair">Coppia di tracce</param>
+        /// <param name="operations">Operazioni dell'EditMap</param>
+        /// <param name="initialOffsetMs">Offset del primo tratto</param>
+        /// <returns>Copertura e conteggi dei campioni</returns>
+        public CoverageMeasurement MeasureCoverage(PairSignals pair, IReadOnlyList<EditOperationCandidate> operations, double initialOffsetMs)
+        {
             int[] indices = HashOps.RangeIndices(pair, pair.Source.PtsMs[0], double.MaxValue, EditAnalysisProfile.SAMPLING_STRIDE);
-            return this.Explained(pair, indices, BuildBoundaries(operations), BuildOffsets(operations, initialOffsetMs), 0.0);
+            double[] boundaries = BuildBoundaries(operations);
+            double[] offsets = BuildOffsets(operations, initialOffsetMs);
+            double[] languagePts = pair.LanguagePtsMs;
+            int compared = 0;
+            int excluded = 0;
+            int explained = 0;
+            for (int i = 0; i < indices.Length; i++)
+            {
+                int sourceIndex = indices[i];
+                double sourceTimeMs = pair.Source.PtsMs[sourceIndex];
+                int segment = 0;
+                while (segment < boundaries.Length && boundaries[segment] <= sourceTimeMs)
+                    segment++;
+                double languageTimeMs = sourceTimeMs + offsets[segment];
+                if (languageTimeMs < languagePts[0] || languageTimeMs > languagePts[languagePts.Length - 1])
+                {
+                    excluded++;
+                    continue;
+                }
+
+                compared++;
+                int center = HashOps.LowerBound(languagePts, languageTimeMs);
+                double best = -1.0;
+                for (int shift = -EditAnalysisProfile.VERIFICATION_RADIUS; shift <= EditAnalysisProfile.VERIFICATION_RADIUS; shift++)
+                {
+                    int languageIndex = Math.Clamp(center + shift, 0, languagePts.Length - 1);
+                    best = Math.Max(best, GradientCosine(pair, sourceIndex, languageIndex));
+                }
+                if (best >= EditAnalysisProfile.COVERAGE_GRADIENT_COSINE_MINIMUM)
+                    explained++;
+            }
+
+            return new CoverageMeasurement
+            {
+                Coverage = compared > 0 ? (double)explained / compared : 0.0,
+                ComparedSamples = compared,
+                ExcludedSamples = excluded
+            };
         }
 
         #endregion
@@ -149,6 +233,56 @@ namespace RemuxForge.Core.Analysis.Edit.Verification
             for (int i = 0; i < operations.Count; i++)
                 result[i + 1] = operations[i].Kind == EditOperationKind.InsertSilence ? result[i] - operations[i].DurationMs : result[i] + operations[i].DurationMs;
             return result;
+        }
+
+        /// <summary>
+        /// Confronta i 264 gradienti firmati delle miniature 12x12
+        /// </summary>
+        /// <param name="pair">Coppia che possiede le miniature</param>
+        /// <param name="sourceIndex">Indice source</param>
+        /// <param name="languageIndex">Indice language</param>
+        /// <returns>Similarita' coseno fra -1 e 1, oppure -1 per miniature piatte</returns>
+        private static double GradientCosine(PairSignals pair, int sourceIndex, int languageIndex)
+        {
+            int side = FrameSignals.THUMB_SIDE;
+            int sourceOrigin = sourceIndex * side * side;
+            int languageOrigin = languageIndex * side * side;
+            long dot = 0;
+            long sourceSquare = 0;
+            long languageSquare = 0;
+            for (int row = 0; row < side; row++)
+            {
+                for (int column = 0; column < side - 1; column++)
+                    AccumulateGradient(pair, sourceOrigin + row * side + column, languageOrigin + row * side + column, 1, ref dot, ref sourceSquare, ref languageSquare);
+            }
+            for (int row = 0; row < side - 1; row++)
+            {
+                for (int column = 0; column < side; column++)
+                    AccumulateGradient(pair, sourceOrigin + row * side + column, languageOrigin + row * side + column, side, ref dot, ref sourceSquare, ref languageSquare);
+            }
+            if (sourceSquare == 0 || languageSquare == 0)
+                return -1.0;
+            return dot / Math.Sqrt((double)sourceSquare * languageSquare);
+        }
+
+        /// <summary>
+        /// Accumula una componente del prodotto scalare e delle due norme
+        /// </summary>
+        /// <param name="pair">Coppia che possiede le miniature</param>
+        /// <param name="sourceOffset">Posizione del primo pixel source</param>
+        /// <param name="languageOffset">Posizione del primo pixel language</param>
+        /// <param name="step">Distanza dal pixel adiacente</param>
+        /// <param name="dot">Prodotto scalare accumulato</param>
+        /// <param name="sourceSquare">Norma source al quadrato accumulata</param>
+        /// <param name="languageSquare">Norma language al quadrato accumulata</param>
+        private static void AccumulateGradient(PairSignals pair, int sourceOffset, int languageOffset, int step,
+            ref long dot, ref long sourceSquare, ref long languageSquare)
+        {
+            int sourceGradient = pair.Source.ThumbPixels[sourceOffset + step] - pair.Source.ThumbPixels[sourceOffset];
+            int languageGradient = pair.Language.ThumbPixels[languageOffset + step] - pair.Language.ThumbPixels[languageOffset];
+            dot += sourceGradient * languageGradient;
+            sourceSquare += sourceGradient * sourceGradient;
+            languageSquare += languageGradient * languageGradient;
         }
 
         /// <summary>

@@ -1,6 +1,7 @@
 using RemuxForge.Core.Analysis.Edit;
 using RemuxForge.Core.Analysis.Edit.Extraction;
 using RemuxForge.Core.Analysis.Edit.Geometry;
+using RemuxForge.Core.Analysis.Edit.Verification;
 using RemuxForge.Core.Analysis.Speed;
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
@@ -70,6 +71,7 @@ namespace RemuxForge.Core.Analysis.Deep
             DeepAnalysisResult result = new DeepAnalysisResult();
             HashBackendBase hashBackend = null;
             this.LastResult = result;
+            this.LastCandidateMap = null;
 
             try
             {
@@ -199,19 +201,25 @@ namespace RemuxForge.Core.Analysis.Deep
                 result.InitialOffsetMs = outcome.InitialOffsetMs;
                 result.AudioOffset = outcome.AudioOffset;
                 result.Coverage = outcome.Coverage;
+                result.CoverageMetric = CoverageVerifier.METRIC_NAME;
+                result.CoverageSimilarityThreshold = EditAnalysisProfile.COVERAGE_GRADIENT_COSINE_MINIMUM;
+                result.CoverageComparedSamples = outcome.CoverageComparedSamples;
+                result.CoverageExcludedSamples = outcome.CoverageExcludedSamples;
                 result.Plateaus = converter.BuildPlateaus(pair, outcome);
                 result.Operations = BuildDiagnostics(outcome.Operations);
                 result.RejectedOperations = BuildDiagnostics(outcome.Rejected);
                 result.Anchors = BuildAnchorDiagnostics(outcome.Anchors);
                 result.Timing.SolverMs = phaseStopwatch.ElapsedMilliseconds;
+                EditMap editMap = converter.Convert(pair, outcome, stretchFactor);
+                editMap.AnalysisTimeMs = totalStopwatch.ElapsedMilliseconds;
+                this.LastCandidateMap = editMap;
                 // Una mappa che non spiega il film non è un risultato con poca confidenza:
                 // è un risultato sbagliato, e va rifiutata invece che consegnata
-                if (outcome.Coverage < EditAnalysisProfile.COVERAGE_MINIMUM)
-                    return this.Reject(result, AppText.F("deep.temporal.service.insufficientCoverage", (outcome.Coverage * 100.0).ToString("0.0", CultureInfo.InvariantCulture), (EditAnalysisProfile.COVERAGE_MINIMUM * 100.0).ToString("0.0", CultureInfo.InvariantCulture)));
+                double minimumCoverage = advanced.DeepAnalysis.MinimumCoverage;
+                if (outcome.Coverage < minimumCoverage)
+                    return this.Reject(result, AppText.F("deep.temporal.service.insufficientCoverage", (outcome.Coverage * 100.0).ToString("0.0", CultureInfo.InvariantCulture), (minimumCoverage * 100.0).ToString("0.0", CultureInfo.InvariantCulture)));
 
-                EditMap editMap = converter.Convert(pair, outcome, stretchFactor);
                 result.Status = DeepAnalysisStatus.Accepted;
-                editMap.AnalysisTimeMs = totalStopwatch.ElapsedMilliseconds;
                 ConsoleHelper.Progress(LogSection.Deep, 85, AppText.T("deep.temporal.progress.completed"));
                 return editMap;
             }
@@ -239,6 +247,11 @@ namespace RemuxForge.Core.Analysis.Deep
         /// Ultimo risultato diagnostico dell'analisi, valorizzato anche in caso di rifiuto o errore gestito
         /// </summary>
         public DeepAnalysisResult LastResult { get; private set; }
+
+        /// <summary>
+        /// Ultima EditMap costruita, disponibile anche quando la soglia di copertura ne impedisce l'applicazione automatica
+        /// </summary>
+        public EditMap LastCandidateMap { get; private set; }
 
         #endregion
 

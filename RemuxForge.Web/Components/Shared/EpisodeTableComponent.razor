@@ -36,7 +36,7 @@
                     <Template Context="record">@(!string.IsNullOrEmpty(record.StretchFactor) ? record.StretchFactor : "-")</Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.deep")" Width="110px" MinWidth="80px" MaxWidth="220px">
-                    <Template Context="record">@(record.DeepAnalysisApplied && record.DeepAnalysisMap != null ? AppText.F("cli.report.deepOps", record.DeepAnalysisMap.Operations.Count) : "-")</Template>
+                    <Template Context="record">@(record.DeepAnalysisMap != null ? AppText.F(record.DeepAnalysisApplied ? "cli.report.deepOps" : "web.episode.deepCandidateOps", record.DeepAnalysisMap.Operations.Count) : "-")</Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.size")" Width="110px" MinWidth="80px" MaxWidth="220px">
                     <Template Context="record">@Utils.FormatSize(record.SourceSize)</Template>

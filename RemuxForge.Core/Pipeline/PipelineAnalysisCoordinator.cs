@@ -349,6 +349,8 @@ namespace RemuxForge.Core.Pipeline
                         }
                         else
                         {
+                            record.DeepAnalysisMap = deepService.LastCandidateMap;
+                            record.DeepAnalysisApplied = false;
                             string deepRejectReason = record.DeepAnalysisResult != null && !string.IsNullOrEmpty(record.DeepAnalysisResult.RejectReason) ? record.DeepAnalysisResult.RejectReason : AppText.T("deep.temporal.pipeline.blocked");
                             string deepFailure = AppText.F("deep.temporal.pipeline.failed", deepRejectReason);
                             ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, deepFailure);
