@@ -417,12 +417,12 @@ namespace RemuxForge.Core.Models
         public double CoverageSimilarityThreshold { get; set; }
 
         /// <summary>
-        /// Campioni inclusi nel denominatore della copertura
+        /// Campioni giudicati: tutto il film tranne i buchi che la EditMap dichiara
         /// </summary>
         public int CoverageComparedSamples { get; set; }
 
         /// <summary>
-        /// Campioni esclusi perché proiettati fuori dalla timeline language
+        /// Campioni in un buco dichiarato da un INSERT o dall'offset iniziale, esclusi dal giudizio
         /// </summary>
         public int CoverageExcludedSamples { get; set; }
 

@@ -12,17 +12,17 @@ namespace RemuxForge.Core.Analysis.Edit.Verification
         #region Proprietà
 
         /// <summary>
-        /// Frazione dei campioni confrontabili spiegata dalla EditMap
+        /// Frazione del film spiegata dalla EditMap
         /// </summary>
         public double Coverage { get; set; }
 
         /// <summary>
-        /// Campioni source con una controparte temporale nella traccia language
+        /// Campioni giudicati: tutto il film tranne i buchi che la EditMap dichiara
         /// </summary>
         public int ComparedSamples { get; set; }
 
         /// <summary>
-        /// Campioni esclusi perché la EditMap li proietta fuori dalla traccia language
+        /// Campioni in un buco dichiarato da un INSERT o dall'offset iniziale, esclusi dal giudizio
         /// </summary>
         public int ExcludedSamples { get; set; }
 
@@ -143,17 +143,37 @@ namespace RemuxForge.Core.Analysis.Edit.Verification
             {
                 int sourceIndex = indices[i];
                 double sourceTimeMs = pair.Source.PtsMs[sourceIndex];
+
+                // Dentro il buco di un INSERT la sorgente non ha controparte perché la mappa lo
+                // dichiara: chiedere a quel campione di agganciarsi punirebbe la mappa per aver
+                // detto il vero
+                if (IsInsideDeclaredGap(operations, sourceTimeMs))
+                {
+                    excluded++;
+                    continue;
+                }
+
                 int segment = 0;
                 while (segment < boundaries.Length && boundaries[segment] <= sourceTimeMs)
                     segment++;
                 double languageTimeMs = sourceTimeMs + offsets[segment];
-                if (languageTimeMs < languagePts[0] || languageTimeMs > languagePts[languagePts.Length - 1])
+
+                // Prima dell'inizio del lang il buco lo dichiara l'offset iniziale, che è una misura
+                // e non un avanzo: una testa che il lang non ha vale quanto quella di un INSERT
+                if (languageTimeMs < languagePts[0])
                 {
                     excluded++;
                     continue;
                 }
 
                 compared++;
+
+                // Oltre la fine del lang invece non ha misurato niente nessuno: è il residuo che la
+                // EditMap chiuderà in coda, e toglierlo dal denominatore nasconderebbe proprio la
+                // parte di film che non si sa spiegare
+                if (languageTimeMs > languagePts[languagePts.Length - 1])
+                    continue;
+
                 int center = HashOps.LowerBound(languagePts, languageTimeMs);
                 double best = -1.0;
                 for (int shift = -EditAnalysisProfile.VERIFICATION_RADIUS; shift <= EditAnalysisProfile.VERIFICATION_RADIUS; shift++)
@@ -218,6 +238,24 @@ namespace RemuxForge.Core.Analysis.Edit.Verification
             for (int i = 0; i < operations.Count; i++)
                 result[i] = operations[i].TimestampMs;
             return result;
+        }
+
+        /// <summary>
+        /// Indica se un istante sorgente cade nel buco che un INSERT dichiara
+        /// </summary>
+        /// <param name="operations">Operazioni dell'EditMap</param>
+        /// <param name="sourceTimeMs">Istante sorgente</param>
+        /// <returns>Vero quando la mappa dichiara che lì il language non ha nulla</returns>
+        private static bool IsInsideDeclaredGap(IReadOnlyList<EditOperationCandidate> operations, double sourceTimeMs)
+        {
+            for (int i = 0; i < operations.Count; i++)
+            {
+                if (operations[i].Kind != EditOperationKind.InsertSilence)
+                    continue;
+                if (sourceTimeMs >= operations[i].TimestampMs && sourceTimeMs < operations[i].ResumeMs)
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>
