@@ -340,10 +340,10 @@ namespace RemuxForge.Web.Services
 
                     try
                     {
-                        this.UpdateProgress(record.EpisodeId, 1, 0, 5, AppText.T("web.progress.analysis"), false, false);
+                        this.UpdateProgress(record.SourceFileName, 1, 0, 5, AppText.T("web.progress.analysis"), false, false);
                         this._pipeline.AnalyzeFile(record, this.GetOperationCancellationToken());
                         this.NotifyRecordsChanged();
-                        this.UpdateProgress(record.EpisodeId, 1, 1, 100, AppText.T("web.progress.completed"), false, false);
+                        this.UpdateProgress(record.SourceFileName, 1, 1, 100, AppText.T("web.progress.completed"), false, false);
                         this.CompleteProgress(AppText.T("web.progress.analysisCompleted"));
                     }
                     catch (OperationCanceledException)
@@ -398,10 +398,10 @@ namespace RemuxForge.Web.Services
                                 break;
                             }
 
-                            this.UpdateProgress(selected[i].EpisodeId, i + 1, i, 5, AppText.T("web.progress.analysis"), false, false);
+                            this.UpdateProgress(selected[i].SourceFileName, i + 1, i, 5, AppText.T("web.progress.analysis"), false, false);
                             this._pipeline.AnalyzeFile(selected[i], this.GetOperationCancellationToken());
                             this.NotifyRecordsChanged();
-                            this.UpdateProgress(selected[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
+                            this.UpdateProgress(selected[i].SourceFileName, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
 
                         if (!stopped)
@@ -474,10 +474,10 @@ namespace RemuxForge.Web.Services
                                 break;
                             }
 
-                            this.UpdateProgress(pending[i].EpisodeId, i + 1, i, 5, AppText.T("web.progress.analysis"), false, false);
+                            this.UpdateProgress(pending[i].SourceFileName, i + 1, i, 5, AppText.T("web.progress.analysis"), false, false);
                             this._pipeline.AnalyzeFile(pending[i], this.GetOperationCancellationToken());
                             this.NotifyRecordsChanged();
-                            this.UpdateProgress(pending[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
+                            this.UpdateProgress(pending[i].SourceFileName, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
 
                         if (!stopped)
@@ -526,10 +526,10 @@ namespace RemuxForge.Web.Services
 
                     try
                     {
-                        this.UpdateProgress(record.EpisodeId, 1, 0, 10, AppText.T("web.progress.merge"), false, false);
+                        this.UpdateProgress(record.SourceFileName, 1, 0, 10, AppText.T("web.progress.merge"), false, false);
                         this._pipeline.MergeFile(record);
                         this.NotifyRecordsChanged();
-                        this.UpdateProgress(record.EpisodeId, 1, 1, 100, AppText.T("web.progress.completed"), false, false);
+                        this.UpdateProgress(record.SourceFileName, 1, 1, 100, AppText.T("web.progress.completed"), false, false);
                         this.CompleteProgress(AppText.T("web.progress.mergeCompleted"));
                     }
                     catch (Exception ex)
@@ -580,10 +580,10 @@ namespace RemuxForge.Web.Services
                                 break;
                             }
 
-                            this.UpdateProgress(selected[i].EpisodeId, i + 1, i, 10, AppText.T("web.progress.merge"), false, false);
+                            this.UpdateProgress(selected[i].SourceFileName, i + 1, i, 10, AppText.T("web.progress.merge"), false, false);
                             this._pipeline.MergeFile(selected[i]);
                             this.NotifyRecordsChanged();
-                            this.UpdateProgress(selected[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
+                            this.UpdateProgress(selected[i].SourceFileName, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
 
                         if (!stopped)
@@ -652,10 +652,10 @@ namespace RemuxForge.Web.Services
                                 break;
                             }
 
-                            this.UpdateProgress(analyzed[i].EpisodeId, i + 1, i, 10, AppText.T("web.progress.merge"), false, false);
+                            this.UpdateProgress(analyzed[i].SourceFileName, i + 1, i, 10, AppText.T("web.progress.merge"), false, false);
                             this._pipeline.MergeFile(analyzed[i]);
                             this.NotifyRecordsChanged();
-                            this.UpdateProgress(analyzed[i].EpisodeId, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
+                            this.UpdateProgress(analyzed[i].SourceFileName, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
 
                         if (!stopped)

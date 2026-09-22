@@ -79,20 +79,31 @@ namespace RemuxForge.Core.Metadata
         }
 
         /// <summary>
-        /// Carica un preset da JSON
+        /// Carica un preset da file JSON
         /// </summary>
         /// <param name="filePath">Percorso preset</param>
         /// <returns>Preset</returns>
         public MkvMetadataPreset Load(string filePath)
         {
-            string json;
-            MkvMetadataPreset preset;
-            JsonSerializerOptions options;
-
             if (string.IsNullOrEmpty(filePath != null ? filePath.Trim() : null))
                 throw new ArgumentException(AppText.T("metadata.preset.emptyPath"), nameof(filePath));
 
-            json = File.ReadAllText(filePath);
+            return this.LoadFromJson(File.ReadAllText(filePath));
+        }
+
+        /// <summary>
+        /// Carica un preset dal contenuto JSON
+        /// </summary>
+        /// <param name="json">Contenuto JSON del preset</param>
+        /// <returns>Preset</returns>
+        public MkvMetadataPreset LoadFromJson(string json)
+        {
+            MkvMetadataPreset preset;
+            JsonSerializerOptions options;
+
+            if (string.IsNullOrEmpty(json != null ? json.Trim() : null))
+                throw new ArgumentException(AppText.T("metadata.preset.invalid"), nameof(json));
+
             options = CreateSerializerOptions();
             preset = JsonSerializer.Deserialize<MkvMetadataPreset>(json, options);
             if (preset == null)
@@ -107,15 +118,29 @@ namespace RemuxForge.Core.Metadata
         }
 
         /// <summary>
-        /// Salva un preset JSON
+        /// Salva un preset JSON su file
         /// </summary>
         /// <param name="preset">Preset da salvare</param>
         /// <param name="filePath">Percorso output</param>
         public void Save(MkvMetadataPreset preset, string filePath)
         {
-            JsonSerializerOptions options;
+            string json = this.SerializeToJson(preset);
+            string folder = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(folder))
+                Directory.CreateDirectory(folder);
+
+            File.WriteAllText(filePath, json);
+        }
+
+        /// <summary>
+        /// Serializza un preset nel contenuto JSON
+        /// </summary>
+        /// <param name="preset">Preset da serializzare</param>
+        /// <returns>Contenuto JSON</returns>
+        public string SerializeToJson(MkvMetadataPreset preset)
+        {
             MkvMetadataPresetValidationResult validation;
-            string json;
+            JsonSerializerOptions options;
 
             if (preset == null)
                 throw new ArgumentNullException(nameof(preset));
@@ -125,13 +150,8 @@ namespace RemuxForge.Core.Metadata
             if (!validation.IsValid)
                 throw new InvalidOperationException(validation.ErrorMessage);
 
-            string folder = Path.GetDirectoryName(filePath);
-            if (!string.IsNullOrEmpty(folder))
-                Directory.CreateDirectory(folder);
-
             options = CreateSerializerOptions();
-            json = JsonSerializer.Serialize(preset, options);
-            File.WriteAllText(filePath, json);
+            return JsonSerializer.Serialize(preset, options);
         }
 
         /// <summary>

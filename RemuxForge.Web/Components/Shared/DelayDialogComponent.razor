@@ -1,6 +1,6 @@
 <div class="dialog-overlay visible">
     <div class="dialog-box dialog-box-compact" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="delay-dialog-title" @onclick:stopPropagation="true">
-        <div id="delay-dialog-title" class="dialog-title">@AppText.F("web.delay.title", Record.EpisodeId)</div>
+        <div id="delay-dialog-title" class="dialog-title">@AppText.F("web.delay.title", Record.SourceFileName)</div>
         <div class="dialog-body">
             <div style="color: var(--rz-text-disabled-color);">@AppText.F("web.delay.syncOffset", Record.SyncOffsetMs)</div>
             <br />

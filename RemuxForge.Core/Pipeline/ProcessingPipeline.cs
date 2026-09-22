@@ -397,6 +397,16 @@ namespace RemuxForge.Core.Pipeline
                 coordinator.AnalyzeFile(record, cancellationToken);
                 this._ffmpegPath = coordinator.FfmpegPath;
             }
+            catch (System.OperationCanceledException)
+            {
+                if (record != null)
+                {
+                    record.RestoreAfterCancelledAnalysis();
+                    this.OnFileUpdated?.Invoke(record);
+                }
+
+                throw;
+            }
             finally
             {
                 this.ClearLogRedirect();

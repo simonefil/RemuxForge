@@ -7,7 +7,7 @@
     <header class="edit-map-page-header">
         <div>
             <div id="edit-map-page-title">@AppText.T("web.editMap.title")</div>
-            <div class="edit-map-page-subtitle">@Record?.EpisodeId · @AppText.T("web.detail.stretchLabel") @GetStretchLabel() · @AppText.T("web.detail.deepAudioOffsetLabel") @Utils.FormatDelay(_workingMap.LanguageAudioOffsetMs)</div>
+            <div class="edit-map-page-subtitle">@Record?.SourceFileName · @AppText.T("web.detail.stretchLabel") @GetStretchLabel() · @AppText.T("web.detail.deepAudioOffsetLabel") @Utils.FormatDelay(_workingMap.LanguageAudioOffsetMs)</div>
         </div>
         <div class="edit-map-page-title-actions">
             <RadzenBadge Text="@GetStateLabel()" BadgeStyle="@GetStateStyle()" />
@@ -92,7 +92,7 @@
                                     <div id="edit-map-precision-title" class="dialog-title edit-map-precision-title">
                                         <div>
                                             <div>@AppText.T("web.editMap.precisionTitle")</div>
-                                            <div class="edit-map-page-subtitle">@Record?.EpisodeId · @AppText.T("web.detail.stretchLabel") @GetStretchLabel() · @AppText.T("web.detail.deepAudioOffsetLabel") @Utils.FormatDelay(_workingMap.LanguageAudioOffsetMs)</div>
+                                            <div class="edit-map-page-subtitle">@Record?.SourceFileName · @AppText.T("web.detail.stretchLabel") @GetStretchLabel() · @AppText.T("web.detail.deepAudioOffsetLabel") @Utils.FormatDelay(_workingMap.LanguageAudioOffsetMs)</div>
                                         </div>
                                         <div class="edit-map-precision-title-actions">
                                             <span class="edit-map-selection-summary">@GetSelectionSummary()</span>

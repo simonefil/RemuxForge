@@ -314,3 +314,69 @@ export function scrollLogToBottom() {
         el.scrollTop = el.scrollHeight;
     }
 }
+
+// Verifica se l'app gira nel webview desktop Tauri con i dialog file nativi disponibili
+export function isTauriDesktop() {
+    return typeof window.__TAURI__ !== 'undefined'
+        && !!window.__TAURI__.dialog
+        && !!window.__TAURI__.dialog.open
+        && !!window.__TAURI__.dialog.save;
+}
+
+// Apre il dialog nativo desktop per scegliere un file JSON, restituisce null se annullato
+export function pickJsonFileWithTauri(title) {
+    return window.__TAURI__.dialog.open({
+        title: title,
+        filters: [{ name: 'JSON', extensions: ['json'] }]
+    });
+}
+
+// Apre il dialog nativo desktop per scegliere il percorso di salvataggio, restituisce null se annullato
+export function pickSavePathWithTauri(defaultName, title) {
+    return window.__TAURI__.dialog.save({
+        title: title,
+        defaultPath: defaultName,
+        filters: [{ name: 'JSON', extensions: ['json'] }]
+    });
+}
+
+// Apre il file picker su un input file nascosto e inoltra i byte al callback .NET
+export function pickJsonFileViaCallback(inputId, dotNetRef) {
+    var input = document.getElementById(inputId);
+    if (!input) {
+        return;
+    }
+
+    input.value = '';
+    input.onchange = function () {
+        var file;
+        input.onchange = null;
+        file = input.files && input.files.length > 0 ? input.files[0] : null;
+        if (!file) {
+            return;
+        }
+        file.arrayBuffer().then(function (buffer) {
+            return dotNetRef.invokeMethodAsync('OnImportedPresetFileBytes', new Uint8Array(buffer));
+        }, function () {
+            return dotNetRef.invokeMethodAsync('OnPresetImportFailed');
+        }).catch(function () {
+            // Il componente può essere stato chiuso prima del completamento della lettura
+        });
+    };
+
+    input.click();
+}
+
+// Avvia il download di un file di testo generato dal server
+export function downloadTextFile(fileName, content, mimeType) {
+    var blob = new Blob([content], { type: mimeType || 'application/octet-stream' });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}

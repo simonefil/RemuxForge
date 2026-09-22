@@ -573,9 +573,9 @@
     /// </summary>
     private void RefreshDirectory()
     {
+        this.LoadRootEntries();
         if (this._showingDriveRoots)
         {
-            this.LoadRootEntries();
             this.LoadDriveRoots(false);
             return;
         }
@@ -1074,6 +1074,42 @@
                 this._rootEntries.Add(entry);
             }
         }
+        else if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX))
+        {
+            DirEntry entry = new DirEntry();
+            entry.Name = "/";
+            entry.FullPath = "/";
+            entry.TypeText = AppText.T("web.folder.directory");
+            entry.IsDirectory = true;
+            this._rootEntries.Add(entry);
+
+            try
+            {
+                System.IO.DirectoryInfo volumesDirectory = new System.IO.DirectoryInfo("/Volumes");
+                System.IO.DirectoryInfo[] volumes = volumesDirectory.Exists ? volumesDirectory.GetDirectories() : Array.Empty<System.IO.DirectoryInfo>();
+                Array.Sort(volumes, (left, right) => string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase));
+                for (int i = 0; i < volumes.Length; i++)
+                {
+                    if ((volumes[i].Attributes & System.IO.FileAttributes.Hidden) != 0 ||
+                        (volumes[i].Attributes & System.IO.FileAttributes.System) != 0 ||
+                        (volumes[i].Attributes & System.IO.FileAttributes.ReparsePoint) != 0)
+                    {
+                        continue;
+                    }
+
+                    DirEntry volumeEntry = new DirEntry();
+                    volumeEntry.Name = volumes[i].Name;
+                    volumeEntry.FullPath = volumes[i].FullName;
+                    volumeEntry.TypeText = AppText.T("web.folder.drive");
+                    volumeEntry.IsDirectory = true;
+                    this._rootEntries.Add(volumeEntry);
+                }
+            }
+            catch
+            {
+                // La root resta utilizzabile anche se macOS nega l'enumerazione dei volumi
+            }
+        }
         else
         {
             DirEntry entry = new DirEntry();
@@ -1123,8 +1159,41 @@
         if (this._showingDriveRoots || string.IsNullOrEmpty(this._currentPath))
             return false;
 
-        string currentRoot = System.IO.Path.GetPathRoot(this._currentPath);
-        return string.Equals(currentRoot, root.FullPath, StringComparison.OrdinalIgnoreCase);
+        DirEntry currentRoot = null;
+        for (int i = 0; i < this._rootEntries.Count; i++)
+        {
+            if (!IsPathInsideRoot(this._currentPath, this._rootEntries[i].FullPath))
+                continue;
+
+            if (currentRoot == null || this._rootEntries[i].FullPath.Length > currentRoot.FullPath.Length)
+                currentRoot = this._rootEntries[i];
+        }
+
+        return object.ReferenceEquals(currentRoot, root);
+    }
+
+    /// <summary>
+    /// Verifica se un percorso appartiene a una root del browser
+    /// </summary>
+    /// <param name="path">Percorso corrente</param>
+    /// <param name="rootPath">Percorso root</param>
+    /// <returns>True quando il percorso coincide con la root o e' un suo discendente</returns>
+    private static bool IsPathInsideRoot(string path, string rootPath)
+    {
+        string normalizedPath = System.IO.Path.GetFullPath(path).TrimEnd(System.IO.Path.DirectorySeparatorChar);
+        string normalizedRoot = System.IO.Path.GetFullPath(rootPath).TrimEnd(System.IO.Path.DirectorySeparatorChar);
+        if (string.IsNullOrEmpty(normalizedPath))
+            normalizedPath = System.IO.Path.DirectorySeparatorChar.ToString();
+        if (string.IsNullOrEmpty(normalizedRoot))
+            normalizedRoot = System.IO.Path.DirectorySeparatorChar.ToString();
+
+        if (string.Equals(normalizedPath, normalizedRoot, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        string prefix = normalizedRoot == System.IO.Path.DirectorySeparatorChar.ToString()
+            ? normalizedRoot
+            : normalizedRoot + System.IO.Path.DirectorySeparatorChar;
+        return normalizedPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

@@ -2,6 +2,7 @@
 @implements IAsyncDisposable
 
 <div class="dialog-overlay visible">
+    <input type="file" accept=".json" id="metadata-preset-import-input" hidden />
     <div class="dialog-box dialog-fullscreen metadata-preset-dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="metadata-preset-dialog-title" @onclick:stopPropagation="true">
         <div id="metadata-preset-dialog-title" class="dialog-title">@AppText.T("web.metadata.presetDialog.title")</div>
         <div class="dialog-body metadata-rule-dialog-body">
@@ -32,6 +33,8 @@
                 }
                 <RadzenButton Text="@AppText.T("web.metadata.presetDialog.save")" Icon="save" Click="@SavePreset" />
                 <RadzenButton Text="@AppText.T("web.common.delete")" Icon="delete" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Danger" Click="@DeletePreset" Disabled="@(string.IsNullOrEmpty(_selectedPresetFile))" />
+                <RadzenButton Text="@AppText.T("web.metadata.presetDialog.import")" Icon="file_upload" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@ImportPreset" />
+                <RadzenButton Text="@AppText.T("web.metadata.presetDialog.export")" Icon="file_download" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@ExportPreset" />
                 <span class="form-label metadata-preview-file-label">@AppText.T("web.metadata.presetDialog.previewFile")</span>
                 <select class="form-input metadata-preview-file-select" aria-label="@AppText.T("web.metadata.presetDialog.previewFile")" @bind="_previewFile" @bind:after="ChangePreviewFile">
                     <option value="">@AppText.T("web.metadata.presetDialog.previewNoFile")</option>
@@ -475,6 +478,11 @@
     private IJSObjectReference _interopModule;
 
     /// <summary>
+    /// Riferimento .NET persistente usato dal file picker browser
+    /// </summary>
+    private DotNetObjectReference<MetadataPresetDialogComponent> _importReference;
+
+    /// <summary>
     /// Inizializza preset e stato dialog
     /// </summary>
     protected override void OnInitialized()
@@ -517,7 +525,10 @@
         string signature;
 
         if (firstRender)
+        {
             this._interopModule = await this.JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/interop.js");
+            this._importReference = DotNetObjectReference.Create(this);
+        }
 
         // Il preset viene rivalutato solo quando cambia davvero: senza la firma ogni render
         // rilancerebbe la valutazione, e con essa un altro render
@@ -535,6 +546,9 @@
     /// </summary>
     public async ValueTask DisposeAsync()
     {
+        this._importReference?.Dispose();
+        this._importReference = null;
+
         if (this._interopModule == null)
             return;
 
@@ -646,9 +660,7 @@
     {
         try
         {
-            this.NormalizePresetModel();
-            this._preset.Description = "";
-            this._preset.ShowAdvancedFields = this._showAdvancedFields || MetadataUiCatalog.PresetUsesAdvancedFields(this._preset);
+            this.PreparePresetForSerialization();
             this._service.Save(this._preset, filePath);
             this._selectedPresetFile = filePath;
             this._presetFiles = this._service.ListPresetFiles();
@@ -680,6 +692,167 @@
         {
             this._message = ex.Message;
         }
+    }
+
+    /// <summary>
+    /// Importa un preset da file JSON esterno in editing
+    /// </summary>
+    private async Task ImportPreset()
+    {
+        try
+        {
+            this._message = "";
+            if (this._interopModule == null)
+                return;
+
+            if (await this._interopModule.InvokeAsync<bool>("isTauriDesktop"))
+            {
+                string path = await this._interopModule.InvokeAsync<string>("pickJsonFileWithTauri", AppText.T("web.metadata.presetDialog.importDialogTitle"));
+                if (string.IsNullOrEmpty(path))
+                    return;
+
+                this.ApplyImportedPreset(this._service.LoadFromJson(System.IO.File.ReadAllText(path)));
+            }
+            else
+            {
+                await this._interopModule.InvokeVoidAsync("pickJsonFileViaCallback", "metadata-preset-import-input", this._importReference);
+            }
+        }
+        catch (Exception ex)
+        {
+            this._message = ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Riceve i byte del file JSON scelto dal file picker browser
+    /// </summary>
+    /// <param name="bytes">Contenuto file</param>
+    [JSInvokable]
+    public async Task OnImportedPresetFileBytes(byte[] bytes)
+    {
+        try
+        {
+            if (bytes == null || bytes.Length == 0)
+                return;
+
+            this.ApplyImportedPreset(this._service.LoadFromJson(System.Text.Encoding.UTF8.GetString(bytes)));
+        }
+        catch (Exception ex)
+        {
+            this._message = ex.Message;
+        }
+
+        await this.InvokeAsync(this.StateHasChanged);
+    }
+
+    /// <summary>
+    /// Mostra l'errore di lettura del file scelto nel browser
+    /// </summary>
+    [JSInvokable]
+    public async Task OnPresetImportFailed()
+    {
+        this._message = AppText.T("web.metadata.presetDialog.importReadFailed");
+        await this.InvokeAsync(this.StateHasChanged);
+    }
+
+    /// <summary>
+    /// Esporta il preset corrente su file JSON esterno
+    /// </summary>
+    private async Task ExportPreset()
+    {
+        try
+        {
+            string baseName = this.GetExportBaseName();
+            if (string.IsNullOrEmpty(baseName))
+            {
+                this._message = AppText.T("web.metadata.presetDialog.exportNameRequired");
+                return;
+            }
+
+            string fileName = baseName + ".json";
+            if (this._interopModule == null)
+                return;
+
+            if (await this._interopModule.InvokeAsync<bool>("isTauriDesktop"))
+            {
+                string path = await this._interopModule.InvokeAsync<string>("pickSavePathWithTauri", fileName, AppText.T("web.metadata.presetDialog.exportDialogTitle"));
+                if (string.IsNullOrEmpty(path))
+                    return;
+
+                path = EnsureJsonExtension(path);
+                this.PreparePresetForSerialization();
+                this._service.Save(this._preset, path);
+                this._message = AppText.T("web.metadata.presetDialog.exported");
+            }
+            else
+            {
+                this.PreparePresetForSerialization();
+                string json = this._service.SerializeToJson(this._preset);
+                await this._interopModule.InvokeVoidAsync("downloadTextFile", fileName, json, "application/json");
+                this._message = AppText.T("web.metadata.presetDialog.exported");
+            }
+        }
+        catch (Exception ex)
+        {
+            this._message = ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// Carica il preset importato in editing senza salvarlo ancora in libreria
+    /// </summary>
+    /// <param name="preset">Preset importato</param>
+    private void ApplyImportedPreset(MkvMetadataPreset preset)
+    {
+        this._preset = preset;
+        this._selectedPresetFile = "";
+        this._showAdvancedFields = preset.ShowAdvancedFields || MetadataUiCatalog.PresetUsesAdvancedFields(preset);
+        this.NormalizePresetModel();
+        this._selectedRuleIndex = preset.Rules != null && preset.Rules.Count > 0 ? 0 : -1;
+        this._activeTextInput = null;
+        this._textEditRequest = null;
+        this._textEditValue = "";
+        this._previewSignature = null;
+        this._message = AppText.T("web.metadata.presetDialog.imported");
+    }
+
+    /// <summary>
+    /// Restituisce il nome base per l'esportazione del preset corrente
+    /// </summary>
+    /// <returns>Nome file senza estensione</returns>
+    private string GetExportBaseName()
+    {
+        if (!string.IsNullOrEmpty(this._preset.Name))
+            return this.SanitizeFileName(this._preset.Name);
+
+        if (!string.IsNullOrEmpty(this._selectedPresetFile))
+            return System.IO.Path.GetFileNameWithoutExtension(this._selectedPresetFile);
+
+        return "";
+    }
+
+    /// <summary>
+    /// Allinea il preset allo stato corrente della UI prima della serializzazione
+    /// </summary>
+    private void PreparePresetForSerialization()
+    {
+        this.NormalizePresetModel();
+        this._preset.Description = "";
+        this._preset.ShowAdvancedFields = this._showAdvancedFields || MetadataUiCatalog.PresetUsesAdvancedFields(this._preset);
+    }
+
+    /// <summary>
+    /// Garantisce l'estensione JSON sul percorso scelto dal dialog desktop
+    /// </summary>
+    /// <param name="filePath">Percorso scelto</param>
+    /// <returns>Percorso con estensione JSON</returns>
+    private static string EnsureJsonExtension(string filePath)
+    {
+        if (string.Equals(System.IO.Path.GetExtension(filePath), ".json", StringComparison.OrdinalIgnoreCase))
+            return filePath;
+
+        return filePath + ".json";
     }
 
     /// <summary>

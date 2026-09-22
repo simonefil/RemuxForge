@@ -19,26 +19,26 @@
                         RowClick="HandleRowClick"
                         RowRender="RenderRow">
             <Columns>
-                <RadzenDataGridColumn TItem="FileProcessingRecord" Property="EpisodeId" Title="@AppText.T("web.episode.ep")" Width="320px" MinWidth="180px" MaxWidth="640px" />
-                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.status")" Width="140px" MinWidth="80px" MaxWidth="280px">
+                <RadzenDataGridColumn TItem="FileProcessingRecord" Property="SourceFileName" Title="@AppText.T("web.dashboard.file")" Width="240px" MinWidth="140px" MaxWidth="480px" />
+                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.status")" Width="100px" MinWidth="70px" MaxWidth="200px">
                     <Template Context="record">@Utils.GetStatusText(record.Status)</Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.audio")" Width="100px" MinWidth="72px" MaxWidth="220px">
+                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.audio")" Width="70px" MinWidth="50px" MaxWidth="160px">
                     <Template Context="record">@Utils.FormatLangs(record.ResultAudioLangs)</Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.sub")" Width="100px" MinWidth="72px" MaxWidth="220px">
+                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.sub")" Width="70px" MinWidth="50px" MaxWidth="160px">
                     <Template Context="record">@Utils.FormatLangs(record.ResultSubLangs)</Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.delay")" Width="110px" MinWidth="80px" MaxWidth="220px">
+                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.delay")" Width="80px" MinWidth="60px" MaxWidth="160px">
                     <Template Context="record">@Utils.FormatDelay(record.AudioDelayApplied)</Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.stretch")" Width="120px" MinWidth="90px" MaxWidth="240px">
+                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.stretch")" Width="80px" MinWidth="60px" MaxWidth="160px">
                     <Template Context="record">@(!string.IsNullOrEmpty(record.StretchFactor) ? record.StretchFactor : "-")</Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.deep")" Width="110px" MinWidth="80px" MaxWidth="220px">
+                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.deep")" Width="70px" MinWidth="50px" MaxWidth="160px">
                     <Template Context="record">@(record.DeepAnalysisMap != null ? AppText.F(record.DeepAnalysisApplied ? "cli.report.deepOps" : "web.episode.deepCandidateOps", record.DeepAnalysisMap.Operations.Count) : "-")</Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.size")" Width="110px" MinWidth="80px" MaxWidth="220px">
+                <RadzenDataGridColumn TItem="FileProcessingRecord" Title="@AppText.T("web.episode.size")" Width="80px" MinWidth="60px" MaxWidth="160px">
                     <Template Context="record">@Utils.FormatSize(record.SourceSize)</Template>
                 </RadzenDataGridColumn>
             </Columns>

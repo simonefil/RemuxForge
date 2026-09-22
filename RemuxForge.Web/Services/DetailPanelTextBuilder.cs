@@ -57,7 +57,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         private void AppendHeader(StringBuilder sb, FileProcessingRecord record)
         {
-            sb.Append("--- ").Append(record.EpisodeId).Append(" [").Append(Utils.GetStatusText(record.Status)).Append("] ---\n\n");
+            sb.Append("--- ").Append(record.SourceFileName).Append(" [").Append(Utils.GetStatusText(record.Status)).Append("] ---\n\n");
         }
 
         /// <summary>

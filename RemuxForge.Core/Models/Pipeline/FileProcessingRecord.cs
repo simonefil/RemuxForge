@@ -120,6 +120,18 @@ namespace RemuxForge.Core.Models
             this.AudioProcessingPreview = null;
         }
 
+        /// <summary>
+        /// Riporta in attesa un'analisi interrotta, lasciando invariati gli stati gia' stabili
+        /// </summary>
+        public void RestoreAfterCancelledAnalysis()
+        {
+            if (this.Status != FileStatus.Analyzing)
+                return;
+
+            this.Status = FileStatus.Pending;
+            this.ErrorMessage = "";
+        }
+
         #endregion
 
         #region Proprietà

@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/remote-schema.json",
+  "identifier": "remote-preset-dialog",
+  "description": "Allows the local RemuxForge sidecar UI to open and save metadata preset files",
+  "windows": ["main"],
+  "local": false,
+  "remote": {
+    "urls": ["http://127.0.0.1:*"]
+  },
+  "permissions": ["dialog:allow-open", "dialog:allow-save"]
+}
