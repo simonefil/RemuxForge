@@ -206,6 +206,12 @@ else
     <InfoDialogComponent OnClose="CloseInfo" />
 }
 
+@* Dialog Licenze *@
+@if (_showLicenses)
+{
+    <LicensesDialogComponent OnClose="CloseLicenses" />
+}
+
 @* Context Menu Episodio *@
 @if (_showContextMenu && _contextMenuCommands != null)
 {

@@ -244,6 +244,11 @@ namespace RemuxForge.Web.Components.Pages
         private bool _showInfo;
 
         /// <summary>
+        /// Flag: mostra dialog licenze
+        /// </summary>
+        private bool _showLicenses;
+
+        /// <summary>
         /// Flag: mostra context menu episodio
         /// </summary>
         private bool _showContextMenu;
@@ -336,6 +341,7 @@ namespace RemuxForge.Web.Components.Pages
             this._editMapRecordIndex = -1;
             this._showEncodingProfiles = false;
             this._showInfo = false;
+            this._showLicenses = false;
             this._showContextMenu = false;
             this._contextMenuCommands = new List<UiCommandDefinition>();
             this._showMediaInfo = false;
@@ -1194,7 +1200,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private bool IsBlockingOverlayOpen()
         {
-            return this._showConfig || this._showSplitEditor || this._showMetadataPathBrowse || this._showMetadataPreset || this._showMetadataMappedInfo || this._showMetadataManualEdit || this._showMetadataRename || this._showToolPaths || this._showAudioSettings || this._showAdvancedSettings || this._showDelay || this._showEditMapEditor || this._showEncodingProfiles || this._showInfo || this._showMediaInfo;
+            return this._showConfig || this._showSplitEditor || this._showMetadataPathBrowse || this._showMetadataPreset || this._showMetadataMappedInfo || this._showMetadataManualEdit || this._showMetadataRename || this._showToolPaths || this._showAudioSettings || this._showAdvancedSettings || this._showDelay || this._showEditMapEditor || this._showEncodingProfiles || this._showInfo || this._showLicenses || this._showMediaInfo;
         }
 
         /// <summary>
@@ -2078,6 +2084,15 @@ namespace RemuxForge.Web.Components.Pages
                 busy,
                 this.ShowInfo));
 
+            result.Add(new UiCommandDefinition(
+                AppText.T("web.menu.licenses"),
+                "",
+                "",
+                UiCommandPlacement.Menu,
+                UiCommandMenuSection.Help,
+                busy,
+                this.ShowLicenses));
+
             return result;
         }
 
@@ -2946,6 +2961,22 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
+        /// Mostra dialog licenze
+        /// </summary>
+        private void ShowLicenses()
+        {
+            this._showLicenses = true;
+        }
+
+        /// <summary>
+        /// Chiude dialog licenze
+        /// </summary>
+        private void CloseLicenses()
+        {
+            this._showLicenses = false;
+        }
+
+        /// <summary>
         /// Mostra dialog profili encoding
         /// </summary>
         private void ShowEncodingProfiles()
@@ -2984,6 +3015,7 @@ namespace RemuxForge.Web.Components.Pages
             this._editMapRecordIndex = -1;
             this._showEncodingProfiles = false;
             this._showInfo = false;
+            this._showLicenses = false;
             this._showContextMenu = false;
             this._showMediaInfo = false;
         }
