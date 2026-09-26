@@ -36,6 +36,8 @@ namespace RemuxForge.Core.Analysis.Edit
 
             double stretch = pair.Stretch;
             double offsetMs = outcome.InitialOffsetMs;
+            double sourceEndMs = EndOfContentMs(pair.Source.PtsMs);
+            double languageEndMs = EndOfContentMs(pair.LanguagePtsMs);
             if (Math.Abs(offsetMs) >= MINIMUM_EDGE_MS)
             {
                 // L'offset del primo tratto è materiale di troppo in una delle due copie, e va
@@ -51,23 +53,36 @@ namespace RemuxForge.Core.Analysis.Edit
                 });
             }
 
-            foreach (EditOperationCandidate operation in outcome.Operations)
+            for (int i = 0; i < outcome.Operations.Count; i++)
             {
+                EditOperationCandidate operation = outcome.Operations[i];
                 int boundaryMs = (int)Math.Round(operation.TimestampMs, MidpointRounding.AwayFromZero);
+                int languageTimestampMs = (int)Math.Round((operation.TimestampMs + offsetMs) / stretch, MidpointRounding.AwayFromZero);
+                int durationMs = RoundPositive(operation.DurationMs / stretch);
+                double appliedDurationMs = operation.DurationMs;
+                if (i == outcome.Operations.Count - 1 && operation.Kind == EditOperationKind.CutSegment)
+                {
+                    int availableLanguageMs = Math.Max(0, (int)Math.Floor(languageEndMs / stretch - languageTimestampMs));
+                    if (durationMs > availableLanguageMs)
+                    {
+                        durationMs = availableLanguageMs;
+                        appliedDurationMs = durationMs * stretch;
+                    }
+                }
+                if (durationMs <= 0)
+                    continue;
                 result.Operations.Add(new EditOperation
                 {
                     Type = operation.Kind == EditOperationKind.InsertSilence ? EditOperation.INSERT_SILENCE : EditOperation.CUT_SEGMENT,
-                    LangTimestampMs = (int)Math.Round((operation.TimestampMs + offsetMs) / stretch, MidpointRounding.AwayFromZero),
-                    DurationMs = RoundPositive(operation.DurationMs / stretch),
+                    LangTimestampMs = languageTimestampMs,
+                    DurationMs = durationMs,
                     SourceTimestampMs = boundaryMs,
                     VisualSourceTimestampMs = boundaryMs,
                     Scope = EditOperation.SCOPE_BODY
                 });
-                offsetMs += operation.Kind == EditOperationKind.InsertSilence ? -operation.DurationMs : operation.DurationMs;
+                offsetMs += operation.Kind == EditOperationKind.InsertSilence ? -appliedDurationMs : appliedDurationMs;
             }
 
-            double sourceEndMs = EndOfContentMs(pair.Source.PtsMs);
-            double languageEndMs = EndOfContentMs(pair.LanguagePtsMs);
             double tailMs = sourceEndMs - (languageEndMs - offsetMs);
             if (Math.Abs(tailMs) >= MINIMUM_EDGE_MS)
             {
