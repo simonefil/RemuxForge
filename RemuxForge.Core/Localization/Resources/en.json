@@ -402,6 +402,8 @@
   "web.info.version": "Version",
   "web.info.license": "License",
   "web.info.repository": "Repository",
+  "web.info.website": "Website",
+  "web.info.discord": "Discord",
   "web.info.runtime": "Runtime",
   "web.info.platform": "Platform",
   "web.licenses.title": "Licenses",
