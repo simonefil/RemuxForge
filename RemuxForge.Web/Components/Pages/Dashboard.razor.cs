@@ -392,6 +392,7 @@ namespace RemuxForge.Web.Components.Pages
                 // Cattura tastiera via JS
                 this._dotNetRef = DotNetObjectReference.Create(this);
                 await this._jsModule.InvokeVoidAsync("captureKeyboard", this._dotNetRef);
+                await this._jsModule.InvokeVoidAsync("interceptExternalLinks");
 
                 // Carica tema da AppSettings e applica tramite Radzen
                 this._currentTheme = AppSettingsService.Instance.Settings.Ui.Theme;

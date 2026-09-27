@@ -683,6 +683,7 @@
   "web.menu.encodingProfiles": "Encoding profiles",
   "web.menu.info": "Info",
   "web.menu.licenses": "Licenses",
+  "web.update.available": "RemuxForge {0} is available: open the release page",
   "web.language.english": "English",
   "web.language.italian": "Italian",
   "web.config.title": "Configuration",

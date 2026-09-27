@@ -442,6 +442,31 @@ nav.rf-mode-navigation .rz-button.rz-primary.rz-variant-text {
     display: flex;
 }
 
+.update-badge {
+    display: inline-flex;
+    align-items: center;
+    align-self: center;
+    gap: 0.25rem;
+    margin-inline-end: 0.5rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    background: var(--rz-success);
+    color: var(--rz-on-success);
+    font-size: var(--rz-text-caption-font-size);
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.update-badge:hover {
+    background: var(--rz-success-dark);
+    color: var(--rz-on-success);
+}
+
+.update-badge .rzi {
+    font-size: 1rem;
+}
+
 .menu-bar-item {
     min-height: auto !important;
     padding-block: var(--rz-menu-top-item-padding-block);

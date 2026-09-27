@@ -167,6 +167,8 @@ namespace RemuxForge.Web
             builder.Services.AddSingleton<MergeOrchestrator>();
             builder.Services.AddSingleton<SplitOrchestrator>();
             builder.Services.AddSingleton<MetadataOrchestrator>();
+            builder.Services.AddSingleton<UpdateCheckService>();
+            builder.Services.AddHostedService(provider => provider.GetRequiredService<UpdateCheckService>());
             builder.Services.AddRadzenComponents();
             builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 

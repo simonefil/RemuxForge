@@ -1,0 +1,41 @@
+@implements IDisposable
+@inject UpdateCheckService UpdateCheck
+
+@if (UpdateCheck.IsUpdateAvailable)
+{
+    <a class="update-badge"
+       href="@UpdateCheck.ReleaseUrl"
+       target="_blank"
+       rel="noopener noreferrer"
+       title="@AppText.F("web.update.available", UpdateCheck.LatestVersion)"
+       aria-label="@AppText.F("web.update.available", UpdateCheck.LatestVersion)">
+        <RadzenIcon Icon="upgrade" />
+        <span>@UpdateCheck.LatestVersion</span>
+    </a>
+}
+
+@code {
+    /// <summary>
+    /// Si iscrive al servizio per mostrare il badge appena il controllo trova una release
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        this.UpdateCheck.OnUpdateChanged += this.HandleUpdateChanged;
+    }
+
+    /// <summary>
+    /// Ridisegna il badge sul thread del renderer
+    /// </summary>
+    private void HandleUpdateChanged()
+    {
+        _ = this.InvokeAsync(this.StateHasChanged);
+    }
+
+    /// <summary>
+    /// Rimuove la sottoscrizione al servizio
+    /// </summary>
+    public void Dispose()
+    {
+        this.UpdateCheck.OnUpdateChanged -= this.HandleUpdateChanged;
+    }
+}

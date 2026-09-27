@@ -340,6 +340,24 @@ export function pickSavePathWithTauri(defaultName, title) {
     });
 }
 
+// Nel desktop Tauri apre i link esterni nel browser di sistema, perché la webview ignora target="_blank"
+export function interceptExternalLinks() {
+    if (typeof window.__TAURI__ === 'undefined' || !window.__TAURI__.opener || window._rfExternalLinkHandler) {
+        return;
+    }
+
+    window._rfExternalLinkHandler = function (e) {
+        var link = e.target instanceof Element ? e.target.closest('a[target="_blank"][href^="https://"]') : null;
+        if (!link) {
+            return;
+        }
+
+        e.preventDefault();
+        window.__TAURI__.opener.openUrl(link.href);
+    };
+    document.addEventListener('click', window._rfExternalLinkHandler, true);
+}
+
 // Apre il file picker su un input file nascosto e inoltra i byte al callback .NET
 export function pickJsonFileViaCallback(inputId, dotNetRef) {
     var input = document.getElementById(inputId);

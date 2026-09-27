@@ -177,6 +177,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(SidecarState {
             child: Mutex::new(None),
             exiting: AtomicBool::new(false),
