@@ -410,6 +410,7 @@ export class TimelineCanvas {
         this.fitToViewport = true;
         this.drag = null;
         this.hoverX = null;
+        this.hoverY = null;
         this.resizeObserver = new ResizeObserver(() => this.resize());
         this.resizeObserver.observe(host);
         this.themeObserver = new MutationObserver(() => this.draw());
@@ -419,8 +420,9 @@ export class TimelineCanvas {
         this.onPointerDown = event => this.handlePointerDown(event);
         this.onPointerMove = event => this.handlePointerMove(event);
         this.onPointerUp = event => this.handlePointerUp(event);
-        this.onPointerLeave = () => { this.hoverX = null; this.draw(); };
+        this.onPointerLeave = () => { this.hoverX = null; this.hoverY = null; this.draw(); };
         this.onDoubleClick = () => this.fitTimeline();
+        this.onContextMenu = event => this.handleContextMenu(event);
         host.addEventListener('scroll', this.onScroll, { passive: true });
         canvas.addEventListener('wheel', this.onWheel, { passive: false });
         canvas.addEventListener('pointerdown', this.onPointerDown);
@@ -429,6 +431,7 @@ export class TimelineCanvas {
         canvas.addEventListener('pointercancel', this.onPointerUp);
         canvas.addEventListener('pointerleave', this.onPointerLeave);
         canvas.addEventListener('dblclick', this.onDoubleClick);
+        canvas.addEventListener('contextmenu', this.onContextMenu);
     }
 
     /** Avvia il primo layout e il caricamento delle immagini audio; le sottoclassi la chiamano a fine costruttore. */
@@ -614,21 +617,39 @@ export class TimelineCanvas {
         this.drawNavigator(ctx, width, this.navigatorHeight, colors.background, colors.border, colors.primary, colors.info);
         drawRuler(ctx, width, plotLeft, startMs, endMs, this.pixelsPerMs, rulerTop, this.rulerHeight, colors.text, colors.border);
         this.drawContent(ctx, { width, height, plotLeft, trackTop, startMs, endMs }, colors, styles);
-        const playheadX = this.xAtTime(this.model.playheadMs);
+        // Durante lo scrub il playhead segue il puntatore, il .NET lo riceve solo al rilascio
+        const playheadMs = this.drag && this.drag.kind === 'seek' ? this.drag.timeMs : this.model.playheadMs;
+        const playheadX = this.xAtTime(playheadMs);
+        const hovering = this.hoverX !== null && !this.drag && this.hoverY > this.navigatorHeight && this.hoverX >= plotLeft;
+        if (hovering && this.hoverY >= trackTop) {
+            ctx.save();
+            ctx.globalAlpha = 0.55;
+            ctx.strokeStyle = colors.text;
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(Math.round(this.hoverX) + 0.5, trackTop); ctx.lineTo(Math.round(this.hoverX) + 0.5, height); ctx.stroke();
+            ctx.restore();
+        }
         ctx.strokeStyle = colors.primary;
         ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(playheadX, rulerTop); ctx.lineTo(playheadX, height); ctx.stroke();
         ctx.fillStyle = colors.primary;
         ctx.beginPath(); ctx.moveTo(playheadX - 5, trackTop); ctx.lineTo(playheadX + 5, trackTop); ctx.lineTo(playheadX, trackTop + 7); ctx.closePath(); ctx.fill();
-        if (this.hoverX !== null && !this.drag) {
-            const hoverTime = Math.max(0, Math.min(this.model.durationMs, this.timeAtX(this.hoverX)));
-            const hoverText = formatTimelineTime(hoverTime);
-            const hoverWidth = ctx.measureText(hoverText).width + 8;
-            const hoverX = Math.max(plotLeft + 2, Math.min(width - hoverWidth - 2, this.hoverX + 8));
+
+        // Il righello mostra il tempo sotto il puntatore o quello dell'oggetto trascinato
+        let readoutMs = Number.NaN;
+        if (hovering)
+            readoutMs = this.hoverReadoutMs(this.hoverX, this.hoverY);
+        else if (this.drag)
+            readoutMs = this.dragReadoutMs(this.drag);
+        if (Number.isFinite(readoutMs)) {
+            const readoutTime = Math.max(0, Math.min(this.model.durationMs, readoutMs));
+            const readoutText = formatTimelineTime(readoutTime);
+            const readoutWidth = ctx.measureText(readoutText).width + 8;
+            const readoutX = Math.max(plotLeft + 2, Math.min(width - readoutWidth - 2, this.xAtTime(readoutTime) + 8));
             ctx.fillStyle = colors.background;
-            ctx.fillRect(hoverX, rulerTop + 2, hoverWidth, this.rulerHeight - 4);
+            ctx.fillRect(readoutX, rulerTop + 2, readoutWidth, this.rulerHeight - 4);
             ctx.fillStyle = colors.text;
-            ctx.fillText(hoverText, hoverX + 4, rulerTop + this.rulerHeight / 2);
+            ctx.fillText(readoutText, readoutX + 4, rulerTop + this.rulerHeight / 2);
         }
         ctx.lineWidth = 1;
     }
@@ -872,7 +893,33 @@ export class TimelineCanvas {
     onContentDragEnd(drag) {
     }
 
+    /** Istante da mostrare nel righello mentre un drag è in corso, NaN per non mostrarlo. */
+    dragReadoutMs(drag) {
+        return drag.kind === 'seek' ? drag.timeMs : Number.NaN;
+    }
+
+    /** Istante da mostrare nel righello sotto il puntatore fermo, NaN per non mostrarlo. */
+    hoverReadoutMs(x, y) {
+        return this.timeAtX(x);
+    }
+
+    /** Menu contestuale del contenuto di dominio; la base lascia quello del browser. */
+    handleContextMenu(event) {
+    }
+
+    /** Cursore del puntatore fermo su un punto del canvas, senza drag in corso. */
+    pointerCursor(x, y) {
+        if (y <= this.navigatorHeight) {
+            const geometry = this.navigatorGeometry();
+            return Math.abs(x - geometry.left) <= 9 || Math.abs(x - geometry.right) <= 9 ? 'ew-resize' : 'grab';
+        }
+        if (y < this.navigatorHeight + this.rulerHeight) return 'grab';
+        return this.contentCursor(x, y);
+    }
+
     handlePointerDown(event) {
+        // Il tasto destro apre il menu contestuale, il centrale non ha un significato
+        if (event.button !== 0) return;
         const rect = this.canvas.getBoundingClientRect();
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
@@ -887,9 +934,11 @@ export class TimelineCanvas {
             this.drag = contentDrag;
         } else if (y < this.navigatorHeight + this.rulerHeight) {
             this.drag = { kind: 'pan', startX: event.clientX, startScroll: this.host.scrollLeft, pointerId: event.pointerId };
+            this.canvas.style.cursor = 'grabbing';
         } else {
-            this.drag = { kind: 'seek', timeMs: this.timeAtX(x), pointerId: event.pointerId };
+            this.drag = { kind: 'seek', timeMs: Math.max(0, Math.min(this.model.durationMs, this.timeAtX(x))), pointerId: event.pointerId };
         }
+        this.draw();
     }
 
     handlePointerMove(event) {
@@ -897,13 +946,9 @@ export class TimelineCanvas {
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
         this.hoverX = x;
+        this.hoverY = y;
         if (!this.drag) {
-            if (y <= this.navigatorHeight) {
-                const geometry = this.navigatorGeometry();
-                this.canvas.style.cursor = Math.abs(x - geometry.left) <= 9 || Math.abs(x - geometry.right) <= 9 ? 'ew-resize' : 'grab';
-            } else {
-                this.canvas.style.cursor = this.contentCursor(x, y);
-            }
+            this.canvas.style.cursor = this.pointerCursor(x, y);
             this.draw();
             return;
         }
@@ -926,11 +971,12 @@ export class TimelineCanvas {
     handlePointerUp(event) {
         if (!this.drag) return;
         const drag = this.drag;
+        const rect = this.canvas.getBoundingClientRect();
         this.drag = null;
-        this.canvas.style.cursor = 'default';
         if (drag.kind === 'seek') this.dotNetReference.invokeMethodAsync('OnTimelineSeek', drag.timeMs);
         else if (drag.kind !== 'pan' && !drag.kind.startsWith('navigator')) this.onContentDragEnd(drag);
         try { this.canvas.releasePointerCapture(event.pointerId); } catch { }
+        this.canvas.style.cursor = this.pointerCursor(event.clientX - rect.left, event.clientY - rect.top);
         this.draw();
     }
 
@@ -949,6 +995,7 @@ export class TimelineCanvas {
         this.canvas.removeEventListener('pointercancel', this.onPointerUp);
         this.canvas.removeEventListener('pointerleave', this.onPointerLeave);
         this.canvas.removeEventListener('dblclick', this.onDoubleClick);
+        this.canvas.removeEventListener('contextmenu', this.onContextMenu);
     }
 }
 

@@ -4,6 +4,15 @@
 
 <section class="media-timeline-pane">
     <div class="media-timeline-toolbar" role="group" aria-label="@ToolbarLabel" style="@GetToolbarColumns()">
+        @if (Tools.Count > 0)
+        {
+            <div class="media-timeline-tools" role="group" aria-label="@ToolsLabel">
+                @foreach (TimelineTool tool in Tools)
+                {
+                    <RadzenButton class="media-timeline-tool-button" Icon="@tool.Icon" Size="ButtonSize.Small" Variant="@GetToolVariant(tool.Key)" ButtonStyle="@GetToolStyle(tool.Key)" title="@tool.Label" aria-label="@tool.Label" aria-pressed="@(string.Equals(ActiveTool, tool.Key, StringComparison.Ordinal) ? "true" : "false")" Click="@(() => ChangeToolAsync(tool.Key))" />
+                }
+            </div>
+        }
         @foreach (AudioLane lane in AudioLanes)
         {
             <label class="media-audio-label" for="@lane.ElementId">@lane.Label</label>
@@ -75,6 +84,18 @@
     /// <summary>Invocata quando l'utente cambia l'ingrandimento verticale.</summary>
     [Parameter] public EventCallback<double> WaveformGainChanged { get; set; }
 
+    /// <summary>Strumenti che decidono il gesto del tasto sinistro; vuoto per non mostrare la barra.</summary>
+    [Parameter] public List<TimelineTool> Tools { get; set; } = new List<TimelineTool>();
+
+    /// <summary>Etichetta del gruppo di strumenti, per la lettura assistita.</summary>
+    [Parameter] public string ToolsLabel { get; set; } = string.Empty;
+
+    /// <summary>Chiave dello strumento attivo.</summary>
+    [Parameter] public string ActiveTool { get; set; } = string.Empty;
+
+    /// <summary>Invocata quando l'utente sceglie un altro strumento.</summary>
+    [Parameter] public EventCallback<string> ActiveToolChanged { get; set; }
+
     /// <summary>Testo alternativo dell'area scorrevole.</summary>
     [Parameter] public string HostAlternative { get; set; } = string.Empty;
 
@@ -128,9 +149,19 @@
         return string.Equals(this.AudioMode, mode, StringComparison.Ordinal) ? Variant.Filled : Variant.Outlined;
     }
 
+    private ButtonStyle GetToolStyle(string tool)
+    {
+        return string.Equals(this.ActiveTool, tool, StringComparison.Ordinal) ? ButtonStyle.Primary : ButtonStyle.Base;
+    }
+
+    private Variant GetToolVariant(string tool)
+    {
+        return string.Equals(this.ActiveTool, tool, StringComparison.Ordinal) ? Variant.Filled : Variant.Outlined;
+    }
+
     private string GetToolbarColumns()
     {
-        return "grid-template-columns: repeat(" + this.AudioLanes.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + ", max-content minmax(6.5rem, 1fr)) repeat(2, minmax(6.5rem, 1fr)) max-content minmax(6rem, 1fr) max-content;";
+        return "grid-template-columns: " + (this.Tools.Count > 0 ? "max-content " : "") + "repeat(" + this.AudioLanes.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + ", max-content minmax(6.5rem, 1fr)) repeat(2, minmax(6.5rem, 1fr)) max-content minmax(6rem, 1fr) max-content;";
     }
 
     private async Task ChangeModeAsync(string mode)
@@ -138,6 +169,13 @@
         if (string.Equals(this.AudioMode, mode, StringComparison.Ordinal))
             return;
         await this.AudioModeChanged.InvokeAsync(mode);
+    }
+
+    private async Task ChangeToolAsync(string tool)
+    {
+        if (string.Equals(this.ActiveTool, tool, StringComparison.Ordinal))
+            return;
+        await this.ActiveToolChanged.InvokeAsync(tool);
     }
 
     private async Task ChangeGainAsync(double value)
@@ -196,6 +234,29 @@
 
         /// <summary>Callback invocata quando cambia la traccia</summary>
         public EventCallback<ChangeEventArgs> OnTrackChanged { get; set; }
+    }
+
+    /// <summary>
+    /// Strumento della timeline mostrato come pulsante con icona
+    /// </summary>
+    public class TimelineTool
+    {
+        /// <summary>Costruttore</summary>
+        public TimelineTool()
+        {
+            this.Key = "";
+            this.Icon = "";
+            this.Label = "";
+        }
+
+        /// <summary>Chiave passata alla timeline JavaScript</summary>
+        public string Key { get; set; }
+
+        /// <summary>Icona Material del pulsante</summary>
+        public string Icon { get; set; }
+
+        /// <summary>Nome e uso dello strumento, mostrati nel tooltip</summary>
+        public string Label { get; set; }
     }
 
     #endregion

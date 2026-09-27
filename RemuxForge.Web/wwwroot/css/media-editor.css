@@ -162,6 +162,18 @@
     gap: calc(var(--rz-gap) * 0.45);
 }
 
+/* Strumenti della timeline: decidono cosa fa il tasto sinistro sulle corsie. */
+.media-timeline-tools {
+    display: flex;
+    gap: calc(var(--rz-gap) * 0.2);
+}
+
+.media-timeline-tool-button.rz-button {
+    width: var(--rz-input-height);
+    height: var(--rz-input-height);
+    padding: 0;
+}
+
 .media-timeline-toolbar output {
     color: var(--rz-text-color);
     text-align: end;

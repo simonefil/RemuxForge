@@ -65,7 +65,7 @@
                             <div class="edit-map-panel-toolbar">
                                 <div class="media-section-title">@AppText.T("web.detail.operationsLabel")</div>
                                 <span class="edit-map-toolbar-spacer"></span>
-                                <RadzenButton Icon="content_cut" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.addCutHelp")" aria-label="@AppText.T("web.editMap.addCutHelp")" Disabled="@(!CanCreateOperation())" Click="@(() => AddOperationAsync(EditOperation.CUT_SEGMENT))" />
+                                <RadzenButton Icon="content_cut" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.addCutHelp")" aria-label="@AppText.T("web.editMap.addCutHelp")" Disabled="@(!CanAddCut())" Click="AddCutAsync" />
                                 <RadzenButton Icon="add_to_queue" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.addInsertHelp")" aria-label="@AppText.T("web.editMap.addInsertHelp")" Disabled="@(!CanCreateOperation())" Click="@(() => AddOperationAsync(EditOperation.INSERT_SILENCE))" />
                                 <RadzenButton Icon="delete" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" title="@AppText.T("web.editMap.deleteHelp")" aria-label="@AppText.T("web.editMap.deleteHelp")" Disabled="@(_selectedOperation == null)" Click="DeleteSelectedOperationAsync" />
                             </div>
@@ -112,6 +112,10 @@
                                                                      AudioModeChanged="SetAudioModeAsync"
                                                                      WaveformGain="@_waveformGain"
                                                                      WaveformGainChanged="SetWaveformGainAsync"
+                                                                     Tools="@GetTimelineTools()"
+                                                                     ToolsLabel="@AppText.T("web.editMap.timelineTools")"
+                                                                     ActiveTool="@_timelineTool"
+                                                                     ActiveToolChanged="SetTimelineToolAsync"
                                                                      HostAlternative="@AppText.T("web.editMap.timeline")"
                                                                      CanvasAlternative="@GetTimelineAlternative()" />
                                     </div>
@@ -215,11 +219,25 @@
         <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.cancelHelp")" Click="CloseAsync" />
         <RadzenButton Text="@AppText.T("web.editMap.apply")" Icon="check" title="@AppText.T("web.editMap.applyHelp")" Disabled="@(!CanApply())" Click="ApplyAsync" />
     </footer>
+
+    @if (_contextMenuOpen)
+    {
+        <ContextMenuComponent Commands="@_contextMenuCommands"
+                              X="@_contextMenuX"
+                              Y="@_contextMenuY"
+                              SelectedIndex="@_contextMenuSelectedIndex"
+                              OnClose="CloseContextMenu"
+                              OnActiveChanged="SetContextMenuActiveIndex"
+                              OnSelect="HandleContextMenuSelectAsync" />
+    }
 </section>
 
 @code {
     private const string AUDIO_MODE_WAVEFORM = "waveform";
     private const string AUDIO_MODE_SPECTROGRAM = "spectrogram";
+    private const string TIMELINE_TOOL_SELECT = "select";
+    private const string TIMELINE_TOOL_HAND = "hand";
+    private const string TIMELINE_TOOL_OPERATIONS = "operations";
 
     /// <summary>
     /// Indice del record originale
@@ -283,6 +301,12 @@
     private string _timestampEditAuthority = "";
     private string _durationEditAuthority = "";
     private string _audioMode = AUDIO_MODE_WAVEFORM;
+    private string _timelineTool = TIMELINE_TOOL_SELECT;
+    private List<UiCommandDefinition> _contextMenuCommands = new List<UiCommandDefinition>();
+    private double _contextMenuX;
+    private double _contextMenuY;
+    private int _contextMenuSelectedIndex;
+    private bool _contextMenuOpen;
     private int? _selectedSourceAudioTrackId;
     private int? _selectedLanguageAudioTrackId;
     private double _sourcePlayheadMs;
@@ -493,7 +517,6 @@
         if (!this._precisionEditorOpen)
             return;
         this._precisionEditorOpen = false;
-        this.ClearTimelineSelection();
         this.StateHasChanged();
         await this.UpdateTimelineAsync(true);
     }
@@ -750,9 +773,7 @@
         object labels = new
         {
             source = AppText.T("web.editMap.source").ToUpperInvariant(),
-            language = AppText.T("web.editMap.language").ToUpperInvariant(),
-            cut = AppText.T("web.editMap.cut").ToUpperInvariant(),
-            insert = AppText.T("web.editMap.insert").ToUpperInvariant()
+            language = AppText.T("web.editMap.language").ToUpperInvariant()
         };
         double sourceDurationMs = this._sourceIndex != null ? this._sourceIndex.EndPtsMs : 0.0;
         double languageDurationMs = this._languageIndex != null ? this._languageIndex.EndPtsMs : 0.0;
@@ -761,7 +782,7 @@
         string sourceFillAudioUrl = languagePlan != null && languagePlan.SourceFillTrack != null ? this.BuildAudioTimelineUrl("source", languagePlan.SourceFillTrack.Id, sourceDurationMs) : null;
         double sourceNyquistHz = GetNyquistFrequency(this.Record?.SourceAudioTracks, this._selectedSourceAudioTrackId);
         double languageNyquistHz = GetNyquistFrequency(this.Record?.ImportedAudioTracks, this._selectedLanguageAudioTrackId);
-        return new { durationMs = sourceDurationMs, frameDurationMs = this._sourceIndex != null ? this._sourceIndex.MedianFrameDurationMs : 40.0, sourceAudioUrl = sourceAudioUrl, languageAudioUrl = languageAudioUrl, sourceFillAudioUrl = sourceFillAudioUrl, audioMode = this._audioMode, sourceNyquistHz = sourceNyquistHz, languageNyquistHz = languageNyquistHz, waveformGain = this._waveformGain, playheadMs = this._sourcePlayheadMs, precisionMode = this._precisionEditorOpen, selectionEnabled = this._precisionEditorOpen, selectionStartMs = this.HasTimelineSelection ? (double?)this._selectionSourceStartMs : null, selectionEndMs = this.HasTimelineSelection ? (double?)this._selectionSourceEndMs : null, labels = labels, segments = segments, operations = operations };
+        return new { durationMs = sourceDurationMs, frameDurationMs = this._sourceIndex != null ? this._sourceIndex.MedianFrameDurationMs : 40.0, sourceAudioUrl = sourceAudioUrl, languageAudioUrl = languageAudioUrl, sourceFillAudioUrl = sourceFillAudioUrl, audioMode = this._audioMode, sourceNyquistHz = sourceNyquistHz, languageNyquistHz = languageNyquistHz, waveformGain = this._waveformGain, playheadMs = this._sourcePlayheadMs, precisionMode = this._precisionEditorOpen, tool = this._timelineTool, selectionStartMs = this.HasTimelineSelection ? (double?)this._selectionSourceStartMs : null, selectionEndMs = this.HasTimelineSelection ? (double?)this._selectionSourceEndMs : null, labels = labels, segments = segments, operations = operations };
     }
 
     /// <summary>
@@ -1411,22 +1432,24 @@
     {
         if (this.CanCreateCutFromSelection())
         {
-            await this.CreateCutFromSelectionAsync();
+            await this.CreateOperationFromSelectionAsync(EditOperation.CUT_SEGMENT);
             return;
         }
         await this.AddOperationAsync(EditOperation.CUT_SEGMENT);
     }
 
     /// <summary>
-    /// Crea un taglio esatto dall'intervallo Language selezionato
+    /// Crea un'operazione esatta sull'intervallo selezionato: il Cut toglie quel tratto Language,
+    /// l'Insert apre in quel punto un vuoto lungo quanto la selezione
     /// </summary>
-    private async Task CreateCutFromSelectionAsync()
+    /// <param name="type">Tipo di operazione da creare</param>
+    private async Task CreateOperationFromSelectionAsync(string type)
     {
         if (!this.CanCreateCutFromSelection())
             return;
         EditOperation operation = new EditOperation
         {
-            Type = EditOperation.CUT_SEGMENT,
+            Type = type,
             LangTimestampMs = Math.Max(0, (int)Math.Round(this._selectionLanguageStartMs)),
             DurationMs = Math.Max(1, (int)Math.Round(this._selectionLanguageEndMs - this._selectionLanguageStartMs)),
             SourceTimestampMs = Math.Max(0, (int)Math.Round(this._selectionSourceStartMs)),
@@ -1714,12 +1737,122 @@
     }
 
     /// <summary>
+    /// Descrive gli strumenti che decidono il gesto del tasto sinistro sulle corsie
+    /// </summary>
+    /// <returns>Selezione, Mano e Operazioni</returns>
+    private List<MediaTimelinePanelComponent.TimelineTool> GetTimelineTools()
+    {
+        List<MediaTimelinePanelComponent.TimelineTool> tools = new List<MediaTimelinePanelComponent.TimelineTool>();
+        tools.Add(new MediaTimelinePanelComponent.TimelineTool { Key = TIMELINE_TOOL_SELECT, Icon = "highlight_alt", Label = AppText.T("web.editMap.toolSelect") });
+        tools.Add(new MediaTimelinePanelComponent.TimelineTool { Key = TIMELINE_TOOL_HAND, Icon = "pan_tool", Label = AppText.T("web.editMap.toolHand") });
+        tools.Add(new MediaTimelinePanelComponent.TimelineTool { Key = TIMELINE_TOOL_OPERATIONS, Icon = "open_with", Label = AppText.T("web.editMap.toolOperations") });
+        return tools;
+    }
+
+    /// <summary>
+    /// Attiva lo strumento scelto nella barra della timeline
+    /// </summary>
+    /// <param name="tool">Chiave dello strumento</param>
+    private async Task SetTimelineToolAsync(string tool)
+    {
+        this._timelineTool = tool;
+        await this.UpdateTimelineAsync();
+    }
+
+    /// <summary>
+    /// Apre il menu del tasto destro con le azioni possibili nel punto cliccato
+    /// </summary>
+    /// <param name="clientX">Ascissa del puntatore nella finestra</param>
+    /// <param name="clientY">Ordinata del puntatore nella finestra</param>
+    /// <param name="sourceMs">Istante Source sotto il puntatore</param>
+    /// <param name="operationIndex">Operazione sotto il puntatore, -1 se nessuna</param>
+    /// <param name="insideSelection">True quando il clic cade dentro la selezione</param>
+    [JSInvokable]
+    public async Task OnTimelineContextMenu(double clientX, double clientY, double sourceMs, int operationIndex, bool insideSelection)
+    {
+        await this.InvokeAsync(async () =>
+        {
+            List<UiCommandDefinition> commands = new List<UiCommandDefinition>();
+            if (!this.IndexesReady || this._projection == null)
+                return;
+
+            if (operationIndex >= 0 && operationIndex < this._workingMap.Operations.Count)
+            {
+                // L'operazione si seleziona subito, così si vede quale verrà eliminata
+                await this.SelectOperationAsync(operationIndex, false);
+                commands.Add(new UiCommandDefinition { Label = AppText.T("web.editMap.contextDeleteOperation"), Placement = UiCommandPlacement.ContextMenu, AsyncCallback = this.DeleteSelectedOperationAsync });
+            }
+            else if (insideSelection && this.CanCreateCutFromSelection())
+            {
+                commands.Add(new UiCommandDefinition { Label = AppText.T("web.editMap.contextCutFromSelection"), Placement = UiCommandPlacement.ContextMenu, AsyncCallback = () => this.CreateOperationFromSelectionAsync(EditOperation.CUT_SEGMENT) });
+                commands.Add(new UiCommandDefinition { Label = AppText.T("web.editMap.contextInsertFromSelection"), Placement = UiCommandPlacement.ContextMenu, AsyncCallback = () => this.CreateOperationFromSelectionAsync(EditOperation.INSERT_SILENCE) });
+            }
+            else if (this._projection.MapSourceToLanguage(sourceMs).IsMapped)
+            {
+                commands.Add(new UiCommandDefinition { Label = AppText.T("web.editMap.contextCutHere"), Placement = UiCommandPlacement.ContextMenu, AsyncCallback = () => this.AddOperationAtAsync(EditOperation.CUT_SEGMENT, sourceMs) });
+                commands.Add(new UiCommandDefinition { Label = AppText.T("web.editMap.contextInsertHere"), Placement = UiCommandPlacement.ContextMenu, AsyncCallback = () => this.AddOperationAtAsync(EditOperation.INSERT_SILENCE, sourceMs) });
+            }
+            if (commands.Count == 0)
+                return;
+
+            this._contextMenuCommands = commands;
+            this._contextMenuX = clientX;
+            this._contextMenuY = clientY;
+            this._contextMenuSelectedIndex = 0;
+            this._contextMenuOpen = true;
+            this.StateHasChanged();
+        });
+    }
+
+    /// <summary>
+    /// Porta il playhead nel punto cliccato col tasto destro e vi crea l'operazione
+    /// </summary>
+    /// <param name="type">Tipo di operazione da creare</param>
+    /// <param name="sourceMs">Istante Source del clic</param>
+    private async Task AddOperationAtAsync(string type, double sourceMs)
+    {
+        this.ClearTimelineSelection();
+        this.NavigateFromSource(sourceMs);
+        await this.AddOperationAsync(type);
+    }
+
+    /// <summary>
+    /// Esegue la voce scelta nel menu del tasto destro
+    /// </summary>
+    /// <param name="index">Indice della voce</param>
+    private async Task HandleContextMenuSelectAsync(int index)
+    {
+        this._contextMenuOpen = false;
+        if (index >= 0 && index < this._contextMenuCommands.Count)
+            await this._contextMenuCommands[index].ExecuteAsync();
+    }
+
+    /// <summary>
+    /// Aggiorna la voce attiva del menu al passaggio del mouse
+    /// </summary>
+    /// <param name="index">Indice della voce</param>
+    private void SetContextMenuActiveIndex(int index)
+    {
+        this._contextMenuSelectedIndex = index;
+    }
+
+    /// <summary>
+    /// Chiude il menu del tasto destro senza eseguire nulla
+    /// </summary>
+    private void CloseContextMenu()
+    {
+        this._contextMenuOpen = false;
+    }
+
+    /// <summary>
     /// Sposta il playhead Source dalla timeline JavaScript
     /// </summary>
     /// <param name="sourceMs">Timestamp Source relativo</param>
     [JSInvokable]
     public async Task OnTimelineSeek(double sourceMs)
     {
+        // Come in un editor audio, il clic che sposta il cursore toglie la selezione
+        this.ClearTimelineSelection();
         this.NavigateFromSource(sourceMs);
         this.SelectOperationAtPlayhead();
         await this.InvokeAsync(async () => await this.RefreshAfterNavigationAsync());
@@ -1734,7 +1867,7 @@
     public async Task OnTimelineSelectionChanged(double sourceStartMs, double sourceEndMs)
     {
         this.ClearTimelineSelection();
-        if (!this._precisionEditorOpen || this._projection == null || sourceEndMs <= sourceStartMs)
+        if (this._projection == null || sourceEndMs <= sourceStartMs)
         {
             await this.InvokeAsync(async () => await this.UpdateTimelineAsync());
             return;
@@ -1961,6 +2094,16 @@
     [JSInvokable]
     public async Task OnEditorKey(string key, bool shift, bool editing)
     {
+        if (this._contextMenuOpen)
+        {
+            if (string.Equals(key, "Escape", StringComparison.Ordinal))
+            {
+                this._contextMenuOpen = false;
+                this.StateHasChanged();
+            }
+            return;
+        }
+
         if (editing)
         {
             if (string.Equals(key, "Escape", StringComparison.Ordinal))
