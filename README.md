@@ -9,6 +9,8 @@ RemuxForge is a cross-platform MKV utility for technical MKV workflows:
 
 It ships as a scriptable CLI, a WebUI for local browsers or headless servers, and a native desktop shell for Windows and macOS. The browser and desktop editions use the same Blazor UI and processing engine; the [wiki](https://github.com/simonefil/RemuxForge/wiki) documents them in full.
 
+Questions, feedback or ideas? Join the RemuxForge community on [Discord](https://discord.gg/JpHWKGyaqF), a channel dedicated to this software where you can talk directly with the developer and other users.
+
 ## Requirements
 
 - [MKVToolNix](https://mkvtoolnix.download/) (`mkvmerge`, `mkvextract`, `mkvpropedit`)
