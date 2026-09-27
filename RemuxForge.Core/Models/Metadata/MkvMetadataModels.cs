@@ -659,9 +659,6 @@ namespace RemuxForge.Core.Models
             this.AttachmentSourcePath = "";
             this.AttachmentName = "";
             this.AttachmentMimeType = "";
-            this.ChapterNamePattern = "";
-            this.TrackOrderKinds = "video,audio,subtitles";
-            this.TrackOrderLanguages = "";
             this.TagTargetTypeValue = MetadataTagTargetLevels.EPISODE;
         }
 
@@ -720,21 +717,6 @@ namespace RemuxForge.Core.Models
         public string AttachmentMimeType { get; set; }
 
         /// <summary>
-        /// Pattern con cui rinominare i capitoli, con i segnaposto {n} e {name}
-        /// </summary>
-        public string ChapterNamePattern { get; set; }
-
-        /// <summary>
-        /// Ordine dei tipi di traccia, separati da virgola
-        /// </summary>
-        public string TrackOrderKinds { get; set; }
-
-        /// <summary>
-        /// Priorità delle lingue dentro ogni tipo, separate da virgola
-        /// </summary>
-        public string TrackOrderLanguages { get; set; }
-
-        /// <summary>
         /// Livello di target Matroska con cui scrivere il tag: 70 collezione, 60 stagione, 50 episodio, 30 traccia
         /// </summary>
         public int TagTargetTypeValue { get; set; }
@@ -769,12 +751,8 @@ namespace RemuxForge.Core.Models
         SetAttachment,
         /// <summary>Elimina un allegato</summary>
         DeleteAttachment,
-        /// <summary>Rinomina i capitoli con un pattern</summary>
-        RenameChapters,
-        /// <summary>Elimina il blocco capitoli</summary>
-        ClearChapters,
-        /// <summary>Riordina le tracce per criterio</summary>
-        SetTrackOrder
+        /// <summary>Riscrive i capitoli come li ha lasciati l'editor manuale, mai da preset</summary>
+        EditChapters
     }
 
     /// <summary>
@@ -925,7 +903,6 @@ namespace RemuxForge.Core.Models
             this.AttachmentSourcePath = "";
             this.AttachmentMimeType = "";
             this.Chapters = new List<MkvMetadataChapterInfo>();
-            this.TrackOrder = new List<string>();
             this.TagTargetTypeValue = MetadataTagTargetLevels.EPISODE;
             this.Message = "";
         }
@@ -1013,11 +990,6 @@ namespace RemuxForge.Core.Models
         /// Capitoli come devono risultare dopo la modifica, vuoto se il blocco va eliminato
         /// </summary>
         public List<MkvMetadataChapterInfo> Chapters { get; set; }
-
-        /// <summary>
-        /// Selector logici nell'ordine in cui le tracce vanno scritte
-        /// </summary>
-        public List<string> TrackOrder { get; set; }
 
         /// <summary>
         /// Livello di target Matroska del tag scritto
@@ -1159,6 +1131,7 @@ namespace RemuxForge.Core.Models
             this.Uid = "";
             this.Name = "";
             this.Language = "";
+            this.ParentUid = "";
         }
 
         #endregion
@@ -1166,27 +1139,47 @@ namespace RemuxForge.Core.Models
         #region Proprietà
 
         /// <summary>
-        /// UID del capitolo, conservato per riscrivere il blocco senza inventarne di nuovi
+        /// UID del capitolo: e' la chiave con cui l'esecuzione ritrova il nodo da modificare
         /// </summary>
         public string Uid { get; set; }
 
         /// <summary>
-        /// Istante di inizio in millisecondi
+        /// Istante di inizio assoluto in nanosecondi, la precisione del contenitore
         /// </summary>
-        public double StartMs { get; set; }
+        public long StartNs { get; set; }
 
         /// <summary>
-        /// Istante di fine in millisecondi, zero se non dichiarato
+        /// Istante di fine assoluto in nanosecondi, zero se non dichiarato
         /// </summary>
-        public double EndMs { get; set; }
+        public long EndNs { get; set; }
 
         /// <summary>
-        /// Nome del capitolo
+        /// Indice dell'edizione che contiene il capitolo, nell'ordine del file
+        /// </summary>
+        public int EditionIndex { get; set; }
+
+        /// <summary>
+        /// Vero se l'edizione e' ordinata: la sequenza dei capitoli e' l'ordine di riproduzione
+        /// </summary>
+        public bool EditionOrdered { get; set; }
+
+        /// <summary>
+        /// UID del capitolo padre, vuoto per i capitoli di primo livello
+        /// </summary>
+        public string ParentUid { get; set; }
+
+        /// <summary>
+        /// Profondita' di annidamento, zero per i capitoli di primo livello
+        /// </summary>
+        public int Depth { get; set; }
+
+        /// <summary>
+        /// Nome del primo display: gli altri display del capitolo restano come sono
         /// </summary>
         public string Name { get; set; }
 
         /// <summary>
-        /// Lingua del nome, in forma ISO 639-2
+        /// Lingua del primo nome, in forma ISO 639-2
         /// </summary>
         public string Language { get; set; }
 

@@ -369,6 +369,10 @@ namespace RemuxForge.Web.Services
                 {
                     MetadataPresetService presetService = new MetadataPresetService(AppSettingsService.Instance.ConfigFolder);
                     preset = presetService.Load(this._options.Metadata.PresetPath);
+                    for (int w = 0; w < presetService.LastLoadWarnings.Count; w++)
+                    {
+                        this.AppendLog(presetService.LastLoadWarnings[w]);
+                    }
                     validation = MetadataPresetService.Validate(preset);
                     if (!validation.IsValid)
                         throw new InvalidOperationException(validation.ErrorMessage);
@@ -550,7 +554,11 @@ namespace RemuxForge.Web.Services
                 for (int i = 0; i < changes.Count; i++)
                 {
                     MkvMetadataChange change = changes[i];
-                    if (change.RequiresRemux || change.OperationType == MkvMetadataOperationType.RemoveTrack)
+                    bool isPosition = change.OperationType == MkvMetadataOperationType.SetField && MetadataTrackPositionHelper.IsPositionField(change.FieldKey);
+
+                    // L'unico remux ammesso dall'editor manuale e' lo spostamento di una
+                    // traccia dentro il suo tipo: rimuovere tracce resta lavoro da preset
+                    if ((change.RequiresRemux && !isPosition) || change.OperationType == MkvMetadataOperationType.RemoveTrack)
                         throw new InvalidOperationException(AppText.T("web.metadata.manualEdit.remuxNotAllowed"));
 
                     if (change.OperationType == MkvMetadataOperationType.SetTagField || change.OperationType == MkvMetadataOperationType.ClearTagField)
@@ -600,10 +608,18 @@ namespace RemuxForge.Web.Services
                         continue;
                     }
 
-                    // I capitoli si riscrivono in blocco e non hanno un campo da validare:
-                    // la lista che arriva dall'editor e' gia' quella da scrivere
-                    if (change.OperationType == MkvMetadataOperationType.RenameChapters || change.OperationType == MkvMetadataOperationType.ClearChapters)
+                    if (change.OperationType == MkvMetadataOperationType.EditChapters)
+                    {
+                        HashSet<string> uids = new HashSet<string>(StringComparer.Ordinal);
+                        for (int c = 0; c < change.Chapters.Count; c++)
+                        {
+                            MkvMetadataChapterInfo chapter = change.Chapters[c];
+                            if (string.IsNullOrEmpty(chapter.Uid) || !uids.Add(chapter.Uid) || chapter.StartNs < 0 || chapter.EditionIndex < 0)
+                                throw new InvalidOperationException(AppText.T("web.metadata.manualEdit.chaptersInvalid"));
+                        }
+
                         continue;
+                    }
 
                     throw new InvalidOperationException(AppText.T("web.metadata.manualEdit.operationNotAllowed"));
                 }
@@ -629,6 +645,30 @@ namespace RemuxForge.Web.Services
                     manualRecord.Changes = new List<MkvMetadataChange>(changes);
                     manualRecord.ChangeCount = changes.Count;
                     manualRecord.MatchCount = 0;
+                }
+
+                // Le posizioni si applicano al modello come fa l'analisi: l'esecuzione ricava
+                // --track-order dall'ordine in cui le tracce restano in FileInfo
+                foreach (string trackKind in new string[] { "video", "audio", "subtitles" })
+                {
+                    Dictionary<string, int> requested = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                    for (int i = 0; i < changes.Count; i++)
+                    {
+                        int position;
+                        if (changes[i].OperationType != MkvMetadataOperationType.SetField || changes[i].TrackKind != trackKind || !MetadataTrackPositionHelper.IsPositionField(changes[i].FieldKey))
+                            continue;
+
+                        if (!int.TryParse(changes[i].AfterValue, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out position))
+                            throw new InvalidOperationException(AppText.F("metadata.error.trackPositionInvalid", changes[i].TrackSelector, changes[i].AfterValue));
+
+                        requested[changes[i].TrackSelector] = position;
+                    }
+
+                    if (requested.Count == 0)
+                        continue;
+
+                    MetadataTrackPositionHelper.Apply(manualRecord.FileInfo, trackKind, requested, null);
+                    manualRecord.ExecutionMode = MkvMetadataExecutionMode.MkvMerge;
                 }
 
                 this.NotifyRecordsChanged();
@@ -671,6 +711,7 @@ namespace RemuxForge.Web.Services
                     if (refreshedRecords.Count > 0)
                     {
                         executor.PopulateExistingTags(refreshedRecords[0]);
+                        new MetadataContainerReader(AppSettingsService.Instance.Settings.Tools.MkvMergePath, AppSettingsService.Instance.Settings.Tools.MkvExtractPath).PopulateContainerInfo(refreshedRecords[0]);
                         refreshedRecords[0].Status = MkvMetadataStatus.Completed;
                         lock (this.StateLock)
                         {
@@ -742,6 +783,7 @@ namespace RemuxForge.Web.Services
                 if (refreshed.Count > 0)
                 {
                     executor.PopulateExistingTags(refreshed[0]);
+                    new MetadataContainerReader(AppSettingsService.Instance.Settings.Tools.MkvMergePath, AppSettingsService.Instance.Settings.Tools.MkvExtractPath).PopulateContainerInfo(refreshed[0]);
                     refreshed[0].Status = record.Status;
                     refreshed[0].AnalysisStatus = MkvMetadataAnalysisStatus.Applied;
                     refreshed[0].MatchCount = record.MatchCount;

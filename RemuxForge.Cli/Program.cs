@@ -267,6 +267,10 @@ namespace RemuxForge.Cli
             {
                 MetadataPresetService presetService = new MetadataPresetService(AppSettingsService.Instance.ConfigFolder);
                 MkvMetadataPreset preset = presetService.Load(opts.Metadata.PresetPath);
+                for (int w = 0; w < presetService.LastLoadWarnings.Count; w++)
+                {
+                    ConsoleHelper.Write(LogSection.Config, LogLevel.Warning, presetService.LastLoadWarnings[w]);
+                }
                 MkvMetadataPresetValidationResult validation = MetadataPresetService.Validate(preset);
                 if (!validation.IsValid)
                 {

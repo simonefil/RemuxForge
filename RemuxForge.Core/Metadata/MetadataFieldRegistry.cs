@@ -265,8 +265,6 @@ namespace RemuxForge.Core.Metadata
             AddReadable(fields, "tagged_date", MetadataFieldSector.Container, MetadataFieldValueType.Date);
             AddReadable(fields, "attachment_count", MetadataFieldSector.Container, MetadataFieldValueType.Integer);
             AddReadable(fields, "attachment_names", MetadataFieldSector.Container, MetadataFieldValueType.String);
-            AddReadable(fields, "chapter_count", MetadataFieldSector.Container, MetadataFieldValueType.Integer);
-            AddReadable(fields, "chapter_first_name", MetadataFieldSector.Container, MetadataFieldValueType.String);
 
             AddEditable(fields, "container_title", MetadataFieldSector.Container, MkvMetadataTargetScope.Container, MetadataFieldValueType.String, "title", true, MetadataFieldRiskLevel.Normal);
             AddEditable(fields, "container_date", MetadataFieldSector.Container, MkvMetadataTargetScope.Container, MetadataFieldValueType.Date, "date", true, MetadataFieldRiskLevel.Normal);
@@ -352,8 +350,6 @@ namespace RemuxForge.Core.Metadata
             Configure(fields, "tagged_date", MetadataFieldVisibility.Advanced, MetadataFieldInputKind.DateInput, "", "Tagged_Date");
             Configure(fields, "attachment_count", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Number, "");
             Configure(fields, "attachment_names", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Text, "");
-            Configure(fields, "chapter_count", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Number, "");
-            Configure(fields, "chapter_first_name", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Text, "");
             Configure(fields, "container_title", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Text, "", "Title");
             Configure(fields, "container_date", MetadataFieldVisibility.Advanced, MetadataFieldInputKind.DateInput, "", "Recorded_Date", "Encoded_Date");
             Configure(fields, "segment_filename", MetadataFieldVisibility.Advanced, MetadataFieldInputKind.Text, "", "SegmentFilename");
@@ -562,7 +558,7 @@ namespace RemuxForge.Core.Metadata
             Configure(fields, "video_codec_id", MetadataFieldVisibility.Technical, MetadataFieldInputKind.Text, "", "CodecID");
             Configure(fields, "video_type", MetadataFieldVisibility.Technical);
             Configure(fields, "video_stream_order", MetadataFieldVisibility.Technical);
-            Configure(fields, "video_index", MetadataFieldVisibility.Technical);
+            Configure(fields, "video_index", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Number, "");
             Configure(fields, "video_selector", MetadataFieldVisibility.Technical);
             Configure(fields, "video_id", MetadataFieldVisibility.Technical, MetadataFieldInputKind.Number, "", "ID");
             Configure(fields, "video_unique_id", MetadataFieldVisibility.Technical, MetadataFieldInputKind.Text, "", "UniqueID");
@@ -638,7 +634,7 @@ namespace RemuxForge.Core.Metadata
             Configure(fields, "audio_codec_id", MetadataFieldVisibility.Technical, MetadataFieldInputKind.Text, "", "CodecID");
             Configure(fields, "audio_type", MetadataFieldVisibility.Technical);
             Configure(fields, "audio_stream_order", MetadataFieldVisibility.Technical);
-            Configure(fields, "audio_index", MetadataFieldVisibility.Technical);
+            Configure(fields, "audio_index", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Number, "");
             Configure(fields, "audio_selector", MetadataFieldVisibility.Technical);
             Configure(fields, "audio_id", MetadataFieldVisibility.Technical, MetadataFieldInputKind.Number, "", "ID");
             Configure(fields, "audio_unique_id", MetadataFieldVisibility.Technical, MetadataFieldInputKind.Text, "", "UniqueID");
@@ -690,7 +686,7 @@ namespace RemuxForge.Core.Metadata
             Configure(fields, "subtitle_codec_id", MetadataFieldVisibility.Technical, MetadataFieldInputKind.Text, "", "CodecID");
             Configure(fields, "subtitle_type", MetadataFieldVisibility.Technical);
             Configure(fields, "subtitle_stream_order", MetadataFieldVisibility.Technical);
-            Configure(fields, "subtitle_index", MetadataFieldVisibility.Technical);
+            Configure(fields, "subtitle_index", MetadataFieldVisibility.Primary, MetadataFieldInputKind.Number, "");
             Configure(fields, "subtitle_selector", MetadataFieldVisibility.Technical);
             Configure(fields, "subtitle_id", MetadataFieldVisibility.Technical, MetadataFieldInputKind.Number, "", "ID");
             Configure(fields, "subtitle_unique_id", MetadataFieldVisibility.Technical, MetadataFieldInputKind.Text, "", "UniqueID");
@@ -779,7 +775,7 @@ namespace RemuxForge.Core.Metadata
 
             AddReadable(fields, "video_type", MetadataFieldSector.Video, MetadataFieldValueType.String);
             AddReadable(fields, "video_stream_order", MetadataFieldSector.Video, MetadataFieldValueType.Integer);
-            AddReadable(fields, "video_index", MetadataFieldSector.Video, MetadataFieldValueType.Integer);
+            AddTrackPosition(fields, "video_index", MetadataFieldSector.Video, MkvMetadataTargetScope.Video);
             AddReadable(fields, "video_selector", MetadataFieldSector.Video, MetadataFieldValueType.String);
             AddReadable(fields, "video_id", MetadataFieldSector.Video, MetadataFieldValueType.Integer);
             AddReadable(fields, "video_unique_id", MetadataFieldSector.Video, MetadataFieldValueType.String);
@@ -855,7 +851,7 @@ namespace RemuxForge.Core.Metadata
 
             AddReadable(fields, "audio_type", MetadataFieldSector.Audio, MetadataFieldValueType.String);
             AddReadable(fields, "audio_stream_order", MetadataFieldSector.Audio, MetadataFieldValueType.Integer);
-            AddReadable(fields, "audio_index", MetadataFieldSector.Audio, MetadataFieldValueType.Integer);
+            AddTrackPosition(fields, "audio_index", MetadataFieldSector.Audio, MkvMetadataTargetScope.Audio);
             AddReadable(fields, "audio_selector", MetadataFieldSector.Audio, MetadataFieldValueType.String);
             AddReadable(fields, "audio_id", MetadataFieldSector.Audio, MetadataFieldValueType.Integer);
             AddReadable(fields, "audio_unique_id", MetadataFieldSector.Audio, MetadataFieldValueType.String);
@@ -907,7 +903,7 @@ namespace RemuxForge.Core.Metadata
 
             AddReadable(fields, "subtitle_type", MetadataFieldSector.Subtitle, MetadataFieldValueType.String);
             AddReadable(fields, "subtitle_stream_order", MetadataFieldSector.Subtitle, MetadataFieldValueType.Integer);
-            AddReadable(fields, "subtitle_index", MetadataFieldSector.Subtitle, MetadataFieldValueType.Integer);
+            AddTrackPosition(fields, "subtitle_index", MetadataFieldSector.Subtitle, MkvMetadataTargetScope.Subtitle);
             AddReadable(fields, "subtitle_selector", MetadataFieldSector.Subtitle, MetadataFieldValueType.String);
             AddReadable(fields, "subtitle_id", MetadataFieldSector.Subtitle, MetadataFieldValueType.Integer);
             AddReadable(fields, "subtitle_unique_id", MetadataFieldSector.Subtitle, MetadataFieldValueType.String);
@@ -1162,6 +1158,35 @@ namespace RemuxForge.Core.Metadata
             field.RiskLevel = risk;
             field.EditPolicy = risk == MetadataFieldRiskLevel.Advanced ? MetadataFieldEditPolicy.Advanced : MetadataFieldEditPolicy.Editable;
             field.MkvPropEditProperty = property;
+            field.TargetScopes.Add(scope);
+
+            fields.Add(field);
+        }
+
+        /// <summary>
+        /// Aggiunge la posizione della traccia dentro il suo tipo
+        /// </summary>
+        /// <param name="fields">Lista campi da popolare</param>
+        /// <param name="key">Chiave campo</param>
+        /// <param name="sector">Settore metadata</param>
+        /// <param name="scope">Scope target</param>
+        private static void AddTrackPosition(List<MetadataFieldDefinition> fields, string key, MetadataFieldSector sector, MkvMetadataTargetScope scope)
+        {
+            MetadataFieldDefinition field = new MetadataFieldDefinition();
+            field.Key = key;
+            field.Label = key;
+            field.Sector = sector;
+            field.ValueType = MetadataFieldValueType.Integer;
+            field.InputKind = ResolveInputKind(field.ValueType);
+            field.IsReadable = true;
+            field.IsEditable = true;
+            field.IsClearable = false;
+            field.RiskLevel = MetadataFieldRiskLevel.Normal;
+            field.EditPolicy = MetadataFieldEditPolicy.Editable;
+
+            // mkvpropedit non sposta tracce: la posizione la scrive solo --track-order di mkvmerge
+            field.MkvMergeArgument = "--track-order";
+            field.RequiresRemux = true;
             field.TargetScopes.Add(scope);
 
             fields.Add(field);

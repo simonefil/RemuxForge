@@ -394,9 +394,6 @@ namespace RemuxForge.Web.Services
                 // scope contenitore non ci sarebbe niente su cui applicarli
                 result.Add(MkvMetadataOperationType.SetAttachment);
                 result.Add(MkvMetadataOperationType.DeleteAttachment);
-                result.Add(MkvMetadataOperationType.RenameChapters);
-                result.Add(MkvMetadataOperationType.ClearChapters);
-                result.Add(MkvMetadataOperationType.SetTrackOrder);
             }
             result.Add(MkvMetadataOperationType.SetTagField);
             result.Add(MkvMetadataOperationType.ClearTagField);

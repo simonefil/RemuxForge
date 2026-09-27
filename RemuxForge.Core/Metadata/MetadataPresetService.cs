@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
@@ -21,6 +22,12 @@ namespace RemuxForge.Core.Metadata
         /// </summary>
         private const int CURRENT_SCHEMA_VERSION = 4;
 
+        /// <summary>
+        /// Operazioni tolte dai preset: i capitoli si editano solo a mano, l'ordine delle
+        /// tracce si imposta con la posizione esplicita nelle regole di traccia
+        /// </summary>
+        private static readonly string[] REMOVED_OPERATION_TYPES = new string[] { "RenameChapters", "ClearChapters", "SetTrackOrder" };
+
         #endregion
 
         #region Variabili di classe
@@ -29,6 +36,23 @@ namespace RemuxForge.Core.Metadata
         /// Cartella fissa dei preset metadata
         /// </summary>
         private readonly string _presetFolder;
+
+        /// <summary>
+        /// Avvisi dell'ultimo caricamento: operazioni non piu' supportate scartate dal preset
+        /// </summary>
+        private List<string> _lastLoadWarnings = new List<string>();
+
+        #endregion
+
+        #region Proprieta
+
+        /// <summary>
+        /// Avvisi dell'ultimo caricamento, vuota se il preset e' stato letto intero
+        /// </summary>
+        public List<string> LastLoadWarnings
+        {
+            get { return this._lastLoadWarnings; }
+        }
 
         #endregion
 
@@ -100,12 +124,21 @@ namespace RemuxForge.Core.Metadata
         {
             MkvMetadataPreset preset;
             JsonSerializerOptions options;
+            JsonNode root;
 
+            this._lastLoadWarnings = new List<string>();
             if (string.IsNullOrEmpty(json != null ? json.Trim() : null))
                 throw new ArgumentException(AppText.T("metadata.preset.invalid"), nameof(json));
 
             options = CreateSerializerOptions();
-            preset = JsonSerializer.Deserialize<MkvMetadataPreset>(json, options);
+            root = JsonNode.Parse(json);
+            if (root == null)
+                throw new InvalidOperationException(AppText.T("metadata.preset.invalid"));
+
+            // Le operazioni tolte vanno scartate prima di deserializzare: il convertitore
+            // degli enum rifiuterebbe il loro Type e con esso l'intero preset
+            RemoveLegacyOperations(root, this._lastLoadWarnings);
+            preset = root.Deserialize<MkvMetadataPreset>(options);
             if (preset == null)
                 throw new InvalidOperationException(AppText.T("metadata.preset.invalid"));
 
@@ -185,6 +218,75 @@ namespace RemuxForge.Core.Metadata
         #endregion
 
         #region Metodi privati
+
+        /// <summary>
+        /// Scarta dal JSON le operazioni non piu' supportate e annota regola per regola cosa e' stato tolto
+        /// </summary>
+        /// <param name="root">Radice JSON del preset</param>
+        /// <param name="warnings">Avvisi da popolare</param>
+        private static void RemoveLegacyOperations(JsonNode root, List<string> warnings)
+        {
+            JsonObject presetObject = root as JsonObject;
+            JsonArray rules = presetObject != null ? GetPropertyIgnoreCase(presetObject, "Rules") as JsonArray : null;
+            if (rules == null)
+                return;
+
+            for (int ruleIndex = 0; ruleIndex < rules.Count; ruleIndex++)
+            {
+                JsonObject rule = rules[ruleIndex] as JsonObject;
+                JsonArray operations = rule != null ? GetPropertyIgnoreCase(rule, "Operations") as JsonArray : null;
+                if (operations == null)
+                    continue;
+
+                JsonValue descriptionValue = GetPropertyIgnoreCase(rule, "Description") as JsonValue;
+                string description;
+                if (descriptionValue == null || !descriptionValue.TryGetValue<string>(out description))
+                    description = "";
+
+                int operationIndex = 0;
+                while (operationIndex < operations.Count)
+                {
+                    JsonObject operation = operations[operationIndex] as JsonObject;
+                    JsonValue typeValue = operation != null ? GetPropertyIgnoreCase(operation, "Type") as JsonValue : null;
+                    string type;
+                    int removedIndex = -1;
+                    if (typeValue != null && typeValue.TryGetValue<string>(out type))
+                    {
+                        for (int i = 0; i < REMOVED_OPERATION_TYPES.Length && removedIndex < 0; i++)
+                        {
+                            if (string.Equals(REMOVED_OPERATION_TYPES[i], type, StringComparison.OrdinalIgnoreCase))
+                                removedIndex = i;
+                        }
+                    }
+
+                    if (removedIndex < 0)
+                    {
+                        operationIndex++;
+                        continue;
+                    }
+
+                    warnings.Add(AppText.F("metadata.preset.legacyOperationRemoved", ruleIndex + 1, description, REMOVED_OPERATION_TYPES[removedIndex]));
+                    operations.RemoveAt(operationIndex);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Legge una proprieta' JSON ignorando maiuscole e minuscole, come fa il deserializzatore
+        /// </summary>
+        /// <param name="source">Oggetto JSON</param>
+        /// <param name="name">Nome proprieta'</param>
+        /// <returns>Valore trovato o null</returns>
+        private static JsonNode GetPropertyIgnoreCase(JsonObject source, string name)
+        {
+            foreach (KeyValuePair<string, JsonNode> property in source)
+            {
+                if (string.Equals(property.Key, name, StringComparison.OrdinalIgnoreCase))
+                    return property.Value;
+            }
+
+            return null;
+        }
 
         /// <summary>
         /// Crea le opzioni JSON usate dai preset metadata
@@ -682,30 +784,9 @@ namespace RemuxForge.Core.Metadata
                 AddExpressionErrors(expressionEngine.Validate(operation.AttachmentSourcePath), AppText.F("metadata.preset.ruleOperationPath", ruleIndex, operationIndex), result);
             }
 
-            if (operation.Type == MkvMetadataOperationType.SetTrackOrder)
-            {
-                if (rule.TargetScope != MkvMetadataTargetScope.Container)
-                    result.AddError(AppText.F("metadata.preset.trackOrderRequiresContainerScope", ruleIndex, operationIndex));
-
-                // Senza criteri l'ordinamento e' l'identita': l'operazione costerebbe
-                // un remux intero per non spostare niente
-                if (string.IsNullOrEmpty(operation.TrackOrderKinds) && string.IsNullOrEmpty(operation.TrackOrderLanguages))
-                    result.AddError(AppText.F("metadata.preset.trackOrderRequiresCriteria", ruleIndex, operationIndex));
-            }
-
-            if (operation.Type == MkvMetadataOperationType.RenameChapters || operation.Type == MkvMetadataOperationType.ClearChapters)
-            {
-                if (rule.TargetScope != MkvMetadataTargetScope.Container)
-                    result.AddError(AppText.F("metadata.preset.chaptersRequireContainerScope", ruleIndex, operationIndex));
-
-                // Un pattern senza {n} rinominerebbe tutti i capitoli allo stesso modo,
-                // che e' esattamente il risultato che nessuno vuole
-                if (operation.Type == MkvMetadataOperationType.RenameChapters &&
-                    (string.IsNullOrEmpty(operation.ChapterNamePattern) || (!operation.ChapterNamePattern.Contains("{n}") && !operation.ChapterNamePattern.Contains("{n:02}") && !operation.ChapterNamePattern.Contains("{name}"))))
-                {
-                    result.AddError(AppText.F("metadata.preset.chapterPatternRequiresNumber", ruleIndex, operationIndex));
-                }
-            }
+            // I capitoli si modificano solo dall'editor manuale, file per file
+            if (operation.Type == MkvMetadataOperationType.EditChapters)
+                result.AddError(AppText.F("metadata.preset.editChaptersManualOnly", ruleIndex, operationIndex));
 
             if (operation.Type == MkvMetadataOperationType.SetField ||
                 operation.Type == MkvMetadataOperationType.SetTagField)

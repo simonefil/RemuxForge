@@ -144,7 +144,7 @@
                                                 <div class="detail-label">@AppText.F("web.metadata.mapped.chapters", SelectedRecord.FileInfo.Chapters.Count)</div>
                                                 @foreach (MkvMetadataChapterInfo chapter in SelectedRecord.FileInfo.Chapters)
                                                 {
-                                                    <div class="metadata-detail-line"><span class="metadata-chapter-time">@TimeSpan.FromMilliseconds(chapter.StartMs).ToString(@"hh\:mm\:ss")</span> <span class="metadata-detail-value">@chapter.Name</span></div>
+                                                    <div class="metadata-detail-line"><span class="metadata-chapter-time">@TimeSpan.FromTicks(chapter.StartNs / 100).ToString(@"hh\:mm\:ss")</span> <span class="metadata-detail-value">@chapter.Name</span></div>
                                                 }
                                             </div>
                                         }
@@ -170,11 +170,6 @@
                                                     @foreach (MkvMetadataChange change in GetContainerChanges(SelectedRecord))
                                                     {
                                                         <div class="metadata-detail-line"><span class="metadata-detail-value">@change.Message</span></div>
-                                                        @if (change.OperationType == MkvMetadataOperationType.SetTrackOrder)
-                                                        {
-                                                            <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.detail.orderBefore")</span> <span class="metadata-detail-value">@change.BeforeValue</span></div>
-                                                            <div class="metadata-detail-line"><span class="detail-label">@AppText.T("web.metadata.detail.orderAfter")</span> <span class="metadata-detail-value">@change.AfterValue</span></div>
-                                                        }
                                                     }
                                                 </div>
                                             }
@@ -233,7 +228,7 @@
     /// Restituisce le modifiche di contenitore che nessuna tabella per traccia mostra
     /// </summary>
     /// <param name="record">Record metadata</param>
-    /// <returns>Modifiche su allegati, capitoli e ordine delle tracce</returns>
+    /// <returns>Modifiche sugli allegati</returns>
     private List<MkvMetadataChange> GetContainerChanges(MkvMetadataRecord record)
     {
         List<MkvMetadataChange> result = new List<MkvMetadataChange>();
@@ -241,9 +236,7 @@
         for (int i = 0; record.Changes != null && i < record.Changes.Count; i++)
         {
             MkvMetadataOperationType type = record.Changes[i].OperationType;
-            if (type == MkvMetadataOperationType.SetAttachment || type == MkvMetadataOperationType.DeleteAttachment ||
-                type == MkvMetadataOperationType.RenameChapters || type == MkvMetadataOperationType.ClearChapters ||
-                type == MkvMetadataOperationType.SetTrackOrder)
+            if (type == MkvMetadataOperationType.SetAttachment || type == MkvMetadataOperationType.DeleteAttachment)
             {
                 result.Add(record.Changes[i]);
             }

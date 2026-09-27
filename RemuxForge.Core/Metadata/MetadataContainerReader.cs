@@ -4,7 +4,6 @@ using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Text;
 using System.Text.Json;
 using System.Xml;
 
@@ -95,13 +94,12 @@ namespace RemuxForge.Core.Metadata
         }
 
         /// <summary>
-        /// Riscrive i campi di sola lettura che espongono allegati e capitoli alle condizioni
+        /// Riscrive i campi di sola lettura che espongono gli allegati alle condizioni
         /// </summary>
         /// <param name="fileInfo">Info file da aggiornare</param>
         public static void WriteContainerFields(MkvMetadataFileInfo fileInfo)
         {
             List<MkvMetadataAttachmentInfo> attachments = fileInfo != null ? fileInfo.Attachments : null;
-            List<MkvMetadataChapterInfo> chapters = fileInfo != null ? fileInfo.Chapters : null;
             List<string> names = new List<string>();
 
             if (fileInfo == null)
@@ -116,8 +114,6 @@ namespace RemuxForge.Core.Metadata
             // reale senza introdurre un tipo di condizione nuovo per gli allegati
             fileInfo.Fields["attachment_count"] = names.Count.ToString(CultureInfo.InvariantCulture);
             fileInfo.Fields["attachment_names"] = string.Join(", ", names);
-            fileInfo.Fields["chapter_count"] = (chapters != null ? chapters.Count : 0).ToString(CultureInfo.InvariantCulture);
-            fileInfo.Fields["chapter_first_name"] = chapters != null && chapters.Count > 0 ? chapters[0].Name : "";
         }
 
         /// <summary>
@@ -163,9 +159,17 @@ namespace RemuxForge.Core.Metadata
         /// <returns>Capitoli presenti, vuoto se il file non ne ha</returns>
         public List<MkvMetadataChapterInfo> ReadChapters(string filePath)
         {
-            List<MkvMetadataChapterInfo> result = new List<MkvMetadataChapterInfo>();
+            return ParseChapters(this.ReadChaptersXml(filePath));
+        }
+
+        /// <summary>
+        /// Legge il blocco capitoli di un file MKV cosi' come lo scrive mkvextract
+        /// </summary>
+        /// <param name="filePath">File MKV</param>
+        /// <returns>XML capitoli, stringa vuota se il file non ne ha</returns>
+        public string ReadChaptersXml(string filePath)
+        {
             ProcessResult processResult;
-            string xml;
 
             // mkvextract scrive su stdout con il nome di destinazione "-": un file
             // senza capitoli non produce niente, e non e' un errore
@@ -173,58 +177,189 @@ namespace RemuxForge.Core.Metadata
             if (processResult.ExitCode != 0)
                 throw new InvalidOperationException(AppText.F("metadata.reader.chaptersFailed", LastLine(processResult.Stderr)));
 
-            xml = processResult.Stdout != null ? processResult.Stdout.Trim('\uFEFF', ' ', '\r', '\n', '\t') : "";
-            if (xml.Length == 0)
+            return processResult.Stdout != null ? processResult.Stdout.Trim('\uFEFF', ' ', '\r', '\n', '\t') : "";
+        }
+
+        /// <summary>
+        /// Converte l'XML capitoli nella lista piatta che l'editor mostra, edizione per edizione
+        /// </summary>
+        /// <param name="xml">XML capitoli</param>
+        /// <returns>Capitoli in ordine di documento, con edizione e profondita'</returns>
+        public static List<MkvMetadataChapterInfo> ParseChapters(string xml)
+        {
+            List<MkvMetadataChapterInfo> result = new List<MkvMetadataChapterInfo>();
+            List<XmlElement> editions;
+            XmlDocument document = LoadChaptersDocument(xml);
+            int atomIndex = 0;
+
+            if (document == null)
                 return result;
 
-            XmlDocument document = new XmlDocument();
-            document.XmlResolver = null;
-            document.LoadXml(xml);
-
-            XmlNodeList atoms = document.GetElementsByTagName("ChapterAtom");
-            for (int i = 0; i < atoms.Count; i++)
+            editions = GetChildElements(document.DocumentElement, "EditionEntry");
+            for (int i = 0; i < editions.Count; i++)
             {
-                result.Add(ParseChapter(atoms[i]));
+                AddChapterAtoms(editions[i], i, GetChildText(editions[i], "EditionFlagOrdered").Trim() == "1", "", 0, result, ref atomIndex);
             }
 
             return result;
         }
 
         /// <summary>
-        /// Costruisce il documento XML capitoli nel formato che mkvpropedit accetta
+        /// Applica all'XML originale i capitoli voluti, toccando solo i nodi che cambiano
         /// </summary>
-        /// <param name="chapters">Capitoli da scrivere</param>
-        /// <returns>XML capitoli</returns>
-        public static string BuildChaptersXml(List<MkvMetadataChapterInfo> chapters)
+        /// <param name="originalXml">XML capitoli letto dal file, vuoto se non ne ha</param>
+        /// <param name="chapters">Capitoli come devono risultare</param>
+        /// <returns>XML da scrivere, stringa vuota se non resta nessun capitolo</returns>
+        public static string ApplyChapterEdits(string originalXml, List<MkvMetadataChapterInfo> chapters)
         {
-            StringBuilder builder = new StringBuilder();
+            Dictionary<string, MkvMetadataChapterInfo> wanted = new Dictionary<string, MkvMetadataChapterInfo>(StringComparer.Ordinal);
+            Dictionary<string, bool> existing = new Dictionary<string, bool>(StringComparer.Ordinal);
+            List<XmlElement> touchedParents = new List<XmlElement>();
+            List<XmlElement> atoms = new List<XmlElement>();
+            List<XmlElement> editions;
+            XmlDocument document = LoadChaptersDocument(originalXml);
+            Random random = new Random();
 
-            builder.AppendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
-            builder.AppendLine("<Chapters>");
-            builder.AppendLine("  <EditionEntry>");
+            for (int i = 0; chapters != null && i < chapters.Count; i++)
+            {
+                wanted[chapters[i].Uid] = chapters[i];
+            }
+
+            if (document == null)
+            {
+                document = new XmlDocument();
+                document.AppendChild(document.CreateXmlDeclaration("1.0", "UTF-8", null));
+                document.AppendChild(document.CreateElement("Chapters"));
+            }
+
+            editions = GetChildElements(document.DocumentElement, "EditionEntry");
+            for (int i = 0; i < editions.Count; i++)
+            {
+                CollectChapterAtoms(editions[i], atoms);
+            }
+
+            // Tutto quello che l'editor non tocca resta byte per byte: edizioni, flag,
+            // display in altre lingue, capitoli annidati e precisione al nanosecondo
+            for (int i = 0; i < atoms.Count; i++)
+            {
+                XmlElement atom = atoms[i];
+                string key = GetChapterKey(atom, i);
+                MkvMetadataChapterInfo chapter;
+                existing[key] = true;
+
+                if (!wanted.TryGetValue(key, out chapter))
+                {
+                    atom.ParentNode.RemoveChild(atom);
+                    continue;
+                }
+
+                if (UpdateChapterAtom(document, atom, chapter) && !touchedParents.Contains((XmlElement)atom.ParentNode))
+                    touchedParents.Add((XmlElement)atom.ParentNode);
+            }
 
             for (int i = 0; chapters != null && i < chapters.Count; i++)
             {
                 MkvMetadataChapterInfo chapter = chapters[i];
-                builder.AppendLine("    <ChapterAtom>");
-                if (!string.IsNullOrEmpty(chapter.Uid))
-                    builder.AppendLine("      <ChapterUID>" + chapter.Uid + "</ChapterUID>");
+                XmlElement edition;
+                if (existing.ContainsKey(chapter.Uid))
+                    continue;
 
-                builder.AppendLine("      <ChapterTimeStart>" + FormatChapterTime(chapter.StartMs) + "</ChapterTimeStart>");
-                if (chapter.EndMs > 0)
-                    builder.AppendLine("      <ChapterTimeEnd>" + FormatChapterTime(chapter.EndMs) + "</ChapterTimeEnd>");
+                // Un capitolo nuovo sta al primo livello della sua edizione: su un file
+                // senza capitoli l'edizione si crea insieme al primo capitolo
+                while (editions.Count <= chapter.EditionIndex)
+                {
+                    XmlElement created = document.CreateElement("EditionEntry");
+                    document.DocumentElement.AppendChild(created);
+                    editions.Add(created);
+                }
 
-                builder.AppendLine("      <ChapterDisplay>");
-                builder.AppendLine("        <ChapterString>" + EscapeXml(chapter.Name) + "</ChapterString>");
-                builder.AppendLine("        <ChapterLanguage>" + EscapeXml(!string.IsNullOrEmpty(chapter.Language) ? chapter.Language : "und") + "</ChapterLanguage>");
-                builder.AppendLine("      </ChapterDisplay>");
-                builder.AppendLine("    </ChapterAtom>");
+                edition = editions[chapter.EditionIndex];
+                edition.AppendChild(CreateChapterAtom(document, chapter, random));
+                if (!touchedParents.Contains(edition))
+                    touchedParents.Add(edition);
             }
 
-            builder.AppendLine("  </EditionEntry>");
-            builder.AppendLine("</Chapters>");
+            for (int i = 0; i < touchedParents.Count; i++)
+            {
+                SortChapterAtoms(touchedParents[i]);
+            }
 
-            return builder.ToString();
+            // Matroska non ammette un'edizione vuota: se l'utente ne ha tolto ogni
+            // capitolo, sparisce l'edizione, e senza edizioni sparisce il blocco
+            for (int i = 0; i < editions.Count; i++)
+            {
+                if (GetChildElements(editions[i], "ChapterAtom").Count == 0)
+                    editions[i].ParentNode.RemoveChild(editions[i]);
+            }
+
+            if (GetChildElements(document.DocumentElement, "EditionEntry").Count == 0)
+                return "";
+
+            return document.OuterXml;
+        }
+
+        /// <summary>
+        /// Converte un timestamp capitolo hh:mm:ss.nnnnnnnnn in nanosecondi
+        /// </summary>
+        /// <param name="text">Timestamp, anche mm:ss o ss, con fino a nove decimali</param>
+        /// <param name="nanoseconds">Nanosecondi</param>
+        /// <returns>Vero se il testo e' un timestamp valido</returns>
+        public static bool TryParseChapterTime(string text, out long nanoseconds)
+        {
+            string[] parts = (text != null ? text : "").Trim().Split(':');
+            string seconds = parts[parts.Length - 1];
+            string fraction = "";
+            long whole = 0;
+            int dot = seconds.IndexOf('.');
+
+            nanoseconds = 0;
+            if (parts.Length > 3 || seconds.Length == 0)
+                return false;
+
+            if (dot >= 0)
+            {
+                fraction = seconds.Substring(dot + 1);
+                seconds = seconds.Substring(0, dot);
+            }
+
+            if (fraction.Length > 9 || !IsDigits(fraction) || !IsDigits(seconds) || seconds.Length == 0)
+                return false;
+
+            for (int i = 0; i < parts.Length - 1; i++)
+            {
+                if (parts[i].Length == 0 || !IsDigits(parts[i]))
+                    return false;
+
+                whole = whole * 60 + long.Parse(parts[i], CultureInfo.InvariantCulture);
+            }
+
+            // Minuti e secondi oltre 59 si rifiutano solo se c'e' un'unita' sopra di loro:
+            // "90" da solo sono novanta secondi, "01:90" e' un errore di battitura
+            if (parts.Length > 1 && long.Parse(seconds, CultureInfo.InvariantCulture) > 59)
+                return false;
+
+            if (parts.Length > 2 && long.Parse(parts[1], CultureInfo.InvariantCulture) > 59)
+                return false;
+
+            whole = whole * 60 + long.Parse(seconds, CultureInfo.InvariantCulture);
+            nanoseconds = whole * 1000000000L + (fraction.Length > 0 ? long.Parse(fraction.PadRight(9, '0'), CultureInfo.InvariantCulture) : 0);
+            return true;
+        }
+
+        /// <summary>
+        /// Converte nanosecondi nel timestamp capitolo hh:mm:ss.nnnnnnnnn
+        /// </summary>
+        /// <param name="nanoseconds">Nanosecondi</param>
+        /// <returns>Timestamp a nove decimali</returns>
+        public static string FormatChapterTime(long nanoseconds)
+        {
+            long value = nanoseconds >= 0 ? nanoseconds : 0;
+            long totalSeconds = value / 1000000000L;
+
+            return (totalSeconds / 3600).ToString("00", CultureInfo.InvariantCulture) + ":" +
+                (totalSeconds / 60 % 60).ToString("00", CultureInfo.InvariantCulture) + ":" +
+                (totalSeconds % 60).ToString("00", CultureInfo.InvariantCulture) + "." +
+                (value % 1000000000L).ToString("000000000", CultureInfo.InvariantCulture);
         }
 
         /// <summary>
@@ -241,8 +376,12 @@ namespace RemuxForge.Core.Metadata
                 result.Add(new MkvMetadataChapterInfo
                 {
                     Uid = chapters[i].Uid,
-                    StartMs = chapters[i].StartMs,
-                    EndMs = chapters[i].EndMs,
+                    StartNs = chapters[i].StartNs,
+                    EndNs = chapters[i].EndNs,
+                    EditionIndex = chapters[i].EditionIndex,
+                    EditionOrdered = chapters[i].EditionOrdered,
+                    ParentUid = chapters[i].ParentUid,
+                    Depth = chapters[i].Depth,
                     Name = chapters[i].Name,
                     Language = chapters[i].Language
                 });
@@ -331,91 +470,297 @@ namespace RemuxForge.Core.Metadata
         #region Metodi privati
 
         /// <summary>
-        /// Converte un nodo ChapterAtom in un capitolo
+        /// Carica l'XML capitoli senza risolvere la DTD che mkvextract dichiara
         /// </summary>
-        /// <param name="atom">Nodo XML del capitolo</param>
-        /// <returns>Capitolo</returns>
-        private static MkvMetadataChapterInfo ParseChapter(XmlNode atom)
+        /// <param name="xml">XML capitoli</param>
+        /// <returns>Documento, null se l'XML e' vuoto</returns>
+        private static XmlDocument LoadChaptersDocument(string xml)
         {
-            MkvMetadataChapterInfo chapter = new MkvMetadataChapterInfo();
-            XmlNode node;
+            XmlDocument document;
 
-            node = atom.SelectSingleNode("ChapterUID");
-            if (node != null)
-                chapter.Uid = node.InnerText.Trim();
+            if (string.IsNullOrEmpty(xml != null ? xml.Trim() : null))
+                return null;
 
-            node = atom.SelectSingleNode("ChapterTimeStart");
-            if (node != null)
-                chapter.StartMs = ParseChapterTime(node.InnerText);
-
-            node = atom.SelectSingleNode("ChapterTimeEnd");
-            if (node != null)
-                chapter.EndMs = ParseChapterTime(node.InnerText);
-
-            // Un capitolo puo' avere un nome per lingua: la UI ne governa uno solo,
-            // e il primo display e' quello che i player mostrano per primo
-            node = atom.SelectSingleNode("ChapterDisplay/ChapterString");
-            if (node != null)
-                chapter.Name = node.InnerText;
-
-            node = atom.SelectSingleNode("ChapterDisplay/ChapterLanguage");
-            if (node != null)
-                chapter.Language = node.InnerText.Trim();
-
-            return chapter;
+            document = new XmlDocument();
+            document.XmlResolver = null;
+            document.LoadXml(xml);
+            return document.DocumentElement != null ? document : null;
         }
 
         /// <summary>
-        /// Converte un timestamp capitolo hh:mm:ss.nnnnnnnnn in millisecondi
+        /// Aggiunge alla lista i capitoli figli di un nodo, ricorsivamente in ordine di documento
         /// </summary>
-        /// <param name="text">Testo del timestamp</param>
-        /// <returns>Millisecondi</returns>
-        private static double ParseChapterTime(string text)
+        /// <param name="parent">Edizione o capitolo padre</param>
+        /// <param name="editionIndex">Indice edizione</param>
+        /// <param name="ordered">Vero se l'edizione e' ordinata</param>
+        /// <param name="parentUid">Chiave del capitolo padre, vuota al primo livello</param>
+        /// <param name="depth">Profondita' dei figli</param>
+        /// <param name="result">Lista da popolare</param>
+        /// <param name="atomIndex">Contatore dei capitoli visti, per le chiavi dei capitoli senza UID</param>
+        private static void AddChapterAtoms(XmlElement parent, int editionIndex, bool ordered, string parentUid, int depth, List<MkvMetadataChapterInfo> result, ref int atomIndex)
         {
-            string[] parts = (text != null ? text : "").Trim().Split(':');
-            double result = 0;
+            List<XmlElement> atoms = GetChildElements(parent, "ChapterAtom");
 
-            for (int i = 0; i < parts.Length; i++)
+            for (int i = 0; i < atoms.Count; i++)
             {
-                double value;
-                if (!double.TryParse(parts[i], NumberStyles.Float, CultureInfo.InvariantCulture, out value))
-                    return 0;
+                MkvMetadataChapterInfo chapter = new MkvMetadataChapterInfo();
+                XmlElement display = GetFirstChildElement(atoms[i], "ChapterDisplay");
+                long time;
 
-                result = result * 60 + value;
+                chapter.Uid = GetChapterKey(atoms[i], atomIndex);
+                chapter.EditionIndex = editionIndex;
+                chapter.EditionOrdered = ordered;
+                chapter.ParentUid = parentUid;
+                chapter.Depth = depth;
+                if (TryParseChapterTime(GetChildText(atoms[i], "ChapterTimeStart"), out time))
+                    chapter.StartNs = time;
+
+                if (TryParseChapterTime(GetChildText(atoms[i], "ChapterTimeEnd"), out time))
+                    chapter.EndNs = time;
+
+                // Un capitolo puo' avere un nome per lingua: l'editor governa il primo,
+                // che e' quello che i player mostrano, e lascia intatti gli altri
+                if (display != null)
+                {
+                    chapter.Name = GetChildText(display, "ChapterString");
+                    chapter.Language = GetChildText(display, "ChapterLanguage").Trim();
+                }
+
+                result.Add(chapter);
+                atomIndex++;
+                AddChapterAtoms(atoms[i], editionIndex, ordered, chapter.Uid, depth + 1, result, ref atomIndex);
+            }
+        }
+
+        /// <summary>
+        /// Raccoglie i nodi ChapterAtom di un nodo nello stesso ordine di AddChapterAtoms
+        /// </summary>
+        /// <param name="parent">Edizione o capitolo padre</param>
+        /// <param name="result">Lista da popolare</param>
+        private static void CollectChapterAtoms(XmlElement parent, List<XmlElement> result)
+        {
+            List<XmlElement> atoms = GetChildElements(parent, "ChapterAtom");
+
+            for (int i = 0; i < atoms.Count; i++)
+            {
+                result.Add(atoms[i]);
+                CollectChapterAtoms(atoms[i], result);
+            }
+        }
+
+        /// <summary>
+        /// Restituisce la chiave di un capitolo: l'UID, o la posizione se il file non lo dichiara
+        /// </summary>
+        /// <param name="atom">Nodo capitolo</param>
+        /// <param name="atomIndex">Posizione del capitolo in ordine di documento</param>
+        /// <returns>Chiave del capitolo</returns>
+        private static string GetChapterKey(XmlElement atom, int atomIndex)
+        {
+            string uid = GetChildText(atom, "ChapterUID").Trim();
+
+            return uid.Length > 0 ? uid : "#" + atomIndex.ToString(CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>
+        /// Porta un nodo capitolo esistente allo stato voluto, lasciando stare cio' che non cambia
+        /// </summary>
+        /// <param name="document">Documento capitoli</param>
+        /// <param name="atom">Nodo capitolo</param>
+        /// <param name="chapter">Stato voluto</param>
+        /// <returns>Vero se l'inizio e' cambiato e i fratelli vanno riordinati</returns>
+        private static bool UpdateChapterAtom(XmlDocument document, XmlElement atom, MkvMetadataChapterInfo chapter)
+        {
+            XmlElement display = GetFirstChildElement(atom, "ChapterDisplay");
+            XmlElement end = GetFirstChildElement(atom, "ChapterTimeEnd");
+            long current;
+            long endTime;
+            bool moved = false;
+
+            if (!TryParseChapterTime(GetChildText(atom, "ChapterTimeStart"), out current) || current != chapter.StartNs)
+            {
+                SetChildText(document, atom, "ChapterTimeStart", FormatChapterTime(chapter.StartNs));
+                moved = true;
+
+                // Una fine che non sta piu' dopo l'inizio renderebbe il capitolo invalido:
+                // senza fine il player la ricava dal capitolo successivo
+                if (end != null && TryParseChapterTime(end.InnerText, out endTime) && endTime <= chapter.StartNs)
+                    atom.RemoveChild(end);
             }
 
-            return result * 1000;
+            if (display == null)
+            {
+                if (!string.IsNullOrEmpty(chapter.Name))
+                    atom.AppendChild(CreateChapterDisplay(document, chapter));
+            }
+            else if (!string.Equals(GetChildText(display, "ChapterString"), chapter.Name, StringComparison.Ordinal))
+            {
+                SetChildText(document, display, "ChapterString", chapter.Name != null ? chapter.Name : "");
+            }
+
+            return moved;
         }
 
         /// <summary>
-        /// Converte millisecondi nel timestamp capitolo hh:mm:ss.nnnnnnnnn
+        /// Crea il nodo di un capitolo aggiunto dall'editor
         /// </summary>
-        /// <param name="milliseconds">Millisecondi</param>
-        /// <returns>Timestamp</returns>
-        private static string FormatChapterTime(double milliseconds)
+        /// <param name="document">Documento capitoli</param>
+        /// <param name="chapter">Capitolo da creare</param>
+        /// <param name="random">Generatore per l'UID se il capitolo non ne porta uno valido</param>
+        /// <returns>Nodo ChapterAtom</returns>
+        private static XmlElement CreateChapterAtom(XmlDocument document, MkvMetadataChapterInfo chapter, Random random)
         {
-            TimeSpan span = TimeSpan.FromMilliseconds(milliseconds >= 0 ? milliseconds : 0);
+            XmlElement atom = document.CreateElement("ChapterAtom");
+            ulong uid;
 
-            return ((int)span.TotalHours).ToString("00", CultureInfo.InvariantCulture) + ":" +
-                span.Minutes.ToString("00", CultureInfo.InvariantCulture) + ":" +
-                span.Seconds.ToString("00", CultureInfo.InvariantCulture) + "." +
-                (span.Milliseconds * 1000000).ToString("000000000", CultureInfo.InvariantCulture);
+            if (!ulong.TryParse(chapter.Uid, NumberStyles.None, CultureInfo.InvariantCulture, out uid) || uid == 0)
+                uid = (ulong)random.NextInt64(1, long.MaxValue);
+
+            SetChildText(document, atom, "ChapterUID", uid.ToString(CultureInfo.InvariantCulture));
+            SetChildText(document, atom, "ChapterTimeStart", FormatChapterTime(chapter.StartNs));
+            atom.AppendChild(CreateChapterDisplay(document, chapter));
+            return atom;
         }
 
         /// <summary>
-        /// Rende sicuro un testo dentro un nodo XML
+        /// Crea il display con nome e lingua di un capitolo
         /// </summary>
-        /// <param name="text">Testo</param>
-        /// <returns>Testo con le entita' sostituite</returns>
-        private static string EscapeXml(string text)
+        /// <param name="document">Documento capitoli</param>
+        /// <param name="chapter">Capitolo</param>
+        /// <returns>Nodo ChapterDisplay</returns>
+        private static XmlElement CreateChapterDisplay(XmlDocument document, MkvMetadataChapterInfo chapter)
         {
-            string result = text != null ? text : "";
+            XmlElement display = document.CreateElement("ChapterDisplay");
 
-            result = result.Replace("&", "&amp;");
-            result = result.Replace("<", "&lt;");
-            result = result.Replace(">", "&gt;");
+            SetChildText(document, display, "ChapterString", chapter.Name != null ? chapter.Name : "");
+            SetChildText(document, display, "ChapterLanguage", !string.IsNullOrEmpty(chapter.Language) ? chapter.Language : "und");
+            return display;
+        }
+
+        /// <summary>
+        /// Rimette in ordine di inizio i capitoli figli di un nodo, salvo nelle edizioni ordinate
+        /// </summary>
+        /// <param name="parent">Edizione o capitolo padre</param>
+        private static void SortChapterAtoms(XmlElement parent)
+        {
+            XmlElement edition = parent;
+            List<XmlElement> original;
+            List<XmlElement> atoms;
+
+            while (edition != null && edition.Name != "EditionEntry")
+            {
+                edition = edition.ParentNode as XmlElement;
+            }
+
+            // In un'edizione ordinata la sequenza dei capitoli e' l'ordine di riproduzione,
+            // non una conseguenza dei tempi: spostarli cambierebbe il film
+            if (edition != null && GetChildText(edition, "EditionFlagOrdered").Trim() == "1")
+                return;
+
+            original = GetChildElements(parent, "ChapterAtom");
+            atoms = new List<XmlElement>(original);
+
+            // List.Sort non e' stabile: a parita' di inizio decide la posizione di partenza
+            atoms.Sort(delegate (XmlElement left, XmlElement right)
+            {
+                long leftTime;
+                long rightTime;
+                TryParseChapterTime(GetChildText(left, "ChapterTimeStart"), out leftTime);
+                TryParseChapterTime(GetChildText(right, "ChapterTimeStart"), out rightTime);
+                int compared = leftTime.CompareTo(rightTime);
+                return compared != 0 ? compared : original.IndexOf(left).CompareTo(original.IndexOf(right));
+            });
+
+            for (int i = 0; i < atoms.Count; i++)
+            {
+                parent.RemoveChild(atoms[i]);
+            }
+
+            for (int i = 0; i < atoms.Count; i++)
+            {
+                parent.AppendChild(atoms[i]);
+            }
+        }
+
+        /// <summary>
+        /// Restituisce gli elementi figli diretti con un nome
+        /// </summary>
+        /// <param name="parent">Nodo padre</param>
+        /// <param name="name">Nome elemento</param>
+        /// <returns>Elementi in ordine di documento</returns>
+        private static List<XmlElement> GetChildElements(XmlElement parent, string name)
+        {
+            List<XmlElement> result = new List<XmlElement>();
+
+            for (XmlNode node = parent != null ? parent.FirstChild : null; node != null; node = node.NextSibling)
+            {
+                XmlElement element = node as XmlElement;
+                if (element != null && element.Name == name)
+                    result.Add(element);
+            }
 
             return result;
+        }
+
+        /// <summary>
+        /// Restituisce il primo elemento figlio diretto con un nome
+        /// </summary>
+        /// <param name="parent">Nodo padre</param>
+        /// <param name="name">Nome elemento</param>
+        /// <returns>Elemento o null</returns>
+        private static XmlElement GetFirstChildElement(XmlElement parent, string name)
+        {
+            List<XmlElement> elements = GetChildElements(parent, name);
+
+            return elements.Count > 0 ? elements[0] : null;
+        }
+
+        /// <summary>
+        /// Restituisce il testo del primo figlio diretto con un nome
+        /// </summary>
+        /// <param name="parent">Nodo padre</param>
+        /// <param name="name">Nome elemento</param>
+        /// <returns>Testo, stringa vuota se il figlio non c'e'</returns>
+        private static string GetChildText(XmlElement parent, string name)
+        {
+            XmlElement element = GetFirstChildElement(parent, name);
+
+            return element != null ? element.InnerText : "";
+        }
+
+        /// <summary>
+        /// Imposta il testo di un figlio diretto, creandolo se manca
+        /// </summary>
+        /// <param name="document">Documento</param>
+        /// <param name="parent">Nodo padre</param>
+        /// <param name="name">Nome elemento</param>
+        /// <param name="text">Testo</param>
+        private static void SetChildText(XmlDocument document, XmlElement parent, string name, string text)
+        {
+            XmlElement element = GetFirstChildElement(parent, name);
+
+            if (element == null)
+            {
+                element = document.CreateElement(name);
+                parent.AppendChild(element);
+            }
+
+            element.InnerText = text;
+        }
+
+        /// <summary>
+        /// Indica se un testo e' fatto solo di cifre decimali
+        /// </summary>
+        /// <param name="text">Testo</param>
+        /// <returns>Vero se ogni carattere e' una cifra, anche per il testo vuoto</returns>
+        private static bool IsDigits(string text)
+        {
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (text[i] < '0' || text[i] > '9')
+                    return false;
+            }
+
+            return true;
         }
 
         /// <summary>

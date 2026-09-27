@@ -45,6 +45,7 @@ namespace RemuxForge.Core.Metadata
         public void AnalyzeRecord(MkvMetadataRecord record, MkvMetadataPreset preset, MkvMetadataOutputPolicy outputPolicy)
         {
             List<MkvMetadataTrackInfo> removedTracks = new List<MkvMetadataTrackInfo>();
+            Dictionary<string, int> requestedPositions = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             int matchCount = 0;
 
             // Riparte dallo snapshot originale per rendere deterministica ogni nuova analisi
@@ -70,7 +71,7 @@ namespace RemuxForge.Core.Metadata
                     continue;
 
                 int changesBefore = record.Changes.Count;
-                matchCount += this.EvaluateRule(record, rule, removedTracks);
+                matchCount += this.EvaluateRule(record, rule, removedTracks, requestedPositions);
 
                 // La descrizione della regola non e' una chiave: puo' essere vuota o ripetuta.
                 // L'indice invece attribuisce ogni modifica alla regola che l'ha prodotta
@@ -96,9 +97,11 @@ namespace RemuxForge.Core.Metadata
         /// <param name="record">Record metadata corrente</param>
         /// <param name="rule">Regola da valutare</param>
         /// <param name="removedTracks">Tracce rimosse da regole precedenti</param>
+        /// <param name="requestedPositions">Posizioni nel tipo richieste da regole precedenti</param>
         /// <returns>Numero match prodotti dalla regola</returns>
-        private int EvaluateRule(MkvMetadataRecord record, MkvMetadataRule rule, List<MkvMetadataTrackInfo> removedTracks)
+        private int EvaluateRule(MkvMetadataRecord record, MkvMetadataRule rule, List<MkvMetadataTrackInfo> removedTracks, Dictionary<string, int> requestedPositions)
         {
+            List<MkvMetadataTrackInfo> tracks;
             int matches = 0;
 
             if (rule.TargetScope == MkvMetadataTargetScope.Container)
@@ -106,15 +109,18 @@ namespace RemuxForge.Core.Metadata
                 if (this.AreConditionsMatched(record, null, rule, removedTracks))
                 {
                     matches++;
-                    this.ApplyOperations(record, null, rule, removedTracks);
+                    this.ApplyOperations(record, null, rule, removedTracks, requestedPositions);
                 }
 
                 return matches;
             }
 
-            for (int i = 0; i < record.FileInfo.Tracks.Count; i++)
+            // Una posizione impostata riordina FileInfo.Tracks mentre la regola scorre:
+            // senza la copia una traccia verrebbe saltata o valutata due volte
+            tracks = new List<MkvMetadataTrackInfo>(record.FileInfo.Tracks);
+            for (int i = 0; i < tracks.Count; i++)
             {
-                MkvMetadataTrackInfo track = record.FileInfo.Tracks[i];
+                MkvMetadataTrackInfo track = tracks[i];
                 if (removedTracks.Contains(track))
                     continue;
 
@@ -124,7 +130,7 @@ namespace RemuxForge.Core.Metadata
                 if (this.AreConditionsMatched(record, track, rule, removedTracks))
                 {
                     matches++;
-                    this.ApplyOperations(record, track, rule, removedTracks);
+                    this.ApplyOperations(record, track, rule, removedTracks, requestedPositions);
                 }
             }
 
@@ -457,7 +463,8 @@ namespace RemuxForge.Core.Metadata
         /// <param name="track">Traccia corrente o null per container</param>
         /// <param name="rule">Regola matchata</param>
         /// <param name="removedTracks">Tracce rimosse da regole precedenti</param>
-        private void ApplyOperations(MkvMetadataRecord record, MkvMetadataTrackInfo track, MkvMetadataRule rule, List<MkvMetadataTrackInfo> removedTracks)
+        /// <param name="requestedPositions">Posizioni nel tipo richieste finora</param>
+        private void ApplyOperations(MkvMetadataRecord record, MkvMetadataTrackInfo track, MkvMetadataRule rule, List<MkvMetadataTrackInfo> removedTracks, Dictionary<string, int> requestedPositions)
         {
             if (rule.Operations == null)
                 return;
@@ -465,7 +472,11 @@ namespace RemuxForge.Core.Metadata
             for (int i = 0; i < rule.Operations.Count; i++)
             {
                 MkvMetadataOperation operation = rule.Operations[i];
-                if (operation.Type == MkvMetadataOperationType.SetField)
+                if (operation.Type == MkvMetadataOperationType.SetField && track != null && MetadataTrackPositionHelper.IsPositionField(operation.FieldKey))
+                {
+                    this.ApplyTrackPosition(record, track, rule, operation, removedTracks, requestedPositions);
+                }
+                else if (operation.Type == MkvMetadataOperationType.SetField)
                 {
                     this.ApplySetField(record, track, rule, operation);
                 }
@@ -479,7 +490,7 @@ namespace RemuxForge.Core.Metadata
                 }
                 else if (operation.Type == MkvMetadataOperationType.RemoveTrack && track != null)
                 {
-                    this.ApplyRemoveTrack(record, track, rule, removedTracks);
+                    this.ApplyRemoveTrack(record, track, rule, removedTracks, requestedPositions);
                 }
                 else if (operation.Type == MkvMetadataOperationType.SetTagField || operation.Type == MkvMetadataOperationType.ClearTagField || operation.Type == MkvMetadataOperationType.ClearTags)
                 {
@@ -492,14 +503,6 @@ namespace RemuxForge.Core.Metadata
                 else if (operation.Type == MkvMetadataOperationType.SetAttachment || operation.Type == MkvMetadataOperationType.DeleteAttachment)
                 {
                     this.ApplyAttachmentOperation(record, rule, operation);
-                }
-                else if (operation.Type == MkvMetadataOperationType.RenameChapters || operation.Type == MkvMetadataOperationType.ClearChapters)
-                {
-                    this.ApplyChapterOperation(record, rule, operation);
-                }
-                else if (operation.Type == MkvMetadataOperationType.SetTrackOrder)
-                {
-                    ApplyTrackOrderOperation(record, rule, operation, removedTracks);
                 }
             }
         }
@@ -535,6 +538,77 @@ namespace RemuxForge.Core.Metadata
 
             this.SetFieldValue(record.FileInfo, track, operation.FieldKey, after);
             record.Changes.Add(CreateChange(rule, operation, field, track, before, after, false));
+        }
+
+        /// <summary>
+        /// Imposta la posizione di una traccia dentro il suo tipo e riordina le altre di conseguenza
+        /// </summary>
+        /// <param name="record">Record metadata corrente</param>
+        /// <param name="track">Traccia da posizionare</param>
+        /// <param name="rule">Regola matchata</param>
+        /// <param name="operation">Operazione set field sul campo posizione</param>
+        /// <param name="removedTracks">Tracce rimosse da regole precedenti</param>
+        /// <param name="requestedPositions">Posizioni nel tipo richieste finora</param>
+        private void ApplyTrackPosition(MkvMetadataRecord record, MkvMetadataTrackInfo track, MkvMetadataRule rule, MkvMetadataOperation operation, List<MkvMetadataTrackInfo> removedTracks, Dictionary<string, int> requestedPositions)
+        {
+            MetadataFieldDefinition field;
+            string errorMessage;
+            string before;
+            string after;
+            int position;
+
+            if (!MetadataFieldRegistry.TryGet(operation.FieldKey, out field) ||
+                !string.Equals(operation.FieldKey.Trim(), MetadataTrackPositionHelper.GetPositionFieldKey(track.TrackKind), StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(AppText.F("metadata.error.fieldNotWritable", operation.FieldKey));
+            }
+
+            after = this._expressionEngine.Evaluate(operation.Value, record.FileInfo, track, record.OriginalFileInfo, this.FindOriginalTrack(record, track));
+            if (!MetadataFieldRegistry.ValidateWritableValue(operation.FieldKey, after, false, out after, out errorMessage))
+                throw new InvalidOperationException(errorMessage);
+
+            if (!int.TryParse(after, NumberStyles.Integer, CultureInfo.InvariantCulture, out position) || position < 1)
+                throw new InvalidOperationException(AppText.F("metadata.error.trackPositionInvalid", track.TrackSelector, after));
+
+            // Due tracce che chiedono lo stesso posto sono una regola imprecisa, non un
+            // pareggio da risolvere: il file va in errore e la regola va ristretta
+            foreach (KeyValuePair<string, int> other in requestedPositions)
+            {
+                MkvMetadataTrackInfo otherTrack = FindTrackBySelector(record.FileInfo, other.Key);
+                if (other.Value != position || string.Equals(other.Key, track.TrackSelector, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (otherTrack != null && otherTrack.TrackKind == track.TrackKind && !removedTracks.Contains(otherTrack))
+                    throw new InvalidOperationException(AppText.F("metadata.error.trackPositionConflict", other.Key, track.TrackSelector, position));
+            }
+
+            // La richiesta si registra anche quando la traccia e' gia' al suo posto: la
+            // inchioda li', e una richiesta successiva sullo stesso posto va in conflitto
+            before = this.GetFieldValue(record.FileInfo, track, operation.FieldKey);
+            requestedPositions[track.TrackSelector] = position;
+            MetadataTrackPositionHelper.Apply(record.FileInfo, track.TrackKind, requestedPositions, removedTracks);
+            after = this.GetFieldValue(record.FileInfo, track, operation.FieldKey);
+            if (before == after)
+                return;
+
+            record.Changes.Add(CreateChange(rule, operation, field, track, before, after, true));
+        }
+
+        /// <summary>
+        /// Cerca una traccia per selector originale
+        /// </summary>
+        /// <param name="fileInfo">Stato file</param>
+        /// <param name="selector">Selector originale</param>
+        /// <returns>Traccia trovata o null</returns>
+        private static MkvMetadataTrackInfo FindTrackBySelector(MkvMetadataFileInfo fileInfo, string selector)
+        {
+            for (int i = 0; fileInfo != null && i < fileInfo.Tracks.Count; i++)
+            {
+                if (string.Equals(fileInfo.Tracks[i].TrackSelector, selector, StringComparison.OrdinalIgnoreCase))
+                    return fileInfo.Tracks[i];
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -698,223 +772,6 @@ namespace RemuxForge.Core.Metadata
                 MimeType = change.AttachmentMimeType
             });
             MetadataContainerReader.WriteContainerFields(record.FileInfo);
-        }
-
-        /// <summary>
-        /// Riordina le tracce per tipo e priorità di lingua
-        /// </summary>
-        /// <param name="record">Record metadata corrente</param>
-        /// <param name="rule">Regola matchata</param>
-        /// <param name="operation">Operazione di riordino</param>
-        /// <param name="removedTracks">Tracce rimosse da regole precedenti</param>
-        private static void ApplyTrackOrderOperation(MkvMetadataRecord record, MkvMetadataRule rule, MkvMetadataOperation operation, List<MkvMetadataTrackInfo> removedTracks)
-        {
-            List<string> kinds = SplitCriteria(operation.TrackOrderKinds, "video,audio,subtitles");
-            List<string> languages = SplitCriteria(operation.TrackOrderLanguages, "");
-            List<MkvMetadataTrackInfo> current = new List<MkvMetadataTrackInfo>();
-            List<MkvMetadataTrackInfo> ordered;
-            MkvMetadataChange change;
-            bool moved = false;
-
-            for (int i = 0; i < record.FileInfo.Tracks.Count; i++)
-            {
-                if (!removedTracks.Contains(record.FileInfo.Tracks[i]))
-                    current.Add(record.FileInfo.Tracks[i]);
-            }
-
-            // L'ordinamento e' stabile: due tracce con lo stesso tipo e la stessa lingua
-            // restano nell'ordine in cui stanno nel file, che e' l'unico criterio sensato
-            ordered = new List<MkvMetadataTrackInfo>(current);
-            ordered.Sort(delegate (MkvMetadataTrackInfo left, MkvMetadataTrackInfo right)
-            {
-                int compared = RankOf(kinds, left.TrackKind).CompareTo(RankOf(kinds, right.TrackKind));
-                if (compared != 0)
-                    return compared;
-
-                compared = RankOf(languages, GetTrackLanguage(left)).CompareTo(RankOf(languages, GetTrackLanguage(right)));
-                if (compared != 0)
-                    return compared;
-
-                return current.IndexOf(left).CompareTo(current.IndexOf(right));
-            });
-
-            for (int i = 0; i < ordered.Count; i++)
-            {
-                if (!ReferenceEquals(ordered[i], current[i]))
-                    moved = true;
-            }
-
-            if (!moved)
-                return;
-
-            change = new MkvMetadataChange();
-            change.RuleDescription = rule.Description;
-            change.Scope = MkvMetadataTargetScope.Container;
-            change.OperationType = MkvMetadataOperationType.SetTrackOrder;
-            change.FieldKey = "";
-
-            // Riordinare le tracce si puo' fare solo rimuxando: --track-order esiste
-            // solo in mkvmerge, e questo porta il costo da secondi a minuti per file
-            change.RequiresRemux = true;
-            change.BeforeValue = DescribeTrackOrder(current);
-            change.AfterValue = DescribeTrackOrder(ordered);
-            change.Message = AppText.F("metadata.change.trackOrder", change.AfterValue);
-
-            for (int i = 0; i < ordered.Count; i++)
-            {
-                change.TrackOrder.Add(ordered[i].TrackSelector);
-            }
-
-            record.Changes.Add(change);
-        }
-
-        /// <summary>
-        /// Restituisce la posizione di un valore in una lista di criteri, in fondo se assente
-        /// </summary>
-        /// <param name="criteria">Criteri in ordine di priorità</param>
-        /// <param name="value">Valore da collocare</param>
-        /// <returns>Posizione del valore</returns>
-        private static int RankOf(List<string> criteria, string value)
-        {
-            string text = value != null ? value.Trim() : "";
-
-            for (int i = 0; i < criteria.Count; i++)
-            {
-                if (string.Equals(criteria[i], text, StringComparison.OrdinalIgnoreCase))
-                    return i;
-            }
-
-            return criteria.Count;
-        }
-
-        /// <summary>
-        /// Spezza una lista di criteri separati da virgola
-        /// </summary>
-        /// <param name="text">Testo dei criteri</param>
-        /// <param name="fallback">Criteri da usare se il testo e' vuoto</param>
-        /// <returns>Criteri normalizzati</returns>
-        private static List<string> SplitCriteria(string text, string fallback)
-        {
-            string[] parts = (!string.IsNullOrEmpty(text) ? text : fallback).Split(',');
-            List<string> result = new List<string>();
-
-            for (int i = 0; i < parts.Length; i++)
-            {
-                string value = parts[i].Trim();
-                if (value.Length > 0)
-                    result.Add(value);
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Restituisce la lingua di una traccia
-        /// </summary>
-        /// <param name="track">Traccia</param>
-        /// <returns>Lingua, stringa vuota se assente</returns>
-        private static string GetTrackLanguage(MkvMetadataTrackInfo track)
-        {
-            string value;
-
-            if (track.Fields.TryGetValue(track.TrackKind + "_language", out value) && !string.IsNullOrEmpty(value))
-                return value;
-
-            return track.Language != null ? track.Language : "";
-        }
-
-        /// <summary>
-        /// Descrive un ordine di tracce in forma leggibile
-        /// </summary>
-        /// <param name="tracks">Tracce nell'ordine da descrivere</param>
-        /// <returns>Descrizione dell'ordine</returns>
-        private static string DescribeTrackOrder(List<MkvMetadataTrackInfo> tracks)
-        {
-            List<string> parts = new List<string>();
-
-            for (int i = 0; i < tracks.Count; i++)
-            {
-                string language = GetTrackLanguage(tracks[i]);
-                parts.Add(tracks[i].TrackSelector + (!string.IsNullOrEmpty(language) ? " " + language : ""));
-            }
-
-            return string.Join(", ", parts);
-        }
-
-        /// <summary>
-        /// Applica una rinomina o una cancellazione dei capitoli
-        /// </summary>
-        /// <param name="record">Record metadata corrente</param>
-        /// <param name="rule">Regola matchata</param>
-        /// <param name="operation">Operazione capitoli</param>
-        private void ApplyChapterOperation(MkvMetadataRecord record, MkvMetadataRule rule, MkvMetadataOperation operation)
-        {
-            List<MkvMetadataChapterInfo> chapters = record.FileInfo.Chapters;
-            List<MkvMetadataChapterInfo> renamed;
-            MkvMetadataChange change;
-            bool changed = false;
-
-            // Su un file senza capitoli non c'e' niente da rinominare ne' da cancellare:
-            // dichiararlo sarebbe lavoro che l'esecuzione non farebbe
-            if (chapters == null || chapters.Count == 0)
-                return;
-
-            change = new MkvMetadataChange();
-            change.RuleDescription = rule.Description;
-            change.Scope = MkvMetadataTargetScope.Container;
-            change.OperationType = operation.Type;
-            change.FieldKey = "";
-
-            if (operation.Type == MkvMetadataOperationType.ClearChapters)
-            {
-                change.BeforeValue = chapters.Count.ToString(CultureInfo.InvariantCulture);
-                change.AfterValue = "0";
-                change.Message = AppText.F("metadata.change.chaptersCleared", chapters.Count);
-                record.Changes.Add(change);
-                record.FileInfo.Chapters = new List<MkvMetadataChapterInfo>();
-                MetadataContainerReader.WriteContainerFields(record.FileInfo);
-                return;
-            }
-
-            renamed = MetadataContainerReader.CloneChapters(chapters);
-            for (int i = 0; i < renamed.Count; i++)
-            {
-                string name = this.RenderChapterName(operation.ChapterNamePattern, renamed[i].Name, i + 1);
-                if (string.Equals(name, renamed[i].Name, StringComparison.Ordinal))
-                    continue;
-
-                renamed[i].Name = name;
-                changed = true;
-            }
-
-            if (!changed)
-                return;
-
-            change.BeforeValue = chapters.Count > 0 ? chapters[0].Name : "";
-            change.AfterValue = renamed[0].Name;
-            change.Chapters = renamed;
-            change.Message = AppText.F("metadata.change.chaptersRenamed", renamed.Count);
-            record.Changes.Add(change);
-            record.FileInfo.Chapters = renamed;
-            MetadataContainerReader.WriteContainerFields(record.FileInfo);
-        }
-
-        /// <summary>
-        /// Rende il nome di un capitolo a partire dal pattern
-        /// </summary>
-        /// <param name="pattern">Pattern con i segnaposto {n}, {n:02} e {name}</param>
-        /// <param name="currentName">Nome attuale del capitolo</param>
-        /// <param name="number">Numero del capitolo, 1-based</param>
-        /// <returns>Nome renderizzato</returns>
-        private string RenderChapterName(string pattern, string currentName, int number)
-        {
-            string result = pattern != null ? pattern : "";
-
-            result = result.Replace("{n:02}", number.ToString("00", CultureInfo.InvariantCulture));
-            result = result.Replace("{n}", number.ToString(CultureInfo.InvariantCulture));
-            result = result.Replace("{name}", currentName != null ? currentName : "");
-
-            return result;
         }
 
         /// <summary>
@@ -1210,10 +1067,24 @@ namespace RemuxForge.Core.Metadata
         /// <param name="track">Traccia da rimuovere</param>
         /// <param name="rule">Regola matchata</param>
         /// <param name="removedTracks">Tracce rimosse da regole precedenti</param>
-        private void ApplyRemoveTrack(MkvMetadataRecord record, MkvMetadataTrackInfo track, MkvMetadataRule rule, List<MkvMetadataTrackInfo> removedTracks)
+        /// <param name="requestedPositions">Posizioni nel tipo richieste finora</param>
+        private void ApplyRemoveTrack(MkvMetadataRecord record, MkvMetadataTrackInfo track, MkvMetadataRule rule, List<MkvMetadataTrackInfo> removedTracks, Dictionary<string, int> requestedPositions)
         {
             if (!removedTracks.Contains(track))
                 removedTracks.Add(track);
+
+            // Se il tipo e' gia' stato riordinato, togliere una traccia sposta le posizioni
+            // delle altre: vanno ricalcolate sul numero di tracce che restano
+            requestedPositions.Remove(track.TrackSelector);
+            foreach (KeyValuePair<string, int> requested in requestedPositions)
+            {
+                MkvMetadataTrackInfo requestedTrack = FindTrackBySelector(record.FileInfo, requested.Key);
+                if (requestedTrack != null && requestedTrack.TrackKind == track.TrackKind)
+                {
+                    MetadataTrackPositionHelper.Apply(record.FileInfo, track.TrackKind, requestedPositions, removedTracks);
+                    break;
+                }
+            }
 
             MkvMetadataChange change = new MkvMetadataChange();
             change.RuleDescription = rule.Description;

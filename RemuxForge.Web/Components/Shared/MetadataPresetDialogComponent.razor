@@ -181,14 +181,6 @@
                                             {
                                                 <input class="form-input metadata-sentence-field" aria-label="@AppText.T("web.metadata.presetDialog.help.attachmentName.title")" placeholder="@AppText.T("web.metadata.presetDialog.attachmentNamePlaceholder")" @bind="operation.AttachmentName" @bind:after="StateHasChanged" @onfocus='@(() => SetFieldHelp("attachmentName"))' @onmouseenter='@(() => SetFieldHelp("attachmentName"))' />
                                             }
-                                            else if (operation.Type == MkvMetadataOperationType.SetTrackOrder)
-                                            {
-                                                <input class="form-input metadata-sentence-field" aria-label="@AppText.T("web.metadata.presetDialog.help.trackOrderKinds.title")" placeholder="video,audio,subtitles" @bind="operation.TrackOrderKinds" @bind:after="StateHasChanged" @onfocus='@(() => SetFieldHelp("trackOrderKinds"))' @onmouseenter='@(() => SetFieldHelp("trackOrderKinds"))' />
-                                            }
-                                            else if (operation.Type == MkvMetadataOperationType.RenameChapters)
-                                            {
-                                                <input class="form-input metadata-sentence-field" aria-label="@AppText.T("web.metadata.presetDialog.help.chapterPattern.title")" placeholder="@AppText.T("web.metadata.presetDialog.chapterPatternPlaceholder")" @bind="operation.ChapterNamePattern" @bind:after="StateHasChanged" @onfocus='@(() => SetFieldHelp("chapterPattern"))' @onmouseenter='@(() => SetFieldHelp("chapterPattern"))' />
-                                            }
                                             else if (operation.Type == MkvMetadataOperationType.ClearTags)
                                             {
                                                 <div class="ui-switch" @onmouseenter='@(() => SetFieldHelp("clearTags"))'><RadzenSwitch TValue="bool" @bind-Value="@operation.ClearTagsConfirmed" /><span>@AppText.T("web.metadata.presetDialog.confirmClearTags")</span></div>
@@ -198,11 +190,7 @@
                                                 <span class="metadata-sentence-placeholder"></span>
                                             }
 
-                                            @if (operation.Type == MkvMetadataOperationType.SetTrackOrder)
-                                            {
-                                                <input class="form-input metadata-operation-value" aria-label="@AppText.T("web.metadata.presetDialog.help.trackOrderLanguages.title")" placeholder="@AppText.T("web.metadata.presetDialog.trackOrderLanguagesPlaceholder")" @bind="operation.TrackOrderLanguages" @bind:after="StateHasChanged" @onfocus='@(() => SetFieldHelp("trackOrderLanguages"))' @onmouseenter='@(() => SetFieldHelp("trackOrderLanguages"))' />
-                                            }
-                                            else if (operation.Type == MkvMetadataOperationType.SetAttachment)
+                                            @if (operation.Type == MkvMetadataOperationType.SetAttachment)
                                             {
                                                 <div class="metadata-operation-target">
                                                     <input class="form-input metadata-operation-value" aria-label="@AppText.T("web.metadata.presetDialog.help.attachmentSource.title")" placeholder="@AppText.T("web.metadata.presetDialog.attachmentSourcePlaceholder")" @bind="operation.AttachmentSourcePath" @bind:after="StateHasChanged" @onfocus='@(() => SetFieldHelp("attachmentSource"))' @onmouseenter='@(() => SetFieldHelp("attachmentSource"))' />
@@ -614,7 +602,7 @@
             this.NormalizePresetModel();
             this._selectedRuleIndex = this._preset.Rules.Count > 0 ? 0 : -1;
             this._activeTextInput = null;
-            this._message = "";
+            this._message = string.Join(" ", this._service.LastLoadWarnings);
         }
         catch (Exception ex)
         {
@@ -815,6 +803,8 @@
         this._textEditValue = "";
         this._previewSignature = null;
         this._message = AppText.T("web.metadata.presetDialog.imported");
+        if (this._service.LastLoadWarnings.Count > 0)
+            this._message += " " + string.Join(" ", this._service.LastLoadWarnings);
     }
 
     /// <summary>

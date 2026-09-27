@@ -202,8 +202,10 @@ namespace RemuxForge.Core.Metadata
             }
 
             // Esegue prima il remux, poi applica eventuali modifiche metadata rimaste sul file prodotto
-            trackOrder = FindTrackOrder(record.Changes);
-            selectorMap = BuildTrackSelectorMap(SortTracksByOrder(record.FileInfo.Tracks, trackOrder), removedSelectors);
+            // FileInfo.Tracks e' gia' nell'ordine voluto: le posizioni impostate dalle regole
+            // lo hanno riordinato, e la mappa post-remux si costruisce su quell'ordine
+            trackOrder = MetadataTrackPositionHelper.BuildTrackOrder(record.FileInfo, record.OriginalFileInfo);
+            selectorMap = BuildTrackSelectorMap(record.FileInfo.Tracks, removedSelectors);
             args = this.BuildRemuxArguments(record.InputFile, remuxOutput, removedSelectors, trackOrder);
             commandText = FormatCommand(this._mkvMergePath, args);
             processResult = ProcessRunner.Run(this._mkvMergePath, args.ToArray());
@@ -353,24 +355,29 @@ namespace RemuxForge.Core.Metadata
                     }
                 }
 
-                // I capitoli si sostituiscono in blocco: mkvpropedit non ne modifica uno
+                // mkvpropedit sostituisce il blocco capitoli intero: il blocco nuovo nasce
+                // dall'XML del file stesso, modificato solo dove l'editor ha cambiato qualcosa
                 for (int i = 0; i < changes.Count; i++)
                 {
                     MkvMetadataChange change = changes[i];
+                    string chaptersXml;
 
-                    if (change.OperationType == MkvMetadataOperationType.ClearChapters)
+                    if (change.OperationType != MkvMetadataOperationType.EditChapters)
+                        continue;
+
+                    chaptersXml = MetadataContainerReader.ApplyChapterEdits(new MetadataContainerReader(this._mkvMergePath, this._mkvExtractPath).ReadChaptersXml(filePath), change.Chapters);
+                    if (chaptersXml.Length == 0)
                     {
                         args.Add("--chapters");
                         args.Add("");
+                        continue;
                     }
-                    else if (change.OperationType == MkvMetadataOperationType.RenameChapters)
-                    {
-                        string chapterFile = Path.Combine(Path.GetTempPath(), "remuxforge-chapters-" + Guid.NewGuid().ToString("N") + ".xml");
-                        File.WriteAllText(chapterFile, MetadataContainerReader.BuildChaptersXml(change.Chapters));
-                        tempFiles.Add(chapterFile);
-                        args.Add("--chapters");
-                        args.Add(chapterFile);
-                    }
+
+                    string chapterFile = Path.Combine(Path.GetTempPath(), "remuxforge-chapters-" + Guid.NewGuid().ToString("N") + ".xml");
+                    File.WriteAllText(chapterFile, chaptersXml, new UTF8Encoding(false));
+                    tempFiles.Add(chapterFile);
+                    args.Add("--chapters");
+                    args.Add(chapterFile);
                 }
 
                 if (addStatisticsTags)
@@ -505,55 +512,6 @@ namespace RemuxForge.Core.Metadata
 
             args.Add("--track-order");
             args.Add(order.ToString());
-        }
-
-        /// <summary>
-        /// Cerca l'ordine delle tracce dichiarato dalle modifiche
-        /// </summary>
-        /// <param name="changes">Modifiche del record</param>
-        /// <returns>Selector nell'ordine voluto, vuoto se nessuna modifica riordina</returns>
-        private static List<string> FindTrackOrder(List<MkvMetadataChange> changes)
-        {
-            for (int i = 0; changes != null && i < changes.Count; i++)
-            {
-                if (changes[i].OperationType == MkvMetadataOperationType.SetTrackOrder && changes[i].TrackOrder != null && changes[i].TrackOrder.Count > 0)
-                    return changes[i].TrackOrder;
-            }
-
-            return new List<string>();
-        }
-
-        /// <summary>
-        /// Riordina le tracce del modello secondo l'ordine dichiarato
-        /// </summary>
-        /// <param name="tracks">Tracce del modello analizzato</param>
-        /// <param name="trackOrder">Selector nell'ordine voluto</param>
-        /// <returns>Tracce nell'ordine in cui il remux le scrivera'</returns>
-        private static List<MkvMetadataTrackInfo> SortTracksByOrder(List<MkvMetadataTrackInfo> tracks, List<string> trackOrder)
-        {
-            List<MkvMetadataTrackInfo> result = new List<MkvMetadataTrackInfo>();
-
-            if (tracks == null || trackOrder == null || trackOrder.Count == 0)
-                return tracks;
-
-            // Le posizioni post-remux servono a mkvpropedit: se le tracce escono
-            // riordinate, la mappa dei selector va costruita sull'ordine nuovo
-            for (int i = 0; i < trackOrder.Count; i++)
-            {
-                for (int t = 0; t < tracks.Count; t++)
-                {
-                    if (string.Equals(tracks[t].TrackSelector, trackOrder[i], StringComparison.OrdinalIgnoreCase) && !result.Contains(tracks[t]))
-                        result.Add(tracks[t]);
-                }
-            }
-
-            for (int t = 0; t < tracks.Count; t++)
-            {
-                if (!result.Contains(tracks[t]))
-                    result.Add(tracks[t]);
-            }
-
-            return result;
         }
 
         /// <summary>

@@ -1090,11 +1090,6 @@ tr.metadata-diff-removed > td {
     margin-bottom: 8px;
 }
 
-.metadata-chapter-toolbar .metadata-chapter-pattern {
-    flex: 0 0 240px;
-    width: 240px;
-}
-
 .metadata-chapter-list {
     display: flex;
     flex-direction: column;
@@ -1115,4 +1110,18 @@ tr.metadata-diff-removed > td {
 
 .metadata-chapter-name {
     flex: 1;
+}
+
+.metadata-chapter-time-input {
+    flex: 0 0 210px;
+    width: 210px;
+    font-family: var(--rz-text-code-font-family, monospace);
+}
+
+.metadata-chapter-time-invalid {
+    border-color: var(--rz-danger);
+}
+
+.metadata-track-order-moved {
+    font-weight: 600;
 }
