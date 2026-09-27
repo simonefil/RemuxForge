@@ -2255,7 +2255,7 @@
   "web.editMap.timelineTools": "Strumenti della timeline",
   "web.editMap.toolSelect": "Selezione: clic per spostare il cursore, trascina per selezionare, Maiusc+clic per estendere; trascina i bordi per ridimensionare e l'interno per spostare",
   "web.editMap.toolHand": "Mano: trascina per scorrere la timeline",
-  "web.editMap.toolOperations": "Operazioni: trascina la linea o la barra per spostare, la maniglia per cambiare la durata; clic a vuoto per spostare il cursore",
+  "web.editMap.toolOperations": "Operazioni: trascina la bandierina, la linea o la regione dell'Insert per spostare, la maniglia per cambiare la durata; clic a vuoto per spostare il cursore",
   "web.editMap.contextDeleteOperation": "Elimina operazione",
   "web.editMap.contextCutFromSelection": "Crea Cut dalla selezione",
   "web.editMap.contextInsertFromSelection": "Crea Insert dalla selezione",

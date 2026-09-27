@@ -2255,7 +2255,7 @@
   "web.editMap.timelineTools": "Timeline tools",
   "web.editMap.toolSelect": "Selection: click to move the cursor, drag to select, Shift+click to extend; drag the edges to resize and the inside to move",
   "web.editMap.toolHand": "Hand: drag to scroll the timeline",
-  "web.editMap.toolOperations": "Operations: drag the line or the bar to move, the handle to change the duration; click on empty space to move the cursor",
+  "web.editMap.toolOperations": "Operations: drag the flag, the line or the Insert region to move, the handle to change the duration; click on empty space to move the cursor",
   "web.editMap.contextDeleteOperation": "Delete operation",
   "web.editMap.contextCutFromSelection": "Create Cut from selection",
   "web.editMap.contextInsertFromSelection": "Create Insert from selection",
