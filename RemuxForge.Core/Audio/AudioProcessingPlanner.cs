@@ -81,6 +81,67 @@ namespace RemuxForge.Core.Audio
         }
 
         /// <summary>
+        /// Indica se un'operazione verrà riempita con audio source secondo soglia e modalità configurate
+        /// </summary>
+        /// <param name="operation">Operazione da valutare</param>
+        /// <param name="options">Opzioni correnti</param>
+        /// <param name="stretchRatio">Rapporto stretch applicato alla timeline lang</param>
+        /// <returns>True per un INSERT_SILENCE che il render riempirà con audio source</returns>
+        public static bool IsSourceFilledOperation(EditOperation operation, Options options, double stretchRatio)
+        {
+            if (operation == null || options == null || options.AudioSourceFillThresholdMs <= 0 || string.IsNullOrEmpty(options.AudioSourceFillLanguage))
+            {
+                return false;
+            }
+
+            if (!string.Equals(operation.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal) ||
+                EditMapTimelineHelper.LanguageDurationToRenderedDurationMs(operation.DurationMs, stretchRatio) <= options.AudioSourceFillThresholdMs)
+            {
+                return false;
+            }
+
+            // La deep analysis materializza testa e coda come operazioni invece che come delay di
+            // contenitore: le tre spunte dicono dove il riempimento è ammesso, non se esiste
+            if (string.Equals(operation.Scope, EditOperation.SCOPE_HEAD, StringComparison.Ordinal))
+            {
+                return options.AudioSourceFillStart;
+            }
+            if (string.Equals(operation.Scope, EditOperation.SCOPE_TAIL, StringComparison.Ordinal))
+            {
+                return options.AudioSourceFillEnd;
+            }
+            return options.AudioSourceFillInsertSilence;
+        }
+
+        /// <summary>
+        /// Scrive il gain source fill configurato negli INSERT_SILENCE che verranno riempiti con audio source
+        /// </summary>
+        /// <param name="editMap">EditMap appena prodotta dall'analisi</param>
+        /// <param name="options">Opzioni correnti</param>
+        /// <param name="stretchFactor">Fattore stretch del record, vuoto senza stretch</param>
+        public static void ApplySourceFillGain(EditMap editMap, Options options, string stretchFactor)
+        {
+            double stretchRatio = 1.0;
+            if (editMap == null || editMap.Operations == null || options == null)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(stretchFactor) && !SpeedCorrectionService.TryParseStretchFactor(stretchFactor, out stretchRatio, out _))
+            {
+                stretchRatio = 1.0;
+            }
+
+            for (int i = 0; i < editMap.Operations.Count; i++)
+            {
+                if (IsSourceFilledOperation(editMap.Operations[i], options, stretchRatio))
+                {
+                    editMap.Operations[i].GainDb = options.AudioSourceFillGainDb;
+                }
+            }
+        }
+
+        /// <summary>
         /// True se il piano userà davvero segmenti source, non solo stretch/delay/render lang
         /// </summary>
         /// <param name="plan">Piano source-fill</param>
@@ -260,33 +321,11 @@ namespace RemuxForge.Core.Audio
                 }
             }
 
-            // La deep analysis materializza testa e coda come operazioni invece che come delay di
-            // contenitore: le tre spunte dicono dove il riempimento è ammesso, non se esiste
             for (int i = 0; i < editOperations.Count; i++)
             {
                 EditOperation operation = editOperations[i];
                 result.InsertOperations.Add(operation);
-                if (!string.Equals(operation.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal) ||
-                    EditMapTimelineHelper.LanguageDurationToRenderedDurationMs(operation.DurationMs, stretchRatio) <= request.Options.AudioSourceFillThresholdMs)
-                {
-                    continue;
-                }
-
-                bool allowed;
-                if (string.Equals(operation.Scope, EditOperation.SCOPE_HEAD, StringComparison.Ordinal))
-                {
-                    allowed = request.Options.AudioSourceFillStart;
-                }
-                else if (string.Equals(operation.Scope, EditOperation.SCOPE_TAIL, StringComparison.Ordinal))
-                {
-                    allowed = request.Options.AudioSourceFillEnd;
-                }
-                else
-                {
-                    allowed = request.Options.AudioSourceFillInsertSilence;
-                }
-
-                if (allowed)
+                if (IsSourceFilledOperation(operation, request.Options, stretchRatio))
                 {
                     result.SourceFilledOperations.Add(operation);
                 }

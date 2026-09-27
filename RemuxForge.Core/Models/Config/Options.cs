@@ -33,6 +33,7 @@ namespace RemuxForge.Core.Models
             this.AudioSourceFillStart = false;
             this.AudioSourceFillEnd = false;
             this.AudioSourceFillInsertSilence = false;
+            this.AudioSourceFillGainDb = 0.0;
             this.SpeedCorrectionMode = SPEED_CORRECTION_OFF;
             this.ManualStretchFactor = "";
             this.FrameSync = false;
@@ -429,6 +430,7 @@ namespace RemuxForge.Core.Models
             string audioFormat;
             double peakTargetDb;
             double fixedGainDb;
+            double sourceFillGainDb;
 
             if (key == "fs" || key == "framesync")
             {
@@ -542,6 +544,14 @@ namespace RemuxForge.Core.Models
                     else if (key == "audio-source-fill-modes")
                     {
                         ParseAudioSourceFillModes(value, options);
+                    }
+                    else if (key == "audio-source-fill-gain-db")
+                    {
+                        if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out sourceFillGainDb))
+                        {
+                            options.ErrorMessage = AppText.F("options.invalidIntValue", "audio-source-fill-gain-db", value);
+                        }
+                        options.AudioSourceFillGainDb = sourceFillGainDb;
                     }
                     else if (key == "speed-correction")
                     {
@@ -661,6 +671,7 @@ namespace RemuxForge.Core.Models
                 key == "audio-source-fill-threshold-ms" ||
                 key == "audio-source-fill-language" ||
                 key == "audio-source-fill-modes" ||
+                key == "audio-source-fill-gain-db" ||
                 key == "speed-correction" ||
                 key == "stretch-factor" ||
                 key == "analysis-crop-source-px" || key == "analysis-crop-source" ||
@@ -1049,6 +1060,11 @@ namespace RemuxForge.Core.Models
         /// Usa audio source per INSERT_SILENCE DeepAnalysis oltre soglia
         /// </summary>
         public bool AudioSourceFillInsertSilence { get; set; }
+
+        /// <summary>
+        /// Gain in dB dell'audio Source usato come riempimento, scritto negli INSERT_SILENCE riempiti quando nasce la EditMap
+        /// </summary>
+        public double AudioSourceFillGainDb { get; set; }
 
         /// <summary>
         /// Modalità speed correction: off oppure manual

@@ -209,7 +209,7 @@ namespace RemuxForge.Core.Configuration
         private static void ValidateAudioSourceFill(Options options, bool needsMerge, OptionsValidationResult result)
         {
             bool anyMode = options.AudioSourceFillStart || options.AudioSourceFillEnd || options.AudioSourceFillInsertSilence;
-            bool active = anyMode || options.AudioSourceFillThresholdMs > 0 || !string.IsNullOrEmpty(options.AudioSourceFillLanguage);
+            bool active = anyMode || options.AudioSourceFillThresholdMs > 0 || !string.IsNullOrEmpty(options.AudioSourceFillLanguage) || options.AudioSourceFillGainDb != 0.0;
 
             if (options.AudioSourceFillThresholdMs < 0)
             {
@@ -239,6 +239,11 @@ namespace RemuxForge.Core.Configuration
             if (active && !anyMode)
             {
                 result.AddError(AppText.T("validation.sourceFillModeRequired"));
+            }
+
+            if (options.AudioSourceFillGainDb < -12.0 || options.AudioSourceFillGainDb > 12.0)
+            {
+                result.AddError(AppText.T("validation.sourceFillGainRange"));
             }
 
             if (!string.IsNullOrEmpty(options.AudioSourceFillLanguage))

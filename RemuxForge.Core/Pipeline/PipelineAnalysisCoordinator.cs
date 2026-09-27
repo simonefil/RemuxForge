@@ -1,6 +1,7 @@
 using RemuxForge.Core.Analysis.Deep;
 using RemuxForge.Core.Analysis.FrameSync;
 using RemuxForge.Core.Analysis.Speed;
+using RemuxForge.Core.Audio;
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
@@ -342,6 +343,7 @@ namespace RemuxForge.Core.Pipeline
                                 record.StretchFactor = editMap.StretchFactor;
                                 record.SpeedCorrectionApplied = true;
                             }
+                            AudioProcessingPlanner.ApplySourceFillGain(editMap, this._opts, record.StretchFactor);
 
                             ConsoleHelper.Write(LogSection.Deep, LogLevel.Success, AppText.F("deep.temporal.pipeline.completed", editMap.Operations.Count, editMap.InitialDelayMs, record.DeepAnalysisTimeMs));
                             ConsoleHelper.Progress(LogSection.Deep, 90, AppText.T("deep.temporal.pipeline.progressDiagnostics"));
@@ -351,6 +353,7 @@ namespace RemuxForge.Core.Pipeline
                         {
                             record.DeepAnalysisMap = deepService.LastCandidateMap;
                             record.DeepAnalysisApplied = false;
+                            AudioProcessingPlanner.ApplySourceFillGain(record.DeepAnalysisMap, this._opts, !string.IsNullOrEmpty(record.DeepAnalysisMap?.StretchFactor) ? record.DeepAnalysisMap.StretchFactor : record.StretchFactor);
                             string deepRejectReason = record.DeepAnalysisResult != null && !string.IsNullOrEmpty(record.DeepAnalysisResult.RejectReason) ? record.DeepAnalysisResult.RejectReason : AppText.T("deep.temporal.pipeline.blocked");
                             string deepFailure = AppText.F("deep.temporal.pipeline.failed", deepRejectReason);
                             ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, deepFailure);

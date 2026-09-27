@@ -614,7 +614,7 @@ namespace RemuxForge.Core.Audio
             if (plan.StartFillMs > 0)
             {
                 // Delay positivo: l'inizio mancante viene preso dalla traccia source
-                this.AddTimelineIntervalSegments(segments, 0, sourceTrack, plan.SourceInitialTimelineOffsetMs, 0, plan.StartFillMs, 1.0, 1.0);
+                this.AddTimelineIntervalSegments(segments, 0, sourceTrack, plan.SourceInitialTimelineOffsetMs, 0, plan.StartFillMs, 1.0, 1.0, options.AudioSourceFillGainDb);
             }
             else if (plan.InitialSilenceMs > 0)
             {
@@ -658,7 +658,7 @@ namespace RemuxForge.Core.Audio
             if (plan.EndFillMs > 0 && plan.SourceDurationMs > plan.EndFillMs)
             {
                 // Se lang finisce prima della source, completa la coda usando gli ultimi ms source
-                this.AddTimelineIntervalSegments(segments, 0, sourceTrack, plan.SourceInitialTimelineOffsetMs, plan.SourceDurationMs - plan.EndFillMs, plan.SourceDurationMs, 1.0, 1.0);
+                this.AddTimelineIntervalSegments(segments, 0, sourceTrack, plan.SourceInitialTimelineOffsetMs, plan.SourceDurationMs - plan.EndFillMs, plan.SourceDurationMs, 1.0, 1.0, options.AudioSourceFillGainDb);
             }
 
             return this.BuildConcatFilter(segments, langTrack, options, forPeakTemp, plan.InitialTrimMs, "");

@@ -268,29 +268,6 @@
                 </select>
             </div>
             }
-            @if (!string.IsNullOrEmpty(_audioFormat))
-            {
-                <div class="form-row">
-                    <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFill"))"><RadzenSwitch TValue="bool" Value="@_audioSourceFillEnabled" Change="@ToggleAudioSourceFill" /><span>@AppText.T("web.config.toggle.audioSourceFill")</span></div>
-                </div>
-            }
-            @if (!string.IsNullOrEmpty(_audioFormat) && _audioSourceFillEnabled)
-            {
-            <div class="form-row">
-                <span class="form-label">@AppText.T("web.config.label.thresholdRequired")</span>
-                <input class="form-input" style="width: 8ch;" aria-label="@AppText.T("web.config.label.thresholdRequired")" @bind="_audioSourceFillThresholdMs" @onfocus="@(() => SetFieldHelp("remux.audioSourceFillThreshold"))" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillThreshold"))" /> <span style="margin-left: 0.5ch;">ms</span>
-            </div>
-            <div class="form-row">
-                <span class="form-label">@AppText.T("web.config.label.sourceLanguageRequired")</span>
-                <input class="form-input" style="width: 10ch;" aria-label="@AppText.T("web.config.label.sourceLanguageRequired")" @bind="_audioSourceFillLanguage" @onfocus="@(() => SetFieldHelp("remux.audioSourceFillLang"))" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillLang"))" />
-            </div>
-            <div class="form-row">
-                <span class="form-label">@AppText.T("web.config.label.modeRequired")</span>
-                <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillStart"))"><RadzenSwitch TValue="bool" @bind-Value="@_audioSourceFillStart" /><span>@AppText.T("web.config.toggle.start")</span></div>
-                <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillEnd"))"><RadzenSwitch TValue="bool" @bind-Value="@_audioSourceFillEnd" /><span>@AppText.T("web.config.toggle.end")</span></div>
-                <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillInsert"))"><RadzenSwitch TValue="bool" @bind-Value="@_audioSourceFillInsertSilence" /><span>@AppText.T("web.config.toggle.insertSilence")</span></div>
-            </div>
-            }
             @if ((_audioFormat == "flac" || _audioFormat == "lpcm") && _audioProcessingScope != "disabled")
             {
             <div class="form-row">
@@ -316,6 +293,33 @@
                     <input class="form-input" style="width: 8ch;" aria-label="@AppText.T("web.config.option.fixedGain")" @bind="_audioFixedGainDb" @onfocus="@(() => SetFieldHelp("remux.audioFixedGain"))" @onmouseenter="@(() => SetFieldHelp("remux.audioFixedGain"))" />
                     <span>dB</span>
                 }
+            </div>
+            }
+            @if (!string.IsNullOrEmpty(_audioFormat))
+            {
+                <div class="form-row">
+                    <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFill"))"><RadzenSwitch TValue="bool" Value="@_audioSourceFillEnabled" Change="@ToggleAudioSourceFill" /><span>@AppText.T("web.config.toggle.audioSourceFill")</span></div>
+                </div>
+            }
+            @if (!string.IsNullOrEmpty(_audioFormat) && _audioSourceFillEnabled)
+            {
+            <div class="form-row">
+                <span class="form-label">@AppText.T("web.config.label.thresholdRequired")</span>
+                <input class="form-input" style="width: 8ch;" aria-label="@AppText.T("web.config.label.thresholdRequired")" @bind="_audioSourceFillThresholdMs" @onfocus="@(() => SetFieldHelp("remux.audioSourceFillThreshold"))" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillThreshold"))" /> <span style="margin-left: 0.5ch;">ms</span>
+            </div>
+            <div class="form-row">
+                <span class="form-label">@AppText.T("web.config.label.sourceLanguageRequired")</span>
+                <input class="form-input" style="width: 10ch;" aria-label="@AppText.T("web.config.label.sourceLanguageRequired")" @bind="_audioSourceFillLanguage" @onfocus="@(() => SetFieldHelp("remux.audioSourceFillLang"))" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillLang"))" />
+            </div>
+            <div class="form-row">
+                <span class="form-label">@AppText.T("web.config.label.audioGain"):</span>
+                <input class="form-input" style="width: 8ch;" aria-label="@AppText.T("web.config.label.audioGain")" @bind="_audioSourceFillGainDb" @onfocus="@(() => SetFieldHelp("remux.audioSourceFillGain"))" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillGain"))" /> <span style="margin-left: 0.5ch;">dB</span>
+            </div>
+            <div class="form-row">
+                <span class="form-label">@AppText.T("web.config.label.modeRequired")</span>
+                <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillStart"))"><RadzenSwitch TValue="bool" @bind-Value="@_audioSourceFillStart" /><span>@AppText.T("web.config.toggle.start")</span></div>
+                <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillEnd"))"><RadzenSwitch TValue="bool" @bind-Value="@_audioSourceFillEnd" /><span>@AppText.T("web.config.toggle.end")</span></div>
+                <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audioSourceFillInsert"))"><RadzenSwitch TValue="bool" @bind-Value="@_audioSourceFillInsertSilence" /><span>@AppText.T("web.config.toggle.insertSilence")</span></div>
             </div>
             }
             @* Post-Processing video *@
@@ -570,6 +574,11 @@
     private string _audioSourceFillLanguage = "";
 
     /// <summary>
+    /// Gain audio source fill in dB (stringa per binding input)
+    /// </summary>
+    private string _audioSourceFillGainDb = "0";
+
+    /// <summary>
     /// Audio source fill: inizio file
     /// </summary>
     private bool _audioSourceFillStart;
@@ -750,9 +759,11 @@
                 !string.IsNullOrEmpty(Options.AudioSourceFillLanguage) ||
                 Options.AudioSourceFillStart ||
                 Options.AudioSourceFillEnd ||
-                Options.AudioSourceFillInsertSilence;
+                Options.AudioSourceFillInsertSilence ||
+                Options.AudioSourceFillGainDb != 0.0;
             _audioSourceFillThresholdMs = Options.AudioSourceFillThresholdMs.ToString();
             _audioSourceFillLanguage = Options.AudioSourceFillLanguage;
+            _audioSourceFillGainDb = Options.AudioSourceFillGainDb.ToString(System.Globalization.CultureInfo.InvariantCulture);
             _audioSourceFillStart = Options.AudioSourceFillStart;
             _audioSourceFillEnd = Options.AudioSourceFillEnd;
             _audioSourceFillInsertSilence = Options.AudioSourceFillInsertSilence;
@@ -798,6 +809,7 @@
         int audioDelay;
         int subDelay;
         int audioSourceFillThresholdMs;
+        double audioSourceFillGainDb;
         double audioPeakTargetDb;
         double audioFixedGainDb;
         string[] parts;
@@ -848,6 +860,8 @@
             int.TryParse(_audioSourceFillThresholdMs, out audioSourceFillThresholdMs);
             opts.AudioSourceFillThresholdMs = audioSourceFillThresholdMs;
             opts.AudioSourceFillLanguage = _audioSourceFillLanguage.Trim();
+            double.TryParse(_audioSourceFillGainDb, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out audioSourceFillGainDb);
+            opts.AudioSourceFillGainDb = audioSourceFillGainDb;
             opts.AudioSourceFillStart = _audioSourceFillStart;
             opts.AudioSourceFillEnd = _audioSourceFillEnd;
             opts.AudioSourceFillInsertSilence = _audioSourceFillInsertSilence;
@@ -1007,6 +1021,11 @@
         if (_audioSourceFillEnabled && !_audioSourceFillStart && !_audioSourceFillEnd && !_audioSourceFillInsertSilence)
         {
             errors.Add(AppText.T("web.config.validation.audioSourceModeRequired"));
+        }
+
+        if (_audioSourceFillEnabled && !double.TryParse(_audioSourceFillGainDb, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _))
+        {
+            errors.Add(AppText.T("web.config.validation.audioSourceGainInvalid"));
         }
 
         if (_audioSourceFillEnabled && string.IsNullOrEmpty(_audioFormat))
@@ -1536,6 +1555,7 @@
         _audioSourceFillEnabled = false;
         _audioSourceFillThresholdMs = "0";
         _audioSourceFillLanguage = "";
+        _audioSourceFillGainDb = "0";
         _audioSourceFillStart = false;
         _audioSourceFillEnd = false;
         _audioSourceFillInsertSilence = false;

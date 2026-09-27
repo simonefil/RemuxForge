@@ -1098,6 +1098,7 @@ namespace RemuxForge.Web.Services
                 previousOptions.AudioSourceFillStart != newOptions.AudioSourceFillStart ||
                 previousOptions.AudioSourceFillEnd != newOptions.AudioSourceFillEnd ||
                 previousOptions.AudioSourceFillInsertSilence != newOptions.AudioSourceFillInsertSilence ||
+                Math.Abs(previousOptions.AudioSourceFillGainDb - newOptions.AudioSourceFillGainDb) > 0.0001 ||
                 previousOptions.Overwrite != newOptions.Overwrite ||
                 !string.Equals(previousOptions.AudioSourceFillLanguage, newOptions.AudioSourceFillLanguage, StringComparison.Ordinal) ||
                 !string.Equals(previousOptions.DestinationFolder, newOptions.DestinationFolder, StringComparison.Ordinal) ||

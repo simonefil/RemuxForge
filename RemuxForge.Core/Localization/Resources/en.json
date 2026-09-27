@@ -129,6 +129,7 @@
   "cli.config.audioDelay": "  Audio delay:       {0}",
   "cli.config.subtitleDelay": "  Subtitle delay:    {0}",
   "cli.config.audioSourceFill": "  Audio source fill: >{0}ms from {1} ({2})",
+  "cli.config.audioSourceFillGain": "  Source fill gain:  {0} dB",
   "cli.config.audioFormat": "  Audio format:      {0} ({1})",
   "cli.config.audio24To16": "  24bit -> 16bit:    YES",
   "cli.config.normalization": "  Normalization:     {0} dB",
@@ -191,6 +192,7 @@
   "validation.sourceFillThresholdPositive": "audio-source-fill-threshold-ms must be greater than zero when audio-source-fill is active",
   "validation.sourceFillLanguageRequired": "audio-source-fill-language is required when audio-source-fill is active",
   "validation.sourceFillModeRequired": "audio-source-fill-modes requires at least one mode: start, end, insert-silence",
+  "validation.sourceFillGainRange": "audio-source-fill-gain-db must be between -12 and +12",
   "validation.audioScopeRequiresFormat": "audio-scope requires audio-format",
   "validation.audioFormatRequiredWithScope": "audio-format is required when audio-scope is not disabled",
   "validation.speedNeedsAudioFormat": "Speed Correction requires an audio format when Language audio tracks are imported",
@@ -766,6 +768,7 @@
   "web.config.validation.targetLanguageRequired": "Target language is required",
   "web.config.validation.audioSourceLanguageRequired": "Audio source: source language is required",
   "web.config.validation.audioSourceModeRequired": "Audio source: select at least one mode",
+  "web.config.validation.audioSourceGainInvalid": "Audio source: invalid gain",
   "web.config.validation.audioSourceFormatRequired": "Audio source: audio format is required",
   "web.config.validation.audioSourceScopeRequired": "Audio source: audio must be Lang or All",
   "web.config.validation.timelineAudioFormatRequired": "Speed Correction or DeepAnalysis require an audio format when Language tracks are imported",
@@ -1131,6 +1134,8 @@
     "ita",
     "ita,eng"
   ],
+  "web.config.help.remux.audioSourceFillGain.title": "Gain",
+  "web.config.help.remux.audioSourceFillGain.text": "Gain in dB applied to the Source audio used as fill, from -12 to +12 dB, decimals allowed. It is written into the filled Inserts when the EditMap is created, and can be changed per operation in the editor. It also applies to the start and end fill derived from the delay.",
   "web.config.help.remux.audioSourceFillStart.title": "Start",
   "web.config.help.remux.audioSourceFillStart.text": [
     "Applies filling at the beginning of the file.",

@@ -418,6 +418,10 @@ namespace RemuxForge.Cli
             if (opts.AudioSourceFillThresholdMs > 0)
             {
                 ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.audioSourceFill", opts.AudioSourceFillThresholdMs, opts.AudioSourceFillLanguage, FormatAudioSourceFillModes(opts)));
+                if (opts.AudioSourceFillGainDb != 0.0)
+                {
+                    ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.audioSourceFillGain", opts.AudioSourceFillGainDb.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+                }
             }
             if (!string.IsNullOrEmpty(opts.AudioFormat))
             {

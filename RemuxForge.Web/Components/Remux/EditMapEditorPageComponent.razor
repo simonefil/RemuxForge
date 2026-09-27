@@ -872,20 +872,17 @@
     /// </summary>
     /// <param name="operation">Operazione da valutare</param>
     /// <returns>True quando il planner audio la riempirebbe con audio Source</returns>
-    private bool ShouldSourceFillOperation(EditOperation operation)
+    private bool ShouldSourceFillOperation(EditOperation operation) => AudioProcessingPlanner.IsSourceFilledOperation(operation, this.CurrentOptions, this._projection != null ? this._projection.StretchRatio : 1.0);
+
+    /// <summary>
+    /// Dà il gain source fill configurato a un Insert che entra nel riempimento senza un gain proprio
+    /// </summary>
+    /// <param name="operation">Operazione appena creata o modificata</param>
+    /// <param name="wasSourceFilled">True se prima della modifica era già riempita con audio Source</param>
+    private void ApplySourceFillGain(EditOperation operation, bool wasSourceFilled)
     {
-        if (this.CurrentOptions == null || this.CurrentOptions.AudioSourceFillThresholdMs <= 0 || string.IsNullOrEmpty(this.CurrentOptions.AudioSourceFillLanguage))
-            return false;
-
-        double stretchRatio = this._projection != null ? this._projection.StretchRatio : 1.0;
-        if (EditMapTimelineHelper.LanguageDurationToRenderedDurationMs(operation.DurationMs, stretchRatio) <= this.CurrentOptions.AudioSourceFillThresholdMs)
-            return false;
-
-        if (string.Equals(operation.Scope, EditOperation.SCOPE_HEAD, StringComparison.Ordinal))
-            return this.CurrentOptions.AudioSourceFillStart;
-        if (string.Equals(operation.Scope, EditOperation.SCOPE_TAIL, StringComparison.Ordinal))
-            return this.CurrentOptions.AudioSourceFillEnd;
-        return this.CurrentOptions.AudioSourceFillInsertSilence;
+        if (!wasSourceFilled && operation.GainDb == 0.0 && this.ShouldSourceFillOperation(operation))
+            operation.GainDb = this.CurrentOptions.AudioSourceFillGainDb;
     }
 
     /// <summary>
@@ -1258,9 +1255,12 @@
 
         EditOperation operation = this._selectedOperation;
         EditMap backup = EditMapTimelineHelper.Clone(this._workingMap);
+        bool wasSourceFilled = this.ShouldSourceFillOperation(operation);
         operation.LangTimestampMs = languageTimestamp;
         operation.DurationMs = languageDuration;
         operation.GainDb = string.Equals(operation.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal) ? gainDb : 0.0;
+        if (!this._gainEditPending)
+            this.ApplySourceFillGain(operation, wasSourceFilled);
         EditMapProjection candidate = EditMapTimelineHelper.BuildProjection(this._workingMap, this._sourceIndex.EndPtsMs, this._languageIndex.EndPtsMs, this._sourceIndex.MedianFrameDurationMs);
         if (!candidate.Validation.IsValid)
         {
@@ -1456,6 +1456,7 @@
             VisualSourceTimestampMs = Math.Max(0, (int)Math.Round(this._selectionSourceStartMs)),
             Scope = EditOperation.SCOPE_BODY
         };
+        this.ApplySourceFillGain(operation, false);
         this._workingMap.Operations.Add(operation);
         this.ClearTimelineSelection();
         await this.NormalizeWorkingMapAsync(operation);
@@ -1493,6 +1494,7 @@
             VisualSourceTimestampMs = Math.Max(0, (int)Math.Round(this._sourcePlayheadMs)),
             Scope = EditOperation.SCOPE_BODY
         };
+        this.ApplySourceFillGain(operation, false);
         this._workingMap.Operations.Add(operation);
         await this.NormalizeWorkingMapAsync(operation);
     }
@@ -2054,9 +2056,11 @@
         int originalDuration = this._selectedOperation.DurationMs;
         EditMap backup = EditMapTimelineHelper.Clone(this._workingMap);
         int languageDuration = Math.Max(1, (int)Math.Round(renderedDurationMs / this._projection.StretchRatio));
+        bool wasSourceFilled = this.ShouldSourceFillOperation(this._selectedOperation);
         this._selectedOperation.DurationMs = string.Equals(this._selectedOperation.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal)
             ? this.SnapInsertDuration(languageDuration)
             : this.SnapLanguageDuration(this._selectedOperation.LangTimestampMs, languageDuration);
+        this.ApplySourceFillGain(this._selectedOperation, wasSourceFilled);
         EditMapProjection candidate = EditMapTimelineHelper.BuildProjection(this._workingMap, this._sourceIndex.EndPtsMs, this._languageIndex.EndPtsMs, this._sourceIndex.MedianFrameDurationMs);
         if (!candidate.Validation.IsValid)
         {
