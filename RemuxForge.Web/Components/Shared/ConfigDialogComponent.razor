@@ -300,10 +300,20 @@
             @if (!string.IsNullOrEmpty(_audioFormat) && _audioProcessingScope != "disabled")
             {
             <div class="form-row">
-                <div class="ui-switch" @onmouseenter="@(() => SetFieldHelp("remux.audioNormalize"))"><RadzenSwitch TValue="bool" @bind-Value="@_audioPeakNormalize" /><span>@AppText.T("web.config.toggle.normalization")</span></div>
-                @if (_audioPeakNormalize)
+                <span class="form-label">@AppText.T("web.config.label.audioGain"):</span>
+                <select class="form-input" style="width: 24ch;" aria-label="@AppText.T("web.config.label.audioGain")" @bind="_audioGainMode" @onfocus="@(() => SetFieldHelp("remux.audioGain"))" @onmouseenter="@(() => SetFieldHelp("remux.audioGain"))">
+                    <option value="none">@AppText.T("web.common.none")</option>
+                    <option value="peak">@AppText.T("web.config.option.peakNormalization")</option>
+                    <option value="fixed">@AppText.T("web.config.option.fixedGain")</option>
+                </select>
+                @if (_audioGainMode == "peak")
                 {
                     <input class="form-input" style="width: 8ch;" aria-label="@AppText.T("web.config.toggle.normalization")" @bind="_audioPeakTargetDb" @onfocus="@(() => SetFieldHelp("remux.audioNormalize"))" @onmouseenter="@(() => SetFieldHelp("remux.audioNormalize"))" />
+                    <span>dB</span>
+                }
+                else if (_audioGainMode == "fixed")
+                {
+                    <input class="form-input" style="width: 8ch;" aria-label="@AppText.T("web.config.option.fixedGain")" @bind="_audioFixedGainDb" @onfocus="@(() => SetFieldHelp("remux.audioFixedGain"))" @onmouseenter="@(() => SetFieldHelp("remux.audioFixedGain"))" />
                     <span>dB</span>
                 }
             </div>
@@ -600,14 +610,19 @@
     private bool _audioDownsample24To16;
 
     /// <summary>
-    /// Flag peak normalization
+    /// Gain applicato alle tracce processate: none, peak, fixed
     /// </summary>
-    private bool _audioPeakNormalize;
+    private string _audioGainMode = "none";
 
     /// <summary>
     /// Target peak normalization
     /// </summary>
     private string _audioPeakTargetDb = "-1.0";
+
+    /// <summary>
+    /// Gain fisso in dB
+    /// </summary>
+    private string _audioFixedGainDb = "0.0";
 
     /// <summary>
     /// Nome profilo encoding selezionato, vuoto = nessuno
@@ -747,8 +762,9 @@
             _audioFormat = Options.AudioFormat;
             _audioProcessingScope = Options.AudioProcessingScope;
             _audioDownsample24To16 = Options.AudioDownsample24To16;
-            _audioPeakNormalize = Options.AudioPeakNormalize;
+            _audioGainMode = Options.AudioPeakNormalize ? "peak" : Options.AudioFixedGain ? "fixed" : "none";
             _audioPeakTargetDb = Options.AudioPeakTargetDb.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            _audioFixedGainDb = Options.AudioFixedGainDb.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
             _encodingProfile = Options.EncodingProfileName;
 
@@ -783,6 +799,7 @@
         int subDelay;
         int audioSourceFillThresholdMs;
         double audioPeakTargetDb;
+        double audioFixedGainDb;
         string[] parts;
         string trimmed;
         OptionsValidationResult validation;
@@ -851,12 +868,18 @@
         opts.AudioFormat = _audioFormat.Trim().ToLowerInvariant();
         opts.AudioProcessingScope = !string.IsNullOrEmpty(opts.AudioFormat) ? (RequiresTimelineAudioProcessing() && _audioProcessingScope == "disabled" ? "lang" : _audioProcessingScope) : "disabled";
         opts.AudioDownsample24To16 = (opts.AudioFormat == "flac" || opts.AudioFormat == "lpcm") && opts.AudioProcessingScope != "disabled" && _audioDownsample24To16;
-        opts.AudioPeakNormalize = !string.IsNullOrEmpty(opts.AudioFormat) && opts.AudioProcessingScope != "disabled" && _audioPeakNormalize;
+        opts.AudioPeakNormalize = !string.IsNullOrEmpty(opts.AudioFormat) && opts.AudioProcessingScope != "disabled" && _audioGainMode == "peak";
+        opts.AudioFixedGain = !string.IsNullOrEmpty(opts.AudioFormat) && opts.AudioProcessingScope != "disabled" && _audioGainMode == "fixed";
         if (!double.TryParse(_audioPeakTargetDb, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out audioPeakTargetDb))
         {
             audioPeakTargetDb = -1.0;
         }
         opts.AudioPeakTargetDb = audioPeakTargetDb;
+        if (!double.TryParse(_audioFixedGainDb, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out audioFixedGainDb))
+        {
+            audioFixedGainDb = 0.0;
+        }
+        opts.AudioFixedGainDb = audioFixedGainDb;
 
         // Path mkvmerge da AppSettings (gestito nel dialog Percorsi tool)
         opts.MkvMergePath = !string.IsNullOrEmpty(AppSettingsService.Instance.Settings.Tools.MkvMergePath) ? AppSettingsService.Instance.Settings.Tools.MkvMergePath : "mkvmerge";
@@ -1016,9 +1039,14 @@
             errors.Add(AppText.T("web.config.validation.cropLangInvalid"));
         }
 
-        if (!string.IsNullOrEmpty(_audioFormat) && _audioProcessingScope != "disabled" && _audioPeakNormalize && !double.TryParse(_audioPeakTargetDb, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _))
+        if (!string.IsNullOrEmpty(_audioFormat) && _audioProcessingScope != "disabled" && _audioGainMode == "peak" && !double.TryParse(_audioPeakTargetDb, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _))
         {
             errors.Add(AppText.T("web.config.validation.normalizationTargetInvalid"));
+        }
+
+        if (!string.IsNullOrEmpty(_audioFormat) && _audioProcessingScope != "disabled" && _audioGainMode == "fixed" && !double.TryParse(_audioFixedGainDb, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _))
+        {
+            errors.Add(AppText.T("web.config.validation.fixedGainInvalid"));
         }
 
         if (IsMixedSingleFileSelection())
@@ -1390,7 +1418,7 @@
         {
             _audioProcessingScope = "disabled";
             _audioDownsample24To16 = false;
-            _audioPeakNormalize = false;
+            _audioGainMode = "none";
             ResetAudioSourceFill();
         }
         else if (_audioFormat != "flac" && _audioFormat != "lpcm")

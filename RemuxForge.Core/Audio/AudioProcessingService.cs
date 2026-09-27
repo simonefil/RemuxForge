@@ -820,7 +820,7 @@ namespace RemuxForge.Core.Audio
         }
 
         /// <summary>
-        /// Costruisce il post-filtro audio comune per formato interno e dither
+        /// Costruisce il post-filtro audio comune per formato interno, gain fisso e dither
         /// </summary>
         /// <param name="track">Traccia audio usata per risolvere layout e sample rate target</param>
         /// <param name="options">Opzioni correnti</param>
@@ -834,6 +834,11 @@ namespace RemuxForge.Core.Audio
             if (options.AudioFormat == "ac3")
             {
                 filter += ":sample_rates=" + this.ResolveAc3SampleRate(track).ToString(CultureInfo.InvariantCulture) + ":channel_layouts=" + AudioChannelHelper.GetAc3ChannelLayout(channels);
+            }
+
+            if (options.AudioFixedGain)
+            {
+                filter += ",volume=" + options.AudioFixedGainDb.ToString("F6", CultureInfo.InvariantCulture) + "dB";
             }
 
             if (options.AudioDownsample24To16 && !forPeakTemp)
@@ -1260,6 +1265,7 @@ namespace RemuxForge.Core.Audio
             string target;
             string downsample;
             string normalize;
+            string gain;
             bool generic;
             bool render;
             string reason;
@@ -1267,8 +1273,9 @@ namespace RemuxForge.Core.Audio
             target = Utils.FormatAudioFormat(request.Options.AudioFormat);
             downsample = request.Options.AudioDownsample24To16 ? "si" : "no";
             normalize = request.Options.AudioPeakNormalize ? request.Options.AudioPeakTargetDb.ToString("F2", CultureInfo.InvariantCulture) + " dB" : "no";
+            gain = request.Options.AudioFixedGain ? request.Options.AudioFixedGainDb.ToString("F2", CultureInfo.InvariantCulture) + " dB" : "no";
 
-            ConsoleHelper.Write(LogSection.Conv, LogLevel.Debug, "  Audio request: format=" + target + ", scope=" + request.Options.AudioProcessingScope + ", normalize=" + normalize + ", 24to16=" + downsample + ", jobs=" + jobs.Count);
+            ConsoleHelper.Write(LogSection.Conv, LogLevel.Debug, "  Audio request: format=" + target + ", scope=" + request.Options.AudioProcessingScope + ", normalize=" + normalize + ", gain=" + gain + ", 24to16=" + downsample + ", jobs=" + jobs.Count);
             for (int i = 0; i < jobs.Count; i++)
             {
                 generic = jobs[i].GenericProcessing;

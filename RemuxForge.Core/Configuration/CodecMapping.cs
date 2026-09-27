@@ -267,7 +267,7 @@ namespace RemuxForge.Core.Configuration
 
             downsampleRequired = options.AudioDownsample24To16 && (track.BitsPerSample <= 0 || track.BitsPerSample > 16);
 
-            if (options.AudioPeakNormalize || downsampleRequired)
+            if (options.AudioPeakNormalize || options.AudioFixedGain || downsampleRequired)
             {
                 result = true;
             }

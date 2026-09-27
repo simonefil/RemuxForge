@@ -320,6 +320,11 @@ namespace RemuxForge.Web.Services
                 parts.Add(AppText.F("web.detail.audioNormalize", options.AudioPeakTargetDb.ToString("F2", CultureInfo.InvariantCulture)));
                 hasReason = true;
             }
+            if (options.AudioFixedGain)
+            {
+                parts.Add(AppText.F("web.detail.audioFixedGain", options.AudioFixedGainDb.ToString("+0.00;-0.00;0.00", CultureInfo.InvariantCulture)));
+                hasReason = true;
+            }
             if (!hasReason)
             {
                 parts.Add(AppText.T("web.detail.audioGenericProcessing"));
@@ -338,6 +343,10 @@ namespace RemuxForge.Web.Services
             if (options.AudioPeakNormalize)
             {
                 parts.Add(AppText.F("web.detail.audioNormalize", options.AudioPeakTargetDb.ToString("F2", CultureInfo.InvariantCulture)));
+            }
+            if (options.AudioFixedGain)
+            {
+                parts.Add(AppText.F("web.detail.audioFixedGain", options.AudioFixedGainDb.ToString("+0.00;-0.00;0.00", CultureInfo.InvariantCulture)));
             }
         }
 

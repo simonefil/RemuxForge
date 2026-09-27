@@ -426,6 +426,10 @@ namespace RemuxForge.Cli
                 {
                     ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.normalization", opts.AudioPeakTargetDb.ToString(System.Globalization.CultureInfo.InvariantCulture)));
                 }
+                if (opts.AudioFixedGain)
+                {
+                    ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.fixedGain", opts.AudioFixedGainDb.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+                }
             }
             // Mostra flag filtro
             if (opts.SubOnly)

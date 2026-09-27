@@ -267,7 +267,7 @@ namespace RemuxForge.Core.Configuration
                 result.AddError(AppText.T("validation.audioFormatRequiredWithScope"));
             }
 
-            if ((options.AudioPeakNormalize || options.AudioDownsample24To16) && (string.IsNullOrEmpty(options.AudioFormat) || options.AudioProcessingScope == "disabled"))
+            if ((options.AudioPeakNormalize || options.AudioFixedGain || options.AudioDownsample24To16) && (string.IsNullOrEmpty(options.AudioFormat) || options.AudioProcessingScope == "disabled"))
             {
                 result.AddError(AppText.T("validation.audioNormalizeNeedsFormat"));
             }
@@ -285,6 +285,16 @@ namespace RemuxForge.Core.Configuration
             if (options.AudioPeakTargetDb < -60.0)
             {
                 result.AddError(AppText.T("validation.audioPeakTargetMin"));
+            }
+
+            if (options.AudioPeakNormalize && options.AudioFixedGain)
+            {
+                result.AddError(AppText.T("validation.audioGainExclusive"));
+            }
+
+            if (options.AudioFixedGain && (options.AudioFixedGainDb < -12.0 || options.AudioFixedGainDb > 12.0))
+            {
+                result.AddError(AppText.T("validation.audioFixedGainRange"));
             }
         }
 

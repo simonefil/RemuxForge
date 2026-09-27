@@ -1106,6 +1106,8 @@ namespace RemuxForge.Web.Services
                 previousOptions.AudioDownsample24To16 != newOptions.AudioDownsample24To16 ||
                 previousOptions.AudioPeakNormalize != newOptions.AudioPeakNormalize ||
                 Math.Abs(previousOptions.AudioPeakTargetDb - newOptions.AudioPeakTargetDb) > 0.0001 ||
+                previousOptions.AudioFixedGain != newOptions.AudioFixedGain ||
+                Math.Abs(previousOptions.AudioFixedGainDb - newOptions.AudioFixedGainDb) > 0.0001 ||
                 !string.Equals(previousOptions.EncodingProfileName, newOptions.EncodingProfileName, StringComparison.Ordinal) ||
                 !string.Equals(previousOptions.MkvMergePath, newOptions.MkvMergePath, StringComparison.Ordinal))
             {

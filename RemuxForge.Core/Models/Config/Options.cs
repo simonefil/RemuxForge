@@ -57,6 +57,8 @@ namespace RemuxForge.Core.Models
             this.AudioDownsample24To16 = false;
             this.AudioPeakNormalize = false;
             this.AudioPeakTargetDb = -1.0;
+            this.AudioFixedGain = false;
+            this.AudioFixedGainDb = 0.0;
             this.ErrorMessage = "";
             this.EncodingProfileName = "";
             this.Split = new MkvSplitOptions();
@@ -426,6 +428,7 @@ namespace RemuxForge.Core.Models
             int delay;
             string audioFormat;
             double peakTargetDb;
+            double fixedGainDb;
 
             if (key == "fs" || key == "framesync")
             {
@@ -613,6 +616,15 @@ namespace RemuxForge.Core.Models
                         }
                         options.AudioPeakTargetDb = peakTargetDb;
                     }
+                    else if (key == "audio-gain-db")
+                    {
+                        if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out fixedGainDb))
+                        {
+                            options.ErrorMessage = AppText.F("options.invalidIntValue", "audio-gain-db", value);
+                        }
+                        options.AudioFixedGain = true;
+                        options.AudioFixedGainDb = fixedGainDb;
+                    }
                     else if (key == "mkv" || key == "mkvmerge-path")
                     {
                         options.MkvMergePath = value;
@@ -661,6 +673,7 @@ namespace RemuxForge.Core.Models
                 key == "audio-format" ||
                 key == "audio-scope" ||
                 key == "audio-peak-target-db" ||
+                key == "audio-gain-db" ||
                 key == "mkv" || key == "mkvmerge-path" ||
                 key == "ep" || key == "encoding-profile";
         }
@@ -1141,6 +1154,16 @@ namespace RemuxForge.Core.Models
         /// Target dB per peak normalization
         /// </summary>
         public double AudioPeakTargetDb { get; set; }
+
+        /// <summary>
+        /// Applica un gain fisso alle tracce processate, alternativo alla peak normalization
+        /// </summary>
+        public bool AudioFixedGain { get; set; }
+
+        /// <summary>
+        /// Gain fisso in dB
+        /// </summary>
+        public double AudioFixedGainDb { get; set; }
 
         /// <summary>
         /// Indica se cercare ricorsivamente nelle sottocartelle (-r, --recursive). Default: true
