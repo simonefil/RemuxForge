@@ -2153,6 +2153,8 @@
   "web.common.yes": "Sì",
   "web.editMap.title": "Modifica EditMap",
   "web.editMap.change": "Modifica EditMap",
+  "web.editMap.verify": "Verifica sincronizzazione",
+  "web.editMap.frameSyncVerification": "Verifica FrameSync · delay {0}",
   "web.editMap.modifiedLabel": "Modifica manuale",
   "web.editMap.notAnalyzed": "Non analizzata",
   "web.editMap.indexing": "Indicizzazione",

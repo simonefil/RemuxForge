@@ -18,10 +18,11 @@
 else if (_showEditMapEditor && _editMapRecord != null)
 {
     <EditMapEditorPageComponent RecordIndex="@_editMapRecordIndex"
-                                Record="@_editMapRecord"
-                                CurrentOptions="@Orchestrator.CurrentOptions"
-                                OnClose="CloseEditMapEditor"
-                                OnApply="ApplyEditMap" />
+                                 Record="@_editMapRecord"
+                                 CurrentOptions="@Orchestrator.CurrentOptions"
+                                 VerificationOnly="@(Orchestrator.CurrentOptions != null && Orchestrator.CurrentOptions.FrameSync && !Orchestrator.CurrentOptions.DeepAnalysis)"
+                                 OnClose="CloseEditMapEditor"
+                                 OnApply="ApplyEditMap" />
 }
 else
 {

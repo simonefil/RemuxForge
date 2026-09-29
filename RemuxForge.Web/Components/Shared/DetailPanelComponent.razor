@@ -12,8 +12,8 @@
                               Disabled="@(!CanDownloadDeepAnalysisDiagnostics())"
                               Click="@DownloadDeepAnalysisDiagnosticsAsync" />
             }
-            <RadzenButton Icon="edit"
-                          Text="@AppText.T("web.editMap.change")"
+            <RadzenButton Icon="@(IsFrameSyncVerification() ? "visibility" : "edit")"
+                          Text="@AppText.T(IsFrameSyncVerification() ? "web.editMap.verify" : "web.editMap.change")"
                           Size="ButtonSize.Small"
                           Variant="Variant.Text"
                           ButtonStyle="ButtonStyle.Base"
@@ -397,6 +397,8 @@
     {
         if (this.Record == null || string.IsNullOrEmpty(this.Record.SourceFilePath) || string.IsNullOrEmpty(this.Record.LangFilePath))
             return false;
+        if (this.IsFrameSyncVerification() && (this.Record.FrameSyncResult == null || !this.Record.FrameSyncResult.Success))
+            return false;
 
         // Con un'operazione in corso gli episodi ancora in coda non sono modificabili: la coda di AnalyzeAll e'
         // fotografata all'avvio e i record che deve ancora processare vengono mutati in place, cancellando la mappa manuale
@@ -404,6 +406,14 @@
             return this.Record.Status == FileStatus.Analyzed || this.Record.Status == FileStatus.Error;
 
         return this.Record.Status == FileStatus.Pending || this.Record.Status == FileStatus.Analyzed || this.Record.Status == FileStatus.Error;
+    }
+
+    /// <summary>
+    /// True quando FrameSync offre soltanto la verifica visuale del delay calcolato
+    /// </summary>
+    private bool IsFrameSyncVerification()
+    {
+        return this.Options != null && this.Options.FrameSync && !this.Options.DeepAnalysis;
     }
 
     /// <summary>

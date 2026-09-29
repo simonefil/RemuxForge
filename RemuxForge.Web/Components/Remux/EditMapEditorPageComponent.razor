@@ -6,7 +6,7 @@
 <section @ref="_pageRoot" class="edit-map-page" data-keyboard-owner="edit-map" tabindex="-1" aria-labelledby="edit-map-page-title">
     <header class="edit-map-page-header">
         <div>
-            <div id="edit-map-page-title">@AppText.T("web.editMap.title")</div>
+            <div id="edit-map-page-title">@GetPageTitle()</div>
             <div class="edit-map-page-subtitle">@Record?.SourceFileName · @AppText.T("web.detail.stretchLabel") @GetStretchLabel() · @AppText.T("web.detail.deepAudioOffsetLabel") @Utils.FormatDelay(_workingMap.LanguageAudioOffsetMs)</div>
         </div>
         <div class="edit-map-page-title-actions">
@@ -20,7 +20,7 @@
         <RadzenSplitter Orientation="Orientation.Vertical" class="edit-map-main-splitter">
             <RadzenSplitterPane Size="66.6667%" Min="300px">
                 <RadzenSplitter class="edit-map-row-splitter">
-                    <RadzenSplitterPane Size="66.6667%" Min="540px">
+                    <RadzenSplitterPane Size="@GetPrimaryPaneSize()" Min="540px">
                         <section class="edit-map-preview-section">
                             <div class="edit-map-preview-grid">
                                 <FramePreviewPaneComponent @ref="_sourcePreview"
@@ -60,38 +60,41 @@
                             </div>
                         </section>
                     </RadzenSplitterPane>
-                    <RadzenSplitterPane Min="280px">
-                        <section class="edit-map-operations-pane">
-                            <div class="edit-map-panel-toolbar">
-                                <div class="media-section-title">@AppText.T("web.detail.operationsLabel")</div>
-                                <span class="edit-map-toolbar-spacer"></span>
-                                <RadzenButton Icon="content_cut" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.addCutHelp")" aria-label="@AppText.T("web.editMap.addCutHelp")" Disabled="@(!CanAddCut())" Click="AddCutAsync" />
-                                <RadzenButton Icon="add_to_queue" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.addInsertHelp")" aria-label="@AppText.T("web.editMap.addInsertHelp")" Disabled="@(!CanCreateOperation())" Click="@(() => AddOperationAsync(EditOperation.INSERT_SILENCE))" />
-                                <RadzenButton Icon="delete" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" title="@AppText.T("web.editMap.deleteHelp")" aria-label="@AppText.T("web.editMap.deleteHelp")" Disabled="@(_selectedOperation == null)" Click="DeleteSelectedOperationAsync" />
-                            </div>
-                            <RadzenDataGrid @ref="_operationGrid" Data="@_workingMap.Operations" TItem="EditOperation" AllowSorting="false" AllowFiltering="false" AllowColumnResize="true" AllowRowSelectOnRowClick="true" GridLines="DataGridGridLines.Both" Density="Density.Compact" RowClick="SelectOperationRowAsync" RowRender="RenderOperationRow" class="edit-map-operation-grid">
-                                <Columns>
-                                    <RadzenDataGridColumn TItem="EditOperation" Title="#" Width="2rem" Resizable="false"><Template Context="operation">@((_workingMap.Operations.IndexOf(operation) + 1).ToString())</Template></RadzenDataGridColumn>
-                                    <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.type")" Width="4.25rem"><Template Context="operation">@GetOperationTypeLabel(operation)</Template></RadzenDataGridColumn>
-                                    <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.source")" Width="6.25rem"><Template Context="operation">@FormatTimestamp(operation.SourceTimestampMs)</Template></RadzenDataGridColumn>
-                                    <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.language")" Width="6.25rem"><Template Context="operation">@FormatTimestamp(operation.LangTimestampMs)</Template></RadzenDataGridColumn>
-                                    <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.detail.durationLabel")" Width="5.25rem"><Template Context="operation">@FormatDuration(operation.DurationMs)</Template></RadzenDataGridColumn>
-                                </Columns>
-                            </RadzenDataGrid>
-                        </section>
-                    </RadzenSplitterPane>
+                    @if (!VerificationOnly)
+                    {
+                        <RadzenSplitterPane Min="280px">
+                            <section class="edit-map-operations-pane">
+                                <div class="edit-map-panel-toolbar">
+                                    <div class="media-section-title">@AppText.T("web.detail.operationsLabel")</div>
+                                    <span class="edit-map-toolbar-spacer"></span>
+                                    <RadzenButton Icon="content_cut" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.addCutHelp")" aria-label="@AppText.T("web.editMap.addCutHelp")" Disabled="@(!CanAddCut())" Click="AddCutAsync" />
+                                    <RadzenButton Icon="add_to_queue" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.addInsertHelp")" aria-label="@AppText.T("web.editMap.addInsertHelp")" Disabled="@(!CanCreateOperation())" Click="@(() => AddOperationAsync(EditOperation.INSERT_SILENCE))" />
+                                    <RadzenButton Icon="delete" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" title="@AppText.T("web.editMap.deleteHelp")" aria-label="@AppText.T("web.editMap.deleteHelp")" Disabled="@(_selectedOperation == null)" Click="DeleteSelectedOperationAsync" />
+                                </div>
+                                <RadzenDataGrid @ref="_operationGrid" Data="@_workingMap.Operations" TItem="EditOperation" AllowSorting="false" AllowFiltering="false" AllowColumnResize="true" AllowRowSelectOnRowClick="true" GridLines="DataGridGridLines.Both" Density="Density.Compact" RowClick="SelectOperationRowAsync" RowRender="RenderOperationRow" class="edit-map-operation-grid">
+                                    <Columns>
+                                        <RadzenDataGridColumn TItem="EditOperation" Title="#" Width="2rem" Resizable="false"><Template Context="operation">@((_workingMap.Operations.IndexOf(operation) + 1).ToString())</Template></RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.type")" Width="4.25rem"><Template Context="operation">@GetOperationTypeLabel(operation)</Template></RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.source")" Width="6.25rem"><Template Context="operation">@FormatTimestamp(operation.SourceTimestampMs)</Template></RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.language")" Width="6.25rem"><Template Context="operation">@FormatTimestamp(operation.LangTimestampMs)</Template></RadzenDataGridColumn>
+                                        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.detail.durationLabel")" Width="5.25rem"><Template Context="operation">@FormatDuration(operation.DurationMs)</Template></RadzenDataGridColumn>
+                                    </Columns>
+                                </RadzenDataGrid>
+                            </section>
+                        </RadzenSplitterPane>
+                    }
                 </RadzenSplitter>
             </RadzenSplitterPane>
             <RadzenSplitterPane Min="220px">
                 <RadzenSplitter class="edit-map-row-splitter">
-                    <RadzenSplitterPane Size="66.6667%" Min="540px">
+                    <RadzenSplitterPane Size="@GetPrimaryPaneSize()" Min="540px">
                         <div class="@GetTimelineOverlayClass()">
                             <div class="@GetTimelineBoxClass()" role="@(_precisionEditorOpen ? "dialog" : null)" aria-modal="@(_precisionEditorOpen ? "true" : null)" aria-labelledby="@(_precisionEditorOpen ? "edit-map-precision-title" : null)" data-keyboard-owner="edit-map" tabindex="@(_precisionEditorOpen ? "-1" : null)" @onclick:stopPropagation="true">
                                 @if (_precisionEditorOpen)
                                 {
                                     <div id="edit-map-precision-title" class="dialog-title edit-map-precision-title">
                                         <div>
-                                            <div>@AppText.T("web.editMap.precisionTitle")</div>
+                                            <div>@(VerificationOnly ? GetPageTitle() : AppText.T("web.editMap.precisionTitle"))</div>
                                             <div class="edit-map-page-subtitle">@Record?.SourceFileName · @AppText.T("web.detail.stretchLabel") @GetStretchLabel() · @AppText.T("web.detail.deepAudioOffsetLabel") @Utils.FormatDelay(_workingMap.LanguageAudioOffsetMs)</div>
                                         </div>
                                         <div class="edit-map-precision-title-actions">
@@ -119,7 +122,7 @@
                                                                      HostAlternative="@AppText.T("web.editMap.timeline")"
                                                                      CanvasAlternative="@GetTimelineAlternative()" />
                                     </div>
-                                    @if (_precisionEditorOpen)
+                                    @if (_precisionEditorOpen && !VerificationOnly)
                                     {
                                         <div class="edit-map-precision-details">
                                             <section class="edit-map-operations-pane">
@@ -172,7 +175,7 @@
                                 @if (_precisionEditorOpen)
                                 {
                                     <div class="dialog-footer edit-map-precision-footer">
-                                        <span class="edit-map-validation-summary">@GetValidationSummary()</span>
+                                        <span class="edit-map-validation-summary">@GetFooterSummary()</span>
                                         <span class="edit-map-footer-spacer"></span>
                                         <RadzenButton Text="@AppText.T("web.common.close")" Icon="close_fullscreen" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="ClosePrecisionEditorAsync" />
                                     </div>
@@ -180,8 +183,10 @@
                             </div>
                         </div>
                     </RadzenSplitterPane>
-                    <RadzenSplitterPane Min="280px">
-                        <section class="edit-map-inspector-pane">
+                    @if (!VerificationOnly)
+                    {
+                        <RadzenSplitterPane Min="280px">
+                            <section class="edit-map-inspector-pane">
                             <div class="media-section-title">@AppText.T("web.editMap.selectedOperation")</div>
                             @if (_selectedOperation == null)
                             {
@@ -206,18 +211,22 @@
                                     }
                                 </div>
                             }
-                        </section>
-                    </RadzenSplitterPane>
+                            </section>
+                        </RadzenSplitterPane>
+                    }
                 </RadzenSplitter>
             </RadzenSplitterPane>
         </RadzenSplitter>
     </main>
 
     <footer class="edit-map-page-footer">
-        <span class="edit-map-validation-summary">@GetValidationSummary()</span>
+        <span class="edit-map-validation-summary">@GetFooterSummary()</span>
         <span class="edit-map-footer-spacer"></span>
-        <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.cancelHelp")" Click="CloseAsync" />
-        <RadzenButton Text="@AppText.T("web.editMap.apply")" Icon="check" title="@AppText.T("web.editMap.applyHelp")" Disabled="@(!CanApply())" Click="ApplyAsync" />
+        <RadzenButton Text="@AppText.T(VerificationOnly ? "web.common.close" : "web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T(VerificationOnly ? "web.common.close" : "web.editMap.cancelHelp")" Click="CloseAsync" />
+        @if (!VerificationOnly)
+        {
+            <RadzenButton Text="@AppText.T("web.editMap.apply")" Icon="check" title="@AppText.T("web.editMap.applyHelp")" Disabled="@(!CanApply())" Click="ApplyAsync" />
+        }
     </footer>
 
     @if (_contextMenuOpen)
@@ -253,6 +262,11 @@
     /// Opzioni correnti usate per determinare il source-fill effettivo
     /// </summary>
     [Parameter] public Options CurrentOptions { get; set; }
+
+    /// <summary>
+    /// Mostra soltanto gli strumenti di verifica del delay FrameSync
+    /// </summary>
+    [Parameter] public bool VerificationOnly { get; set; }
 
     /// <summary>
     /// Evento chiusura pagina
@@ -543,6 +557,26 @@
         if (this._projection == null || !this._projection.Validation.IsValid)
             return AppText.F("web.editMap.validationErrors", this._projection != null ? this._projection.Validation.Errors.Count : 1);
         return AppText.F("web.editMap.validationValid", this._workingMap.Operations.Count, this._projection.Validation.Warnings.Count);
+    }
+
+    /// <summary>
+    /// Titolo coerente con la modalità di modifica o verifica
+    /// </summary>
+    private string GetPageTitle() => AppText.T(this.VerificationOnly ? "web.editMap.verify" : "web.editMap.title");
+
+    /// <summary>
+    /// Occupa tutta la riga quando i pannelli di modifica non sono presenti
+    /// </summary>
+    private string GetPrimaryPaneSize() => this.VerificationOnly ? "100%" : "66.6667%";
+
+    /// <summary>
+    /// Mostra il delay verificato oppure l'esito strutturale della EditMap
+    /// </summary>
+    private string GetFooterSummary()
+    {
+        return this.VerificationOnly
+            ? AppText.F("web.editMap.frameSyncVerification", Utils.FormatDelay(this.Record != null ? this.Record.SyncOffsetMs : 0))
+            : this.GetValidationSummary();
     }
 
     /// <summary>
@@ -1236,7 +1270,7 @@
     /// </summary>
     private async Task CommitSelectedOperationAsync()
     {
-        if (this._selectedOperation == null || (string.IsNullOrEmpty(this._timestampEditAuthority) && string.IsNullOrEmpty(this._durationEditAuthority) && !this._gainEditPending))
+        if (this.VerificationOnly || this._selectedOperation == null || (string.IsNullOrEmpty(this._timestampEditAuthority) && string.IsNullOrEmpty(this._durationEditAuthority) && !this._gainEditPending))
             return;
         if (!this.TryResolveEditedLanguageTimestamp(out int languageTimestamp) || !this.TryResolveEditedLanguageDuration(languageTimestamp, out int languageDuration))
         {
@@ -1398,7 +1432,7 @@
     /// <returns>True quando la posizione corrente accetta una nuova operazione</returns>
     private bool CanCreateOperation()
     {
-        if (!this.IndexesReady || this._projection == null)
+        if (this.VerificationOnly || !this.IndexesReady || this._projection == null)
             return false;
         return this._projection.MapSourceToLanguage(this._sourcePlayheadMs).IsMapped;
     }
@@ -1409,7 +1443,7 @@
     /// <returns>True quando la selezione produce un Cut valido</returns>
     private bool CanCreateCutFromSelection()
     {
-        if (!this.HasTimelineSelection || this._projection == null)
+        if (this.VerificationOnly || !this.HasTimelineSelection || this._projection == null)
             return false;
         int startMs = Math.Max(0, (int)Math.Round(this._selectionLanguageStartMs));
         int durationMs = Math.Max(0, (int)Math.Round(this._selectionLanguageEndMs - this._selectionLanguageStartMs));
@@ -1479,6 +1513,8 @@
     /// <param name="type">Tipo di operazione da creare</param>
     private async Task AddOperationAsync(string type)
     {
+        if (this.VerificationOnly)
+            return;
         EditMapMappingResult mapping = this._projection.MapSourceToLanguage(this._sourcePlayheadMs);
         if (!mapping.IsMapped)
             return;
@@ -1504,7 +1540,7 @@
     /// </summary>
     private async Task DeleteSelectedOperationAsync()
     {
-        if (this._selectedOperation == null)
+        if (this.VerificationOnly || this._selectedOperation == null)
             return;
         this.ClearTimelineSelection();
         this._workingMap.Operations.Remove(this._selectedOperation);
@@ -1718,7 +1754,7 @@
     /// Determina se la mappa può essere applicata
     /// </summary>
     /// <returns>True con indici pronti, operazioni presenti e proiezione valida</returns>
-    private bool CanApply() => this.IndexesReady && !this._isApplying && this._workingMap.Operations.Count > 0 && this._projection != null && this._projection.Validation.IsValid;
+    private bool CanApply() => !this.VerificationOnly && this.IndexesReady && !this._isApplying && this._workingMap.Operations.Count > 0 && this._projection != null && this._projection.Validation.IsValid;
 
     /// <summary>
     /// Consegna al chiamante una copia della mappa validata
@@ -1747,7 +1783,8 @@
         List<MediaTimelinePanelComponent.TimelineTool> tools = new List<MediaTimelinePanelComponent.TimelineTool>();
         tools.Add(new MediaTimelinePanelComponent.TimelineTool { Key = TIMELINE_TOOL_SELECT, Icon = "highlight_alt", Label = AppText.T("web.editMap.toolSelect") });
         tools.Add(new MediaTimelinePanelComponent.TimelineTool { Key = TIMELINE_TOOL_HAND, Icon = "pan_tool", Label = AppText.T("web.editMap.toolHand") });
-        tools.Add(new MediaTimelinePanelComponent.TimelineTool { Key = TIMELINE_TOOL_OPERATIONS, Icon = "open_with", Label = AppText.T("web.editMap.toolOperations") });
+        if (!this.VerificationOnly)
+            tools.Add(new MediaTimelinePanelComponent.TimelineTool { Key = TIMELINE_TOOL_OPERATIONS, Icon = "open_with", Label = AppText.T("web.editMap.toolOperations") });
         return tools;
     }
 
@@ -1772,6 +1809,8 @@
     [JSInvokable]
     public async Task OnTimelineContextMenu(double clientX, double clientY, double sourceMs, int operationIndex, bool insideSelection)
     {
+        if (this.VerificationOnly)
+            return;
         await this.InvokeAsync(async () =>
         {
             List<UiCommandDefinition> commands = new List<UiCommandDefinition>();
@@ -1993,7 +2032,7 @@
     [JSInvokable]
     public async Task OnTimelineOperationDrag(int operationIndex, double sourceMs, bool final)
     {
-        if (operationIndex < 0 || operationIndex >= this._workingMap.Operations.Count)
+        if (this.VerificationOnly || operationIndex < 0 || operationIndex >= this._workingMap.Operations.Count)
             return;
         this.ClearTimelineSelection();
         this._selectedOperation = this._workingMap.Operations[operationIndex];
@@ -2045,7 +2084,7 @@
     [JSInvokable]
     public async Task OnTimelineDurationDrag(int operationIndex, double renderedDurationMs, bool final)
     {
-        if (operationIndex < 0 || operationIndex >= this._workingMap.Operations.Count)
+        if (this.VerificationOnly || operationIndex < 0 || operationIndex >= this._workingMap.Operations.Count)
             return;
         this.ClearTimelineSelection();
         if (this._selectedOperation == null)

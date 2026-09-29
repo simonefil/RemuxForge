@@ -2781,6 +2781,9 @@ namespace RemuxForge.Web.Components.Pages
             FileProcessingRecord record = this._records[index];
             if (record == null || string.IsNullOrEmpty(record.SourceFilePath) || string.IsNullOrEmpty(record.LangFilePath))
                 return;
+            if (this.Orchestrator.CurrentOptions != null && this.Orchestrator.CurrentOptions.FrameSync && !this.Orchestrator.CurrentOptions.DeepAnalysis &&
+                (record.FrameSyncResult == null || !record.FrameSyncResult.Success))
+                return;
 
             // Con un'operazione in corso gli episodi ancora in coda non sono modificabili: la coda di AnalyzeAll e'
             // fotografata all'avvio e i record che deve ancora processare vengono mutati in place, cancellando la mappa manuale
