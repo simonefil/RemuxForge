@@ -418,9 +418,19 @@ namespace RemuxForge.Core.Analysis.FrameSync
             Stopwatch stopwatch = Stopwatch.StartNew();
             AudioEnvelope source = null;
             AudioEnvelope language = null;
-            Parallel.Invoke(
-                () => source = extractor.Extract(sourceFile, sourceStream, this._ffmpegConfig.FrameExtractionTimeoutMs),
-                () => language = extractor.Extract(languageFile, languageStream, this._ffmpegConfig.FrameExtractionTimeoutMs));
+            try
+            {
+                Parallel.Invoke(
+                    () => source = extractor.Extract(sourceFile, sourceStream, this._ffmpegConfig.FrameExtractionTimeoutMs),
+                    () => language = extractor.Extract(languageFile, languageStream, this._ffmpegConfig.FrameExtractionTimeoutMs));
+            }
+            catch (Exception ex)
+            {
+                timing.InitialExtractMs += stopwatch.ElapsedMilliseconds;
+                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Notice, AppText.T("framesync.match.audioUnavailable"));
+                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, "  " + ex.GetBaseException().Message);
+                return null;
+            }
             timing.InitialExtractMs += stopwatch.ElapsedMilliseconds;
             if (!new FrameSyncAudioOffsetResolver().TryResolve(new AudioEnvelopePair(source, language, this._stretch), out double offsetMs, out double correlation))
             {

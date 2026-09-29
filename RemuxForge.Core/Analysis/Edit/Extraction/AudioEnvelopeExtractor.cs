@@ -166,6 +166,8 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                 .MonoResampled(SAMPLE_RATE)
                 .ToFloatPcm()
                 .Build();
+            // La decodifica percorre l'intero film: il limite delle estrazioni brevi non può
+            // diventare un limite alla durata o alla dimensione del media.
             ProcessBinaryResult run = ProcessRunner.RunBinaryStdout(this._ffmpegPath, arguments, (buffer, count) =>
             {
                 int consumed = 0;
@@ -186,7 +188,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                     }
                     decibel.Add((float)(20.0 * Math.Log10(Math.Max(Math.Sqrt(squares / HOP), ENERGY_FLOOR))));
                 }
-            }, timeoutMs);
+            }, 0);
 
             if (run.ExitCode != 0)
                 throw new InvalidOperationException("Nessun campione audio estratto da " + Path.GetFileName(filePath) + ": " + run.Stderr);
@@ -331,6 +333,8 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
 
             try
             {
+                // Waveform e spettrogramma richiedono una passata completa e restano annullabili
+                // dal token della richiesta anche senza un timeout totale fisso.
                 ProcessBinaryResult run = ProcessRunner.RunBinaryStdout(this._ffmpegPath, arguments, (buffer, count) =>
                 {
                     int consumed = 0;
@@ -361,7 +365,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                         AddWaveformBucket(minimum, maximum, bucketMinimum, bucketMaximum, ref peak);
                         samplesInBucket = 0;
                     }
-                }, timeoutMs, cancellationToken);
+                }, 0, cancellationToken);
 
                 if (samplesInBucket > 0)
                     AddWaveformBucket(minimum, maximum, bucketMinimum, bucketMaximum, ref peak);

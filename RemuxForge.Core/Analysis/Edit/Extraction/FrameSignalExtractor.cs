@@ -129,6 +129,8 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             int pending = 0;
 
             string[] arguments = this.BuildArguments(filePath, geometry, needsShowInfo, seekMs, durationMs, frameBudget);
+            // Le finestre FrameSync sono bounded; la passata Deep completa deve invece scalare
+            // con il film e viene fermata dal token o dalla richiesta Stop.
             ProcessBinaryResult run = ProcessRunner.RunBinaryStdout(this._ffmpegPath, arguments, (buffer, count) =>
             {
                 cancellation.ThrowIfCancellationRequested();
@@ -149,7 +151,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                     this._hashBackend.Analyze(batch, batchCount, hash0, hash1, lumaMean, thumbStd, thumbPixels);
                     batchCount = 0;
                 }
-            }, timeoutMs);
+            }, windowed ? timeoutMs : 0, cancellation);
 
             if (batchCount > 0)
                 this._hashBackend.Analyze(batch, batchCount, hash0, hash1, lumaMean, thumbStd, thumbPixels);

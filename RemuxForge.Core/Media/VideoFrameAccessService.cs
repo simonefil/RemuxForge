@@ -305,7 +305,7 @@ namespace RemuxForge.Core.Media
             result.FileLength = sourceFile.Length;
             result.FileLastWriteTicks = sourceFile.LastWriteTimeUtc.Ticks;
             this.ReadVideoProperties(filePath, result, timeoutMs, cancellationToken);
-            List<bool> keyframes = this.ReadKeyframeFlags(filePath, timeoutMs, cancellationToken);
+            List<bool> keyframes = this.ReadKeyframeFlags(filePath, cancellationToken);
             double medianDurationMs = ComputeMedianFrameDuration(timestamps);
             result.MedianFrameDurationMs = medianDurationMs;
             for (int i = 0; i < timestamps.Count; i++)
@@ -414,7 +414,7 @@ namespace RemuxForge.Core.Media
             if (string.Equals(Path.GetExtension(filePath), ".mkv", StringComparison.OrdinalIgnoreCase))
                 result = this.ReadMatroskaTimestamps(filePath, timeoutMs, cancellationToken);
             if (result.Count == 0)
-                result = this.ReadPacketTimeline(filePath, timeoutMs, cancellationToken, false).Timestamps;
+                result = this.ReadPacketTimeline(filePath, 0, cancellationToken, false).Timestamps;
             return result;
         }
 
@@ -479,7 +479,9 @@ namespace RemuxForge.Core.Media
                 if (videoTrack == null || string.IsNullOrEmpty(this._mkvExtractPath))
                     return result;
 
-                ProcessResult run = ProcessRunner.Run(this._mkvExtractPath, new string[] { filePath, "timestamps_v2", videoTrack.Id.ToString(CultureInfo.InvariantCulture) + ":" + temporaryPath }, timeoutMs, cancellationToken);
+                // timestamps_v2 attraversa l'intero contenitore: sui remux UHD il tempo cresce
+                // con le dimensioni del file, mentre il token mantiene l'operazione annullabile.
+                ProcessResult run = ProcessRunner.Run(this._mkvExtractPath, new string[] { filePath, "timestamps_v2", videoTrack.Id.ToString(CultureInfo.InvariantCulture) + ":" + temporaryPath }, 0, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 if (run.ExitCode != 0 || !File.Exists(temporaryPath))
                     return result;
@@ -563,9 +565,10 @@ namespace RemuxForge.Core.Media
         /// <summary>
         /// Legge i flag keyframe nello stesso ordine di presentazione dei PTS
         /// </summary>
-        private List<bool> ReadKeyframeFlags(string filePath, int timeoutMs, CancellationToken cancellationToken)
+        private List<bool> ReadKeyframeFlags(string filePath, CancellationToken cancellationToken)
         {
-            return this.ReadPacketTimeline(filePath, timeoutMs, cancellationToken, true).Keyframes;
+            // Anche i flag richiedono una scansione completa dei packet del video.
+            return this.ReadPacketTimeline(filePath, 0, cancellationToken, true).Keyframes;
         }
 
         /// <summary>
