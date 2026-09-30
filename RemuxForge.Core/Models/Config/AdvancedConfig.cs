@@ -184,7 +184,7 @@ namespace RemuxForge.Core.Models
         {
             this.DiagnosticsEnabled = false;
             this.SceneExtractTimeoutMs = 600000;
-            this.OffsetSearchRadiusMs = 30000;
+            this.OffsetSearchRadiusMs = 120000;
             this.MinimumCoverage = 0.90;
         }
 

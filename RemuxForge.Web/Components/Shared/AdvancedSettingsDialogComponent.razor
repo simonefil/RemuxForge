@@ -303,7 +303,7 @@
         if (this._ffHardwareAcceleration && !this._ffHardwareAccelerationMethods.Contains(this._ffHardwareAccelerationMethod))
             errors.Add(AppText.T("web.advanced.invalidHardwareBackend"));
 
-        if (!int.TryParse(this._offsetSearchRadiusMs, out int offsetSearchRadiusMs) || offsetSearchRadiusMs < 5000 || offsetSearchRadiusMs > 300000)
+        if (!int.TryParse(this._offsetSearchRadiusMs, out int offsetSearchRadiusMs) || offsetSearchRadiusMs < 5000 || offsetSearchRadiusMs > 600000)
             errors.Add(AppText.T("web.advanced.invalidOffsetSearchRadius"));
 
         if (!double.TryParse(this._minimumCoveragePercent, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double minimumCoveragePercent) || minimumCoveragePercent < 0.0 || minimumCoveragePercent > 100.0)

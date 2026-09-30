@@ -826,7 +826,7 @@ namespace RemuxForge.Core.Configuration
             // Sanitizzazione Advanced — DeepAnalysis
             DeepAnalysisConfig da = this._model.Advanced.DeepAnalysis;
             da.SceneExtractTimeoutMs = this.ClampInt(da.SceneExtractTimeoutMs, 1000, 3600000);
-            da.OffsetSearchRadiusMs = this.ClampInt(da.OffsetSearchRadiusMs, 5000, 300000);
+            da.OffsetSearchRadiusMs = this.ClampInt(da.OffsetSearchRadiusMs, 5000, 600000);
             da.MinimumCoverage = this.ClampDouble(da.MinimumCoverage, 0.0, 1.0);
 
             // Sanitizzazione Advanced — SubtitleEdit

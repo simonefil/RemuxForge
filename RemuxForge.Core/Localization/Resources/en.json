@@ -585,7 +585,7 @@
   "web.advanced.hardwareAcceleration": "Hardware acceleration",
   "web.advanced.hardwareBackend": "Hardware backend:",
   "web.advanced.offsetSearchRadius": "Offset search radius:",
-  "web.advanced.invalidOffsetSearchRadius": "The offset search radius must be between 5000 and 300000 ms.",
+  "web.advanced.invalidOffsetSearchRadius": "The offset search radius must be between 5000 and 600000 ms.",
   "web.advanced.minimumCoverage": "Minimum Deep Analysis coverage:",
   "web.advanced.invalidMinimumCoverage": "Minimum Deep Analysis coverage must be between 0 and 100%.",
   "web.advanced.visionBackend": "Vision backend:",
