@@ -137,9 +137,9 @@ namespace RemuxForge.Core.Splitting
 
             MkvSplitAnalysis analysis = new MkvSplitAnalysis();
             analysis.Chapters = MkvSplitExternalTools.Instance.GetChapters(inputFile);
-            analysis.Duration = MkvSplitExternalTools.Instance.GetDuration(inputFile);
-            analysis.SourcePts = MkvSplitExternalTools.Instance.ExtractSourcePts(inputFile);
             analysis.PacketCount = MkvSplitExternalTools.Instance.CountPackets(inputFile);
+            analysis.SourcePts = MkvSplitExternalTools.Instance.ExtractSourcePts(inputFile, analysis.PacketCount, out double videoEnd);
+            analysis.Duration = videoEnd;
             analysis.KeyFlags = MkvSplitExternalTools.Instance.GetKeyFlags(inputFile);
             analysis.VideoParams = MkvSplitExternalTools.Instance.GetVideoParams(inputFile);
             analysis.FrameRateMode = MkvSplitExternalTools.Instance.DetectFrameRateMode(inputFile);

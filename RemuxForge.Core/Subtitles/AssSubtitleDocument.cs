@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Text;
 
 namespace RemuxForge.Core.Subtitles
@@ -79,6 +80,49 @@ namespace RemuxForge.Core.Subtitles
 
             result.Append(this.NewLine);
             return result.ToString();
+        }
+
+        /// <summary>Legge i Dialogue con il Format corrente e la posizione originale, senza spostare altre sezioni.</summary>
+        public List<AssSubtitleDialogue> ReadDialogues()
+        {
+            List<AssSubtitleDialogue> result = new List<AssSubtitleDialogue>();
+            bool inEvents = false;
+            string format = null;
+            for (int index = 0; index < this._lines.Count; index++)
+            {
+                string line = this._lines[index].Trim();
+                if (line.StartsWith("[", StringComparison.Ordinal))
+                {
+                    inEvents = line.Equals("[Events]", StringComparison.OrdinalIgnoreCase);
+                    format = null;
+                }
+                if (!inEvents) continue;
+                if (line.StartsWith("Format:", StringComparison.OrdinalIgnoreCase)) format = line.Substring(7);
+                if (!line.StartsWith("Dialogue:", StringComparison.OrdinalIgnoreCase)) continue;
+                int count = AssSubtitleUtils.CountFields(format);
+                int start = AssSubtitleUtils.ResolveFieldIndex(format, "Start");
+                int end = AssSubtitleUtils.ResolveFieldIndex(format, "End");
+                int text = AssSubtitleUtils.ResolveFieldIndex(format, "Text");
+                string[] fields = AssSubtitleUtils.SplitFields(line.Substring(9).TrimStart(), count);
+                if (count == 0 || start < 0 || end < 0 || text != count - 1 || fields.Length != count
+                    || !AssSubtitleTimelineRewriter.TryParseTimestamp(fields[start].Trim(), out long startMs)
+                    || !AssSubtitleTimelineRewriter.TryParseTimestamp(fields[end].Trim(), out long endMs))
+                    throw new InvalidDataException("Invalid ASS Dialogue at line " + (index + 1));
+                result.Add(new AssSubtitleDialogue(index, fields, start, end,
+                    AssSubtitleUtils.ResolveFieldIndex(format, "Effect"), startMs, endMs));
+            }
+            return result;
+        }
+
+        /// <summary>Una riga può produrre più occorrenze; ogni sostituzione resta dentro la sezione/Format originale.</summary>
+        public void ReplaceDialogueLines(IReadOnlyDictionary<int, List<string>> replacements)
+        {
+            for (int index = this._lines.Count - 1; index >= 0; index--)
+                if (replacements.TryGetValue(index, out List<string> lines))
+                {
+                    this._lines.RemoveAt(index);
+                    this._lines.InsertRange(index, lines);
+                }
         }
 
         /// <summary>
@@ -266,4 +310,7 @@ namespace RemuxForge.Core.Subtitles
 
         #endregion
     }
+
+    internal sealed record AssSubtitleDialogue(int LineIndex, string[] Fields, int StartColumn, int EndColumn,
+        int EffectColumn, long StartMs, long EndMs);
 }

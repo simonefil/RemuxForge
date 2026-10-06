@@ -734,7 +734,7 @@ namespace RemuxForge.Core.Splitting
         /// <param name="inputFile">File di input, da cui si ricava {source}.</param>
         /// <param name="startNumber">Numero da cui parte la numerazione degli episodi.</param>
         /// <returns>Stringa renderizzata, ancora da sanificare.</returns>
-        private static string RenderTemplate(string template, MkvSplitSegment seg, string inputFile, int startNumber)
+        private static string RenderTemplate(string template, MkvSplitSegment seg, string inputFile, int startNumber, double? resultDuration = null)
         {
             string sourceName;
             string chapterName;
@@ -781,7 +781,7 @@ namespace RemuxForge.Core.Splitting
                     case "chapter": sb.Append(chapterName); break;
                     case "start": sb.Append(SecsToFilenameTs(seg.StartTs)); break;
                     case "end": sb.Append(SecsToFilenameTs(seg.EndTs)); break;
-                    case "duration": sb.Append(SecsToFilenameTs(seg.EndTs - seg.StartTs)); break;
+                    case "duration": sb.Append(SecsToFilenameTs(resultDuration ?? (seg.EndTs - seg.StartTs))); break;
                     default: throw new FormatException(AppText.F("split.template.unknownVariable", name, DescribeReplacement(name)));
                 }
 
@@ -789,6 +789,16 @@ namespace RemuxForge.Core.Splitting
             }
 
             return sb.ToString();
+        }
+
+        /// <summary>Naming output multiclip: start/end seguono l'ordine risultato, duration conta tutte le occorrenze.</summary>
+        public static string RenderOutputName(MkvSplitOptions options, MkvSplitMode mode, string inputFile,
+            int number, double start, double end, double duration, List<MkvSplitChapter> chapters)
+        {
+            MkvSplitSegment segment = new MkvSplitSegment { Num = number, Episode = number,
+                StartTs = start, EndTs = end, Chapters = chapters };
+            string template = string.IsNullOrEmpty(options.OutputTemplate) ? DefaultTemplate(mode) : options.OutputTemplate;
+            return SanitizeRelativePath(RenderTemplate(template, segment, inputFile, options.StartNumber, duration)) + ".mkv";
         }
 
         /// <summary>Formatta un intero: nessun padding, oppure "02" per lo zero-pad a due cifre.</summary>

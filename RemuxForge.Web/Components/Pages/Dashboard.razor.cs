@@ -11,6 +11,7 @@ using Microsoft.JSInterop;
 using Radzen;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace RemuxForge.Web.Components.Pages
@@ -74,10 +75,8 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private int _splitEditorSegmentNum;
 
-        /// <summary>
-        /// Segmenti già costruiti nell'editor per il record aperto, null quando comanda la configurazione
-        /// </summary>
-        private List<MkvSplitOverrideSegment> _splitEditorOverride;
+        /// <summary>Impedisce reset duplicati durante preparazione e applicazione della regola del file.</summary>
+        private bool _splitResetInProgress;
 
         /// <summary>
         /// Lista record metadata correnti
@@ -390,6 +389,11 @@ namespace RemuxForge.Web.Components.Pages
         /// <param name="firstRender">True se primo render</param>
         protected override async Task OnAfterRenderAsync(bool firstRender)
         {
+            if (this._splitReturnFocus && !this._showSplitEditor && this._currentMode == Options.MODE_SPLIT)
+            {
+                this._splitReturnFocus = false;
+                await this._splitWorkspaceRoot.FocusAsync(true);
+            }
             if (firstRender)
             {
                 // Importa modulo JS interop
@@ -486,6 +490,7 @@ namespace RemuxForge.Web.Components.Pages
                 if (summary == null)
                     return;
 
+                if (this._splitReviewStage == "analyze") this._splitReviewStage = "ready";
                 NotificationSeverity severity = summary.Failed > 0 ? NotificationSeverity.Warning : NotificationSeverity.Success;
                 this.NotificationService.Notify(severity, AppText.T("web.split.notify.analyzeTitle"), AppText.F("web.split.notify.analyzeBody", summary.Succeeded, summary.Failed), 6000);
                 this.NotifySplitWarnings();
@@ -521,6 +526,7 @@ namespace RemuxForge.Web.Components.Pages
         {
             this.InvokeAsync(() =>
             {
+                if (this._splitReviewStage == "analyze") this._splitReviewStage = "failed";
                 this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.split.notify.failedTitle"), message, 6000);
                 this.StateHasChanged();
             });
@@ -584,6 +590,7 @@ namespace RemuxForge.Web.Components.Pages
         {
             this.InvokeAsync(() =>
             {
+                if (this._splitReviewStage == "scan") this._splitReviewScanObserved = true;
                 this._splitRecords = this.SplitOrchestrator.GetRecords();
                 this.SyncSelectedFromSplitOrchestrator();
                 this.StateHasChanged();
@@ -651,7 +658,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private void HandleProgressChanged()
         {
-            this.InvokeAsync(() => this.StateHasChanged());
+            this.InvokeAsync(() => { this.AdvanceSplitReview(); this.StateHasChanged(); });
         }
 
         /// <summary>
@@ -664,6 +671,7 @@ namespace RemuxForge.Web.Components.Pages
         [JSInvokable("OnKeyDown")]
         public async Task HandleKeyDownAsync(string key, bool ctrl, bool shift, bool alt)
         {
+            if (this._showSplitEditor) return; // Editor/its Radzen confirmation owns Escape.
             if (this.IsBlockingOverlayOpen())
             {
                 if (key == "Escape")
@@ -903,7 +911,7 @@ namespace RemuxForge.Web.Components.Pages
         /// <param name="record">Record della riga</param>
         private void BuildSplitContextMenu(MkvSplitRecord record)
         {
-            bool busy = this.SplitOrchestrator.IsBusy;
+            bool busy = this.SplitOrchestrator.IsBusy || this._splitResetInProgress;
 
             this._contextMenuCommands = new List<UiCommandDefinition>();
 
@@ -920,12 +928,15 @@ namespace RemuxForge.Web.Components.Pages
                 () => { this._showContextMenu = false; this.ToggleSplitSkip(); }));
 
             this._contextMenuCommands.Add(new UiCommandDefinition(
-                AppText.T("web.split.openEditor"), "", "", UiCommandPlacement.ContextMenu, UiCommandMenuSection.None, busy || record.Plan == null,
+                AppText.T("web.split.openEditor"), "", "", UiCommandPlacement.ContextMenu, UiCommandMenuSection.None, busy,
                 () => { this._showContextMenu = false; this.OpenSplitEditor(0); }));
 
             this._contextMenuCommands.Add(new UiCommandDefinition(
                 AppText.T("web.split.clearOverride"), "", "", UiCommandPlacement.ContextMenu, UiCommandMenuSection.None, busy || !record.IsOverride,
-                () => { this._showContextMenu = false; this.ClearSplitOverride(); }));
+                null)
+            {
+                AsyncCallback = async () => { this._showContextMenu = false; await this.ClearSplitOverrideAsync(); }
+            });
         }
 
         /// <summary>
@@ -947,8 +958,9 @@ namespace RemuxForge.Web.Components.Pages
         {
             List<int> targets;
 
-            if (!this.ApplySplitConfig())
+            if (!analyzeOnly && !this.CanLeaveSplitReview())
                 return;
+            if (this.SplitOrchestrator.IsBusy) return;
 
             targets = this.GetSplitActionIndices();
             if (analyzeOnly)
@@ -1779,6 +1791,37 @@ namespace RemuxForge.Web.Components.Pages
             return true;
         }
 
+        private string _splitReviewStage;
+        private bool _splitReviewScanObserved;
+        private ElementReference _splitWorkspaceRoot;
+        private bool _splitReturnFocus;
+
+        private void AdvanceSplitReview()
+        {
+            if (this._splitReviewStage != "scan" || this.SplitOrchestrator.IsBusy) return;
+            if (!this._splitReviewScanObserved) { this._splitReviewStage = "failed"; return; }
+            this._splitRecords = this.SplitOrchestrator.GetRecords();
+            if (this._splitRecords.Count == 0) { this._splitReviewStage = "empty"; return; }
+            this._splitReviewStage = "analyze";
+            this.SplitOrchestrator.Analyze(null);
+        }
+
+        private void OpenSplitReviewEditor(int index)
+        {
+            this.SplitOrchestrator.SelectedIndex = index;
+            this.SyncSelectedFromSplitOrchestrator();
+            this.OpenSplitEditor(0);
+        }
+
+        private void AcknowledgeSplitReview() { if (!this.SplitOrchestrator.IsBusy && this._splitReviewStage == "ready") this._splitReviewStage = null; }
+
+        private bool CanLeaveSplitReview()
+        {
+            if (this._splitReviewStage == null) return true;
+            this.NotificationService.Notify(NotificationSeverity.Info, AppText.T("web.splitMontage.review"), AppText.T("web.splitMontage.reviewBeforeExport"), 6000);
+            return false;
+        }
+
         /// <summary>
         /// Costruisce il piano del record split selezionato
         /// </summary>
@@ -1991,7 +2034,7 @@ namespace RemuxForge.Web.Components.Pages
 
             if (this._currentMode == Options.MODE_SPLIT)
             {
-                if (!this.ApplySplitConfig())
+                if (!this.CanLeaveSplitReview() || this.SplitOrchestrator.IsBusy)
                     return;
 
                 this.SplitOrchestrator.SplitAll();
@@ -2225,14 +2268,14 @@ namespace RemuxForge.Web.Components.Pages
                 StatusLabel = AppText.T("web.status.skip"),
                 StatusOrder = 25
             });
-            commands.Add(new UiCommandDefinition(AppText.T("web.menu.split.splitSelected"), "F9", "content_cut", allSurfaces, UiCommandMenuSection.Actions, busy, () => this.DoSplitSelected(false))
+            commands.Add(new UiCommandDefinition(AppText.T("web.menu.split.splitSelected"), "F9", "content_cut", allSurfaces, UiCommandMenuSection.Actions, busy || this._splitReviewStage != null, () => this.DoSplitSelected(false))
             {
                 ToolbarLabel = AppText.T("web.status.split.splitSelected"),
                 StatusLabel = AppText.T("web.status.split.splitSelected"),
                 ToolbarOrder = 19,
                 StatusOrder = 26
             });
-            commands.Add(new UiCommandDefinition(AppText.T("web.menu.splitAll"), "F10", "call_split", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoMergeAll)
+            commands.Add(new UiCommandDefinition(AppText.T("web.menu.splitAll"), "F10", "call_split", allSurfaces, UiCommandMenuSection.Actions, busy || this._splitReviewStage != null, this.DoMergeAll)
             {
                 ToolbarLabel = AppText.T("web.status.splitAll"),
                 StatusLabel = AppText.T("web.status.splitAll"),
@@ -2774,6 +2817,10 @@ namespace RemuxForge.Web.Components.Pages
                 if (this.SplitOrchestrator.ApplyOptions(opts, out errorMessage))
                 {
                     this._showConfig = false;
+                    this._splitReviewStage = "scan";
+                    this._splitReviewScanObserved = false;
+                    this._splitReturnFocus = true;
+                    this.SplitOrchestrator.Scan();
                 }
                 else if (!string.IsNullOrEmpty(errorMessage))
                 {
@@ -2894,18 +2941,18 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
-        /// Apre l'editor visuale dei segmenti sul record Split selezionato
+        /// Apre l'editor sul record Split selezionato; il componente acquisisce il documento tramite OpenEditorAsync.
         /// </summary>
         /// <param name="segmentNum">Segmento da preselezionare, 0 per il primo</param>
         private void OpenSplitEditor(int segmentNum)
         {
             int index = this.SplitOrchestrator.SelectedIndex;
 
-            if (this.SplitOrchestrator.IsBusy || index < 0 || index >= this._splitRecords.Count)
+            if (this.SplitOrchestrator.IsBusy || this._splitResetInProgress || index < 0 || index >= this._splitRecords.Count)
                 return;
 
             MkvSplitRecord record = this._splitRecords[index];
-            if (record == null || record.Plan == null)
+            if (record == null)
             {
                 this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.splitEditor.notAnalyzed"), AppText.T("web.splitEditor.analyzeFirst"), 6000);
                 return;
@@ -2914,7 +2961,6 @@ namespace RemuxForge.Web.Components.Pages
             this._splitEditorIndex = index;
             this._splitEditorRecord = record;
             this._splitEditorSegmentNum = segmentNum;
-            this._splitEditorOverride = this.SplitOrchestrator.GetOverride(index);
             this._showSplitEditor = true;
         }
 
@@ -2923,44 +2969,56 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private void CloseSplitEditor()
         {
+            this._splitReturnFocus = true;
             this._showSplitEditor = false;
             this._splitEditorRecord = null;
-            this._splitEditorOverride = null;
             this._splitEditorIndex = -1;
             this._splitEditorSegmentNum = 0;
         }
 
         /// <summary>
-        /// Applica i segmenti costruiti nell'editor al record Split aperto
-        /// </summary>
-        /// <param name="segments">Segmenti costruiti nell'editor</param>
-        private void ApplySplitOverride(List<MkvSplitOverrideSegment> segments)
-        {
-            string fileName = this._splitEditorRecord != null ? System.IO.Path.GetFileName(this._splitEditorRecord.InputFile) : "";
-
-            if (this._splitEditorIndex < 0)
-                return;
-
-            this.SplitOrchestrator.SetOverride(this._splitEditorIndex, segments);
-            this.NotificationService.Notify(NotificationSeverity.Success, AppText.T("web.split.overrideBadge"), AppText.F("web.split.overrideApplied", fileName), 5000);
-            this.CloseSplitEditor();
-        }
-
-        /// <summary>
         /// Riporta il record Split selezionato sotto la configurazione globale
         /// </summary>
-        private void ClearSplitOverride()
+        private async Task ClearSplitOverrideAsync()
         {
-            int index = this._showSplitEditor ? this._splitEditorIndex : this.SplitOrchestrator.SelectedIndex;
+            if (this._showSplitEditor || this.SplitOrchestrator.IsBusy || this._splitResetInProgress)
+                return;
+
+            int index = this.SplitOrchestrator.SelectedIndex;
             MkvSplitRecord record = index >= 0 && index < this._splitRecords.Count ? this._splitRecords[index] : null;
 
             if (record == null || !record.IsOverride)
                 return;
 
-            this.SplitOrchestrator.ClearOverride(index);
-            this.NotificationService.Notify(NotificationSeverity.Info, AppText.T("web.split.clearOverride"), AppText.F("web.split.overrideCleared", System.IO.Path.GetFileName(record.InputFile)), 5000);
-            if (this._showSplitEditor)
-                this.CloseSplitEditor();
+            this._splitResetInProgress = true;
+            SplitEditorSnapshot snapshot = null;
+            try
+            {
+                SplitEditorOpenResult opened = await this.SplitOrchestrator.OpenEditorAsync(index, CancellationToken.None);
+                snapshot = opened.Snapshot;
+                if (snapshot == null)
+                {
+                    this.NotifySplitResetFailure(opened.Diagnostics);
+                    return;
+                }
+
+                SplitApplyResult result = await this.SplitOrchestrator.ReapplyRuleAsync(snapshot.SessionId, CancellationToken.None);
+                if (result.Status == SplitApplyStatus.Applied)
+                    this.NotificationService.Notify(NotificationSeverity.Info, AppText.T("web.split.clearOverride"), AppText.F("web.split.overrideCleared", System.IO.Path.GetFileName(record.InputFile)), 5000);
+                else
+                    this.NotifySplitResetFailure(result.Diagnostics);
+            }
+            finally
+            {
+                if (snapshot != null) this.SplitOrchestrator.CloseEditor(snapshot.SessionId);
+                this._splitResetInProgress = false;
+                this.StateHasChanged();
+            }
+        }
+
+        private void NotifySplitResetFailure(List<MkvSplitDiagnostic> diagnostics)
+        {
+            this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.split.clearOverride"), string.Join(Environment.NewLine, diagnostics.ConvertAll(item => item.Message)), 8000);
         }
 
         /// <summary>

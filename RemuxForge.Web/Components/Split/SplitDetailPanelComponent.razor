@@ -47,7 +47,46 @@
                     </div>
                 </details>
 
-                @if (Record.Plan == null)
+                <RadzenButton Text="@AppText.T("web.split.openEditor")" Icon="content_cut" Disabled="@IsBusy" Click="@(() => OnOpenEditor.InvokeAsync(0))" />
+                @if (Record.MontageProjection != null)
+                {
+                    <details class="detail-section" open>
+                        <summary>@AppText.T("web.splitMontage.outputs") · @Record.MontageProjection.Outputs.Count</summary>
+                        <div class="detail-section-body detail-card-stack">
+                            @if (Record.Plan != null)
+                            {
+                                @PropertyRow(AppText.T("web.split.detail.cost"), DescribeCost(Record.Plan))
+                                @foreach (var warning in Record.Plan.Warnings) { <div class="split-warning-row">@warning.Message</div> }
+                            }
+                            @foreach (MkvSplitOutputProjection output in Record.MontageProjection.Outputs)
+                            {
+                                int number = Record.MontageProjection.Outputs.IndexOf(output) + 1;
+                                <div class="detail-card">
+                                    <div class="detail-card-title">@output.FileName</div>
+                                    @PropertyRow(AppText.T("web.split.detail.duration"), MkvSplitSegmentService.SecsToTs(output.DurationSeconds))
+                                    @PropertyRow(AppText.T("web.split.detail.frames"), output.FrameCount.ToString())
+                                    @PropertyRow(AppText.T("web.splitMontage.clips"), output.Clips.Count.ToString())
+                                    <span class="split-badge @OutputStateCss(output.OutputState)">@OutputStateText(output.OutputState)</span>
+                                    @foreach (MkvSplitClipProjection clip in output.Clips)
+                                    {
+                                        <div>@AppText.T("web.splitMontage.source"): [@clip.StartFrame, @clip.EndFrameExclusive) · @MkvSplitSegmentService.SecsToTs(clip.SourceStartSeconds)–@MkvSplitSegmentService.SecsToTs(clip.SourceEndSeconds)</div>
+                                        <div>@AppText.T("web.splitMontage.result"): @MkvSplitSegmentService.SecsToTs(clip.ResultStartSeconds)–@MkvSplitSegmentService.SecsToTs(clip.ResultEndSeconds)</div>
+                                    }
+                                    @foreach (MkvSplitOutputExecutionResult result in Record.OutputResults.Where(r => r.OutputId == output.OutputId))
+                                    {
+                                        @PropertyRow(AppText.T("web.split.detail.result"), AppText.T("web.splitMontage.outputStatus." + result.Status) + " " + result.ErrorMessage)
+                                    }
+                                    <RadzenButton Text="@AppText.T("web.split.openEditor")" Size="ButtonSize.Small" Disabled="@IsBusy" Click="@(() => OnOpenEditor.InvokeAsync(number))" />
+                                </div>
+                            }
+                            @foreach (MkvSplitDiagnostic diagnostic in Record.MontageProjection.Diagnostics)
+                            {
+                                <div class="split-warning-row">@diagnostic.Message</div>
+                            }
+                        </div>
+                    </details>
+                }
+                else if (Record.Plan == null)
                 {
                     <div class="split-detail-empty">
                         <div>@AppText.T("web.split.detail.notAnalyzed")</div>

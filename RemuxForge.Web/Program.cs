@@ -185,10 +185,16 @@ namespace RemuxForge.Web
                 MediaEndpoints.ServePreview(orchestrator, recordIndex, side, frameIndex, width, height, count, context, frameAccess));
             app.MapGet("/api/edit-map-audio/{recordIndex:int}/{side}", (int recordIndex, string side, int trackId, double durationMs, string mode, string quality, HttpContext context, MergeOrchestrator orchestrator, AudioEnvelopeExtractor audioExtractor, VideoFrameAccessService frameAccess) =>
                 MediaEndpoints.ServeAudioTimeline(orchestrator, recordIndex, side, trackId, durationMs, mode, quality, context, audioExtractor, frameAccess));
-            app.MapGet("/api/split-preview/{recordIndex:int}/{side}/{frameIndex:int}", (int recordIndex, string side, int frameIndex, int width, int height, int? count, HttpContext context, SplitOrchestrator orchestrator, VideoFrameAccessService frameAccess) =>
-                MediaEndpoints.ServePreview(orchestrator, recordIndex, side, frameIndex, width, height, count, context, frameAccess));
-            app.MapGet("/api/split-audio/{recordIndex:int}/{side}", (int recordIndex, string side, int trackId, double durationMs, string mode, string quality, HttpContext context, SplitOrchestrator orchestrator, AudioEnvelopeExtractor audioExtractor, VideoFrameAccessService frameAccess) =>
-                MediaEndpoints.ServeAudioTimeline(orchestrator, recordIndex, side, trackId, durationMs, mode, quality, context, audioExtractor, frameAccess));
+            app.MapGet("/api/split-preview/{recordIndex:int}/{side}/{frameIndex:int}", (int recordIndex, string side, int frameIndex, int width, int height, int? count, Guid? sessionId, HttpContext context, SplitOrchestrator orchestrator, VideoFrameAccessService frameAccess) =>
+            {
+                IMediaSourceResolver resolver = sessionId.HasValue ? orchestrator.ResolveEditorMedia(sessionId.Value) : orchestrator;
+                return resolver == null ? Task.FromResult<IResult>(Results.NotFound()) : MediaEndpoints.ServePreview(resolver, recordIndex, side, frameIndex, width, height, count, context, frameAccess);
+            });
+            app.MapGet("/api/split-audio/{recordIndex:int}/{side}", (int recordIndex, string side, int trackId, double durationMs, string mode, string quality, Guid? sessionId, HttpContext context, SplitOrchestrator orchestrator, AudioEnvelopeExtractor audioExtractor, VideoFrameAccessService frameAccess) =>
+            {
+                IMediaSourceResolver resolver = sessionId.HasValue ? orchestrator.ResolveEditorMedia(sessionId.Value) : orchestrator;
+                return resolver == null ? Task.FromResult<IResult>(Results.NotFound()) : MediaEndpoints.ServeAudioTimeline(resolver, recordIndex, side, trackId, durationMs, mode, quality, context, audioExtractor, frameAccess);
+            });
             app.MapGet("/api/metadata-attachment/{recordIndex:int}/{attachmentId:int}", (int recordIndex, int attachmentId, HttpContext context, MetadataOrchestrator orchestrator) =>
                 MediaEndpoints.ServeMetadataAttachment(orchestrator, recordIndex, attachmentId, context));
             app.MapGet("/api/deep-analysis-diagnostics/{recordIndex:int}", (int recordIndex, HttpContext context, MergeOrchestrator orchestrator) =>

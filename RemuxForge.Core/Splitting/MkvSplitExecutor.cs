@@ -58,7 +58,7 @@ namespace RemuxForge.Core.Splitting
         /// <param name="codec">MkvSplitCodec video canonico.</param>
         /// <param name="outputFile">File MKV di output.</param>
         /// <param name="tempDir">Directory temporanea dedicata al segmento.</param>
-        public void SplitSlow(MkvSplitSegment seg, string inputFile, string rawFile, List<MkvSplitFrameInfo> frameMap, double[] sourcePts, int[] presentationToDecode, List<string> headArgs, MkvSplitCodec codec, string outputFile, string tempDir)
+        public void SplitSlow(MkvSplitSegment seg, string inputFile, string rawFile, List<MkvSplitFrameInfo> frameMap, double[] sourcePts, int[] presentationToDecode, List<string> headArgs, MkvSplitCodec codec, string outputFile, string tempDir, bool omitSubtitles = false)
         {
             int epStartFrame;
             int epFrameCount;
@@ -219,21 +219,21 @@ namespace RemuxForge.Core.Splitting
 
             // Estrazione audio + sottotitoli in un unico container con stream copy (tutte le tracce via -map 0:a? + 0:s?)
             avFile = Path.Combine(tempDir, "av.mkv");
-            avExit = MkvSplitExternalTools.Instance.RunFfmpegNoThrow(new string[]
+            bool expectsAv = HasAssociatedTracks(inputFile, omitSubtitles);
+            List<string> avArgs = new List<string>
             {
                 "-y", "-hide_banner", "-loglevel", "warning",
                 "-i", inputFile,
                 "-ss", seg.StartTs.ToString("G", CultureInfo.InvariantCulture),
                 "-to", seg.EndTs.ToString("G", CultureInfo.InvariantCulture),
-                "-map", "0:a?", "-map", "0:s?",
+                "-map", "0:a?",
                 "-c:a", "copy", "-c:s", "copy", "-vn",
                 avFile
-            });
-            hasAv = avExit == 0 && File.Exists(avFile) && new FileInfo(avFile).Length > 0;
-            if (!hasAv)
-            {
-                ConsoleHelper.Write(LogSection.Split, LogLevel.Notice, AppText.F("split.exec.avExtractionFailed", avExit));
-            }
+            };
+            if (!omitSubtitles) avArgs.InsertRange(avArgs.Count - 1, new string[] { "-map", "0:s?" });
+            avExit = expectsAv ? MkvSplitExternalTools.Instance.RunFfmpegNoThrow(avArgs) : 0;
+            hasAv = expectsAv && avExit == 0 && File.Exists(avFile) && new FileInfo(avFile).Length > 0;
+            if (expectsAv && !hasAv) throw new InvalidOperationException(AppText.F("split.montage.avFailed", avExit));
 
             // Generazione del file capitoli rebasato e con nomi generici rinumerati, solo quando presenti
             hasChapters = seg.Chapters != null && seg.Chapters.Count > 0;
@@ -273,7 +273,7 @@ namespace RemuxForge.Core.Splitting
         /// <param name="outputFile">Path del file di output.</param>
         /// <param name="tempDir">Directory temporanea per i file intermedi.</param>
         /// <param name="hasFlac">Se true separa il video con mkvmerge e audio/sottotitoli con ffmpeg, perché mkvmerge non splitta FLAC insieme al video.</param>
-        public void SplitFast(MkvSplitSegment seg, string inputFile, string outputFile, string tempDir, bool hasFlac)
+        public void SplitFast(MkvSplitSegment seg, string inputFile, string outputFile, string tempDir, bool hasFlac, bool omitSubtitles = false)
         {
             string startTc;
             string endTc;
@@ -318,7 +318,7 @@ namespace RemuxForge.Core.Splitting
                 avArgs.Add("-ss"); avArgs.Add(startTc);
                 avArgs.Add("-to"); avArgs.Add(endTc);
                 avArgs.Add("-map"); avArgs.Add("0:a?");
-                avArgs.Add("-map"); avArgs.Add("0:s?");
+                if (!omitSubtitles) { avArgs.Add("-map"); avArgs.Add("0:s?"); }
                 avArgs.Add("-c:a"); avArgs.Add("copy");
                 avArgs.Add("-c:s"); avArgs.Add("copy");
                 avArgs.Add("-vn");
@@ -328,10 +328,7 @@ namespace RemuxForge.Core.Splitting
                 ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.exec.ffmpegAvCopy", startTc, endTc));
                 avExit = MkvSplitExternalTools.Instance.RunFfmpegNoThrow(avArgs);
                 hasAv = avExit == 0 && File.Exists(avFile) && new FileInfo(avFile).Length > 0;
-                if (!hasAv)
-                {
-                    ConsoleHelper.Write(LogSection.Split, LogLevel.Notice, AppText.F("split.exec.avExtractionFailed", avExit));
-                }
+                if (!hasAv) throw new InvalidOperationException(AppText.F("split.montage.avFailed", avExit));
 
                 muxArgs = new List<string>();
                 muxArgs.Add("-o"); muxArgs.Add(outputFile);
@@ -352,6 +349,7 @@ namespace RemuxForge.Core.Splitting
                 muxArgs = new List<string>();
                 muxArgs.Add("-o"); muxArgs.Add(outputFile);
                 muxArgs.Add("--no-chapters");
+                if (omitSubtitles) muxArgs.Add("--no-subtitles");
                 muxArgs.Add("--split"); muxArgs.Add("parts:" + startTc + "-" + endTc);
                 muxArgs.Add(inputFile);
                 ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.exec.mkvmergeSplit", startTc, endTc));
@@ -366,6 +364,13 @@ namespace RemuxForge.Core.Splitting
 
             sizeMb = new FileInfo(outputFile).Length / 1048576.0;
             ConsoleHelper.Write(LogSection.Split, LogLevel.Success, AppText.F("split.exec.ok", Path.GetFileName(outputFile), sizeMb.ToString("F1", CultureInfo.InvariantCulture)));
+        }
+
+        private static bool HasAssociatedTracks(string inputFile, bool omitSubtitles)
+        {
+            MkvFileInfo info = MkvSplitExternalTools.Instance.GetFileInfo(inputFile);
+            if (info == null) throw new InvalidOperationException(AppText.T("split.montage.trackInventory"));
+            return info.Tracks.Exists(track => track.Type == "audio" || (!omitSubtitles && track.Type == "subtitles"));
         }
 
         /// <summary>

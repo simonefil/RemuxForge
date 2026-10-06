@@ -1,0 +1,51 @@
+<section class="split-plan-review" aria-labelledby="split-plan-review-title">
+    <h2 id="split-plan-review-title">4 · @AppText.T("web.splitMontage.review")</h2>
+    <div role="status" aria-live="polite">@AppText.T("web.splitMontage.reviewStage." + Stage)</div>
+    <p>@AppText.T("web.splitMontage.reviewConcreteHelp")</p>
+    @if (Stage == "ready")
+    {
+        <div class="split-plan-review-files">
+            @foreach (var record in Records)
+            {
+                <details @key="record.RecordId">
+                    <summary>@System.IO.Path.GetFileName(record.InputFile) · @Utils.GetSplitStatusText(record.Status) @(record.IsOverride ? " · " + AppText.T("web.split.overrideBadge") : "")</summary>
+                    @if (record.MontageProjection != null)
+                    {
+                        @foreach (var output in record.MontageProjection.Outputs)
+                        {
+                            <div class="split-plan-review-output">
+                                <strong>@output.FileName</strong> · @RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(output.DurationSeconds) · @output.Clips.Count @AppText.T("web.splitMontage.clips")
+                                <div>@output.FullPath</div>
+                                @foreach (var clip in output.Clips)
+                                {
+                                    <div>@AppText.T("web.splitMontage.source"): [@clip.StartFrame, @clip.EndFrameExclusive) → @AppText.T("web.splitMontage.result"): @RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(clip.ResultStartSeconds)–@RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(clip.ResultEndSeconds)</div>
+                                }
+                            </div>
+                        }
+                        @foreach (var diagnostic in record.MontageProjection.Diagnostics) { <div class="split-montage-diagnostics">@diagnostic.Message</div> }
+                    }
+                    else if (record.Plan != null)
+                    {
+                        @foreach (var output in record.Plan.Segments) { <div>@output.File · @RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(output.EndTs - output.StartTs)</div> }
+                    }
+                    @if (!string.IsNullOrEmpty(record.ErrorMessage)) { <div class="split-montage-diagnostics">@record.ErrorMessage</div> }
+                    @if (record.Plan != null) { @foreach (var warning in record.Plan.Warnings) { <div>@warning.Message</div> } }
+                    <RadzenButton Text="@AppText.T("web.split.openEditor")" Icon="content_cut" Disabled="@Busy" Click="@(() => OnOpenEditor.InvokeAsync(Records.IndexOf(record)))" />
+                </details>
+            }
+        </div>
+    }
+    <div class="split-montage-actions">
+        <RadzenButton Text="@AppText.T("web.splitMontage.reviewAcknowledge")" Disabled="@(Busy || Stage != "ready" || Records.Count == 0)" Click="@OnContinue" />
+        <RadzenButton Text="@AppText.T("web.splitMontage.changeConfiguration")" Variant="Variant.Outlined" Disabled="@Busy" Click="@OnConfigure" />
+    </div>
+</section>
+
+@code {
+    [Parameter] public List<MkvSplitRecord> Records { get; set; } = new();
+    [Parameter] public string Stage { get; set; } = "scan";
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<int> OnOpenEditor { get; set; }
+    [Parameter] public EventCallback OnContinue { get; set; }
+    [Parameter] public EventCallback OnConfigure { get; set; }
+}

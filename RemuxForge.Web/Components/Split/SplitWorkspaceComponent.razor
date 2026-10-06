@@ -28,8 +28,8 @@
                     <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.mode")" Width="180px" MinWidth="110px" MaxWidth="320px">
                         <Template Context="record">@ModeCell(record)</Template>
                     </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.segments")" Width="100px" MinWidth="70px" MaxWidth="200px">
-                        <Template Context="record">@(record.Plan != null ? record.Plan.Segments.Count.ToString() : "-")</Template>
+                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.splitMontage.outputs")" Width="100px" MinWidth="70px" MaxWidth="200px">
+                        <Template Context="record">@(record.MontageProjection != null ? record.MontageProjection.Outputs.Count.ToString() : record.Plan != null ? record.Plan.Segments.Count.ToString() : "-")</Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.outputDuration")" Width="130px" MinWidth="90px" MaxWidth="220px">
                         <Template Context="record">@OutputDurationCell(record)</Template>
@@ -141,6 +141,8 @@
     /// <returns>Durata totale dei segmenti</returns>
     private string OutputDurationCell(MkvSplitRecord record)
     {
+        if (record.MontageProjection != null)
+            return RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(record.MontageProjection.DurationSeconds);
         double total = 0.0;
 
         if (record.Plan == null)
@@ -161,6 +163,8 @@
     /// <returns>Esito sintetico</returns>
     private string PlanOutcomeCell(MkvSplitRecord record)
     {
+        if (record.MontageProjection != null && !record.MontageProjection.IsValid)
+            return AppText.T("web.split.column.planInvalid");
         if (record.Plan == null)
             return "-";
 
@@ -177,6 +181,8 @@
     /// <returns>Conteggio degli output già presenti su disco</returns>
     private string ExistingOutputsCell(MkvSplitRecord record)
     {
+        if (record.MontageProjection != null)
+            return record.MontageProjection.Outputs.Count(output => output.OutputState != MkvSplitOutputState.New).ToString();
         int existing = 0;
 
         if (record.Plan == null)

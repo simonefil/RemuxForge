@@ -9,11 +9,8 @@
 {
     <SplitEditorPageComponent RecordIndex="@_splitEditorIndex"
                               Record="@_splitEditorRecord"
-                              Override="@_splitEditorOverride"
                               InitialSegmentNum="@_splitEditorSegmentNum"
-                              OnClose="CloseSplitEditor"
-                              OnApply="ApplySplitOverride"
-                              OnReset="ClearSplitOverride" />
+                              OnClose="CloseSplitEditor" />
 }
 else if (_showEditMapEditor && _editMapRecord != null)
 {
@@ -81,6 +78,11 @@ else
                 }
                 else if (_currentMode == RemuxForge.Core.Models.Options.MODE_SPLIT)
                 {
+                    <div @ref="_splitWorkspaceRoot" class="split-guided-workspace" tabindex="-1" aria-label="@AppText.T("web.splitMontage.outputs")">
+                    @if (_splitReviewStage != null)
+                    {
+                        <SplitPlanReviewComponent Records="@_splitRecords" Stage="@_splitReviewStage" Busy="@SplitOrchestrator.IsBusy" OnOpenEditor="OpenSplitReviewEditor" OnContinue="AcknowledgeSplitReview" OnConfigure="ShowConfig" />
+                    }
                     <SplitWorkspaceComponent Records="@_splitRecords"
                                  SelectedRecord="@_selectedSplitRecord"
                                  SelectedIndex="@SplitOrchestrator.SelectedIndex"
@@ -91,7 +93,8 @@ else
                                  OnContextMenu="ShowSplitContextMenu"
                                  OnAnalyze="DoAnalyzeSplitSelected"
                                  OnSegmentSelected="SelectSplitSegment"
-                                 OnOpenEditor="OpenSplitEditor" />
+                                  OnOpenEditor="OpenSplitEditor" />
+                    </div>
                 }
                 else
                 {

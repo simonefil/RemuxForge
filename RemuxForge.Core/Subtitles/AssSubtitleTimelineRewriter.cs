@@ -92,7 +92,7 @@ namespace RemuxForge.Core.Subtitles
             List<SubtitleCueInterval> intervals;
             long startMs;
             long endMs;
-            if (fields.Length <= startIndex || fields.Length <= endIndex || !this.TryParseTimestamp(fields[startIndex].Trim(), out startMs) || !this.TryParseTimestamp(fields[endIndex].Trim(), out endMs))
+            if (fields.Length <= startIndex || fields.Length <= endIndex || !TryParseTimestamp(fields[startIndex].Trim(), out startMs) || !TryParseTimestamp(fields[endIndex].Trim(), out endMs))
             {
                 result.Append(line).Append('\n');
                 return;
@@ -108,8 +108,8 @@ namespace RemuxForge.Core.Subtitles
                     continue;
                 }
 
-                fields[startIndex] = this.FormatTimestamp(intervals[i].StartMs);
-                fields[endIndex] = this.FormatTimestamp(intervals[i].EndMs);
+                fields[startIndex] = FormatTimestamp(intervals[i].StartMs);
+                fields[endIndex] = FormatTimestamp(intervals[i].EndMs);
                 result.Append(prefix).Append(string.Join(",", fields)).Append('\n');
             }
         }
@@ -120,7 +120,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="value">Timestamp ASS/SSA</param>
         /// <param name="ms">Millisecondi risultanti</param>
         /// <returns>True se il timestamp è valido</returns>
-        private bool TryParseTimestamp(string value, out long ms)
+        public static bool TryParseTimestamp(string value, out long ms)
         {
             string[] parts = value.Split(new char[] { ':', '.' });
             int h;
@@ -149,7 +149,7 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         /// <param name="ms">Millisecondi da formattare</param>
         /// <returns>Timestamp ASS/SSA</returns>
-        private string FormatTimestamp(long ms)
+        public static string FormatTimestamp(long ms)
         {
             long h;
             long m;

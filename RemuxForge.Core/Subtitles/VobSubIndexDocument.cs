@@ -53,6 +53,31 @@ namespace RemuxForge.Core.Subtitles
             return new VobSubIndexDocument(new List<string>(File.ReadAllLines(filePath, Encoding.Latin1)));
         }
 
+        /// <summary>Riapre un documento già letto senza dipendere dal temporaneo di estrazione.</summary>
+        public static VobSubIndexDocument Parse(string content)
+        {
+            List<string> lines = new List<string>(content.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'));
+            if (lines.Count > 0 && lines[lines.Count - 1].Length == 0) lines.RemoveAt(lines.Count - 1);
+            return new VobSubIndexDocument(lines);
+        }
+
+        /// <summary>Sostituisce le entry con occorrenze ordinate, preservando righe metadata e token delle entry originali.</summary>
+        public void ReplaceEntries(IEnumerable<VobSubIndexEntryRewrite> occurrences)
+        {
+            List<string> rewritten = new List<string>();
+            HashSet<int> originalEntries = new HashSet<int>();
+            foreach (VobSubIndexEntry entry in this.Entries) originalEntries.Add(entry.LineIndex);
+            foreach (VobSubIndexEntryRewrite occurrence in occurrences)
+                rewritten.Add(VobSubSubtitleUtils.RewriteEntryLine(this._lines[occurrence.LineIndex], occurrence.TimestampMs, occurrence.FilePosition));
+            int insertion = this.Entries.Count == 0 ? this._lines.Count : this.Entries[0].LineIndex;
+            for (int index = this._lines.Count - 1; index >= 0; index--)
+                if (originalEntries.Contains(index)) this._lines.RemoveAt(index);
+            this._lines.InsertRange(insertion, rewritten);
+            this._removedLines.Clear(); this.Entries.Clear(); this.Parse();
+        }
+
+        public IReadOnlyList<string> Lines => this._lines;
+
         /// <summary>
         /// Salva il documento IDX
         /// </summary>
@@ -372,4 +397,5 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         public long FilePosition { get; set; }
     }
+    internal sealed record VobSubIndexEntryRewrite(int LineIndex, long TimestampMs, long FilePosition);
 }

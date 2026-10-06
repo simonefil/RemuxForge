@@ -180,6 +180,242 @@ namespace RemuxForge.Core.Splitting
             return this.RunSlowPath(args, plan, splitter, headArgs, codec);
         }
 
+        /// <summary>Esegue gli output del montaggio applicato, pubblicando solo file completi.</summary>
+        /// <param name="plan">Piano del montaggio applicato</param>
+        /// <param name="args">Opzioni di esecuzione</param>
+        /// <param name="stopRequested">Controllo cooperativo tra gli stadi e prima della pubblicazione;
+        /// non inoltra automaticamente la cancellazione ai processi in corso. L'interruzione dei processi
+        /// è gestita dall'infrastruttura ProcessRunner, già collegata allo stop dal chiamante Web.</param>
+        public MkvSplitMontageExecutionResult ExecutePlan(MkvSplitExecutionPlan plan, MkvSplitOptions args, Func<bool> stopRequested = null)
+        {
+            MkvSplitMontageExecutionResult result = new MkvSplitMontageExecutionResult();
+            foreach (MkvSplitExecutionOutput output in plan.Outputs)
+                result.Outputs.Add(new MkvSplitOutputExecutionResult { OutputId = output.OutputId, FullPath = output.Projection.FullPath });
+            if (!plan.IsValid) { result.ExitCode = 1; return result; }
+            if (args.DryRun) return result;
+            MkvSplitSourceIdentity source = plan.Document.Source;
+            foreach (MkvSplitExecutionOutput output in plan.Outputs)
+            {
+                MkvSplitOutputExecutionResult state = result.Outputs.Find(item => item.OutputId == output.OutputId);
+                string temporary = null;
+                try
+                {
+                    if (stopRequested?.Invoke() == true) throw new OperationCanceledException();
+                    if (!source.Matches(MkvSplitSourceIdentity.FromFile(source.FullPath)))
+                        throw new InvalidOperationException(AppText.T("split.montage.sourceChanged"));
+                    string path = output.Projection.FullPath;
+                    if (string.Equals(path, source.FullPath, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException(AppText.F("split.montage.nameCollision", path));
+                    if (File.Exists(path) && !args.Force)
+                    {
+                        state.Status = MkvSplitOutputExecutionStatus.ExistsSkipped;
+                        continue;
+                    }
+                    Directory.CreateDirectory(Path.GetDirectoryName(path));
+                    temporary = Path.Combine(Path.GetDirectoryName(path), ".remuxforge-split-" + Guid.NewGuid().ToString("N"));
+                    Directory.CreateDirectory(temporary);
+                    MkvSplitExecutor executor = new MkvSplitExecutor();
+                    bool hasFlac = plan.Tracks.Exists(track => track.Type == "audio" && track.Codec.IndexOf("FLAC", StringComparison.OrdinalIgnoreCase) >= 0);
+                    bool separateFlac = hasFlac && output.Clips.Count > 1;
+                    List<TrackInfo> sourceAudio = plan.Tracks.FindAll(track => track.Type == "audio");
+                    List<string> clips = new List<string>();
+                    string raw = null;
+                    List<MkvSplitFrameInfo> map = null;
+                    int[] decodeMap = null;
+                    MkvSplitCodec codec = MkvSplitCodec.Hevc;
+                    List<string> head = null;
+                    if (output.Clips.Exists(clip => !clip.UsesFastPath))
+                    {
+                        if (!TryParseCodec(plan.Analysis.VideoParams.CodecName, out codec)) throw new InvalidOperationException();
+                        raw = Path.Combine(temporary, "source." + RawExtension(codec));
+                        MkvSplitExternalTools.Instance.ExtractRawTrack(source.FullPath, 0, raw);
+                        map = MkvSplitExternalTools.Instance.GetFrameByteMap(raw);
+                        decodeMap = BuildPresentationToDecodeMap(source.FullPath, plan.Analysis.SourcePts.Length);
+                        if (map.Count != plan.Analysis.SourcePts.Length || decodeMap == null)
+                            throw new InvalidOperationException(AppText.T("split.montage.invalidTimeline"));
+                        head = BuildHeadEncodeArgs(plan.Analysis.VideoParams, codec);
+                    }
+                    foreach (MkvSplitExecutionClip clip in output.Clips)
+                    {
+                        if (stopRequested?.Invoke() == true) throw new OperationCanceledException();
+                        string work = Path.Combine(temporary, "clip-" + clips.Count);
+                        Directory.CreateDirectory(work);
+                        string clipPath = Path.Combine(work, "clip.mkv");
+                        if (clip.UsesFastPath) executor.SplitFast(clip.Segment, source.FullPath, clipPath, work, hasFlac, true);
+                        else executor.SplitSlow(clip.Segment, source.FullPath, raw, map, plan.Analysis.SourcePts, decodeMap, head, codec, clipPath, work, true);
+                        if (MkvSplitExternalTools.Instance.CountPackets(clipPath) != clip.Segment.FrameCount)
+                            throw new InvalidOperationException(AppText.T("split.montage.outputMismatch"));
+                        clips.Add(clipPath);
+                    }
+                    if (stopRequested?.Invoke() == true) throw new OperationCanceledException();
+                    string assembled = clips[0];
+                    if (clips.Count > 1)
+                    {
+                        assembled = Path.Combine(temporary, "assembled.mkv");
+                        List<string> append = new List<string> { "-o", assembled };
+                        foreach (string clip in clips)
+                        {
+                            if (clip != clips[0]) append.Add("+");
+                            append.Add("--no-chapters"); append.Add("--no-attachments");
+                            if (separateFlac)
+                            {
+                                MkvFileInfo clipInfo = MkvSplitExternalTools.Instance.GetFileInfo(clip);
+                                List<TrackInfo> clipAudio = clipInfo?.Tracks.FindAll(track => track.Type == "audio");
+                                if (clipAudio == null || clipAudio.Count != sourceAudio.Count)
+                                    throw new InvalidOperationException(AppText.T("split.montage.outputMismatch"));
+                                List<int> compatibleIds = new List<int>();
+                                for (int index = 0; index < sourceAudio.Count; index++)
+                                    if (!IsFlac(sourceAudio[index])) compatibleIds.Add(clipAudio[index].Id);
+                                if (compatibleIds.Count == 0) append.Add("--no-audio");
+                                else { append.Add("--audio-tracks"); append.Add(string.Join(",", compatibleIds)); }
+                            }
+                            append.Add(clip);
+                        }
+                        MkvSplitExternalTools.Instance.RunMkvmerge(append);
+                    }
+                    string final = Path.Combine(temporary, "complete.mkv");
+                    List<string> mux = new List<string> { "-o", final, "--no-chapters", "--no-subtitles", "--no-attachments", "--no-global-tags" };
+                    // Gli intermedi slow riordinano gli ID; ripristinare i flag e i nomi per posizione/type, non per ID sorgente.
+                    MkvFileInfo assembledInfo = MkvSplitExternalTools.Instance.GetFileInfo(assembled);
+                    Dictionary<int, string> trackOrder = new Dictionary<int, string>();
+                    foreach (string type in new string[] { "video", "audio" })
+                    {
+                        List<TrackInfo> original = plan.Tracks.FindAll(track => track.Type == type && !(separateFlac && IsFlac(track)));
+                        List<TrackInfo> actual = assembledInfo.Tracks.FindAll(track => track.Type == type);
+                        if (original.Count != actual.Count) throw new InvalidOperationException(AppText.T("split.montage.outputMismatch"));
+                        for (int index = 0; index < actual.Count; index++)
+                        {
+                            AddTrackOptions(mux, actual[index].Id, original[index]);
+                            trackOrder.Add(original[index].Id, "0:" + actual[index].Id);
+                        }
+                    }
+                    mux.Add(assembled);
+                    // Riutilizzare gli allegati e i tag globali originali senza introdurre altre tracce.
+                    mux.AddRange(new string[] { "--no-video", "--no-audio", "--no-chapters", "--no-track-tags" });
+                    if (output.NativeSubtitleTrackIds.Count == 0) mux.Add("--no-subtitles");
+                    else
+                    {
+                        mux.Add("--subtitle-tracks"); mux.Add(string.Join(",", output.NativeSubtitleTrackIds));
+                        foreach (TrackInfo track in plan.Tracks.FindAll(track => output.NativeSubtitleTrackIds.Contains(track.Id)))
+                        {
+                            AddTrackOptions(mux, track.Id, track);
+                            trackOrder.Add(track.Id, "1:" + track.Id);
+                        }
+                    }
+                    mux.Add(source.FullPath);
+                    int inputIndex = 2;
+                    if (separateFlac)
+                    {
+                        // Durate video esplicite: il concat audio segue le posizioni risultato, non i tag durata degli intermedi.
+                        string manifest = Path.Combine(temporary, "flac.ffconcat");
+                        using (StreamWriter writer = new StreamWriter(manifest, false, new System.Text.UTF8Encoding(false)))
+                        {
+                            writer.WriteLine("ffconcat version 1.0");
+                            for (int index = 0; index < clips.Count; index++)
+                            {
+                                writer.WriteLine("file 'clip-" + index + "/clip.mkv'");
+                                writer.WriteLine("duration " + output.Projection.Clips[index].DurationSeconds.ToString("R", CultureInfo.InvariantCulture));
+                            }
+                        }
+                        for (int index = 0; index < sourceAudio.Count; index++)
+                        {
+                            TrackInfo audio = sourceAudio[index];
+                            if (!IsFlac(audio)) continue;
+                            if (stopRequested?.Invoke() == true) throw new OperationCanceledException();
+                            string audioPath = Path.Combine(temporary, "flac-" + index + ".mka");
+                            MkvSplitExternalTools.Instance.RunFfmpeg(new string[] { "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", manifest,
+                                "-map", "0:a:" + index, "-c:a", "copy", "-vn", "-sn", "-dn", audioPath });
+                            MkvFileInfo audioInfo = MkvSplitExternalTools.Instance.GetFileInfo(audioPath);
+                            if (audioInfo?.Tracks.Count != 1 || !IsFlac(audioInfo.Tracks[0]))
+                                throw new InvalidOperationException(AppText.T("split.montage.outputMismatch"));
+                            AddTrackOptions(mux, audioInfo.Tracks[0].Id, audio);
+                            trackOrder.Add(audio.Id, inputIndex++ + ":" + audioInfo.Tracks[0].Id);
+                            mux.Add("--no-chapters"); mux.Add("--no-attachments"); mux.Add("--no-global-tags"); mux.Add(audioPath);
+                        }
+                    }
+                    foreach (MkvSplitSubtitleTrack subtitle in plan.Subtitles)
+                    {
+                        if (output.NativeSubtitleTrackIds.Contains(subtitle.Track.Id)) continue;
+                        string subtitlePath = Path.Combine(temporary, "result-sub-" + subtitle.Track.Id + subtitle.Extension);
+                        MkvSplitSubtitleService.WriteOutput(subtitle, output.Projection, subtitlePath);
+                        AddTrackOptions(mux, 0, subtitle.Track);
+                        mux.Add(subtitlePath);
+                        trackOrder.Add(subtitle.Track.Id, inputIndex++ + ":0");
+                    }
+                    if (separateFlac)
+                    {
+                        mux.Add("--track-order");
+                        mux.Add(string.Join(",", plan.Tracks.ConvertAll(track => trackOrder[track.Id])));
+                    }
+                    if (output.Projection.Chapters.Count > 0)
+                    {
+                        string chapters = Path.Combine(temporary, "chapters.txt");
+                        using (StreamWriter writer = new StreamWriter(chapters, false, new System.Text.UTF8Encoding(false)))
+                            for (int index = 0; index < output.Projection.Chapters.Count; index++)
+                            {
+                                MkvSplitChapter chapter = output.Projection.Chapters[index];
+                                string number = (index + 1).ToString("D2", CultureInfo.InvariantCulture);
+                                writer.WriteLine("CHAPTER" + number + "=" + MkvSplitSegmentService.SecsToTs(chapter.Timestamp));
+                                writer.WriteLine("CHAPTER" + number + "NAME=" + (chapter.Name ?? ""));
+                            }
+                        mux.Add("--chapters"); mux.Add(chapters);
+                    }
+                    if (stopRequested?.Invoke() == true) throw new OperationCanceledException();
+                    MkvSplitExternalTools.Instance.RunMkvmerge(mux);
+                    ValidateMontageVideo(final, output.Projection, plan.Analysis);
+                    if (!source.Matches(MkvSplitSourceIdentity.FromFile(source.FullPath)))
+                        throw new InvalidOperationException(AppText.T("split.montage.sourceChanged"));
+                    if (stopRequested?.Invoke() == true) throw new OperationCanceledException();
+                    File.Move(final, path, args.Force);
+                    state.Status = MkvSplitOutputExecutionStatus.Done;
+                }
+                catch (Exception exception)
+                {
+                    if (exception is OperationCanceledException || stopRequested?.Invoke() == true)
+                    {
+                        foreach (MkvSplitOutputExecutionResult pending in result.Outputs)
+                            if (pending.Status == MkvSplitOutputExecutionStatus.Pending) pending.Status = MkvSplitOutputExecutionStatus.Cancelled;
+                        result.ExitCode = 1;
+                        break;
+                    }
+                    state.Status = MkvSplitOutputExecutionStatus.Failed;
+                    state.ErrorMessage = exception.Message;
+                    result.ExitCode = 1;
+                    ConsoleHelper.Write(LogSection.Split, LogLevel.Error, exception.Message);
+                }
+                finally
+                {
+                    if (temporary != null) try { Directory.Delete(temporary, true); } catch (IOException) { }
+                }
+            }
+            return result;
+        }
+
+        private static void AddTrackOptions(List<string> command, int id, TrackInfo track)
+        {
+            command.AddRange(new string[] { "--language", id + ":" + (string.IsNullOrEmpty(track.LanguageIetf) ? (string.IsNullOrEmpty(track.Language) ? "und" : track.Language) : track.LanguageIetf),
+                "--track-name", id + ":" + (track.Name ?? ""), "--default-track-flag", id + ":" + (track.DefaultTrack ? "yes" : "no"),
+                "--forced-display-flag", id + ":" + (track.ForcedTrack ? "yes" : "no") });
+        }
+
+        private static bool IsFlac(TrackInfo track)
+        {
+            return track.Type == "audio" && track.Codec.IndexOf("FLAC", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static void ValidateMontageVideo(string path, MkvSplitOutputProjection output, MkvSplitAnalysis analysis)
+        {
+            int packets = MkvSplitExternalTools.Instance.CountPackets(path);
+            double[] actual = MkvSplitExternalTools.Instance.ExtractSourcePts(path, packets, out double end);
+            if (actual.Length != output.FrameCount || Math.Abs(end - output.DurationSeconds) > 0.001001)
+                throw new InvalidOperationException(AppText.T("split.montage.outputMismatch"));
+            int index = 0;
+            foreach (MkvSplitClipProjection clip in output.Clips)
+                for (int frame = clip.StartFrame; frame < clip.EndFrameExclusive; frame++)
+                    if (Math.Abs(actual[index++] - (clip.ResultStartSeconds + analysis.SourcePts[frame] - clip.SourceStartSeconds)) > 0.001001)
+                        throw new InvalidOperationException(AppText.T("split.montage.outputMismatch"));
+        }
+
         /// <summary>
         /// Esegue fast path
         /// </summary>

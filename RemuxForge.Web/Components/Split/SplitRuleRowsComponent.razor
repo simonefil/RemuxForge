@@ -1,0 +1,68 @@
+@* Presentation adapter: preserve the existing Core rule syntax without requiring CSV editing. *@
+<div class="split-rule-rows">
+    @foreach (var row in _rows)
+    {
+        <div class="form-row" @key="row">
+            <span class="form-label">@(_rows.IndexOf(row) + 1)</span>
+            <label>@AppText.T("web.splitMontage." + (Mode == "pattern" ? "chapterGroup" : "cutStart")) <input class="form-input" value="@row.Start" @onchange="@(e => ChangeAsync(row, true, e))" /></label>
+            @if (Mode == "ranges")
+            {
+                <label>@AppText.T("web.splitMontage.cutEnd") <input class="form-input" value="@row.End" @onchange="@(e => ChangeAsync(row, false, e))" /></label>
+            }
+            <RadzenButton Icon="delete" Size="ButtonSize.Small" aria-label="@AppText.T("web.splitMontage.removeRuleRow")" Click="@(() => RemoveAsync(row))" />
+        </div>
+        @if (!string.IsNullOrEmpty(row.Error)) { <div role="status" class="split-montage-diagnostics">@(_rows.IndexOf(row) + 1): @row.Error</div> }
+    }
+    <RadzenButton Text="@AppText.T("web.splitMontage.addRuleRow")" Icon="add" Size="ButtonSize.Small" Click="AddAsync" />
+    <div class="split-mode-note">@AppText.T("web.splitMontage.ruleTimeHelp")</div>
+</div>
+
+@code {
+    [Parameter] public string Mode { get; set; } = "ranges";
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public EventCallback<bool> ValidChanged { get; set; }
+    private string _seen;
+    private string _seenMode;
+    private List<RuleRow> _rows = new();
+    protected override void OnParametersSet()
+    {
+        if (_seen == Value && _seenMode == Mode) return;
+        _seenMode = Mode;
+        _seen = Value;
+        _rows = (Value ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(item => {
+            int separator = Mode == "ranges" ? item.IndexOf('-') : -1;
+            return new RuleRow { Start = separator >= 0 ? item[..separator] : item, End = separator >= 0 ? item[(separator + 1)..] : "END" };
+        }).ToList();
+        foreach (var row in _rows) ValidateRow(row);
+        _ = ValidChanged.InvokeAsync(_rows.Count > 0 && _rows.All(row => string.IsNullOrEmpty(row.Error)));
+    }
+    private async Task ChangeAsync(RuleRow row, bool start, ChangeEventArgs args)
+    {
+        if (start) row.Start = args.Value?.ToString() ?? ""; else row.End = args.Value?.ToString() ?? "";
+        await PublishAsync();
+    }
+    private async Task AddAsync() { _rows.Add(new() { Start = Mode == "pattern" ? "1" : "0", End = "END" }); await PublishAsync(); }
+    private async Task RemoveAsync(RuleRow row) { _rows.Remove(row); await PublishAsync(); }
+    private async Task PublishAsync() { foreach (var row in _rows) ValidateRow(row); _seen = string.Join(',', _rows.Select(row => Mode == "ranges" ? row.Start + "-" + row.End : row.Start)); await ValueChanged.InvokeAsync(_seen); await ValidChanged.InvokeAsync(_rows.Count > 0 && _rows.All(row => string.IsNullOrEmpty(row.Error))); }
+    private void ValidateRow(RuleRow row)
+    {
+        row.Error = "";
+        try
+        {
+            if (Mode == "pattern") { if (!int.TryParse(row.Start, out int chapters) || chapters <= 0) row.Error = AppText.T("web.splitMontage.invalidRuleRow"); }
+            else
+            {
+                var start = RemuxForge.Core.Splitting.MkvSplitSegmentService.ParseTime(row.Start, 0);
+                if (!double.IsFinite(start.value) || start.value < 0) row.Error = AppText.T("web.splitMontage.invalidRuleRow");
+                if (Mode == "ranges")
+                {
+                    var end = RemuxForge.Core.Splitting.MkvSplitSegmentService.ParseTime(row.End, 0);
+                    if (!double.IsFinite(end.value) || end.value < 0 || (row.End.Trim() != "END" && start.isFrame == end.isFrame && end.value <= start.value)) row.Error = AppText.T("web.splitMontage.invalidRuleRow");
+                }
+            }
+        }
+        catch (Exception exception) when (exception is FormatException or OverflowException) { row.Error = AppText.T("web.splitMontage.invalidRuleRow"); }
+    }
+    private sealed class RuleRow { public string Start { get; set; } = ""; public string End { get; set; } = ""; public string Error { get; set; } = ""; }
+}

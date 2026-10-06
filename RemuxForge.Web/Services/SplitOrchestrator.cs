@@ -10,13 +10,15 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
+using System.Linq;
 
 namespace RemuxForge.Web.Services
 {
     /// <summary>
     /// Orchestratore WebUI per modalità split
     /// </summary>
-    public class SplitOrchestrator : MediaOrchestratorBase, IMediaSourceResolver
+    public partial class SplitOrchestrator : MediaOrchestratorBase, IMediaSourceResolver
     {
         #region Tipi annidati
 
@@ -75,10 +77,321 @@ namespace RemuxForge.Web.Services
         /// </summary>
         private List<MkvSplitRecord> _records;
 
-        /// <summary>
-        /// Segmenti costruiti nell'editor, per percorso del file: vivono nella sessione e un nuovo scan li azzera
-        /// </summary>
-        private Dictionary<string, List<MkvSplitOverrideSegment>> _overrides;
+        private long _optionsRevision;
+        private readonly Dictionary<string, AppliedMontage> _applied = new Dictionary<string, AppliedMontage>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<Guid, EditorSession> _sessions = new Dictionary<Guid, EditorSession>();
+        private static readonly System.Text.Json.JsonSerializerOptions s_copyOptions = new System.Text.Json.JsonSerializerOptions {
+            NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals };
+
+        private class AppliedMontage
+        {
+            public MkvSplitDocument Document;
+            public MkvSplitExecutionPlan Plan;
+            public long Revision;
+            public long OptionsRevision;
+        }
+
+        private class EditorSession
+        {
+            public Guid RecordId;
+            public MkvSplitSourceIdentity Source;
+            public Guid DocumentId;
+            public MkvSplitAnalysis Analysis;
+            public MkvFileInfo SourceInfo;
+            public long LastDraftRevision = -1;
+        }
+
+        private static T Copy<T>(T value)
+        {
+            return value == null ? default : System.Text.Json.JsonSerializer.Deserialize<T>(System.Text.Json.JsonSerializer.Serialize(value, s_copyOptions), s_copyOptions);
+        }
+
+        private static Options CloneOptions(Options options) { return Copy(options); }
+
+        private static MkvSplitDiagnostic EditorDiagnostic(string code, string message = null)
+        {
+            return new MkvSplitDiagnostic { Code = code, Message = message ?? AppText.T("split.montage." + code), Severity = MkvSplitDiagnosticSeverity.Error };
+        }
+
+        /// <summary>Prepara il draft senza avviare export; la sessione resta legata all'identità del media.</summary>
+        public async Task<SplitEditorOpenResult> OpenEditorAsync(int recordIndex, CancellationToken cancellation)
+        {
+            MkvSplitRecord record;
+            Options options;
+            long revision;
+            lock (this.StateLock)
+            {
+                if (this.BusyState) return new SplitEditorOpenResult { Status = SplitApplyStatus.Busy, Diagnostics = new List<MkvSplitDiagnostic> { EditorDiagnostic("busy") } };
+                record = this.GetRecordAt(recordIndex);
+                if (record == null) return new SplitEditorOpenResult { Status = SplitApplyStatus.Conflict, Diagnostics = new List<MkvSplitDiagnostic> { EditorDiagnostic("conflict") } };
+                options = CloneOptions(this._options);
+                revision = this._optionsRevision;
+                this.BusyState = true;
+            }
+            try
+            {
+                cancellation.ThrowIfCancellationRequested();
+                MkvSplitSourceIdentity source = MkvSplitSourceIdentity.FromFile(record.InputFile);
+                MkvSplitAnalysis analysis = await Task.Run(() =>
+                {
+                    MkvSplitExternalTools.Instance.ResolveBinaries();
+                    return MkvSplitAnalysisCache.Instance.GetOrBuild(record.InputFile);
+                }, cancellation);
+                cancellation.ThrowIfCancellationRequested();
+                MkvFileInfo sourceInfo = await Task.Run(() => MkvSplitExternalTools.Instance.GetFileInfo(record.InputFile), cancellation);
+                if (sourceInfo?.Tracks == null || !sourceInfo.Tracks.Any(track => track.Type == "video"))
+                    throw new InvalidOperationException(AppText.T("split.montage.trackInventory"));
+                cancellation.ThrowIfCancellationRequested();
+                MkvSplitDocumentService service = new MkvSplitDocumentService();
+                MkvSplitOptions split = CloneSplitOptionsFor(options, record.InputFile);
+                MkvSplitDocument document;
+                long appliedRevision;
+                lock (this.StateLock)
+                {
+                    if (revision != this._optionsRevision || !source.Matches(MkvSplitSourceIdentity.FromFile(record.InputFile))
+                        || !this._records.Any(item => item.RecordId == record.RecordId))
+                        return new SplitEditorOpenResult { Status = SplitApplyStatus.Conflict, Diagnostics = new List<MkvSplitDiagnostic> { EditorDiagnostic("conflict") } };
+                    if (this._applied.TryGetValue(record.InputFile, out AppliedMontage applied) && applied.Document.Source.Matches(source))
+                    {
+                        document = applied.Document.Clone();
+                        appliedRevision = applied.Revision;
+                    }
+                    else { document = null; appliedRevision = 0; }
+                }
+                if (document == null)
+                {
+                    MkvSplitPlan legacy = split.Manual ? null : await Task.Run(() => new MkvSplitPlanner().BuildPlan(split, record.InputFile, null), cancellation);
+                    document = split.Manual ? service.CreateFullSource(source, analysis) : service.FromLegacyPlan(legacy, source);
+                }
+                cancellation.ThrowIfCancellationRequested();
+                Guid sessionId = Guid.NewGuid();
+                lock (this.StateLock)
+                {
+                    if (!source.Matches(MkvSplitSourceIdentity.FromFile(record.InputFile)) || revision != this._optionsRevision)
+                        return new SplitEditorOpenResult { Status = SplitApplyStatus.Conflict, Diagnostics = new List<MkvSplitDiagnostic> { EditorDiagnostic("conflict") } };
+                    record.SourceInfo = Copy(sourceInfo);
+                    this._sessions.Add(sessionId, new EditorSession { RecordId = record.RecordId, Source = source.Clone(), DocumentId = document.Id,
+                        Analysis = analysis, SourceInfo = sourceInfo });
+                }
+                return new SplitEditorOpenResult { Status = SplitApplyStatus.Applied, Snapshot = new SplitEditorSnapshot {
+                    SessionId = sessionId, RecordId = record.RecordId, SourceIdentity = source.Clone(),
+                    ExpectedAppliedRevision = appliedRevision, ExpectedOptionsRevision = revision, Document = document,
+                    Analysis = Copy(analysis), SourceInfo = Copy(sourceInfo), Options = Copy(split) } };
+            }
+            catch (OperationCanceledException) { return new SplitEditorOpenResult { Status = SplitApplyStatus.Cancelled }; }
+            catch (Exception exception) { return new SplitEditorOpenResult { Status = SplitApplyStatus.Invalid, Diagnostics = new List<MkvSplitDiagnostic> { EditorDiagnostic("preparationFailed", exception.Message) } }; }
+            finally { lock (this.StateLock) { this.BusyState = false; } this.NotifyProgressChanged(); }
+        }
+
+        public void CloseEditor(Guid sessionId)
+        {
+            lock (this.StateLock) { this._sessions.Remove(sessionId); }
+        }
+
+        public Task<SplitApplyResult> ApplyDraftAsync(SplitApplyRequest request, CancellationToken cancellation)
+        {
+            return this.ApplyCandidateAsync(request, false, cancellation);
+        }
+
+        /// <summary>Reset esplicito: in manuale ripristina il sorgente intero, in batch rigenera la regola.</summary>
+        public Task<SplitApplyResult> ReapplyRuleAsync(Guid sessionId, CancellationToken cancellation)
+        {
+            lock (this.StateLock)
+            {
+                if (!this._sessions.TryGetValue(sessionId, out EditorSession session)) return Task.FromResult(ApplyFailure(SplitApplyStatus.Conflict, "conflict"));
+                this._applied.TryGetValue(session.Source.FullPath, out AppliedMontage applied);
+                return this.ApplyCandidateAsync(new SplitApplyRequest { SessionId = sessionId, ExpectedAppliedRevision = applied?.Revision ?? 0,
+                    ExpectedOptionsRevision = this._optionsRevision, DraftRevision = session.LastDraftRevision + 1 }, true, cancellation);
+            }
+        }
+
+        private static SplitApplyResult ApplyFailure(SplitApplyStatus status, string code, string message = null)
+        {
+            return new SplitApplyResult { Status = status, Diagnostics = new List<MkvSplitDiagnostic> { EditorDiagnostic(code, message) } };
+        }
+
+        private async Task<SplitApplyResult> ApplyCandidateAsync(SplitApplyRequest request, bool reset, CancellationToken cancellation)
+        {
+            EditorSession session;
+            MkvSplitRecord record;
+            MkvSplitOptions options;
+            MkvSplitDocument candidate;
+            lock (this.StateLock)
+            {
+                if (request == null || !this._sessions.TryGetValue(request.SessionId, out session)) return ApplyFailure(SplitApplyStatus.Conflict, "conflict");
+                request = Copy(request);
+                if (this.BusyState) return ApplyFailure(SplitApplyStatus.Busy, "busy");
+                record = this._records.Find(item => item.RecordId == session.RecordId);
+                this._applied.TryGetValue(session.Source.FullPath, out AppliedMontage applied);
+                if (record == null || request.ExpectedOptionsRevision != this._optionsRevision || request.ExpectedAppliedRevision != (applied?.Revision ?? 0)
+                    || request.DraftRevision < session.LastDraftRevision) return ApplyFailure(SplitApplyStatus.Conflict, "conflict");
+                if (!reset && (request.Document == null || request.Document.Id != session.DocumentId || !session.Source.Matches(request.Document.Source)))
+                    return ApplyFailure(SplitApplyStatus.Invalid, "invalidDocument");
+                candidate = request.Document?.Clone();
+                options = CloneSplitOptionsFor(this._options, record.InputFile);
+                session.LastDraftRevision = request.DraftRevision;
+            }
+            try
+            {
+                cancellation.ThrowIfCancellationRequested();
+                if (!session.Source.Matches(MkvSplitSourceIdentity.FromFile(record.InputFile))) return ApplyFailure(SplitApplyStatus.Conflict, "sourceChanged");
+                MkvSplitDocumentService service = new MkvSplitDocumentService();
+                if (reset)
+                {
+                    if (options.Manual) candidate = service.CreateFullSource(session.Source, session.Analysis);
+                    else
+                    {
+                        MkvSplitPlan legacy = await Task.Run(() => new MkvSplitPlanner().BuildPlan(options, record.InputFile, null), cancellation);
+                        if (!legacy.IsValid) return ApplyFailure(SplitApplyStatus.Invalid, "preparationFailed", legacy.ErrorMessage);
+                        candidate = service.FromLegacyPlan(legacy, session.Source);
+                    }
+                    candidate.Id = session.DocumentId;
+                }
+                MkvSplitExecutionPlan plan = await Task.Run(() => service.BuildExecutionPlan(candidate, session.Analysis, options), cancellation);
+                cancellation.ThrowIfCancellationRequested();
+                if (!plan.IsValid) return new SplitApplyResult { Status = SplitApplyStatus.Invalid, Diagnostics = plan.Projection.Diagnostics, Plan = Copy(plan) };
+                SplitApplyResult response;
+                lock (this.StateLock)
+                {
+                    if (this.BusyState) return ApplyFailure(SplitApplyStatus.Busy, "busy");
+                    this._applied.TryGetValue(record.InputFile, out AppliedMontage previous);
+                    if (!this._sessions.TryGetValue(request.SessionId, out EditorSession current) || !ReferenceEquals(current, session)
+                        || current.LastDraftRevision != request.DraftRevision || this._optionsRevision != request.ExpectedOptionsRevision
+                        || (previous?.Revision ?? 0) != request.ExpectedAppliedRevision || !this._records.Any(item => item.RecordId == session.RecordId)
+                        || !session.Source.Matches(MkvSplitSourceIdentity.FromFile(record.InputFile)))
+                        return ApplyFailure(SplitApplyStatus.Conflict, "conflict");
+                    List<MkvSplitDiagnostic> collisions = this.GlobalCollisions(record, plan);
+                    if (collisions.Count > 0) return new SplitApplyResult { Status = SplitApplyStatus.Invalid, Diagnostics = collisions };
+                    long revision = (previous?.Revision ?? 0) + 1;
+                    this.CommitMontage(record, candidate, plan, revision, !reset);
+                    response = new SplitApplyResult { Status = SplitApplyStatus.Applied, AppliedRevision = revision, OptionsRevision = this._optionsRevision, Plan = Copy(plan) };
+                }
+                this.NotifyRecordsChanged();
+                return response;
+            }
+            catch (OperationCanceledException) { return new SplitApplyResult { Status = SplitApplyStatus.Cancelled }; }
+            catch (Exception exception) { return ApplyFailure(SplitApplyStatus.Invalid, "preparationFailed", exception.Message); }
+        }
+
+        private List<MkvSplitDiagnostic> GlobalCollisions(MkvSplitRecord owner, MkvSplitExecutionPlan plan)
+        {
+            HashSet<string> reserved = new HashSet<string>(this._records.Select(record => Path.GetFullPath(record.InputFile)), StringComparer.OrdinalIgnoreCase);
+            foreach (MkvSplitRecord record in this._records.Where(record => record.RecordId != owner.RecordId))
+            {
+                if (this._applied.TryGetValue(record.InputFile, out AppliedMontage applied))
+                    foreach (MkvSplitExecutionOutput output in applied.Plan.Outputs) reserved.Add(output.Projection.FullPath);
+                else if (record.Plan != null)
+                    foreach (MkvSplitSegment segment in record.Plan.Segments) reserved.Add(Path.GetFullPath(Path.Combine(record.Plan.OutputDir, segment.File)));
+            }
+            List<MkvSplitDiagnostic> errors = new List<MkvSplitDiagnostic>();
+            foreach (MkvSplitExecutionOutput output in plan.Outputs)
+                if (!reserved.Add(output.Projection.FullPath)) errors.Add(new MkvSplitDiagnostic { Code = "nameCollision", OutputId = output.OutputId, Severity = MkvSplitDiagnosticSeverity.Error,
+                    Message = AppText.F("split.montage.nameCollision", output.Projection.FullPath) });
+            return errors;
+        }
+
+        private void CommitMontage(MkvSplitRecord record, MkvSplitDocument document, MkvSplitExecutionPlan plan, long revision, bool customized)
+        {
+            this._applied.TryGetValue(record.InputFile, out AppliedMontage previous);
+            List<MkvSplitOutputExecutionResult> retained = new List<MkvSplitOutputExecutionResult>();
+            foreach (MkvSplitExecutionOutput output in plan.Outputs)
+            {
+                MkvSplitExecutionOutput before = previous?.Plan.Outputs.Find(item => item.OutputId == output.OutputId);
+                MkvSplitOutputExecutionResult state = record.OutputResults.Find(item => item.OutputId == output.OutputId);
+                if (before != null && state != null && before.Projection.FullPath == output.Projection.FullPath
+                    && before.Clips.Select(item => (item.Segment.StartFrame, item.Segment.FrameCount)).SequenceEqual(output.Clips.Select(item => (item.Segment.StartFrame, item.Segment.FrameCount))))
+                    retained.Add(state);
+                else retained.Add(new MkvSplitOutputExecutionResult { OutputId = output.OutputId, FullPath = output.Projection.FullPath });
+            }
+            this._applied[record.InputFile] = new AppliedMontage { Document = document.Clone(), Plan = plan, Revision = revision, OptionsRevision = this._optionsRevision };
+            record.OutputResults = retained;
+            record.MontageProjection = Copy(plan.Projection);
+            record.Plan = LegacySummary(plan, customized);
+            record.Segments = record.Plan.Segments;
+            record.IsOverride = customized;
+            record.Status = plan.IsValid ? MkvSplitStatus.Planned : MkvSplitStatus.PlanInvalid;
+            record.Success = retained.Count > 0 && retained.All(item => item.Status == MkvSplitOutputExecutionStatus.Done || item.Status == MkvSplitOutputExecutionStatus.ExistsSkipped);
+            if (record.Success) record.Status = MkvSplitStatus.Done;
+            record.ErrorMessage = plan.IsValid ? "" : string.Join(" ", plan.Projection.Diagnostics.Select(item => item.Message));
+        }
+
+        private static MkvSplitPlan LegacySummary(MkvSplitExecutionPlan plan, bool customized)
+        {
+            MkvSplitPlan legacy = new MkvSplitPlan { InputFile = plan.Document.Source.FullPath, Mode = plan.Document.OriginMode,
+                IsOverride = customized, Duration = plan.Analysis.Duration, SourcePts = plan.Analysis.SourcePts,
+                FrameCount = plan.Analysis.SourcePts.Length, Chapters = plan.Analysis.Chapters, FrameRateMode = plan.Analysis.FrameRateMode,
+                VideoParams = plan.Analysis.VideoParams, IsValid = plan.IsValid,
+                ErrorMessage = string.Join(" ", plan.Projection.Diagnostics.Select(item => item.Message)),
+                KeyframeIndexes = plan.Analysis.KeyFlags.Select((item, index) => (item, index)).Where(pair => pair.item.Key).Select(pair => pair.index).ToArray() };
+            foreach (MkvSplitOutputProjection output in plan.Projection.Outputs)
+                legacy.Segments.Add(new MkvSplitSegment { Num = legacy.Segments.Count + 1, Episode = legacy.Segments.Count + 1,
+                    File = output.FileName, StartFrame = output.Clips.FirstOrDefault()?.StartFrame ?? 0, FrameCount = output.FrameCount,
+                    StartTs = 0, EndTs = output.DurationSeconds, Chapters = output.Chapters, OutputState = output.OutputState });
+            legacy.OutputDir = plan.Outputs.Count > 0 ? Path.GetDirectoryName(plan.Outputs[0].Projection.FullPath) : "";
+            legacy.DiscardedFrames = legacy.FrameCount - plan.Projection.CoveredSourceFrames;
+            return legacy;
+        }
+
+        private MkvSplitExecutionPlan PrepareMontageForRecord(MkvSplitRecord record, Options options)
+        {
+            MkvSplitDocumentService service = new MkvSplitDocumentService();
+            MkvSplitOptions split = CloneSplitOptionsFor(options, record.InputFile);
+            MkvSplitSourceIdentity source = MkvSplitSourceIdentity.FromFile(record.InputFile);
+            MkvSplitAnalysis analysis = MkvSplitAnalysisCache.Instance.GetOrBuild(record.InputFile);
+            MkvSplitDocument document;
+            long revision;
+            lock (this.StateLock)
+            {
+                this._applied.TryGetValue(record.InputFile, out AppliedMontage previous);
+                if (previous != null && !source.Matches(previous.Document.Source))
+                    throw new InvalidOperationException(AppText.T("split.montage.sourceChanged"));
+                document = previous?.Document.Clone();
+                revision = previous?.Revision ?? 0;
+            }
+            if (document == null)
+            {
+                MkvSplitPlan legacy = split.Manual ? null : new MkvSplitPlanner().BuildPlan(split, record.InputFile, null);
+                if (legacy != null && !legacy.IsValid) throw new InvalidOperationException(legacy.ErrorMessage);
+                document = split.Manual ? service.CreateFullSource(source, analysis) : service.FromLegacyPlan(legacy, source);
+            }
+            MkvSplitExecutionPlan plan = service.BuildExecutionPlan(document, analysis, split);
+            lock (this.StateLock)
+            {
+                if (!source.Matches(MkvSplitSourceIdentity.FromFile(record.InputFile))) throw new InvalidOperationException(AppText.T("split.montage.sourceChanged"));
+                plan.Projection.Diagnostics.AddRange(this.GlobalCollisions(record, plan));
+                if (plan.IsValid) this.CommitMontage(record, document, plan, revision + 1, record.IsOverride);
+                else
+                {
+                    record.MontageProjection = Copy(plan.Projection);
+                    record.Plan = LegacySummary(plan, record.IsOverride);
+                    record.Segments = record.Plan.Segments;
+                    record.Status = MkvSplitStatus.PlanInvalid;
+                    record.ErrorMessage = record.Plan.ErrorMessage;
+                }
+            }
+            return plan;
+        }
+
+        /// <summary>Risolutore immutabile per una richiesta preview/audio vincolata alla sessione.</summary>
+        public IMediaSourceResolver ResolveEditorMedia(Guid sessionId)
+        {
+            lock (this.StateLock)
+            {
+                if (!this._sessions.TryGetValue(sessionId, out EditorSession session)) return null;
+                MkvSplitRecord record = this._records.Find(item => item.RecordId == session.RecordId);
+                if (record == null || !session.Source.Matches(MkvSplitSourceIdentity.FromFile(session.Source.FullPath))) return null;
+                return new SessionMediaResolver(new MediaSource(session.Source.FullPath,
+                    Copy(session.SourceInfo.Tracks.FindAll(track => track.Type == "audio"))));
+            }
+        }
+
+        private class SessionMediaResolver : IMediaSourceResolver
+        {
+            private readonly MediaSource _source;
+            public SessionMediaResolver(MediaSource source) { this._source = source; }
+            public bool SupportsSide(string side) { return string.Equals(side, "input", StringComparison.OrdinalIgnoreCase); }
+            public MediaSource ResolveMediaSource(int recordIndex, string side) { return this.SupportsSide(side) ? this._source : null; }
+        }
 
         #endregion
 
@@ -105,7 +418,6 @@ namespace RemuxForge.Web.Services
             this._options = new Options();
             this._options.Mode = Options.MODE_SPLIT;
             this._records = new List<MkvSplitRecord>();
-            this._overrides = new Dictionary<string, List<MkvSplitOverrideSegment>>(StringComparer.OrdinalIgnoreCase);
         }
 
         #endregion
@@ -136,7 +448,19 @@ namespace RemuxForge.Web.Services
 
             lock (this.StateLock)
             {
-                this._options = options;
+                if (this.BusyState) { errorMessage = AppText.T("split.montage.busy"); return false; }
+                this._options = CloneOptions(options);
+                this._optionsRevision++;
+                foreach (MkvSplitRecord record in this._records)
+                    if (!record.IsOverride)
+                    {
+                        this._applied.Remove(record.InputFile);
+                        record.Plan = null;
+                        record.MontageProjection = null;
+                        record.Status = MkvSplitStatus.Pending;
+                        record.Success = false;
+                        record.OutputResults.Clear();
+                    }
             }
             this.AppendLog(AppText.T("web.split.configApplied"));
             return true;
@@ -147,8 +471,11 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void Scan()
         {
-            if (this.BusyState)
-                return;
+            lock (this.StateLock)
+            {
+                if (this.BusyState) return;
+                this.BusyState = true;
+            }
 
             Thread thread = new Thread(this.ScanWorker);
             thread.IsBackground = true;
@@ -177,6 +504,7 @@ namespace RemuxForge.Web.Services
             }
 
             Thread thread = new Thread(() => this.AnalyzeWorker(targets));
+            lock (this.StateLock) { if (this.BusyState) return; this.BusyState = true; }
             thread.IsBackground = true;
             thread.Start();
         }
@@ -203,6 +531,7 @@ namespace RemuxForge.Web.Services
             }
 
             Thread thread = new Thread(() => this.SplitWorker(targets));
+            lock (this.StateLock) { if (this.BusyState) return; this.BusyState = true; }
             thread.IsBackground = true;
             thread.Start();
         }
@@ -232,6 +561,7 @@ namespace RemuxForge.Web.Services
         {
             lock (this.StateLock)
             {
+                if (this.BusyState) return;
                 foreach (int index in indices)
                 {
                     if (index < 0 || index >= this._records.Count)
@@ -249,19 +579,22 @@ namespace RemuxForge.Web.Services
         /// Restituisce copia record
         /// </summary>
         /// <summary>
-        /// Restituisce i segmenti dell'editor per un record, null quando comanda la configurazione globale
+        /// Proietta il documento personalizzato nei segmenti legacy, solo per output a clip singola.
+        /// Per un montaggio multiclip usare OpenEditorAsync: non è rappresentabile senza perderne la semantica.
         /// </summary>
         /// <param name="index">Indice del record</param>
         /// <returns>Segmenti dell'editor oppure null</returns>
         public List<MkvSplitOverrideSegment> GetOverride(int index)
         {
-            MkvSplitRecord record = this.GetRecordAt(index);
-            List<MkvSplitOverrideSegment> stored;
-
-            if (record == null) { return null; }
             lock (this.StateLock)
             {
-                return this._overrides.TryGetValue(record.InputFile, out stored) ? stored : null;
+                MkvSplitRecord record = this.GetRecordAt(index);
+                if (record == null || !record.IsOverride || !this._applied.TryGetValue(record.InputFile, out AppliedMontage applied)) return null;
+                if (applied.Document.Outputs.Any(output => output.Clips.Count != 1))
+                    throw new NotSupportedException(AppText.T("split.montage.legacyMontageUnavailable"));
+                return applied.Document.Outputs.Select(output => new MkvSplitOverrideSegment {
+                    StartFrame = output.Clips[0].StartFrame,
+                    FrameCount = output.Clips[0].EndFrameExclusive - output.Clips[0].StartFrame, Excluded = false }).ToList();
             }
         }
 
@@ -272,14 +605,20 @@ namespace RemuxForge.Web.Services
         /// <param name="segments">Segmenti dell'editor</param>
         public void SetOverride(int index, List<MkvSplitOverrideSegment> segments)
         {
-            MkvSplitRecord record = this.GetRecordAt(index);
-
-            if (record == null || segments == null) { return; }
-            lock (this.StateLock)
+            if (segments == null) return;
+            SplitEditorOpenResult opened = this.OpenEditorAsync(index, CancellationToken.None).GetAwaiter().GetResult();
+            if (opened.Snapshot == null) return;
+            try
             {
-                this._overrides[record.InputFile] = segments;
+                MkvSplitDocument document = new MkvSplitDocumentService().FromLegacyOverride(
+                    this.GetRecordAt(index).Plan ?? new MkvSplitPlan { Mode = opened.Snapshot.Document.OriginMode }, segments, opened.Snapshot.SourceIdentity);
+                document.Id = opened.Snapshot.Document.Id;
+                SplitApplyResult applied = this.ApplyDraftAsync(new SplitApplyRequest { SessionId = opened.Snapshot.SessionId,
+                    ExpectedAppliedRevision = opened.Snapshot.ExpectedAppliedRevision, ExpectedOptionsRevision = opened.Snapshot.ExpectedOptionsRevision,
+                    DraftRevision = 1, Document = document }, CancellationToken.None).GetAwaiter().GetResult();
+                if (applied.Status != SplitApplyStatus.Applied) this.RejectOperation(string.Join(" ", applied.Diagnostics.Select(item => item.Message)));
             }
-            this.RebuildPlan(index, segments);
+            finally { this.CloseEditor(opened.Snapshot.SessionId); }
         }
 
         /// <summary>
@@ -288,14 +627,10 @@ namespace RemuxForge.Web.Services
         /// <param name="index">Indice del record</param>
         public void ClearOverride(int index)
         {
-            MkvSplitRecord record = this.GetRecordAt(index);
-
-            if (record == null) { return; }
-            lock (this.StateLock)
-            {
-                if (!this._overrides.Remove(record.InputFile)) { return; }
-            }
-            this.RebuildPlan(index, null);
+            SplitEditorOpenResult opened = this.OpenEditorAsync(index, CancellationToken.None).GetAwaiter().GetResult();
+            if (opened.Snapshot == null) return;
+            try { this.ReapplyRuleAsync(opened.Snapshot.SessionId, CancellationToken.None).GetAwaiter().GetResult(); }
+            finally { this.CloseEditor(opened.Snapshot.SessionId); }
         }
 
         /// <summary>
@@ -306,7 +641,7 @@ namespace RemuxForge.Web.Services
         {
             lock (this.StateLock)
             {
-                return this._overrides.Count;
+                return this._records.Count(record => record.IsOverride);
             }
         }
 
@@ -314,7 +649,7 @@ namespace RemuxForge.Web.Services
         {
             lock (this.StateLock)
             {
-                return new List<MkvSplitRecord>(this._records);
+                return Copy(this._records);
             }
         }
 
@@ -366,9 +701,29 @@ namespace RemuxForge.Web.Services
                 List<MkvSplitRecord> scanned = this.ScanSource();
                 lock (this.StateLock)
                 {
+                    foreach (MkvSplitRecord record in scanned)
+                    {
+                        MkvSplitRecord previous = this._records.Find(item => string.Equals(item.InputFile, record.InputFile, StringComparison.OrdinalIgnoreCase));
+                        if (previous != null && this._applied.TryGetValue(record.InputFile, out AppliedMontage applied)
+                            && applied.Document.Source.Matches(MkvSplitSourceIdentity.FromFile(record.InputFile)))
+                        {
+                            record.RecordId = previous.RecordId;
+                            record.Plan = previous.Plan;
+                            record.MontageProjection = previous.MontageProjection;
+                            record.OutputResults = previous.OutputResults;
+                            record.IsOverride = previous.IsOverride;
+                            record.Segments = previous.Segments;
+                            record.Status = previous.Status;
+                            record.Success = previous.Success;
+                            record.Skipped = previous.Skipped;
+                            record.ErrorMessage = previous.ErrorMessage;
+                        }
+                        else this._applied.Remove(record.InputFile);
+                    }
                     this._records = scanned;
                     this.SelectedIndexState = scanned.Count > 0 ? 0 : -1;
-                    this._overrides.Clear();
+                    foreach (string path in this._applied.Keys.ToList())
+                        if (!scanned.Any(record => string.Equals(record.InputFile, path, StringComparison.OrdinalIgnoreCase))) this._applied.Remove(path);
                 }
                 this.AppendLog(AppText.F("web.split.scanCompleted", scanned.Count));
                 this.NotifyRecordsChanged();
@@ -427,7 +782,8 @@ namespace RemuxForge.Web.Services
                         this.ReportProgress(i, targets.Count, Path.GetFileName(record.InputFile));
                         this.SetRecordStatus(targets[i], MkvSplitStatus.Analyzing, "");
 
-                        plan = planner.BuildPlan(CloneSplitOptionsFor(options, record.InputFile), record.InputFile, status => this.ReportPhase(status), this.GetOverride(targets[i]));
+                        MkvSplitExecutionPlan montage = this.PrepareMontageForRecord(record, options);
+                        plan = LegacySummary(montage, record.IsOverride);
                         planner.PrintPlan(plan);
 
                         lock (this.StateLock)
@@ -519,18 +875,15 @@ namespace RemuxForge.Web.Services
                         this.ReportProgress(i, targets.Count, Path.GetFileName(record.InputFile));
 
                         // Un file mai analizzato riceve il suo piano adesso: lo split non ricostruisce mai i segmenti da sé
-                        plan = record.Plan;
-                        if (plan == null)
+                        AppliedMontage applied;
+                        lock (this.StateLock) { this._applied.TryGetValue(record.InputFile, out applied); }
+                        MkvSplitExecutionPlan montage = applied?.Plan;
+                        if (montage == null || applied.OptionsRevision != this._optionsRevision)
                         {
                             this.SetRecordStatus(targets[i], MkvSplitStatus.Analyzing, "");
-                            plan = planner.BuildPlan(CloneSplitOptionsFor(options, record.InputFile), record.InputFile, status => this.ReportPhase(status), this.GetOverride(targets[i]));
-                            lock (this.StateLock)
-                            {
-                                record.Plan = plan;
-                                record.Segments = plan.Segments;
-                                record.IsOverride = plan.IsOverride;
-                            }
+                            montage = this.PrepareMontageForRecord(record, options);
                         }
+                        plan = LegacySummary(montage, record.IsOverride);
 
                         if (!plan.IsValid)
                         {
@@ -541,11 +894,32 @@ namespace RemuxForge.Web.Services
                         }
 
                         this.SetRecordStatus(targets[i], MkvSplitStatus.Running, "");
-                        exitCode = pipeline.ExecutePlan(plan, CloneSplitOptionsFor(options, record.InputFile));
+                        lock (this.StateLock)
+                        {
+                            List<MkvSplitDiagnostic> collisions = this.GlobalCollisions(record, montage);
+                            if (collisions.Count > 0) throw new InvalidOperationException(string.Join(" ", collisions.Select(item => item.Message)));
+                        }
+                        MkvSplitExecutionPlan pending = new MkvSplitExecutionPlan { Document = montage.Document, Analysis = montage.Analysis,
+                            Projection = montage.Projection, Tracks = montage.Tracks, Subtitles = montage.Subtitles,
+                            Outputs = montage.Outputs.Where(output => !record.OutputResults.Any(state => state.OutputId == output.OutputId
+                                && state.Status == MkvSplitOutputExecutionStatus.Done)).ToList() };
+                        MkvSplitMontageExecutionResult execution = pipeline.ExecutePlan(pending, CloneSplitOptionsFor(options, record.InputFile), this.IsStopRequested);
+                        lock (this.StateLock)
+                            foreach (MkvSplitOutputExecutionResult state in execution.Outputs)
+                            {
+                                record.OutputResults.RemoveAll(item => item.OutputId == state.OutputId);
+                                record.OutputResults.Add(state);
+                            }
+                        exitCode = execution.ExitCode;
+                        if (this.StopRequested)
+                        {
+                            this.UpdateRecord(targets[i], MkvSplitStatus.Stopped, false, AppText.T("web.split.stopRequested"), plan.Segments);
+                            break;
+                        }
                         if (exitCode == 0)
                         {
                             successCount++;
-                            this.UpdateRecord(targets[i], MkvSplitStatus.Done, true, "", plan.Segments);
+                            this.UpdateRecord(targets[i], options.Split.DryRun ? MkvSplitStatus.Planned : MkvSplitStatus.Done, !options.Split.DryRun, "", plan.Segments);
                         }
                         else
                         {
@@ -834,7 +1208,7 @@ namespace RemuxForge.Web.Services
         {
             get
             {
-                return this._options;
+                lock (this.StateLock) { return CloneOptions(this._options); }
             }
         }
 

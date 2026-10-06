@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System;
 
 namespace RemuxForge.Core.Models
 {
@@ -347,6 +348,13 @@ namespace RemuxForge.Core.Models
     /// </summary>
     public class MkvSplitRecord
     {
+        /// <summary>Identità stabile durante refresh del medesimo sorgente invariato.</summary>
+        public Guid RecordId { get; set; } = Guid.NewGuid();
+
+        /// <summary>Proiezione informativa del montaggio applicato; l'orchestrator ne possiede l'autorità.</summary>
+        public MkvSplitTimelineProjection MontageProjection { get; set; }
+
+        public List<MkvSplitOutputExecutionResult> OutputResults { get; set; } = new List<MkvSplitOutputExecutionResult>();
         /// <summary>File input</summary>
         public string InputFile { get; set; }
 

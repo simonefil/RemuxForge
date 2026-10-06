@@ -2,7 +2,9 @@ using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace RemuxForge.Core.Subtitles
 {
@@ -11,6 +13,8 @@ namespace RemuxForge.Core.Subtitles
     /// </summary>
     internal class SrtSubtitleTimelineRewriter
     {
+        private static readonly Regex s_completeTimestamp = new Regex(@"\A[0-9]+:[0-9]{2}:[0-9]{2},[0-9]{3}\z", RegexOptions.Compiled);
+
         #region Metodi pubblici
 
         /// <summary>
@@ -22,44 +26,11 @@ namespace RemuxForge.Core.Subtitles
         public string Rewrite(string content, EditMap editMap)
         {
             StringBuilder result = new StringBuilder();
-            string normalized = content.Replace("\r\n", "\n").Replace('\r', '\n');
-            string[] blocks = normalized.Split(new string[] { "\n\n" }, StringSplitOptions.None);
-            string block;
-            string[] lines;
-            string[] timingParts;
             List<SubtitleCueInterval> intervals;
             int index = 1;
-            int timingLine;
-            long startMs;
-            long endMs;
-            // Ogni blocco SRT contiene indice, riga timing e testo; i blocchi non parsabili vengono scartati
-            for (int i = 0; i < blocks.Length; i++)
+            foreach (SrtSubtitleCue cue in ParseCues(content))
             {
-                block = blocks[i].Trim('\n');
-                if (string.IsNullOrEmpty(block.Trim()))
-                {
-                    continue;
-                }
-
-                lines = block.Split('\n');
-                timingLine = this.FindTimingLine(lines);
-                if (timingLine < 0)
-                {
-                    continue;
-                }
-
-                timingParts = lines[timingLine].Split(new string[] { "-->" }, StringSplitOptions.None);
-                if (timingParts.Length != 2)
-                {
-                    continue;
-                }
-
-                if (!this.TryParseTimestamp(timingParts[0].Trim(), out startMs) || !this.TryParseTimestamp(timingParts[1].Trim(), out endMs))
-                {
-                    continue;
-                }
-
-                intervals = SubtitleTimelineMapper.ApplyOperationsToCue(startMs, endMs, editMap);
+                intervals = SubtitleTimelineMapper.ApplyOperationsToCue(cue.StartMs, cue.EndMs, editMap);
 
                 // Un cue può diventare più cue se un cut attraversa l'intervallo originale
                 for (int c = 0; c < intervals.Count; c++)
@@ -70,16 +41,57 @@ namespace RemuxForge.Core.Subtitles
                     }
 
                     result.Append(index.ToString(CultureInfo.InvariantCulture)).Append('\n');
-                    result.Append(this.FormatTimestamp(intervals[c].StartMs)).Append(" --> ").Append(this.FormatTimestamp(intervals[c].EndMs)).Append('\n');
-                    for (int l = timingLine + 1; l < lines.Length; l++)
-                    {
-                        result.Append(lines[l]).Append('\n');
-                    }
+                    result.Append(FormatTimestamp(intervals[c].StartMs)).Append(" --> ").Append(FormatTimestamp(intervals[c].EndMs)).Append('\n');
+                    if (cue.HasTextLines) result.Append(cue.Text).Append('\n');
                     result.Append('\n');
                     index++;
                 }
             }
 
+            return result.ToString();
+        }
+
+        /// <summary>Parsing codec condiviso; strict permette ai chiamanti di rifiutare uno scarto implicito.</summary>
+        public static List<SrtSubtitleCue> ParseCues(string content, bool strict = false, bool acceptDotTimestamp = false)
+        {
+            List<SrtSubtitleCue> result = new List<SrtSubtitleCue>();
+            string normalized = content.Replace("\r\n", "\n").Replace('\r', '\n');
+            if (strict)
+            {
+                string[] normalizedLines = normalized.Split('\n');
+                for (int index = 0; index < normalizedLines.Length; index++)
+                    if (string.IsNullOrWhiteSpace(normalizedLines[index])) normalizedLines[index] = "";
+                normalized = string.Join("\n", normalizedLines);
+            }
+            foreach (string raw in normalized.Split(new string[] { "\n\n" }, StringSplitOptions.None))
+            {
+                string block = raw.Trim('\n');
+                if (string.IsNullOrWhiteSpace(block)) continue;
+                string[] lines = block.Split('\n');
+                int timing = FindTimingLine(lines);
+                string[] parts = timing < 0 ? Array.Empty<string>() : lines[timing].Split(new string[] { "-->" }, StringSplitOptions.None);
+                if (parts.Length != 2 || !TryParseTimestamp(parts[0].Trim(), out long start, acceptDotTimestamp, strict) || !TryParseTimestamp(parts[1].Trim(), out long end, acceptDotTimestamp, strict))
+                {
+                    if (strict) throw new InvalidDataException("Invalid SRT cue");
+                    continue;
+                }
+                result.Add(new SrtSubtitleCue(start, end, string.Join("\n", lines, timing + 1, lines.Length - timing - 1), lines.Length > timing + 1));
+            }
+            return result;
+        }
+
+        /// <summary>Serializza cue già mappati, senza applicare una EditMap.</summary>
+        public static string SerializeCues(IEnumerable<SrtSubtitleCue> cues)
+        {
+            StringBuilder result = new StringBuilder();
+            int index = 0;
+            foreach (SrtSubtitleCue cue in cues)
+            {
+                result.Append(++index).Append('\n');
+                result.Append(FormatTimestamp(cue.StartMs)).Append(" --> ").Append(FormatTimestamp(cue.EndMs)).Append('\n');
+                if (cue.HasTextLines) result.Append(cue.Text).Append('\n');
+                result.Append('\n');
+            }
             return result.ToString();
         }
 
@@ -92,7 +104,7 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         /// <param name="lines">Righe del blocco</param>
         /// <returns>Indice riga timing, -1 se assente</returns>
-        private int FindTimingLine(string[] lines)
+        public static int FindTimingLine(string[] lines)
         {
             for (int i = 0; i < lines.Length; i++)
             {
@@ -110,9 +122,14 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         /// <param name="value">Timestamp SRT</param>
         /// <param name="ms">Millisecondi risultanti</param>
+        /// <param name="acceptDot">Accetta il punto come separatore dei millisecondi</param>
+        /// <param name="strict">Valida la forma completa, senza componenti extra o token successivi</param>
         /// <returns>True se il timestamp è valido</returns>
-        private bool TryParseTimestamp(string value, out long ms)
+        public static bool TryParseTimestamp(string value, out long ms, bool acceptDot = false, bool strict = false)
         {
+            if (acceptDot) value = value.Replace('.', ',');
+            ms = 0;
+            if (strict && !s_completeTimestamp.IsMatch(value)) return false;
             string[] parts = value.Split(new char[] { ':', ',' });
             int h;
             int m;
@@ -140,7 +157,7 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         /// <param name="ms">Millisecondi da formattare</param>
         /// <returns>Timestamp SRT</returns>
-        private string FormatTimestamp(long ms)
+        public static string FormatTimestamp(long ms)
         {
             long h;
             long m;
@@ -163,4 +180,5 @@ namespace RemuxForge.Core.Subtitles
 
         #endregion
     }
+    internal sealed record SrtSubtitleCue(long StartMs, long EndMs, string Text, bool HasTextLines = true);
 }

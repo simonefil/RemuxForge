@@ -1,6 +1,6 @@
 @inject NotificationService NotificationService
 
-<div class="dialog-overlay visible">
+<div class="dialog-overlay visible @(_isSplitMode ? "split-guided-config" : "")">
     <div class="dialog-box config-dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="config-dialog-title" @onclick:stopPropagation="true">
         <div id="config-dialog-title" class="dialog-title">@AppText.T("web.config.title")</div>
         <div class="dialog-body config-dialog-body">
@@ -8,7 +8,7 @@
             @if (_isSplitMode)
             {
                 @* Sorgente Split *@
-                <div class="form-section">@AppText.T("web.config.section.splitSource")</div>
+                <div class="form-section">1 · @AppText.T("web.config.section.splitSource")</div>
                 <div class="form-row">
                     <span class="form-label">@AppText.T("web.config.label.sourceRequired")</span>
                     <input class="form-input" aria-label="@AppText.T("web.config.label.sourceRequired")" @bind="_splitSource" @onfocus="@(() => SetFieldHelp("split.source"))" @onmouseenter="@(() => SetFieldHelp("split.source"))" />
@@ -25,7 +25,7 @@
                 </div>
 
                 @* Modalita taglio *@
-                <div class="form-section">@AppText.T("web.config.section.cutting")</div>
+                <div class="form-section">2 · @AppText.T("web.config.section.cutting")</div>
                 <div class="form-row">
                     <span class="form-label">@AppText.T("web.config.label.modeRequired")</span>
                     <select class="form-input" style="width: 34ch;" aria-label="@AppText.T("web.config.label.modeRequired")" @bind="_splitCutMode" @bind:after="OnSplitCutModeChanged" @onfocus="@(() => SetFieldHelp("split.mode"))" @onmouseenter="@(() => SetFieldHelp("split.mode"))">
@@ -57,33 +57,34 @@
                 {
                     <div class="form-row">
                         <span class="form-label">@AppText.T("web.config.label.patternRequired")</span>
-                        <input class="form-input" aria-label="@AppText.T("web.config.label.patternRequired")" @bind="_splitPattern" placeholder="5,5,5" @onfocus="@(() => SetFieldHelp("split.pattern"))" @onmouseenter="@(() => SetFieldHelp("split.pattern"))" />
+                        <SplitRuleRowsComponent Mode="pattern" @bind-Value="_splitPattern" ValidChanged="@(valid => _splitRowsValid = valid)" />
                     </div>
                 }
                 else if (_splitCutMode == SPLIT_CUT_RANGES)
                 {
                     <div class="form-row">
                         <span class="form-label">@AppText.T("web.config.label.rangesRequired")</span>
-                        <input class="form-input" aria-label="@AppText.T("web.config.label.rangesRequired")" @bind="_splitRanges" placeholder="0-00:24:00.000,00:24:00.000-END" @onfocus="@(() => SetFieldHelp("split.ranges"))" @onmouseenter="@(() => SetFieldHelp("split.ranges"))" />
+                        <SplitRuleRowsComponent Mode="ranges" @bind-Value="_splitRanges" ValidChanged="@(valid => _splitRowsValid = valid)" />
                     </div>
                 }
                 else if (_splitCutMode == SPLIT_CUT_SPLIT_AT)
                 {
                     <div class="form-row">
                         <span class="form-label">@AppText.T("web.config.label.splitAtRequired")</span>
-                        <input class="form-input" aria-label="@AppText.T("web.config.label.splitAtRequired")" @bind="_splitAt" placeholder="00:24:00.000" @onfocus="@(() => SetFieldHelp("split.splitAt"))" @onmouseenter="@(() => SetFieldHelp("split.splitAt"))" />
+                        <SplitRuleRowsComponent Mode="points" @bind-Value="_splitAt" ValidChanged="@(valid => _splitRowsValid = valid)" />
                     </div>
                 }
                 else if (_splitCutMode == SPLIT_CUT_TRIM)
                 {
                     <div class="form-row">
-                        <span class="form-label">@AppText.T("web.config.label.trimStart")</span>
-                        <input class="form-input" aria-label="@AppText.T("web.config.label.trimStart")" @bind="_splitTrimStart" @onfocus="@(() => SetFieldHelp("split.trimStart"))" @onmouseenter="@(() => SetFieldHelp("split.trimStart"))" />
+                        <span class="form-label">@AppText.T("web.splitMontage.keepStart")</span>
+                        <input class="form-input" aria-label="@AppText.T("web.splitMontage.keepStart")" placeholder="0" @bind="_splitTrimStart" @onfocus="@(() => SetFieldHelp("split.trimStart"))" @onmouseenter="@(() => SetFieldHelp("split.trimStart"))" />
                     </div>
                     <div class="form-row">
-                        <span class="form-label">@AppText.T("web.config.label.trimEnd")</span>
-                        <input class="form-input" aria-label="@AppText.T("web.config.label.trimEnd")" @bind="_splitTrimEnd" @onfocus="@(() => SetFieldHelp("split.trimEnd"))" @onmouseenter="@(() => SetFieldHelp("split.trimEnd"))" />
+                        <span class="form-label">@AppText.T("web.splitMontage.keepEnd")</span>
+                        <input class="form-input" aria-label="@AppText.T("web.splitMontage.keepEnd")" placeholder="END" @bind="_splitTrimEnd" @onfocus="@(() => SetFieldHelp("split.trimEnd"))" @onmouseenter="@(() => SetFieldHelp("split.trimEnd"))" />
                     </div>
+                    <div class="split-mode-note">@AppText.T("web.splitMontage.trimBoundaryHelp")</div>
                 }
                 else if (_splitCutMode == SPLIT_CUT_CHAPTERS_EACH || _splitCutMode == SPLIT_CUT_MANUAL)
                 {
@@ -100,7 +101,7 @@
                 </div>
 
                 @* Naming *@
-                <div class="form-section">@AppText.T("web.config.section.naming")</div>
+                <div class="form-section">3 · @AppText.T("web.config.section.naming")</div>
                 <div class="form-row">
                     <span class="form-label">@AppText.T("web.config.label.template")</span>
                     <input class="form-input" aria-label="@AppText.T("web.config.label.template")" @bind="_splitOutputTemplate" @bind:event="oninput" placeholder="@SplitDefaultTemplate()" @onfocus="@(() => SetFieldHelp("split.template"))" @onmouseenter="@(() => SetFieldHelp("split.template"))" />
@@ -125,6 +126,8 @@
                     <span class="form-label">@AppText.T("web.config.label.extensions")</span>
                     <input class="form-input" aria-label="@AppText.T("web.config.label.extensions")" @bind="_extensions" @onfocus="@(() => SetFieldHelp("split.extensions"))" @onmouseenter="@(() => SetFieldHelp("split.extensions"))" />
                 </div>
+                <div class="form-section">4 · @AppText.T("web.splitMontage.review")</div>
+                <div class="split-mode-note">@AppText.T("web.splitMontage.reviewHelp")</div>
             }
             else
             {
@@ -346,7 +349,7 @@
             <div style="padding: 0.5em 1em; color: var(--rz-danger); white-space: pre-line;">@_validationError</div>
         }
         <div class="dialog-footer">
-            <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@Apply" />
+            <RadzenButton Text="@AppText.T(_isSplitMode ? "web.splitMontage.prepareReview" : "web.common.ok")" Icon="check" Click="@Apply" />
             <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" />
         </div>
     </div>
@@ -657,6 +660,7 @@
     /// Modalità di taglio split selezionata
     /// </summary>
     private string _splitCutMode = "";
+    private bool _splitRowsValid = true;
 
     /// <summary>
     /// Numero da cui parte la numerazione degli episodi
@@ -1103,6 +1107,9 @@
         {
             errors.Add(AppText.T("web.config.validation.patternRequired"));
         }
+
+        if ((_splitCutMode == SPLIT_CUT_PATTERN || _splitCutMode == SPLIT_CUT_RANGES || _splitCutMode == SPLIT_CUT_SPLIT_AT) && !_splitRowsValid)
+            errors.Add(AppText.T("web.splitMontage.invalidRuleRow"));
 
         if (_splitCutMode == SPLIT_CUT_RANGES && string.IsNullOrEmpty(_splitRanges.Trim()))
         {

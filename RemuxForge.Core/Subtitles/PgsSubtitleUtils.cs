@@ -16,6 +16,9 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         public const int SUP_PACKET_HEADER_SIZE = 13;
 
+        /// <summary>Segment type Palette Definition Segment.</summary>
+        public const int SEGMENT_PALETTE = 0x14;
+
         /// <summary>
         /// Segment type Object Definition Segment
         /// </summary>

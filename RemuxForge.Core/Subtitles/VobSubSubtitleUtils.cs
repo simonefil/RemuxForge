@@ -128,6 +128,27 @@ namespace RemuxForge.Core.Subtitles
 
         #region Metodi pubblici - SUB/SPU
 
+        /// <summary>Aggiorna PTS/DTS di un header PES già estratto, senza modificare SPU/RLE.</summary>
+        public static byte[] RewritePesTimestamps(byte[] header, long pts)
+        {
+            if (pts < 0 || pts >= (1L << 33) || header == null || header.Length < 3)
+                throw new InvalidDataException("Invalid VobSub PES timestamp/header");
+            byte[] result = (byte[])header.Clone();
+            int flags = header[1] & 0xc0;
+            if (flags == 0x40 || header.Length < 3 + header[2] || header[2] < (flags == 0xc0 ? 10 : flags == 0x80 ? 5 : 0))
+                throw new InvalidDataException("Truncated VobSub PES timestamps");
+            if (flags != 0) WritePesTimestamp(result, 3, pts);
+            if (flags == 0xc0) WritePesTimestamp(result, 8, pts);
+            return result;
+        }
+
+        private static void WritePesTimestamp(byte[] data, int offset, long pts)
+        {
+            data[offset] = (byte)((data[offset] & 0xf0) | (int)((pts >> 29) & 0x0e) | 1);
+            data[offset + 1] = (byte)(pts >> 22); data[offset + 2] = (byte)(((pts >> 14) & 0xfe) | 1);
+            data[offset + 3] = (byte)(pts >> 7); data[offset + 4] = (byte)(((pts << 1) & 0xfe) | 1);
+        }
+
 
         /// <summary>
         /// Riscrive un blocco SUB contenente una SPU DVD
@@ -274,7 +295,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="firstPesHeader">Header PES del primo settore, PTS incluso</param>
         /// <param name="substreamId">Id substream DVD</param>
         /// <returns>True se il blocco contiene una SPU PES completa</returns>
-        private static bool TryExtractPacketizedSpu(byte[] block, out byte[] rawSpu, out byte[] packHeader, out byte[] firstPesHeader, out byte substreamId)
+        public static bool TryExtractPacketizedSpu(byte[] block, out byte[] rawSpu, out byte[] packHeader, out byte[] firstPesHeader, out byte substreamId)
         {
             MemoryStream payload = new MemoryStream();
             int scan = 0;
@@ -353,7 +374,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="substreamId">Id substream DVD</param>
         /// <param name="errorMessage">Errore</param>
         /// <returns>Blocco SUB pacchettizzato, null se non rappresentabile</returns>
-        private static byte[] BuildPacketizedSpuBlock(byte[] rawSpu, byte[] packHeader, byte[] firstPesHeader, byte substreamId, out string errorMessage)
+        public static byte[] BuildPacketizedSpuBlock(byte[] rawSpu, byte[] packHeader, byte[] firstPesHeader, byte substreamId, out string errorMessage)
         {
             const int SECTOR_SIZE = 2048;
             MemoryStream output = new MemoryStream();
@@ -690,7 +711,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="strict">True per errore esplicito sui comandi non supportati</param>
         /// <param name="errorMessage">Errore in caso di SPU non trasformabile</param>
         /// <returns>True se la SPU è valida e trasformabile</returns>
-        private static bool TryParseSpu(byte[] data, int offset, int availableLength, out VobSubSpuInfo info, bool strict, out string errorMessage)
+        public static bool TryParseSpu(byte[] data, int offset, int availableLength, out VobSubSpuInfo info, bool strict, out string errorMessage, bool requireBitmapLayout = true)
         {
             int spuSize;
             int commandOffset;
@@ -722,7 +743,7 @@ namespace RemuxForge.Core.Subtitles
             }
 
             // Senza SET_DAREA e SET_DSPXA non conosciamo posizione né pixel data, quindi il blocco non è trasformabile
-            if (!info.HasDisplayArea || !info.HasPixelOffsets)
+            if (requireBitmapLayout && (!info.HasDisplayArea || !info.HasPixelOffsets))
             {
                 info = null;
                 return false;
@@ -769,6 +790,8 @@ namespace RemuxForge.Core.Subtitles
                 }
 
                 info.SequenceOffsets.Add(currentOffset);
+                List<int> commands = new List<int>();
+                info.SequenceCommandOffsets[currentOffset] = commands;
                 nextOffset = ReadUInt16BigEndian(data, sequenceStart + 2);
                 commandPos = sequenceStart + 4;
 
@@ -776,6 +799,7 @@ namespace RemuxForge.Core.Subtitles
                 while (commandPos < spuOffset + spuSize)
                 {
                     command = data[commandPos];
+                    commands.Add(commandPos - spuOffset);
                     commandPos++;
                     if (command == 0xff)
                     {
@@ -1190,7 +1214,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="data">Buffer sorgente</param>
         /// <param name="offset">Offset valore</param>
         /// <returns>Valore uint16 letto come int</returns>
-        private static int ReadUInt16BigEndian(byte[] data, int offset)
+        public static int ReadUInt16BigEndian(byte[] data, int offset)
         {
             return (data[offset] << 8) | data[offset + 1];
         }
@@ -1201,7 +1225,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="data">Buffer destinazione</param>
         /// <param name="offset">Offset valore</param>
         /// <param name="value">Valore da scrivere</param>
-        private static void WriteUInt16BigEndian(byte[] data, int offset, int value)
+        public static void WriteUInt16BigEndian(byte[] data, int offset, int value)
         {
             data[offset] = (byte)((value >> 8) & 0xff);
             data[offset + 1] = (byte)(value & 0xff);
@@ -1214,7 +1238,7 @@ namespace RemuxForge.Core.Subtitles
         /// <summary>
         /// Informazioni SPU parse
         /// </summary>
-        private sealed class VobSubSpuInfo
+        internal sealed class VobSubSpuInfo
         {
             /// <summary>
             /// Costruttore
@@ -1224,6 +1248,7 @@ namespace RemuxForge.Core.Subtitles
                 this.SequenceOffsets = new List<int>();
                 this.DisplayAreaCommandOffsets = new List<int>();
                 this.PixelOffsetCommandOffsets = new List<int>();
+                this.SequenceCommandOffsets = new Dictionary<int, List<int>>();
             }
 
             /// <summary>
@@ -1295,6 +1320,9 @@ namespace RemuxForge.Core.Subtitles
             /// Offset sequenze command table
             /// </summary>
             public List<int> SequenceOffsets { get; private set; }
+
+            /// <summary>Offset dei comandi (terminatore incluso) per ogni sequenza, per rewrite temporali senza canvas.</summary>
+            public Dictionary<int, List<int>> SequenceCommandOffsets { get; private set; }
 
             /// <summary>
             /// Offset comandi SET_DAREA da riscrivere

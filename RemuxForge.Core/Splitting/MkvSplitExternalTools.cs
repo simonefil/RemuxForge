@@ -208,11 +208,17 @@ namespace RemuxForge.Core.Splitting
         /// <returns>Array ordinato dei PTS video in secondi</returns>
         public double[] ExtractSourcePts(string sourceFile)
         {
+            return this.ExtractSourcePts(sourceFile, this.CountPackets(sourceFile), out _);
+        }
+
+        /// <summary>Separa i PTS dei frame dal confine finale aggiuntivo di timestamps_v2.</summary>
+        public double[] ExtractSourcePts(string sourceFile, int packetCount, out double endTimestamp)
+        {
             string tempFile;
             List<double> pts = new List<double>(1 << 17);
             StreamReader reader = null;
             string line;
-            double value;
+            double value = double.NaN;
 
             ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.T("split.tools.extractingPts"));
             tempFile = Path.Combine(Path.GetTempPath(), "mkv_pts_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".txt");
@@ -246,13 +252,46 @@ namespace RemuxForge.Core.Splitting
                 }
             }
 
-            if (pts.Count > 0)
+            endTimestamp = double.NaN;
+            if (pts.Count == packetCount + 1)
+            {
+                endTimestamp = pts[pts.Count - 1];
                 pts.RemoveAt(pts.Count - 1);
+            }
+
+            if (!double.IsFinite(endTimestamp))
+            {
+                value = double.NaN;
+                double lastPts = double.NegativeInfinity;
+                this.RunStreamed(this._ffprobe, new string[]
+                {
+                    "-v", "error", "-select_streams", "v:0", "-show_entries",
+                    "packet=pts_time,duration_time", "-of", "csv=p=0", sourceFile
+                }, line =>
+                {
+                    string[] fields = line.Split(',');
+                    if (fields.Length >= 2
+                        && double.TryParse(fields[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double timestamp)
+                        && timestamp >= lastPts)
+                    {
+                        lastPts = timestamp;
+                        value = double.TryParse(fields[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double duration)
+                            && duration > 0 ? timestamp + duration : double.NaN;
+                    }
+                });
+                endTimestamp = value;
+            }
 
             double[] arr = pts.ToArray();
             Array.Sort(arr);
             ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.tools.ptsExtracted", arr.Length));
             return arr;
+        }
+
+        /// <summary>Legge l'inventario tracce usando lo stesso resolver della pipeline.</summary>
+        public MkvFileInfo GetFileInfo(string inputFile)
+        {
+            return new MkvToolsService(this._mkvmerge).GetFileInfo(inputFile);
         }
 
         /// <summary>
