@@ -15,7 +15,12 @@ namespace RemuxForge.Core.Models
         /// <summary>
         /// Costruttore
         /// </summary>
-        public Options()
+        public Options() : this(true)
+        {
+        }
+
+        /// <summary>Default locali per lo scanner detached, senza inizializzare servizi globali.</summary>
+        internal Options(bool useGlobalToolSettings)
         {
             this.Mode = "";
             this.Language = "";
@@ -49,7 +54,7 @@ namespace RemuxForge.Core.Models
             this.KeepSourceAudioLangs = new List<string>();
             this.KeepSourceAudioCodec = new List<string>();
             this.KeepSourceSubtitleLangs = new List<string>();
-            this.MkvMergePath = !string.IsNullOrEmpty(AppSettingsService.Instance.Settings.Tools.MkvMergePath) ? AppSettingsService.Instance.Settings.Tools.MkvMergePath : "mkvmerge";
+            this.MkvMergePath = useGlobalToolSettings && !string.IsNullOrEmpty(AppSettingsService.Instance.Settings.Tools.MkvMergePath) ? AppSettingsService.Instance.Settings.Tools.MkvMergePath : "mkvmerge";
             this.Recursive = true;
             this.DryRun = false;
             this.FileExtensions = new List<string> { "mkv" };
@@ -1010,6 +1015,13 @@ namespace RemuxForge.Core.Models
         /// Lista di codici lingua ISO 639-2 da estrarre (-t, --target-language). Supporta valori multipli separati da virgola
         /// </summary>
         public List<string> TargetLanguage { get; set; }
+
+        /// <summary>Input avanzato per coppia. Null conserva il contratto CLI legacy.</summary>
+        public RemuxTrackSelection ExplicitTrackSelection { get; set; }
+
+        /// <summary>Opt-in del nuovo workflow anche per regole: zero import Lang significa skip derivato.
+        /// Default false; nessun parametro CLI lo abilita. Non attiva il merge e non cambia i filtri.</summary>
+        public bool SkipPairsWithoutSelectedLangTracks { get; set; }
 
         /// <summary>
         /// Pattern regex per il matching degli episodi (-m, --match-pattern). Default: S(\d+)E(\d+)

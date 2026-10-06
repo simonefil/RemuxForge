@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace RemuxForge.Core.Pipeline
 {
@@ -50,12 +51,13 @@ namespace RemuxForge.Core.Pipeline
         /// <param name="options">Opzioni operative</param>
         /// <param name="needsMerge">True se il flusso richiede merge</param>
         /// <returns>Record trovati</returns>
-        public List<FileProcessingRecord> Scan(Options options, bool needsMerge)
+        public List<FileProcessingRecord> Scan(Options options, bool needsMerge, CancellationToken cancellationToken = default)
         {
             List<FileProcessingRecord> records = new List<FileProcessingRecord>();
             Dictionary<string, string> languageIndex = new Dictionary<string, string>();
             string extList = string.Join(", ", options.FileExtensions);
-            List<string> sourceFiles = this.FindVideoFiles(options.SourceFolder, options.FileExtensions, options.Recursive);
+            cancellationToken.ThrowIfCancellationRequested();
+            List<string> sourceFiles = this.FindVideoFiles(options.SourceFolder, options.FileExtensions, options.Recursive, cancellationToken);
             bool singleFileMode = File.Exists(options.SourceFolder);
 
             this._log(LogSection.General, LogLevel.Success, "Trovati " + sourceFiles.Count + " file sorgente (" + extList + ")");
@@ -69,10 +71,11 @@ namespace RemuxForge.Core.Pipeline
                 else
                 {
                     this._log(LogSection.General, LogLevel.Info, "Indicizzazione cartella lingua...");
-                    List<string> languageFiles = this.FindVideoFiles(options.LanguageFolder, options.FileExtensions, options.Recursive);
+                    List<string> languageFiles = this.FindVideoFiles(options.LanguageFolder, options.FileExtensions, options.Recursive, cancellationToken);
 
                     for (int i = 0; i < languageFiles.Count; i++)
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
                         string langFileName = Path.GetFileName(languageFiles[i]);
                         string langEpisodeId = this.GetEpisodeIdentifier(langFileName, options.MatchPattern);
                         if (!string.IsNullOrEmpty(langEpisodeId))
@@ -87,6 +90,7 @@ namespace RemuxForge.Core.Pipeline
 
             for (int i = 0; i < sourceFiles.Count; i++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 string sourceFilePath = sourceFiles[i];
                 string sourceFileName = Path.GetFileName(sourceFilePath);
                 string episodeId = singleFileMode ? sourceFileName : this.GetEpisodeIdentifier(sourceFileName, options.MatchPattern);
@@ -192,7 +196,7 @@ namespace RemuxForge.Core.Pipeline
         /// <param name="extensions">Estensioni video senza punto</param>
         /// <param name="recursive">True per scansione ricorsiva</param>
         /// <returns>Lista file trovati</returns>
-        private List<string> FindVideoFiles(string folder, List<string> extensions, bool recursive)
+        private List<string> FindVideoFiles(string folder, List<string> extensions, bool recursive, CancellationToken cancellationToken)
         {
             List<string> files = new List<string>();
 
@@ -201,6 +205,7 @@ namespace RemuxForge.Core.Pipeline
                 string fileExtension = Path.GetExtension(folder).TrimStart('.');
                 for (int e = 0; e < extensions.Count; e++)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     if (string.Equals(fileExtension, extensions[e].Trim().TrimStart('.'), System.StringComparison.OrdinalIgnoreCase))
                     {
                         files.Add(folder);
@@ -215,11 +220,13 @@ namespace RemuxForge.Core.Pipeline
 
             for (int e = 0; e < extensions.Count; e++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 // Mantiene il pattern locale estensione-per-estensione per rispettare l'ordine configurato
                 string pattern = "*." + extensions[e];
                 string[] found = Directory.GetFiles(folder, pattern, searchOption);
                 for (int i = 0; i < found.Length; i++)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     files.Add(found[i]);
                 }
             }

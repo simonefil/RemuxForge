@@ -70,6 +70,12 @@ namespace RemuxForge.Core.Infrastructure
         /// <param name="text">Testo del messaggio</param>
         public static void Write(LogSection section, LogLevel level, string text)
         {
+            PipelinePreparationContext local = PipelinePreparationContext.Current;
+            if (local != null)
+            {
+                local.Log?.Invoke(section, level, text);
+                return;
+            }
             // Sink 1: callback UI (se registrato)
             if (s_logCallback != null)
             {
@@ -131,6 +137,7 @@ namespace RemuxForge.Core.Infrastructure
         /// <param name="status">Stato sintetico</param>
         public static void Progress(LogSection section, int percent, string status)
         {
+            if (PipelinePreparationContext.Current != null) return;
             if (s_progressCallback != null)
             {
                 s_progressCallback(section, percent, status != null ? status : "");

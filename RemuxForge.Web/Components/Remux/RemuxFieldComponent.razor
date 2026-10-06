@@ -1,0 +1,20 @@
+<div class="rf-remux-field" @onfocusin="@(() => Wizard?.SetHelp(HelpKey))" @onmouseenter="@(() => Wizard?.SetHelp(HelpKey))">
+    <RadzenLabel Text="@(Required ? Label + " *" : Label)" Component="@Field" />
+    <div class="rf-remux-field-controls">@ChildContent</div>
+    @if (Wizard != null)
+    {
+        @foreach (PipelineInitializationIssue issue in Wizard.FieldErrors(Field))
+        {
+            <RadzenText TextStyle="TextStyle.Caption" class="rf-remux-error">@issue.Message</RadzenText>
+        }
+    }
+</div>
+
+@code {
+    [CascadingParameter] public RemuxConfigWizardComponent Wizard { get; set; }
+    [Parameter] public string Label { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public string Field { get; set; } = "";
+    [Parameter] public string HelpKey { get; set; } = "";
+    [Parameter] public RenderFragment ChildContent { get; set; }
+}

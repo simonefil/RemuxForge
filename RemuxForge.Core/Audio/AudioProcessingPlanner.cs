@@ -1,8 +1,10 @@
 using RemuxForge.Core.Analysis.Speed;
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Pipeline;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -221,7 +223,16 @@ namespace RemuxForge.Core.Audio
                  * SOURCE FILL
                  */
                 result.SourceFillConfigured = true;
-                result.SourceFillTrack = this.SelectSourceFillTrack(request.SourceInfo, request.Options.AudioSourceFillLanguage);
+                RemuxPairTrackSelection selection = request.Record?.ExplicitTrackSelection;
+                if (selection == null && request.Options.ExplicitTrackSelection != null)
+                    throw new InvalidOperationException(AppText.T("remuxConfiguration.selectionMissingPair"));
+                result.SourceFillTrack = PipelineTrackSelectionResolver.ResolveSourceFillTrack(selection,
+                    request.SourceInfo?.Tracks, request.Options.AudioSourceFillLanguage, this._mkvToolsService);
+                if (selection != null && result.SourceFillTrack == null)
+                {
+                    result.ErrorMessage = PipelineTrackSelectionResolver.SourceFillSelectionError(selection, request.Options.AudioSourceFillLanguage);
+                    return result;
+                }
                 result.SourceFillPlan = this.BuildSourceFillPlan(request, result.SourceFillTrack, track, probeMissingDurations);
                 result.SourceFillHasWork = result.SourceFillPlan != null && result.SourceFillPlan.HasWork;
                 result.ActualSourceFill = this.HasActualSourceFill(result.SourceFillPlan);
@@ -366,11 +377,17 @@ namespace RemuxForge.Core.Audio
             ProcessResult processResult;
             if (string.IsNullOrEmpty(this._ffmpegPath) || string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
             {
+                if (PipelinePreparationContext.Current != null)
+                    throw new InvalidOperationException(AppText.F("remuxConfiguration.audioDurationUnavailable", filePath));
                 return 0;
             }
 
             processResult = ProcessRunner.Run(this._ffmpegPath, new string[] { "-hide_banner", "-i", filePath });
-            return this.ParseFfmpegDurationMs(!string.IsNullOrEmpty(processResult.Stderr) ? processResult.Stderr : processResult.Stdout);
+            int duration = this.ParseFfmpegDurationMs(!string.IsNullOrEmpty(processResult.Stderr) ? processResult.Stderr : processResult.Stdout);
+            // ffmpeg -i senza output termina normalmente con 1: la durata resta valida. Altri errori non sono un piano valido.
+            if (PipelinePreparationContext.Current != null && (processResult.ExitCode < 0 || processResult.ExitCode > 1 || duration <= 0))
+                throw new InvalidOperationException(AppText.F("remuxConfiguration.audioDurationProbeFailed", processResult.ExitCode, processResult.Stderr));
+            return duration;
         }
 
         /// <summary>
@@ -453,40 +470,6 @@ namespace RemuxForge.Core.Audio
             for (int i = 0; i < operations.Count; i++)
             {
                 result += EditMapTimelineHelper.GetRenderedOperationDeltaMs(operations[i], stretchRatio);
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Seleziona la traccia source migliore per lingua richiesta
-        /// </summary>
-        /// <param name="sourceInfo">Info file source</param>
-        /// <param name="sourceLanguage">Lingua source richiesta</param>
-        /// <returns>Traccia source selezionata, oppure null</returns>
-        private TrackInfo SelectSourceFillTrack(MkvFileInfo sourceInfo, string sourceLanguage)
-        {
-            TrackInfo result = null;
-            if (sourceInfo == null || sourceInfo.Tracks == null)
-            {
-                return result;
-            }
-
-            for (int i = 0; i < sourceInfo.Tracks.Count; i++)
-            {
-                TrackInfo candidate = sourceInfo.Tracks[i];
-                if (!string.Equals(candidate.Type, "audio", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-                if (!this._mkvToolsService.IsLanguageMatch(candidate, sourceLanguage))
-                {
-                    continue;
-                }
-                if (result == null || candidate.Bitrate > result.Bitrate)
-                {
-                    result = candidate;
-                }
             }
 
             return result;

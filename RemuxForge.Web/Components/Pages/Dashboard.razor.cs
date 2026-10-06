@@ -4,6 +4,7 @@ using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Tools;
 using RemuxForge.Web.Components.Shared;
+using RemuxForge.Web.Components.Remux;
 using RemuxForge.Web.Services;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
@@ -142,6 +143,9 @@ namespace RemuxForge.Web.Components.Pages
         /// Flag: mostra dialog configurazione
         /// </summary>
         private bool _showConfig;
+        private RemuxTrackUiState _remuxTrackUiState;
+        private RemuxMuxKind _remuxMuxKind;
+        private string _remuxPresetName = "";
 
         /// <summary>
         /// Flag: mostra dialog preset metadata
@@ -353,6 +357,8 @@ namespace RemuxForge.Web.Components.Pages
 
             // Carica stato corrente dall'orchestratore
             this._records = this.Orchestrator.GetRecords();
+            this._remuxMuxKind = this.Orchestrator.CurrentOptions.DeepAnalysis ? RemuxMuxKind.DeepAnalysis :
+                this.Orchestrator.CurrentOptions.FrameSync ? RemuxMuxKind.DelayCorrection : RemuxMuxKind.Simple;
             this._splitRecords = this.SplitOrchestrator.GetRecords();
             this._metadataRecords = this.MetadataOrchestrator.GetRecords();
             this._metadataPresetFiles = this.MetadataOrchestrator.GetPresetFiles();
@@ -391,7 +397,8 @@ namespace RemuxForge.Web.Components.Pages
 
                 // Cattura tastiera via JS
                 this._dotNetRef = DotNetObjectReference.Create(this);
-                await this._jsModule.InvokeVoidAsync("captureKeyboard", this._dotNetRef);
+                if (!(this._showConfig && this._currentMode == Options.MODE_REMUX))
+                    await this._jsModule.InvokeVoidAsync("captureKeyboard", this._dotNetRef);
                 await this._jsModule.InvokeVoidAsync("interceptExternalLinks");
 
                 // Carica tema da AppSettings e applica tramite Radzen
@@ -563,6 +570,7 @@ namespace RemuxForge.Web.Components.Pages
             this.InvokeAsync(() =>
             {
                 this._records = this.Orchestrator.GetRecords();
+                this.InvalidateRemuxTrackUiStateIfInputsChanged();
                 this.NormalizeSelection();
                 this.SyncSelectedFromOrchestrator();
                 this.StateHasChanged();
@@ -660,6 +668,7 @@ namespace RemuxForge.Web.Components.Pages
             {
                 if (key == "Escape")
                 {
+                    if (this._showConfig && this._currentMode == Options.MODE_REMUX) return; // Radzen possiede Escape/focus.
                     this.CloseAllDialogs();
                     this.StateHasChanged();
                 }
@@ -2241,9 +2250,15 @@ namespace RemuxForge.Web.Components.Pages
         {
             UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar | UiCommandPlacement.Status;
 
-            commands.Add(new UiCommandDefinition(AppText.T("web.menu.config"), "F2", "settings", allSurfaces, UiCommandMenuSection.File, busy, this.ShowConfig)
+            commands.Add(new UiCommandDefinition(AppText.T("web.remux.clear"), "", "clear_all", allSurfaces, UiCommandMenuSection.File, this.Orchestrator.IsBusy, this.DoClear)
             {
-                ToolbarLabel = AppText.T("web.status.config"),
+                ToolbarLabel = AppText.T("web.remux.clear"), StatusLabel = AppText.T("web.remux.clear"),
+                SecondaryToolbar = true, ToolbarOrder = 15, StatusOrder = 100
+            });
+
+            commands.Add(new UiCommandDefinition(AppText.T("web.remux.configure"), "F2", "settings", allSurfaces, UiCommandMenuSection.File, busy, this.ShowConfig)
+            {
+                ToolbarLabel = AppText.T("web.remux.configure"),
                 StatusLabel = AppText.T("web.status.config"),
                 SecondaryToolbar = true,
                 ToolbarOrder = 10,
@@ -2311,7 +2326,64 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private void ShowConfig()
         {
+            if (this.IsAnyBusy() || this._showConfig) return;
             this._showConfig = true;
+            if (this._currentMode == Options.MODE_REMUX) _ = this.ShowRemuxConfigAsync();
+        }
+
+        private async Task ShowRemuxConfigAsync()
+        {
+            try
+            {
+                this.InvalidateRemuxTrackUiStateIfInputsChanged();
+                // Il focus trap legacy della pagina non deve concorrere con quello nativo Radzen.
+                if (this._jsModule != null)
+                {
+                    await this._jsModule.InvokeVoidAsync("releaseKeyboard");
+                }
+                DialogOptions host = new DialogOptions
+                {
+                    Width = "min(96rem, 96vw)", Height = "min(58rem, 94vh)", CloseDialogOnOverlayClick = false,
+                    ContentCssClass = "rf-remux-dialog-content",
+                    CloseDialogOnEsc = true, AutoFocusFirstElement = true, CloseAriaLabel = AppText.T("web.common.cancel")
+                };
+                await this.DialogService.OpenAsync<RemuxConfigWizardComponent>(AppText.T("web.remux.configure"),
+                    new Dictionary<string, object>
+                    {
+                        { "Options", this.Orchestrator.CurrentOptions }, { "MuxKind", this._remuxMuxKind },
+                        { "PresetName", this._remuxPresetName }, { "JsModule", this._jsModule }, { "HostOptions", host },
+                        { "TrackUiState", this._remuxTrackUiState?.Clone() },
+                        { "ApplyConfiguration", new Func<RemuxConfigurationDraft, Task<RemuxApplyResult>>(this.Orchestrator.ApplyConfigurationAsync) },
+                        { "OnApplied", EventCallback.Factory.Create<RemuxConfigurationDraft>(this, this.RemuxConfigurationApplied) }
+                    }, host);
+            }
+            finally
+            {
+                this._showConfig = false;
+                if (this._jsModule != null && this._dotNetRef != null)
+                    await this._jsModule.InvokeVoidAsync("captureKeyboard", this._dotNetRef);
+                await this.InvokeAsync(this.StateHasChanged);
+            }
+        }
+
+        private void RemuxConfigurationApplied(RemuxConfigurationDraft draft)
+        {
+            this._remuxMuxKind = draft.MuxKind;
+            this._remuxPresetName = draft.PresetName;
+            this._remuxTrackUiState = draft.CaptureTrackUiState();
+            this._records = this.Orchestrator.GetRecords();
+            this.NormalizeSelection();
+            this.SyncSelectedFromOrchestrator();
+        }
+
+        private void InvalidateRemuxTrackUiStateIfInputsChanged()
+        {
+            if (this._remuxTrackUiState == null) return;
+            Options options = this.Orchestrator.CurrentOptions;
+            RemuxPreviewRequest request = new RemuxPreviewRequest(options.SourceFolder,
+                string.IsNullOrWhiteSpace(options.LanguageFolder) ? options.SourceFolder : options.LanguageFolder,
+                options.MatchPattern, options.FileExtensions, options.Recursive);
+            if (options.ExplicitTrackSelection == null || !this._remuxTrackUiState.Matches(request)) this._remuxTrackUiState = null;
         }
 
         /// <summary>
@@ -2613,6 +2685,25 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private void DoClear()
         {
+            if (this._currentMode == Options.MODE_REMUX)
+            {
+                if (!this.Orchestrator.Clear()) return;
+                this._selection = new RowSelectionState();
+                this._records = this.Orchestrator.GetRecords();
+                this._selectedRecord = null;
+                this._showConfig = false;
+                this._showDelay = false;
+                this.CloseEditMapEditor();
+                this._showMediaInfo = false;
+                this._mediaInfoReport = "";
+                this._mediaInfoTitle = "";
+                this._showContextMenu = false;
+                this._contextMenuCommands.Clear();
+                this._remuxPresetName = "";
+                this._remuxMuxKind = RemuxMuxKind.Simple;
+                this._remuxTrackUiState = null;
+                return;
+            }
             if (this._currentMode == Options.MODE_METADATA)
             {
                 this.MetadataOrchestrator.Clear();

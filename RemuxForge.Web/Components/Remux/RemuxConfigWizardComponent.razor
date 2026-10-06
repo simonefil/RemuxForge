@@ -1,0 +1,315 @@
+@using System.Linq
+@using System.IO
+@using System.Threading.Tasks
+@implements IDisposable
+@implements IAsyncDisposable
+
+<div class="rf-remux-wizard" @ref="_content">
+        <CascadingValue Value="this" IsFixed="true">
+            <fieldset disabled="@EditingLocked" class="rf-remux-wizard-body">
+                <nav class="rf-remux-sections" aria-label="@AppText.T("web.remux.sections")">
+                    <RadzenStack Gap="0.5rem">
+                        @for (int i = 0; i < Sections.Length; i++)
+                        {
+                            int index = i;
+                            <RadzenButton class="rf-remux-step"
+                                          Variant="@(_section == i ? Variant.Filled : Variant.Text)" ButtonStyle="ButtonStyle.Base"
+                                          Disabled="@(!CanNavigate(i) || EditingLocked)" Click="@(() => Navigate(index))">
+                                <span class="rf-remux-step-content">
+                                    <span class="rf-remux-step-number">@(index + 1).</span>
+                                    <span>@AppText.T(Sections[index])@(SectionHasErrors(index) ? " (!)" : "")</span>
+                                </span>
+                            </RadzenButton>
+                        }
+                    </RadzenStack>
+                </nav>
+                <main class="rf-remux-content">
+                    @if (_applied)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Success" AllowClose="false">@AppText.T("web.remuxWizard.applied")</RadzenAlert>
+                        @foreach (PipelineInitializationIssue warning in _warnings)
+                        {
+                            <RadzenAlert AlertStyle="AlertStyle.Warning" AllowClose="false">@warning.Message</RadzenAlert>
+                        }
+                    }
+                    @if (_errors.Count > 0)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Danger" AllowClose="false">
+                            @foreach (PipelineInitializationIssue error in _errors)
+                            {
+                                <div class="rf-remux-issue-row">
+                                    <span>@error.Message</span>
+                                    <RadzenButton Text="@AppText.T("web.remux.edit")" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger"
+                                                  aria-label="@(AppText.T("web.remux.edit") + ": " + error.Message)" Disabled="@EditingLocked" Click="@(() => GoToError(error))" />
+                                </div>
+                            }
+                        </RadzenAlert>
+                    }
+                    @if (_section == 0)
+                    {
+                        <RemuxFieldComponent Label="@AppText.T("web.remux.preset")" HelpKey="preset">
+                            <RadzenDropDown TValue="string" Data="@_presets" TextProperty="Name" ValueProperty="Name" Value="@_presetToLoad" Change="@(v => Edit(() => _presetToLoad = v as string ?? ""))" Disabled="@EditingLocked"
+                                            AllowClear="true" Placeholder="@AppText.T("web.common.choose")" Style="width:100%" />
+                            <RadzenButton ButtonType="ButtonType.Button" Text="@AppText.T("web.remux.load")" Disabled="@(EditingLocked || string.IsNullOrEmpty(_presetToLoad))" Click="LoadPresetAsync" />
+                        </RemuxFieldComponent>
+                        <RemuxFieldComponent Label="@AppText.T("web.remux.muxKind")" Field="Mode" HelpKey="mode">
+                            <div @onfocusin="@(() => SetMuxHelp(Draft.MuxKind))" @onfocusin:stopPropagation="true">
+                            <RadzenRadioButtonList TValue="RemuxMuxKind" Value="@Draft.MuxKind" Change="SetMuxKind" Disabled="@EditingLocked" Orientation="Orientation.Vertical">
+                                <Items>
+                                    <RadzenRadioButtonListItem TValue="RemuxMuxKind" Text="@MuxLabel(RemuxMuxKind.Simple)" Value="RemuxMuxKind.Simple" @onmouseenter="@(() => SetMuxHelp(RemuxMuxKind.Simple))" />
+                                    <RadzenRadioButtonListItem TValue="RemuxMuxKind" Text="@MuxLabel(RemuxMuxKind.DelayCorrection)" Value="RemuxMuxKind.DelayCorrection" @onmouseenter="@(() => SetMuxHelp(RemuxMuxKind.DelayCorrection))" />
+                                    <RadzenRadioButtonListItem TValue="RemuxMuxKind" Text="@MuxLabel(RemuxMuxKind.DeepAnalysis)" Value="RemuxMuxKind.DeepAnalysis" @onmouseenter="@(() => SetMuxHelp(RemuxMuxKind.DeepAnalysis))" />
+                                </Items>
+                            </RadzenRadioButtonList>
+                            </div>
+                        </RemuxFieldComponent>
+                    }
+                    else if (_section == 1)
+                    {
+                        <RemuxFieldComponent Label="Source" Required="true" Field="SourceFolder" HelpKey="source">
+                            <RadzenTextBox Name="SourceFolder" Value="@O.SourceFolder" Change="@(v => ChangeInput(0, v))" Disabled="@EditingLocked" Style="width:100%" />
+                            <RadzenButton Icon="folder_open" Text="@AppText.T("web.remux.browse")" Disabled="@EditingLocked" Click="@(() => Browse(0))" />
+                        </RemuxFieldComponent>
+                        <RemuxFieldComponent Label="Lang" Required="@File.Exists(O.SourceFolder)" Field="LanguageFolder" HelpKey="language">
+                            <RadzenTextBox Name="LanguageFolder" Value="@O.LanguageFolder" Change="@(v => ChangeInput(1, v))" Disabled="@EditingLocked" Style="width:100%" />
+                            <RadzenButton Icon="folder_open" Text="@AppText.T("web.remux.browse")" Disabled="@EditingLocked" Click="@(() => Browse(1))" />
+                        </RemuxFieldComponent>
+                        <RemuxFieldComponent Label="@AppText.T("web.config.toggle.recursive")" HelpKey="recursive">
+                            <RadzenSwitch TValue="bool" Value="@O.Recursive" Disabled="@EditingLocked" Change="@(v => Edit(() => { O.Recursive = v; InvalidatePreview(); }))" />
+                        </RemuxFieldComponent>
+                        <RemuxFieldComponent Label="@AppText.T("web.config.label.extensions")" Required="true" Field="FileExtensions" HelpKey="extensions">
+                            <RadzenTextBox Name="FileExtensions" Value="@string.Join(",", O.FileExtensions)" Disabled="@EditingLocked" Change="@(v => Edit(() => { O.FileExtensions = Csv(v, true); InvalidatePreview(); }))" Style="width:100%" />
+                        </RemuxFieldComponent>
+                        <RemuxFieldComponent Label="@AppText.T("web.config.label.matchPattern")" Field="MatchPattern" HelpKey="match">
+                            <RadzenTextBox Name="MatchPattern" Value="@O.MatchPattern" Change="@(v => Edit(() => { O.MatchPattern = v; InvalidatePreview(); }))" Disabled="@(EditingLocked || File.Exists(O.SourceFolder))" Style="width:100%" />
+                        </RemuxFieldComponent>
+                        <RadzenButton Text="@AppText.T("web.remux.refresh")" Icon="refresh" Click="RefreshAsync" Disabled="@EditingLocked" />
+                        @if (_reading)
+                        {
+                            <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+                            <RadzenText role="status">@AppText.F("web.remux.readingTracks", _progress.CompletedFiles, _progress.TotalFiles)</RadzenText>
+                        }
+                        @if (Draft.HasCurrentSnapshot)
+                        {
+                            <RadzenText>@AppText.F("web.remux.matchCounts", Draft.Snapshot.Pairs.Count, Draft.Snapshot.MatchedPairs, Draft.Snapshot.Pairs.Count - Draft.Snapshot.MatchedPairs)</RadzenText>
+                            @foreach (RemuxPreviewError error in Draft.Snapshot.Errors)
+                            {
+                                <RadzenAlert AlertStyle="AlertStyle.Danger" AllowClose="false">@error.FilePath — @error.Message</RadzenAlert>
+                            }
+                            <RadzenDataGrid TItem="RemuxPreviewPair" Data="@Draft.Snapshot.Pairs" AllowPaging="false" AllowSorting="false" Style="max-height:22rem;overflow:auto">
+                                <Columns>
+                                    <RadzenDataGridColumn TItem="RemuxPreviewPair" Title="Source"><Template Context="pair">@Path.GetFileName(pair.SourceFilePath)</Template></RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="RemuxPreviewPair" Title="Lang"><Template Context="pair">@Path.GetFileName(pair.LangFilePath)</Template></RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="RemuxPreviewPair" Title="@AppText.T("web.dashboard.status")"><Template Context="pair">@(pair.IsMatched ? AppText.T("web.remux.matched") : pair.SkipReason)</Template></RadzenDataGridColumn>
+                                </Columns>
+                            </RadzenDataGrid>
+                        }
+                        <RadzenStack Orientation="Orientation.Horizontal" Wrap="FlexWrap.Wrap" Gap="1rem">
+                            <div class="rf-remux-media-action">
+                                <RadzenButton @ref="_mediaSourceButton" Text="MediaInfo Source" aria-describedby="rf-remux-media-source" Disabled="@(EditingLocked || !Draft.HasMatching || _mediaLoading)" Click="@(() => OpenMediaInfoAsync(false))" />
+                                <span id="rf-remux-media-source" class="rf-remux-media-caption" title="@SampleName(false)">@SampleName(false)</span>
+                            </div>
+                            <div class="rf-remux-media-action">
+                                <RadzenButton @ref="_mediaLangButton" Text="MediaInfo Lang" aria-describedby="rf-remux-media-lang" Disabled="@(EditingLocked || !Draft.HasMatching || _mediaLoading)" Click="@(() => OpenMediaInfoAsync(true))" />
+                                <span id="rf-remux-media-lang" class="rf-remux-media-caption" title="@SampleName(true)">@SampleName(true)</span>
+                            </div>
+                        </RadzenStack>
+                        @if (_mediaLoading) { <RadzenText role="status">@AppText.T("web.remux.mediaLoading")</RadzenText> }
+                        @if (!string.IsNullOrEmpty(_mediaError)) { <RadzenAlert AlertStyle="AlertStyle.Danger" AllowClose="false">@_mediaError</RadzenAlert> }
+                    }
+                    else if (_section == 2)
+                    {
+                        @if (!Draft.HasMatching)
+                        {
+                            <RadzenAlert AlertStyle="AlertStyle.Info" AllowClose="false">@AppText.T("web.remux.refreshRequired")</RadzenAlert>
+                        }
+                        else
+                        {
+                        <RemuxFieldComponent Label="@AppText.T("web.remux.trackMode")" Field="ExplicitTrackSelection" HelpKey="tracks">
+                            <RadzenRadioButtonList TValue="bool" Value="@Draft.Advanced" Change="SetAdvanced" Disabled="@EditingLocked">
+                                <Items>
+                                    <RadzenRadioButtonListItem TValue="bool" Text="@AppText.T("web.remux.rules")" Value="false" />
+                                    <RadzenRadioButtonListItem TValue="bool" Text="@AppText.T("web.remux.advanced")" Value="true" Disabled="@(!InventoryReady)" />
+                                </Items>
+                            </RadzenRadioButtonList>
+                        </RemuxFieldComponent>
+                        @if (Draft.Advanced && InventoryReady)
+                        {
+                            <RemuxTrackPicklistComponent Draft="Draft" Type="audio" Title="Audio" Disabled="@EditingLocked" IsReadOnly="@(() => CannotEdit)" OnChanged="TracksChanged" />
+                            <RemuxTrackPicklistComponent Draft="Draft" Type="subtitles" Title="@AppText.T("web.detail.subtitlesLabel")" Disabled="@EditingLocked" IsReadOnly="@(() => CannotEdit)" OnChanged="TracksChanged" />
+                        }
+                        else if (!Draft.Advanced)
+                        {
+                            <RadzenPanel Text="@AppText.T("web.remux.importLang")" AllowCollapse="false">
+                                <RemuxFieldComponent Label="@FieldLabel("web.config.label.targetLanguageRequired")" Required="true" Field="TargetLanguage" HelpKey="target">
+                                    <LanguageChipsComponent Label="@FieldLabel("web.config.label.targetLanguageRequired")" Disabled="@EditingLocked" IsReadOnly="@(() => CannotEdit)" Values="@O.TargetLanguage" ValuesChanged="@(v => Edit(() => O.TargetLanguage = v))" />
+                                </RemuxFieldComponent>
+                                <RemuxFieldComponent Label="@AppText.T("web.config.label.audioCodec")" Field="AudioCodec" HelpKey="audioCodec">
+                                    <CodecChipsComponent Name="AudioCodec" Label="@AppText.T("web.config.label.audioCodec")" Values="@O.AudioCodec" ValuesChanged="@(v => Edit(() => O.AudioCodec = v))" Disabled="@EditingLocked" IsReadOnly="@(() => CannotEdit)" />
+                                </RemuxFieldComponent>
+                                <RemuxFieldComponent Label="@AppText.T("web.config.toggle.subOnly")" Field="SubOnly" HelpKey="subOnly"><RadzenSwitch TValue="bool" Value="@O.SubOnly" Disabled="@EditingLocked" Change="@(v => Edit(() => { O.SubOnly = v; if(v) O.AudioOnly = false; }))" /></RemuxFieldComponent>
+                                <RemuxFieldComponent Label="@AppText.T("web.config.toggle.audioOnly")" Field="AudioOnly" HelpKey="audioOnly"><RadzenSwitch TValue="bool" Value="@O.AudioOnly" Disabled="@EditingLocked" Change="@(v => Edit(() => { O.AudioOnly = v; if(v) O.SubOnly = false; }))" /></RemuxFieldComponent>
+                            </RadzenPanel>
+                            <RadzenPanel Text="@AppText.T("web.remux.keepSource")" AllowCollapse="false">
+                                <RemuxFieldComponent Label="@AppText.T("web.config.label.keepAudio")" Field="KeepSourceAudioLangs" HelpKey="keepAudio"><LanguageChipsComponent Label="@AppText.T("web.config.label.keepAudio")" Disabled="@EditingLocked" IsReadOnly="@(() => CannotEdit)" Values="@O.KeepSourceAudioLangs" ValuesChanged="@(v => Edit(() => O.KeepSourceAudioLangs = v))" /></RemuxFieldComponent>
+                                <RemuxFieldComponent Label="@AppText.T("web.config.label.keepCodec")" Field="KeepSourceAudioCodec" HelpKey="keepCodec"><CodecChipsComponent Name="KeepSourceAudioCodec" Label="@AppText.T("web.config.label.keepCodec")" Values="@O.KeepSourceAudioCodec" ValuesChanged="@(v => Edit(() => O.KeepSourceAudioCodec = v))" Disabled="@EditingLocked" IsReadOnly="@(() => CannotEdit)" /></RemuxFieldComponent>
+                                <RemuxFieldComponent Label="@AppText.T("web.config.label.keepSub")" Field="KeepSourceSubtitleLangs" HelpKey="keepSub"><LanguageChipsComponent Label="@AppText.T("web.config.label.keepSub")" Disabled="@EditingLocked" IsReadOnly="@(() => CannotEdit)" Values="@O.KeepSourceSubtitleLangs" ValuesChanged="@(v => Edit(() => O.KeepSourceSubtitleLangs = v))" /></RemuxFieldComponent>
+                            </RadzenPanel>
+                        }
+                        @if (InventoryReady)
+                        {
+                            <RadzenText>@AppText.F("web.remux.processCounts", Draft.Snapshot.MatchedPairs, Draft.ProcessablePairs(), Draft.Snapshot.MatchedPairs - Draft.ProcessablePairs())</RadzenText>
+                        }
+                        }
+                    }
+                    else if (_section == 3)
+                    {
+                        @if (Draft.MuxKind == RemuxMuxKind.DelayCorrection)
+                        {
+                            <RemuxFieldComponent Label="@AppText.T("web.remux.delayMethod")" Field="FrameSync" HelpKey="framesync">
+                                <RadzenRadioButtonList TValue="bool" Value="@O.FrameSync" Disabled="@EditingLocked" Change="@(v => Edit(() => Draft.SetFrameSync(v)))">
+                                    <Items><RadzenRadioButtonListItem TValue="bool" Text="@AppText.T("web.remux.manual")" Value="false" /><RadzenRadioButtonListItem TValue="bool" Text="FrameSync" Value="true" /></Items>
+                                </RadzenRadioButtonList>
+                            </RemuxFieldComponent>
+                        }
+                        @if (!VisualAnalysis)
+                        {
+                            <RemuxFieldComponent Label="@(AppText.T("web.config.label.audioDelay") + " ms")" Field="AudioDelay" HelpKey="audioDelay"><RadzenNumeric TValue="int" Name="AudioDelay" Disabled="@EditingLocked" Value="@O.AudioDelay" Change="@(v => Edit(() => O.AudioDelay = v))" /></RemuxFieldComponent>
+                            <RemuxFieldComponent Label="@(AppText.T("web.config.label.subDelay") + " ms")" Field="SubtitleDelay" HelpKey="subDelay"><RadzenNumeric TValue="int" Name="SubtitleDelay" Disabled="@EditingLocked" Value="@O.SubtitleDelay" Change="@(v => Edit(() => O.SubtitleDelay = v))" /></RemuxFieldComponent>
+                        }
+                        else
+                        {
+                            <RadzenText>@AppText.T(O.DeepAnalysis ? "web.remux.deepDescription" : "web.remux.frameDescription")</RadzenText>
+                            @foreach (bool lang in new[] { false, true })
+                            {
+                                <RemuxFieldComponent Label="@AppText.T(lang ? "web.config.help.remux.cropLang.title" : "web.config.label.cropSource")" Field="@(lang ? "AnalysisCropLanguagePx" : "AnalysisCropSourcePx")" HelpKey="@(lang ? "cropLang" : "cropSource")">
+                                    <div class="rf-remux-crop">
+                                        @for (int i = 0; i < 4; i++)
+                                        {
+                                            int edge = i;
+                                            string name = (lang ? "AnalysisCropLanguagePx" : "AnalysisCropSourcePx") + edge;
+                                            string label = AppText.T("web.remux.crop." + new[] { "left", "right", "top", "bottom" }[edge]);
+                                            <div><RadzenLabel Text="@label" Component="@name" /><RadzenTextBox Name="@name" Value="@CropValue(lang, edge)" Change="@(v => ChangeCrop(lang, edge, v))" Disabled="@EditingLocked" inputmode="numeric" aria-label="@label" Style="width:100%" /></div>
+                                        }
+                                    </div>
+                                </RemuxFieldComponent>
+                            }
+                        }
+                        <RemuxFieldComponent Label="@AppText.T("web.config.label.speed")" Field="SpeedCorrectionMode" HelpKey="speed">
+                            <RadzenDropDown TValue="string" Data="@SpeedFactors" Value="@SpeedValue" Change="ChangeSpeedFactor" Disabled="@EditingLocked" Style="width:100%">
+                                <Template Context="factor">@SpeedFactorLabel((string)factor)</Template>
+                                <ValueTemplate Context="factor">@SpeedFactorLabel((string)factor)</ValueTemplate>
+                            </RadzenDropDown>
+                            @foreach (PipelineInitializationIssue issue in FieldErrors("ManualStretchFactor")) { <RadzenText class="rf-remux-error" TextStyle="TextStyle.Caption">@issue.Message</RadzenText> }
+                        </RemuxFieldComponent>
+                    }
+                    else if (_section == 4)
+                    {
+                        <RadzenPanel class="rf-remux-processing-card" Text="Audio" AllowCollapse="false">
+                            <RemuxFieldComponent Label="@AppText.T("web.config.label.audioFormat")" Required="@AudioRequired" Field="AudioFormat" HelpKey="audioFormat">
+                                <RadzenDropDown TValue="string" Data="@AudioFormats" Value="@O.AudioFormat" Change="ChangeAudioFormat" Disabled="@EditingLocked" Style="width:100%" Placeholder="@AppText.T("web.remux.copyAudio")">
+                                    <Template Context="format">@(string.IsNullOrEmpty((string)format) ? AppText.T("web.remux.copyAudio") : ((string)format).ToUpperInvariant())</Template>
+                                    <ValueTemplate Context="format">@(string.IsNullOrEmpty((string)format) ? AppText.T("web.remux.copyAudio") : ((string)format).ToUpperInvariant())</ValueTemplate>
+                                </RadzenDropDown>
+                            </RemuxFieldComponent>
+                            @if (!string.IsNullOrEmpty(O.AudioFormat) || AudioRequired)
+                            {
+                                <RemuxFieldComponent Label="@AppText.T("web.config.label.audioScope")" Required="@AudioRequired" Field="AudioProcessingScope" HelpKey="audioScope">
+                                    <RadzenDropDown TValue="string" Data="@AudioScopes" Value="@O.AudioProcessingScope" Change="ChangeAudioScope" Disabled="@EditingLocked">
+                                        <Template Context="scope">@AudioScopeLabel((string)scope)</Template>
+                                        <ValueTemplate Context="scope">@AudioScopeLabel((string)scope)</ValueTemplate>
+                                    </RadzenDropDown>
+                                </RemuxFieldComponent>
+                                @if (O.AudioProcessingScope != "disabled")
+                                {
+                                    @if (O.AudioFormat == "flac" || O.AudioFormat == "lpcm")
+                                    {
+                                        <RemuxFieldComponent Label="@AppText.T("web.config.toggle.audio24")" Field="AudioDownsample24To16" HelpKey="audio24"><RadzenSwitch TValue="bool" Disabled="@EditingLocked" Value="@O.AudioDownsample24To16" Change="@(v => Edit(() => O.AudioDownsample24To16 = v))" /></RemuxFieldComponent>
+                                    }
+                                    <RemuxFieldComponent Label="@AppText.T("web.config.label.audioGain")" Field="AudioPeakNormalize" HelpKey="audioGain">
+                                        <RadzenDropDown TValue="string" Data="@GainModes" Value="@GainMode" Change="ChangeGainMode" Disabled="@EditingLocked">
+                                            <Template Context="gain">@GainModeLabel((string)gain)</Template>
+                                            <ValueTemplate Context="gain">@GainModeLabel((string)gain)</ValueTemplate>
+                                        </RadzenDropDown>
+                                    </RemuxFieldComponent>
+                                    @if (O.AudioPeakNormalize) { <RemuxFieldComponent Label="@(AppText.T("web.config.toggle.normalization") + " dB")" Field="AudioPeakTargetDb" HelpKey="audioNormalize"><RadzenNumeric TValue="double" Name="AudioPeakTargetDb" Disabled="@EditingLocked" Value="@O.AudioPeakTargetDb" Change="@(v => Edit(() => O.AudioPeakTargetDb = v))" /></RemuxFieldComponent> }
+                                    @if (O.AudioFixedGain) { <RemuxFieldComponent Label="@(AppText.T("web.config.option.fixedGain") + " dB")" Field="AudioFixedGainDb" HelpKey="audioFixedGain"><RadzenNumeric TValue="double" Name="AudioFixedGainDb" Disabled="@EditingLocked" Value="@O.AudioFixedGainDb" Change="@(v => Edit(() => O.AudioFixedGainDb = v))" /></RemuxFieldComponent> }
+                                }
+                            }
+                            <RemuxFieldComponent Label="@AppText.T("web.config.toggle.audioSourceFill")" Field="AudioSourceFillThresholdMs" HelpKey="audioSourceFill"><RadzenSwitch TValue="bool" Value="@_sourceFill" Change="ChangeSourceFill" Disabled="@EditingLocked" /></RemuxFieldComponent>
+                            @if (_sourceFill)
+                            {
+                                <RemuxFieldComponent Label="@(FieldLabel("web.config.label.thresholdRequired") + " ms")" Required="true" Field="AudioSourceFillThresholdMs" HelpKey="audioSourceFillThreshold"><RadzenNumeric TValue="int" Name="AudioSourceFillThresholdMs" Disabled="@EditingLocked" Value="@O.AudioSourceFillThresholdMs" Change="@(v => Edit(() => O.AudioSourceFillThresholdMs = v))" /></RemuxFieldComponent>
+                                <RemuxFieldComponent Label="@FieldLabel("web.config.label.sourceLanguageRequired")" Required="true" Field="AudioSourceFillLanguage" HelpKey="audioSourceFillLang"><LanguageChipsComponent Multiple="false" Label="@FieldLabel("web.config.label.sourceLanguageRequired")" Disabled="@EditingLocked" IsReadOnly="@(() => CannotEdit)" Value="@O.AudioSourceFillLanguage" ValueChanged="@(v => Edit(() => O.AudioSourceFillLanguage = v))" /></RemuxFieldComponent>
+                                <RemuxFieldComponent Label="@(AppText.T("web.config.label.audioGain") + " dB")" Field="AudioSourceFillGainDb" HelpKey="audioSourceFillGain"><RadzenNumeric TValue="double" Name="AudioSourceFillGainDb" Disabled="@EditingLocked" Value="@O.AudioSourceFillGainDb" Change="@(v => Edit(() => O.AudioSourceFillGainDb = v))" /></RemuxFieldComponent>
+                                <div class="rf-remux-fill-flags">
+                                    <div @onfocusin="@(() => SetHelp("audioSourceFillStart"))" @onmouseenter="@(() => SetHelp("audioSourceFillStart"))"><RadzenSwitch Name="AudioSourceFillStart" TValue="bool" aria-label="@AppText.T("web.config.toggle.start")" Disabled="@EditingLocked" Value="@O.AudioSourceFillStart" Change="@(v => Edit(() => O.AudioSourceFillStart = v))" /><RadzenLabel Component="AudioSourceFillStart" Text="@AppText.T("web.config.toggle.start")" /></div>
+                                    <div @onfocusin="@(() => SetHelp("audioSourceFillEnd"))" @onmouseenter="@(() => SetHelp("audioSourceFillEnd"))"><RadzenSwitch Name="AudioSourceFillEnd" TValue="bool" aria-label="@AppText.T("web.config.toggle.end")" Disabled="@EditingLocked" Value="@O.AudioSourceFillEnd" Change="@(v => Edit(() => O.AudioSourceFillEnd = v))" /><RadzenLabel Component="AudioSourceFillEnd" Text="@AppText.T("web.config.toggle.end")" /></div>
+                                    <div @onfocusin="@(() => SetHelp("audioSourceFillInsert"))" @onmouseenter="@(() => SetHelp("audioSourceFillInsert"))"><RadzenSwitch Name="AudioSourceFillInsertSilence" TValue="bool" aria-label="@AppText.T("web.config.toggle.insertSilence")" Disabled="@EditingLocked" Value="@O.AudioSourceFillInsertSilence" Change="@(v => Edit(() => O.AudioSourceFillInsertSilence = v))" /><RadzenLabel Component="AudioSourceFillInsertSilence" Text="@AppText.T("web.config.toggle.insertSilence")" /></div>
+                                </div>
+                                @foreach (PipelineInitializationIssue issue in FieldErrors("AudioSourceFillStart")) { <RadzenText class="rf-remux-error" TextStyle="TextStyle.Caption">@issue.Message</RadzenText> }
+                            }
+                        </RadzenPanel>
+                        <RadzenPanel class="rf-remux-processing-card" Text="Video" AllowCollapse="false">
+                            <RemuxFieldComponent Label="@AppText.T("web.config.label.videoEncoding")" Field="EncodingProfileName" HelpKey="encoding">
+                                <RadzenDropDown TValue="string" Data="@ProfileNames" Disabled="@EditingLocked" Value="@O.EncodingProfileName" Change="@(v => Edit(() => O.EncodingProfileName = v as string ?? ""))" AllowClear="true" Placeholder="@AppText.T("web.remux.originalVideo")" Style="width:100%" />
+                                <RadzenButton Text="@AppText.T("web.remux.createProfile")" Icon="add" Click="OpenProfilesAsync" Disabled="@EditingLocked" />
+                            </RemuxFieldComponent>
+                        </RadzenPanel>
+                        <RadzenPanel class="rf-remux-processing-card" Text="@AppText.T("web.detail.subtitlesLabel")" AllowCollapse="false">
+                            <RemuxFieldComponent Label="@AppText.T("web.config.toggle.subtitleCanvasRewrite")" Field="SubtitleCanvasRewrite" HelpKey="subCanvas"><RadzenSwitch TValue="bool" Value="@O.SubtitleCanvasRewrite" Change="@(v => Edit(() => O.SubtitleCanvasRewrite = v))" Disabled="@(EditingLocked || !VisualAnalysis)" /></RemuxFieldComponent>
+                        </RadzenPanel>
+                    }
+                    else
+                    {
+                        @if (!Draft.HasMatching)
+                        {
+                            <RadzenAlert AlertStyle="AlertStyle.Info" AllowClose="false">@AppText.T("web.remux.refreshRequired")</RadzenAlert>
+                        }
+                        <RemuxFieldComponent Label="@AppText.T("web.config.label.destination")" Field="DestinationFolder" HelpKey="destination"><RadzenTextBox Name="DestinationFolder" Disabled="@EditingLocked" Value="@O.DestinationFolder" Change="@(v => Edit(() => O.DestinationFolder = v))" Style="width:100%" /><RadzenButton Icon="folder_open" Text="@AppText.T("web.remux.browse")" Disabled="@EditingLocked" Click="@(() => Browse(2))" /></RemuxFieldComponent>
+                        <RemuxFieldComponent Label="@AppText.T("web.config.toggle.overwrite")" Field="Overwrite" HelpKey="overwrite"><RadzenSwitch TValue="bool" Disabled="@EditingLocked" Value="@O.Overwrite" Change="@(v => Edit(() => O.Overwrite = v))" /></RemuxFieldComponent>
+                        <RadzenPanel Text="@AppText.T("web.remux.summary")" AllowCollapse="false">
+                            @foreach (var row in Draft.HasMatching ? SummaryRows() : Array.Empty<(int Section, string Text)>())
+                            {
+                                <div class="rf-remux-summary-row"><RadzenText>@row.Text</RadzenText><RadzenButton Text="@AppText.T("web.remux.edit")" Variant="Variant.Text" Disabled="@EditingLocked" Click="@(() => Navigate(row.Section))" /></div>
+                            }
+                            <div class="rf-remux-summary-row rf-remux-output-summary">
+                                <RadzenText>@AppText.T("web.config.label.destination") — @(O.Overwrite ? AppText.T("web.config.toggle.overwrite") : O.DestinationFolder)</RadzenText>
+                                <RadzenButton Text="@AppText.T("web.remux.edit")" Variant="Variant.Text" Disabled="@EditingLocked" Click="@(() => Navigate(5))" />
+                            </div>
+                            @if (Draft.Advanced && InventoryReady)
+                            {
+                                <RadzenText>@AppText.F("web.remux.processCounts", Draft.Snapshot.MatchedPairs, Draft.ProcessablePairs(), Draft.Snapshot.MatchedPairs - Draft.ProcessablePairs())</RadzenText>
+                                @foreach (RemuxTrackGroup group in Draft.Snapshot.Groups.Where(g => g.IsPartial && Draft.ResultGroups.Contains(g.Key) && !Draft.ExcludedGroups.Contains(g.Key)))
+                                {
+                                    <RadzenText>@RemuxTrackPicklistComponent.Description(group) — @RemuxTrackPicklistComponent.Coverage(group)</RadzenText>
+                                }
+                            }
+                        </RadzenPanel>
+                    }
+                </main>
+                <aside class="config-help-pane rf-remux-help" aria-live="polite">
+                    <RadzenText TextStyle="TextStyle.Subtitle1">@_helpTitle</RadzenText>
+                    <RadzenText>@_helpText</RadzenText>
+                </aside>
+            </fieldset>
+        </CascadingValue>
+        <div class="rf-remux-bottom">
+            <RadzenStack Orientation="Orientation.Horizontal" Wrap="FlexWrap.Wrap" AlignItems="AlignItems.Center" Gap="0.75rem">
+                <RadzenText>@AppText.T("web.remux.preset"): @(string.IsNullOrEmpty(Draft.PresetName) ? AppText.T("web.common.none") : Draft.PresetName) @(Draft.Modified ? " · " + AppText.T("web.remux.modified") : "")</RadzenText>
+                <RadzenButton Text="@AppText.T("web.remux.update")" Disabled="@(Draft.Advanced || string.IsNullOrEmpty(Draft.PresetName) || EditingLocked)" Click="UpdatePreset" />
+                <RadzenButton Text="@AppText.T("web.remux.saveAs")" Disabled="@(Draft.Advanced || EditingLocked)" Click="OpenSavePresetAsync" />
+            </RadzenStack>
+            @if (Draft.Advanced) { <RadzenText TextStyle="TextStyle.Caption">@AppText.T("web.remux.advancedPresetDisabled")</RadzenText> }
+            <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.SpaceBetween" AlignItems="AlignItems.Center" Wrap="FlexWrap.Wrap" Gap="0.75rem">
+                <RadzenButton Text="@AppText.T(_applied ? "web.common.close" : "web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@_applying" Click="CancelAsync" />
+                @if (!_applied)
+                {
+                <RadzenStack Orientation="Orientation.Horizontal" Wrap="FlexWrap.Wrap" Gap="0.75rem">
+                    <RadzenButton Text="@AppText.T("web.remux.back")" Disabled="@(_section == 0 || EditingLocked)" Click="@(() => Navigate(_section - 1))" />
+                    <RadzenButton ButtonType="ButtonType.Button" Text="@AppText.T(_section == 5 ? "web.remux.confirm" : "web.remux.next")" Disabled="@(EditingLocked || (_section < 5 && !CanNavigate(_section + 1)))" Click="NextAsync" IsBusy="@_applying" />
+                </RadzenStack>
+                }
+            </RadzenStack>
+        </div>
+</div>

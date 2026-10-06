@@ -1,8 +1,10 @@
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -86,6 +88,17 @@ namespace RemuxForge.Core.Media.Mkv
         /// </summary>
         public MkvFileInfo GetFileInfo(string filePath, int timeoutMs, CancellationToken cancellationToken)
         {
+            return this.ReadFileInfo(filePath, timeoutMs, cancellationToken, false, null);
+        }
+
+        /// <summary>Probe detached: niente log, stop o callback globali. Gli errori sono restituiti al chiamante locale.</summary>
+        public MkvFileInfo GetFileInfoIsolated(string filePath, int timeoutMs, CancellationToken cancellationToken, Action<string> error)
+        {
+            return this.ReadFileInfo(filePath, timeoutMs, cancellationToken, true, error);
+        }
+
+        private MkvFileInfo ReadFileInfo(string filePath, int timeoutMs, CancellationToken cancellationToken, bool isolated, Action<string> error)
+        {
             MkvFileInfo result = null;
             string jsonOutput = "";
             JsonDocument doc = null;
@@ -93,18 +106,22 @@ namespace RemuxForge.Core.Media.Mkv
             JsonElement tracksElement;
             try
             {
-                ProcessResult procResult = ProcessRunner.Run(this._mkvMergePath, new string[] { "-J", filePath }, timeoutMs, cancellationToken);
+                ProcessResult procResult = isolated ? this.RunIsolatedProbe(filePath, timeoutMs, cancellationToken) :
+                    ProcessRunner.Run(this._mkvMergePath, new string[] { "-J", filePath }, timeoutMs, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
+                if (isolated && (procResult.ExitCode < 0 || procResult.ExitCode > 1 || string.IsNullOrWhiteSpace(procResult.Stdout)))
+                    throw new InvalidOperationException(AppText.F("remuxConfiguration.mkvProbeFailed", procResult.ExitCode, procResult.Stderr));
                 jsonOutput = procResult.Stdout;
             }
             catch (OperationCanceledException)
             {
                 throw;
             }
-            catch
+            catch (Exception ex)
             {
                 // mkvmerge non ha prodotto output valido
-                ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, "Impossibile leggere info file per: " + filePath);
+                if (isolated) error?.Invoke(ex.Message);
+                else ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, "Impossibile leggere info file per: " + filePath);
             }
 
             if (!string.IsNullOrEmpty(jsonOutput))
@@ -146,7 +163,8 @@ namespace RemuxForge.Core.Media.Mkv
                 catch (Exception ex)
                 {
                     // Errore parsing JSON, info non disponibili
-                    ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, "Errore parsing JSON file info: " + ex.Message);
+                    if (isolated) error?.Invoke(AppText.F("remuxConfiguration.fileInfoJsonFailed", ex.Message));
+                    else ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, "Errore parsing JSON file info: " + ex.Message);
                     result = null;
                 }
                 finally
@@ -176,18 +194,19 @@ namespace RemuxForge.Core.Media.Mkv
                 return match;
             }
 
-            trackLanguage = !string.IsNullOrEmpty(track.Language) ? track.Language : "und";
+            trackLanguage = !string.IsNullOrWhiteSpace(track.Language) ? track.Language.Trim() : "und";
             requestedLanguage = language.Trim();
 
-            // Verifica lingua ISO 639-2
-            if (string.Equals(trackLanguage, requestedLanguage, StringComparison.OrdinalIgnoreCase))
+            // ISO 639-1/2 e alias condividono il catalogo delle chip/gruppi. Non eliminare i sottotag regionali.
+            if (string.Equals(NormalizeLanguageForMatch(trackLanguage), NormalizeLanguageForMatch(requestedLanguage), StringComparison.OrdinalIgnoreCase))
             {
                 match = true;
             }
             // Verifica tag IETF
             else if (!string.IsNullOrEmpty(track.LanguageIetf))
             {
-                if (track.LanguageIetf.StartsWith(requestedLanguage, StringComparison.OrdinalIgnoreCase) || string.Equals(track.LanguageIetf, requestedLanguage, StringComparison.OrdinalIgnoreCase))
+                if (track.LanguageIetf.StartsWith(requestedLanguage, StringComparison.OrdinalIgnoreCase) ||
+                    NormalizeLanguageForMatch(track.LanguageIetf).StartsWith(NormalizeLanguageForMatch(requestedLanguage), StringComparison.OrdinalIgnoreCase))
                 {
                     match = true;
                 }
@@ -625,6 +644,51 @@ namespace RemuxForge.Core.Media.Mkv
         #endregion
 
         #region Metodi privati
+
+        private static string NormalizeLanguageForMatch(string language)
+        {
+            string value = language.Trim();
+            int separator = value.IndexOfAny(new[] { '-', '_' });
+            string primary = separator >= 0 ? value.Substring(0, separator) : value;
+            // Conserva separatore e suffisso: la conversione BCP-47 a sola lingua allargherebbe le query regionali.
+            return LanguageValidator.TryNormalizeToIso6392(primary, out string normalized) ?
+                normalized + (separator >= 0 ? value.Substring(separator) : "") : value;
+        }
+
+        private ProcessResult RunIsolatedProbe(string filePath, int timeoutMs, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using Process process = new Process();
+            process.StartInfo.FileName = this._mkvMergePath;
+            process.StartInfo.UseShellExecute = false;
+            process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.RedirectStandardError = true;
+            process.StartInfo.CreateNoWindow = true;
+            process.StartInfo.StandardOutputEncoding = Encoding.UTF8;
+            process.StartInfo.StandardErrorEncoding = Encoding.UTF8;
+            process.StartInfo.ArgumentList.Add("-J");
+            process.StartInfo.ArgumentList.Add(filePath);
+            process.Start();
+            var stdout = process.StandardOutput.ReadToEndAsync();
+            var stderr = process.StandardError.ReadToEndAsync();
+            using CancellationTokenSource timeout = new CancellationTokenSource();
+            if (timeoutMs > 0) timeout.CancelAfter(timeoutMs);
+            using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+            try
+            {
+                process.WaitForExitAsync(linked.Token).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                if (!process.HasExited) process.Kill(true);
+                process.WaitForExit();
+                stdout.GetAwaiter().GetResult();
+                stderr.GetAwaiter().GetResult();
+                cancellationToken.ThrowIfCancellationRequested();
+                throw new TimeoutException(AppText.F("remuxConfiguration.tracksReadTimeout", filePath));
+            }
+            return new ProcessResult { ExitCode = process.ExitCode, Stdout = stdout.GetAwaiter().GetResult(), Stderr = stderr.GetAwaiter().GetResult() };
+        }
 
         /// <summary>
         /// Parsa una singola traccia dal JSON mkvmerge

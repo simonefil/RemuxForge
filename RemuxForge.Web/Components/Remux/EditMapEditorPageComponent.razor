@@ -1,6 +1,7 @@
 @inject VideoFrameAccessService FrameAccess
 @inject IJSRuntime JsRuntime
 @inject NotificationService NotificationService
+@inject MergeOrchestrator Orchestrator
 @implements IAsyncDisposable
 
 <section @ref="_pageRoot" class="edit-map-page" data-keyboard-owner="edit-map" tabindex="-1" aria-labelledby="edit-map-page-title">
@@ -338,6 +339,7 @@
     private bool _previewFailed;
     private bool _precisionEditorOpen;
     private bool _gainEditPending;
+    private string _openedPreviewSignature;
 
     /// <summary>
     /// True quando entrambi gli indici sono pronti e nessuno dei due è fallito
@@ -361,6 +363,8 @@
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
+        this._openedPreviewSignature = MergeOrchestrator.GetEditMapPreviewSignature(this.Record, this.CurrentOptions);
+        this.Orchestrator.OnRecordsChanged += this.HandleMediaSelectionChanged;
         this._workingMap = EditMapTimelineHelper.Clone(this.Record != null ? this.Record.DeepAnalysisMap : null);
         if (this.Record != null && this.Record.DeepAnalysisMap == null)
         {
@@ -368,8 +372,8 @@
             this._workingMap.StretchFactor = this.Record.StretchFactor ?? "";
         }
         this._originalMap = EditMapTimelineHelper.Clone(this._workingMap);
-        this._selectedSourceAudioTrackId = GetFirstTrackId(this.Record?.SourceAudioTracks);
-        this._selectedLanguageAudioTrackId = GetFirstTrackId(this.Record?.ImportedAudioTracks);
+        this._selectedSourceAudioTrackId = GetFirstTrackId(this.GetDisplayAudioTracks(true));
+        this._selectedLanguageAudioTrackId = GetFirstTrackId(this.GetDisplayAudioTracks(false));
         this._sourcePlayheadMs = 0.0;
         this._languageCursorMs = double.NaN;
 
@@ -814,8 +818,8 @@
         string sourceAudioUrl = this.BuildAudioTimelineUrl("source", this._selectedSourceAudioTrackId, sourceDurationMs);
         string languageAudioUrl = this.BuildAudioTimelineUrl("language", this._selectedLanguageAudioTrackId, languageDurationMs);
         string sourceFillAudioUrl = languagePlan != null && languagePlan.SourceFillTrack != null ? this.BuildAudioTimelineUrl("source", languagePlan.SourceFillTrack.Id, sourceDurationMs) : null;
-        double sourceNyquistHz = GetNyquistFrequency(this.Record?.SourceAudioTracks, this._selectedSourceAudioTrackId);
-        double languageNyquistHz = GetNyquistFrequency(this.Record?.ImportedAudioTracks, this._selectedLanguageAudioTrackId);
+        double sourceNyquistHz = GetNyquistFrequency(this.GetDisplayAudioTracks(true), this._selectedSourceAudioTrackId);
+        double languageNyquistHz = GetNyquistFrequency(this.GetDisplayAudioTracks(false), this._selectedLanguageAudioTrackId);
         return new { durationMs = sourceDurationMs, frameDurationMs = this._sourceIndex != null ? this._sourceIndex.MedianFrameDurationMs : 40.0, sourceAudioUrl = sourceAudioUrl, languageAudioUrl = languageAudioUrl, sourceFillAudioUrl = sourceFillAudioUrl, audioMode = this._audioMode, sourceNyquistHz = sourceNyquistHz, languageNyquistHz = languageNyquistHz, waveformGain = this._waveformGain, playheadMs = this._sourcePlayheadMs, precisionMode = this._precisionEditorOpen, tool = this._timelineTool, selectionStartMs = this.HasTimelineSelection ? (double?)this._selectionSourceStartMs : null, selectionEndMs = this.HasTimelineSelection ? (double?)this._selectionSourceEndMs : null, labels = labels, segments = segments, operations = operations };
     }
 
@@ -943,6 +947,37 @@
         return tracks != null && tracks.Count > 0 ? tracks[0].Id : null;
     }
 
+    private List<TrackInfo> GetDisplayAudioTracks(bool source) => this.Record == null ? new List<TrackInfo>() :
+        RemuxForge.Core.Pipeline.PipelineTrackSelectionResolver.ResolveDisplayAudio(this.Record, source);
+
+    private void HandleMediaSelectionChanged()
+    {
+        // La nostra Apply pubblica il nuovo piano e il chiamante chiude già l'editor a successo.
+        if (this._isApplying) return;
+        _ = this.InvokeAsync(async () =>
+        {
+            FileProcessingRecord current = this.Orchestrator.GetRecord(this.RecordIndex);
+            if (this.Record == null || this._cancellation.IsCancellationRequested)
+                return;
+            bool unchanged = current != null && current.SourceFilePath == this.Record.SourceFilePath && current.LangFilePath == this.Record.LangFilePath &&
+                string.Equals(this._openedPreviewSignature, MergeOrchestrator.GetEditMapPreviewSignature(current, this.Orchestrator.CurrentOptions), StringComparison.Ordinal) &&
+                (current.Status != FileStatus.Pending || this.Record.Status == FileStatus.Pending) && current.Status != FileStatus.Skipped &&
+                SameTrackSelection(current.ExplicitTrackSelection, this.Record.ExplicitTrackSelection) &&
+                RemuxForge.Core.Pipeline.PipelineTrackSelectionResolver.ResolveDisplayAudio(current, true).Select(track => track.Id).SequenceEqual(this.GetDisplayAudioTracks(true).Select(track => track.Id)) &&
+                RemuxForge.Core.Pipeline.PipelineTrackSelectionResolver.ResolveDisplayAudio(current, false).Select(track => track.Id).SequenceEqual(this.GetDisplayAudioTracks(false).Select(track => track.Id));
+            if (!unchanged)
+            {
+                this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.editMap.recordChanged"));
+                await this.CloseAsync();
+            }
+        });
+    }
+
+    private static bool SameTrackSelection(RemuxPairTrackSelection left, RemuxPairTrackSelection right) =>
+        left == null || right == null ? left == right : left.PairKey == right.PairKey &&
+        left.SourceAudioIds.SetEquals(right.SourceAudioIds) && left.SourceSubIds.SetEquals(right.SourceSubIds) &&
+        left.LangAudioIds.SetEquals(right.LangAudioIds) && left.LangSubIds.SetEquals(right.LangSubIds);
+
     /// <summary>
     /// Calcola la frequenza di Nyquist della traccia selezionata
     /// </summary>
@@ -964,7 +999,7 @@
     /// <param name="source">True per la corsia Source, false per quella Language</param>
     private async Task ChangeAudioTrackAsync(ChangeEventArgs args, bool source)
     {
-        List<TrackInfo> tracks = source ? this.Record?.SourceAudioTracks : this.Record?.ImportedAudioTracks;
+        List<TrackInfo> tracks = this.GetDisplayAudioTracks(source);
         if (!int.TryParse(args.Value != null ? args.Value.ToString() : "", out int trackId) || tracks == null || tracks.Find(track => track.Id == trackId) == null)
             return;
         if (source)
@@ -985,7 +1020,7 @@
         {
             Label = AppText.T("web.editMap.sourceAudio"),
             ElementId = "edit-map-source-audio",
-            Tracks = this.Record?.SourceAudioTracks ?? new List<TrackInfo>(),
+            Tracks = this.GetDisplayAudioTracks(true),
             SelectedTrackId = this._selectedSourceAudioTrackId,
             OnTrackChanged = EventCallback.Factory.Create<ChangeEventArgs>(this, args => this.ChangeAudioTrackAsync(args, true))
         });
@@ -993,7 +1028,7 @@
         {
             Label = AppText.T("web.editMap.languageAudio"),
             ElementId = "edit-map-language-audio",
-            Tracks = this.Record?.ImportedAudioTracks ?? new List<TrackInfo>(),
+            Tracks = this.GetDisplayAudioTracks(false),
             SelectedTrackId = this._selectedLanguageAudioTrackId,
             OnTrackChanged = EventCallback.Factory.Create<ChangeEventArgs>(this, args => this.ChangeAudioTrackAsync(args, false))
         });
@@ -2283,6 +2318,7 @@
     /// </summary>
     public async ValueTask DisposeAsync()
     {
+        this.Orchestrator.OnRecordsChanged -= this.HandleMediaSelectionChanged;
         this._cancellation.Cancel();
         if (this._previewPair != null)
         {

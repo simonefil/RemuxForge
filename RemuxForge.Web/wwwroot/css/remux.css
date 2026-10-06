@@ -1,0 +1,21 @@
+/* Remux wizard: keep scrolling inside the panes, not the dialog. */
+.rz-dialog > .rz-dialog-content.rf-remux-dialog-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    padding: 0 !important;
+    overflow: hidden !important;
+}
+
+/* Only the embedded picker fills the fixed-height child dialog. */
+.rz-dialog > .rz-dialog-content.rf-remux-picker-dialog-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    padding: 0 !important;
+    overflow: hidden !important;
+}

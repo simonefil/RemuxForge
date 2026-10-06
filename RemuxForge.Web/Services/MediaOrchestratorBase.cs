@@ -75,6 +75,35 @@ namespace RemuxForge.Web.Services
 
         #region Metodi protected
 
+        /// <summary>Primitiva opt-in del reset Remux; non cambia i reset Metadata/Split.</summary>
+        protected void ResetIdleWorkState()
+        {
+            lock (this._stateLock)
+            {
+                if (this._isBusy) return;
+                this._logText = "";
+                this._selectedIndex = -1;
+                this._stopRequested = false;
+                this._progress.IsActive = false;
+                this._progress.Operation = "";
+                this._progress.CurrentEpisode = "";
+                this._progress.CurrentStatus = "";
+                this._progress.CurrentIndex = 0;
+                this._progress.Total = 0;
+                this._progress.Completed = 0;
+                this._progress.CurrentPercent = 0;
+                this._progress.GlobalPercent = 0;
+                this._progress.CurrentIndeterminate = false;
+                this._progress.GlobalIndeterminate = false;
+            }
+        }
+
+        /// <summary>Reset del solo log di presentazione, dopo una scansione candidata già committata.</summary>
+        protected void ResetCommittedScanPresentation()
+        {
+            lock (this._stateLock) { this._logText = ""; }
+        }
+
         /// <summary>
         /// Accoda un messaggio al log e notifica i client
         /// </summary>

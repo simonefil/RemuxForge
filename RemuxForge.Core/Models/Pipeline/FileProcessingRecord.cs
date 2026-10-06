@@ -1,4 +1,5 @@
 using RemuxForge.Core.Audio;
+using RemuxForge.Core.Localization;
 using System.Collections.Generic;
 
 namespace RemuxForge.Core.Models
@@ -136,6 +137,52 @@ namespace RemuxForge.Core.Models
 
         #region Proprietà
 
+        /// <summary>Input del lavoro, preservato da ResetDerivedState; clonare separatamente nell'orchestratore.</summary>
+        public RemuxPairTrackSelection ExplicitTrackSelection { get; set; }
+
+        /// <summary>Distingue lo skip derivato dalla selezione da uno skip manuale o di matching.</summary>
+        public bool SkippedByTrackSelection { get; private set; }
+
+        /// <summary>Copia detached dell'input e della provenienza dello skip per i clone dell'orchestratore.</summary>
+        public void CopyTrackSelectionStateFrom(FileProcessingRecord source)
+        {
+            this.ExplicitTrackSelection = source.ExplicitTrackSelection?.Clone();
+            this.SkippedByTrackSelection = source.SkippedByTrackSelection;
+        }
+
+        /// <summary>Usare per lo skip workspace anche quando il record era già saltato dalla selezione.</summary>
+        public void SetManualSkip(string reason)
+        {
+            this.SkippedByTrackSelection = false;
+            this.Status = FileStatus.Skipped;
+            this.SkipReason = reason;
+        }
+
+        public void ApplyTrackSelection(RemuxPairTrackSelection selection)
+        {
+            this.ExplicitTrackSelection = selection?.Clone();
+            this.ApplySelectionSkip(selection != null && !selection.HasLangTracks);
+        }
+
+        /// <summary>Eligibility risolta dal Core, valida anche per regole opt-in; preserva gli skip manuali.</summary>
+        public void ApplySelectionSkip(bool noLangTracks)
+        {
+            bool wasSelectionSkip = this.SkippedByTrackSelection;
+            // Un record saltato per altri motivi non diventa uno skip derivato e non viene riattivato.
+            if (this.Status == FileStatus.Skipped && !wasSelectionSkip) return;
+            this.SkippedByTrackSelection = noLangTracks;
+            if (this.SkippedByTrackSelection && (this.Status != FileStatus.Skipped || wasSelectionSkip))
+            {
+                this.ResetDerivedState();
+                this.Status = FileStatus.Skipped;
+            }
+            else if (wasSelectionSkip && !this.SkippedByTrackSelection)
+            {
+                this.ResetDerivedState();
+                this.Status = FileStatus.Pending;
+            }
+        }
+
         /// <summary>
         /// Identificatore episodio estratto dal pattern
         /// </summary>
@@ -249,7 +296,12 @@ namespace RemuxForge.Core.Models
         /// <summary>
         /// Motivo dello skip o errore, se applicabile
         /// </summary>
-        public string SkipReason { get; set; }
+        private string _skipReason;
+        public string SkipReason
+        {
+            get => this.SkippedByTrackSelection ? AppText.T("remuxConfiguration.noLangSelected") : this._skipReason;
+            set => this._skipReason = value;
+        }
 
         /// <summary>
         /// Stato corrente del file nel pipeline di elaborazione

@@ -553,6 +553,45 @@ namespace RemuxForge.Core.Configuration
             return result;
         }
 
+        /// <summary>Snapshot per editing, senza condividere liste con Settings.</summary>
+        public List<RemuxPreset> GetRemuxPresets()
+        {
+            lock (this._fileLock)
+                return this._model.RemuxPresets.ConvertAll(preset => preset.Clone());
+        }
+
+        /// <summary>Salvataggio esplicito; collisioni non sovrascritte e rollback in caso di errore disco.</summary>
+        public bool SaveRemuxPreset(RemuxPreset preset, bool update, out string errorMessage)
+        {
+            errorMessage = "";
+            if (preset == null || string.IsNullOrWhiteSpace(preset.Name))
+            {
+                errorMessage = AppText.T("web.remux.presetNameRequired");
+                return false;
+            }
+            lock (this._fileLock)
+            {
+                string name = preset.Name.Trim();
+                int index = this._model.RemuxPresets.FindIndex(item => string.Equals(item.Name?.Trim(), name, StringComparison.OrdinalIgnoreCase));
+                if ((!update && index >= 0) || (update && index < 0))
+                {
+                    errorMessage = AppText.T(index >= 0 ? "web.remux.presetCollision" : "web.remux.presetMissing");
+                    return false;
+                }
+                List<RemuxPreset> previous = this._model.RemuxPresets;
+                List<RemuxPreset> replacement = previous.ConvertAll(item => item.Clone());
+                RemuxPreset copy = preset.Clone();
+                copy.Name = update ? previous[index].Name : name;
+                if (update) replacement[index] = copy;
+                else replacement.Add(copy);
+                this._model.RemuxPresets = replacement;
+                if (this.Save()) return true;
+                this._model.RemuxPresets = previous;
+                errorMessage = AppText.T("web.remux.saveFailed");
+                return false;
+            }
+        }
+
         #endregion
 
         #region Metodi privati
@@ -591,6 +630,11 @@ namespace RemuxForge.Core.Configuration
 
             if (this._model.EncodingProfiles == null)
                 this._model.EncodingProfiles = new List<EncodingProfile>();
+
+            if (this._model.RemuxPresets == null)
+                this._model.RemuxPresets = new List<RemuxPreset>();
+            this._model.RemuxPresets.RemoveAll(preset => preset == null);
+            this._model.RemuxPresets = this._model.RemuxPresets.ConvertAll(preset => preset.Clone());
 
             // Assicura stringhe non null nei percorsi tool
             if (this._model.Tools.MkvMergePath == null)

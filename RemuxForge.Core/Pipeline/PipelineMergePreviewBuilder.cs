@@ -55,6 +55,11 @@ namespace RemuxForge.Core.Pipeline
         public void Build(FileProcessingRecord record, Options options, MkvToolsService mkvService, Func<string, MkvFileInfo> fileInfoProvider, bool needsMerge, bool needsRemux, bool filterSourceAudio, bool filterSourceSubs, string[] codecPatterns, string[] sourceAudioCodecPatterns, string ffmpegPath)
         {
             record.MergeCommand = "";
+            if (record.ExplicitTrackSelection != null && !record.ExplicitTrackSelection.HasLangTracks)
+            {
+                record.ApplyTrackSelection(record.ExplicitTrackSelection);
+                return;
+            }
             // Anche un record fallito deve avere tracce e piano audio: l'editor EditMap serve proprio a sistemarlo a mano
             if (record.Status != FileStatus.Analyzed && record.Status != FileStatus.Error)
                 return;
@@ -89,27 +94,27 @@ namespace RemuxForge.Core.Pipeline
 
             if (sourceTracks != null)
             {
-                if (filterSourceAudio)
-                {
-                    sourceAudioIds = mkvService.GetSourceTrackIds(sourceTracks, "audio", options.KeepSourceAudioLangs, sourceAudioCodecPatterns);
-                }
-                if (filterSourceSubs)
-                {
-                    sourceSubIds = mkvService.GetSourceTrackIds(sourceTracks, "subtitles", options.KeepSourceSubtitleLangs, null);
-                }
-
-                if (needsMerge && langTracks != null)
-                {
-                    this._trackMapper.CollectLanguageTracks(record, langTracks, mkvService, options, codecPatterns, out audioTracks, out subtitleTracks);
-                }
+                ResolvedRemuxTracks resolved = PipelineTrackSelectionResolver.Resolve(record, options, sourceTracks, langTracks, mkvService, codecPatterns, sourceAudioCodecPatterns);
+                sourceAudioIds = resolved.SourceAudioIds;
+                sourceSubIds = resolved.SourceSubIds;
+                audioTracks = resolved.LangAudioTracks;
+                subtitleTracks = resolved.LangSubTracks;
+                filterSourceAudio = resolved.FilterSourceAudio;
+                filterSourceSubs = resolved.FilterSourceSubs;
 
                 hasWork = needsMerge ? (audioTracks.Count > 0 || subtitleTracks.Count > 0) : needsRemux;
+                if (needsMerge && langTracks != null && !hasWork && options.SkipPairsWithoutSelectedLangTracks)
+                {
+                    record.ApplySelectionSkip(true);
+                    return;
+                }
 
                 record.KeptSourceAudioIds = sourceAudioIds;
                 record.KeptSourceSubIds = sourceSubIds;
                 record.ImportedAudioTracks = audioTracks;
                 record.ImportedSubTracks = subtitleTracks;
                 record.DisplayAudioFormat = Utils.FormatAudioFormat(options.AudioFormat);
+                this._trackMapper.PopulateResultLanguages(record, sourceTracks, sourceAudioIds, audioTracks, subtitleTracks, filterSourceAudio, filterSourceSubs, options);
 
                 if (hasWork)
                 {
@@ -188,7 +193,7 @@ namespace RemuxForge.Core.Pipeline
             bool deepAudioRequired;
             bool processingPossible;
 
-            deepAudioRequired = record.DeepAnalysisApplied && record.DeepAnalysisMap != null && (record.DeepAnalysisMap.Operations.Count > 0 || record.DeepAnalysisMap.LanguageAudioOffsetMs != 0) && !options.SubOnly;
+            deepAudioRequired = record.DeepAnalysisApplied && record.DeepAnalysisMap != null && (record.DeepAnalysisMap.Operations.Count > 0 || record.DeepAnalysisMap.LanguageAudioOffsetMs != 0) && audioTracks.Count > 0;
             processingPossible = options.AudioProcessingScope != "disabled" || options.AudioSourceFillThresholdMs > 0 || deepAudioRequired;
             if (!processingPossible || string.IsNullOrEmpty(options.AudioFormat))
             {

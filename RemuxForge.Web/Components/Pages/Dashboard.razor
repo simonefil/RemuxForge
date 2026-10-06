@@ -95,6 +95,16 @@ else
                 }
                 else
                 {
+                    @if (_records.Count == 0)
+                    {
+                        <RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="1rem" Style="height:100%">
+                            <RadzenText TextStyle="TextStyle.H4">@AppText.T("web.remux.emptyTitle")</RadzenText>
+                            <RadzenText>@AppText.T("web.remux.emptyDescription")</RadzenText>
+                            <RadzenButton Text="@AppText.T("web.remux.configure")" Icon="add" Disabled="@Orchestrator.IsBusy" Click="ShowConfig" />
+                        </RadzenStack>
+                    }
+                    else
+                    {
                     <RemuxWorkspaceComponent Records="@_records"
                                  ScannedFileCount="@Orchestrator.ScannedFileCount"
                                  SelectedRecord="@_selectedRecord"
@@ -105,7 +115,8 @@ else
                                  IsBusy="@Orchestrator.IsBusy"
                                  OnRowSelected="SelectRow"
                                  OnContextMenu="ShowContextMenu"
-                                 OnChangeEditMap="ShowEditMapEditor" />
+                                  OnChangeEditMap="ShowEditMapEditor" />
+                    }
                 }
                 </div>
             </RadzenSplitterPane>
@@ -126,11 +137,11 @@ else
 </div>
 
 @* Dialog Configurazione *@
-@if (_showConfig)
+@if (_showConfig && _currentMode != RemuxForge.Core.Models.Options.MODE_REMUX)
 {
     <ConfigDialogComponent Options="@(_currentMode == RemuxForge.Core.Models.Options.MODE_SPLIT ? SplitOrchestrator.CurrentOptions : Orchestrator.CurrentOptions)"
                             OnClose="CloseConfig"
-                            OnApply="ApplyConfig" />
+                             OnApply="ApplyConfig" />
 }
 
 @* Dialog Preset Metadata *@

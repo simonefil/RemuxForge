@@ -97,15 +97,14 @@ namespace RemuxForge.Core.Pipeline
             List<string> resultAudioLangs = new List<string>();
             List<string> resultSubLangs = new List<string>();
             string lang;
-            string srcLang;
-            bool keepThis;
             if (!filterSourceAudio)
             {
-                for (int i = 0; i < record.SourceAudioLangs.Count; i++)
+                List<string> sourceLanguages = this.GetAudioLanguages(sourceTracks);
+                for (int i = 0; i < sourceLanguages.Count; i++)
                 {
-                    if (!resultAudioLangs.Contains(record.SourceAudioLangs[i]))
+                    if (!resultAudioLangs.Contains(sourceLanguages[i]))
                     {
-                        resultAudioLangs.Add(record.SourceAudioLangs[i]);
+                        resultAudioLangs.Add(sourceLanguages[i]);
                     }
                 }
             }
@@ -140,32 +139,23 @@ namespace RemuxForge.Core.Pipeline
 
             if (!filterSourceSubs)
             {
-                for (int i = 0; i < record.SourceSubLangs.Count; i++)
+                List<string> sourceLanguages = this.GetSubtitleLanguages(sourceTracks);
+                for (int i = 0; i < sourceLanguages.Count; i++)
                 {
-                    if (!resultSubLangs.Contains(record.SourceSubLangs[i]))
+                    if (!resultSubLangs.Contains(sourceLanguages[i]))
                     {
-                        resultSubLangs.Add(record.SourceSubLangs[i]);
+                        resultSubLangs.Add(sourceLanguages[i]);
                     }
                 }
             }
-            else
+            else if (sourceTracks != null)
             {
-                for (int i = 0; i < record.SourceSubLangs.Count; i++)
+                for (int i = 0; i < sourceTracks.Count; i++)
                 {
-                    srcLang = record.SourceSubLangs[i];
-                    keepThis = false;
-                    for (int k = 0; k < options.KeepSourceSubtitleLangs.Count; k++)
-                    {
-                        if (string.Equals(srcLang, options.KeepSourceSubtitleLangs[k], StringComparison.OrdinalIgnoreCase))
-                        {
-                            keepThis = true;
-                            break;
-                        }
-                    }
-                    if (keepThis && !resultSubLangs.Contains(srcLang))
-                    {
-                        resultSubLangs.Add(srcLang);
-                    }
+                    if (!string.Equals(sourceTracks[i].Type, "subtitles", StringComparison.OrdinalIgnoreCase) ||
+                        !record.KeptSourceSubIds.Contains(sourceTracks[i].Id)) continue;
+                    lang = !string.IsNullOrEmpty(sourceTracks[i].Language) ? sourceTracks[i].Language : "und";
+                    if (!resultSubLangs.Contains(lang)) resultSubLangs.Add(lang);
                 }
             }
 
@@ -195,9 +185,6 @@ namespace RemuxForge.Core.Pipeline
         /// <returns>Tracce lingua selezionate</returns>
         public List<TrackInfo> CollectLanguageTracks(FileProcessingRecord record, List<TrackInfo> langTracks, MkvToolsService mkvService, Options options, string[] codecPatterns, out List<TrackInfo> audioTracks, out List<TrackInfo> subtitleTracks)
         {
-            List<TrackInfo> foundAudio;
-            List<TrackInfo> foundSubs;
-            string targetLanguage;
             audioTracks = new List<TrackInfo>();
             subtitleTracks = new List<TrackInfo>();
 
@@ -209,28 +196,7 @@ namespace RemuxForge.Core.Pipeline
             }
             else
             {
-                for (int t = 0; t < options.TargetLanguage.Count; t++)
-                {
-                    targetLanguage = options.TargetLanguage[t];
-
-                    if (!options.SubOnly)
-                    {
-                        foundAudio = mkvService.GetFilteredTracks(langTracks, targetLanguage, "audio", codecPatterns);
-                        for (int a = 0; a < foundAudio.Count; a++)
-                        {
-                            audioTracks.Add(foundAudio[a]);
-                        }
-                    }
-
-                    if (!options.AudioOnly)
-                    {
-                        foundSubs = mkvService.GetFilteredTracks(langTracks, targetLanguage, "subtitles", null);
-                        for (int s = 0; s < foundSubs.Count; s++)
-                        {
-                            subtitleTracks.Add(foundSubs[s]);
-                        }
-                    }
-                }
+                PipelineTrackSelectionResolver.ResolveLanguage(record, options, langTracks, mkvService, codecPatterns, out audioTracks, out subtitleTracks);
             }
 
             return langTracks;

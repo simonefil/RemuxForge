@@ -1,0 +1,54 @@
+@using System.Linq
+@using System.Threading.Tasks
+
+@if (Multiple)
+{
+    <RadzenDropDown TValue="IEnumerable<string>" Data="@Catalog" TextProperty="Label" ValueProperty="Code"
+                    Value="@Values" Change="@ChangeMultiple" Multiple="true" Chips="true" MaxSelectedLabels="@int.MaxValue" Disabled="@IsBlocked" AllowClear="true"
+                    AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                    FilterOperator="StringFilterOperator.Contains" Placeholder="@AppText.T("web.remux.searchLanguage")"
+                    aria-label="@Label" Style="width:100%" />
+}
+else
+{
+    <RadzenDropDown TValue="string" Data="@Catalog" TextProperty="Label" ValueProperty="Code" Value="@Value"
+                    Change="@ChangeSingle" Disabled="@IsBlocked" AllowClear="true" AllowFiltering="true"
+                    FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" FilterOperator="StringFilterOperator.Contains"
+                    Placeholder="@AppText.T("web.remux.searchLanguage")" aria-label="@Label" Style="width:100%">
+        <ValueTemplate Context="language">
+            <span @onclick:stopPropagation="true">
+                <RadzenChip Text="@((language as LanguageItem)?.Label ?? Presentation(Value))" Close="RemoveSingle" Disabled="@IsBlocked"
+                            RemoveChipTitle="@AppText.T("web.common.delete")" />
+            </span>
+        </ValueTemplate>
+    </RadzenDropDown>
+}
+
+@code {
+    [Parameter] public bool Multiple { get; set; } = true;
+    [Parameter] public List<string> Values { get; set; } = new List<string>();
+    [Parameter] public EventCallback<List<string>> ValuesChanged { get; set; }
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public Func<bool> IsReadOnly { get; set; }
+    private bool IsBlocked => Disabled || (IsReadOnly?.Invoke() ?? false);
+    private sealed record LanguageItem(string Code, string Label);
+    // Il solo catalogo di codici accettati è quello Core. Le risorse sono esclusivamente presentazione.
+    private List<LanguageItem> Catalog => LanguageValidator.GetAll().Select(code => new LanguageItem(code, Presentation(code))).ToList();
+    private static string Presentation(string code)
+    {
+        string key = "web.remux.language." + code;
+        string name = AppText.T(key);
+        return name == "[" + key + "]" ? code : name + " · " + code;
+    }
+    private Task ChangeMultiple(object value)
+    {
+        if (IsBlocked) return Task.CompletedTask;
+        List<string> codes = ((IEnumerable<string>)value ?? Array.Empty<string>()).Select(LanguageValidator.NormalizeToIso6392).Distinct().ToList();
+        return ValuesChanged.InvokeAsync(codes);
+    }
+    private Task ChangeSingle(object value) => IsBlocked ? Task.CompletedTask : ValueChanged.InvokeAsync(string.IsNullOrEmpty(value as string) ? "" : LanguageValidator.NormalizeToIso6392((string)value));
+    private Task RemoveSingle() => IsBlocked ? Task.CompletedTask : ValueChanged.InvokeAsync("");
+}

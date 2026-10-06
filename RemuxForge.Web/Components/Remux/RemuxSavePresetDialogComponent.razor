@@ -1,0 +1,51 @@
+@inject DialogService DialogService
+@implements IAsyncDisposable
+
+<div class="rf-remux-preset-dialog" @ref="_content">
+<RadzenStack Gap="1rem">
+    <RadzenText>@AppText.T("web.remux.presetContents")</RadzenText>
+    <RadzenLabel Text="@AppText.T("web.common.nameLabel")" Component="PresetName" />
+    <RadzenTextBox Name="PresetName" @bind-Value="_name" Style="width:100%" />
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <RadzenAlert AlertStyle="AlertStyle.Danger" AllowClose="false" Style="white-space:pre-line;overflow-wrap:anywhere;min-width:0">@_error</RadzenAlert>
+    }
+    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Wrap="FlexWrap.Wrap" Gap="0.75rem">
+        <RadzenButton Text="@AppText.T("web.common.cancel")" Click="@(() => DialogService.Close(null))" />
+        <RadzenButton Text="@AppText.T("web.remux.save")" Click="Save" />
+    </RadzenStack>
+</RadzenStack>
+</div>
+
+@code {
+    [Parameter] public Func<string, string> SavePreset { get; set; }
+    [Parameter] public IJSObjectReference JsModule { get; set; }
+    private ElementReference _content;
+    private Task<IJSObjectReference> _focusSession;
+    private string _name = "", _error = "";
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && JsModule != null)
+        {
+            _focusSession = JsModule.InvokeAsync<IJSObjectReference>("focusRemuxDialog", _content).AsTask();
+            await _focusSession;
+        }
+    }
+    public async ValueTask DisposeAsync()
+    {
+        if (_focusSession == null) return;
+        try
+        {
+            IJSObjectReference session = await _focusSession;
+            await session.InvokeVoidAsync("dispose");
+            await session.DisposeAsync();
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+    }
+    private void Save()
+    {
+        _error = SavePreset(_name.Trim());
+        if (string.IsNullOrEmpty(_error)) DialogService.Close(true);
+    }
+}

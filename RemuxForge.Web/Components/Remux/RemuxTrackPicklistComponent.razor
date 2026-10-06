@@ -1,0 +1,78 @@
+@using System.Linq
+@using System.Threading.Tasks
+
+<RadzenPanel Text="@Title" AllowCollapse="false">
+    <div class="rf-remux-track-tables">
+        @foreach (bool available in new[] { false, true })
+        {
+        <div class="rf-remux-track-table" tabindex="0" role="region" aria-label="@(Title + ": " + AppText.T(available ? "web.remux.availableLang" : "web.remux.resultTracks"))">
+            <RadzenText TextStyle="TextStyle.Subtitle2">@AppText.T(available ? "web.remux.availableLang" : "web.remux.resultTracks")</RadzenText>
+            <RadzenDataGrid TItem="RemuxTrackGroup" Data="@(available ? Available : Result)" AllowPaging="false" AllowSorting="false" Density="Density.Compact" RowRender="RenderRow" class="rf-remux-track-grid" Style="max-height:28rem;overflow:auto">
+                <Columns>
+                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Title="@AppText.T("web.remux.column.origin")" Width="60px">
+                        <Template Context="group"><span class="rf-remux-origin" title="@group.Side"><RadzenIcon Icon="@(group.Side == RemuxTrackSide.Source ? "movie" : "content_copy")" />@group.Side</span></Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Property="Language" Title="@AppText.T("web.remux.column.language")" Width="40px">
+                        <HeaderTemplate><span title="@AppText.T("web.remux.column.language")" aria-label="@AppText.T("web.remux.column.language")">Lang</span></HeaderTemplate>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Title="Codec" Width="60px"><Template Context="group"><span class="rf-remux-track-title" title="@group.Codec">@group.Codec</span></Template></RadzenDataGridColumn>
+                    @if (string.Equals(Type, "audio", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <RadzenDataGridColumn TItem="RemuxTrackGroup" Property="Channels" Title="@AppText.T("web.remux.column.channels")" Width="30px">
+                            <HeaderTemplate><span title="@AppText.T("web.remux.column.channels")" aria-label="@AppText.T("web.remux.column.channels")">Ch</span></HeaderTemplate>
+                        </RadzenDataGridColumn>
+                    }
+                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Title="@AppText.T("web.remux.column.flags")" Width="40px">
+                        <Template Context="group"><span class="rf-remux-track-flags"><span title="@(AppText.T("web.remux.column.default") + ": " + AppText.T(group.DefaultTrack ? "web.common.yes" : "web.common.no"))" aria-label="@(AppText.T("web.remux.column.default") + ": " + AppText.T(group.DefaultTrack ? "web.common.yes" : "web.common.no"))">D@(group.DefaultTrack ? "✓" : "—")</span><span title="@(AppText.T("web.remux.column.forced") + ": " + AppText.T(group.ForcedTrack ? "web.common.yes" : "web.common.no"))" aria-label="@(AppText.T("web.remux.column.forced") + ": " + AppText.T(group.ForcedTrack ? "web.common.yes" : "web.common.no"))">F@(group.ForcedTrack ? "✓" : "—")</span></span></Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Title="@AppText.T("web.remux.column.title")" MinWidth="60px">
+                        <Template Context="group"><span class="rf-remux-track-title" title="@(string.IsNullOrWhiteSpace(group.Title) ? AppText.T("web.remux.untitled") : group.Title)">@(string.IsNullOrWhiteSpace(group.Title) ? AppText.T("web.remux.untitled") : group.Title)</span></Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Title="@AppText.T("web.remux.column.coverage")" Width="60px">
+                        <Template Context="group"><span class="rf-remux-track-coverage" title="@Coverage(group)" aria-label="@Coverage(group)">@group.CoveredPairs/@group.TotalPairs <span role="img" aria-label="@AppText.T(group.IsPartial ? "web.remux.partial" : "web.remux.all")">@(group.IsPartial ? "◐" : "✓")</span></span></Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Title="@AppText.T("web.remux.column.action")" Width="34px">
+                        <HeaderTemplate><RadzenIcon Icon="touch_app" title="@AppText.T("web.remux.column.action")" aria-label="@AppText.T("web.remux.column.action")" /></HeaderTemplate>
+                        <Template Context="group">
+                            @if (available)
+                            {
+                                <RadzenButton title="@AppText.T("web.remux.copyToResult")" aria-label="@(AppText.T("web.remux.copyToResult") + ": " + Description(group))" Icon="content_copy" Size="ButtonSize.Small" Disabled="@(IsBlocked || Draft.ResultGroups.Contains(group.Key))" Click="@(() => Copy(group))" />
+                            }
+                            else
+                            {
+                                <RadzenButton title="@ActionLabel(group)" aria-label="@(ActionLabel(group) + ": " + Description(group))"
+                                              Icon="@(group.Side == RemuxTrackSide.Lang ? "delete" : Draft.ExcludedGroups.Contains(group.Key) ? "undo" : "block")"
+                                              Size="ButtonSize.Small" Disabled="@IsBlocked" Click="@(() => Toggle(group))" />
+                            }
+                        </Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid>
+        </div>
+        }
+    </div>
+</RadzenPanel>
+
+@code {
+    [Parameter] public RemuxConfigurationDraft Draft { get; set; }
+    [Parameter] public string Type { get; set; }
+    [Parameter] public string Title { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public Func<bool> IsReadOnly { get; set; }
+    private bool IsBlocked => Disabled || (IsReadOnly?.Invoke() ?? false) || !Draft.HasCurrentSnapshot || Draft.Snapshot?.InventoryComplete != true;
+    private IEnumerable<RemuxTrackGroup> Groups => (Draft.HasCurrentSnapshot ? Draft.Snapshot.Groups : Array.Empty<RemuxTrackGroup>()).Where(g => string.Equals(g.Type, Type, StringComparison.OrdinalIgnoreCase));
+    private IEnumerable<RemuxTrackGroup> Result => Groups.Where(g => Draft.ResultGroups.Contains(g.Key));
+    private IEnumerable<RemuxTrackGroup> Available => Groups.Where(g => g.Side == RemuxTrackSide.Lang);
+    public static string Description(RemuxTrackGroup g) => g.Side + " · " + g.Language + " · " + g.Codec +
+        (g.Type == "audio" ? " · " + g.Channels + "ch" : "") + " · " + (string.IsNullOrWhiteSpace(g.Title) ? AppText.T("web.remux.untitled") : g.Title) +
+        " · " + (g.DefaultTrack ? "default " : "") + (g.ForcedTrack ? "forced" : "");
+    public static string Coverage(RemuxTrackGroup g) => AppText.T(g.IsPartial ? "web.remux.partial" : "web.remux.all") + " " + g.CoveredPairs + "/" + g.TotalPairs;
+    private string ActionLabel(RemuxTrackGroup group) => AppText.T(group.Side == RemuxTrackSide.Lang ? "web.common.delete" :
+        Draft.ExcludedGroups.Contains(group.Key) ? "web.remux.restore" : "web.remux.exclude");
+    private void RenderRow(RowRenderEventArgs<RemuxTrackGroup> args) => args.Attributes["class"] =
+        (args.Data.Side == RemuxTrackSide.Source ? "rf-remux-source-row" : "rf-remux-lang-row") +
+        (Draft.ExcludedGroups.Contains(args.Data.Key) ? " rf-remux-excluded" : "");
+    private async Task Copy(RemuxTrackGroup group) { if (IsBlocked) return; Draft.CopyGroup(group); await OnChanged.InvokeAsync(); }
+    private async Task Toggle(RemuxTrackGroup group) { if (IsBlocked) return; Draft.ToggleGroup(group); await OnChanged.InvokeAsync(); }
+}

@@ -1,0 +1,55 @@
+@inject DialogService DialogService
+@implements IAsyncDisposable
+
+@* Adattamento di hosting soltanto: picker, report ed editor restano quelli esistenti. *@
+<div class="rf-remux-native-content @(Kind == "picker" ? "rf-remux-picker" : "")" @ref="_content">
+    @if (Kind == "picker")
+    {
+        <FolderBrowserDialog InitialPath="@InitialPath" ShowFiles="@ShowFiles" AllowCurrentFolderSelection="true"
+                             AllowedExtensions="@AllowedExtensions" OnSelect="Selected" OnClose="Cancel" />
+    }
+    else if (Kind == "media")
+    {
+        <MediaInfoDialogComponent Title="@Title" Report="@Report" JsModule="@JsModule" OnClose="Cancel" />
+    }
+    else if (Kind == "encoding")
+    {
+        <EncodingProfilesDialog OnProfileSaved="@(name => _savedProfile = name)" OnClose="CloseEncoding" />
+    }
+</div>
+
+@code {
+    [Parameter] public string Kind { get; set; }
+    [Parameter] public string InitialPath { get; set; } = "";
+    [Parameter] public bool ShowFiles { get; set; }
+    [Parameter] public List<string> AllowedExtensions { get; set; } = new List<string>();
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Report { get; set; } = "";
+    [Parameter] public IJSObjectReference JsModule { get; set; }
+    private ElementReference _content;
+    private Task<IJSObjectReference> _focusSession;
+    private string _savedProfile;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && JsModule != null)
+        {
+            _focusSession = JsModule.InvokeAsync<IJSObjectReference>("focusRemuxDialog", _content).AsTask();
+            await _focusSession;
+        }
+    }
+    public async ValueTask DisposeAsync()
+    {
+        if (_focusSession == null) return;
+        try
+        {
+            IJSObjectReference session = await _focusSession;
+            await session.InvokeVoidAsync("dispose");
+            await session.DisposeAsync();
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+    }
+    private void Selected(string path) => DialogService.Close(path);
+    private void Cancel() => DialogService.Close(null);
+    private void CloseEncoding() => DialogService.Close(_savedProfile);
+}

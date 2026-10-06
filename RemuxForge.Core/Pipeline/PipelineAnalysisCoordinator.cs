@@ -320,7 +320,18 @@ namespace RemuxForge.Core.Pipeline
                         DeepAnalysisService deepService = new DeepAnalysisService(ffmpegPath, this._toolPathResolver);
                         try
                         {
-                            editMap = deepService.Analyze(record.SourceFilePath, record.LangFilePath, deepManualStretchFactor, this._opts.AnalysisCropSourcePx, this._opts.AnalysisCropLanguagePx, cancellationToken);
+                            bool explicitAudio = record.ExplicitTrackSelection != null;
+                            List<TrackInfo> selectedSource = PipelineTrackSelectionResolver.ResolveDisplayAudio(record, true);
+                            List<TrackInfo> languageInventory = this._trackMapper.FilterTracksByType(langInfo.Tracks, "audio");
+                            List<TrackInfo> selectedLanguage = PipelineTrackSelectionResolver.ResolveDisplayAudio(record, false, languageInventory);
+                            int? sourceStream = selectedSource.Count > 0 ? record.SourceAudioTracks.FindIndex(track => track.Id == selectedSource[0].Id) : null;
+                            int? languageStream = selectedLanguage.Count > 0 ? languageInventory.FindIndex(track => track.Id == selectedLanguage[0].Id) : null;
+                            string sourceLanguage = selectedSource.Count > 0 ? LanguageValidator.NormalizeToIso6392(selectedSource[0].Language) : "";
+                            string langLanguage = selectedLanguage.Count > 0 ? LanguageValidator.NormalizeToIso6392(selectedLanguage[0].Language) : "";
+                            bool sharedLanguage = !string.IsNullOrEmpty(sourceLanguage) && sourceLanguage != "und" && sourceLanguage != "mul" && sourceLanguage != "zxx" &&
+                                string.Equals(sourceLanguage, langLanguage, StringComparison.OrdinalIgnoreCase);
+                            editMap = deepService.Analyze(record.SourceFilePath, record.LangFilePath, deepManualStretchFactor, this._opts.AnalysisCropSourcePx, this._opts.AnalysisCropLanguagePx, cancellationToken,
+                                explicitAudio, sourceStream, languageStream, sharedLanguage);
                         }
                         catch (OperationCanceledException)
                         {

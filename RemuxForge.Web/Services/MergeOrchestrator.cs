@@ -8,6 +8,8 @@ using RemuxForge.Core.Pipeline;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -55,9 +57,13 @@ namespace RemuxForge.Web.Services
 
         /// <summary>Cache delle visualizzazioni associata alla scansione corrente</summary>
         private readonly AudioEnvelopeExtractor _audioExtractor;
+        private readonly VideoFrameAccessService _frameAccess;
 
         /// <summary>Annulla anche le preparazioni accodate quando parte un nuovo scan</summary>
         private CancellationTokenSource _audioCacheCancellation = new CancellationTokenSource();
+
+        private volatile bool _configurationPreparing;
+        private string _appliedSnapshotSignature;
 
         #endregion
 
@@ -71,6 +77,7 @@ namespace RemuxForge.Web.Services
         public MergeOrchestrator(AudioEnvelopeExtractor audioExtractor, VideoFrameAccessService frameAccess) : base(AppText.T("web.merge.ready"), false)
         {
             this._audioExtractor = audioExtractor;
+            this._frameAccess = frameAccess;
             this._pipeline = new ProcessingPipeline();
             this._records = new List<FileProcessingRecord>();
             this._scannedFileCount = 0;
@@ -78,20 +85,7 @@ namespace RemuxForge.Web.Services
             this._options = new Options();
             this._operationCancellation = null;
 
-            this._pipeline.OnAnalysisMediaReady += (record, languageTracks, cancellation) =>
-            {
-                List<MediaSource> media = new List<MediaSource>
-                {
-                    new MediaSource(record.SourceFilePath, new List<TrackInfo>(record.SourceAudioTracks)),
-                    new MediaSource(record.LangFilePath, new List<TrackInfo>(languageTracks))
-                };
-                CancellationTokenSource warmupCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation, this._audioCacheCancellation.Token);
-                _ = Task.Run(async () =>
-                {
-                    using (warmupCancellation)
-                        await this.WarmAudioTimelinesAsync(media, audioExtractor, frameAccess, warmupCancellation.Token);
-                });
-            };
+            this.ConnectPipeline();
 
             // Abilita file log se configurato via env var
             string logFilePath = Environment.GetEnvironmentVariable("REMUXFORGE_LOG_FILE");
@@ -99,20 +93,6 @@ namespace RemuxForge.Web.Services
             {
                 ConsoleHelper.EnableFileLog(logFilePath);
             }
-
-            // Collega eventi pipeline
-            this._pipeline.OnLogMessage += (section, _, text) =>
-            {
-                // Formatta testo con prefisso sezione
-                string prefix = ConsoleHelper.FormatSectionPrefix(section);
-                string formatted = !string.IsNullOrEmpty(prefix) ? prefix + text : text;
-                this.AppendLog(formatted);
-            };
-
-            this._pipeline.OnFileUpdated += _ =>
-            {
-                this.NotifyRecordsChanged();
-            };
 
             ConsoleHelper.SetProgressCallback((section, percent, status) =>
             {
@@ -134,6 +114,31 @@ namespace RemuxForge.Web.Services
         /// <returns>True se le opzioni sono state applicate</returns>
         public bool ApplyOptions(Options opts, out string errorMessage)
         {
+            RemuxApplyResult result = this.ApplyOptionsDetailed(opts);
+            errorMessage = string.Join(Environment.NewLine, result.Errors.Select(issue => issue.Message));
+            if (!result.Success)
+                foreach (PipelineInitializationIssue issue in result.Errors) this.AppendLog(issue.Message);
+            return result.Success;
+        }
+
+        /// <summary>Esito strutturato; init candidato Core non muta il lavoro in caso di errore.</summary>
+        public RemuxApplyResult ApplyOptionsDetailed(Options opts, RemuxPreviewSnapshot snapshot = null)
+        {
+            lock (this.StateLock)
+            {
+                if (opts?.ExplicitTrackSelection != null)
+                {
+                    var validation = RemuxConfigurationPreviewService.ValidateSelection(snapshot, opts.ExplicitTrackSelection);
+                    if (!validation.IsValid)
+                        return new RemuxApplyResult(false, false, validation.Errors.Select(message =>
+                            new PipelineInitializationIssue("selection", message, "ExplicitTrackSelection", "Tracks")).ToList(), Array.Empty<PipelineInitializationIssue>());
+                }
+                return this.ApplyOptionsDetailedInternal(opts, false);
+            }
+        }
+
+        private RemuxApplyResult ApplyOptionsDetailedInternal(Options opts, bool reserved, bool inventoryChanged = false)
+        {
             bool result = false;
             bool scanInputsChanged;
             bool analysisOptionsChanged;
@@ -141,34 +146,37 @@ namespace RemuxForge.Web.Services
             int resetCount;
             int refreshedCount;
             Options previousOptions;
-            errorMessage = "";
             if (opts == null)
             {
-                errorMessage = AppText.T("validation.invalidConfig");
-                return result;
+                return Failure(AppText.T("validation.invalidConfig"));
             }
 
-            if (this.BusyState)
+            if (this.BusyState && !reserved)
             {
-                errorMessage = AppText.T("web.merge.busyRetry");
-                return result;
+                return Failure(AppText.T("web.merge.busyRetry"));
             }
 
             lock (this.StateLock)
             {
                 previousOptions = this._options;
-                scanInputsChanged = this.ScanInputsChanged(previousOptions, opts);
+                scanInputsChanged = inventoryChanged || this.ScanInputsChanged(previousOptions, opts);
                 analysisOptionsChanged = scanInputsChanged || this.AnalysisOptionsChanged(previousOptions, opts);
                 renderOptionsChanged = !scanInputsChanged && !analysisOptionsChanged && this.RenderOptionsChanged(previousOptions, opts);
             }
 
+            PipelineInitializationResult initialization = null;
             if (!string.IsNullOrEmpty(opts.SourceFolder))
             {
-                result = this._pipeline.Initialize(opts);
+                initialization = this._pipeline.InitializeDetailed(opts);
+                result = initialization.Success;
                 if (!result)
                 {
-                    errorMessage = AppText.T("web.merge.configNotApplicable");
+                    return new RemuxApplyResult(false, false, initialization.Errors, initialization.Warnings);
                 }
+                opts = initialization.AppliedOptions;
+                scanInputsChanged = inventoryChanged || this.ScanInputsChanged(previousOptions, opts);
+                analysisOptionsChanged = scanInputsChanged || this.AnalysisOptionsChanged(previousOptions, opts);
+                renderOptionsChanged = !scanInputsChanged && !analysisOptionsChanged && this.RenderOptionsChanged(previousOptions, opts);
             }
             else
             {
@@ -177,6 +185,9 @@ namespace RemuxForge.Web.Services
 
             if (result)
             {
+                if (initialization != null)
+                    foreach (PipelineInitializationLog line in initialization.Log)
+                        this.AppendLog(ConsoleHelper.FormatSectionPrefix(line.Section) + line.Message);
                 if (scanInputsChanged)
                 {
                     lock (this.StateLock)
@@ -184,6 +195,7 @@ namespace RemuxForge.Web.Services
                         this._options = opts;
                         this._records.Clear();
                         this._scannedFileCount = 0;
+                        this._appliedSnapshotSignature = null;
                         this.SelectedIndexState = -1;
                     }
                     this.AppendLog(AppText.T("web.merge.configAppliedScanInvalidated"));
@@ -220,10 +232,253 @@ namespace RemuxForge.Web.Services
 
                     this.AppendLog(AppText.T("web.merge.configApplied"));
                 }
+                if (!scanInputsChanged)
+                    this._pipeline.ApplyTrackSelections(this._records);
+                if (analysisOptionsChanged)
+                {
+                    this._audioCacheCancellation.Cancel();
+                    this._audioCacheCancellation.Dispose();
+                    this._audioCacheCancellation = new CancellationTokenSource();
+                    this._audioExtractor?.ClearTimelineCache();
+                }
                 this.NotifyRecordsChanged();
             }
 
-            return result;
+            return new RemuxApplyResult(result, result && (scanInputsChanged || this._records.Count == 0),
+                Array.Empty<PipelineInitializationIssue>(), initialization?.Warnings ?? Array.Empty<PipelineInitializationIssue>());
+        }
+
+        private static RemuxApplyResult Failure(string message, string field = "", string section = "Configuration") =>
+            new RemuxApplyResult(false, false, new[] { new PipelineInitializationIssue("webApply", message, field, section) }, Array.Empty<PipelineInitializationIssue>());
+
+        /// <summary>Conferma wizard: validazione snapshot prima del commit, scansione soltanto per lista nuova/invalidata.</summary>
+        public async Task<RemuxApplyResult> ApplyConfigurationAsync(RemuxConfigurationDraft draft)
+        {
+            Options options;
+            RemuxPreviewSnapshot snapshot;
+            try
+            {
+                if (draft == null) return Failure(AppText.T("validation.invalidConfig"));
+                List<PipelineInitializationIssue> errors = draft.Validate();
+                if (errors.Count > 0) return new RemuxApplyResult(false, false, errors, Array.Empty<PipelineInitializationIssue>());
+                options = ClonePreparationValue(draft.BuildOptions());
+                snapshot = ClonePreparationValue(draft.Snapshot);
+                if (snapshot == null || !snapshot.InventoryComplete) return Failure(AppText.T("web.remux.refreshRequired"), "SourceFolder", "Files");
+                if (options.ExplicitTrackSelection != null)
+                {
+                    var validation = RemuxConfigurationPreviewService.ValidateSelection(snapshot, options.ExplicitTrackSelection);
+                    if (!validation.IsValid) return new RemuxApplyResult(false, false, validation.Errors.Select(message =>
+                        new PipelineInitializationIssue("selection", message, "ExplicitTrackSelection", "Tracks")).ToList(), Array.Empty<PipelineInitializationIssue>());
+                }
+            }
+            catch (Exception ex) { return Failure(ex.Message); }
+
+            bool previousStop;
+            CancellationToken cancellation;
+            lock (this.StateLock)
+            {
+                if (this.BusyState) return Failure(AppText.T("web.merge.busyRetry"));
+                previousStop = this.StopRequested;
+                this.BusyState = true;
+                this._configurationPreparing = true;
+                this._operationCancellation = new CancellationTokenSource();
+                cancellation = this._operationCancellation.Token;
+            }
+            try { return await Task.Run(() => this.PrepareAndCommitConfiguration(options, snapshot, cancellation)); }
+            finally
+            {
+                CancellationTokenSource operation;
+                lock (this.StateLock)
+                {
+                    this.BusyState = false;
+                    this.StopRequested = previousStop;
+                    this._configurationPreparing = false;
+                    operation = this._operationCancellation;
+                    this._operationCancellation = null;
+                }
+                operation?.Dispose();
+                // Una callback UI non deve trasformare un esito già determinato in un fallimento di Apply.
+                try { this.NotifyProgressChanged(); } catch { }
+            }
+        }
+
+        private static T ClonePreparationValue<T>(T value)
+        {
+            if (value == null) return default;
+            JsonSerializerOptions json = new JsonSerializerOptions { IgnoreReadOnlyProperties = true };
+            return JsonSerializer.Deserialize<T>(JsonSerializer.SerializeToUtf8Bytes(value, json), json);
+        }
+
+        private static string SnapshotSignature(RemuxPreviewSnapshot snapshot)
+        {
+            return string.Concat(snapshot.Groups.SelectMany(group => group.Members.Select(member =>
+                member.PairKey + ":" + member.Track.Id + ":" + group.Key)).OrderBy(value => value, StringComparer.Ordinal)
+                .Select(value => value.Length + ":" + value));
+        }
+
+        private RemuxApplyResult PrepareAndCommitConfiguration(Options options, RemuxPreviewSnapshot snapshot, CancellationToken cancellation)
+        {
+            // UpdateEditMap può essere consentito durante busy: questo lock impedisce un commit concorrente di EditMap.
+            lock (this._editMapLock)
+            {
+                List<PipelineInitializationLog> localLog = new List<PipelineInitializationLog>();
+                ProcessingPipeline candidate = null;
+                PipelineInitializationResult initialization = null;
+                List<FileProcessingRecord> prepared;
+                Options previous;
+                int scannedCount;
+                bool scan;
+                bool analysisChanged;
+                bool renderChanged;
+                int resetCount = 0;
+                int refreshedCount = 0;
+                string errorField = "";
+                string errorSection = "Configuration";
+                string signature;
+                try
+                {
+                    signature = SnapshotSignature(snapshot);
+                    candidate = new ProcessingPipeline();
+                    using (candidate.BeginIsolatedPreparation((section, level, message) =>
+                        { lock (localLog) localLog.Add(new PipelineInitializationLog(section, level, message)); }, cancellation))
+                    {
+                        cancellation.ThrowIfCancellationRequested();
+                        initialization = candidate.InitializeDetailed(options);
+                        if (!initialization.Success) return new RemuxApplyResult(false, false, initialization.Errors, initialization.Warnings);
+                        options = initialization.AppliedOptions;
+                        errorField = "SourceFolder";
+                        errorSection = "Files";
+                        lock (this.StateLock)
+                        {
+                            previous = this._options;
+                            HashSet<string> currentPairs = new HashSet<string>(this._records.Select(record =>
+                                RemuxPairTrackSelection.CreatePairKey(record.SourceFilePath, record.LangFilePath)), StringComparer.Ordinal);
+                            bool inventoryChanged = snapshot.Pairs.Count != this._scannedFileCount ||
+                                !currentPairs.SetEquals(snapshot.Pairs.Where(pair => pair.IsMatched).Select(pair => pair.PairKey)) ||
+                                (this._appliedSnapshotSignature != null && this._appliedSnapshotSignature != signature);
+                            scan = this._records.Count == 0 || inventoryChanged || this.ScanInputsChanged(previous, options);
+                            analysisChanged = scan || this.AnalysisOptionsChanged(previous, options);
+                            renderChanged = !analysisChanged && this.RenderOptionsChanged(previous, options);
+                            scannedCount = this._scannedFileCount;
+                            // Pattern locale: liste/piano/EditMap detached; diagnostiche non modificate dalla preparazione.
+                            prepared = scan ? new List<FileProcessingRecord>() : this._records.Select(this.CloneRecord).ToList();
+                        }
+                        if (scan)
+                        {
+                            PipelineFileScanner scanner = new PipelineFileScanner((section, level, text) =>
+                                { lock (localLog) localLog.Add(new PipelineInitializationLog(section, level, text)); });
+                            List<FileProcessingRecord> scanned = scanner.Scan(options, true, cancellation);
+                            if (scanned.Count != snapshot.Pairs.Count) throw new InvalidOperationException(AppText.T("remuxConfiguration.matchingChanged"));
+                            scannedCount = scanned.Count;
+                            prepared = scanned.Where(record => !string.IsNullOrEmpty(record.LangFilePath)).ToList();
+                            prepared.Sort((a, b) => string.Compare(a.EpisodeId, b.EpisodeId, StringComparison.OrdinalIgnoreCase));
+                        }
+                        else if (analysisChanged)
+                        {
+                            foreach (FileProcessingRecord record in prepared)
+                            {
+                                if (record.Status == FileStatus.Skipped ||
+                                    (record.Status == FileStatus.Done && !TrackSelectionChanged(record, options))) continue;
+                                record.ResetDerivedState();
+                                record.Status = FileStatus.Pending;
+                                resetCount++;
+                            }
+                        }
+                        candidate.ApplyTrackSelections(prepared);
+                        candidate.ValidatePreparedSnapshot(snapshot, prepared);
+                        if (renderChanged)
+                        {
+                            errorField = "AudioFormat";
+                            errorSection = "Processing";
+                            foreach (FileProcessingRecord record in prepared)
+                            {
+                                if (record.Status != FileStatus.Analyzed && !(record.Status == FileStatus.Error && record.DeepAnalysisApplied)) continue;
+                                record.Status = FileStatus.Analyzed;
+                                record.ErrorMessage = "";
+                                candidate.RecalculateDelays(record);
+                                candidate.BuildMergeCommand(record);
+                                if (!string.IsNullOrEmpty(record.ErrorMessage)) throw new InvalidOperationException(record.ErrorMessage);
+                                refreshedCount++;
+                            }
+                        }
+                        cancellation.ThrowIfCancellationRequested();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return new RemuxApplyResult(false, false, new[] { new PipelineInitializationIssue("prepare", ex.Message,
+                        errorField, errorSection, true) }, initialization?.Warnings ?? Array.Empty<PipelineInitializationIssue>());
+                }
+
+                // Nessun probe/render/scan fallibile dopo questo confine. Il candidato torna al modo runtime normale.
+                PipelineInitializationLog[] publicationLog;
+                lock (localLog) publicationLog = initialization.Log.Concat(localLog).ToArray();
+                lock (this.StateLock)
+                {
+                    if (cancellation.IsCancellationRequested)
+                        return Failure(AppText.T("remuxConfiguration.preparationCancelled"));
+                    this._pipeline = candidate;
+                    this._options = options;
+                    this._records = prepared;
+                    this._scannedFileCount = scannedCount;
+                    this._appliedSnapshotSignature = signature;
+                    this.ConnectPipeline();
+                    if (scan) this.SelectedIndexState = -1;
+                }
+                List<PipelineInitializationIssue> warnings = initialization.Warnings.ToList();
+                void Publish(Action action)
+                {
+                    try { action(); }
+                    catch (Exception ex) { warnings.Add(new PipelineInitializationIssue("postCommit", ex.Message, "", "Configuration", true)); }
+                }
+                if (analysisChanged)
+                {
+                    Publish(() => this._audioCacheCancellation.Cancel());
+                    Publish(() => this._audioCacheCancellation.Dispose());
+                    this._audioCacheCancellation = new CancellationTokenSource();
+                    Publish(() => this._audioExtractor.ClearTimelineCache());
+                }
+                if (scan)
+                {
+                    Publish(() => this._pipeline.ResetScanArtifactsAfterCommit());
+                    this.ResetCommittedScanPresentation();
+                }
+                foreach (PipelineInitializationLog line in publicationLog)
+                    Publish(() => this.AppendLog(ConsoleHelper.FormatSectionPrefix(line.Section) + line.Message));
+                Publish(() => this.AppendLog(scan ? AppText.T("web.merge.configAppliedScanInvalidated") : analysisChanged && resetCount > 0 ?
+                    AppText.F("web.merge.configAppliedAnalysisReset", resetCount) : renderChanged && refreshedCount > 0 ?
+                    AppText.F("web.merge.configAppliedPreviewRefreshed", refreshedCount) : AppText.T("web.merge.configApplied")));
+                if (scan)
+                {
+                    Publish(() => this.BeginProgress(AppText.T("web.progress.scan"), scannedCount, false));
+                    Publish(() => this.CompleteProgress(AppText.T("web.progress.scanCompleted")));
+                }
+                Publish(this.NotifyRecordsChanged);
+                return new RemuxApplyResult(true, scan, Array.Empty<PipelineInitializationIssue>(), warnings);
+            }
+        }
+
+        /// <summary>Reset esclusivamente del lavoro Remux; nessun file o setting persistito viene eliminato.</summary>
+        public bool Clear()
+        {
+            lock (this.StateLock)
+            {
+                if (this.BusyState) return false;
+                this._audioCacheCancellation.Cancel();
+                this._audioCacheCancellation.Dispose();
+                this._audioCacheCancellation = new CancellationTokenSource();
+                this._audioExtractor.ClearTimelineCache();
+                this._records.Clear();
+                this._scannedFileCount = 0;
+                this._appliedSnapshotSignature = null;
+                this._options = new Options { Mode = Options.MODE_REMUX };
+                this._pipeline = new ProcessingPipeline();
+                this.ConnectPipeline();
+                this.ResetIdleWorkState();
+            }
+            this.NotifyRecordsChanged();
+            this.NotifyProgressChanged();
+            return true;
         }
 
         /// <summary>
@@ -847,6 +1102,11 @@ namespace RemuxForge.Web.Services
         {
             lock (this.StateLock)
             {
+                if (this._configurationPreparing)
+                {
+                    this._operationCancellation?.Cancel();
+                    return;
+                }
                 this.StopRequested = true;
                 if (this._operationCancellation != null)
                     this._operationCancellation.Cancel();
@@ -910,9 +1170,9 @@ namespace RemuxForge.Web.Services
             if (record == null)
                 return null;
             if (string.Equals(side, "source", StringComparison.OrdinalIgnoreCase))
-                return new MediaSource(record.SourceFilePath, record.SourceAudioTracks);
+                return new MediaSource(record.SourceFilePath, PipelineTrackSelectionResolver.ResolveDisplayAudio(record, true));
             if (string.Equals(side, "language", StringComparison.OrdinalIgnoreCase))
-                return new MediaSource(record.LangFilePath, record.ImportedAudioTracks);
+                return new MediaSource(record.LangFilePath, PipelineTrackSelectionResolver.ResolveDisplayAudio(record, false));
             return null;
         }
 
@@ -938,6 +1198,31 @@ namespace RemuxForge.Web.Services
         #endregion
 
         #region Metodi privati
+
+        /// <summary>Collega anche la nuova pipeline creata da Clear, senza cambiare callback globali.</summary>
+        private void ConnectPipeline()
+        {
+            this._pipeline.OnLogMessage += (section, _, text) =>
+            {
+                string prefix = ConsoleHelper.FormatSectionPrefix(section);
+                this.AppendLog(!string.IsNullOrEmpty(prefix) ? prefix + text : text);
+            };
+            this._pipeline.OnFileUpdated += _ => this.NotifyRecordsChanged();
+            this._pipeline.OnAnalysisMediaReady += (record, languageTracks, cancellation) =>
+            {
+                List<MediaSource> media = new List<MediaSource>
+                {
+                    new MediaSource(record.SourceFilePath, PipelineTrackSelectionResolver.ResolveDisplayAudio(record, true)),
+                    new MediaSource(record.LangFilePath, new List<TrackInfo>(languageTracks))
+                };
+                CancellationTokenSource warmupCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation, this._audioCacheCancellation.Token);
+                _ = Task.Run(async () =>
+                {
+                    using (warmupCancellation)
+                        await this.WarmAudioTimelinesAsync(media, this._audioExtractor, this._frameAccess, warmupCancellation.Token);
+                });
+            };
+        }
 
         /// <summary>Prepara prima le tracce iniziali dei due lati, poi le alternative, senza bloccare l'analisi video</summary>
         /// <param name="media">Snapshot dei file e delle tracce selezionabili</param>
@@ -974,7 +1259,8 @@ namespace RemuxForge.Web.Services
                             }
                             catch (Exception exception)
                             {
-                                this.AppendLog("Anteprima audio non preparata: " + Path.GetFileName(source.FilePath) + " — " + exception.Message);
+                                if (!cancellation.IsCancellationRequested)
+                                    this.AppendLog("Anteprima audio non preparata: " + Path.GetFileName(source.FilePath) + " — " + exception.Message);
                             }
                         }
                     }
@@ -1060,6 +1346,8 @@ namespace RemuxForge.Web.Services
             }
 
             if (!this.StringListsEqual(previousOptions.TargetLanguage, newOptions.TargetLanguage) ||
+                !TrackSelectionsEqual(previousOptions.ExplicitTrackSelection, newOptions.ExplicitTrackSelection) ||
+                previousOptions.SkipPairsWithoutSelectedLangTracks != newOptions.SkipPairsWithoutSelectedLangTracks ||
                 !this.StringListsEqual(previousOptions.AudioCodec, newOptions.AudioCodec) ||
                 previousOptions.SubOnly != newOptions.SubOnly ||
                 previousOptions.AudioOnly != newOptions.AudioOnly ||
@@ -1074,6 +1362,63 @@ namespace RemuxForge.Web.Services
             }
 
             return result;
+        }
+
+        private static bool TrackSelectionsEqual(RemuxTrackSelection left, RemuxTrackSelection right)
+        {
+            if (left == null || right == null) return left == right;
+            if (left.Pairs.Count != right.Pairs.Count) return false;
+            Dictionary<string, RemuxPairTrackSelection> pairs = right.Pairs.ToDictionary(pair => pair.PairKey, StringComparer.Ordinal);
+            return left.Pairs.All(pair => pairs.TryGetValue(pair.PairKey, out RemuxPairTrackSelection other) &&
+                pair.SourceAudioIds.SetEquals(other.SourceAudioIds) && pair.SourceSubIds.SetEquals(other.SourceSubIds) &&
+                pair.LangAudioIds.SetEquals(other.LangAudioIds) && pair.LangSubIds.SetEquals(other.LangSubIds));
+        }
+
+        /// <summary>Confronta l'input della coppia, non i risultati né la selezione di altre coppie.
+        /// Il passaggio esplicito/legacy cambia anche l'autorità Source-fill e invalida i derivati.</summary>
+        private static bool TrackSelectionChanged(FileProcessingRecord record, Options options)
+        {
+            RemuxPairTrackSelection previous = record.ExplicitTrackSelection;
+            RemuxPairTrackSelection next = options.ExplicitTrackSelection?.Pairs.FirstOrDefault(pair =>
+                pair.PairKey == RemuxPairTrackSelection.CreatePairKey(record.SourceFilePath, record.LangFilePath));
+            if (previous == null || next == null) return previous != next;
+            return previous.PairKey != next.PairKey ||
+                !previous.SourceAudioIds.SetEquals(next.SourceAudioIds) || !previous.SourceSubIds.SetEquals(next.SourceSubIds) ||
+                !previous.LangAudioIds.SetEquals(next.LangAudioIds) || !previous.LangSubIds.SetEquals(next.LangSubIds);
+        }
+
+        /// <summary>Firma di valore della preview editor: piano concreto e input audio che non sono tutti
+        /// materializzati nel piano (formato, scope, flag e gain). Nessun probe o fallback di tracce.</summary>
+        public static string GetEditMapPreviewSignature(FileProcessingRecord record, Options options)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                record?.AudioProcessingPreview,
+                record?.DeepAnalysisMap,
+                record?.SyncOffsetMs,
+                record?.AudioDelayApplied,
+                record?.SubDelayApplied,
+                record?.StretchFactor,
+                options?.AudioFormat,
+                options?.AudioProcessingScope,
+                options?.AudioDownsample24To16,
+                options?.AudioPeakNormalize,
+                options?.AudioPeakTargetDb,
+                options?.AudioFixedGain,
+                options?.AudioFixedGainDb,
+                options?.AudioSourceFillLanguage,
+                options?.AudioSourceFillThresholdMs,
+                options?.AudioSourceFillStart,
+                options?.AudioSourceFillEnd,
+                options?.AudioSourceFillInsertSilence,
+                options?.AudioSourceFillGainDb,
+                options?.AudioDelay,
+                options?.SubtitleDelay,
+                options?.DeepAnalysis,
+                options?.FrameSync,
+                options?.SpeedCorrectionMode,
+                options?.ManualStretchFactor
+            });
         }
 
         /// <summary>
@@ -1190,7 +1535,8 @@ namespace RemuxForge.Web.Services
 
             for (int i = 0; i < this._records.Count; i++)
             {
-                if (this._records[i].Status == FileStatus.Done || this._records[i].Status == FileStatus.Skipped)
+                if (this._records[i].Status == FileStatus.Skipped ||
+                    (this._records[i].Status == FileStatus.Done && !TrackSelectionChanged(this._records[i], this._options)))
                 {
                     continue;
                 }
@@ -1237,9 +1583,9 @@ namespace RemuxForge.Web.Services
             }
             else if (record.Status == FileStatus.Pending || record.Status == FileStatus.Analyzed || record.Status == FileStatus.Error)
             {
-                record.Status = FileStatus.Skipped;
-                record.SkipReason = AppText.T("web.merge.skipByUser");
+                record.SetManualSkip(AppText.T("web.merge.skipByUser"));
             }
+            this._pipeline.ApplyTrackSelections(new[] { record });
         }
 
         /// <summary>
@@ -1354,6 +1700,7 @@ namespace RemuxForge.Web.Services
             result.DeepAnalysisResult = record.DeepAnalysisResult;
             result.DeepAnalysisDiagnosticsPath = record.DeepAnalysisDiagnosticsPath;
             result.AudioProcessingPreview = this.CloneAudioProcessingPlan(record.AudioProcessingPreview);
+            result.CopyTrackSelectionStateFrom(record);
 
             return result;
         }
@@ -1524,6 +1871,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         private void UpdateProgressFromPipelineStep(LogSection section, int percent, string status)
         {
+            if (this._configurationPreparing) return;
             int mappedPercent = this.MapPipelineStepPercent(section, percent);
 
             if (!this.BusyState)

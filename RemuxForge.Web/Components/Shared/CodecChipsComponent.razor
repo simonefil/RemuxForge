@@ -1,0 +1,36 @@
+@using System.Linq
+@using System.Threading.Tasks
+
+<RadzenDropDown TValue="IEnumerable<string>" Name="@Name" Data="@Catalog" TextProperty="Label" ValueProperty="Code"
+                Value="@SelectedValues" Change="ChangeValues" Multiple="true" Chips="true" MaxSelectedLabels="@int.MaxValue"
+                Disabled="@IsBlocked" AllowClear="true" AllowFiltering="true" LoadData="FilterCodecs"
+                FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" FilterOperator="StringFilterOperator.Contains"
+                Placeholder="@AppText.T("web.remux.searchCodec")" aria-label="@Label" Style="width:100%" />
+
+@code {
+    [Parameter] public string Name { get; set; } = "";
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public List<string> Values { get; set; } = new List<string>();
+    [Parameter] public EventCallback<List<string>> ValuesChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public Func<bool> IsReadOnly { get; set; }
+    private bool IsBlocked => Disabled || (IsReadOnly?.Invoke() ?? false);
+    private string filter = "";
+    private IEnumerable<string> SelectedValues => RemuxCodecCatalog.Normalize(Values);
+    // Preserve unknown loaded values, without creating extra options for recognized aliases.
+    private IEnumerable<RemuxCodecCatalog.CodecOption> Catalog => RemuxCodecCatalog.Options
+        .Concat(SelectedValues.Where(code => !RemuxCodecCatalog.Options.Any(option =>
+            string.Equals(option.Code, code, StringComparison.OrdinalIgnoreCase)))
+            .Select(code => new RemuxCodecCatalog.CodecOption(code, code, code ?? "")))
+        .Where(option => RemuxCodecCatalog.MatchesSearch(option, filter)).ToList();
+    private Task FilterCodecs(LoadDataArgs args)
+    {
+        filter = args.Filter ?? "";
+        return InvokeAsync(StateHasChanged);
+    }
+    private Task ChangeValues(object value)
+    {
+        if (IsBlocked) return Task.CompletedTask;
+        return ValuesChanged.InvokeAsync(RemuxCodecCatalog.Normalize((IEnumerable<string>)value));
+    }
+}

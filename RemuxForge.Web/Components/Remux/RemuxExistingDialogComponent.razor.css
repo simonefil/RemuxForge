@@ -1,0 +1,24 @@
+/* Gli involucri legacy sono contenuto del dialog Radzen, non overlay annidati. */
+.rf-remux-native-content { height:100%; min-height:0; min-width:0; }
+::deep .dialog-overlay.visible { position:static; inset:auto; background:none; display:block; z-index:auto; padding:0; width:100%; height:100%; }
+::deep .dialog-box { position:static; min-width:0 !important; max-width:none; width:100%; height:100%; max-height:none; margin:0; border:0; box-shadow:none; }
+::deep .dialog-title { display:none; }
+::deep .dialog-body { min-width:0; min-height:0; overflow:auto; }
+::deep .dialog-footer { display:flex; flex-wrap:wrap; align-items:center; gap:0.75rem; flex-shrink:0; }
+::deep .dialog-footer > .rz-alert { flex-basis:100%; min-width:0; overflow-wrap:anywhere; }
+::deep .dialog-footer > .rz-button { margin:0; }
+::deep .form-row { gap:0.75rem; margin-bottom:0.75rem; flex-wrap:wrap; }
+::deep .form-row > .rz-button { margin-left:0 !important; }
+::deep .form-input { min-width:0; max-width:100%; }
+::deep .dialog-body pre { overflow-wrap:anywhere; }
+
+/* Preserve the original browser's flex geometry through the native host. */
+.rf-remux-native-content.rf-remux-picker { display:flex; flex-direction:column; flex:1 1 auto; height:auto; overflow:hidden; }
+.rf-remux-picker ::deep .dialog-overlay.visible { display:flex; flex-direction:column; flex:1 1 auto; height:auto; min-height:0; }
+.rf-remux-picker ::deep .dialog-box.dialog-browse { flex:1 1 auto; height:auto; min-height:0; }
+.rf-remux-picker ::deep .dialog-body { flex:1 1 0; overflow:hidden; }
+.rf-remux-picker ::deep .browse-content { flex:1 1 0; overflow:hidden; }
+.rf-remux-picker ::deep .browse-list { min-width:0; }
+.rf-remux-picker ::deep .browse-error { overflow-wrap:anywhere; }
+/* Include the localized header, sort indicator and button padding. */
+.rf-remux-picker ::deep .browse-col-size { width:calc(14ch + 1.3rem); }

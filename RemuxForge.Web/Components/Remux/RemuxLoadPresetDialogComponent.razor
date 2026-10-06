@@ -1,0 +1,40 @@
+@inject DialogService DialogService
+@implements IAsyncDisposable
+
+<div class="rf-remux-preset-dialog" @ref="_content">
+<RadzenStack Gap="1rem">
+    <RadzenText TextStyle="TextStyle.Subtitle1" Style="overflow-wrap:anywhere;min-width:0">@PresetName</RadzenText>
+    <RadzenText>@AppText.T("web.remux.loadConfirm")</RadzenText>
+    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Wrap="FlexWrap.Wrap" Gap="0.75rem">
+        <RadzenButton ButtonType="ButtonType.Button" Text="@AppText.T("web.common.cancel")" Click="@(() => DialogService.Close(false))" />
+        <RadzenButton ButtonType="ButtonType.Button" Text="@AppText.T("web.remux.load")" Click="@(() => DialogService.Close(true))" />
+    </RadzenStack>
+</RadzenStack>
+</div>
+
+@code {
+    [Parameter] public string PresetName { get; set; } = "";
+    [Parameter] public IJSObjectReference JsModule { get; set; }
+    private ElementReference _content;
+    private Task<IJSObjectReference> _focusSession;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && JsModule != null)
+        {
+            _focusSession = JsModule.InvokeAsync<IJSObjectReference>("focusRemuxDialog", _content).AsTask();
+            await _focusSession;
+        }
+    }
+    public async ValueTask DisposeAsync()
+    {
+        if (_focusSession == null) return;
+        try
+        {
+            IJSObjectReference session = await _focusSession;
+            await session.InvokeVoidAsync("dispose");
+            await session.DisposeAsync();
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+    }
+}

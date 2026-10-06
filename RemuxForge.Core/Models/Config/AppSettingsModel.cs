@@ -416,6 +416,7 @@ namespace RemuxForge.Core.Models
             this.Ac3 = new Ac3Config();
             this.Ui = new UiConfig();
             this.EncodingProfiles = new List<EncodingProfile>();
+            this.RemuxPresets = new List<RemuxPreset>();
             this.Advanced = new AdvancedConfig();
         }
 
@@ -457,6 +458,9 @@ namespace RemuxForge.Core.Models
         /// Lista profili di encoding video
         /// </summary>
         public List<EncodingProfile> EncodingProfiles { get; set; }
+
+        /// <summary>Preset Remux riutilizzabili, separati dal lavoro corrente.</summary>
+        public List<RemuxPreset> RemuxPresets { get; set; }
 
         /// <summary>
         /// Configurazione avanzata parametri algoritmici

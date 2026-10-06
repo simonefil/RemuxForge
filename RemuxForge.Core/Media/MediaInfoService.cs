@@ -1,7 +1,12 @@
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
+using System.Diagnostics;
 using System.IO;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace RemuxForge.Core.Media
 {
@@ -55,23 +60,81 @@ namespace RemuxForge.Core.Media
         /// <returns>Report testuale o stringa vuota in caso di errore</returns>
         public string GetReport(string filePath)
         {
-            string result = "";
-            if (!File.Exists(filePath))
+            MediaInfoReportResult result = this.GetReportDetailed(filePath);
+            // Contratto legacy: restituisce stdout anche su exit nonzero, senza interpretare il report.
+            return result.Report;
+        }
+
+        /// <summary>Report detached con stato operativo esplicito; nessun log, stop o callback globale.</summary>
+        public MediaInfoReportResult GetReportDetailed(string filePath, CancellationToken cancellationToken = default)
+        {
+            MediaInfoReportResult result = new MediaInfoReportResult();
+            if (cancellationToken.IsCancellationRequested)
             {
+                result.Cancelled = true;
+                result.ErrorCode = "cancelled";
+                result.ErrorMessage = AppText.T("remuxConfiguration.mediaInfoCancelled");
                 return result;
             }
-
+            if (!File.Exists(filePath))
+            {
+                result.ErrorCode = "fileNotFound";
+                result.ErrorMessage = AppText.F("remuxConfiguration.mediaInfoFileUnavailable", filePath);
+                return result;
+            }
             try
             {
-                result = this.RunProcess(REPORT_TIMEOUT_MS, filePath);
+                using Process process = new Process();
+                process.StartInfo.FileName = this._mediaInfoPath;
+                process.StartInfo.UseShellExecute = false;
+                process.StartInfo.RedirectStandardOutput = true;
+                process.StartInfo.RedirectStandardError = true;
+                process.StartInfo.CreateNoWindow = true;
+                process.StartInfo.StandardOutputEncoding = Encoding.UTF8;
+                process.StartInfo.StandardErrorEncoding = Encoding.UTF8;
+                process.StartInfo.ArgumentList.Add(filePath);
+                process.Start();
+                Task<string> stdout = process.StandardOutput.ReadToEndAsync();
+                Task<string> stderr = process.StandardError.ReadToEndAsync();
+                using CancellationTokenSource timeout = new CancellationTokenSource(REPORT_TIMEOUT_MS);
+                using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+                try
+                {
+                    process.WaitForExitAsync(linked.Token).GetAwaiter().GetResult();
+                }
+                catch (OperationCanceledException)
+                {
+                    result.Cancelled = cancellationToken.IsCancellationRequested;
+                    result.TimedOut = !result.Cancelled && timeout.IsCancellationRequested;
+                    if (!process.HasExited) process.Kill(true);
+                    process.WaitForExit();
+                }
+                result.ExitCode = process.ExitCode;
+                result.Report = stdout.GetAwaiter().GetResult();
+                result.Stderr = stderr.GetAwaiter().GetResult();
+                result.Success = !result.Cancelled && !result.TimedOut && result.ExitCode == 0 && !string.IsNullOrWhiteSpace(result.Report);
+                if (!result.Success)
+                {
+                    result.ErrorCode = result.Cancelled ? "cancelled" : result.TimedOut ? "timeout" : result.ExitCode != 0 ? "exitCode" : "emptyReport";
+                    result.ErrorMessage = result.Cancelled ? AppText.T("remuxConfiguration.mediaInfoCancelled") : result.TimedOut ? AppText.T("remuxConfiguration.mediaInfoTimeout") :
+                        !string.IsNullOrEmpty(result.Stderr) ? result.Stderr : AppText.F("remuxConfiguration.mediaInfoInvalidReport", result.ExitCode);
+                }
             }
             catch (Exception ex)
             {
-                ConsoleHelper.Write(LogSection.General, LogLevel.Warning, "Errore esecuzione mediainfo: " + ex.Message);
-                result = "Errore esecuzione mediainfo: " + ex.Message;
+                result.ErrorCode = "exception";
+                result.ExceptionType = ex.GetType().FullName;
+                result.ExceptionMessage = ex.Message;
+                result.ExceptionDetails = ex.ToString();
+                result.ErrorMessage = ex.Message;
             }
-
             return result;
+        }
+
+        public Task<MediaInfoReportResult> GetReportDetailedAsync(string filePath, CancellationToken cancellationToken = default)
+        {
+            // Il token è gestito nel risultato anche se annullato prima dell'avvio.
+            return Task.Run(() => this.GetReportDetailed(filePath, cancellationToken));
         }
 
         /// <summary>
@@ -186,5 +249,21 @@ namespace RemuxForge.Core.Media
         }
 
         #endregion
+    }
+
+    /// <summary>Report grezzo e failure strutturata; ExitCode null se il processo non è partito.</summary>
+    public sealed class MediaInfoReportResult
+    {
+        public bool Success { get; internal set; }
+        public string Report { get; internal set; } = "";
+        public int? ExitCode { get; internal set; }
+        public string Stderr { get; internal set; } = "";
+        public string ErrorCode { get; internal set; } = "";
+        public string ErrorMessage { get; internal set; } = "";
+        public string ExceptionType { get; internal set; } = "";
+        public string ExceptionMessage { get; internal set; } = "";
+        public string ExceptionDetails { get; internal set; } = "";
+        public bool Cancelled { get; internal set; }
+        public bool TimedOut { get; internal set; }
     }
 }

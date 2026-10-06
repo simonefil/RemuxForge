@@ -1,4 +1,5 @@
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Localization;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -111,6 +112,12 @@ namespace RemuxForge.Core.Infrastructure
         /// <returns>Risultato con exit code, stdout e stderr</returns>
         public static ProcessResult Run(string fileName, string[] arguments, int timeoutMs, CancellationToken cancellationToken)
         {
+            PipelinePreparationContext local = PipelinePreparationContext.Current;
+            if (local != null)
+            {
+                using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, local.Cancellation);
+                return RunIsolated(fileName, arguments, timeoutMs > 0 ? timeoutMs : 30000, linked.Token);
+            }
             ProcessResult result = new ProcessResult();
             Process proc = null;
             string stdout = "";
@@ -168,6 +175,32 @@ namespace RemuxForge.Core.Infrastructure
             }
 
             return result;
+        }
+
+        /// <summary>Processo puntuale senza stop/log globali; errori e timeout non diventano stdout apparentemente valido.</summary>
+        public static ProcessResult RunIsolated(string fileName, string[] arguments, int timeoutMs, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using Process process = new Process();
+            SetupStartInfo(process, fileName);
+            foreach (string argument in arguments) process.StartInfo.ArgumentList.Add(argument);
+            process.Start();
+            var stdout = process.StandardOutput.ReadToEndAsync();
+            var stderr = process.StandardError.ReadToEndAsync();
+            using CancellationTokenSource timeout = new CancellationTokenSource();
+            if (timeoutMs > 0) timeout.CancelAfter(timeoutMs);
+            using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+            try { process.WaitForExitAsync(linked.Token).GetAwaiter().GetResult(); }
+            catch (OperationCanceledException)
+            {
+                if (!process.HasExited) process.Kill(true);
+                process.WaitForExit();
+                stdout.GetAwaiter().GetResult();
+                string error = stderr.GetAwaiter().GetResult();
+                cancellationToken.ThrowIfCancellationRequested();
+                throw new TimeoutException(AppText.F("remuxConfiguration.processTimeout", fileName, error));
+            }
+            return new ProcessResult { ExitCode = process.ExitCode, Stdout = stdout.GetAwaiter().GetResult(), Stderr = stderr.GetAwaiter().GetResult() };
         }
 
         /// <summary>

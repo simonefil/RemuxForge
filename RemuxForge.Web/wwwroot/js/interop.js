@@ -20,6 +20,14 @@ export function captureKeyboard(dotNetRef) {
         var activeDialog = getActiveDialog();
 
         if (activeDialog) {
+            // I dialog Remux ospitati da Radzen hanno già trap ed Escape nativi.
+            // Mantieni soltanto Tab per l'autocomplete del picker riusato.
+            if (isRemuxNativeDialog(activeDialog)) {
+                if (key === 'Tab' && activeElement?.classList.contains('path-bar-input')) {
+                    e.preventDefault();
+                }
+                return;
+            }
             if (key === 'Tab') {
                 if (activeElement && activeElement.classList.contains('path-bar-input')) {
                     e.preventDefault();
@@ -128,6 +136,35 @@ function getActiveDialog() {
     return dialogs.length > 0 ? dialogs[dialogs.length - 1] : null;
 }
 
+function isRemuxNativeDialog(element) {
+    var dialog = element?.closest('.rz-dialog');
+    return Boolean(dialog?.querySelector('.rf-remux-wizard, .rf-remux-native-content, .rf-remux-preset-dialog'));
+}
+
+// OnAfterRender prende il focus senza il timer Radzen di 500 ms.
+// Radzen resta proprietario di trap/Escape; qui si conserva solo l'opener del child,
+// che Radzen 11.2.7 ripristina nativamente soltanto chiudendo l'intera pila.
+export function focusRemuxDialog(element) {
+    if (!element?.isConnected) {
+        return { dispose: function () { } };
+    }
+    var opener = document.activeElement;
+    if (!element.contains(opener)) {
+        Radzen.focusFirstFocusableElement(element);
+    }
+    return {
+        dispose: function () {
+            requestAnimationFrame(function () {
+                var active = document.activeElement;
+                if (opener?.isConnected && !opener.matches(':disabled') &&
+                    (!active || active === document.body || element.contains(active))) {
+                    opener.focus({ preventScroll: true });
+                }
+            });
+        }
+    };
+}
+
 function closeActiveDialog(dialog) {
     var closeButton = dialog.querySelector('[data-dialog-close], .dialog-close-button');
     if (closeButton) {
@@ -171,6 +208,9 @@ function getFocusableElements(container) {
 function syncDialogFocus() {
     var stack = window._rfDialogFocusStack || [];
     var activeDialog = getActiveDialog();
+    if (isRemuxNativeDialog(activeDialog)) {
+        return;
+    }
     var activeIndex = stack.findIndex(function (entry) {
         return entry.dialog === activeDialog;
     });

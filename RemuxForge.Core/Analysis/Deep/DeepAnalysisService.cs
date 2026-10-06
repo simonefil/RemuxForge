@@ -63,8 +63,13 @@ namespace RemuxForge.Core.Analysis.Deep
         /// <param name="sourceCropPx">Crop manuale in pixel per il file source</param>
         /// <param name="languageCropPx">Crop manuale in pixel per il file language</param>
         /// <param name="cancellationToken">Token di annullamento cooperativo</param>
+        /// <param name="useSelectedAudio">True per usare solo i riferimenti audio espliciti; un lato vuoto disabilita il raffinamento audio</param>
+        /// <param name="selectedSourceAudioStream">Ordinale audio ffmpeg a:N della Source selezionata, non ID mkvmerge</param>
+        /// <param name="selectedLanguageAudioStream">Ordinale audio ffmpeg a:N della Language selezionata, non ID mkvmerge</param>
+        /// <param name="selectedAudioSharesLanguage">True se i due riferimenti selezionati dichiarano la stessa lingua</param>
         /// <returns>Mappa di montaggio completa se l'analisi viene accettata, altrimenti null</returns>
-        public EditMap Analyze(string sourceFile, string languageFile, string manualStretchFactor, string sourceCropPx, string languageCropPx, CancellationToken cancellationToken = default)
+        public EditMap Analyze(string sourceFile, string languageFile, string manualStretchFactor, string sourceCropPx, string languageCropPx, CancellationToken cancellationToken = default,
+            bool useSelectedAudio = false, int? selectedSourceAudioStream = null, int? selectedLanguageAudioStream = null, bool selectedAudioSharesLanguage = false)
         {
             Stopwatch totalStopwatch = Stopwatch.StartNew();
             Stopwatch phaseStopwatch = Stopwatch.StartNew();
@@ -187,7 +192,8 @@ namespace RemuxForge.Core.Analysis.Deep
                 phaseStopwatch.Restart();
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, AppText.T("deep.temporal.log.audioEnvelopes"));
                 ConsoleHelper.Progress(LogSection.Deep, 68, AppText.T("deep.temporal.progress.audioEnvelopes"));
-                AudioEnvelopePair envelopes = this.BuildAudioEnvelopes(sourceFile, languageFile, ffprobePath, ffmpegConfig, languageToSourceStretch);
+                AudioEnvelopePair envelopes = this.BuildAudioEnvelopes(sourceFile, languageFile, ffprobePath, ffmpegConfig, languageToSourceStretch,
+                    useSelectedAudio, selectedSourceAudioStream, selectedLanguageAudioStream, selectedAudioSharesLanguage);
                 result.Timing.AudioEnvelopesMs = phaseStopwatch.ElapsedMilliseconds;
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -320,12 +326,25 @@ namespace RemuxForge.Core.Analysis.Deep
         /// <param name="ffmpegConfig">Configurazione ffmpeg</param>
         /// <param name="stretch">Fattore di stretch della copia doppiata</param>
         /// <returns>Inviluppi sulla griglia comune oppure null quando l'audio non è utilizzabile</returns>
-        private AudioEnvelopePair BuildAudioEnvelopes(string sourceFile, string languageFile, string ffprobePath, FfmpegConfig ffmpegConfig, double stretch)
+        private AudioEnvelopePair BuildAudioEnvelopes(string sourceFile, string languageFile, string ffprobePath, FfmpegConfig ffmpegConfig, double stretch,
+            bool useSelectedAudio, int? selectedSourceAudioStream, int? selectedLanguageAudioStream, bool selectedAudioSharesLanguage)
         {
+            if (useSelectedAudio && (!selectedSourceAudioStream.HasValue || !selectedLanguageAudioStream.HasValue))
+                return null;
             try
             {
                 AudioEnvelopeExtractor audioExtractor = new AudioEnvelopeExtractor(this._ffmpegPath, ffprobePath);
-                bool sharedLanguage = audioExtractor.ResolveSharedStreams(sourceFile, languageFile, ffmpegConfig.FrameExtractionTimeoutMs, out int sourceStream, out int languageStream);
+                int sourceStream;
+                int languageStream;
+                bool sharedLanguage;
+                if (useSelectedAudio)
+                {
+                    sourceStream = selectedSourceAudioStream.Value;
+                    languageStream = selectedLanguageAudioStream.Value;
+                    sharedLanguage = selectedAudioSharesLanguage;
+                }
+                else
+                    sharedLanguage = audioExtractor.ResolveSharedStreams(sourceFile, languageFile, ffmpegConfig.FrameExtractionTimeoutMs, out sourceStream, out languageStream);
                 AudioEnvelope source = null;
                 AudioEnvelope language = null;
                 Parallel.Invoke(

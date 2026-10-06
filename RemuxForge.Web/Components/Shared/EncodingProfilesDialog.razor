@@ -1,3 +1,5 @@
+@using System.Linq
+
 <div class="dialog-overlay visible">
     <div class="dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="encoding-profiles-dialog-title" style="min-width: 65ch;" @onclick:stopPropagation="true">
         <div id="encoding-profiles-dialog-title" class="dialog-title">@AppText.T("web.encodingProfiles.title")</div>
@@ -151,6 +153,10 @@
             }
         </div>
         <div class="dialog-footer">
+            @if (!string.IsNullOrEmpty(_saveError))
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Danger" AllowClose="false">@_saveError</RadzenAlert>
+            }
             <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@Save" />
             <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" />
         </div>
@@ -163,10 +169,14 @@
     /// </summary>
     [Parameter] public EventCallback OnClose { get; set; }
 
+    [Parameter] public EventCallback<string> OnProfileSaved { get; set; }
+
     /// <summary>
     /// Lista profili in modifica
     /// </summary>
     private List<EncodingProfile> _profiles;
+    private List<EncodingProfile> _createdProfiles = new List<EncodingProfile>();
+    private string _saveError = "";
 
     /// <summary>
     /// Indice profilo selezionato
@@ -370,6 +380,7 @@
         EncodingProfile newProfile = new EncodingProfile();
         newProfile.Name = AppText.F("web.encodingProfiles.newProfileName", this._profiles.Count + 1);
         this._profiles.Add(newProfile);
+        this._createdProfiles.Add(newProfile);
         this._selectedIdx = this._profiles.Count - 1;
         this.LoadEditing();
     }
@@ -403,23 +414,26 @@
     /// <summary>
     /// Salva tutti i profili in AppSettings e chiude il dialog
     /// </summary>
-    private void Save()
+    private async Task Save()
     {
         // Salva profilo corrente
         this.SaveEditing();
 
-        // Sostituisci lista profili in AppSettings
-        AppSettingsService.Instance.Settings.EncodingProfiles.Clear();
-        for (int i = 0; i < this._profiles.Count; i++)
+        AppSettingsService settings = AppSettingsService.Instance;
+        List<EncodingProfile> previous = settings.Settings.EncodingProfiles;
+        settings.Settings.EncodingProfiles = this._profiles.Where(profile => !string.IsNullOrEmpty(profile.Name)).Select(profile => profile.Clone()).ToList();
+        this._saveError = "";
+        if (settings.Save())
         {
-            // Ignora profili senza nome
-            if (!string.IsNullOrEmpty(this._profiles[i].Name))
-            {
-                AppSettingsService.Instance.Settings.EncodingProfiles.Add(this._profiles[i]);
-            }
+            EncodingProfile saved = this._createdProfiles.LastOrDefault(profile => this._profiles.Contains(profile) && !string.IsNullOrWhiteSpace(profile.Name)) ?? this._editing;
+            if (saved != null && !string.IsNullOrWhiteSpace(saved.Name))
+                await this.OnProfileSaved.InvokeAsync(saved.Name);
+            await this.OnClose.InvokeAsync();
         }
-
-        AppSettingsService.Instance.Save();
-        this.OnClose.InvokeAsync();
+        else
+        {
+            settings.Settings.EncodingProfiles = previous;
+            this._saveError = AppText.T("web.encoding.saveFailed");
+        }
     }
 }
