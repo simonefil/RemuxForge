@@ -394,6 +394,10 @@ namespace RemuxForge.Cli
             {
                 ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.T("cli.config.subtitleCanvasRewrite"));
             }
+            if (opts.CopyLangChapters)
+            {
+                ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.T("cli.config.copyLangChapters"));
+            }
             if (opts.DeepAnalysis)
             {
                 ConsoleHelper.Write(LogSection.Config, LogLevel.Success, AppText.T("cli.config.deepActive"));

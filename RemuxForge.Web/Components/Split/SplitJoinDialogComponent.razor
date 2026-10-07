@@ -1,0 +1,592 @@
+@implements IDisposable
+
+<div class="dialog-overlay visible">
+    <div class="dialog-box split-join-dialog" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="split-join-title" @onclick:stopPropagation="true">
+        <div id="split-join-title" class="dialog-title">@AppText.T("web.splitJoin.title")</div>
+        <div class="dialog-body split-join-body">
+            <div class="split-join-hint">@AppText.T("web.splitJoin.hint")</div>
+
+            <div class="split-join-toolbar">
+                <RadzenButton Text="@AppText.T("web.splitJoin.addFiles")" Icon="note_add" Size="ButtonSize.Small" Disabled="@_loading" Click="@OpenBrowse" />
+                <span class="split-join-status" aria-live="polite">@StatusText()</span>
+            </div>
+
+            @if (_paths.Count == 0)
+            {
+                <div class="split-join-empty">@AppText.T("web.splitJoin.empty")</div>
+            }
+            else
+            {
+                <table class="split-join-table">
+                    <thead>
+                        <tr>
+                            <th class="split-join-col-index">#</th>
+                            <th>@AppText.T("web.dashboard.file")</th>
+                            <th class="split-join-col-duration">@AppText.T("web.splitJoin.duration")</th>
+                            <th class="split-join-col-chapters">@AppText.T("web.splitJoin.chapters")</th>
+                            <th class="split-join-col-actions"><span class="split-join-sr">@AppText.T("web.splitJoin.actions")</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (int i = 0; i < _paths.Count; i++)
+                        {
+                            int index = i;
+                            MkvSplitJoinPart part = PartAt(index);
+                            <tr class="@RowClass(index)"
+                                draggable="@(_loading ? "false" : "true")"
+                                @ondragstart="() => _dragIndex = index"
+                                @ondragend="() => _dragIndex = -1"
+                                @ondragover:preventDefault="true"
+                                @ondrop="() => DropOn(index)">
+                                <td class="split-join-col-index">@(index + 1)</td>
+                                <td class="split-join-file" title="@_paths[index]">
+                                    <span class="split-join-drag" aria-hidden="true">⋮⋮</span>
+                                    @System.IO.Path.GetFileName(_paths[index])
+                                    @if (part != null && part.Error.Length > 0)
+                                    {
+                                        <div class="split-join-part-error">@part.Error</div>
+                                    }
+                                </td>
+                                <td class="split-join-col-duration">@(part != null && part.Error.Length == 0 ? Time(part.DurationNs) : "–")</td>
+                                <td class="split-join-col-chapters">@(part != null && part.Error.Length == 0 ? part.Chapters.Count.ToString() : "–")</td>
+                                <td class="split-join-col-actions">
+                                    <RadzenButton Icon="arrow_upward" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
+                                                  Disabled="@(_loading || index == 0)" title="@AppText.T("web.splitJoin.moveUp")"
+                                                  aria-label="@AppText.F("web.splitJoin.moveUpPart", System.IO.Path.GetFileName(_paths[index]))"
+                                                  Click="@(() => Move(index, -1))" />
+                                    <RadzenButton Icon="arrow_downward" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
+                                                  Disabled="@(_loading || index == _paths.Count - 1)" title="@AppText.T("web.splitJoin.moveDown")"
+                                                  aria-label="@AppText.F("web.splitJoin.moveDownPart", System.IO.Path.GetFileName(_paths[index]))"
+                                                  Click="@(() => Move(index, 1))" />
+                                    <RadzenButton Icon="close" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
+                                                  Disabled="@_loading" title="@AppText.T("web.splitJoin.remove")"
+                                                  aria-label="@AppText.F("web.splitJoin.removePart", System.IO.Path.GetFileName(_paths[index]))"
+                                                  Click="@(() => Remove(index))" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            @if (_plan != null && !_loading && _paths.Count > 0)
+            {
+                @if (PlanIssues().Count > 0)
+                {
+                    <ul class="split-join-issues" role="alert">
+                        @foreach (string issue in PlanIssues())
+                        {
+                            <li>@issue</li>
+                        }
+                    </ul>
+                }
+                else if (_plan.Parts.Count >= 2)
+                {
+                    <div class="split-join-summary">
+                        @AppText.F("web.splitJoin.summary", _plan.Parts.Count, Time(_plan.TotalDurationNs), _plan.Chapters.Count)
+                    </div>
+                    @if (_plan.Chapters.Count > 0)
+                    {
+                        <details class="split-join-chapters">
+                            <summary>@AppText.T("web.splitJoin.chaptersPreview")</summary>
+                            <ol>
+                                @foreach (ChapterMark chapter in _plan.Chapters)
+                                {
+                                    <li><span class="split-join-chapter-time">@Time(chapter.StartNs)</span> @chapter.Name</li>
+                                }
+                            </ol>
+                        </details>
+                    }
+                    @if (ChapterWarnings().Count > 0)
+                    {
+                        <ul class="split-join-warnings">
+                            @foreach (string warning in ChapterWarnings())
+                            {
+                                <li>@warning</li>
+                            }
+                        </ul>
+                    }
+                }
+            }
+
+            <div class="split-join-output">
+                <div class="form-row">
+                    <span class="form-label">@AppText.T("web.splitJoin.outputFolder")</span>
+                    <span class="split-join-output-dir" title="@OutputDir()">@(OutputDir().Length > 0 ? OutputDir() : "–")</span>
+                </div>
+                <div class="form-row">
+                    <label class="form-label" for="split-join-name">@AppText.T("web.splitJoin.outputName")</label>
+                    <input id="split-join-name" class="rz-textbox form-input split-join-name" type="text" value="@_fileName"
+                           @oninput="OnNameInput" disabled="@_loading" />
+                </div>
+                @if (OutputIssues().Count > 0 && _paths.Count > 0)
+                {
+                    <ul class="split-join-issues">
+                        @foreach (string issue in OutputIssues())
+                        {
+                            <li>@issue</li>
+                        }
+                    </ul>
+                }
+                else if (SplitOrchestrator.JoinForce && _outputPath.Length > 0 && System.IO.File.Exists(_outputPath))
+                {
+                    <div class="split-join-overwrite">@AppText.F("web.splitJoin.willOverwrite", System.IO.Path.GetFileName(_outputPath))</div>
+                }
+            </div>
+        </div>
+        <div class="dialog-footer">
+            <RadzenButton Text="@AppText.T("web.splitJoin.join")" Icon="merge" Disabled="@(!CanJoin())" Click="@Join" />
+            <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" class="dialog-close-button" Click="@OnClose" />
+        </div>
+    </div>
+</div>
+
+@if (_showBrowse)
+{
+    <FolderBrowserDialog InitialPath="@BrowseInitialPath()"
+                         ShowFiles="true"
+                         AllowCurrentFolderSelection="false"
+                         AllowedExtensions="@s_extensions"
+                         OnClose="CloseBrowse"
+                         OnSelect="AddBrowsedFile" />
+}
+
+@code {
+    #region Variabili statiche
+
+    /// <summary>
+    /// Estensioni ammesse per le parti
+    /// </summary>
+    private static readonly List<string> s_extensions = new List<string> { "mkv" };
+
+    #endregion
+
+    #region Parametri
+
+    /// <summary>
+    /// Orchestratore Split
+    /// </summary>
+    [Inject] public SplitOrchestrator SplitOrchestrator { get; set; }
+
+    /// <summary>
+    /// Parti iniziali, dalla selezione della griglia Split
+    /// </summary>
+    [Parameter] public List<string> InitialPaths { get; set; }
+
+    /// <summary>
+    /// Cartella sorgente Split, per aprire il browser file
+    /// </summary>
+    [Parameter] public string SourceFolder { get; set; }
+
+    /// <summary>
+    /// Evento chiusura senza unione
+    /// </summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>
+    /// Evento avvio unione: il dialog si chiude, avanzamento e log restano nei pannelli Split
+    /// </summary>
+    [Parameter] public EventCallback OnStarted { get; set; }
+
+    #endregion
+
+    #region Variabili di classe
+
+    /// <summary>
+    /// Percorsi delle parti nell'ordine di unione
+    /// </summary>
+    private readonly List<string> _paths = new List<string>();
+
+    /// <summary>
+    /// Parti già lette, per percorso: un riordino non rilegge i file
+    /// </summary>
+    private readonly Dictionary<string, MkvSplitJoinPart> _parts = new Dictionary<string, MkvSplitJoinPart>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Annullamento della lettura in corso
+    /// </summary>
+    private CancellationTokenSource _readCancellation;
+
+    /// <summary>
+    /// Sequenza delle letture: vale solo l'ultima
+    /// </summary>
+    private int _readSequence;
+
+    /// <summary>
+    /// Piano corrente
+    /// </summary>
+    private MkvSplitJoinPlan _plan;
+
+    /// <summary>
+    /// Motivi di blocco dell'output
+    /// </summary>
+    private List<string> _outputIssues = new List<string>();
+
+    /// <summary>
+    /// Percorso completo dell'output validato
+    /// </summary>
+    private string _outputPath = "";
+
+    /// <summary>
+    /// Nome file dell'output
+    /// </summary>
+    private string _fileName = "";
+
+    /// <summary>
+    /// Vero se l'utente ha scritto il nome: la proposta non lo sovrascrive più
+    /// </summary>
+    private bool _nameEdited;
+
+    /// <summary>
+    /// Lettura delle parti in corso
+    /// </summary>
+    private bool _loading;
+
+    /// <summary>
+    /// Errore di lettura non legato a una parte
+    /// </summary>
+    private string _readError = "";
+
+    /// <summary>
+    /// Browser file aperto
+    /// </summary>
+    private bool _showBrowse;
+
+    /// <summary>
+    /// Riga trascinata, -1 se nessuna
+    /// </summary>
+    private int _dragIndex = -1;
+
+    #endregion
+
+    #region Metodi pubblici
+
+    /// <summary>
+    /// Esc: chiude prima il browser file, poi il dialog
+    /// </summary>
+    /// <returns>True se ha chiuso solo il browser</returns>
+    public bool CloseInnerOverlay()
+    {
+        if (!_showBrowse)
+            return false;
+        _showBrowse = false;
+        StateHasChanged();
+        return true;
+    }
+
+    /// <summary>
+    /// Annulla la lettura in corso
+    /// </summary>
+    public void Dispose()
+    {
+        _readCancellation?.Cancel();
+        _readCancellation?.Dispose();
+    }
+
+    #endregion
+
+    #region Metodi protetti
+
+    /// <summary>
+    /// Precompila l'elenco con la selezione della griglia, senza duplicati
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        if (InitialPaths != null)
+        {
+            foreach (string path in InitialPaths)
+            {
+                if (!_paths.Exists(item => string.Equals(item, path, StringComparison.OrdinalIgnoreCase)))
+                    _paths.Add(path);
+            }
+        }
+        await RefreshAsync();
+    }
+
+    #endregion
+
+    #region Metodi privati
+
+    /// <summary>
+    /// Legge le parti nuove, ricostruisce il piano e rivalida l'output
+    /// </summary>
+    private async Task RefreshAsync()
+    {
+        int sequence = ++_readSequence;
+        List<string> missing = _paths.FindAll(path => !_parts.ContainsKey(path));
+
+        _readError = "";
+        if (missing.Count > 0)
+        {
+            _readCancellation?.Cancel();
+            _readCancellation?.Dispose();
+            _readCancellation = new CancellationTokenSource();
+            _loading = true;
+            StateHasChanged();
+            try
+            {
+                List<MkvSplitJoinPart> read = await SplitOrchestrator.ReadJoinPartsAsync(missing, _readCancellation.Token);
+                if (sequence != _readSequence)
+                    return;
+                for (int i = 0; i < missing.Count; i++)
+                    _parts[missing[i]] = read[i];
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                if (sequence != _readSequence)
+                    return;
+                _readError = ex.Message;
+            }
+            finally
+            {
+                if (sequence == _readSequence)
+                    _loading = false;
+            }
+        }
+
+        List<MkvSplitJoinPart> parts = new List<MkvSplitJoinPart>();
+        foreach (string path in _paths)
+        {
+            if (_parts.TryGetValue(path, out MkvSplitJoinPart part))
+                parts.Add(part);
+        }
+        _plan = _readError.Length > 0 ? null : new MkvSplitJoinService().BuildPlan(parts);
+
+        // La proposta segue la prima parte finché l'utente non scrive un nome suo (C12, C20)
+        if (!_nameEdited)
+            _fileName = _paths.Count > 0 ? MkvSplitJoinService.ProposeOutputName(_paths[0]) : "";
+        ValidateOutput();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Rivalida nome e cartella dell'output
+    /// </summary>
+    private void ValidateOutput()
+    {
+        if (_plan == null || _paths.Count == 0)
+        {
+            _outputIssues = new List<string>();
+            _outputPath = "";
+            return;
+        }
+        _outputIssues = new MkvSplitJoinService().ValidateOutput(_plan, OutputDir(), _fileName, SplitOrchestrator.JoinForce, out _outputPath);
+    }
+
+    /// <summary>
+    /// Aggiorna il nome scritto dall'utente
+    /// </summary>
+    /// <param name="args">Evento input</param>
+    private void OnNameInput(ChangeEventArgs args)
+    {
+        _fileName = args.Value?.ToString() ?? "";
+        _nameEdited = true;
+        ValidateOutput();
+    }
+
+    /// <summary>
+    /// Sposta una parte di una posizione
+    /// </summary>
+    /// <param name="index">Indice della parte</param>
+    /// <param name="delta">-1 su, +1 giù</param>
+    private async Task Move(int index, int delta)
+    {
+        int target = index + delta;
+        if (target < 0 || target >= _paths.Count)
+            return;
+        string path = _paths[index];
+        _paths.RemoveAt(index);
+        _paths.Insert(target, path);
+        await RefreshAsync();
+    }
+
+    /// <summary>
+    /// Rilascia la riga trascinata sulla posizione indicata
+    /// </summary>
+    /// <param name="index">Posizione di arrivo</param>
+    private async Task DropOn(int index)
+    {
+        int from = _dragIndex;
+        _dragIndex = -1;
+        if (from < 0 || from == index || from >= _paths.Count)
+            return;
+        string path = _paths[from];
+        _paths.RemoveAt(from);
+        _paths.Insert(index, path);
+        await RefreshAsync();
+    }
+
+    /// <summary>
+    /// Toglie una parte dall'elenco
+    /// </summary>
+    /// <param name="index">Indice della parte</param>
+    private async Task Remove(int index)
+    {
+        _paths.RemoveAt(index);
+        await RefreshAsync();
+    }
+
+    /// <summary>
+    /// Apre il browser file interno
+    /// </summary>
+    private void OpenBrowse()
+    {
+        _showBrowse = true;
+    }
+
+    /// <summary>
+    /// Chiude il browser file
+    /// </summary>
+    private void CloseBrowse()
+    {
+        _showBrowse = false;
+    }
+
+    /// <summary>
+    /// Aggiunge in coda il file scelto nel browser
+    /// </summary>
+    /// <param name="path">File scelto</param>
+    private async Task AddBrowsedFile(string path)
+    {
+        _showBrowse = false;
+        if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
+            return;
+        string full = System.IO.Path.GetFullPath(path);
+        if (!_paths.Exists(item => string.Equals(item, full, StringComparison.OrdinalIgnoreCase)))
+            _paths.Add(full);
+        await RefreshAsync();
+    }
+
+    /// <summary>
+    /// Cartella di partenza del browser: quella dell'ultima parte, altrimenti la sorgente Split
+    /// </summary>
+    /// <returns>Cartella iniziale</returns>
+    private string BrowseInitialPath()
+    {
+        return _paths.Count > 0 ? System.IO.Path.GetDirectoryName(_paths[_paths.Count - 1]) : (SourceFolder ?? "");
+    }
+
+    /// <summary>
+    /// Avvia l'unione e chiude il dialog
+    /// </summary>
+    private async Task Join()
+    {
+        ValidateOutput();
+        if (!CanJoin())
+            return;
+        SplitOrchestrator.Join(_plan, _fileName);
+        await OnStarted.InvokeAsync();
+    }
+
+    /// <summary>
+    /// Vero se l'unione si può avviare
+    /// </summary>
+    /// <returns>True se piano e output sono validi</returns>
+    private bool CanJoin()
+    {
+        return !_loading && _plan != null && _plan.IsValid && _outputIssues.Count == 0 && _outputPath.Length > 0 && !SplitOrchestrator.IsBusy;
+    }
+
+    /// <summary>
+    /// Cartella dell'output
+    /// </summary>
+    /// <returns>Cartella, vuota senza parti</returns>
+    private string OutputDir()
+    {
+        return _paths.Count > 0 ? SplitOrchestrator.GetJoinOutputDir(_paths[0]) : "";
+    }
+
+    /// <summary>
+    /// Parte letta alla posizione indicata
+    /// </summary>
+    /// <param name="index">Posizione</param>
+    /// <returns>Parte o null se non ancora letta</returns>
+    private MkvSplitJoinPart PartAt(int index)
+    {
+        return _parts.TryGetValue(_paths[index], out MkvSplitJoinPart part) ? part : null;
+    }
+
+    /// <summary>
+    /// Motivi di blocco del piano, senza ripetere gli errori già mostrati sulla riga della parte
+    /// </summary>
+    /// <returns>Motivi da mostrare</returns>
+    private List<string> PlanIssues()
+    {
+        List<string> issues = new List<string>();
+        if (_readError.Length > 0)
+            issues.Add(_readError);
+        if (_plan == null)
+            return issues;
+        foreach (string issue in _plan.Issues)
+        {
+            if (!_plan.Parts.Exists(part => part.Error == issue))
+                issues.Add(issue);
+        }
+        return issues;
+    }
+
+    /// <summary>
+    /// Avvisi sui capitoli non riportati, per parte
+    /// </summary>
+    /// <returns>Avvisi da mostrare</returns>
+    private List<string> ChapterWarnings()
+    {
+        List<string> warnings = new List<string>();
+        foreach (MkvSplitJoinPart part in _plan.Parts)
+        {
+            foreach (string warning in part.ChapterWarnings)
+                warnings.Add(System.IO.Path.GetFileName(part.FilePath) + ": " + warning);
+        }
+        return warnings;
+    }
+
+    /// <summary>
+    /// Motivi di blocco dell'output
+    /// </summary>
+    /// <returns>Motivi da mostrare</returns>
+    private List<string> OutputIssues()
+    {
+        return _outputIssues;
+    }
+
+    /// <summary>
+    /// Testo di stato accanto ai comandi
+    /// </summary>
+    /// <returns>Stato localizzato</returns>
+    private string StatusText()
+    {
+        if (_loading)
+            return AppText.T("web.splitJoin.reading");
+        if (SplitOrchestrator.IsBusy)
+            return AppText.T("web.splitJoin.busy");
+        return "";
+    }
+
+    /// <summary>
+    /// Classe della riga, evidenzia quella trascinata e quelle con errore
+    /// </summary>
+    /// <param name="index">Posizione</param>
+    /// <returns>Classi CSS</returns>
+    private string RowClass(int index)
+    {
+        MkvSplitJoinPart part = PartAt(index);
+        string css = part != null && part.Error.Length > 0 ? "split-join-row split-join-row-error" : "split-join-row";
+        return index == _dragIndex ? css + " split-join-row-dragging" : css;
+    }
+
+    /// <summary>
+    /// Formatta una durata in nanosecondi
+    /// </summary>
+    /// <param name="ns">Nanosecondi</param>
+    /// <returns>Testo hh:mm:ss.mmm</returns>
+    private static string Time(long ns)
+    {
+        return MkvSplitSegmentService.SecsToTs(ns / 1000000000.0);
+    }
+
+    #endregion
+}

@@ -8,12 +8,21 @@ namespace RemuxForge.Core.Splitting
 {
     public partial class MkvSplitDocumentService
     {
-        /// <summary>Esegue un comando su una copia profonda. Un errore conserva integralmente l'input.</summary>
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Esegue un comando su una copia profonda. Un errore conserva integralmente l'input.
+        /// </summary>
+        /// <param name="document">Documento di partenza, mai modificato</param>
+        /// <param name="command">Comando da eseguire</param>
+        /// <param name="analysis">Analisi del sorgente</param>
+        /// <returns>Esito con il documento risultante, la selezione proposta e le diagnostiche</returns>
         public MkvSplitEditResult Execute(MkvSplitDocument document, MkvSplitEditCommand command, MkvSplitAnalysis analysis)
         {
             MkvSplitEditResult result = new MkvSplitEditResult { Document = document };
             result.Diagnostics.AddRange(ValidateStructure(document, analysis));
-            if (result.Diagnostics.Count > 0) return result;
+            if (result.Diagnostics.Count > 0)
+                return result;
             if (command == null || !Enum.IsDefined(command.Kind))
             {
                 result.Diagnostics.Add(Diagnostic("invalidCommand"));
@@ -30,7 +39,8 @@ namespace RemuxForge.Core.Splitting
                     case MkvSplitEditKind.CreateEmptyOutput:
                     case MkvSplitEditKind.CreateOutputFromSource:
                         created = new MkvSplitOutput();
-                        if (command.Kind == MkvSplitEditKind.CreateOutputFromSource) created.Clips.Add(SourceClip(command, analysis));
+                        if (command.Kind == MkvSplitEditKind.CreateOutputFromSource)
+                            created.Clips.Add(SourceClip(command, analysis));
                         Insert(candidate.Outputs, command.InsertIndex, new List<MkvSplitOutput> { created });
                         result.SelectedOutputId = created.Id;
                         break;
@@ -97,17 +107,19 @@ namespace RemuxForge.Core.Splitting
                             transfer = command.ClipIds.Select(id => transfer.Find(item => item.Id == id)).ToList();
                         if (command.Kind == MkvSplitEditKind.CopyClips)
                             transfer = transfer.Select(item => new MkvSplitClip { StartFrame = item.StartFrame, EndFrameExclusive = item.EndFrameExclusive }).ToList();
-                        else output.Clips.RemoveAll(item => transfer.Contains(item));
+                        else
+                            output.Clips.RemoveAll(item => transfer.Contains(item));
                         Insert(destination.Clips, command.InsertIndex, transfer);
                         result.SelectedOutputId = destination.Id;
                         break;
                     case MkvSplitEditKind.MergeOutputs:
-                        // Ici l'ordre de sélection est l'ordre explicite d'assemblage, pas celui du sorgente.
+                        // Qui l'ordine di selezione è l'ordine esplicito di assemblaggio, non quello del sorgente.
                         Require(command.OutputIds != null && command.OutputIds.Count >= 2 && command.OutputIds.Distinct().Count() == command.OutputIds.Count);
                         List<MkvSplitOutput> merge = command.OutputIds.Select(id => candidate.Outputs.Find(item => item.Id == id)).ToList();
                         Require(merge.All(item => item != null && item.Clips.Count > 0));
                         MkvSplitOutput first = merge[0];
-                        foreach (MkvSplitOutput item in merge.Skip(1)) first.Clips.AddRange(item.Clips);
+                        foreach (MkvSplitOutput item in merge.Skip(1))
+                            first.Clips.AddRange(item.Clips);
                         candidate.Outputs.RemoveAll(item => merge.Skip(1).Contains(item));
                         result.SelectedOutputId = first.Id;
                         break;
@@ -136,10 +148,12 @@ namespace RemuxForge.Core.Splitting
                         clip.StartFrame = command.StartFrame;
                         clip.EndFrameExclusive = command.EndFrameExclusive;
                         break;
-                    default: throw new ArgumentException();
+                    default:
+                        throw new ArgumentException();
                 }
                 result.Diagnostics.AddRange(ValidateStructure(candidate, analysis));
-                if (result.Diagnostics.Count > 0) return result;
+                if (result.Diagnostics.Count > 0)
+                    return result;
                 result.Changed = JsonSerializer.Serialize(document) != JsonSerializer.Serialize(candidate);
                 result.Document = result.Changed ? candidate : document;
                 result.SelectedOutputId ??= output?.Id;
@@ -153,19 +167,48 @@ namespace RemuxForge.Core.Splitting
             return result;
         }
 
-        private static void Require(bool condition) { if (!condition) throw new ArgumentException(); }
+        #endregion
 
+        #region Metodi privati
+
+        /// <summary>
+        /// Interrompe il comando con ArgumentException se la condizione non è soddisfatta
+        /// </summary>
+        /// <param name="condition">Condizione richiesta</param>
+        private static void Require(bool condition)
+        {
+            if (!condition)
+                throw new ArgumentException();
+        }
+
+        /// <summary>
+        /// Numero di frame del risultato di un output
+        /// </summary>
+        /// <param name="output">Output da contare</param>
+        /// <returns>Somma dei frame delle clip</returns>
         private static int CountFrames(MkvSplitOutput output)
         {
             return output.Clips.Sum(item => item.EndFrameExclusive - item.StartFrame);
         }
 
+        /// <summary>
+        /// Crea una clip dall'intervallo sorgente del comando, dopo averlo validato
+        /// </summary>
+        /// <param name="command">Comando con StartFrame ed EndFrameExclusive</param>
+        /// <param name="analysis">Analisi del sorgente</param>
+        /// <returns>Nuova clip</returns>
         private static MkvSplitClip SourceClip(MkvSplitEditCommand command, MkvSplitAnalysis analysis)
         {
             Require(command.StartFrame >= 0 && command.EndFrameExclusive > command.StartFrame && command.EndFrameExclusive <= analysis.SourcePts.Length);
             return new MkvSplitClip { StartFrame = command.StartFrame, EndFrameExclusive = command.EndFrameExclusive };
         }
 
+        /// <summary>
+        /// Output selezionati, nell'ordine del documento; la selezione deve essere non vuota, senza duplicati e tutta esistente
+        /// </summary>
+        /// <param name="document">Documento</param>
+        /// <param name="ids">Identificativi selezionati</param>
+        /// <returns>Output selezionati</returns>
         private static List<MkvSplitOutput> SelectedOutputs(MkvSplitDocument document, List<Guid> ids)
         {
             Require(ids != null && ids.Count > 0 && ids.Distinct().Count() == ids.Count);
@@ -174,6 +217,12 @@ namespace RemuxForge.Core.Splitting
             return selected;
         }
 
+        /// <summary>
+        /// Clip selezionate, nell'ordine dell'output; la selezione deve essere non vuota, senza duplicati e tutta esistente
+        /// </summary>
+        /// <param name="output">Output</param>
+        /// <param name="ids">Identificativi selezionati</param>
+        /// <returns>Clip selezionate</returns>
         private static List<MkvSplitClip> SelectedClips(MkvSplitOutput output, List<Guid> ids)
         {
             Require(ids != null && ids.Count > 0 && ids.Distinct().Count() == ids.Count);
@@ -182,13 +231,25 @@ namespace RemuxForge.Core.Splitting
             return selected;
         }
 
+        /// <summary>
+        /// Inserisce gli elementi alla posizione indicata, che deve essere valida
+        /// </summary>
+        /// <typeparam name="T">Tipo degli elementi</typeparam>
+        /// <param name="list">Lista di destinazione</param>
+        /// <param name="index">Posizione di inserimento</param>
+        /// <param name="items">Elementi da inserire</param>
         private static void Insert<T>(List<T> list, int index, List<T> items)
         {
             Require(index >= 0 && index <= list.Count);
             list.InsertRange(index, items);
         }
 
-        /// <summary>Rende un confine risultato un confine fra clip, preservando l'identità della metà sinistra.</summary>
+        /// <summary>
+        /// Rende un confine risultato un confine fra clip, preservando l'identità della metà sinistra.
+        /// </summary>
+        /// <param name="output">Output da dividere</param>
+        /// <param name="frame">Confine nel risultato</param>
+        /// <returns>Indice della clip che inizia al confine</returns>
         private static int SplitAt(MkvSplitOutput output, int frame)
         {
             Require(frame >= 0 && frame <= CountFrames(output));
@@ -196,7 +257,8 @@ namespace RemuxForge.Core.Splitting
             for (int index = 0; index < output.Clips.Count; index++)
             {
                 MkvSplitClip clip = output.Clips[index];
-                if (frame == prefix) return index;
+                if (frame == prefix)
+                    return index;
                 int end = prefix + clip.EndFrameExclusive - clip.StartFrame;
                 if (frame < end)
                 {
@@ -210,5 +272,7 @@ namespace RemuxForge.Core.Splitting
             }
             return output.Clips.Count;
         }
+
+        #endregion
     }
 }

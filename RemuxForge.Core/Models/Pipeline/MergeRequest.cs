@@ -32,6 +32,8 @@ namespace RemuxForge.Core.Models
             this.ProcessedSourceAudioInfo = new Dictionary<int, TrackInfo>();
             this.ProcessedLangAudioInfo = new Dictionary<int, TrackInfo>();
             this.SourceTitle = "";
+            this.ReplaceSourceChapters = false;
+            this.ChaptersFile = "";
         }
 
         #endregion
@@ -150,6 +152,16 @@ namespace RemuxForge.Core.Models
         /// Titolo segmento del file sorgente (container title), stringa vuota se assente
         /// </summary>
         public string SourceTitle { get; set; }
+
+        /// <summary>
+        /// Vero con «Copia capitoli da lang»: i capitoli del source non entrano nell'output
+        /// </summary>
+        public bool ReplaceSourceChapters { get; set; }
+
+        /// <summary>
+        /// XML capitoli da applicare all'output, vuoto se non ce ne sono (con ReplaceSourceChapters l'output resta senza capitoli)
+        /// </summary>
+        public string ChaptersFile { get; set; }
 
         #endregion
     }

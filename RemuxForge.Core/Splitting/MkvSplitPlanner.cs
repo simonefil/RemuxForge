@@ -64,6 +64,8 @@ namespace RemuxForge.Core.Splitting
             }
 
             plan.Chapters = analysis.Chapters;
+            foreach (string chapterWarning in analysis.ChapterWarnings)
+                plan.Warnings.Add(new MkvSplitWarning(MkvSplitWarningKind.ChapterNotCarried, chapterWarning, 0));
             plan.Duration = analysis.Duration;
             plan.SourcePts = analysis.SourcePts;
             plan.FrameCount = analysis.SourcePts.Length;
@@ -122,6 +124,10 @@ namespace RemuxForge.Core.Splitting
 
                 // Lo snap decide i confini definitivi, quindi precede il naming: {start} deve essere l'inizio reale
                 segmentService.ApplySnap(plan.Segments, analysis.KeyFlags, plan.SourcePts, args.Snap);
+
+                // I capitoli seguono i confini effettivi: lo snap puo' averne spostati dentro o fuori
+                foreach (MkvSplitSegment seg in plan.Segments)
+                    seg.Chapters = SelectChapters(plan.Chapters, seg.StartTs, seg.EndTs);
             }
 
             segmentService.ApplyNaming(plan.Segments, args, plan.Mode, plan.InputFile);
@@ -192,14 +198,31 @@ namespace RemuxForge.Core.Splitting
                 // La fine è esclusiva: coincide con il PTS del frame successivo, o con la durata sull'ultimo
                 seg.EndTs = (startFrame + frameCount < plan.FrameCount) ? plan.SourcePts[startFrame + frameCount] : plan.Duration;
 
-                foreach (MkvSplitChapter chapter in plan.Chapters)
-                {
-                    if (chapter.Timestamp >= seg.StartTs && chapter.Timestamp < seg.EndTs) { seg.Chapters.Add(chapter); }
-                }
+                seg.Chapters = SelectChapters(plan.Chapters, seg.StartTs, seg.EndTs);
                 segments.Add(seg);
             }
 
             return segments;
+        }
+
+        /// <summary>
+        /// Capitoli del sorgente il cui inizio cade nel segmento [startTs, endTs), nel tempo del sorgente
+        /// </summary>
+        /// <param name="chapters">Capitoli del sorgente</param>
+        /// <param name="startTs">Inizio del segmento in secondi, incluso</param>
+        /// <param name="endTs">Fine del segmento in secondi, esclusa</param>
+        /// <returns>Capitoli del segmento</returns>
+        private static List<ChapterMark> SelectChapters(List<ChapterMark> chapters, double startTs, double endTs)
+        {
+            List<ChapterMark> result = new List<ChapterMark>();
+
+            foreach (ChapterMark chapter in chapters)
+            {
+                if (chapter.StartSeconds >= startTs && chapter.StartSeconds < endTs)
+                    result.Add(chapter);
+            }
+
+            return result;
         }
 
         /// <summary>

@@ -318,6 +318,123 @@
     overflow-wrap: anywhere;
 }
 
+/* Dialog unione parti Split */
+.dialog-box.split-join-dialog {
+    width: min(56rem, calc(100vw - 4rem));
+}
+
+.split-join-body {
+    display: flex;
+    flex-direction: column;
+    gap: .6rem;
+    overflow: auto;
+}
+
+.split-join-hint,
+.split-join-empty,
+.split-join-status {
+    color: var(--rz-text-disabled-color);
+}
+
+.split-join-toolbar {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+}
+
+.split-join-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .85rem;
+}
+
+.split-join-table th,
+.split-join-table td {
+    text-align: left;
+    padding: .2rem .4rem;
+    border-bottom: 1px solid var(--rf-border, rgba(128, 128, 128, .25));
+    vertical-align: top;
+}
+
+.split-join-col-index {
+    width: 2.5rem;
+}
+
+.split-join-col-duration {
+    width: 8rem;
+    white-space: nowrap;
+}
+
+.split-join-col-chapters {
+    width: 5rem;
+}
+
+.split-join-col-actions {
+    width: 7.5rem;
+    white-space: nowrap;
+}
+
+.split-join-file {
+    overflow-wrap: anywhere;
+}
+
+.split-join-drag {
+    cursor: grab;
+    margin-right: .35rem;
+    color: var(--rz-text-disabled-color);
+}
+
+.split-join-row-dragging {
+    opacity: .5;
+}
+
+.split-join-row-error .split-join-file,
+.split-join-part-error,
+.split-join-issues {
+    color: var(--rz-danger);
+}
+
+.split-join-issues,
+.split-join-warnings {
+    margin: 0;
+    padding-left: 1.2rem;
+    overflow-wrap: anywhere;
+}
+
+.split-join-warnings,
+.split-join-overwrite {
+    color: var(--rz-warning);
+}
+
+.split-join-chapters ol {
+    margin: .3rem 0 0;
+    max-height: 12rem;
+    overflow: auto;
+}
+
+.split-join-chapter-time {
+    font-variant-numeric: tabular-nums;
+    margin-right: .5rem;
+}
+
+.split-join-output-dir {
+    overflow-wrap: anywhere;
+}
+
+.split-join-name {
+    flex: 1;
+    min-width: 0;
+}
+
+.split-join-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
 /* Dialog browse cartella */
 .dialog-box.dialog-browse {
     width: 80vw;

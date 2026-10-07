@@ -550,9 +550,47 @@ namespace RemuxForge.Core.Infrastructure
             return result.ToArray();
         }
 
+        /// <summary>
+        /// Garantisce una codifica UTF-8 ai processi figli su macOS e Linux. Senza LANG/LC_* (avvio da Finder,
+        /// sidecar, servizi) MKVToolNix tronca stdout al primo carattere non ASCII: JSON di mkvmerge -J e XML
+        /// dei capitoli arrivano incompleti con exit 0. Si tocca solo LC_CTYPE, quindi messaggi e numeri non cambiano
+        /// </summary>
+        /// <param name="startInfo">Configurazione del processo</param>
+        public static void ApplyUtf8Locale(ProcessStartInfo startInfo)
+        {
+            if (OperatingSystem.IsWindows())
+                return;
+
+            string all = startInfo.Environment.TryGetValue("LC_ALL", out string allValue) ? allValue ?? "" : "";
+            string ctype = startInfo.Environment.TryGetValue("LC_CTYPE", out string ctypeValue) ? ctypeValue ?? "" : "";
+            string lang = startInfo.Environment.TryGetValue("LANG", out string langValue) ? langValue ?? "" : "";
+            string effective = all.Length > 0 ? all : (ctype.Length > 0 ? ctype : lang);
+            if (IsUtf8Locale(effective))
+                return;
+
+            // LC_ALL prevale su LC_CTYPE: se non e' UTF-8 va tolto, altrimenti la correzione non avrebbe effetto
+            if (all.Length > 0)
+            {
+                startInfo.Environment.Remove("LC_ALL");
+                if (lang.Length == 0)
+                    startInfo.Environment["LANG"] = all;
+            }
+            startInfo.Environment["LC_CTYPE"] = "C.UTF-8";
+        }
+
         #endregion
 
         #region Metodi privati
+
+        /// <summary>
+        /// Vero se il nome della locale dichiara la codifica UTF-8
+        /// </summary>
+        /// <param name="locale">Nome della locale</param>
+        /// <returns>True se UTF-8</returns>
+        private static bool IsUtf8Locale(string locale)
+        {
+            return locale.IndexOf("UTF-8", StringComparison.OrdinalIgnoreCase) >= 0 || locale.IndexOf("UTF8", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
 
         /// <summary>
         /// Configura le impostazioni comuni di avvio processo
@@ -568,6 +606,7 @@ namespace RemuxForge.Core.Infrastructure
             proc.StartInfo.CreateNoWindow = true;
             proc.StartInfo.StandardOutputEncoding = Encoding.UTF8;
             proc.StartInfo.StandardErrorEncoding = Encoding.UTF8;
+            ApplyUtf8Locale(proc.StartInfo);
         }
 
         /// <summary>

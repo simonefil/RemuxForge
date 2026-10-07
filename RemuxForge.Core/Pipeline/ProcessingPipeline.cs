@@ -883,6 +883,7 @@ namespace RemuxForge.Core.Pipeline
             Dictionary<int, TrackInfo> processedSourceAudioInfo = new Dictionary<int, TrackInfo>();
             Dictionary<int, TrackInfo> processedLangAudioInfo = new Dictionary<int, TrackInfo>();
             string stretchFactor = record.StretchFactor;
+            string langChaptersFile = "";
             List<string> mergeArgs;
             string delayInfo;
             bool done = false;
@@ -999,6 +1000,14 @@ namespace RemuxForge.Core.Pipeline
                         AppSettingsService.Instance.GetTempFolder());
                 }
 
+                // Capitoli da lang: ricalcolati con la stessa trasformazione dei sottotitoli importati
+                if (!done && this._opts.CopyLangChapters && this._needsMerge)
+                {
+                    long sourceDurationNs = (sourceInfo != null) ? sourceInfo.ContainerDurationNs : 0;
+                    string mkvExtractPath = this._toolPathResolver.ResolveMkvExtractPath(this._opts.MkvMergePath, false);
+                    done = !new PipelineLangChaptersBuilder().Build(record, sourceDurationNs, effectiveSubDelay, stretchFactor, mkvExtractPath, AppSettingsService.Instance.GetTempFolder(), out langChaptersFile);
+                }
+
                 // Costruzione e esecuzione merge
                 if (!done)
                 {
@@ -1030,6 +1039,8 @@ namespace RemuxForge.Core.Pipeline
                     mergeReq.ProcessedSourceAudioInfo = processedSourceAudioInfo;
                     mergeReq.ProcessedLangAudioInfo = processedLangAudioInfo;
                     mergeReq.ProcessedLangSubTracks = processedLangSubTracks;
+                    mergeReq.ReplaceSourceChapters = this._opts.CopyLangChapters && this._needsMerge;
+                    mergeReq.ChaptersFile = langChaptersFile;
                     mergeArgs = this._mkvService.BuildMergeArguments(mergeReq);
 
                     // Aggiorna comando nel record dai mergeArgs effettivi
@@ -1071,6 +1082,8 @@ namespace RemuxForge.Core.Pipeline
                     FileHelper.DeleteTempFile(kvp.Value);
                 foreach (KeyValuePair<int, string> kvp in processedLangSubTracks)
                     this.DeleteProcessedSubtitleFile(kvp.Value);
+                if (langChaptersFile.Length > 0)
+                    FileHelper.DeleteTempFile(langChaptersFile);
             }
 
             return finalOutput;

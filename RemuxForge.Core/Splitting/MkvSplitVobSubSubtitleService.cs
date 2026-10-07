@@ -10,18 +10,28 @@ using static RemuxForge.Core.Subtitles.VobSubSubtitleUtils;
 
 namespace RemuxForge.Core.Splitting
 {
-    /// <summary>Clipping di occorrenze DVD statiche; parsing IDX/PES/SPU e packetizzazione sono condivisi con Subtitles.</summary>
+    /// <summary>
+    /// Clipping di occorrenze DVD statiche; parsing IDX/PES/SPU e packetizzazione sono condivisi con Subtitles.
+    /// </summary>
     internal static class MkvSplitVobSubSubtitleService
     {
-        private static void Require(bool valid, TrackInfo track, string detail)
-        {
-            if (!valid) throw new InvalidDataException("VobSub track " + track.Id + ": " + detail);
-        }
+        #region Metodi pubblici
 
+        /// <summary>
+        /// Legge una coppia IDX/SUB estratta, accettando solo eventi statici con una coppia show/stop
+        /// </summary>
+        /// <param name="path">File IDX estratto, con il SUB accanto</param>
+        /// <param name="track">Traccia sorgente</param>
+        /// <returns>Traccia letta</returns>
         public static MkvSplitSubtitleTrack Read(string path, TrackInfo track)
         {
             VobSubIndexDocument document = VobSubIndexDocument.Load(path);
-            MkvSplitSubtitleTrack result = new MkvSplitSubtitleTrack { Track = track, Extension = ".idx", SourceContent = document.Serialize() };
+            MkvSplitSubtitleTrack result = new MkvSplitSubtitleTrack
+            {
+                Track = track,
+                Extension = ".idx",
+                SourceContent = document.Serialize()
+            };
             int languages = 0;
             int streamId = 0x20;
             foreach (string raw in document.Lines)
@@ -47,7 +57,8 @@ namespace RemuxForge.Core.Splitting
                 double time = entry.TimestampMs / 1000.0;
                 Require(entry.FilePosition >= 0 && end > entry.FilePosition && end <= source.Length, track, "invalid IDX filepos at event " + time);
                 byte[] block = new byte[checked((int)(end - entry.FilePosition))];
-                source.Position = entry.FilePosition; source.ReadExactly(block);
+                source.Position = entry.FilePosition;
+                source.ReadExactly(block);
                 Require(TryExtractPacketizedSpu(block, out byte[] spu, out byte[] pack, out byte[] pes, out byte substream), track, "invalid packetized SPU at event " + time);
                 Require(substream == streamId, track, "unexpected subtitle substream");
                 Require(TryParseSpu(spu, 0, spu.Length, out VobSubSpuInfo info, true, out string error, false), track, error);
@@ -64,40 +75,79 @@ namespace RemuxForge.Core.Splitting
                 double startSeconds = time + ReadUInt16BigEndian(spu, first) * 1024.0 / 90000;
                 double endSeconds = time + ReadUInt16BigEndian(spu, second) * 1024.0 / 90000;
                 Require(endSeconds > startSeconds, track, "invalid SPU duration at event " + time);
-                result.Events.Add(new MkvSplitSubtitleEvent { SourceLineIndex = entry.LineIndex, StartSeconds = startSeconds, EndSeconds = endSeconds,
-                    BinaryPayload = spu, PacketPackHeader = pack, PacketPesHeader = pes, SubstreamId = substream,
-                    StartControlOffset = first, EndControlOffset = second });
+                result.Events.Add(new MkvSplitSubtitleEvent
+                {
+                    SourceLineIndex = entry.LineIndex,
+                    StartSeconds = startSeconds,
+                    EndSeconds = endSeconds,
+                    BinaryPayload = spu,
+                    PacketPackHeader = pack,
+                    PacketPesHeader = pes,
+                    SubstreamId = substream,
+                    StartControlOffset = first,
+                    EndControlOffset = second
+                });
             }
             return result;
         }
 
+        /// <summary>
+        /// Scrive la coppia IDX/SUB di un output con le occorrenze ritagliate e riposizionate
+        /// </summary>
+        /// <param name="track">Traccia letta dal sorgente</param>
+        /// <param name="output">Proiezione dell'output</param>
+        /// <param name="path">File IDX di destinazione, con il SUB accanto</param>
         public static void Write(MkvSplitSubtitleTrack track, MkvSplitOutputProjection output, string path)
         {
             using FileStream sub = File.Create(Path.ChangeExtension(path, ".sub"));
             VobSubIndexDocument document = VobSubIndexDocument.Parse(track.SourceContent);
             List<VobSubIndexEntryRewrite> occurrences = new List<VobSubIndexEntryRewrite>();
             foreach (MkvSplitClipProjection clip in output.Clips)
+            {
                 foreach (MkvSplitSubtitleEvent item in track.Events)
                 {
                     double start = Math.Max(item.StartSeconds, clip.SourceStartSeconds);
                     double end = Math.Min(item.EndSeconds, clip.SourceEndSeconds);
-                    if (end <= start) continue;
+                    if (end <= start)
+                        continue;
                     start += clip.ResultStartSeconds - clip.SourceStartSeconds;
                     end += clip.ResultStartSeconds - clip.SourceStartSeconds;
                     int duration = checked((int)Math.Floor((end - start) * 90000 / 1024));
-                    if (duration == 0) continue;
-                    if (duration > ushort.MaxValue) throw new InvalidDataException("VobSub display exceeds SPU date range");
+                    if (duration == 0)
+                        continue;
+                    if (duration > ushort.MaxValue)
+                        throw new InvalidDataException("VobSub display exceeds SPU date range");
                     byte[] spu = (byte[])item.BinaryPayload.Clone();
                     WriteUInt16BigEndian(spu, item.StartControlOffset, 0);
                     WriteUInt16BigEndian(spu, item.EndControlOffset, duration);
                     byte[] pes = RewritePesTimestamps(item.PacketPesHeader, checked((long)Math.Round(start * 90000)));
                     byte[] block = BuildPacketizedSpuBlock(spu, item.PacketPackHeader, pes, item.SubstreamId, out string error);
-                    if (block == null) throw new InvalidDataException(error);
+                    if (block == null)
+                        throw new InvalidDataException(error);
                     occurrences.Add(new VobSubIndexEntryRewrite(item.SourceLineIndex, (long)Math.Round(start * 1000), sub.Position));
                     sub.Write(block);
                 }
+            }
             document.ReplaceEntries(occurrences);
             document.Save(path);
         }
+
+        #endregion
+
+        #region Metodi privati
+
+        /// <summary>
+        /// Interrompe la lettura con InvalidDataException se la condizione non è soddisfatta
+        /// </summary>
+        /// <param name="valid">Condizione richiesta</param>
+        /// <param name="track">Traccia in lettura</param>
+        /// <param name="detail">Dettaglio dell'errore</param>
+        private static void Require(bool valid, TrackInfo track, string detail)
+        {
+            if (!valid)
+                throw new InvalidDataException("VobSub track " + track.Id + ": " + detail);
+        }
+
+        #endregion
     }
 }

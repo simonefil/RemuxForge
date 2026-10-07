@@ -48,6 +48,7 @@ namespace RemuxForge.Core.Models
             this.AnalysisCropSourcePx = "";
             this.AnalysisCropLanguagePx = "";
             this.SubtitleCanvasRewrite = false;
+            this.CopyLangChapters = false;
             this.AudioCodec = new List<string>();
             this.SubOnly = false;
             this.AudioOnly = false;
@@ -491,6 +492,11 @@ namespace RemuxForge.Core.Models
             else if (key == "subtitle-canvas-rewrite" || key == "sub-canvas-rewrite")
             {
                 options.SubtitleCanvasRewrite = true;
+                i++;
+            }
+            else if (key == "copy-lang-chapters")
+            {
+                options.CopyLangChapters = true;
                 i++;
             }
             else if (IsRemuxValueArgument(key))
@@ -1122,6 +1128,11 @@ namespace RemuxForge.Core.Models
         /// Riscrive canvas e coordinate dei sottotitoli importati quando possibile
         /// </summary>
         public bool SubtitleCanvasRewrite { get; set; }
+
+        /// <summary>
+        /// Sostituisce i capitoli del source con quelli del file lingua, ricalcolati con la trasformazione dei sottotitoli lang
+        /// </summary>
+        public bool CopyLangChapters { get; set; }
 
         /// <summary>
         /// Lista di codec audio da importare (-ac, --audio-codec). Solo le tracce con questi codec verranno importate

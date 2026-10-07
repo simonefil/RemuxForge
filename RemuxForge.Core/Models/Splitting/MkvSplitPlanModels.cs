@@ -41,7 +41,10 @@ namespace RemuxForge.Core.Models
         SnapNoKeyframe,
 
         /// <summary>Avviso sulla divisione dei capitoli in blocchi</summary>
-        ChapterGrouping
+        ChapterGrouping,
+
+        /// <summary>Capitoli del sorgente non riportati (edizioni ulteriori, capitoli annidati)</summary>
+        ChapterNotCarried
     }
 
     /// <summary>
@@ -122,7 +125,7 @@ namespace RemuxForge.Core.Models
             this.InputFile = "";
             this.OutputDir = "";
             this.ErrorMessage = "";
-            this.Chapters = new List<MkvSplitChapter>();
+            this.Chapters = new List<ChapterMark>();
             this.Segments = new List<MkvSplitSegment>();
             this.Warnings = new List<MkvSplitWarning>();
             this.SourcePts = new double[0];
@@ -145,7 +148,7 @@ namespace RemuxForge.Core.Models
         public string OutputDir { get; set; }
 
         /// <summary>Capitoli del sorgente</summary>
-        public List<MkvSplitChapter> Chapters { get; set; }
+        public List<ChapterMark> Chapters { get; set; }
 
         /// <summary>Durata del sorgente in secondi</summary>
         public double Duration { get; set; }

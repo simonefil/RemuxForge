@@ -1,3 +1,4 @@
+using RemuxForge.Core.Chapters;
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
@@ -463,59 +464,13 @@ namespace RemuxForge.Core.Splitting
         }
 
         /// <summary>
-        /// Estrae capitoli in formato simple
+        /// Legge i capitoli dell'edizione predefinita del sorgente
         /// </summary>
         /// <param name="inputFile">File sorgente MKV</param>
-        /// <returns>Lista capitoli estratti</returns>
-        public List<MkvSplitChapter> GetChapters(string inputFile)
+        /// <returns>Capitoli, avvisi ed eventuale errore</returns>
+        public ChapterReadResult ReadChapters(string inputFile)
         {
-            ProcessResult r;
-            List<MkvSplitChapter> chapters = new List<MkvSplitChapter>();
-            int eq;
-            string key;
-            string val;
-            bool hasName;
-            string[] hms;
-            int h;
-            int m;
-            double s;
-            MkvSplitChapter chapter;
-
-            r = this.Run(this._mkvextract, new string[] { inputFile, "chapters", "-s" });
-            foreach (string rawLine in r.Stdout.Split('\n'))
-            {
-                string line = rawLine.Trim();
-                if (string.IsNullOrEmpty(line))
-                    continue;
-
-                eq = line.IndexOf('=');
-                if (eq < 0)
-                    continue;
-
-                key = line.Substring(0, eq);
-                val = line.Substring(eq + 1);
-                hasName = key.IndexOf("NAME", StringComparison.Ordinal) >= 0;
-                if (!hasName)
-                {
-                    hms = val.Split(':');
-                    if (hms.Length == 3)
-                    {
-                        h = int.Parse(hms[0], CultureInfo.InvariantCulture);
-                        m = int.Parse(hms[1], CultureInfo.InvariantCulture);
-                        s = double.Parse(hms[2], CultureInfo.InvariantCulture);
-                        chapter = new MkvSplitChapter();
-                        chapter.Timestamp = h * 3600.0 + m * 60.0 + s;
-                        chapter.TsStr = val;
-                        chapters.Add(chapter);
-                    }
-                }
-                else if (chapters.Count > 0)
-                {
-                    chapters[chapters.Count - 1].Name = val;
-                }
-            }
-
-            return chapters;
+            return ChapterTimelineService.Read(this._mkvextract, inputFile);
         }
 
         /// <summary>
@@ -536,6 +491,18 @@ namespace RemuxForge.Core.Splitting
         public void RunMkvmerge(IEnumerable<string> args)
         {
             this.Run(this._mkvmerge, args);
+        }
+
+        /// <summary>
+        /// Esegue mkvmerge senza eccezioni sull'exit code, restituendo l'output per diagnostiche precise
+        /// </summary>
+        /// <param name="args">Argomenti mkvmerge</param>
+        /// <returns>Risultato del processo</returns>
+        public ProcessResult RunMkvmergeResult(IEnumerable<string> args)
+        {
+            List<string> list = new List<string>(args);
+            this.PrintShortCmd(this._mkvmerge, list);
+            return ProcessRunner.Run(this._mkvmerge, list.ToArray());
         }
 
         /// <summary>

@@ -392,7 +392,7 @@ namespace RemuxForge.Core.Splitting
         /// <param name="sourcePts">PTS del sorgente ordinati crescente.</param>
         /// <param name="duration">Durata totale del file in secondi.</param>
         /// <returns>Tupla con la lista dei segmenti e la MkvSplitMode effettiva.</returns>
-        public (List<MkvSplitSegment> segments, MkvSplitMode mode) Build(MkvSplitOptions args, List<MkvSplitChapter> chapters, double[] sourcePts, double duration)
+        public (List<MkvSplitSegment> segments, MkvSplitMode mode) Build(MkvSplitOptions args, List<ChapterMark> chapters, double[] sourcePts, double duration)
         {
             int totalFrames;
             int nCh;
@@ -404,12 +404,12 @@ namespace RemuxForge.Core.Splitting
             MkvSplitSegment seg;
             List<(int startFrame, int endFrame)> frameRanges;
             MkvSplitMode mode;
-            List<MkvSplitChapter> segChapters;
+            List<ChapterMark> segChapters;
             int[] pattern;
             int sum;
             int chIdx;
             int numCh;
-            List<MkvSplitChapter> epChs;
+            List<ChapterMark> epChs;
             int epNum;
             int startIdx;
             int endIdx;
@@ -439,8 +439,8 @@ namespace RemuxForge.Core.Splitting
                     numCh = Math.Min(args.ChaptersPerEpisode, nCh - chIdx);
                     epChs = chapters.GetRange(chIdx, numCh);
                     epNum++;
-                    startTs = epChs[0].Timestamp;
-                    endTs = (chIdx + numCh < nCh) ? chapters[chIdx + numCh].Timestamp : duration;
+                    startTs = epChs[0].StartSeconds;
+                    endTs = (chIdx + numCh < nCh) ? chapters[chIdx + numCh].StartSeconds : duration;
                     startIdx = BisectLeft(sourcePts, startTs);
                     endIdx = (chIdx + numCh >= nCh) ? totalFrames : BisectLeft(sourcePts, endTs);
 
@@ -477,8 +477,8 @@ namespace RemuxForge.Core.Splitting
                 // Ogni capitolo diventa un segmento; l'ultimo chiude a duration
                 for (int i = 0; i < nCh; i++)
                 {
-                    startTs = chapters[i].Timestamp;
-                    endTs = (i + 1 < nCh) ? chapters[i + 1].Timestamp : duration;
+                    startTs = chapters[i].StartSeconds;
+                    endTs = (i + 1 < nCh) ? chapters[i + 1].StartSeconds : duration;
                     startF = BisectLeft(sourcePts, startTs);
                     endF = (i + 1 < nCh) ? BisectLeft(sourcePts, endTs) : totalFrames;
                     seg = new MkvSplitSegment();
@@ -488,7 +488,7 @@ namespace RemuxForge.Core.Splitting
                     seg.EndTs = endTs;
                     seg.StartFrame = startF;
                     seg.FrameCount = endF - startF;
-                    seg.Chapters = new List<MkvSplitChapter>();
+                    seg.Chapters = new List<ChapterMark>();
                     seg.Chapters.Add(chapters[i]);
                     segments.Add(seg);
                 }
@@ -512,10 +512,10 @@ namespace RemuxForge.Core.Splitting
                     endF = frameRanges[i].endFrame;
                     startTs = sourcePts[startF];
                     endTs = (endF < totalFrames) ? sourcePts[endF] : duration;
-                    segChapters = new List<MkvSplitChapter>();
-                    foreach (MkvSplitChapter c in chapters)
+                    segChapters = new List<ChapterMark>();
+                    foreach (ChapterMark c in chapters)
                     {
-                        if (c.Timestamp >= startTs && c.Timestamp < endTs) { segChapters.Add(c); }
+                        if (c.StartSeconds >= startTs && c.StartSeconds < endTs) { segChapters.Add(c); }
                     }
                     seg = new MkvSplitSegment();
                     seg.Num = i + 1;
@@ -558,8 +558,8 @@ namespace RemuxForge.Core.Splitting
             {
                 numCh = pattern[epI];
                 epChs = chapters.GetRange(chIdx, numCh);
-                startTs = epChs[0].Timestamp;
-                endTs = (chIdx + numCh < nCh) ? chapters[chIdx + numCh].Timestamp : duration;
+                startTs = epChs[0].StartSeconds;
+                endTs = (chIdx + numCh < nCh) ? chapters[chIdx + numCh].StartSeconds : duration;
                 epNum = epI + 1;
 
                 // Range frame reale del blocco di capitoli (O(log N) per ciascun episodio).
@@ -585,14 +585,14 @@ namespace RemuxForge.Core.Splitting
         /// <summary>Stampa un errore esplicativo quando l'utente non ha scelto una modalità di split.</summary>
         /// <param name="chapters">Capitoli del sorgente per suggerire pattern validi.</param>
         /// <param name="nCh">Numero di capitoli del sorgente.</param>
-        private static void PrintNoModeSelected(List<MkvSplitChapter> chapters, int nCh)
+        private static void PrintNoModeSelected(List<ChapterMark> chapters, int nCh)
         {
             ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.T("split.noModeSelected"));
             ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("split.fileHasChapters", nCh));
             for (int i = 0; i < nCh; i++)
             {
                 string chName = chapters[i].Name ?? string.Empty;
-                ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("split.chapterLine", i + 1, chapters[i].TsStr, chName));
+                ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("split.chapterLine", i + 1, SecsToTs(chapters[i].StartSeconds), chName));
             }
         }
 
@@ -793,7 +793,7 @@ namespace RemuxForge.Core.Splitting
 
         /// <summary>Naming output multiclip: start/end seguono l'ordine risultato, duration conta tutte le occorrenze.</summary>
         public static string RenderOutputName(MkvSplitOptions options, MkvSplitMode mode, string inputFile,
-            int number, double start, double end, double duration, List<MkvSplitChapter> chapters)
+            int number, double start, double end, double duration, List<ChapterMark> chapters)
         {
             MkvSplitSegment segment = new MkvSplitSegment { Num = number, Episode = number,
                 StartTs = start, EndTs = end, Chapters = chapters };

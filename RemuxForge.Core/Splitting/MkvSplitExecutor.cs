@@ -1,9 +1,9 @@
+using RemuxForge.Core.Chapters;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
-using System.Text.RegularExpressions;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
@@ -27,9 +27,6 @@ namespace RemuxForge.Core.Splitting
         #endregion
 
         #region Variabili di classe
-
-        /// <summary>Regex che riconosce i nomi di capitolo generici "MkvSplitChapter NN" (rinumerati in output).</summary>
-        private static readonly Regex s_genericChapterNameRe = new Regex(@"^\s*chapter\s*\d+\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         /// <summary>Access unit delimiter H.264 (NAL type 9, primary_pic_type = I) in formato Annex B.</summary>
         private static readonly byte[] s_h264AccessUnitDelimiter = new byte[] { 0x00, 0x00, 0x00, 0x01, 0x09, 0x10 };
@@ -235,13 +232,13 @@ namespace RemuxForge.Core.Splitting
             hasAv = expectsAv && avExit == 0 && File.Exists(avFile) && new FileInfo(avFile).Length > 0;
             if (expectsAv && !hasAv) throw new InvalidOperationException(AppText.F("split.montage.avFailed", avExit));
 
-            // Generazione del file capitoli rebasato e con nomi generici rinumerati, solo quando presenti
+            // File capitoli nel tempo del segmento, solo quando presenti
             hasChapters = seg.Chapters != null && seg.Chapters.Count > 0;
             chFile = null;
             if (hasChapters)
             {
-                chFile = Path.Combine(tempDir, "chapters.txt");
-                WriteChaptersFile(seg.Chapters, seg.StartTs, chFile);
+                chFile = Path.Combine(tempDir, "chapters.xml");
+                WriteChaptersFile(seg, chFile);
             }
 
             // Mux finale: video con timecodes + av e capitoli custom quando presenti
@@ -285,13 +282,13 @@ namespace RemuxForge.Core.Splitting
             startTc = MkvSplitSegmentService.SecsToTs(seg.StartTs);
             endTc = MkvSplitSegmentService.SecsToTs(seg.EndTs);
 
-            // Generazione del file capitoli rebasato, solo quando presenti
+            // File capitoli nel tempo del segmento, solo quando presenti
             hasChapters = seg.Chapters != null && seg.Chapters.Count > 0;
             chFile = null;
             if (hasChapters)
             {
-                chFile = Path.Combine(tempDir, "chapters.txt");
-                WriteChaptersFile(seg.Chapters, seg.StartTs, chFile);
+                chFile = Path.Combine(tempDir, "chapters.xml");
+                WriteChaptersFile(seg, chFile);
             }
 
             if (hasFlac)
@@ -885,50 +882,17 @@ namespace RemuxForge.Core.Splitting
 
         #region Helper chapter (privati, riusati da Slow e Fast)
 
-        /// <summary>Scrive il file capitoli in formato "Simple" di mkvmerge, rinumerando i nomi generici "MkvSplitChapter N".</summary>
-        /// <param name="chapters">Capitoli del segmento.</param>
-        /// <param name="startTs">Timestamp di inizio segmento (per il delta).</param>
-        /// <param name="filepath">File di output.</param>
-        private static void WriteChaptersFile(List<MkvSplitChapter> chapters, double startTs, string filepath)
+        /// <summary>
+        /// Scrive in XML i capitoli del segmento nel suo tempo: inizio nel segmento, fine troncata al taglio, titoli invariati
+        /// </summary>
+        /// <param name="seg">Segmento con i capitoli nel tempo del sorgente</param>
+        /// <param name="filepath">File di output</param>
+        private static void WriteChaptersFile(MkvSplitSegment seg, string filepath)
         {
-            StreamWriter sw;
-            MkvSplitChapter ch;
-            double rel;
-            string name;
-            string num;
+            long startNs = (long)Math.Round(seg.StartTs * 1000000000.0);
+            long endNs = (long)Math.Round(seg.EndTs * 1000000000.0);
 
-            sw = null;
-            try
-            {
-                // Apertura in sovrascrittura, UTF-8 senza BOM
-                sw = new StreamWriter(filepath, false, new UTF8Encoding(false));
-
-                // Per ogni capitolo: rebase del timestamp + rinumerazione nome se generico
-                for (int i = 0; i < chapters.Count; i++)
-                {
-                    ch = chapters[i];
-                    rel = Math.Max(0.0, ch.Timestamp - startTs);
-
-                    // Nome: se vuoto o match "MkvSplitChapter NN" lo rinumero da 1; altrimenti conservo l'originale
-                    if (!string.IsNullOrEmpty(ch.Name) && !s_genericChapterNameRe.IsMatch(ch.Name))
-                    {
-                        name = ch.Name;
-                    }
-                    else
-                    {
-                        name = string.Format(CultureInfo.InvariantCulture, "MkvSplitChapter {0:D2}", i + 1);
-                    }
-
-                    // Riga CHAPTERxx= e CHAPTERxxNAME= in formato Simple
-                    num = (i + 1).ToString("D2", CultureInfo.InvariantCulture);
-                    sw.Write("CHAPTER"); sw.Write(num); sw.Write('='); sw.WriteLine(MkvSplitSegmentService.SecsToTs(rel));
-                    sw.Write("CHAPTER"); sw.Write(num); sw.Write("NAME="); sw.WriteLine(name);
-                }
-            }
-            finally
-            {
-                if (sw != null) { sw.Dispose(); }
-            }
+            ChapterTimelineService.WriteXmlFile(ChapterTimelineService.Cut(seg.Chapters, startNs, endNs), filepath);
         }
 
         #endregion

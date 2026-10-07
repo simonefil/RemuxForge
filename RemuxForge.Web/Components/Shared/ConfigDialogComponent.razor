@@ -1364,7 +1364,7 @@
             segment.Episode = i + 1;
             segment.StartTs = i * 1300.0;
             segment.EndTs = (i + 1) * 1300.0;
-            segment.Chapters.Add(new RemuxForge.Core.Models.MkvSplitChapter { Name = AppText.F("web.config.preview.chapter", i + 1), Timestamp = i * 1300.0 });
+            segment.Chapters.Add(new RemuxForge.Core.Models.ChapterMark { Name = AppText.F("web.config.preview.chapter", i + 1), StartNs = (long)(i * 1300.0 * 1000000000L) });
             samples.Add(segment);
         }
 

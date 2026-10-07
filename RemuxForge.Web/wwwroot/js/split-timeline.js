@@ -18,7 +18,7 @@ function invalidatePreview(host) { const root = host.closest('.split-montage'); 
 export function focusEditor(root) { root?.focus({ preventScroll: true }); }
 export function cancelEditorGestures(root) { for (const timeline of timelines) if (root.contains(timeline.host)) timeline.cancelGesture(); }
 export function captureEditorKeyboard(root, reference) {
-    // A Radzen dialog owns focus/Escape while open; do not open nested confirmations.
+    // Un dialog Radzen aperto possiede focus ed Esc: non aprire conferme annidate.
     let disposed = false;
     const bridge = { invokeMethodAsync: (...args) => !disposed && root.contains(document.activeElement) ? reference.invokeMethodAsync(...args) : Promise.resolve() };
     const keyboard = sharedKeyboard(root, bridge);
@@ -27,10 +27,10 @@ export function captureEditorKeyboard(root, reference) {
     return { dispose() { disposed = true; root.removeEventListener('keydown', escape, true); keyboard.dispose(); } };
 }
 
-// Presentation only: clip intervals and result positions come from the Core projection.
+// Solo presentazione: intervalli delle clip e posizioni risultato arrivano dalla proiezione Core.
 class MontageTimeline extends TimelineCanvas {
     constructor(host, canvas, reference, model) {
-        // Route the shared canvas callback without changing the Remux timeline contract.
+        // Instrada la callback del canvas condiviso senza cambiare il contratto della timeline Remux.
         const bridge = { invokeMethodAsync: (method, ...args) => method === 'OnTimelineSeek'
             ? reference.invokeMethodAsync('OnMontageSeek', this.model.side, ...args)
             : reference.invokeMethodAsync(method, ...args) };
@@ -60,8 +60,8 @@ class MontageTimeline extends TimelineCanvas {
             this.draw();
         }
     }
-    // Both the main lane and navigator call this method, so neither misrepresents
-    // a reordered/duplicated output as continuous source audio.
+    // Corsia principale e navigatore chiamano entrambi questo metodo, cosi' nessuno dei due mostra
+    // un output riordinato o duplicato come audio sorgente continuo.
     drawAudioImage(image, start, end, left, right, top, height, color, tint, gain) {
         if (this.model.side !== 'result') { super.drawAudioImage(image, start, end, left, right, top, height, color, tint, gain); return; }
         if (end <= start) return;
@@ -148,8 +148,8 @@ class MontageTimeline extends TimelineCanvas {
     }
     queueGesture(packet) {
         invalidatePreview(this.host);
-        // At most one callback in flight and one newest sample. End/cancel replaces
-        // pending moves, and begin is always sent before any sample.
+        // Al massimo una callback in corso e un solo campione piu' recente. Fine/annulla sostituisce
+        // i movimenti pendenti e l'inizio viene sempre inviato prima di qualsiasi campione.
         this.pending = packet;
         if (!this.sending) this.flushGesture();
     }

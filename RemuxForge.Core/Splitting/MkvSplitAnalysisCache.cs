@@ -1,3 +1,5 @@
+using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -15,7 +17,8 @@ namespace RemuxForge.Core.Splitting
         /// <summary>Costruttore</summary>
         public MkvSplitAnalysis()
         {
-            this.Chapters = new List<MkvSplitChapter>();
+            this.Chapters = new List<ChapterMark>();
+            this.ChapterWarnings = new List<string>();
             this.SourcePts = new double[0];
             this.KeyFlags = new List<MkvSplitFrameInfo>();
             this.FrameRateMode = MkvSplitFrameRateMode.Unknown;
@@ -26,7 +29,10 @@ namespace RemuxForge.Core.Splitting
         #region Proprietà
 
         /// <summary>Capitoli del sorgente</summary>
-        public List<MkvSplitChapter> Chapters { get; set; }
+        public List<ChapterMark> Chapters { get; set; }
+
+        /// <summary>Avvisi localizzati sui capitoli non riportati dall'edizione piatta</summary>
+        public List<string> ChapterWarnings { get; set; }
 
         /// <summary>Durata in secondi</summary>
         public double Duration { get; set; }
@@ -136,9 +142,23 @@ namespace RemuxForge.Core.Splitting
             }
 
             MkvSplitAnalysis analysis = new MkvSplitAnalysis();
-            analysis.Chapters = MkvSplitExternalTools.Instance.GetChapters(inputFile);
+            ChapterReadResult chapters = MkvSplitExternalTools.Instance.ReadChapters(inputFile);
+
+            // Capitoli che non si possono spostare nel tempo (ordered) bloccano il sorgente
+            if (chapters.Error.Length > 0)
+                throw new InvalidOperationException(chapters.Error);
+
+            analysis.Chapters = chapters.Chapters;
+            analysis.ChapterWarnings = chapters.Warnings;
             analysis.PacketCount = MkvSplitExternalTools.Instance.CountPackets(inputFile);
             analysis.SourcePts = MkvSplitExternalTools.Instance.ExtractSourcePts(inputFile, analysis.PacketCount, out double videoEnd);
+            // Senza la fine esatta del video si ripiega sulla durata del container letta da mkvmerge
+            if (!double.IsFinite(videoEnd))
+            {
+                MkvFileInfo containerInfo = MkvSplitExternalTools.Instance.GetFileInfo(inputFile);
+                videoEnd = containerInfo != null && containerInfo.ContainerDurationNs > 0 ? containerInfo.ContainerDurationNs / 1000000000.0 : double.NaN;
+                ConsoleHelper.Write(LogSection.Split, LogLevel.Warning, AppText.F("split.tools.videoEndFromContainer", Path.GetFileName(inputFile)));
+            }
             analysis.Duration = videoEnd;
             analysis.KeyFlags = MkvSplitExternalTools.Instance.GetKeyFlags(inputFile);
             analysis.VideoParams = MkvSplitExternalTools.Instance.GetVideoParams(inputFile);

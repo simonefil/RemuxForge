@@ -258,6 +258,7 @@
                         </RadzenPanel>
                         <RadzenPanel class="rf-remux-processing-card" Text="@AppText.T("web.detail.subtitlesLabel")" AllowCollapse="false">
                             <RemuxFieldComponent Label="@AppText.T("web.config.toggle.subtitleCanvasRewrite")" Field="SubtitleCanvasRewrite" HelpKey="subCanvas"><RadzenSwitch TValue="bool" Value="@O.SubtitleCanvasRewrite" Change="@(v => Edit(() => O.SubtitleCanvasRewrite = v))" Disabled="@(EditingLocked || !VisualAnalysis)" /></RemuxFieldComponent>
+                            <RemuxFieldComponent Label="@AppText.T("web.config.toggle.copyLangChapters")" Field="CopyLangChapters" HelpKey="copyLangChapters"><RadzenSwitch TValue="bool" Value="@O.CopyLangChapters" Change="@(v => Edit(() => O.CopyLangChapters = v))" Disabled="@EditingLocked" /></RemuxFieldComponent>
                         </RadzenPanel>
                     }
                     else

@@ -1,6 +1,6 @@
-@* Presentation adapter: preserve the existing Core rule syntax without requiring CSV editing. *@
+@* Adattatore di presentazione: conserva la sintassi Core delle regole senza richiedere di modificare CSV. *@
 <div class="split-rule-rows">
-    @foreach (var row in _rows)
+    @foreach (RuleRow row in _rows)
     {
         <div class="form-row" @key="row">
             <span class="form-label">@(_rows.IndexOf(row) + 1)</span>
@@ -18,51 +18,177 @@
 </div>
 
 @code {
+    #region Parametri
+
+    /// <summary>
+    /// Modalità della regola: pattern o ranges
+    /// </summary>
     [Parameter] public string Mode { get; set; } = "ranges";
+
+    /// <summary>
+    /// Regola nella sintassi Core, separata da virgole
+    /// </summary>
     [Parameter] public string Value { get; set; } = "";
+
+    /// <summary>
+    /// Evento cambio della regola
+    /// </summary>
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    /// <summary>
+    /// Evento cambio di validità delle righe
+    /// </summary>
     [Parameter] public EventCallback<bool> ValidChanged { get; set; }
+
+    #endregion
+
+    #region Variabili di classe
+
+    /// <summary>
+    /// Ultimo valore ricevuto o pubblicato
+    /// </summary>
     private string _seen;
+
+    /// <summary>
+    /// Ultima modalità ricevuta
+    /// </summary>
     private string _seenMode;
-    private List<RuleRow> _rows = new();
+
+    /// <summary>
+    /// Righe della regola
+    /// </summary>
+    private List<RuleRow> _rows = new List<RuleRow>();
+
+    #endregion
+
+    #region Metodi protetti
+
+    /// <summary>
+    /// Ricostruisce le righe quando valore o modalità cambiano dall'esterno
+    /// </summary>
     protected override void OnParametersSet()
     {
-        if (_seen == Value && _seenMode == Mode) return;
+        if (_seen == Value && _seenMode == Mode)
+            return;
         _seenMode = Mode;
         _seen = Value;
-        _rows = (Value ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(item => {
+        _rows = (Value ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(item =>
+        {
             int separator = Mode == "ranges" ? item.IndexOf('-') : -1;
             return new RuleRow { Start = separator >= 0 ? item[..separator] : item, End = separator >= 0 ? item[(separator + 1)..] : "END" };
         }).ToList();
-        foreach (var row in _rows) ValidateRow(row);
+        foreach (RuleRow row in _rows)
+            ValidateRow(row);
         _ = ValidChanged.InvokeAsync(_rows.Count > 0 && _rows.All(row => string.IsNullOrEmpty(row.Error)));
     }
+
+    #endregion
+
+    #region Metodi privati
+
+    /// <summary>
+    /// Aggiorna inizio o fine di una riga e pubblica la regola
+    /// </summary>
+    /// <param name="row">Riga modificata</param>
+    /// <param name="start">True per l'inizio, false per la fine</param>
+    /// <param name="args">Evento del campo</param>
     private async Task ChangeAsync(RuleRow row, bool start, ChangeEventArgs args)
     {
-        if (start) row.Start = args.Value?.ToString() ?? ""; else row.End = args.Value?.ToString() ?? "";
+        if (start)
+            row.Start = args.Value?.ToString() ?? "";
+        else
+            row.End = args.Value?.ToString() ?? "";
         await PublishAsync();
     }
-    private async Task AddAsync() { _rows.Add(new() { Start = Mode == "pattern" ? "1" : "0", End = "END" }); await PublishAsync(); }
-    private async Task RemoveAsync(RuleRow row) { _rows.Remove(row); await PublishAsync(); }
-    private async Task PublishAsync() { foreach (var row in _rows) ValidateRow(row); _seen = string.Join(',', _rows.Select(row => Mode == "ranges" ? row.Start + "-" + row.End : row.Start)); await ValueChanged.InvokeAsync(_seen); await ValidChanged.InvokeAsync(_rows.Count > 0 && _rows.All(row => string.IsNullOrEmpty(row.Error))); }
+
+    /// <summary>
+    /// Aggiunge una riga e pubblica la regola
+    /// </summary>
+    private async Task AddAsync()
+    {
+        _rows.Add(new RuleRow { Start = Mode == "pattern" ? "1" : "0", End = "END" });
+        await PublishAsync();
+    }
+
+    /// <summary>
+    /// Rimuove una riga e pubblica la regola
+    /// </summary>
+    /// <param name="row">Riga da rimuovere</param>
+    private async Task RemoveAsync(RuleRow row)
+    {
+        _rows.Remove(row);
+        await PublishAsync();
+    }
+
+    /// <summary>
+    /// Valida le righe e pubblica regola e validità
+    /// </summary>
+    private async Task PublishAsync()
+    {
+        foreach (RuleRow row in _rows)
+            ValidateRow(row);
+        _seen = string.Join(',', _rows.Select(row => Mode == "ranges" ? row.Start + "-" + row.End : row.Start));
+        await ValueChanged.InvokeAsync(_seen);
+        await ValidChanged.InvokeAsync(_rows.Count > 0 && _rows.All(row => string.IsNullOrEmpty(row.Error)));
+    }
+
+    /// <summary>
+    /// Valida una riga e ne valorizza l'errore
+    /// </summary>
+    /// <param name="row">Riga da validare</param>
     private void ValidateRow(RuleRow row)
     {
         row.Error = "";
         try
         {
-            if (Mode == "pattern") { if (!int.TryParse(row.Start, out int chapters) || chapters <= 0) row.Error = AppText.T("web.splitMontage.invalidRuleRow"); }
+            if (Mode == "pattern")
+            {
+                if (!int.TryParse(row.Start, out int chapters) || chapters <= 0)
+                    row.Error = AppText.T("web.splitMontage.invalidRuleRow");
+            }
             else
             {
-                var start = RemuxForge.Core.Splitting.MkvSplitSegmentService.ParseTime(row.Start, 0);
-                if (!double.IsFinite(start.value) || start.value < 0) row.Error = AppText.T("web.splitMontage.invalidRuleRow");
+                (double value, bool isFrame) start = RemuxForge.Core.Splitting.MkvSplitSegmentService.ParseTime(row.Start, 0);
+                if (!double.IsFinite(start.value) || start.value < 0)
+                    row.Error = AppText.T("web.splitMontage.invalidRuleRow");
                 if (Mode == "ranges")
                 {
-                    var end = RemuxForge.Core.Splitting.MkvSplitSegmentService.ParseTime(row.End, 0);
-                    if (!double.IsFinite(end.value) || end.value < 0 || (row.End.Trim() != "END" && start.isFrame == end.isFrame && end.value <= start.value)) row.Error = AppText.T("web.splitMontage.invalidRuleRow");
+                    (double value, bool isFrame) end = RemuxForge.Core.Splitting.MkvSplitSegmentService.ParseTime(row.End, 0);
+                    if (!double.IsFinite(end.value) || end.value < 0 || (row.End.Trim() != "END" && start.isFrame == end.isFrame && end.value <= start.value))
+                        row.Error = AppText.T("web.splitMontage.invalidRuleRow");
                 }
             }
         }
-        catch (Exception exception) when (exception is FormatException or OverflowException) { row.Error = AppText.T("web.splitMontage.invalidRuleRow"); }
+        catch (Exception exception) when (exception is FormatException or OverflowException)
+        {
+            row.Error = AppText.T("web.splitMontage.invalidRuleRow");
+        }
     }
-    private sealed class RuleRow { public string Start { get; set; } = ""; public string End { get; set; } = ""; public string Error { get; set; } = ""; }
+
+    #endregion
+
+    #region Tipi annidati
+
+    /// <summary>
+    /// Riga della regola: inizio, fine ed errore di validazione
+    /// </summary>
+    private sealed class RuleRow
+    {
+        /// <summary>
+        /// Inizio, oppure numero di capitoli per gruppo in modalità pattern
+        /// </summary>
+        public string Start { get; set; } = "";
+
+        /// <summary>
+        /// Fine, solo in modalità ranges
+        /// </summary>
+        public string End { get; set; } = "";
+
+        /// <summary>
+        /// Errore localizzato, vuoto se la riga è valida
+        /// </summary>
+        public string Error { get; set; } = "";
+    }
+
+    #endregion
 }

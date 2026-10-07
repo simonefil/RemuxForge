@@ -153,6 +153,12 @@ namespace RemuxForge.Core.Pipeline
                     mergeReq.ProcessedLangAudioInfo = processedLangAudioInfo;
                     mergeReq.ProcessedLangSubTracks = processedLangSubTracks;
                     mergeReq.AudioDelayBypassedLangIds = audioDelayBypassedLangIds;
+                    if (options.CopyLangChapters && needsMerge)
+                    {
+                        // In anteprima i capitoli lang non vengono letti: il segnaposto mostra dove entrerà l'XML ricalcolato
+                        mergeReq.ReplaceSourceChapters = true;
+                        mergeReq.ChaptersFile = "<lang-chapters.xml>";
+                    }
                     mergeArgs = mkvService.BuildMergeArguments(mergeReq);
 
                     record.MergeCommand = mkvService.FormatMergeCommand(mergeArgs);

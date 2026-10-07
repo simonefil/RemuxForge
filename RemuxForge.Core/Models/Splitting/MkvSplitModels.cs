@@ -244,21 +244,6 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
-    /// Capitolo estratto dal sorgente
-    /// </summary>
-    public class MkvSplitChapter
-    {
-        /// <summary>Timestamp in secondi</summary>
-        public double Timestamp { get; set; }
-
-        /// <summary>Timestamp originale</summary>
-        public string TsStr { get; set; }
-
-        /// <summary>Nome capitolo</summary>
-        public string Name { get; set; }
-    }
-
-    /// <summary>
     /// Segmento output
     /// </summary>
     public class MkvSplitSegment
@@ -282,7 +267,7 @@ namespace RemuxForge.Core.Models
         public int FrameCount { get; set; }
 
         /// <summary>Capitoli contenuti</summary>
-        public List<MkvSplitChapter> Chapters { get; set; }
+        public List<ChapterMark> Chapters { get; set; }
 
         /// <summary>Nome file output, relativo alla cartella di output</summary>
         public string File { get; set; }
@@ -299,7 +284,7 @@ namespace RemuxForge.Core.Models
         /// <summary>Costruttore</summary>
         public MkvSplitSegment()
         {
-            this.Chapters = new List<MkvSplitChapter>();
+            this.Chapters = new List<ChapterMark>();
             this.File = "";
         }
     }

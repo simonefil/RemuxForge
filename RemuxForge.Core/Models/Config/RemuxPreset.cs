@@ -27,6 +27,7 @@ namespace RemuxForge.Core.Models
         public string AnalysisCropSourcePx { get; set; } = "";
         public string AnalysisCropLanguagePx { get; set; } = "";
         public bool SubtitleCanvasRewrite { get; set; }
+        public bool CopyLangChapters { get; set; }
         public string AudioFormat { get; set; } = "";
         public string AudioProcessingScope { get; set; } = "disabled";
         public bool AudioDownsample24To16 { get; set; }

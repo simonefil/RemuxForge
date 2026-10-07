@@ -1437,6 +1437,7 @@ namespace RemuxForge.Web.Services
                 !this.StringListsEqual(previousOptions.KeepSourceAudioCodec, newOptions.KeepSourceAudioCodec) ||
                 !this.StringListsEqual(previousOptions.KeepSourceSubtitleLangs, newOptions.KeepSourceSubtitleLangs) ||
                 previousOptions.SubtitleCanvasRewrite != newOptions.SubtitleCanvasRewrite ||
+                previousOptions.CopyLangChapters != newOptions.CopyLangChapters ||
                 previousOptions.AudioDelay != newOptions.AudioDelay ||
                 previousOptions.SubtitleDelay != newOptions.SubtitleDelay ||
                 previousOptions.AudioSourceFillThresholdMs != newOptions.AudioSourceFillThresholdMs ||

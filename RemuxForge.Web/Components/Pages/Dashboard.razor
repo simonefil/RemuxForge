@@ -218,6 +218,16 @@ else
     <AdvancedSettingsDialogComponent OnClose="CloseAdvancedSettings" />
 }
 
+@* Dialog Unione parti Split *@
+@if (_showSplitJoin)
+{
+    <SplitJoinDialogComponent @ref="_splitJoinDialog"
+                              InitialPaths="@_splitJoinInitialPaths"
+                              SourceFolder="@SplitOrchestrator.CurrentOptions?.SourceFolder"
+                              OnClose="CloseSplitJoin"
+                              OnStarted="CloseSplitJoin" />
+}
+
 @* Dialog Delay *@
 @if (_showDelay && _selectedRecord != null)
 {

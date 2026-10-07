@@ -393,6 +393,12 @@ namespace RemuxForge.Core.Media.Mkv
                 mkvArgs.Add("-S");
             }
 
+            // Capitoli del sorgente scartati quando vengono sostituiti da quelli ricalcolati del file lingua
+            if (req.ReplaceSourceChapters)
+            {
+                mkvArgs.Add("--no-chapters");
+            }
+
             // File sorgente
             mkvArgs.Add(req.SourceFile);
 
@@ -588,6 +594,13 @@ namespace RemuxForge.Core.Media.Mkv
                 }
             }
 
+            // Capitoli ricalcolati dal file lingua (opzione globale dell'output)
+            if (!string.IsNullOrEmpty(req.ChaptersFile))
+            {
+                mkvArgs.Add("--chapters");
+                mkvArgs.Add(req.ChaptersFile);
+            }
+
             return mkvArgs;
         }
 
@@ -666,6 +679,7 @@ namespace RemuxForge.Core.Media.Mkv
             process.StartInfo.CreateNoWindow = true;
             process.StartInfo.StandardOutputEncoding = Encoding.UTF8;
             process.StartInfo.StandardErrorEncoding = Encoding.UTF8;
+            ProcessRunner.ApplyUtf8Locale(process.StartInfo);
             process.StartInfo.ArgumentList.Add("-J");
             process.StartInfo.ArgumentList.Add(filePath);
             process.Start();
@@ -771,6 +785,11 @@ namespace RemuxForge.Core.Media.Mkv
                 if (propsEl.TryGetProperty("minimum_timestamp", out JsonElement minimumTimestampEl) && minimumTimestampEl.ValueKind == JsonValueKind.Number)
                 {
                     track.MinimumTimestampNs = minimumTimestampEl.GetInt64();
+                }
+
+                if (propsEl.TryGetProperty("pixel_dimensions", out JsonElement pixelEl) && pixelEl.ValueKind == JsonValueKind.String)
+                {
+                    track.PixelDimensions = pixelEl.GetString() ?? "";
                 }
 
                 if (propsEl.TryGetProperty("audio_channels", out JsonElement chEl))

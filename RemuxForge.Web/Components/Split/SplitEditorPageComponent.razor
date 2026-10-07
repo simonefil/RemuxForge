@@ -35,7 +35,7 @@
                         <strong>@T("outputs")</strong>
                         <RadzenButton Text="@T("newOutput")" Click="@(() => EditAsync(MkvSplitEditKind.CreateEmptyOutput))" Disabled="@_busy" />
                     </div>
-                    @foreach (var output in _projection.Outputs)
+                    @foreach (MkvSplitOutputProjection output in _projection.Outputs)
                     {
                         <RadzenButton @key="output.OutputId" Text="@(output.FileName + " · " + Time(output.DurationSeconds) + " · " + output.Clips.Count + " " + T("clips") + (output.Clips.Count == 0 ? " · " + T("empty") : ""))" Variant="@(output.OutputId == _outputId ? Variant.Filled : Variant.Outlined)" aria-pressed="@(output.OutputId == _outputId ? "true" : "false")" Click="@(() => SelectOutputAsync(output.OutputId))" />
                     }
@@ -80,7 +80,7 @@
                 <div class="split-montage-clips">
                     @if (Output != null)
                     {
-                        @foreach (var clip in Output.Clips)
+                        @foreach (MkvSplitClip clip in Output.Clips)
                         {
                             <label><input type="checkbox" checked="@View.Selected.Contains(clip.Id)" aria-label="@(T("selectClip") + " " + (Output.Clips.IndexOf(clip) + 1))" @onchange="@(e => ToggleClipSelection(clip.Id, e))" /></label>
                             <RadzenButton @key="clip.Id" Text="@($"{Output.Clips.IndexOf(clip) + 1}: [{clip.StartFrame}, {clip.EndFrameExclusive})")" Variant="@(clip.Id == View.ClipId ? Variant.Filled : Variant.Outlined)" aria-pressed="@(clip.Id == View.ClipId ? "true" : "false")" Click="@(() => SelectClipAsync(clip.Id))" />
@@ -102,7 +102,7 @@
                     </div>
                 }
                 <div class="split-montage-actions">
-                    <label>@T("destination") <select class="form-input" @bind="_destinationId">@foreach (var output in _projection.Outputs.Where(o => o.OutputId != _outputId)) { <option value="@output.OutputId">@output.FileName</option> }</select></label>
+                    <label>@T("destination") <select class="form-input" @bind="_destinationId">@foreach (MkvSplitOutputProjection output in _projection.Outputs.Where(o => o.OutputId != _outputId)) { <option value="@output.OutputId">@output.FileName</option> }</select></label>
                     <RadzenButton Text="@T("copy")" Click="@(() => EditAsync(MkvSplitEditKind.CopyClips))" Disabled="@(Clip == null || _destinationId == Guid.Empty || _busy)" />
                     <RadzenButton Text="@T("move")" Click="@(() => EditAsync(MkvSplitEditKind.MoveClips))" Disabled="@(Clip == null || _destinationId == Guid.Empty || _busy)" />
                     <RadzenButton Text="@T("merge")" Click="@(() => EditAsync(MkvSplitEditKind.MergeOutputs))" Disabled="@(Output == null || _destinationId == Guid.Empty || _busy)" />
@@ -110,7 +110,7 @@
             </section>
             <div class="split-montage-diagnostics" role="status">
                 @if (!string.IsNullOrEmpty(_error)) { <div>@_error</div> }
-                @foreach (var diagnostic in _projection.Diagnostics) { <div>@diagnostic.Message</div> }
+                @foreach (MkvSplitDiagnostic diagnostic in _projection.Diagnostics) { <div>@diagnostic.Message</div> }
             </div>
         }
     </main>

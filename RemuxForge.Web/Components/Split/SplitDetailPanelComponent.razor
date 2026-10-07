@@ -56,7 +56,7 @@
                             @if (Record.Plan != null)
                             {
                                 @PropertyRow(AppText.T("web.split.detail.cost"), DescribeCost(Record.Plan))
-                                @foreach (var warning in Record.Plan.Warnings) { <div class="split-warning-row">@warning.Message</div> }
+                                @foreach (MkvSplitWarning warning in Record.Plan.Warnings) { <div class="split-warning-row">@warning.Message</div> }
                             }
                             @foreach (MkvSplitOutputProjection output in Record.MontageProjection.Outputs)
                             {
@@ -131,7 +131,7 @@
                                             <span class="split-map-block-label">@segment.Num</span>
                                         </div>
                                     }
-                                    @foreach (MkvSplitChapter chapter in Record.Plan.Chapters)
+                                    @foreach (ChapterMark chapter in Record.Plan.Chapters)
                                     {
                                         <div class="split-map-chapter" style="@ChapterStyle(chapter)" title="@chapter.Name"></div>
                                     }
@@ -198,8 +198,14 @@
 </div>
 
 @code {
+    #region Costanti
+
     /// <summary>Segnaposto delle proprietà che non hanno ancora un valore.</summary>
     private const string NOT_AVAILABLE = "-";
+
+    #endregion
+
+    #region Parametri
 
     /// <summary>
     /// Record selezionato
@@ -230,6 +236,10 @@
     /// Evento apertura editor su un segmento
     /// </summary>
     [Parameter] public EventCallback<int> OnOpenEditor { get; set; }
+
+    #endregion
+
+    #region Metodi privati
 
     /// <summary>
     /// Restituisce le tracce del tipo richiesto
@@ -325,10 +335,10 @@
     /// </summary>
     /// <param name="chapter">Capitolo da posizionare</param>
     /// <returns>Stile inline</returns>
-    private string ChapterStyle(MkvSplitChapter chapter)
+    private string ChapterStyle(ChapterMark chapter)
     {
         double duration = this.Record.Plan.Duration > 0.0 ? this.Record.Plan.Duration : 1.0;
-        return string.Format(System.Globalization.CultureInfo.InvariantCulture, "left:{0:F3}%;", 100.0 * chapter.Timestamp / duration);
+        return string.Format(System.Globalization.CultureInfo.InvariantCulture, "left:{0:F3}%;", 100.0 * chapter.StartSeconds / duration);
     }
 
     /// <summary>
@@ -392,4 +402,6 @@
         builder.CloseElement();
         builder.CloseElement();
     };
+
+    #endregion
 }

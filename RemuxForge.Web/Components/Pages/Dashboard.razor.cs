@@ -5,6 +5,7 @@ using RemuxForge.Core.Models;
 using RemuxForge.Core.Tools;
 using RemuxForge.Web.Components.Shared;
 using RemuxForge.Web.Components.Remux;
+using RemuxForge.Web.Components.Split;
 using RemuxForge.Web.Services;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
@@ -237,6 +238,21 @@ namespace RemuxForge.Web.Components.Pages
         private bool _showDelay;
 
         /// <summary>
+        /// Flag: mostra dialog unione parti Split
+        /// </summary>
+        private bool _showSplitJoin;
+
+        /// <summary>
+        /// Parti iniziali del dialog unione, dalla selezione della griglia
+        /// </summary>
+        private List<string> _splitJoinInitialPaths = new List<string>();
+
+        /// <summary>
+        /// Riferimento al dialog unione, per l'Esc sul browser file interno
+        /// </summary>
+        private SplitJoinDialogComponent _splitJoinDialog;
+
+        /// <summary>
         /// Flag: mostra editor visuale EditMap
         /// </summary>
         private bool _showEditMapEditor;
@@ -393,6 +409,7 @@ namespace RemuxForge.Web.Components.Pages
             this.SplitOrchestrator.OnAnalysisCompleted += this.HandleSplitAnalysisCompleted;
             this.SplitOrchestrator.OnSplitCompleted += this.HandleSplitCompleted;
             this.SplitOrchestrator.OnOperationFailed += this.HandleSplitOperationFailed;
+            this.SplitOrchestrator.OnJoinCompleted += this.HandleSplitJoinCompleted;
             this.MetadataOrchestrator.OnLog += this.HandleLog;
             this.MetadataOrchestrator.OnRecordsChanged += this.HandleMetadataRecordsChanged;
             this.MetadataOrchestrator.OnProgressChanged += this.HandleProgressChanged;
@@ -449,6 +466,7 @@ namespace RemuxForge.Web.Components.Pages
                 this.SplitOrchestrator.OnAnalysisCompleted -= this.HandleSplitAnalysisCompleted;
                 this.SplitOrchestrator.OnSplitCompleted -= this.HandleSplitCompleted;
                 this.SplitOrchestrator.OnOperationFailed -= this.HandleSplitOperationFailed;
+                this.SplitOrchestrator.OnJoinCompleted -= this.HandleSplitJoinCompleted;
                 this.MetadataOrchestrator.OnLog -= this.HandleLog;
                 this.MetadataOrchestrator.OnRecordsChanged -= this.HandleMetadataRecordsChanged;
                 this.MetadataOrchestrator.OnProgressChanged -= this.HandleProgressChanged;
@@ -534,6 +552,24 @@ namespace RemuxForge.Web.Components.Pages
                     ? AppText.F("web.split.notify.splitStopped", summary.Succeeded, summary.Failed)
                     : AppText.F("web.split.notify.splitBody", summary.Succeeded, summary.Failed, summary.Skipped);
                 this.NotificationService.Notify(severity, AppText.T("web.split.notify.splitTitle"), body, 8000);
+                this.StateHasChanged();
+            });
+        }
+
+        /// <summary>
+        /// Notifica l'esito dell'unione parti
+        /// </summary>
+        /// <param name="result">Esito</param>
+        private void HandleSplitJoinCompleted(SplitJoinResult result)
+        {
+            this.InvokeAsync(() =>
+            {
+                if (result == null)
+                    return;
+
+                NotificationSeverity severity = result.Success ? NotificationSeverity.Success : (result.Stopped ? NotificationSeverity.Warning : NotificationSeverity.Error);
+                string body = result.Success ? AppText.F("web.splitJoin.notifySuccess", System.IO.Path.GetFileName(result.OutputPath)) : result.Message;
+                this.NotificationService.Notify(severity, AppText.T("web.splitJoin.notifyTitle"), body, result.Success ? 8000 : 12000);
                 this.StateHasChanged();
             });
         }
@@ -723,6 +759,9 @@ namespace RemuxForge.Web.Components.Pages
             {
                 if (key == "Escape")
                 {
+                    // Il browser file aperto dentro l'unione si chiude da solo, senza chiudere il dialog
+                    if (this._showSplitJoin && this._splitJoinDialog != null && this._splitJoinDialog.CloseInnerOverlay())
+                        return;
                     if (this._showConfig && this._currentMode == Options.MODE_REMUX) return; // Radzen possiede Escape/focus.
                     this.CloseAllDialogs();
                     this.StateHasChanged();
@@ -1269,7 +1308,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private bool IsBlockingOverlayOpen()
         {
-            return this._showConfig || this._showSplitEditor || this._showMetadataPathBrowse || this._showMetadataPreset || this._showMetadataMappedInfo || this._showMetadataManualEdit || this._showMetadataRename || this._showToolPaths || this._showAiSettings || this._showMetadataAiWizard || this._showAudioSettings || this._showAdvancedSettings || this._showDelay || this._showEditMapEditor || this._showEncodingProfiles || this._showInfo || this._showLicenses || this._showMediaInfo;
+            return this._showConfig || this._showSplitEditor || this._showMetadataPathBrowse || this._showMetadataPreset || this._showMetadataMappedInfo || this._showMetadataManualEdit || this._showMetadataRename || this._showToolPaths || this._showAiSettings || this._showMetadataAiWizard || this._showAudioSettings || this._showAdvancedSettings || this._showDelay || this._showEditMapEditor || this._showEncodingProfiles || this._showInfo || this._showLicenses || this._showMediaInfo || this._showSplitJoin;
         }
 
         /// <summary>
@@ -1537,6 +1576,7 @@ namespace RemuxForge.Web.Components.Pages
         private void CloseMediaInfo()
         {
             this._showMediaInfo = false;
+            this._showSplitJoin = false;
         }
 
         /// <summary>
@@ -1878,6 +1918,31 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
+        /// Apre il dialog unione parti, precompilato con le righe selezionate nell'ordine della griglia (C19)
+        /// </summary>
+        private void DoOpenSplitJoin()
+        {
+            // Nessun ApplySplitConfig: l'unione non dipende dalla modalità di taglio, usa solo cartella output e Sovrascrivi già applicate
+            List<int> indices = this.GetSplitActionIndices();
+            indices.Sort();
+            this._splitJoinInitialPaths = new List<string>();
+            foreach (int index in indices)
+            {
+                if (index >= 0 && index < this._splitRecords.Count)
+                    this._splitJoinInitialPaths.Add(this._splitRecords[index].InputFile);
+            }
+            this._showSplitJoin = true;
+        }
+
+        /// <summary>
+        /// Chiude il dialog unione parti
+        /// </summary>
+        private void CloseSplitJoin()
+        {
+            this._showSplitJoin = false;
+        }
+
+        /// <summary>
         /// Costruisce il piano di tutti i record split
         /// </summary>
         private void DoAnalyzeSplitAll()
@@ -1913,7 +1978,7 @@ namespace RemuxForge.Web.Components.Pages
                 if (!this.ApplySplitConfig())
                     return;
 
-                // Un nuovo scan azzera i segmenti costruiti nell'editor: non deve succedere in silenzio
+                // Un nuovo scan scarta i montaggi dei file modificati o spariti: non deve succedere in silenzio
                 if (this.SplitOrchestrator.CountOverrides() > 0)
                 {
                     _ = this.ConfirmSplitScanAsync();
@@ -2340,6 +2405,13 @@ namespace RemuxForge.Web.Components.Pages
                 StatusLabel = AppText.T("web.status.splitAll"),
                 ToolbarOrder = 20,
                 StatusOrder = 30
+            });
+            // Comando distinto dalle modalità di taglio (C10, C11)
+            commands.Add(new UiCommandDefinition(AppText.T("web.splitJoin.menu"), "", "merge", UiCommandPlacement.Menu | UiCommandPlacement.Toolbar, UiCommandMenuSection.Actions, busy || this._splitReviewStage != null, this.DoOpenSplitJoin)
+            {
+                ToolbarLabel = AppText.T("web.splitJoin.toolbar"),
+                SecondaryToolbar = true,
+                ToolbarOrder = 30
             });
         }
 

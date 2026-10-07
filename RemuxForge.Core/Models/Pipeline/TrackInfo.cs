@@ -19,6 +19,7 @@ namespace RemuxForge.Core.Models
             this.Name = "";
             this.DefaultTrack = false;
             this.ForcedTrack = false;
+            this.PixelDimensions = "";
         }
 
         #endregion
@@ -104,6 +105,11 @@ namespace RemuxForge.Core.Models
         /// Bitrate audio in bit/s, se disponibile
         /// </summary>
         public int Bitrate { get; set; }
+
+        /// <summary>
+        /// Dimensioni in pixel della traccia video (es. "1920x1080"), vuote se non dichiarate
+        /// </summary>
+        public string PixelDimensions { get; set; }
 
         #endregion
     }

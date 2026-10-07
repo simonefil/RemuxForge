@@ -1,3 +1,4 @@
+using RemuxForge.Core.Chapters;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
@@ -349,15 +350,8 @@ namespace RemuxForge.Core.Splitting
                     }
                     if (output.Projection.Chapters.Count > 0)
                     {
-                        string chapters = Path.Combine(temporary, "chapters.txt");
-                        using (StreamWriter writer = new StreamWriter(chapters, false, new System.Text.UTF8Encoding(false)))
-                            for (int index = 0; index < output.Projection.Chapters.Count; index++)
-                            {
-                                MkvSplitChapter chapter = output.Projection.Chapters[index];
-                                string number = (index + 1).ToString("D2", CultureInfo.InvariantCulture);
-                                writer.WriteLine("CHAPTER" + number + "=" + MkvSplitSegmentService.SecsToTs(chapter.Timestamp));
-                                writer.WriteLine("CHAPTER" + number + "NAME=" + (chapter.Name ?? ""));
-                            }
+                        string chapters = Path.Combine(temporary, "chapters.xml");
+                        ChapterTimelineService.WriteXmlFile(output.Projection.Chapters, chapters);
                         mux.Add("--chapters"); mux.Add(chapters);
                     }
                     if (stopRequested?.Invoke() == true) throw new OperationCanceledException();
@@ -407,7 +401,7 @@ namespace RemuxForge.Core.Splitting
         {
             int packets = MkvSplitExternalTools.Instance.CountPackets(path);
             double[] actual = MkvSplitExternalTools.Instance.ExtractSourcePts(path, packets, out double end);
-            if (actual.Length != output.FrameCount || Math.Abs(end - output.DurationSeconds) > 0.001001)
+            if (actual.Length != output.FrameCount || !double.IsFinite(end) || Math.Abs(end - output.DurationSeconds) > 0.001001)
                 throw new InvalidOperationException(AppText.T("split.montage.outputMismatch"));
             int index = 0;
             foreach (MkvSplitClipProjection clip in output.Clips)

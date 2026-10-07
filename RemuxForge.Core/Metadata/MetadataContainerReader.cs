@@ -205,6 +205,29 @@ namespace RemuxForge.Core.Metadata
         }
 
         /// <summary>
+        /// Restituisce l'indice dell'edizione predefinita: la prima marcata come default, altrimenti la prima
+        /// </summary>
+        /// <param name="xml">XML capitoli</param>
+        /// <returns>Indice edizione, -1 se l'XML non ha edizioni</returns>
+        public static int GetDefaultEditionIndex(string xml)
+        {
+            List<XmlElement> editions;
+            XmlDocument document = LoadChaptersDocument(xml);
+
+            if (document == null)
+                return -1;
+
+            editions = GetChildElements(document.DocumentElement, "EditionEntry");
+            for (int i = 0; i < editions.Count; i++)
+            {
+                if (GetChildText(editions[i], "EditionFlagDefault").Trim() == "1")
+                    return i;
+            }
+
+            return editions.Count > 0 ? 0 : -1;
+        }
+
+        /// <summary>
         /// Applica all'XML originale i capitoli voluti, toccando solo i nodi che cambiano
         /// </summary>
         /// <param name="originalXml">XML capitoli letto dal file, vuoto se non ne ha</param>

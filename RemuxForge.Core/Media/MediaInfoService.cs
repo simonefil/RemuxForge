@@ -92,6 +92,7 @@ namespace RemuxForge.Core.Media
                 process.StartInfo.CreateNoWindow = true;
                 process.StartInfo.StandardOutputEncoding = Encoding.UTF8;
                 process.StartInfo.StandardErrorEncoding = Encoding.UTF8;
+                ProcessRunner.ApplyUtf8Locale(process.StartInfo);
                 process.StartInfo.ArgumentList.Add(filePath);
                 process.Start();
                 Task<string> stdout = process.StandardOutput.ReadToEndAsync();

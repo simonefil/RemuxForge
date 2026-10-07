@@ -148,6 +148,12 @@ namespace RemuxForge.Core.Subtitles
                 return false;
             }
 
+            // In modalità strict minuti e secondi devono restare nel loro intervallo; il default resta permissivo
+            if (strict && (m > 59 || s > 59))
+            {
+                return false;
+            }
+
             ms = (((h * 60L) + m) * 60L + s) * 1000L + milli;
             return true;
         }

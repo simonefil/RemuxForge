@@ -5,31 +5,31 @@
     @if (Stage == "ready")
     {
         <div class="split-plan-review-files">
-            @foreach (var record in Records)
+            @foreach (MkvSplitRecord record in Records)
             {
                 <details @key="record.RecordId">
                     <summary>@System.IO.Path.GetFileName(record.InputFile) · @Utils.GetSplitStatusText(record.Status) @(record.IsOverride ? " · " + AppText.T("web.split.overrideBadge") : "")</summary>
                     @if (record.MontageProjection != null)
                     {
-                        @foreach (var output in record.MontageProjection.Outputs)
+                        @foreach (MkvSplitOutputProjection output in record.MontageProjection.Outputs)
                         {
                             <div class="split-plan-review-output">
                                 <strong>@output.FileName</strong> · @RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(output.DurationSeconds) · @output.Clips.Count @AppText.T("web.splitMontage.clips")
                                 <div>@output.FullPath</div>
-                                @foreach (var clip in output.Clips)
+                                @foreach (MkvSplitClipProjection clip in output.Clips)
                                 {
                                     <div>@AppText.T("web.splitMontage.source"): [@clip.StartFrame, @clip.EndFrameExclusive) → @AppText.T("web.splitMontage.result"): @RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(clip.ResultStartSeconds)–@RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(clip.ResultEndSeconds)</div>
                                 }
                             </div>
                         }
-                        @foreach (var diagnostic in record.MontageProjection.Diagnostics) { <div class="split-montage-diagnostics">@diagnostic.Message</div> }
+                        @foreach (MkvSplitDiagnostic diagnostic in record.MontageProjection.Diagnostics) { <div class="split-montage-diagnostics">@diagnostic.Message</div> }
                     }
                     else if (record.Plan != null)
                     {
-                        @foreach (var output in record.Plan.Segments) { <div>@output.File · @RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(output.EndTs - output.StartTs)</div> }
+                        @foreach (MkvSplitSegment output in record.Plan.Segments) { <div>@output.File · @RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(output.EndTs - output.StartTs)</div> }
                     }
                     @if (!string.IsNullOrEmpty(record.ErrorMessage)) { <div class="split-montage-diagnostics">@record.ErrorMessage</div> }
-                    @if (record.Plan != null) { @foreach (var warning in record.Plan.Warnings) { <div>@warning.Message</div> } }
+                    @if (record.Plan != null) { @foreach (MkvSplitWarning warning in record.Plan.Warnings) { <div>@warning.Message</div> } }
                     <RadzenButton Text="@AppText.T("web.split.openEditor")" Icon="content_cut" Disabled="@Busy" Click="@(() => OnOpenEditor.InvokeAsync(Records.IndexOf(record)))" />
                 </details>
             }
@@ -42,10 +42,37 @@
 </section>
 
 @code {
-    [Parameter] public List<MkvSplitRecord> Records { get; set; } = new();
+    #region Parametri
+
+    /// <summary>
+    /// Record Split da rivedere
+    /// </summary>
+    [Parameter] public List<MkvSplitRecord> Records { get; set; } = new List<MkvSplitRecord>();
+
+    /// <summary>
+    /// Fase corrente della revisione
+    /// </summary>
     [Parameter] public string Stage { get; set; } = "scan";
+
+    /// <summary>
+    /// Indica che la pipeline Split è occupata
+    /// </summary>
     [Parameter] public bool Busy { get; set; }
+
+    /// <summary>
+    /// Evento apertura editor sul record indicato
+    /// </summary>
     [Parameter] public EventCallback<int> OnOpenEditor { get; set; }
+
+    /// <summary>
+    /// Evento conferma della revisione
+    /// </summary>
     [Parameter] public EventCallback OnContinue { get; set; }
+
+    /// <summary>
+    /// Evento ritorno alla configurazione
+    /// </summary>
     [Parameter] public EventCallback OnConfigure { get; set; }
+
+    #endregion
 }
