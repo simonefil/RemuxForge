@@ -1,3 +1,4 @@
+using RemuxForge.Core.Ai;
 using RemuxForge.Core.Analysis.Edit.Extraction;
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
@@ -168,6 +169,10 @@ namespace RemuxForge.Web
             builder.Services.AddSingleton<SplitOrchestrator>();
             builder.Services.AddSingleton<MetadataOrchestrator>();
             builder.Services.AddSingleton<UpdateCheckService>();
+            builder.Services.AddSingleton(new AiCredentialService(AppSettingsService.Instance.ConfigFolder));
+            builder.Services.AddSingleton<AiOAuthFlow>();
+            builder.Services.AddSingleton<OpenAiResponsesClient>();
+            builder.Services.AddSingleton<AiAuthService>();
             builder.Services.AddHostedService(provider => provider.GetRequiredService<UpdateCheckService>());
             builder.Services.AddRadzenComponents();
             builder.Services.AddRazorComponents().AddInteractiveServerComponents();

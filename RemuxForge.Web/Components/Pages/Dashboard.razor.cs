@@ -207,6 +207,21 @@ namespace RemuxForge.Web.Components.Pages
         private bool _showToolPaths;
 
         /// <summary>
+        /// Flag: mostra dialog impostazioni AI
+        /// </summary>
+        private bool _showAiSettings;
+
+        /// <summary>
+        /// Flag: mostra wizard preset Metadata con AI
+        /// </summary>
+        private bool _showMetadataAiWizard;
+
+        /// <summary>
+        /// True se l'AI è configurata con un account collegato o una API key
+        /// </summary>
+        private bool _aiConfigured;
+
+        /// <summary>
         /// Flag: mostra dialog impostazioni audio
         /// </summary>
         private bool _showAudioSettings;
@@ -336,6 +351,8 @@ namespace RemuxForge.Web.Components.Pages
             this._metadataMappedInfoSimulated = false;
             this._showMetadataRename = false;
             this._showToolPaths = false;
+            this._showAiSettings = false;
+            this._showMetadataAiWizard = false;
             this._showAudioSettings = false;
             this._showAdvancedSettings = false;
             this._showDelay = false;
@@ -361,6 +378,7 @@ namespace RemuxForge.Web.Components.Pages
             this._splitRecords = this.SplitOrchestrator.GetRecords();
             this._metadataRecords = this.MetadataOrchestrator.GetRecords();
             this._metadataPresetFiles = this.MetadataOrchestrator.GetPresetFiles();
+            this.RefreshAiConfigured();
             this.SyncSelectedFromOrchestrator();
             this.SyncSelectedFromSplitOrchestrator();
             this.SyncSelectedFromMetadataOrchestrator();
@@ -381,6 +399,7 @@ namespace RemuxForge.Web.Components.Pages
             this.MetadataOrchestrator.OnAnalysisCompleted += this.HandleMetadataAnalysisCompleted;
             this.MetadataOrchestrator.OnApplyCompleted += this.HandleMetadataApplyCompleted;
             this.MetadataOrchestrator.OnOperationFailed += this.HandleMetadataOperationFailed;
+            this.AiAuthService.OnStateChanged += this.HandleAiStateChanged;
         }
 
         /// <summary>
@@ -436,6 +455,7 @@ namespace RemuxForge.Web.Components.Pages
                 this.MetadataOrchestrator.OnAnalysisCompleted -= this.HandleMetadataAnalysisCompleted;
                 this.MetadataOrchestrator.OnApplyCompleted -= this.HandleMetadataApplyCompleted;
                 this.MetadataOrchestrator.OnOperationFailed -= this.HandleMetadataOperationFailed;
+                this.AiAuthService.OnStateChanged -= this.HandleAiStateChanged;
             }
 
             // Dispose riferimento .NET per JS interop
@@ -638,6 +658,33 @@ namespace RemuxForge.Web.Components.Pages
                 this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.metadata.notify.failedTitle"), errorMessage, 10000);
                 this.StateHasChanged();
             });
+        }
+
+        /// <summary>
+        /// Aggiorna lo stato della configurazione AI quando cambia login o API key
+        /// </summary>
+        private void HandleAiStateChanged()
+        {
+            this.InvokeAsync(() =>
+            {
+                this.RefreshAiConfigured();
+                this.StateHasChanged();
+            });
+        }
+
+        /// <summary>
+        /// Rilegge se l'AI è configurata; un file di configurazione illeggibile vale come non configurata
+        /// </summary>
+        private void RefreshAiConfigured()
+        {
+            try
+            {
+                this._aiConfigured = RemuxForge.Core.Ai.AiCredentialService.IsConfigured(this.AiCredentialService.Load());
+            }
+            catch (Exception ex) when (ex is System.Text.Json.JsonException || ex is System.IO.IOException || ex is UnauthorizedAccessException)
+            {
+                this._aiConfigured = false;
+            }
         }
 
         /// <summary>
@@ -1222,7 +1269,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private bool IsBlockingOverlayOpen()
         {
-            return this._showConfig || this._showSplitEditor || this._showMetadataPathBrowse || this._showMetadataPreset || this._showMetadataMappedInfo || this._showMetadataManualEdit || this._showMetadataRename || this._showToolPaths || this._showAudioSettings || this._showAdvancedSettings || this._showDelay || this._showEditMapEditor || this._showEncodingProfiles || this._showInfo || this._showLicenses || this._showMediaInfo;
+            return this._showConfig || this._showSplitEditor || this._showMetadataPathBrowse || this._showMetadataPreset || this._showMetadataMappedInfo || this._showMetadataManualEdit || this._showMetadataRename || this._showToolPaths || this._showAiSettings || this._showMetadataAiWizard || this._showAudioSettings || this._showAdvancedSettings || this._showDelay || this._showEditMapEditor || this._showEncodingProfiles || this._showInfo || this._showLicenses || this._showMediaInfo;
         }
 
         /// <summary>
@@ -2126,6 +2173,14 @@ namespace RemuxForge.Web.Components.Pages
                     UiCommandMenuSection.Settings,
                     busy,
                     this.ShowToolPaths));
+                result.Add(new UiCommandDefinition(
+                    AppText.T("web.menu.ai"),
+                    "",
+                    "",
+                    UiCommandPlacement.Menu,
+                    UiCommandMenuSection.Settings,
+                    busy,
+                    this.ShowAiSettings));
             }
 
             result.Add(new UiCommandDefinition(
@@ -2181,6 +2236,10 @@ namespace RemuxForge.Web.Components.Pages
                 StatusLabel = AppText.T("web.status.metadata.preset"),
                 ToolbarOrder = 20,
                 StatusOrder = 20
+            });
+            commands.Add(new UiCommandDefinition(AppText.T("web.metadata.ai.toolbar"), "", "auto_awesome", UiCommandPlacement.Toolbar, UiCommandMenuSection.Actions, busy || this._metadataRecords == null || this._metadataRecords.Count == 0 || !this._aiConfigured, this.ShowMetadataAiWizard)
+            {
+                ToolbarOrder = 25
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.metadata.manualEdit"), "F4", "edit_note", allSurfaces, UiCommandMenuSection.Actions, busy, this.ShowMetadataManualEdit)
             {
@@ -2350,6 +2409,7 @@ namespace RemuxForge.Web.Components.Pages
                 StatusOrder = 70
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.toolPaths"), "", "", UiCommandPlacement.Menu, UiCommandMenuSection.Settings, busy, this.ShowToolPaths));
+            commands.Add(new UiCommandDefinition(AppText.T("web.menu.ai"), "", "", UiCommandPlacement.Menu, UiCommandMenuSection.Settings, busy, this.ShowAiSettings));
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.audio"), "", "", UiCommandPlacement.Menu, UiCommandMenuSection.Settings, busy, this.ShowAudioSettings));
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.advancedSettings"), "", "", UiCommandPlacement.Menu, UiCommandMenuSection.Settings, busy, this.ShowAdvancedSettings));
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.encodingProfiles"), "", "", UiCommandPlacement.Menu, UiCommandMenuSection.Settings, busy, this.ShowEncodingProfiles));
@@ -2856,6 +2916,73 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
+        /// Mostra dialog impostazioni AI
+        /// </summary>
+        private void ShowAiSettings()
+        {
+            this._showAiSettings = true;
+        }
+
+        /// <summary>
+        /// Chiude dialog impostazioni AI
+        /// </summary>
+        private void CloseAiSettings()
+        {
+            this._showAiSettings = false;
+            this.RefreshAiConfigured();
+        }
+
+        /// <summary>
+        /// Mostra wizard preset Metadata con AI
+        /// </summary>
+        private void ShowMetadataAiWizard()
+        {
+            if (this._currentMode != Options.MODE_METADATA || this.MetadataOrchestrator.IsBusy)
+                return;
+
+            this._showMetadataAiWizard = true;
+        }
+
+        /// <summary>
+        /// Chiude wizard preset Metadata con AI
+        /// </summary>
+        private void CloseMetadataAiWizard()
+        {
+            this._showMetadataAiWizard = false;
+        }
+
+        /// <summary>
+        /// Chiude il wizard e attiva il preset appena salvato
+        /// </summary>
+        /// <param name="presetPath">Percorso preset salvato</param>
+        private void ActivateAiPreset(string presetPath)
+        {
+            this._showMetadataAiWizard = false;
+            this.ApplyMetadataPreset(presetPath);
+        }
+
+        /// <summary>
+        /// Chiude il wizard, attiva il preset salvato e avvia analisi e applicazione
+        /// </summary>
+        /// <param name="presetPath">Percorso preset salvato</param>
+        private void SaveAndApplyAiPreset(string presetPath)
+        {
+            this._showMetadataAiWizard = false;
+            this._metadataPresetFiles = this.MetadataOrchestrator.GetPresetFiles();
+            this.MetadataOrchestrator.AnalyzeAndApplyAll(presetPath, false);
+        }
+
+        /// <summary>
+        /// Chiude il wizard e avvia analisi e applicazione con il preset temporaneo
+        /// </summary>
+        /// <param name="presetPath">Percorso preset temporaneo</param>
+        private void ApplyTemporaryAiPreset(string presetPath)
+        {
+            this._showMetadataAiWizard = false;
+            this.MetadataOrchestrator.AnalyzeAndApplyAll(presetPath, true);
+        }
+
+        /// <summary>
         /// Mostra dialog impostazioni audio
         /// </summary>
         private void ShowAudioSettings()
@@ -3041,7 +3168,7 @@ namespace RemuxForge.Web.Components.Pages
                 if (trackRemovalCount > 0)
                     message += Environment.NewLine + AppText.F("web.metadata.confirmTrackRemoval", trackRemovalCount);
 
-                if (!await this.JsRuntime.InvokeAsync<bool>("confirm", message))
+                if (!await this.ConfirmAsync(message, AppText.T("web.metadata.progress.apply")))
                     return;
             }
 
@@ -3055,11 +3182,30 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
+        /// Chiede conferma con un dialog dell'applicazione, mai con il dialog nativo del browser
+        /// </summary>
+        /// <param name="message">Testo della conferma, anche su più righe</param>
+        /// <param name="title">Titolo del dialog</param>
+        /// <returns>True se l'utente conferma</returns>
+        private async Task<bool> ConfirmAsync(string message, string title)
+        {
+            RenderFragment content = builder =>
+            {
+                builder.OpenElement(0, "div");
+                builder.AddAttribute(1, "style", "white-space: pre-line;");
+                builder.AddContent(2, message);
+                builder.CloseElement();
+            };
+
+            return await this.DialogService.Confirm(content, title, new ConfirmOptions { OkButtonText = AppText.T("web.common.ok"), CancelButtonText = AppText.T("web.common.cancel"), CloseDialogOnOverlayClick = false }) == true;
+        }
+
+        /// <summary>
         /// Chiede conferma prima di uno scan che azzera i segmenti costruiti nell'editor
         /// </summary>
         private async Task ConfirmSplitScanAsync()
         {
-            bool confirmed = await this.JsRuntime.InvokeAsync<bool>("confirm", AppText.F("web.split.scanClearsOverrides", this.SplitOrchestrator.CountOverrides()));
+            bool confirmed = await this.ConfirmAsync(AppText.F("web.split.scanClearsOverrides", this.SplitOrchestrator.CountOverrides()), AppText.T("web.status.scan"));
 
             if (!confirmed)
                 return;
@@ -3160,6 +3306,8 @@ namespace RemuxForge.Web.Components.Pages
             this._showMetadataManualEdit = false;
             this._showMetadataRename = false;
             this._showToolPaths = false;
+            this._showAiSettings = false;
+            this._showMetadataAiWizard = false;
             this._showAudioSettings = false;
             this._showAdvancedSettings = false;
             this._showDelay = false;

@@ -213,7 +213,7 @@ namespace RemuxForge.Core.Metadata
         /// <param name="track">Traccia corrente o null per container</param>
         /// <param name="condition">Condizione campo</param>
         /// <returns>True se la condizione è matchata</returns>
-        private bool IsFieldConditionMatched(MkvMetadataRecord record, MkvMetadataTrackInfo track, MkvMetadataFieldCondition condition)
+        internal bool IsFieldConditionMatched(MkvMetadataRecord record, MkvMetadataTrackInfo track, MkvMetadataFieldCondition condition)
         {
             string left;
             string right;
@@ -1130,7 +1130,7 @@ namespace RemuxForge.Core.Metadata
         /// <param name="track">Traccia corrente o null per container</param>
         /// <param name="fieldKey">Chiave campo condizione</param>
         /// <returns>Valore campo condizione</returns>
-        private string GetConditionFieldValue(MkvMetadataRecord record, MkvMetadataTrackInfo track, string fieldKey)
+        internal string GetConditionFieldValue(MkvMetadataRecord record, MkvMetadataTrackInfo track, string fieldKey)
         {
             string key = fieldKey != null ? fieldKey.Trim() : "";
             if (key.StartsWith("original.", StringComparison.OrdinalIgnoreCase) || key.StartsWith("current.", StringComparison.OrdinalIgnoreCase) || key.StartsWith("mi.", StringComparison.OrdinalIgnoreCase))

@@ -2,6 +2,8 @@
 @inject MergeOrchestrator Orchestrator
 @inject SplitOrchestrator SplitOrchestrator
 @inject MetadataOrchestrator MetadataOrchestrator
+@inject RemuxForge.Core.Ai.AiCredentialService AiCredentialService
+@inject AiAuthService AiAuthService
 @inject ThemeService ThemeService
 @implements IAsyncDisposable
 
@@ -187,6 +189,21 @@ else
 @if (_showToolPaths)
 {
     <ToolPathsDialogComponent OnClose="CloseToolPaths" />
+}
+
+@* Wizard preset Metadata con AI *@
+@if (_showMetadataAiWizard)
+{
+    <MetadataAiWizardComponent OnClose="CloseMetadataAiWizard"
+                               OnSaveAndActivate="ActivateAiPreset"
+                               OnSaveAndApply="SaveAndApplyAiPreset"
+                               OnApplyTemporary="ApplyTemporaryAiPreset" />
+}
+
+@* Dialog Impostazioni AI *@
+@if (_showAiSettings)
+{
+    <AiSettingsDialogComponent JsModule="@_jsModule" OnClose="CloseAiSettings" />
 }
 
 @* Dialog Impostazioni Audio *@

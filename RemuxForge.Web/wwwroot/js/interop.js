@@ -398,6 +398,17 @@ export function interceptExternalLinks() {
     document.addEventListener('click', window._rfExternalLinkHandler, true);
 }
 
+// Apre un URL esterno: browser di sistema nel desktop Tauri, nuova scheda nella WebUI
+export function openExternalUrl(url) {
+    if (typeof window.__TAURI__ !== 'undefined' && window.__TAURI__.opener) {
+        window.__TAURI__.opener.openUrl(url);
+        return true;
+    }
+
+    var opened = window.open(url, '_blank', 'noopener');
+    return opened !== null;
+}
+
 // Apre il file picker su un input file nascosto e inoltra i byte al callback .NET
 export function pickJsonFileViaCallback(inputId, dotNetRef) {
     var input = document.getElementById(inputId);

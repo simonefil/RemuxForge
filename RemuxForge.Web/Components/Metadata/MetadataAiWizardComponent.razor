@@ -1,0 +1,921 @@
+@implements IDisposable
+@using RemuxForge.Core.Ai
+@inject MetadataOrchestrator Orchestrator
+@inject AiCredentialService CredentialService
+@inject OpenAiResponsesClient ResponsesClient
+
+<div class="dialog-overlay visible">
+    <div class="dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="ai-wizard-dialog-title" style="width: min(140ch, 95vw); max-height: 92vh; display: flex; flex-direction: column;" @onclick:stopPropagation="true">
+        <div id="ai-wizard-dialog-title" class="dialog-title">@AppText.F("web.metadata.ai.titleStep", AppText.T("web.metadata.ai.title"), GetStepLabel())</div>
+        <div class="dialog-body" style="overflow: auto; flex: 1;">
+            @if (_step == WizardStep.Request)
+            {
+                <div>@AppText.T("web.metadata.ai.requestHint")</div>
+                <textarea class="form-input" style="width: 100%; min-height: 10em; margin-top: 0.5em; resize: vertical;" aria-label="@AppText.T("web.metadata.ai.requestLabel")" placeholder="@AppText.T("web.metadata.ai.requestPlaceholder")" @bind="_requestText" @bind:event="oninput"></textarea>
+                <div style="margin-top: 0.5em; color: var(--rz-text-secondary-color);">@AppText.F("web.metadata.ai.requestContext", GetSourceRecordCount(), GetModelLabel())</div>
+            }
+            else if (_step == WizardStep.Reading)
+            {
+                <div>@AppText.T("web.metadata.ai.readingHint")</div>
+                <div style="margin-top: 0.5em;">@GetReadingProgressText()</div>
+            }
+            else if (_step == WizardStep.Generating)
+            {
+                <div>@(_generationRunning ? AppText.T("web.metadata.ai.generatingHint") : AppText.T("web.metadata.ai.generationStopped"))</div>
+                <div class="metadata-ai-log" style="margin-top: 0.5em; font-family: monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow: auto; border: 1px solid var(--rz-base-300); padding: 0.5em;">
+                    @foreach (string line in GetLogLines())
+                    {
+                        <div>@line</div>
+                    }
+                </div>
+            }
+            else if (_step == WizardStep.Preview && _result != null)
+            {
+                <div class="metadata-preview-summary">
+                    <span>@AppText.F("web.metadata.ai.previewTotals", GetChangedFileCount(), _previewRecords.Count, GetTotalChangeCount(), _result.Preset.Rules.Count, _result.Rounds)</span>
+                </div>
+                @foreach (string warning in _result.Warnings)
+                {
+                    <div style="color: var(--rz-warning);">@warning</div>
+                }
+                <div style="display: flex; gap: 1em; margin-top: 0.5em; min-height: 0;">
+                    <div style="flex: 0 0 35%; max-height: 50vh; overflow: auto; border: 1px solid var(--rz-base-300);">
+                        @for (int i = 0; i < _previewRecords.Count; i++)
+                        {
+                            int index = i;
+                            MkvMetadataRecord record = _previewRecords[i];
+                            <div style="padding: 0.25em 0.5em; cursor: pointer; @(index == _selectedPreviewIndex ? "background: var(--rz-base-300);" : "")" @onclick="() => SelectPreview(index)">
+                                <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="@record.InputFile">@System.IO.Path.GetFileName(record.InputFile)</div>
+                                <div style="color: @(string.IsNullOrEmpty(record.ErrorMessage) ? "var(--rz-text-secondary-color)" : "var(--rz-danger)"); font-size: 0.9em;">
+                                    @(string.IsNullOrEmpty(record.ErrorMessage) ? AppText.F("web.metadata.ai.previewFileChanges", record.ChangeCount, Utils.GetMetadataExecutionModeText(record.ExecutionMode)) : record.ErrorMessage)
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    <div style="flex: 1; max-height: 50vh; overflow: auto;">
+                        @if (GetSelectedPreviewChanges().Count == 0)
+                        {
+                            <div class="metadata-preview-empty">@AppText.T("web.metadata.ai.previewNoChanges")</div>
+                        }
+                        else
+                        {
+                            <table class="metadata-preview-table">
+                                <thead>
+                                    <tr>
+                                        <th>@AppText.T("web.metadata.ai.previewRule")</th>
+                                        <th>@AppText.T("web.metadata.presetDialog.previewTarget")</th>
+                                        <th>@AppText.T("web.metadata.mapped.field")</th>
+                                        <th>@AppText.T("web.metadata.presetDialog.previewBefore")</th>
+                                        <th>@AppText.T("web.metadata.presetDialog.previewAfter")</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (MkvMetadataChange change in GetSelectedPreviewChanges())
+                                    {
+                                        <tr>
+                                            <td>@GetRuleLabel(change)</td>
+                                            <td>@(!string.IsNullOrEmpty(change.TrackSelector) ? change.TrackSelector : AppText.T("web.metadata.mapped.general"))</td>
+                                            <td>@(!string.IsNullOrEmpty(change.FieldKey) ? change.FieldKey : MetadataPresetUiHelper.GetOperationTypeLabel(change.OperationType))</td>
+                                            <td class="metadata-preview-before">@change.BeforeValue</td>
+                                            <td class="metadata-preview-after">@(!string.IsNullOrEmpty(change.AfterValue) ? change.AfterValue : change.Message)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                    </div>
+                </div>
+                <details style="margin-top: 0.5em;">
+                    <summary>@AppText.T("web.metadata.ai.previewJson")</summary>
+                    <textarea class="form-input" readonly style="width: 100%; min-height: 16em; font-family: monospace; resize: vertical;" aria-label="@AppText.T("web.metadata.ai.previewJson")">@_result.PresetJson</textarea>
+                </details>
+            }
+            else if (_step == WizardStep.Actions && _result != null)
+            {
+                <div class="form-row">
+                    <span class="form-label">@AppText.T("web.metadata.ai.presetName")</span>
+                    <input class="form-input" style="width: 40ch;" aria-label="@AppText.T("web.metadata.ai.presetName")" @bind="_presetName" @bind:event="oninput" />
+                </div>
+                <div style="margin-top: 0.5em; color: var(--rz-text-secondary-color);">@AppText.T("web.metadata.ai.actionsHint")</div>
+            }
+        </div>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div style="padding: 0.5em 1em; color: var(--rz-danger); white-space: pre-line; max-height: 20vh; overflow: auto;">@_error</div>
+        }
+        <div class="dialog-footer">
+            @if (_step == WizardStep.Request)
+            {
+                <RadzenButton Text="@AppText.T("web.metadata.ai.generate")" Icon="auto_awesome" Disabled="@string.IsNullOrWhiteSpace(_requestText)" Click="@Generate" />
+            }
+            else if (_step == WizardStep.Reading)
+            {
+                <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@CancelReading" />
+            }
+            else if (_step == WizardStep.Generating)
+            {
+                @if (_generationRunning)
+                {
+                    <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@CancelGeneration" />
+                }
+                else
+                {
+                    <RadzenButton Text="@AppText.T("web.metadata.ai.retry")" Icon="refresh" Click="@Retry" />
+                    <RadzenButton Text="@AppText.T("web.metadata.ai.back")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@BackToRequest" />
+                }
+            }
+            else if (_step == WizardStep.Preview)
+            {
+                <RadzenButton Text="@AppText.T("web.metadata.ai.next")" Icon="arrow_forward" Click="@GoToActions" />
+                <RadzenButton Text="@AppText.T("web.metadata.ai.back")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@BackToRequest" />
+            }
+            else if (_step == WizardStep.Actions)
+            {
+                <RadzenButton Text="@AppText.T("web.metadata.ai.savePreset")" Icon="save" Disabled="@(_actionRunning || string.IsNullOrWhiteSpace(_presetName))" Click="@(() => RunAction(WizardAction.Save))" />
+                <RadzenButton Text="@AppText.T("web.metadata.ai.saveAndApply")" Icon="publish" Disabled="@(_actionRunning || string.IsNullOrWhiteSpace(_presetName))" Click="@(() => RunAction(WizardAction.SaveAndApply))" />
+                <RadzenButton Text="@AppText.T("web.metadata.ai.applyWithoutSaving")" Icon="play_arrow" Variant="Variant.Outlined" Disabled="@_actionRunning" Click="@(() => RunAction(WizardAction.ApplyTemporary))" />
+                <RadzenButton Text="@AppText.T("web.metadata.ai.back")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@_actionRunning" Click="@BackToPreview" />
+            }
+            <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.close")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" />
+        </div>
+    </div>
+</div>
+
+@* Conferma interna: un dialog Radzen resterebbe sotto l'overlay del wizard *@
+@if (_confirmation != null)
+{
+    <div class="dialog-overlay visible">
+        <div class="dialog-box" role="alertdialog" aria-modal="true" tabindex="-1" aria-labelledby="ai-wizard-confirm-title" style="max-width: 70ch;" @onclick:stopPropagation="true">
+            <div id="ai-wizard-confirm-title" class="dialog-title">@AppText.T("web.metadata.ai.title")</div>
+            <div class="dialog-body">
+                <div style="white-space: pre-line;">@_confirmationMessage</div>
+            </div>
+            <div class="dialog-footer">
+                <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@(() => CompleteConfirmation(true))" />
+                <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => CompleteConfirmation(false))" />
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// Evento chiusura wizard
+    /// </summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>
+    /// Evento preset salvato da attivare, con il percorso del file
+    /// </summary>
+    [Parameter] public EventCallback<string> OnSaveAndActivate { get; set; }
+
+    /// <summary>
+    /// Evento preset salvato da analizzare e applicare, con il percorso del file
+    /// </summary>
+    [Parameter] public EventCallback<string> OnSaveAndApply { get; set; }
+
+    /// <summary>
+    /// Evento preset temporaneo da analizzare e applicare, con il percorso del file
+    /// </summary>
+    [Parameter] public EventCallback<string> OnApplyTemporary { get; set; }
+
+    /// <summary>
+    /// Passi del wizard
+    /// </summary>
+    private enum WizardStep
+    {
+        Request,
+        Reading,
+        Generating,
+        Preview,
+        Actions
+    }
+
+    /// <summary>
+    /// Azioni finali del wizard
+    /// </summary>
+    private enum WizardAction
+    {
+        Save,
+        SaveAndApply,
+        ApplyTemporary
+    }
+
+    /// <summary>
+    /// Passo corrente
+    /// </summary>
+    private WizardStep _step = WizardStep.Request;
+
+    /// <summary>
+    /// Richiesta dell'utente, conservata quando si torna al primo passo
+    /// </summary>
+    private string _requestText = "";
+
+    /// <summary>
+    /// True quando tag, allegati e capitoli sono già stati letti in questa apertura
+    /// </summary>
+    private bool _containerDataLoaded;
+
+    /// <summary>
+    /// True quando l'utente ha annullato la lettura dei file
+    /// </summary>
+    private bool _readingCancelled;
+
+    /// <summary>
+    /// True mentre il modello sta generando
+    /// </summary>
+    private bool _generationRunning;
+
+    /// <summary>
+    /// True mentre un'azione finale è in corso
+    /// </summary>
+    private bool _actionRunning;
+
+    /// <summary>
+    /// Righe del log di generazione
+    /// </summary>
+    private readonly List<string> _log = new List<string>();
+
+    /// <summary>
+    /// Sincronizza il log scritto dal generatore
+    /// </summary>
+    private readonly object _logLock = new object();
+
+    /// <summary>
+    /// Annulla la generazione in corso
+    /// </summary>
+    private CancellationTokenSource _generationCancellation;
+
+    /// <summary>
+    /// Esito dell'ultima generazione riuscita
+    /// </summary>
+    private AiPresetGenerationResult _result;
+
+    /// <summary>
+    /// Record valutati con il preset generato, copie dei record della griglia
+    /// </summary>
+    private List<MkvMetadataRecord> _previewRecords = new List<MkvMetadataRecord>();
+
+    /// <summary>
+    /// Indice del file selezionato nella preview
+    /// </summary>
+    private int _selectedPreviewIndex;
+
+    /// <summary>
+    /// Nome del preset inserito dall'utente
+    /// </summary>
+    private string _presetName = "";
+
+    /// <summary>
+    /// Errore corrente
+    /// </summary>
+    private string _error = "";
+
+    /// <summary>
+    /// Conferma in attesa di risposta, null se nessuna
+    /// </summary>
+    private TaskCompletionSource<bool> _confirmation;
+
+    /// <summary>
+    /// Testo della conferma in attesa
+    /// </summary>
+    private string _confirmationMessage = "";
+
+    /// <summary>
+    /// Si iscrive agli eventi dell'orchestrator
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        this.Orchestrator.OnContainerDataLoaded += this.HandleContainerDataLoaded;
+        this.Orchestrator.OnProgressChanged += this.HandleProgressChanged;
+    }
+
+    /// <summary>
+    /// Annulla le attività in corso e rimuove le sottoscrizioni
+    /// </summary>
+    public void Dispose()
+    {
+        this.Orchestrator.OnContainerDataLoaded -= this.HandleContainerDataLoaded;
+        this.Orchestrator.OnProgressChanged -= this.HandleProgressChanged;
+
+        if (this._step == WizardStep.Reading)
+            this.Orchestrator.Stop();
+
+        if (this._generationCancellation != null)
+            this._generationCancellation.Cancel();
+
+        this.CompleteConfirmation(false);
+    }
+
+    /// <summary>
+    /// Etichetta del passo corrente
+    /// </summary>
+    private string GetStepLabel()
+    {
+        if (this._step == WizardStep.Reading)
+            return AppText.T("web.metadata.ai.stepReading");
+        if (this._step == WizardStep.Generating)
+            return AppText.T("web.metadata.ai.stepGenerating");
+        if (this._step == WizardStep.Preview)
+            return AppText.T("web.metadata.ai.stepPreview");
+        if (this._step == WizardStep.Actions)
+            return AppText.T("web.metadata.ai.stepActions");
+        return AppText.T("web.metadata.ai.stepRequest");
+    }
+
+    /// <summary>
+    /// Numero di file utilizzabili per la generazione
+    /// </summary>
+    private int GetSourceRecordCount()
+    {
+        List<MkvMetadataRecord> records = this.Orchestrator.GetRecords();
+        int count = 0;
+        for (int i = 0; i < records.Count; i++)
+        {
+            if (records[i].OriginalFileInfo != null)
+                count++;
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// Modello scelto nelle impostazioni AI
+    /// </summary>
+    private string GetModelLabel()
+    {
+        string model = this.LoadModel();
+        return !string.IsNullOrEmpty(model) ? model : AppText.T("web.aiSettings.noModel");
+    }
+
+    /// <summary>
+    /// Legge il modello dalla configurazione AI, vuoto se il file non è leggibile
+    /// </summary>
+    private string LoadModel()
+    {
+        return this.LoadCredentials().Model;
+    }
+
+    /// <summary>
+    /// Legge la configurazione AI, vuota se il file non è leggibile
+    /// </summary>
+    private AiCredentials LoadCredentials()
+    {
+        try
+        {
+            return this.CredentialService.Load();
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException || ex is System.IO.IOException || ex is UnauthorizedAccessException)
+        {
+            return new AiCredentials();
+        }
+    }
+
+    /// <summary>
+    /// Testo di avanzamento della lettura dei file
+    /// </summary>
+    private string GetReadingProgressText()
+    {
+        ProcessingProgressState progress = this.Orchestrator.Progress;
+        if (progress.Total <= 0)
+            return "";
+
+        return AppText.F("web.metadata.ai.readingProgress", progress.CurrentIndex, progress.Total, progress.CurrentEpisode);
+    }
+
+    /// <summary>
+    /// Copia delle righe del log
+    /// </summary>
+    private List<string> GetLogLines()
+    {
+        lock (this._logLock)
+        {
+            return new List<string>(this._log);
+        }
+    }
+
+    /// <summary>
+    /// Avvia la generazione, leggendo prima i dati di container se non ancora letti
+    /// </summary>
+    private void Generate()
+    {
+        this._error = "";
+
+        if (string.IsNullOrEmpty(this.LoadModel()))
+        {
+            this._error = AppText.T("web.metadata.ai.noModel");
+            return;
+        }
+
+        if (this.Orchestrator.IsBusy)
+        {
+            this._error = AppText.T("web.metadata.ai.orchestratorBusy");
+            return;
+        }
+
+        if (this._containerDataLoaded)
+        {
+            _ = this.StartGenerationAsync();
+            return;
+        }
+
+        this._readingCancelled = false;
+        this._step = WizardStep.Reading;
+        this.Orchestrator.LoadContainerDataAll();
+    }
+
+    /// <summary>
+    /// Ridisegna l'avanzamento della lettura
+    /// </summary>
+    private void HandleProgressChanged()
+    {
+        if (this._step == WizardStep.Reading)
+            _ = this.InvokeAsync(this.StateHasChanged);
+    }
+
+    /// <summary>
+    /// Prosegue con la generazione al termine della lettura dei file
+    /// </summary>
+    /// <param name="loaded">File letti</param>
+    /// <param name="failed">File non letti</param>
+    private void HandleContainerDataLoaded(int loaded, int failed)
+    {
+        _ = this.InvokeAsync(async () =>
+        {
+            if (this._step != WizardStep.Reading)
+                return;
+
+            if (this._readingCancelled)
+            {
+                this._step = WizardStep.Request;
+                this.StateHasChanged();
+                return;
+            }
+
+            this._containerDataLoaded = true;
+            if (failed > 0)
+                this._error = AppText.F("web.metadata.ai.readingFailures", failed);
+
+            await this.StartGenerationAsync();
+        });
+    }
+
+    /// <summary>
+    /// Annulla la lettura dei file
+    /// </summary>
+    private void CancelReading()
+    {
+        this._readingCancelled = true;
+        this.Orchestrator.Stop();
+    }
+
+    /// <summary>
+    /// Esegue il ciclo di generazione e prepara la preview
+    /// </summary>
+    private async Task StartGenerationAsync()
+    {
+        AiPresetGenerationResult result;
+        CancellationTokenSource cancellation = new CancellationTokenSource();
+        MetadataAiPresetGenerator generator = new MetadataAiPresetGenerator(this.ResponsesClient);
+        SynchronousProgress progress = new SynchronousProgress(this.AppendStep);
+        AiCredentials credentials = this.LoadCredentials();
+
+        lock (this._logLock)
+        {
+            this._log.Clear();
+        }
+
+        this._result = null;
+        this._generationCancellation = cancellation;
+        this._generationRunning = true;
+        this._step = WizardStep.Generating;
+        this.StateHasChanged();
+
+        try
+        {
+            result = await generator.GenerateAsync(credentials.Model, this._requestText.Trim(), this.BuildSourceRecords(), credentials.MaxRounds, progress, cancellation.Token);
+            if (result.Success)
+            {
+                this._result = result;
+                this._presetName = result.Preset.Name != null ? result.Preset.Name : "";
+                this.BuildPreview();
+                this._step = WizardStep.Preview;
+            }
+            else
+            {
+                this._error = AppText.F("web.metadata.ai.maxRounds", result.Rounds) + (result.Errors.Count > 0 ? Environment.NewLine + string.Join(Environment.NewLine, result.Errors) : "");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            if (!cancellation.IsCancellationRequested)
+                throw;
+
+            this._step = WizardStep.Request;
+        }
+        catch (AiServiceException ex)
+        {
+            this._error = ex.Message;
+        }
+        finally
+        {
+            this._generationRunning = false;
+            if (ReferenceEquals(this._generationCancellation, cancellation))
+                this._generationCancellation = null;
+            cancellation.Dispose();
+        }
+
+        this.StateHasChanged();
+    }
+
+    /// <summary>
+    /// Copie dei record con lo stato originale dei file: il modello non deve vedere i valori di un'analisi precedente
+    /// </summary>
+    private List<MkvMetadataRecord> BuildSourceRecords()
+    {
+        List<MkvMetadataRecord> records = this.Orchestrator.GetRecords();
+        List<MkvMetadataRecord> result = new List<MkvMetadataRecord>();
+
+        for (int i = 0; i < records.Count; i++)
+        {
+            if (records[i].OriginalFileInfo != null)
+                result.Add(CloneOriginal(records[i]));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Valuta il preset generato su copie di tutti i record
+    /// </summary>
+    private void BuildPreview()
+    {
+        MetadataPipelineEvaluator evaluator = new MetadataPipelineEvaluator();
+        MkvMetadataOutputPolicy policy = this.Orchestrator.CurrentOptions.Metadata.OutputPolicy;
+        List<MkvMetadataRecord> records = this.BuildSourceRecords();
+
+        for (int i = 0; i < records.Count; i++)
+        {
+            try
+            {
+                evaluator.AnalyzeRecord(records[i], this._result.Preset, policy);
+            }
+            catch (Exception ex)
+            {
+                records[i].AnalysisStatus = MkvMetadataAnalysisStatus.Error;
+                records[i].ErrorMessage = ex.Message;
+            }
+        }
+
+        this._previewRecords = records;
+        this._selectedPreviewIndex = 0;
+        for (int i = 0; i < records.Count; i++)
+        {
+            if (records[i].ChangeCount > 0)
+            {
+                this._selectedPreviewIndex = i;
+                break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Crea una copia del record ripartendo dallo stato originale del file
+    /// </summary>
+    /// <param name="source">Record della griglia</param>
+    /// <returns>Copia indipendente</returns>
+    private static MkvMetadataRecord CloneOriginal(MkvMetadataRecord source)
+    {
+        MkvMetadataRecord clone = new MkvMetadataRecord();
+        clone.InputFile = source.InputFile;
+        clone.RelativeFolder = source.RelativeFolder;
+        clone.OriginalFileInfo = MetadataModelCloner.CloneFileInfo(source.OriginalFileInfo);
+        clone.FileInfo = MetadataModelCloner.CloneFileInfo(clone.OriginalFileInfo);
+        return clone;
+    }
+
+    /// <summary>
+    /// Traduce un passo del generatore in una riga di log
+    /// </summary>
+    /// <param name="step">Passo notificato</param>
+    private void AppendStep(AiPresetGenerationStep step)
+    {
+        List<string> lines = new List<string>();
+
+        if (step.Kind == AiPresetGenerationStepKind.RequestSent)
+            lines.Add(AppText.F("web.metadata.ai.logRequestSent", step.Round));
+        else if (step.Kind == AiPresetGenerationStepKind.FilesQueried)
+            lines.Add(AppText.F("web.metadata.ai.logFilesQueried", step.Round, Shorten(step.Detail, 300)));
+        else if (step.Kind == AiPresetGenerationStepKind.PresetRejected)
+            lines.Add(AppText.F("web.metadata.ai.logPresetRejected", step.Round));
+        else if (step.Kind == AiPresetGenerationStepKind.PresetAccepted)
+            lines.Add(AppText.F("web.metadata.ai.logPresetAccepted", step.Round));
+        else if (step.Kind == AiPresetGenerationStepKind.MissingSubmission)
+            lines.Add(AppText.F("web.metadata.ai.logMissingSubmission", step.Round, Shorten(step.Detail, 300)));
+
+        for (int i = 0; step.Errors != null && i < step.Errors.Count; i++)
+        {
+            lines.Add("  - " + step.Errors[i]);
+        }
+
+        lock (this._logLock)
+        {
+            this._log.AddRange(lines);
+        }
+
+        _ = this.InvokeAsync(this.StateHasChanged);
+    }
+
+    /// <summary>
+    /// Accorcia un testo per il log
+    /// </summary>
+    /// <param name="text">Testo</param>
+    /// <param name="maxLength">Lunghezza massima</param>
+    private static string Shorten(string text, int maxLength)
+    {
+        string value = text != null ? text.Replace('\n', ' ').Replace('\r', ' ').Trim() : "";
+        return value.Length <= maxLength ? value : value.Substring(0, maxLength) + "...";
+    }
+
+    /// <summary>
+    /// Annulla la generazione in corso
+    /// </summary>
+    private void CancelGeneration()
+    {
+        if (this._generationCancellation != null)
+            this._generationCancellation.Cancel();
+    }
+
+    /// <summary>
+    /// Rigenera da zero con la stessa richiesta
+    /// </summary>
+    private void Retry()
+    {
+        this.Generate();
+    }
+
+    /// <summary>
+    /// Torna al primo passo conservando il testo della richiesta
+    /// </summary>
+    private void BackToRequest()
+    {
+        this._error = "";
+        this._step = WizardStep.Request;
+    }
+
+    /// <summary>
+    /// Passa alle azioni finali
+    /// </summary>
+    private void GoToActions()
+    {
+        this._error = "";
+        this._step = WizardStep.Actions;
+    }
+
+    /// <summary>
+    /// Torna alla preview
+    /// </summary>
+    private void BackToPreview()
+    {
+        this._error = "";
+        this._step = WizardStep.Preview;
+    }
+
+    /// <summary>
+    /// Seleziona il file mostrato nella preview
+    /// </summary>
+    /// <param name="index">Indice file</param>
+    private void SelectPreview(int index)
+    {
+        this._selectedPreviewIndex = index;
+    }
+
+    /// <summary>
+    /// Modifiche del file selezionato nella preview
+    /// </summary>
+    private List<MkvMetadataChange> GetSelectedPreviewChanges()
+    {
+        if (this._selectedPreviewIndex < 0 || this._selectedPreviewIndex >= this._previewRecords.Count || this._previewRecords[this._selectedPreviewIndex].Changes == null)
+            return new List<MkvMetadataChange>();
+
+        return this._previewRecords[this._selectedPreviewIndex].Changes;
+    }
+
+    /// <summary>
+    /// Numero di file che il preset modifica
+    /// </summary>
+    private int GetChangedFileCount()
+    {
+        int count = 0;
+        for (int i = 0; i < this._previewRecords.Count; i++)
+        {
+            if (this._previewRecords[i].ChangeCount > 0)
+                count++;
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// Numero totale di modifiche previste
+    /// </summary>
+    private int GetTotalChangeCount()
+    {
+        int count = 0;
+        for (int i = 0; i < this._previewRecords.Count; i++)
+        {
+            count += this._previewRecords[i].ChangeCount;
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// Etichetta della regola che ha prodotto una modifica
+    /// </summary>
+    /// <param name="change">Modifica</param>
+    private static string GetRuleLabel(MkvMetadataChange change)
+    {
+        string number = change.RuleIndex >= 0 ? (change.RuleIndex + 1).ToString() : "";
+        if (string.IsNullOrEmpty(change.RuleDescription))
+            return number;
+
+        return string.IsNullOrEmpty(number) ? change.RuleDescription : number + ". " + change.RuleDescription;
+    }
+
+    /// <summary>
+    /// Esegue un'azione finale dopo l'unica conferma
+    /// </summary>
+    /// <param name="action">Azione scelta</param>
+    private async Task RunAction(WizardAction action)
+    {
+        MetadataPresetService service = new MetadataPresetService(AppSettingsService.Instance.ConfigFolder);
+        bool save = action != WizardAction.ApplyTemporary;
+        bool apply = action != WizardAction.Save;
+        string fileName = SanitizeFileName(this._presetName);
+        string presetPath;
+        string message;
+
+        this._error = "";
+        if (save && string.IsNullOrEmpty(fileName))
+        {
+            this._error = AppText.T("web.metadata.presetDialog.presetNameRequired");
+            return;
+        }
+
+        if (apply && this.Orchestrator.IsBusy)
+        {
+            this._error = AppText.T("web.metadata.ai.orchestratorBusy");
+            return;
+        }
+
+        presetPath = save
+            ? System.IO.Path.Combine(service.GetPresetFolder(), fileName + ".json")
+            : System.IO.Path.Combine(AppSettingsService.Instance.GetTempFolder(), "ai-preset-" + Guid.NewGuid().ToString("N") + ".json");
+
+        message = this.BuildConfirmationMessage(save && System.IO.File.Exists(presetPath), apply, fileName);
+        this._actionRunning = true;
+        try
+        {
+            if (!string.IsNullOrEmpty(message) && !await this.ConfirmAsync(message))
+                return;
+
+            this._result.Preset.Name = save ? fileName : AppText.T("web.metadata.ai.temporaryPresetName");
+            this._result.Preset.Description = "";
+            this._result.Preset.ShowAdvancedFields = MetadataUiCatalog.PresetUsesAdvancedFields(this._result.Preset);
+            service.Save(this._result.Preset, presetPath);
+        }
+        catch (Exception ex) when (ex is System.IO.IOException || ex is UnauthorizedAccessException)
+        {
+            this._error = ex.Message;
+            return;
+        }
+        finally
+        {
+            this._actionRunning = false;
+        }
+
+        if (action == WizardAction.Save)
+            await this.OnSaveAndActivate.InvokeAsync(presetPath);
+        else if (action == WizardAction.SaveAndApply)
+            await this.OnSaveAndApply.InvokeAsync(presetPath);
+        else
+            await this.OnApplyTemporary.InvokeAsync(presetPath);
+    }
+
+    /// <summary>
+    /// Chiede l'unica conferma con un dialog dell'applicazione, mai con il dialog nativo del browser
+    /// </summary>
+    /// <param name="message">Testo della conferma, anche su più righe</param>
+    /// <returns>True se l'utente conferma</returns>
+    private Task<bool> ConfirmAsync(string message)
+    {
+        this._confirmationMessage = message;
+        this._confirmation = new TaskCompletionSource<bool>();
+        return this._confirmation.Task;
+    }
+
+    /// <summary>
+    /// Chiude la conferma con la risposta dell'utente
+    /// </summary>
+    /// <param name="confirmed">True se l'utente conferma</param>
+    private void CompleteConfirmation(bool confirmed)
+    {
+        TaskCompletionSource<bool> confirmation = this._confirmation;
+        this._confirmation = null;
+        if (confirmation != null)
+            confirmation.TrySetResult(confirmed);
+    }
+
+    /// <summary>
+    /// Compone l'unica conferma: sovrascrittura del preset, sovrascrittura dei file e rimozione tracce
+    /// </summary>
+    /// <param name="presetExists">True se il preset con lo stesso nome esiste già</param>
+    /// <param name="apply">True se l'azione applica il preset ai file</param>
+    /// <param name="fileName">Nome del preset</param>
+    /// <returns>Testo della conferma, vuoto se non serve</returns>
+    private string BuildConfirmationMessage(bool presetExists, bool apply, string fileName)
+    {
+        List<string> parts = new List<string>();
+        MkvMetadataOptions options = this.Orchestrator.CurrentOptions.Metadata;
+        bool inPlace = options.OutputPolicy == MkvMetadataOutputPolicy.Overwrite;
+        int fileCount = 0;
+        int trackRemovalCount = 0;
+
+        if (presetExists)
+            parts.Add(AppText.F("web.metadata.ai.confirmPresetOverwrite", fileName));
+
+        if (apply)
+        {
+            // Stessa regola di NeedsApplyConfirmation, calcolata sulla preview invece che sui record analizzati
+            for (int i = 0; i < this._previewRecords.Count; i++)
+            {
+                MkvMetadataRecord record = this._previewRecords[i];
+                if (record.AnalysisStatus != MkvMetadataAnalysisStatus.Analyzed || record.ExecutionMode == MkvMetadataExecutionMode.NoOp)
+                    continue;
+
+                fileCount++;
+                for (int j = 0; record.Changes != null && j < record.Changes.Count; j++)
+                {
+                    if (record.Changes[j].OperationType == MkvMetadataOperationType.RemoveTrack)
+                        trackRemovalCount++;
+                }
+            }
+
+            if (fileCount > 0 && (inPlace || trackRemovalCount > 0) && !options.DryRun)
+            {
+                parts.Add(inPlace ? AppText.F("web.metadata.confirmOverwrite", fileCount) : AppText.F("web.metadata.confirmApply", fileCount));
+                if (trackRemovalCount > 0)
+                    parts.Add(AppText.F("web.metadata.confirmTrackRemoval", trackRemovalCount));
+            }
+        }
+
+        return string.Join(Environment.NewLine, parts);
+    }
+
+    /// <summary>
+    /// Rimuove dal nome i caratteri non validi per un file
+    /// </summary>
+    /// <param name="value">Nome inserito</param>
+    /// <returns>Nome utilizzabile come file</returns>
+    private static string SanitizeFileName(string value)
+    {
+        string result = value != null ? value.Trim() : "";
+        char[] invalid = System.IO.Path.GetInvalidFileNameChars();
+        for (int i = 0; i < invalid.Length; i++)
+        {
+            result = result.Replace(invalid[i].ToString(), "");
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Progress che consegna i passi nell'ordine in cui arrivano, senza passare dal contesto di sincronizzazione
+    /// </summary>
+    private sealed class SynchronousProgress : IProgress<AiPresetGenerationStep>
+    {
+        /// <summary>
+        /// Destinatario dei passi
+        /// </summary>
+        private readonly Action<AiPresetGenerationStep> _handler;
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        /// <param name="handler">Destinatario dei passi</param>
+        public SynchronousProgress(Action<AiPresetGenerationStep> handler)
+        {
+            this._handler = handler;
+        }
+
+        /// <summary>
+        /// Consegna subito il passo
+        /// </summary>
+        /// <param name="value">Passo</param>
+        public void Report(AiPresetGenerationStep value)
+        {
+            this._handler(value);
+        }
+    }
+}

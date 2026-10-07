@@ -1,0 +1,487 @@
+@implements IDisposable
+@using RemuxForge.Core.Ai
+@inject AiCredentialService CredentialService
+@inject OpenAiResponsesClient ResponsesClient
+@inject AiAuthService AuthService
+
+<div class="dialog-overlay visible">
+    <div class="dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="ai-settings-dialog-title" style="min-width: 70ch; max-width: 90ch;" @onclick:stopPropagation="true">
+        <div id="ai-settings-dialog-title" class="dialog-title">@AppText.T("web.aiSettings.title")</div>
+        <div class="dialog-body">
+            <div class="form-row">
+                <span class="form-label">@AppText.T("web.aiSettings.status")</span>
+                <span>@GetStatusText()</span>
+            </div>
+
+            @* Account ChatGPT *@
+            <div class="form-row" style="margin-top: 0.5em;">
+                <span class="form-label">@AppText.T("web.aiSettings.account")</span>
+                @if (IsAccountConnected())
+                {
+                    <RadzenButton Text="@AppText.T("web.aiSettings.disconnect")" Icon="link_off" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@_busy" Click="@Disconnect" />
+                }
+                else
+                {
+                    <RadzenButton Text="@AppText.T("web.aiSettings.connect")" Icon="link" Size="ButtonSize.Small" Disabled="@(_busy || IsApiKeyConfigured())" Click="@RequestConnect" />
+                }
+            </div>
+            @if (AuthService.IsLoginPending)
+            {
+                <div style="margin: 0.25em 0 0.5em 0; padding: 0.5em; border: 1px solid var(--rz-base-300);">
+                    <div>@AppText.T("web.aiSettings.loginPending")</div>
+                    <div style="margin-top: 0.25em;">
+                        <a href="@AuthService.PendingAuthorizationUrl" target="_blank" rel="noopener noreferrer">@AppText.T("web.aiSettings.openLoginPage")</a>
+                    </div>
+                    <div style="margin-top: 0.5em;">@AppText.T("web.aiSettings.pasteHint")</div>
+                    <div class="form-row">
+                        <input class="form-input" style="flex: 1;" aria-label="@AppText.T("web.aiSettings.pasteLabel")" placeholder="http://127.0.0.1:.../callback?..." @bind="_pastedUrl" />
+                        <RadzenButton Text="@AppText.T("web.aiSettings.completeLogin")" Icon="check" Size="ButtonSize.Small" Disabled="@(_busy || string.IsNullOrWhiteSpace(_pastedUrl))" Click="@CompletePasted" />
+                        <RadzenButton Text="@AppText.T("web.common.cancel")" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@_busy" Click="@CancelLogin" />
+                    </div>
+                </div>
+            }
+
+            @* API key *@
+            <div class="form-row" style="margin-top: 0.5em;">
+                <span class="form-label">@AppText.T("web.aiSettings.apiKey")</span>
+                <input class="form-input" type="password" autocomplete="off" style="width: 40ch;" aria-label="@AppText.T("web.aiSettings.apiKey")"
+                       placeholder="@(IsApiKeyConfigured() ? AppText.T("web.aiSettings.apiKeyConfigured") : "sk-...")"
+                       disabled="@(_busy || IsAccountConnected())" @bind="_apiKeyInput" />
+                <RadzenButton Text="@AppText.T("web.aiSettings.saveApiKey")" Icon="save" Size="ButtonSize.Small" Disabled="@(_busy || IsAccountConnected() || string.IsNullOrWhiteSpace(_apiKeyInput))" Click="@RequestSaveApiKey" />
+                @if (IsApiKeyConfigured())
+                {
+                    <RadzenButton Text="@AppText.T("web.aiSettings.removeApiKey")" Icon="delete" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@_busy" Click="@RemoveApiKey" />
+                }
+            </div>
+            @if (IsAccountConnected())
+            {
+                <div style="color: var(--rz-text-secondary-color);">@AppText.T("ai.credentials.disconnectBeforeApiKey")</div>
+            }
+
+            @* Modello *@
+            <div class="form-row" style="margin-top: 0.5em;">
+                <span class="form-label">@AppText.T("web.aiSettings.model")</span>
+                <select class="form-input" style="width: 40ch;" aria-label="@AppText.T("web.aiSettings.model")" value="@_credentials.Model" disabled="@(_busy || !AiCredentialService.IsConfigured(_credentials))" @onchange="OnModelChanged">
+                    <option value="">@AppText.T("web.aiSettings.noModel")</option>
+                    @if (!string.IsNullOrEmpty(_credentials.Model) && !ContainsModel(_credentials.Model))
+                    {
+                        <option value="@_credentials.Model">@_credentials.Model</option>
+                    }
+                    @foreach (AiModelInfo model in _models)
+                    {
+                        <option value="@model.Id">@model.DisplayName</option>
+                    }
+                </select>
+                <RadzenButton Text="@AppText.T("web.aiSettings.refreshModels")" Icon="refresh" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@(_busy || !AiCredentialService.IsConfigured(_credentials))" Click="@RefreshModels" />
+            </div>
+
+            @* Giri massimi *@
+            <div class="form-row" style="margin-top: 0.5em;">
+                <span class="form-label">@AppText.T("web.aiSettings.maxRounds")</span>
+                <input @key="_maxRoundsInputKey" class="form-input" type="number" style="width: 10ch;" aria-label="@AppText.T("web.aiSettings.maxRounds")"
+                       min="@MetadataAiPresetGenerator.MIN_MAX_ROUNDS" max="@MetadataAiPresetGenerator.MAX_MAX_ROUNDS"
+                       value="@_credentials.MaxRounds" disabled="@_busy" @onchange="OnMaxRoundsChanged" />
+                <span style="color: var(--rz-text-secondary-color);">@AppText.F("web.aiSettings.maxRoundsHint", MetadataAiPresetGenerator.MIN_MAX_ROUNDS, MetadataAiPresetGenerator.MAX_MAX_ROUNDS)</span>
+            </div>
+        </div>
+        @if (!string.IsNullOrEmpty(GetErrorText()))
+        {
+            <div style="padding: 0.5em 1em; color: var(--rz-danger); white-space: pre-line;">@GetErrorText()</div>
+        }
+        @if (!string.IsNullOrEmpty(_info))
+        {
+            <div style="padding: 0.5em 1em; white-space: pre-line;">@_info</div>
+        }
+        <div class="dialog-footer">
+            <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.close")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" />
+        </div>
+    </div>
+</div>
+
+@* Dialog consenso *@
+@if (_pendingConsentAction != null)
+{
+    <div class="dialog-overlay visible">
+        <div class="dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="ai-consent-dialog-title" style="max-width: 70ch;" @onclick:stopPropagation="true">
+            <div id="ai-consent-dialog-title" class="dialog-title">@AppText.T("web.aiSettings.consentTitle")</div>
+            <div class="dialog-body">
+                <p style="white-space: pre-line;">@AppText.T("web.aiSettings.consentText")</p>
+            </div>
+            <div class="dialog-footer">
+                <RadzenButton Text="@AppText.T("web.aiSettings.consentAccept")" Icon="check" Click="@AcceptConsent" />
+                <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@DeclineConsent" />
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// Modulo JS interop
+    /// </summary>
+    [Parameter] public IJSObjectReference JsModule { get; set; }
+
+    /// <summary>
+    /// Evento chiusura dialog
+    /// </summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>
+    /// Configurazione AI corrente
+    /// </summary>
+    private AiCredentials _credentials = new AiCredentials();
+
+    /// <summary>
+    /// Modelli disponibili, vuoto finché non si aggiorna l'elenco
+    /// </summary>
+    private List<AiModelInfo> _models = new List<AiModelInfo>();
+
+    /// <summary>
+    /// API key digitata, mai precompilata con quella salvata
+    /// </summary>
+    private string _apiKeyInput = "";
+
+    /// <summary>
+    /// Indirizzo di ritorno incollato dopo il login
+    /// </summary>
+    private string _pastedUrl = "";
+
+    /// <summary>
+    /// Errore dell'ultima azione del dialog
+    /// </summary>
+    private string _error = "";
+
+    /// <summary>
+    /// Messaggio informativo dell'ultima azione
+    /// </summary>
+    private string _info = "";
+
+    /// <summary>
+    /// Flag: operazione in corso
+    /// </summary>
+    private bool _busy;
+
+    /// <summary>
+    /// Chiave del campo giri massimi: cambiandola il campo viene ricreato col valore salvato
+    /// </summary>
+    private int _maxRoundsInputKey;
+
+    /// <summary>
+    /// Azione in attesa dell'accettazione del consenso, null se nessuna
+    /// </summary>
+    private Func<Task> _pendingConsentAction;
+
+    /// <summary>
+    /// Carica la configurazione e si iscrive ai cambi di stato del login
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        this.AuthService.OnStateChanged += this.HandleStateChanged;
+        this.ReloadCredentials();
+    }
+
+    /// <summary>
+    /// Rilegge la configurazione e ridisegna sul thread del renderer
+    /// </summary>
+    private void HandleStateChanged()
+    {
+        _ = this.InvokeAsync(() =>
+        {
+            this.ReloadCredentials();
+            this.StateHasChanged();
+        });
+    }
+
+    /// <summary>
+    /// Rimuove la sottoscrizione al servizio
+    /// </summary>
+    public void Dispose()
+    {
+        this.AuthService.OnStateChanged -= this.HandleStateChanged;
+    }
+
+    /// <summary>
+    /// Rilegge la configurazione AI dal file
+    /// </summary>
+    private void ReloadCredentials()
+    {
+        this._credentials = this.CredentialService.Load();
+    }
+
+    /// <summary>
+    /// True se un account ChatGPT è collegato
+    /// </summary>
+    private bool IsAccountConnected()
+    {
+        return this._credentials.Mode == AiConnectionMode.ChatGptAccount && !string.IsNullOrEmpty(this._credentials.RefreshToken);
+    }
+
+    /// <summary>
+    /// True se una API key è salvata
+    /// </summary>
+    private bool IsApiKeyConfigured()
+    {
+        return this._credentials.Mode == AiConnectionMode.ApiKey && !string.IsNullOrEmpty(this._credentials.ApiKey);
+    }
+
+    /// <summary>
+    /// Testo dello stato della connessione
+    /// </summary>
+    private string GetStatusText()
+    {
+        if (this.IsAccountConnected())
+            return AppText.F("web.aiSettings.statusAccount", this._credentials.Email);
+        if (this.IsApiKeyConfigured())
+            return AppText.T("web.aiSettings.statusApiKey");
+        return AppText.T("web.aiSettings.statusNone");
+    }
+
+    /// <summary>
+    /// Errore da mostrare: quello del dialog o, in mancanza, quello del login
+    /// </summary>
+    private string GetErrorText()
+    {
+        return !string.IsNullOrEmpty(this._error) ? this._error : this.AuthService.LastError;
+    }
+
+    /// <summary>
+    /// True se l'elenco caricato contiene il modello
+    /// </summary>
+    /// <param name="id">Identificativo modello</param>
+    private bool ContainsModel(string id)
+    {
+        for (int i = 0; i < this._models.Count; i++)
+        {
+            if (this._models[i].Id == id)
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Esegue l'azione subito se il consenso è già dato, altrimenti chiede il consenso
+    /// </summary>
+    /// <param name="action">Azione da eseguire</param>
+    private async Task RunWithConsent(Func<Task> action)
+    {
+        this._error = "";
+        this._info = "";
+        if (this._credentials.ConsentAccepted)
+        {
+            await action();
+            return;
+        }
+
+        this._pendingConsentAction = action;
+    }
+
+    /// <summary>
+    /// Registra il consenso ed esegue l'azione in attesa
+    /// </summary>
+    private async Task AcceptConsent()
+    {
+        Func<Task> action = this._pendingConsentAction;
+        this._pendingConsentAction = null;
+        this.CredentialService.AcceptConsent();
+        this.ReloadCredentials();
+        if (action != null)
+            await action();
+    }
+
+    /// <summary>
+    /// Rifiuta il consenso senza eseguire l'azione
+    /// </summary>
+    private void DeclineConsent()
+    {
+        this._pendingConsentAction = null;
+    }
+
+    /// <summary>
+    /// Avvia il collegamento dell'account ChatGPT
+    /// </summary>
+    private async Task RequestConnect()
+    {
+        await this.RunWithConsent(this.Connect);
+    }
+
+    /// <summary>
+    /// Avvia il login e apre la pagina di autorizzazione
+    /// </summary>
+    private async Task Connect()
+    {
+        string url;
+        this._pastedUrl = "";
+
+        try
+        {
+            url = this.AuthService.StartLogin();
+        }
+        catch (Exception ex) when (ex is AiServiceException || ex is System.Net.HttpListenerException || ex is System.Net.Sockets.SocketException)
+        {
+            this._error = ex.Message;
+            return;
+        }
+
+        // Se il browser blocca l'apertura resta disponibile il link nella sezione del login in corso
+        if (this.JsModule != null)
+        {
+            try
+            {
+                await this.JsModule.InvokeAsync<bool>("openExternalUrl", url);
+            }
+            catch (JSException)
+            {
+                // Il link visibile copre l'apertura mancata
+            }
+        }
+    }
+
+    /// <summary>
+    /// Completa il login con l'indirizzo incollato
+    /// </summary>
+    private async Task CompletePasted()
+    {
+        this._error = "";
+        this._info = "";
+        this._busy = true;
+        try
+        {
+            if (await this.AuthService.CompleteWithPastedUrlAsync(this._pastedUrl, CancellationToken.None))
+                this._pastedUrl = "";
+        }
+        finally
+        {
+            this._busy = false;
+            this.ReloadCredentials();
+        }
+    }
+
+    /// <summary>
+    /// Annulla il login in corso
+    /// </summary>
+    private void CancelLogin()
+    {
+        this.AuthService.CancelLogin();
+        this._pastedUrl = "";
+        this.AuthService.NotifyStateChanged();
+    }
+
+    /// <summary>
+    /// Scollega l'account ChatGPT
+    /// </summary>
+    private async Task Disconnect()
+    {
+        this._error = "";
+        this._info = "";
+        this._busy = true;
+        try
+        {
+            this._info = await this.AuthService.DisconnectAsync(CancellationToken.None);
+            this._models = new List<AiModelInfo>();
+        }
+        finally
+        {
+            this._busy = false;
+            this.ReloadCredentials();
+        }
+    }
+
+    /// <summary>
+    /// Avvia il salvataggio della API key
+    /// </summary>
+    private async Task RequestSaveApiKey()
+    {
+        await this.RunWithConsent(this.SaveApiKey);
+    }
+
+    /// <summary>
+    /// Salva la API key digitata e svuota il campo
+    /// </summary>
+    private Task SaveApiKey()
+    {
+        try
+        {
+            this.CredentialService.SetApiKey(this._apiKeyInput);
+            this._apiKeyInput = "";
+            this._models = new List<AiModelInfo>();
+            this.AuthService.NotifyStateChanged();
+        }
+        catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException)
+        {
+            this._error = ex.Message;
+        }
+
+        this.ReloadCredentials();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Rimuove la API key salvata
+    /// </summary>
+    private void RemoveApiKey()
+    {
+        this._error = "";
+        this._info = "";
+        this.CredentialService.RemoveApiKey();
+        this._models = new List<AiModelInfo>();
+        this.AuthService.NotifyStateChanged();
+        this.ReloadCredentials();
+    }
+
+    /// <summary>
+    /// Aggiorna l'elenco dei modelli disponibili
+    /// </summary>
+    private async Task RefreshModels()
+    {
+        this._error = "";
+        this._info = "";
+        this._busy = true;
+        try
+        {
+            this._models = await this.ResponsesClient.ListModelsAsync(CancellationToken.None);
+        }
+        catch (AiServiceException ex)
+        {
+            this._error = ex.Message;
+        }
+        finally
+        {
+            this._busy = false;
+            this.ReloadCredentials();
+        }
+    }
+
+    /// <summary>
+    /// Salva i giri massimi; un valore non numerico o fuori intervallo viene rifiutato senza salvare
+    /// </summary>
+    /// <param name="e">Evento di cambio</param>
+    private void OnMaxRoundsChanged(ChangeEventArgs e)
+    {
+        int value;
+
+        this._error = "";
+        if (e.Value == null || !int.TryParse(e.Value.ToString(), out value) || value < MetadataAiPresetGenerator.MIN_MAX_ROUNDS || value > MetadataAiPresetGenerator.MAX_MAX_ROUNDS)
+        {
+            this._error = AppText.F("web.aiSettings.maxRoundsInvalid", MetadataAiPresetGenerator.MIN_MAX_ROUNDS, MetadataAiPresetGenerator.MAX_MAX_ROUNDS);
+            this.ReloadCredentials();
+
+            // Il valore salvato non e' cambiato, quindi il campo va ricreato per non mostrare quello rifiutato
+            this._maxRoundsInputKey++;
+            return;
+        }
+
+        this.CredentialService.SetMaxRounds(value);
+        this.ReloadCredentials();
+    }
+
+    /// <summary>
+    /// Salva il modello scelto
+    /// </summary>
+    /// <param name="e">Evento di cambio</param>
+    private void OnModelChanged(ChangeEventArgs e)
+    {
+        this.CredentialService.SetModel(e.Value != null ? e.Value.ToString() : "");
+        this.ReloadCredentials();
+    }
+}

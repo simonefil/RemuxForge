@@ -45,6 +45,11 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public event Action<string> OnOperationFailed;
 
+        /// <summary>
+        /// Evento emesso a fine lettura dei dati di container con i conteggi di file letti e falliti
+        /// </summary>
+        public event Action<int, int> OnContainerDataLoaded;
+
         #endregion
 
         #region Costruttore
@@ -130,7 +135,35 @@ namespace RemuxForge.Web.Services
             if (this.BusyState)
                 return;
 
-            Thread thread = new Thread(this.AnalyzeAllWorker);
+            Thread thread = new Thread(() => this.AnalyzeAllWorker());
+            thread.IsBackground = true;
+            thread.Start();
+        }
+
+        /// <summary>
+        /// Legge tag, allegati e capitoli di tutti i record senza analizzarli
+        /// </summary>
+        public void LoadContainerDataAll()
+        {
+            if (this.BusyState)
+                return;
+
+            Thread thread = new Thread(this.LoadContainerDataWorker);
+            thread.IsBackground = true;
+            thread.Start();
+        }
+
+        /// <summary>
+        /// Attiva un preset, analizza tutti i record e applica quelli analizzati nello stesso thread
+        /// </summary>
+        /// <param name="presetPath">Percorso del preset da usare</param>
+        /// <param name="temporary">True se il preset è temporaneo: a fine operazione si ripristina il preset precedente e il file viene rimosso</param>
+        public void AnalyzeAndApplyAll(string presetPath, bool temporary)
+        {
+            if (this.BusyState)
+                return;
+
+            Thread thread = new Thread(() => this.AnalyzeAndApplyWorker(presetPath, temporary));
             thread.IsBackground = true;
             thread.Start();
         }
@@ -313,6 +346,7 @@ namespace RemuxForge.Web.Services
             string mediaInfoPath;
 
             this.SetBusy(true, AppText.T("web.metadata.progress.scan"));
+            this.ReportScanProgress("", 0);
             try
             {
                 mediaInfoPath = AppSettingsService.Instance.Settings.Tools.MediaInfoPath;
@@ -347,10 +381,124 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
+        /// Worker lettura dati di container per tutti i record
+        /// </summary>
+        private void LoadContainerDataWorker()
+        {
+            MetadataExecutionService tagReader;
+            MetadataContainerReader containerReader;
+            List<MkvMetadataRecord> targets;
+            string mkvExtractPath;
+            int loadedCount = 0;
+            int errorCount = 0;
+
+            this.SetBusy(true, AppText.T("web.metadata.progress.containerData"));
+            try
+            {
+                mkvExtractPath = AppSettingsService.Instance.Settings.Tools.MkvExtractPath;
+                tagReader = new MetadataExecutionService("", "", mkvExtractPath);
+                containerReader = new MetadataContainerReader(AppSettingsService.Instance.Settings.Tools.MkvMergePath, mkvExtractPath);
+                targets = this.GetRecords();
+
+                for (int i = 0; i < targets.Count; i++)
+                {
+                    if (this.StopRequested)
+                        break;
+
+                    this.ReportProgress(i, targets.Count, Path.GetFileName(targets[i].InputFile));
+
+                    // Un file illeggibile resta senza tag e allegati ma non ferma la lettura degli altri
+                    try
+                    {
+                        tagReader.PopulateExistingTags(targets[i]);
+                        containerReader.PopulateContainerInfo(targets[i]);
+                        loadedCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        errorCount++;
+                        this.AppendLog(AppText.F("web.metadata.manualEdit.tagLoadError", Path.GetFileName(targets[i].InputFile) + ": " + ex.Message));
+                    }
+                }
+
+                this.NotifyRecordsChanged();
+            }
+            catch (Exception ex)
+            {
+                errorCount++;
+                this.AppendLog(AppText.F("web.metadata.manualEdit.tagLoadError", ex.Message));
+            }
+            finally
+            {
+                this.SetBusy(false, "");
+            }
+
+            this.OnContainerDataLoaded?.Invoke(loadedCount, errorCount);
+        }
+
+        /// <summary>
+        /// Worker catena attivazione preset, analisi e applicazione
+        /// </summary>
+        /// <param name="presetPath">Percorso del preset da usare</param>
+        /// <param name="temporary">True se il preset è temporaneo</param>
+        private void AnalyzeAndApplyWorker(string presetPath, bool temporary)
+        {
+            string previousPresetPath;
+            string errorMessage;
+
+            lock (this.StateLock)
+            {
+                previousPresetPath = this._options.Metadata.PresetPath;
+            }
+
+            try
+            {
+                this._options.Metadata.PresetPath = presetPath != null ? presetPath : "";
+                if (!this.ApplyOptions(this._options, out errorMessage))
+                {
+                    this.AppendLog(errorMessage);
+                    this.OnOperationFailed?.Invoke(errorMessage);
+                    return;
+                }
+
+                // L'applicazione parte solo se l'analisi si è conclusa senza errori globali e senza stop
+                if (this.AnalyzeAllWorker())
+                    this.ApplyWorker(-1);
+            }
+            finally
+            {
+                if (temporary)
+                {
+                    // Ripristina il preset attivo prima dell'operazione; i record non applicati tornano stale
+                    this._options.Metadata.PresetPath = previousPresetPath;
+                    if (!this.ApplyOptions(this._options, out errorMessage))
+                        this.AppendLog(errorMessage);
+
+                    try
+                    {
+                        if (!string.IsNullOrEmpty(presetPath) && File.Exists(presetPath))
+                            File.Delete(presetPath);
+                    }
+                    catch (IOException ex)
+                    {
+                        this.AppendLog(AppText.F("web.metadata.ai.tempPresetDeleteError", ex.Message));
+                    }
+                    catch (UnauthorizedAccessException ex)
+                    {
+                        this.AppendLog(AppText.F("web.metadata.ai.tempPresetDeleteError", ex.Message));
+                    }
+                }
+            }
+        }
+
+        /// <summary>
         /// Worker analisi pipeline Metadata
         /// </summary>
-        private void AnalyzeAllWorker()
+        /// <returns>True se l'analisi si è conclusa senza errori globali e senza stop</returns>
+        private bool AnalyzeAllWorker()
         {
+            bool completed = false;
+
             MkvMetadataPreset preset = null;
             MkvMetadataPresetValidationResult validation;
             MetadataPipelineEvaluator evaluator = new MetadataPipelineEvaluator();
@@ -418,6 +566,7 @@ namespace RemuxForge.Web.Services
                 this.AppendLog(AppText.F("web.metadata.analysisCompletedCounts", analyzedCount, errorCount));
                 this.OnAnalysisCompleted?.Invoke(analyzedCount, errorCount);
                 this.NotifyRecordsChanged();
+                completed = !this.StopRequested;
             }
             catch (Exception ex)
             {
@@ -428,6 +577,8 @@ namespace RemuxForge.Web.Services
             {
                 this.SetBusy(false, "");
             }
+
+            return completed;
         }
 
         /// <summary>

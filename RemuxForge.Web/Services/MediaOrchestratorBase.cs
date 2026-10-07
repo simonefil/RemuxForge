@@ -168,12 +168,15 @@ namespace RemuxForge.Web.Services
         /// <summary>
         /// Aggiorna il progresso di una scansione senza totale noto
         /// </summary>
-        /// <param name="filePath">File appena letto</param>
+        /// <param name="filePath">File appena letto, vuoto prima del primo file</param>
         /// <param name="count">Numero di file letti</param>
         protected void ReportScanProgress(string filePath, int count)
         {
             lock (this._stateLock)
             {
+                // Il totale non è noto: totale e percentuale dell'operazione precedente non valgono più
+                this._progress.Total = 0;
+                this._progress.GlobalPercent = 0;
                 this._progress.CurrentEpisode = Path.GetFileName(filePath);
                 this._progress.CurrentIndex = count;
                 this._progress.Completed = count;
