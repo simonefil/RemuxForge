@@ -184,7 +184,8 @@
 
 .metadata-rule-list-item.selected {
     border-color: var(--rz-text-color);
-    background-color: var(--rz-panel-menu-item-hover-background-color);
+    background-color: var(--rz-grid-selected-background-color);
+    color: var(--rz-grid-selected-color);
 }
 
 .metadata-rule-list-item .metadata-rule-list-select {
@@ -487,7 +488,7 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    border-bottom: 1px solid var(--rz-panel-menu-item-hover-background-color);
+    border-bottom: var(--rz-border-normal);
 }
 
 .metadata-detail-track-table th {
@@ -621,7 +622,7 @@ tr.metadata-diff-removed > td {
     padding: 0.2rem 0.5ch 0.2rem 0;
     line-height: 1.25;
     vertical-align: top;
-    border-bottom: 1px solid var(--rz-panel-menu-item-hover-background-color);
+    border-bottom: var(--rz-border-normal);
 }
 
 .metadata-sheet-field-cell {
@@ -794,7 +795,7 @@ tr.metadata-diff-removed > td {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 5ch;
     align-items: start;
-    border-bottom: 1px solid var(--rz-panel-menu-item-hover-background-color);
+    border-bottom: var(--rz-border-normal);
 }
 
 .metadata-token-browser .rz-button.metadata-token-button {
@@ -805,7 +806,7 @@ tr.metadata-diff-removed > td {
     padding: 0.25em 1ch;
     justify-content: flex-start;
     border: 0;
-    border-bottom: 1px solid var(--rz-panel-menu-item-hover-background-color);
+    border-bottom: var(--rz-border-normal);
     border-radius: 0;
     background: none;
     color: var(--rz-text-secondary-color);
@@ -845,8 +846,8 @@ tr.metadata-diff-removed > td {
 
 .metadata-token-browser .rz-button.metadata-token-button:hover:not(.rz-state-disabled),
 .metadata-token-browser .rz-button.metadata-function-example-button:hover:not(.rz-state-disabled) {
-    background-color: var(--rz-panel-menu-item-hover-background-color);
-    color: var(--rz-text-color);
+    background-color: var(--rz-grid-hover-background-color);
+    color: var(--rz-grid-hover-color);
 }
 
 .metadata-token-value,
@@ -913,7 +914,7 @@ tr.metadata-diff-removed > td {
     white-space: pre-wrap;
     color: var(--rz-text-color);
     font-family: inherit;
-    background: var(--rz-panel-menu-item-hover-background-color);
+    background: var(--rz-body-background-color);
     padding: 0 0.5ch;
 }
 

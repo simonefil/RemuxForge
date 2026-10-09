@@ -240,7 +240,8 @@
 }
 
 .split-editor-toggle button:not(.is-on):not(:disabled):hover {
-    background: var(--rz-base-600);
+    background: var(--rz-grid-hover-background-color);
+    color: var(--rz-grid-hover-color);
 }
 
 .split-editor-toggle button.is-on {
@@ -504,11 +505,11 @@
 }
 
 .split-editor-seg:hover {
-    background: rgba(255, 255, 255, .05);
+    background: color-mix(in srgb, var(--rz-text-color) 5%, transparent);
 }
 
 .split-editor-seg.is-selected {
-    background: rgba(255, 255, 255, .1);
+    background: color-mix(in srgb, var(--rz-text-color) 10%, transparent);
     outline: 1px solid var(--c);
 }
 

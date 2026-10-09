@@ -141,9 +141,14 @@
     gap: 1ch;
 }
 
-.renamer-stack-item:hover,
+.renamer-stack-item:hover {
+    background-color: var(--rz-grid-hover-background-color);
+    color: var(--rz-grid-hover-color);
+}
+
 .renamer-stack-item.selected {
-    background-color: var(--rz-panel-menu-item-hover-background-color);
+    background-color: var(--rz-grid-selected-background-color);
+    color: var(--rz-grid-selected-color);
 }
 
 .renamer-stack-item-name {
