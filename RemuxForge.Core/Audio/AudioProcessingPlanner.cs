@@ -184,7 +184,7 @@ namespace RemuxForge.Core.Audio
 
             if (track == null)
             {
-                result.ErrorMessage = "Traccia audio non valida";
+                result.ErrorMessage = AppText.T("remux.audio.invalidTrack");
                 return result;
             }
 
@@ -192,7 +192,7 @@ namespace RemuxForge.Core.Audio
 
             if (CodecMapping.IsSpatialCodec(track))
             {
-                result.ErrorMessage = "Traccia audio spaziale/object selezionata per processing";
+                result.ErrorMessage = AppText.T("remux.audio.spatialTrackSelectedShort");
                 return result;
             }
 
@@ -238,7 +238,7 @@ namespace RemuxForge.Core.Audio
                 result.ActualSourceFill = this.HasActualSourceFill(result.SourceFillPlan);
                 if (result.SourceFillHasWork && result.SourceFillTrack == null)
                 {
-                    result.ErrorMessage = "Audio source fill fallito: nessuna traccia source in lingua " + request.Options.AudioSourceFillLanguage + " per lang track " + track.Id;
+                    result.ErrorMessage = AppText.F("remux.audio.sourceFillNoSourceTrack", request.Options.AudioSourceFillLanguage, track.Id);
                     return result;
                 }
             }
@@ -359,7 +359,7 @@ namespace RemuxForge.Core.Audio
             {
                 if (!SpeedCorrectionService.TryParseStretchFactor(request.Record.StretchFactor, out result, out _))
                 {
-                    errorMessage = "Fattore stretch audio non valido: " + request.Record.StretchFactor;
+                    errorMessage = AppText.F("remux.audio.invalidStretchValue", request.Record.StretchFactor);
                     result = 1.0;
                 }
             }

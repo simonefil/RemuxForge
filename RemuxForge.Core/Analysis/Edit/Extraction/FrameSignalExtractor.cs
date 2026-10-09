@@ -1,4 +1,5 @@
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media.Ffmpeg;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
@@ -161,20 +162,20 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             // questo controllo un film troncato a metà passa per un segnale completo, e le
             // operazioni che stanno oltre il troncamento spariscono senza un errore
             if (run.ExitCode != 0)
-                throw new InvalidOperationException("Decodifica non riuscita di " + Path.GetFileName(filePath) + " (uscita " + run.ExitCode.ToString(CultureInfo.InvariantCulture) + "): " + GetLastErrorLine(run.Stderr));
+                throw new InvalidOperationException(AppText.F("analysis.signals.decodeFailed", Path.GetFileName(filePath), run.ExitCode.ToString(CultureInfo.InvariantCulture), GetLastErrorLine(run.Stderr)));
             if (hash0.Count == 0)
-                throw new InvalidOperationException("Nessun fotogramma decodificato da " + Path.GetFileName(filePath) + ": " + GetLastErrorLine(run.Stderr));
+                throw new InvalidOperationException(AppText.F("analysis.signals.noFrames", Path.GetFileName(filePath), GetLastErrorLine(run.Stderr)));
             // Alcuni flussi Matroska dichiarano un ultimo frame che FFmpeg non emette pur
             // terminando correttamente. Si accetta solo quel singolo frame terminale; uno
             // scarto maggiore resta una decodifica realmente incompleta.
             if (!windowed && hash0.Count + 1 < containerTimestamps.Count)
-                throw new InvalidOperationException("Decodifica troncata di " + Path.GetFileName(filePath) + ": " + hash0.Count.ToString(CultureInfo.InvariantCulture) + " fotogrammi su " + containerTimestamps.Count.ToString(CultureInfo.InvariantCulture) + ": " + GetLastErrorLine(run.Stderr));
+                throw new InvalidOperationException(AppText.F("analysis.signals.truncated", Path.GetFileName(filePath), hash0.Count.ToString(CultureInfo.InvariantCulture), containerTimestamps.Count.ToString(CultureInfo.InvariantCulture), GetLastErrorLine(run.Stderr)));
 
             double[] ptsMs = needsShowInfo
                 ? ParseShowInfoTimestamps(run.Stderr, hash0.Count)
                 : TakeContainerTimestamps(containerTimestamps, hash0.Count);
             if (ptsMs.Length < hash0.Count)
-                throw new InvalidOperationException("Timestamp insufficienti per " + Path.GetFileName(filePath) + ": " + ptsMs.Length.ToString(CultureInfo.InvariantCulture) + " per " + hash0.Count.ToString(CultureInfo.InvariantCulture) + " fotogrammi");
+                throw new InvalidOperationException(AppText.F("analysis.signals.insufficientTimestamps", Path.GetFileName(filePath), ptsMs.Length.ToString(CultureInfo.InvariantCulture), hash0.Count.ToString(CultureInfo.InvariantCulture)));
 
             int count = hash0.Count;
             if (windowed)
@@ -184,7 +185,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                 while (count > 0 && ptsMs[count - 1] > startMs + durationMs)
                     count--;
                 if (count == 0)
-                    throw new InvalidOperationException("Nessun fotogramma nella finestra richiesta di " + Path.GetFileName(filePath));
+                    throw new InvalidOperationException(AppText.F("analysis.signals.noFramesInWindow", Path.GetFileName(filePath)));
                 hash0.RemoveRange(count, hash0.Count - count);
                 hash1.RemoveRange(count, hash1.Count - count);
                 lumaMean.RemoveRange(count, lumaMean.Count - count);
@@ -311,7 +312,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                 if (!string.IsNullOrWhiteSpace(lines[i]))
                     return lines[i].Trim();
             }
-            return "nessuna diagnostica";
+            return AppText.T("analysis.noDiagnostics");
         }
 
         #endregion

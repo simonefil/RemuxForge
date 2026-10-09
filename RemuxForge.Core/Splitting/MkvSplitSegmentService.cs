@@ -41,10 +41,9 @@ namespace RemuxForge.Core.Splitting
         /// <summary>Registra un avviso nel piano e ne scrive la riga di dettaglio nel log.</summary>
         /// <param name="kind">Categoria dell'avviso.</param>
         /// <param name="message">Testo localizzato.</param>
-        /// <param name="segmentNum">Numero del segmento coinvolto, 0 per avvisi di file.</param>
-        private void AddWarning(MkvSplitWarningKind kind, string message, int segmentNum)
+        private void AddWarning(MkvSplitWarningKind kind, string message)
         {
-            this.Warnings.Add(new MkvSplitWarning(kind, message, segmentNum));
+            this.Warnings.Add(new MkvSplitWarning(kind, message));
             ConsoleHelper.Write(LogSection.Split, LogLevel.Notice, message);
         }
 
@@ -57,14 +56,17 @@ namespace RemuxForge.Core.Splitting
         /// <returns>Stringa nel formato HH:MM:SS.mmm.</returns>
         public static string SecsToTs(double s)
         {
-            int h;
-            int m;
-            double sec;
+            long ms;
+            long h;
+            long m;
+            long sec;
 
-            h = (int)(s / 3600.0);
-            m = (int)((s - h * 3600.0) / 60.0);
-            sec = s - h * 3600.0 - m * 60.0;
-            return string.Format(CultureInfo.InvariantCulture, "{0:D2}:{1:D2}:{2:00.000}", h, m, sec);
+            // Arrotonda prima al millisecondo: 119.9996 diventa 00:02:00.000 e non 00:01:60.000
+            ms = (long)Math.Round(s * 1000.0, MidpointRounding.AwayFromZero);
+            h = ms / 3600000;
+            m = ms / 60000 % 60;
+            sec = ms / 1000 % 60;
+            return string.Format(CultureInfo.InvariantCulture, "{0:D2}:{1:D2}:{2:D2}.{3:D3}", h, m, sec, ms % 1000);
         }
 
         /// <summary>Parsa un token tempo accettando HH:MM:SS.mmm, MM:SS.mmm, SS.mmm, f&lt;int&gt; (frame index) oppure END.</summary>
@@ -332,21 +334,21 @@ namespace RemuxForge.Core.Splitting
                 // Clamping di start negativi
                 if (startF < 0)
                 {
-                    this.AddWarning(MkvSplitWarningKind.RangeClamped, AppText.F("split.warnRangeStartClamped", i + 1, startF), i + 1);
+                    this.AddWarning(MkvSplitWarningKind.RangeClamped, AppText.F("split.warnRangeStartClamped", i + 1, startF));
                     startF = 0;
                 }
 
                 // Clamping di end oltre EOF
                 if (endF > totalFrames)
                 {
-                    this.AddWarning(MkvSplitWarningKind.RangeClamped, AppText.F("split.warnRangeEndClamped", i + 1, endF, totalFrames), i + 1);
+                    this.AddWarning(MkvSplitWarningKind.RangeClamped, AppText.F("split.warnRangeEndClamped", i + 1, endF, totalFrames));
                     endF = totalFrames;
                 }
 
                 // Start già oltre EOF: clampato all'ultimo frame
                 if (startF >= totalFrames)
                 {
-                    this.AddWarning(MkvSplitWarningKind.RangeClamped, AppText.F("split.warnRangeStartPastEof", i + 1), i + 1);
+                    this.AddWarning(MkvSplitWarningKind.RangeClamped, AppText.F("split.warnRangeStartPastEof", i + 1));
                     startF = totalFrames - 1;
                     endF = totalFrames;
                 }
@@ -376,7 +378,7 @@ namespace RemuxForge.Core.Splitting
             {
                 if (sorted[i + 1].Item1 < sorted[i].Item2)
                 {
-                    this.AddWarning(MkvSplitWarningKind.RangeOverlap, AppText.T("split.warnOverlappingRanges"), 0);
+                    this.AddWarning(MkvSplitWarningKind.RangeOverlap, AppText.T("split.warnOverlappingRanges"));
                     return;
                 }
             }
@@ -458,7 +460,7 @@ namespace RemuxForge.Core.Splitting
                 // L'ultimo blocco più corto è legittimo ma va dichiarato: cambia la durata dell'ultimo episodio
                 if (nCh % args.ChaptersPerEpisode != 0)
                 {
-                    this.AddWarning(MkvSplitWarningKind.ChapterGrouping, AppText.F("split.warnChaptersPerEpisodeRemainder", args.ChaptersPerEpisode, nCh, nCh % args.ChaptersPerEpisode), epNum);
+                    this.AddWarning(MkvSplitWarningKind.ChapterGrouping, AppText.F("split.warnChaptersPerEpisodeRemainder", args.ChaptersPerEpisode, nCh, nCh % args.ChaptersPerEpisode));
                 }
 
                 return (segments, MkvSplitMode.ChaptersPerEpisode);
@@ -903,7 +905,7 @@ namespace RemuxForge.Core.Splitting
                 newB = FindSnapTarget(frameMap, boundary, mode);
                 if (newB == null)
                 {
-                    this.AddWarning(MkvSplitWarningKind.SnapNoKeyframe, AppText.F("split.warnSnapNoKeyframe", boundary), 0);
+                    this.AddWarning(MkvSplitWarningKind.SnapNoKeyframe, AppText.F("split.warnSnapNoKeyframe", boundary));
                     continue;
                 }
                 if (newB.Value == boundary) { continue; }
@@ -928,7 +930,7 @@ namespace RemuxForge.Core.Splitting
 
                 if (eatsSegment)
                 {
-                    this.AddWarning(MkvSplitWarningKind.SnapEatSegment, AppText.F("split.warnSnapEatSegment", opening.Count > 0 ? opening[0].Num : closing[0].Num), opening.Count > 0 ? opening[0].Num : closing[0].Num);
+                    this.AddWarning(MkvSplitWarningKind.SnapEatSegment, AppText.F("split.warnSnapEatSegment", opening.Count > 0 ? opening[0].Num : closing[0].Num));
                     continue;
                 }
 

@@ -1,9 +1,8 @@
-@implements IDisposable
+@using System.Linq
+@inherits AppDialogContentBase
 
-<div class="dialog-overlay visible">
-    <div class="dialog-box split-join-dialog" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="split-join-title" @onclick:stopPropagation="true">
-        <div id="split-join-title" class="dialog-title">@AppText.T("web.splitJoin.title")</div>
-        <div class="dialog-body split-join-body">
+<div class="rf-dialog" @ref="DialogContent">
+        <div class="rf-dialog-body split-join-body">
             <div class="split-join-hint">@AppText.T("web.splitJoin.hint")</div>
 
             <div class="split-join-toolbar">
@@ -73,12 +72,14 @@
             {
                 @if (PlanIssues().Count > 0)
                 {
-                    <ul class="split-join-issues" role="alert">
-                        @foreach (string issue in PlanIssues())
-                        {
-                            <li>@issue</li>
-                        }
-                    </ul>
+                    <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="split-join-alert">
+                        <ul class="split-join-alert-list">
+                            @foreach (string issue in PlanIssues())
+                            {
+                                <li>@issue</li>
+                            }
+                        </ul>
+                    </RadzenAlert>
                 }
                 else if (_plan.Parts.Count >= 2)
                 {
@@ -87,24 +88,25 @@
                     </div>
                     @if (_plan.Chapters.Count > 0)
                     {
-                        <details class="split-join-chapters">
-                            <summary>@AppText.T("web.splitJoin.chaptersPreview")</summary>
+                        <RadzenPanel AllowCollapse="true" Collapsed="true" Text="@AppText.T("web.splitJoin.chaptersPreview")" class="split-join-chapters">
                             <ol>
                                 @foreach (ChapterMark chapter in _plan.Chapters)
                                 {
                                     <li><span class="split-join-chapter-time">@Time(chapter.StartNs)</span> @chapter.Name</li>
                                 }
                             </ol>
-                        </details>
+                        </RadzenPanel>
                     }
                     @if (ChapterWarnings().Count > 0)
                     {
-                        <ul class="split-join-warnings">
-                            @foreach (string warning in ChapterWarnings())
-                            {
-                                <li>@warning</li>
-                            }
-                        </ul>
+                        <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="split-join-alert">
+                            <ul class="split-join-alert-list">
+                                @foreach (string warning in ChapterWarnings())
+                                {
+                                    <li>@warning</li>
+                                }
+                            </ul>
+                        </RadzenAlert>
                     }
                 }
             }
@@ -115,41 +117,36 @@
                     <span class="split-join-output-dir" title="@OutputDir()">@(OutputDir().Length > 0 ? OutputDir() : "–")</span>
                 </div>
                 <div class="form-row">
-                    <label class="form-label" for="split-join-name">@AppText.T("web.splitJoin.outputName")</label>
-                    <input id="split-join-name" class="rz-textbox form-input split-join-name" type="text" value="@_fileName"
-                           @oninput="OnNameInput" disabled="@_loading" />
+                    <RadzenLabel class="form-label" Text="@AppText.T("web.splitJoin.outputName")" Component="split-join-name" />
+                    <RadzenTextBox Name="split-join-name" class="split-join-name" Immediate="true" Value="@_fileName"
+                                   Change="@OnNameInput" @onblur="TouchName" Disabled="@_loading"
+                                   aria-invalid="@(OutputIssues().Count > 0 && _paths.Count > 0 ? "true" : null)" aria-describedby="split-join-overwrite-state" />
                 </div>
                 @if (OutputIssues().Count > 0 && _paths.Count > 0)
                 {
-                    <ul class="split-join-issues">
-                        @foreach (string issue in OutputIssues())
-                        {
-                            <li>@issue</li>
-                        }
-                    </ul>
+                    <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="split-join-alert">
+                        <ul class="split-join-alert-list">
+                            @foreach (string issue in OutputIssues())
+                            {
+                                <li>@issue</li>
+                            }
+                        </ul>
+                    </RadzenAlert>
                 }
-                else if (SplitOrchestrator.JoinForce && _outputPath.Length > 0 && System.IO.File.Exists(_outputPath))
+                else if (SplitOrchestrator.JoinForce && _outputExists)
                 {
-                    <div class="split-join-overwrite">@AppText.F("web.splitJoin.willOverwrite", System.IO.Path.GetFileName(_outputPath))</div>
+                    <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="split-join-alert">@AppText.F("web.splitJoin.willOverwrite", System.IO.Path.GetFileName(_outputPath))</RadzenAlert>
                 }
+                <div id="split-join-overwrite-state" class="split-join-overwrite-state">
+                    @AppText.T(SplitOrchestrator.JoinForce ? "web.splitJoin.overwriteOn" : "web.splitJoin.overwriteOff") @AppText.T("web.splitJoin.overwriteNote")
+                </div>
             </div>
         </div>
-        <div class="dialog-footer">
-            <RadzenButton Text="@AppText.T("web.splitJoin.join")" Icon="merge" Disabled="@(!CanJoin())" Click="@Join" />
-            <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" class="dialog-close-button" Click="@OnClose" />
+        <div class="rf-dialog-footer">
+            <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => CloseDialog())" />
+            <RadzenButton Text="@AppText.T("web.splitJoin.join")" Icon="merge" Disabled="@JoinDisabled()" Click="@Join" />
         </div>
-    </div>
 </div>
-
-@if (_showBrowse)
-{
-    <FolderBrowserDialog InitialPath="@BrowseInitialPath()"
-                         ShowFiles="true"
-                         AllowCurrentFolderSelection="false"
-                         AllowedExtensions="@s_extensions"
-                         OnClose="CloseBrowse"
-                         OnSelect="AddBrowsedFile" />
-}
 
 @code {
     #region Variabili statiche
@@ -177,16 +174,6 @@
     /// Cartella sorgente Split, per aprire il browser file
     /// </summary>
     [Parameter] public string SourceFolder { get; set; }
-
-    /// <summary>
-    /// Evento chiusura senza unione
-    /// </summary>
-    [Parameter] public EventCallback OnClose { get; set; }
-
-    /// <summary>
-    /// Evento avvio unione: il dialog si chiude, avanzamento e log restano nei pannelli Split
-    /// </summary>
-    [Parameter] public EventCallback OnStarted { get; set; }
 
     #endregion
 
@@ -238,6 +225,16 @@
     private bool _nameEdited;
 
     /// <summary>
+    /// Vero dopo che l'utente ha toccato il nome o ha provato a unire: da lì il nome mancante si segnala
+    /// </summary>
+    private bool _nameTouched;
+
+    /// <summary>
+    /// Vero se il file di output esiste già, calcolato a ogni validazione dell'output
+    /// </summary>
+    private bool _outputExists;
+
+    /// <summary>
     /// Lettura delle parti in corso
     /// </summary>
     private bool _loading;
@@ -246,11 +243,6 @@
     /// Errore di lettura non legato a una parte
     /// </summary>
     private string _readError = "";
-
-    /// <summary>
-    /// Browser file aperto
-    /// </summary>
-    private bool _showBrowse;
 
     /// <summary>
     /// Riga trascinata, -1 se nessuna
@@ -262,25 +254,13 @@
     #region Metodi pubblici
 
     /// <summary>
-    /// Esc: chiude prima il browser file, poi il dialog
-    /// </summary>
-    /// <returns>True se ha chiuso solo il browser</returns>
-    public bool CloseInnerOverlay()
-    {
-        if (!_showBrowse)
-            return false;
-        _showBrowse = false;
-        StateHasChanged();
-        return true;
-    }
-
-    /// <summary>
     /// Annulla la lettura in corso
     /// </summary>
-    public void Dispose()
+    public override async ValueTask DisposeAsync()
     {
         _readCancellation?.Cancel();
         _readCancellation?.Dispose();
+        await base.DisposeAsync();
     }
 
     #endregion
@@ -372,20 +352,31 @@
         {
             _outputIssues = new List<string>();
             _outputPath = "";
+            _outputExists = false;
             return;
         }
         _outputIssues = new MkvSplitJoinService().ValidateOutput(_plan, OutputDir(), _fileName, SplitOrchestrator.JoinForce, out _outputPath);
+        _outputExists = _outputPath.Length > 0 && System.IO.File.Exists(_outputPath);
     }
 
     /// <summary>
     /// Aggiorna il nome scritto dall'utente
     /// </summary>
-    /// <param name="args">Evento input</param>
-    private void OnNameInput(ChangeEventArgs args)
+    /// <param name="value">Nome digitato</param>
+    private void OnNameInput(string value)
     {
-        _fileName = args.Value?.ToString() ?? "";
+        _fileName = value ?? "";
         _nameEdited = true;
+        _nameTouched = true;
         ValidateOutput();
+    }
+
+    /// <summary>
+    /// Segna il nome come toccato quando il campo perde il focus
+    /// </summary>
+    private void TouchName()
+    {
+        _nameTouched = true;
     }
 
     /// <summary>
@@ -431,28 +422,11 @@
     }
 
     /// <summary>
-    /// Apre il browser file interno
+    /// Apre il browser file e aggiunge in coda il file scelto
     /// </summary>
-    private void OpenBrowse()
+    private async Task OpenBrowse()
     {
-        _showBrowse = true;
-    }
-
-    /// <summary>
-    /// Chiude il browser file
-    /// </summary>
-    private void CloseBrowse()
-    {
-        _showBrowse = false;
-    }
-
-    /// <summary>
-    /// Aggiunge in coda il file scelto nel browser
-    /// </summary>
-    /// <param name="path">File scelto</param>
-    private async Task AddBrowsedFile(string path)
-    {
-        _showBrowse = false;
+        string path = await AppDialogs.BrowseAsync(DialogService, JsModule, BrowseInitialPath(), true, false, s_extensions);
         if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
             return;
         string full = System.IO.Path.GetFullPath(path);
@@ -475,11 +449,13 @@
     /// </summary>
     private async Task Join()
     {
+        _nameTouched = true;
         ValidateOutput();
         if (!CanJoin())
             return;
         SplitOrchestrator.Join(_plan, _fileName);
-        await OnStarted.InvokeAsync();
+        CloseDialog(true);
+        await Task.CompletedTask;
     }
 
     /// <summary>
@@ -489,6 +465,18 @@
     private bool CanJoin()
     {
         return !_loading && _plan != null && _plan.IsValid && _outputIssues.Count == 0 && _outputPath.Length > 0 && !SplitOrchestrator.IsBusy;
+    }
+
+    /// <summary>
+    /// Vero se il comando Unisci è spento: con il nome vuoto e mai toccato resta attivo, così il clic mostra cosa manca
+    /// </summary>
+    /// <returns>True se Unisci non si può usare</returns>
+    private bool JoinDisabled()
+    {
+        if (CanJoin())
+            return false;
+        bool onlyUntouchedName = !_nameTouched && _fileName.Trim().Length == 0 && OutputIssues().Count == 0;
+        return !(onlyUntouchedName && !_loading && _plan != null && _plan.IsValid && !SplitOrchestrator.IsBusy);
     }
 
     /// <summary>
@@ -550,6 +538,9 @@
     /// <returns>Motivi da mostrare</returns>
     private List<string> OutputIssues()
     {
+        // Il nome mancante si segnala solo dopo che l'utente ha toccato il campo o ha provato a unire
+        if (!_nameTouched && _fileName.Trim().Length == 0)
+            return _outputIssues.Where(issue => issue != AppText.T("split.join.outputNameRequired")).ToList();
         return _outputIssues;
     }
 

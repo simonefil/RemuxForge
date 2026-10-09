@@ -14,29 +14,14 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public MetadataCatalogFieldItem()
         {
-            this.Key = "";
             this.Label = "";
             this.Description = "";
             this.Token = "";
-            this.Sector = MetadataFieldSector.File;
-            this.TargetScopes = new List<MkvMetadataTargetScope>();
-            this.ValueType = MetadataFieldValueType.String;
-            this.InputKind = MetadataFieldInputKind.Text;
-            this.Visibility = MetadataFieldVisibility.Primary;
-            this.IsEditable = false;
-            this.IsClearable = false;
-            this.Unit = "";
-            this.SortGroup = 0;
         }
 
         #endregion
 
         #region Proprietà
-
-        /// <summary>
-        /// Chiave campo
-        /// </summary>
-        public string Key { get; set; }
 
         /// <summary>
         /// Label campo
@@ -52,51 +37,6 @@ namespace RemuxForge.Core.Models
         /// Token inseribile
         /// </summary>
         public string Token { get; set; }
-
-        /// <summary>
-        /// Settore campo
-        /// </summary>
-        public MetadataFieldSector Sector { get; set; }
-
-        /// <summary>
-        /// Scope target compatibili
-        /// </summary>
-        public List<MkvMetadataTargetScope> TargetScopes { get; set; }
-
-        /// <summary>
-        /// Tipo valore
-        /// </summary>
-        public MetadataFieldValueType ValueType { get; set; }
-
-        /// <summary>
-        /// Tipo input
-        /// </summary>
-        public MetadataFieldInputKind InputKind { get; set; }
-
-        /// <summary>
-        /// Visibilità UI
-        /// </summary>
-        public MetadataFieldVisibility Visibility { get; set; }
-
-        /// <summary>
-        /// True se editabile
-        /// </summary>
-        public bool IsEditable { get; set; }
-
-        /// <summary>
-        /// True se cancellabile
-        /// </summary>
-        public bool IsClearable { get; set; }
-
-        /// <summary>
-        /// Unità del campo
-        /// </summary>
-        public string Unit { get; set; }
-
-        /// <summary>
-        /// Gruppo ordinamento
-        /// </summary>
-        public int SortGroup { get; set; }
 
         #endregion
     }
@@ -324,7 +264,6 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public MetadataConditionOperatorItem()
         {
-            this.Label = "";
             this.RequiresValue = false;
             this.RequiresRange = false;
             this.RequiresList = false;
@@ -338,11 +277,6 @@ namespace RemuxForge.Core.Models
         /// Operatore dominio
         /// </summary>
         public MkvMetadataConditionOperator Operator { get; set; }
-
-        /// <summary>
-        /// Label localizzata
-        /// </summary>
-        public string Label { get; set; }
 
         /// <summary>
         /// Vero se richiede un valore singolo
@@ -376,7 +310,6 @@ namespace RemuxForge.Core.Models
         {
             this.Title = "";
             this.Text = "";
-            this.Example = "";
         }
 
         #endregion
@@ -392,11 +325,6 @@ namespace RemuxForge.Core.Models
         /// Testo help
         /// </summary>
         public string Text { get; set; }
-
-        /// <summary>
-        /// Esempio opzionale
-        /// </summary>
-        public string Example { get; set; }
 
         #endregion
     }

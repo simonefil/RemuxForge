@@ -1016,22 +1016,15 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public MkvMetadataExecutionResult()
         {
-            this.InputFile = "";
             this.OutputFile = "";
             this.ExitCode = 0;
             this.ErrorMessage = "";
-            this.CommandText = "";
             this.DryRun = false;
         }
 
         #endregion
 
         #region Proprietà
-
-        /// <summary>
-        /// File input
-        /// </summary>
-        public string InputFile { get; set; }
 
         /// <summary>
         /// File output effettivo
@@ -1047,11 +1040,6 @@ namespace RemuxForge.Core.Models
         /// Messaggio errore
         /// </summary>
         public string ErrorMessage { get; set; }
-
-        /// <summary>
-        /// Comando o riepilogo comandi
-        /// </summary>
-        public string CommandText { get; set; }
 
         /// <summary>
         /// True se non sono state eseguite scritture

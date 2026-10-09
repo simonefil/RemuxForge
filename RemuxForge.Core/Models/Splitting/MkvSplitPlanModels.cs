@@ -58,9 +58,6 @@ namespace RemuxForge.Core.Models
         /// <summary>Testo localizzato dell'avviso</summary>
         public string Message { get; set; }
 
-        /// <summary>Numero del segmento coinvolto, 0 se l'avviso riguarda il file</summary>
-        public int SegmentNum { get; set; }
-
         /// <summary>Costruttore</summary>
         public MkvSplitWarning()
         {
@@ -72,12 +69,10 @@ namespace RemuxForge.Core.Models
         /// </summary>
         /// <param name="kind">Categoria dell'avviso</param>
         /// <param name="message">Testo localizzato</param>
-        /// <param name="segmentNum">Numero del segmento coinvolto, 0 per avvisi di file</param>
-        public MkvSplitWarning(MkvSplitWarningKind kind, string message, int segmentNum)
+        public MkvSplitWarning(MkvSplitWarningKind kind, string message)
         {
             this.Kind = kind;
             this.Message = message;
-            this.SegmentNum = segmentNum;
         }
     }
 
@@ -97,22 +92,6 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
-    /// Segmento costruito a mano nell'editor: sopravvive alla riesecuzione dell'analisi
-    /// e sostituisce quelli che la configurazione globale produrrebbe
-    /// </summary>
-    public class MkvSplitOverrideSegment
-    {
-        /// <summary>Primo frame del segmento</summary>
-        public int StartFrame { get; set; }
-
-        /// <summary>Numero di frame del segmento</summary>
-        public int FrameCount { get; set; }
-
-        /// <summary>True quando il segmento resta sulla timeline ma non viene prodotto</summary>
-        public bool Excluded { get; set; }
-    }
-
-    /// <summary>
     /// Piano di taglio calcolato per un singolo file
     /// </summary>
     public class MkvSplitPlan
@@ -129,10 +108,8 @@ namespace RemuxForge.Core.Models
             this.Segments = new List<MkvSplitSegment>();
             this.Warnings = new List<MkvSplitWarning>();
             this.SourcePts = new double[0];
-            this.KeyframeIndexes = new int[0];
             this.Mode = MkvSplitMode.Ranges;
             this.Coverage = MkvSplitCoverage.Extract;
-            this.Snap = MkvSplitSnapMode.Off;
             this.FrameRateMode = MkvSplitFrameRateMode.Unknown;
             this.IsValid = false;
         }
@@ -165,9 +142,6 @@ namespace RemuxForge.Core.Models
         /// <summary>Copertura del sorgente</summary>
         public MkvSplitCoverage Coverage { get; set; }
 
-        /// <summary>Strategia di snap richiesta</summary>
-        public MkvSplitSnapMode Snap { get; set; }
-
         /// <summary>Modalità frame rate rilevata</summary>
         public MkvSplitFrameRateMode FrameRateMode { get; set; }
 
@@ -194,12 +168,6 @@ namespace RemuxForge.Core.Models
 
         /// <summary>True se lo split userà il percorso veloce senza ricodifica</summary>
         public bool UsesFastPath { get; set; }
-
-        /// <summary>Indici dei frame che sono keyframe, in ordine di presentazione</summary>
-        public int[] KeyframeIndexes { get; set; }
-
-        /// <summary>True quando i segmenti arrivano dall'editor invece che dalla configurazione globale</summary>
-        public bool IsOverride { get; set; }
 
         #endregion
     }

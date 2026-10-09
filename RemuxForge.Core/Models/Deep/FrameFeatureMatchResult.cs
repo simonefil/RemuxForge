@@ -10,15 +10,9 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public FrameFeatureMatchResult()
         {
-            this.BackendName = "";
             this.RejectReason = "";
             this.Homography = new double[0];
         }
-
-        /// <summary>
-        /// Backend che ha prodotto il risultato
-        /// </summary>
-        public string BackendName { get; set; }
 
         /// <summary>
         /// True quando il match supera tutti i criteri minimi
@@ -29,26 +23,6 @@ namespace RemuxForge.Core.Models
         /// Motivo del rifiuto, vuoto per match accettato
         /// </summary>
         public string RejectReason { get; set; }
-
-        /// <summary>
-        /// Numero keypoint source
-        /// </summary>
-        public int SourceKeypointCount { get; set; }
-
-        /// <summary>
-        /// Numero keypoint language
-        /// </summary>
-        public int LanguageKeypointCount { get; set; }
-
-        /// <summary>
-        /// Match forward che superano il Lowe ratio test
-        /// </summary>
-        public int RatioMatchCount { get; set; }
-
-        /// <summary>
-        /// Match confermati anche nella direzione inversa
-        /// </summary>
-        public int ReciprocalMatchCount { get; set; }
 
         /// <summary>
         /// Match coerenti con l'omografia RANSAC

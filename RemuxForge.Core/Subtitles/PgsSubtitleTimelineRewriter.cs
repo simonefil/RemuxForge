@@ -32,7 +32,7 @@ namespace RemuxForge.Core.Subtitles
             while (pos + PgsSubtitleUtils.SUP_PACKET_HEADER_SIZE <= data.Length)
             {
                 setStart = pos;
-                if (!this.TryFindDisplaySetEnd(data, setStart, out setEnd))
+                if (!PgsSubtitleUtils.TryFindDisplaySetEnd(data, setStart, out setEnd))
                 {
                     return false;
                 }
@@ -53,39 +53,6 @@ namespace RemuxForge.Core.Subtitles
         #endregion
 
         #region Metodi privati
-
-        /// <summary>
-        /// Trova la fine del display-set PGS corrente
-        /// </summary>
-        /// <param name="data">Buffer SUP</param>
-        /// <param name="start">Offset iniziale display-set</param>
-        /// <param name="end">Offset subito dopo il display-set</param>
-        /// <returns>True se il display-set è completo</returns>
-        private bool TryFindDisplaySetEnd(byte[] data, int start, out int end)
-        {
-            int pos = start;
-            int packetLength;
-            int segmentType;
-            end = start;
-
-            while (pos + PgsSubtitleUtils.SUP_PACKET_HEADER_SIZE <= data.Length)
-            {
-                if (!PgsSubtitleUtils.TryGetPacketLength(data, pos, out packetLength))
-                {
-                    return false;
-                }
-
-                segmentType = data[pos + 10];
-                pos += packetLength;
-                if (segmentType == PgsSubtitleUtils.SEGMENT_END)
-                {
-                    end = pos;
-                    return true;
-                }
-            }
-
-            return false;
-        }
 
         /// <summary>
         /// Scrive un display-set completo applicando lo stesso delta temporale a tutti i packet

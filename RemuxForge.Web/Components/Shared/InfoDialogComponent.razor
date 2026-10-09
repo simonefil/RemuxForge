@@ -1,44 +1,51 @@
-<div class="dialog-overlay visible">
-    <div class="dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="info-dialog-title" @onclick:stopPropagation="true">
-        <div id="info-dialog-title" class="dialog-title">@AppText.T("web.info.title")</div>
-        <div class="dialog-body">
-            <table class="info-table">
-                <tr><td class="info-label">@AppText.T("web.info.name")</td><td><img src="favicon-32x32.png" alt="icon" style="vertical-align: middle; margin-right: 0.5ch;" />RemuxForge</td></tr>
-                <tr><td class="info-label">@AppText.T("web.info.version")</td><td>@_version</td></tr>
-                <tr><td class="info-label">@AppText.T("web.info.license")</td><td>GNU General Public License v3.0</td></tr>
-                <tr><td class="info-label">@AppText.T("web.info.repository")</td><td><a href="https://github.com/simonefil/RemuxForge" target="_blank">https://github.com/simonefil/RemuxForge</a></td></tr>
-                <tr><td class="info-label">@AppText.T("web.info.website")</td><td><a href="https://remuxforge.app" target="_blank">https://remuxforge.app</a></td></tr>
-                <tr><td class="info-label">@AppText.T("web.info.discord")</td><td><a href="https://discord.gg/JpHWKGyaqF" target="_blank">https://discord.gg/JpHWKGyaqF</a></td></tr>
-                <tr><td class="info-label">@AppText.T("web.info.runtime")</td><td>@_runtime</td></tr>
-                <tr><td class="info-label">@AppText.T("web.info.platform")</td><td>@_platform</td></tr>
-            </table>
-        </div>
-        <div class="dialog-footer">
-            <RadzenButton Text="@AppText.T("web.common.close")" Icon="close" class="dialog-close-button" Click="@OnClose" />
-        </div>
+@inherits AppDialogContentBase
+
+<div class="rf-dialog" @ref="DialogContent">
+    <div class="rf-dialog-body">
+        <RadzenTable GridLines="DataGridGridLines.None" AllowAlternatingRows="false" class="info-table">
+            <RadzenTableBody>
+                <RadzenTableRow>
+                    <RadzenTableCell class="info-label">@AppText.T("web.info.name")</RadzenTableCell>
+                    <RadzenTableCell><img src="favicon-32x32.png" alt="icon" style="vertical-align: middle; margin-right: 0.5ch;" />RemuxForge</RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell class="info-label">@AppText.T("web.info.version")</RadzenTableCell>
+                    <RadzenTableCell>@_version</RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell class="info-label">@AppText.T("web.info.license")</RadzenTableCell>
+                    <RadzenTableCell>GNU General Public License v3.0</RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell class="info-label">@AppText.T("web.info.repository")</RadzenTableCell>
+                    <RadzenTableCell><a href="https://github.com/simonefil/RemuxForge" target="_blank">https://github.com/simonefil/RemuxForge</a></RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell class="info-label">@AppText.T("web.info.website")</RadzenTableCell>
+                    <RadzenTableCell><a href="https://remuxforge.app" target="_blank">https://remuxforge.app</a></RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell class="info-label">@AppText.T("web.info.discord")</RadzenTableCell>
+                    <RadzenTableCell><a href="https://discord.gg/JpHWKGyaqF" target="_blank">https://discord.gg/JpHWKGyaqF</a></RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell class="info-label">@AppText.T("web.info.runtime")</RadzenTableCell>
+                    <RadzenTableCell>@_runtime</RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell class="info-label">@AppText.T("web.info.platform")</RadzenTableCell>
+                    <RadzenTableCell>@_platform</RadzenTableCell>
+                </RadzenTableRow>
+            </RadzenTableBody>
+        </RadzenTable>
+    </div>
+    <div class="rf-dialog-footer">
+        <RadzenButton Text="@AppText.T("web.common.close")" Icon="close" Click="@(() => CloseDialog())" />
     </div>
 </div>
 
 <style>
-    .info-table {
-        border-collapse: collapse;
-        width: 100%;
-    }
-    .info-table:before {
-        display: none !important;
-    }
-    .info-table tr td:before,
-    .info-table tr td:after {
-        display: none !important;
-    }
-    .info-table :first-child > tr:first-child > td {
-        padding-top: 0 !important;
-    }
-    .info-table tr td {
-        padding: calc(var(--rz-gap) * 0.4) 1ch;
-        line-height: var(--rz-body-line-height);
-    }
-    .info-label {
+    .info-table .info-label {
         font-weight: bold;
         width: 14ch;
     }
@@ -48,11 +55,6 @@
 </style>
 
 @code {
-    /// <summary>
-    /// Evento chiusura dialog
-    /// </summary>
-    [Parameter] public EventCallback OnClose { get; set; }
-
     /// <summary>
     /// Versione applicazione
     /// </summary>

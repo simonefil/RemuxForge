@@ -592,6 +592,30 @@ namespace RemuxForge.Core.Configuration
             }
         }
 
+        /// <summary>Eliminazione esplicita di un preset Remux, con rollback in caso di errore disco.</summary>
+        public bool DeleteRemuxPreset(string name, out string errorMessage)
+        {
+            errorMessage = "";
+            lock (this._fileLock)
+            {
+                string trimmed = name?.Trim() ?? "";
+                int index = this._model.RemuxPresets.FindIndex(item => string.Equals(item.Name?.Trim(), trimmed, StringComparison.OrdinalIgnoreCase));
+                if (index < 0)
+                {
+                    errorMessage = AppText.T("web.remux.presetMissing");
+                    return false;
+                }
+                List<RemuxPreset> previous = this._model.RemuxPresets;
+                List<RemuxPreset> replacement = previous.ConvertAll(item => item.Clone());
+                replacement.RemoveAt(index);
+                this._model.RemuxPresets = replacement;
+                if (this.Save()) return true;
+                this._model.RemuxPresets = previous;
+                errorMessage = AppText.T("web.remux.deleteFailed");
+                return false;
+            }
+        }
+
         #endregion
 
         #region Metodi privati

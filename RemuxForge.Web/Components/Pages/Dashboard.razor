@@ -11,7 +11,6 @@
 {
     <SplitEditorPageComponent RecordIndex="@_splitEditorIndex"
                               Record="@_splitEditorRecord"
-                              InitialSegmentNum="@_splitEditorSegmentNum"
                               OnClose="CloseSplitEditor" />
 }
 else if (_showEditMapEditor && _editMapRecord != null)
@@ -29,9 +28,10 @@ else
     <ModeNavigationComponent CurrentMode="@_currentMode"
                              Collapsed="@_navigationCollapsed"
                              IsBusy="@IsAnyBusy()"
+                             CurrentLanguage="@_currentLanguage"
                              OnModeChanged="SwitchMode"
                              OnCollapsedChanged="SetNavigationCollapsed"
-                             OnShowInfo="ShowInfo" />
+                             OnShowInfo="ShowInfoAsync" />
 
     <section class="rf-app-stage">
         <header class="rf-app-header">
@@ -40,8 +40,7 @@ else
                 <span class="rf-app-title-description">@GetCurrentModeDescription()</span>
             </div>
 
-            <MenuBarComponent @ref="_menuBar"
-                       Commands="@BuildUiCommands()"
+            <MenuBarComponent Commands="@BuildUiCommands()"
                        OnCommand="ExecuteUiCommandAsync"
                        OnThemeChanged="ChangeThemeAsync"
                        OnLanguageChanged="ChangeLanguageAsync"
@@ -50,6 +49,7 @@ else
         </header>
 
         <CommandToolbarComponent Commands="@BuildUiCommands()"
+                                 Note="@(_currentMode == RemuxForge.Core.Models.Options.MODE_SPLIT && _splitReviewStage != null ? AppText.T("web.splitMontage.reviewExportNote") : "")"
                                  OnCommand="ExecuteUiCommandAsync" />
 
         <RadzenSplitter Orientation="Orientation.Vertical" class="rf-workspace-log-splitter">
@@ -70,32 +70,41 @@ else
                                     OnSourcePathChanged="ChangeMetadataSourcePath"
                                     OnOutputPolicyChanged="ChangeMetadataOutputPolicy"
                                     OnOutputPathChanged="ChangeMetadataOutputDir"
-                                    OnBrowseSource="@(() => BrowseMetadataPath(0, true, true))"
-                                    OnBrowseOutput="@(() => BrowseMetadataPath(1, false, true))"
+                                    OnBrowseSource="@(() => BrowseMetadataPathAsync(0, true, true))"
+                                    OnBrowseOutput="@(() => BrowseMetadataPathAsync(1, false, true))"
                                     OnToggleRecursive="ToggleMetadataRecursive"
                                     OnTogglePreserveFolders="ToggleMetadataPreserveFolderStructure"
                                     OnToggleOverwriteOutput="ToggleMetadataOverwriteOutput"
                                     OnRowSelected="SelectMetadataRow"
-                                                OnShowMappedInfo="ShowMetadataMappedInfo" />
+                                                OnShowMappedInfo="ShowMetadataMappedInfoAsync" />
                 }
                 else if (_currentMode == RemuxForge.Core.Models.Options.MODE_SPLIT)
                 {
                     <div @ref="_splitWorkspaceRoot" class="split-guided-workspace" tabindex="-1" aria-label="@AppText.T("web.splitMontage.outputs")">
+                    @if (!SplitOrchestrator.HasSource && _splitRecords.Count == 0 && _splitReviewStage == null)
+                    {
+                        <RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="1rem" class="split-empty-state">
+                            <RadzenText TextStyle="TextStyle.H4">@AppText.T("web.split.emptyTitle")</RadzenText>
+                            <RadzenText>@AppText.T("web.split.emptyDescription")</RadzenText>
+                            <RadzenButton Text="@AppText.T("web.split.configure")" Icon="add" Disabled="@SplitOrchestrator.IsBusy" Click="ShowConfig" />
+                        </RadzenStack>
+                    }
+                    else
+                    {
                     @if (_splitReviewStage != null)
                     {
-                        <SplitPlanReviewComponent Records="@_splitRecords" Stage="@_splitReviewStage" Busy="@SplitOrchestrator.IsBusy" OnOpenEditor="OpenSplitReviewEditor" OnContinue="AcknowledgeSplitReview" OnConfigure="ShowConfig" />
+                        <SplitPlanReviewComponent Records="@_splitRecords" Stage="@_splitReviewStage" Busy="@SplitOrchestrator.IsBusy" OnOpenEditor="OpenSplitReviewEditor" OnContinue="AcknowledgeSplitReview" OnConfigure="ShowConfig" OnClose="CloseSplitReview" />
                     }
                     <SplitWorkspaceComponent Records="@_splitRecords"
+                                 ModeLabel="@SplitCutModes.ConfiguredLabel(SplitOrchestrator.CurrentOptions)"
                                  SelectedRecord="@_selectedSplitRecord"
                                  SelectedIndex="@SplitOrchestrator.SelectedIndex"
                                  SelectedIndices="@_splitSelection.Indices"
-                                 SelectedSegmentNum="@_selectedSplitSegmentNum"
                                  IsBusy="@SplitOrchestrator.IsBusy"
                                  OnRowSelected="SelectSplitRowWithModifiers"
                                  OnContextMenu="ShowSplitContextMenu"
-                                 OnAnalyze="DoAnalyzeSplitSelected"
-                                 OnSegmentSelected="SelectSplitSegment"
-                                  OnOpenEditor="OpenSplitEditor" />
+                                 OnAnalyze="DoAnalyzeSplitSelected" />
+                    }
                     </div>
                 }
                 else
@@ -141,137 +150,5 @@ else
     </section>
 </div>
 
-@* Dialog Configurazione *@
-@if (_showConfig && _currentMode != RemuxForge.Core.Models.Options.MODE_REMUX)
-{
-    <ConfigDialogComponent Options="@(_currentMode == RemuxForge.Core.Models.Options.MODE_SPLIT ? SplitOrchestrator.CurrentOptions : Orchestrator.CurrentOptions)"
-                            OnClose="CloseConfig"
-                             OnApply="ApplyConfig" />
-}
 
-@* Dialog Preset Metadata *@
-@if (_showMetadataPreset)
-{
-    <MetadataPresetDialogComponent Options="@MetadataOrchestrator.CurrentOptions"
-                                   Records="@_metadataRecords"
-                                   OnClose="CloseMetadataPreset" />
-}
-
-@if (_showMetadataMappedInfo)
-{
-    <MetadataMappedInfoDialogComponent Record="@_selectedMetadataRecord"
-                                       Simulated="@_metadataMappedInfoSimulated"
-                                       JsModule="@_jsModule"
-                                       OnClose="CloseMetadataMappedInfo" />
-}
-
-@if (_showMetadataManualEdit)
-{
-    <MetadataMappedInfoDialogComponent Record="@_selectedMetadataRecord"
-                                       Editable="true"
-                                       JsModule="@_jsModule"
-                                       OnClose="CloseMetadataManualEdit"
-                                       OnApply="ApplyMetadataManualEdit" />
-}
-
-@* Dialog Rename Metadata *@
-@if (_showMetadataPathBrowse)
-{
-    <FolderBrowserDialog InitialPath="@_metadataBrowseInitialPath"
-                         ShowFiles="@_metadataBrowseShowFiles"
-                         AllowCurrentFolderSelection="@_metadataBrowseAllowCurrentFolderSelection"
-                         AllowedExtensions="@_metadataBrowseAllowedExtensions"
-                         OnClose="CloseMetadataPathBrowse"
-                         OnSelect="ApplyMetadataPathBrowse" />
-}
-
-@* Dialog Percorsi Tool *@
-@if (_showToolPaths)
-{
-    <ToolPathsDialogComponent OnClose="CloseToolPaths" />
-}
-
-@* Wizard preset Metadata con AI *@
-@if (_showMetadataAiWizard)
-{
-    <MetadataAiWizardComponent OnClose="CloseMetadataAiWizard"
-                               OnSaveAndActivate="ActivateAiPreset"
-                               OnSaveAndApply="SaveAndApplyAiPreset"
-                               OnApplyTemporary="ApplyTemporaryAiPreset" />
-}
-
-@* Dialog Impostazioni AI *@
-@if (_showAiSettings)
-{
-    <AiSettingsDialogComponent JsModule="@_jsModule" OnClose="CloseAiSettings" />
-}
-
-@* Dialog Impostazioni Audio *@
-@if (_showAudioSettings)
-{
-    <AudioSettingsDialogComponent OnClose="CloseAudioSettings" />
-}
-
-@* Dialog Impostazioni Avanzate *@
-@if (_showAdvancedSettings)
-{
-    <AdvancedSettingsDialogComponent OnClose="CloseAdvancedSettings" />
-}
-
-@* Dialog Unione parti Split *@
-@if (_showSplitJoin)
-{
-    <SplitJoinDialogComponent @ref="_splitJoinDialog"
-                              InitialPaths="@_splitJoinInitialPaths"
-                              SourceFolder="@SplitOrchestrator.CurrentOptions?.SourceFolder"
-                              OnClose="CloseSplitJoin"
-                              OnStarted="CloseSplitJoin" />
-}
-
-@* Dialog Delay *@
-@if (_showDelay && _selectedRecord != null)
-{
-    <DelayDialogComponent Record="@_selectedRecord"
-                           OnClose="CloseDelay"
-                           OnApply="ApplyDelay" />
-}
-
-@* Dialog Profili Encoding *@
-@if (_showEncodingProfiles)
-{
-    <EncodingProfilesDialog OnClose="CloseEncodingProfiles" />
-}
-
-@* Dialog Info *@
-@if (_showInfo)
-{
-    <InfoDialogComponent OnClose="CloseInfo" />
-}
-
-@* Dialog Licenze *@
-@if (_showLicenses)
-{
-    <LicensesDialogComponent OnClose="CloseLicenses" />
-}
-
-@* Context Menu Episodio *@
-@if (_showContextMenu && _contextMenuCommands != null)
-{
-    <ContextMenuComponent Commands="@_contextMenuCommands"
-                           X="@_contextMenuX"
-                           Y="@_contextMenuY"
-                           SelectedIndex="@_contextMenuSelectedIndex"
-                           OnClose="CloseContextMenu"
-                           OnActiveChanged="SetContextMenuActiveIndex"
-                           OnSelect="HandleContextMenuSelect" />
-}
-
-@* Dialog MediaInfo *@
-@if (_showMediaInfo)
-{
-    <MediaInfoDialogComponent Title="@_mediaInfoTitle"
-                               Report="@_mediaInfoReport"
-                               JsModule="@_jsModule"
-                               OnClose="CloseMediaInfo" />
-}
 }

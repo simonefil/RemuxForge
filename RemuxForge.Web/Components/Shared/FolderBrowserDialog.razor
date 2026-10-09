@@ -1,7 +1,7 @@
-<div class="dialog-overlay visible">
-    <div class="dialog-box dialog-browse" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="folder-browser-dialog-title" @onclick:stopPropagation="true">
-        <div id="folder-browser-dialog-title" class="dialog-title">@GetDialogTitle()</div>
-        <div class="dialog-body" style="display: flex; flex-direction: column; padding: 0;">
+@inherits AppDialogContentBase
+
+<div class="rf-dialog" @ref="DialogContent">
+        <div class="rf-dialog-body browse-dialog-body">
 
             <div class="browse-path-bar">
                 <div class="browse-navigation" role="toolbar" aria-label="@AppText.T("web.folder.navigation")">
@@ -138,18 +138,18 @@
 
             @* Campo Find *@
             <div class="browse-find-bar">
-                <span class="browse-find-label">@AppText.T("web.folder.find")</span>
-                <input class="form-input" aria-label="@AppText.T("web.folder.find")" value="@_filterText" @oninput="HandleFilterInput" />
+                <RadzenLabel class="browse-find-label" Text="@AppText.T("web.folder.find")" Component="FolderBrowserFind" />
+                <RadzenTextBox Name="FolderBrowserFind" Immediate="true" Value="@_filterText" Change="@HandleFilterInput" />
             </div>
 
             @* Messaggio errore *@
             @if (!string.IsNullOrEmpty(_errorMessage))
             {
-                <div class="browse-error">@_errorMessage</div>
+                <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="browse-error">@_errorMessage</RadzenAlert>
             }
         </div>
-        <div class="dialog-footer">
-            <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" />
+        <div class="rf-dialog-footer">
+            <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => CloseDialog())" />
             @if (this.ShowFiles && this.AllowCurrentFolderSelection)
             {
                 <RadzenButton Text="@AppText.T("web.folder.selectFolderButton")" Icon="folder" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@ConfirmFolder" Disabled="@_showingDriveRoots" />
@@ -164,7 +164,6 @@
                 <RadzenButton Text="@AppText.T("web.folder.selectFolderButton")" Icon="folder" Click="@ConfirmFolder" Disabled="@_showingDriveRoots" />
             }
         </div>
-    </div>
 </div>
 
 @code {
@@ -172,16 +171,6 @@
     /// Percorso iniziale da cui partire
     /// </summary>
     [Parameter] public string InitialPath { get; set; }
-
-    /// <summary>
-    /// Evento chiusura dialog
-    /// </summary>
-    [Parameter] public EventCallback OnClose { get; set; }
-
-    /// <summary>
-    /// Evento selezione cartella/file (restituisce percorso selezionato)
-    /// </summary>
-    [Parameter] public EventCallback<string> OnSelect { get; set; }
 
     /// <summary>
     /// Se true mostra anche i file e permette la selezione di un file
@@ -643,7 +632,7 @@
             else
             {
                 // Doppio click su file: conferma selezione
-                this.OnSelect.InvokeAsync(_entries[index].FullPath);
+                this.CloseDialog(_entries[index].FullPath);
             }
         }
     }
@@ -655,7 +644,7 @@
     {
         if (this.CanSelectFile())
         {
-            this.OnSelect.InvokeAsync(_entries[_selectedIndex].FullPath);
+            this.CloseDialog(_entries[_selectedIndex].FullPath);
         }
         else
         {
@@ -670,7 +659,7 @@
     {
         if (!this._showingDriveRoots && (!this.ShowFiles || this.AllowCurrentFolderSelection))
         {
-            this.OnSelect.InvokeAsync(this._currentPath);
+            this.CloseDialog(this._currentPath);
         }
     }
 
@@ -686,13 +675,15 @@
     /// <summary>
     /// Restituisce il titolo del dialog in base alla modalità
     /// </summary>
+    /// <param name="showFiles">True se il browser seleziona file</param>
+    /// <param name="allowCurrentFolderSelection">True se il browser conferma anche la cartella corrente</param>
     /// <returns>Titolo dialog</returns>
-    private string GetDialogTitle()
+    public static string GetTitle(bool showFiles, bool allowCurrentFolderSelection)
     {
-        if (this.ShowFiles && this.AllowCurrentFolderSelection)
+        if (showFiles && allowCurrentFolderSelection)
             return AppText.T("web.folder.selectFileOrFolderTitle");
 
-        if (this.ShowFiles)
+        if (showFiles)
             return AppText.T("web.folder.selectFileTitle");
 
         return AppText.T("web.folder.selectFolderTitle");
@@ -785,10 +776,10 @@
     /// <summary>
     /// Gestisce input nel campo Find
     /// </summary>
-    /// <param name="args">Evento change</param>
-    private void HandleFilterInput(ChangeEventArgs args)
+    /// <param name="value">Testo digitato</param>
+    private void HandleFilterInput(string value)
     {
-        _filterText = args.Value != null ? args.Value.ToString() : "";
+        _filterText = value ?? "";
         this.ApplyFilterInternal();
     }
 

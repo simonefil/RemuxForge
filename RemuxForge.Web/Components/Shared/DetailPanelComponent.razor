@@ -44,11 +44,10 @@
             <div class="detail-content detail-structured">
                 <div class="detail-record-header">
                     <span class="detail-record-title">@Record.SourceFileName</span>
-                    <span class="detail-status-badge">@Utils.GetStatusText(Record.Status)</span>
+                    <RadzenBadge class="detail-status-badge" BadgeStyle="BadgeStyle.Base" Variant="Variant.Flat" Shade="Shade.Lighter" Text="@Utils.GetStatusText(Record.Status)" />
                 </div>
 
-                <details class="detail-section" open>
-                    <summary>@AppText.T("web.detail.files")</summary>
+                <RadzenPanel AllowCollapse="true" Collapsed="false" class="detail-section" Text="@AppText.T("web.detail.files")">
                     <div class="detail-section-body detail-file-grid">
                         <div class="detail-card">
                             <div class="detail-card-title">@AppText.T("web.detail.sourceFile")</div>
@@ -64,10 +63,9 @@
                             }
                         </div>
                     </div>
-                </details>
+                </RadzenPanel>
 
-                <details class="detail-section" open>
-                    <summary>@AppText.T("web.detail.tracks")</summary>
+                <RadzenPanel AllowCollapse="true" Collapsed="false" class="detail-section" Text="@AppText.T("web.detail.tracks")">
                     <div class="detail-section-body detail-card-stack">
                         @TrackGroup(AppText.T("web.detail.sourceTracks"), Utils.FormatTrackList(Record.SourceAudioTracks), Utils.FormatTrackList(Record.SourceSubTracks))
                         @if (filterAudio || filterSub)
@@ -83,12 +81,11 @@
                             @TrackGroup(AppText.T("web.detail.finalResult"), _builder.FormatResultAudioTrackList(Record, Options, filterAudio), Utils.FormatResultTrackList(Record.SourceSubTracks, Record.KeptSourceSubIds, Record.ImportedSubTracks, "", filterSub))
                         }
                     </div>
-                </details>
+                </RadzenPanel>
 
                 @if (audioPlans.Count > 0)
                 {
-                    <details class="detail-section" open>
-                        <summary>@AppText.T("web.detail.audioProcessing")</summary>
+                    <RadzenPanel AllowCollapse="true" Collapsed="false" class="detail-section" Text="@AppText.T("web.detail.audioProcessing")">
                         <div class="detail-section-body detail-card-stack">
                             @for (int i = 0; i < audioPlans.Count; i++)
                             {
@@ -100,11 +97,10 @@
                                 </div>
                             }
                         </div>
-                    </details>
+                    </RadzenPanel>
                 }
 
-                <details class="detail-section" open>
-                    <summary>@AppText.T("web.detail.sync")</summary>
+                <RadzenPanel AllowCollapse="true" Collapsed="false" class="detail-section" Text="@AppText.T("web.detail.sync")">
                     <div class="detail-section-body">
                         <div class="detail-property-grid">
                             @PropertyRow(AppText.T("web.detail.audioDelayLabel"), Utils.FormatDelay(Record.AudioDelayApplied))
@@ -140,7 +136,7 @@
                         @if (!string.IsNullOrEmpty(Record.LangFilePath))
                         {
                             <div class="detail-card detail-sync-card">
-                                <div class="detail-card-title">Deep analysis</div>
+                                <div class="detail-card-title">@AppText.T("web.detail.deepAnalysisLabel")</div>
                                 @PropertyRow(AppText.T("web.detail.statusLabel"), GetDeepAnalysisStatus())
                                 @if (Record.DeepAnalysisMapManuallyEdited)
                                 {
@@ -182,19 +178,15 @@
                             </div>
                         }
                     </div>
-                </details>
+                </RadzenPanel>
 
                 @if (!string.IsNullOrEmpty(Record.ErrorMessage) || !string.IsNullOrEmpty(Record.SkipReason))
                 {
-                    <details class="detail-section" open>
-                        <summary>@AppText.T("web.detail.messages")</summary>
+                    <RadzenPanel AllowCollapse="true" Collapsed="false" class="detail-section" Text="@AppText.T("web.detail.messages")">
                         <div class="detail-section-body detail-card-stack">
                             @if (!string.IsNullOrEmpty(Record.ErrorMessage))
                             {
-                                <div class="detail-card detail-card-danger">
-                                    <div class="detail-card-title">@AppText.T("web.detail.error")</div>
-                                    <div class="detail-card-text">@Record.ErrorMessage</div>
-                                </div>
+                                <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" Title="@AppText.T("web.detail.error")" class="detail-error-alert">@Record.ErrorMessage</RadzenAlert>
                             }
                             @if (!string.IsNullOrEmpty(Record.SkipReason))
                             {
@@ -204,13 +196,12 @@
                                 </div>
                             }
                         </div>
-                    </details>
+                    </RadzenPanel>
                 }
 
                 @if (HasProcessingTimes())
                 {
-                    <details class="detail-section" open>
-                        <summary>@AppText.T("web.detail.processingTimes")</summary>
+                    <RadzenPanel AllowCollapse="true" Collapsed="false" class="detail-section" Text="@AppText.T("web.detail.processingTimes")">
                         <div class="detail-section-body detail-property-grid">
                             @if (Record.SpeedCorrectionTimeMs > 0)
                             {
@@ -222,20 +213,19 @@
                             }
                             @if (Record.DeepAnalysisTimeMs > 0)
                             {
-                                @PropertyRow("Deep analysis", Record.DeepAnalysisTimeMs + " ms")
+                                @PropertyRow(AppText.T("web.detail.deepAnalysisLabel"), Record.DeepAnalysisTimeMs + " ms")
                             }
                             @if (Record.MergeTimeMs > 0)
                             {
                                 @PropertyRow("Merge", Record.MergeTimeMs + " ms")
                             }
                         </div>
-                    </details>
+                    </RadzenPanel>
                 }
 
                 @if (Record.ResultSize > 0)
                 {
-                    <details class="detail-section" open>
-                        <summary>@AppText.T("web.detail.result")</summary>
+                    <RadzenPanel AllowCollapse="true" Collapsed="false" class="detail-section" Text="@AppText.T("web.detail.result")">
                         <div class="detail-section-body detail-property-grid">
                             @PropertyRow(AppText.T("web.detail.sizeLabel"), Utils.FormatSize(Record.ResultSize))
                             @if (!string.IsNullOrEmpty(Record.ResultFilePath))
@@ -243,13 +233,12 @@
                                 @PropertyRow(AppText.T("web.detail.fileLabel"), Record.ResultFilePath)
                             }
                         </div>
-                    </details>
+                    </RadzenPanel>
                 }
 
                 @if (!string.IsNullOrEmpty(Record.EncodingProfileName))
                 {
-                    <details class="detail-section" open>
-                        <summary>@AppText.T("web.detail.encoding")</summary>
+                    <RadzenPanel AllowCollapse="true" Collapsed="false" class="detail-section" Text="@AppText.T("web.detail.encoding")">
                         <div class="detail-section-body detail-property-grid">
                             @PropertyRow(AppText.T("web.detail.profileLabel"), Record.EncodingProfileName)
                             @if (Record.EncodedSize > 0 && Record.ResultSize > 0)
@@ -266,7 +255,7 @@
                                 @PropertyRow(AppText.T("web.detail.commandLabel"), AppText.T("web.detail.commandAvailableValue"))
                             }
                         </div>
-                    </details>
+                    </RadzenPanel>
                 }
             </div>
         }

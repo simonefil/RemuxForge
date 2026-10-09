@@ -1,4 +1,3 @@
-using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Models;
 using System.Collections.Generic;
 
@@ -11,7 +10,7 @@ namespace RemuxForge.Web.Services
         {
             return new RemuxPreset
             {
-                Name = name, MuxKind = kind, FrameSync = o.FrameSync,
+                Name = name, MuxKind = kind,
                 Recursive = o.Recursive, MatchPattern = o.MatchPattern, FileExtensions = new List<string>(o.FileExtensions),
                 TargetLanguage = new List<string>(o.TargetLanguage), AudioCodec = new List<string>(o.AudioCodec),
                 KeepSourceAudioLangs = new List<string>(o.KeepSourceAudioLangs), KeepSourceAudioCodec = new List<string>(o.KeepSourceAudioCodec),
@@ -25,7 +24,7 @@ namespace RemuxForge.Web.Services
                 AudioSourceFillThresholdMs = o.AudioSourceFillThresholdMs, AudioSourceFillLanguage = o.AudioSourceFillLanguage,
                 AudioSourceFillStart = o.AudioSourceFillStart, AudioSourceFillEnd = o.AudioSourceFillEnd,
                 AudioSourceFillInsertSilence = o.AudioSourceFillInsertSilence, AudioSourceFillGainDb = o.AudioSourceFillGainDb,
-                EncodingProfileName = o.EncodingProfileName, Overwrite = o.Overwrite
+                EncodingProfileName = o.EncodingProfileName
             };
         }
 
@@ -34,7 +33,7 @@ namespace RemuxForge.Web.Services
             RemuxPreset p = preset.Clone();
             return new Options
             {
-                Mode = Options.MODE_REMUX, FrameSync = p.FrameSync, DeepAnalysis = p.MuxKind == RemuxMuxKind.DeepAnalysis,
+                Mode = Options.MODE_REMUX, FrameSync = p.MuxKind == RemuxMuxKind.DelayCorrection, DeepAnalysis = p.MuxKind == RemuxMuxKind.DeepAnalysis,
                 Recursive = p.Recursive, MatchPattern = p.MatchPattern ?? "", FileExtensions = p.FileExtensions,
                 TargetLanguage = p.TargetLanguage, AudioCodec = p.AudioCodec, KeepSourceAudioLangs = p.KeepSourceAudioLangs,
                 KeepSourceAudioCodec = p.KeepSourceAudioCodec, KeepSourceSubtitleLangs = p.KeepSourceSubtitleLangs,
@@ -47,7 +46,7 @@ namespace RemuxForge.Web.Services
                 AudioSourceFillThresholdMs = p.AudioSourceFillThresholdMs, AudioSourceFillLanguage = p.AudioSourceFillLanguage ?? "",
                 AudioSourceFillStart = p.AudioSourceFillStart, AudioSourceFillEnd = p.AudioSourceFillEnd,
                 AudioSourceFillInsertSilence = p.AudioSourceFillInsertSilence, AudioSourceFillGainDb = p.AudioSourceFillGainDb,
-                EncodingProfileName = p.EncodingProfileName ?? "", Overwrite = p.Overwrite
+                EncodingProfileName = p.EncodingProfileName ?? ""
             };
         }
 
@@ -57,6 +56,7 @@ namespace RemuxForge.Web.Services
             copy.SourceFolder = options.SourceFolder;
             copy.LanguageFolder = options.LanguageFolder;
             copy.DestinationFolder = options.DestinationFolder;
+            copy.Overwrite = options.Overwrite;
             copy.MkvMergePath = options.MkvMergePath;
             copy.FrameSyncDiagnostics = options.FrameSyncDiagnostics;
             copy.DeepAnalysisDiagnostics = options.DeepAnalysisDiagnostics;

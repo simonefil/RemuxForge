@@ -23,27 +23,12 @@ namespace RemuxForge.Core.Splitting
         /// <returns>Piano del file, valido oppure con il motivo dell'invalidità</returns>
         public MkvSplitPlan BuildPlan(MkvSplitOptions args, string inputFile, Action<string> phaseCallback)
         {
-            return this.BuildPlan(args, inputFile, phaseCallback, null);
-        }
-
-        /// <summary>
-        /// Costruisce il piano di taglio per un singolo file, con i segmenti dell'editor al posto di quelli della configurazione
-        /// </summary>
-        /// <param name="args">Opzioni split già clonate per il file</param>
-        /// <param name="inputFile">File sorgente</param>
-        /// <param name="phaseCallback">Callback opzionale invocata a ogni fase dell'analisi</param>
-        /// <param name="overrideSegments">Segmenti costruiti nell'editor, null quando comanda la configurazione</param>
-        /// <returns>Piano del file, valido oppure con il motivo dell'invalidità</returns>
-        public MkvSplitPlan BuildPlan(MkvSplitOptions args, string inputFile, Action<string> phaseCallback, List<MkvSplitOverrideSegment> overrideSegments)
-        {
             MkvSplitPlan plan = new MkvSplitPlan();
             MkvSplitAnalysis analysis;
             MkvSplitSegmentService segmentService;
             (List<MkvSplitSegment> segments, MkvSplitMode mode) built;
-            List<int> keyframeIndexes;
 
             plan.InputFile = Path.GetFullPath(inputFile);
-            plan.Snap = args.Snap;
             plan.OutputDir = !string.IsNullOrEmpty(args.OutputDir) ? Path.GetFullPath(args.OutputDir) : Path.GetDirectoryName(plan.InputFile);
 
             if (!File.Exists(plan.InputFile))
@@ -65,7 +50,7 @@ namespace RemuxForge.Core.Splitting
 
             plan.Chapters = analysis.Chapters;
             foreach (string chapterWarning in analysis.ChapterWarnings)
-                plan.Warnings.Add(new MkvSplitWarning(MkvSplitWarningKind.ChapterNotCarried, chapterWarning, 0));
+                plan.Warnings.Add(new MkvSplitWarning(MkvSplitWarningKind.ChapterNotCarried, chapterWarning));
             plan.Duration = analysis.Duration;
             plan.SourcePts = analysis.SourcePts;
             plan.FrameCount = analysis.SourcePts.Length;
@@ -87,48 +72,29 @@ namespace RemuxForge.Core.Splitting
                 return plan;
             }
 
-            // I keyframe servono all'editor per disegnare la corsia e per agganciarci i confini
-            keyframeIndexes = new List<int>();
-            for (int i = 0; i < analysis.KeyFlags.Count; i++)
-            {
-                if (analysis.KeyFlags[i].Key) { keyframeIndexes.Add(i); }
-            }
-            plan.KeyframeIndexes = keyframeIndexes.ToArray();
-
             segmentService = new MkvSplitSegmentService();
-            if (overrideSegments != null)
+            try
             {
-                // I confini li ha messi l'utente sulla timeline: lo snap non li tocca, e il costo
-                // della ricodifica lo dichiara il piano
-                plan.Segments = BuildOverrideSegments(overrideSegments, plan);
-                plan.Mode = MkvSplitMode.Manual;
-                plan.IsOverride = true;
+                if (phaseCallback != null) { phaseCallback(AppText.F("split.plan.building", Path.GetFileName(plan.InputFile))); }
+                segmentService.NormalizeShortcuts(args, plan.Duration, plan.FrameCount);
+                built = segmentService.Build(args, plan.Chapters, plan.SourcePts, plan.Duration);
             }
-            else
+            catch (Exception ex)
             {
-                try
-                {
-                    if (phaseCallback != null) { phaseCallback(AppText.F("split.plan.building", Path.GetFileName(plan.InputFile))); }
-                    segmentService.NormalizeShortcuts(args, plan.Duration, plan.FrameCount);
-                    built = segmentService.Build(args, plan.Chapters, plan.SourcePts, plan.Duration);
-                }
-                catch (Exception ex)
-                {
-                    plan.Warnings.AddRange(segmentService.Warnings);
-                    plan.ErrorMessage = ex.Message;
-                    return plan;
-                }
-
-                plan.Segments = built.segments;
-                plan.Mode = built.mode;
-
-                // Lo snap decide i confini definitivi, quindi precede il naming: {start} deve essere l'inizio reale
-                segmentService.ApplySnap(plan.Segments, analysis.KeyFlags, plan.SourcePts, args.Snap);
-
-                // I capitoli seguono i confini effettivi: lo snap puo' averne spostati dentro o fuori
-                foreach (MkvSplitSegment seg in plan.Segments)
-                    seg.Chapters = SelectChapters(plan.Chapters, seg.StartTs, seg.EndTs);
+                plan.Warnings.AddRange(segmentService.Warnings);
+                plan.ErrorMessage = ex.Message;
+                return plan;
             }
+
+            plan.Segments = built.segments;
+            plan.Mode = built.mode;
+
+            // Lo snap decide i confini definitivi, quindi precede il naming: {start} deve essere l'inizio reale
+            segmentService.ApplySnap(plan.Segments, analysis.KeyFlags, plan.SourcePts, args.Snap);
+
+            // I capitoli seguono i confini effettivi: lo snap puo' averne spostati dentro o fuori
+            foreach (MkvSplitSegment seg in plan.Segments)
+                seg.Chapters = SelectChapters(plan.Chapters, seg.StartTs, seg.EndTs);
 
             segmentService.ApplyNaming(plan.Segments, args, plan.Mode, plan.InputFile);
             plan.Warnings.AddRange(segmentService.Warnings);
@@ -165,47 +131,6 @@ namespace RemuxForge.Core.Splitting
         }
 
         /// <summary>
-        /// Traduce i segmenti dell'editor in segmenti di piano, ricalcolando tempi e capitoli dai frame
-        /// </summary>
-        /// <param name="overrideSegments">Segmenti costruiti nell'editor</param>
-        /// <param name="plan">Piano in costruzione, già completo di PTS, durata e capitoli</param>
-        /// <returns>Segmenti ordinati e numerati, senza quelli esclusi</returns>
-        private static List<MkvSplitSegment> BuildOverrideSegments(List<MkvSplitOverrideSegment> overrideSegments, MkvSplitPlan plan)
-        {
-            List<MkvSplitSegment> segments = new List<MkvSplitSegment>();
-            List<MkvSplitOverrideSegment> ordered = new List<MkvSplitOverrideSegment>(overrideSegments);
-            MkvSplitSegment seg;
-            int startFrame;
-            int frameCount;
-            int num = 0;
-
-            ordered.Sort((a, b) => a.StartFrame.CompareTo(b.StartFrame));
-            foreach (MkvSplitOverrideSegment source in ordered)
-            {
-                if (source.Excluded) { continue; }
-
-                startFrame = Math.Max(0, Math.Min(plan.FrameCount - 1, source.StartFrame));
-                frameCount = Math.Max(1, Math.Min(plan.FrameCount - startFrame, source.FrameCount));
-                num++;
-
-                seg = new MkvSplitSegment();
-                seg.Num = num;
-                seg.Episode = num;
-                seg.StartFrame = startFrame;
-                seg.FrameCount = frameCount;
-                seg.StartTs = plan.SourcePts[startFrame];
-
-                // La fine è esclusiva: coincide con il PTS del frame successivo, o con la durata sull'ultimo
-                seg.EndTs = (startFrame + frameCount < plan.FrameCount) ? plan.SourcePts[startFrame + frameCount] : plan.Duration;
-
-                seg.Chapters = SelectChapters(plan.Chapters, seg.StartTs, seg.EndTs);
-                segments.Add(seg);
-            }
-
-            return segments;
-        }
-
-        /// <summary>
         /// Capitoli del sorgente il cui inizio cade nel segmento [startTs, endTs), nel tempo del sorgente
         /// </summary>
         /// <param name="chapters">Capitoli del sorgente</param>
@@ -238,9 +163,10 @@ namespace RemuxForge.Core.Splitting
             ConsoleHelper.Write(LogSection.Split, LogLevel.Info, AppText.T("split.segments"));
             foreach (MkvSplitSegment seg in plan.Segments)
             {
-                duration = seg.EndTs - seg.StartTs;
+                // Arrotonda al centesimo prima di separare i minuti: 119.996 diventa 2:00.00 e non 1:60.00
+                duration = Math.Round(seg.EndTs - seg.StartTs, 2, MidpointRounding.AwayFromZero);
                 min = (int)(duration / 60.0);
-                secRem = duration - min * 60.0;
+                secRem = Math.Round(duration - min * 60.0, 2, MidpointRounding.AwayFromZero);
                 ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.segmentLine", PadRight(seg.File, 40), MkvSplitSegmentService.SecsToTs(seg.StartTs), MkvSplitSegmentService.SecsToTs(seg.EndTs), min.ToString(System.Globalization.CultureInfo.InvariantCulture), secRem.ToString("00.00", System.Globalization.CultureInfo.InvariantCulture), seg.Chapters.Count, seg.FrameCount));
             }
 
@@ -276,13 +202,19 @@ namespace RemuxForge.Core.Splitting
 
             foreach (MkvSplitSegment seg in plan.Segments)
             {
+                // Un keyframe di GOP aperto non si taglia esatto con mkvmerge, né in apertura né in chiusura
+                if (seg.StartFrame >= 0 && seg.StartFrame < keyFlags.Count && keyFlags[seg.StartFrame].OpenGop)
+                {
+                    return false;
+                }
+
                 end = seg.StartFrame + seg.FrameCount;
                 if (end >= keyFlags.Count)
                 {
                     continue;
                 }
 
-                if (!keyFlags[end].Key)
+                if (!keyFlags[end].Key || keyFlags[end].OpenGop)
                 {
                     return false;
                 }
@@ -332,7 +264,7 @@ namespace RemuxForge.Core.Splitting
 
                 seg.ReencodeFrames = keyAfter - seg.StartFrame;
                 plan.TotalReencodeFrames += seg.ReencodeFrames;
-                plan.Warnings.Add(new MkvSplitWarning(MkvSplitWarningKind.Reencode, AppText.F("split.plan.reencodeSegment", seg.Num, seg.ReencodeFrames), seg.Num));
+                plan.Warnings.Add(new MkvSplitWarning(MkvSplitWarningKind.Reencode, AppText.F("split.plan.reencodeSegment", seg.Num, seg.ReencodeFrames)));
             }
         }
 
@@ -390,7 +322,7 @@ namespace RemuxForge.Core.Splitting
                 if (seen.TryGetValue(outPath, out previousNum))
                 {
                     plan.ErrorMessage = AppText.F("split.plan.nameCollision", previousNum, seg.Num, seg.File);
-                    plan.Warnings.Add(new MkvSplitWarning(MkvSplitWarningKind.NameCollision, plan.ErrorMessage, seg.Num));
+                    plan.Warnings.Add(new MkvSplitWarning(MkvSplitWarningKind.NameCollision, plan.ErrorMessage));
                     continue;
                 }
                 seen[outPath] = seg.Num;
@@ -398,7 +330,7 @@ namespace RemuxForge.Core.Splitting
                 if (File.Exists(outPath))
                 {
                     seg.OutputState = force ? MkvSplitOutputState.ExistsOverwrite : MkvSplitOutputState.ExistsSkip;
-                    plan.Warnings.Add(new MkvSplitWarning(MkvSplitWarningKind.OutputExists, AppText.F(force ? "split.plan.outputOverwrite" : "split.plan.outputSkip", seg.File), seg.Num));
+                    plan.Warnings.Add(new MkvSplitWarning(MkvSplitWarningKind.OutputExists, AppText.F(force ? "split.plan.outputOverwrite" : "split.plan.outputSkip", seg.File)));
                 }
                 else
                 {

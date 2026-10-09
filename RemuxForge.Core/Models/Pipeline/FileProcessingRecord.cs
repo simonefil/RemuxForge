@@ -9,6 +9,22 @@ namespace RemuxForge.Core.Models
     /// </summary>
     public class FileProcessingRecord
     {
+        #region Costanti
+
+        /// <summary>Codice skip: ID episodio non riconosciuto nel nome</summary>
+        public const string SKIP_NO_EPISODE_ID = "web.remux.skip.noEpisodeId";
+
+        /// <summary>Codice skip: nessun file lingua abbinato</summary>
+        public const string SKIP_NO_MATCH = "web.remux.skip.noMatch";
+
+        /// <summary>Codice skip: nessuna traccia lingua corrispondente</summary>
+        public const string SKIP_NO_MATCHING_TRACKS = "web.remux.skip.noMatchingTracks";
+
+        /// <summary>Codice skip: file saltato dall'utente</summary>
+        public const string SKIP_BY_USER = "web.merge.skipByUser";
+
+        #endregion
+
         #region Costruttore
 
         /// <summary>
@@ -294,14 +310,28 @@ namespace RemuxForge.Core.Models
         public bool SpeedCorrectionApplied { get; set; }
 
         /// <summary>
-        /// Motivo dello skip o errore, se applicabile
+        /// Motivo dello skip o errore, se applicabile, nella lingua corrente quando deriva da un codice
         /// </summary>
         private string _skipReason;
         public string SkipReason
         {
-            get => this.SkippedByTrackSelection ? AppText.T("remuxConfiguration.noLangSelected") : this._skipReason;
-            set => this._skipReason = value;
+            get
+            {
+                if (this.SkippedByTrackSelection)
+                    return AppText.T("remuxConfiguration.noLangSelected");
+                return !string.IsNullOrEmpty(this.SkipCode) ? AppText.T(this.SkipCode) : this._skipReason;
+            }
+            set
+            {
+                this._skipReason = value;
+                this.SkipCode = "";
+            }
         }
+
+        /// <summary>
+        /// Codice stabile dello skip (costanti SKIP_*), vuoto per uno skip con testo libero
+        /// </summary>
+        public string SkipCode { get; set; }
 
         /// <summary>
         /// Stato corrente del file nel pipeline di elaborazione

@@ -1,4 +1,5 @@
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -83,7 +84,7 @@ namespace RemuxForge.Core.Transcoding
                 if (exitCode != 0)
                 {
                     // Log errore pass 1
-                    ConsoleHelper.Write(LogSection.Encode, LogLevel.Error, "  Pass 1 fallito (exit code: " + exitCode + ")");
+                    ConsoleHelper.Write(LogSection.Encode, LogLevel.Error, AppText.F("remux.encoding.pass1Failed", exitCode));
                     // Cleanup file passlog
                     this.CleanupPasslogFiles(passLogFile);
                     return false;
@@ -136,7 +137,7 @@ namespace RemuxForge.Core.Transcoding
             else
             {
                 // Log errore encoding
-                ConsoleHelper.Write(LogSection.Encode, LogLevel.Error, "  Encoding fallito (exit code: " + exitCode + ")");
+                ConsoleHelper.Write(LogSection.Encode, LogLevel.Error, AppText.F("remux.encoding.failed", exitCode));
                 // Cleanup file temporaneo fallito
                 FileHelper.DeleteTempFile(tempOutput);
             }

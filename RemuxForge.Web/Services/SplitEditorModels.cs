@@ -49,16 +49,6 @@ namespace RemuxForge.Web.Services
         public Guid SessionId { get; set; }
 
         /// <summary>
-        /// Record della griglia aperto nell'editor
-        /// </summary>
-        public Guid RecordId { get; set; }
-
-        /// <summary>
-        /// Identità del sorgente
-        /// </summary>
-        public MkvSplitSourceIdentity SourceIdentity { get; set; }
-
-        /// <summary>
         /// Revisione applicata attesa all'apertura
         /// </summary>
         public long ExpectedAppliedRevision { get; set; }
@@ -97,11 +87,6 @@ namespace RemuxForge.Web.Services
     public class SplitEditorOpenResult
     {
         #region Proprietà
-
-        /// <summary>
-        /// Stato dell'apertura
-        /// </summary>
-        public SplitApplyStatus Status { get; set; }
 
         /// <summary>
         /// Copia per l'editor, valorizzata se l'apertura è riuscita
@@ -177,6 +162,26 @@ namespace RemuxForge.Web.Services
         /// Revisione delle opzioni corrente
         /// </summary>
         public long OptionsRevision { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Esito del calcolo del documento della regola per l'editor
+    /// </summary>
+    public class SplitRuleDocumentResult
+    {
+        #region Proprietà
+
+        /// <summary>
+        /// Documento della regola, valorizzato se il calcolo è riuscito
+        /// </summary>
+        public MkvSplitDocument Document { get; set; }
+
+        /// <summary>
+        /// Diagnostiche del calcolo
+        /// </summary>
+        public List<MkvSplitDiagnostic> Diagnostics { get; set; } = new List<MkvSplitDiagnostic>();
 
         #endregion
     }

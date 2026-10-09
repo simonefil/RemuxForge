@@ -1,20 +1,29 @@
-<div class="rf-remux-field" @onfocusin="@(() => Wizard?.SetHelp(HelpKey))" @onmouseenter="@(() => Wizard?.SetHelp(HelpKey))">
-    <RadzenLabel Text="@(Required ? Label + " *" : Label)" Component="@Field" />
+<div class="rf-remux-field" data-field="@Field" @onfocusin="@(() => Wizard?.SetHelp(HelpKey))" @onmouseenter="@(() => Wizard?.SetHelp(HelpKey))">
+    <RadzenLabel Component="@(string.IsNullOrEmpty(Component) ? Field : Component)">@Label@if (Required) {<span class="rf-remux-required" aria-hidden="true"> *</span>}</RadzenLabel>
     <div class="rf-remux-field-controls">@ChildContent</div>
+    @if (!string.IsNullOrEmpty(Note))
+    {
+        <RadzenText TextStyle="TextStyle.Caption" class="rf-remux-note">@Note</RadzenText>
+    }
     @if (Wizard != null)
     {
         @foreach (PipelineInitializationIssue issue in Wizard.FieldErrors(Field))
         {
-            <RadzenText TextStyle="TextStyle.Caption" class="rf-remux-error">@issue.Message</RadzenText>
+            <RadzenText TextStyle="TextStyle.Caption" class="rf-remux-error" role="alert">@issue.Message</RadzenText>
         }
     }
 </div>
 
 @code {
-    [CascadingParameter] public RemuxConfigWizardComponent Wizard { get; set; }
+    /// <summary>Wizard ospite: Remux o Split</summary>
+    [CascadingParameter] public IWizardFieldHost Wizard { get; set; }
     [Parameter] public string Label { get; set; }
     [Parameter] public bool Required { get; set; }
     [Parameter] public string Field { get; set; } = "";
+    /// <summary>Name del controllo associato all'etichetta, quando diverso dal campo validato</summary>
+    [Parameter] public string Component { get; set; } = "";
+    /// <summary>Spiegazione breve sotto il controllo, per esempio il motivo di un controllo disabilitato</summary>
+    [Parameter] public string Note { get; set; } = "";
     [Parameter] public string HelpKey { get; set; } = "";
     [Parameter] public RenderFragment ChildContent { get; set; }
 }

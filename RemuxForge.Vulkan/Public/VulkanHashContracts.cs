@@ -151,28 +151,13 @@ namespace RemuxForge.Vulkan
     {
         /// <summary>Creates the outcome of one scan</summary>
         /// <param name="explainedCounts">Explained frame count for each candidate offset, in grid order</param>
-        /// <param name="bestCandidate">Index of the candidate offset explaining the most frames</param>
-        /// <param name="bestOffsetMs">Offset in milliseconds of the best candidate</param>
-        /// <param name="indexCount">Number of measured source frames</param>
-        internal VulkanHashScanResult(IReadOnlyList<int> explainedCounts, int bestCandidate, double bestOffsetMs, int indexCount)
+        internal VulkanHashScanResult(IReadOnlyList<int> explainedCounts)
         {
             this.ExplainedCounts = explainedCounts;
-            this.BestCandidate = bestCandidate;
-            this.BestOffsetMs = bestOffsetMs;
-            this.BestExplainedFraction = indexCount == 0 ? 0.0 : (double)explainedCounts[bestCandidate] / indexCount;
         }
 
         /// <summary>Explained frame count for each candidate offset, in grid order</summary>
         public IReadOnlyList<int> ExplainedCounts { get; }
-
-        /// <summary>Index of the first candidate offset explaining the most frames</summary>
-        public int BestCandidate { get; }
-
-        /// <summary>Offset in milliseconds of the best candidate</summary>
-        public double BestOffsetMs { get; }
-
-        /// <summary>Fraction of measured source frames explained by the best candidate</summary>
-        public double BestExplainedFraction { get; }
     }
 
     /// <summary>Results of one batch of scans and the diagnostics collected while running it</summary>
@@ -180,17 +165,12 @@ namespace RemuxForge.Vulkan
     {
         /// <summary>Creates the result of one batch of scans</summary>
         /// <param name="scans">Outcome of each requested scan, in request order</param>
-        /// <param name="diagnostics">Diagnostics collected while running the batch</param>
-        internal VulkanHashBatchResult(IReadOnlyList<VulkanHashScanResult> scans, VulkanVisionDiagnostics diagnostics)
+        internal VulkanHashBatchResult(IReadOnlyList<VulkanHashScanResult> scans)
         {
             this.Scans = scans;
-            this.Diagnostics = diagnostics;
         }
 
         /// <summary>Outcome of each requested scan, in request order</summary>
         public IReadOnlyList<VulkanHashScanResult> Scans { get; }
-
-        /// <summary>Diagnostics collected while running the batch</summary>
-        public VulkanVisionDiagnostics Diagnostics { get; }
     }
 }

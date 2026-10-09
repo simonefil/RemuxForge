@@ -1,0 +1,138 @@
+/* Wizard di configurazione Remux e Split: stili condivisi, radicati in .rf-remux-wizard. */
+.rf-remux-wizard { width:100%; flex:1; min-height:0; min-width:0; overflow:hidden; display:flex; flex-direction:column; }
+.rf-remux-wizard .rf-remux-wizard-body { display:grid; grid-template-columns: 13rem minmax(0,1fr) 18rem; grid-template-rows:minmax(0,1fr); flex:1; min-height:0; overflow:hidden; border:0; padding:0; margin:0; min-width:0; }
+.rf-remux-wizard .rf-remux-sections { padding:1rem; overflow:auto; border-right:1px solid var(--rz-base-700); }
+.rf-remux-wizard .rf-remux-content { padding:1rem; overflow:auto; min-width:0; display:flex; flex-direction:column; gap:1rem; }
+.rf-remux-wizard .rf-remux-help { padding:1rem; width:auto; min-width:0; overflow:auto; white-space:pre-line; overflow-wrap:anywhere; }
+/* Footer su una riga: Annulla, stato preset al centro, navigazione a destra. */
+.rf-remux-wizard .rf-remux-bottom { flex-shrink:0; border-top:1px solid var(--rz-base-700); padding:0.75rem 1rem; display:flex; flex-wrap:wrap; align-items:center; gap:0.75rem 1.5rem; }
+.rf-remux-wizard .rf-remux-preset-bar { display:flex; flex-wrap:wrap; align-items:center; gap:0.25rem 0.5rem; flex:1 1 20rem; min-width:0; }
+.rf-remux-wizard .rf-remux-nav { display:flex; gap:0.75rem; margin-left:auto; }
+/* Riepilogo: etichetta, valore su più righe, Modifica allineato a destra. */
+.rf-remux-wizard .rf-remux-summary { margin:0; display:flex; flex-direction:column; }
+.rf-remux-wizard .rf-remux-summary-row { display:grid; grid-template-columns:10rem minmax(0,1fr) auto; align-items:start; gap:0.25rem 1rem; padding:0.6rem 0; min-width:0; border-bottom:1px solid color-mix(in srgb, var(--rz-text-color) 12%, transparent); }
+.rf-remux-wizard .rf-remux-summary-row:last-child { border-bottom:0; }
+.rf-remux-wizard .rf-remux-summary-row dt { font-weight:600; }
+.rf-remux-wizard .rf-remux-summary-row dd { margin:0; min-width:0; white-space:pre-line; overflow-wrap:anywhere; color:var(--rz-text-secondary-color); }
+.rf-remux-wizard .rf-remux-summary-row > .rz-button { grid-column:3; }
+.rf-remux-wizard .rf-remux-field { display:grid; grid-template-columns:11rem minmax(0,1fr); gap:0.5rem 1rem; margin:0; align-items:center; min-width:0; }
+.rf-remux-wizard .rf-remux-field > .rz-label { padding:0; overflow-wrap:anywhere; }
+.rf-remux-wizard .rf-remux-field:has(.rz-radio-button-list),
+.rf-remux-wizard .rf-remux-field:has(.rf-mux-cards),
+.rf-remux-wizard .rf-remux-field:has(.rf-remux-crop),
+.rf-remux-wizard .rf-remux-field:has(.rz-dropdown-chips-wrapper) { align-items:start; }
+.rf-remux-wizard .rf-remux-field-controls { display:flex; flex-wrap:wrap; align-items:center; gap:0.5rem; min-width:0; }
+.rf-remux-wizard .rf-remux-field-controls > .rz-dropdown,
+.rf-remux-wizard .rf-remux-field-controls > .rz-multiselect,
+.rf-remux-wizard .rf-remux-field-controls > .rz-textbox { flex:1 1 12rem; min-width:0; max-width:100%; width:100%; }
+.rf-remux-wizard .rf-remux-field-controls > .rz-numeric { width:10rem; min-width:0; max-width:100%; }
+.rf-remux-wizard .rf-remux-field-controls > .rz-button { flex:0 0 auto; max-width:100%; }
+.rf-remux-wizard .rf-remux-error { color:var(--rz-danger); grid-column:2; margin:0; overflow-wrap:anywhere; }
+.rf-remux-wizard .rf-remux-note { color:var(--rz-text-secondary-color); grid-column:2; margin:0; overflow-wrap:anywhere; }
+.rf-remux-wizard .rf-remux-required { color:var(--rz-danger); }
+.rf-remux-wizard .rf-remux-unit { color:var(--rz-text-secondary-color); }
+.rf-remux-wizard .rf-remux-hint { color:var(--rz-text-secondary-color); margin:0; }
+.rf-remux-wizard .rf-remux-step-error { display:inline-flex; color:var(--rz-danger); grid-column:3; }
+.rf-remux-wizard .rf-sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+.rf-remux-wizard .rf-remux-details { margin-top:0.5rem; }
+.rf-remux-wizard .rf-remux-details summary { cursor:pointer; }
+.rf-remux-wizard .rf-remux-details pre { margin:0.5rem 0 0; white-space:pre-wrap; overflow-wrap:anywhere; font-size:0.8125rem; }
+.rf-remux-wizard .rf-remux-preset-state { margin:0; color:var(--rz-text-secondary-color); }
+.rf-remux-wizard .rf-remux-excluded { text-decoration:line-through; opacity:0.65; }
+.rf-remux-wizard .rf-remux-step { width:100%; height:auto; min-height:3.5rem; padding:0.75rem; text-align:left; text-transform:none; font-size:1rem; font-weight:400; letter-spacing:normal; }
+.rf-remux-wizard .rf-remux-step .rz-button-box { width:100%; justify-content:flex-start; }
+.rf-remux-wizard .rf-remux-step-content { display:grid; grid-template-columns:1.5rem minmax(0,1fr) auto; gap:0.5rem; width:100%; align-items:start; white-space:normal; line-height:1.4; }
+.rf-remux-wizard .rf-remux-step-number { white-space:nowrap; }
+/* One spacing owner per level: page, panel contents, then each field/action row. */
+.rf-remux-wizard .rf-remux-content > * { flex-shrink:0; min-width:0; margin-top:0; margin-bottom:0; }
+.rf-remux-wizard .rf-remux-content > .rz-button { align-self:flex-start; }
+.rf-remux-wizard .rf-remux-content .rz-panel { min-width:0; }
+.rf-remux-wizard .rf-remux-content .rz-panel-content { display:flex; flex-direction:column; gap:1rem; min-width:0; }
+.rf-remux-wizard .rf-remux-content .rz-panel-content > [class*="rz-text-"] { margin:0; overflow-wrap:anywhere; }
+.rf-remux-wizard .rf-remux-content .rz-panel-titlebar { margin-bottom:1rem; font-size:1.1rem; font-weight:600; }
+.rf-remux-wizard .rf-remux-content .rz-alert { white-space:pre-line; overflow-wrap:anywhere; }
+.rf-remux-wizard .rf-remux-content .rz-alert-content,
+.rf-remux-wizard .rf-remux-content .rz-alert-message { min-width:0; }
+.rf-remux-wizard .rf-remux-content .rz-data-grid-data td { white-space:normal; overflow-wrap:anywhere; }
+.rf-remux-wizard .rf-remux-content .rz-dropdown:has(.rz-chip),
+.rf-remux-wizard .rf-remux-content .rz-multiselect:has(.rz-chip) { height:auto; min-height:var(--rz-input-height, 2.25rem); }
+.rf-remux-wizard .rf-remux-content .rz-dropdown-chips-wrapper { height:auto; max-height:none; overflow:visible; flex-wrap:wrap; }
+.rf-remux-wizard .rf-remux-content .rz-chip { max-width:100%; }
+.rf-remux-wizard .rf-remux-content .rz-chip-text { white-space:normal; overflow-wrap:anywhere; }
+/* Chip compatti dentro le dropdown: con una riga di chip il campo resta alto quanto gli altri input. */
+.rf-remux-wizard .rf-remux-content .rz-dropdown .rz-chip { padding-block:0; min-height:0; height:auto; }
+.rf-remux-wizard .rf-remux-content .rz-dropdown .rz-chip-text { line-height:1; }
+.rf-remux-wizard .rf-remux-content .rz-dropdown .rz-chip .rz-button { height:auto; min-height:0; padding-block:0; line-height:1; }
+.rf-remux-wizard .rf-remux-content .rz-button-box,
+.rf-remux-wizard .rf-remux-bottom .rz-button-box { white-space:normal; }
+.rf-remux-wizard .rf-remux-content .rz-button-text,
+.rf-remux-wizard .rf-remux-bottom .rz-button-text { white-space:normal; overflow-wrap:anywhere; }
+.rf-remux-wizard .rf-remux-bottom [class*="rz-text-"] { min-width:0; margin:0; overflow-wrap:anywhere; }
+.rf-remux-wizard .rf-remux-issue-row { display:flex; flex-wrap:wrap; align-items:center; gap:0.5rem; }
+.rf-remux-wizard .rf-remux-issue-row + .rf-remux-issue-row { margin-top:0.75rem; }
+.rf-remux-wizard .rf-remux-issue-row > span { flex:1 1 16rem; min-width:0; overflow-wrap:anywhere; }
+.rf-remux-wizard .rf-remux-media-row { display:flex; flex-wrap:wrap; align-items:center; gap:0.5rem; min-width:0; }
+.rf-remux-wizard .rf-remux-media-label { font-size:0.875rem; color:var(--rz-text-secondary-color); }
+.rf-remux-wizard .rf-remux-media-caption { font-size:0.875rem; color:var(--rz-text-secondary-color); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1 1 10rem; }
+/* Elaborazione: Audio, Video e Sottotitoli come card distinte. */
+.rf-remux-wizard .rf-remux-processing-card { border:1px solid color-mix(in srgb, var(--rz-text-color) 14%, transparent); border-radius:var(--rz-border-radius, 4px); padding:1rem; background:color-mix(in srgb, var(--rz-text-color) 3%, transparent); }
+.rf-remux-wizard .rf-remux-crop { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:0.5rem; width:100%; }
+.rf-remux-wizard .rf-remux-crop > div { min-width:0; display:flex; flex-direction:column; gap:0.25rem; }
+.rf-remux-wizard .rf-remux-fill-flags { display:flex; flex-wrap:nowrap; align-items:center; gap:1rem; }
+.rf-remux-wizard .rf-remux-fill-flags > div { display:flex; align-items:center; gap:0.5rem; }
+.rf-remux-wizard .rf-remux-track-tables { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; }
+/* Audio: 23rem di colonne fisse + almeno 4rem di titolo flessibile; le larghezze in rem seguono la dimensione del testo. */
+.rf-remux-wizard .rf-remux-track-table { min-width:0; overflow-x:auto; }
+.rf-remux-wizard .rf-remux-track-table:focus-visible { outline:2px solid var(--rz-primary); outline-offset:2px; }
+.rf-remux-wizard .rf-remux-track-grid .rz-grid-table { width:100%; min-width:27rem; table-layout:fixed; }
+.rf-remux-wizard .rf-remux-track-grid .rz-data-grid-data td { padding:2px; height:36px; font-size:0.8125rem; white-space:nowrap; overflow-wrap:normal; }
+.rf-remux-wizard .rf-remux-track-grid .rz-cell-data { min-width:0; padding:0; font-size:inherit; line-height:1.25; }
+.rf-remux-wizard .rf-remux-track-grid th { padding:4px 2px; font-size:0.75rem; }
+.rf-remux-wizard .rf-remux-track-grid .rz-column-title,
+.rf-remux-wizard .rf-remux-track-grid .rz-column-title-content { white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:normal; font-size:inherit; }
+.rf-remux-wizard .rf-remux-track-grid th .rzi { font-size:16px; }
+.rf-remux-wizard .rf-remux-track-title { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rf-remux-wizard .rf-remux-track-flags { display:inline-flex; gap:2px; font-size:0.75rem; white-space:nowrap; }
+.rf-remux-wizard .rf-remux-track-coverage { white-space:nowrap; }
+.rf-remux-wizard .rf-remux-origin { display:inline-flex; align-items:center; gap:2px; padding:1px; border:1px solid var(--rz-base-500); border-radius:0.25rem; font-size:0.75rem; }
+.rf-remux-wizard .rf-remux-origin .rzi { font-size:12px; }
+.rf-remux-wizard .rf-remux-lang-row .rf-remux-origin { border-color:var(--rz-primary); color:var(--rz-primary); }
+.rf-remux-wizard .rf-remux-source-row .rf-remux-origin { border-color:var(--rz-secondary); }
+.rf-remux-wizard .rf-remux-track-grid .rf-remux-excluded td:not(:last-child) { text-decoration:line-through; }
+.rf-remux-wizard .rf-remux-track-grid .rf-remux-excluded { opacity:1; text-decoration:none; }
+.rf-remux-wizard .rf-remux-track-grid .rz-button { padding:0; width:28px; min-width:28px; height:28px; min-height:28px; }
+.rf-remux-wizard .rf-remux-track-grid .rz-button .rzi { font-size:18px; }
+.rf-remux-wizard .rf-remux-wizard-body:has(.rf-remux-track-tables) { grid-template-columns:13rem minmax(0,1fr) 12rem; }
+@media (max-width:1200px) {
+ .rf-remux-wizard .rf-remux-wizard-body:has(.rf-remux-track-tables) { grid-template-columns:11rem minmax(0,1fr); grid-template-rows:minmax(0,1fr) auto; }
+ .rf-remux-wizard .rf-remux-wizard-body:has(.rf-remux-track-tables) .rf-remux-help { grid-column:1/-1; max-height:9rem; border-top:1px solid var(--rz-base-700); }
+ .rf-remux-wizard .rf-remux-wizard-body:has(.rf-remux-track-tables) .rf-remux-content { padding-inline:8px; }
+}
+@media (max-width:1000px) {
+ .rf-remux-wizard .rf-remux-wizard-body { grid-template-columns:11rem minmax(0,1fr); grid-template-rows:minmax(0,1fr) auto; }
+ .rf-remux-wizard .rf-remux-help { grid-column:1/-1; max-height:9rem; border-top:1px solid var(--rz-base-700); }
+ .rf-remux-wizard .rf-remux-field { grid-template-columns:1fr; }
+ .rf-remux-wizard .rf-remux-field > .rz-label { padding-top:0; }
+ .rf-remux-wizard .rf-remux-error,
+.rf-remux-wizard .rf-remux-note { grid-column:1; }
+ .rf-remux-wizard .rf-remux-summary-row { grid-template-columns:minmax(0,1fr) auto; }
+ .rf-remux-wizard .rf-remux-summary-row dd { grid-column:1; }
+ .rf-remux-wizard .rf-remux-summary-row > .rz-button { grid-column:2; grid-row:1; }
+}
+@media (max-width:600px) {
+ .rf-remux-wizard .rf-remux-fill-flags { flex-wrap:wrap; }
+}
+/* Tipo di mux: tre card affiancate al posto dei radio button, colori dal tema Radzen. */
+.rf-remux-wizard .rf-mux-cards { flex:1 1 100%; display:grid; grid-template-columns:repeat(auto-fit, minmax(11rem, 1fr)); gap:0.75rem; min-width:0; }
+.rf-remux-wizard .rf-mux-card { position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:0.5rem; padding:1rem; min-width:0; text-align:left; font:inherit; color:var(--rz-text-color); background:transparent; border:1px solid color-mix(in srgb, var(--rz-text-color) 22%, transparent); border-radius:var(--rz-border-radius, 4px); cursor:pointer; transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+.rf-remux-wizard .rf-mux-card:hover:not(:disabled) { border-color:var(--rz-primary); transform:translateY(-2px); }
+.rf-remux-wizard .rf-mux-card:focus-visible { outline:2px solid var(--rz-primary); outline-offset:2px; }
+.rf-remux-wizard .rf-mux-card.selected { border-color:var(--rz-primary); box-shadow:0 0 0 1px var(--rz-primary), 0 4px 16px var(--rz-primary-lighter); }
+.rf-remux-wizard .rf-mux-card:disabled { cursor:default; opacity:0.6; }
+.rf-remux-wizard .rf-mux-card-icon { display:flex; align-items:center; justify-content:center; width:2.75rem; height:2.75rem; border-radius:50%; color:var(--rz-text-secondary-color); background:color-mix(in srgb, var(--rz-text-color) 10%, transparent); transition:color .15s ease, background-color .15s ease; }
+.rf-remux-wizard .rf-mux-card.selected .rf-mux-card-icon { color:var(--rz-on-primary); background:var(--rz-primary); }
+.rf-remux-wizard .rf-mux-card-icon .rzi { font-size:1.5rem; }
+.rf-remux-wizard .rf-mux-card-check { position:absolute; top:0.5rem; right:0.5rem; color:var(--rz-primary); opacity:0; transition:opacity .15s ease; }
+.rf-remux-wizard .rf-mux-card.selected .rf-mux-card-check { opacity:1; }
+.rf-remux-wizard .rf-mux-card-title { font-weight:600; overflow-wrap:anywhere; }
+.rf-remux-wizard .rf-mux-card-text { font-size:0.875rem; color:var(--rz-text-secondary-color); line-height:1.4; overflow-wrap:anywhere; }

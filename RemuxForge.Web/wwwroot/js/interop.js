@@ -20,29 +20,22 @@ export function captureKeyboard(dotNetRef) {
         var activeDialog = getActiveDialog();
 
         if (activeDialog) {
-            // I dialog Remux ospitati da Radzen hanno già trap ed Escape nativi.
-            // Mantieni soltanto Tab per l'autocomplete del picker riusato.
-            if (isRemuxNativeDialog(activeDialog)) {
+            // I dialog ospitati da Radzen hanno già trap, Escape e ritorno del focus nativi.
+            // Mantieni soltanto Tab per l'autocomplete del browser di file.
+            if (isRadzenDialog(activeDialog)) {
                 if (key === 'Tab' && activeElement?.classList.contains('path-bar-input')) {
                     e.preventDefault();
                 }
                 return;
             }
+            // Overlay modale proprietario della tastiera, come la dialog di precisione EditMap
             if (key === 'Tab') {
-                if (activeElement && activeElement.classList.contains('path-bar-input')) {
-                    e.preventDefault();
-                }
-                else {
-                    trapDialogFocus(e, activeDialog);
-                }
+                trapDialogFocus(e, activeDialog);
             }
             if (key === 'Escape') {
                 e.preventDefault();
-                if (activeDialog.hasAttribute('data-keyboard-owner')) {
-                    return;
-                }
-                if (!closeActiveDialog(activeDialog)) {
-                    dotNetRef.invokeMethodAsync('OnKeyDown', key, ctrl, shift, alt);
+                if (!activeDialog.hasAttribute('data-keyboard-owner')) {
+                    dotNetRef.invokeMethodAsync('OnKeyDown', key, ctrl, shift);
                 }
             }
             return;
@@ -58,7 +51,7 @@ export function captureKeyboard(dotNetRef) {
             }
             if (key === 'Escape' || isFKey || isMetadataClearShortcut) {
                 e.preventDefault();
-                dotNetRef.invokeMethodAsync('OnKeyDown', key, ctrl, shift, alt);
+                dotNetRef.invokeMethodAsync('OnKeyDown', key, ctrl, shift);
             }
             return;
         }
@@ -80,7 +73,7 @@ export function captureKeyboard(dotNetRef) {
             e.preventDefault();
         }
         // Invia a .NET
-        dotNetRef.invokeMethodAsync('OnKeyDown', key, ctrl, shift, alt);
+        dotNetRef.invokeMethodAsync('OnKeyDown', key, ctrl, shift);
     };
 
     document.addEventListener('keydown', window._rfKeyHandler, true);
@@ -131,14 +124,14 @@ function isEditableElement(element, tagName) {
     return element.isContentEditable === true;
 }
 
+// Anche le conferme Radzen (alertdialog) possiedono la tastiera: Invio e Spazio restano ai loro pulsanti.
 function getActiveDialog() {
-    var dialogs = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+    var dialogs = document.querySelectorAll('[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]');
     return dialogs.length > 0 ? dialogs[dialogs.length - 1] : null;
 }
 
-function isRemuxNativeDialog(element) {
-    var dialog = element?.closest('.rz-dialog');
-    return Boolean(dialog?.querySelector('.rf-remux-wizard, .rf-remux-native-content, .rf-remux-preset-dialog'));
+function isRadzenDialog(element) {
+    return Boolean(element?.closest('.rz-dialog'));
 }
 
 // OnAfterRender prende il focus senza il timer Radzen di 500 ms.
@@ -165,14 +158,16 @@ export function focusRemuxDialog(element) {
     };
 }
 
-function closeActiveDialog(dialog) {
-    var closeButton = dialog.querySelector('[data-dialog-close], .dialog-close-button');
-    if (closeButton) {
-        closeButton.click();
-        return true;
+// Porta il focus sul primo controllo del campo indicato, dopo che la sezione è stata renderizzata
+export function focusRemuxField(root, field) {
+    var container = root?.querySelector('[data-field="' + CSS.escape(field) + '"]');
+    if (!container) {
+        return false;
     }
-
-    return false;
+    container.scrollIntoView({ block: 'center' });
+    var target = container.querySelector('input:not([type=hidden]):not(:disabled), textarea, button:not(:disabled), [tabindex]:not([tabindex="-1"])');
+    (target || container).focus({ preventScroll: true });
+    return true;
 }
 
 function trapDialogFocus(event, dialog) {
@@ -208,7 +203,7 @@ function getFocusableElements(container) {
 function syncDialogFocus() {
     var stack = window._rfDialogFocusStack || [];
     var activeDialog = getActiveDialog();
-    if (isRemuxNativeDialog(activeDialog)) {
+    if (isRadzenDialog(activeDialog)) {
         return;
     }
     var activeIndex = stack.findIndex(function (entry) {

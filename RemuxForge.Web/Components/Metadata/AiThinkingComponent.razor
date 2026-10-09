@@ -1,0 +1,134 @@
+@implements IDisposable
+@using System.Threading.Tasks
+
+@* Attesa animata dell'AI: nucleo luminoso con anelli e orbite nei colori del tema Radzen, frase in corsivo sul passo in corso *@
+<div class="ai-thinking">
+    <div class="ai-thinking-core" aria-hidden="true">
+        <div class="ai-thinking-aurora"></div>
+        <div class="ai-thinking-ring"></div>
+        <div class="ai-thinking-ring-dashed"></div>
+        <div class="ai-thinking-orbit ai-thinking-orbit-1"><i></i></div>
+        <div class="ai-thinking-orbit ai-thinking-orbit-2"><i></i></div>
+        <div class="ai-thinking-orbit ai-thinking-orbit-3"><i></i></div>
+        <div class="ai-thinking-heart"><RadzenIcon Icon="auto_awesome" /></div>
+    </div>
+    <div class="ai-thinking-text" role="status" aria-live="polite">
+        @* La chiave ricrea l'elemento a ogni frase nuova, così l'animazione di ingresso riparte *@
+        <div @key="_shownPhrase" class="ai-thinking-phrase">@_shownPhrase</div>
+        @if (!string.IsNullOrEmpty(Detail))
+        {
+            <div class="ai-thinking-detail">@Detail</div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Tempo minimo di permanenza di una frase: passi del modello ravvicinati non devono sparire prima di essere letti
+    /// </summary>
+    private const int MIN_PHRASE_MS = 2500;
+
+    /// <summary>
+    /// Frase su cosa sta facendo l'AI
+    /// </summary>
+    [Parameter] public string Phrase { get; set; } = "";
+
+    /// <summary>
+    /// Riga secondaria, per esempio il contatore dei file letti
+    /// </summary>
+    [Parameter] public string Detail { get; set; } = "";
+
+    /// <summary>
+    /// Frase visibile
+    /// </summary>
+    private string _shownPhrase = "";
+
+    /// <summary>
+    /// Ultima frase ricevuta dal parametro
+    /// </summary>
+    private string _lastPhrase;
+
+    /// <summary>
+    /// Frasi in attesa del tempo minimo della frase visibile
+    /// </summary>
+    private readonly Queue<string> _pending = new Queue<string>();
+
+    /// <summary>
+    /// Istante in cui è comparsa la frase visibile
+    /// </summary>
+    private DateTime _shownAt = DateTime.MinValue;
+
+    /// <summary>
+    /// True mentre il ciclo di avanzamento della coda è attivo
+    /// </summary>
+    private bool _advancing;
+
+    /// <summary>
+    /// True dopo il dispose
+    /// </summary>
+    private bool _disposed;
+
+    /// <summary>
+    /// Accoda la frase nuova; la prima compare subito
+    /// </summary>
+    protected override void OnParametersSet()
+    {
+        if (string.Equals(Phrase, _lastPhrase, StringComparison.Ordinal))
+            return;
+
+        _lastPhrase = Phrase;
+        if (_shownPhrase.Length == 0)
+        {
+            Show(Phrase);
+            return;
+        }
+
+        _pending.Enqueue(Phrase);
+        if (!_advancing)
+            _ = AdvanceAsync();
+    }
+
+    /// <summary>
+    /// Mostra le frasi in coda rispettando il tempo minimo di ciascuna
+    /// </summary>
+    private async Task AdvanceAsync()
+    {
+        _advancing = true;
+        try
+        {
+            while (_pending.Count > 0 && !_disposed)
+            {
+                int waitMs = MIN_PHRASE_MS - (int)(DateTime.UtcNow - _shownAt).TotalMilliseconds;
+                if (waitMs > 0)
+                    await Task.Delay(waitMs);
+                if (_disposed)
+                    return;
+
+                Show(_pending.Dequeue());
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        finally
+        {
+            _advancing = false;
+        }
+    }
+
+    /// <summary>
+    /// Rende visibile una frase
+    /// </summary>
+    /// <param name="phrase">Frase</param>
+    private void Show(string phrase)
+    {
+        _shownPhrase = phrase ?? "";
+        _shownAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Ferma il ciclo della coda
+    /// </summary>
+    public void Dispose()
+    {
+        _disposed = true;
+    }
+}

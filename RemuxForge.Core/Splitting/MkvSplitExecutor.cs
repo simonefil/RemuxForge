@@ -108,7 +108,7 @@ namespace RemuxForge.Core.Splitting
                 // Caso semplice: lo start coincide già con un keyframe quindi posso fare byte copy diretta.
                 // I parameter set vanno comunque anteposti: il range parte dal keyframe, non dall'inizio
                 // del raw, e senza header di sequenza mkvmerge non riconosce nemmeno il tipo di file.
-                tailStart = FindTailStart(frameMap, presentationToDecode, epStartFrame, epEndFrame);
+                tailStart = FindTailStart(presentationToDecode, epStartFrame, epEndFrame);
                 restFile = Path.Combine(tempDir, "rest.bs");
                 totalBytes = ExtractPresentationRange(rawFile, frameMap, presentationToDecode, epStartFrame, tailStart - 1, restFile, tempDir);
                 ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.exec.copyFrames", tailStart - epStartFrame, (totalBytes / 1048576.0).ToString("F1", CultureInfo.InvariantCulture)));
@@ -146,7 +146,7 @@ namespace RemuxForge.Core.Splitting
                 // coda ricodificata quando gli ultimi fotogrammi referenziano un'ancora oltre il taglio
                 headCount = kfAfter - epStartFrame;
                 restStart = kfAfter;
-                tailStart = FindTailStart(frameMap, presentationToDecode, restStart, epEndFrame);
+                tailStart = FindTailStart(presentationToDecode, restStart, epEndFrame);
                 restCount = tailStart - restStart;
                 if (restCount < 1)
                 {
@@ -376,12 +376,11 @@ namespace RemuxForge.Core.Splitting
         /// file con il numero giusto di packet ma non decodificabile in fondo. Sono riconoscibili perché
         /// nel raw stanno dopo il primo fotogramma che il segmento non contiene.
         /// </summary>
-        /// <param name="frameMap">Mappa dei packet del raw.</param>
         /// <param name="presentationToDecode">Indice nel raw di ogni frame, per presentazione.</param>
         /// <param name="firstPresentation">Primo fotogramma copiabile.</param>
         /// <param name="lastPresentation">Ultimo fotogramma del segmento.</param>
         /// <returns>Primo fotogramma della coda, oppure lastPresentation + 1 se la coda non serve.</returns>
-        private static int FindTailStart(List<MkvSplitFrameInfo> frameMap, int[] presentationToDecode, int firstPresentation, int lastPresentation)
+        private static int FindTailStart(int[] presentationToDecode, int firstPresentation, int lastPresentation)
         {
             int firstOutsideDecode;
             int limit;

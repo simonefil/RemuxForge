@@ -116,7 +116,7 @@ namespace RemuxForge.Core.Analysis.Edit
             this._blackRunRules = new BlackRunRules();
             this._audioBoundary = new AudioBlackBoundary();
             this._exclusiveRules = new ExclusiveFrameRules();
-            this._coverageVerifier = new CoverageVerifier(hashBackend);
+            this._coverageVerifier = new CoverageVerifier();
         }
 
         #endregion

@@ -13,18 +13,24 @@
                 }
             </div>
         }
+        @if (Actions != null)
+        {
+            <div class="media-timeline-actions" role="group" aria-label="@ActionsLabel">@Actions</div>
+        }
         @foreach (AudioLane lane in AudioLanes)
         {
-            <label class="media-audio-label" for="@lane.ElementId">@lane.Label</label>
-            <select id="@lane.ElementId" class="form-input media-audio-control" value="@lane.SelectedTrackId" @onchange="lane.OnTrackChanged" disabled="@(lane.Tracks.Count == 0)">
-                @foreach (TrackInfo track in lane.Tracks)
-                {
-                    <option value="@track.Id">@Utils.FormatTrackCompact(track)</option>
-                }
-            </select>
+            <RadzenLabel class="media-audio-label" Text="@lane.Label" Component="@lane.ElementId" />
+            <RadzenDropDown TValue="int?" Name="@lane.ElementId" class="media-audio-control" Data="@lane.Tracks" ValueProperty="Id" Value="@lane.SelectedTrackId" Change="@(value => ChangeTrackAsync(lane, value))" Disabled="@(lane.Tracks.Count == 0)">
+                <Template Context="track">@GetTrackLabel(track)</Template>
+                <ValueTemplate Context="track">@GetTrackLabel(track)</ValueTemplate>
+            </RadzenDropDown>
         }
-        <RadzenButton class="media-audio-mode-button" Text="@WaveformText" Size="ButtonSize.Small" Variant="@GetModeVariant(AUDIO_MODE_WAVEFORM)" ButtonStyle="@GetModeStyle(AUDIO_MODE_WAVEFORM)" Click="@(() => ChangeModeAsync(AUDIO_MODE_WAVEFORM))" />
-        <RadzenButton class="media-audio-mode-button" Text="@SpectrogramText" Size="ButtonSize.Small" Variant="@GetModeVariant(AUDIO_MODE_SPECTROGRAM)" ButtonStyle="@GetModeStyle(AUDIO_MODE_SPECTROGRAM)" Click="@(() => ChangeModeAsync(AUDIO_MODE_SPECTROGRAM))" />
+        <RadzenSelectBar TValue="string" class="media-audio-mode" Size="ButtonSize.Small" Value="@AudioMode" Change="ChangeModeAsync" AriaLabel="@(WaveformText + " / " + SpectrogramText)">
+            <Items>
+                <RadzenSelectBarItem Text="@WaveformText" Value="@AUDIO_MODE_WAVEFORM" />
+                <RadzenSelectBarItem Text="@SpectrogramText" Value="@AUDIO_MODE_SPECTROGRAM" />
+            </Items>
+        </RadzenSelectBar>
         <span class="media-waveform-height-label">@WaveformHeightText</span>
         <RadzenSlider TValue="double" Value="@WaveformGain" Change="ChangeGainAsync" Min="1" Max="12" Step="0.25" Disabled="@IsSpectrogram" aria-label="@WaveformHeightText" />
         <output>@WaveformGain.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)×</output>
@@ -96,6 +102,12 @@
     /// <summary>Invocata quando l'utente sceglie un altro strumento.</summary>
     [Parameter] public EventCallback<string> ActiveToolChanged { get; set; }
 
+    /// <summary>Pulsanti della pagina mostrati all'inizio della barra, dopo gli strumenti; null per nessuno.</summary>
+    [Parameter] public RenderFragment Actions { get; set; }
+
+    /// <summary>Etichetta del gruppo di pulsanti della pagina, per la lettura assistita.</summary>
+    [Parameter] public string ActionsLabel { get; set; } = string.Empty;
+
     /// <summary>Testo alternativo dell'area scorrevole.</summary>
     [Parameter] public string HostAlternative { get; set; } = string.Empty;
 
@@ -139,16 +151,6 @@
 
     #region Metodi privati
 
-    private ButtonStyle GetModeStyle(string mode)
-    {
-        return string.Equals(this.AudioMode, mode, StringComparison.Ordinal) ? ButtonStyle.Primary : ButtonStyle.Base;
-    }
-
-    private Variant GetModeVariant(string mode)
-    {
-        return string.Equals(this.AudioMode, mode, StringComparison.Ordinal) ? Variant.Filled : Variant.Outlined;
-    }
-
     private ButtonStyle GetToolStyle(string tool)
     {
         return string.Equals(this.ActiveTool, tool, StringComparison.Ordinal) ? ButtonStyle.Primary : ButtonStyle.Base;
@@ -161,7 +163,7 @@
 
     private string GetToolbarColumns()
     {
-        return "grid-template-columns: " + (this.Tools.Count > 0 ? "max-content " : "") + "repeat(" + this.AudioLanes.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + ", max-content minmax(6.5rem, 1fr)) repeat(2, minmax(6.5rem, 1fr)) max-content minmax(6rem, 1fr) max-content;";
+        return "grid-template-columns: " + (this.Tools.Count > 0 ? "max-content " : "") + (this.Actions != null ? "max-content " : "") + "repeat(" + this.AudioLanes.Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + ", max-content minmax(6.5rem, 1fr)) minmax(13rem, 2fr) max-content minmax(6rem, 1fr) max-content;";
     }
 
     private async Task ChangeModeAsync(string mode)
@@ -176,6 +178,17 @@
         if (string.Equals(this.ActiveTool, tool, StringComparison.Ordinal))
             return;
         await this.ActiveToolChanged.InvokeAsync(tool);
+    }
+
+    private static string GetTrackLabel(object track)
+    {
+        return track is TrackInfo info ? Utils.FormatTrackCompact(info) : "";
+    }
+
+    private async Task ChangeTrackAsync(AudioLane lane, object value)
+    {
+        if (value is int trackId)
+            await lane.OnTrackChanged.InvokeAsync(trackId);
     }
 
     private async Task ChangeGainAsync(double value)
@@ -233,7 +246,7 @@
         public int? SelectedTrackId { get; set; }
 
         /// <summary>Callback invocata quando cambia la traccia</summary>
-        public EventCallback<ChangeEventArgs> OnTrackChanged { get; set; }
+        public EventCallback<int> OnTrackChanged { get; set; }
     }
 
     /// <summary>

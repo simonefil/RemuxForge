@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using RemuxForge.Core.Localization;
 
 namespace RemuxForge.Core.Subtitles
 {
@@ -107,7 +108,7 @@ namespace RemuxForge.Core.Subtitles
                 if (count == 0 || start < 0 || end < 0 || text != count - 1 || fields.Length != count
                     || !AssSubtitleTimelineRewriter.TryParseTimestamp(fields[start].Trim(), out long startMs)
                     || !AssSubtitleTimelineRewriter.TryParseTimestamp(fields[end].Trim(), out long endMs))
-                    throw new InvalidDataException("Invalid ASS Dialogue at line " + (index + 1));
+                    throw new InvalidDataException(AppText.F("remux.subtitles.assInvalidDialogue", index + 1));
                 result.Add(new AssSubtitleDialogue(index, fields, start, end,
                     AssSubtitleUtils.ResolveFieldIndex(format, "Effect"), startMs, endMs));
             }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Subtitles;
 using static RemuxForge.Core.Subtitles.PgsSubtitleUtils;
@@ -41,7 +42,7 @@ namespace RemuxForge.Core.Splitting
             MkvSplitSubtitleEvent active = null;
             for (int offset = 0; offset < bytes.Length;)
             {
-                Require(TryGetPacketLength(bytes, offset, out int packetLength), track, "invalid SUP packet at " + offset);
+                Require(TryGetPacketLength(bytes, offset, out int packetLength), track, AppText.F("split.montage.pgsInvalidPacket", offset));
                 int length = packetLength - SUP_PACKET_HEADER_SIZE;
                 byte type = bytes[offset + 10];
                 byte[] data = bytes.AsSpan(offset + SUP_PACKET_HEADER_SIZE, length).ToArray();
@@ -49,8 +50,8 @@ namespace RemuxForge.Core.Splitting
                 offset += packetLength;
                 if (type == SEGMENT_PRESENTATION)
                 {
-                    Require(pcs == null && length >= 11, track, "missing END or short PCS");
-                    Require(pts >= lastTimestamp, track, "wrapped/non-monotonic PTS");
+                    Require(pcs == null && length >= 11, track, AppText.T("split.montage.pgsMissingEnd"));
+                    Require(pts >= lastTimestamp, track, AppText.T("split.montage.pgsNonMonotonicPts"));
                     pcs = data;
                     timestamp = pts;
                     lastTimestamp = pts;
@@ -65,7 +66,7 @@ namespace RemuxForge.Core.Splitting
                 }
                 else if (type == SEGMENT_PALETTE)
                 {
-                    Require(pcs != null && length >= 2 && (length - 2) % 5 == 0, track, "invalid palette");
+                    Require(pcs != null && length >= 2 && (length - 2) % 5 == 0, track, AppText.T("split.montage.pgsInvalidPalette"));
                     if (!palettes.TryGetValue(data[0], out Dictionary<byte, byte[]> entries))
                         palettes[data[0]] = entries = new Dictionary<byte, byte[]>();
                     paletteVersions[data[0]] = data[1];
@@ -74,18 +75,18 @@ namespace RemuxForge.Core.Splitting
                 }
                 else if (type == SEGMENT_OBJECT)
                 {
-                    Require(pcs != null && length >= 4, track, "invalid object fragment");
+                    Require(pcs != null && length >= 4, track, AppText.T("split.montage.pgsInvalidObject"));
                     // Assembly/validazione ODS affidati al collector condiviso alla chiusura del display-set.
                 }
                 else if (type == SEGMENT_WINDOW)
                 {
-                    Require(pcs != null && length >= 1 && length == 1 + data[0] * 9, track, "invalid window segment");
+                    Require(pcs != null && length >= 1 && length == 1 + data[0] * 9, track, AppText.T("split.montage.pgsInvalidWindow"));
                     for (int position = 1; position < length; position += 9)
                         windows[data[position]] = data.AsSpan(position, 9).ToArray();
                 }
                 else if (type == SEGMENT_END)
                 {
-                    Require(pcs != null && length == 0, track, "END without PCS");
+                    Require(pcs != null && length == 0, track, AppText.T("split.montage.pgsEndWithoutPcs"));
                     PgsSubtitleCanvasRewriteReport report = new PgsSubtitleCanvasRewriteReport();
                     Require(CollectDisplaySetObjectDefinitions(bytes, setStart, offset, report, out Dictionary<int, PgsObjectDefinition> definitions), track, report.ErrorMessage);
                     foreach (PgsObjectDefinition definition in definitions.Values)
@@ -106,7 +107,7 @@ namespace RemuxForge.Core.Splitting
                     {
                         if (windows.Count > 0)
                         {
-                            Require(windows.Count <= byte.MaxValue, track, "too many windows");
+                            Require(windows.Count <= byte.MaxValue, track, AppText.T("split.montage.pgsTooManyWindows"));
                             List<byte> windowData = new List<byte> { (byte)windows.Count };
                             foreach (byte[] window in windows.Values)
                                 windowData.AddRange(window);
@@ -116,7 +117,7 @@ namespace RemuxForge.Core.Splitting
                                 Data = windowData.ToArray()
                             });
                         }
-                        Require(palettes.TryGetValue(pcs[9], out Dictionary<byte, byte[]> entries), track, "missing palette " + pcs[9]);
+                        Require(palettes.TryGetValue(pcs[9], out Dictionary<byte, byte[]> entries), track, AppText.F("split.montage.pgsMissingPalette", pcs[9]));
                         List<byte> palette = new List<byte> { pcs[9], paletteVersions[pcs[9]] };
                         foreach (byte[] entry in entries.Values)
                             palette.AddRange(entry);
@@ -129,11 +130,11 @@ namespace RemuxForge.Core.Splitting
                         HashSet<int> emitted = new HashSet<int>();
                         for (int index = 0; index < count; index++)
                         {
-                            Require(position + 8 <= pcs.Length, track, "truncated object reference");
+                            Require(position + 8 <= pcs.Length, track, AppText.T("split.montage.pgsTruncatedObjectRef"));
                             int id = ReadUInt16BigEndian(pcs, position);
                             bool crop = (pcs[position + 3] & 0x80) != 0;
                             position += crop ? 16 : 8;
-                            Require(position <= pcs.Length && objects.TryGetValue(id, out _), track, "missing object " + id);
+                            Require(position <= pcs.Length && objects.TryGetValue(id, out _), track, AppText.F("split.montage.pgsMissingObject", id));
                             if (emitted.Add(id))
                             {
                                 Require(BuildObjectDefinitionPackets(objects[id], out List<byte[]> packets, out string error), track, error);
@@ -147,7 +148,7 @@ namespace RemuxForge.Core.Splitting
                                 }
                             }
                         }
-                        Require(position == pcs.Length, track, "non-standard PCS layout");
+                        Require(position == pcs.Length, track, AppText.T("split.montage.pgsNonStandardPcs"));
                         active = new MkvSplitSubtitleEvent
                         {
                             StartSeconds = timestamp,
@@ -158,24 +159,24 @@ namespace RemuxForge.Core.Splitting
                     }
                     else
                     {
-                        Require(pcs.Length == 11, track, "non-standard clear PCS layout");
+                        Require(pcs.Length == 11, track, AppText.T("split.montage.pgsNonStandardClearPcs"));
                     }
                     pcs = null;
                     setStart = offset;
                 }
                 else
                 {
-                    Require(false, track, "unknown segment " + type);
+                    Require(false, track, AppText.F("split.montage.pgsUnknownSegment", type));
                 }
             }
-            Require(pcs == null, track, "unfinished display-set");
+            Require(pcs == null, track, AppText.T("split.montage.pgsUnfinishedDisplaySet"));
             if (active != null)
             {
-                Require(double.IsFinite(videoEnd) && videoEnd >= active.StartSeconds, track, "missing clear and video end");
+                Require(double.IsFinite(videoEnd) && videoEnd >= active.StartSeconds, track, AppText.T("split.montage.pgsMissingClear"));
                 active.EndSeconds = videoEnd;
             }
             result.Events.RemoveAll(item => item.EndSeconds == item.StartSeconds);
-            Require(result.Events.All(item => double.IsFinite(item.EndSeconds) && item.EndSeconds > item.StartSeconds), track, "invalid display interval");
+            Require(result.Events.All(item => double.IsFinite(item.EndSeconds) && item.EndSeconds > item.StartSeconds), track, AppText.T("split.montage.pgsInvalidInterval"));
             return result;
         }
 
@@ -225,7 +226,7 @@ namespace RemuxForge.Core.Splitting
             if (!any)
             {
                 if (track.BitmapPresentationHeader == null)
-                    throw new InvalidDataException("PGS has no presentation header");
+                    throw new InvalidDataException(AppText.T("split.montage.pgsNoPresentationHeader"));
                 Clear(stream, track.BitmapPresentationHeader, 0, composition);
             }
         }
@@ -243,7 +244,7 @@ namespace RemuxForge.Core.Splitting
         private static void Require(bool valid, TrackInfo track, string detail)
         {
             if (!valid)
-                throw new InvalidDataException("PGS track " + track.Id + ": " + detail);
+                throw new InvalidDataException(AppText.F("split.montage.pgsTrackError", track.Id, detail));
         }
 
         /// <summary>
@@ -257,7 +258,7 @@ namespace RemuxForge.Core.Splitting
         {
             double ticks = Math.Round(seconds * 90000, MidpointRounding.AwayFromZero);
             if (!double.IsFinite(ticks) || ticks < 0 || ticks > uint.MaxValue || data.Length > ushort.MaxValue)
-                throw new InvalidDataException("PGS timestamp/segment exceeds SUP limits");
+                throw new InvalidDataException(AppText.T("split.montage.pgsSupLimits"));
             uint value = (uint)ticks;
             byte[] header = new byte[SUP_PACKET_HEADER_SIZE];
             header[0] = (byte)'P';

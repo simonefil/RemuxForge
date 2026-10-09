@@ -33,124 +33,100 @@
 
         <div class="renamer-config">
             <div class="renamer-method-selector">
-                <span>@AppText.T("web.rename.methodLabel")</span>
-                <select aria-label="@AppText.T("web.rename.methodLabel")" @bind="this._selectedMethodType" @bind:after="this.HandleMethodTypeChanged">
-                    <option value="@RenameMethodType.Replace">@GetRenameMethodTypeLabel(RenameMethodType.Replace)</option>
-                    <option value="@RenameMethodType.Add">@GetRenameMethodTypeLabel(RenameMethodType.Add)</option>
-                    <option value="@RenameMethodType.Remove">@GetRenameMethodTypeLabel(RenameMethodType.Remove)</option>
-                    <option value="@RenameMethodType.NewCase">@GetRenameMethodTypeLabel(RenameMethodType.NewCase)</option>
-                    <option value="@RenameMethodType.NewName">@GetRenameMethodTypeLabel(RenameMethodType.NewName)</option>
-                    <option value="@RenameMethodType.Trim">@GetRenameMethodTypeLabel(RenameMethodType.Trim)</option>
-                </select>
+                <RadzenLabel Text="@AppText.T("web.rename.methodLabel")" Component="RenamerMethodType" />
+                <RadzenDropDown TValue="RenameMethodType" Name="RenamerMethodType" Data="@MethodTypes" @bind-Value="this._selectedMethodType" @bind-Value:after="this.HandleMethodTypeChanged">
+                    <Template Context="type">@GetRenameMethodTypeLabel((RenameMethodType)type)</Template>
+                    <ValueTemplate Context="type">@GetRenameMethodTypeLabel((RenameMethodType)type)</ValueTemplate>
+                </RadzenDropDown>
                 <RadzenButton class="renamer-add-btn" Text="@AppText.T("web.rename.add")" Icon="add" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@this.HandleAddMethod" />
             </div>
 
             <div class="renamer-params">
                 @if (!string.IsNullOrEmpty(this._paramsError))
                 {
-                    <div class="renamer-params-error">@this._paramsError</div>
+                    <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="renamer-params-error">@this._paramsError</RadzenAlert>
                 }
 
                 @if (this._selectedMethodType == RenameMethodType.Replace)
                 {
-                    <label>
-                        <span>@AppText.T("web.rename.searchLabel")</span>
-                        <input type="text" @bind="this._editingMethod.SearchText" @bind:event="oninput" @bind:after="this.RecalculatePreview" />
-                    </label>
-                    <label>
-                        <span>@AppText.T("web.rename.replaceLabel")</span>
-                        <input type="text" @bind="this._editingMethod.ReplaceText" @bind:event="oninput" @bind:after="this.RecalculatePreview" />
-                    </label>
-                    <label class="renamer-checkbox-row">
-                        <RadzenSwitch TValue="bool" @bind-Value="@this._editingMethod.CaseSensitive" Change="@(_ => this.RecalculatePreview())" />
-                        <span>@AppText.T("web.rename.caseSensitive")</span>
-                    </label>
-                    <label class="renamer-checkbox-row">
-                        <RadzenSwitch TValue="bool" @bind-Value="@this._editingMethod.UseRegex" Change="@(_ => this.RecalculatePreview())" />
-                        <span>@AppText.T("web.rename.useRegex")</span>
-                    </label>
+                    <div class="renamer-param-row">
+                        <RadzenLabel Text="@AppText.T("web.rename.searchLabel")" Component="RenamerSearchText" />
+                        <RadzenTextBox Name="RenamerSearchText" @bind-Value="this._editingMethod.SearchText" @bind-Value:after="this.RecalculatePreview" Immediate="true" />
+                    </div>
+                    <div class="renamer-param-row">
+                        <RadzenLabel Text="@AppText.T("web.rename.replaceLabel")" Component="RenamerReplaceText" />
+                        <RadzenTextBox Name="RenamerReplaceText" @bind-Value="this._editingMethod.ReplaceText" @bind-Value:after="this.RecalculatePreview" Immediate="true" />
+                    </div>
+                    <LabeledSwitchComponent CssClass="renamer-checkbox-row" Label="@AppText.T("web.rename.caseSensitive")" Value="@this._editingMethod.CaseSensitive" ValueChanged="@((bool value) => { this._editingMethod.CaseSensitive = value; this.RecalculatePreview(); })" />
+                    <LabeledSwitchComponent CssClass="renamer-checkbox-row" Label="@AppText.T("web.rename.useRegex")" Value="@this._editingMethod.UseRegex" ValueChanged="@((bool value) => { this._editingMethod.UseRegex = value; this.RecalculatePreview(); })" />
                 }
                 else if (this._selectedMethodType == RenameMethodType.Add)
                 {
-                    <label>
-                        <span>@AppText.T("web.rename.textLabel")</span>
-                        <input type="text" @bind="this._editingMethod.InsertText" @bind:event="oninput" @bind:after="this.RecalculatePreview" />
-                    </label>
-                    <label>
-                        <span>@AppText.T("web.rename.positionLabel")</span>
-                        <input type="number" @bind="this._editingMethod.InsertPosition" @bind:after="this.RecalculatePreview" />
-                    </label>
-                    <label class="renamer-checkbox-row">
-                        <RadzenSwitch TValue="bool" @bind-Value="@this._editingMethod.FromEnd" Change="@(_ => this.RecalculatePreview())" />
-                        <span>@AppText.T("web.rename.fromEnd")</span>
-                    </label>
+                    <div class="renamer-param-row">
+                        <RadzenLabel Text="@AppText.T("web.rename.textLabel")" Component="RenamerInsertText" />
+                        <RadzenTextBox Name="RenamerInsertText" @bind-Value="this._editingMethod.InsertText" @bind-Value:after="this.RecalculatePreview" Immediate="true" />
+                    </div>
+                    <div class="renamer-param-row">
+                        <RadzenLabel Text="@AppText.T("web.rename.positionLabel")" Component="RenamerInsertPosition" />
+                        <RadzenNumeric TValue="int" Name="RenamerInsertPosition" @bind-Value="this._editingMethod.InsertPosition" @bind-Value:after="this.RecalculatePreview" />
+                    </div>
+                    <LabeledSwitchComponent CssClass="renamer-checkbox-row" Label="@AppText.T("web.rename.fromEnd")" Value="@this._editingMethod.FromEnd" ValueChanged="@((bool value) => { this._editingMethod.FromEnd = value; this.RecalculatePreview(); })" />
                 }
                 else if (this._selectedMethodType == RenameMethodType.Remove)
                 {
-                    <label>
-                        <span>@AppText.T("web.rename.modeLabel")</span>
-                        <select @bind="this._editingMethod.RemoveByPattern" @bind:after="this.RecalculatePreview">
-                            <option value="false">@AppText.T("web.rename.byPosition")</option>
-                            <option value="true">@AppText.T("web.rename.byPattern")</option>
-                        </select>
-                    </label>
+                    <div class="renamer-param-row">
+                        <RadzenLabel Text="@AppText.T("web.rename.modeLabel")" Component="RenamerRemoveByPattern" />
+                        <RadzenDropDown TValue="bool" Name="RenamerRemoveByPattern" Data="@RemoveModes" @bind-Value="this._editingMethod.RemoveByPattern" @bind-Value:after="this.RecalculatePreview">
+                            <Template Context="value">@GetRemoveModeLabel((bool)value)</Template>
+                            <ValueTemplate Context="value">@GetRemoveModeLabel((bool)value)</ValueTemplate>
+                        </RadzenDropDown>
+                    </div>
 
                     @if (!this._editingMethod.RemoveByPattern)
                     {
-                        <label>
-                            <span>@AppText.T("web.rename.startLabel")</span>
-                            <input type="number" @bind="this._editingMethod.RemoveStartIndex" @bind:after="this.RecalculatePreview" />
-                        </label>
-                        <label>
-                            <span>@AppText.T("web.rename.countLabel")</span>
-                            <input type="number" @bind="this._editingMethod.RemoveCount" @bind:after="this.RecalculatePreview" />
-                        </label>
-                        <label class="renamer-checkbox-row">
-                            <RadzenSwitch TValue="bool" @bind-Value="@this._editingMethod.RemoveFromEnd" Change="@(_ => this.RecalculatePreview())" />
-                            <span>@AppText.T("web.rename.fromEnd")</span>
-                        </label>
+                        <div class="renamer-param-row">
+                            <RadzenLabel Text="@AppText.T("web.rename.startLabel")" Component="RenamerRemoveStartIndex" />
+                            <RadzenNumeric TValue="int" Name="RenamerRemoveStartIndex" @bind-Value="this._editingMethod.RemoveStartIndex" @bind-Value:after="this.RecalculatePreview" />
+                        </div>
+                        <div class="renamer-param-row">
+                            <RadzenLabel Text="@AppText.T("web.rename.countLabel")" Component="RenamerRemoveCount" />
+                            <RadzenNumeric TValue="int" Name="RenamerRemoveCount" @bind-Value="this._editingMethod.RemoveCount" @bind-Value:after="this.RecalculatePreview" />
+                        </div>
+                        <LabeledSwitchComponent CssClass="renamer-checkbox-row" Label="@AppText.T("web.rename.fromEnd")" Value="@this._editingMethod.RemoveFromEnd" ValueChanged="@((bool value) => { this._editingMethod.RemoveFromEnd = value; this.RecalculatePreview(); })" />
                     }
                     else
                     {
-                        <label>
-                            <span>@AppText.T("web.rename.patternLabel")</span>
-                            <input type="text" @bind="this._editingMethod.RemovePattern" @bind:event="oninput" @bind:after="this.RecalculatePreview" />
-                        </label>
-                        <label class="renamer-checkbox-row">
-                            <RadzenSwitch TValue="bool" @bind-Value="@this._editingMethod.RemovePatternCaseSensitive" Change="@(_ => this.RecalculatePreview())" />
-                            <span>@AppText.T("web.rename.caseSensitive")</span>
-                        </label>
-                        <label class="renamer-checkbox-row">
-                            <RadzenSwitch TValue="bool" @bind-Value="@this._editingMethod.RemovePatternUseRegex" Change="@(_ => this.RecalculatePreview())" />
-                            <span>@AppText.T("web.rename.useRegex")</span>
-                        </label>
+                        <div class="renamer-param-row">
+                            <RadzenLabel Text="@AppText.T("web.rename.patternLabel")" Component="RenamerRemovePattern" />
+                            <RadzenTextBox Name="RenamerRemovePattern" @bind-Value="this._editingMethod.RemovePattern" @bind-Value:after="this.RecalculatePreview" Immediate="true" />
+                        </div>
+                        <LabeledSwitchComponent CssClass="renamer-checkbox-row" Label="@AppText.T("web.rename.caseSensitive")" Value="@this._editingMethod.RemovePatternCaseSensitive" ValueChanged="@((bool value) => { this._editingMethod.RemovePatternCaseSensitive = value; this.RecalculatePreview(); })" />
+                        <LabeledSwitchComponent CssClass="renamer-checkbox-row" Label="@AppText.T("web.rename.useRegex")" Value="@this._editingMethod.RemovePatternUseRegex" ValueChanged="@((bool value) => { this._editingMethod.RemovePatternUseRegex = value; this.RecalculatePreview(); })" />
                     }
                 }
                 else if (this._selectedMethodType == RenameMethodType.NewCase)
                 {
-                    <label>
-                        <span>@AppText.T("web.rename.modeLabel")</span>
-                        <select @bind="this._editingMethod.CaseMode" @bind:after="this.RecalculatePreview">
-                            <option value="0">@AppText.T("web.rename.case.lowercase")</option>
-                            <option value="1">@AppText.T("web.rename.case.uppercase")</option>
-                            <option value="2">@AppText.T("web.rename.case.title")</option>
-                        </select>
-                    </label>
-                    <label>
-                        <span>@AppText.T("web.rename.scopeLabel")</span>
-                        <select @bind="this._editingMethod.CaseScope" @bind:after="this.RecalculatePreview">
-                            <option value="0">@AppText.T("web.rename.scope.nameOnly")</option>
-                            <option value="1">@AppText.T("web.rename.scope.extensionOnly")</option>
-                            <option value="2">@AppText.T("web.rename.scope.fullName")</option>
-                        </select>
-                    </label>
+                    <div class="renamer-param-row">
+                        <RadzenLabel Text="@AppText.T("web.rename.modeLabel")" Component="RenamerCaseMode" />
+                        <RadzenDropDown TValue="int" Name="RenamerCaseMode" Data="@CaseModeOptions" @bind-Value="this._editingMethod.CaseMode" @bind-Value:after="this.RecalculatePreview">
+                            <Template Context="value">@GetCaseModeLabel((int)value)</Template>
+                            <ValueTemplate Context="value">@GetCaseModeLabel((int)value)</ValueTemplate>
+                        </RadzenDropDown>
+                    </div>
+                    <div class="renamer-param-row">
+                        <RadzenLabel Text="@AppText.T("web.rename.scopeLabel")" Component="RenamerCaseScope" />
+                        <RadzenDropDown TValue="int" Name="RenamerCaseScope" Data="@CaseScopeOptions" @bind-Value="this._editingMethod.CaseScope" @bind-Value:after="this.RecalculatePreview">
+                            <Template Context="value">@GetCaseScopeLabel((int)value)</Template>
+                            <ValueTemplate Context="value">@GetCaseScopeLabel((int)value)</ValueTemplate>
+                        </RadzenDropDown>
+                    </div>
                 }
                 else if (this._selectedMethodType == RenameMethodType.NewName)
                 {
-                    <label>
-                        <span>@AppText.T("web.rename.patternLabel")</span>
-                        <input type="text" @bind="this._editingMethod.NamePattern" @bind:event="oninput" @bind:after="this.RecalculatePreview" />
-                    </label>
+                    <div class="renamer-param-row">
+                        <RadzenLabel Text="@AppText.T("web.rename.patternLabel")" Component="RenamerNamePattern" />
+                        <RadzenTextBox Name="RenamerNamePattern" @bind-Value="this._editingMethod.NamePattern" @bind-Value:after="this.RecalculatePreview" Immediate="true" />
+                    </div>
                     <div class="renamer-tag-help">
                         @AppText.T("web.rename.tagsLabel") &lt;Name&gt; &lt;Ext&gt; &lt;Folder&gt;
                         &lt;Inc:start:step:pad&gt;
@@ -160,26 +136,24 @@
                 }
                 else if (this._selectedMethodType == RenameMethodType.Trim)
                 {
-                    <label>
-                        <span>@AppText.T("web.rename.charsLabel")</span>
-                        <input type="text" @bind="this._editingMethod.TrimCharacters" @bind:event="oninput" @bind:after="this.RecalculatePreview" />
-                    </label>
-                    <label>
-                        <span>@AppText.T("web.rename.locationLabel")</span>
-                        <select @bind="this._editingMethod.TrimLocation" @bind:after="this.RecalculatePreview">
-                            <option value="0">@AppText.T("web.rename.location.start")</option>
-                            <option value="1">@AppText.T("web.rename.location.end")</option>
-                            <option value="2">@AppText.T("web.rename.location.both")</option>
-                        </select>
-                    </label>
-                    <label>
-                        <span>@AppText.T("web.rename.scopeLabel")</span>
-                        <select @bind="this._editingMethod.TrimScope" @bind:after="this.RecalculatePreview">
-                            <option value="0">@AppText.T("web.rename.scope.nameOnly")</option>
-                            <option value="1">@AppText.T("web.rename.scope.extensionOnly")</option>
-                            <option value="2">@AppText.T("web.rename.scope.fullName")</option>
-                        </select>
-                    </label>
+                    <div class="renamer-param-row">
+                        <RadzenLabel Text="@AppText.T("web.rename.charsLabel")" Component="RenamerTrimCharacters" />
+                        <RadzenTextBox Name="RenamerTrimCharacters" @bind-Value="this._editingMethod.TrimCharacters" @bind-Value:after="this.RecalculatePreview" Immediate="true" />
+                    </div>
+                    <div class="renamer-param-row">
+                        <RadzenLabel Text="@AppText.T("web.rename.locationLabel")" Component="RenamerTrimLocation" />
+                        <RadzenDropDown TValue="int" Name="RenamerTrimLocation" Data="@TrimLocationOptions" @bind-Value="this._editingMethod.TrimLocation" @bind-Value:after="this.RecalculatePreview">
+                            <Template Context="value">@GetTrimLocationLabel((int)value)</Template>
+                            <ValueTemplate Context="value">@GetTrimLocationLabel((int)value)</ValueTemplate>
+                        </RadzenDropDown>
+                    </div>
+                    <div class="renamer-param-row">
+                        <RadzenLabel Text="@AppText.T("web.rename.scopeLabel")" Component="RenamerTrimScope" />
+                        <RadzenDropDown TValue="int" Name="RenamerTrimScope" Data="@TrimScopeOptions" @bind-Value="this._editingMethod.TrimScope" @bind-Value:after="this.RecalculatePreview">
+                            <Template Context="value">@GetTrimScopeLabel((int)value)</Template>
+                            <ValueTemplate Context="value">@GetTrimScopeLabel((int)value)</ValueTemplate>
+                        </RadzenDropDown>
+                    </div>
                 }
             </div>
 
@@ -214,13 +188,51 @@
         <span>@this._statusText</span>
         <div class="renamer-statusbar-actions">
             <RadzenButton Text="@AppText.T("web.rename.rename")" Icon="drive_file_rename_outline" Click="@this.HandleRename" Disabled="@(!this.CanRename())" />
-            <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@this.HandleClose" />
+            <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@this.HandleClose" />
         </div>
     </div>
 
 </div>
 
 @code {
+    /// <summary>
+    /// Metodi rename selezionabili
+    /// </summary>
+    private static readonly List<RenameMethodType> MethodTypes = new List<RenameMethodType>
+    {
+        RenameMethodType.Replace, RenameMethodType.Add, RenameMethodType.Remove, RenameMethodType.NewCase, RenameMethodType.NewName, RenameMethodType.Trim
+    };
+
+    /// <summary>
+    /// Modalità di rimozione: per posizione o per pattern
+    /// </summary>
+    private static readonly List<bool> RemoveModes = new List<bool> { false, true };
+
+    /// <summary>
+    /// Valori delle tendine a tre opzioni di maiuscole, ambito e posizione
+    /// </summary>
+    private static readonly List<int> ThreeOptions = new List<int> { 0, 1, 2 };
+
+    /// <summary>
+    /// Valori della modalità maiuscole
+    /// </summary>
+    private static readonly List<int> CaseModeOptions = ThreeOptions;
+
+    /// <summary>
+    /// Valori dell'ambito delle maiuscole
+    /// </summary>
+    private static readonly List<int> CaseScopeOptions = ThreeOptions;
+
+    /// <summary>
+    /// Valori della posizione del trim
+    /// </summary>
+    private static readonly List<int> TrimLocationOptions = ThreeOptions;
+
+    /// <summary>
+    /// Valori dell'ambito del trim
+    /// </summary>
+    private static readonly List<int> TrimScopeOptions = ThreeOptions;
+
     /// <summary>
     /// Record metadata correnti
     /// </summary>
@@ -290,6 +302,78 @@
     private static string GetRenameMethodTypeLabel(RenameMethodType methodType)
     {
         return AppText.T("web.rename.method." + methodType.ToString());
+    }
+
+    /// <summary>
+    /// Etichetta della modalità di rimozione
+    /// </summary>
+    /// <param name="byPattern">True per pattern</param>
+    /// <returns>Etichetta localizzata</returns>
+    private static string GetRemoveModeLabel(bool byPattern)
+    {
+        return AppText.T(byPattern ? "web.rename.byPattern" : "web.rename.byPosition");
+    }
+
+    /// <summary>
+    /// Etichetta della modalità maiuscole
+    /// </summary>
+    /// <param name="value">Valore</param>
+    /// <returns>Etichetta localizzata</returns>
+    private static string GetCaseModeLabel(int value)
+    {
+        if (value == 1)
+            return AppText.T("web.rename.case.uppercase");
+        if (value == 2)
+            return AppText.T("web.rename.case.title");
+        return AppText.T("web.rename.case.lowercase");
+    }
+
+    /// <summary>
+    /// Etichetta dell'ambito di applicazione
+    /// </summary>
+    /// <param name="value">Valore</param>
+    /// <returns>Etichetta localizzata</returns>
+    private static string GetScopeLabel(int value)
+    {
+        if (value == 1)
+            return AppText.T("web.rename.scope.extensionOnly");
+        if (value == 2)
+            return AppText.T("web.rename.scope.fullName");
+        return AppText.T("web.rename.scope.nameOnly");
+    }
+
+    /// <summary>
+    /// Etichetta dell'ambito delle maiuscole
+    /// </summary>
+    /// <param name="value">Valore</param>
+    /// <returns>Etichetta localizzata</returns>
+    private static string GetCaseScopeLabel(int value)
+    {
+        return GetScopeLabel(value);
+    }
+
+    /// <summary>
+    /// Etichetta dell'ambito del trim
+    /// </summary>
+    /// <param name="value">Valore</param>
+    /// <returns>Etichetta localizzata</returns>
+    private static string GetTrimScopeLabel(int value)
+    {
+        return GetScopeLabel(value);
+    }
+
+    /// <summary>
+    /// Etichetta della posizione del trim
+    /// </summary>
+    /// <param name="value">Valore</param>
+    /// <returns>Etichetta localizzata</returns>
+    private static string GetTrimLocationLabel(int value)
+    {
+        if (value == 1)
+            return AppText.T("web.rename.location.end");
+        if (value == 2)
+            return AppText.T("web.rename.location.both");
+        return AppText.T("web.rename.location.start");
     }
 
     /// <summary>

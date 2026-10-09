@@ -1,0 +1,31 @@
+@inherits AppDialogContentBase
+
+<div class="rf-dialog" @ref="DialogContent">
+    <div class="rf-dialog-body metadata-function-example-body">
+        <div class="metadata-function-example-name">@Item.Call</div>
+        <div class="metadata-function-example-description">@Item.Description</div>
+        <div class="metadata-function-example-grid">
+            <span>@AppText.T("web.metadata.presetDialog.functionExampleInput")</span>
+            <code>@Item.ExampleInput</code>
+            <span>@AppText.T("web.metadata.presetDialog.functionExampleExpression")</span>
+            <code>@Item.ExampleExpression</code>
+            <span>@AppText.T("web.metadata.presetDialog.functionExampleOutput")</span>
+            <code>@Item.ExampleOutput</code>
+            @if (!string.IsNullOrEmpty(Item.ExampleNotes))
+            {
+                <span>@AppText.T("web.metadata.presetDialog.functionExampleNotes")</span>
+                <code>@Item.ExampleNotes</code>
+            }
+        </div>
+    </div>
+    <div class="rf-dialog-footer">
+        <RadzenButton Text="@AppText.T("web.common.close")" Icon="close" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => CloseDialog())" />
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Funzione di cui mostrare l'esempio
+    /// </summary>
+    [Parameter] public MetadataCatalogFunctionItem Item { get; set; }
+}

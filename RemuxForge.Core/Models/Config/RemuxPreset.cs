@@ -4,12 +4,11 @@ namespace RemuxForge.Core.Models
 {
     public enum RemuxMuxKind { Simple, DelayCorrection, DeepAnalysis }
 
-    /// <summary>Whitelist riutilizzabile. Non contiene Options, percorsi, strumenti, record o ID traccia.</summary>
+    /// <summary>Whitelist riutilizzabile. Non contiene Options, percorsi, strumenti, record, ID traccia o la sovrascrittura del sorgente.</summary>
     public sealed class RemuxPreset
     {
         public string Name { get; set; } = "";
         public RemuxMuxKind MuxKind { get; set; }
-        public bool FrameSync { get; set; }
         public bool Recursive { get; set; } = true;
         public string MatchPattern { get; set; } = @"S(\d+)E(\d+)";
         public List<string> FileExtensions { get; set; } = new List<string> { "mkv" };
@@ -42,7 +41,6 @@ namespace RemuxForge.Core.Models
         public bool AudioSourceFillInsertSilence { get; set; }
         public double AudioSourceFillGainDb { get; set; }
         public string EncodingProfileName { get; set; } = "";
-        public bool Overwrite { get; set; }
 
         public RemuxPreset Clone()
         {

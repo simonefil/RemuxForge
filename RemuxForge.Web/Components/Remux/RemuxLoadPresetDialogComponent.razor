@@ -1,40 +1,23 @@
-@inject DialogService DialogService
-@implements IAsyncDisposable
+@inherits AppDialogContentBase
 
-<div class="rf-remux-preset-dialog" @ref="_content">
+<div class="rf-remux-preset-dialog" @ref="DialogContent">
 <RadzenStack Gap="1rem">
     <RadzenText TextStyle="TextStyle.Subtitle1" Style="overflow-wrap:anywhere;min-width:0">@PresetName</RadzenText>
-    <RadzenText>@AppText.T("web.remux.loadConfirm")</RadzenText>
+    <RadzenText>@(string.IsNullOrEmpty(Message) ? AppText.T("web.remux.loadConfirm") : Message)</RadzenText>
     <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Wrap="FlexWrap.Wrap" Gap="0.75rem">
-        <RadzenButton ButtonType="ButtonType.Button" Text="@AppText.T("web.common.cancel")" Click="@(() => DialogService.Close(false))" />
-        <RadzenButton ButtonType="ButtonType.Button" Text="@AppText.T("web.remux.load")" Click="@(() => DialogService.Close(true))" />
+        <RadzenButton ButtonType="ButtonType.Button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => DialogService.Close(false))" />
+        <RadzenButton ButtonType="ButtonType.Button" Text="@(string.IsNullOrEmpty(ConfirmText) ? AppText.T("web.remux.load") : ConfirmText)"
+                      ButtonStyle="@(Danger ? ButtonStyle.Danger : ButtonStyle.Primary)" Click="@(() => DialogService.Close(true))" />
     </RadzenStack>
 </RadzenStack>
 </div>
 
 @code {
     [Parameter] public string PresetName { get; set; } = "";
-    [Parameter] public IJSObjectReference JsModule { get; set; }
-    private ElementReference _content;
-    private Task<IJSObjectReference> _focusSession;
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender && JsModule != null)
-        {
-            _focusSession = JsModule.InvokeAsync<IJSObjectReference>("focusRemuxDialog", _content).AsTask();
-            await _focusSession;
-        }
-    }
-    public async ValueTask DisposeAsync()
-    {
-        if (_focusSession == null) return;
-        try
-        {
-            IJSObjectReference session = await _focusSession;
-            await session.InvokeVoidAsync("dispose");
-            await session.DisposeAsync();
-        }
-        catch (JSDisconnectedException) { }
-        catch (ObjectDisposedException) { }
-    }
+    /// <summary>Testo della conferma; vuoto per il caricamento del preset</summary>
+    [Parameter] public string Message { get; set; } = "";
+    /// <summary>Etichetta del pulsante di conferma; vuota per il caricamento del preset</summary>
+    [Parameter] public string ConfirmText { get; set; } = "";
+    /// <summary>True per un'azione distruttiva come l'eliminazione</summary>
+    [Parameter] public bool Danger { get; set; }
 }

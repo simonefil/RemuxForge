@@ -38,7 +38,6 @@ namespace RemuxForge.Core.Metadata
             {
                 this.InputFile = "";
                 this.OutputFile = "";
-                this.OtherInputFile = "";
                 this.Kind = MetadataOutputConflictKind.Exists;
             }
 
@@ -55,11 +54,6 @@ namespace RemuxForge.Core.Metadata
             /// File di output in conflitto
             /// </summary>
             public string OutputFile { get; set; }
-
-            /// <summary>
-            /// File di input che ha già rivendicato lo stesso output, solo per le collisioni
-            /// </summary>
-            public string OtherInputFile { get; set; }
 
             /// <summary>
             /// Tipo di conflitto
@@ -104,7 +98,6 @@ namespace RemuxForge.Core.Metadata
                     {
                         InputFile = record.InputFile,
                         OutputFile = outputFile,
-                        OtherInputFile = claimed[outputFile],
                         Kind = MetadataOutputConflictKind.Collision
                     });
                     continue;

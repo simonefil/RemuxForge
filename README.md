@@ -2,14 +2,14 @@
 
 RemuxForge is a cross-platform MKV utility for technical MKV workflows:
 
-- **Remux**: import audio tracks and subtitles from another MKV release, with optional speed correction, frame-sync or Deep Analysis for edited releases.
-- **Split**: cut HEVC/AVC MKV files into frame-perfect segments while preserving VFR timing, chapters, audio and subtitles.
-- **Metadata**: batch-edit MKV container, track metadata and managed Matroska tags through reusable rule presets, with separate analysis and apply steps.
-- **Bulk Rename**: preview and apply batch filename changes from the Metadata WebUI, using stacked rename methods.
+- **Remux**: import audio tracks and subtitles from another MKV release, with optional speed correction, Automatic sync (FrameSync) for a constant offset or Edit alignment (Deep Analysis) for edited releases, plus a timeline editor to adjust the alignment by hand.
+- **Split**: cut MKV files into episodes or parts, by chapters, times or frames, or build the parts by hand in a cut editor, while preserving VFR timing, chapters, audio and subtitles; join parts back into one file.
+- **Metadata**: batch-edit MKV container, track metadata and managed Matroska tags through reusable rule presets, written by hand or generated with AI, with separate analysis and apply steps; edit a single file by hand, chapters included.
+- **Advanced rename**: preview and apply batch filename changes from the Metadata workspace, using stacked rename methods.
 
-It ships as a scriptable CLI, a WebUI for local browsers or headless servers, and a native desktop shell for Windows and macOS. The browser and desktop editions use the same Blazor UI and processing engine; the [wiki](https://github.com/simonefil/RemuxForge/wiki) documents them in full.
+It ships as a scriptable CLI, a WebUI for local browsers or headless servers, and a native desktop shell for Windows and Apple Silicon Macs. The browser and desktop editions use the same Blazor UI and processing engine; the [wiki](https://github.com/simonefil/RemuxForge/wiki) documents them in full.
 
-Questions, feedback or ideas? Join the RemuxForge community on [Discord](https://discord.gg/JpHWKGyaqF), a channel dedicated to this software where you can talk directly with the developer and other users.
+For questions, feedback and ideas, join the RemuxForge [Discord](https://discord.gg/JpHWKGyaqF) server, where you can talk with the developer and other users.
 
 ## Requirements
 
@@ -20,7 +20,7 @@ Questions, feedback or ideas? Join the RemuxForge community on [Discord](https:/
 
 The optional Vulkan SIFT backend for Deep Analysis requires a Vulkan 1.2 loader and a compatible compute device with timeline semaphore support. CPU SIFT is the default and does not require Vulkan. On macOS, Vulkan is provided through MoltenVK.
 
-Tool paths are auto-detected or configurable from the WebUI under **Settings > Tool paths**. On Windows and Linux, FFmpeg 9 stable and ffprobe are downloaded automatically when missing; on macOS install the FFmpeg 9 full build with `brew install ffmpeg-full`.
+Tool paths are auto-detected or configurable from the WebUI under **Settings ▸ Tool paths**. On Windows and Linux, FFmpeg 9 stable and ffprobe are downloaded automatically when missing; on macOS install the FFmpeg 9 full build with `brew install ffmpeg-full`.
 
 Supported targets:
 
@@ -38,7 +38,7 @@ Download the desktop installer, CLI or WebUI archive for your platform from the 
 Desktop:
 
 - On Windows, run the installer and launch RemuxForge from the Start menu.
-- On macOS, open the DMG and copy RemuxForge to Applications.
+- On macOS, open the DMG and copy RemuxForge to Applications. The app is not signed by Apple: [Deploy](https://github.com/simonefil/RemuxForge/wiki/Deploy) shows how to open it the first time.
 
 The desktop shell starts the local WebUI automatically. Its settings and runtime data are stored in the operating system's application-data directory, outside the installed application bundle.
 
@@ -67,53 +67,36 @@ docker run -d \
   draknodd/remuxforge:latest
 ```
 
-Paths typed in the WebUI are resolved inside the container. See [Docker](https://github.com/simonefil/RemuxForge/wiki/Docker) for Compose, permissions and GPU acceleration, and [Installation](https://github.com/simonefil/RemuxForge/wiki/Installation) for the data directory and environment variables.
+Paths typed in the WebUI are resolved inside the container. See [Docker](https://github.com/simonefil/RemuxForge/wiki/Docker) for Compose, permissions and GPU acceleration, [Settings](https://github.com/simonefil/RemuxForge/wiki/Settings#data-and-environment) for the data directory, and [CLI](https://github.com/simonefil/RemuxForge/wiki/CLI#environment-variables) for the environment variables.
 
 ## CLI
+
+`RemuxForge.Cli` runs Remux, Split and Metadata jobs from scripts and schedulers:
 
 ```bash
 RemuxForge.Cli --mode remux|split|metadata [options]
 RemuxForge.Cli --help
 ```
 
-Import Italian audio into an English release, correcting a constant offset:
-
-```bash
-RemuxForge.Cli --mode remux -s "D:\Series.ENG" -l "D:\Series.ITA" -t ita -d "D:\Output" -fs
-```
-
-Cut a disc into episodes by chapter groups:
-
-```bash
-RemuxForge.Cli --mode split --source "disc1.mkv" --pattern "5,5,5,6" --output-dir "D:\Output"
-```
-
-Apply a metadata preset to a library:
-
-```bash
-RemuxForge.Cli --mode metadata --source "D:\Series" --preset "D:\Presets\anime-audio-titles.json" --output-dir "D:\Output" --recursive
-```
-
-Every flag, its accepted values and the validation rules are in the [CLI Reference](https://github.com/simonefil/RemuxForge/wiki/CLI-Reference). Preset authoring, bulk rename and manual metadata edit are WebUI-only.
+Every option, its defaults, the validation rules and ready-to-use recipes are on the [CLI](https://github.com/simonefil/RemuxForge/wiki/CLI) wiki page.
 
 ## Documentation
 
-The [wiki](https://github.com/simonefil/RemuxForge/wiki) is written for the WebUI.
+The [wiki](https://github.com/simonefil/RemuxForge/wiki) covers the desktop app and the WebUI, which share the same interface, plus the CLI.
 
 | | |
 |---|---|
-| Install and run | [Installation](https://github.com/simonefil/RemuxForge/wiki/Installation) · [Docker](https://github.com/simonefil/RemuxForge/wiki/Docker) · [WebUI Basics](https://github.com/simonefil/RemuxForge/wiki/WebUI-Basics) |
-| Remux | [Mode](https://github.com/simonefil/RemuxForge/wiki/Remux-Mode) · [Synchronization](https://github.com/simonefil/RemuxForge/wiki/Remux-Synchronization) · [Audio and Video](https://github.com/simonefil/RemuxForge/wiki/Remux-Audio-and-Video) |
-| Split | [Mode](https://github.com/simonefil/RemuxForge/wiki/Split-Mode) |
-| Metadata | [Mode](https://github.com/simonefil/RemuxForge/wiki/Metadata-Mode) · [Presets](https://github.com/simonefil/RemuxForge/wiki/Metadata-Presets) · [Bulk Rename](https://github.com/simonefil/RemuxForge/wiki/Bulk-Rename) |
-| Worked examples | [Remux](https://github.com/simonefil/RemuxForge/wiki/Examples-Remux) · [Split](https://github.com/simonefil/RemuxForge/wiki/Examples-Split) · [Metadata](https://github.com/simonefil/RemuxForge/wiki/Examples-Metadata) |
-| Reference | [CLI](https://github.com/simonefil/RemuxForge/wiki/CLI-Reference) · [Settings](https://github.com/simonefil/RemuxForge/wiki/Settings-Reference) · [Metadata fields](https://github.com/simonefil/RemuxForge/wiki/Metadata-Reference) · [Codecs and languages](https://github.com/simonefil/RemuxForge/wiki/Codec-and-Language-Reference) |
-| How it works | [Internals](https://github.com/simonefil/RemuxForge/wiki/Internals) |
+| Install and run | [Deploy](https://github.com/simonefil/RemuxForge/wiki/Deploy) · [Docker](https://github.com/simonefil/RemuxForge/wiki/Docker) · [Quick start](https://github.com/simonefil/RemuxForge/wiki/Quick-Start) · [Interface overview](https://github.com/simonefil/RemuxForge/wiki/Interface-Overview) |
+| Remux | [Wizard](https://github.com/simonefil/RemuxForge/wiki/Remux-Wizard) · [Workspace](https://github.com/simonefil/RemuxForge/wiki/Remux-Workspace) · [EditMap editor](https://github.com/simonefil/RemuxForge/wiki/Remux-EditMap-Editor) · [Synchronization](https://github.com/simonefil/RemuxForge/wiki/Remux-Synchronization) |
+| Split | [Wizard](https://github.com/simonefil/RemuxForge/wiki/Split-Wizard) · [Plan review and workspace](https://github.com/simonefil/RemuxForge/wiki/Split-Workspace) · [Cut editor](https://github.com/simonefil/RemuxForge/wiki/Split-Cut-Editor) · [Join parts](https://github.com/simonefil/RemuxForge/wiki/Split-Join-Parts) |
+| Metadata | [Workspace](https://github.com/simonefil/RemuxForge/wiki/Metadata-Workspace) · [Preset editor](https://github.com/simonefil/RemuxForge/wiki/Metadata-Presets) · [Create preset with AI](https://github.com/simonefil/RemuxForge/wiki/Metadata-AI-Preset) · [Manual edit](https://github.com/simonefil/RemuxForge/wiki/Metadata-Manual-Edit) · [Advanced rename](https://github.com/simonefil/RemuxForge/wiki/Bulk-Rename) |
+| Reference | [Settings](https://github.com/simonefil/RemuxForge/wiki/Settings) · [CLI](https://github.com/simonefil/RemuxForge/wiki/CLI) · [Codecs and languages](https://github.com/simonefil/RemuxForge/wiki/Codec-and-Language-Reference) · [Metadata fields](https://github.com/simonefil/RemuxForge/wiki/Metadata-Reference) |
 | Something is wrong | [Troubleshooting](https://github.com/simonefil/RemuxForge/wiki/Troubleshooting) |
+| Project | [Internals](https://github.com/simonefil/RemuxForge/wiki/Internals) · [Development](https://github.com/simonefil/RemuxForge/wiki/Development) |
 
 ## Build from source
 
-The CLI and WebUI require the .NET 10 SDK. Desktop packages additionally require Node.js/npm, Rust and the platform prerequisites documented by Tauri.
+The CLI and WebUI require the .NET 10 SDK. Desktop packages also require Node.js/npm, Rust and the platform prerequisites documented by Tauri.
 The Windows MSI must be built on a native Windows host; `release.sh` delegates that build to the configured Windows worker.
 
 ```bash
@@ -132,7 +115,7 @@ npm run build:windows-x64
 ```
 
 The desktop build publishes `RemuxForge.Web` as a self-contained sidecar and bundles its static assets automatically. Explicit-target installers are written under `RemuxForge.Desktop/src-tauri/target/<target>/release/bundle`; native untargeted builds use `RemuxForge.Desktop/src-tauri/target/release/bundle`.
-Public desktop artifacts additionally require platform signing: Authenticode on Windows, and Developer ID signing plus notarization/stapling on macOS.
+Public desktop artifacts also require platform signing: Authenticode on Windows, and Developer ID signing plus notarization/stapling on macOS.
 The .NET CLI and WebUI can be published for every RID from one machine. Native Windows is required for the WiX MSI and remains the preferred environment for execution testing and Authenticode signing. `release.sh` runs on the Linux release host, delegates native desktop builds to the configured workers and writes `SHA256SUMS` for all collected artifacts.
 
 Use build-only mode to compile and preserve release artifacts without building or pushing Docker images, creating Git tags or publishing a GitHub release:
@@ -157,7 +140,7 @@ Contributions are welcome when they are technical, reproducible and scoped.
 - Include sample command lines, tool versions and relevant MediaInfo/ffmpeg output when reporting processing issues.
 - Keep pull requests focused on one change.
 - Run the relevant build or test command before submitting.
-- Do not include copyrighted media samples in the repository.
+- Keep copyrighted media samples out of the repository.
 
 ## License
 

@@ -1,3 +1,4 @@
+using RemuxForge.Core.Localization;
 using System;
 using System.IO;
 
@@ -22,6 +23,8 @@ namespace RemuxForge.Web.Services
         private readonly ProcessingProgressState _progress;
         private volatile bool _isBusy;
         private volatile bool _stopRequested;
+        private readonly string _initialLogKey;
+        private bool _initialLogVisible;
         private string _logText;
         private int _selectedIndex;
 
@@ -45,16 +48,18 @@ namespace RemuxForge.Web.Services
         /// <summary>
         /// Inizializza lo stato condiviso
         /// </summary>
-        /// <param name="initialLog">Testo iniziale del log</param>
+        /// <param name="initialLogKey">Chiave del testo iniziale del log, mostrato nella lingua corrente</param>
         /// <param name="timestampLog">True per anteporre l'orario alle nuove righe</param>
-        protected MediaOrchestratorBase(string initialLog, bool timestampLog)
+        protected MediaOrchestratorBase(string initialLogKey, bool timestampLog)
         {
             this._stateLock = new object();
             this._timestampLog = timestampLog;
             this._progress = new ProcessingProgressState();
             this._isBusy = false;
             this._stopRequested = false;
-            this._logText = initialLog != null ? initialLog : "";
+            this._initialLogKey = initialLogKey != null ? initialLogKey : "";
+            this._initialLogVisible = this._initialLogKey.Length > 0;
+            this._logText = "";
             this._selectedIndex = -1;
         }
 
@@ -75,12 +80,13 @@ namespace RemuxForge.Web.Services
 
         #region Metodi protected
 
-        /// <summary>Primitiva opt-in del reset Remux; non cambia i reset Metadata/Split.</summary>
+        /// <summary>Primitiva opt-in del reset di Remux e Split; non cambia il reset Metadata.</summary>
         protected void ResetIdleWorkState()
         {
             lock (this._stateLock)
             {
                 if (this._isBusy) return;
+                this._initialLogVisible = false;
                 this._logText = "";
                 this._selectedIndex = -1;
                 this._stopRequested = false;
@@ -101,7 +107,11 @@ namespace RemuxForge.Web.Services
         /// <summary>Reset del solo log di presentazione, dopo una scansione candidata già committata.</summary>
         protected void ResetCommittedScanPresentation()
         {
-            lock (this._stateLock) { this._logText = ""; }
+            lock (this._stateLock)
+            {
+                this._initialLogVisible = false;
+                this._logText = "";
+            }
         }
 
         /// <summary>
@@ -117,7 +127,10 @@ namespace RemuxForge.Web.Services
                     this._logText += Environment.NewLine;
                 this._logText += line;
                 if (this._logText.Length > LOG_MAX_LENGTH)
+                {
+                    this._initialLogVisible = false;
                     this._logText = this._logText.Substring(this._logText.Length - LOG_MAX_LENGTH);
+                }
             }
 
             this.OnLog?.Invoke(message);
@@ -187,19 +200,6 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
-        /// Aggiorna la descrizione della fase corrente
-        /// </summary>
-        /// <param name="status">Descrizione della fase</param>
-        protected void ReportPhase(string status)
-        {
-            lock (this._stateLock)
-            {
-                this._progress.CurrentStatus = status != null ? status : "";
-            }
-            this.NotifyProgressChanged();
-        }
-
-        /// <summary>
         /// Registra una richiesta di stop e la scrive nel log
         /// </summary>
         /// <param name="message">Messaggio di stop</param>
@@ -259,7 +259,12 @@ namespace RemuxForge.Web.Services
             {
                 lock (this._stateLock)
                 {
-                    return this._logText;
+                    // Il testo iniziale segue la lingua corrente finché resta in testa al log
+                    if (!this._initialLogVisible)
+                        return this._logText;
+                    if (string.IsNullOrEmpty(this._logText))
+                        return AppText.T(this._initialLogKey);
+                    return AppText.T(this._initialLogKey) + Environment.NewLine + this._logText;
                 }
             }
         }

@@ -1,175 +1,135 @@
 @using System.Linq
+@inherits AppDialogContentBase
 
-<div class="dialog-overlay visible">
-    <div class="dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="encoding-profiles-dialog-title" style="min-width: 65ch;" @onclick:stopPropagation="true">
-        <div id="encoding-profiles-dialog-title" class="dialog-title">@AppText.T("web.encodingProfiles.title")</div>
-        <div class="dialog-body">
+<div class="rf-dialog" @ref="DialogContent">
+    <div class="rf-dialog-body">
 
-            @* Lista profili *@
-            <div class="form-section">@AppText.T("web.encodingProfiles.profilesSection")</div>
+        @* Lista profili *@
+        <div class="form-section">@AppText.T("web.encodingProfiles.profilesSection")</div>
+        <div class="form-row">
+            <RadzenDropDown TValue="int" Data="@ProfileIndexes" Value="@_selectedIdx" Change="@OnProfileSelected" Style="max-width: 30ch;" aria-label="@AppText.T("web.encodingProfiles.profilesSection")">
+                <Template Context="index">@GetProfileName(index)</Template>
+                <ValueTemplate Context="index">@GetProfileName(index)</ValueTemplate>
+            </RadzenDropDown>
+            <RadzenButton style="margin-left: 1ch;" Text="@AppText.T("web.common.new")" Icon="add" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@AddProfile" />
+            <RadzenButton style="margin-left: 1ch;" Text="@AppText.T("web.common.delete")" Icon="delete" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Danger" Click="@DeleteProfile" />
+        </div>
+
+        @if (_editing != null)
+        {
+            @* Nome profilo *@
+            <div class="form-section">@AppText.T("web.encodingProfiles.settingsSection")</div>
             <div class="form-row">
-                <select class="form-input" style="width: 30ch;" aria-label="@AppText.T("web.encodingProfiles.profilesSection")" @onchange="OnProfileSelected">
-                    @for (int i = 0; i < _profiles.Count; i++)
-                    {
-                        int idx = i;
-                        <option value="@idx" selected="@(idx == _selectedIdx)">@_profiles[i].Name</option>
-                    }
-                </select>
-                <RadzenButton style="margin-left: 1ch;" Text="@AppText.T("web.common.new")" Icon="add" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@AddProfile" />
-                <RadzenButton style="margin-left: 1ch;" Text="@AppText.T("web.common.delete")" Icon="delete" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Danger" Click="@DeleteProfile" />
+                <RadzenLabel class="form-label" Text="@AppText.T("web.common.nameLabel")" Component="EncodingProfileName" />
+                <RadzenTextBox Name="EncodingProfileName" @bind-Value="_editing.Name" />
             </div>
 
-            @if (_editing != null)
+            @* Codec *@
+            <div class="form-row">
+                <RadzenLabel class="form-label" Text="@AppText.T("web.encodingProfiles.codec")" Component="EncodingProfileCodec" />
+                <RadzenDropDown TValue="string" Name="EncodingProfileCodec" Data="@EncodingDefaults.CODECS" Value="@_editing.Codec" Change="@OnCodecChanged" Style="max-width: 20ch;" />
+            </div>
+
+            @* Preset *@
+            <div class="form-row">
+                <RadzenLabel class="form-label" Text="@AppText.T("web.encodingProfiles.preset")" Component="EncodingProfilePreset" />
+                <RadzenDropDown TValue="string" Name="EncodingProfilePreset" Data="@EncodingDefaults.GetPresets(_editing.Codec)" @bind-Value="_editing.Preset" Style="max-width: 20ch;" />
+            </div>
+
+            @* Tune *@
+            <div class="form-row">
+                <RadzenLabel class="form-label" Text="@AppText.T("web.encodingProfiles.tune")" Component="EncodingProfileTune" />
+                <RadzenDropDown TValue="string" Name="EncodingProfileTune" Data="@EncodingDefaults.GetTunes(_editing.Codec)" @bind-Value="_editing.Tune" Style="max-width: 30ch;" />
+            </div>
+
+            @* Profile (solo x264/x265) *@
+            @if (EncodingDefaults.HasProfile(_editing.Codec))
             {
-                @* Nome profilo *@
-                <div class="form-section">@AppText.T("web.encodingProfiles.settingsSection")</div>
                 <div class="form-row">
-                    <span class="form-label">@AppText.T("web.common.nameLabel")</span>
-                    <input class="form-input" aria-label="@AppText.T("web.common.nameLabel")" @bind="_editing.Name" />
-                </div>
-
-                @* Codec *@
-                <div class="form-row">
-                    <span class="form-label">@AppText.T("web.encodingProfiles.codec")</span>
-                    <select class="form-input" style="width: 20ch;" aria-label="@AppText.T("web.encodingProfiles.codec")" value="@_editing.Codec" @onchange="OnCodecChanged">
-                        @for (int i = 0; i < EncodingDefaults.CODECS.Length; i++)
-                        {
-                            <option value="@EncodingDefaults.CODECS[i]">@EncodingDefaults.CODECS[i]</option>
-                        }
-                    </select>
-                </div>
-
-                @* Preset *@
-                <div class="form-row">
-                    <span class="form-label">@AppText.T("web.encodingProfiles.preset")</span>
-                    <select class="form-input" style="width: 20ch;" aria-label="@AppText.T("web.encodingProfiles.preset")" @bind="_editing.Preset">
-                        @foreach (string p in EncodingDefaults.GetPresets(_editing.Codec))
-                        {
-                            <option value="@p">@p</option>
-                        }
-                    </select>
-                </div>
-
-                @* Tune *@
-                <div class="form-row">
-                    <span class="form-label">@AppText.T("web.encodingProfiles.tune")</span>
-                    <select class="form-input" style="width: 30ch;" aria-label="@AppText.T("web.encodingProfiles.tune")" @bind="_editing.Tune">
-                        @foreach (string t in EncodingDefaults.GetTunes(_editing.Codec))
-                        {
-                            <option value="@t">@t</option>
-                        }
-                    </select>
-                </div>
-
-                @* Profile (solo x264/x265) *@
-                @if (EncodingDefaults.HasProfile(_editing.Codec))
-                {
-                    <div class="form-row">
-                        <span class="form-label">@AppText.T("web.encodingProfiles.profile")</span>
-                        <select class="form-input" style="width: 20ch;" aria-label="@AppText.T("web.encodingProfiles.profile")" @bind="_editing.Profile">
-                            @foreach (string pr in EncodingDefaults.GetProfiles(_editing.Codec))
-                            {
-                                <option value="@pr">@pr</option>
-                            }
-                        </select>
-                    </div>
-                }
-
-                @* Bit depth *@
-                <div class="form-row">
-                    <span class="form-label">@AppText.T("web.encodingProfiles.bitDepth")</span>
-                    <select class="form-input" style="width: 30ch;" aria-label="@AppText.T("web.encodingProfiles.bitDepth")" @bind="_editing.BitDepth">
-                        @foreach (string bd in EncodingDefaults.GetBitDepths(_editing.Codec))
-                        {
-                            <option value="@bd">@bd</option>
-                        }
-                    </select>
-                </div>
-
-                @* Rate mode *@
-                <div class="form-row">
-                    <span class="form-label">@AppText.T("web.encodingProfiles.rateMode")</span>
-                    <select class="form-input" style="width: 12ch;" aria-label="@AppText.T("web.encodingProfiles.rateMode")" value="@_editing.RateMode" @onchange="OnRateModeChanged">
-                        @foreach (string rm in EncodingDefaults.GetRateModes(_editing.Codec))
-                        {
-                            <option value="@rm">@rm</option>
-                        }
-                    </select>
-                </div>
-
-                @* CRF/QP (solo se rate mode = crf o qp) *@
-                @if (_editing.RateMode == "crf" || _editing.RateMode == "qp")
-                {
-                    <div class="form-row">
-                        <span class="form-label">@(_editing.RateMode == "qp" ? "QP:" : "CRF:")</span>
-                        <input class="form-input" style="width: 6ch;" aria-label="@(_editing.RateMode == "qp" ? "QP" : "CRF")" @bind="_crfQpStr" />
-                        <span style="margin-left: 1ch; color: var(--rz-text-disabled-color);">@AppText.T("web.common.range"): @EncodingDefaults.GetMinCrf(_editing.Codec)-@EncodingDefaults.GetMaxCrf(_editing.Codec)</span>
-                    </div>
-                }
-
-                @* Bitrate (solo se rate mode = bitrate) *@
-                @if (_editing.RateMode == "bitrate")
-                {
-                    <div class="form-row">
-                        <span class="form-label">@AppText.T("web.encodingProfiles.bitrate")</span>
-                        <input class="form-input" style="width: 10ch;" aria-label="@AppText.T("web.encodingProfiles.bitrate")" @bind="_bitrateStr" />
-                    </div>
-
-                    @* Passes (solo x264/x265 in bitrate) *@
-                    @if (EncodingDefaults.HasMultiPass(_editing.Codec))
-                    {
-                        <div class="form-row">
-                            <span class="form-label">@AppText.T("web.encodingProfiles.passes")</span>
-                            <select class="form-input" style="width: 6ch;" aria-label="@AppText.T("web.encodingProfiles.passes")" @bind="_editing.Passes">
-                                <option value="1">1</option>
-                                <option value="2">2</option>
-                            </select>
-                        </div>
-                    }
-                }
-
-                @* Film grain (solo svtav1) *@
-                @if (EncodingDefaults.HasFilmGrain(_editing.Codec))
-                {
-                    <div class="form-row">
-                        <span class="form-label">@AppText.T("web.encodingProfiles.filmGrain")</span>
-                        <input class="form-input" style="width: 6ch;" aria-label="@AppText.T("web.encodingProfiles.filmGrain")" @bind="_filmGrainStr" />
-                        <span style="margin-left: 1ch; color: var(--rz-text-disabled-color);">@AppText.F("web.encodingProfiles.filmGrainHint", EncodingDefaults.SVTAV1_FILM_GRAIN_MIN, EncodingDefaults.SVTAV1_FILM_GRAIN_MAX)</span>
-                    </div>
-                    <div class="form-row">
-                        <div class="ui-switch"><RadzenSwitch TValue="bool" @bind-Value="@_editing.FilmGrainDenoise" /><span>@AppText.T("web.encodingProfiles.filmGrainDenoise")</span></div>
-                    </div>
-                }
-
-                @* Extra params *@
-                <div class="form-row">
-                    <span class="form-label">@AppText.T("web.encodingProfiles.extraParams")</span>
-                    <textarea class="form-input" rows="3" aria-label="@AppText.T("web.encodingProfiles.extraParams")" @bind="_editing.ExtraParams"></textarea>
+                    <RadzenLabel class="form-label" Text="@AppText.T("web.encodingProfiles.profile")" Component="EncodingProfileProfile" />
+                    <RadzenDropDown TValue="string" Name="EncodingProfileProfile" Data="@EncodingDefaults.GetProfiles(_editing.Codec)" @bind-Value="_editing.Profile" Style="max-width: 20ch;" />
                 </div>
             }
-            else
+
+            @* Bit depth *@
+            <div class="form-row">
+                <RadzenLabel class="form-label" Text="@AppText.T("web.encodingProfiles.bitDepth")" Component="EncodingProfileBitDepth" />
+                <RadzenDropDown TValue="string" Name="EncodingProfileBitDepth" Data="@EncodingDefaults.GetBitDepths(_editing.Codec)" @bind-Value="_editing.BitDepth" Style="max-width: 30ch;" />
+            </div>
+
+            @* Rate mode *@
+            <div class="form-row">
+                <RadzenLabel class="form-label" Text="@AppText.T("web.encodingProfiles.rateMode")" Component="EncodingProfileRateMode" />
+                <RadzenDropDown TValue="string" Name="EncodingProfileRateMode" Data="@EncodingDefaults.GetRateModes(_editing.Codec)" Value="@_editing.RateMode" Change="@OnRateModeChanged" Style="max-width: 16ch;" />
+            </div>
+
+            @* CRF/QP (solo se rate mode = crf o qp) *@
+            @if (_editing.RateMode == "crf" || _editing.RateMode == "qp")
             {
-                <div class="form-row" style="color: var(--rz-text-disabled-color);">@AppText.T("web.encodingProfiles.noProfiles")</div>
+                <div class="form-row">
+                    <RadzenLabel class="form-label" Text="@(_editing.RateMode == "qp" ? "QP:" : "CRF:")" Component="EncodingProfileCrfQp" />
+                    <RadzenNumeric TValue="int" Name="EncodingProfileCrfQp" Min="@EncodingDefaults.GetMinCrf(_editing.Codec)" Max="@EncodingDefaults.GetMaxCrf(_editing.Codec)" @bind-Value="_editing.CrfQp" Style="max-width: 10ch;" />
+                    <span style="margin-left: 1ch; color: var(--rz-text-disabled-color);">@AppText.T("web.common.range"): @EncodingDefaults.GetMinCrf(_editing.Codec)-@EncodingDefaults.GetMaxCrf(_editing.Codec)</span>
+                </div>
             }
-        </div>
-        <div class="dialog-footer">
-            @if (!string.IsNullOrEmpty(_saveError))
+
+            @* Bitrate (solo se rate mode = bitrate) *@
+            @if (_editing.RateMode == "bitrate")
             {
-                <RadzenAlert AlertStyle="AlertStyle.Danger" AllowClose="false">@_saveError</RadzenAlert>
+                <div class="form-row">
+                    <RadzenLabel class="form-label" Text="@AppText.T("web.encodingProfiles.bitrate")" Component="EncodingProfileBitrate" />
+                    <RadzenNumeric TValue="int" Name="EncodingProfileBitrate" Min="0" @bind-Value="_editing.Bitrate" Style="max-width: 14ch;" />
+                </div>
+
+                @* Passes (solo x264/x265 in bitrate) *@
+                @if (EncodingDefaults.HasMultiPass(_editing.Codec))
+                {
+                    <div class="form-row">
+                        <RadzenLabel class="form-label" Text="@AppText.T("web.encodingProfiles.passes")" Component="EncodingProfilePasses" />
+                        <RadzenDropDown TValue="int" Name="EncodingProfilePasses" Data="@PassValues" @bind-Value="_editing.Passes" Style="max-width: 10ch;" />
+                    </div>
+                }
             }
-            <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@Save" />
-            <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" />
-        </div>
+
+            @* Film grain (solo svtav1) *@
+            @if (EncodingDefaults.HasFilmGrain(_editing.Codec))
+            {
+                <div class="form-row">
+                    <RadzenLabel class="form-label" Text="@AppText.T("web.encodingProfiles.filmGrain")" Component="EncodingProfileFilmGrain" />
+                    <RadzenNumeric TValue="int" Name="EncodingProfileFilmGrain" Min="@EncodingDefaults.SVTAV1_FILM_GRAIN_MIN" Max="@EncodingDefaults.SVTAV1_FILM_GRAIN_MAX" @bind-Value="_editing.FilmGrain" Style="max-width: 10ch;" />
+                    <span style="margin-left: 1ch; color: var(--rz-text-disabled-color);">@AppText.F("web.encodingProfiles.filmGrainHint", EncodingDefaults.SVTAV1_FILM_GRAIN_MIN, EncodingDefaults.SVTAV1_FILM_GRAIN_MAX)</span>
+                </div>
+                <div class="form-row">
+                    <LabeledSwitchComponent Label="@AppText.T("web.encodingProfiles.filmGrainDenoise")" @bind-Value="_editing.FilmGrainDenoise" />
+                </div>
+            }
+
+            @* Extra params *@
+            <div class="form-row">
+                <RadzenLabel class="form-label" Text="@AppText.T("web.encodingProfiles.extraParams")" Component="EncodingProfileExtraParams" />
+                <RadzenTextArea Name="EncodingProfileExtraParams" Rows="3" @bind-Value="_editing.ExtraParams" />
+            </div>
+        }
+        else
+        {
+            <div class="form-row" style="color: var(--rz-text-disabled-color);">@AppText.T("web.encodingProfiles.noProfiles")</div>
+        }
+    </div>
+    <div class="rf-dialog-footer">
+        @if (!string.IsNullOrEmpty(_saveError))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false">@_saveError</RadzenAlert>
+        }
+        <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@Save" />
+        <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => CloseDialog())" />
     </div>
 </div>
 
 @code {
     /// <summary>
-    /// Evento chiusura dialog
+    /// Numero di passate selezionabili in bitrate
     /// </summary>
-    [Parameter] public EventCallback OnClose { get; set; }
-
-    [Parameter] public EventCallback<string> OnProfileSaved { get; set; }
+    private static readonly List<int> PassValues = new List<int> { 1, 2 };
 
     /// <summary>
     /// Lista profili in modifica
@@ -189,19 +149,21 @@
     private EncodingProfile _editing;
 
     /// <summary>
-    /// CRF/QP come stringa per binding input
+    /// Indici dei profili mostrati nella tendina
     /// </summary>
-    private string _crfQpStr;
+    private List<int> ProfileIndexes => Enumerable.Range(0, this._profiles.Count).ToList();
 
     /// <summary>
-    /// Bitrate come stringa per binding input
+    /// Nome del profilo all'indice indicato, vuoto quando nessun profilo è selezionato
     /// </summary>
-    private string _bitrateStr;
-
-    /// <summary>
-    /// Film grain come stringa per binding input
-    /// </summary>
-    private string _filmGrainStr;
+    /// <param name="index">Indice del profilo</param>
+    /// <returns>Nome del profilo</returns>
+    private string GetProfileName(object index)
+    {
+        if (index is int position && position >= 0 && position < this._profiles.Count)
+            return this._profiles[position].Name;
+        return "";
+    }
 
     /// <summary>
     /// Carica profili clonati da AppSettings
@@ -217,9 +179,6 @@
 
         this._selectedIdx = -1;
         this._editing = null;
-        this._crfQpStr = "";
-        this._bitrateStr = "";
-        this._filmGrainStr = "";
 
         // Seleziona primo profilo se esiste
         if (this._profiles.Count > 0)
@@ -230,19 +189,12 @@
     }
 
     /// <summary>
-    /// Gestisce cambio profilo selezionato nel dropdown
+    /// Gestisce cambio profilo selezionato nella tendina
     /// </summary>
-    /// <param name="e">Argomenti evento change</param>
-    private void OnProfileSelected(ChangeEventArgs e)
+    /// <param name="value">Indice selezionato</param>
+    private void OnProfileSelected(object value)
     {
-        int idx;
-        string value;
-
-        // Salva profilo corrente prima di cambiare
-        this.SaveEditing();
-
-        value = Convert.ToString(e.Value);
-        if (int.TryParse(value, out idx))
+        if (value is int idx)
         {
             this._selectedIdx = idx;
             this.LoadEditing();
@@ -252,10 +204,10 @@
     /// <summary>
     /// Gestisce cambio codec: resetta campi ai default del nuovo codec
     /// </summary>
-    /// <param name="e">Argomenti evento change</param>
-    private void OnCodecChanged(ChangeEventArgs e)
+    /// <param name="value">Codec selezionato</param>
+    private void OnCodecChanged(object value)
     {
-        string newCodec = Convert.ToString(e.Value);
+        string newCodec = value as string;
         if (string.IsNullOrEmpty(newCodec))
         {
             return;
@@ -281,19 +233,15 @@
         {
             this._editing.Profile = "";
         }
-
-        this._crfQpStr = this._editing.CrfQp.ToString();
-        this._bitrateStr = "0";
-        this._filmGrainStr = "0";
     }
 
     /// <summary>
     /// Gestisce cambio rate mode: resetta valori correlati
     /// </summary>
-    /// <param name="e">Argomenti evento change</param>
-    private void OnRateModeChanged(ChangeEventArgs e)
+    /// <param name="value">Rate mode selezionato</param>
+    private void OnRateModeChanged(object value)
     {
-        string rateMode = Convert.ToString(e.Value);
+        string rateMode = value as string;
         if (string.IsNullOrEmpty(rateMode))
         {
             return;
@@ -304,26 +252,21 @@
         if (this._editing.RateMode == "crf" || this._editing.RateMode == "qp")
         {
             this._editing.CrfQp = EncodingDefaults.GetDefaultCrf(this._editing.Codec);
-            this._crfQpStr = this._editing.CrfQp.ToString();
         }
         else
         {
             this._editing.Bitrate = 0;
-            this._bitrateStr = "0";
         }
     }
 
     /// <summary>
-    /// Carica i campi del profilo selezionato nell'editor
+    /// Carica il profilo selezionato nell'editor
     /// </summary>
     private void LoadEditing()
     {
         if (this._selectedIdx >= 0 && this._selectedIdx < this._profiles.Count)
         {
             this._editing = this._profiles[this._selectedIdx];
-            this._crfQpStr = this._editing.CrfQp.ToString();
-            this._bitrateStr = this._editing.Bitrate.ToString();
-            this._filmGrainStr = this._editing.FilmGrain.ToString();
         }
         else
         {
@@ -332,51 +275,10 @@
     }
 
     /// <summary>
-    /// Salva i valori stringa nel profilo corrente
-    /// </summary>
-    private void SaveEditing()
-    {
-        int val;
-        int min;
-        int max;
-
-        if (this._editing == null)
-        {
-            return;
-        }
-
-        if (int.TryParse(this._crfQpStr, out val))
-        {
-            min = EncodingDefaults.GetMinCrf(this._editing.Codec);
-            max = EncodingDefaults.GetMaxCrf(this._editing.Codec);
-            if (val < min)
-                val = min;
-            else if (val > max)
-                val = max;
-            this._editing.CrfQp = val;
-            this._crfQpStr = val.ToString();
-        }
-        if (int.TryParse(this._bitrateStr, out val))
-            this._editing.Bitrate = val;
-        if (int.TryParse(this._filmGrainStr, out val))
-        {
-            if (val < EncodingDefaults.SVTAV1_FILM_GRAIN_MIN)
-                val = EncodingDefaults.SVTAV1_FILM_GRAIN_MIN;
-            else if (val > EncodingDefaults.SVTAV1_FILM_GRAIN_MAX)
-                val = EncodingDefaults.SVTAV1_FILM_GRAIN_MAX;
-            this._editing.FilmGrain = val;
-            this._filmGrainStr = val.ToString();
-        }
-    }
-
-    /// <summary>
     /// Aggiunge un nuovo profilo con valori di default
     /// </summary>
     private void AddProfile()
     {
-        // Salva profilo corrente
-        this.SaveEditing();
-
         EncodingProfile newProfile = new EncodingProfile();
         newProfile.Name = AppText.F("web.encodingProfiles.newProfileName", this._profiles.Count + 1);
         this._profiles.Add(newProfile);
@@ -412,13 +314,10 @@
     }
 
     /// <summary>
-    /// Salva tutti i profili in AppSettings e chiude il dialog
+    /// Salva tutti i profili in AppSettings e chiude il dialog restituendo il profilo da selezionare
     /// </summary>
-    private async Task Save()
+    private void Save()
     {
-        // Salva profilo corrente
-        this.SaveEditing();
-
         AppSettingsService settings = AppSettingsService.Instance;
         List<EncodingProfile> previous = settings.Settings.EncodingProfiles;
         settings.Settings.EncodingProfiles = this._profiles.Where(profile => !string.IsNullOrEmpty(profile.Name)).Select(profile => profile.Clone()).ToList();
@@ -426,9 +325,7 @@
         if (settings.Save())
         {
             EncodingProfile saved = this._createdProfiles.LastOrDefault(profile => this._profiles.Contains(profile) && !string.IsNullOrWhiteSpace(profile.Name)) ?? this._editing;
-            if (saved != null && !string.IsNullOrWhiteSpace(saved.Name))
-                await this.OnProfileSaved.InvokeAsync(saved.Name);
-            await this.OnClose.InvokeAsync();
+            this.CloseDialog(saved != null && !string.IsNullOrWhiteSpace(saved.Name) ? saved.Name : null);
         }
         else
         {

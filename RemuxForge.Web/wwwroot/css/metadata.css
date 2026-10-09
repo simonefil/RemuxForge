@@ -99,7 +99,7 @@
     align-self: center;
 }
 
-.metadata-rule-dialog-body {
+.rf-dialog-body.metadata-rule-dialog-body {
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -529,19 +529,7 @@ tr.metadata-diff-removed > td {
     color: var(--rz-danger);
 }
 
-.metadata-mapped-dialog-box {
-    left: 1ch;
-    top: 1em;
-    right: 1ch;
-    bottom: 1em;
-    width: auto;
-    height: auto;
-    min-width: 0;
-    max-width: none;
-    max-height: none;
-}
-
-.metadata-mapped-dialog-body {
+.rf-dialog-body.metadata-mapped-dialog-body {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(30ch, 42ch);
     gap: 1ch;
@@ -549,7 +537,7 @@ tr.metadata-diff-removed > td {
     overflow: hidden;
 }
 
-.metadata-mapped-dialog-body-editable {
+.rf-dialog-body.metadata-mapped-dialog-body-editable {
     grid-template-columns: minmax(0, 1fr);
 }
 
@@ -609,9 +597,6 @@ tr.metadata-diff-removed > td {
 .metadata-sheet-select {
     width: 100%;
     min-width: 0;
-    height: 1.5em;
-    line-height: 1em;
-    font: inherit;
 }
 
 .metadata-sheet-section-title {
@@ -780,7 +765,7 @@ tr.metadata-diff-removed > td {
         grid-column: auto;
     }
 
-    .metadata-mapped-dialog-body {
+    .rf-dialog-body.metadata-mapped-dialog-body {
         grid-template-columns: minmax(0, 1fr);
         grid-template-rows: minmax(0, 1fr) minmax(8rem, 0.35fr);
     }
@@ -812,53 +797,54 @@ tr.metadata-diff-removed > td {
     border-bottom: 1px solid var(--rz-panel-menu-item-hover-background-color);
 }
 
-.metadata-token-button {
+.metadata-token-browser .rz-button.metadata-token-button {
+    display: flex;
+    width: 100%;
+    height: auto;
+    min-height: 2.5em;
+    padding: 0.25em 1ch;
+    justify-content: flex-start;
+    border: 0;
+    border-bottom: 1px solid var(--rz-panel-menu-item-hover-background-color);
+    border-radius: 0;
+    background: none;
+    color: var(--rz-text-secondary-color);
+    font: inherit;
+    line-height: 1.15em;
+    text-align: left;
+    text-transform: none;
+    box-shadow: none;
+}
+
+.metadata-token-browser .rz-button.metadata-token-button .rz-button-box {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: 0;
+    min-width: 0;
     width: 100%;
-    border: 0;
-    border-bottom: 1px solid var(--rz-panel-menu-item-hover-background-color);
-    background: none;
-    color: var(--rz-text-secondary-color);
-    font: inherit;
-    height: auto;
-    min-height: 2.5em;
-    line-height: 1.15em;
-    padding: 0.25em 1ch;
-    text-align: left;
-    cursor: pointer;
 }
 
-.metadata-function-row .metadata-token-button {
+.metadata-function-row .rz-button.metadata-token-button {
     border-bottom: 0;
 }
 
-.metadata-function-example-button {
+.metadata-token-browser .rz-button.metadata-function-example-button {
     align-self: start;
     justify-self: end;
     width: 5ch;
-    margin-top: 0.25em;
-    color: var(--rz-text-secondary-color);
-    border-left: 0 !important;
-    height: 1.15em !important;
+    min-width: 0;
+    height: 1.15em;
     min-height: 0;
+    margin-top: 0.25em;
+    padding: 0;
     line-height: 1em;
-    cursor: pointer;
+    color: var(--rz-text-secondary-color);
+    text-transform: none;
 }
 
-.metadata-function-example-button:hover {
-    background-color: var(--rz-panel-menu-item-hover-background-color) !important;
-    color: var(--rz-text-color) !important;
-}
-
-.metadata-token-button::before,
-.metadata-token-button::after {
-    content: none;
-}
-
-.metadata-token-button:hover {
+.metadata-token-browser .rz-button.metadata-token-button:hover:not(.rz-state-disabled),
+.metadata-token-browser .rz-button.metadata-function-example-button:hover:not(.rz-state-disabled) {
     background-color: var(--rz-panel-menu-item-hover-background-color);
     color: var(--rz-text-color);
 }
@@ -874,46 +860,19 @@ tr.metadata-diff-removed > td {
     color: var(--rz-text-disabled-color);
 }
 
-.metadata-function-example-backdrop,
-.metadata-text-editor-backdrop {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    z-index: 1200;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--rz-dialog-mask-background-color);
-}
-
-.metadata-function-example-dialog {
-    width: min(76ch, 92vw);
-    min-width: 0;
-    max-height: 72vh;
-}
-
-.metadata-text-editor-dialog {
-    width: min(112ch, 94vw);
-    min-width: 0;
-    max-width: 94vw;
-    max-height: 82vh;
-}
-
-.metadata-function-example-body {
+.rf-dialog-body.metadata-function-example-body {
     display: grid;
     gap: 0.5em;
 }
 
-.metadata-text-editor-body {
+.rf-dialog-body.metadata-text-editor-body {
     display: grid;
     gap: 0.5em;
     min-width: 0;
     width: 100%;
 }
 
-.metadata-text-editor-textarea {
+.rz-textarea.metadata-text-editor-textarea {
     display: block;
     width: 100%;
     min-width: 0;
@@ -958,65 +917,7 @@ tr.metadata-diff-removed > td {
     padding: 0 0.5ch;
 }
 
-.dialog-box .metadata-token-button {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0;
-    width: 100%;
-    height: auto;
-    min-height: 2.5em;
-    line-height: 1.15em;
-    padding: 0.25em 1ch;
-    text-align: left;
-    background: none;
-    color: var(--rz-text-secondary-color);
-}
-
-.dialog-box .metadata-token-button::before,
-.dialog-box .metadata-token-button::after {
-    content: none;
-}
-
-.dialog-box .metadata-token-button:hover {
-    background-color: var(--rz-panel-menu-item-hover-background-color);
-    color: var(--rz-text-color);
-}
-
-.dialog-box .metadata-function-row .metadata-token-button {
-    border-bottom: 0;
-}
-
-.dialog-box .metadata-function-example-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    align-self: start;
-    justify-self: end;
-    width: 5ch;
-    margin-top: 0.25em;
-    height: 1.15em;
-    min-height: 0;
-    line-height: 1em;
-    color: var(--rz-text-secondary-color);
-    border-left: 0;
-}
-
-.dialog-box .metadata-function-example-button:hover {
-    background-color: var(--rz-panel-menu-item-hover-background-color);
-    color: var(--rz-text-color);
-}
-
-.metadata-preset-dialog-box {
-    left: 1ch;
-    top: 1em;
-    right: 1ch;
-    bottom: 1em;
-    width: auto;
-    height: auto;
-    min-width: 0;
-    max-width: none;
-    max-height: none;
+.rf-dialog.metadata-preset-dialog {
     font-size: var(--rz-text-body2-font-size);
 }
 
@@ -1118,10 +1019,25 @@ tr.metadata-diff-removed > td {
     font-family: var(--rz-text-code-font-family, monospace);
 }
 
-.metadata-chapter-time-invalid {
+.metadata-chapter-time-invalid,
+.rz-textbox.metadata-chapter-time-invalid {
     border-color: var(--rz-danger);
 }
 
 .metadata-track-order-moved {
     font-weight: 600;
+}
+
+/* Elenco file della preview del wizard AI */
+.rz-listbox.metadata-ai-preview-files {
+    flex: 0 0 35%;
+    max-height: 50vh;
+    min-width: 0;
+    overflow: auto;
+}
+
+.metadata-ai-preview-file-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }

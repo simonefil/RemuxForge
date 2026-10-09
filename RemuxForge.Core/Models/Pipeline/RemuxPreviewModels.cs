@@ -16,7 +16,7 @@ namespace RemuxForge.Core.Models
         public bool IsMatched => !string.IsNullOrEmpty(this.LangFilePath);
     }
 
-    public sealed record RemuxTrackMember(string PairKey, RemuxTrackSide Side, string FilePath, TrackInfo Track);
+    public sealed record RemuxTrackMember(string PairKey, RemuxTrackSide Side, TrackInfo Track);
 
     public sealed record RemuxTrackGroup(string Key, RemuxTrackSide Side, string Type, string Language,
         string Codec, int Channels, bool DefaultTrack, bool ForcedTrack, string Title,
@@ -31,7 +31,7 @@ namespace RemuxForge.Core.Models
 
     /// <summary>Inventario privato della richiesta; nessun record della pipeline attiva viene esposto.</summary>
     public sealed record RemuxPreviewSnapshot(IReadOnlyList<RemuxPreviewPair> Pairs,
-        IReadOnlyList<RemuxTrackGroup> Groups, IReadOnlyList<RemuxPreviewError> Errors, IReadOnlyList<string> Log)
+        IReadOnlyList<RemuxTrackGroup> Groups, IReadOnlyList<RemuxPreviewError> Errors)
     {
         public int MatchedPairs => this.Pairs.Count(pair => pair.IsMatched);
         public bool InventoryComplete => this.Errors.Count == 0 && this.MatchedPairs > 0;

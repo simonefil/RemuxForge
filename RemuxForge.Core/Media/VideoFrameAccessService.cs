@@ -1,4 +1,5 @@
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
 using System;
@@ -292,12 +293,12 @@ namespace RemuxForge.Core.Media
         public VideoFrameIndex BuildIndex(string filePath, int timeoutMs, CancellationToken cancellationToken)
         {
             if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
-                throw new FileNotFoundException("File video non disponibile", filePath);
+                throw new FileNotFoundException(AppText.T("remux.media.videoFileUnavailable"), filePath);
 
             List<double> timestamps = this.ReadPresentationTimestamps(filePath, timeoutMs, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             if (timestamps.Count == 0)
-                throw new InvalidOperationException("Nessun PTS video disponibile per " + Path.GetFileName(filePath));
+                throw new InvalidOperationException(AppText.F("remux.media.noVideoPts", Path.GetFileName(filePath)));
 
             VideoFrameIndex result = new VideoFrameIndex();
             result.FilePath = filePath;
@@ -353,18 +354,18 @@ namespace RemuxForge.Core.Media
         public List<VideoRawFrame> ExtractFrameRange(string filePath, int presentationIndex, int count, int maximumWidth, int maximumHeight, CancellationToken cancellationToken)
         {
             if (string.IsNullOrEmpty(this._ffmpegPath) || !File.Exists(this._ffmpegPath))
-                throw new InvalidOperationException("FFmpeg non disponibile per la preview EditMap");
+                throw new InvalidOperationException(AppText.T("remux.media.previewFfmpegUnavailable"));
             if (maximumWidth < 2 || maximumHeight < 2)
-                throw new ArgumentOutOfRangeException(nameof(maximumWidth), "Le dimensioni preview devono essere positive");
+                throw new ArgumentOutOfRangeException(nameof(maximumWidth), AppText.T("remux.media.previewSizeInvalid"));
             if (count < 1 || count > 60)
-                throw new ArgumentOutOfRangeException(nameof(count), "Il numero di frame deve essere compreso fra 1 e 60");
+                throw new ArgumentOutOfRangeException(nameof(count), AppText.T("remux.media.previewFrameCountInvalid"));
 
             int timeoutMs = Math.Max(1000, this._ffmpegConfig.FrameExtractionTimeoutMs);
             VideoFrameIndex index = this.GetOrBuildIndex(filePath, timeoutMs, cancellationToken);
             count = Math.Min(count, Math.Max(0, index.FrameCount - presentationIndex));
             VideoFrameIndexEntry requested = index.GetFrame(presentationIndex);
             if (requested == null || count <= 0)
-                throw new ArgumentOutOfRangeException(nameof(presentationIndex), "Frame fuori indice");
+                throw new ArgumentOutOfRangeException(nameof(presentationIndex), AppText.T("remux.media.previewFrameOutOfRange"));
 
             ResolveOutputDimensions(index, maximumWidth, maximumHeight, out int width, out int height);
             string pixelFormat = index.RequiresP010 ? "p010le" : "nv12";
@@ -391,7 +392,7 @@ namespace RemuxForge.Core.Media
             if (result == null && hardware)
                 result = this.DecodeExactFrames(filePath, index, requested, count, width, height, pixelFormat, false, timeoutMs, cancellationToken);
             if (result == null || result.Count != count)
-                throw new InvalidOperationException("FFmpeg non ha restituito i frame richiesti");
+                throw new InvalidOperationException(AppText.T("remux.media.previewFramesMissing"));
 
             for (int i = 0; i < result.Count; i++)
             {

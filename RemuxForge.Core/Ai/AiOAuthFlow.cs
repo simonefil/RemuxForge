@@ -183,21 +183,21 @@ namespace RemuxForge.Core.Ai
             {
                 string description;
                 callback.TryGetValue("error_description", out description);
-                throw new AiServiceException(AiErrorKind.InvalidSignIn, AppText.F("ai.oauth.authorizationDenied", string.IsNullOrEmpty(description) ? value : description), value);
+                throw new AiServiceException(AiErrorKind.InvalidSignIn, AppText.F("ai.oauth.authorizationDenied", string.IsNullOrEmpty(description) ? value : description));
             }
 
             if (!callback.TryGetValue("state", out value) || !FixedTimeEquals(value, request.State))
-                throw new AiServiceException(AiErrorKind.InvalidSignIn, AppText.T("ai.oauth.stateMismatch"), "");
+                throw new AiServiceException(AiErrorKind.InvalidSignIn, AppText.T("ai.oauth.stateMismatch"));
 
             if (!callback.TryGetValue("code", out value) || string.IsNullOrEmpty(value))
-                throw new AiServiceException(AiErrorKind.InvalidSignIn, AppText.T("ai.oauth.codeMissing"), "");
+                throw new AiServiceException(AiErrorKind.InvalidSignIn, AppText.T("ai.oauth.codeMissing"));
 
             // Il client ID rilasciato arriva solo nella callback del primo login
             if (!callback.TryGetValue("client_id", out clientId) || string.IsNullOrEmpty(clientId))
                 clientId = request.ClientId == DYNAMIC_CLIENT_ID ? "" : request.ClientId;
 
             if (string.IsNullOrEmpty(clientId))
-                throw new AiServiceException(AiErrorKind.InvalidSignIn, AppText.T("ai.oauth.clientIdMissing"), "");
+                throw new AiServiceException(AiErrorKind.InvalidSignIn, AppText.T("ai.oauth.clientIdMissing"));
 
             form["grant_type"] = "authorization_code";
             form["client_id"] = clientId;
@@ -225,7 +225,7 @@ namespace RemuxForge.Core.Ai
             Dictionary<string, string> form = new Dictionary<string, string>();
 
             if (string.IsNullOrEmpty(credentials.RefreshToken) || string.IsNullOrEmpty(credentials.ClientId))
-                throw new AiServiceException(AiErrorKind.SignInRequired, AppText.T("ai.error.signInRequired"), "");
+                throw new AiServiceException(AiErrorKind.SignInRequired, AppText.T("ai.error.signInRequired"));
 
             // Lo scope si omette per conservare quello concesso al login
             form["grant_type"] = "refresh_token";
@@ -252,7 +252,7 @@ namespace RemuxForge.Core.Ai
             configuration = await this.GetJsonAsync(OPENID_CONFIGURATION_URL, cancellationToken);
             revocationUrl = GetString(configuration, "revocation_endpoint");
             if (string.IsNullOrEmpty(revocationUrl))
-                throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.invalidResponse"), "");
+                throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.invalidResponse"));
 
             form["token"] = credentials.RefreshToken;
             form["token_type_hint"] = "refresh_token";
@@ -264,12 +264,12 @@ namespace RemuxForge.Core.Ai
                 using (HttpResponseMessage response = await this._httpClient.PostAsync(revocationUrl, content, cancellationToken))
                 {
                     if (!response.IsSuccessStatusCode)
-                        throw new AiServiceException(AiErrorKind.Unknown, AppText.F("ai.oauth.revokeFailed", (int)response.StatusCode), "");
+                        throw new AiServiceException(AiErrorKind.Unknown, AppText.F("ai.oauth.revokeFailed", (int)response.StatusCode));
                 }
             }
             catch (HttpRequestException ex)
             {
-                throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), "", ex);
+                throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
             }
         }
 
@@ -299,7 +299,7 @@ namespace RemuxForge.Core.Ai
             }
             catch (HttpRequestException ex)
             {
-                throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), "", ex);
+                throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
             }
 
             JsonObject json = TryParseObject(body);
@@ -310,11 +310,11 @@ namespace RemuxForge.Core.Ai
             for (int i = 0; i < UNUSABLE_TOKEN_ERRORS.Length; i++)
             {
                 if (string.Equals(error, UNUSABLE_TOKEN_ERRORS[i], StringComparison.Ordinal))
-                    throw new AiServiceException(AiErrorKind.SignInRequired, AppText.T("ai.error.signInRequired"), error);
+                    throw new AiServiceException(AiErrorKind.SignInRequired, AppText.T("ai.error.signInRequired"));
             }
 
             string description = json != null ? GetString(json, "error_description") : "";
-            throw new AiServiceException(AiErrorKind.InvalidSignIn, AppText.F("ai.oauth.tokenFailed", status, string.IsNullOrEmpty(description) ? error : description), error);
+            throw new AiServiceException(AiErrorKind.InvalidSignIn, AppText.F("ai.oauth.tokenFailed", status, string.IsNullOrEmpty(description) ? error : description));
         }
 
         /// <summary>
@@ -390,7 +390,7 @@ namespace RemuxForge.Core.Ai
             string body;
 
             if (string.IsNullOrEmpty(url))
-                throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.invalidResponse"), "");
+                throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.invalidResponse"));
 
             try
             {
@@ -398,12 +398,12 @@ namespace RemuxForge.Core.Ai
             }
             catch (HttpRequestException ex)
             {
-                throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), "", ex);
+                throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
             }
 
             JsonObject json = TryParseObject(body);
             if (json == null)
-                throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.invalidResponse"), "");
+                throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.invalidResponse"));
 
             return json;
         }
@@ -442,7 +442,7 @@ namespace RemuxForge.Core.Ai
             Uri uri;
 
             if (!Uri.TryCreate(callbackUrl != null ? callbackUrl.Trim() : "", UriKind.Absolute, out uri))
-                throw new AiServiceException(AiErrorKind.InvalidSignIn, AppText.T("ai.oauth.callbackInvalid"), "");
+                throw new AiServiceException(AiErrorKind.InvalidSignIn, AppText.T("ai.oauth.callbackInvalid"));
 
             string query = uri.Query.TrimStart('?');
             string[] pairs = query.Split('&', StringSplitOptions.RemoveEmptyEntries);
@@ -487,7 +487,7 @@ namespace RemuxForge.Core.Ai
         /// <returns>Eccezione</returns>
         private static AiServiceException InvalidIdToken()
         {
-            return new AiServiceException(AiErrorKind.InvalidSignIn, AppText.T("ai.oauth.idTokenInvalid"), "");
+            return new AiServiceException(AiErrorKind.InvalidSignIn, AppText.T("ai.oauth.idTokenInvalid"));
         }
 
         /// <summary>

@@ -34,11 +34,6 @@ namespace RemuxForge.Core.Models
         public bool Success { get; set; }
 
         /// <summary>
-        /// True se il risultato è ambiguo e non deve essere applicato
-        /// </summary>
-        public bool Ambiguous { get; set; }
-
-        /// <summary>
         /// Offset finale da applicare in millisecondi
         /// </summary>
         public int OffsetMs { get; set; }

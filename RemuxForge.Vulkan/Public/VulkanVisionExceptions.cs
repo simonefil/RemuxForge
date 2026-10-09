@@ -27,13 +27,6 @@ namespace RemuxForge.Vulkan
         public VulkanBackendUnavailableException(string message) : base(message)
         {
         }
-
-        /// <summary>Initializes a new exception with a message and its original cause</summary>
-        /// <param name="message">Message that describes the backend availability failure</param>
-        /// <param name="innerException">Exception that caused the backend availability failure</param>
-        public VulkanBackendUnavailableException(string message, Exception innerException) : base(message, innerException)
-        {
-        }
     }
 
     /// <summary>Indicates that the selected device does not expose a required capability</summary>
@@ -62,13 +55,6 @@ namespace RemuxForge.Vulkan
         /// <summary>Initializes a new exception with the specified message</summary>
         /// <param name="message">Message that describes the shader incompatibility</param>
         public VulkanShaderIncompatibleException(string message) : base(message)
-        {
-        }
-
-        /// <summary>Initializes a new exception with a message and its original cause</summary>
-        /// <param name="message">Message that describes the shader incompatibility</param>
-        /// <param name="innerException">Exception that caused the shader incompatibility failure</param>
-        public VulkanShaderIncompatibleException(string message, Exception innerException) : base(message, innerException)
         {
         }
     }

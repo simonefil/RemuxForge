@@ -1,32 +1,47 @@
-@* Adattatore di presentazione: conserva la sintassi Core delle regole senza richiedere di modificare CSV. *@
-<div class="split-rule-rows">
-    @foreach (RuleRow row in _rows)
+@* Righe della regola Split: conserva la sintassi del core senza far scrivere elenchi separati da virgole. *@
+<div class="rf-split-rule-rows">
+    @for (int i = 0; i < _rows.Count; i++)
     {
-        <div class="form-row" @key="row">
-            <span class="form-label">@(_rows.IndexOf(row) + 1)</span>
-            <label>@AppText.T("web.splitMontage." + (Mode == "pattern" ? "chapterGroup" : "cutStart")) <input class="form-input" value="@row.Start" @onchange="@(e => ChangeAsync(row, true, e))" /></label>
-            @if (Mode == "ranges")
+        int index = i;
+        SplitRuleRow row = _rows[i];
+        bool invalid = ShowErrors && SplitRuleSyntax.RowError(Mode, row.Start, row.End).Length > 0;
+        <div class="rf-split-rule-row" role="group" aria-label="@AppText.F("web.splitWizard.rule.row", index + 1)" @key="row">
+            <span class="rf-split-rule-number" aria-hidden="true">@(index + 1)</span>
+            <div class="rf-split-rule-cell">
+                <RadzenLabel Component="@(Name + index)" Text="@StartLabel" />
+                <RadzenTextBox Name="@(Name + index)" Value="@row.Start" Disabled="@Disabled" Placeholder="@StartPlaceholder" aria-invalid="@(invalid ? "true" : null)"
+                               Change="@(v => ChangeAsync(row, true, v))" Style="width:100%" />
+            </div>
+            @if (Mode == SplitRuleSyntax.RANGES)
             {
-                <label>@AppText.T("web.splitMontage.cutEnd") <input class="form-input" value="@row.End" @onchange="@(e => ChangeAsync(row, false, e))" /></label>
+                <div class="rf-split-rule-cell">
+                    <RadzenLabel Component="@(Name + "End" + index)" Text="@AppText.T("web.splitWizard.rule.end")" />
+                    <RadzenTextBox Name="@(Name + "End" + index)" Value="@row.End" Disabled="@Disabled" aria-invalid="@(invalid ? "true" : null)"
+                                   Change="@(v => ChangeAsync(row, false, v))" Style="width:100%" />
+                </div>
             }
-            <RadzenButton Icon="delete" Size="ButtonSize.Small" aria-label="@AppText.T("web.splitMontage.removeRuleRow")" Click="@(() => RemoveAsync(row))" />
+            <RadzenButton Icon="delete" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Disabled="@Disabled"
+                          aria-label="@AppText.F("web.splitWizard.rule.remove", index + 1)" title="@AppText.F("web.splitWizard.rule.remove", index + 1)" Click="@(() => RemoveAsync(row))" />
         </div>
-        @if (!string.IsNullOrEmpty(row.Error)) { <div role="status" class="split-montage-diagnostics">@(_rows.IndexOf(row) + 1): @row.Error</div> }
     }
-    <RadzenButton Text="@AppText.T("web.splitMontage.addRuleRow")" Icon="add" Size="ButtonSize.Small" Click="AddAsync" />
-    <div class="split-mode-note">@AppText.T("web.splitMontage.ruleTimeHelp")</div>
+    <RadzenButton Text="@AppText.T("web.splitWizard.rule.add")" Icon="add" Variant="Variant.Outlined" Size="ButtonSize.Small" Disabled="@Disabled" Click="AddAsync" class="rf-split-rule-add" />
 </div>
 
 @code {
     #region Parametri
 
     /// <summary>
-    /// Modalità della regola: pattern o ranges
+    /// Tipo di righe: pattern, ranges o points
     /// </summary>
-    [Parameter] public string Mode { get; set; } = "ranges";
+    [Parameter] public string Mode { get; set; } = SplitRuleSyntax.RANGES;
 
     /// <summary>
-    /// Regola nella sintassi Core, separata da virgole
+    /// Prefisso dei Name dei controlli: il primo campo è Name0, così l'etichetta del campo lo raggiunge
+    /// </summary>
+    [Parameter] public string Name { get; set; } = "";
+
+    /// <summary>
+    /// Regola nella sintassi del core, separata da virgole
     /// </summary>
     [Parameter] public string Value { get; set; } = "";
 
@@ -36,9 +51,14 @@
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
 
     /// <summary>
-    /// Evento cambio di validità delle righe
+    /// True quando il campo ha errori: le righe non valide vengono marcate
     /// </summary>
-    [Parameter] public EventCallback<bool> ValidChanged { get; set; }
+    [Parameter] public bool ShowErrors { get; set; }
+
+    /// <summary>
+    /// Disabilita le righe
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
 
     #endregion
 
@@ -50,21 +70,40 @@
     private string _seen;
 
     /// <summary>
-    /// Ultima modalità ricevuta
+    /// Ultimo tipo di righe ricevuto
     /// </summary>
     private string _seenMode;
 
     /// <summary>
     /// Righe della regola
     /// </summary>
-    private List<RuleRow> _rows = new List<RuleRow>();
+    private List<SplitRuleRow> _rows = new List<SplitRuleRow>();
+
+    #endregion
+
+    #region Proprietà
+
+    /// <summary>
+    /// Etichetta del primo campo della riga
+    /// </summary>
+    private string StartLabel => AppText.T(Mode switch
+    {
+        SplitRuleSyntax.PATTERN => "web.splitWizard.rule.chapters",
+        SplitRuleSyntax.POINTS => "web.splitWizard.rule.point",
+        _ => "web.splitWizard.rule.start"
+    });
+
+    /// <summary>
+    /// Esempio nel primo campo della riga
+    /// </summary>
+    private string StartPlaceholder => Mode == SplitRuleSyntax.PATTERN ? "5" : "21:40";
 
     #endregion
 
     #region Metodi protetti
 
     /// <summary>
-    /// Ricostruisce le righe quando valore o modalità cambiano dall'esterno
+    /// Ricostruisce le righe soltanto quando valore o tipo cambiano dall'esterno
     /// </summary>
     protected override void OnParametersSet()
     {
@@ -72,14 +111,7 @@
             return;
         _seenMode = Mode;
         _seen = Value;
-        _rows = (Value ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(item =>
-        {
-            int separator = Mode == "ranges" ? item.IndexOf('-') : -1;
-            return new RuleRow { Start = separator >= 0 ? item[..separator] : item, End = separator >= 0 ? item[(separator + 1)..] : "END" };
-        }).ToList();
-        foreach (RuleRow row in _rows)
-            ValidateRow(row);
-        _ = ValidChanged.InvokeAsync(_rows.Count > 0 && _rows.All(row => string.IsNullOrEmpty(row.Error)));
+        _rows = SplitRuleSyntax.Parse(Mode, Value);
     }
 
     #endregion
@@ -90,14 +122,14 @@
     /// Aggiorna inizio o fine di una riga e pubblica la regola
     /// </summary>
     /// <param name="row">Riga modificata</param>
-    /// <param name="start">True per l'inizio, false per la fine</param>
-    /// <param name="args">Evento del campo</param>
-    private async Task ChangeAsync(RuleRow row, bool start, ChangeEventArgs args)
+    /// <param name="start">True per il primo campo, false per la fine</param>
+    /// <param name="value">Valore scritto</param>
+    private async Task ChangeAsync(SplitRuleRow row, bool start, string value)
     {
         if (start)
-            row.Start = args.Value?.ToString() ?? "";
+            row.Start = value ?? "";
         else
-            row.End = args.Value?.ToString() ?? "";
+            row.End = value ?? "";
         await PublishAsync();
     }
 
@@ -106,7 +138,11 @@
     /// </summary>
     private async Task AddAsync()
     {
-        _rows.Add(new RuleRow { Start = Mode == "pattern" ? "1" : "0", End = "END" });
+        _rows.Add(new SplitRuleRow
+        {
+            Start = Mode == SplitRuleSyntax.PATTERN ? "1" : Mode == SplitRuleSyntax.RANGES ? "0" : "",
+            End = Mode == SplitRuleSyntax.RANGES ? SplitRuleSyntax.END : ""
+        });
         await PublishAsync();
     }
 
@@ -114,80 +150,19 @@
     /// Rimuove una riga e pubblica la regola
     /// </summary>
     /// <param name="row">Riga da rimuovere</param>
-    private async Task RemoveAsync(RuleRow row)
+    private async Task RemoveAsync(SplitRuleRow row)
     {
         _rows.Remove(row);
         await PublishAsync();
     }
 
     /// <summary>
-    /// Valida le righe e pubblica regola e validità
+    /// Pubblica la regola: la validazione la fa il wizard, che possiede gli errori del campo
     /// </summary>
     private async Task PublishAsync()
     {
-        foreach (RuleRow row in _rows)
-            ValidateRow(row);
-        _seen = string.Join(',', _rows.Select(row => Mode == "ranges" ? row.Start + "-" + row.End : row.Start));
+        _seen = SplitRuleSyntax.Format(Mode, _rows);
         await ValueChanged.InvokeAsync(_seen);
-        await ValidChanged.InvokeAsync(_rows.Count > 0 && _rows.All(row => string.IsNullOrEmpty(row.Error)));
-    }
-
-    /// <summary>
-    /// Valida una riga e ne valorizza l'errore
-    /// </summary>
-    /// <param name="row">Riga da validare</param>
-    private void ValidateRow(RuleRow row)
-    {
-        row.Error = "";
-        try
-        {
-            if (Mode == "pattern")
-            {
-                if (!int.TryParse(row.Start, out int chapters) || chapters <= 0)
-                    row.Error = AppText.T("web.splitMontage.invalidRuleRow");
-            }
-            else
-            {
-                (double value, bool isFrame) start = RemuxForge.Core.Splitting.MkvSplitSegmentService.ParseTime(row.Start, 0);
-                if (!double.IsFinite(start.value) || start.value < 0)
-                    row.Error = AppText.T("web.splitMontage.invalidRuleRow");
-                if (Mode == "ranges")
-                {
-                    (double value, bool isFrame) end = RemuxForge.Core.Splitting.MkvSplitSegmentService.ParseTime(row.End, 0);
-                    if (!double.IsFinite(end.value) || end.value < 0 || (row.End.Trim() != "END" && start.isFrame == end.isFrame && end.value <= start.value))
-                        row.Error = AppText.T("web.splitMontage.invalidRuleRow");
-                }
-            }
-        }
-        catch (Exception exception) when (exception is FormatException or OverflowException)
-        {
-            row.Error = AppText.T("web.splitMontage.invalidRuleRow");
-        }
-    }
-
-    #endregion
-
-    #region Tipi annidati
-
-    /// <summary>
-    /// Riga della regola: inizio, fine ed errore di validazione
-    /// </summary>
-    private sealed class RuleRow
-    {
-        /// <summary>
-        /// Inizio, oppure numero di capitoli per gruppo in modalità pattern
-        /// </summary>
-        public string Start { get; set; } = "";
-
-        /// <summary>
-        /// Fine, solo in modalità ranges
-        /// </summary>
-        public string End { get; set; } = "";
-
-        /// <summary>
-        /// Errore localizzato, vuoto se la riga è valida
-        /// </summary>
-        public string Error { get; set; } = "";
     }
 
     #endregion

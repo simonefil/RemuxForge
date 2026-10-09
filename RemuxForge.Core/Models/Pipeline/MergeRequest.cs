@@ -23,7 +23,6 @@ namespace RemuxForge.Core.Models
             this.LangAudioTracks = new List<TrackInfo>();
             this.LangSubTracks = new List<TrackInfo>();
             this.SubtitleStretchFactor = "";
-            this.AudioFormat = "";
             this.ConvertedSourceTracks = new Dictionary<int, string>();
             this.ConvertedLangTracks = new Dictionary<int, string>();
             this.RequiredProcessedLangTrackIds = new HashSet<int>();
@@ -104,11 +103,6 @@ namespace RemuxForge.Core.Models
         /// Fattore di stretch temporale applicato esclusivamente ai sottotitoli tramite mkvmerge
         /// </summary>
         public string SubtitleStretchFactor { get; set; }
-
-        /// <summary>
-        /// Formato audio processato o stringa vuota se nessuna conversione
-        /// </summary>
-        public string AudioFormat { get; set; }
 
         /// <summary>
         /// Mappa trackId sorgente -> percorso file audio convertito. Le tracce in questa mappa

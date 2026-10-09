@@ -1,3 +1,4 @@
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Globalization;
@@ -68,13 +69,13 @@ namespace RemuxForge.Core.Subtitles
 
             if (context == null || context.Transform == null)
             {
-                result.ErrorMessage = "contesto canvas VobSub mancante";
+                result.ErrorMessage = AppText.T("remux.subtitles.vobsubContextMissing");
                 return false;
             }
 
             if (!File.Exists(inputFile) || !File.Exists(inputSub))
             {
-                result.ErrorMessage = "coppia IDX/SUB VobSub incompleta";
+                result.ErrorMessage = AppText.T("remux.subtitles.vobsubPairIncomplete");
                 return false;
             }
 
@@ -84,7 +85,7 @@ namespace RemuxForge.Core.Subtitles
             // IDX guida il taglio dei blocchi SUB: senza entry timestamp/filepos non si può ricostruire la coppia
             if (document.Entries.Count == 0)
             {
-                result.ErrorMessage = "IDX VobSub senza entry";
+                result.ErrorMessage = AppText.T("remux.subtitles.vobsubIdxNoEntries");
                 return false;
             }
 
@@ -93,7 +94,7 @@ namespace RemuxForge.Core.Subtitles
             inputCanvasHeight = document.Height > 0 ? document.Height : context.Transform.InputCanvasHeight;
             if (inputCanvasWidth <= 0 || inputCanvasHeight <= 0)
             {
-                result.ErrorMessage = "IDX VobSub senza canvas valido";
+                result.ErrorMessage = AppText.T("remux.subtitles.vobsubIdxNoCanvas");
                 return false;
             }
             transform = context.Transform.CreateCoordinateTransform(
@@ -117,7 +118,7 @@ namespace RemuxForge.Core.Subtitles
                 nextFilePosition = i + 1 < document.Entries.Count ? document.Entries[i + 1].FilePosition : subData.Length;
                 if (entry.FilePosition < 0 || nextFilePosition < entry.FilePosition || nextFilePosition > subData.Length)
                 {
-                    result.ErrorMessage = "filepos VobSub fuori SUB";
+                    result.ErrorMessage = AppText.T("remux.subtitles.vobsubFileposOutside");
                     return false;
                 }
 
@@ -126,8 +127,8 @@ namespace RemuxForge.Core.Subtitles
                 Array.Copy(subData, (int)entry.FilePosition, block, 0, block.Length);
                 if (!VobSubSubtitleUtils.TryRewriteSubtitleBlock(block, transform, out rewrittenBlock, out areas, out decoded, out scaled, out encoded, out errorMessage))
                 {
-                    result.ErrorMessage = "entry " + i.ToString(CultureInfo.InvariantCulture) +
-                        " @" + entry.TimestampMs.ToString(CultureInfo.InvariantCulture) + "ms: " + errorMessage;
+                    result.ErrorMessage = AppText.F("remux.subtitles.vobsubEntryError", i.ToString(CultureInfo.InvariantCulture),
+                        entry.TimestampMs.ToString(CultureInfo.InvariantCulture), errorMessage);
                     return false;
                 }
 

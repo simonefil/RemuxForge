@@ -15,8 +15,6 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public MkvSplitOptions()
         {
-            this.InputFile = "";
-            this.InputFolder = "";
             this.SourcePath = "";
             this.OutputDir = "";
             this.Pattern = "";
@@ -31,23 +29,12 @@ namespace RemuxForge.Core.Models
             this.StartNumber = 1;
             this.Snap = MkvSplitSnapMode.Nearest;
             this.Force = false;
-            this.Batch = false;
             this.DryRun = false;
         }
 
         #endregion
 
         #region Proprietà
-
-        /// <summary>
-        /// File MKV di input in modalità singolo file
-        /// </summary>
-        public string InputFile { get; set; }
-
-        /// <summary>
-        /// Cartella input in modalità batch
-        /// </summary>
-        public string InputFolder { get; set; }
 
         /// <summary>
         /// Path sorgente ricevuto da CLI/UI, file o cartella
@@ -118,11 +105,6 @@ namespace RemuxForge.Core.Models
         /// Sovrascrive output esistenti
         /// </summary>
         public bool Force { get; set; }
-
-        /// <summary>
-        /// True quando l'input è una cartella batch
-        /// </summary>
-        public bool Batch { get; set; }
 
         /// <summary>
         /// Stampa i segmenti senza eseguire lo split
@@ -302,6 +284,9 @@ namespace RemuxForge.Core.Models
 
         /// <summary>True se keyframe</summary>
         public bool Key { get; set; }
+
+        /// <summary>True se keyframe di GOP aperto: fotogrammi decodificati dopo si mostrano prima, quindi un taglio senza ricodifica li sposterebbe</summary>
+        public bool OpenGop { get; set; }
     }
 
     /// <summary>
@@ -386,25 +371,17 @@ namespace RemuxForge.Core.Models
     /// </summary>
     public class MkvSplitExecutionResult
     {
-        /// <summary>File input elaborato</summary>
-        public string InputFile { get; set; }
-
         /// <summary>Exit code della pipeline</summary>
         public int ExitCode { get; set; }
 
         /// <summary>Messaggio errore sintetico</summary>
         public string ErrorMessage { get; set; }
 
-        /// <summary>Segmenti previsti o prodotti</summary>
-        public List<MkvSplitSegment> Segments { get; set; }
-
         /// <summary>Costruttore</summary>
         public MkvSplitExecutionResult()
         {
-            this.InputFile = "";
             this.ExitCode = 0;
             this.ErrorMessage = "";
-            this.Segments = new List<MkvSplitSegment>();
         }
     }
 }

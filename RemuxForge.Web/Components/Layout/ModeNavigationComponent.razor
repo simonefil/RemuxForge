@@ -58,6 +58,11 @@
     [Parameter] public bool IsBusy { get; set; }
 
     /// <summary>
+    /// Lingua corrente, ridisegna le etichette quando cambia
+    /// </summary>
+    [Parameter] public string CurrentLanguage { get; set; }
+
+    /// <summary>
     /// Evento cambio modalità
     /// </summary>
     [Parameter] public EventCallback<string> OnModeChanged { get; set; }

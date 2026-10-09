@@ -1,7 +1,5 @@
 using RemuxForge.Core.Configuration;
-using System;
 using System.IO;
-using System.Runtime.InteropServices;
 
 namespace RemuxForge.Core.Tools
 {
@@ -202,7 +200,7 @@ namespace RemuxForge.Core.Tools
         private static string ResolveConfiguredOrPath(string toolName, string configuredPath)
         {
             string result;
-            string executableName = toolName + GetExecutableExtension();
+            string executableName = toolName + ToolProviderBase.GetExecutableExtension();
 
             if (!string.IsNullOrEmpty(configuredPath) && File.Exists(configuredPath))
             {
@@ -210,7 +208,7 @@ namespace RemuxForge.Core.Tools
             }
             else
             {
-                result = FindInSystemPath(executableName);
+                result = ToolProviderBase.FindInSystemPath(executableName);
             }
 
             return result;
@@ -250,54 +248,12 @@ namespace RemuxForge.Core.Tools
                 folder = Path.GetDirectoryName(siblingPath);
                 if (!string.IsNullOrEmpty(folder))
                 {
-                    candidate = Path.Combine(folder, toolName + GetExecutableExtension());
+                    candidate = Path.Combine(folder, toolName + ToolProviderBase.GetExecutableExtension());
                     if (File.Exists(candidate))
                     {
                         result = candidate;
                     }
                 }
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Cerca un eseguibile nel PATH
-        /// </summary>
-        private static string FindInSystemPath(string executableName)
-        {
-            string result = "";
-            string pathEnv = Environment.GetEnvironmentVariable("PATH");
-            char separator = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ';' : ':';
-            string[] paths;
-            string candidate;
-
-            if (pathEnv != null)
-            {
-                paths = pathEnv.Split(separator);
-                for (int i = 0; i < paths.Length; i++)
-                {
-                    candidate = Path.Combine(paths[i], executableName);
-                    if (File.Exists(candidate))
-                    {
-                        result = candidate;
-                        break;
-                    }
-                }
-            }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Restituisce l'estensione eseguibile per la piattaforma corrente
-        /// </summary>
-        private static string GetExecutableExtension()
-        {
-            string result = "";
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                result = ".exe";
             }
 
             return result;

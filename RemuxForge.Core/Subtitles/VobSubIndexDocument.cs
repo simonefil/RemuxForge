@@ -189,11 +189,6 @@ namespace RemuxForge.Core.Subtitles
         /// </summary>
         public int Height { get; private set; }
 
-        /// <summary>
-        /// Palette IDX a 16 colori RGB, se presente
-        /// </summary>
-        public int[] Palette { get; private set; }
-
         #endregion
 
         #region Metodi privati
@@ -279,8 +274,6 @@ namespace RemuxForge.Core.Subtitles
 
                 palette[i] = rgb & 0xffffff;
             }
-
-            this.Palette = palette;
         }
 
         /// <summary>

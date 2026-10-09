@@ -1,131 +1,95 @@
-@implements IDisposable
+@inherits AppDialogContentBase
 @using RemuxForge.Core.Ai
 @inject AiCredentialService CredentialService
 @inject OpenAiResponsesClient ResponsesClient
 @inject AiAuthService AuthService
 
-<div class="dialog-overlay visible">
-    <div class="dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="ai-settings-dialog-title" style="min-width: 70ch; max-width: 90ch;" @onclick:stopPropagation="true">
-        <div id="ai-settings-dialog-title" class="dialog-title">@AppText.T("web.aiSettings.title")</div>
-        <div class="dialog-body">
-            <div class="form-row">
-                <span class="form-label">@AppText.T("web.aiSettings.status")</span>
-                <span>@GetStatusText()</span>
-            </div>
+<div class="rf-dialog" @ref="DialogContent">
+    <div class="rf-dialog-body">
+        <div class="form-row">
+            <span class="form-label">@AppText.T("web.aiSettings.status")</span>
+            <span>@GetStatusText()</span>
+        </div>
 
-            @* Account ChatGPT *@
-            <div class="form-row" style="margin-top: 0.5em;">
-                <span class="form-label">@AppText.T("web.aiSettings.account")</span>
-                @if (IsAccountConnected())
-                {
-                    <RadzenButton Text="@AppText.T("web.aiSettings.disconnect")" Icon="link_off" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@_busy" Click="@Disconnect" />
-                }
-                else
-                {
-                    <RadzenButton Text="@AppText.T("web.aiSettings.connect")" Icon="link" Size="ButtonSize.Small" Disabled="@(_busy || IsApiKeyConfigured())" Click="@RequestConnect" />
-                }
-            </div>
-            @if (AuthService.IsLoginPending)
-            {
-                <div style="margin: 0.25em 0 0.5em 0; padding: 0.5em; border: 1px solid var(--rz-base-300);">
-                    <div>@AppText.T("web.aiSettings.loginPending")</div>
-                    <div style="margin-top: 0.25em;">
-                        <a href="@AuthService.PendingAuthorizationUrl" target="_blank" rel="noopener noreferrer">@AppText.T("web.aiSettings.openLoginPage")</a>
-                    </div>
-                    <div style="margin-top: 0.5em;">@AppText.T("web.aiSettings.pasteHint")</div>
-                    <div class="form-row">
-                        <input class="form-input" style="flex: 1;" aria-label="@AppText.T("web.aiSettings.pasteLabel")" placeholder="http://127.0.0.1:.../callback?..." @bind="_pastedUrl" />
-                        <RadzenButton Text="@AppText.T("web.aiSettings.completeLogin")" Icon="check" Size="ButtonSize.Small" Disabled="@(_busy || string.IsNullOrWhiteSpace(_pastedUrl))" Click="@CompletePasted" />
-                        <RadzenButton Text="@AppText.T("web.common.cancel")" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@_busy" Click="@CancelLogin" />
-                    </div>
-                </div>
-            }
-
-            @* API key *@
-            <div class="form-row" style="margin-top: 0.5em;">
-                <span class="form-label">@AppText.T("web.aiSettings.apiKey")</span>
-                <input class="form-input" type="password" autocomplete="off" style="width: 40ch;" aria-label="@AppText.T("web.aiSettings.apiKey")"
-                       placeholder="@(IsApiKeyConfigured() ? AppText.T("web.aiSettings.apiKeyConfigured") : "sk-...")"
-                       disabled="@(_busy || IsAccountConnected())" @bind="_apiKeyInput" />
-                <RadzenButton Text="@AppText.T("web.aiSettings.saveApiKey")" Icon="save" Size="ButtonSize.Small" Disabled="@(_busy || IsAccountConnected() || string.IsNullOrWhiteSpace(_apiKeyInput))" Click="@RequestSaveApiKey" />
-                @if (IsApiKeyConfigured())
-                {
-                    <RadzenButton Text="@AppText.T("web.aiSettings.removeApiKey")" Icon="delete" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@_busy" Click="@RemoveApiKey" />
-                }
-            </div>
+        @* Account ChatGPT *@
+        <div class="form-row" style="margin-top: 0.5em;">
+            <span class="form-label">@AppText.T("web.aiSettings.account")</span>
             @if (IsAccountConnected())
             {
-                <div style="color: var(--rz-text-secondary-color);">@AppText.T("ai.credentials.disconnectBeforeApiKey")</div>
+                <RadzenButton Text="@AppText.T("web.aiSettings.disconnect")" Icon="link_off" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@_busy" Click="@Disconnect" />
             }
-
-            @* Modello *@
-            <div class="form-row" style="margin-top: 0.5em;">
-                <span class="form-label">@AppText.T("web.aiSettings.model")</span>
-                <select class="form-input" style="width: 40ch;" aria-label="@AppText.T("web.aiSettings.model")" value="@_credentials.Model" disabled="@(_busy || !AiCredentialService.IsConfigured(_credentials))" @onchange="OnModelChanged">
-                    <option value="">@AppText.T("web.aiSettings.noModel")</option>
-                    @if (!string.IsNullOrEmpty(_credentials.Model) && !ContainsModel(_credentials.Model))
-                    {
-                        <option value="@_credentials.Model">@_credentials.Model</option>
-                    }
-                    @foreach (AiModelInfo model in _models)
-                    {
-                        <option value="@model.Id">@model.DisplayName</option>
-                    }
-                </select>
-                <RadzenButton Text="@AppText.T("web.aiSettings.refreshModels")" Icon="refresh" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@(_busy || !AiCredentialService.IsConfigured(_credentials))" Click="@RefreshModels" />
-            </div>
-
-            @* Giri massimi *@
-            <div class="form-row" style="margin-top: 0.5em;">
-                <span class="form-label">@AppText.T("web.aiSettings.maxRounds")</span>
-                <input @key="_maxRoundsInputKey" class="form-input" type="number" style="width: 10ch;" aria-label="@AppText.T("web.aiSettings.maxRounds")"
-                       min="@MetadataAiPresetGenerator.MIN_MAX_ROUNDS" max="@MetadataAiPresetGenerator.MAX_MAX_ROUNDS"
-                       value="@_credentials.MaxRounds" disabled="@_busy" @onchange="OnMaxRoundsChanged" />
-                <span style="color: var(--rz-text-secondary-color);">@AppText.F("web.aiSettings.maxRoundsHint", MetadataAiPresetGenerator.MIN_MAX_ROUNDS, MetadataAiPresetGenerator.MAX_MAX_ROUNDS)</span>
-            </div>
+            else
+            {
+                <RadzenButton Text="@AppText.T("web.aiSettings.connect")" Icon="link" Size="ButtonSize.Small" Disabled="@(_busy || IsApiKeyConfigured())" Click="@RequestConnect" />
+            }
         </div>
-        @if (!string.IsNullOrEmpty(GetErrorText()))
+        @if (AuthService.IsLoginPending)
         {
-            <div style="padding: 0.5em 1em; color: var(--rz-danger); white-space: pre-line;">@GetErrorText()</div>
+            <div style="margin: 0.25em 0 0.5em 0; padding: 0.5em; border: 1px solid var(--rz-base-300);">
+                <div>@AppText.T("web.aiSettings.loginPending")</div>
+                <div style="margin-top: 0.25em;">
+                    <a href="@AuthService.PendingAuthorizationUrl" target="_blank" rel="noopener noreferrer">@AppText.T("web.aiSettings.openLoginPage")</a>
+                </div>
+                <div style="margin-top: 0.5em;">@AppText.T("web.aiSettings.pasteHint")</div>
+                <div class="form-row">
+                    <RadzenTextBox aria-label="@AppText.T("web.aiSettings.pasteLabel")" Placeholder="http://127.0.0.1:.../callback?..." @bind-Value="_pastedUrl" Immediate="true" />
+                    <RadzenButton Text="@AppText.T("web.aiSettings.completeLogin")" Icon="check" Size="ButtonSize.Small" Disabled="@(_busy || string.IsNullOrWhiteSpace(_pastedUrl))" Click="@CompletePasted" />
+                    <RadzenButton Text="@AppText.T("web.common.cancel")" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@_busy" Click="@CancelLogin" />
+                </div>
+            </div>
         }
+
+        @* API key *@
+        <div class="form-row" style="margin-top: 0.5em;">
+            <RadzenLabel class="form-label" Text="@AppText.T("web.aiSettings.apiKey")" Component="AiSettingsApiKey" />
+            <RadzenPassword Name="AiSettingsApiKey" AutoCompleteType="AutoCompleteType.Off" Style="max-width: 40ch;"
+                            Placeholder="@(IsApiKeyConfigured() ? AppText.T("web.aiSettings.apiKeyConfigured") : "sk-...")"
+                            Disabled="@(_busy || IsAccountConnected())" @bind-Value="_apiKeyInput" Immediate="true" />
+            <RadzenButton Text="@AppText.T("web.aiSettings.saveApiKey")" Icon="save" Size="ButtonSize.Small" Disabled="@(_busy || IsAccountConnected() || string.IsNullOrWhiteSpace(_apiKeyInput))" Click="@RequestSaveApiKey" />
+            @if (IsApiKeyConfigured())
+            {
+                <RadzenButton Text="@AppText.T("web.aiSettings.removeApiKey")" Icon="delete" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@_busy" Click="@RemoveApiKey" />
+            }
+        </div>
+        @if (IsAccountConnected())
+        {
+            <div style="color: var(--rz-text-secondary-color);">@AppText.T("ai.credentials.disconnectBeforeApiKey")</div>
+        }
+
+        @* Modello *@
+        <div class="form-row" style="margin-top: 0.5em;">
+            <RadzenLabel class="form-label" Text="@AppText.T("web.aiSettings.model")" Component="AiSettingsModel" />
+            <RadzenDropDown TValue="string" Name="AiSettingsModel" Data="@GetModelValues()" Value="@(string.IsNullOrEmpty(_credentials.Model) ? null : _credentials.Model)" Change="@OnModelChanged"
+                            AllowClear="true" Placeholder="@AppText.T("web.aiSettings.noModel")" Disabled="@(_busy || !AiCredentialService.IsConfigured(_credentials))" Style="max-width: 40ch;">
+                <Template Context="model">@GetModelLabel((string)model)</Template>
+                <ValueTemplate Context="model">@GetModelLabel((string)model)</ValueTemplate>
+            </RadzenDropDown>
+            <RadzenButton Text="@AppText.T("web.aiSettings.refreshModels")" Icon="refresh" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@(_busy || !AiCredentialService.IsConfigured(_credentials))" Click="@RefreshModels" />
+        </div>
+
+        @* Giri massimi *@
+        <div class="form-row" style="margin-top: 0.5em;">
+            <RadzenLabel class="form-label" Text="@AppText.T("web.aiSettings.maxRounds")" Component="AiSettingsMaxRounds" />
+            <RadzenNumeric @key="_maxRoundsInputKey" TValue="int" Name="AiSettingsMaxRounds" Style="max-width: 12ch;"
+                           Min="@MetadataAiPresetGenerator.MIN_MAX_ROUNDS" Max="@MetadataAiPresetGenerator.MAX_MAX_ROUNDS"
+                           Value="@_credentials.MaxRounds" Disabled="@_busy" Change="@OnMaxRoundsChanged" />
+            <span style="color: var(--rz-text-secondary-color);">@AppText.F("web.aiSettings.maxRoundsHint", MetadataAiPresetGenerator.MIN_MAX_ROUNDS, MetadataAiPresetGenerator.MAX_MAX_ROUNDS)</span>
+        </div>
         @if (!string.IsNullOrEmpty(_info))
         {
-            <div style="padding: 0.5em 1em; white-space: pre-line;">@_info</div>
+            <div style="margin-top: 0.5em; white-space: pre-line;">@_info</div>
         }
-        <div class="dialog-footer">
-            <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.close")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" />
-        </div>
+    </div>
+    <div class="rf-dialog-footer">
+        @if (!string.IsNullOrEmpty(GetErrorText()))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="rf-dialog-message">@GetErrorText()</RadzenAlert>
+        }
+        <RadzenButton Text="@AppText.T("web.common.close")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => CloseDialog())" />
     </div>
 </div>
 
-@* Dialog consenso *@
-@if (_pendingConsentAction != null)
-{
-    <div class="dialog-overlay visible">
-        <div class="dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="ai-consent-dialog-title" style="max-width: 70ch;" @onclick:stopPropagation="true">
-            <div id="ai-consent-dialog-title" class="dialog-title">@AppText.T("web.aiSettings.consentTitle")</div>
-            <div class="dialog-body">
-                <p style="white-space: pre-line;">@AppText.T("web.aiSettings.consentText")</p>
-            </div>
-            <div class="dialog-footer">
-                <RadzenButton Text="@AppText.T("web.aiSettings.consentAccept")" Icon="check" Click="@AcceptConsent" />
-                <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@DeclineConsent" />
-            </div>
-        </div>
-    </div>
-}
-
 @code {
-    /// <summary>
-    /// Modulo JS interop
-    /// </summary>
-    [Parameter] public IJSObjectReference JsModule { get; set; }
-
-    /// <summary>
-    /// Evento chiusura dialog
-    /// </summary>
-    [Parameter] public EventCallback OnClose { get; set; }
-
     /// <summary>
     /// Configurazione AI corrente
     /// </summary>
@@ -167,11 +131,6 @@
     private int _maxRoundsInputKey;
 
     /// <summary>
-    /// Azione in attesa dell'accettazione del consenso, null se nessuna
-    /// </summary>
-    private Func<Task> _pendingConsentAction;
-
-    /// <summary>
     /// Carica la configurazione e si iscrive ai cambi di stato del login
     /// </summary>
     protected override void OnInitialized()
@@ -195,9 +154,10 @@
     /// <summary>
     /// Rimuove la sottoscrizione al servizio
     /// </summary>
-    public void Dispose()
+    public override async ValueTask DisposeAsync()
     {
         this.AuthService.OnStateChanged -= this.HandleStateChanged;
+        await base.DisposeAsync();
     }
 
     /// <summary>
@@ -245,6 +205,34 @@
     }
 
     /// <summary>
+    /// Valori della tendina dei modelli: il modello salvato assente dall'elenco resta selezionabile
+    /// </summary>
+    private List<string> GetModelValues()
+    {
+        List<string> values = new List<string>();
+        if (!string.IsNullOrEmpty(this._credentials.Model) && !this.ContainsModel(this._credentials.Model))
+            values.Add(this._credentials.Model);
+        for (int i = 0; i < this._models.Count; i++)
+            values.Add(this._models[i].Id);
+        return values;
+    }
+
+    /// <summary>
+    /// Nome mostrato di un modello
+    /// </summary>
+    /// <param name="id">Identificativo modello</param>
+    private string GetModelLabel(string id)
+    {
+        for (int i = 0; i < this._models.Count; i++)
+        {
+            if (this._models[i].Id == id)
+                return this._models[i].DisplayName;
+        }
+
+        return id;
+    }
+
+    /// <summary>
     /// True se l'elenco caricato contiene il modello
     /// </summary>
     /// <param name="id">Identificativo modello</param>
@@ -260,7 +248,7 @@
     }
 
     /// <summary>
-    /// Esegue l'azione subito se il consenso è già dato, altrimenti chiede il consenso
+    /// Esegue l'azione subito se il consenso è già dato, altrimenti la esegue dopo l'accettazione del consenso
     /// </summary>
     /// <param name="action">Azione da eseguire</param>
     private async Task RunWithConsent(Func<Task> action)
@@ -273,28 +261,14 @@
             return;
         }
 
-        this._pendingConsentAction = action;
-    }
+        bool accepted = await AppDialogs.ConfirmAsync(this.DialogService, AppText.T("web.aiSettings.consentTitle"), AppText.T("web.aiSettings.consentText"),
+            AppText.T("web.aiSettings.consentAccept"), AppText.T("web.common.cancel"));
+        if (!accepted)
+            return;
 
-    /// <summary>
-    /// Registra il consenso ed esegue l'azione in attesa
-    /// </summary>
-    private async Task AcceptConsent()
-    {
-        Func<Task> action = this._pendingConsentAction;
-        this._pendingConsentAction = null;
         this.CredentialService.AcceptConsent();
         this.ReloadCredentials();
-        if (action != null)
-            await action();
-    }
-
-    /// <summary>
-    /// Rifiuta il consenso senza eseguire l'azione
-    /// </summary>
-    private void DeclineConsent()
-    {
-        this._pendingConsentAction = null;
+        await action();
     }
 
     /// <summary>
@@ -453,15 +427,13 @@
     }
 
     /// <summary>
-    /// Salva i giri massimi; un valore non numerico o fuori intervallo viene rifiutato senza salvare
+    /// Salva i giri massimi; un valore fuori intervallo viene rifiutato senza salvare
     /// </summary>
-    /// <param name="e">Evento di cambio</param>
-    private void OnMaxRoundsChanged(ChangeEventArgs e)
+    /// <param name="value">Valore digitato</param>
+    private void OnMaxRoundsChanged(int value)
     {
-        int value;
-
         this._error = "";
-        if (e.Value == null || !int.TryParse(e.Value.ToString(), out value) || value < MetadataAiPresetGenerator.MIN_MAX_ROUNDS || value > MetadataAiPresetGenerator.MAX_MAX_ROUNDS)
+        if (value < MetadataAiPresetGenerator.MIN_MAX_ROUNDS || value > MetadataAiPresetGenerator.MAX_MAX_ROUNDS)
         {
             this._error = AppText.F("web.aiSettings.maxRoundsInvalid", MetadataAiPresetGenerator.MIN_MAX_ROUNDS, MetadataAiPresetGenerator.MAX_MAX_ROUNDS);
             this.ReloadCredentials();
@@ -478,10 +450,10 @@
     /// <summary>
     /// Salva il modello scelto
     /// </summary>
-    /// <param name="e">Evento di cambio</param>
-    private void OnModelChanged(ChangeEventArgs e)
+    /// <param name="value">Modello scelto, null quando la scelta viene rimossa</param>
+    private void OnModelChanged(object value)
     {
-        this.CredentialService.SetModel(e.Value != null ? e.Value.ToString() : "");
+        this.CredentialService.SetModel(value as string ?? "");
         this.ReloadCredentials();
     }
 }

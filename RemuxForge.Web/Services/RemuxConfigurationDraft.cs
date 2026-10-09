@@ -27,7 +27,8 @@ namespace RemuxForge.Web.Services
         private RemuxPreviewRequest _inputsRequest;
         private HashSet<string> _knownGroups = new HashSet<string>(StringComparer.Ordinal);
 
-        public RemuxConfigurationDraft(Options options, RemuxMuxKind kind, string presetName, RemuxTrackUiState trackUiState = null)
+        public RemuxConfigurationDraft(Options options, RemuxMuxKind kind, string presetName, RemuxTrackUiState trackUiState = null,
+            RemuxPreviewRequest previewRequest = null, RemuxPreviewSnapshot previewSnapshot = null)
         {
             this.MuxKind = kind;
             this.Options = RemuxPresetUiHelper.CloneOptions(options ?? new Options(), kind);
@@ -35,7 +36,9 @@ namespace RemuxForge.Web.Services
             this.Advanced = this.Options.ExplicitTrackSelection != null;
             this.PresetName = presetName ?? "";
             this._savedPreset = AppSettingsService.Instance.GetRemuxPresets().FirstOrDefault(p => p.Name == this.PresetName);
+            if (this._savedPreset == null) this.PresetName = "";
             this.NormalizeLanguages();
+            this.NormalizeAudio();
             this.ResetIncompatibleSynchronization();
             this._inputsRequest = this.PreviewRequest();
             if (this.Advanced && trackUiState != null && trackUiState.Matches(this.PreviewRequest()))
@@ -46,6 +49,9 @@ namespace RemuxForge.Web.Services
                 this.ExcludedGroups.UnionWith(copy.ExcludedGroups);
                 this._knownGroups = copy.KnownGroups;
             }
+            // L'anteprima dell'ultima configurazione applicata resta valida finché gli input non cambiano
+            if (previewRequest != null && previewSnapshot != null && SameRequest(previewRequest, this.PreviewRequest()))
+                this.AcceptPreview(this.BeginPreview(), previewRequest, previewSnapshot);
         }
 
         public bool Modified => this.Advanced || (this._savedPreset != null &&
@@ -59,18 +65,50 @@ namespace RemuxForge.Web.Services
             this._savedPreset = preset.Clone();
         }
 
+        /// <summary>Scollega il draft da un preset eliminato, lasciando invariata la configurazione.</summary>
+        public void DetachPreset()
+        {
+            this.PresetName = "";
+            this._savedPreset = null;
+        }
+
         public void LoadPreset(RemuxPreset preset)
         {
-            string source = this.Options.SourceFolder, lang = this.Options.LanguageFolder, destination = this.Options.DestinationFolder;
-            this.Options = RemuxPresetUiHelper.Restore(preset);
-            this.Options.SourceFolder = source;
-            this.Options.LanguageFolder = lang;
-            this.Options.DestinationFolder = destination;
+            RemuxPreviewRequest previous = this.PreviewRequest();
+            // Percorsi, sovrascrittura, strumenti e diagnostica restano quelli del lavoro corrente
+            Options restored = RemuxPresetUiHelper.Restore(preset);
+            restored.SourceFolder = this.Options.SourceFolder;
+            restored.LanguageFolder = this.Options.LanguageFolder;
+            restored.DestinationFolder = this.Options.DestinationFolder;
+            restored.Overwrite = this.Options.Overwrite;
+            restored.MkvMergePath = this.Options.MkvMergePath;
+            restored.FrameSyncDiagnostics = this.Options.FrameSyncDiagnostics;
+            restored.DeepAnalysisDiagnostics = this.Options.DeepAnalysisDiagnostics;
+            restored.DryRun = this.Options.DryRun;
+            restored.SkipPairsWithoutSelectedLangTracks = this.Options.SkipPairsWithoutSelectedLangTracks;
+            this.Options = restored;
             this.SetMuxKind(preset.MuxKind); // Azzera i campi incompatibili dopo la conferma del caricamento.
             this.NormalizeLanguages();
-            this.Advanced = false;
-            this.InvalidatePreview();
+            this.NormalizeAudio();
+            if (this.Advanced)
+            {
+                // Il preset contiene regole, non scelte avanzate: le scelte di gruppo tornano allo stato iniziale
+                this.Advanced = false;
+                this.ResetGroupChoices();
+                this._choicesRequest = null;
+            }
+            if (!SameRequest(previous, this.PreviewRequest())) this.InvalidatePreview();
             this.MarkPresetSaved(preset);
+        }
+
+        /// <summary>Senza elaborazione audio non restano formato, riduzione bit o guadagni nascosti.</summary>
+        private void NormalizeAudio()
+        {
+            if (this.Options.AudioProcessingScope != "disabled") return;
+            this.Options.AudioFormat = "";
+            this.Options.AudioDownsample24To16 = false;
+            this.Options.AudioPeakNormalize = false;
+            this.Options.AudioFixedGain = false;
         }
 
         private void NormalizeLanguages()
@@ -82,17 +120,12 @@ namespace RemuxForge.Web.Services
             if (!string.IsNullOrEmpty(this.Options.AudioSourceFillLanguage)) this.Options.AudioSourceFillLanguage = Normalize(this.Options.AudioSourceFillLanguage);
         }
 
+        /// <summary>Ogni tipo coincide con un metodo: manuale, FrameSync o Deep Analysis.</summary>
         public void SetMuxKind(RemuxMuxKind kind)
         {
             this.MuxKind = kind;
             this.Options.DeepAnalysis = kind == RemuxMuxKind.DeepAnalysis;
-            if (kind != RemuxMuxKind.DelayCorrection) this.Options.FrameSync = false;
-            this.ResetIncompatibleSynchronization();
-        }
-
-        public void SetFrameSync(bool enabled)
-        {
-            this.Options.FrameSync = this.MuxKind == RemuxMuxKind.DelayCorrection && enabled;
+            this.Options.FrameSync = kind == RemuxMuxKind.DelayCorrection;
             this.ResetIncompatibleSynchronization();
         }
 
@@ -105,9 +138,12 @@ namespace RemuxForge.Web.Services
             }
             else
             {
+                // Il mux semplice usa solo i delay manuali: crop, canvas e correzione velocità appartengono all'analisi video
                 this.Options.AnalysisCropSourcePx = "";
                 this.Options.AnalysisCropLanguagePx = "";
                 this.Options.SubtitleCanvasRewrite = false;
+                this.Options.SpeedCorrectionMode = Core.Models.Options.SPEED_CORRECTION_OFF;
+                this.Options.ManualStretchFactor = "";
             }
         }
 
@@ -332,7 +368,8 @@ namespace RemuxForge.Web.Services
                     !errors.Any(e => e.Field == nameof(Options.AudioProcessingScope)))
                     errors.Add(new PipelineInitializationIssue("audioScopeRequired", AppText.T("web.remux.validation.audioScopeRequired"), nameof(Options.AudioProcessingScope), "Processing"));
             }
-            if (!Enum.IsDefined(this.MuxKind) || (this.MuxKind != RemuxMuxKind.DelayCorrection && candidate.FrameSync))
+            if (!Enum.IsDefined(this.MuxKind) || candidate.FrameSync != (this.MuxKind == RemuxMuxKind.DelayCorrection) ||
+                (this.MuxKind == RemuxMuxKind.Simple && candidate.SpeedCorrectionMode != Core.Models.Options.SPEED_CORRECTION_OFF))
                 errors.Add(new PipelineInitializationIssue("mode", AppText.T("web.remux.invalidMode"), "Mode", "Mode"));
             if (((candidate.FrameSync || candidate.DeepAnalysis) && (candidate.AudioDelay != 0 || candidate.SubtitleDelay != 0)) ||
                 (!(candidate.FrameSync || candidate.DeepAnalysis) && (!string.IsNullOrEmpty(candidate.AnalysisCropSourcePx) ||
@@ -349,7 +386,7 @@ namespace RemuxForge.Web.Services
             {
                 if (!this.HasMatching) errors.Add(new PipelineInitializationIssue("matching", AppText.T("web.remux.refreshRequired"), "SourceFolder", "Files"));
                 if (this.HasCurrentSnapshot)
-                    errors.AddRange(this.Snapshot.Errors.Select(error => new PipelineInitializationIssue("inventory", error.FilePath + " — " + error.Message, "SourceFolder", "Files", true)));
+                    errors.AddRange(this.Snapshot.Errors.Select(error => new PipelineInitializationIssue("inventory", error.FilePath + " — " + error.Message, "SourceFolder", "Files")));
                 if (this.HasMatching && this.Advanced)
                     errors.AddRange(RemuxConfigurationPreviewService.ValidateSelection(this.Snapshot, candidate.ExplicitTrackSelection).Errors
                         .Select(message => new PipelineInitializationIssue("selection", message, "ExplicitTrackSelection", "Tracks")));

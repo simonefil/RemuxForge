@@ -138,16 +138,14 @@ namespace RemuxForge.Core.Analysis.Features
         }
 
         /// <summary>
-        /// Costruisce la matrice dei match usando la pipeline Vulkan, eventualmente limitata alle coppie pianificate
+        /// Costruisce la matrice dei match usando la pipeline Vulkan
         /// </summary>
         /// <param name="sourceAnchors">Ancore della timeline source</param>
         /// <param name="languageAnchors">Ancore della timeline language</param>
         /// <param name="maxDegreeOfParallelism">Parallelismo massimo dichiarato</param>
         /// <param name="cancellationToken">Token di cancellazione</param>
-        /// <param name="progress">Destinatario opzionale del progresso</param>
-        /// <param name="plannedPairs">Coppie sparse opzionali</param>
         /// <returns>Matrice dei match e diagnostica del batch</returns>
-        public override DeepSiftBatchMatchResult BuildMatrix(IReadOnlyList<DeepSiftVisualAnchor> sourceAnchors, IReadOnlyList<DeepSiftVisualAnchor> languageAnchors, int maxDegreeOfParallelism, CancellationToken cancellationToken, IProgress<DeepSiftBatchProgress> progress = null, IReadOnlyList<DeepSiftFramePair> plannedPairs = null)
+        public override DeepSiftBatchMatchResult BuildMatrix(IReadOnlyList<DeepSiftVisualAnchor> sourceAnchors, IReadOnlyList<DeepSiftVisualAnchor> languageAnchors, int maxDegreeOfParallelism, CancellationToken cancellationToken)
         {
             if (sourceAnchors == null)
                 throw new ArgumentNullException(nameof(sourceAnchors));
@@ -156,7 +154,7 @@ namespace RemuxForge.Core.Analysis.Features
             if (maxDegreeOfParallelism < 1)
                 throw new ArgumentOutOfRangeException(nameof(maxDegreeOfParallelism));
 
-            DeepSiftBatchMatchResult result = this.CreateInitialResult(sourceAnchors.Count, languageAnchors.Count, maxDegreeOfParallelism);
+            DeepSiftBatchMatchResult result = this.CreateInitialResult();
             Stopwatch stopwatch = Stopwatch.StartNew();
 
             try
@@ -171,29 +169,15 @@ namespace RemuxForge.Core.Analysis.Features
 
                 cancellationToken.ThrowIfCancellationRequested();
                 VulkanSiftBatchResult batch;
-                PackedBatchRequest packedRequest = null;
                 lock (this._executionLock)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    VulkanSiftBatchRequest request;
-                    if (plannedPairs != null)
-                    {
-                        packedRequest = this.CreatePackedRequest(sourceAnchors, languageAnchors, progress, plannedPairs);
-                        request = packedRequest.Request;
-                    }
-                    else
-                    {
-                        request = this.CreateRequest(sourceAnchors, languageAnchors, progress);
-                    }
+                    VulkanSiftBatchRequest request = this.CreateRequest(sourceAnchors, languageAnchors);
                     batch = this._pipeline.Execute(request, cancellationToken);
                 }
 
-                if (packedRequest != null)
-                    this.PopulatePackedResult(result, batch, sourceAnchors, languageAnchors, packedRequest);
-                else
-                    this.PopulateResult(result, batch, sourceAnchors, languageAnchors);
+                this.PopulateResult(result, batch, sourceAnchors, languageAnchors);
                 result.MatchingMs = stopwatch.ElapsedMilliseconds;
-                result.PeakWorkingSetBytes = Process.GetCurrentProcess().PeakWorkingSet64;
                 return result;
             }
             catch (OperationCanceledException)
@@ -243,19 +227,13 @@ namespace RemuxForge.Core.Analysis.Features
         #region Metodi privati
 
         /// <summary>
-        /// Inizializza il risultato con le dimensioni dichiarate e il parallelismo effettivo del backend
+        /// Inizializza il risultato con l'identificativo del backend
         /// </summary>
-        /// <param name="sourceCount">Numero di ancore source dichiarate</param>
-        /// <param name="languageCount">Numero di ancore language dichiarate</param>
-        /// <param name="maximumParallelism">Parallelismo massimo richiesto dal chiamante</param>
         /// <returns>Risultato iniziale del batch</returns>
-        private DeepSiftBatchMatchResult CreateInitialResult(int sourceCount, int languageCount, int maximumParallelism)
+        private DeepSiftBatchMatchResult CreateInitialResult()
         {
             DeepSiftBatchMatchResult result = new DeepSiftBatchMatchResult();
             result.BackendName = this.BackendName;
-            result.DeclaredSourceAnchorCount = sourceCount;
-            result.DeclaredLanguageAnchorCount = languageCount;
-            result.WorkerCount = Math.Min(maximumParallelism, MAXIMUM_IN_FLIGHT_WORKLOADS);
             return result;
         }
 
@@ -264,9 +242,8 @@ namespace RemuxForge.Core.Analysis.Features
         /// </summary>
         /// <param name="sourceAnchors">Ancore source da caricare</param>
         /// <param name="languageAnchors">Ancore language da caricare</param>
-        /// <param name="progress">Destinatario opzionale del progresso Vulkan</param>
         /// <returns>Richiesta batch completa</returns>
-        private VulkanSiftBatchRequest CreateRequest(IReadOnlyList<DeepSiftVisualAnchor> sourceAnchors, IReadOnlyList<DeepSiftVisualAnchor> languageAnchors, IProgress<DeepSiftBatchProgress> progress)
+        private VulkanSiftBatchRequest CreateRequest(IReadOnlyList<DeepSiftVisualAnchor> sourceAnchors, IReadOnlyList<DeepSiftVisualAnchor> languageAnchors)
         {
             List<VulkanImageFrame> sourceFrames = this.CreateFrames(sourceAnchors);
             List<VulkanImageFrame> languageFrames = this.CreateFrames(languageAnchors);
@@ -285,103 +262,8 @@ namespace RemuxForge.Core.Analysis.Features
             VulkanSiftOptions options = this.CreateVulkanOptions(sourceAnchors, languageAnchors);
             VulkanSiftBatchRequest request = new VulkanSiftBatchRequest(sourceFrames, languageFrames, pairs, options);
             request.OmitFeaturelessPairResults = true;
-            if (progress != null)
-            {
-                request.Progress = new Progress<VulkanVisionProgress>(value => progress.Report(new DeepSiftBatchProgress
-                {
-                    CompletedTiles = value.CompletedTiles,
-                    TotalTiles = value.TotalPairs,
-                    ProcessedCells = value.ProcessedPairs,
-                    TotalCells = value.TotalPairs
-                }));
-            }
 
             return request;
-        }
-
-        /// <summary>
-        /// Costruisce una richiesta Vulkan compatta per le sole coppie pianificate
-        /// </summary>
-        /// <param name="sourceAnchors">Ancore source originali</param>
-        /// <param name="languageAnchors">Ancore language originali</param>
-        /// <param name="progress">Destinatario opzionale del progresso Vulkan</param>
-        /// <param name="plannedPairs">Coppie sparse da elaborare</param>
-        /// <returns>Richiesta compatta e mapping verso gli indici originali</returns>
-        private PackedBatchRequest CreatePackedRequest(IReadOnlyList<DeepSiftVisualAnchor> sourceAnchors, IReadOnlyList<DeepSiftVisualAnchor> languageAnchors, IProgress<DeepSiftBatchProgress> progress, IReadOnlyList<DeepSiftFramePair> plannedPairs)
-        {
-            SortedSet<int> sourceIndexes = new SortedSet<int>();
-            SortedSet<int> languageIndexes = new SortedSet<int>();
-            for (int pairIndex = 0; pairIndex < plannedPairs.Count; pairIndex++)
-            {
-                DeepSiftFramePair pair = plannedPairs[pairIndex];
-                if (pair.SourceAnchorIndex < 0 || pair.SourceAnchorIndex >= sourceAnchors.Count || pair.LanguageAnchorIndex < 0 || pair.LanguageAnchorIndex >= languageAnchors.Count)
-                    throw new ArgumentOutOfRangeException(nameof(plannedPairs));
-                sourceIndexes.Add(pair.SourceAnchorIndex);
-                languageIndexes.Add(pair.LanguageAnchorIndex);
-            }
-            if (sourceIndexes.Count == 0 || languageIndexes.Count == 0)
-                throw new ArgumentException(AppText.T("deep.temporal.matcher.sparsePlanWithoutFrames"), nameof(plannedPairs));
-
-            PackedBatchRequest result = new PackedBatchRequest();
-            result.SourceOriginalIndexes.AddRange(sourceIndexes);
-            result.LanguageOriginalIndexes.AddRange(languageIndexes);
-            Dictionary<int, int> sourceCompactIndexes = this.CreateCompactIndexes(result.SourceOriginalIndexes);
-            Dictionary<int, int> languageCompactIndexes = this.CreateCompactIndexes(result.LanguageOriginalIndexes);
-            List<DeepSiftVisualAnchor> packedSourceAnchors = this.GetAnchorSubset(sourceAnchors, result.SourceOriginalIndexes);
-            List<DeepSiftVisualAnchor> packedLanguageAnchors = this.GetAnchorSubset(languageAnchors, result.LanguageOriginalIndexes);
-            List<VulkanImageFrame> sourceFrames = this.CreateFrames(packedSourceAnchors);
-            List<VulkanImageFrame> languageFrames = this.CreateFrames(packedLanguageAnchors);
-            List<VulkanFramePair> pairs = new List<VulkanFramePair>(plannedPairs.Count);
-            for (int pairIndex = 0; pairIndex < plannedPairs.Count; pairIndex++)
-            {
-                DeepSiftFramePair plannedPair = plannedPairs[pairIndex];
-                VulkanFramePair pair = new VulkanFramePair();
-                pair.FirstFrameIndex = sourceCompactIndexes[plannedPair.SourceAnchorIndex];
-                pair.SecondFrameIndex = languageCompactIndexes[plannedPair.LanguageAnchorIndex];
-                pairs.Add(pair);
-            }
-
-            VulkanSiftBatchRequest request = new VulkanSiftBatchRequest(sourceFrames, languageFrames, pairs, this.CreateVulkanOptions(packedSourceAnchors, packedLanguageAnchors));
-            request.OmitFeaturelessPairResults = true;
-            if (progress != null)
-            {
-                request.Progress = new Progress<VulkanVisionProgress>(value => progress.Report(new DeepSiftBatchProgress
-                {
-                    CompletedTiles = value.CompletedTiles,
-                    TotalTiles = value.TotalPairs,
-                    ProcessedCells = value.ProcessedPairs,
-                    TotalCells = value.TotalPairs
-                }));
-            }
-            result.Request = request;
-            return result;
-        }
-
-        /// <summary>
-        /// Associa ogni indice originale alla posizione nella lista compatta
-        /// </summary>
-        /// <param name="originalIndexes">Indici originali ordinati</param>
-        /// <returns>Mappa da indice originale a indice compatto</returns>
-        private Dictionary<int, int> CreateCompactIndexes(List<int> originalIndexes)
-        {
-            Dictionary<int, int> result = new Dictionary<int, int>(originalIndexes.Count);
-            for (int compactIndex = 0; compactIndex < originalIndexes.Count; compactIndex++)
-                result.Add(originalIndexes[compactIndex], compactIndex);
-            return result;
-        }
-
-        /// <summary>
-        /// Estrae le ancore corrispondenti agli indici originali selezionati
-        /// </summary>
-        /// <param name="anchors">Ancore originali</param>
-        /// <param name="originalIndexes">Indici da proiettare nella lista compatta</param>
-        /// <returns>Subset delle ancore nello stesso ordine degli indici</returns>
-        private List<DeepSiftVisualAnchor> GetAnchorSubset(IReadOnlyList<DeepSiftVisualAnchor> anchors, List<int> originalIndexes)
-        {
-            List<DeepSiftVisualAnchor> result = new List<DeepSiftVisualAnchor>(originalIndexes.Count);
-            for (int i = 0; i < originalIndexes.Count; i++)
-                result.Add(anchors[originalIndexes[i]]);
-            return result;
         }
 
         /// <summary>
@@ -504,86 +386,11 @@ namespace RemuxForge.Core.Analysis.Features
             this.UpdateMatrixCounters(result.Matrix, batch.Diagnostics.ProcessedPairCount);
             result.ProcessedCellCount = result.Matrix.ProcessedCellCount;
             result.AcceptedCellCount = result.Matrix.AcceptedCellCount;
-            result.MatrixSizeBytes = result.Matrix.CompactSizeBytes;
-            result.CompletedTileCount = batch.Diagnostics.CompletedTileCount;
             result.UploadMs = this.ToMilliseconds(batch.Diagnostics.UploadTicks);
-            result.FeatureExtractionMs = this.ToMilliseconds(batch.Diagnostics.NormalizeTicks + batch.Diagnostics.GaussianPyramidTicks + batch.Diagnostics.ExtremaTicks + batch.Diagnostics.DescriptorTicks);
+            result.FeatureExtractionMs = this.ToMilliseconds(batch.Diagnostics.DescriptorTicks);
             result.DescriptorMatchingMs = this.ToMilliseconds(batch.Diagnostics.MatchingTicks);
             result.GeometryMs = this.ToMilliseconds(batch.Diagnostics.RansacTicks);
-            result.KernelMs = (long)Math.Round(batch.Diagnostics.GpuExecutionNanoseconds / 1000000.0);
-            this.PopulateGpuDiagnostics(result, batch.Diagnostics);
             result.ReadbackMs = this.ToMilliseconds(batch.Diagnostics.ReadbackTicks);
-            result.SubmitCount = batch.Diagnostics.SubmitCount;
-            result.VulkanDeviceName = batch.Capabilities.DeviceName;
-        }
-
-        /// <summary>
-        /// Popola il risultato mantenendo le dimensioni originali per una richiesta sparsa
-        /// </summary>
-        /// <param name="result">Risultato da completare</param>
-        /// <param name="batch">Risultato prodotto dalla pipeline Vulkan</param>
-        /// <param name="sourceAnchors">Ancore source originali</param>
-        /// <param name="languageAnchors">Ancore language originali</param>
-        /// <param name="packed">Mapping fra frame compatti e indici originali</param>
-        private void PopulatePackedResult(DeepSiftBatchMatchResult result, VulkanSiftBatchResult batch, IReadOnlyList<DeepSiftVisualAnchor> sourceAnchors, IReadOnlyList<DeepSiftVisualAnchor> languageAnchors, PackedBatchRequest packed)
-        {
-            int[] sourceKeypointCounts = this.CopyFrameCounts(batch.FirstFrameKeypointCounts, packed.SourceOriginalIndexes.Count);
-            int[] languageKeypointCounts = this.CopyFrameCounts(batch.SecondFrameKeypointCounts, packed.LanguageOriginalIndexes.Count);
-            result.SourceFeaturelessAnchorCount = this.CountFeatureless(sourceKeypointCounts);
-            result.LanguageFeaturelessAnchorCount = this.CountFeatureless(languageKeypointCounts);
-            result.SourceAnchors = new List<DeepSiftVisualAnchor>(sourceAnchors);
-            result.LanguageAnchors = new List<DeepSiftVisualAnchor>(languageAnchors);
-            result.SourceAnchorCount = result.SourceAnchors.Count;
-            result.LanguageAnchorCount = result.LanguageAnchors.Count;
-            result.Matrix = new DeepSiftMatchMatrix(result.SourceAnchorCount, result.LanguageAnchorCount);
-
-            int acceptedCount = 0;
-            for (int pairIndex = 0; pairIndex < batch.PairResults.Count; pairIndex++)
-            {
-                VulkanSiftPairResult pairResult = batch.PairResults[pairIndex];
-                if (pairResult.Status != VulkanSiftPairStatus.Accepted)
-                    this.AddRejectionCount(result, pairResult.RejectReason.ToString());
-                int sourceIndex = packed.SourceOriginalIndexes[pairResult.Pair.FirstFrameIndex];
-                int languageIndex = packed.LanguageOriginalIndexes[pairResult.Pair.SecondFrameIndex];
-                DeepSiftMatchCell cell = this.CreateCell(pairResult);
-                result.Matrix.Set(sourceIndex, languageIndex, cell);
-                if (cell.State != DeepSiftMatchState.Accepted)
-                    continue;
-                acceptedCount++;
-                this.AddAcceptedPair(result, sourceIndex, languageIndex, cell, this.CopyHomography(pairResult.Homography));
-            }
-
-            result.Matrix.AcceptedCellCount = acceptedCount;
-            result.Matrix.ProcessedCellCount = batch.Diagnostics.ProcessedPairCount;
-            result.ProcessedCellCount = result.Matrix.ProcessedCellCount;
-            result.AcceptedCellCount = acceptedCount;
-            result.MatrixSizeBytes = result.Matrix.CompactSizeBytes;
-            result.CompletedTileCount = batch.Diagnostics.CompletedTileCount;
-            result.UploadMs = this.ToMilliseconds(batch.Diagnostics.UploadTicks);
-            result.FeatureExtractionMs = this.ToMilliseconds(batch.Diagnostics.NormalizeTicks + batch.Diagnostics.GaussianPyramidTicks + batch.Diagnostics.ExtremaTicks + batch.Diagnostics.DescriptorTicks);
-            result.DescriptorMatchingMs = this.ToMilliseconds(batch.Diagnostics.MatchingTicks);
-            result.GeometryMs = this.ToMilliseconds(batch.Diagnostics.RansacTicks);
-            result.KernelMs = (long)Math.Round(batch.Diagnostics.GpuExecutionNanoseconds / 1000000.0);
-            this.PopulateGpuDiagnostics(result, batch.Diagnostics);
-            result.ReadbackMs = this.ToMilliseconds(batch.Diagnostics.ReadbackTicks);
-            result.SubmitCount = batch.Diagnostics.SubmitCount;
-            result.VulkanDeviceName = batch.Capabilities.DeviceName;
-        }
-
-        /// <summary>
-        /// Conta le ancore con un numero di keypoint inferiore alla soglia configurata
-        /// </summary>
-        /// <param name="keypointCounts">Numero di keypoint per frame</param>
-        /// <returns>Numero di frame privi di feature sufficienti</returns>
-        private int CountFeatureless(int[] keypointCounts)
-        {
-            int result = 0;
-            for (int i = 0; i < keypointCounts.Length; i++)
-            {
-                if (keypointCounts[i] < this._options.MinKeypoints)
-                    result++;
-            }
-            return result;
         }
 
         /// <summary>
@@ -600,51 +407,6 @@ namespace RemuxForge.Core.Analysis.Features
             for (int i = 0; i < expectedCount; i++)
                 result[i] = counts[i];
             return result;
-        }
-
-        /// <summary>
-        /// Trasferisce le diagnostiche temporali e quantitative della GPU nel risultato batch
-        /// </summary>
-        /// <param name="result">Risultato da completare</param>
-        /// <param name="diagnostics">Diagnostiche prodotte dal runtime Vulkan</param>
-        private void PopulateGpuDiagnostics(DeepSiftBatchMatchResult result, VulkanVisionDiagnostics diagnostics)
-        {
-            result.GpuUploadMs = this.ToGpuMilliseconds(diagnostics.GpuUploadNanoseconds);
-            result.GpuNormalizeMs = this.ToGpuMilliseconds(diagnostics.GpuNormalizeNanoseconds);
-            result.GpuGaussianPyramidMs = this.ToGpuMilliseconds(diagnostics.GpuGaussianPyramidNanoseconds);
-            result.GpuExtremaMs = this.ToGpuMilliseconds(diagnostics.GpuExtremaNanoseconds);
-            result.GpuOrientationMs = this.ToGpuMilliseconds(diagnostics.GpuOrientationNanoseconds);
-            result.GpuDescriptorMs = this.ToGpuMilliseconds(diagnostics.GpuDescriptorNanoseconds);
-            result.GpuMatchingMs = this.ToGpuMilliseconds(diagnostics.GpuMatchingNanoseconds);
-            result.GpuRansacMs = this.ToGpuMilliseconds(diagnostics.GpuRansacNanoseconds);
-            result.HostWaitMs = this.ToMilliseconds(diagnostics.HostWaitTicks);
-            result.PeakVramBytes = this.ToSignedBytes(diagnostics.PeakVramBytes);
-            result.DispatchCount = diagnostics.DispatchCount;
-            result.WaitCount = diagnostics.WaitCount;
-            result.CandidateKeypointCount = diagnostics.CandidateKeypointCount;
-            result.RefinedKeypointCount = diagnostics.RefinedKeypointCount;
-            result.DescriptorCount = diagnostics.DescriptorCount;
-            result.TruncatedKeypointCount = diagnostics.TruncatedKeypointCount;
-        }
-
-        /// <summary>
-        /// Converte nanosecondi GPU in millisecondi arrotondati
-        /// </summary>
-        /// <param name="nanoseconds">Durata in nanosecondi</param>
-        /// <returns>Durata in millisecondi</returns>
-        private long ToGpuMilliseconds(ulong nanoseconds)
-        {
-            return (long)Math.Round(nanoseconds / 1000000.0);
-        }
-
-        /// <summary>
-        /// Converte una dimensione unsigned nel formato signed usato dalla diagnostica
-        /// </summary>
-        /// <param name="bytes">Dimensione in byte</param>
-        /// <returns>Dimensione convertita senza superare il massimo di Int64</returns>
-        private long ToSignedBytes(ulong bytes)
-        {
-            return bytes > long.MaxValue ? long.MaxValue : (long)bytes;
         }
 
         /// <summary>
@@ -667,11 +429,6 @@ namespace RemuxForge.Core.Analysis.Features
             DeepSiftMatchCell result = new DeepSiftMatchCell();
             result.State = match.Status == VulkanSiftPairStatus.Accepted ? DeepSiftMatchState.Accepted : DeepSiftMatchState.Rejected;
             result.Score = match.Score;
-            result.InlierCount = match.InlierCount;
-            result.InlierRatio = match.InlierRatio;
-            result.SourceCoverage = match.FirstCoverage;
-            result.LanguageCoverage = match.SecondCoverage;
-            result.MeanReprojectionError = match.MeanReprojectionError;
             return result;
         }
 
@@ -729,36 +486,6 @@ namespace RemuxForge.Core.Analysis.Features
             for (int i = 0; i < activeIndexes.Count; i++)
                 result.Add(activeIndexes[i], i);
             return result;
-        }
-
-        /// <summary>
-        /// Richiesta Vulkan compatta con mapping verso gli indici originali della matrice
-        /// </summary>
-        private sealed class PackedBatchRequest
-        {
-            /// <summary>
-            /// Inizializza le mappe fra indici compatti e originali
-            /// </summary>
-            public PackedBatchRequest()
-            {
-                this.SourceOriginalIndexes = new List<int>();
-                this.LanguageOriginalIndexes = new List<int>();
-            }
-
-            /// <summary>
-            /// Richiesta da inviare al backend Vulkan
-            /// </summary>
-            public VulkanSiftBatchRequest Request { get; set; }
-
-            /// <summary>
-            /// Indici source originali ordinati come i frame compatti
-            /// </summary>
-            public List<int> SourceOriginalIndexes { get; }
-
-            /// <summary>
-            /// Indici language originali ordinati come i frame compatti
-            /// </summary>
-            public List<int> LanguageOriginalIndexes { get; }
         }
 
         #endregion

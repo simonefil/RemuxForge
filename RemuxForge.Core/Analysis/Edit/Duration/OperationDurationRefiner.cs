@@ -1,3 +1,4 @@
+using RemuxForge.Core.Localization;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -123,7 +124,7 @@ namespace RemuxForge.Core.Analysis.Edit.Duration
                 int frames = (int)Math.Round(Math.Abs(measuredJumpMs) / frameStepMs);
                 if (frames <= 1)
                 {
-                    operation.RejectReason = "transizione entro la fase di un fotogramma";
+                    operation.RejectReason = AppText.T("analysis.duration.withinOneFrame");
                     rejected.Add(operation);
                     anyRejected = true;
                     continue;

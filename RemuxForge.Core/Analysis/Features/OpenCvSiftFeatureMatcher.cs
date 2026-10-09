@@ -177,17 +177,6 @@ namespace RemuxForge.Core.Analysis.Features
         }
 
         /// <summary>
-        /// Confronta descriptor SIFT e verifica la coerenza geometrica tramite omografia RANSAC
-        /// </summary>
-        /// <param name="sourceFeatures">Feature estratte dal frame source</param>
-        /// <param name="languageFeatures">Feature estratte dal frame language</param>
-        /// <returns>Risultato del confronto dei descriptor e della verifica geometrica</returns>
-        public FrameFeatureMatchResult Match(OpenCvSiftFeatureSet sourceFeatures, OpenCvSiftFeatureSet languageFeatures)
-        {
-            return this.Match(sourceFeatures, languageFeatures, 0);
-        }
-
-        /// <summary>
         /// Confronta descriptor e completa la verifica geometrica usando il seed RANSAC fornito
         /// </summary>
         /// <param name="sourceFeatures">Feature estratte dal frame source</param>
@@ -222,7 +211,7 @@ namespace RemuxForge.Core.Analysis.Features
         private FrameFeatureMatchResult CompleteGeometricMatch(FrameFeatureMatchResult result, OpenCvSiftFeatureSet source, OpenCvSiftFeatureSet language, List<DMatch> forwardRatioMatches, List<DMatch> reverseRatioMatches, int randomSeed)
         {
             List<DMatch> reciprocalMatches = this.CrossCheck(forwardRatioMatches, reverseRatioMatches);
-            return this.CompleteGeometricMatch(result, source, language, reciprocalMatches, forwardRatioMatches.Count, randomSeed);
+            return this.CompleteGeometricMatch(result, source, language, reciprocalMatches, randomSeed);
         }
 
         /// <summary>
@@ -232,18 +221,14 @@ namespace RemuxForge.Core.Analysis.Features
         /// <param name="source">Feature estratte dal frame source</param>
         /// <param name="language">Feature estratte dal frame language</param>
         /// <param name="reciprocalMatches">Match reciproci da verificare</param>
-        /// <param name="forwardRatioMatchCount">Numero di match forward prima della reciprocità</param>
         /// <param name="randomSeed">Seed deterministico di RANSAC</param>
         /// <returns>Risultato geometrico completo</returns>
-        private FrameFeatureMatchResult CompleteGeometricMatch(FrameFeatureMatchResult result, OpenCvSiftFeatureSet source, OpenCvSiftFeatureSet language, List<DMatch> reciprocalMatches, int forwardRatioMatchCount, int randomSeed)
+        private FrameFeatureMatchResult CompleteGeometricMatch(FrameFeatureMatchResult result, OpenCvSiftFeatureSet source, OpenCvSiftFeatureSet language, List<DMatch> reciprocalMatches, int randomSeed)
         {
             List<Point2d> sourcePoints;
             List<Point2d> languagePoints;
             List<Point2d> sourceInlierPoints = new List<Point2d>();
             List<Point2d> languageInlierPoints = new List<Point2d>();
-
-            result.RatioMatchCount = forwardRatioMatchCount;
-            result.ReciprocalMatchCount = reciprocalMatches.Count;
             if (reciprocalMatches.Count < this._options.MinReciprocalMatches)
             {
                 result.RejectReason = AppText.T("deep.temporal.matcher.insufficientReciprocalMatches");
@@ -373,15 +358,11 @@ namespace RemuxForge.Core.Analysis.Features
         private bool TryInitializeMatch(OpenCvSiftFeatureSet sourceFeatures, OpenCvSiftFeatureSet languageFeatures, out FrameFeatureMatchResult result)
         {
             result = new FrameFeatureMatchResult();
-            result.BackendName = this.BackendName;
             if (sourceFeatures == null || languageFeatures == null || !string.Equals(sourceFeatures.BackendName, this.BackendName, StringComparison.Ordinal) || !string.Equals(languageFeatures.BackendName, this.BackendName, StringComparison.Ordinal))
             {
                 result.RejectReason = AppText.T("deep.temporal.matcher.incompatibleFeatureBackend");
                 return false;
             }
-
-            result.SourceKeypointCount = sourceFeatures.KeypointCount;
-            result.LanguageKeypointCount = languageFeatures.KeypointCount;
             if (sourceFeatures.KeypointCount < this._options.MinKeypoints || languageFeatures.KeypointCount < this._options.MinKeypoints || sourceFeatures.Descriptors.Empty() || languageFeatures.Descriptors.Empty())
             {
                 result.RejectReason = AppText.T("deep.temporal.matcher.insufficientKeypoints");

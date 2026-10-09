@@ -1,5 +1,6 @@
 using RemuxForge.Core.Analysis.Edit.Extraction;
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media.Ffmpeg;
 using RemuxForge.Core.Models;
 using System;
@@ -115,7 +116,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             DHashViewportEstimationResult result = new DHashViewportEstimationResult();
             if (sourceDurationMs <= 0 || languageDurationMs <= 0)
             {
-                result.RejectReason = "Durata video non disponibile per la calibrazione dHash";
+                result.RejectReason = AppText.T("analysis.geometry.dhashNoDuration");
                 return result;
             }
 
@@ -143,7 +144,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             {
                 if (sourceWindows[i].Count == 0 || languageWindows[i].Count == 0)
                 {
-                    result.RejectReason = "Campioni insufficienti per la calibrazione dHash";
+                    result.RejectReason = AppText.T("analysis.geometry.dhashInsufficientSamples");
                     return result;
                 }
             }
@@ -153,7 +154,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             ViewportCandidate best = this.FindBestCandidate(sourceSignals, languageSignals, cancellationToken);
             if (best == null)
             {
-                result.RejectReason = "Nessun viewport dHash misurabile";
+                result.RejectReason = AppText.T("analysis.geometry.dhashNoViewport");
                 return result;
             }
 
@@ -201,7 +202,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
                 }, this._ffmpegConfig.FrameExtractionTimeoutMs);
                 cancellationToken.ThrowIfCancellationRequested();
                 if (run.ExitCode != 0)
-                    throw new InvalidOperationException("Decodifica di calibrazione dHash non riuscita per " + Path.GetFileName(filePath) + ": " + GetLastErrorLine(run.Stderr));
+                    throw new InvalidOperationException(AppText.F("analysis.geometry.dhashDecodeFailed", Path.GetFileName(filePath), GetLastErrorLine(run.Stderr)));
 
                 byte[] data = pixels.ToArray();
                 int frameBytes = CALIBRATION_SIDE * CALIBRATION_SIDE;
@@ -482,7 +483,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
                 if (!string.IsNullOrWhiteSpace(lines[i]))
                     return lines[i].Trim();
             }
-            return "nessuna diagnostica";
+            return AppText.T("analysis.noDiagnostics");
         }
 
         #endregion

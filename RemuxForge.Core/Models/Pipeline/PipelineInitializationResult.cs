@@ -4,7 +4,7 @@ namespace RemuxForge.Core.Models
 {
     /// <summary>Field = proprietà Options, FfmpegPath per il tool globale, o vuoto se ignoto; Section è un identificatore Core.</summary>
     public sealed record PipelineInitializationIssue(string Code, string Message, string Field,
-        string Section, bool IsOperational = false);
+        string Section);
 
     public sealed record PipelineInitializationLog(LogSection Section, LogLevel Level, string Message);
 

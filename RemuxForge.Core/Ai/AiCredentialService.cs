@@ -52,18 +52,6 @@ namespace RemuxForge.Core.Ai
 
         #endregion
 
-        #region Proprietà
-
-        /// <summary>
-        /// Percorso del file di configurazione AI
-        /// </summary>
-        public string FilePath
-        {
-            get { return this._filePath; }
-        }
-
-        #endregion
-
         #region Metodi pubblici
 
         /// <summary>

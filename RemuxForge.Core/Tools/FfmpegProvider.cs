@@ -1,5 +1,6 @@
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.IO;
@@ -99,12 +100,12 @@ namespace RemuxForge.Core.Tools
             {
                 if (!IsManagedStableVersion(this._resolvedPath))
                 {
-                    ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Warning, "  ffmpeg gestito da RemuxForge non appartenente al branch stabile " + FFMPEG_STABLE_BRANCH + ": download build aggiornata");
+                    ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Warning, AppText.F("remux.ffmpeg.notStableBranch", FFMPEG_STABLE_BRANCH));
                     resolved = false;
                 }
                 else if (requireLibSoxr && !SupportsLibSoxr(this._resolvedPath))
                 {
-                    ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Warning, "  ffmpeg gestito da RemuxForge senza libsoxr: download build aggiornata");
+                    ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Warning, AppText.T("remux.ffmpeg.missingLibsoxr"));
                     resolved = false;
                 }
             }
@@ -236,7 +237,7 @@ namespace RemuxForge.Core.Tools
             string archName = isArm64 ? "arm64" : (isX64 ? "x64" : RuntimeInformation.OSArchitecture.ToString());
             string osName = isWindows ? "Windows" : (isLinux ? "Linux" : (isMacOS ? "macOS" : "Unknown"));
 
-            ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Debug, "  Piattaforma rilevata: " + osName + " " + archName);
+            ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Debug, AppText.F("remux.ffmpeg.platformDetected", osName, archName));
 
             if (!Directory.Exists(this._toolsFolder))
             {
@@ -261,9 +262,9 @@ namespace RemuxForge.Core.Tools
             }
             else
             {
-                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Error, "  Piattaforma non supportata: " + osName + " " + archName);
-                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, "  Piattaforme supportate: Windows x64, Linux x64, Linux arm64, macOS x64, macOS arm64");
-                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, "  Installa ffmpeg manualmente e assicurati che sia nel PATH.");
+                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Error, AppText.F("remux.ffmpeg.platformUnsupported", osName, archName));
+                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, AppText.T("remux.ffmpeg.platformsSupported"));
+                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, AppText.T("remux.ffmpeg.installManually"));
             }
 
             return success;
@@ -285,13 +286,13 @@ namespace RemuxForge.Core.Tools
             string ffprobeDest;
             try
             {
-                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, "\n  Download ffmpeg per Windows x64...");
+                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, AppText.T("remux.ffmpeg.downloadingWindows"));
                 ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Debug, "  URL: " + WINDOWS_X64_URL);
 
                 webClient = new WebClient();
                 webClient.DownloadFile(WINDOWS_X64_URL, zipPath);
 
-                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Debug, "  Estrazione in corso...");
+                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Debug, AppText.T("remux.ffmpeg.extracting"));
 
                 if (Directory.Exists(extractPath))
                 {
@@ -314,18 +315,18 @@ namespace RemuxForge.Core.Tools
 
                     this._resolvedPath = ffmpegDest;
                     success = true;
-                    ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Success, "  ffmpeg scaricato in: " + this._toolsFolder);
+                    ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Success, AppText.F("remux.ffmpeg.downloadedTo", this._toolsFolder));
                 }
                 else
                 {
-                    ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Error, "  Impossibile trovare ffmpeg.exe nell'archivio");
+                    ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Error, AppText.F("remux.ffmpeg.notInArchive", "ffmpeg.exe"));
                 }
             }
             catch (Exception ex)
             {
                 // Download o estrazione fallita
-                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Warning, "Impossibile scaricare ffmpeg: " + ex.Message);
-                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, "  Scaricalo manualmente da " + WINDOWS_X64_URL);
+                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Warning, AppText.F("remux.ffmpeg.downloadFailed", ex.Message));
+                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, AppText.F("remux.ffmpeg.downloadManually", WINDOWS_X64_URL));
             }
             finally
             {
@@ -357,13 +358,13 @@ namespace RemuxForge.Core.Tools
             string ffprobeDest;
             try
             {
-                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, "\n  Download ffmpeg per Linux " + archName + "...");
+                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, AppText.F("remux.ffmpeg.downloadingLinux", archName));
                 ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Debug, "  URL: " + downloadUrl);
 
                 webClient = new WebClient();
                 webClient.DownloadFile(downloadUrl, tarPath);
 
-                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Debug, "  Estrazione in corso...");
+                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Debug, AppText.T("remux.ffmpeg.extracting"));
 
                 if (Directory.Exists(extractPath))
                 {
@@ -375,8 +376,8 @@ namespace RemuxForge.Core.Tools
 
                 if (tarExitCode != 0)
                 {
-                    ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Error, "  Errore durante l'estrazione (tar exit code: " + tarExitCode + ")");
-                    ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, "  Assicurati che tar e xz-utils siano installati");
+                    ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Error, AppText.F("remux.ffmpeg.extractFailed", tarExitCode));
+                    ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, AppText.T("remux.ffmpeg.tarRequired"));
                 }
                 else
                 {
@@ -396,20 +397,20 @@ namespace RemuxForge.Core.Tools
 
                         this._resolvedPath = ffmpegDest;
                         success = true;
-                        ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Success, "  ffmpeg scaricato in: " + this._toolsFolder);
+                        ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Success, AppText.F("remux.ffmpeg.downloadedTo", this._toolsFolder));
                     }
                     else
                     {
-                        ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Error, "  Impossibile trovare ffmpeg nell'archivio");
+                        ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Error, AppText.F("remux.ffmpeg.notInArchive", "ffmpeg"));
                     }
                 }
             }
             catch (Exception ex)
             {
                 // Download o estrazione fallita
-                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Warning, "Impossibile scaricare ffmpeg: " + ex.Message);
-                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, "  Scaricalo manualmente da " + downloadUrl);
-                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, "  Oppure installa con: sudo apt install ffmpeg");
+                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Warning, AppText.F("remux.ffmpeg.downloadFailed", ex.Message));
+                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, AppText.F("remux.ffmpeg.downloadManually", downloadUrl));
+                ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, AppText.T("remux.ffmpeg.installApt"));
             }
             finally
             {
@@ -428,9 +429,9 @@ namespace RemuxForge.Core.Tools
         /// <returns>Sempre false: usare Homebrew o path manuale</returns>
         private bool DownloadMacOS()
         {
-            ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Warning, "  Download automatico ffmpeg disabilitato su macOS");
-            ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, "  Installa FFmpeg 9 full con Homebrew: brew install ffmpeg-full");
-            ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, "  Oppure specifica manualmente il percorso di ffmpeg nelle impostazioni.");
+            ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Warning, AppText.T("remux.ffmpeg.macOsAutoDownloadDisabled"));
+            ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, AppText.T("remux.ffmpeg.installHomebrew"));
+            ConsoleHelper.Write(LogSection.Ffmpeg, LogLevel.Info, AppText.T("remux.ffmpeg.setPathInSettings"));
             return false;
         }
 

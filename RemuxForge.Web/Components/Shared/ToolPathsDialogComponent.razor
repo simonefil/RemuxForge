@@ -1,79 +1,65 @@
-<div class="dialog-overlay visible">
-    <div class="dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="tool-paths-dialog-title" style="min-width: 60ch;" @onclick:stopPropagation="true">
-        <div id="tool-paths-dialog-title" class="dialog-title">@AppText.T("web.toolPaths.title")</div>
-        <div class="dialog-body">
-            <div class="form-row">
-                <span class="form-label">mkvmerge:</span>
-                <input class="form-input" aria-label="mkvmerge" @bind="_mkvPath" />
-                <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="mkvmerge" Click="@(() => BrowseFolder(0))" />
-                <span style="margin-left: 0.5ch; color: @(_mkvFound ? "var(--rz-success)" : "var(--rz-danger)");">@(_mkvFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusNotFound"))</span>
-            </div>
-            <div class="form-row">
-                <span class="form-label">mkvextract:</span>
-                <input class="form-input" aria-label="mkvextract" @bind="_mkvExtractPath" />
-                <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="mkvextract" Click="@(() => BrowseFolder(4))" />
-                <span style="margin-left: 0.5ch; color: @(_mkvExtractFound ? "var(--rz-success)" : "var(--rz-danger)");">@(_mkvExtractFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusNotFound"))</span>
-            </div>
-            <div class="form-row">
-                <span class="form-label">mkvpropedit:</span>
-                <input class="form-input" aria-label="mkvpropedit" @bind="_mkvPropEditPath" />
-                <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="mkvpropedit" Click="@(() => BrowseFolder(5))" />
-                <span style="margin-left: 0.5ch; color: @(_mkvPropEditFound ? "var(--rz-success)" : "var(--rz-danger)");">@(_mkvPropEditFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusNotFound"))</span>
-            </div>
-            <div class="form-row">
-                <span class="form-label">ffmpeg:</span>
-                <input class="form-input" aria-label="ffmpeg" @bind="_ffmpegPath" />
-                <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="ffmpeg" Click="@(() => BrowseFolder(1))" />
-                <span style="margin-left: 0.5ch; color: @(_ffmpegFound ? "var(--rz-success)" : "var(--rz-danger)");">@(_ffmpegStatusText)</span>
-                @if (!_ffmpegFound && !_ffmpegDownloading)
-                {
-                    <RadzenButton class="btn-browse" Text="@AppText.T("web.common.downloadButton")" Icon="download" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@DownloadFfmpeg" />
-                }
-            </div>
-            <div class="form-row">
-                <span class="form-label">ffprobe:</span>
-                <input class="form-input" aria-label="ffprobe" @bind="_ffprobePath" />
-                <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="ffprobe" Click="@(() => BrowseFolder(6))" />
-                <span style="margin-left: 0.5ch; color: @(_ffprobeFound ? "var(--rz-success)" : "var(--rz-danger)");">@(_ffprobeFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusNotFound"))</span>
-            </div>
-            <div class="form-row">
-                <span class="form-label">mediainfo:</span>
-                <input class="form-input" aria-label="mediainfo" @bind="_mediaInfoPath" />
-                <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="mediainfo" Click="@(() => BrowseFolder(2))" />
-                <span style="margin-left: 0.5ch; color: @(_mediaInfoFound ? "var(--rz-success)" : "var(--rz-danger)");">@(_mediaInfoFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusCliNotFound"))</span>
-            </div>
-            <div class="form-row" style="margin-top: 0.5em;">
-                <span class="form-label">temp:</span>
-                <input class="form-input" aria-label="temp" @bind="_tempFolder" />
-                <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="temp" Click="@(() => BrowseFolder(3))" />
-            </div>
+@inherits AppDialogContentBase
+
+<div class="rf-dialog" @ref="DialogContent">
+    <div class="rf-dialog-body">
+        <div class="form-row">
+            <span class="form-label">mkvmerge:</span>
+            <RadzenTextBox aria-label="mkvmerge" @bind-Value="_mkvPath" />
+            <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="mkvmerge" Click="@(() => BrowseFolder(0))" />
+            <span style="margin-left: 0.5ch; color: @(_mkvFound ? "var(--rz-success)" : "var(--rz-danger)");">@(_mkvFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusNotFound"))</span>
         </div>
+        <div class="form-row">
+            <span class="form-label">mkvextract:</span>
+            <RadzenTextBox aria-label="mkvextract" @bind-Value="_mkvExtractPath" />
+            <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="mkvextract" Click="@(() => BrowseFolder(4))" />
+            <span style="margin-left: 0.5ch; color: @(_mkvExtractFound ? "var(--rz-success)" : "var(--rz-danger)");">@(_mkvExtractFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusNotFound"))</span>
+        </div>
+        <div class="form-row">
+            <span class="form-label">mkvpropedit:</span>
+            <RadzenTextBox aria-label="mkvpropedit" @bind-Value="_mkvPropEditPath" />
+            <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="mkvpropedit" Click="@(() => BrowseFolder(5))" />
+            <span style="margin-left: 0.5ch; color: @(_mkvPropEditFound ? "var(--rz-success)" : "var(--rz-danger)");">@(_mkvPropEditFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusNotFound"))</span>
+        </div>
+        <div class="form-row">
+            <span class="form-label">ffmpeg:</span>
+            <RadzenTextBox aria-label="ffmpeg" @bind-Value="_ffmpegPath" />
+            <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="ffmpeg" Click="@(() => BrowseFolder(1))" />
+            <span style="margin-left: 0.5ch; color: @(_ffmpegFound ? "var(--rz-success)" : "var(--rz-danger)");">@(_ffmpegStatusText)</span>
+            @if (!_ffmpegFound && !_ffmpegDownloading)
+            {
+                <RadzenButton class="btn-browse" Text="@AppText.T("web.common.downloadButton")" Icon="download" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@DownloadFfmpeg" />
+            }
+        </div>
+        <div class="form-row">
+            <span class="form-label">ffprobe:</span>
+            <RadzenTextBox aria-label="ffprobe" @bind-Value="_ffprobePath" />
+            <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="ffprobe" Click="@(() => BrowseFolder(6))" />
+            <span style="margin-left: 0.5ch; color: @(_ffprobeFound ? "var(--rz-success)" : "var(--rz-danger)");">@(_ffprobeFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusNotFound"))</span>
+        </div>
+        <div class="form-row">
+            <span class="form-label">mediainfo:</span>
+            <RadzenTextBox aria-label="mediainfo" @bind-Value="_mediaInfoPath" />
+            <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="mediainfo" Click="@(() => BrowseFolder(2))" />
+            <span style="margin-left: 0.5ch; color: @(_mediaInfoFound ? "var(--rz-success)" : "var(--rz-danger)");">@(_mediaInfoFound ? AppText.T("web.common.statusOk") : AppText.T("web.common.statusCliNotFound"))</span>
+        </div>
+        <div class="form-row" style="margin-top: 0.5em;">
+            <span class="form-label">temp:</span>
+            <RadzenTextBox aria-label="temp" @bind-Value="_tempFolder" />
+            <RadzenButton class="btn-browse" Icon="folder_open" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" aria-label="temp" Click="@(() => BrowseFolder(3))" />
+        </div>
+    </div>
+    <div class="rf-dialog-footer">
         @if (!string.IsNullOrEmpty(_validationError))
         {
-            <div style="padding: 0.5em 1em; color: var(--rz-danger); white-space: pre-line;">@_validationError</div>
+            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="rf-dialog-message">@_validationError</RadzenAlert>
         }
-        <div class="dialog-footer">
-            <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@Save" />
-            <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" />
-        </div>
+        <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@Save" />
+        <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => CloseDialog())" />
     </div>
 </div>
 
-@* Dialog browse file *@
-@if (_showBrowse)
-{
-    <FolderBrowserDialog InitialPath="@_browseInitialPath"
-                          ShowFiles="true"
-                          OnClose="CloseBrowse"
-                          OnSelect="ApplyBrowse" />
-}
 
 @code {
-    /// <summary>
-    /// Evento chiusura dialog
-    /// </summary>
-    [Parameter] public EventCallback OnClose { get; set; }
-
     /// <summary>
     /// Percorso mkvmerge
     /// </summary>
@@ -153,21 +139,6 @@
     /// Risolutore centralizzato per i tool path
     /// </summary>
     private ToolPathResolverService _toolPathResolver;
-
-    /// <summary>
-    /// Flag: mostra dialog browse
-    /// </summary>
-    private bool _showBrowse;
-
-    /// <summary>
-    /// Percorso iniziale per il dialog browse
-    /// </summary>
-    private string _browseInitialPath = "";
-
-    /// <summary>
-    /// Indice campo destinazione del browse: 0=mkv, 1=ffmpeg, 2=mediainfo
-    /// </summary>
-    private int _browseFieldIndex = -1;
 
     /// <summary>
     /// Messaggio errore validazione
@@ -252,67 +223,50 @@
 
         this._validationError = "";
         AppSettingsService.Instance.Save();
-        this.OnClose.InvokeAsync();
+        this.CloseDialog();
     }
 
     /// <summary>
-    /// Apre il dialog browse cartella per il campo specificato
+    /// Apre il browser file per il campo specificato e applica il percorso scelto
     /// </summary>
-    /// <param name="fieldIndex">Indice campo: 0=mkv, 1=ffmpeg, 2=mediainfo, 3=temp</param>
-    private void BrowseFolder(int fieldIndex)
+    /// <param name="fieldIndex">Indice campo: 0=mkvmerge, 1=ffmpeg, 2=mediainfo, 3=temp, 4=mkvextract, 5=mkvpropedit, 6=ffprobe</param>
+    private async Task BrowseFolder(int fieldIndex)
     {
-        this._browseFieldIndex = fieldIndex;
+        string initialPath = "";
+        string selectedPath;
 
         if (fieldIndex == 0)
-            this._browseInitialPath = this._mkvPath;
+            initialPath = this._mkvPath;
         else if (fieldIndex == 1)
-            this._browseInitialPath = this._ffmpegPath;
+            initialPath = this._ffmpegPath;
         else if (fieldIndex == 2)
-            this._browseInitialPath = this._mediaInfoPath;
+            initialPath = this._mediaInfoPath;
         else if (fieldIndex == 3)
-            this._browseInitialPath = this._tempFolder;
+            initialPath = this._tempFolder;
         else if (fieldIndex == 4)
-            this._browseInitialPath = this._mkvExtractPath;
+            initialPath = this._mkvExtractPath;
         else if (fieldIndex == 5)
-            this._browseInitialPath = this._mkvPropEditPath;
+            initialPath = this._mkvPropEditPath;
         else if (fieldIndex == 6)
-            this._browseInitialPath = this._ffprobePath;
+            initialPath = this._ffprobePath;
 
-        this._showBrowse = true;
-    }
-
-    /// <summary>
-    /// Chiude il dialog browse
-    /// </summary>
-    private void CloseBrowse()
-    {
-        this._showBrowse = false;
-    }
-
-    /// <summary>
-    /// Applica il percorso selezionato dal dialog browse
-    /// </summary>
-    /// <param name="selectedPath">Percorso selezionato</param>
-    private void ApplyBrowse(string selectedPath)
-    {
-        this._showBrowse = false;
-
+        selectedPath = await AppDialogs.BrowseAsync(this.DialogService, this.JsModule, initialPath, true, true, null);
         if (string.IsNullOrEmpty(selectedPath))
             return;
 
-        if (this._browseFieldIndex == 0)
+        if (fieldIndex == 0)
             this._mkvPath = selectedPath;
-        else if (this._browseFieldIndex == 1)
+        else if (fieldIndex == 1)
             this._ffmpegPath = selectedPath;
-        else if (this._browseFieldIndex == 2)
+        else if (fieldIndex == 2)
             this._mediaInfoPath = selectedPath;
-        else if (this._browseFieldIndex == 3)
+        else if (fieldIndex == 3)
             this._tempFolder = selectedPath;
-        else if (this._browseFieldIndex == 4)
+        else if (fieldIndex == 4)
             this._mkvExtractPath = selectedPath;
-        else if (this._browseFieldIndex == 5)
+        else if (fieldIndex == 5)
             this._mkvPropEditPath = selectedPath;
-        else if (this._browseFieldIndex == 6)
+        else if (fieldIndex == 6)
             this._ffprobePath = selectedPath;
     }
 

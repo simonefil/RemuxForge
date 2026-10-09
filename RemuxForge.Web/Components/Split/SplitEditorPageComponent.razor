@@ -1,124 +1,201 @@
 @inject IJSRuntime JsRuntime
 @inject SplitOrchestrator SplitOrchestrator
 @inject DialogService DialogService
+@inject NotificationService NotificationService
+@inject ContextMenuService ContextMenuService
 @implements IAsyncDisposable
 
-<section @ref="_root" class="edit-map-page split-montage" tabindex="-1" aria-label="@T("title")">
-    <header class="edit-map-page-header">
-        <div>@T("title") <div class="edit-map-page-subtitle">@System.IO.Path.GetFileName(Record?.InputFile)</div></div>
-        <div class="split-montage-actions">
-            <RadzenButton Text="@T("undo")" Icon="undo" Disabled="@(_undo.Count == 0 || _busy)" Click="@(() => HistoryAsync(false))" />
-            <RadzenButton Text="@T("redo")" Icon="redo" Disabled="@(_redo.Count == 0 || _busy)" Click="@(() => HistoryAsync(true))" />
-            <RadzenButton Icon="close" aria-label="@AppText.T("web.common.close")" title="@(_busy && _snapshot != null ? T("applying") : AppText.T("web.common.close"))" Disabled="@(_busy && _snapshot != null)" Click="CloseAsync" />
-        </div>
-    </header>
-    <main class="split-montage-body">
-        @if (_snapshot == null)
+<section @ref="_root" class="split-editor" tabindex="-1" aria-label="@T("title")">
+    <header class="split-editor-top">
+        <h1 class="split-editor-title">@T("title")</h1>
+        <span class="split-editor-file" title="@Record?.InputFile">@System.IO.Path.GetFileName(Record?.InputFile)</span>
+        <span class="split-editor-spacer"></span>
+        @if (_snapshot != null)
         {
-            <div role="status">@(_busy ? T("preparing") : _error)</div>
-            <RadzenButton Text="@T("retry")" Disabled="@_busy" Click="OpenAsync" />
+            bool manual = _snapshot.Document.OriginMode == MkvSplitMode.Manual;
+            <RadzenButton Text="@T(manual ? "restoreSource" : "reapplyRule")" Icon="restart_alt" title="@T(manual ? "restoreSourceHelp" : "reapplyRuleHelp")" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Click="ResetAsync" Disabled="@(_busy || _gestureToken != null)" />
+            <span class="split-editor-sep"></span>
         }
-        else
-        {
-            @if (_busy) { <div role="status" aria-live="polite">@T("applying")</div> }
-            <div class="split-montage-top">
-                <FramePreviewPaneComponent @ref="_preview" Title="@T(_sourcePreview ? "source" : "result")" CanvasAlternative="@T("preview")" OverlayMessage="@_previewMessage" Meta="@PreviewMeta()" RetryText="@(_previewMessage == T("previewError") ? T("retryPreview") : "")" OnRetry="RetryPreviewAsync">
+        <RadzenButton Text="@T("undoText")" Icon="undo" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@T("undo")" Disabled="@(_undo.Count == 0 || _busy)" Click="@(() => HistoryAsync(false))" />
+        <RadzenButton Text="@T("redoText")" Icon="redo" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@T("redo")" Disabled="@(_redo.Count == 0 || _busy)" Click="@(() => HistoryAsync(true))" />
+        <span class="split-editor-sep"></span>
+        @if (!string.IsNullOrEmpty(ApplyNote)) { <span class="split-editor-note" role="status">@ApplyNote</span> }
+        <RadzenButton Text="@AppText.T("web.common.close")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@(_busy && _snapshot != null ? _busyText : AppText.T("web.common.close"))" Disabled="@(_busy && _snapshot != null)" Click="CloseAsync" />
+        <RadzenButton Text="@T("apply")" ButtonStyle="ButtonStyle.Primary" Click="ApplyAsync" Disabled="@(_busy || _gestureToken != null || _projection?.IsValid != true)" />
+    </header>
+    @if (_snapshot == null)
+    {
+        <main class="split-editor-opening">
+            @if (_busy)
+            {
+                <div class="split-editor-opening-box" role="status" aria-live="polite">
+                    <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" ShowValue="false" />
+                    <span>@_busyText</span>
+                </div>
+            }
+            else if (!string.IsNullOrEmpty(_openError))
+            {
+                <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false">
+                    <div class="split-editor-issue-row">
+                        <span>@_openError</span>
+                        <RadzenButton Text="@T("retry")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="OpenAsync" />
+                    </div>
+                </RadzenAlert>
+            }
+        </main>
+    }
+    else
+    {
+        bool outputPreview = !_sourcePreview && Output != null;
+        bool canPreviewOutput = Output?.Clips.Count > 0;
+        <main class="split-editor-main">
+            <div class="split-editor-stage">
+                <FramePreviewPaneComponent @ref="_preview" CanvasAlternative="@T("preview")" OverlayMessage="@_previewMessage" Meta="@PreviewMeta()" RetryText="@(_previewMessage == T("previewError") ? T("retryPreview") : "")" OnRetry="RetryPreviewAsync">
+                    <Header>
+                        <div class="split-editor-viewing">
+                            <span class="split-editor-heading">@T("viewing")</span>
+                            <span class="split-editor-toggle" role="group" aria-label="@T("viewing")">
+                                <button type="button" class="@(outputPreview ? "" : "is-on")" aria-pressed="@(outputPreview ? "false" : "true")" title="@T("sourceHelp")" @onclick="ShowSourceAsync">@T("source")</button>
+                                <button type="button" class="@(outputPreview ? "is-on" : "")" aria-pressed="@(outputPreview ? "true" : "false")" title="@T(canPreviewOutput ? "showOutput" : "showOutputNeedsClips")" disabled="@(!canPreviewOutput)" @onclick="@(() => ShowOutputAsync(_outputId))">@T("selectedOutput")</button>
+                            </span>
+                            @if (_busy) { <span class="split-editor-busy" role="status" aria-live="polite">@_busyText</span> }
+                        </div>
+                    </Header>
                     <Controls>
-                        <RadzenButton Text="@T("source")" Variant="@(_sourcePreview ? Variant.Filled : Variant.Outlined)" aria-pressed="@(_sourcePreview ? "true" : "false")" Click="@(() => SetPreviewSideAsync(true))" />
-                        <RadzenButton Text="@T("result")" Variant="@(!_sourcePreview ? Variant.Filled : Variant.Outlined)" aria-pressed="@(!_sourcePreview ? "true" : "false")" Click="@(() => SetPreviewSideAsync(false))" />
-                        <RadzenButton Icon="chevron_left" aria-label="@T("previousFrame")" data-frame-side="active" data-frame-delta="-1" />
-                        <RadzenButton Icon="chevron_right" aria-label="@T("nextFrame")" data-frame-side="active" data-frame-delta="1" />
+                        @{
+                            MkvSplitClip current = Clip;
+                            bool selection = current != null;
+                            int segment = SelectedSegmentIndex();
+                            int segments = SegmentOrder().Count;
+                            int? previousKeyframe = AdjacentKeyframe(-1);
+                            int? nextKeyframe = AdjacentKeyframe(1);
+                        }
+                        <div class="split-editor-transport" role="group" aria-label="@T("transport")">
+                            <div class="split-editor-transport-group">
+                                <RadzenButton Icon="skip_previous" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@T("videoStart")" aria-label="@T("videoStart")" Click="@(() => GoToVideoEdgeAsync(true))" />
+                                <RadzenButton Icon="keyboard_double_arrow_left" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@T(segment > 0 ? "previousSegmentHelp" : segment < 0 ? "needsSegment" : "previousSegmentNeedsOne")" aria-label="@T("previousSegment")" Disabled="@(segment <= 0)" Click="@(() => StepSegmentAsync(-1))" />
+                                <RadzenButton Icon="align_horizontal_left" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@T(selection ? "goToStartHelp" : "needsSegment")" aria-label="@T("goToSegmentStart")" Disabled="@(!selection)" Click="@(() => GoToClipEdgeAsync(_outputId, current.Id, true))" />
+                                <RadzenButton Icon="keyboard_tab_rtl" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@T(selection ? "startHereHelp" : "needsSegment")" aria-label="@T("startHere")" Disabled="@(_busy || !selection)" Click="@(() => TrimToCursorAsync(true))" />
+                                <label class="split-editor-time-field" title="@T(selection ? "trimTimeHelp" : "needsSegment")">
+                                    <span>@T("start")</span>
+                                    <input @key="@("start-" + _timeFieldsVersion)" value="@(selection ? SourceTime(current.StartFrame) : "")" data-model="@(selection ? SourceTime(current.StartFrame) : "")" disabled="@(_busy || !selection)" @onchange="@(args => TimeFieldAsync(_outputId, current?.Id ?? Guid.Empty, true, args))" />
+                                </label>
+                            </div>
+                            <div class="split-editor-transport-group">
+                                <RadzenButton Icon="arrow_left_alt" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@T(previousKeyframe.HasValue ? "previousKeyframeHelp" : "previousKeyframeNone")" aria-label="@T("previousKeyframe")" Disabled="@(!previousKeyframe.HasValue)" Click="@(() => GoToKeyframeAsync(-1))" />
+                                <RadzenButton Icon="chevron_left" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@T("previousFrame")" aria-label="@T("previousFrame")" data-frame-side="active" data-frame-delta="-1" />
+                                <div class="split-editor-time" title="@AppText.F("web.splitMontage.frameNumber", DisplayedSourceFrame())">@Time(PositionSeconds()) <small>/ @Time(PositionDuration())</small></div>
+                                <RadzenButton Icon="chevron_right" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@T("nextFrame")" aria-label="@T("nextFrame")" data-frame-side="active" data-frame-delta="1" />
+                                <RadzenButton Icon="arrow_right_alt" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@T(nextKeyframe.HasValue ? "nextKeyframeHelp" : "nextKeyframeNone")" aria-label="@T("nextKeyframe")" Disabled="@(!nextKeyframe.HasValue)" Click="@(() => GoToKeyframeAsync(1))" />
+                            </div>
+                            <div class="split-editor-transport-group">
+                                <label class="split-editor-time-field" title="@T(selection ? "trimTimeHelp" : "needsSegment")">
+                                    <span>@T("end")</span>
+                                    <input @key="@("end-" + _timeFieldsVersion)" value="@(selection ? SourceTime(current.EndFrameExclusive) : "")" data-model="@(selection ? SourceTime(current.EndFrameExclusive) : "")" disabled="@(_busy || !selection)" @onchange="@(args => TimeFieldAsync(_outputId, current?.Id ?? Guid.Empty, false, args))" />
+                                </label>
+                                <RadzenButton Icon="keyboard_tab" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@T(selection ? "endHereHelp" : "needsSegment")" aria-label="@T("endHere")" Disabled="@(_busy || !selection)" Click="@(() => TrimToCursorAsync(false))" />
+                                <RadzenButton Icon="align_horizontal_right" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@T(selection ? "goToEndHelp" : "needsSegment")" aria-label="@T("goToSegmentEnd")" Disabled="@(!selection)" Click="@(() => GoToClipEdgeAsync(_outputId, current.Id, false))" />
+                                <RadzenButton Icon="keyboard_double_arrow_right" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@T(segment >= 0 && segment < segments - 1 ? "nextSegmentHelp" : segment < 0 ? "needsSegment" : "nextSegmentNeedsOne")" aria-label="@T("nextSegment")" Disabled="@(segment < 0 || segment >= segments - 1)" Click="@(() => StepSegmentAsync(1))" />
+                                <RadzenButton Icon="skip_next" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@T("videoEnd")" aria-label="@T("videoEnd")" Click="@(() => GoToVideoEdgeAsync(false))" />
+                            </div>
+                        </div>
                     </Controls>
                 </FramePreviewPaneComponent>
-                <section class="split-montage-output-list">
-                    <div class="split-montage-actions">
-                        <strong>@T("outputs")</strong>
-                        <RadzenButton Text="@T("newOutput")" Click="@(() => EditAsync(MkvSplitEditKind.CreateEmptyOutput))" Disabled="@_busy" />
-                    </div>
-                    @foreach (MkvSplitOutputProjection output in _projection.Outputs)
+            </div>
+            <aside class="split-editor-side" aria-label="@T("outputs")">
+                <div class="split-editor-side-head">
+                    <h2 class="split-editor-heading">@T("outputs")</h2>
+                    <span>@AppText.F("web.splitMontage.outputsSummary", _draft.Outputs.Count, _draft.Outputs.Sum(o => o.Clips.Count))</span>
+                </div>
+                <div class="split-editor-list">
+                    @{ List<MkvSplitDiagnostic> issues = Issues(); }
+                    @if (issues.Count > 0)
                     {
-                        <RadzenButton @key="output.OutputId" Text="@(output.FileName + " · " + Time(output.DurationSeconds) + " · " + output.Clips.Count + " " + T("clips") + (output.Clips.Count == 0 ? " · " + T("empty") : ""))" Variant="@(output.OutputId == _outputId ? Variant.Filled : Variant.Outlined)" aria-pressed="@(output.OutputId == _outputId ? "true" : "false")" Click="@(() => SelectOutputAsync(output.OutputId))" />
-                    }
-                    @if (Output != null)
-                    {
-                        <label>@T("name") <input class="form-input" @bind="_name" /></label>
-                        <div class="split-montage-actions">
-                            <RadzenButton Text="@T("rename")" Click="RenameAsync" Disabled="@_busy" />
-                            <RadzenButton Text="@T("automaticName")" Click="@(() => EditAsync(MkvSplitEditKind.RenameOutput, nameMode: MkvSplitNameMode.Automatic))" Disabled="@_busy" />
-                            <RadzenButton Text="@T("up")" Click="@(() => ReorderOutputAsync(-1))" Disabled="@_busy" />
-                            <RadzenButton Text="@T("down")" Click="@(() => ReorderOutputAsync(1))" Disabled="@_busy" />
-                            <RadzenButton Text="@T("removeOutput")" ButtonStyle="ButtonStyle.Danger" Click="@(() => EditAsync(MkvSplitEditKind.RemoveOutputs))" Disabled="@_busy" />
+                        <div class="split-editor-issues">
+                            @foreach (MkvSplitDiagnostic diagnostic in issues)
+                            {
+                                <div class="split-editor-issue-row @(diagnostic.Severity == MkvSplitDiagnosticSeverity.Error ? "is-error" : "is-warning")">
+                                    <RadzenIcon Icon="@(diagnostic.Severity == MkvSplitDiagnosticSeverity.Error ? "error" : "warning")" />
+                                    <span>@diagnostic.Message</span>
+                                    @if (CanGoTo(diagnostic))
+                                    {
+                                        <RadzenButton Text="@T("editIssue")" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" aria-label="@(T("editIssue") + ": " + diagnostic.Message)" Click="@(() => GoToDiagnosticAsync(diagnostic))" />
+                                    }
+                                </div>
+                            }
                         </div>
                     }
-                </section>
-            </div>
-            <details class="split-montage-source" open>
-                <summary>@T("source")</summary>
-                <div class="split-montage-actions">
-                    <label>@T("sourceIn") <input class="form-input" type="number" min="0" max="@_snapshot.Analysis.SourcePts.Length" @bind="_sourceIn" @bind:after="SelectionChangedAsync" /></label>
-                    <label>@T("sourceOut") <input class="form-input" type="number" min="0" max="@_snapshot.Analysis.SourcePts.Length" @bind="_sourceOut" @bind:after="SelectionChangedAsync" /></label>
-                    <RadzenButton Text="@T("markIn")" Click="@(() => MarkSourceAsync(true))" />
-                    <RadzenButton Text="@T("markOut")" Click="@(() => MarkSourceAsync(false))" />
-                    <RadzenButton Text="@T("fromSelection")" Click="@(() => EditAsync(MkvSplitEditKind.CreateOutputFromSource))" Disabled="@_busy" />
-                    <RadzenButton Text="@T("append")" Click="@(() => EditAsync(MkvSplitEditKind.AppendSource))" Disabled="@(Output == null || _busy)" />
-                    <RadzenButton Text="@T("insert")" Click="@(() => EditAsync(MkvSplitEditKind.InsertSource))" Disabled="@(Output == null || _busy)" />
-                </div>
-                <MediaTimelinePanelComponent @ref="_sourceTimeline" AudioLanes="@AudioLanes("source")" AudioMode="@_audioMode" AudioModeChanged="AudioModeAsync" WaveformGain="@_gain" WaveformGainChanged="GainAsync" WaveformText="@T("waveform")" SpectrogramText="@T("spectrogram")" WaveformHeightText="@T("gain")" HostAlternative="@T("source")" CanvasAlternative="@T("source")" />
-            </details>
-            <section class="split-montage-result">
-                <div class="split-montage-actions">
-                    <strong>@T("result")</strong>
-                    <label>@T("resultIn") <input class="form-input" type="number" min="0" max="@(Result?.FrameCount ?? 0)" @bind="View.In" @bind:after="SelectionChangedAsync" /></label>
-                    <label>@T("resultOut") <input class="form-input" type="number" min="0" max="@(Result?.FrameCount ?? 0)" @bind="View.Out" @bind:after="SelectionChangedAsync" /></label>
-                    <RadzenButton Text="@T("markIn")" Click="@(() => MarkResultAsync(true))" />
-                    <RadzenButton Text="@T("markOut")" Click="@(() => MarkResultAsync(false))" />
-                    <RadzenButton Text="@T("splitClip")" Click="@(() => EditAsync(MkvSplitEditKind.SplitClip))" Disabled="@(Output == null || _busy)" />
-                    <RadzenButton Text="@T("splitOutput")" Click="@(() => EditAsync(MkvSplitEditKind.SplitOutput))" Disabled="@(Output == null || _busy)" />
-                    <RadzenButton Text="@T("removeRange")" Click="@(() => EditAsync(MkvSplitEditKind.RemoveResultRange))" Disabled="@(Output == null || _busy)" />
-                </div>
-                <MediaTimelinePanelComponent @ref="_resultTimeline" AudioLanes="@AudioLanes("result")" AudioMode="@_audioMode" AudioModeChanged="AudioModeAsync" WaveformGain="@_gain" WaveformGainChanged="GainAsync" WaveformText="@T("waveform")" SpectrogramText="@T("spectrogram")" WaveformHeightText="@T("gain")" HostAlternative="@T("result")" CanvasAlternative="@T("result")" />
-                <div class="split-montage-clips">
-                    @if (Output != null)
+                    @for (int position = 0; position < _draft.Outputs.Count; position++)
                     {
-                        @foreach (MkvSplitClip clip in Output.Clips)
-                        {
-                            <label><input type="checkbox" checked="@View.Selected.Contains(clip.Id)" aria-label="@(T("selectClip") + " " + (Output.Clips.IndexOf(clip) + 1))" @onchange="@(e => ToggleClipSelection(clip.Id, e))" /></label>
-                            <RadzenButton @key="clip.Id" Text="@($"{Output.Clips.IndexOf(clip) + 1}: [{clip.StartFrame}, {clip.EndFrameExclusive})")" Variant="@(clip.Id == View.ClipId ? Variant.Filled : Variant.Outlined)" aria-pressed="@(clip.Id == View.ClipId ? "true" : "false")" Click="@(() => SelectClipAsync(clip.Id))" />
-                        }
+                        int outputIndex = position;
+                        MkvSplitOutput output = _draft.Outputs[outputIndex];
+                        bool active = output.Id == _outputId;
+                        int errors = OutputErrorCount(output.Id);
+                        <div class="split-editor-drop split-editor-drop-output" data-drop="output" @ondrop="@(() => DropOutputAsync(outputIndex))"></div>
+                        <div @key="output.Id" class="split-editor-card @(active ? "is-active" : "") @(errors > 0 ? "has-error" : "")" style="--c: @SplitEditorLayout.OutputColor(outputIndex)">
+                            <div class="split-editor-card-head" draggable="@(_renamingId == output.Id ? "false" : "true")" data-drag-kind="output" data-drag-label="@FileName(output.Id)" title="@T("outputDragHelp")" @ondragstart="@(() => BeginOutputDrag(output.Id))" @onclick="@(() => SelectOutputAsync(output.Id))" @oncontextmenu="@(args => OpenOutputMenu(output.Id, args))" @oncontextmenu:preventDefault="true">
+                                <span class="split-editor-dot" aria-hidden="true"></span>
+                                @if (_renamingId == output.Id)
+                                {
+                                    <input class="split-editor-name-input" value="@_name" data-model="@FileName(output.Id)" aria-label="@T("name")" aria-invalid="@(NameInvalid ? "true" : "false")" @oninput="NameInput" @onkeydown="@(args => NameKeyAsync(output.Id, args))" @onblur="@(() => CommitRenameAsync(output.Id))" @onclick:stopPropagation="true" />
+                                }
+                                else
+                                {
+                                    <span class="split-editor-name" data-split-output="@output.Id" tabindex="0" title="@FileName(output.Id)">@FileName(output.Id)</span>
+                                }
+                                <span class="split-editor-dur">@Duration(OutputSeconds(output))</span>
+                                @if (errors > 0) { <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="@errors.ToString()" title="@AppText.F("web.splitMontage.errorBadge", errors)" /> }
+                                <RadzenButton class="split-editor-more" Icon="more_horiz" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" title="@T("outputMenu")" aria-label="@(T("outputMenu") + ": " + FileName(output.Id))" Disabled="@_busy" Click="@(args => OpenOutputMenu(output.Id, args))" @onclick:stopPropagation="true" />
+                            </div>
+                            @if (_renamingId == output.Id && NameInvalid) { <span class="split-editor-error" role="alert">@AppText.T("split.montage.invalidName")</span> }
+                            <div class="split-editor-segs">
+                                @if (output.Clips.Count == 0)
+                                {
+                                    <div class="split-editor-empty" data-drop="segment" @ondrop="@(args => DropSegmentAsync(output.Id, 0, args))">@T("emptyOutput")</div>
+                                }
+                                @for (int clipPosition = 0; clipPosition < output.Clips.Count; clipPosition++)
+                                {
+                                    int clipIndex = clipPosition;
+                                    MkvSplitClip clip = output.Clips[clipIndex];
+                                    bool selected = active && View.ClipId == clip.Id;
+                                    <div class="split-editor-drop" data-drop="segment" @ondrop="@(args => DropSegmentAsync(output.Id, clipIndex, args))"></div>
+                                    <div @key="clip.Id" class="split-editor-seg @(selected ? "is-selected" : "") @(ClipHasError(clip.Id) ? "has-error" : "")" draggable="true" data-drag-kind="segment" data-drag-label="@ClipLabel(clip)" title="@(ClipTitle(clip) + " · " + T("segmentDragHelp"))" @ondragstart="@(() => BeginSegmentDrag(output.Id, clip.Id))" @oncontextmenu="@(args => OpenSegmentMenuAsync(output.Id, clip.Id, args))" @oncontextmenu:preventDefault="true">
+                                        <span class="split-editor-seg-number" aria-hidden="true">@(clipIndex + 1)</span>
+                                        <button type="button" class="split-editor-seg-time" data-split-clip="@clip.Id" aria-pressed="@(selected ? "true" : "false")" @onclick="@(() => ClickSegmentAsync(output.Id, clip.Id))">@ClipLabel(clip)</button>
+                                        <span class="split-editor-seg-dur">@Duration(ClipSeconds(clip))</span>
+                                        <RadzenButton class="split-editor-more" Icon="more_horiz" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" title="@T("segmentMenu")" aria-label="@(T("segmentMenu") + ": " + ClipLabel(clip))" Disabled="@_busy" Click="@(args => OpenSegmentMenuAsync(output.Id, clip.Id, args))" />
+                                    </div>
+                                }
+                                @if (output.Clips.Count > 0)
+                                {
+                                    <div class="split-editor-drop" data-drop="segment" @ondrop="@(args => DropSegmentAsync(output.Id, output.Clips.Count, args))"></div>
+                                }
+                            </div>
+                        </div>
                     }
+                    <div class="split-editor-drop split-editor-drop-output" data-drop="output" @ondrop="@(() => DropOutputAsync(_draft.Outputs.Count))"></div>
                 </div>
-                @if (Clip != null)
-                {
-                    <div class="split-montage-actions">
-                        <label>@T("sourceIn") <input class="form-input" type="number" @bind="_trimIn" /></label>
-                        <label>@T("sourceOut") <input class="form-input" type="number" @bind="_trimOut" /></label>
-                        <RadzenButton Text="@T("trim")" Click="TrimAsync" Disabled="@_busy" />
-                        <RadzenButton Text="@T("snapStart")" title="@AppText.T("web.splitEditor.snapStartHelp")" Click="SnapStartAsync" Disabled="@(_busy || _snapshot.Options.Snap == MkvSplitSnapMode.Off)" />
-                        <RadzenButton Text="@T("sharedBoundary")" Click="@(() => EditAsync(MkvSplitEditKind.MoveSharedBoundary))" Disabled="@(!Contiguous || _busy)" />
-                        <RadzenButton Text="@T("removeDivision")" Click="@(() => EditAsync(MkvSplitEditKind.RemoveDivision))" Disabled="@(!Contiguous || _busy)" />
-                        <RadzenButton Text="@T("up")" Click="@(() => ReorderClipAsync(-1))" Disabled="@_busy" />
-                        <RadzenButton Text="@T("down")" Click="@(() => ReorderClipAsync(1))" Disabled="@_busy" />
-                        <RadzenButton Text="@T("removeClip")" ButtonStyle="ButtonStyle.Danger" Click="@(() => EditAsync(MkvSplitEditKind.RemoveClips))" Disabled="@_busy" />
-                    </div>
+                @{
+                    bool hasOutput = Output != null;
+                    bool hasClip = Clip != null;
+                    bool canSplit = SplitTargets().Count > 0;
                 }
-                <div class="split-montage-actions">
-                    <label>@T("destination") <select class="form-input" @bind="_destinationId">@foreach (MkvSplitOutputProjection output in _projection.Outputs.Where(o => o.OutputId != _outputId)) { <option value="@output.OutputId">@output.FileName</option> }</select></label>
-                    <RadzenButton Text="@T("copy")" Click="@(() => EditAsync(MkvSplitEditKind.CopyClips))" Disabled="@(Clip == null || _destinationId == Guid.Empty || _busy)" />
-                    <RadzenButton Text="@T("move")" Click="@(() => EditAsync(MkvSplitEditKind.MoveClips))" Disabled="@(Clip == null || _destinationId == Guid.Empty || _busy)" />
-                    <RadzenButton Text="@T("merge")" Click="@(() => EditAsync(MkvSplitEditKind.MergeOutputs))" Disabled="@(Output == null || _destinationId == Guid.Empty || _busy)" />
+                <div class="split-editor-tools">
+                    <RadzenButton Icon="add" Text="@T("addSegment")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@T(hasOutput ? "addSegmentHelp" : "needsOutput")" Disabled="@(_busy || !hasOutput)" Click="AppendFromCursorAsync" />
+                    <RadzenButton Icon="content_cut" Text="@T("split")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@T(canSplit ? "splitHelp" : "splitNeedsCursor")" Disabled="@(_busy || !canSplit)" Click="SplitAsync" />
+                    <RadzenButton Icon="remove" Text="@T("delete")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@T(hasClip ? "deleteHelp" : "needsSegment")" Disabled="@(_busy || !hasClip)" Click="RemoveSelectedClipAsync" />
+                    <RadzenButton class="split-editor-new-file" Icon="add" Text="@T("newFile")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@T("newEmptyFileHelp")" Disabled="@_busy" Click="CreateEmptyAsync" data-drop="segment" @ondrop="DropOnNewFileAsync" />
                 </div>
-            </section>
-            <div class="split-montage-diagnostics" role="status">
-                @if (!string.IsNullOrEmpty(_error)) { <div>@_error</div> }
-                @foreach (MkvSplitDiagnostic diagnostic in _projection.Diagnostics) { <div>@diagnostic.Message</div> }
-            </div>
-        }
-    </main>
-    <footer class="edit-map-page-footer">
-        <span>@(_projection == null ? "" : _projection.Outputs.Count + " " + T("outputs") + " · " + Time(_projection.DurationSeconds))</span>
-        <span class="edit-map-footer-spacer"></span>
-        @if (_snapshot != null) { <RadzenButton Text="@T(_snapshot.Document.OriginMode == MkvSplitMode.Manual ? "restoreSource" : "reapplyRule")" Click="ResetAsync" Disabled="@_busy" /> }
-        <RadzenButton Text="@AppText.T("web.common.cancel")" title="@(_busy && _snapshot != null ? T("applying") : AppText.T("web.common.cancel"))" Disabled="@(_busy && _snapshot != null)" Click="CloseAsync" />
-        <RadzenButton Text="@T("apply")" Click="ApplyAsync" Disabled="@(_busy || _gestureToken != null || _projection?.IsValid != true)" />
-    </footer>
+            </aside>
+        </main>
+        <section class="split-editor-timeline" style="--split-lanes: @LaneCount()">
+            <MediaTimelinePanelComponent @ref="_timeline" AudioLanes="@AudioLanes()" AudioMode="@_audioMode" AudioModeChanged="AudioModeAsync" WaveformGain="@_gain" WaveformGainChanged="GainAsync" WaveformText="@T("waveform")" SpectrogramText="@T("spectrogram")" WaveformHeightText="@T("gain")" HostAlternative="@T("source")" CanvasAlternative="@T("timeline")" ActionsLabel="@T("rangeMenu")">
+                <Actions>
+                    <RadzenButton Text="@T("markIn")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@T("markInHelp")" Click="@(() => MarkAsync(true))" />
+                    <RadzenButton Text="@T("markOut")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@T("markOutHelp")" Click="@(() => MarkAsync(false))" />
+                </Actions>
+            </MediaTimelinePanelComponent>
+            <div class="split-editor-hint">@T("timelineHint")</div>
+        </section>
+    }
 </section>

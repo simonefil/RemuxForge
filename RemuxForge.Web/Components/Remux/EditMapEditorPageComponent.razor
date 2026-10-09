@@ -2,6 +2,7 @@
 @inject IJSRuntime JsRuntime
 @inject NotificationService NotificationService
 @inject MergeOrchestrator Orchestrator
+@inject ContextMenuService ContextMenuService
 @implements IAsyncDisposable
 
 <section @ref="_pageRoot" class="edit-map-page" data-keyboard-owner="edit-map" tabindex="-1" aria-labelledby="edit-map-page-title">
@@ -34,11 +35,12 @@
                                     <Controls>
                                         <div class="media-frame-control">
                                             <RadzenButton Icon="chevron_left" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.previousSourceFrame")" aria-label="@AppText.T("web.editMap.previousSourceFrame")" data-frame-side="source" data-frame-delta="-1" Disabled="@(!CanStepSource(-1))" />
-                                            <label>@AppText.T("web.editMap.frame") <input class="form-input" inputmode="numeric" value="@_sourceFrameText" aria-label="@AppText.T("web.editMap.sourceFrame")" @oninput="UpdateSourceFrameText" @onblur="CommitSourceFrameAsync" @onkeydown="HandleSourceFrameKeyAsync" disabled="@(!IndexesReady)" /></label>
+                                            <label>@AppText.T("web.editMap.frame") <RadzenTextBox inputmode="numeric" Value="@_sourceFrameText" aria-label="@AppText.T("web.editMap.sourceFrame")" @oninput="UpdateSourceFrameText" @onblur="CommitSourceFrameAsync" aria-invalid="@(_sourceNavigationErrorField == NAVIGATION_FIELD_FRAME ? "true" : null)" @onkeydown="HandleSourceFrameKeyAsync" Disabled="@(!IndexesReady)" /></label>
                                             <span>/ @(_sourceIndex?.FrameCount.ToString() ?? "—")</span>
                                             <RadzenButton Icon="chevron_right" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.nextSourceFrame")" aria-label="@AppText.T("web.editMap.nextSourceFrame")" data-frame-side="source" data-frame-delta="1" Disabled="@(!CanStepSource(1))" />
                                         </div>
-                                        <label>@AppText.T("web.editMap.pts") <input class="form-input" value="@_sourceTimestampText" aria-label="@AppText.T("web.editMap.sourcePts")" @oninput="UpdateSourceTimestampText" @onblur="CommitSourceTimestampAsync" @onkeydown="HandleSourceTimestampKeyAsync" disabled="@(!IndexesReady)" /></label>
+                                        <label>@AppText.T("web.editMap.pts") <RadzenTextBox Value="@_sourceTimestampText" aria-label="@AppText.T("web.editMap.sourcePts")" @oninput="UpdateSourceTimestampText" @onblur="CommitSourceTimestampAsync" aria-invalid="@(_sourceNavigationErrorField == NAVIGATION_FIELD_TIME ? "true" : null)" @onkeydown="HandleSourceTimestampKeyAsync" Disabled="@(!IndexesReady)" /></label>
+                                        @NavigationError(true)
                                     </Controls>
                                 </FramePreviewPaneComponent>
                                 <FramePreviewPaneComponent @ref="_languagePreview"
@@ -51,11 +53,12 @@
                                     <Controls>
                                         <div class="media-frame-control">
                                             <RadzenButton Icon="chevron_left" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.previousLanguageFrame")" aria-label="@AppText.T("web.editMap.previousLanguageFrame")" data-frame-side="language" data-frame-delta="-1" Disabled="@(!CanStepLanguage(-1))" />
-                                            <label>@AppText.T("web.editMap.frame") <input class="form-input" inputmode="numeric" value="@_languageFrameText" aria-label="@AppText.T("web.editMap.languageFrame")" @oninput="UpdateLanguageFrameText" @onblur="CommitLanguageFrameAsync" @onkeydown="HandleLanguageFrameKeyAsync" disabled="@(!IndexesReady)" /></label>
+                                            <label>@AppText.T("web.editMap.frame") <RadzenTextBox inputmode="numeric" Value="@_languageFrameText" aria-label="@AppText.T("web.editMap.languageFrame")" @oninput="UpdateLanguageFrameText" @onblur="CommitLanguageFrameAsync" aria-invalid="@(_languageNavigationErrorField == NAVIGATION_FIELD_FRAME ? "true" : null)" @onkeydown="HandleLanguageFrameKeyAsync" Disabled="@(!IndexesReady)" /></label>
                                             <span>/ @(_languageIndex?.FrameCount.ToString() ?? "—")</span>
                                             <RadzenButton Icon="chevron_right" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.nextLanguageFrame")" aria-label="@AppText.T("web.editMap.nextLanguageFrame")" data-frame-side="language" data-frame-delta="1" Disabled="@(!CanStepLanguage(1))" />
                                         </div>
-                                        <label>@AppText.T("web.editMap.pts") <input class="form-input" value="@_languageTimestampText" aria-label="@AppText.T("web.editMap.languagePts")" @oninput="UpdateLanguageTimestampText" @onblur="CommitLanguageTimestampAsync" @onkeydown="HandleLanguageTimestampKeyAsync" disabled="@(!IndexesReady)" /></label>
+                                        <label>@AppText.T("web.editMap.pts") <RadzenTextBox Value="@_languageTimestampText" aria-label="@AppText.T("web.editMap.languagePts")" @oninput="UpdateLanguageTimestampText" @onblur="CommitLanguageTimestampAsync" aria-invalid="@(_languageNavigationErrorField == NAVIGATION_FIELD_TIME ? "true" : null)" @onkeydown="HandleLanguageTimestampKeyAsync" Disabled="@(!IndexesReady)" /></label>
+                                        @NavigationError(false)
                                     </Controls>
                                 </FramePreviewPaneComponent>
                             </div>
@@ -72,14 +75,12 @@
                                     <RadzenButton Icon="add_to_queue" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.addInsertHelp")" aria-label="@AppText.T("web.editMap.addInsertHelp")" Disabled="@(!CanCreateOperation())" Click="@(() => AddOperationAsync(EditOperation.INSERT_SILENCE))" />
                                     <RadzenButton Icon="delete" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" title="@AppText.T("web.editMap.deleteHelp")" aria-label="@AppText.T("web.editMap.deleteHelp")" Disabled="@(_selectedOperation == null)" Click="DeleteSelectedOperationAsync" />
                                 </div>
-                                <RadzenDataGrid @ref="_operationGrid" Data="@_workingMap.Operations" TItem="EditOperation" AllowSorting="false" AllowFiltering="false" AllowColumnResize="true" AllowRowSelectOnRowClick="true" GridLines="DataGridGridLines.Both" Density="Density.Compact" RowClick="SelectOperationRowAsync" RowRender="RenderOperationRow" class="edit-map-operation-grid">
-                                    <Columns>
-                                        <RadzenDataGridColumn TItem="EditOperation" Title="#" Width="2rem" Resizable="false"><Template Context="operation">@((_workingMap.Operations.IndexOf(operation) + 1).ToString())</Template></RadzenDataGridColumn>
-                                        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.type")" Width="4.25rem"><Template Context="operation">@GetOperationTypeLabel(operation)</Template></RadzenDataGridColumn>
-                                        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.source")" Width="6.25rem"><Template Context="operation">@FormatTimestamp(operation.SourceTimestampMs)</Template></RadzenDataGridColumn>
-                                        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.language")" Width="6.25rem"><Template Context="operation">@FormatTimestamp(operation.LangTimestampMs)</Template></RadzenDataGridColumn>
-                                        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.detail.durationLabel")" Width="5.25rem"><Template Context="operation">@FormatDuration(operation.DurationMs)</Template></RadzenDataGridColumn>
-                                    </Columns>
+                                @if (!_precisionEditorOpen)
+                                {
+                                    @ValidationIssues
+                                }
+                                <RadzenDataGrid @ref="_operationGrid" Data="@_workingMap.Operations" EmptyText="@AppText.T("web.editMap.noOperations")" TItem="EditOperation" AllowSorting="false" AllowFiltering="false" AllowColumnResize="true" AllowRowSelectOnRowClick="true" GridLines="DataGridGridLines.Both" Density="Density.Compact" RowClick="SelectOperationRowAsync" RowRender="RenderOperationRow" class="edit-map-operation-grid">
+                                    <Columns>@OperationColumns</Columns>
                                 </RadzenDataGrid>
                             </section>
                         </RadzenSplitterPane>
@@ -93,7 +94,7 @@
                             <div class="@GetTimelineBoxClass()" role="@(_precisionEditorOpen ? "dialog" : null)" aria-modal="@(_precisionEditorOpen ? "true" : null)" aria-labelledby="@(_precisionEditorOpen ? "edit-map-precision-title" : null)" data-keyboard-owner="edit-map" tabindex="@(_precisionEditorOpen ? "-1" : null)" @onclick:stopPropagation="true">
                                 @if (_precisionEditorOpen)
                                 {
-                                    <div id="edit-map-precision-title" class="dialog-title edit-map-precision-title">
+                                    <div id="edit-map-precision-title" class="edit-map-precision-title">
                                         <div>
                                             <div>@(VerificationOnly ? GetPageTitle() : AppText.T("web.editMap.precisionTitle"))</div>
                                             <div class="edit-map-page-subtitle">@Record?.SourceFileName · @AppText.T("web.detail.stretchLabel") @GetStretchLabel() · @AppText.T("web.detail.deepAudioOffsetLabel") @Utils.FormatDelay(_workingMap.LanguageAudioOffsetMs)</div>
@@ -134,49 +135,20 @@
                                                     <RadzenButton Text="@AppText.T("web.editMap.addInsert")" Icon="add_to_queue" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.addInsertHelp")" aria-label="@AppText.T("web.editMap.addInsertHelp")" Disabled="@(!CanCreateOperation())" Click="@(() => AddOperationAsync(EditOperation.INSERT_SILENCE))" />
                                                     <RadzenButton Text="@AppText.T("web.common.delete")" Icon="delete" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Danger" title="@AppText.T("web.editMap.deleteHelp")" aria-label="@AppText.T("web.editMap.deleteHelp")" Disabled="@(_selectedOperation == null)" Click="DeleteSelectedOperationAsync" />
                                                 </div>
-                                                <RadzenDataGrid @ref="_precisionOperationGrid" Data="@_workingMap.Operations" TItem="EditOperation" AllowSorting="false" AllowFiltering="false" AllowColumnResize="true" AllowRowSelectOnRowClick="true" GridLines="DataGridGridLines.Both" Density="Density.Compact" RowClick="SelectOperationRowAsync" RowRender="RenderOperationRow" class="edit-map-operation-grid">
-                                                    <Columns>
-                                                        <RadzenDataGridColumn TItem="EditOperation" Title="#" Width="2rem" Resizable="false"><Template Context="operation">@((_workingMap.Operations.IndexOf(operation) + 1).ToString())</Template></RadzenDataGridColumn>
-                                                        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.type")" Width="4.25rem"><Template Context="operation">@GetOperationTypeLabel(operation)</Template></RadzenDataGridColumn>
-                                                        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.source")" Width="6.25rem"><Template Context="operation">@FormatTimestamp(operation.SourceTimestampMs)</Template></RadzenDataGridColumn>
-                                                        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.language")" Width="6.25rem"><Template Context="operation">@FormatTimestamp(operation.LangTimestampMs)</Template></RadzenDataGridColumn>
-                                                        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.detail.durationLabel")" Width="5.25rem"><Template Context="operation">@FormatDuration(operation.DurationMs)</Template></RadzenDataGridColumn>
-                                                    </Columns>
+                                                @ValidationIssues
+                                                <RadzenDataGrid @ref="_precisionOperationGrid" Data="@_workingMap.Operations" EmptyText="@AppText.T("web.editMap.noOperations")" TItem="EditOperation" AllowSorting="false" AllowFiltering="false" AllowColumnResize="true" AllowRowSelectOnRowClick="true" GridLines="DataGridGridLines.Both" Density="Density.Compact" RowClick="SelectOperationRowAsync" RowRender="RenderOperationRow" class="edit-map-operation-grid">
+                                                    <Columns>@OperationColumns</Columns>
                                                 </RadzenDataGrid>
                                             </section>
-                                            <section class="edit-map-inspector-pane">
-                                                <div class="media-section-title">@AppText.T("web.editMap.selectedOperation")</div>
-                                                @if (_selectedOperation == null)
-                                                {
-                                                    <div class="edit-map-inspector-empty">@AppText.T("web.editMap.noOperationSelected")</div>
-                                                }
-                                                else
-                                                {
-                                                    <div class="edit-map-inspector-summary">
-                                                        <RadzenBadge Text="@GetOperationTypeLabel(_selectedOperation)" BadgeStyle="@(string.Equals(_selectedOperation.Type, EditOperation.CUT_SEGMENT, StringComparison.Ordinal) ? BadgeStyle.Warning : BadgeStyle.Info)" />
-                                                        <span>@AppText.T("web.editMap.scope"): @_selectedOperation.Scope</span>
-                                                    </div>
-                                                    <div class="edit-map-inspector-form">
-                                                        <label><span>@AppText.T("web.editMap.source")</span><input class="form-input" aria-label="@AppText.T("web.editMap.source")" value="@_operationSourceText" @oninput="UpdateOperationSourceText" @onblur="CommitSelectedOperationAsync" /></label>
-                                                        <label><span>@AppText.T("web.editMap.sourceFrame")</span><input class="form-input" aria-label="@AppText.T("web.editMap.sourceFrame")" inputmode="numeric" value="@_operationSourceFrameText" @oninput="UpdateOperationSourceFrameText" @onblur="CommitSelectedOperationAsync" /></label>
-                                                        <label><span>@AppText.T("web.editMap.language")</span><input class="form-input" aria-label="@AppText.T("web.editMap.language")" value="@_operationLanguageText" @oninput="UpdateOperationLanguageText" @onblur="CommitSelectedOperationAsync" /></label>
-                                                        <label><span>@AppText.T("web.editMap.languageFrame")</span><input class="form-input" aria-label="@AppText.T("web.editMap.languageFrame")" inputmode="numeric" value="@_operationLanguageFrameText" @oninput="UpdateOperationLanguageFrameText" @onblur="CommitSelectedOperationAsync" /></label>
-                                                        <label><span>@AppText.T("web.editMap.languageDurationShort")</span><input class="form-input" aria-label="@AppText.T("web.editMap.languageDurationShort")" inputmode="numeric" value="@_operationLanguageDurationText" @oninput="UpdateOperationLanguageDurationText" @onblur="CommitSelectedOperationAsync" /></label>
-                                                        <label><span>@AppText.T("web.editMap.renderedDurationShort")</span><input class="form-input" aria-label="@AppText.T("web.editMap.renderedDurationShort")" inputmode="numeric" value="@_operationRenderedDurationText" @oninput="UpdateOperationRenderedDurationText" @onblur="CommitSelectedOperationAsync" /></label>
-                                                        @if (IsSelectedInsert)
-                                                        {
-                                                            <label><span>@AppText.T("web.editMap.insertGain")</span><input class="form-input" aria-label="@AppText.T("web.editMap.insertGain")" inputmode="decimal" value="@_operationGainText" @oninput="UpdateOperationGainText" @onblur="CommitSelectedOperationAsync" /></label>
-                                                        }
-                                                    </div>
-                                                }
-                                            </section>
+                                            @RenderInspector(true)
                                         </div>
                                     }
                                 </div>
                                 @if (_precisionEditorOpen)
                                 {
-                                    <div class="dialog-footer edit-map-precision-footer">
+                                    <div class="edit-map-precision-footer">
                                         <span class="edit-map-validation-summary">@GetFooterSummary()</span>
+                                        @StatusMessage
                                         <span class="edit-map-footer-spacer"></span>
                                         <RadzenButton Text="@AppText.T("web.common.close")" Icon="close_fullscreen" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="ClosePrecisionEditorAsync" />
                                     </div>
@@ -187,32 +159,7 @@
                     @if (!VerificationOnly)
                     {
                         <RadzenSplitterPane Min="280px">
-                            <section class="edit-map-inspector-pane">
-                            <div class="media-section-title">@AppText.T("web.editMap.selectedOperation")</div>
-                            @if (_selectedOperation == null)
-                            {
-                                <div class="edit-map-inspector-empty">@AppText.T("web.editMap.noOperationSelected")</div>
-                            }
-                            else
-                            {
-                                <div class="edit-map-inspector-summary">
-                                    <RadzenBadge Text="@GetOperationTypeLabel(_selectedOperation)" BadgeStyle="@(string.Equals(_selectedOperation.Type, EditOperation.CUT_SEGMENT, StringComparison.Ordinal) ? BadgeStyle.Warning : BadgeStyle.Info)" />
-                                    <span>@AppText.T("web.editMap.scope"): @_selectedOperation.Scope</span>
-                                </div>
-                                <div class="edit-map-inspector-form">
-                                    <label><span>@AppText.T("web.editMap.source")</span><input class="form-input" aria-label="@AppText.T("web.editMap.source")" value="@_operationSourceText" @oninput="UpdateOperationSourceText" @onblur="CommitSelectedOperationAsync" /></label>
-                                    <label><span>@AppText.T("web.editMap.sourceFrame")</span><input class="form-input" aria-label="@AppText.T("web.editMap.sourceFrame")" inputmode="numeric" value="@_operationSourceFrameText" @oninput="UpdateOperationSourceFrameText" @onblur="CommitSelectedOperationAsync" /></label>
-                                    <label><span>@AppText.T("web.editMap.language")</span><input class="form-input" aria-label="@AppText.T("web.editMap.language")" value="@_operationLanguageText" @oninput="UpdateOperationLanguageText" @onblur="CommitSelectedOperationAsync" /></label>
-                                    <label><span>@AppText.T("web.editMap.languageFrame")</span><input class="form-input" aria-label="@AppText.T("web.editMap.languageFrame")" inputmode="numeric" value="@_operationLanguageFrameText" @oninput="UpdateOperationLanguageFrameText" @onblur="CommitSelectedOperationAsync" /></label>
-                                    <label><span>@AppText.T("web.editMap.languageDurationShort")</span><input class="form-input" aria-label="@AppText.T("web.editMap.languageDurationShort")" inputmode="numeric" value="@_operationLanguageDurationText" @oninput="UpdateOperationLanguageDurationText" @onblur="CommitSelectedOperationAsync" /></label>
-                                    <label><span>@AppText.T("web.editMap.renderedDurationShort")</span><input class="form-input" aria-label="@AppText.T("web.editMap.renderedDurationShort")" inputmode="numeric" value="@_operationRenderedDurationText" @oninput="UpdateOperationRenderedDurationText" @onblur="CommitSelectedOperationAsync" /></label>
-                                    @if (IsSelectedInsert)
-                                    {
-                                        <label><span>@AppText.T("web.editMap.insertGain")</span><input class="form-input" aria-label="@AppText.T("web.editMap.insertGain")" inputmode="decimal" value="@_operationGainText" @oninput="UpdateOperationGainText" @onblur="CommitSelectedOperationAsync" /></label>
-                                    }
-                                </div>
-                            }
-                            </section>
+                            @RenderInspector(false)
                         </RadzenSplitterPane>
                     }
                 </RadzenSplitter>
@@ -222,6 +169,10 @@
 
     <footer class="edit-map-page-footer">
         <span class="edit-map-validation-summary">@GetFooterSummary()</span>
+        @if (!_precisionEditorOpen)
+        {
+            @StatusMessage
+        }
         <span class="edit-map-footer-spacer"></span>
         <RadzenButton Text="@AppText.T(VerificationOnly ? "web.common.close" : "web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T(VerificationOnly ? "web.common.close" : "web.editMap.cancelHelp")" Click="CloseAsync" />
         @if (!VerificationOnly)
@@ -229,17 +180,6 @@
             <RadzenButton Text="@AppText.T("web.editMap.apply")" Icon="check" title="@AppText.T("web.editMap.applyHelp")" Disabled="@(!CanApply())" Click="ApplyAsync" />
         }
     </footer>
-
-    @if (_contextMenuOpen)
-    {
-        <ContextMenuComponent Commands="@_contextMenuCommands"
-                              X="@_contextMenuX"
-                              Y="@_contextMenuY"
-                              SelectedIndex="@_contextMenuSelectedIndex"
-                              OnClose="CloseContextMenu"
-                              OnActiveChanged="SetContextMenuActiveIndex"
-                              OnSelect="HandleContextMenuSelectAsync" />
-    }
 </section>
 
 @code {
@@ -248,6 +188,15 @@
     private const string TIMELINE_TOOL_SELECT = "select";
     private const string TIMELINE_TOOL_HAND = "hand";
     private const string TIMELINE_TOOL_OPERATIONS = "operations";
+    private const string FIELD_SOURCE_TIME = "source-time";
+    private const string FIELD_SOURCE_FRAME = "source-frame";
+    private const string FIELD_LANGUAGE_TIME = "language-time";
+    private const string FIELD_LANGUAGE_FRAME = "language-frame";
+    private const string FIELD_LANGUAGE_DURATION = "language-duration";
+    private const string FIELD_RENDERED_DURATION = "rendered-duration";
+    private const string FIELD_GAIN = "gain";
+    private const string NAVIGATION_FIELD_FRAME = "frame";
+    private const string NAVIGATION_FIELD_TIME = "time";
 
     /// <summary>
     /// Indice del record originale
@@ -318,9 +267,6 @@
     private string _audioMode = AUDIO_MODE_WAVEFORM;
     private string _timelineTool = TIMELINE_TOOL_SELECT;
     private List<UiCommandDefinition> _contextMenuCommands = new List<UiCommandDefinition>();
-    private double _contextMenuX;
-    private double _contextMenuY;
-    private int _contextMenuSelectedIndex;
     private bool _contextMenuOpen;
     private int? _selectedSourceAudioTrackId;
     private int? _selectedLanguageAudioTrackId;
@@ -340,6 +286,168 @@
     private bool _precisionEditorOpen;
     private bool _gainEditPending;
     private string _openedPreviewSignature;
+    private string _sourceNavigationErrorField = "";
+    private string _sourceNavigationError = "";
+    private string _languageNavigationErrorField = "";
+    private string _languageNavigationError = "";
+    private string _operationErrorField = "";
+    private string _operationError = "";
+    private string _statusMessage = "";
+    private string _focusOperationField;
+
+    /// <summary>
+    /// Colonne condivise dalle due griglie delle operazioni, con l'icona sulle righe coinvolte in errori o avvisi
+    /// </summary>
+    private RenderFragment OperationColumns => __builder =>
+    {
+        <RadzenDataGridColumn TItem="EditOperation" Title="#" Width="3rem" Resizable="false">
+            <Template Context="operation">
+                @{
+                    int index = _workingMap.Operations.IndexOf(operation);
+                }
+                <span class="edit-map-row-number">
+                    @((index + 1).ToString())
+                    @if (OperationHasIssue(index, true))
+                    {
+                        <RadzenIcon Icon="error" IconStyle="IconStyle.Danger" class="edit-map-row-issue" aria-hidden="true" />
+                        <span class="edit-map-sr-only">@AppText.T("web.editMap.rowHasErrors")</span>
+                    }
+                    else if (OperationHasIssue(index, false))
+                    {
+                        <RadzenIcon Icon="warning" IconStyle="IconStyle.Warning" class="edit-map-row-issue" aria-hidden="true" />
+                        <span class="edit-map-sr-only">@AppText.T("web.editMap.rowHasWarnings")</span>
+                    }
+                </span>
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.type")" Width="4.25rem"><Template Context="operation">@GetOperationTypeLabel(operation)</Template></RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.source")" Width="6.25rem"><Template Context="operation">@FormatTimestamp(operation.SourceTimestampMs)</Template></RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.language")" Width="6.25rem"><Template Context="operation">@FormatTimestamp(operation.LangTimestampMs)</Template></RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.detail.durationLabel")" Width="5.25rem"><Template Context="operation">@FormatDuration(operation.DurationMs)</Template></RadzenDataGridColumn>
+    };
+
+    /// <summary>
+    /// Riquadri sopra la griglia con errori e avvisi della validazione, ciascuno con il comando per correggerlo
+    /// </summary>
+    private RenderFragment ValidationIssues => __builder =>
+    {
+        if (_projection != null && _projection.Validation.Errors.Count > 0)
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="edit-map-issues">
+                @foreach (EditMapValidationIssue issue in _projection.Validation.Errors)
+                {
+                    @IssueRow(issue)
+                }
+            </RadzenAlert>
+        }
+        if (_projection != null && _projection.Validation.Warnings.Count > 0)
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="edit-map-issues">
+                @foreach (EditMapValidationIssue issue in _projection.Validation.Warnings)
+                {
+                    @IssueRow(issue)
+                }
+            </RadzenAlert>
+        }
+    };
+
+    /// <summary>
+    /// Riga di una segnalazione: testo e, quando riguarda un'operazione, il comando che la seleziona
+    /// </summary>
+    /// <param name="issue">Segnalazione da descrivere</param>
+    private RenderFragment IssueRow(EditMapValidationIssue issue) => __builder =>
+    {
+        string text = DescribeIssue(issue);
+        <div class="edit-map-issue-row">
+            <span>@text</span>
+            @if (issue.OperationIndex >= 0 && issue.OperationIndex < _workingMap.Operations.Count)
+            {
+                <RadzenButton Text="@AppText.T("web.editMap.editIssue")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.Small"
+                              aria-label="@(AppText.T("web.editMap.editIssue") + ": " + text)" Click="@(() => GoToIssueAsync(issue))" />
+            }
+        </div>
+    };
+
+    /// <summary>
+    /// Pannello dell'operazione selezionata; gli errori dei campi compaiono soltanto nella vista visibile
+    /// </summary>
+    /// <param name="precision">True per il pannello della dialog di precisione</param>
+    private RenderFragment RenderInspector(bool precision) => __builder =>
+    {
+        bool visible = precision == _precisionEditorOpen;
+        <section class="edit-map-inspector-pane">
+            <div class="media-section-title">@AppText.T("web.editMap.selectedOperation")</div>
+            @if (_selectedOperation == null)
+            {
+                <div class="edit-map-inspector-empty">@AppText.T("web.editMap.noOperationSelected")</div>
+            }
+            else
+            {
+                <div class="edit-map-inspector-summary">
+                    <RadzenBadge Text="@GetOperationTypeLabel(_selectedOperation)" BadgeStyle="@(string.Equals(_selectedOperation.Type, EditOperation.CUT_SEGMENT, StringComparison.Ordinal) ? BadgeStyle.Warning : BadgeStyle.Info)" />
+                    <span>@AppText.T("web.editMap.scope"): @GetScopeLabel(_selectedOperation.Scope)</span>
+                </div>
+                <div class="edit-map-inspector-form">
+                    @InspectorField(FIELD_SOURCE_TIME, "web.editMap.source", _operationSourceText, UpdateOperationSourceText, null, visible)
+                    @InspectorField(FIELD_SOURCE_FRAME, "web.editMap.sourceFrame", _operationSourceFrameText, UpdateOperationSourceFrameText, "numeric", visible)
+                    @InspectorField(FIELD_LANGUAGE_TIME, "web.editMap.language", _operationLanguageText, UpdateOperationLanguageText, null, visible)
+                    @InspectorField(FIELD_LANGUAGE_FRAME, "web.editMap.languageFrame", _operationLanguageFrameText, UpdateOperationLanguageFrameText, "numeric", visible)
+                    @InspectorField(FIELD_LANGUAGE_DURATION, "web.editMap.languageDurationShort", _operationLanguageDurationText, UpdateOperationLanguageDurationText, "numeric", visible)
+                    @InspectorField(FIELD_RENDERED_DURATION, "web.editMap.renderedDurationShort", _operationRenderedDurationText, UpdateOperationRenderedDurationText, "numeric", visible)
+                    @if (IsSelectedInsert)
+                    {
+                        @InspectorField(FIELD_GAIN, "web.editMap.insertGain", _operationGainText, UpdateOperationGainText, "decimal", visible)
+                    }
+                </div>
+            }
+        </section>
+    };
+
+    /// <summary>
+    /// Campo del pannello operazione: Invio conferma, l'errore resta sotto il campo finché il valore non è valido
+    /// </summary>
+    /// <param name="field">Chiave del campo</param>
+    /// <param name="labelKey">Chiave dell'etichetta</param>
+    /// <param name="value">Testo mostrato</param>
+    /// <param name="onInput">Gestore della digitazione</param>
+    /// <param name="inputMode">Tastiera virtuale suggerita, null per quella predefinita</param>
+    /// <param name="visible">True quando il pannello è quello visibile e mostra l'errore</param>
+    private RenderFragment InspectorField(string field, string labelKey, string value, Action<ChangeEventArgs> onInput, string inputMode, bool visible) => __builder =>
+    {
+        bool invalid = visible && string.Equals(_operationErrorField, field, StringComparison.Ordinal) && !string.IsNullOrEmpty(_operationError);
+        <label>
+            <span>@AppText.T(labelKey)</span>
+            <RadzenTextBox class="edit-map-inspector-input" data-edit-field="@field" aria-label="@AppText.T(labelKey)" aria-invalid="@(invalid ? "true" : null)" inputmode="@inputMode" Value="@value" @oninput="onInput" @onblur="CommitSelectedOperationAsync" @onkeydown="HandleOperationFieldKeyAsync" />
+            @if (invalid)
+            {
+                <span class="rf-remux-error edit-map-field-error" role="alert">@_operationError</span>
+            }
+        </label>
+    };
+
+    /// <summary>
+    /// Errore del campo Frame o PTS di un'anteprima
+    /// </summary>
+    /// <param name="source">True per l'anteprima Source</param>
+    private RenderFragment NavigationError(bool source) => __builder =>
+    {
+        string error = source ? _sourceNavigationError : _languageNavigationError;
+        if (!string.IsNullOrEmpty(error))
+        {
+            <span class="rf-remux-error edit-map-field-error edit-map-navigation-error" role="alert">@error</span>
+        }
+    };
+
+    /// <summary>
+    /// Messaggio breve nel piè di pagina su una modifica dalla timeline non applicata
+    /// </summary>
+    private RenderFragment StatusMessage => __builder =>
+    {
+        if (!string.IsNullOrEmpty(_statusMessage))
+        {
+            <span class="rf-remux-error edit-map-status-message" role="status">@_statusMessage</span>
+        }
+    };
 
     /// <summary>
     /// True quando entrambi gli indici sono pronti e nessuno dei due è fallito
@@ -365,6 +473,7 @@
     {
         this._openedPreviewSignature = MergeOrchestrator.GetEditMapPreviewSignature(this.Record, this.CurrentOptions);
         this.Orchestrator.OnRecordsChanged += this.HandleMediaSelectionChanged;
+        this.ContextMenuService.OnClose += this.HandleContextMenuClosed;
         this._workingMap = EditMapTimelineHelper.Clone(this.Record != null ? this.Record.DeepAnalysisMap : null);
         if (this.Record != null && this.Record.DeepAnalysisMap == null)
         {
@@ -396,6 +505,13 @@
     {
         if (firstRender)
             this._module = await this.JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/edit-map-timeline.js");
+        if (this._focusOperationField != null && this._module != null && this._interactiveInitialized)
+        {
+            // Il campo da correggere esiste solo dopo il render che ha selezionato l'operazione
+            string field = this._focusOperationField;
+            this._focusOperationField = null;
+            await this._module.InvokeAsync<bool>("focusEditorField", this._pageRoot, field, this._precisionEditorOpen);
+        }
         if (!this.IndexesReady || this._interactiveInitialized || this._module == null)
             return;
 
@@ -501,19 +617,19 @@
     /// Restituisce il contenitore normale o l'overlay della dialog di precisione
     /// </summary>
     /// <returns>Classe CSS del contenitore della timeline</returns>
-    private string GetTimelineOverlayClass() => this._precisionEditorOpen ? "dialog-overlay visible edit-map-precision-overlay" : "edit-map-timeline-slot";
+    private string GetTimelineOverlayClass() => this._precisionEditorOpen ? "edit-map-precision-overlay" : "edit-map-timeline-slot";
 
     /// <summary>
     /// Restituisce il box normale o fullscreen della timeline
     /// </summary>
     /// <returns>Classe CSS del box della timeline</returns>
-    private string GetTimelineBoxClass() => this._precisionEditorOpen ? "dialog-box dialog-fullscreen edit-map-precision-box" : "edit-map-timeline-box";
+    private string GetTimelineBoxClass() => this._precisionEditorOpen ? "edit-map-precision-box" : "edit-map-timeline-box";
 
     /// <summary>
     /// Restituisce il layout interno della timeline secondo la modalità corrente
     /// </summary>
     /// <returns>Classe CSS del layout interno della timeline</returns>
-    private string GetTimelineBodyClass() => this._precisionEditorOpen ? "dialog-body edit-map-precision-body" : "edit-map-timeline-body";
+    private string GetTimelineBodyClass() => this._precisionEditorOpen ? "edit-map-precision-body" : "edit-map-timeline-body";
 
     /// <summary>
     /// Apre la dialog di precisione conservando timeline e copia di lavoro correnti
@@ -736,6 +852,8 @@
     /// </summary>
     private void RefreshNavigationFields()
     {
+        this.SetNavigationError(true, "", "");
+        this.SetNavigationError(false, "", "");
         this._sourceFrameText = this._sourceFrame != null ? (this._sourceFrame.PresentationIndex + 1).ToString() : "";
         this._languageFrameText = this._languageFrame != null ? (this._languageFrame.PresentationIndex + 1).ToString() : "";
         this._sourceTimestampText = this._sourceFrame != null ? FormatTimestamp(this._sourceFrame.PtsMs) : "";
@@ -995,12 +1113,12 @@
     /// <summary>
     /// Valida il cambio traccia contro l'elenco del record corrente
     /// </summary>
-    /// <param name="args">Evento della select con l'ID della traccia richiesta</param>
+    /// <param name="trackId">ID della traccia richiesta</param>
     /// <param name="source">True per la corsia Source, false per quella Language</param>
-    private async Task ChangeAudioTrackAsync(ChangeEventArgs args, bool source)
+    private async Task ChangeAudioTrackAsync(int trackId, bool source)
     {
         List<TrackInfo> tracks = this.GetDisplayAudioTracks(source);
-        if (!int.TryParse(args.Value != null ? args.Value.ToString() : "", out int trackId) || tracks == null || tracks.Find(track => track.Id == trackId) == null)
+        if (tracks == null || tracks.Find(track => track.Id == trackId) == null)
             return;
         if (source)
             this._selectedSourceAudioTrackId = trackId;
@@ -1022,7 +1140,7 @@
             ElementId = "edit-map-source-audio",
             Tracks = this.GetDisplayAudioTracks(true),
             SelectedTrackId = this._selectedSourceAudioTrackId,
-            OnTrackChanged = EventCallback.Factory.Create<ChangeEventArgs>(this, args => this.ChangeAudioTrackAsync(args, true))
+            OnTrackChanged = EventCallback.Factory.Create<int>(this, trackId => this.ChangeAudioTrackAsync(trackId, true))
         });
         lanes.Add(new MediaTimelinePanelComponent.AudioLane
         {
@@ -1030,7 +1148,7 @@
             ElementId = "edit-map-language-audio",
             Tracks = this.GetDisplayAudioTracks(false),
             SelectedTrackId = this._selectedLanguageAudioTrackId,
-            OnTrackChanged = EventCallback.Factory.Create<ChangeEventArgs>(this, args => this.ChangeAudioTrackAsync(args, false))
+            OnTrackChanged = EventCallback.Factory.Create<int>(this, trackId => this.ChangeAudioTrackAsync(trackId, false))
         });
         return lanes;
     }
@@ -1081,37 +1199,89 @@
     /// Registra il numero di fotogramma Source digitato
     /// </summary>
     /// <param name="args">Evento del campo di testo</param>
-    private void UpdateSourceFrameText(ChangeEventArgs args) => this._sourceFrameText = args.Value != null ? args.Value.ToString() : "";
+    private void UpdateSourceFrameText(ChangeEventArgs args) { this._sourceFrameText = GetEventText(args); this.RevalidateNavigationField(true); }
     /// <summary>
     /// Registra il numero di fotogramma Language digitato
     /// </summary>
     /// <param name="args">Evento del campo di testo</param>
-    private void UpdateLanguageFrameText(ChangeEventArgs args) => this._languageFrameText = args.Value != null ? args.Value.ToString() : "";
+    private void UpdateLanguageFrameText(ChangeEventArgs args) { this._languageFrameText = GetEventText(args); this.RevalidateNavigationField(false); }
     /// <summary>
     /// Registra il timestamp Source digitato
     /// </summary>
     /// <param name="args">Evento del campo di testo</param>
-    private void UpdateSourceTimestampText(ChangeEventArgs args) => this._sourceTimestampText = args.Value != null ? args.Value.ToString() : "";
+    private void UpdateSourceTimestampText(ChangeEventArgs args) { this._sourceTimestampText = GetEventText(args); this.RevalidateNavigationField(true); }
     /// <summary>
     /// Registra il timestamp Language digitato
     /// </summary>
     /// <param name="args">Evento del campo di testo</param>
-    private void UpdateLanguageTimestampText(ChangeEventArgs args) => this._languageTimestampText = args.Value != null ? args.Value.ToString() : "";
+    private void UpdateLanguageTimestampText(ChangeEventArgs args) { this._languageTimestampText = GetEventText(args); this.RevalidateNavigationField(false); }
+
+    /// <summary>
+    /// Descrive il problema del campo Frame o PTS di un'anteprima
+    /// </summary>
+    /// <param name="source">True per l'anteprima Source</param>
+    /// <param name="field">Campo da verificare, frame o time</param>
+    /// <returns>Testo dell'errore, vuoto quando il valore digitato è leggibile</returns>
+    private string ValidateNavigationField(bool source, string field)
+    {
+        VideoFrameIndex index = source ? this._sourceIndex : this._languageIndex;
+        if (string.Equals(field, NAVIGATION_FIELD_FRAME, StringComparison.Ordinal))
+        {
+            int frameCount = index != null ? index.FrameCount : 0;
+            bool valid = int.TryParse(source ? this._sourceFrameText : this._languageFrameText, out int frameNumber) && frameNumber >= 1 && frameNumber <= frameCount;
+            return valid ? "" : AppText.F("web.editMap.frameNumberHint", frameCount);
+        }
+        return TryParseTimestamp(source ? this._sourceTimestampText : this._languageTimestampText, out double _) ? "" : AppText.T("web.editMap.timestampHint");
+    }
+
+    /// <summary>
+    /// Mostra sotto il campo Frame o PTS il motivo del rifiuto, lasciando il testo digitato
+    /// </summary>
+    /// <param name="source">True per l'anteprima Source</param>
+    /// <param name="field">Campo rifiutato, frame o time</param>
+    /// <param name="error">Testo dell'errore</param>
+    private void SetNavigationError(bool source, string field, string error)
+    {
+        if (source)
+        {
+            this._sourceNavigationErrorField = field;
+            this._sourceNavigationError = error;
+        }
+        else
+        {
+            this._languageNavigationErrorField = field;
+            this._languageNavigationError = error;
+        }
+    }
+
+    /// <summary>
+    /// Toglie l'errore del campo Frame o PTS appena il testo digitato diventa leggibile
+    /// </summary>
+    /// <param name="source">True per l'anteprima Source</param>
+    private void RevalidateNavigationField(bool source)
+    {
+        string field = source ? this._sourceNavigationErrorField : this._languageNavigationErrorField;
+        if (!string.IsNullOrEmpty(field) && string.IsNullOrEmpty(this.ValidateNavigationField(source, field)))
+            this.SetNavigationError(source, "", "");
+    }
 
     /// <summary>
     /// Naviga al fotogramma Source digitato, segnalando un numero fuori indice
     /// </summary>
     private async Task CommitSourceFrameAsync()
     {
-        if (!int.TryParse(this._sourceFrameText, out int frameNumber) || frameNumber < 1 || frameNumber > this._sourceIndex.FrameCount)
+        string error = this.ValidateNavigationField(true, NAVIGATION_FIELD_FRAME);
+        if (!string.IsNullOrEmpty(error))
         {
-            this.WarnInvalidValue();
+            this.SetNavigationError(true, NAVIGATION_FIELD_FRAME, error);
+            return;
+        }
+        VideoFrameIndexEntry frame = this._sourceIndex.Frames[int.Parse(this._sourceFrameText) - 1];
+        if (this._sourceFrame != null && frame.PresentationIndex == this._sourceFrame.PresentationIndex)
+        {
             this.RefreshNavigationFields();
             return;
         }
-        VideoFrameIndexEntry frame = this._sourceIndex.Frames[frameNumber - 1];
-        if (this._sourceFrame != null && frame.PresentationIndex == this._sourceFrame.PresentationIndex)
-            return;
         this.NavigateFromSourceFrame(frame);
         await this.RefreshAfterNavigationAsync(true);
     }
@@ -1121,15 +1291,18 @@
     /// </summary>
     private async Task CommitLanguageFrameAsync()
     {
-        if (!int.TryParse(this._languageFrameText, out int frameNumber) || frameNumber < 1 || frameNumber > this._languageIndex.FrameCount)
+        string error = this.ValidateNavigationField(false, NAVIGATION_FIELD_FRAME);
+        if (!string.IsNullOrEmpty(error))
         {
-            this.WarnInvalidValue();
+            this.SetNavigationError(false, NAVIGATION_FIELD_FRAME, error);
+            return;
+        }
+        VideoFrameIndexEntry frame = this._languageIndex.Frames[int.Parse(this._languageFrameText) - 1];
+        if (this._languageFrame != null && frame.PresentationIndex == this._languageFrame.PresentationIndex)
+        {
             this.RefreshNavigationFields();
             return;
         }
-        VideoFrameIndexEntry frame = this._languageIndex.Frames[frameNumber - 1];
-        if (this._languageFrame != null && frame.PresentationIndex == this._languageFrame.PresentationIndex)
-            return;
         this.NavigateFromLanguageFrame(frame);
         await this.RefreshAfterNavigationAsync(true);
     }
@@ -1141,8 +1314,7 @@
     {
         if (!TryParseTimestamp(this._sourceTimestampText, out double ptsMs))
         {
-            this.WarnInvalidValue();
-            this.RefreshNavigationFields();
+            this.SetNavigationError(true, NAVIGATION_FIELD_TIME, AppText.T("web.editMap.timestampHint"));
             return;
         }
         VideoFrameIndexEntry frame = this._sourceIndex.FindNearestFrame(ptsMs);
@@ -1162,8 +1334,7 @@
     {
         if (!TryParseTimestamp(this._languageTimestampText, out double ptsMs))
         {
-            this.WarnInvalidValue();
-            this.RefreshNavigationFields();
+            this.SetNavigationError(false, NAVIGATION_FIELD_TIME, AppText.T("web.editMap.timestampHint"));
             return;
         }
         VideoFrameIndexEntry frame = this._languageIndex.FindNearestFrame(ptsMs);
@@ -1301,114 +1472,206 @@
     }
 
     /// <summary>
-    /// Applica alla mappa i valori digitati sull'operazione selezionata, ripristinandoli se rifiutati
+    /// Applica alla mappa i valori digitati sull'operazione selezionata; se rifiutati li lascia nel campo con l'errore sotto
     /// </summary>
     private async Task CommitSelectedOperationAsync()
     {
-        if (this.VerificationOnly || this._selectedOperation == null || (string.IsNullOrEmpty(this._timestampEditAuthority) && string.IsNullOrEmpty(this._durationEditAuthority) && !this._gainEditPending))
+        if (this.VerificationOnly || this._selectedOperation == null || !this.HasPendingOperationEdit())
             return;
-        if (!this.TryResolveEditedLanguageTimestamp(out int languageTimestamp) || !this.TryResolveEditedLanguageDuration(languageTimestamp, out int languageDuration))
+        if (!this.TryEvaluateOperationEdit(out EditMapProjection candidate, out int languageTimestamp, out int languageDuration, out string errorField, out string error))
         {
-            this.WarnInvalidValue();
-            this.RefreshOperationFields();
-            return;
-        }
-        double gainDb = this._selectedOperation.GainDb;
-        if (this._gainEditPending &&
-            (!double.TryParse(this._operationGainText, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out gainDb) || !double.IsFinite(gainDb)))
-        {
-            this.WarnInvalidValue();
-            this.RefreshOperationFields();
+            this._operationErrorField = errorField;
+            this._operationError = error;
             return;
         }
 
-        EditOperation operation = this._selectedOperation;
-        EditMap backup = EditMapTimelineHelper.Clone(this._workingMap);
+        string type = this._selectedOperation.Type;
+        this._projection = candidate;
+        this._workingMap = candidate.Map;
+        this._selectedOperation = FindOperation(this._workingMap.Operations, type, languageTimestamp, languageDuration);
+        this.ClearPendingOperationEdit();
+        await this.FinishMapMutationAsync();
+    }
+
+    /// <summary>
+    /// True quando almeno un campo dell'operazione selezionata contiene un valore da applicare
+    /// </summary>
+    /// <returns>True con un timestamp, una durata o un gain digitati e non ancora applicati</returns>
+    private bool HasPendingOperationEdit() => !string.IsNullOrEmpty(this._timestampEditAuthority) || !string.IsNullOrEmpty(this._durationEditAuthority) || this._gainEditPending;
+
+    /// <summary>
+    /// Dimentica i valori digitati non applicati e il relativo errore
+    /// </summary>
+    private void ClearPendingOperationEdit()
+    {
+        this._timestampEditAuthority = "";
+        this._durationEditAuthority = "";
+        this._gainEditPending = false;
+        this._operationErrorField = "";
+        this._operationError = "";
+    }
+
+    /// <summary>
+    /// Toglie l'errore del campo appena i valori digitati diventano applicabili
+    /// </summary>
+    private void RevalidatePendingOperationEdit()
+    {
+        if (string.IsNullOrEmpty(this._operationError) || this._selectedOperation == null)
+            return;
+        if (this.TryEvaluateOperationEdit(out EditMapProjection _, out int _, out int _, out string _, out string _))
+        {
+            this._operationErrorField = "";
+            this._operationError = "";
+        }
+    }
+
+    /// <summary>
+    /// Valuta i valori digitati su una copia della mappa, senza toccare quella di lavoro
+    /// </summary>
+    /// <param name="candidate">Proiezione della mappa modificata, valida quando il metodo restituisce true</param>
+    /// <param name="languageTimestamp">Timestamp Language risolto</param>
+    /// <param name="languageDuration">Durata Language risolta</param>
+    /// <param name="errorField">Campo a cui appartiene l'errore</param>
+    /// <param name="error">Testo dell'errore</param>
+    /// <returns>True quando i valori sono leggibili e la mappa risultante è valida</returns>
+    private bool TryEvaluateOperationEdit(out EditMapProjection candidate, out int languageTimestamp, out int languageDuration, out string errorField, out string error)
+    {
+        candidate = null;
+        languageDuration = 0;
+        errorField = "";
+        error = "";
+        if (!this.TryResolveEditedLanguageTimestamp(out languageTimestamp, out error))
+        {
+            errorField = this._timestampEditAuthority;
+            return false;
+        }
+        if (!this.TryResolveEditedLanguageDuration(languageTimestamp, out languageDuration))
+        {
+            errorField = this._durationEditAuthority;
+            error = AppText.T("web.editMap.durationHint");
+            return false;
+        }
+        double gainDb = this._selectedOperation.GainDb;
+        if (this._gainEditPending && !EditMapInputParser.TryParseGain(this._operationGainText, out gainDb))
+        {
+            errorField = FIELD_GAIN;
+            error = AppText.T("web.editMap.gainHint");
+            return false;
+        }
+
+        EditMap map = EditMapTimelineHelper.Clone(this._workingMap);
+        int index = this._workingMap.Operations.IndexOf(this._selectedOperation);
+        if (index < 0 || index >= map.Operations.Count)
+            return false;
+        EditOperation operation = map.Operations[index];
         bool wasSourceFilled = this.ShouldSourceFillOperation(operation);
         operation.LangTimestampMs = languageTimestamp;
         operation.DurationMs = languageDuration;
         operation.GainDb = string.Equals(operation.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal) ? gainDb : 0.0;
         if (!this._gainEditPending)
             this.ApplySourceFillGain(operation, wasSourceFilled);
-        EditMapProjection candidate = EditMapTimelineHelper.BuildProjection(this._workingMap, this._sourceIndex.EndPtsMs, this._languageIndex.EndPtsMs, this._sourceIndex.MedianFrameDurationMs);
-        if (!candidate.Validation.IsValid)
-        {
-            int index = this._workingMap.Operations.IndexOf(operation);
-            EditOperation restored = index >= 0 && index < backup.Operations.Count ? backup.Operations[index] : null;
-            string restoredType = restored != null ? restored.Type : operation.Type;
-            int restoredTimestamp = restored != null ? restored.LangTimestampMs : operation.LangTimestampMs;
-            int restoredDuration = restored != null ? restored.DurationMs : operation.DurationMs;
-            this._workingMap = backup;
-            this.RebuildProjection();
-            this._selectedOperation = FindOperation(this._workingMap.Operations, restoredType, restoredTimestamp, restoredDuration);
-            this._timestampEditAuthority = "";
-            this._durationEditAuthority = "";
-            this._gainEditPending = false;
-            this.WarnInvalidValue(DescribeValidationFailure(candidate.Validation));
-            this.RefreshOperationFields();
-            await this.ReloadOperationGridsAsync();
-            return;
-        }
+        candidate = EditMapTimelineHelper.BuildProjection(map, this._sourceIndex.EndPtsMs, this._languageIndex.EndPtsMs, this._sourceIndex.MedianFrameDurationMs);
+        if (candidate.Validation.IsValid)
+            return true;
 
-        string type = operation.Type;
-        this._projection = candidate;
-        this._workingMap = candidate.Map;
-        this._selectedOperation = FindOperation(this._workingMap.Operations, type, languageTimestamp, languageDuration);
-        this._timestampEditAuthority = "";
-        this._durationEditAuthority = "";
-        this._gainEditPending = false;
-        await this.FinishMapMutationAsync();
+        error = DescribeValidationFailure(candidate.Validation);
+        errorField = this.ResolvePendingErrorField(candidate.Validation.Errors[0].Code);
+        return false;
     }
+
+    /// <summary>
+    /// Sceglie fra i campi modificati quello sotto cui mostrare una regola violata
+    /// </summary>
+    /// <param name="code">Codice della regola violata</param>
+    /// <returns>Chiave del campo</returns>
+    private string ResolvePendingErrorField(string code)
+    {
+        string preferred = GetIssueField(code);
+        if (string.Equals(preferred, FIELD_GAIN, StringComparison.Ordinal) && this._gainEditPending)
+            return FIELD_GAIN;
+        if (string.Equals(preferred, FIELD_LANGUAGE_DURATION, StringComparison.Ordinal) && !string.IsNullOrEmpty(this._durationEditAuthority))
+            return this._durationEditAuthority;
+        if (!string.IsNullOrEmpty(this._timestampEditAuthority))
+            return this._timestampEditAuthority;
+        if (!string.IsNullOrEmpty(this._durationEditAuthority))
+            return this._durationEditAuthority;
+        return FIELD_GAIN;
+    }
+
+    /// <summary>
+    /// Conferma i valori del pannello operazione alla pressione di Invio
+    /// </summary>
+    /// <param name="args">Evento di tastiera del campo</param>
+    /// <returns>Task della conferma, già completato quando il tasto non è Invio</returns>
+    private Task HandleOperationFieldKeyAsync(KeyboardEventArgs args) => string.Equals(args.Key, "Enter", StringComparison.Ordinal) ? this.CommitSelectedOperationAsync() : Task.CompletedTask;
 
     /// <summary>
     /// Converte in timestamp Language il campo che l'utente ha effettivamente modificato
     /// </summary>
     /// <param name="timestampMs">Timestamp Language risolto</param>
+    /// <param name="error">Motivo del rifiuto, vuoto quando il valore è stato risolto</param>
     /// <returns>True quando il valore digitato è leggibile e mappabile</returns>
-    private bool TryResolveEditedLanguageTimestamp(out int timestampMs)
+    private bool TryResolveEditedLanguageTimestamp(out int timestampMs, out string error)
     {
+        error = "";
         timestampMs = this._selectedOperation != null ? this._selectedOperation.LangTimestampMs : 0;
         if (this._selectedOperation == null || string.IsNullOrEmpty(this._timestampEditAuthority))
             return this._selectedOperation != null;
 
         VideoFrameIndexEntry languageFrame = null;
-        if (string.Equals(this._timestampEditAuthority, "language-time", StringComparison.Ordinal))
+        if (string.Equals(this._timestampEditAuthority, FIELD_LANGUAGE_TIME, StringComparison.Ordinal))
         {
             if (!TryParseTimestamp(this._operationLanguageText, out double ptsMs))
+            {
+                error = AppText.T("web.editMap.timestampHint");
                 return false;
+            }
             languageFrame = this._languageIndex.FindNearestFrame(ptsMs);
         }
-        else if (string.Equals(this._timestampEditAuthority, "language-frame", StringComparison.Ordinal))
+        else if (string.Equals(this._timestampEditAuthority, FIELD_LANGUAGE_FRAME, StringComparison.Ordinal))
         {
             if (!int.TryParse(this._operationLanguageFrameText, out int frameNumber) || frameNumber < 1 || frameNumber > this._languageIndex.FrameCount)
+            {
+                error = AppText.F("web.editMap.frameNumberHint", this._languageIndex.FrameCount);
                 return false;
+            }
             languageFrame = this._languageIndex.Frames[frameNumber - 1];
         }
         else
         {
             VideoFrameIndexEntry sourceFrame;
-            if (string.Equals(this._timestampEditAuthority, "source-time", StringComparison.Ordinal))
+            if (string.Equals(this._timestampEditAuthority, FIELD_SOURCE_TIME, StringComparison.Ordinal))
             {
                 if (!TryParseTimestamp(this._operationSourceText, out double ptsMs))
+                {
+                    error = AppText.T("web.editMap.timestampHint");
                     return false;
+                }
                 sourceFrame = this._sourceIndex.FindNearestFrame(ptsMs);
             }
             else
             {
                 if (!int.TryParse(this._operationSourceFrameText, out int frameNumber) || frameNumber < 1 || frameNumber > this._sourceIndex.FrameCount)
+                {
+                    error = AppText.F("web.editMap.frameNumberHint", this._sourceIndex.FrameCount);
                     return false;
+                }
                 sourceFrame = this._sourceIndex.Frames[frameNumber - 1];
             }
-            if (sourceFrame == null)
+            EditMapMappingResult mapping = sourceFrame != null ? this.MapSourceBoundaryExcludingSelectedOperation(sourceFrame.PtsMs) : null;
+            if (mapping == null || !mapping.IsMapped)
+            {
+                error = AppText.T("web.editMap.noMatchingLanguageFrame");
                 return false;
-            EditMapMappingResult mapping = this.MapSourceBoundaryExcludingSelectedOperation(sourceFrame.PtsMs);
-            if (!mapping.IsMapped)
-                return false;
+            }
             languageFrame = this._languageIndex.FindNearestFrame(mapping.LanguageTimestampMs);
         }
 
         if (languageFrame == null)
+        {
+            error = AppText.T("web.editMap.noMatchingLanguageFrame");
             return false;
+        }
         timestampMs = Math.Max(0, (int)Math.Round(languageFrame.PtsMs));
         return true;
     }
@@ -1426,7 +1689,7 @@
             return this._selectedOperation != null;
 
         int requestedDuration;
-        if (string.Equals(this._durationEditAuthority, "rendered-duration", StringComparison.Ordinal))
+        if (string.Equals(this._durationEditAuthority, FIELD_RENDERED_DURATION, StringComparison.Ordinal))
         {
             if (!int.TryParse(this._operationRenderedDurationText, out int renderedDuration) || renderedDuration <= 0)
                 return false;
@@ -1578,6 +1841,7 @@
         if (this.VerificationOnly || this._selectedOperation == null)
             return;
         this.ClearTimelineSelection();
+        this._statusMessage = "";
         this._workingMap.Operations.Remove(this._selectedOperation);
         this._selectedOperation = null;
         this.RebuildProjection();
@@ -1592,6 +1856,7 @@
     /// </summary>
     private void RefreshOperationFields()
     {
+        this.ClearPendingOperationEdit();
         if (this._selectedOperation == null)
             return;
         this._operationSourceText = FormatTimestamp(this._selectedOperation.SourceTimestampMs);
@@ -1599,7 +1864,6 @@
         this._operationLanguageDurationText = this._selectedOperation.DurationMs.ToString();
         this._operationRenderedDurationText = EditMapTimelineHelper.LanguageDurationToRenderedDurationMs(this._selectedOperation.DurationMs, this._projection.StretchRatio).ToString();
         this._operationGainText = this._selectedOperation.GainDb.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
-        this._gainEditPending = false;
         VideoFrameIndexEntry sourceFrame = this._sourceIndex.FindNearestFrame(this._selectedOperation.SourceTimestampMs);
         VideoFrameIndexEntry languageFrame = this._languageIndex.FindNearestFrame(this._selectedOperation.LangTimestampMs);
         this._operationSourceFrameText = sourceFrame != null ? (sourceFrame.PresentationIndex + 1).ToString() : "";
@@ -1624,37 +1888,37 @@
     /// Registra il timestamp Source digitato, che diventa l'autorità della posizione
     /// </summary>
     /// <param name="args">Evento del campo di testo</param>
-    private void UpdateOperationSourceText(ChangeEventArgs args) { this._operationSourceText = GetEventText(args); this._timestampEditAuthority = "source-time"; }
+    private void UpdateOperationSourceText(ChangeEventArgs args) { this._operationSourceText = GetEventText(args); this._timestampEditAuthority = FIELD_SOURCE_TIME; this.RevalidatePendingOperationEdit(); }
     /// <summary>
     /// Registra il timestamp Language digitato, che diventa l'autorità della posizione
     /// </summary>
     /// <param name="args">Evento del campo di testo</param>
-    private void UpdateOperationLanguageText(ChangeEventArgs args) { this._operationLanguageText = GetEventText(args); this._timestampEditAuthority = "language-time"; }
+    private void UpdateOperationLanguageText(ChangeEventArgs args) { this._operationLanguageText = GetEventText(args); this._timestampEditAuthority = FIELD_LANGUAGE_TIME; this.RevalidatePendingOperationEdit(); }
     /// <summary>
     /// Registra la durata Language digitata, che diventa l'autorità della durata
     /// </summary>
     /// <param name="args">Evento del campo di testo</param>
-    private void UpdateOperationLanguageDurationText(ChangeEventArgs args) { this._operationLanguageDurationText = GetEventText(args); this._durationEditAuthority = "language-duration"; }
+    private void UpdateOperationLanguageDurationText(ChangeEventArgs args) { this._operationLanguageDurationText = GetEventText(args); this._durationEditAuthority = FIELD_LANGUAGE_DURATION; this.RevalidatePendingOperationEdit(); }
     /// <summary>
     /// Registra la durata resa digitata, che diventa l'autorità della durata
     /// </summary>
     /// <param name="args">Evento del campo di testo</param>
-    private void UpdateOperationRenderedDurationText(ChangeEventArgs args) { this._operationRenderedDurationText = GetEventText(args); this._durationEditAuthority = "rendered-duration"; }
+    private void UpdateOperationRenderedDurationText(ChangeEventArgs args) { this._operationRenderedDurationText = GetEventText(args); this._durationEditAuthority = FIELD_RENDERED_DURATION; this.RevalidatePendingOperationEdit(); }
     /// <summary>
     /// Registra il fotogramma Source digitato, che diventa l'autorità della posizione
     /// </summary>
     /// <param name="args">Evento del campo di testo</param>
-    private void UpdateOperationSourceFrameText(ChangeEventArgs args) { this._operationSourceFrameText = GetEventText(args); this._timestampEditAuthority = "source-frame"; }
+    private void UpdateOperationSourceFrameText(ChangeEventArgs args) { this._operationSourceFrameText = GetEventText(args); this._timestampEditAuthority = FIELD_SOURCE_FRAME; this.RevalidatePendingOperationEdit(); }
     /// <summary>
     /// Registra il fotogramma Language digitato, che diventa l'autorità della posizione
     /// </summary>
     /// <param name="args">Evento del campo di testo</param>
-    private void UpdateOperationLanguageFrameText(ChangeEventArgs args) { this._operationLanguageFrameText = GetEventText(args); this._timestampEditAuthority = "language-frame"; }
+    private void UpdateOperationLanguageFrameText(ChangeEventArgs args) { this._operationLanguageFrameText = GetEventText(args); this._timestampEditAuthority = FIELD_LANGUAGE_FRAME; this.RevalidatePendingOperationEdit(); }
     /// <summary>
     /// Registra il guadagno digitato, marcandolo come modifica da applicare
     /// </summary>
     /// <param name="args">Evento del campo di testo</param>
-    private void UpdateOperationGainText(ChangeEventArgs args) { this._operationGainText = GetEventText(args); this._gainEditPending = true; }
+    private void UpdateOperationGainText(ChangeEventArgs args) { this._operationGainText = GetEventText(args); this._gainEditPending = true; this.RevalidatePendingOperationEdit(); }
 
     /// <summary>
     /// Adotta la mappa modificata solo se la proiezione la accetta, altrimenti ritira l'operazione
@@ -1671,7 +1935,8 @@
             this._workingMap.Operations.Remove(selected);
             this.RebuildProjection();
             this._selectedOperation = previous != null ? FindOperation(this._workingMap.Operations, previous.Type, previous.LangTimestampMs, previous.DurationMs) : null;
-            this.WarnInvalidValue(DescribeValidationFailure(candidate.Validation));
+            this.ShowRejectedChange(DescribeValidationFailure(candidate.Validation));
+            this.StateHasChanged();
             return;
         }
         this._projection = candidate;
@@ -1685,6 +1950,7 @@
     /// </summary>
     private async Task FinishMapMutationAsync()
     {
+        this._statusMessage = "";
         this.ClearTimelineSelection();
         this.UpdateDirtyState();
         this.RefreshOperationFields();
@@ -1759,13 +2025,83 @@
     }
 
     /// <summary>
-    /// Segnala il rifiuto di un valore, indicando la regola violata quando è nota
+    /// Mostra nel piè di pagina perché una modifica dalla timeline o dai comandi non è stata applicata
     /// </summary>
-    /// <param name="reason">Testo della regola violata, vuoto quando il valore era semplicemente illeggibile</param>
-    private void WarnInvalidValue(string reason = "")
+    /// <param name="reason">Testo della regola violata</param>
+    private void ShowRejectedChange(string reason)
     {
-        string detail = !string.IsNullOrEmpty(reason) ? reason : AppText.T("web.editMap.valueRestored");
-        this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.editMap.invalidValue"), detail, 5000);
+        this._statusMessage = AppText.F("web.editMap.changeRejected", reason);
+    }
+
+    /// <summary>
+    /// Descrive una segnalazione della validazione, indicando l'operazione coinvolta quando c'è
+    /// </summary>
+    /// <param name="issue">Segnalazione da descrivere</param>
+    /// <returns>Testo localizzato</returns>
+    private string DescribeIssue(EditMapValidationIssue issue)
+    {
+        string text = AppText.T("web.editMap.issue." + issue.Code);
+        if (issue.OperationIndex < 0 || issue.OperationIndex >= this._workingMap.Operations.Count)
+            return text;
+        return AppText.F("web.editMap.issueOperation", issue.OperationIndex + 1, this.GetOperationTypeLabel(this._workingMap.Operations[issue.OperationIndex]), text);
+    }
+
+    /// <summary>
+    /// Indica il campo del pannello operazione da correggere per una regola
+    /// </summary>
+    /// <param name="code">Codice della regola</param>
+    /// <returns>Chiave del campo</returns>
+    private static string GetIssueField(string code)
+    {
+        if (string.Equals(code, EditMapValidationCode.INVALID_DURATION, StringComparison.Ordinal) || string.Equals(code, EditMapValidationCode.CUT_OUT_OF_RANGE, StringComparison.Ordinal))
+            return FIELD_LANGUAGE_DURATION;
+        if (string.Equals(code, EditMapValidationCode.INVALID_GAIN, StringComparison.Ordinal))
+            return FIELD_GAIN;
+        return FIELD_LANGUAGE_TIME;
+    }
+
+    /// <summary>
+    /// True quando l'operazione compare negli errori o negli avvisi della validazione corrente
+    /// </summary>
+    /// <param name="index">Indice dell'operazione</param>
+    /// <param name="errors">True per gli errori, false per gli avvisi</param>
+    /// <returns>True quando almeno una segnalazione riguarda l'operazione</returns>
+    private bool OperationHasIssue(int index, bool errors)
+    {
+        if (this._projection == null || index < 0)
+            return false;
+        List<EditMapValidationIssue> issues = errors ? this._projection.Validation.Errors : this._projection.Validation.Warnings;
+        return issues.Exists(issue => issue.OperationIndex == index);
+    }
+
+    /// <summary>
+    /// Seleziona l'operazione di una segnalazione e porta il focus sul campo da correggere
+    /// </summary>
+    /// <param name="issue">Segnalazione scelta</param>
+    private async Task GoToIssueAsync(EditMapValidationIssue issue)
+    {
+        if (issue.OperationIndex < 0 || issue.OperationIndex >= this._workingMap.Operations.Count)
+            return;
+        string field = GetIssueField(issue.Code);
+        EditOperation operation = this._workingMap.Operations[issue.OperationIndex];
+        if (string.Equals(field, FIELD_GAIN, StringComparison.Ordinal) && !string.Equals(operation.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal))
+            field = FIELD_LANGUAGE_TIME;
+        this._focusOperationField = field;
+        await this.SelectOperationAsync(issue.OperationIndex, true);
+    }
+
+    /// <summary>
+    /// Descrive l'ambito di un'operazione nella lingua dell'interfaccia
+    /// </summary>
+    /// <param name="scope">Ambito HEAD, BODY o TAIL</param>
+    /// <returns>Etichetta localizzata</returns>
+    private static string GetScopeLabel(string scope)
+    {
+        if (string.Equals(scope, EditOperation.SCOPE_HEAD, StringComparison.Ordinal))
+            return AppText.T("web.editMap.scopeHead");
+        if (string.Equals(scope, EditOperation.SCOPE_TAIL, StringComparison.Ordinal))
+            return AppText.T("web.editMap.scopeTail");
+        return AppText.T("web.editMap.scopeBody");
     }
 
     /// <summary>
@@ -1872,11 +2208,8 @@
                 return;
 
             this._contextMenuCommands = commands;
-            this._contextMenuX = clientX;
-            this._contextMenuY = clientY;
-            this._contextMenuSelectedIndex = 0;
-            this._contextMenuOpen = true;
             this.StateHasChanged();
+            this.OpenContextMenu(clientX, clientY);
         });
     }
 
@@ -1898,18 +2231,55 @@
     /// <param name="index">Indice della voce</param>
     private async Task HandleContextMenuSelectAsync(int index)
     {
-        this._contextMenuOpen = false;
-        if (index >= 0 && index < this._contextMenuCommands.Count)
-            await this._contextMenuCommands[index].ExecuteAsync();
+        try
+        {
+            this.CloseContextMenu();
+            if (index >= 0 && index < this._contextMenuCommands.Count)
+                await this._contextMenuCommands[index].ExecuteAsync();
+            this.StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await this.DispatchExceptionAsync(ex);
+        }
     }
 
     /// <summary>
-    /// Aggiorna la voce attiva del menu al passaggio del mouse
+    /// Apre il menu contestuale Radzen con le voci correnti alla posizione del puntatore
     /// </summary>
-    /// <param name="index">Indice della voce</param>
-    private void SetContextMenuActiveIndex(int index)
+    /// <param name="clientX">Ascissa del puntatore nella finestra</param>
+    /// <param name="clientY">Ordinata del puntatore nella finestra</param>
+    private void OpenContextMenu(double clientX, double clientY)
     {
-        this._contextMenuSelectedIndex = index;
+        List<ContextMenuItem> items = new List<ContextMenuItem>();
+
+        for (int i = 0; i < this._contextMenuCommands.Count; i++)
+        {
+            items.Add(new ContextMenuItem
+            {
+                Text = this._contextMenuCommands[i].Label,
+                Value = i,
+                Icon = this._contextMenuCommands[i].Icon,
+                Disabled = this._contextMenuCommands[i].Disabled
+            });
+        }
+
+        this._contextMenuOpen = true;
+        this.ContextMenuService.Open(new MouseEventArgs { ClientX = clientX, ClientY = clientY }, items, args =>
+        {
+            if (args.Value is int index)
+            {
+                _ = this.InvokeAsync(() => this.HandleContextMenuSelectAsync(index));
+            }
+        });
+    }
+
+    /// <summary>
+    /// Aggiorna lo stato quando Radzen chiude il menu (click esterno, Escape, voce eseguita)
+    /// </summary>
+    private void HandleContextMenuClosed()
+    {
+        this._contextMenuOpen = false;
     }
 
     /// <summary>
@@ -1917,7 +2287,11 @@
     /// </summary>
     private void CloseContextMenu()
     {
-        this._contextMenuOpen = false;
+        if (this._contextMenuOpen)
+        {
+            this._contextMenuOpen = false;
+            this.ContextMenuService.Close();
+        }
     }
 
     /// <summary>
@@ -2073,9 +2447,12 @@
         this._selectedOperation = this._workingMap.Operations[operationIndex];
         VideoFrameIndexEntry sourceFrame = this._sourceIndex.FindNearestFrame(sourceMs);
         EditMapMappingResult mapping = sourceFrame != null ? this.MapSourceBoundaryExcludingSelectedOperation(sourceFrame.PtsMs) : null;
-        if (mapping == null || !mapping.IsMapped)
+        VideoFrameIndexEntry languageFrame = mapping != null && mapping.IsMapped ? this._languageIndex.FindNearestFrame(mapping.LanguageTimestampMs) : null;
+        if (languageFrame == null)
+        {
+            await this.RejectTimelineChangeAsync(AppText.T("web.editMap.noMatchingLanguageFrame"), final);
             return;
-        VideoFrameIndexEntry languageFrame = this._languageIndex.FindNearestFrame(mapping.LanguageTimestampMs);
+        }
         int timestamp = Math.Max(0, (int)Math.Round(languageFrame.PtsMs));
         string originalType = this._selectedOperation.Type;
         int originalTimestamp = this._selectedOperation.LangTimestampMs;
@@ -2088,6 +2465,7 @@
             this._workingMap = backup;
             this.RebuildProjection();
             this._selectedOperation = FindOperation(this._workingMap.Operations, originalType, originalTimestamp, originalDuration);
+            await this.RejectTimelineChangeAsync(DescribeValidationFailure(candidate.Validation), final);
             return;
         }
         string type = this._selectedOperation.Type;
@@ -2095,6 +2473,7 @@
         this._projection = candidate;
         this._workingMap = candidate.Map;
         this._selectedOperation = FindOperation(this._workingMap.Operations, type, timestamp, duration);
+        this._statusMessage = "";
         this.UpdateDirtyState();
         this.RefreshOperationFields();
         this.NavigateFromSource(this._selectedOperation.SourceTimestampMs);
@@ -2122,8 +2501,8 @@
         if (this.VerificationOnly || operationIndex < 0 || operationIndex >= this._workingMap.Operations.Count)
             return;
         this.ClearTimelineSelection();
-        if (this._selectedOperation == null)
-            this._selectedOperation = this._workingMap.Operations[operationIndex];
+        // Il ridimensionamento agisce sempre sull'operazione trascinata, anche se un'altra era selezionata
+        this._selectedOperation = this._workingMap.Operations[operationIndex];
 
         string originalType = this._selectedOperation.Type;
         int originalTimestamp = this._selectedOperation.LangTimestampMs;
@@ -2141,6 +2520,7 @@
             this._workingMap = backup;
             this.RebuildProjection();
             this._selectedOperation = FindOperation(this._workingMap.Operations, originalType, originalTimestamp, originalDuration);
+            await this.RejectTimelineChangeAsync(DescribeValidationFailure(candidate.Validation), final);
             return;
         }
 
@@ -2148,6 +2528,7 @@
         this._projection = candidate;
         this._workingMap = candidate.Map;
         this._selectedOperation = FindOperation(this._workingMap.Operations, originalType, originalTimestamp, duration);
+        this._statusMessage = "";
         this.UpdateDirtyState();
         this.RefreshOperationFields();
         this.NavigateFromSource(this._selectedOperation.SourceTimestampMs);
@@ -2164,6 +2545,22 @@
     }
 
     /// <summary>
+    /// Segnala nel piè di pagina un trascinamento rifiutato e, al rilascio, riporta la timeline alla mappa valida
+    /// </summary>
+    /// <param name="reason">Motivo del rifiuto</param>
+    /// <param name="final">True al rilascio del puntatore</param>
+    private async Task RejectTimelineChangeAsync(string reason, bool final)
+    {
+        this.ShowRejectedChange(reason);
+        await this.InvokeAsync(async () =>
+        {
+            this.StateHasChanged();
+            if (final)
+                await this.UpdateTimelineAsync();
+        });
+    }
+
+    /// <summary>
     /// Gestisce le scorciatoie locali dell'editor prima della tastiera globale
     /// </summary>
     /// <param name="key">Tasto normalizzato dal browser</param>
@@ -2176,7 +2573,7 @@
         {
             if (string.Equals(key, "Escape", StringComparison.Ordinal))
             {
-                this._contextMenuOpen = false;
+                this.CloseContextMenu();
                 this.StateHasChanged();
             }
             return;
@@ -2186,6 +2583,7 @@
         {
             if (string.Equals(key, "Escape", StringComparison.Ordinal))
             {
+                // Esc scarta i valori digitati, gli errori e le modifiche in sospeso: l'uscita dal campo non riapplica nulla
                 this.RefreshNavigationFields();
                 this.RefreshOperationFields();
                 this.StateHasChanged();
@@ -2265,21 +2663,12 @@
     }
 
     /// <summary>
-    /// Interpreta un timestamp digitato nel formato hh:mm:ss.fff
+    /// Interpreta un timestamp digitato nei formati ss, mm:ss o hh:mm:ss con millesimi dopo virgola o punto
     /// </summary>
     /// <param name="text">Testo digitato</param>
     /// <param name="milliseconds">Istante risolto in millisecondi</param>
     /// <returns>True quando il testo è un istante non negativo leggibile</returns>
-    private static bool TryParseTimestamp(string text, out double milliseconds)
-    {
-        milliseconds = 0.0;
-        if (string.IsNullOrWhiteSpace(text))
-            return false;
-        if (!TimeSpan.TryParse(text.Trim(), System.Globalization.CultureInfo.InvariantCulture, out TimeSpan value) || value < TimeSpan.Zero)
-            return false;
-        milliseconds = value.TotalMilliseconds;
-        return double.IsFinite(milliseconds);
-    }
+    private static bool TryParseTimestamp(string text, out double milliseconds) => EditMapInputParser.TryParseTimestamp(text, out milliseconds);
 
     /// <summary>
     /// Formatta un istante nel formato hh:mm:ss.fff usato dai campi dell'editor
@@ -2319,6 +2708,8 @@
     public async ValueTask DisposeAsync()
     {
         this.Orchestrator.OnRecordsChanged -= this.HandleMediaSelectionChanged;
+        this.ContextMenuService.OnClose -= this.HandleContextMenuClosed;
+        this.CloseContextMenu();
         this._cancellation.Cancel();
         if (this._previewPair != null)
         {

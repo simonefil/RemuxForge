@@ -1,43 +1,63 @@
+@* Revisione dei piani Split: l'elenco scorre, le azioni restano sempre visibili in fondo. *@
 <section class="split-plan-review" aria-labelledby="split-plan-review-title">
-    <h2 id="split-plan-review-title">4 · @AppText.T("web.splitMontage.review")</h2>
-    <div role="status" aria-live="polite">@AppText.T("web.splitMontage.reviewStage." + Stage)</div>
-    <p>@AppText.T("web.splitMontage.reviewConcreteHelp")</p>
+    <div class="split-plan-review-head">
+        <h2 id="split-plan-review-title">@AppText.T("web.splitMontage.review")</h2>
+        <div role="status" aria-live="polite">@AppText.T("web.splitMontage.reviewStage." + Stage)</div>
+        @if (Stage == "ready")
+        {
+            <p>@AppText.T("web.splitMontage.reviewConcreteHelp")</p>
+        }
+    </div>
     @if (Stage == "ready")
     {
-        <div class="split-plan-review-files">
+        <RadzenAccordion Multiple="true" class="split-plan-review-files">
+            <Items>
             @foreach (MkvSplitRecord record in Records)
             {
-                <details @key="record.RecordId">
-                    <summary>@System.IO.Path.GetFileName(record.InputFile) · @Utils.GetSplitStatusText(record.Status) @(record.IsOverride ? " · " + AppText.T("web.split.overrideBadge") : "")</summary>
+                <RadzenAccordionItem @key="record.RecordId" Text="@(System.IO.Path.GetFileName(record.InputFile) + " · " + Utils.GetSplitStatusText(record.Status) + (record.IsOverride ? " · " + AppText.T("web.split.overrideBadge") : ""))">
                     @if (record.MontageProjection != null)
                     {
                         @foreach (MkvSplitOutputProjection output in record.MontageProjection.Outputs)
                         {
                             <div class="split-plan-review-output">
-                                <strong>@output.FileName</strong> · @RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(output.DurationSeconds) · @output.Clips.Count @AppText.T("web.splitMontage.clips")
+                                <strong>@output.FileName</strong> · @RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(output.DurationSeconds) · @AppText.F(output.Clips.Count == 1 ? "web.splitMontage.clipCountOne" : "web.splitMontage.clipCountMany", output.Clips.Count)
                                 <div>@output.FullPath</div>
                                 @foreach (MkvSplitClipProjection clip in output.Clips)
                                 {
-                                    <div>@AppText.T("web.splitMontage.source"): [@clip.StartFrame, @clip.EndFrameExclusive) → @AppText.T("web.splitMontage.result"): @RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(clip.ResultStartSeconds)–@RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(clip.ResultEndSeconds)</div>
+                                    <div>@AppText.T("web.splitMontage.source"): @AppText.F("web.splitMontage.clipLabel", output.Clips.IndexOf(clip) + 1, RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(clip.SourceStartSeconds), RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(clip.SourceEndSeconds))</div>
+                                    <div>@AppText.T("web.splitMontage.result"): @RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(clip.ResultStartSeconds)–@RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(clip.ResultEndSeconds)</div>
                                 }
                             </div>
                         }
-                        @foreach (MkvSplitDiagnostic diagnostic in record.MontageProjection.Diagnostics) { <div class="split-montage-diagnostics">@diagnostic.Message</div> }
+                        @if (record.MontageProjection.Diagnostics.Count > 0)
+                        {
+                            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="split-plan-review-alert">
+                                @foreach (MkvSplitDiagnostic diagnostic in record.MontageProjection.Diagnostics) { <div class="split-plan-review-alert-row">@diagnostic.Message</div> }
+                            </RadzenAlert>
+                        }
                     }
                     else if (record.Plan != null)
                     {
                         @foreach (MkvSplitSegment output in record.Plan.Segments) { <div>@output.File · @RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(output.EndTs - output.StartTs)</div> }
                     }
-                    @if (!string.IsNullOrEmpty(record.ErrorMessage)) { <div class="split-montage-diagnostics">@record.ErrorMessage</div> }
+                    @if (!string.IsNullOrEmpty(record.ErrorMessage)) { <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="split-plan-review-alert"><div class="split-plan-review-alert-row">@record.ErrorMessage</div></RadzenAlert> }
                     @if (record.Plan != null) { @foreach (MkvSplitWarning warning in record.Plan.Warnings) { <div>@warning.Message</div> } }
                     <RadzenButton Text="@AppText.T("web.split.openEditor")" Icon="content_cut" Disabled="@Busy" Click="@(() => OnOpenEditor.InvokeAsync(Records.IndexOf(record)))" />
-                </details>
+                </RadzenAccordionItem>
             }
-        </div>
+            </Items>
+        </RadzenAccordion>
     }
-    <div class="split-montage-actions">
-        <RadzenButton Text="@AppText.T("web.splitMontage.reviewAcknowledge")" Disabled="@(Busy || Stage != "ready" || Records.Count == 0)" Click="@OnContinue" />
+    <div class="split-plan-review-actions">
+        @if (Stage == "ready")
+        {
+            <RadzenButton Text="@AppText.T("web.splitMontage.reviewAcknowledge")" Disabled="@(Busy || Records.Count == 0)" Click="@OnContinue" />
+        }
         <RadzenButton Text="@AppText.T("web.splitMontage.changeConfiguration")" Variant="Variant.Outlined" Disabled="@Busy" Click="@OnConfigure" />
+        @if (Stage == "empty" || Stage == "failed")
+        {
+            <RadzenButton Text="@AppText.T("web.splitMontage.reviewClose")" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@Busy" Click="@OnClose" />
+        }
     </div>
 </section>
 
@@ -73,6 +93,11 @@
     /// Evento ritorno alla configurazione
     /// </summary>
     [Parameter] public EventCallback OnConfigure { get; set; }
+
+    /// <summary>
+    /// Evento chiusura della revisione quando la scansione non ha trovato file o non è riuscita
+    /// </summary>
+    [Parameter] public EventCallback OnClose { get; set; }
 
     #endregion
 }

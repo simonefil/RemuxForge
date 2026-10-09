@@ -1,22 +1,15 @@
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Tools;
-using System;
 using System.IO;
 
 namespace RemuxForge.Core.Media
 {
     /// <summary>
-    /// Risolve timing video usando MediaInfo come fonte primaria e default_duration solo se coerente
+    /// Risolve la durata video usando MediaInfo come fonte primaria e i metadati mkvmerge come fallback
     /// </summary>
     public class VideoTimingResolver
     {
-        #region Costanti
-
-        private const double DEFAULT_DURATION_FRAME_COUNT_TOLERANCE = 0.02;
-
-        #endregion
-
         #region Variabili di classe
 
         /// <summary>
@@ -49,15 +42,9 @@ namespace RemuxForge.Core.Media
             VideoTimingInfo result = new VideoTimingInfo();
             TrackInfo videoTrack = this.FindVideoTrack(fileInfo);
             string mediaInfoPath = this.ResolveMediaInfoPath();
-            long defaultDurationNs = 0;
-            if (videoTrack != null)
+            if (videoTrack != null && videoTrack.TrackDurationNs > 0)
             {
-                defaultDurationNs = videoTrack.DefaultDurationNs;
-                result.FrameCount = videoTrack.VideoFrameCount;
-                if (videoTrack.TrackDurationNs > 0)
-                {
-                    result.DurationMs = videoTrack.TrackDurationNs / 1000000.0;
-                }
+                result.DurationMs = videoTrack.TrackDurationNs / 1000000.0;
             }
 
             if (result.DurationMs <= 0.0 && fileInfo != null && fileInfo.ContainerDurationNs > 0)
@@ -66,14 +53,6 @@ namespace RemuxForge.Core.Media
             }
 
             this.ReadMediaInfo(filePath, mediaInfoPath, result);
-
-            if (result.FrameCount > 0 && result.DurationMs > 0.0)
-            {
-                result.ObservedFps = result.FrameCount / (result.DurationMs / 1000.0);
-            }
-
-            result.IsDefaultDurationTrusted = this.IsDefaultDurationTrusted(defaultDurationNs, result.FrameCount, result.DurationMs);
-            this.Classify(result);
             return result;
         }
 
@@ -82,7 +61,7 @@ namespace RemuxForge.Core.Media
         #region Metodi privati
 
         /// <summary>
-        /// Integra le informazioni timing lette da MediaInfo nel risultato corrente
+        /// Integra la durata letta da MediaInfo nel risultato corrente
         /// </summary>
         /// <param name="filePath">File da analizzare</param>
         /// <param name="mediaInfoPath">Percorso MediaInfo CLI</param>
@@ -95,94 +74,11 @@ namespace RemuxForge.Core.Media
             }
 
             MediaInfoService service = new MediaInfoService(mediaInfoPath);
-            if (service.TryGetVideoTiming(filePath, out string mode, out double frameRate, out double originalFrameRate, out long frameCount, out double durationMs, out double minFrameRate, out double maxFrameRate))
+            // MediaInfo è la fonte primaria: sovrascrive la durata mkvmerge quando disponibile
+            if (service.TryGetVideoDuration(filePath, out double durationMs) && durationMs > 0.0)
             {
-                // MediaInfo è la fonte primaria per VFR/CFR: sovrascrive i dati mkvmerge quando disponibili
-                result.IsMediaInfoAvailable = true;
-                result.FrameRateMode = mode;
-                if (frameRate > 0.0)
-                {
-                    result.NominalFps = frameRate;
-                }
-                else if (originalFrameRate > 0.0)
-                {
-                    result.NominalFps = originalFrameRate;
-                }
-                if (frameCount > 0)
-                {
-                    result.FrameCount = frameCount;
-                }
-                if (durationMs > 0.0)
-                {
-                    result.DurationMs = durationMs;
-                }
-                if (minFrameRate > 0.0 && maxFrameRate > 0.0 && Math.Abs(maxFrameRate - minFrameRate) > 0.001)
-                {
-                    result.IsVariableFrameRate = true;
-                }
+                result.DurationMs = durationMs;
             }
-        }
-
-        /// <summary>
-        /// Classifica il timing video per la normalizzazione di campionamento FrameSync
-        /// </summary>
-        /// <param name="timing">Timing video da classificare</param>
-        private void Classify(VideoTimingInfo timing)
-        {
-            string mode = timing.FrameRateMode != null ? timing.FrameRateMode.Trim().ToLowerInvariant() : "";
-            bool modeVariable = mode.Contains("variable") || mode == "vfr";
-            bool modeConstant = mode.Contains("constant") || mode == "cfr";
-
-            if (modeVariable)
-            {
-                timing.IsVariableFrameRate = true;
-            }
-
-            // Le motivazioni sono usate nei log/UI, quindi devono restare descrittive e non solo tecniche
-            if (!timing.IsMediaInfoAvailable)
-            {
-                timing.Reason = "MediaInfo non disponibile";
-            }
-            else if (timing.IsVariableFrameRate)
-            {
-                timing.Reason = "MediaInfo segnala VFR";
-            }
-            else if (!timing.IsDefaultDurationTrusted)
-            {
-                timing.Reason = "default_duration non coerente con frame count/durata";
-            }
-            else
-            {
-                timing.Reason = "timing CFR coerente";
-            }
-
-            timing.CanNormalizeToNominalFps = timing.IsMediaInfoAvailable && modeConstant && !timing.IsVariableFrameRate && timing.NominalFps > 0.0;
-        }
-
-        /// <summary>
-        /// Verifica se default_duration è coerente con durata e numero frame reali
-        /// </summary>
-        /// <param name="defaultDurationNs">Default duration Matroska in nanosecondi</param>
-        /// <param name="frameCount">Numero frame video</param>
-        /// <param name="durationMs">Durata video in millisecondi</param>
-        /// <returns>True se default_duration è utilizzabile come sorgente timing CFR</returns>
-        private bool IsDefaultDurationTrusted(long defaultDurationNs, long frameCount, double durationMs)
-        {
-            bool result = false;
-            double expectedFrames;
-            double ratioDiff;
-            if (defaultDurationNs > 0 && frameCount > 0 && durationMs > 0.0)
-            {
-                // Il confronto usa il conteggio frame atteso invece del solo FPS dichiarato
-                expectedFrames = (durationMs * 1000000.0) / defaultDurationNs;
-                if (expectedFrames > 0.0)
-                {
-                    ratioDiff = Math.Abs(expectedFrames - frameCount) / Math.Max(expectedFrames, frameCount);
-                    result = ratioDiff <= DEFAULT_DURATION_FRAME_COUNT_TOLERANCE;
-                }
-            }
-
-            return result;
         }
 
         /// <summary>

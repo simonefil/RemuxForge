@@ -197,7 +197,9 @@ function withCanvasSize(url, canvas) {
     return `${url}${separator}width=${width}&height=${height}`;
 }
 
-export function captureEditorKeyboard(root, dotNetReference) {
+// options.shiftStep: frame percorsi da Maiusc+freccia, 10 se non indicato.
+export function captureEditorKeyboard(root, dotNetReference, options) {
+    const shiftStep = options?.shiftStep ?? 10;
     let inFlight = false;
     let pendingSide = null;
     let pendingDelta = 0;
@@ -234,7 +236,7 @@ export function captureEditorKeyboard(root, dotNetReference) {
         event.preventDefault();
         event.stopPropagation();
         if (!editing && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
-            queueStep('source', (event.key === 'ArrowLeft' ? -1 : 1) * (event.shiftKey ? 10 : 1));
+            queueStep('source', (event.key === 'ArrowLeft' ? -1 : 1) * (event.shiftKey ? shiftStep : 1));
             return;
         }
         dotNetReference.invokeMethodAsync('OnEditorKey', event.key, event.shiftKey, editing);
@@ -999,12 +1001,12 @@ export class TimelineCanvas {
     }
 }
 
-export function cssColor(styles, variable, fallback) {
+function cssColor(styles, variable, fallback) {
     const value = styles.getPropertyValue(variable).trim();
     return value || fallback;
 }
 
-export function clampWaveformGain(value) {
+function clampWaveformGain(value) {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? Math.max(1, Math.min(12, numeric)) : 3;
 }
@@ -1018,7 +1020,7 @@ function timelineGridStep(pixelsPerMs) {
     return step;
 }
 
-export function drawRuler(context, width, left, startMs, endMs, pixelsPerMs, top, height, color, border) {
+function drawRuler(context, width, left, startMs, endMs, pixelsPerMs, top, height, color, border) {
     const step = timelineGridStep(pixelsPerMs);
     const first = Math.floor(startMs / step) * step;
     context.strokeStyle = border;
@@ -1100,7 +1102,7 @@ function formatFrequency(hertz) {
     return `${Math.round(value)} Hz`;
 }
 
-export async function parseAudioTimelineImage(buffer) {
+async function parseAudioTimelineImage(buffer) {
     const view = new DataView(buffer);
     if (view.byteLength >= 26 && view.getUint8(0) === 82 && view.getUint8(1) === 70 && view.getUint8(2) === 87 && view.getUint8(3) === 49) {
         let offset = 4;
@@ -1165,7 +1167,7 @@ function buildWaveformLevels(minimum, maximum) {
     return levels;
 }
 
-export function disposeAudioTimelineImage(image) {
+function disposeAudioTimelineImage(image) {
     for (const tile of image?.tiles || []) tile.close();
 }
 

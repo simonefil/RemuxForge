@@ -65,9 +65,6 @@ namespace RemuxForge.Core.Models
         /// <summary>Indice dell'operazione interessata, -1 per errori globali</summary>
         public int OperationIndex { get; set; }
 
-        /// <summary>Valore temporale collegato alla segnalazione</summary>
-        public double ValueMs { get; set; }
-
         /// <summary>
         /// Costruttore
         /// </summary>
@@ -75,7 +72,6 @@ namespace RemuxForge.Core.Models
         {
             this.Code = "";
             this.OperationIndex = -1;
-            this.ValueMs = 0.0;
         }
     }
 
@@ -313,7 +309,7 @@ namespace RemuxForge.Core.Models
             if (!TryParseStretchFactor(normalizedMap.StretchFactor, out double stretchRatio, out string normalizedStretch))
             {
                 if (!string.IsNullOrEmpty(normalizedMap.StretchFactor))
-                    AddIssue(result.Validation.Errors, EditMapValidationCode.INVALID_STRETCH, -1, 0.0);
+                    AddIssue(result.Validation.Errors, EditMapValidationCode.INVALID_STRETCH, -1);
                 stretchRatio = 1.0;
                 normalizedStretch = "";
             }
@@ -432,42 +428,6 @@ namespace RemuxForge.Core.Models
             return 0;
         }
 
-        /// <summary>
-        /// Calcola il delta renderizzato prodotto dalle operazioni precedenti a un indice
-        /// </summary>
-        public static int GetRenderedDeltaBeforeMs(List<EditOperation> operations, int operationIndex, double stretchRatio)
-        {
-            int result = 0;
-            if (operations == null || operationIndex <= 0)
-                return result;
-            int limit = Math.Min(operationIndex, operations.Count);
-            for (int i = 0; i < limit; i++)
-                result += GetRenderedOperationDeltaMs(operations[i], stretchRatio);
-            return result;
-        }
-
-        /// <summary>
-        /// Mappa un timestamp Language originale nella timeline renderizzata usando le operazioni precedenti
-        /// </summary>
-        public static int LanguageTimestampToRenderedTimestampMs(int languageTimestampMs, List<EditOperation> operations, int operationIndex, double stretchRatio)
-        {
-            int renderedTimestampMs = languageTimestampMs <= 0 ? 0 : LanguageDurationToRenderedDurationMs(languageTimestampMs, stretchRatio);
-            return renderedTimestampMs + GetRenderedDeltaBeforeMs(operations, operationIndex, stretchRatio);
-        }
-
-        /// <summary>
-        /// Mappa un timestamp renderizzato nella timeline Language originale usando le operazioni precedenti
-        /// </summary>
-        public static int RenderedTimestampToLanguageTimestampMs(int renderedTimestampMs, List<EditOperation> operations, int operationIndex, double stretchRatio)
-        {
-            int adjustedMs = renderedTimestampMs - GetRenderedDeltaBeforeMs(operations, operationIndex, stretchRatio);
-            if (adjustedMs <= 0)
-                return 0;
-            if (stretchRatio <= 0.0)
-                return adjustedMs;
-            return Math.Max(0, (int)Math.Round(adjustedMs / stretchRatio, MidpointRounding.AwayFromZero));
-        }
-
         #endregion
 
         #region Metodi privati
@@ -488,37 +448,37 @@ namespace RemuxForge.Core.Models
                 bool isCut = string.Equals(operation.Type, EditOperation.CUT_SEGMENT, StringComparison.Ordinal);
                 bool isInsert = string.Equals(operation.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal);
                 if (!isCut && !isInsert)
-                    AddIssue(projection.Validation.Errors, EditMapValidationCode.UNKNOWN_OPERATION, i, 0.0);
+                    AddIssue(projection.Validation.Errors, EditMapValidationCode.UNKNOWN_OPERATION, i);
                 if (operation.LangTimestampMs < 0)
-                    AddIssue(projection.Validation.Errors, EditMapValidationCode.NEGATIVE_TIMESTAMP, i, operation.LangTimestampMs);
+                    AddIssue(projection.Validation.Errors, EditMapValidationCode.NEGATIVE_TIMESTAMP, i);
                 if (operation.DurationMs <= 0)
-                    AddIssue(projection.Validation.Errors, EditMapValidationCode.INVALID_DURATION, i, operation.DurationMs);
+                    AddIssue(projection.Validation.Errors, EditMapValidationCode.INVALID_DURATION, i);
                 if (!double.IsFinite(operation.GainDb))
-                    AddIssue(projection.Validation.Errors, EditMapValidationCode.INVALID_GAIN, i, operation.GainDb);
+                    AddIssue(projection.Validation.Errors, EditMapValidationCode.INVALID_GAIN, i);
                 if (projection.LanguageDurationMs > 0.0 && operation.LangTimestampMs > projection.LanguageDurationMs)
-                    AddIssue(projection.Validation.Errors, EditMapValidationCode.LANGUAGE_TIMESTAMP_OUT_OF_RANGE, i, operation.LangTimestampMs);
+                    AddIssue(projection.Validation.Errors, EditMapValidationCode.LANGUAGE_TIMESTAMP_OUT_OF_RANGE, i);
                 if (isCut && projection.LanguageDurationMs > 0.0 && operation.LangTimestampMs + operation.DurationMs > projection.LanguageDurationMs)
-                    AddIssue(projection.Validation.Errors, EditMapValidationCode.CUT_OUT_OF_RANGE, i, operation.LangTimestampMs + operation.DurationMs);
+                    AddIssue(projection.Validation.Errors, EditMapValidationCode.CUT_OUT_OF_RANGE, i);
                 if (i > 0 && operation.LangTimestampMs == operations[i - 1].LangTimestampMs)
-                    AddIssue(projection.Validation.Errors, EditMapValidationCode.DUPLICATE_BOUNDARY, i, operation.LangTimestampMs);
+                    AddIssue(projection.Validation.Errors, EditMapValidationCode.DUPLICATE_BOUNDARY, i);
                 if (previousCutEndMs > operation.LangTimestampMs)
-                    AddIssue(projection.Validation.Errors, isCut ? EditMapValidationCode.CUT_OVERLAP : EditMapValidationCode.OPERATION_INSIDE_CUT, i, operation.LangTimestampMs);
+                    AddIssue(projection.Validation.Errors, isCut ? EditMapValidationCode.CUT_OVERLAP : EditMapValidationCode.OPERATION_INSIDE_CUT, i);
 
                 double sourceBoundaryMs = projection.Map.InitialDelayMs + operation.LangTimestampMs * projection.StretchRatio + cumulativeDeltaMs;
                 if (projection.SourceDurationMs > 0.0 && (sourceBoundaryMs < 0.0 || sourceBoundaryMs > projection.SourceDurationMs))
-                    AddIssue(projection.Validation.Errors, EditMapValidationCode.SOURCE_BOUNDARY_OUT_OF_RANGE, i, sourceBoundaryMs);
+                    AddIssue(projection.Validation.Errors, EditMapValidationCode.SOURCE_BOUNDARY_OUT_OF_RANGE, i);
                 if (sourceBoundaryMs < previousSourceBoundaryMs)
-                    AddIssue(projection.Validation.Errors, EditMapValidationCode.SOURCE_BOUNDARY_NOT_MONOTONIC, i, sourceBoundaryMs);
+                    AddIssue(projection.Validation.Errors, EditMapValidationCode.SOURCE_BOUNDARY_NOT_MONOTONIC, i);
 
                 int normalizedSourceTimestampMs = RoundTimestamp(sourceBoundaryMs);
                 if (operation.SourceTimestampMs != normalizedSourceTimestampMs || operation.VisualSourceTimestampMs != normalizedSourceTimestampMs)
-                    AddIssue(projection.Validation.Warnings, EditMapValidationCode.SOURCE_BOUNDARY_NORMALIZED, i, sourceBoundaryMs);
+                    AddIssue(projection.Validation.Warnings, EditMapValidationCode.SOURCE_BOUNDARY_NORMALIZED, i);
                 operation.SourceTimestampMs = normalizedSourceTimestampMs;
                 operation.VisualSourceTimestampMs = normalizedSourceTimestampMs;
 
                 string normalizedScope = ResolveScope(operation, projection, sourceBoundaryMs);
                 if (!string.Equals(operation.Scope, normalizedScope, StringComparison.Ordinal))
-                    AddIssue(projection.Validation.Warnings, EditMapValidationCode.SCOPE_NORMALIZED, i, 0.0);
+                    AddIssue(projection.Validation.Warnings, EditMapValidationCode.SCOPE_NORMALIZED, i);
                 operation.Scope = normalizedScope;
 
                 if (isCut)
@@ -586,7 +546,7 @@ namespace RemuxForge.Core.Models
             for (int i = 0; i < projection.Map.Operations.Count; i++)
                 renderedEndMs += GetRenderedOperationDeltaMs(projection.Map.Operations[i], projection.StretchRatio);
             if (Math.Abs(renderedEndMs - projection.SourceDurationMs) > 1.0)
-                AddIssue(projection.Validation.Warnings, EditMapValidationCode.SOURCE_DURATION_MISMATCH, -1, renderedEndMs - projection.SourceDurationMs);
+                AddIssue(projection.Validation.Warnings, EditMapValidationCode.SOURCE_DURATION_MISMATCH, -1);
         }
 
         /// <summary>
@@ -645,9 +605,9 @@ namespace RemuxForge.Core.Models
         /// <summary>
         /// Aggiunge una segnalazione alla collezione richiesta
         /// </summary>
-        private static void AddIssue(List<EditMapValidationIssue> issues, string code, int operationIndex, double valueMs)
+        private static void AddIssue(List<EditMapValidationIssue> issues, string code, int operationIndex)
         {
-            issues.Add(new EditMapValidationIssue { Code = code, OperationIndex = operationIndex, ValueMs = valueMs });
+            issues.Add(new EditMapValidationIssue { Code = code, OperationIndex = operationIndex });
         }
 
         /// <summary>

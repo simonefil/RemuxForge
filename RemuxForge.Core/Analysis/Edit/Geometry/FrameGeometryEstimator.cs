@@ -220,13 +220,13 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             VideoGeometryProfile sourceProfile = analyzer.Analyze(sourceFile);
             VideoGeometryProfile languageProfile = analyzer.Analyze(languageFile);
             if (sourceProfile == null || languageProfile == null)
-                return this.Reject(result, "Geometria video nativa non disponibile");
+                return this.Reject(result, AppText.T("analysis.geometry.nativeUnavailable"));
 
             FfmpegVideoInfoReader reader = new FfmpegVideoInfoReader(this._ffmpegPath, this._ffmpegConfig, this._logSection);
             reader.TryRead(languageFile, out int languageDurationMs, out _);
             result.Alignment.NativeProbeMs = phaseStopwatch.ElapsedMilliseconds;
             if (sourceDurationMs <= 0 || languageDurationMs <= 0)
-                return this.Reject(result, "Durata video non disponibile per il bootstrap geometrico");
+                return this.Reject(result, AppText.T("analysis.geometry.bootstrapNoDuration"));
 
             cancellationToken.ThrowIfCancellationRequested();
             phaseStopwatch.Restart();
@@ -265,7 +265,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
 
             result.Alignment.BootstrapExtractionMs = phaseStopwatch.ElapsedMilliseconds;
             if (sourceAnchors.Count < REQUIRED_MATCHES || languageAnchors.Count < REQUIRED_MATCHES)
-                return this.Reject(result, "Frame informativi insufficienti nei primi tre minuti");
+                return this.Reject(result, AppText.T("analysis.geometry.fewInformativeFrames"));
 
             FrameFeatureMatcherOptions matcherOptions = new FrameFeatureMatcherOptions();
             matcherOptions.MaxFeatures = 2400;
@@ -302,7 +302,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
                 List<GeometryCandidate> candidates = this.BuildCandidates(batch.AcceptedPairs, sourceAnchors, languageAnchors);
                 this.PopulateCandidateDiagnostics(result.Alignment.SiftCandidateMatches, candidates);
                 if (!this.TryBuildConsensus(candidates, out GeometryConsensus consensus))
-                    return this.Reject(result, "Meno di cinque match SIFT/RANSAC geometricamente concordi nei primi tre minuti");
+                    return this.Reject(result, AppText.T("analysis.geometry.fewConsensusMatches"));
 
                 result.Alignment.PixelScore = this.RefineConsensus(sourceAnchors, languageAnchors, consensus);
                 this.PopulateAlignment(result.Alignment, consensus, sourceProfile, languageProfile, sourceActive, languageActive);
@@ -344,7 +344,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             {
                 if (!Options.TryParseAnalysisCropPx(normalizedManualCrop, out int left, out int right, out int top, out int bottom))
                 {
-                    rejectReason = "Crop manuale non valido";
+                    rejectReason = AppText.T("analysis.geometry.manualCropInvalid");
                     return false;
                 }
                 rect = new PixelRect(left, top, profile.Width - right, profile.Height - bottom);
@@ -379,14 +379,14 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             frames = this.SelectInformativeFrames(frames);
             if (frames.Count < 4)
             {
-                rejectReason = "Campioni non neri insufficienti per il crop geometrico";
+                rejectReason = AppText.T("analysis.geometry.cropInsufficientSamples");
                 return false;
             }
 
             rect = this.DetectActiveRect(frames, profile.Width, profile.Height, out diagnostics);
             if (!rect.IsValid || rect.Width < profile.Width / 3 || rect.Height < profile.Height / 3)
             {
-                rejectReason = "Area attiva rilevata non valida";
+                rejectReason = AppText.T("analysis.geometry.activeAreaInvalid");
                 return false;
             }
             mode = rect.Left > 0 || rect.Top > 0 || rect.Right < profile.Width || rect.Bottom < profile.Height ? "black_border_autocrop" : "none";
@@ -1089,7 +1089,7 @@ namespace RemuxForge.Core.Analysis.Edit.Geometry
             double sourceRight = Math.Min(1.0, consensus.ScaleX + consensus.TranslateX);
             double sourceBottom = Math.Min(1.0, consensus.ScaleY + consensus.TranslateY);
             if (sourceRight <= sourceLeft || sourceBottom <= sourceTop)
-                throw new InvalidOperationException("Nessuna area comune fra le geometrie video");
+                throw new InvalidOperationException(AppText.T("analysis.geometry.noCommonArea"));
             double languageLeft = (sourceLeft - consensus.TranslateX) / consensus.ScaleX;
             double languageTop = (sourceTop - consensus.TranslateY) / consensus.ScaleY;
             double languageRight = (sourceRight - consensus.TranslateX) / consensus.ScaleX;

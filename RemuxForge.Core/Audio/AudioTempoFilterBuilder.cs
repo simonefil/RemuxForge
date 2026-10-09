@@ -1,3 +1,4 @@
+using RemuxForge.Core.Localization;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -35,7 +36,7 @@ namespace RemuxForge.Core.Audio
 
             if (double.IsNaN(stretchRatio) || double.IsInfinity(stretchRatio) || stretchRatio <= 0.0)
             {
-                errorMessage = "Fattore stretch audio non valido";
+                errorMessage = AppText.T("remux.audio.invalidStretch");
                 return false;
             }
 
@@ -60,7 +61,7 @@ namespace RemuxForge.Core.Audio
 
             if (double.IsNaN(audioTempo) || double.IsInfinity(audioTempo) || audioTempo <= 0.0)
             {
-                errorMessage = "Tempo audio FFmpeg non valido";
+                errorMessage = AppText.T("remux.audio.invalidTempo");
                 return false;
             }
 

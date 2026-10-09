@@ -167,7 +167,7 @@ namespace RemuxForge.Core.Infrastructure
             }
             catch (Exception ex)
             {
-                result.Stderr = "Eccezione durante l'esecuzione di " + fileName + ": " + ex.Message;
+                result.Stderr = AppText.F("remux.process.exception", fileName, ex.Message);
             }
             finally
             {
@@ -283,7 +283,7 @@ namespace RemuxForge.Core.Infrastructure
             }
             catch (Exception ex)
             {
-                ConsoleHelper.Write(LogSection.General, LogLevel.Warning, "Errore esecuzione " + fileName + ": " + ex.Message);
+                ConsoleHelper.Write(LogSection.General, LogLevel.Warning, AppText.F("remux.process.runError", fileName, ex.Message));
             }
             finally
             {
@@ -378,7 +378,7 @@ namespace RemuxForge.Core.Infrastructure
             }
             catch (Exception ex)
             {
-                result.Stderr = "Eccezione durante l'esecuzione di " + fileName + ": " + ex.Message;
+                result.Stderr = AppText.F("remux.process.exception", fileName, ex.Message);
             }
             finally
             {
@@ -494,19 +494,19 @@ namespace RemuxForge.Core.Infrastructure
                         result.Stderr = result.Stderr + Environment.NewLine;
                     }
 
-                    result.Stderr = result.Stderr + "Processo interrotto per timeout o richiesta stop";
+                    result.Stderr = result.Stderr + AppText.T("remux.process.stopped");
                     result.ExitCode = -1;
                 }
                 cancellationToken.ThrowIfCancellationRequested();
                 if (stdoutException != null)
                 {
                     result.ExitCode = -1;
-                    result.Stderr = result.Stderr + "Errore lettura stdout binario: " + stdoutException.Message;
+                    result.Stderr = result.Stderr + AppText.F("remux.process.stdoutReadError", stdoutException.Message);
                 }
             }
             catch (Exception ex)
             {
-                result.Stderr = "Eccezione durante l'esecuzione di " + fileName + ": " + ex.Message;
+                result.Stderr = AppText.F("remux.process.exception", fileName, ex.Message);
             }
             finally
             {
@@ -659,7 +659,7 @@ namespace RemuxForge.Core.Infrastructure
                 }
                 catch (Exception fallbackEx)
                 {
-                    ConsoleHelper.Write(LogSection.General, LogLevel.Debug, "Kill processo fallita: " + ex.Message + " / " + fallbackEx.Message);
+                    ConsoleHelper.Write(LogSection.General, LogLevel.Debug, AppText.F("remux.process.killFailed", ex.Message, fallbackEx.Message));
                 }
             }
         }

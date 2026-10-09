@@ -82,7 +82,7 @@ namespace RemuxForge.Vulkan.Vision.Matching
                     this.Bind(commandBuffer, pipeline, descriptorSets[0], clear);
                     this._runtime.DeviceApi.vkCmdDispatch(commandBuffer, DivideRoundUp((uint)workspace.CandidateCount, 256), 1, 1);
                     diagnostics.DispatchCount++;
-                    this.Barrier(commandBuffer);
+                    this._runtime.RecordComputeBarrier(commandBuffer);
                     for (int tile = 0; tile < descriptorSets.Count; tile++)
                     {
                         int count = Math.Min(jobsPerTile, workspace.CandidateCount - tileStarts[tile]);
@@ -131,16 +131,6 @@ namespace RemuxForge.Vulkan.Vision.Matching
             VkDescriptorSet descriptorSet = set.DescriptorSet;
             this._runtime.DeviceApi.vkCmdBindDescriptorSets(commandBuffer, VkPipelineBindPoint.Compute, pipeline.PipelineLayout, 0, descriptorSet);
             this._runtime.DeviceApi.vkCmdPushConstants(commandBuffer, pipeline.PipelineLayout, VkShaderStageFlags.Compute, 0, (uint)sizeof(MatchPush), &push);
-        }
-
-        /// <summary>
-        /// Records a compute-to-compute memory barrier for shader writes consumed by subsequent dispatches
-        /// </summary>
-        /// <param name="commandBuffer">Command buffer that receives the barrier</param>
-        private void Barrier(VkCommandBuffer commandBuffer)
-        {
-            VkMemoryBarrier barrier = new VkMemoryBarrier { srcAccessMask = VkAccessFlags.ShaderWrite, dstAccessMask = VkAccessFlags.ShaderRead | VkAccessFlags.ShaderWrite };
-            this._runtime.DeviceApi.vkCmdPipelineBarrier(commandBuffer, VkPipelineStageFlags.ComputeShader, VkPipelineStageFlags.ComputeShader, VkDependencyFlags.None, 1, &barrier, 0, null, 0, null);
         }
 
         /// <summary>

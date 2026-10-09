@@ -1,5 +1,6 @@
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -103,9 +104,9 @@ namespace RemuxForge.Core.Subtitles
             while (pos + PgsSubtitleUtils.SUP_PACKET_HEADER_SIZE <= data.Length)
             {
                 setStart = pos;
-                if (!this.TryFindDisplaySetEnd(data, setStart, out setEnd))
+                if (!PgsSubtitleUtils.TryFindDisplaySetEnd(data, setStart, out setEnd))
                 {
-                    report.ErrorMessage = "display-set PGS incompleto";
+                    report.ErrorMessage = AppText.T("remux.subtitles.pgsDisplaySetIncomplete");
                     return false;
                 }
 
@@ -145,9 +146,9 @@ namespace RemuxForge.Core.Subtitles
             result.Set("display-set", report.DisplaySets);
             result.Set("PCS", report.PcsSegments);
             result.Set("WDS", report.WdsSegments);
-            result.Set("oggetti", report.ObjectCoordinatesRewritten);
-            result.Set("crop-oggetto", report.ObjectCropFieldsRewritten);
-            result.Set("finestre", report.WindowDefinitionsRewritten);
+            result.Set("objects", report.ObjectCoordinatesRewritten);
+            result.Set("object-crop", report.ObjectCropFieldsRewritten);
+            result.Set("windows", report.WindowDefinitionsRewritten);
             result.Set("ODS", report.OdsSegmentsRewritten);
             result.Set("bitmap-decoded", report.ObjectBitmapsDecoded);
             result.Set("bitmap-scaled", report.ObjectBitmapsScaled);
@@ -160,8 +161,7 @@ namespace RemuxForge.Core.Subtitles
             result.Summary = "PCS=" + report.PcsSegments.ToString(CultureInfo.InvariantCulture) +
                 ", WDS=" + report.WdsSegments.ToString(CultureInfo.InvariantCulture) +
                 "/" + report.WindowDefinitionsRewritten.ToString(CultureInfo.InvariantCulture) +
-                ", oggetti=" + report.ObjectCoordinatesRewritten.ToString(CultureInfo.InvariantCulture) +
-                ", crop-oggetto=" + report.ObjectCropFieldsRewritten.ToString(CultureInfo.InvariantCulture) +
+                AppText.F("remux.subtitles.pgsSummaryObjects", report.ObjectCoordinatesRewritten.ToString(CultureInfo.InvariantCulture), report.ObjectCropFieldsRewritten.ToString(CultureInfo.InvariantCulture)) +
                 this.FormatBitmapReport(report) +
                 this.FormatWarningReport(report) +
                 this.FormatClampReport(report);
@@ -231,39 +231,6 @@ namespace RemuxForge.Core.Subtitles
         #region Metodi privati - Display-set
 
         /// <summary>
-        /// Trova la fine del display-set PGS corrente
-        /// </summary>
-        /// <param name="data">Buffer SUP</param>
-        /// <param name="start">Offset iniziale display-set</param>
-        /// <param name="end">Offset subito dopo il display-set</param>
-        /// <returns>True se il display-set è completo</returns>
-        private bool TryFindDisplaySetEnd(byte[] data, int start, out int end)
-        {
-            int pos = start;
-            int packetLength;
-            int segmentType;
-            end = start;
-
-            while (pos + PgsSubtitleUtils.SUP_PACKET_HEADER_SIZE <= data.Length)
-            {
-                if (!PgsSubtitleUtils.TryGetPacketLength(data, pos, out packetLength))
-                {
-                    return false;
-                }
-
-                segmentType = data[pos + 10];
-                pos += packetLength;
-                if (segmentType == PgsSubtitleUtils.SEGMENT_END)
-                {
-                    end = pos;
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        /// <summary>
         /// Riscrive i packet rilevanti di un display-set
         /// </summary>
         /// <param name="data">Buffer SUP completo</param>
@@ -311,7 +278,7 @@ namespace RemuxForge.Core.Subtitles
             {
                 if (!PgsSubtitleUtils.TryGetPacketLength(data, pos, out packetLength) || pos + packetLength > end)
                 {
-                    report.ErrorMessage = "packet PGS fuori display-set";
+                    report.ErrorMessage = AppText.T("remux.subtitles.pgsPacketOutsideDisplaySet");
                     return false;
                 }
 
@@ -519,7 +486,7 @@ namespace RemuxForge.Core.Subtitles
 
             if (packet.Length < PgsSubtitleUtils.SUP_PACKET_HEADER_SIZE + 2)
             {
-                report.ErrorMessage = "ODS PGS troppo corto";
+                report.ErrorMessage = AppText.T("remux.subtitles.pgsOdsTooShort");
                 return false;
             }
 
@@ -533,7 +500,7 @@ namespace RemuxForge.Core.Subtitles
 
             if (!displayObjects.TryGetValue(objectId, out definition))
             {
-                report.ErrorMessage = "ODS PGS senza oggetto ricostruito";
+                report.ErrorMessage = AppText.T("remux.subtitles.pgsOdsNoObject");
                 return false;
             }
 
@@ -604,7 +571,7 @@ namespace RemuxForge.Core.Subtitles
             // Se la bounding box è più grande del canvas finale non esiste un clamp valido
             if (bounds.Width > plan.Transform.OutputCanvasWidth || bounds.Height > plan.Transform.OutputCanvasHeight)
             {
-                report.ErrorMessage = "bounding box PCS fuori canvas: " + bounds.Width + "x" + bounds.Height;
+                report.ErrorMessage = AppText.F("remux.subtitles.pgsPcsBoundsOutside", bounds.Width, bounds.Height);
                 return false;
             }
 
@@ -632,7 +599,7 @@ namespace RemuxForge.Core.Subtitles
             if (bounds.Left + deltaX < 0 || bounds.Right + deltaX > plan.Transform.OutputCanvasWidth ||
                 bounds.Top + deltaY < 0 || bounds.Bottom + deltaY > plan.Transform.OutputCanvasHeight)
             {
-                report.ErrorMessage = "bounding box PCS non clampabile";
+                report.ErrorMessage = AppText.T("remux.subtitles.pgsPcsBoundsUnclampable");
                 return false;
             }
 
@@ -684,7 +651,7 @@ namespace RemuxForge.Core.Subtitles
                     payload = pos + PgsSubtitleUtils.SUP_PACKET_HEADER_SIZE;
                     if (segmentLength < 1 || payload + segmentLength > data.Length)
                     {
-                        report.ErrorMessage = "WDS PGS troppo corto";
+                        report.ErrorMessage = AppText.T("remux.subtitles.pgsWdsTooShort");
                         return false;
                     }
 
@@ -696,7 +663,7 @@ namespace RemuxForge.Core.Subtitles
                     {
                         if (windowPos + 9 > payload + segmentLength)
                         {
-                            report.ErrorMessage = "lista finestre WDS incompleta";
+                            report.ErrorMessage = AppText.T("remux.subtitles.pgsWdsWindowsIncomplete");
                             return false;
                         }
 
@@ -753,7 +720,7 @@ namespace RemuxForge.Core.Subtitles
                     payload = pos + PgsSubtitleUtils.SUP_PACKET_HEADER_SIZE;
                     if (segmentLength < 11 || payload + segmentLength > data.Length)
                     {
-                        report.ErrorMessage = "PCS PGS troppo corto";
+                        report.ErrorMessage = AppText.T("remux.subtitles.pgsPcsTooShort");
                         return false;
                     }
 
@@ -765,7 +732,7 @@ namespace RemuxForge.Core.Subtitles
                     {
                         if (objectPos + 8 > payload + segmentLength)
                         {
-                            report.ErrorMessage = "lista oggetti PCS incompleta";
+                            report.ErrorMessage = AppText.T("remux.subtitles.pgsPcsObjectsIncomplete");
                             return false;
                         }
 
@@ -790,7 +757,7 @@ namespace RemuxForge.Core.Subtitles
                         {
                             if (objectPos + 8 > payload + segmentLength)
                             {
-                                report.ErrorMessage = "crop oggetto PCS incompleto";
+                                report.ErrorMessage = AppText.T("remux.subtitles.pgsPcsCropIncomplete");
                                 return false;
                             }
 
@@ -874,7 +841,7 @@ namespace RemuxForge.Core.Subtitles
             // Verifica dimensione canvas dichiarata dal PCS originale
             if (segmentLength < 11 || payload + segmentLength > packet.Length)
             {
-                report.ErrorMessage = "PCS PGS troppo corto";
+                report.ErrorMessage = AppText.T("remux.subtitles.pgsPcsTooShort");
                 return false;
             }
 
@@ -882,7 +849,7 @@ namespace RemuxForge.Core.Subtitles
             oldHeight = PgsSubtitleUtils.ReadUInt16BigEndian(packet, payload + 2);
             if (oldWidth != plan.Transform.InputCanvasWidth || oldHeight != plan.Transform.InputCanvasHeight)
             {
-                report.ErrorMessage = "canvas PCS inatteso " + oldWidth + "x" + oldHeight;
+                report.ErrorMessage = AppText.F("remux.subtitles.pgsPcsUnexpectedCanvas", oldWidth, oldHeight);
                 return false;
             }
 
@@ -896,7 +863,7 @@ namespace RemuxForge.Core.Subtitles
             {
                 if (pos + 8 > payload + segmentLength)
                 {
-                    report.ErrorMessage = "lista oggetti PCS incompleta";
+                    report.ErrorMessage = AppText.T("remux.subtitles.pgsPcsObjectsIncomplete");
                     return false;
                 }
 
@@ -922,7 +889,7 @@ namespace RemuxForge.Core.Subtitles
                 {
                     if (pos + 8 > payload + segmentLength)
                     {
-                        report.ErrorMessage = "crop oggetto PCS incompleto";
+                        report.ErrorMessage = AppText.T("remux.subtitles.pgsPcsCropIncomplete");
                         return false;
                     }
 
@@ -979,7 +946,7 @@ namespace RemuxForge.Core.Subtitles
             // Valida payload WDS prima di leggere il numero finestre
             if (segmentLength < 1 || payload + segmentLength > packet.Length)
             {
-                report.ErrorMessage = "WDS PGS troppo corto";
+                report.ErrorMessage = AppText.T("remux.subtitles.pgsWdsTooShort");
                 return false;
             }
 
@@ -991,7 +958,7 @@ namespace RemuxForge.Core.Subtitles
             {
                 if (pos + 9 > payload + segmentLength)
                 {
-                    report.ErrorMessage = "lista finestre WDS incompleta";
+                    report.ErrorMessage = AppText.T("remux.subtitles.pgsWdsWindowsIncomplete");
                     return false;
                 }
 
@@ -1001,7 +968,7 @@ namespace RemuxForge.Core.Subtitles
                 height = PgsSubtitleUtils.ReadUInt16BigEndian(packet, pos + 7);
                 plan.Transform.ResolveWindowRect(x, y, width, height, adjustment.DeltaX, adjustment.DeltaY, out newX, out newY, out newWidth, out newHeight);
 
-                if (!this.ValidateRectBounds(newX, newY, newWidth, newHeight, plan, report, "WDS fuori canvas"))
+                if (!this.ValidateRectBounds(newX, newY, newWidth, newHeight, plan, report, AppText.T("remux.subtitles.pgsWdsOutsideCanvas")))
                 {
                     return false;
                 }
@@ -1037,12 +1004,12 @@ namespace RemuxForge.Core.Subtitles
         {
             if (hasSize)
             {
-                return this.ValidateRectBounds(x, y, size.Width, size.Height, plan, report, "oggetto PCS fuori canvas");
+                return this.ValidateRectBounds(x, y, size.Width, size.Height, plan, report, AppText.T("remux.subtitles.pgsPcsObjectOutsideCanvas"));
             }
 
             if (x < 0 || y < 0 || x >= plan.Transform.OutputCanvasWidth || y >= plan.Transform.OutputCanvasHeight)
             {
-                report.ErrorMessage = "coordinate PCS fuori canvas";
+                report.ErrorMessage = AppText.T("remux.subtitles.pgsPcsCoordinatesOutside");
                 return false;
             }
 
@@ -1074,7 +1041,7 @@ namespace RemuxForge.Core.Subtitles
         {
             if (x < 0 || y < 0 || width <= 0 || height <= 0 || x + width > objectSize.Width || y + height > objectSize.Height)
             {
-                report.ErrorMessage = "crop oggetto PCS fuori bitmap";
+                report.ErrorMessage = AppText.T("remux.subtitles.pgsPcsCropOutsideBitmap");
                 return false;
             }
 

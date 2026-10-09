@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace RemuxForge.Web.Services
@@ -112,6 +113,34 @@ namespace RemuxForge.Web.Services
             return string.IsNullOrEmpty(this.StatusLabel) ? this.Label : this.StatusLabel;
         }
 
+        /// <summary>
+        /// Verifica se il tasto premuto appartiene soltanto a comandi disabilitati
+        /// </summary>
+        /// <param name="commands">Comandi della modalità corrente</param>
+        /// <param name="key">Tasto premuto</param>
+        /// <param name="ctrl">Flag Ctrl</param>
+        /// <returns>True se almeno un comando usa la scorciatoia e nessuno di quelli che la usano è attivo</returns>
+        public static bool IsShortcutDisabled(IReadOnlyList<UiCommandDefinition> commands, string key, bool ctrl)
+        {
+            string shortcut;
+            bool found = false;
+
+            if (commands == null || string.IsNullOrEmpty(key))
+                return false;
+
+            shortcut = ctrl ? "Ctrl+" + key.ToUpperInvariant() : key;
+            for (int i = 0; i < commands.Count; i++)
+            {
+                if (commands[i] == null || !string.Equals(commands[i].Shortcut, shortcut, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (!commands[i].Disabled)
+                    return false;
+                found = true;
+            }
+
+            return found;
+        }
+
         #endregion
 
         #region Proprietà
@@ -160,11 +189,6 @@ namespace RemuxForge.Web.Services
         /// Sezione menu proprietaria
         /// </summary>
         public UiCommandMenuSection MenuSection { get; set; }
-
-        /// <summary>
-        /// True per inserire un separatore prima della voce menu
-        /// </summary>
-        public bool SeparatorBefore { get; set; }
 
         /// <summary>
         /// True per renderizzare nella zona secondaria della toolbar

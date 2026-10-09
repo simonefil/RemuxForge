@@ -1,5 +1,6 @@
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Tools;
 using System;
@@ -98,7 +99,7 @@ namespace RemuxForge.Core.Subtitles
             }
             else
             {
-                ConsoleHelper.Write(LogSection.Deep, LogLevel.Warning, "  Codec sottotitoli non supportato per riscrittura timestamp: " + trackCodec);
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Warning, AppText.F("remux.subtitles.timestampCodecUnsupported", trackCodec));
             }
 
             return result;
@@ -142,7 +143,7 @@ namespace RemuxForge.Core.Subtitles
 
             if (processResult == null || processResult.ExitCode != 0 || !File.Exists(inputFile))
             {
-                ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, "  Estrazione sottotitolo traccia " + trackId + " fallita (exit " + this.GetExitCode(processResult) + "): " + this.GetProcessError(processResult));
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, AppText.F("remux.subtitles.extractFailed", trackId, this.GetExitCode(processResult), this.GetProcessError(processResult)));
                 FileHelper.DeleteTempFile(inputFile);
                 return result;
             }
@@ -150,7 +151,7 @@ namespace RemuxForge.Core.Subtitles
             if (new FileInfo(inputFile).Length == 0)
             {
                 emptyTrack = true;
-                ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, "  Traccia sottotitolo " + trackId + " vuota: nessun timestamp da riscrivere");
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, AppText.F("remux.subtitles.emptyTrack", trackId));
                 FileHelper.DeleteTempFile(inputFile);
                 return result;
             }
@@ -317,7 +318,7 @@ namespace RemuxForge.Core.Subtitles
 
             if (result == null || result.ExitCode != 0)
             {
-                ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, "  Validazione sottotitolo riscritto fallita (exit " + this.GetExitCode(result) + "): " + this.GetProcessError(result));
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, AppText.F("remux.subtitles.rewriteValidationFailed", this.GetExitCode(result), this.GetProcessError(result)));
                 return false;
             }
 
@@ -336,7 +337,7 @@ namespace RemuxForge.Core.Subtitles
             string mkvExtractPath = this.ResolveMkvExtractPath();
             if (string.IsNullOrEmpty(mkvExtractPath))
             {
-                ConsoleHelper.Write(LogSection.Deep, LogLevel.Warning, "  mkvextract non disponibile per sottotitoli bitmap");
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Warning, AppText.T("remux.subtitles.mkvextractUnavailable"));
                 return false;
             }
 
@@ -446,11 +447,11 @@ namespace RemuxForge.Core.Subtitles
             string output;
 
             if (result == null)
-                return "nessun risultato restituito dal processo";
+                return AppText.T("remux.subtitles.noProcessResult");
 
             output = !string.IsNullOrEmpty(result.Stderr) ? result.Stderr : result.Stdout;
             if (string.IsNullOrEmpty(output))
-                return "nessun dettaglio restituito da ffmpeg";
+                return AppText.T("remux.subtitles.noFfmpegDetails");
 
             output = output.Replace("\r", "").Trim();
             if (output.Length > 2000)

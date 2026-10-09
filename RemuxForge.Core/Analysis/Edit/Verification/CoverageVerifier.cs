@@ -43,28 +43,6 @@ namespace RemuxForge.Core.Analysis.Edit.Verification
 
         #endregion
 
-        #region Variabili di classe
-
-        /// <summary>
-        /// Backend che calcola gli hash e misura le griglie di offset
-        /// </summary>
-        private HashBackendBase _hashBackend;
-
-        #endregion
-
-        #region Costruttore
-
-        /// <summary>
-        /// Costruttore
-        /// </summary>
-        /// <param name="hashBackend">Backend che calcola gli hash e misura le griglie di offset</param>
-        public CoverageVerifier(HashBackendBase hashBackend)
-        {
-            this._hashBackend = hashBackend;
-        }
-
-        #endregion
-
         #region Metodi pubblici
 
         /// <summary>
@@ -84,7 +62,7 @@ namespace RemuxForge.Core.Analysis.Edit.Verification
 
             // La costante si cerca prima da lontano e a passo grosso: se la testa del film ha
             // mentito, un campo stretto attorno a lei resta chiuso dentro l'errore che deve curare
-            double centerMs = initialOffsetMs;
+            double centerMs;
             int sweepCount = (int)(2.0 * EditAnalysisProfile.COVERAGE_ANCHOR_SWEEP_MS / EditAnalysisProfile.COVERAGE_ANCHOR_SWEEP_STEP_MS) + 1;
             double[] sweepFractions = new double[sweepCount];
             for (int i = 0; i < sweepCount; i++)
@@ -109,18 +87,6 @@ namespace RemuxForge.Core.Analysis.Edit.Verification
                 fractions[i] = this.Explained(pair, indices, boundaries, offsets, bestOffsetMs - 5.0 + i, 0);
 
             return PeakNearest(bestOffsetMs - 5.0, 1.0, fractions, bestOffsetMs);
-        }
-
-        /// <summary>
-        /// Frazione del film che resta agganciata applicando l'EditMap
-        /// </summary>
-        /// <param name="pair">Coppia di tracce</param>
-        /// <param name="operations">Operazioni dell'EditMap</param>
-        /// <param name="initialOffsetMs">Offset del primo tratto</param>
-        /// <returns>Quota agganciata fra zero e uno</returns>
-        public double Coverage(PairSignals pair, IReadOnlyList<EditOperationCandidate> operations, double initialOffsetMs)
-        {
-            return this.MeasureCoverage(pair, operations, initialOffsetMs).Coverage;
         }
 
         /// <summary>

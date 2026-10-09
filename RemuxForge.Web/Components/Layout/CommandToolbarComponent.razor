@@ -9,6 +9,10 @@
                           ButtonStyle="@(command.DangerToolbar ? ButtonStyle.Danger : ButtonStyle.Primary)"
                           Click="@(() => ExecuteCommandAsync(command))" />
         }
+        @if (!string.IsNullOrEmpty(Note))
+        {
+            <span class="rf-command-toolbar-note" role="status">@Note</span>
+        }
     </div>
 
     <div class="rf-command-toolbar-secondary">
@@ -34,6 +38,11 @@
     /// Evento invocazione comando condiviso
     /// </summary>
     [Parameter] public EventCallback<UiCommandDefinition> OnCommand { get; set; }
+
+    /// <summary>
+    /// Nota visibile accanto ai comandi primari, per esempio il motivo dei comandi spenti
+    /// </summary>
+    [Parameter] public string Note { get; set; } = "";
 
     /// <summary>
     /// Filtra e ordina i comandi per area toolbar

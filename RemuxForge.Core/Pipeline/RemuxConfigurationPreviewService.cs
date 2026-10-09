@@ -29,7 +29,6 @@ namespace RemuxForge.Core.Pipeline
 
         private RemuxPreviewSnapshot Preview(RemuxPreviewRequest request, IProgress<RemuxPreviewProgress> progress, CancellationToken cancellation)
         {
-            List<string> log = new List<string>();
             List<RemuxPreviewError> errors = new List<RemuxPreviewError>();
             List<RemuxPreviewPair> pairs = new List<RemuxPreviewPair>();
             List<RemuxTrackGroup> groups = new List<RemuxTrackGroup>();
@@ -52,7 +51,7 @@ namespace RemuxForge.Core.Pipeline
                     SourceFolder = Path.GetFullPath(request.SourcePath), LanguageFolder = Path.GetFullPath(request.LangPath),
                     MatchPattern = request.MatchPattern, FileExtensions = request.FileExtensions.ToList(), Recursive = request.Recursive
                 };
-                PipelineFileScanner scanner = new PipelineFileScanner((section, level, text) => log.Add(text));
+                PipelineFileScanner scanner = new PipelineFileScanner((section, level, text) => { });
                 foreach (FileProcessingRecord record in scanner.Scan(scanOptions, true, cancellation))
                 {
                     pairs.Add(new RemuxPreviewPair(string.IsNullOrEmpty(record.LangFilePath) ? record.SourceFilePath :
@@ -80,7 +79,7 @@ namespace RemuxForge.Core.Pipeline
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex) { errors.Add(new RemuxPreviewError("", ex.Message)); }
-            return new RemuxPreviewSnapshot(pairs.AsReadOnly(), groups.AsReadOnly(), errors.AsReadOnly(), log.AsReadOnly());
+            return new RemuxPreviewSnapshot(pairs.AsReadOnly(), groups.AsReadOnly(), errors.AsReadOnly());
         }
 
         public static string CreateGroupKey(RemuxTrackSide side, TrackInfo track)
@@ -110,7 +109,7 @@ namespace RemuxForge.Core.Pipeline
                     string file = side == RemuxTrackSide.Source ? pair.SourceFilePath : pair.LangFilePath;
                     foreach (TrackInfo track in cache[file].Tracks.Where(track =>
                         string.Equals(track.Type, "audio", StringComparison.OrdinalIgnoreCase) || string.Equals(track.Type, "subtitles", StringComparison.OrdinalIgnoreCase)))
-                        members.Add(new RemuxTrackMember(pair.PairKey, side, file, track));
+                        members.Add(new RemuxTrackMember(pair.PairKey, side, track));
                 }
             }
             int count = pairs.Count(pair => pair.IsMatched);

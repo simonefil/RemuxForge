@@ -392,11 +392,6 @@ namespace RemuxForge.Core.Models
         #region Proprietà
 
         /// <summary>
-        /// Identificativo del documento proiettato
-        /// </summary>
-        public Guid DocumentId { get; set; }
-
-        /// <summary>
         /// Output proiettati
         /// </summary>
         public List<MkvSplitOutputProjection> Outputs { get; set; } = new List<MkvSplitOutputProjection>();
@@ -442,11 +437,6 @@ namespace RemuxForge.Core.Models
         public bool IsValid { get; set; }
 
         /// <summary>
-        /// Output risolto
-        /// </summary>
-        public Guid? OutputId { get; set; }
-
-        /// <summary>
         /// Clip risolta
         /// </summary>
         public Guid? ClipId { get; set; }
@@ -455,11 +445,6 @@ namespace RemuxForge.Core.Models
         /// Frame sorgente incluso
         /// </summary>
         public int SourceFrame { get; set; }
-
-        /// <summary>
-        /// Confine sorgente, fino al numero di frame incluso
-        /// </summary>
-        public int BoundaryFrame { get; set; }
 
         /// <summary>
         /// Frame nel risultato
@@ -700,11 +685,6 @@ namespace RemuxForge.Core.Models
     public class MkvSplitExecutionClip
     {
         #region Proprietà
-
-        /// <summary>
-        /// Identificativo della clip
-        /// </summary>
-        public Guid ClipId { get; set; }
 
         /// <summary>
         /// Segmento da estrarre dal sorgente
@@ -976,11 +956,6 @@ namespace RemuxForge.Core.Models
         /// Identificativo dell'output
         /// </summary>
         public Guid OutputId { get; set; }
-
-        /// <summary>
-        /// Percorso completo del file di output
-        /// </summary>
-        public string FullPath { get; set; } = "";
 
         /// <summary>
         /// Stato di esecuzione

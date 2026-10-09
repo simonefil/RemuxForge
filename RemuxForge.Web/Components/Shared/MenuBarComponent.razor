@@ -1,65 +1,33 @@
-<nav class="menu-bar" aria-label="@AppText.T("web.navigation.menu")">
+<div class="rf-menu-bar">
     <UpdateBadgeComponent />
-    @for (int i = 0; i < _menus.Count; i++)
-    {
-        int idx = i;
-        MenuDef menu = _menus[i];
-        int mnemonicIndex = FindMnemonicIndex(menu.Label, menu.Mnemonic);
-        <div class="menu-bar-entry">
-            <button type="button"
-                    class="menu-bar-item @(_activeIndex == idx ? "active" : "")"
-                    aria-haspopup="menu"
-                    aria-expanded="@(_activeIndex == idx)"
-                    @onclick="() => ToggleMenu(idx)"
-                    @onmouseenter="() => HoverMenu(idx)">
-                @if (mnemonicIndex >= 0)
+    <RadzenMenu @key="_menuKey" ClickToOpen="true" Responsive="false" AriaLabel="@AppText.T("web.navigation.menu")">
+        @foreach (MenuDef menu in _menus)
+        {
+            <RadzenMenuItem Text="@menu.Label">
+                @foreach (MenuItemDef item in menu.Items)
                 {
-                    @menu.Label.Substring(0, mnemonicIndex)<span class="menu-mnemonic">@menu.Label.Substring(mnemonicIndex, 1)</span>@menu.Label.Substring(mnemonicIndex + 1)
+                    <RadzenMenuItem Text="@item.Label"
+                                    Icon="@item.Icon"
+                                    Disabled="@item.Disabled"
+                                    Click="@(args => InvokeItemAsync(item))">
+                        <Template>
+                            @if (menu.HasIcons && string.IsNullOrEmpty(item.Icon))
+                            {
+                                @* Segnaposto che mantiene allineate le voci senza icona *@
+                                <i class="notranslate rzi rz-navigation-item-icon" aria-hidden="true"></i>
+                            }
+                            <span class="rz-navigation-item-text">@item.Label</span>
+                            @if (!string.IsNullOrEmpty(item.Shortcut))
+                            {
+                                <span class="rf-menu-shortcut">@item.Shortcut</span>
+                            }
+                        </Template>
+                    </RadzenMenuItem>
                 }
-                else
-                {
-                    @menu.Label
-                }
-            </button>
-
-            @if (_activeIndex == idx)
-            {
-                <div class="menu-dropdown" role="menu">
-                    @for (int itemIndex = 0; itemIndex < menu.Items.Count; itemIndex++)
-                    {
-                        int currentItemIndex = itemIndex;
-                        MenuItemDef item = menu.Items[itemIndex];
-                        if (item.IsSeparator)
-                        {
-                            <hr role="separator" />
-                        }
-                        else
-                        {
-                            <button type="button"
-                                    role="menuitem"
-                                    disabled="@item.Disabled"
-                                    tabindex="@(_activeItemIndex == currentItemIndex ? 0 : -1)"
-                                    class="menu-dropdown-item @(_activeItemIndex == currentItemIndex ? "active" : "")"
-                                    @onclick="() => InvokeItemAsync(item)"
-                                    @onmouseenter="() => SetActiveItem(currentItemIndex)">
-                                <span>@item.Label</span>
-                                @if (!string.IsNullOrEmpty(item.Shortcut))
-                                {
-                                    <span class="shortcut">@item.Shortcut</span>
-                                }
-                            </button>
-                        }
-                    }
-                </div>
-            }
-        </div>
-    }
-</nav>
-
-@if (_activeIndex >= 0)
-{
-    <div class="menu-overlay" aria-hidden="true" @onclick="CloseMenu"></div>
-}
+            </RadzenMenuItem>
+        }
+    </RadzenMenu>
+</div>
 
 @code {
     /// <summary>
@@ -78,9 +46,9 @@
         public List<MenuItemDef> Items;
 
         /// <summary>
-        /// Mnemonico tastiera per apertura con Option/Alt
+        /// Flag almeno una voce con icona, per allineare le voci senza icona
         /// </summary>
-        public string Mnemonic;
+        public bool HasIcons;
     }
 
     /// <summary>
@@ -94,19 +62,19 @@
         public string Label;
 
         /// <summary>
-        /// Scorciatoia tastiera
+        /// Scorciatoia tastiera mostrata a destra
         /// </summary>
         public string Shortcut;
+
+        /// <summary>
+        /// Icona Material della voce
+        /// </summary>
+        public string Icon;
 
         /// <summary>
         /// Callback azione
         /// </summary>
         public Func<Task> Callback;
-
-        /// <summary>
-        /// Flag separatore
-        /// </summary>
-        public bool IsSeparator;
 
         /// <summary>
         /// Flag voce disabilitata durante un'operazione
@@ -145,19 +113,14 @@
     [Parameter] public string CurrentLanguage { get; set; }
 
     /// <summary>
-    /// Indice menu attualmente aperto (-1 = nessuno)
-    /// </summary>
-    private int _activeIndex = -1;
-
-    /// <summary>
-    /// Indice voce attiva nel menu aperto
-    /// </summary>
-    private int _activeItemIndex = -1;
-
-    /// <summary>
     /// Lista definizioni menu
     /// </summary>
     private List<MenuDef> _menus;
+
+    /// <summary>
+    /// Chiave della struttura voci: RadzenMenu non deregistra le voci rimosse, quindi il menu si ricrea quando la struttura cambia
+    /// </summary>
+    private string _menuKey;
 
     /// <summary>
     /// Inizializzazione definizioni menu
@@ -166,29 +129,28 @@
     {
         this._menus = new List<MenuDef>
         {
-            this.CreateMenu(AppText.T("web.menu.file"), AppText.T("web.menu.file.mnemonic"), UiCommandMenuSection.File),
-            this.CreateMenu(AppText.T("web.menu.actions"), AppText.T("web.menu.actions.mnemonic"), UiCommandMenuSection.Actions),
-            this.CreateMenu(AppText.T("web.menu.settings"), AppText.T("web.menu.settings.mnemonic"), UiCommandMenuSection.Settings),
-            new MenuDef { Label = AppText.T("web.menu.theme"), Mnemonic = AppText.T("web.menu.theme.mnemonic"), Items = this.CreateThemeMenuItems() },
-            new MenuDef { Label = AppText.T("web.menu.language"), Mnemonic = AppText.T("web.menu.language.mnemonic"), Items = new List<MenuItemDef>
+            this.CreateMenu(AppText.T("web.menu.file"), UiCommandMenuSection.File),
+            this.CreateMenu(AppText.T("web.menu.actions"), UiCommandMenuSection.Actions),
+            this.CreateMenu(AppText.T("web.menu.settings"), UiCommandMenuSection.Settings),
+            this.CreateMenuDef(AppText.T("web.menu.theme"), this.CreateThemeMenuItems()),
+            this.CreateMenuDef(AppText.T("web.menu.language"), new List<MenuItemDef>
             {
-                new MenuItemDef { Label = FormatLanguageLabel(AppText.T("web.language.english"), AppText.LANG_EN), Shortcut = "", Callback = () => OnLanguageChanged.InvokeAsync(AppText.LANG_EN), Disabled = this.IsCommandMenuBusy() },
-                new MenuItemDef { Label = FormatLanguageLabel(AppText.T("web.language.italian"), AppText.LANG_IT), Shortcut = "", Callback = () => OnLanguageChanged.InvokeAsync(AppText.LANG_IT), Disabled = this.IsCommandMenuBusy() },
-            }},
-            this.CreateMenu(AppText.T("web.menu.help"), AppText.T("web.menu.help.mnemonic"), UiCommandMenuSection.Help)
+                this.CreateLanguageMenuItem(AppText.T("web.language.english"), AppText.LANG_EN),
+                this.CreateLanguageMenuItem(AppText.T("web.language.italian"), AppText.LANG_IT)
+            }),
+            this.CreateMenu(AppText.T("web.menu.help"), UiCommandMenuSection.Help)
         };
 
-        this.NormalizeActiveMenu();
+        this._menuKey = this.BuildMenuKey();
     }
 
     /// <summary>
     /// Crea una sezione menu dai comandi condivisi
     /// </summary>
     /// <param name="label">Etichetta sezione</param>
-    /// <param name="mnemonic">Mnemonico sezione</param>
     /// <param name="section">Sezione richiesta</param>
     /// <returns>Definizione menu pronta per il renderer</returns>
-    private MenuDef CreateMenu(string label, string mnemonic, UiCommandMenuSection section)
+    private MenuDef CreateMenu(string label, UiCommandMenuSection section)
     {
         List<MenuItemDef> items = new List<MenuItemDef>();
 
@@ -202,145 +164,68 @@
                     continue;
                 }
 
-                if (command.SeparatorBefore && items.Count > 0)
-                {
-                    items.Add(new MenuItemDef { Label = "", Shortcut = "", Callback = null, IsSeparator = true });
-                }
-
                 items.Add(new MenuItemDef
                 {
                     Label = command.Label,
                     Shortcut = command.Shortcut,
+                    Icon = command.Icon,
                     Callback = () => this.OnCommand.InvokeAsync(command),
                     Disabled = command.Disabled
                 });
             }
         }
 
-        return new MenuDef { Label = label, Mnemonic = mnemonic, Items = items };
+        return this.CreateMenuDef(label, items);
     }
 
     /// <summary>
-    /// Gestisce navigazione tastiera della menu bar
+    /// Crea la definizione menu calcolando la presenza di icone
     /// </summary>
-    /// <param name="key">Tasto premuto</param>
-    /// <param name="ctrl">Flag Ctrl</param>
-    /// <param name="shift">Flag Shift</param>
-    /// <param name="alt">Flag Alt</param>
-    /// <returns>True se il tasto è stato gestito dal menu</returns>
-    public async Task<bool> HandleKeyboardKeyAsync(string key, bool ctrl, bool shift, bool alt)
+    /// <param name="label">Etichetta sezione</param>
+    /// <param name="items">Voci della sezione</param>
+    /// <returns>Definizione menu</returns>
+    private MenuDef CreateMenuDef(string label, List<MenuItemDef> items)
     {
-        bool result = false;
-        int mnemonicIndex;
+        bool hasIcons = false;
 
-        if (this._menus == null || this._menus.Count == 0 || ctrl)
+        for (int i = 0; i < items.Count; i++)
         {
-            return result;
-        }
-
-        if (this._activeIndex >= 0)
-        {
-            result = true;
-            if (key == "Escape" || key == "Alt")
+            if (!string.IsNullOrEmpty(items[i].Icon))
             {
-                this.CloseMenu();
+                hasIcons = true;
+                break;
             }
-            else if (key == "ArrowRight")
-            {
-                this.MoveMenu(1);
-            }
-            else if (key == "ArrowLeft")
-            {
-                this.MoveMenu(-1);
-            }
-            else if (key == "ArrowDown")
-            {
-                this.MoveMenuItem(1);
-            }
-            else if (key == "ArrowUp")
-            {
-                this.MoveMenuItem(-1);
-            }
-            else if (key == "Home")
-            {
-                this.SetFirstSelectableItem();
-            }
-            else if (key == "End")
-            {
-                this.SetLastSelectableItem();
-            }
-            else if (key == "Enter" || key == " ")
-            {
-                await this.InvokeActiveItemAsync();
-            }
-            else if (alt && this.TryFindMenuMnemonic(key, out mnemonicIndex))
-            {
-                this.OpenMenu(mnemonicIndex);
-            }
-            else
-            {
-                result = false;
-            }
-        }
-        else if (key == "Alt")
-        {
-            this.OpenMenu(0);
-            result = true;
-        }
-        else if (alt && this.TryFindMenuMnemonic(key, out mnemonicIndex))
-        {
-            this.OpenMenu(mnemonicIndex);
-            result = true;
         }
 
-        return result;
+        return new MenuDef { Label = label, Items = items, HasIcons = hasIcons };
     }
 
     /// <summary>
-    /// Apre/chiude un menu per click
+    /// Costruisce la chiave della struttura corrente delle voci
     /// </summary>
-    /// <param name="index">Indice del menu</param>
-    private void ToggleMenu(int index)
+    /// <returns>Chiave testuale della struttura</returns>
+    private string BuildMenuKey()
     {
-        if (this._activeIndex == index)
+        System.Text.StringBuilder builder = new System.Text.StringBuilder();
+
+        for (int i = 0; i < this._menus.Count; i++)
         {
-            this._activeIndex = -1;
-            this._activeItemIndex = -1;
+            builder.Append(this._menus[i].Label).Append('\u001f');
+            for (int j = 0; j < this._menus[i].Items.Count; j++)
+            {
+                builder.Append(this._menus[i].Items[j].Label).Append('\u001e');
+            }
         }
-        else
-        {
-            this.OpenMenu(index);
-        }
+
+        return builder.ToString();
     }
 
     /// <summary>
-    /// Commuta menu al passaggio del mouse (solo se un menu è già aperto)
-    /// </summary>
-    /// <param name="index">Indice del menu</param>
-    private void HoverMenu(int index)
-    {
-        if (this._activeIndex >= 0)
-        {
-            this.OpenMenu(index);
-        }
-    }
-
-    /// <summary>
-    /// Chiude il menu attivo
-    /// </summary>
-    private void CloseMenu()
-    {
-        this._activeIndex = -1;
-        this._activeItemIndex = -1;
-    }
-
-    /// <summary>
-    /// Invoca callback voce menu e chiude
+    /// Invoca callback voce menu
     /// </summary>
     /// <param name="item">Voce menu</param>
     private async Task InvokeItemAsync(MenuItemDef item)
     {
-        this.CloseMenu();
         if (!item.Disabled && item.Callback != null)
         {
             await item.Callback.Invoke();
@@ -348,236 +233,24 @@
     }
 
     /// <summary>
-    /// Apre il menu indicato e seleziona la prima voce utile
-    /// </summary>
-    /// <param name="index">Indice menu</param>
-    private void OpenMenu(int index)
-    {
-        if (index < 0 || index >= this._menus.Count)
-        {
-            return;
-        }
-
-        this._activeIndex = index;
-        this.SetFirstSelectableItem();
-    }
-
-    /// <summary>
-    /// Cambia menu attivo
-    /// </summary>
-    /// <param name="delta">Spostamento relativo</param>
-    private void MoveMenu(int delta)
-    {
-        int index = this._activeIndex + delta;
-
-        if (index < 0)
-            index = this._menus.Count - 1;
-        if (index >= this._menus.Count)
-            index = 0;
-        this.OpenMenu(index);
-    }
-
-    /// <summary>
-    /// Cambia voce attiva nel menu aperto saltando separatori
-    /// </summary>
-    /// <param name="delta">Spostamento relativo</param>
-    private void MoveMenuItem(int delta)
-    {
-        List<MenuItemDef> items;
-        int index;
-        int attempts = 0;
-
-        if (this._activeIndex < 0 || this._activeIndex >= this._menus.Count)
-        {
-            return;
-        }
-
-        items = this._menus[this._activeIndex].Items;
-        if (items.Count == 0)
-        {
-            this._activeItemIndex = -1;
-            return;
-        }
-
-        index = this._activeItemIndex;
-        if (index < 0)
-        {
-            index = delta >= 0 ? -1 : items.Count;
-        }
-
-        do
-        {
-            index += delta;
-            if (index < 0)
-                index = items.Count - 1;
-            if (index >= items.Count)
-                index = 0;
-            attempts++;
-        }
-        while (attempts <= items.Count && (items[index].IsSeparator || items[index].Disabled));
-
-        if (attempts <= items.Count)
-        {
-            this._activeItemIndex = index;
-        }
-    }
-
-    /// <summary>
-    /// Seleziona prima voce attivabile
-    /// </summary>
-    private void SetFirstSelectableItem()
-    {
-        this._activeItemIndex = this.FindSelectableItem(0, 1);
-    }
-
-    /// <summary>
-    /// Seleziona ultima voce attivabile
-    /// </summary>
-    private void SetLastSelectableItem()
-    {
-        if (this._activeIndex < 0 || this._activeIndex >= this._menus.Count)
-        {
-            this._activeItemIndex = -1;
-            return;
-        }
-
-        this._activeItemIndex = this.FindSelectableItem(this._menus[this._activeIndex].Items.Count - 1, -1);
-    }
-
-    /// <summary>
-    /// Imposta voce attiva da hover mouse
-    /// </summary>
-    /// <param name="itemIndex">Indice voce</param>
-    private void SetActiveItem(int itemIndex)
-    {
-        if (this._activeIndex >= 0 && this._activeIndex < this._menus.Count &&
-            itemIndex >= 0 && itemIndex < this._menus[this._activeIndex].Items.Count &&
-            !this._menus[this._activeIndex].Items[itemIndex].Disabled)
-        {
-            this._activeItemIndex = itemIndex;
-        }
-    }
-
-    /// <summary>
-    /// Invoca la voce attiva
-    /// </summary>
-    private async Task InvokeActiveItemAsync()
-    {
-        if (this._activeIndex < 0 || this._activeIndex >= this._menus.Count)
-        {
-            return;
-        }
-
-        if (this._activeItemIndex < 0 || this._activeItemIndex >= this._menus[this._activeIndex].Items.Count)
-        {
-            return;
-        }
-
-        if (this._menus[this._activeIndex].Items[this._activeItemIndex].IsSeparator || this._menus[this._activeIndex].Items[this._activeItemIndex].Disabled)
-        {
-            return;
-        }
-
-        await this.InvokeItemAsync(this._menus[this._activeIndex].Items[this._activeItemIndex]);
-    }
-
-    /// <summary>
-    /// Cerca una voce selezionabile nel menu attivo
-    /// </summary>
-    private int FindSelectableItem(int startIndex, int direction)
-    {
-        int result = -1;
-        List<MenuItemDef> items;
-
-        if (this._activeIndex < 0 || this._activeIndex >= this._menus.Count)
-        {
-            return result;
-        }
-
-        items = this._menus[this._activeIndex].Items;
-        for (int i = startIndex; i >= 0 && i < items.Count; i += direction)
-        {
-            if (!items[i].IsSeparator && !items[i].Disabled)
-            {
-                result = i;
-                break;
-            }
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// Trova menu tramite mnemonico
-    /// </summary>
-    private bool TryFindMenuMnemonic(string key, out int index)
-    {
-        bool result = false;
-        string normalizedKey = key != null ? key.ToUpperInvariant() : "";
-        index = -1;
-
-        if (normalizedKey.Length == 1)
-        {
-            for (int i = 0; i < this._menus.Count; i++)
-            {
-                if (string.Equals(this._menus[i].Mnemonic, normalizedKey, StringComparison.OrdinalIgnoreCase))
-                {
-                    index = i;
-                    result = true;
-                    break;
-                }
-            }
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// Trova posizione del mnemonico nella label
-    /// </summary>
-    /// <param name="label">Label menu</param>
-    /// <param name="mnemonic">Mnemonico</param>
-    /// <returns>Indice carattere, -1 se non trovato</returns>
-    private int FindMnemonicIndex(string label, string mnemonic)
-    {
-        int result = -1;
-
-        if (!string.IsNullOrEmpty(label) && !string.IsNullOrEmpty(mnemonic))
-        {
-            result = label.IndexOf(mnemonic, StringComparison.OrdinalIgnoreCase);
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// Normalizza indici attivi dopo rebuild menu
-    /// </summary>
-    private void NormalizeActiveMenu()
-    {
-        if (this._activeIndex >= this._menus.Count)
-        {
-            this.CloseMenu();
-            return;
-        }
-
-        if (this._activeIndex >= 0 && this._activeItemIndex < 0)
-        {
-            this.SetFirstSelectableItem();
-        }
-    }
-
-    /// <summary>
-    /// Format label lingua con indicatore di selezione
+    /// Crea la voce di una lingua con l'icona di selezione sulla lingua corrente
     /// </summary>
     /// <param name="label">Label lingua</param>
     /// <param name="language">Codice lingua</param>
-    /// <returns>Label con stato selezionato</returns>
-    private string FormatLanguageLabel(string label, string language)
+    /// <returns>Voce menu lingua</returns>
+    private MenuItemDef CreateLanguageMenuItem(string label, string language)
     {
         string current = AppText.NormalizeLanguage(this.CurrentLanguage);
-        string prefix = string.Equals(current, language, StringComparison.OrdinalIgnoreCase) ? "✓ " : "";
-        return prefix + label;
+        bool selected = string.Equals(current, language, StringComparison.OrdinalIgnoreCase);
+
+        return new MenuItemDef
+        {
+            Label = label,
+            Shortcut = "",
+            Icon = selected ? "check" : "",
+            Callback = () => this.OnLanguageChanged.InvokeAsync(language),
+            Disabled = this.IsCommandMenuBusy()
+        };
     }
 
     /// <summary>
@@ -604,11 +277,12 @@
         for (int i = 0; i < AppSettingsModel.VALID_THEMES.Length; i++)
         {
             string theme = AppSettingsModel.VALID_THEMES[i];
-            string prefix = string.Equals(this.CurrentTheme, theme, StringComparison.Ordinal) ? "✓ " : "";
+            bool selected = string.Equals(this.CurrentTheme, theme, StringComparison.Ordinal);
             items.Add(new MenuItemDef
             {
-                Label = prefix + labels[i],
+                Label = labels[i],
                 Shortcut = "",
+                Icon = selected ? "check" : "",
                 Callback = () => this.OnThemeChanged.InvokeAsync(theme),
                 Disabled = this.IsCommandMenuBusy()
             });

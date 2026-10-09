@@ -1,3 +1,4 @@
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -72,7 +73,7 @@ namespace RemuxForge.Core.Subtitles
                 string[] parts = timing < 0 ? Array.Empty<string>() : lines[timing].Split(new string[] { "-->" }, StringSplitOptions.None);
                 if (parts.Length != 2 || !TryParseTimestamp(parts[0].Trim(), out long start, acceptDotTimestamp, strict) || !TryParseTimestamp(parts[1].Trim(), out long end, acceptDotTimestamp, strict))
                 {
-                    if (strict) throw new InvalidDataException("Invalid SRT cue");
+                    if (strict) throw new InvalidDataException(AppText.T("remux.subtitles.srtInvalidCue"));
                     continue;
                 }
                 result.Add(new SrtSubtitleCue(start, end, string.Join("\n", lines, timing + 1, lines.Length - timing - 1), lines.Length > timing + 1));

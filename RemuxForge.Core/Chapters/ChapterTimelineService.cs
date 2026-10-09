@@ -52,7 +52,7 @@ namespace RemuxForge.Core.Chapters
             ChapterReadResult result = new ChapterReadResult();
             List<MkvMetadataChapterInfo> atoms;
             int editionIndex;
-            int otherEditions = 0;
+            int otherEditions;
             int nested = 0;
             HashSet<int> seenEditions = new HashSet<int>();
 

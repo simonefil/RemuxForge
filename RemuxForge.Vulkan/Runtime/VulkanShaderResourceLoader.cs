@@ -119,13 +119,8 @@ namespace RemuxForge.Vulkan.Runtime
             {
                 if (stream == null)
                     throw new VulkanShaderIncompatibleException("Embedded shader manifest not found.");
-                using (MemoryStream copy = new MemoryStream())
-                {
-                    stream.CopyTo(copy);
-                    byte[] bytes = copy.ToArray();
-                    using (StreamReader reader = new StreamReader(new MemoryStream(bytes)))
-                        return ShaderManifest.Parse(reader, SHA256.HashData(bytes));
-                }
+                using (StreamReader reader = new StreamReader(stream))
+                    return ShaderManifest.Parse(reader);
             }
         }
 
@@ -146,11 +141,6 @@ namespace RemuxForge.Vulkan.Runtime
         #endregion
 
         #region Properties
-
-        /// <summary>
-        /// Gets a copy of the SHA-256 hash of the embedded manifest
-        /// </summary>
-        public byte[] ManifestHash { get { return (byte[])s_manifest.Value.Hash.Clone(); } }
 
         /// <summary>
         /// Gets the toolchain and build metadata recorded in the embedded manifest
@@ -182,12 +172,10 @@ namespace RemuxForge.Vulkan.Runtime
             /// </summary>
             /// <param name="entries">Validated shader entries keyed by shader name</param>
             /// <param name="metadata">Toolchain and build metadata keyed by metadata name</param>
-            /// <param name="hash">SHA-256 hash of the manifest bytes</param>
-            private ShaderManifest(Dictionary<string, ShaderManifestEntry> entries, Dictionary<string, string> metadata, byte[] hash)
+            private ShaderManifest(Dictionary<string, ShaderManifestEntry> entries, Dictionary<string, string> metadata)
             {
                 this._entries = entries;
                 this.Metadata = metadata;
-                this.Hash = hash;
             }
 
             #endregion
@@ -210,9 +198,8 @@ namespace RemuxForge.Vulkan.Runtime
             /// Parses manifest text into validated shader entries and metadata
             /// </summary>
             /// <param name="reader">Reader containing the manifest text; the reader remains owned by the caller</param>
-            /// <param name="hash">SHA-256 hash of the manifest bytes represented by <paramref name="reader"/></param>
-            /// <returns>A parsed manifest retaining the supplied hash and the newly parsed entries and metadata</returns>
-            public static ShaderManifest Parse(TextReader reader, byte[] hash)
+            /// <returns>A parsed manifest with the newly parsed entries and metadata</returns>
+            public static ShaderManifest Parse(TextReader reader)
             {
                 Dictionary<string, ShaderManifestEntry> entries = new Dictionary<string, ShaderManifestEntry>(StringComparer.Ordinal);
                 Dictionary<string, string> metadata = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -250,7 +237,7 @@ namespace RemuxForge.Vulkan.Runtime
                 }
                 if (entries.Count == 0)
                     throw new VulkanShaderIncompatibleException("The shader manifest is empty.");
-                return new ShaderManifest(entries, metadata, hash);
+                return new ShaderManifest(entries, metadata);
             }
 
             #endregion
@@ -273,11 +260,6 @@ namespace RemuxForge.Vulkan.Runtime
             #endregion
 
             #region Properties
-
-            /// <summary>
-            /// Gets the SHA-256 hash of the manifest bytes
-            /// </summary>
-            public byte[] Hash { get; }
 
             /// <summary>
             /// Gets the toolchain and build metadata parsed from the manifest

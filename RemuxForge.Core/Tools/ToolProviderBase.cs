@@ -61,7 +61,7 @@ namespace RemuxForge.Core.Tools
         /// </summary>
         /// <param name="executableName">Nome dell'eseguibile da cercare</param>
         /// <returns>Percorso completo dell'eseguibile, stringa vuota se non trovato</returns>
-        protected static string FindInSystemPath(string executableName)
+        protected internal static string FindInSystemPath(string executableName)
         {
             string result = "";
             string pathEnv = Environment.GetEnvironmentVariable("PATH");
@@ -90,7 +90,7 @@ namespace RemuxForge.Core.Tools
         /// Restituisce l'estensione eseguibile per la piattaforma corrente
         /// </summary>
         /// <returns>".exe" su Windows, stringa vuota altrimenti</returns>
-        protected static string GetExecutableExtension()
+        protected internal static string GetExecutableExtension()
         {
             string result = "";
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))

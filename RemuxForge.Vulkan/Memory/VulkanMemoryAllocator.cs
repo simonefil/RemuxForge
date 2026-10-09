@@ -149,8 +149,6 @@ namespace RemuxForge.Vulkan.Memory
             {
                 ulong allocated = 0;
                 ulong used = 0;
-                ulong hostAllocated = 0;
-                ulong hostUsed = 0;
                 for (int i = 0; i < this._blocks.Count; i++)
                 {
                     if ((this._blocks[i].Properties & VkMemoryPropertyFlags.DeviceLocal) != 0)
@@ -158,13 +156,8 @@ namespace RemuxForge.Vulkan.Memory
                         allocated += this._blocks[i].Size;
                         used += this._blocks[i].UsedBytes;
                     }
-                    else
-                    {
-                        hostAllocated += this._blocks[i].Size;
-                        hostUsed += this._blocks[i].UsedBytes;
-                    }
                 }
-                return new VulkanMemoryStatistics(allocated, used, allocated - used, this._blocks.Count, this.GetPressureThreshold(), hostAllocated, hostUsed);
+                return new VulkanMemoryStatistics(allocated, used, this.GetPressureThreshold());
             }
         }
 
@@ -407,20 +400,12 @@ namespace RemuxForge.Vulkan.Memory
         /// </summary>
         /// <param name="allocatedBytes">Total bytes reserved in device-local blocks</param>
         /// <param name="usedBytes">Bytes currently occupied by active device-local slices</param>
-        /// <param name="cachedBytes">Unoccupied bytes retained in device-local blocks</param>
-        /// <param name="blockCount">Number of device-local and host-visible blocks owned by the allocator</param>
         /// <param name="pressureThreshold">Current device-local pressure threshold</param>
-        /// <param name="hostAllocatedBytes">Total bytes reserved in host-visible blocks</param>
-        /// <param name="hostUsedBytes">Bytes currently occupied by active host-visible slices</param>
-        public VulkanMemoryStatistics(ulong allocatedBytes, ulong usedBytes, ulong cachedBytes, int blockCount, ulong pressureThreshold, ulong hostAllocatedBytes, ulong hostUsedBytes)
+        public VulkanMemoryStatistics(ulong allocatedBytes, ulong usedBytes, ulong pressureThreshold)
         {
             this.AllocatedBytes = allocatedBytes;
             this.UsedBytes = usedBytes;
-            this.CachedBytes = cachedBytes;
-            this.BlockCount = blockCount;
             this.PressureThreshold = pressureThreshold;
-            this.HostAllocatedBytes = hostAllocatedBytes;
-            this.HostUsedBytes = hostUsedBytes;
         }
 
         /// <summary>
@@ -434,28 +419,8 @@ namespace RemuxForge.Vulkan.Memory
         public ulong UsedBytes { get; }
 
         /// <summary>
-        /// Unoccupied bytes retained in device-local blocks
-        /// </summary>
-        public ulong CachedBytes { get; }
-
-        /// <summary>
-        /// Number of device-local and host-visible blocks owned by the allocator
-        /// </summary>
-        public int BlockCount { get; }
-
-        /// <summary>
         /// Current device-local pressure threshold
         /// </summary>
         public ulong PressureThreshold { get; }
-
-        /// <summary>
-        /// Total bytes reserved in host-visible blocks
-        /// </summary>
-        public ulong HostAllocatedBytes { get; }
-
-        /// <summary>
-        /// Bytes currently occupied by active host-visible slices
-        /// </summary>
-        public ulong HostUsedBytes { get; }
     }
 }

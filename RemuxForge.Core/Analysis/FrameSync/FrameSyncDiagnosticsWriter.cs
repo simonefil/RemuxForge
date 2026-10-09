@@ -70,7 +70,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         {
             using (StreamWriter writer = new StreamWriter(filePath, false))
             {
-                writer.WriteLine("episode,source_file,language_file,phase,success,ambiguous,offset_ms,backend,processed_pairs,accepted_pairs,strong_pairs,source_coverage_ms,language_coverage_ms,mean_score,dispersion_ms");
+                writer.WriteLine("episode,source_file,language_file,phase,success,offset_ms,backend,processed_pairs,accepted_pairs,strong_pairs,source_coverage_ms,language_coverage_ms,mean_score,dispersion_ms");
                 if (record.FrameSyncResult.Initial != null && record.FrameSyncResult.Initial.Candidates != null)
                 {
                     for (int candidateIndex = 0; candidateIndex < record.FrameSyncResult.Initial.Candidates.Count; candidateIndex++)
@@ -95,8 +95,6 @@ namespace RemuxForge.Core.Analysis.FrameSync
             writer.Write(this.EscapeCsv(phase));
             writer.Write(',');
             writer.Write(record.FrameSyncResult.Success ? "true" : "false");
-            writer.Write(',');
-            writer.Write(record.FrameSyncResult.Ambiguous ? "true" : "false");
             writer.Write(',');
             writer.Write(candidate.OffsetMs.ToString(CultureInfo.InvariantCulture));
             writer.Write(',');
@@ -124,7 +122,7 @@ namespace RemuxForge.Core.Analysis.FrameSync
         {
             using (StreamWriter writer = new StreamWriter(filePath, false))
             {
-                writer.WriteLine("episode,source_file,language_file,checkpoint_percent,expected_offset_ms,best_offset_ms,backend,processed_pairs,accepted_pairs,strong_pairs,source_coverage_ms,language_coverage_ms,mean_score,dispersion_ms,accepted,reject_reason,timing_ms,extract_ms,match_ms");
+                writer.WriteLine("episode,source_file,language_file,checkpoint_percent,expected_offset_ms,best_offset_ms,backend,processed_pairs,accepted_pairs,strong_pairs,source_coverage_ms,language_coverage_ms,mean_score,accepted,reject_reason,timing_ms,extract_ms,match_ms");
                 for (int pointIndex = 0; pointIndex < record.FrameSyncResult.Points.Count; pointIndex++)
                 {
                     FrameSyncPointResult point = record.FrameSyncResult.Points[pointIndex];
@@ -153,8 +151,6 @@ namespace RemuxForge.Core.Analysis.FrameSync
                     writer.Write(point.LanguageCoverageMs.ToString("F3", CultureInfo.InvariantCulture));
                     writer.Write(',');
                     writer.Write(point.BestScore.ToString("F6", CultureInfo.InvariantCulture));
-                    writer.Write(',');
-                    writer.Write(point.DispersionMs.ToString("F3", CultureInfo.InvariantCulture));
                     writer.Write(',');
                     writer.Write(point.Accepted ? "true" : "false");
                     writer.Write(',');

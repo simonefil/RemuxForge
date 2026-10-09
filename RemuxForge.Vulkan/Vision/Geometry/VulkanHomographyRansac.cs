@@ -162,7 +162,7 @@ namespace RemuxForge.Vulkan.Vision.Geometry
                         this.BindCompact(commandBuffer, compactPipeline, compactSet, compactPush);
                         this._runtime.DeviceApi.vkCmdDispatch(commandBuffer, DivideRoundUp((uint)pairCount, 256), 1, 1);
                         diagnostics.DispatchCount++;
-                        this.ComputeBarrier(commandBuffer);
+                        this._runtime.RecordComputeBarrier(commandBuffer);
                         compactPush.Operation = 1;
                         this.BindCompact(commandBuffer, compactPipeline, compactSet, compactPush);
                         this._runtime.DeviceApi.vkCmdDispatch(commandBuffer, 1, 1, 1);
@@ -202,7 +202,7 @@ namespace RemuxForge.Vulkan.Vision.Geometry
                         this.Bind(commandBuffer, pipeline, descriptorSet, push);
                         this._runtime.DeviceApi.vkCmdDispatchIndirect(commandBuffer, controlLease.Buffer.Buffer, sizeof(uint));
                         diagnostics.DispatchCount++;
-                        this.ComputeBarrier(commandBuffer);
+                        this._runtime.RecordComputeBarrier(commandBuffer);
                         push.Operation = 1;
                         this.Bind(commandBuffer, pipeline, descriptorSet, push);
                         this._runtime.DeviceApi.vkCmdDispatchIndirect(commandBuffer, controlLease.Buffer.Buffer, 4UL * sizeof(uint));
@@ -291,30 +291,6 @@ namespace RemuxForge.Vulkan.Vision.Geometry
         }
 
         /// <summary>
-        /// Makes compute writes visible to subsequent compute dispatches
-        /// </summary>
-        /// <param name="commandBuffer">Command buffer that receives the barrier</param>
-        private void ComputeBarrier(VkCommandBuffer commandBuffer)
-        {
-            VkMemoryBarrier barrier = new VkMemoryBarrier
-            {
-                srcAccessMask = VkAccessFlags.ShaderWrite,
-                dstAccessMask = VkAccessFlags.ShaderRead | VkAccessFlags.ShaderWrite
-            };
-            this._runtime.DeviceApi.vkCmdPipelineBarrier(
-                commandBuffer,
-                VkPipelineStageFlags.ComputeShader,
-                VkPipelineStageFlags.ComputeShader,
-                VkDependencyFlags.None,
-                1,
-                &barrier,
-                0,
-                null,
-                0,
-                null);
-        }
-
-        /// <summary>
         /// Converts one GPU result record into the managed pair-result contract
         /// </summary>
         /// <param name="pair">Frame pair associated with the GPU record</param>
@@ -334,10 +310,6 @@ namespace RemuxForge.Vulkan.Vision.Geometry
                 ForwardRatioMatchCount = ValidateCount(value.Header1.X, firstCapacity, "forwardRatioMatchCount", pair),
                 ReciprocalMatchCount = ValidateCount(value.Header1.Y, firstCapacity, "reciprocalMatchCount", pair),
                 InlierCount = ValidateCount(value.Header1.Z, firstCapacity, "inlierCount", pair),
-                InlierRatio = value.Metrics0.X,
-                FirstCoverage = value.Metrics0.Y,
-                SecondCoverage = value.Metrics0.Z,
-                MeanReprojectionError = value.Metrics0.W,
                 Score = value.Metrics1.X,
                 Homography = new[]
                 {

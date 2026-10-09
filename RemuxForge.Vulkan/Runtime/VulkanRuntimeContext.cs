@@ -2,10 +2,8 @@ using RemuxForge.Vulkan.Memory;
 using RemuxForge.Vulkan.Pipelines;
 using RemuxForge.Vulkan.Scheduling;
 using System;
-using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using Vortice.Vulkan;
@@ -18,15 +16,6 @@ namespace RemuxForge.Vulkan.Runtime
     /// </summary>
     internal sealed unsafe class VulkanRuntimeContext : IDisposable
     {
-        #region Costanti
-
-        /// <summary>
-        /// Size in bytes of the private pipeline-cache envelope
-        /// </summary>
-        private const int PIPELINE_CACHE_HEADER_SIZE = 72;
-
-        #endregion
-
         #region Variabili di classe
 
         /// <summary>
@@ -101,10 +90,9 @@ namespace RemuxForge.Vulkan.Runtime
         /// <summary>
         /// Initializes the Vulkan loader, instance, device and shared runtime resources
         /// </summary>
-        /// <param name="options">Options controlling device selection, memory, validation and pipeline-cache loading</param>
+        /// <param name="options">Options controlling device selection, memory and validation</param>
         public VulkanRuntimeContext(VulkanVisionOptions options)
         {
-            long initializationStart = Stopwatch.GetTimestamp();
             this.Options = options;
             this.InitializeLoader();
             try
@@ -114,13 +102,11 @@ namespace RemuxForge.Vulkan.Runtime
                 this.CreateDevice();
                 this.CreateTimelineSemaphore();
                 this.ShaderLoader = new VulkanShaderResourceLoader();
-                this.CreatePipelineCache(options.InitialPipelineCache);
+                this.CreatePipelineCache();
                 this.PipelineLibrary = new VulkanComputePipelineLibrary(this);
                 this.Allocator = new VulkanMemoryAllocator(this, options.MaximumVramBytes);
-                this.Capabilities.MemoryPressureThresholdBytes = this.Allocator.GetStatistics().PressureThreshold;
                 this.ResourcePool = new VulkanResourcePool(this.Allocator);
                 this.Scheduler = new VulkanWorkScheduler(this, options.MaximumInFlightWorkloads);
-                this.InitializationTicks = Stopwatch.GetTimestamp() - initializationStart;
             }
             catch
             {
@@ -132,25 +118,6 @@ namespace RemuxForge.Vulkan.Runtime
         #endregion
 
         #region Metodi pubblici
-
-        /// <summary>
-        /// Exports the pipeline cache together with the identity data required for compatibility validation
-        /// </summary>
-        /// <returns>An opaque cache envelope that can be supplied to a later runtime initialization</returns>
-        public byte[] GetPipelineCacheData()
-        {
-            this.ThrowIfDisposed();
-            nuint size = 0;
-            this._deviceApi.vkGetPipelineCacheData(this._pipelineCache, &size, null).CheckResult();
-            if (size == 0)
-                return this.WrapPipelineCache(Array.Empty<byte>());
-            byte[] data = new byte[size];
-            fixed (byte* pointer = data)
-                this._deviceApi.vkGetPipelineCacheData(this._pipelineCache, &size, pointer).CheckResult();
-            if ((nuint)data.Length != size)
-                Array.Resize(ref data, checked((int)size));
-            return this.WrapPipelineCache(data);
-        }
 
         /// <summary>
         /// Releases all Vulkan and managed resources owned by this context
@@ -204,6 +171,16 @@ namespace RemuxForge.Vulkan.Runtime
                 else if ((message.Severity & VkDebugUtilsMessageSeverityFlagsEXT.Warning) != 0)
                     diagnostics.ValidationWarningCount++;
             }
+        }
+
+        /// <summary>
+        /// Records a compute-to-compute memory barrier for shader writes consumed by subsequent dispatches
+        /// </summary>
+        /// <param name="commandBuffer">Command buffer that receives the barrier</param>
+        internal void RecordComputeBarrier(VkCommandBuffer commandBuffer)
+        {
+            VkMemoryBarrier barrier = new VkMemoryBarrier { srcAccessMask = VkAccessFlags.ShaderWrite, dstAccessMask = VkAccessFlags.ShaderRead | VkAccessFlags.ShaderWrite };
+            this._deviceApi.vkCmdPipelineBarrier(commandBuffer, VkPipelineStageFlags.ComputeShader, VkPipelineStageFlags.ComputeShader, VkDependencyFlags.None, 1, &barrier, 0, null, 0, null);
         }
 
         #endregion
@@ -386,40 +363,27 @@ namespace RemuxForge.Vulkan.Runtime
             byte* name = properties.deviceName;
             bool timeline = properties.apiVersion >= VkVersion.Version_1_2;
             bool subgroupBallot = (subgroupProperties.supportedStages & VkShaderStageFlags.Compute) != 0 && (subgroupProperties.supportedOperations & VkSubgroupFeatureFlags.Ballot) != 0;
-            byte[] pipelineCacheUuid = new byte[16];
-            byte* uuid = properties.pipelineCacheUUID;
-            Marshal.Copy((IntPtr)uuid, pipelineCacheUuid, 0, pipelineCacheUuid.Length);
             VulkanDeviceCapabilities result = new VulkanDeviceCapabilities
             {
                 EnumerationIndex = index,
                 DeviceName = Marshal.PtrToStringUTF8((IntPtr)name) ?? "Vulkan GPU",
-                ApiVersion = FormatApiVersion(properties.apiVersion),
-                DriverVersion = properties.driverVersion.ToString(),
-                DriverVersionRaw = properties.driverVersion,
                 VendorId = properties.vendorID,
                 DeviceId = properties.deviceID,
                 DeviceType = (uint)properties.deviceType,
                 ComputeQueueFamilyIndex = queueFamilyIndex,
                 MaximumStorageBufferRange = properties.limits.maxStorageBufferRange,
                 MinimumStorageBufferOffsetAlignment = properties.limits.minStorageBufferOffsetAlignment,
-                MaximumComputeWorkGroupInvocations = properties.limits.maxComputeWorkGroupInvocations,
                 MaximumComputeSharedMemorySize = properties.limits.maxComputeSharedMemorySize,
-                MaximumComputeWorkGroupCountX = properties.limits.maxComputeWorkGroupCount[0],
                 MaximumComputeWorkGroupCountY = properties.limits.maxComputeWorkGroupCount[1],
                 SubgroupSize = subgroupProperties.subgroupSize,
                 SubgroupBallot = subgroupBallot,
                 IntegerDotProduct = integerDotFeatures.shaderIntegerDotProduct && integerDotProperties.integerDotProduct4x8BitPackedUnsignedAccelerated,
                 ShaderInt64 = features2.features.shaderInt64,
                 CooperativeMatrix = cooperativeMatrix,
-                CooperativeMatrixMSize = cooperativeMatrixMSize,
-                CooperativeMatrixNSize = cooperativeMatrixNSize,
-                CooperativeMatrixKSize = cooperativeMatrixKSize,
-                TimelineSemaphore = timeline,
                 PortabilitySubset = this.HasDeviceExtension(device, VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME),
                 MemoryBudget = this.HasDeviceExtension(device, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME),
                 TimestampQueries = properties.limits.timestampComputeAndGraphics,
                 TimestampPeriodNanoseconds = properties.limits.timestampPeriod,
-                PipelineCacheUuid = pipelineCacheUuid,
                 Tier = !timeline ? VulkanCapabilityTier.Unsupported : subgroupBallot ? VulkanCapabilityTier.Subgroup : VulkanCapabilityTier.Base
             };
             return result;
@@ -482,71 +446,12 @@ namespace RemuxForge.Vulkan.Runtime
         }
 
         /// <summary>
-        /// Initializes the pipeline cache from optional compatible data
+        /// Initializes an empty in-memory pipeline cache
         /// </summary>
-        /// <param name="initialData">Previously exported cache envelope, or <see langword="null"/> when no cache is available</param>
-        private void CreatePipelineCache(byte[] initialData)
+        private void CreatePipelineCache()
         {
             VkPipelineCacheCreateInfo createInfo = new VkPipelineCacheCreateInfo();
-            byte[] payload = this.UnwrapPipelineCache(initialData);
-            if (payload.Length == 0)
-            {
-                this._deviceApi.vkCreatePipelineCache(&createInfo, null, out this._pipelineCache).CheckResult();
-                return;
-            }
-            fixed (byte* pointer = payload)
-            {
-                createInfo.initialDataSize = (nuint)payload.Length;
-                createInfo.pInitialData = pointer;
-                VkResult result = this._deviceApi.vkCreatePipelineCache(&createInfo, null, out this._pipelineCache);
-                if (result != VkResult.Success)
-                {
-                    createInfo.initialDataSize = 0;
-                    createInfo.pInitialData = null;
-                    this._deviceApi.vkCreatePipelineCache(&createInfo, null, out this._pipelineCache).CheckResult();
-                }
-            }
-        }
-
-        /// <summary>
-        /// Adds device and shader identity data to a pipeline-cache payload
-        /// </summary>
-        /// <param name="payload">Raw Vulkan pipeline-cache data returned by the driver</param>
-        /// <returns>A private envelope containing the compatibility header and the unchanged driver payload</returns>
-        private byte[] WrapPipelineCache(byte[] payload)
-        {
-            byte[] result = new byte[checked(PIPELINE_CACHE_HEADER_SIZE + payload.Length)];
-            result[0] = (byte)'R'; result[1] = (byte)'F'; result[2] = (byte)'V'; result[3] = (byte)'K';
-            result[4] = (byte)'P'; result[5] = (byte)'C'; result[6] = 0; result[7] = 0;
-            BinaryPrimitives.WriteUInt32LittleEndian(result.AsSpan(8, 4), this.Capabilities.VendorId);
-            BinaryPrimitives.WriteUInt32LittleEndian(result.AsSpan(12, 4), this.Capabilities.DeviceId);
-            BinaryPrimitives.WriteUInt32LittleEndian(result.AsSpan(16, 4), this.Capabilities.DriverVersionRaw);
-            this.Capabilities.PipelineCacheUuid.Span.CopyTo(result.AsSpan(20, 16));
-            this.ShaderLoader.ManifestHash.CopyTo(result, 36);
-            BinaryPrimitives.WriteInt32LittleEndian(result.AsSpan(68, 4), payload.Length);
-            payload.CopyTo(result, PIPELINE_CACHE_HEADER_SIZE);
-            return result;
-        }
-
-        /// <summary>
-        /// Extracts a driver pipeline-cache payload when the persisted envelope matches this runtime
-        /// </summary>
-        /// <param name="data">Persisted pipeline-cache envelope to validate</param>
-        /// <returns>The raw driver payload, or an empty array when the envelope is invalid or incompatible</returns>
-        private byte[] UnwrapPipelineCache(byte[] data)
-        {
-            if (data == null || data.Length < PIPELINE_CACHE_HEADER_SIZE)
-                return Array.Empty<byte>();
-            if (data[0] != (byte)'R' || data[1] != (byte)'F' || data[2] != (byte)'V' || data[3] != (byte)'K' || data[4] != (byte)'P' || data[5] != (byte)'C' || data[6] != 0 || data[7] != 0)
-                return Array.Empty<byte>();
-            if (BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(8, 4)) != this.Capabilities.VendorId || BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(12, 4)) != this.Capabilities.DeviceId || BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(16, 4)) != this.Capabilities.DriverVersionRaw)
-                return Array.Empty<byte>();
-            if (!data.AsSpan(20, 16).SequenceEqual(this.Capabilities.PipelineCacheUuid.Span) || !data.AsSpan(36, 32).SequenceEqual(this.ShaderLoader.ManifestHash))
-                return Array.Empty<byte>();
-            int payloadLength = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(68, 4));
-            if (payloadLength < 0 || data.Length != PIPELINE_CACHE_HEADER_SIZE + payloadLength)
-                return Array.Empty<byte>();
-            return data.AsSpan(PIPELINE_CACHE_HEADER_SIZE, payloadLength).ToArray();
+            this._deviceApi.vkCreatePipelineCache(&createInfo, null, out this._pipelineCache).CheckResult();
         }
 
         /// <summary>
@@ -682,19 +587,6 @@ namespace RemuxForge.Vulkan.Runtime
         }
 
         /// <summary>
-        /// Formats a Vulkan packed API version as major, minor and patch components
-        /// </summary>
-        /// <param name="version">Packed Vulkan version value</param>
-        /// <returns>Version text in <c>major.minor.patch</c> form</returns>
-        private static string FormatApiVersion(uint version)
-        {
-            uint major = (version >> 22) & 0x7Fu;
-            uint minor = (version >> 12) & 0x3FFu;
-            uint patch = version & 0xFFFu;
-            return major.ToString() + "." + minor.ToString() + "." + patch.ToString();
-        }
-
-        /// <summary>
         /// Compares device candidates using the runtime's stable preference order
         /// </summary>
         /// <param name="left">First candidate to compare</param>
@@ -716,15 +608,6 @@ namespace RemuxForge.Vulkan.Runtime
             return left.EnumerationIndex.CompareTo(right.EnumerationIndex);
         }
 
-        /// <summary>
-        /// Throws when the runtime context is no longer usable
-        /// </summary>
-        private void ThrowIfDisposed()
-        {
-            if (this._disposed)
-                throw new ObjectDisposedException(nameof(VulkanRuntimeContext));
-        }
-
         #endregion
 
         #region Properties
@@ -740,7 +623,7 @@ namespace RemuxForge.Vulkan.Runtime
         public VulkanDeviceCapabilities Capabilities { get; private set; }
 
         /// <summary>
-        /// Loader for embedded shader resources and their manifest hash
+        /// Loader for embedded shader resources and their manifest
         /// </summary>
         public VulkanShaderResourceLoader ShaderLoader { get; private set; }
 
@@ -763,11 +646,6 @@ namespace RemuxForge.Vulkan.Runtime
         /// Library that owns cached compute pipelines for this device
         /// </summary>
         public VulkanComputePipelineLibrary PipelineLibrary { get; private set; }
-
-        /// <summary>
-        /// Host stopwatch ticks spent initializing the runtime
-        /// </summary>
-        public long InitializationTicks { get; private set; }
 
         /// <summary>
         /// Instance-level Vulkan command table used by dependent runtime components

@@ -1,3 +1,4 @@
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System.Collections.Generic;
 using System.IO;
@@ -60,17 +61,17 @@ namespace RemuxForge.Core.Pipeline
             List<string> sourceFiles = this.FindVideoFiles(options.SourceFolder, options.FileExtensions, options.Recursive, cancellationToken);
             bool singleFileMode = File.Exists(options.SourceFolder);
 
-            this._log(LogSection.General, LogLevel.Success, "Trovati " + sourceFiles.Count + " file sorgente (" + extList + ")");
+            this._log(LogSection.General, LogLevel.Success, AppText.F("remux.pipeline.sourceFilesFound", sourceFiles.Count, extList));
 
             if (needsMerge)
             {
                 if (singleFileMode)
                 {
-                    this._log(LogSection.General, LogLevel.Success, "File lingua singolo selezionato");
+                    this._log(LogSection.General, LogLevel.Success, AppText.T("remux.pipeline.singleLangFile"));
                 }
                 else
                 {
-                    this._log(LogSection.General, LogLevel.Info, "Indicizzazione cartella lingua...");
+                    this._log(LogSection.General, LogLevel.Info, AppText.T("remux.pipeline.indexingLangFolder"));
                     List<string> languageFiles = this.FindVideoFiles(options.LanguageFolder, options.FileExtensions, options.Recursive, cancellationToken);
 
                     for (int i = 0; i < languageFiles.Count; i++)
@@ -84,7 +85,7 @@ namespace RemuxForge.Core.Pipeline
                         }
                     }
 
-                    this._log(LogSection.General, LogLevel.Success, "Indicizzati " + languageIndex.Count + " file lingua");
+                    this._log(LogSection.General, LogLevel.Success, AppText.F("remux.pipeline.langFilesIndexed", languageIndex.Count));
                 }
             }
 
@@ -115,14 +116,14 @@ namespace RemuxForge.Core.Pipeline
                     }
                     else if (string.IsNullOrEmpty(episodeId))
                     {
-                        record.SkipReason = "No episode ID";
+                        record.SkipCode = FileProcessingRecord.SKIP_NO_EPISODE_ID;
                         record.Status = FileStatus.Skipped;
                         records.Add(record);
                         continue;
                     }
                     else if (!languageIndex.ContainsKey(episodeId))
                     {
-                        record.SkipReason = "No match";
+                        record.SkipCode = FileProcessingRecord.SKIP_NO_MATCH;
                         record.Status = FileStatus.Skipped;
                         records.Add(record);
                         continue;

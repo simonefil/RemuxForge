@@ -57,7 +57,7 @@ namespace RemuxForge.Web.Services
         /// <summary>
         /// Costruttore
         /// </summary>
-        public MetadataOrchestrator() : base(AppText.T("web.metadata.ready"), true)
+        public MetadataOrchestrator() : base("web.metadata.ready", true)
         {
             this._options = new Options();
             this._options.Mode = Options.MODE_METADATA;

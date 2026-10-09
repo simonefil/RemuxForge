@@ -1,47 +1,31 @@
-<div class="dialog-overlay visible">
-    <div class="dialog-box dialog-box-wide" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="mediainfo-dialog-title" @onclick:stopPropagation="true">
-        <div id="mediainfo-dialog-title" class="dialog-title">@AppText.F("web.mediaInfo.title", Title)</div>
-        <div class="dialog-body" style="max-height: 60vh; overflow-y: auto;">
-            <pre style="white-space: pre-wrap; font-size: 0.9em; color: var(--rz-text-color);">@(!string.IsNullOrEmpty(Report) ? Report : AppText.T("web.mediaInfo.noReport"))</pre>
-        </div>
-        <div class="dialog-footer">
-            <RadzenButton Text="@AppText.T("web.common.copy")" Icon="content_copy" Variant="Variant.Outlined" Click="@CopyReportAsync" />
-            <RadzenButton Text="@AppText.T("web.common.close")" Icon="close" class="dialog-close-button" Click="@OnClose" />
-        </div>
+@inherits AppDialogContentBase
+
+<div class="rf-dialog" @ref="DialogContent">
+    <div class="rf-dialog-body" style="max-height: 60vh;">
+        <pre style="white-space: pre-wrap; font-size: 0.9em; color: var(--rz-text-color);">@(!string.IsNullOrEmpty(Report) ? Report : AppText.T("web.mediaInfo.noReport"))</pre>
+    </div>
+    <div class="rf-dialog-footer">
+        <RadzenButton Text="@AppText.T("web.common.copy")" Icon="content_copy" Variant="Variant.Outlined" Click="@CopyReportAsync" />
+        <RadzenButton Text="@AppText.T("web.common.close")" Icon="close" Click="@(() => CloseDialog())" />
     </div>
 </div>
 
 @code {
-    /// <summary>
-    /// Titolo del dialog
-    /// </summary>
-    [Parameter] public string Title { get; set; }
-
     /// <summary>
     /// Report mediainfo testuale
     /// </summary>
     [Parameter] public string Report { get; set; }
 
     /// <summary>
-    /// Modulo JS interop per clipboard
-    /// </summary>
-    [Parameter] public IJSObjectReference JsModule { get; set; }
-
-    /// <summary>
-    /// Evento chiusura dialog
-    /// </summary>
-    [Parameter] public EventCallback OnClose { get; set; }
-
-    /// <summary>
     /// Copia il report nella clipboard via JS interop
     /// </summary>
     private async Task CopyReportAsync()
     {
-        if (this.JsModule != null && !string.IsNullOrEmpty(this.Report))
+        if (JsModule != null && !string.IsNullOrEmpty(Report))
         {
             try
             {
-                await this.JsModule.InvokeVoidAsync("copyToClipboard", this.Report);
+                await JsModule.InvokeVoidAsync("copyToClipboard", Report);
             }
             catch
             {

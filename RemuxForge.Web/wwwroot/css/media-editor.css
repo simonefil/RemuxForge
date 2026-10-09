@@ -115,7 +115,7 @@
     grid-template-columns: auto 6.5rem;
 }
 
-.media-preview-controls .form-input {
+.media-preview-controls .rz-textbox {
     width: 100%;
     min-width: 0;
     font-size: var(--rz-text-body2-font-size);
@@ -146,8 +146,14 @@
     font-size: var(--rz-text-caption-font-size);
 }
 
-.media-audio-mode-button.rz-button {
+.rz-selectbar.media-audio-mode {
+    display: flex;
     width: 100%;
+    min-width: 0;
+}
+
+.rz-selectbar.media-audio-mode > .rz-button {
+    flex: 1 1 0;
     min-width: 0;
     height: var(--rz-input-height);
 }
@@ -165,6 +171,13 @@
 /* Strumenti della timeline: decidono cosa fa il tasto sinistro sulle corsie. */
 .media-timeline-tools {
     display: flex;
+    gap: calc(var(--rz-gap) * 0.2);
+}
+
+/* Pulsanti della pagina nella barra della timeline. */
+.media-timeline-actions {
+    display: flex;
+    flex-wrap: wrap;
     gap: calc(var(--rz-gap) * 0.2);
 }
 

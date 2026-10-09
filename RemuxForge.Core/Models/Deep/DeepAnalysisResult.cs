@@ -306,7 +306,6 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public DeepAnalysisResult()
         {
-            this.BackendName = "";
             this.Status = DeepAnalysisStatus.NotStarted;
             this.RejectReason = "";
             this.StretchFactor = "";
@@ -325,11 +324,6 @@ namespace RemuxForge.Core.Models
         #endregion
 
         #region Proprietà
-
-        /// <summary>
-        /// Nome del backend visuale usato per le misure di hash
-        /// </summary>
-        public string BackendName { get; set; }
 
         /// <summary>
         /// Stato strutturato corrente della pipeline di analisi

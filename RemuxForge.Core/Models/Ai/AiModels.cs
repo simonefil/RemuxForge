@@ -213,7 +213,6 @@ namespace RemuxForge.Core.Models
             this.Nonce = "";
             this.CodeVerifier = "";
             this.ClientId = "";
-            this.CreatedAtUtc = DateTime.UtcNow;
         }
 
         #endregion
@@ -250,11 +249,6 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public string ClientId { get; set; }
 
-        /// <summary>
-        /// Istante di creazione del tentativo
-        /// </summary>
-        public DateTime CreatedAtUtc { get; set; }
-
         #endregion
     }
 
@@ -270,11 +264,9 @@ namespace RemuxForge.Core.Models
         /// </summary>
         /// <param name="kind">Categoria errore</param>
         /// <param name="message">Messaggio localizzato</param>
-        /// <param name="serviceCode">Codice errore restituito dal servizio, vuoto se assente</param>
-        public AiServiceException(AiErrorKind kind, string message, string serviceCode) : base(message)
+        public AiServiceException(AiErrorKind kind, string message) : base(message)
         {
             this.Kind = kind;
-            this.ServiceCode = serviceCode != null ? serviceCode : "";
         }
 
         /// <summary>
@@ -282,12 +274,10 @@ namespace RemuxForge.Core.Models
         /// </summary>
         /// <param name="kind">Categoria errore</param>
         /// <param name="message">Messaggio localizzato</param>
-        /// <param name="serviceCode">Codice errore restituito dal servizio, vuoto se assente</param>
         /// <param name="innerException">Eccezione originale</param>
-        public AiServiceException(AiErrorKind kind, string message, string serviceCode, Exception innerException) : base(message, innerException)
+        public AiServiceException(AiErrorKind kind, string message, Exception innerException) : base(message, innerException)
         {
             this.Kind = kind;
-            this.ServiceCode = serviceCode != null ? serviceCode : "";
         }
 
         #endregion
@@ -298,11 +288,6 @@ namespace RemuxForge.Core.Models
         /// Categoria errore
         /// </summary>
         public AiErrorKind Kind { get; private set; }
-
-        /// <summary>
-        /// Codice errore restituito dal servizio
-        /// </summary>
-        public string ServiceCode { get; private set; }
 
         #endregion
     }

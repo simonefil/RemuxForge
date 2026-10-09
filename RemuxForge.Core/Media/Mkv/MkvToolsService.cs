@@ -58,7 +58,7 @@ namespace RemuxForge.Core.Media.Mkv
             catch
             {
                 // mkvmerge non trovato o non eseguibile
-                ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, "mkvmerge non accessibile");
+                ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, AppText.T("remux.media.mkvmergeInaccessible"));
                 result = false;
             }
 
@@ -121,7 +121,7 @@ namespace RemuxForge.Core.Media.Mkv
             {
                 // mkvmerge non ha prodotto output valido
                 if (isolated) error?.Invoke(ex.Message);
-                else ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, "Impossibile leggere info file per: " + filePath);
+                else ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, AppText.F("remux.media.fileInfoReadFailed", filePath));
             }
 
             if (!string.IsNullOrEmpty(jsonOutput))
@@ -164,7 +164,7 @@ namespace RemuxForge.Core.Media.Mkv
                 {
                     // Errore parsing JSON, info non disponibili
                     if (isolated) error?.Invoke(AppText.F("remuxConfiguration.fileInfoJsonFailed", ex.Message));
-                    else ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, "Errore parsing JSON file info: " + ex.Message);
+                    else ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, AppText.F("remuxConfiguration.fileInfoJsonFailed", ex.Message));
                     result = null;
                 }
                 finally
@@ -339,7 +339,7 @@ namespace RemuxForge.Core.Media.Mkv
                         !req.ConvertedLangTracks.ContainsKey(requiredTrackId) ||
                         string.IsNullOrEmpty(req.ConvertedLangTracks[requiredTrackId]))
                     {
-                        throw new InvalidOperationException("Output audio Language obbligatorio mancante per track " + requiredTrackId);
+                        throw new InvalidOperationException(AppText.F("remux.audio.requiredLangOutputMissing", requiredTrackId));
                     }
                 }
             }
@@ -420,7 +420,7 @@ namespace RemuxForge.Core.Media.Mkv
                         // Imposta lingua e titolo sulla traccia convertita (trackId 0 nel file standalone)
                         if (origTrack != null)
                         {
-                            AddStandaloneAudioMetadata(mkvArgs, origTrack);
+                            AddStandaloneTrackMetadata(mkvArgs, origTrack);
                         }
 
                         // Il file standalone eredita chapters e metadati del contenitore di partenza, che ffmpeg riversa
@@ -544,7 +544,7 @@ namespace RemuxForge.Core.Media.Mkv
                             TrackInfo origLangTrack = req.ProcessedLangAudioInfo != null && req.ProcessedLangAudioInfo.TryGetValue(langId, out TrackInfo processedLangTrack) ? processedLangTrack : FindTrackById(req.LangAudioTracks, langId);
                             if (origLangTrack != null)
                             {
-                                AddStandaloneAudioMetadata(mkvArgs, origLangTrack);
+                                AddStandaloneTrackMetadata(mkvArgs, origLangTrack);
                             }
 
                             // Il file standalone eredita chapters e metadati del contenitore di partenza, che ffmpeg riversa
@@ -581,7 +581,7 @@ namespace RemuxForge.Core.Media.Mkv
                                 mkvArgs.Add(syncValue);
                             }
 
-                            AddStandaloneSubtitleMetadata(mkvArgs, req.LangSubTracks[i]);
+                            AddStandaloneTrackMetadata(mkvArgs, req.LangSubTracks[i]);
 
                             // Il file standalone eredita chapters e metadati del contenitore di partenza, che ffmpeg riversa
                             // anche come tag di traccia: qui resta solo la traccia, con i metadati impostati esplicitamente
@@ -929,42 +929,11 @@ namespace RemuxForge.Core.Media.Mkv
         }
 
         /// <summary>
-        /// Aggiunge i metadati originali per una traccia audio standalone
+        /// Aggiunge i metadati originali per una traccia audio o sottotitoli standalone (trackId 0)
         /// </summary>
         /// <param name="mkvArgs">Lista argomenti mkvmerge in costruzione</param>
         /// <param name="origTrack">Traccia originale con metadati lingua</param>
-        private static void AddStandaloneAudioMetadata(List<string> mkvArgs, TrackInfo origTrack)
-        {
-            // Lingua: usa IETF se disponibile, altrimenti ISO 639-2
-            if (!string.IsNullOrEmpty(origTrack.LanguageIetf))
-            {
-                mkvArgs.Add("--language");
-                mkvArgs.Add("0:" + origTrack.LanguageIetf);
-            }
-            else if (!string.IsNullOrEmpty(origTrack.Language))
-            {
-                mkvArgs.Add("--language");
-                mkvArgs.Add("0:" + origTrack.Language);
-            }
-
-            if (!string.IsNullOrEmpty(origTrack.Name))
-            {
-                mkvArgs.Add("--track-name");
-                mkvArgs.Add("0:" + origTrack.Name);
-            }
-
-            mkvArgs.Add("--default-track");
-            mkvArgs.Add("0:" + (origTrack.DefaultTrack ? "yes" : "no"));
-            mkvArgs.Add("--forced-display-flag");
-            mkvArgs.Add("0:" + (origTrack.ForcedTrack ? "yes" : "no"));
-        }
-
-        /// <summary>
-        /// Aggiunge metadati completi per una traccia sottotitoli standalone (trackId 0)
-        /// </summary>
-        /// <param name="mkvArgs">Lista argomenti mkvmerge in costruzione</param>
-        /// <param name="origTrack">Traccia sottotitoli originale</param>
-        private static void AddStandaloneSubtitleMetadata(List<string> mkvArgs, TrackInfo origTrack)
+        private static void AddStandaloneTrackMetadata(List<string> mkvArgs, TrackInfo origTrack)
         {
             // Lingua: usa IETF se disponibile, altrimenti ISO 639-2
             if (!string.IsNullOrEmpty(origTrack.LanguageIetf))

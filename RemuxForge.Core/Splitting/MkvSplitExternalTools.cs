@@ -191,27 +191,6 @@ namespace RemuxForge.Core.Splitting
             return vp;
         }
 
-        /// <summary>
-        /// Legge durata container via ffprobe
-        /// </summary>
-        /// <param name="inputFile">File sorgente MKV</param>
-        /// <returns>Durata container in secondi</returns>
-        public double GetDuration(string inputFile)
-        {
-            ProcessResult r = this.Run(this._ffprobe, new string[] { "-v", "quiet", "-show_entries", "format=duration", "-of", "csv=p=0", inputFile });
-            return double.Parse(r.Stdout.Trim(), CultureInfo.InvariantCulture);
-        }
-
-        /// <summary>
-        /// Estrae PTS video via mkvextract timestamps_v2
-        /// </summary>
-        /// <param name="sourceFile">File sorgente MKV</param>
-        /// <returns>Array ordinato dei PTS video in secondi</returns>
-        public double[] ExtractSourcePts(string sourceFile)
-        {
-            return this.ExtractSourcePts(sourceFile, this.CountPackets(sourceFile), out _);
-        }
-
         /// <summary>Separa i PTS dei frame dal confine finale aggiuntivo di timestamps_v2.</summary>
         public double[] ExtractSourcePts(string sourceFile, int packetCount, out double endTimestamp)
         {
@@ -354,16 +333,15 @@ namespace RemuxForge.Core.Splitting
         }
 
         /// <summary>
-        /// Legge solo keyflag video
+        /// Legge i keyflag video, marcando i keyframe di GOP aperto
         /// </summary>
         /// <param name="inputFile">File sorgente MKV</param>
-        /// <returns>Lista dei packet con flag keyframe</returns>
+        /// <returns>Fotogrammi in ordine di presentazione con flag keyframe</returns>
         public List<MkvSplitFrameInfo> GetKeyFlags(string inputFile)
         {
             List<MkvSplitFrameInfo> frames = new List<MkvSplitFrameInfo>(1 << 17);
             List<double> pts = new List<double>(1 << 17);
-            MkvSplitFrameInfo[] byPresentation;
-            double[] keys;
+            List<MkvSplitFrameInfo> byPresentation;
             double value;
 
             ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.T("split.tools.probingKeyflags"));
@@ -388,15 +366,46 @@ namespace RemuxForge.Core.Splitting
                 pts.Add(value);
             });
 
+            byPresentation = ToPresentationOrder(frames, pts.ToArray());
+
+            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.tools.packetsProbed", byPresentation.Count));
+            return byPresentation;
+        }
+
+        /// <summary>
+        /// Riordina i packet per presentazione e marca i keyframe di GOP aperto
+        /// </summary>
+        /// <param name="decodeOrder">Packet in ordine di decodifica</param>
+        /// <param name="pts">PTS dei packet in ordine di decodifica</param>
+        /// <returns>Fotogrammi in ordine di presentazione</returns>
+        public static List<MkvSplitFrameInfo> ToPresentationOrder(List<MkvSplitFrameInfo> decodeOrder, double[] pts)
+        {
+            int[] order = new int[pts.Length];
+            int[] presentationOf = new int[pts.Length];
+            MkvSplitFrameInfo[] frames = decodeOrder.ToArray();
+            int maxBefore = -1;
+
+            for (int index = 0; index < order.Length; index++)
+                order[index] = index;
+            Array.Sort((double[])pts.Clone(), order);
+            for (int index = 0; index < order.Length; index++)
+                presentationOf[order[index]] = index;
+
+            // Con GOP aperti un fotogramma decodificato dopo il keyframe si mostra prima: mkvmerge taglia in ordine
+            // di decodifica e lo sposterebbe nell'output sbagliato. Il keyframe è chiuso solo se i fotogrammi
+            // decodificati prima sono esattamente quelli mostrati prima.
+            for (int decode = 0; decode < frames.Length; decode++)
+            {
+                if (frames[decode].Key && (maxBefore != decode - 1 || presentationOf[decode] != decode))
+                    frames[decode].OpenGop = true;
+                maxBefore = Math.Max(maxBefore, presentationOf[decode]);
+            }
+
             // ffprobe elenca i packet in ordine di decodifica, ma il piano indicizza i fotogrammi per
             // presentazione: con i B-frame i due ordini differiscono e senza riordino lo snap finirebbe
             // su un fotogramma che keyframe non è.
-            keys = pts.ToArray();
-            byPresentation = frames.ToArray();
-            Array.Sort(keys, byPresentation);
-
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.tools.packetsProbed", byPresentation.Length));
-            return new List<MkvSplitFrameInfo>(byPresentation);
+            Array.Sort((double[])pts.Clone(), frames);
+            return new List<MkvSplitFrameInfo>(frames);
         }
 
         /// <summary>
@@ -490,7 +499,34 @@ namespace RemuxForge.Core.Splitting
         /// <param name="args">Argomenti mkvmerge</param>
         public void RunMkvmerge(IEnumerable<string> args)
         {
-            this.Run(this._mkvmerge, args);
+            ProcessResult result = this.RunMkvmergeResult(args);
+            // L'uscita 1 sono avvisi con il file scritto per intero: lo verificano i controlli su fotogrammi, tempi e tracce
+            if (result.ExitCode == 1)
+                LogMkvmergeWarnings(result);
+            else if (result.ExitCode != 0)
+                this.Fail(this._mkvmerge, result);
+        }
+
+        /// <summary>
+        /// Riporta nel log di Split gli avvisi di mkvmerge
+        /// </summary>
+        /// <param name="result">Risultato del processo</param>
+        public static void LogMkvmergeWarnings(ProcessResult result)
+        {
+            foreach (string line in MkvmergeLines(result))
+                if (line.StartsWith("Warning:", StringComparison.Ordinal))
+                    ConsoleHelper.Write(LogSection.Split, LogLevel.Warning, AppText.F("split.tools.mkvmergeWarning", line.Substring("Warning:".Length).Trim()));
+        }
+
+        /// <summary>
+        /// Righe di errore e avviso di mkvmerge, per un messaggio che dica quale parte e traccia
+        /// </summary>
+        /// <param name="result">Risultato del processo</param>
+        /// <returns>Messaggi concatenati, oppure l'intero output se mkvmerge non ne ha scritti</returns>
+        public static string MkvmergeMessages(ProcessResult result)
+        {
+            List<string> lines = MkvmergeLines(result);
+            return lines.Count > 0 ? string.Join(" ", lines) : ((result.Stdout ?? "") + "\n" + (result.Stderr ?? "")).Trim();
         }
 
         /// <summary>
@@ -572,18 +608,43 @@ namespace RemuxForge.Core.Splitting
             this.PrintShortCmd(exe, list);
             ProcessResult result = ProcessRunner.Run(exe, list.ToArray());
             if (result.ExitCode != 0)
-            {
-                ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("split.tools.commandFailedExit", result.ExitCode));
-                if (!string.IsNullOrEmpty(result.Stdout))
-                    ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.tools.stdout", Truncate(result.Stdout, 2000)));
-
-                if (!string.IsNullOrEmpty(result.Stderr))
-                    ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.tools.stderr", Truncate(result.Stderr, 2000)));
-
-                throw new InvalidOperationException(AppText.F("split.tools.commandFailed", Path.GetFileName(exe)));
-            }
+                this.Fail(exe, result);
 
             return result;
+        }
+
+        /// <summary>
+        /// Riporta nel log l'uscita di un processo fallito e interrompe
+        /// </summary>
+        /// <param name="exe">Eseguibile invocato</param>
+        /// <param name="result">Risultato del processo</param>
+        private void Fail(string exe, ProcessResult result)
+        {
+            ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("split.tools.commandFailedExit", result.ExitCode));
+            if (!string.IsNullOrEmpty(result.Stdout))
+                ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.tools.stdout", Truncate(result.Stdout, 2000)));
+
+            if (!string.IsNullOrEmpty(result.Stderr))
+                ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.tools.stderr", Truncate(result.Stderr, 2000)));
+
+            throw new InvalidOperationException(AppText.F("split.tools.commandFailed", Path.GetFileName(exe)));
+        }
+
+        /// <summary>
+        /// Righe di mkvmerge che iniziano con Error: o Warning:
+        /// </summary>
+        /// <param name="result">Risultato del processo</param>
+        /// <returns>Righe trovate, nell'ordine dell'output</returns>
+        private static List<string> MkvmergeLines(ProcessResult result)
+        {
+            List<string> lines = new List<string>();
+            foreach (string raw in ((result.Stdout ?? "") + "\n" + (result.Stderr ?? "")).Split('\n'))
+            {
+                string line = raw.Trim();
+                if (line.StartsWith("Error:", StringComparison.Ordinal) || line.StartsWith("Warning:", StringComparison.Ordinal))
+                    lines.Add(line);
+            }
+            return lines;
         }
 
         /// <summary>

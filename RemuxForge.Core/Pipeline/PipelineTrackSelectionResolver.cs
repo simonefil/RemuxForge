@@ -1,4 +1,3 @@
-using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;

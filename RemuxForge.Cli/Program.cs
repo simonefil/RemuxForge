@@ -221,17 +221,17 @@ namespace RemuxForge.Cli
                     stats.Processed++;
                 }
                 // File saltati per mancanza ID episodio
-                else if (string.Equals(r.SkipReason, "No episode ID"))
+                else if (string.Equals(r.SkipCode, FileProcessingRecord.SKIP_NO_EPISODE_ID, StringComparison.Ordinal))
                 {
                     stats.Skipped++;
                 }
                 // File senza corrispondenza lingua
-                else if (string.Equals(r.SkipReason, "No match"))
+                else if (string.Equals(r.SkipCode, FileProcessingRecord.SKIP_NO_MATCH, StringComparison.Ordinal))
                 {
                     stats.NoMatch++;
                 }
                 // File senza tracce corrispondenti
-                else if (string.Equals(r.SkipReason, "No matching tracks"))
+                else if (string.Equals(r.SkipCode, FileProcessingRecord.SKIP_NO_MATCHING_TRACKS, StringComparison.Ordinal))
                 {
                     stats.NoTracks++;
                 }

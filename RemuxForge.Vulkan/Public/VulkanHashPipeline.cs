@@ -16,11 +16,6 @@ namespace RemuxForge.Vulkan
         #region Constants
 
         /// <summary>
-        /// Side in pixels of the analysis square the extraction shader hashes
-        /// </summary>
-        public const int FrameSide = VulkanHashExtractor.FRAME_SIDE;
-
-        /// <summary>
         /// Size in bytes of one analysis square
         /// </summary>
         public const int FrameBytes = VulkanHashExtractor.FRAME_BYTES;
@@ -172,7 +167,6 @@ namespace RemuxForge.Vulkan
             VulkanHashCollection residentSource = null;
             VulkanHashCollection residentLanguage = null;
             VulkanVisionDiagnostics diagnostics = this.CreateDiagnostics();
-            Stopwatch endToEnd = Stopwatch.StartNew();
             try
             {
                 using (CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, this._disposeCancellation.Token))
@@ -180,9 +174,8 @@ namespace RemuxForge.Vulkan
                     residentSource = new VulkanHashCollection(this._runtime, source, diagnostics, linkedCancellation.Token);
                     residentLanguage = new VulkanHashCollection(this._runtime, language, diagnostics, linkedCancellation.Token);
                 }
-                diagnostics.DeclaredFrameCount = source.Count + language.Count;
                 this._runtime.DrainValidationMessages(diagnostics);
-                VulkanHashPreparedBatch result = new VulkanHashPreparedBatch(this, residentSource, residentLanguage, diagnostics, endToEnd);
+                VulkanHashPreparedBatch result = new VulkanHashPreparedBatch(this, residentSource, residentLanguage, diagnostics);
                 this.RegisterPrepared(result);
                 return result;
             }
@@ -233,8 +226,7 @@ namespace RemuxForge.Vulkan
                     uint[] counts = this._matcher.Match(prepared.Source, prepared.Language, workspace, diagnostics, linkedCancellation.Token);
                     diagnostics.MatchingTicks += Stopwatch.GetTimestamp() - matchStart;
                     this._runtime.DrainValidationMessages(diagnostics);
-                    diagnostics.EndToEndTicks = prepared.EndToEnd.ElapsedTicks;
-                    return new VulkanHashBatchResult(BuildResults(scans, workspace.CandidateOffsets, counts), diagnostics);
+                    return new VulkanHashBatchResult(BuildResults(scans, workspace.CandidateOffsets, counts));
                 }
             }
             finally
@@ -308,7 +300,6 @@ namespace RemuxForge.Vulkan
         private VulkanVisionDiagnostics CreateDiagnostics()
         {
             VulkanVisionDiagnostics diagnostics = new VulkanVisionDiagnostics();
-            diagnostics.ProbeTicks = this._runtime.InitializationTicks;
             foreach (KeyValuePair<string, string> metadata in this._runtime.ShaderLoader.BuildMetadata)
                 diagnostics.Toolchain.Add(metadata.Key, metadata.Value);
             return diagnostics;
@@ -364,14 +355,9 @@ namespace RemuxForge.Vulkan
             {
                 VulkanHashScan scan = scans[i];
                 int[] explained = new int[scan.CandidateCount];
-                int best = 0;
                 for (int candidate = 0; candidate < scan.CandidateCount; candidate++)
-                {
                     explained[candidate] = (int)counts[candidateOffsets[i] + candidate];
-                    if (explained[candidate] > explained[best])
-                        best = candidate;
-                }
-                results.Add(new VulkanHashScanResult(explained, best, scan.FirstOffsetMs + best * scan.StepMs, scan.IndexCount));
+                results.Add(new VulkanHashScanResult(explained));
             }
             return results;
         }
@@ -447,15 +433,13 @@ namespace RemuxForge.Vulkan
         /// <param name="source">Resident hashes and timestamps of the source track</param>
         /// <param name="language">Resident hashes and timestamps of the dubbed track</param>
         /// <param name="diagnostics">Diagnostics collected while preparing the batch</param>
-        /// <param name="endToEnd">Stopwatch started when the preparation began</param>
-        internal VulkanHashPreparedBatch(VulkanHashPipeline owner, VulkanHashCollection source, VulkanHashCollection language, VulkanVisionDiagnostics diagnostics, Stopwatch endToEnd)
+        internal VulkanHashPreparedBatch(VulkanHashPipeline owner, VulkanHashCollection source, VulkanHashCollection language, VulkanVisionDiagnostics diagnostics)
         {
             this._owner = owner;
             this._executionLock = new object();
             this.Source = source;
             this.Language = language;
             this.Diagnostics = diagnostics;
-            this.EndToEnd = endToEnd;
         }
 
         #endregion
@@ -524,11 +508,6 @@ namespace RemuxForge.Vulkan
         /// Gets the diagnostics shared by the preparation and the executions of this batch
         /// </summary>
         internal VulkanVisionDiagnostics Diagnostics { get; }
-
-        /// <summary>
-        /// Gets the stopwatch started when the preparation began
-        /// </summary>
-        internal Stopwatch EndToEnd { get; }
 
         #endregion
     }

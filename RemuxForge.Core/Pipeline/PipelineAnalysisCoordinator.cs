@@ -181,8 +181,8 @@ namespace RemuxForge.Core.Pipeline
                     this._fileUpdated(record);
                 }
 
-                ConsoleHelper.Write(LogSection.General, LogLevel.Header, "Analisi: " + record.SourceFileName);
-                ConsoleHelper.Write(LogSection.General, LogLevel.Debug, "  ID Episodio: " + record.EpisodeId);
+                ConsoleHelper.Write(LogSection.General, LogLevel.Header, AppText.F("remux.pipeline.analysisHeader", record.SourceFileName));
+                ConsoleHelper.Write(LogSection.General, LogLevel.Debug, AppText.F("remux.pipeline.episodeId", record.EpisodeId));
 
                 // Carica i metadata del file sorgente per preparare le fasi successive
                 sourceInfo = this._fileInfoProvider(record.SourceFilePath);
@@ -197,7 +197,7 @@ namespace RemuxForge.Core.Pipeline
                 if (this._needsMerge)
                 {
                     // Nel merge serve anche il contesto temporale e delle tracce del file lingua
-                    ConsoleHelper.Write(LogSection.General, LogLevel.Info, "  Match: " + record.LangFileName);
+                    ConsoleHelper.Write(LogSection.General, LogLevel.Info, AppText.F("remux.pipeline.matchedLang", record.LangFileName));
 
                     langInfo = this._fileInfoProvider(record.LangFilePath);
                     langTracks = (langInfo != null) ? langInfo.Tracks : null;
@@ -209,14 +209,14 @@ namespace RemuxForge.Core.Pipeline
                     if (langTracks == null)
                     {
                         // Interrompe l'analisi perché senza metadata non è possibile costruire il merge
-                        ConsoleHelper.Write(LogSection.General, LogLevel.Error, "  Impossibile leggere info tracce file lingua");
-                        done = this.FailAndFinalizeRecord(record, "Impossibile leggere tracce file lingua", false);
+                        ConsoleHelper.Write(LogSection.General, LogLevel.Error, AppText.T("remux.pipeline.langTrackInfoReadFailed"));
+                        done = this.FailAndFinalizeRecord(record, AppText.T("remux.pipeline.langTracksReadFailed"), false);
                     }
                 }
                 else
                 {
                     // Senza merge non servono confronti tra file e il record può essere completato subito
-                    done = this.MarkAnalyzedAndFinalize(record, 0, false, "  Analisi completata (no merge)");
+                    done = this.MarkAnalyzedAndFinalize(record, 0, false, AppText.T("remux.pipeline.analysisCompletedNoMerge"));
                 }
             }
 
@@ -468,7 +468,7 @@ namespace RemuxForge.Core.Pipeline
                     record,
                     syncOffset,
                     true,
-                    "  Analisi completata: delay audio " + Utils.FormatDelay(syncOffset + this._opts.AudioDelay + record.ManualAudioDelayMs) + ", sub " + Utils.FormatDelay(syncOffset + this._opts.SubtitleDelay + record.ManualSubDelayMs));
+                    AppText.F("remux.pipeline.analysisCompleted", Utils.FormatDelay(syncOffset + this._opts.AudioDelay + record.ManualAudioDelayMs), Utils.FormatDelay(syncOffset + this._opts.SubtitleDelay + record.ManualSubDelayMs)));
             }
         }
 

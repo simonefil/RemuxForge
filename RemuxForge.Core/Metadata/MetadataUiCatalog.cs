@@ -85,7 +85,6 @@ namespace RemuxForge.Core.Metadata
                 return CreateTextSchema(usage);
 
             MetadataInputSchema schema = CreateSchema(field.ValueType, field.InputKind, usage);
-            schema.Unit = field.Unit;
             schema.Options = GetOptionsForField(field);
             schema.AllowsEmpty = usage != MetadataCatalogInputUsage.ManualEdit || field.IsClearable;
             return schema;
@@ -320,7 +319,6 @@ namespace RemuxForge.Core.Metadata
                     MetadataHelpInfo result = new MetadataHelpInfo();
                     result.Title = functions[i].Call;
                     result.Text = functions[i].Description;
-                    result.Example = functions[i].ExampleExpression;
                     return result;
                 }
             }
@@ -396,19 +394,9 @@ namespace RemuxForge.Core.Metadata
         private static MetadataCatalogFieldItem CreateFieldItem(MetadataFieldDefinition field)
         {
             MetadataCatalogFieldItem item = new MetadataCatalogFieldItem();
-            item.Key = field.Key;
             item.Label = field.Label;
             item.Description = !string.IsNullOrEmpty(field.Description) ? field.Description : GetSectorLabel(field.Sector);
             item.Token = "[" + field.Key + "]";
-            item.Sector = field.Sector;
-            item.TargetScopes = new List<MkvMetadataTargetScope>(field.TargetScopes);
-            item.ValueType = field.ValueType;
-            item.InputKind = field.InputKind;
-            item.Visibility = field.Visibility;
-            item.IsEditable = field.IsEditable;
-            item.IsClearable = field.IsClearable;
-            item.Unit = field.Unit;
-            item.SortGroup = field.SortGroup;
             return item;
         }
 
@@ -666,7 +654,6 @@ namespace RemuxForge.Core.Metadata
         {
             MetadataConditionOperatorItem item = new MetadataConditionOperatorItem();
             item.Operator = conditionOperator;
-            item.Label = AppText.T("web.metadata.conditionOperator." + conditionOperator.ToString());
             item.RequiresRange = conditionOperator == MkvMetadataConditionOperator.Between || conditionOperator == MkvMetadataConditionOperator.NotBetween;
             item.RequiresList = conditionOperator == MkvMetadataConditionOperator.InList || conditionOperator == MkvMetadataConditionOperator.NotInList;
             item.RequiresValue = conditionOperator != MkvMetadataConditionOperator.IsEmpty &&

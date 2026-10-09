@@ -176,26 +176,6 @@ namespace RemuxForge.Core.Analysis.Edit
         }
 
         /// <summary>
-        /// Distanza mediana dei fotogrammi indicati rispetto a un offset
-        /// </summary>
-        /// <param name="pair">Coppia di tracce</param>
-        /// <param name="indices">Indici sorgente da verificare</param>
-        /// <param name="offsetMs">Offset da verificare</param>
-        /// <param name="radius">Fotogrammi lang di tolleranza</param>
-        /// <returns>Mediana delle distanze di Hamming</returns>
-        public static double MedianDistance(PairSignals pair, int[] indices, double offsetMs, int radius)
-        {
-            if (indices.Length == 0)
-                return 128.0;
-            int[] distances = new int[indices.Length];
-            for (int i = 0; i < indices.Length; i++)
-                distances[i] = Distance(pair, indices[i], offsetMs, radius);
-            Array.Sort(distances);
-            int middle = distances.Length / 2;
-            return distances.Length % 2 == 1 ? distances[middle] : (distances[middle - 1] + distances[middle]) / 2.0;
-        }
-
-        /// <summary>
         /// Progressione di indici sorgente compresa in un intervallo temporale
         /// </summary>
         /// <param name="pair">Coppia di tracce</param>

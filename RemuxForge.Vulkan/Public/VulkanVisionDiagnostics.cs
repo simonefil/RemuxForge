@@ -17,17 +17,8 @@ namespace RemuxForge.Vulkan
             this.Rejections = new Dictionary<VulkanSiftRejectReason, int>();
             this.ValidationMessages = new List<string>();
         }
-
-        /// <summary>Host ticks spent by the device probe and runtime initialization</summary>
-        public long ProbeTicks { get; internal set; }
         /// <summary>Host ticks spent preparing and uploading buffers</summary>
         public long UploadTicks { get; internal set; }
-        /// <summary>Host ticks spent in input normalization</summary>
-        public long NormalizeTicks { get; internal set; }
-        /// <summary>Host ticks spent building the Gaussian and difference-of-Gaussians pyramid</summary>
-        public long GaussianPyramidTicks { get; internal set; }
-        /// <summary>Host ticks spent detecting and refining extrema</summary>
-        public long ExtremaTicks { get; internal set; }
         /// <summary>Host ticks spent assigning orientations and building descriptors</summary>
         public long DescriptorTicks { get; internal set; }
         /// <summary>Host ticks spent performing reciprocal matching</summary>
@@ -38,36 +29,18 @@ namespace RemuxForge.Vulkan
         public long ReadbackTicks { get; internal set; }
         /// <summary>Host ticks spent waiting for fences</summary>
         public long HostWaitTicks { get; internal set; }
-        /// <summary>Total host ticks elapsed for the batch</summary>
-        public long EndToEndTicks { get; internal set; }
         /// <summary>Number of submissions sent to the compute queue</summary>
         public int SubmitCount { get; internal set; }
         /// <summary>Number of compute dispatches recorded</summary>
         public int DispatchCount { get; internal set; }
         /// <summary>Number of explicit host waits</summary>
         public int WaitCount { get; internal set; }
-        /// <summary>Number of matching tiles completed</summary>
-        public int CompletedTileCount { get; internal set; }
         /// <summary>Number of bytes transferred from the caller to the device</summary>
         public ulong UploadedBytes { get; internal set; }
         /// <summary>Number of bytes read back from the device</summary>
         public ulong ReadbackBytes { get; internal set; }
-        /// <summary>Device-local memory reported as in use when the measurement was taken, in bytes</summary>
-        public ulong CurrentVramBytes { get; internal set; }
         /// <summary>Highest device-local memory allocation observed, in bytes</summary>
         public ulong PeakVramBytes { get; internal set; }
-        /// <summary>Device-local memory retained by allocator caches, in bytes</summary>
-        public ulong CachedVramBytes { get; internal set; }
-        /// <summary>Difference between allocated and used device-local memory, in bytes</summary>
-        public ulong WastedVramBytes { get; internal set; }
-        /// <summary>Host-visible memory allocated by the allocator, in bytes</summary>
-        public ulong HostVisibleAllocatedBytes { get; internal set; }
-        /// <summary>Host-visible memory currently used by the allocator, in bytes</summary>
-        public ulong HostVisibleUsedBytes { get; internal set; }
-        /// <summary>Number of memory blocks owned by the allocator</summary>
-        public int AllocationCount { get; internal set; }
-        /// <summary>Number of frames declared by the request</summary>
-        public int DeclaredFrameCount { get; internal set; }
         /// <summary>Number of frames containing enough features for processing</summary>
         public int ActiveFrameCount { get; internal set; }
         /// <summary>Number of frames excluded because they lacked enough features</summary>
@@ -80,8 +53,6 @@ namespace RemuxForge.Vulkan
         public long TruncatedKeypointCount { get; internal set; }
         /// <summary>Number of materialized SIFT descriptors</summary>
         public long DescriptorCount { get; internal set; }
-        /// <summary>Number of pairs declared by the request</summary>
-        public int DeclaredPairCount { get; internal set; }
         /// <summary>Number of pairs for which a result was materialized</summary>
         public int ProcessedPairCount { get; internal set; }
         /// <summary>Number of pairs accepted by matching and RANSAC</summary>

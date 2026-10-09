@@ -18,8 +18,7 @@
                     <span class="detail-status-badge">@Utils.GetSplitStatusText(Record.Status)</span>
                 </div>
 
-                <details class="detail-section" open>
-                    <summary>@AppText.T("web.split.detail.file")</summary>
+                <RadzenPanel AllowCollapse="true" Collapsed="false" class="detail-section" Text="@AppText.T("web.split.detail.file")">
                     <div class="detail-section-body detail-card-stack">
                         <div class="detail-card">
                             @PropertyRow(AppText.T("web.split.detail.path"), System.IO.Path.GetDirectoryName(Record.InputFile))
@@ -45,48 +44,61 @@
                             </div>
                         }
                     </div>
-                </details>
+                </RadzenPanel>
 
-                <RadzenButton Text="@AppText.T("web.split.openEditor")" Icon="content_cut" Disabled="@IsBusy" Click="@(() => OnOpenEditor.InvokeAsync(0))" />
                 @if (Record.MontageProjection != null)
                 {
-                    <details class="detail-section" open>
-                        <summary>@AppText.T("web.splitMontage.outputs") · @Record.MontageProjection.Outputs.Count</summary>
+                    <RadzenPanel AllowCollapse="true" Collapsed="false" class="detail-section" Text="@(AppText.T("web.splitMontage.outputs") + " · " + Record.MontageProjection.Outputs.Count)">
                         <div class="detail-section-body detail-card-stack">
                             @if (Record.Plan != null)
                             {
                                 @PropertyRow(AppText.T("web.split.detail.cost"), DescribeCost(Record.Plan))
-                                @foreach (MkvSplitWarning warning in Record.Plan.Warnings) { <div class="split-warning-row">@warning.Message</div> }
+                                @if (Record.Plan.Warnings.Count > 0)
+                                {
+                                    <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="split-warning-alert">
+                                        @foreach (MkvSplitWarning warning in Record.Plan.Warnings) { <div class="split-warning-row">@warning.Message</div> }
+                                    </RadzenAlert>
+                                }
                             }
                             @foreach (MkvSplitOutputProjection output in Record.MontageProjection.Outputs)
                             {
-                                int number = Record.MontageProjection.Outputs.IndexOf(output) + 1;
                                 <div class="detail-card">
                                     <div class="detail-card-title">@output.FileName</div>
                                     @PropertyRow(AppText.T("web.split.detail.duration"), MkvSplitSegmentService.SecsToTs(output.DurationSeconds))
                                     @PropertyRow(AppText.T("web.split.detail.frames"), output.FrameCount.ToString())
-                                    @PropertyRow(AppText.T("web.splitMontage.clips"), output.Clips.Count.ToString())
-                                    <span class="split-badge @OutputStateCss(output.OutputState)">@OutputStateText(output.OutputState)</span>
+                                    @PropertyRow(AppText.T("web.split.detail.clips"), output.Clips.Count.ToString())
+                                    @if (!Record.OutputResults.Any(r => r.OutputId == output.OutputId && r.Status == MkvSplitOutputExecutionStatus.Done))
+                                    {
+                                        <RadzenBadge BadgeStyle="@OutputStateBadge(output.OutputState)" Variant="Variant.Flat" Shade="Shade.Lighter" Text="@OutputStateText(output.OutputState)" />
+                                    }
                                     @foreach (MkvSplitClipProjection clip in output.Clips)
                                     {
-                                        <div>@AppText.T("web.splitMontage.source"): [@clip.StartFrame, @clip.EndFrameExclusive) · @MkvSplitSegmentService.SecsToTs(clip.SourceStartSeconds)–@MkvSplitSegmentService.SecsToTs(clip.SourceEndSeconds)</div>
+                                        <div>@AppText.T("web.splitMontage.source"): @AppText.F("web.splitMontage.clipLabel", output.Clips.IndexOf(clip) + 1, MkvSplitSegmentService.SecsToTs(clip.SourceStartSeconds), MkvSplitSegmentService.SecsToTs(clip.SourceEndSeconds))</div>
                                         <div>@AppText.T("web.splitMontage.result"): @MkvSplitSegmentService.SecsToTs(clip.ResultStartSeconds)–@MkvSplitSegmentService.SecsToTs(clip.ResultEndSeconds)</div>
                                     }
                                     @foreach (MkvSplitOutputExecutionResult result in Record.OutputResults.Where(r => r.OutputId == output.OutputId))
                                     {
                                         @PropertyRow(AppText.T("web.split.detail.result"), AppText.T("web.splitMontage.outputStatus." + result.Status) + " " + result.ErrorMessage)
                                     }
-                                    <RadzenButton Text="@AppText.T("web.split.openEditor")" Size="ButtonSize.Small" Disabled="@IsBusy" Click="@(() => OnOpenEditor.InvokeAsync(number))" />
                                 </div>
                             }
-                            @foreach (MkvSplitDiagnostic diagnostic in Record.MontageProjection.Diagnostics)
+                            @foreach (MkvSplitDiagnosticSeverity severity in new[] { MkvSplitDiagnosticSeverity.Error, MkvSplitDiagnosticSeverity.Warning })
                             {
-                                <div class="split-warning-row">@diagnostic.Message</div>
+                                List<MkvSplitDiagnostic> diagnostics = Record.MontageProjection.Diagnostics.Where(d => d.Severity == severity).ToList();
+                                if (diagnostics.Count > 0)
+                                {
+                                    <RadzenAlert AlertStyle="@(severity == MkvSplitDiagnosticSeverity.Error ? AlertStyle.Danger : AlertStyle.Warning)" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="split-warning-alert">
+                                        @foreach (MkvSplitDiagnostic diagnostic in diagnostics)
+                                        {
+                                            <div class="split-warning-row">@diagnostic.Message</div>
+                                        }
+                                    </RadzenAlert>
+                                }
                             }
                         </div>
-                    </details>
+                    </RadzenPanel>
                 }
-                else if (Record.Plan == null)
+                else
                 {
                     <div class="split-detail-empty">
                         <div>@AppText.T("web.split.detail.notAnalyzed")</div>
@@ -98,99 +110,6 @@
                                       Disabled="@IsBusy"
                                       Click="@OnAnalyze" />
                     </div>
-                }
-                else
-                {
-                    <details class="detail-section" open>
-                        <summary>@AppText.T("web.split.detail.plan")</summary>
-                        <div class="detail-section-body detail-card-stack">
-                            <div class="detail-card">
-                                @PropertyRow(AppText.T("web.split.detail.mode"), Utils.GetSplitModeText(Record.Plan.Mode))
-                                @PropertyRow(AppText.T("web.split.detail.outcome"), Record.Plan.IsValid ? AppText.T("web.split.detail.outcomeValid") : Record.Plan.ErrorMessage)
-                                @PropertyRow(AppText.T("web.split.segments"), Record.Plan.Segments.Count.ToString())
-                                @PropertyRow(AppText.T("web.split.detail.coverage"), DescribeCoverage(Record.Plan))
-                                @PropertyRow(AppText.T("web.split.detail.cost"), DescribeCost(Record.Plan))
-                                @PropertyRow(AppText.T("web.split.detail.outputDir"), Record.Plan.OutputDir)
-                            </div>
-                        </div>
-                    </details>
-
-                    @if (Record.Plan.Segments.Count > 0)
-                    {
-                        <details class="detail-section" open>
-                            <summary>@AppText.T("web.split.detail.map")</summary>
-                            <div class="detail-section-body">
-                                <div class="split-map" role="img" aria-label="@AppText.T("web.split.detail.map")">
-                                    @foreach (MkvSplitSegment segment in Record.Plan.Segments)
-                                    {
-                                        <div class="split-map-block @(segment.Num == SelectedSegmentNum ? "selected" : "")"
-                                             style="@BlockStyle(segment)"
-                                             title="@segment.File"
-                                             @onclick="@(() => OnSegmentSelected.InvokeAsync(segment.Num))"
-                                             @ondblclick="@(() => OnOpenEditor.InvokeAsync(segment.Num))">
-                                            <span class="split-map-block-label">@segment.Num</span>
-                                        </div>
-                                    }
-                                    @foreach (ChapterMark chapter in Record.Plan.Chapters)
-                                    {
-                                        <div class="split-map-chapter" style="@ChapterStyle(chapter)" title="@chapter.Name"></div>
-                                    }
-                                </div>
-                            </div>
-                        </details>
-
-                        <details class="detail-section" open>
-                            <summary>@AppText.F("web.split.detail.segments", Record.Plan.Segments.Count)</summary>
-                            <div class="detail-section-body detail-card-stack">
-                                @foreach (MkvSplitSegment segment in Record.Plan.Segments)
-                                {
-                                    <div class="detail-card @(segment.Num == SelectedSegmentNum ? "selected" : "")" @onclick="@(() => OnSegmentSelected.InvokeAsync(segment.Num))">
-                                        <div class="detail-card-title">@AppText.F("web.split.detail.segment", segment.Num) — @AppText.F("web.split.detail.episodeNum", segment.Episode)</div>
-                                        @PropertyRow(AppText.T("web.split.detail.output"), segment.File)
-                                        @PropertyRow(AppText.T("web.split.detail.start"), MkvSplitSegmentService.SecsToTs(segment.StartTs))
-                                        @PropertyRow(AppText.T("web.split.detail.end"), MkvSplitSegmentService.SecsToTs(segment.EndTs))
-                                        @PropertyRow(AppText.T("web.split.detail.duration"), MkvSplitSegmentService.SecsToTs(System.Math.Max(0.0, segment.EndTs - segment.StartTs)))
-                                        @PropertyRow(AppText.T("web.split.detail.frames"), segment.FrameCount.ToString())
-                                        @PropertyRow(AppText.T("web.split.detail.chapters"), segment.Chapters.Count.ToString())
-                                        <div class="split-segment-badges">
-                                            <span class="split-badge @OutputStateCss(segment.OutputState)">@OutputStateText(segment.OutputState)</span>
-                                            <span class="split-badge @(segment.ReencodeFrames > 0 ? "warn" : "ok")">@CostBadge(segment)</span>
-                                        </div>
-                                    </div>
-                                }
-                            </div>
-                        </details>
-                    }
-
-                    @if (Record.Plan.Warnings.Count > 0)
-                    {
-                        <details class="detail-section" open>
-                            <summary>@AppText.F("web.split.detail.warnings", Record.Plan.Warnings.Count)</summary>
-                            <div class="detail-section-body detail-card-stack">
-                                <div class="detail-card">
-                                    @foreach (MkvSplitWarning warning in Record.Plan.Warnings)
-                                    {
-                                        <div class="detail-property-row split-warning-row">@warning.Message</div>
-                                    }
-                                </div>
-                            </div>
-                        </details>
-                    }
-
-                    @if (Record.Status == MkvSplitStatus.Done)
-                    {
-                        <details class="detail-section" open>
-                            <summary>@AppText.T("web.split.detail.result")</summary>
-                            <div class="detail-section-body detail-card-stack">
-                                <div class="detail-card">
-                                    @foreach (MkvSplitSegment segment in Record.Plan.Segments)
-                                    {
-                                        @PropertyRow(segment.File, DescribeProduced(segment))
-                                    }
-                                </div>
-                            </div>
-                        </details>
-                    }
                 }
             </div>
         }
@@ -213,11 +132,6 @@
     [Parameter] public MkvSplitRecord Record { get; set; }
 
     /// <summary>
-    /// Numero del segmento evidenziato
-    /// </summary>
-    [Parameter] public int SelectedSegmentNum { get; set; }
-
-    /// <summary>
     /// Indica che la pipeline Split è occupata
     /// </summary>
     [Parameter] public bool IsBusy { get; set; }
@@ -226,16 +140,6 @@
     /// Evento richiesta di analisi del record corrente
     /// </summary>
     [Parameter] public EventCallback OnAnalyze { get; set; }
-
-    /// <summary>
-    /// Evento selezione di un segmento
-    /// </summary>
-    [Parameter] public EventCallback<int> OnSegmentSelected { get; set; }
-
-    /// <summary>
-    /// Evento apertura editor su un segmento
-    /// </summary>
-    [Parameter] public EventCallback<int> OnOpenEditor { get; set; }
 
     #endregion
 
@@ -271,23 +175,6 @@
     }
 
     /// <summary>
-    /// Descrive la copertura del sorgente
-    /// </summary>
-    /// <param name="plan">Piano del record</param>
-    /// <returns>Riga descrittiva</returns>
-    private string DescribeCoverage(MkvSplitPlan plan)
-    {
-        // Senza segmenti non c'è niente da coprire: un file manuale ancora da definire non scarta nulla
-        if (plan.Segments == null || plan.Segments.Count == 0)
-            return NOT_AVAILABLE;
-
-        if (plan.Coverage == MkvSplitCoverage.Partition)
-            return AppText.T("split.plan.coveragePartition");
-
-        return AppText.F("web.split.detail.coverageDiscarded", plan.DiscardedFrames);
-    }
-
-    /// <summary>
     /// Descrive il costo di esecuzione del piano
     /// </summary>
     /// <param name="plan">Piano del record</param>
@@ -301,44 +188,6 @@
             return AppText.T("web.split.detail.costCopy");
 
         return AppText.F("web.split.detail.costReencode", plan.TotalReencodeFrames);
-    }
-
-    /// <summary>
-    /// Descrive il file prodotto da un segmento
-    /// </summary>
-    /// <param name="segment">Segmento eseguito</param>
-    /// <returns>Dimensione su disco oppure assenza</returns>
-    private string DescribeProduced(MkvSplitSegment segment)
-    {
-        string path = System.IO.Path.Combine(this.Record.Plan.OutputDir, segment.File);
-        if (!System.IO.File.Exists(path))
-            return AppText.T("web.split.detail.missing");
-
-        return Utils.FormatSize(new System.IO.FileInfo(path).Length);
-    }
-
-    /// <summary>
-    /// Larghezza e posizione proporzionali del blocco di un segmento
-    /// </summary>
-    /// <param name="segment">Segmento da posizionare</param>
-    /// <returns>Stile inline</returns>
-    private string BlockStyle(MkvSplitSegment segment)
-    {
-        double duration = this.Record.Plan.Duration > 0.0 ? this.Record.Plan.Duration : 1.0;
-        double left = 100.0 * segment.StartTs / duration;
-        double width = 100.0 * System.Math.Max(0.0, segment.EndTs - segment.StartTs) / duration;
-        return string.Format(System.Globalization.CultureInfo.InvariantCulture, "left:{0:F3}%;width:{1:F3}%;", left, width);
-    }
-
-    /// <summary>
-    /// Posizione proporzionale della tacca di un capitolo
-    /// </summary>
-    /// <param name="chapter">Capitolo da posizionare</param>
-    /// <returns>Stile inline</returns>
-    private string ChapterStyle(ChapterMark chapter)
-    {
-        double duration = this.Record.Plan.Duration > 0.0 ? this.Record.Plan.Duration : 1.0;
-        return string.Format(System.Globalization.CultureInfo.InvariantCulture, "left:{0:F3}%;", 100.0 * chapter.StartSeconds / duration);
     }
 
     /// <summary>
@@ -360,26 +209,13 @@
     /// </summary>
     /// <param name="state">Stato del file</param>
     /// <returns>Nome classe</returns>
-    private string OutputStateCss(MkvSplitOutputState state)
+    private BadgeStyle OutputStateBadge(MkvSplitOutputState state)
     {
         if (state == MkvSplitOutputState.ExistsOverwrite)
-            return "warn";
+            return BadgeStyle.Warning;
         if (state == MkvSplitOutputState.ExistsSkip)
-            return "muted";
-        return "ok";
-    }
-
-    /// <summary>
-    /// Badge del costo del segmento
-    /// </summary>
-    /// <param name="segment">Segmento</param>
-    /// <returns>Testo localizzato</returns>
-    private string CostBadge(MkvSplitSegment segment)
-    {
-        if (segment.ReencodeFrames > 0)
-            return AppText.F("web.split.detail.costReencode", segment.ReencodeFrames);
-
-        return AppText.T("web.split.detail.startsOnKeyframe");
+            return BadgeStyle.Base;
+        return BadgeStyle.Success;
     }
 
     /// <summary>

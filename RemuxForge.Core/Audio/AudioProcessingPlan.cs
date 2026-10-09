@@ -56,6 +56,26 @@ namespace RemuxForge.Core.Audio
             return result;
         }
 
+        /// <summary>
+        /// Copia nel merge gli ID Language per cui il piano impone un output FFmpeg
+        /// </summary>
+        /// <param name="destination">Insieme ID language da completare</param>
+        public void AddRequiredLangTrackIds(HashSet<int> destination)
+        {
+            if (destination == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < this.LangTracks.Count; i++)
+            {
+                if (this.LangTracks[i].RenderRequired && this.LangTracks[i].Track != null)
+                {
+                    destination.Add(this.LangTracks[i].Track.Id);
+                }
+            }
+        }
+
         #endregion
 
         #region Metodi privati

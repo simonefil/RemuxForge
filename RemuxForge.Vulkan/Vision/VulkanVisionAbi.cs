@@ -1,4 +1,3 @@
-using System;
 using System.Runtime.InteropServices;
 
 namespace RemuxForge.Vulkan.Vision

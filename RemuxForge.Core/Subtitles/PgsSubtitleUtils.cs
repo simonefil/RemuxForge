@@ -1,3 +1,4 @@
+using RemuxForge.Core.Localization;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -87,6 +88,39 @@ namespace RemuxForge.Core.Subtitles
             size = ReadUInt16BigEndian(data, pos + 11);
             packetLength = SUP_PACKET_HEADER_SIZE + size;
             return pos + packetLength <= data.Length;
+        }
+
+        /// <summary>
+        /// Trova la fine del display-set PGS corrente
+        /// </summary>
+        /// <param name="data">Buffer SUP</param>
+        /// <param name="start">Offset iniziale display-set</param>
+        /// <param name="end">Offset subito dopo il display-set</param>
+        /// <returns>True se il display-set è completo</returns>
+        public static bool TryFindDisplaySetEnd(byte[] data, int start, out int end)
+        {
+            int pos = start;
+            int packetLength;
+            int segmentType;
+            end = start;
+
+            while (pos + SUP_PACKET_HEADER_SIZE <= data.Length)
+            {
+                if (!TryGetPacketLength(data, pos, out packetLength))
+                {
+                    return false;
+                }
+
+                segmentType = data[pos + 10];
+                pos += packetLength;
+                if (segmentType == SEGMENT_END)
+                {
+                    end = pos;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -199,7 +233,7 @@ namespace RemuxForge.Core.Subtitles
             // Se restano partial aperti, il display-set contiene ODS frammentati non completati
             if (partials.Count > 0)
             {
-                report.ErrorMessage = "ODS PGS frammentato incompleto";
+                report.ErrorMessage = AppText.T("remux.subtitles.pgsOdsFragmentIncomplete");
                 return false;
             }
 
@@ -227,14 +261,14 @@ namespace RemuxForge.Core.Subtitles
             // Valida l'header SUP originale usato come base per i nuovi packet
             if (definition == null || definition.FirstPacketHeader == null || definition.FirstPacketHeader.Length != SUP_PACKET_HEADER_SIZE)
             {
-                errorMessage = "ODS PGS header originale mancante";
+                errorMessage = AppText.T("remux.subtitles.pgsOdsHeaderMissing");
                 return false;
             }
 
             objectDataLength = 4 + definition.RleData.Length;
             if (objectDataLength > MAX_ODS_OBJECT_DATA_LENGTH)
             {
-                errorMessage = "ODS PGS object_data_length oltre 24 bit";
+                errorMessage = AppText.T("remux.subtitles.pgsOdsLengthOverflow");
                 return false;
             }
 
@@ -292,7 +326,7 @@ namespace RemuxForge.Core.Subtitles
             // Valida metadati ODS minimi prima di allocare la bitmap
             if (definition == null || definition.Width <= 0 || definition.Height <= 0 || definition.RleData == null)
             {
-                errorMessage = "ODS PGS non valido per decode";
+                errorMessage = AppText.T("remux.subtitles.pgsOdsInvalidForDecode");
                 return false;
             }
 
@@ -315,7 +349,7 @@ namespace RemuxForge.Core.Subtitles
 
                 if (pos >= definition.RleData.Length)
                 {
-                    errorMessage = "RLE PGS escape finale incompleto";
+                    errorMessage = AppText.T("remux.subtitles.pgsRleEscapeIncomplete");
                     return false;
                 }
 
@@ -340,7 +374,7 @@ namespace RemuxForge.Core.Subtitles
                 {
                     if (pos >= definition.RleData.Length)
                     {
-                        errorMessage = "RLE PGS run trasparente lungo incompleto";
+                        errorMessage = AppText.T("remux.subtitles.pgsRleLongTransparentIncomplete");
                         return false;
                     }
 
@@ -353,7 +387,7 @@ namespace RemuxForge.Core.Subtitles
                 {
                     if (pos >= definition.RleData.Length)
                     {
-                        errorMessage = "RLE PGS run colore corto incompleto";
+                        errorMessage = AppText.T("remux.subtitles.pgsRleShortColorIncomplete");
                         return false;
                     }
 
@@ -366,7 +400,7 @@ namespace RemuxForge.Core.Subtitles
                 {
                     if (pos + 1 >= definition.RleData.Length)
                     {
-                        errorMessage = "RLE PGS run colore lungo incompleto";
+                        errorMessage = AppText.T("remux.subtitles.pgsRleLongColorIncomplete");
                         return false;
                     }
 
@@ -376,7 +410,7 @@ namespace RemuxForge.Core.Subtitles
 
                 if (runLength <= 0)
                 {
-                    errorMessage = "RLE PGS run nullo";
+                    errorMessage = AppText.T("remux.subtitles.pgsRleNullRun");
                     return false;
                 }
 
@@ -399,7 +433,7 @@ namespace RemuxForge.Core.Subtitles
             // La bitmap deve essere interamente coperta dopo normalizzazione righe
             if (y < definition.Height)
             {
-                errorMessage = "RLE PGS termina prima della bitmap";
+                errorMessage = AppText.T("remux.subtitles.pgsRleEndsEarly");
                 return false;
             }
 
@@ -519,7 +553,7 @@ namespace RemuxForge.Core.Subtitles
             // Valida header segmento e legge identità/flag ODS
             if (segmentLength < 4 || payload + segmentLength > data.Length)
             {
-                report.ErrorMessage = "ODS PGS troppo corto";
+                report.ErrorMessage = AppText.T("remux.subtitles.pgsOdsTooShort");
                 return false;
             }
 
@@ -546,13 +580,13 @@ namespace RemuxForge.Core.Subtitles
             {
                 if (!partials.TryGetValue(objectId, out state))
                 {
-                    report.ErrorMessage = "ODS PGS continuation senza first segment";
+                    report.ErrorMessage = AppText.T("remux.subtitles.pgsOdsContinuationWithoutFirst");
                     return false;
                 }
 
                 if (state.Version != version)
                 {
-                    report.ErrorMessage = "ODS PGS continuation con versione incoerente";
+                    report.ErrorMessage = AppText.T("remux.subtitles.pgsOdsContinuationVersion");
                     return false;
                 }
 
@@ -606,7 +640,7 @@ namespace RemuxForge.Core.Subtitles
             // Il primo segmento deve contenere object_data_length e dimensioni bitmap
             if (segmentLength < ODS_FIRST_PAYLOAD_HEADER_SIZE)
             {
-                report.ErrorMessage = "ODS PGS first segment troppo corto";
+                report.ErrorMessage = AppText.T("remux.subtitles.pgsOdsFirstTooShort");
                 return false;
             }
 
@@ -614,7 +648,7 @@ namespace RemuxForge.Core.Subtitles
             objectDataLength = ReadUInt24BigEndian(data, payload + 4);
             if (objectDataLength < 4)
             {
-                report.ErrorMessage = "ODS PGS object_data_length non valido";
+                report.ErrorMessage = AppText.T("remux.subtitles.pgsOdsLengthInvalid");
                 return false;
             }
 
@@ -630,14 +664,14 @@ namespace RemuxForge.Core.Subtitles
             // Dimensioni nulle rendono impossibile decodifica e validazione bounds
             if (state.Width <= 0 || state.Height <= 0)
             {
-                report.ErrorMessage = "ODS PGS dimensione oggetto non valida";
+                report.ErrorMessage = AppText.T("remux.subtitles.pgsOdsSizeInvalid");
                 return false;
             }
 
             // Due first segment con stesso object id nella stessa assembly sarebbero ambigui
             if (partials.ContainsKey(objectId))
             {
-                report.ErrorMessage = "ODS PGS first segment duplicato";
+                report.ErrorMessage = AppText.T("remux.subtitles.pgsOdsFirstDuplicate");
                 return false;
             }
 
@@ -657,13 +691,13 @@ namespace RemuxForge.Core.Subtitles
         {
             if (dataLength < 0 || dataOffset + dataLength > data.Length)
             {
-                report.ErrorMessage = "ODS PGS payload fuori buffer";
+                report.ErrorMessage = AppText.T("remux.subtitles.pgsOdsPayloadOutside");
                 return false;
             }
 
             if (state.RleData.Length + dataLength > state.ExpectedRleLength)
             {
-                report.ErrorMessage = "ODS PGS RLE oltre object_data_length";
+                report.ErrorMessage = AppText.T("remux.subtitles.pgsOdsRleOverflow");
                 return false;
             }
 
@@ -685,7 +719,7 @@ namespace RemuxForge.Core.Subtitles
             // Il payload ricostruito deve combaciare esattamente con object_data_length
             if (state.RleData.Length != state.ExpectedRleLength)
             {
-                report.ErrorMessage = "ODS PGS RLE incompleto";
+                report.ErrorMessage = AppText.T("remux.subtitles.pgsOdsRleIncomplete");
                 return false;
             }
 
@@ -798,7 +832,7 @@ namespace RemuxForge.Core.Subtitles
 
             if (y >= height || x + runLength > width)
             {
-                errorMessage = "RLE PGS run fuori riga";
+                errorMessage = AppText.T("remux.subtitles.pgsRleRunOutsideLine");
                 return false;
             }
 

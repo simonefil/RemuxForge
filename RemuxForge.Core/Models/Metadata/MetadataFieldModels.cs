@@ -342,7 +342,6 @@ namespace RemuxForge.Core.Models
             this.HtmlInputType = "text";
             this.Step = "";
             this.Placeholder = "";
-            this.Unit = "";
             this.Options = new List<MetadataInputOption>();
             this.UnitOptions = new List<MetadataInputOption>();
             this.SupportsExpression = false;
@@ -377,11 +376,6 @@ namespace RemuxForge.Core.Models
         /// Placeholder visualizzato
         /// </summary>
         public string Placeholder { get; set; }
-
-        /// <summary>
-        /// Unità base del valore
-        /// </summary>
-        public string Unit { get; set; }
 
         /// <summary>
         /// Opzioni valore

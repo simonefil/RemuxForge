@@ -42,11 +42,6 @@ namespace RemuxForge.Core.Models
         public double BestScore { get; set; }
 
         /// <summary>
-        /// Dispersione temporale del percorso locale
-        /// </summary>
-        public double DispersionMs { get; set; }
-
-        /// <summary>
         /// Numero di coppie elaborate nel corridoio locale
         /// </summary>
         public long ProcessedPairCount { get; set; }

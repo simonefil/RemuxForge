@@ -37,7 +37,7 @@ namespace RemuxForge.Core.Splitting
 
             for (int i = 0; i < files.Count; i++)
             {
-                fileResult = this.ExecuteFileInternal(options, files[i], files.Count > 1);
+                fileResult = this.ExecuteFileInternal(options, files[i]);
                 if (fileResult.ExitCode != 0)
                 {
                     result = 1;
@@ -58,20 +58,16 @@ namespace RemuxForge.Core.Splitting
         /// <summary>
         /// Esegue la pipeline split su un singolo file già risolto senza rieseguire setup tool
         /// </summary>
-        private MkvSplitExecutionResult ExecuteFileInternal(Options options, string inputFile, bool batch)
+        private MkvSplitExecutionResult ExecuteFileInternal(Options options, string inputFile)
         {
             MkvSplitExecutionResult result = new MkvSplitExecutionResult();
             MkvSplitOptions splitOptions;
             MkvSplitPlan plan;
 
-            result.InputFile = inputFile;
             try
             {
                 splitOptions = CloneSplitOptions(options.Split);
-                splitOptions.InputFile = inputFile;
-                splitOptions.Batch = batch;
                 plan = new MkvSplitPlanner().BuildPlan(splitOptions, inputFile, null);
-                result.Segments = plan.Segments;
                 result.ExitCode = this.ExecutePlan(plan, splitOptions);
                 if (result.ExitCode != 0 && !plan.IsValid)
                 {
@@ -191,7 +187,7 @@ namespace RemuxForge.Core.Splitting
         {
             MkvSplitMontageExecutionResult result = new MkvSplitMontageExecutionResult();
             foreach (MkvSplitExecutionOutput output in plan.Outputs)
-                result.Outputs.Add(new MkvSplitOutputExecutionResult { OutputId = output.OutputId, FullPath = output.Projection.FullPath });
+                result.Outputs.Add(new MkvSplitOutputExecutionResult { OutputId = output.OutputId });
             if (!plan.IsValid) { result.ExitCode = 1; return result; }
             if (args.DryRun) return result;
             MkvSplitSourceIdentity source = plan.Document.Source;
@@ -253,7 +249,9 @@ namespace RemuxForge.Core.Splitting
                     if (clips.Count > 1)
                     {
                         assembled = Path.Combine(temporary, "assembled.mkv");
-                        List<string> append = new List<string> { "-o", assembled };
+                        // Accodamento per traccia: il video della clip successiva parte dopo l'ultimo fotogramma, non dopo l'audio
+                        // che sfora il taglio di una frazione di blocco
+                        List<string> append = new List<string> { "-o", assembled, "--append-mode", "track" };
                         foreach (string clip in clips)
                         {
                             if (clip != clips[0]) append.Add("+");
@@ -343,7 +341,8 @@ namespace RemuxForge.Core.Splitting
                         mux.Add(subtitlePath);
                         trackOrder.Add(subtitle.Track.Id, inputIndex++ + ":0");
                     }
-                    if (separateFlac)
+                    // Sottotitoli nativi e riscritti arrivano da input diversi: l'ordine originale va imposto in modo esplicito
+                    if (separateFlac || plan.Tracks.TrueForAll(track => trackOrder.ContainsKey(track.Id)))
                     {
                         mux.Add("--track-order");
                         mux.Add(string.Join(",", plan.Tracks.ConvertAll(track => trackOrder[track.Id])));

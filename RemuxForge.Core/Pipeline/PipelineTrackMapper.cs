@@ -1,4 +1,5 @@
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
 using System;
@@ -91,8 +92,7 @@ namespace RemuxForge.Core.Pipeline
         /// <param name="subtitleTracks">Tracce sottotitolo lingua importate</param>
         /// <param name="filterSourceAudio">True se audio sorgente filtrato</param>
         /// <param name="filterSourceSubs">True se sottotitoli sorgente filtrati</param>
-        /// <param name="options">Opzioni operative</param>
-        public void PopulateResultLanguages(FileProcessingRecord record, List<TrackInfo> sourceTracks, List<int> sourceAudioIds, List<TrackInfo> audioTracks, List<TrackInfo> subtitleTracks, bool filterSourceAudio, bool filterSourceSubs, Options options)
+        public void PopulateResultLanguages(FileProcessingRecord record, List<TrackInfo> sourceTracks, List<int> sourceAudioIds, List<TrackInfo> audioTracks, List<TrackInfo> subtitleTracks, bool filterSourceAudio, bool filterSourceSubs)
         {
             List<string> resultAudioLangs = new List<string>();
             List<string> resultSubLangs = new List<string>();
@@ -190,8 +190,8 @@ namespace RemuxForge.Core.Pipeline
 
             if (langTracks == null)
             {
-                ConsoleHelper.Write(LogSection.Merge, LogLevel.Error, "  Impossibile leggere info tracce file lingua");
-                record.ErrorMessage = "Impossibile leggere tracce file lingua";
+                ConsoleHelper.Write(LogSection.Merge, LogLevel.Error, AppText.T("remux.pipeline.langTrackInfoReadFailed"));
+                record.ErrorMessage = AppText.T("remux.pipeline.langTracksReadFailed");
                 record.Status = FileStatus.Error;
             }
             else

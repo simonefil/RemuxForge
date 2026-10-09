@@ -1,4 +1,5 @@
 using OpenCvSharp;
+using RemuxForge.Core.Localization;
 using SkiaSharp;
 using ZstdSharp;
 using RemuxForge.Core.Configuration;
@@ -121,11 +122,6 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
         /// </summary>
         private readonly Dictionary<string, Lazy<AudioTimelineCacheEntry>> _timelinesInFlight;
 
-        /// <summary>
-        /// Byte occupati dalle visualizzazioni in cache
-        /// </summary>
-        private long _timelineCacheBytes;
-
         #endregion
 
         #region Costruttore
@@ -191,7 +187,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             }, 0);
 
             if (run.ExitCode != 0)
-                throw new InvalidOperationException("Nessun campione audio estratto da " + Path.GetFileName(filePath) + ": " + run.Stderr);
+                throw new InvalidOperationException(AppText.F("analysis.audio.noSamples", Path.GetFileName(filePath), run.Stderr));
 
             return new AudioEnvelope(decibel.ToArray(), this.ReadOriginMs(filePath, streamIndex, timeoutMs));
         }
@@ -269,7 +265,6 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             {
                 this._timelines.Clear();
                 this._timelinesInFlight.Clear();
-                this._timelineCacheBytes = 0;
             }
         }
 
@@ -370,7 +365,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                 if (samplesInBucket > 0)
                     AddWaveformBucket(minimum, maximum, bucketMinimum, bucketMaximum, ref peak);
                 if (run.ExitCode != 0)
-                    throw new InvalidOperationException("Nessun campione audio estratto da " + Path.GetFileName(filePath) + ": " + run.Stderr);
+                    throw new InvalidOperationException(AppText.F("analysis.audio.noSamples", Path.GetFileName(filePath), run.Stderr));
 
                 double originMs = this.ReadOriginMs(filePath, selector, sampleRate, timeoutMs);
                 AudioTimelineWaveform waveform = new AudioTimelineWaveform(stepMs, originMs, peak, minimum.ToArray(), maximum.ToArray());
@@ -550,7 +545,6 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                     if (this._timelinesInFlight.TryGetValue(key, out Lazy<AudioTimelineCacheEntry> current) && ReferenceEquals(current, pending) && !this._timelines.ContainsKey(key))
                     {
                         this._timelines.Add(key, result);
-                        this._timelineCacheBytes += result.Bytes;
                     }
                 }
                 return result;
@@ -740,7 +734,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
                 using SKPixmap pixels = new SKPixmap(info, bgra.Data, (int)bgra.Step());
                 using SKData webp = pixels.Encode(SKEncodedImageFormat.Webp, 75);
                 if (webp == null)
-                    throw new InvalidOperationException("Codifica WebP dello spettrogramma non riuscita");
+                    throw new InvalidOperationException(AppText.T("analysis.audio.spectrogramEncodeFailed"));
                 encoded[index] = webp.ToArray();
             });
 
@@ -1070,9 +1064,6 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             }
             using Compressor compressor = new Compressor(9);
             this._waveform = compressor.Wrap(shuffled).ToArray();
-            this.Bytes = this._waveform.LongLength;
-            foreach (byte[] tile in this._image.Tiles)
-                this.Bytes += tile.LongLength;
         }
 
         #endregion
@@ -1087,7 +1078,7 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             byte[] shuffled = new byte[checked(this._pointCount * 4)];
             int length = decompressor.Unwrap(this._waveform, shuffled);
             if (length != shuffled.Length)
-                throw new InvalidDataException("Dimensione della waveform decompressa non valida");
+                throw new InvalidDataException(AppText.T("analysis.audio.waveformSizeInvalid"));
             short[] minimum = new short[this._pointCount];
             short[] maximum = new short[this._pointCount];
             int values = this._pointCount * 2;
@@ -1098,13 +1089,6 @@ namespace RemuxForge.Core.Analysis.Edit.Extraction
             }
             return new AudioTimelinePair(new AudioTimelineWaveform(this._stepMs, this._originMs, this._peak, minimum, maximum), this._image);
         }
-
-        #endregion
-
-        #region Proprietà
-
-        /// <summary>Byte compressi delle waveform e delle immagini</summary>
-        public long Bytes { get; private set; }
 
         #endregion
     }

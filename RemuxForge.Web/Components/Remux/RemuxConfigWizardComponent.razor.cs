@@ -6,6 +6,7 @@ using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Pipeline;
+using RemuxForge.Web.Components.Shared;
 using RemuxForge.Web.Services;
 using Radzen;
 using Radzen.Blazor;
@@ -18,7 +19,7 @@ using System.Threading.Tasks;
 
 namespace RemuxForge.Web.Components.Remux
 {
-    public partial class RemuxConfigWizardComponent
+    public partial class RemuxConfigWizardComponent : IWizardFieldHost
     {
         [Parameter] public Options Options { get; set; }
         [Parameter] public RemuxMuxKind MuxKind { get; set; }
@@ -26,10 +27,12 @@ namespace RemuxForge.Web.Components.Remux
         [Parameter] public IJSObjectReference JsModule { get; set; }
         [Parameter] public Func<RemuxConfigurationDraft, Task<RemuxApplyResult>> ApplyConfiguration { get; set; }
         [Parameter] public EventCallback<RemuxConfigurationDraft> OnApplied { get; set; }
-        [Parameter] public EventCallback OnClose { get; set; }
         [Parameter] public RemuxTrackUiState TrackUiState { get; set; }
+        [Parameter] public RemuxPreviewRequest PreviewRequest { get; set; }
+        [Parameter] public RemuxPreviewSnapshot PreviewSnapshot { get; set; }
         [Parameter] public DialogOptions HostOptions { get; set; }
         [Inject] private DialogService DialogService { get; set; }
+        [Inject] private NotificationService NotificationService { get; set; }
 
         public RemuxConfigurationDraft Draft { get; private set; }
         private Options O => this.Draft.Options;
@@ -39,7 +42,13 @@ namespace RemuxForge.Web.Components.Remux
         public bool EditingLocked => this._applying || this._applied || this._confirmingPreset;
         private bool CannotEdit => this.EditingLocked || this._disposed;
         private bool AsyncResponseBlocked => this._applying || this._applied || this._disposed;
-        private void Edit(Action change) { if (!this.CannotEdit) change(); }
+        private void Edit(Action change)
+        {
+            if (this.CannotEdit) return;
+            change();
+            // Gli errori della sezione aperta seguono le modifiche, senza aspettare il prossimo Avanti
+            if (this.SectionHasErrors(this._section)) this.ReplaceSectionErrors(this._section, this.ValidateWizard());
+        }
         private static readonly string[] Sections = { "web.remux.section.preset", "web.remux.section.files", "web.remux.section.tracks", "web.config.section.sync", "web.remux.section.processing", "web.remux.section.output" };
         private static readonly (string Factor, string Key)[] SpeedPresets = {
             ("", "off"), ("1001/1000", "speed23976To24"), ("1000/1001", "speed24To23976"),
@@ -52,7 +61,12 @@ namespace RemuxForge.Web.Components.Remux
         private IEnumerable<string> SpeedFactors => (string.IsNullOrEmpty(this._customSpeedFactor) ? Array.Empty<string>() : new[] { this._customSpeedFactor })
             .Concat(SpeedPresets.Select(p => p.Factor));
         private bool AudioRequired => this.Draft.RequiresAudioProcessing(this._sourceFill);
-        private static readonly string[] AudioFormats = { "", "flac", "lpcm", "aac", "opus", "ac3" };
+        private static readonly (RemuxMuxKind Kind, string Icon)[] MuxCards = {
+            (RemuxMuxKind.Simple, "call_merge"),
+            (RemuxMuxKind.DelayCorrection, "more_time"),
+            (RemuxMuxKind.DeepAnalysis, "query_stats")
+        };
+        private static readonly string[] AudioFormats = { "flac", "lpcm", "aac", "opus", "ac3" };
         private static readonly string[] AudioScopes = { "disabled", "lang", "all" };
         private static readonly string[] GainModes = { "none", "peak", "fixed" };
         private IEnumerable<string> ProfileNames => AppSettingsService.Instance.Settings.EncodingProfiles.Select(p => p.Name);
@@ -65,7 +79,11 @@ namespace RemuxForge.Web.Components.Remux
         private bool _reading, _applying, _sourceFill, _disposed;
         private bool _mediaLoading, _applied;
         private List<PipelineInitializationIssue> _warnings = new List<PipelineInitializationIssue>();
-        private string _mediaTitle = "", _mediaReport = "", _mediaError = "";
+        private string _mediaTitle = "", _mediaReport = "", _mediaError = "", _mediaErrorDetails = "";
+        private readonly ElementReference[] _muxCardRefs = new ElementReference[MuxCards.Length];
+        private int? _focusMuxCard;
+        private string _focusField;
+        private bool _sourceIsFile;
         private CancellationTokenSource _previewCancellation;
         private CancellationTokenSource _mediaCancellation;
         private long _mediaRevision;
@@ -77,7 +95,7 @@ namespace RemuxForge.Web.Components.Remux
 
         protected override void OnInitialized()
         {
-            this.Draft = new RemuxConfigurationDraft(this.Options, this.MuxKind, this.PresetName, this.TrackUiState);
+            this.Draft = new RemuxConfigurationDraft(this.Options, this.MuxKind, this.PresetName, this.TrackUiState, this.PreviewRequest, this.PreviewSnapshot);
             if (this.HostOptions != null)
             {
                 this.HostOptions.CanClose = () => Task.FromResult(!this._applying);
@@ -87,8 +105,11 @@ namespace RemuxForge.Web.Components.Remux
             this._presetToLoad = this.Draft.PresetName;
             this.SyncSourceFill();
             this.SyncSpeedFactor();
+            this.SyncSourceIsFile();
             this.SetHelp("mode");
         }
+
+        private void SyncSourceIsFile() => this._sourceIsFile = !string.IsNullOrWhiteSpace(this.O.SourceFolder) && File.Exists(this.O.SourceFolder);
 
         protected override async Task OnAfterRenderAsync(bool firstRender)
         {
@@ -96,6 +117,16 @@ namespace RemuxForge.Web.Components.Remux
             {
                 this._focusSession = this.JsModule.InvokeAsync<IJSObjectReference>("focusRemuxDialog", this._content).AsTask();
                 await this._focusSession;
+            }
+            if (this._focusMuxCard is int card)
+            {
+                this._focusMuxCard = null;
+                await this._muxCardRefs[card].FocusAsync();
+            }
+            if (this._focusField is string field && this.JsModule != null)
+            {
+                this._focusField = null;
+                await this.JsModule.InvokeAsync<bool>("focusRemuxField", this._content, field);
             }
             if (this._mediaFocusToRestore is { } focus)
             {
@@ -111,7 +142,26 @@ namespace RemuxForge.Web.Components.Remux
             !string.IsNullOrEmpty(this.O.AudioSourceFillLanguage) || this.O.AudioSourceFillStart || this.O.AudioSourceFillEnd ||
             this.O.AudioSourceFillInsertSilence || this.O.AudioSourceFillGainDb != 0;
 
-        public IEnumerable<PipelineInitializationIssue> FieldErrors(string field) => this._errors.Where(e => e.Field == field && !string.IsNullOrEmpty(field));
+        // Gli errori di inventario hanno già un riquadro per file nella sezione File
+        public IEnumerable<PipelineInitializationIssue> FieldErrors(string field) => this._errors.Where(e => e.Field == field && !string.IsNullOrEmpty(field) &&
+            e.Code != "inventory" && IssueSection(e) == this._section);
+        private static readonly HashSet<string> InlineFields = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "Mode", "SourceFolder", "LanguageFolder", "FileExtensions", "MatchPattern", "ExplicitTrackSelection", "TargetLanguage", "AudioCodec",
+            "KeepSourceAudioLangs", "KeepSourceAudioCodec", "KeepSourceSubtitleLangs", "SubOnly", "AudioOnly", "AudioDelay", "SubtitleDelay",
+            "AnalysisCropSourcePx", "AnalysisCropLanguagePx", "SpeedCorrectionMode", "ManualStretchFactor", "AudioFormat", "AudioProcessingScope",
+            "AudioDownsample24To16", "AudioPeakNormalize", "AudioPeakTargetDb", "AudioFixedGainDb", "AudioSourceFillThresholdMs", "AudioSourceFillLanguage",
+            "AudioSourceFillGainDb", "AudioSourceFillStart", "EncodingProfileName", "SubtitleCanvasRewrite", "CopyLangChapters", "DestinationFolder", "Overwrite"
+        };
+        /// <summary>Il riquadro in alto elenca gli errori delle altre sezioni e quelli senza un campo visibile nella sezione corrente.</summary>
+        private IEnumerable<PipelineInitializationIssue> AlertErrors => this._errors.Where(e => IssueSection(e) != this._section ||
+            (e.Code == "inventory" ? this._section != 1 : !InlineFields.Contains(e.Field ?? "") ||
+                (e.Field == "TargetLanguage" && this.Draft.Advanced)));
+        private void ReplaceSectionErrors(int section, IEnumerable<PipelineInitializationIssue> errors)
+        {
+            this._errors.RemoveAll(e => IssueSection(e) == section);
+            this._errors.AddRange(errors.Where(e => IssueSection(e) == section));
+        }
         private static int IssueSection(PipelineInitializationIssue issue) => issue.Section switch
         {
             "Mode" => 0, "Files" => 1, "Tracks" => 2, "Synchronization" => 3, "Processing" => 4, "Output" => 5, _ => 0
@@ -123,6 +173,7 @@ namespace RemuxForge.Web.Components.Remux
             int section = IssueSection(issue);
             this._section = this.CanNavigate(section) ? section : 1;
             this.SetHelp(issue.Section == "Tools" ? "tools" : "errors");
+            if (!string.IsNullOrEmpty(issue.Field)) this._focusField = issue.Field;
         }
         private bool CanNavigate(int index) => index <= 1 || (!this._reading && this.Draft.HasMatching &&
             (!this.Draft.Advanced || this.InventoryReady));
@@ -131,8 +182,8 @@ namespace RemuxForge.Web.Components.Remux
             if (index < 0 || index >= Sections.Length || !this.CanNavigate(index) || this.CannotEdit) return;
             if (index == 5 && this._section < 5)
             {
-                this._errors = this.ValidateWizard().Where(e => IssueSection(e) == 4).ToList();
-                if (this._errors.Count > 0)
+                this.ReplaceSectionErrors(4, this.ValidateWizard());
+                if (this.SectionHasErrors(4))
                 {
                     this._section = 4;
                     this.SetHelp("audioFormat");
@@ -140,18 +191,12 @@ namespace RemuxForge.Web.Components.Remux
                 }
             }
             this._section = index;
-            this.SetHelp(index switch { 0 => "mode", 1 => "source", 2 => "tracks", 3 => "speed", 4 => "audioFormat", _ => "destination" });
+            this.SetHelp(index switch { 0 => "mode", 1 => "source", 2 => "tracks", 3 => "mode", 4 => "audioScope", _ => "destination" });
         }
 
         public static string MuxLabel(RemuxMuxKind kind) => AppText.T("web.remux.mux." + kind);
 
-        private static string SpeedModeLabel(string mode) => mode switch
-        {
-            Options.SPEED_CORRECTION_MANUAL => AppText.T("web.remux.manual"),
-            Options.SPEED_CORRECTION_OFF => AppText.T("web.config.option.off"),
-            _ => mode
-        };
-        private static string SpeedFactorLabel(string factor) => SpeedPresets.Any(p => p.Factor == factor)
+        private static string SpeedFactorLabel(string factor) => string.IsNullOrEmpty(factor) ? AppText.T("web.remux.speedNone") : SpeedPresets.Any(p => p.Factor == factor)
             ? AppText.T("web.config.option." + SpeedPresets.First(p => p.Factor == factor).Key)
             : AppText.F("web.config.option.speedCustom", factor);
         private void SyncSpeedFactor()
@@ -163,7 +208,6 @@ namespace RemuxForge.Web.Components.Remux
             else if (SpeedCorrectionService.TryParseStretchFactor(factor, out _, out string normalized))
                 this.O.ManualStretchFactor = this._customSpeedFactor = normalized;
         }
-        private static string FieldLabel(string key) => AppText.T(key).Replace("*", "");
         private string[] CropParts(bool lang)
         {
             string crop = lang ? this.O.AnalysisCropLanguagePx : this.O.AnalysisCropSourcePx;
@@ -185,9 +229,9 @@ namespace RemuxForge.Web.Components.Remux
         }
         private static string AudioScopeLabel(string scope) => scope switch
         {
-            "disabled" => AppText.T("web.config.option.disabled"),
+            "disabled" => AppText.T("web.remux.scopeNone"),
             "all" => AppText.T("web.config.option.all"),
-            "lang" => "Lang",
+            "lang" => AppText.T("web.remux.scopeLang"),
             _ => scope
         };
         private static string GainModeLabel(string mode) => AppText.T(mode switch
@@ -204,18 +248,8 @@ namespace RemuxForge.Web.Components.Remux
                 this.SetMuxHelp(this.Draft.MuxKind);
                 return;
             }
-            string wizardKey = "web.remux.help." + key;
-            string title = AppText.T(wizardKey + ".title");
-            if (title != "[" + wizardKey + ".title]")
-            {
-                this._helpTitle = title;
-                this._helpText = AppText.T(wizardKey + ".text");
-            }
-            else
-            {
-                this._helpTitle = AppText.T("web.config.help.remux." + key + ".title");
-                this._helpText = AppText.T("web.config.help.remux." + key + ".text");
-            }
+            this._helpTitle = AppText.T("web.remux.help." + key + ".title");
+            this._helpText = AppText.T("web.remux.help." + key + ".text");
             if (!this._disposed) _ = this.InvokeAsync(this.StateHasChanged);
         }
 
@@ -231,7 +265,23 @@ namespace RemuxForge.Web.Components.Remux
             if (!this._disposed) _ = this.InvokeAsync(this.StateHasChanged);
         }
 
-        private void SetMuxKind(RemuxMuxKind kind) => this.Edit(() => { this.Draft.SetMuxKind(kind); this._errors.Clear(); this.SetMuxHelp(kind); });
+        private void SetMuxKind(RemuxMuxKind kind) => this.Edit(() =>
+        {
+            this.Draft.SetMuxKind(kind);
+            this.SyncSpeedFactor();
+            this._errors.RemoveAll(e => IssueSection(e) == 0 || IssueSection(e) == 3);
+            this.SetMuxHelp(kind);
+        });
+
+        /// <summary>Frecce sulle card del tipo di mux: si comportano come un gruppo di radio button</summary>
+        private void MuxCardKey(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e, int index)
+        {
+            int step = e.Key switch { "ArrowRight" or "ArrowDown" => 1, "ArrowLeft" or "ArrowUp" => -1, _ => 0 };
+            if (step == 0 || this.CannotEdit) return;
+            int next = (index + step + MuxCards.Length) % MuxCards.Length;
+            this.SetMuxKind(MuxCards[next].Kind);
+            this._focusMuxCard = next;
+        }
         private void SetAdvanced(bool advanced) => this.Edit(() => { this.Draft.SetAdvanced(advanced); this._errors.Clear(); });
         private void TracksChanged() => this.Edit(() => this._errors.RemoveAll(e => e.Section == "Tracks"));
         private static List<string> Csv(string value, bool extensions = false) => (value ?? "").Split(',').Select(v => extensions ? v.Trim().TrimStart('.') : v.Trim()).Where(v => v.Length > 0).Distinct().ToList();
@@ -242,6 +292,7 @@ namespace RemuxForge.Web.Components.Remux
             if (field == 0) this.O.SourceFolder = path;
             else if (field == 1) this.O.LanguageFolder = path;
             else this.O.DestinationFolder = path;
+            if (field == 0) this.SyncSourceIsFile();
             if (field != 2) this.InvalidatePreview();
         }
 
@@ -258,28 +309,16 @@ namespace RemuxForge.Web.Components.Remux
         private async Task Browse(int field)
         {
             if (this.CannotEdit) return;
-            object result = await this.DialogService.OpenAsync<RemuxExistingDialogComponent>(AppText.T(field == 2 ? "web.folder.selectFolderTitle" : "web.folder.selectFileOrFolderTitle"),
-                new Dictionary<string, object>
-                {
-                    { "Kind", "picker" }, { "InitialPath", field == 0 ? this.O.SourceFolder : field == 1 ? this.O.LanguageFolder : this.O.DestinationFolder },
-                    { "ShowFiles", field != 2 }, { "AllowedExtensions", new List<string>(this.O.FileExtensions) }, { "JsModule", this.JsModule }
-                }, ChildDialogOptions(picker: true));
-            if (result is string path && !this._disposed) this.ChangeInput(field, path);
+            string path = await AppDialogs.BrowseAsync(this.DialogService, this.JsModule, field == 0 ? this.O.SourceFolder : field == 1 ? this.O.LanguageFolder : this.O.DestinationFolder,
+                field != 2, true, new List<string>(this.O.FileExtensions));
+            if (path != null && !this._disposed) this.ChangeInput(field, path);
         }
-
-        private DialogOptions ChildDialogOptions(bool picker = false) => new DialogOptions
-        {
-            Width = "min(70rem, 94vw)", Height = "min(48rem, 88vh)", CloseDialogOnOverlayClick = false,
-            ContentCssClass = picker ? "rf-remux-picker-dialog-content" : null,
-            CloseDialogOnEsc = true, AutoFocusFirstElement = this.JsModule == null, CloseAriaLabel = AppText.T("web.common.cancel")
-        };
 
         private async Task OpenProfilesAsync()
         {
             if (this.CannotEdit) return;
-            object result = await this.DialogService.OpenAsync<RemuxExistingDialogComponent>(AppText.T("web.encodingProfiles.title"),
-                new Dictionary<string, object> { { "Kind", "encoding" }, { "JsModule", this.JsModule } }, ChildDialogOptions());
-            if (result is string name && !this._disposed) this.ProfileSaved(name);
+            string name = await AppDialogs.OpenEncodingProfilesAsync(this.DialogService, this.JsModule);
+            if (name != null && !this._disposed) this.ProfileSaved(name);
         }
 
         private async Task OpenSavePresetAsync()
@@ -323,7 +362,7 @@ namespace RemuxForge.Web.Components.Remux
             catch (Exception ex)
             {
                 if (!this.AsyncResponseBlocked && !cancellation.IsCancellationRequested && revision == this.Draft.Revision)
-                    this._errors.Add(new PipelineInitializationIssue("preview", ex.Message, "SourceFolder", "Files", true));
+                    this._errors.Add(new PipelineInitializationIssue("preview", ex.Message, "SourceFolder", "Files"));
             }
             finally
             {
@@ -333,7 +372,7 @@ namespace RemuxForge.Web.Components.Remux
 
         private string SampleName(bool lang)
         {
-            RemuxPreviewPair pair = this.Draft.HasMatching ? this.Draft.Snapshot.Pairs.First(p => p.IsMatched) : null;
+            RemuxPreviewPair pair = this.Draft.HasMatching ? this.SortedPairs.First() : null;
             return pair == null ? "—" : Path.GetFileName(lang ? pair.LangFilePath : pair.SourceFilePath);
         }
         private async Task OpenMediaInfoAsync(bool lang)
@@ -348,7 +387,7 @@ namespace RemuxForge.Web.Components.Remux
             this._mediaCancellation = cancellation;
             long mediaRevision = this._mediaRevision;
             long revision = this.Draft.Revision;
-            RemuxPreviewPair pair = this.Draft.Snapshot.Pairs.First(p => p.IsMatched);
+            RemuxPreviewPair pair = this.SortedPairs.First();
             string file = lang ? pair.LangFilePath : pair.SourceFilePath;
             this._mediaLoading = true;
             this._mediaError = "";
@@ -359,24 +398,27 @@ namespace RemuxForge.Web.Components.Remux
                 if (this.CannotEdit || cancellation.IsCancellationRequested || mediaRevision != this._mediaRevision || revision != this.Draft.Revision) return;
                 if (!result.Success)
                 {
-                    List<string> details = new List<string> { Path.GetFileName(file) + " — " + result.ErrorMessage };
+                    List<string> details = new List<string> { result.ErrorMessage };
                     if (!string.IsNullOrEmpty(result.Stderr) && result.Stderr != result.ErrorMessage) details.Add(result.Stderr);
                     if (!string.IsNullOrEmpty(result.ExceptionDetails)) details.Add(result.ExceptionDetails);
                     details.Add("ErrorCode: " + result.ErrorCode + (result.ExitCode.HasValue ? " · ExitCode: " + result.ExitCode.Value : ""));
-                    this._mediaError = string.Join(Environment.NewLine, details);
+                    this._mediaError = AppText.F("web.remux.mediaFailed", Path.GetFileName(file));
+                    this._mediaErrorDetails = string.Join(Environment.NewLine, details);
                     return;
                 }
                 this._mediaReport = result.Report;
-                this._mediaTitle = (lang ? "Lang · " : "Source · ") + Path.GetFileName(file);
-                await this.DialogService.OpenAsync<RemuxExistingDialogComponent>(this._mediaTitle,
-                    new Dictionary<string, object> { { "Kind", "media" }, { "Title", this._mediaTitle }, { "Report", this._mediaReport }, { "JsModule", this.JsModule } }, ChildDialogOptions());
+                this._mediaTitle = AppText.T(lang ? "web.remux.mediaInfoLang" : "web.remux.mediaInfoSource") + " · " + Path.GetFileName(file);
+                await AppDialogs.OpenMediaInfoAsync(this.DialogService, this.JsModule, this._mediaTitle, this._mediaReport);
                 childClosed = true;
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
                 if (!this.CannotEdit && mediaRevision == this._mediaRevision && revision == this.Draft.Revision)
-                    this._mediaError = ex.Message;
+                {
+                    this._mediaError = AppText.F("web.remux.mediaFailed", Path.GetFileName(file));
+                    this._mediaErrorDetails = ex.Message;
+                }
             }
             finally
             {
@@ -398,6 +440,7 @@ namespace RemuxForge.Web.Components.Remux
             this._mediaCancellation?.Cancel();
             this._mediaLoading = false;
             this._mediaError = "";
+            this._mediaErrorDetails = "";
         }
 
         private async Task LoadPresetAsync()
@@ -427,7 +470,7 @@ namespace RemuxForge.Web.Components.Remux
             this._previewCancellation?.Cancel();
             this.CancelMediaRead();
             this.Draft.LoadPreset(preset);
-            this._reading = false;
+            if (!this.Draft.HasCurrentSnapshot) this._reading = false;
             this.SyncSourceFill();
             this._section = 0;
             this.SyncSpeedFactor();
@@ -435,7 +478,45 @@ namespace RemuxForge.Web.Components.Remux
             this._errors = this.Draft.Validate(true).Where(e => e.Code == "profileMissing" || e.Code == "mode").ToList();
         }
 
-        private void UpdatePreset() => this.SavePreset(true, this.Draft.PresetName);
+        private async Task DeletePresetAsync()
+        {
+            if (this.CannotEdit || string.IsNullOrEmpty(this._presetToLoad)) return;
+            string name = this._presetToLoad;
+            object result;
+            this._confirmingPreset = true;
+            try
+            {
+                result = await this.DialogService.OpenAsync<RemuxLoadPresetDialogComponent>(AppText.T("web.remux.deleteConfirmTitle"),
+                    new Dictionary<string, object>
+                    {
+                        { "PresetName", name }, { "Message", AppText.T("web.remux.deleteConfirm") },
+                        { "ConfirmText", AppText.T("web.remux.delete") }, { "Danger", true }, { "JsModule", this.JsModule }
+                    },
+                    new DialogOptions
+                    {
+                        Width = "min(34rem, 94vw)", CloseDialogOnOverlayClick = false, CloseDialogOnEsc = true,
+                        AutoFocusFirstElement = this.JsModule == null, CloseAriaLabel = AppText.T("web.common.cancel")
+                    });
+            }
+            finally { this._confirmingPreset = false; }
+            if (result is not bool confirmed || !confirmed || this.CannotEdit) return;
+            if (!AppSettingsService.Instance.DeleteRemuxPreset(name, out string error))
+            {
+                this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.remux.preset"), error, 8000);
+                return;
+            }
+            this._presets = AppSettingsService.Instance.GetRemuxPresets();
+            this._presetToLoad = "";
+            // Il lavoro resta configurato come prima; perde soltanto il legame con il preset eliminato
+            if (string.Equals(this.Draft.PresetName, name, StringComparison.OrdinalIgnoreCase)) this.Draft.DetachPreset();
+            this.NotificationService.Notify(NotificationSeverity.Success, AppText.T("web.remux.preset"), AppText.F("web.remux.presetDeleted", name), 4000);
+        }
+
+        private void UpdatePreset()
+        {
+            if (string.IsNullOrEmpty(this.SavePreset(true, this.Draft.PresetName)))
+                this.NotificationService.Notify(NotificationSeverity.Success, AppText.T("web.remux.preset"), AppText.F("web.remux.presetSaved", this.Draft.PresetName), 4000);
+        }
 
         private string SavePreset(bool update, string name)
         {
@@ -452,6 +533,7 @@ namespace RemuxForge.Web.Components.Remux
             this.Draft.MarkPresetSaved(preset);
             this._presets = AppSettingsService.Instance.GetRemuxPresets();
             this._presetToLoad = preset.Name;
+            if (!update) this.NotificationService.Notify(NotificationSeverity.Success, AppText.T("web.remux.preset"), AppText.F("web.remux.presetSaved", preset.Name), 4000);
             return "";
         }
 
@@ -461,27 +543,31 @@ namespace RemuxForge.Web.Components.Remux
             this.O.EncodingProfileName = name;
             this._errors.RemoveAll(e => e.Code == "profileMissing");
         }
-        private void ChangeAudioFormat(object value)
+        private void ChangeAudioFormat(object value) => this.Edit(() =>
         {
-            if (this.CannotEdit) return;
             this.O.AudioFormat = value as string ?? "";
             if (this.O.AudioFormat != "flac" && this.O.AudioFormat != "lpcm") this.O.AudioDownsample24To16 = false;
-            if (string.IsNullOrEmpty(this.O.AudioFormat))
-            {
-                this.ChangeAudioScope("disabled");
-                this.ChangeSourceFill(false);
-            }
-        }
-        private void ChangeAudioScope(object value)
+        });
+
+        /// <summary>Prima si sceglie cosa elaborare; senza elaborazione l'audio resta com'è e i campi di conversione si azzerano</summary>
+        private void ChangeAudioScope(object value) => this.Edit(() =>
         {
-            if (this.CannotEdit) return;
             this.O.AudioProcessingScope = value as string ?? "disabled";
-            if (this.O.AudioProcessingScope == "disabled")
-            {
-                this.O.AudioDownsample24To16 = false;
-                this.ChangeGainMode("none");
-            }
-        }
+            if (this.O.AudioProcessingScope != "disabled") return;
+            this.O.AudioFormat = "";
+            this.O.AudioDownsample24To16 = false;
+            this.ChangeGainMode("none");
+            this.ChangeSourceFill(false);
+        });
+
+        /// <summary>Sovrascrivere il sorgente e scrivere in una cartella si escludono: attivare la sovrascrittura svuota la destinazione</summary>
+        private void ChangeOverwrite(bool value) => this.Edit(() =>
+        {
+            this.O.Overwrite = value;
+            if (value) this.O.DestinationFolder = "";
+        });
+
+        private static string PairStatus(RemuxPreviewPair pair) => pair.IsMatched ? AppText.T("web.remux.matched") : pair.SkipReason;
         private void ChangeGainMode(object value)
         {
             if (this.CannotEdit) return;
@@ -529,10 +615,16 @@ namespace RemuxForge.Web.Components.Remux
             if (this.CannotEdit) return;
             if (this._section != 5)
             {
+                // Dal passo File, Avanti legge i file quando l'anteprima corrente manca
+                if (this._section == 1 && !this.Draft.HasMatching)
+                {
+                    await this.RefreshAsync();
+                    if (!this.Draft.HasMatching || this.CannotEdit) return;
+                }
                 if (this._section >= 2)
                 {
-                    this._errors = this.ValidateWizard().Where(issue => IssueSection(issue) == this._section).ToList();
-                    if (this._errors.Count > 0) return;
+                    this.ReplaceSectionErrors(this._section, this.ValidateWizard());
+                    if (this.SectionHasErrors(this._section)) return;
                 }
                 this.Navigate(this._section + 1);
                 return;
@@ -553,24 +645,78 @@ namespace RemuxForge.Web.Components.Remux
                 await this.OnApplied.InvokeAsync(this.Draft);
                 if (this._warnings.Count == 0) this.DialogService.Close(true);
             }
-            catch (Exception ex) { this._errors.Add(new PipelineInitializationIssue("apply", ex.Message, "", "Configuration", true)); }
+            catch (Exception ex) { this._errors.Add(new PipelineInitializationIssue("apply", ex.Message, "", "Configuration")); }
             finally { this._applying = false; }
         }
 
-        private IEnumerable<(int Section, string Text)> SummaryRows()
+        private IEnumerable<RemuxPreviewPair> SortedPairs => this.Draft.Snapshot.Pairs
+            .OrderBy(p => p.IsMatched ? 0 : 1).ThenBy(p => p.EpisodeId ?? "", StringComparer.OrdinalIgnoreCase)
+            .ThenBy(p => Path.GetFileName(p.SourceFilePath), StringComparer.OrdinalIgnoreCase);
+
+        private string ProcessCountsText
         {
-            yield return (0, MuxLabel(this.Draft.MuxKind));
-            yield return (1, "Source: " + this.O.SourceFolder + " · Lang: " + this.Draft.PreviewRequest().LangPath + " · " + (this.Draft.HasCurrentSnapshot ? this.Draft.Snapshot.MatchedPairs : 0) + " " + AppText.T("web.remux.matched"));
-            yield return (2, AppText.T(this.Draft.Advanced ? "web.remux.advanced" : "web.remux.rules") + (this.Draft.Advanced ? "" : " · " + string.Join(", ", this.O.TargetLanguage)));
-            yield return (3, (this.O.DeepAnalysis ? "Deep Analysis" : this.O.FrameSync ? "FrameSync" : AppText.T("web.remux.manual")) + " · Audio " + this.O.AudioDelay + " ms · Sub " + this.O.SubtitleDelay + " ms · " + SpeedModeLabel(this.O.SpeedCorrectionMode) + " " + this.O.ManualStretchFactor);
-            if (this.VisualAnalysis) yield return (3, AppText.T("web.config.label.cropSource") + " " + this.O.AnalysisCropSourcePx + " · Lang " + this.O.AnalysisCropLanguagePx);
-            yield return (4, "Audio: " + (string.IsNullOrEmpty(this.O.AudioFormat) ? AppText.T("web.remux.copyAudio") : this.O.AudioFormat + " / " + AudioScopeLabel(this.O.AudioProcessingScope)) + " · Video: " + (string.IsNullOrEmpty(this.O.EncodingProfileName) ? AppText.T("web.remux.originalVideo") : this.O.EncodingProfileName) + " · " + AppText.T("web.config.toggle.subtitleCanvasRewrite") + ": " + AppText.T(this.O.SubtitleCanvasRewrite ? "web.common.yes" : "web.common.no") + " · " + AppText.T("web.config.toggle.copyLangChapters") + ": " + AppText.T(this.O.CopyLangChapters ? "web.common.yes" : "web.common.no"));
-            if (this.O.AudioDownsample24To16) yield return (4, AppText.T("web.config.toggle.audio24"));
-            if (this.O.AudioPeakNormalize) yield return (4, AppText.T("web.config.toggle.normalization") + " " + this.O.AudioPeakTargetDb + " dB");
-            if (this.O.AudioFixedGain) yield return (4, AppText.T("web.config.option.fixedGain") + " " + this.O.AudioFixedGainDb + " dB");
-            if (this._sourceFill) yield return (4, AppText.T("web.config.toggle.audioSourceFill") + " · " + this.O.AudioSourceFillLanguage + " · " + this.O.AudioSourceFillThresholdMs + " ms · " + this.O.AudioSourceFillGainDb + " dB · " +
-                (this.O.AudioSourceFillStart ? AppText.T("web.config.toggle.start") + " " : "") + (this.O.AudioSourceFillEnd ? AppText.T("web.config.toggle.end") + " " : "") +
-                (this.O.AudioSourceFillInsertSilence ? AppText.T("web.config.toggle.insertSilence") : ""));
+            get
+            {
+                int matched = this.Draft.Snapshot.MatchedPairs, processable = this.Draft.ProcessablePairs();
+                string text = AppText.F("web.remux.processCounts", matched, processable);
+                return matched > processable ? text + " · " + AppText.F("web.remux.processSkipped", matched - processable) : text;
+            }
+        }
+
+        private static string YesNo(bool value) => AppText.T(value ? "web.common.yes" : "web.common.no");
+        private static string Join(IEnumerable<string> parts) => string.Join(" · ", parts.Where(p => !string.IsNullOrEmpty(p)));
+        private static string ListOrAll(List<string> values) => values.Count == 0 ? AppText.T("web.remux.summary.any") : string.Join(", ", values);
+
+        /// <summary>Riepilogo per sezione: etichetta e valore leggibile, con i dettagli solo quando sono impostati</summary>
+        private IEnumerable<(int Section, string Label, string Value)> SummaryRows()
+        {
+            yield return (0, AppText.T("web.remux.muxKind"), MuxLabel(this.Draft.MuxKind));
+            string files = AppText.F("web.remux.summary.pairs", this.Draft.HasCurrentSnapshot ? this.Draft.Snapshot.MatchedPairs : 0) + Environment.NewLine +
+                "Source: " + this.O.SourceFolder + Environment.NewLine + "Lang: " + this.Draft.PreviewRequest().LangPath;
+            yield return (1, AppText.T("web.remux.summary.files"), files);
+            string tracks = this.Draft.Advanced
+                ? AppText.T("web.remux.advanced") + (this.InventoryReady ? Environment.NewLine + this.ProcessCountsText : "")
+                : Join(new[]
+                {
+                    AppText.T("web.remux.summary.import") + " " + ListOrAll(this.O.TargetLanguage),
+                    this.O.AudioCodec.Count > 0 ? AppText.T("web.remux.label.audioCodec") + " " + string.Join(", ", this.O.AudioCodec) : "",
+                    this.O.SubOnly ? AppText.T("web.config.toggle.subOnly") : "", this.O.AudioOnly ? AppText.T("web.config.toggle.audioOnly") : ""
+                }) + Environment.NewLine + Join(new[]
+                {
+                    AppText.T("web.remux.summary.keepAudio") + " " + ListOrAll(this.O.KeepSourceAudioLangs),
+                    AppText.T("web.remux.summary.keepSub") + " " + ListOrAll(this.O.KeepSourceSubtitleLangs)
+                });
+            yield return (2, AppText.T("web.remux.section.tracks"), tracks);
+            string sync = this.VisualAnalysis
+                ? Join(new[]
+                {
+                    this.O.DeepAnalysis ? "Deep Analysis" : "FrameSync",
+                    this.O.SpeedCorrectionMode == Options.SPEED_CORRECTION_MANUAL ? AppText.T("web.remux.label.speed") + " " + SpeedFactorLabel(this.O.ManualStretchFactor) : "",
+                    string.IsNullOrEmpty(this.O.AnalysisCropSourcePx) ? "" : AppText.T("web.remux.label.cropSource") + " " + this.O.AnalysisCropSourcePx,
+                    string.IsNullOrEmpty(this.O.AnalysisCropLanguagePx) ? "" : AppText.T("web.remux.label.cropLang") + " " + this.O.AnalysisCropLanguagePx
+                })
+                : AppText.F("web.remux.summary.delays", this.O.AudioDelay, this.O.SubtitleDelay);
+            yield return (3, AppText.T("web.config.section.sync"), sync);
+            string audio = this.O.AudioProcessingScope == "disabled" ? AppText.T("web.remux.copyAudio") : Join(new[]
+            {
+                AudioScopeLabel(this.O.AudioProcessingScope) + " · " + (string.IsNullOrEmpty(this.O.AudioFormat) ? "—" : this.O.AudioFormat.ToUpperInvariant()),
+                this.O.AudioDownsample24To16 ? AppText.T("web.config.toggle.audio24") : "",
+                this.O.AudioPeakNormalize ? AppText.T("web.config.option.peakNormalization") + " " + this.O.AudioPeakTargetDb + " dB" : "",
+                this.O.AudioFixedGain ? AppText.T("web.config.option.fixedGain") + " " + this.O.AudioFixedGainDb + " dB" : ""
+            });
+            if (this._sourceFill)
+                audio += Environment.NewLine + AppText.T("web.config.toggle.audioSourceFill") + ": " + Join(new[]
+                {
+                    this.O.AudioSourceFillLanguage, this.O.AudioSourceFillThresholdMs + " ms", this.O.AudioSourceFillGainDb + " dB",
+                    this.O.AudioSourceFillStart ? AppText.T("web.config.toggle.start") : "", this.O.AudioSourceFillEnd ? AppText.T("web.config.toggle.end") : "",
+                    this.O.AudioSourceFillInsertSilence ? AppText.T("web.config.toggle.insertSilence") : ""
+                });
+            yield return (4, "Audio", audio);
+            yield return (4, "Video", string.IsNullOrEmpty(this.O.EncodingProfileName) ? AppText.T("web.remux.originalVideo") : this.O.EncodingProfileName);
+            yield return (4, AppText.T("web.detail.subtitlesLabel"), AppText.T("web.config.toggle.subtitleCanvasRewrite") + ": " + YesNo(this.O.SubtitleCanvasRewrite) +
+                " · " + AppText.T("web.config.toggle.copyLangChapters") + ": " + YesNo(this.O.CopyLangChapters));
+            yield return (5, AppText.T("web.remux.summary.output"), this.O.Overwrite ? AppText.T("web.config.toggle.overwrite") :
+                string.IsNullOrEmpty(this.O.DestinationFolder) ? "—" : this.O.DestinationFolder);
         }
 
         private async Task CancelAsync()

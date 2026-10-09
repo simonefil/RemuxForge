@@ -1,5 +1,6 @@
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Tools;
 using System;
@@ -76,7 +77,7 @@ namespace RemuxForge.Core.Subtitles
 
             if (options.DryRun)
             {
-                ConsoleHelper.Write(LogSection.Merge, LogLevel.Text, "  [DRY-RUN] Processing canvas sottotitoli attivo");
+                ConsoleHelper.Write(LogSection.Merge, LogLevel.Text, AppText.T("remux.subtitles.canvasDryRun"));
                 return;
             }
 
@@ -127,7 +128,7 @@ namespace RemuxForge.Core.Subtitles
             alignment = this.ResolveAnalysisGeometryAlignment(record);
             if (sourceGeometry == null || languageGeometry == null || alignment == null || !alignment.Success || sourceGeometry.Width <= 0 || sourceGeometry.Height <= 0 || languageGeometry.Width <= 0 || languageGeometry.Height <= 0)
             {
-                ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, "  Subtitle canvas rewrite ignorato: geometria analisi non disponibile");
+                ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, AppText.T("remux.subtitles.canvasNoGeometry"));
                 return false;
             }
 
@@ -170,7 +171,7 @@ namespace RemuxForge.Core.Subtitles
                 transform.OffsetY == 0 &&
                 !transform.RequiresScaling)
             {
-                ConsoleHelper.Write(LogSection.Merge, LogLevel.Text, "  Subtitle canvas rewrite ignorato: canvas già allineato");
+                ConsoleHelper.Write(LogSection.Merge, LogLevel.Text, AppText.T("remux.subtitles.canvasAligned"));
                 return false;
             }
 
@@ -291,7 +292,7 @@ namespace RemuxForge.Core.Subtitles
         {
             if (transform.InputActiveWidth <= 0 || transform.InputActiveHeight <= 0 || transform.OutputActiveWidth <= 0 || transform.OutputActiveHeight <= 0)
             {
-                ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, "  Subtitle canvas rewrite ignorato: crop non valido");
+                ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, AppText.T("remux.subtitles.canvasInvalidCrop"));
                 return false;
             }
 
@@ -332,8 +333,8 @@ namespace RemuxForge.Core.Subtitles
                 extractedInput = true;
                 if (!this.ExtractSubtitleTrack(context.Record.LangFilePath, track.Id, inputFile, context.Options))
                 {
-                    this.DeleteSubtitleFiles(inputFile);
-                    ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, "  Subtitle canvas rewrite t" + track.Id + " ignorato: estrazione fallita");
+                    FileHelper.DeleteTempSubtitleFile(inputFile);
+                    ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, AppText.F("remux.subtitles.canvasExtractFailed", track.Id));
                     return;
                 }
             }
@@ -352,7 +353,7 @@ namespace RemuxForge.Core.Subtitles
                 processedLangSubTracks[track.Id] = outputFile;
                 if (!string.IsNullOrEmpty(previousFile))
                 {
-                    this.DeleteSubtitleFiles(previousFile);
+                    FileHelper.DeleteTempSubtitleFile(previousFile);
                 }
 
                 ConsoleHelper.Write(LogSection.Merge, LogLevel.Success,
@@ -361,15 +362,15 @@ namespace RemuxForge.Core.Subtitles
             else
             {
                 // Non-strict: un formato non riscrivibile non blocca il remux e non sostituisce la traccia originale
-                this.DeleteSubtitleFiles(outputFile);
+                FileHelper.DeleteTempSubtitleFile(outputFile);
                 ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning,
-                    "  Subtitle canvas rewrite t" + track.Id + " ignorato: " +
-                    (result != null && !string.IsNullOrEmpty(result.ErrorMessage) ? result.ErrorMessage : "validazione fallita"));
+                    AppText.F("remux.subtitles.canvasSkipped", track.Id,
+                    result != null && !string.IsNullOrEmpty(result.ErrorMessage) ? result.ErrorMessage : AppText.T("remux.subtitles.validationFailed")));
             }
 
             if (extractedInput)
             {
-                this.DeleteSubtitleFiles(inputFile);
+                FileHelper.DeleteTempSubtitleFile(inputFile);
             }
         }
 
@@ -433,24 +434,6 @@ namespace RemuxForge.Core.Subtitles
             }
 
             return this._toolPathResolver.ResolveMkvExtractPath(mkvMergePath, false);
-        }
-
-        /// <summary>
-        /// Cancella file sottotitolo principale e sidecar noti
-        /// </summary>
-        /// <param name="filePath">File sottotitolo principale</param>
-        private void DeleteSubtitleFiles(string filePath)
-        {
-            if (string.IsNullOrEmpty(filePath))
-            {
-                return;
-            }
-
-            FileHelper.DeleteTempFile(filePath);
-            if (string.Equals(Path.GetExtension(filePath), ".idx", StringComparison.OrdinalIgnoreCase))
-            {
-                FileHelper.DeleteTempFile(Path.ChangeExtension(filePath, ".sub"));
-            }
         }
 
         #endregion

@@ -1,30 +1,20 @@
 @inject IJSRuntime JSRuntime
-@implements IAsyncDisposable
+@inherits AppDialogContentBase
 
-<div class="dialog-overlay visible">
+<div class="rf-dialog metadata-preset-dialog" @ref="DialogContent">
     <input type="file" accept=".json" id="metadata-preset-import-input" hidden />
-    <div class="dialog-box dialog-fullscreen metadata-preset-dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="metadata-preset-dialog-title" @onclick:stopPropagation="true">
-        <div id="metadata-preset-dialog-title" class="dialog-title">@AppText.T("web.metadata.presetDialog.title")</div>
-        <div class="dialog-body metadata-rule-dialog-body">
+        <div class="rf-dialog-body metadata-rule-dialog-body">
             <div class="metadata-rule-preset-bar">
-                <span class="form-label">@AppText.T("web.metadata.presetLabel")</span>
-                <select class="form-input metadata-preset-select" aria-label="@AppText.T("web.metadata.presetLabel")" @bind="_selectedPresetFile" @bind:after="LoadSelectedPreset" @onfocus='@(() => SetFieldHelp("preset"))' @onmouseenter='@(() => SetFieldHelp("preset"))'>
-                    @if (_presetFiles.Count == 0)
-                    {
-                        <option value="">@AppText.T("web.metadata.presetDialog.newPreset")</option>
-                    }
-                    else
-                    {
-                        <option value="">@AppText.T("web.metadata.noPreset")</option>
-                    }
-                    @for (int i = 0; i < _presetFiles.Count; i++)
-                    {
-                        <option value="@_presetFiles[i]">@System.IO.Path.GetFileNameWithoutExtension(_presetFiles[i])</option>
-                    }
-                </select>
+                <RadzenLabel class="form-label" Text="@AppText.T("web.metadata.presetLabel")" Component="MetadataPresetFile" />
+                <RadzenDropDown TValue="string" Name="MetadataPresetFile" class="metadata-preset-select" Data="@_presetFiles" Value="@(string.IsNullOrEmpty(_selectedPresetFile) ? null : _selectedPresetFile)" Change="@ChangeSelectedPresetFile"
+                                AllowClear="true" Placeholder="@(_presetFiles.Count == 0 ? AppText.T("web.metadata.presetDialog.newPreset") : AppText.T("web.metadata.noPreset"))"
+                                @onfocusin='@(() => SetFieldHelp("preset"))' @onmouseenter='@(() => SetFieldHelp("preset"))'>
+                    <Template Context="file">@System.IO.Path.GetFileNameWithoutExtension((string)file)</Template>
+                    <ValueTemplate Context="file">@System.IO.Path.GetFileNameWithoutExtension((string)file)</ValueTemplate>
+                </RadzenDropDown>
                 @if (string.IsNullOrEmpty(_selectedPresetFile))
                 {
-                    <input class="form-input metadata-preset-name-input" aria-label="@AppText.T("web.common.nameLabel")" @bind="_preset.Name" placeholder="@AppText.T("web.metadata.presetDialog.presetNamePlaceholder")" @onfocus='@(() => SetFieldHelp("presetName"))' @onmouseenter='@(() => SetFieldHelp("presetName"))' />
+                    <RadzenTextBox class="metadata-preset-name-input" aria-label="@AppText.T("web.common.nameLabel")" @bind-Value="_preset.Name" Placeholder="@AppText.T("web.metadata.presetDialog.presetNamePlaceholder")" @onfocusin='@(() => SetFieldHelp("presetName"))' @onmouseenter='@(() => SetFieldHelp("presetName"))' />
                 }
                 else
                 {
@@ -35,19 +25,17 @@
                 <RadzenButton Text="@AppText.T("web.common.delete")" Icon="delete" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Danger" Click="@DeletePreset" Disabled="@(string.IsNullOrEmpty(_selectedPresetFile))" />
                 <RadzenButton Text="@AppText.T("web.metadata.presetDialog.import")" Icon="file_upload" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@ImportPreset" />
                 <RadzenButton Text="@AppText.T("web.metadata.presetDialog.export")" Icon="file_download" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@ExportPreset" />
-                <span class="form-label metadata-preview-file-label">@AppText.T("web.metadata.presetDialog.previewFile")</span>
-                <select class="form-input metadata-preview-file-select" aria-label="@AppText.T("web.metadata.presetDialog.previewFile")" @bind="_previewFile" @bind:after="ChangePreviewFile">
-                    <option value="">@AppText.T("web.metadata.presetDialog.previewNoFile")</option>
-                    @for (int i = 0; Records != null && i < Records.Count; i++)
-                    {
-                        <option value="@Records[i].InputFile">@System.IO.Path.GetFileName(Records[i].InputFile)</option>
-                    }
-                </select>
+                <RadzenLabel class="form-label metadata-preview-file-label" Text="@AppText.T("web.metadata.presetDialog.previewFile")" Component="MetadataPresetPreviewFile" />
+                <RadzenDropDown TValue="string" Name="MetadataPresetPreviewFile" class="metadata-preview-file-select" Data="@GetPreviewFiles()" Value="@(string.IsNullOrEmpty(_previewFile) ? null : _previewFile)" Change="@ChangeSelectedPreviewFile"
+                                AllowClear="true" Placeholder="@AppText.T("web.metadata.presetDialog.previewNoFile")">
+                    <Template Context="file">@System.IO.Path.GetFileName((string)file)</Template>
+                    <ValueTemplate Context="file">@System.IO.Path.GetFileName((string)file)</ValueTemplate>
+                </RadzenDropDown>
             </div>
 
             @if (!string.IsNullOrEmpty(_message))
             {
-                <div class="renamer-params-error">@_message</div>
+                <RadzenAlert AlertStyle="@_messageStyle" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="metadata-preset-message">@_message</RadzenAlert>
             }
 
             <div class="metadata-rule-builder">
@@ -87,21 +75,19 @@
                     {
                         <div class="metadata-rule-header-grid">
                             <div class="form-row">
-                                <span class="form-label">@AppText.T("web.metadata.presetDialog.ruleDescription")</span>
-                                <input class="form-input" aria-label="@AppText.T("web.metadata.presetDialog.ruleDescription")" @bind="SelectedRule.Description" @onfocus='@(() => SetFieldHelp("ruleDescription"))' @onmouseenter='@(() => SetFieldHelp("ruleDescription"))' />
+                                <RadzenLabel class="form-label" Text="@AppText.T("web.metadata.presetDialog.ruleDescription")" Component="MetadataRuleDescription" />
+                                <RadzenTextBox Name="MetadataRuleDescription" @bind-Value="SelectedRule.Description" @onfocusin='@(() => SetFieldHelp("ruleDescription"))' @onmouseenter='@(() => SetFieldHelp("ruleDescription"))' />
                             </div>
                             <div class="form-row">
-                                <span class="form-label">@AppText.T("web.metadata.presetDialog.scopeLabel")</span>
-                                <select class="form-input metadata-rule-scope-select" aria-label="@AppText.T("web.metadata.presetDialog.scopeLabel")" value="@SelectedRule.TargetScope" @onchange="ChangeSelectedRuleScope" @onfocus='@(() => SetFieldHelp("scope"))' @onmouseenter='@(() => SetFieldHelp("scope"))'>
-                                    @foreach (MkvMetadataTargetScope scope in MetadataPresetUiHelper.GetScopeOptions())
-                                    {
-                                        <option value="@scope">@MetadataPresetUiHelper.GetScopeLabel(scope)</option>
-                                    }
-                                </select>
+                                <RadzenLabel class="form-label" Text="@AppText.T("web.metadata.presetDialog.scopeLabel")" Component="MetadataRuleScope" />
+                                <RadzenDropDown TValue="MkvMetadataTargetScope" Name="MetadataRuleScope" class="metadata-rule-scope-select" Data="@MetadataPresetUiHelper.GetScopeOptions()" Value="@SelectedRule.TargetScope" Change="@ChangeSelectedRuleScope" @onfocusin='@(() => SetFieldHelp("scope"))' @onmouseenter='@(() => SetFieldHelp("scope"))'>
+                                    <Template Context="scope">@MetadataPresetUiHelper.GetScopeLabel((MkvMetadataTargetScope)scope)</Template>
+                                    <ValueTemplate Context="scope">@MetadataPresetUiHelper.GetScopeLabel((MkvMetadataTargetScope)scope)</ValueTemplate>
+                                </RadzenDropDown>
                             </div>
                             <div class="metadata-rule-toggle-row">
-                                <div class="ui-switch" @onmouseenter='@(() => SetFieldHelp("ruleEnabled"))'><RadzenSwitch TValue="bool" @bind-Value="@SelectedRule.Enabled" /><span>@AppText.T("web.metadata.presetDialog.enabled")</span></div>
-                                <div class="ui-switch" @onmouseenter='@(() => SetFieldHelp("advancedFields"))'><RadzenSwitch TValue="bool" Value="@_showAdvancedFields" Change="@ToggleAdvancedFields" /><span>@AppText.T("web.metadata.presetDialog.advancedFields")</span></div>
+                                <LabeledSwitchComponent Label="@AppText.T("web.metadata.presetDialog.enabled")" @bind-Value="SelectedRule.Enabled" @onmouseenter='@(() => SetFieldHelp("ruleEnabled"))' />
+                                <LabeledSwitchComponent Label="@AppText.T("web.metadata.presetDialog.advancedFields")" Value="@_showAdvancedFields" ValueChanged="@ToggleAdvancedFields" @onmouseenter='@(() => SetFieldHelp("advancedFields"))' />
                             </div>
                         </div>
 
@@ -121,69 +107,46 @@
 
                                     <div class="metadata-sentence-card">
                                         <div class="metadata-sentence-row">
-                                            <select class="form-input metadata-sentence-operator" aria-label="@AppText.T("web.metadata.presetDialog.help.operationType.title")" value="@operation.Type" @onchange="@((ChangeEventArgs e) => ChangeOperationType(operation, GetChangeValue(e)))" @onfocus='@(() => SetFieldHelp("operationType"))' @onmouseenter='@(() => SetFieldHelp("operationType"))'>
-                                                @foreach (MkvMetadataOperationType type in MetadataPresetUiHelper.GetOperationTypeOptions(SelectedRule.TargetScope))
-                                                {
-                                                    <option value="@type">@MetadataPresetUiHelper.GetOperationTypeLabel(type)</option>
-                                                }
-                                            </select>
+                                            <RadzenDropDown TValue="MkvMetadataOperationType" class="metadata-sentence-operator" aria-label="@AppText.T("web.metadata.presetDialog.help.operationType.title")" Data="@MetadataPresetUiHelper.GetOperationTypeOptions(SelectedRule.TargetScope)" Value="@operation.Type" Change="@((object value) => ChangeOperationType(operation, Convert.ToString(value)))" @onfocusin='@(() => SetFieldHelp("operationType"))' @onmouseenter='@(() => SetFieldHelp("operationType"))'>
+                                                <Template Context="type">@MetadataPresetUiHelper.GetOperationTypeLabel((MkvMetadataOperationType)type)</Template>
+                                                <ValueTemplate Context="type">@MetadataPresetUiHelper.GetOperationTypeLabel((MkvMetadataOperationType)type)</ValueTemplate>
+                                            </RadzenDropDown>
                                             @if (operation.Type == MkvMetadataOperationType.SetField || operation.Type == MkvMetadataOperationType.ClearField)
                                             {
-                                                <select class="form-input metadata-sentence-field" aria-label="@AppText.T("web.metadata.presetDialog.help.operationField.title")" @bind="operation.FieldKey" @onfocus="@(() => SetOperationFieldHelp(operation))" @onmouseenter="@(() => SetOperationFieldHelp(operation))">
-                                                    @foreach (MetadataFieldDefinition field in MetadataPresetUiHelper.GetEditableFields(SelectedRule.TargetScope, operation, _showAdvancedFields))
-                                                    {
-                                                        <option value="@field.Key">@field.Label</option>
-                                                    }
-                                                </select>
+                                                <RadzenDropDown TValue="string" class="metadata-sentence-field" aria-label="@AppText.T("web.metadata.presetDialog.help.operationField.title")" Data="@MetadataPresetUiHelper.GetEditableFields(SelectedRule.TargetScope, operation, _showAdvancedFields)" TextProperty="Label" ValueProperty="Key" @bind-Value="operation.FieldKey" @onfocusin="@(() => SetOperationFieldHelp(operation))" @onmouseenter="@(() => SetOperationFieldHelp(operation))" />
                                             }
                                             else if (operation.Type == MkvMetadataOperationType.SetExclusiveFlag)
                                             {
-                                                <select class="form-input metadata-sentence-field" aria-label="@AppText.T("web.metadata.presetDialog.help.operationField.title")" @bind="operation.FieldKey" @onfocus="@(() => SetOperationFieldHelp(operation))" @onmouseenter="@(() => SetOperationFieldHelp(operation))">
-                                                    @foreach (MetadataFieldDefinition field in MetadataPresetUiHelper.GetEditableFields(SelectedRule.TargetScope, operation, _showAdvancedFields))
-                                                    {
-                                                        <option value="@field.Key">@field.Label</option>
-                                                    }
-                                                </select>
-                                                <select class="form-input metadata-sentence-group" aria-label="@AppText.T("web.metadata.presetDialog.help.exclusiveGroup.title")" @bind="operation.ExclusiveGroup" @onfocus='@(() => SetFieldHelp("exclusiveGroup"))' @onmouseenter='@(() => SetFieldHelp("exclusiveGroup"))'>
-                                                    @foreach (MkvMetadataExclusiveGroup group in MetadataPresetUiHelper.GetExclusiveGroupOptions())
-                                                    {
-                                                        <option value="@group">@MetadataPresetUiHelper.GetExclusiveGroupLabel(group)</option>
-                                                    }
-                                                </select>
+                                                <RadzenDropDown TValue="string" class="metadata-sentence-field" aria-label="@AppText.T("web.metadata.presetDialog.help.operationField.title")" Data="@MetadataPresetUiHelper.GetEditableFields(SelectedRule.TargetScope, operation, _showAdvancedFields)" TextProperty="Label" ValueProperty="Key" @bind-Value="operation.FieldKey" @onfocusin="@(() => SetOperationFieldHelp(operation))" @onmouseenter="@(() => SetOperationFieldHelp(operation))" />
+                                                <RadzenDropDown TValue="MkvMetadataExclusiveGroup" class="metadata-sentence-group" aria-label="@AppText.T("web.metadata.presetDialog.help.exclusiveGroup.title")" Data="@MetadataPresetUiHelper.GetExclusiveGroupOptions()" @bind-Value="operation.ExclusiveGroup" @onfocusin='@(() => SetFieldHelp("exclusiveGroup"))' @onmouseenter='@(() => SetFieldHelp("exclusiveGroup"))'>
+                                                    <Template Context="group">@MetadataPresetUiHelper.GetExclusiveGroupLabel((MkvMetadataExclusiveGroup)group)</Template>
+                                                    <ValueTemplate Context="group">@MetadataPresetUiHelper.GetExclusiveGroupLabel((MkvMetadataExclusiveGroup)group)</ValueTemplate>
+                                                </RadzenDropDown>
                                             }
                                             else if (operation.Type == MkvMetadataOperationType.SetTagField || operation.Type == MkvMetadataOperationType.ClearTagField)
                                             {
                                                 <div class="metadata-operation-target">
-                                                    <select class="form-input metadata-rule-select-medium" aria-label="@AppText.T("web.metadata.presetDialog.help.tagTarget.title")" value="@operation.TagTarget" @onchange="@((ChangeEventArgs e) => ChangeOperationTagTarget(operation, GetChangeValue(e)))" @onfocus='@(() => SetFieldHelp("tagTarget"))' @onmouseenter='@(() => SetFieldHelp("tagTarget"))'>
-                                                        <option value="@MkvMetadataTagTarget.Current">@AppText.T("web.metadata.tagTarget.Current")</option>
-                                                        <option value="@MkvMetadataTagTarget.File">@AppText.T("web.metadata.tagTarget.File")</option>
-                                                        <option value="@MkvMetadataTagTarget.CurrentTrack">@AppText.T("web.metadata.tagTarget.CurrentTrack")</option>
-                                                        <option value="@MkvMetadataTagTarget.AllTracks">@AppText.T("web.metadata.tagTarget.AllTracks")</option>
-                                                    </select>
-                                                    <select class="form-input metadata-rule-select-medium" aria-label="@AppText.T("web.metadata.presetDialog.help.tagKey.title")" value="@operation.TagKey" @onchange="@((ChangeEventArgs e) => ChangeOperationTagKey(operation, GetChangeValue(e)))" @onfocus="@(() => SetOperationTagHelp(operation))" @onmouseenter="@(() => SetOperationTagHelp(operation))">
-                                                        @foreach (MetadataTagDefinition tag in MetadataPresetUiHelper.GetEditableTags(SelectedRule.TargetScope, operation, _showAdvancedFields))
-                                                        {
-                                                            <option value="@tag.Name">@tag.Label</option>
-                                                        }
-                                                    </select>
+                                                    <RadzenDropDown TValue="MkvMetadataTagTarget" class="metadata-rule-select-medium" aria-label="@AppText.T("web.metadata.presetDialog.help.tagTarget.title")" Data="@TagTargets" Value="@operation.TagTarget" Change="@((object value) => ChangeOperationTagTarget(operation, Convert.ToString(value)))" @onfocusin='@(() => SetFieldHelp("tagTarget"))' @onmouseenter='@(() => SetFieldHelp("tagTarget"))'>
+                                                        <Template Context="target">@AppText.T("web.metadata.tagTarget." + target)</Template>
+                                                        <ValueTemplate Context="target">@AppText.T("web.metadata.tagTarget." + target)</ValueTemplate>
+                                                    </RadzenDropDown>
+                                                    <RadzenDropDown TValue="string" class="metadata-rule-select-medium" aria-label="@AppText.T("web.metadata.presetDialog.help.tagKey.title")" Data="@MetadataPresetUiHelper.GetEditableTags(SelectedRule.TargetScope, operation, _showAdvancedFields)" TextProperty="Label" ValueProperty="Name" Value="@operation.TagKey" Change="@((object value) => ChangeOperationTagKey(operation, value as string ?? ""))" @onfocusin="@(() => SetOperationTagHelp(operation))" @onmouseenter="@(() => SetOperationTagHelp(operation))" />
                                                     @if (SelectedRule.TargetScope == MkvMetadataTargetScope.Container && operation.TagTarget != MkvMetadataTagTarget.CurrentTrack && operation.TagTarget != MkvMetadataTagTarget.AllTracks)
                                                     {
-                                                        <select class="form-input metadata-rule-select-medium" aria-label="@AppText.T("web.metadata.presetDialog.help.tagLevel.title")" @bind="operation.TagTargetTypeValue" @bind:after="StateHasChanged" @onfocus='@(() => SetFieldHelp("tagLevel"))' @onmouseenter='@(() => SetFieldHelp("tagLevel"))'>
-                                                            @foreach (int level in MetadataPresetUiHelper.GetTagTargetLevelOptions())
-                                                            {
-                                                                <option value="@level">@MetadataPresetUiHelper.GetTagTargetLevelLabel(level)</option>
-                                                            }
-                                                        </select>
+                                                        <RadzenDropDown TValue="int" class="metadata-rule-select-medium" aria-label="@AppText.T("web.metadata.presetDialog.help.tagLevel.title")" Data="@MetadataPresetUiHelper.GetTagTargetLevelOptions()" @bind-Value="operation.TagTargetTypeValue" @bind-Value:after="StateHasChanged" @onfocusin='@(() => SetFieldHelp("tagLevel"))' @onmouseenter='@(() => SetFieldHelp("tagLevel"))'>
+                                                            <Template Context="level">@MetadataPresetUiHelper.GetTagTargetLevelLabel((int)level)</Template>
+                                                            <ValueTemplate Context="level">@MetadataPresetUiHelper.GetTagTargetLevelLabel((int)level)</ValueTemplate>
+                                                        </RadzenDropDown>
                                                     }
                                                 </div>
                                             }
                                             else if (operation.Type == MkvMetadataOperationType.SetAttachment || operation.Type == MkvMetadataOperationType.DeleteAttachment)
                                             {
-                                                <input class="form-input metadata-sentence-field" aria-label="@AppText.T("web.metadata.presetDialog.help.attachmentName.title")" placeholder="@AppText.T("web.metadata.presetDialog.attachmentNamePlaceholder")" @bind="operation.AttachmentName" @bind:after="StateHasChanged" @onfocus='@(() => SetFieldHelp("attachmentName"))' @onmouseenter='@(() => SetFieldHelp("attachmentName"))' />
+                                                <RadzenTextBox class="metadata-sentence-field" aria-label="@AppText.T("web.metadata.presetDialog.help.attachmentName.title")" Placeholder="@AppText.T("web.metadata.presetDialog.attachmentNamePlaceholder")" @bind-Value="operation.AttachmentName" @bind-Value:after="StateHasChanged" @onfocusin='@(() => SetFieldHelp("attachmentName"))' @onmouseenter='@(() => SetFieldHelp("attachmentName"))' />
                                             }
                                             else if (operation.Type == MkvMetadataOperationType.ClearTags)
                                             {
-                                                <div class="ui-switch" @onmouseenter='@(() => SetFieldHelp("clearTags"))'><RadzenSwitch TValue="bool" @bind-Value="@operation.ClearTagsConfirmed" /><span>@AppText.T("web.metadata.presetDialog.confirmClearTags")</span></div>
+                                                <LabeledSwitchComponent Label="@AppText.T("web.metadata.presetDialog.confirmClearTags")" @bind-Value="operation.ClearTagsConfirmed" @onmouseenter='@(() => SetFieldHelp("clearTags"))' />
                                             }
                                             else
                                             {
@@ -193,8 +156,8 @@
                                             @if (operation.Type == MkvMetadataOperationType.SetAttachment)
                                             {
                                                 <div class="metadata-operation-target">
-                                                    <input class="form-input metadata-operation-value" aria-label="@AppText.T("web.metadata.presetDialog.help.attachmentSource.title")" placeholder="@AppText.T("web.metadata.presetDialog.attachmentSourcePlaceholder")" @bind="operation.AttachmentSourcePath" @bind:after="StateHasChanged" @onfocus='@(() => SetFieldHelp("attachmentSource"))' @onmouseenter='@(() => SetFieldHelp("attachmentSource"))' />
-                                                    <input class="form-input metadata-rule-select-medium" aria-label="@AppText.T("web.metadata.presetDialog.help.attachmentMime.title")" placeholder="@AppText.T("web.metadata.presetDialog.attachmentMimePlaceholder")" @bind="operation.AttachmentMimeType" @bind:after="StateHasChanged" @onfocus='@(() => SetFieldHelp("attachmentMime"))' @onmouseenter='@(() => SetFieldHelp("attachmentMime"))' />
+                                                    <RadzenTextBox class="metadata-operation-value" aria-label="@AppText.T("web.metadata.presetDialog.help.attachmentSource.title")" Placeholder="@AppText.T("web.metadata.presetDialog.attachmentSourcePlaceholder")" @bind-Value="operation.AttachmentSourcePath" @bind-Value:after="StateHasChanged" @onfocusin='@(() => SetFieldHelp("attachmentSource"))' @onmouseenter='@(() => SetFieldHelp("attachmentSource"))' />
+                                                    <RadzenTextBox class="metadata-rule-select-medium" aria-label="@AppText.T("web.metadata.presetDialog.help.attachmentMime.title")" Placeholder="@AppText.T("web.metadata.presetDialog.attachmentMimePlaceholder")" @bind-Value="operation.AttachmentMimeType" @bind-Value:after="StateHasChanged" @onfocusin='@(() => SetFieldHelp("attachmentMime"))' @onmouseenter='@(() => SetFieldHelp("attachmentMime"))' />
                                                 </div>
                                             }
                                             else if (operation.Type == MkvMetadataOperationType.SetField || operation.Type == MkvMetadataOperationType.SetTagField)
@@ -226,7 +189,7 @@
                             }
                             else if (!string.IsNullOrEmpty(_previewError))
                             {
-                                <div class="renamer-params-error">@_previewError</div>
+                                <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="metadata-preset-message">@_previewError</RadzenAlert>
                             }
                             else if (_previewResult != null)
                             {
@@ -240,27 +203,27 @@
                                 }
                                 else
                                 {
-                                    <table class="metadata-preview-table">
-                                        <thead>
-                                            <tr>
-                                                <th>@AppText.T("web.metadata.presetDialog.previewTarget")</th>
-                                                <th>@AppText.T("web.metadata.mapped.field")</th>
-                                                <th>@AppText.T("web.metadata.presetDialog.previewBefore")</th>
-                                                <th>@AppText.T("web.metadata.presetDialog.previewAfter")</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
+                                    <RadzenTable GridLines="DataGridGridLines.Horizontal" class="metadata-preview-table">
+                                        <RadzenTableHeader>
+                                            <RadzenTableHeaderRow>
+                                                <RadzenTableHeaderCell>@AppText.T("web.metadata.presetDialog.previewTarget")</RadzenTableHeaderCell>
+                                                <RadzenTableHeaderCell>@AppText.T("web.metadata.mapped.field")</RadzenTableHeaderCell>
+                                                <RadzenTableHeaderCell>@AppText.T("web.metadata.presetDialog.previewBefore")</RadzenTableHeaderCell>
+                                                <RadzenTableHeaderCell>@AppText.T("web.metadata.presetDialog.previewAfter")</RadzenTableHeaderCell>
+                                            </RadzenTableHeaderRow>
+                                        </RadzenTableHeader>
+                                        <RadzenTableBody>
                                             @foreach (MkvMetadataChange change in GetSelectedRuleChanges())
                                             {
-                                                <tr>
-                                                    <td>@(!string.IsNullOrEmpty(change.TrackSelector) ? change.TrackSelector : AppText.T("web.metadata.mapped.general"))</td>
-                                                    <td>@(!string.IsNullOrEmpty(change.FieldKey) ? change.FieldKey : MetadataPresetUiHelper.GetOperationTypeLabel(change.OperationType))</td>
-                                                    <td class="metadata-preview-before">@change.BeforeValue</td>
-                                                    <td class="metadata-preview-after">@(!string.IsNullOrEmpty(change.AfterValue) ? change.AfterValue : change.Message)</td>
-                                                </tr>
+                                                <RadzenTableRow>
+                                                    <RadzenTableCell>@(!string.IsNullOrEmpty(change.TrackSelector) ? change.TrackSelector : AppText.T("web.metadata.mapped.general"))</RadzenTableCell>
+                                                    <RadzenTableCell>@(!string.IsNullOrEmpty(change.FieldKey) ? change.FieldKey : MetadataPresetUiHelper.GetOperationTypeLabel(change.OperationType))</RadzenTableCell>
+                                                    <RadzenTableCell class="metadata-preview-before">@change.BeforeValue</RadzenTableCell>
+                                                    <RadzenTableCell class="metadata-preview-after">@(!string.IsNullOrEmpty(change.AfterValue) ? change.AfterValue : change.Message)</RadzenTableCell>
+                                                </RadzenTableRow>
                                             }
-                                        </tbody>
-                                    </table>
+                                        </RadzenTableBody>
+                                    </RadzenTable>
                                 }
                             }
                         </div>
@@ -272,81 +235,37 @@
                     <div class="config-help-text">@_fieldHelpText</div>
 
                     <div class="config-help-section">@AppText.T("web.metadata.presetDialog.tokenBrowserTitle")</div>
-                    <input class="form-input metadata-token-filter" aria-label="@AppText.T("web.metadata.presetDialog.tokenFilterPlaceholder")" @bind="_tokenBrowserFilter" @bind:event="oninput" placeholder="@AppText.T("web.metadata.presetDialog.tokenFilterPlaceholder")" />
+                    <RadzenTextBox class="metadata-token-filter" aria-label="@AppText.T("web.metadata.presetDialog.tokenFilterPlaceholder")" @bind-Value="_tokenBrowserFilter" Immediate="true" Placeholder="@AppText.T("web.metadata.presetDialog.tokenFilterPlaceholder")" />
                     <div class="metadata-token-browser">
                         @foreach (MetadataTokenBrowserItem item in GetTokenBrowserItems())
                         {
-                            <button class="metadata-token-button" title="@item.Description" @onclick="() => InsertToken(item.Token)">
+                            <RadzenButton Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" class="metadata-token-button" title="@item.Description" Click="@(() => InsertToken(item.Token))">
                                 <span class="metadata-token-value">@item.Token</span>
                                 <span class="metadata-token-label">@item.Label</span>
-                            </button>
+                            </RadzenButton>
                         }
                     </div>
 
                     <div class="config-help-section">@AppText.T("web.metadata.presetDialog.functionsTitle")</div>
-                    <input class="form-input metadata-token-filter" aria-label="@AppText.T("web.metadata.presetDialog.functionFilterPlaceholder")" @bind="_functionBrowserFilter" @bind:event="oninput" placeholder="@AppText.T("web.metadata.presetDialog.functionFilterPlaceholder")" />
+                    <RadzenTextBox class="metadata-token-filter" aria-label="@AppText.T("web.metadata.presetDialog.functionFilterPlaceholder")" @bind-Value="_functionBrowserFilter" Immediate="true" Placeholder="@AppText.T("web.metadata.presetDialog.functionFilterPlaceholder")" />
                     <div class="metadata-token-browser">
                         @foreach (MetadataCatalogFunctionItem item in GetFunctionBrowserItems())
                         {
                             <div class="metadata-function-row">
-                                <button class="metadata-token-button metadata-function-insert-button" title="@item.Description" @onclick="() => InsertFunction(item.Call)" @onmouseenter="@(() => SetFunctionHelp(item.Name))" @onfocus="@(() => SetFunctionHelp(item.Name))">
+                                <RadzenButton Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" class="metadata-token-button metadata-function-insert-button" title="@item.Description" Click="@(() => InsertFunction(item.Call))" @onmouseenter="@(() => SetFunctionHelp(item.Name))" @onfocus="@(() => SetFunctionHelp(item.Name))">
                                     <span class="metadata-token-value">@item.Call</span>
                                     <span class="metadata-token-label">@item.Description</span>
-                                </button>
-                                <button class="metadata-function-example-button" title="@AppText.T("web.metadata.presetDialog.functionExampleOpen")" @onclick="() => ShowFunctionExample(item)">@AppText.T("web.metadata.presetDialog.functionExampleButton")</button>
+                                </RadzenButton>
+                                <RadzenButton Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall" class="metadata-function-example-button" title="@AppText.T("web.metadata.presetDialog.functionExampleOpen")" Text="@AppText.T("web.metadata.presetDialog.functionExampleButton")" Click="@(() => ShowFunctionExample(item))" />
                             </div>
                         }
                     </div>
                 </aside>
             </div>
         </div>
-        <div class="dialog-footer">
-            <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.close")" Icon="close" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" />
+        <div class="rf-dialog-footer">
+            <RadzenButton Text="@AppText.T("web.common.close")" Icon="close" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => CloseDialog())" />
         </div>
-    </div>
-    @if (_functionExampleItem != null)
-    {
-        <div class="metadata-function-example-backdrop" @onclick:stopPropagation="true">
-            <div class="dialog-box metadata-function-example-dialog" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="metadata-function-example-title" @onclick:stopPropagation="true">
-                <div id="metadata-function-example-title" class="dialog-title">@AppText.T("web.metadata.presetDialog.functionExampleTitle")</div>
-                <div class="dialog-body metadata-function-example-body">
-                    <div class="metadata-function-example-name">@_functionExampleItem.Call</div>
-                    <div class="metadata-function-example-description">@_functionExampleItem.Description</div>
-                    <div class="metadata-function-example-grid">
-                        <span>@AppText.T("web.metadata.presetDialog.functionExampleInput")</span>
-                        <code>@_functionExampleItem.ExampleInput</code>
-                        <span>@AppText.T("web.metadata.presetDialog.functionExampleExpression")</span>
-                        <code>@_functionExampleItem.ExampleExpression</code>
-                        <span>@AppText.T("web.metadata.presetDialog.functionExampleOutput")</span>
-                        <code>@_functionExampleItem.ExampleOutput</code>
-                        @if (!string.IsNullOrEmpty(_functionExampleItem.ExampleNotes))
-                        {
-                            <span>@AppText.T("web.metadata.presetDialog.functionExampleNotes")</span>
-                            <code>@_functionExampleItem.ExampleNotes</code>
-                        }
-                    </div>
-                </div>
-                <div class="dialog-footer">
-                    <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.close")" Icon="close" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@CloseFunctionExample" />
-                </div>
-            </div>
-        </div>
-    }
-    @if (_textEditRequest != null)
-    {
-        <div class="metadata-text-editor-backdrop" @onclick:stopPropagation="true">
-            <div class="dialog-box metadata-text-editor-dialog" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="metadata-text-editor-title" @onclick:stopPropagation="true">
-                <div id="metadata-text-editor-title" class="dialog-title">@_textEditRequest.Title</div>
-                <div class="dialog-body metadata-text-editor-body">
-                    <textarea class="form-input metadata-text-editor-textarea" aria-label="@_textEditRequest.Title" @bind="_textEditValue" @bind:event="oninput" autofocus></textarea>
-                </div>
-                <div class="dialog-footer">
-                    <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@ApplyTextEditor" />
-                    <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@CancelTextEditor" />
-                </div>
-            </div>
-        </div>
-    }
 </div>
 
 @code {
@@ -361,9 +280,12 @@
     [Parameter] public List<MkvMetadataRecord> Records { get; set; }
 
     /// <summary>
-    /// Evento chiusura dialog
+    /// Destinazioni dei tag selezionabili nelle operazioni
     /// </summary>
-    [Parameter] public EventCallback OnClose { get; set; }
+    private static readonly List<MkvMetadataTagTarget> TagTargets = new List<MkvMetadataTagTarget>
+    {
+        MkvMetadataTagTarget.Current, MkvMetadataTagTarget.File, MkvMetadataTagTarget.CurrentTrack, MkvMetadataTagTarget.AllTracks
+    };
 
     /// <summary>
     /// Servizio gestione preset metadata
@@ -394,6 +316,11 @@
     /// Messaggio stato o errore
     /// </summary>
     private string _message;
+
+    /// <summary>
+    /// Stile dell'avviso che mostra il messaggio
+    /// </summary>
+    private AlertStyle _messageStyle = AlertStyle.Danger;
 
     /// <summary>
     /// File di riferimento su cui valutare il preset in anteprima
@@ -431,21 +358,6 @@
     private string _functionBrowserFilter;
 
     /// <summary>
-    /// Funzione selezionata per esempio
-    /// </summary>
-    private MetadataCatalogFunctionItem _functionExampleItem;
-
-    /// <summary>
-    /// Richiesta editor testo espanso corrente
-    /// </summary>
-    private MetadataTextEditRequest _textEditRequest;
-
-    /// <summary>
-    /// Valore temporaneo editor testo espanso
-    /// </summary>
-    private string _textEditValue;
-
-    /// <summary>
     /// Titolo help contestuale
     /// </summary>
     private string _fieldHelpTitle;
@@ -480,13 +392,10 @@
         this._selectedPresetFile = this.Options != null && this.Options.Metadata != null ? this.Options.Metadata.PresetPath : "";
         this._preset = new MkvMetadataPreset();
         this._selectedRuleIndex = -1;
-        this._message = "";
+        this.SetMessage("", AlertStyle.Danger);
         this._showAdvancedFields = false;
         this._tokenBrowserFilter = "";
         this._functionBrowserFilter = "";
-        this._functionExampleItem = null;
-        this._textEditRequest = null;
-        this._textEditValue = "";
         this._activeTextInput = null;
         this._previewFile = this.Records != null && this.Records.Count > 0 ? this.Records[0].InputFile : "";
         this._previewResult = null;
@@ -512,6 +421,7 @@
     {
         string signature;
 
+        await base.OnAfterRenderAsync(firstRender);
         if (firstRender)
         {
             this._interopModule = await this.JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/interop.js");
@@ -532,10 +442,11 @@
     /// <summary>
     /// Rilascia il modulo interop del dialog
     /// </summary>
-    public async ValueTask DisposeAsync()
+    public override async ValueTask DisposeAsync()
     {
         this._importReference?.Dispose();
         this._importReference = null;
+        await base.DisposeAsync();
 
         if (this._interopModule == null)
             return;
@@ -567,6 +478,17 @@
     }
 
     /// <summary>
+    /// Imposta il messaggio di stato con il colore adatto all'esito
+    /// </summary>
+    /// <param name="message">Testo del messaggio</param>
+    /// <param name="style">Esito: riuscita, avviso o errore</param>
+    private void SetMessage(string message, AlertStyle style)
+    {
+        this._message = message;
+        this._messageStyle = style;
+    }
+
+    /// <summary>
     /// Prepara un nuovo preset vuoto
     /// </summary>
     private void NewPreset()
@@ -577,10 +499,8 @@
         this._preset.ShowAdvancedFields = false;
         this._selectedRuleIndex = -1;
         this._selectedPresetFile = "";
-        this._message = "";
+        this.SetMessage("", AlertStyle.Danger);
         this._showAdvancedFields = false;
-        this._textEditRequest = null;
-        this._textEditValue = "";
         this._activeTextInput = null;
     }
 
@@ -602,11 +522,11 @@
             this.NormalizePresetModel();
             this._selectedRuleIndex = this._preset.Rules.Count > 0 ? 0 : -1;
             this._activeTextInput = null;
-            this._message = string.Join(" ", this._service.LastLoadWarnings);
+            this.SetMessage(string.Join(" ", this._service.LastLoadWarnings), AlertStyle.Warning);
         }
         catch (Exception ex)
         {
-            this._message = ex.Message;
+            this.SetMessage(ex.Message, AlertStyle.Danger);
         }
     }
 
@@ -633,7 +553,7 @@
         string fileName = this.SanitizeFileName(this._preset.Name);
         if (string.IsNullOrEmpty(fileName))
         {
-            this._message = AppText.T("web.metadata.presetDialog.presetNameRequired");
+            this.SetMessage(AppText.T("web.metadata.presetDialog.presetNameRequired"), AlertStyle.Danger);
             return;
         }
 
@@ -652,11 +572,11 @@
             this._service.Save(this._preset, filePath);
             this._selectedPresetFile = filePath;
             this._presetFiles = this._service.ListPresetFiles();
-            this._message = AppText.T("web.metadata.presetDialog.saved");
+            this.SetMessage(AppText.T("web.metadata.presetDialog.saved"), AlertStyle.Success);
         }
         catch (Exception ex)
         {
-            this._message = ex.Message;
+            this.SetMessage(ex.Message, AlertStyle.Danger);
         }
     }
 
@@ -674,11 +594,11 @@
 
             this._presetFiles = this._service.ListPresetFiles();
             this.NewPreset();
-            this._message = AppText.T("web.metadata.presetDialog.deleted");
+            this.SetMessage(AppText.T("web.metadata.presetDialog.deleted"), AlertStyle.Success);
         }
         catch (Exception ex)
         {
-            this._message = ex.Message;
+            this.SetMessage(ex.Message, AlertStyle.Danger);
         }
     }
 
@@ -689,7 +609,7 @@
     {
         try
         {
-            this._message = "";
+            this.SetMessage("", AlertStyle.Danger);
             if (this._interopModule == null)
                 return;
 
@@ -708,7 +628,7 @@
         }
         catch (Exception ex)
         {
-            this._message = ex.Message;
+            this.SetMessage(ex.Message, AlertStyle.Danger);
         }
     }
 
@@ -728,7 +648,7 @@
         }
         catch (Exception ex)
         {
-            this._message = ex.Message;
+            this.SetMessage(ex.Message, AlertStyle.Danger);
         }
 
         await this.InvokeAsync(this.StateHasChanged);
@@ -740,7 +660,7 @@
     [JSInvokable]
     public async Task OnPresetImportFailed()
     {
-        this._message = AppText.T("web.metadata.presetDialog.importReadFailed");
+        this.SetMessage(AppText.T("web.metadata.presetDialog.importReadFailed"), AlertStyle.Danger);
         await this.InvokeAsync(this.StateHasChanged);
     }
 
@@ -754,7 +674,7 @@
             string baseName = this.GetExportBaseName();
             if (string.IsNullOrEmpty(baseName))
             {
-                this._message = AppText.T("web.metadata.presetDialog.exportNameRequired");
+                this.SetMessage(AppText.T("web.metadata.presetDialog.exportNameRequired"), AlertStyle.Danger);
                 return;
             }
 
@@ -771,19 +691,19 @@
                 path = EnsureJsonExtension(path);
                 this.PreparePresetForSerialization();
                 this._service.Save(this._preset, path);
-                this._message = AppText.T("web.metadata.presetDialog.exported");
+                this.SetMessage(AppText.T("web.metadata.presetDialog.exported"), AlertStyle.Success);
             }
             else
             {
                 this.PreparePresetForSerialization();
                 string json = this._service.SerializeToJson(this._preset);
                 await this._interopModule.InvokeVoidAsync("downloadTextFile", fileName, json, "application/json");
-                this._message = AppText.T("web.metadata.presetDialog.exported");
+                this.SetMessage(AppText.T("web.metadata.presetDialog.exported"), AlertStyle.Success);
             }
         }
         catch (Exception ex)
         {
-            this._message = ex.Message;
+            this.SetMessage(ex.Message, AlertStyle.Danger);
         }
     }
 
@@ -799,12 +719,11 @@
         this.NormalizePresetModel();
         this._selectedRuleIndex = preset.Rules != null && preset.Rules.Count > 0 ? 0 : -1;
         this._activeTextInput = null;
-        this._textEditRequest = null;
-        this._textEditValue = "";
         this._previewSignature = null;
-        this._message = AppText.T("web.metadata.presetDialog.imported");
         if (this._service.LastLoadWarnings.Count > 0)
-            this._message += " " + string.Join(" ", this._service.LastLoadWarnings);
+            this.SetMessage(AppText.T("web.metadata.presetDialog.imported") + " " + string.Join(" ", this._service.LastLoadWarnings), AlertStyle.Warning);
+        else
+            this.SetMessage(AppText.T("web.metadata.presetDialog.imported"), AlertStyle.Success);
     }
 
     /// <summary>
@@ -865,6 +784,38 @@
     {
         this._selectedRuleIndex = index;
         this._activeTextInput = null;
+    }
+
+    /// <summary>
+    /// Carica il preset scelto nella tendina, nessuna scelta per un preset nuovo
+    /// </summary>
+    /// <param name="value">File preset scelto</param>
+    private void ChangeSelectedPresetFile(object value)
+    {
+        this._selectedPresetFile = value as string ?? "";
+        this.LoadSelectedPreset();
+    }
+
+    /// <summary>
+    /// File dei record disponibili come riferimento dell'anteprima
+    /// </summary>
+    /// <returns>Percorsi dei file</returns>
+    private List<string> GetPreviewFiles()
+    {
+        List<string> files = new List<string>();
+        for (int i = 0; this.Records != null && i < this.Records.Count; i++)
+            files.Add(this.Records[i].InputFile);
+        return files;
+    }
+
+    /// <summary>
+    /// Cambia il file di riferimento dell'anteprima
+    /// </summary>
+    /// <param name="value">File scelto, null senza file</param>
+    private void ChangeSelectedPreviewFile(object value)
+    {
+        this._previewFile = value as string ?? "";
+        this.ChangePreviewFile();
     }
 
     /// <summary>
@@ -1015,14 +966,13 @@
     /// <summary>
     /// Cambia ambito della regola selezionata
     /// </summary>
-    /// <param name="e">Argomenti cambio selezione</param>
-    private void ChangeSelectedRuleScope(ChangeEventArgs e)
+    /// <param name="value">Ambito scelto</param>
+    private void ChangeSelectedRuleScope(object value)
     {
-        MkvMetadataTargetScope parsed;
         if (this.SelectedRule == null)
             return;
 
-        if (Enum.TryParse(GetChangeValue(e), out parsed))
+        if (value is MkvMetadataTargetScope parsed)
         {
             this.SelectedRule.TargetScope = parsed;
             MetadataPresetUiHelper.EnsureRule(this.SelectedRule, this._showAdvancedFields);
@@ -1036,7 +986,7 @@
     {
         if (!value && this._showAdvancedFields && MetadataUiCatalog.PresetUsesAdvancedFields(this._preset))
         {
-            this._message = AppText.T("web.metadata.presetDialog.advancedCannotDisable");
+            this.SetMessage(AppText.T("web.metadata.presetDialog.advancedCannotDisable"), AlertStyle.Danger);
             return;
         }
 
@@ -1211,7 +1161,7 @@
     {
         if (string.IsNullOrEmpty(token) || this._activeTextInput == null || this._activeTextInput.Commit == null)
         {
-            this._message = AppText.T("web.metadata.presetDialog.tokenTargetMissing");
+            this.SetMessage(AppText.T("web.metadata.presetDialog.tokenTargetMissing"), AlertStyle.Danger);
             return;
         }
 
@@ -1238,7 +1188,7 @@
 
         if (string.IsNullOrEmpty(functionCall) || this._activeTextInput == null || this._activeTextInput.Commit == null)
         {
-            this._message = AppText.T("web.metadata.presetDialog.functionTargetMissing");
+            this.SetMessage(AppText.T("web.metadata.presetDialog.functionTargetMissing"), AlertStyle.Danger);
             return;
         }
 
@@ -1254,7 +1204,7 @@
             }
             else
             {
-                this._message = AppText.T("web.metadata.presetDialog.functionValueMissing");
+                this.SetMessage(AppText.T("web.metadata.presetDialog.functionValueMissing"), AlertStyle.Danger);
             }
             return;
         }
@@ -1267,35 +1217,32 @@
             return;
         }
 
-        this._message = AppText.T("web.metadata.presetDialog.functionValueMissing");
+        this.SetMessage(AppText.T("web.metadata.presetDialog.functionValueMissing"), AlertStyle.Danger);
     }
 
     /// <summary>
     /// Mostra esempio funzione
     /// </summary>
     /// <param name="item">Funzione selezionata</param>
-    private void ShowFunctionExample(MetadataCatalogFunctionItem item)
+    private async Task ShowFunctionExample(MetadataCatalogFunctionItem item)
     {
+        Dictionary<string, object> parameters;
+
         if (item == null)
             return;
 
-        this._functionExampleItem = item;
         this.SetFunctionHelp(item.Name);
-    }
-
-    /// <summary>
-    /// Chiude esempio funzione
-    /// </summary>
-    private void CloseFunctionExample()
-    {
-        this._functionExampleItem = null;
+        parameters = new Dictionary<string, object>();
+        parameters.Add(nameof(MetadataFunctionExampleDialogComponent.Item), item);
+        await AppDialogs.OpenAsync<MetadataFunctionExampleDialogComponent>(this.DialogService, AppText.T("web.metadata.presetDialog.functionExampleTitle"), parameters,
+            AppDialogs.CreateOptions(AppDialogs.WIDTH_FUNCTION_EXAMPLE, null, this.JsModule), this.JsModule);
     }
 
     /// <summary>
     /// Apre editor testo espanso per una operazione THEN
     /// </summary>
     /// <param name="operation">Operazione da modificare</param>
-    private void OpenOperationTextEditor(MkvMetadataOperation operation)
+    private async Task OpenOperationTextEditor(MkvMetadataOperation operation)
     {
         MetadataFieldDefinition field;
         MetadataTagDefinition tag;
@@ -1316,40 +1263,30 @@
         request.Title = AppText.F("web.metadata.presetDialog.textEditorOperationTitle", label);
         request.Value = operation.Value;
         request.Commit = value => operation.Value = value != null ? value : "";
-        this.OpenTextEditor(request);
+        await this.OpenTextEditor(request);
     }
 
     /// <summary>
     /// Apre editor testo espanso
     /// </summary>
     /// <param name="request">Richiesta editor</param>
-    private void OpenTextEditor(MetadataTextEditRequest request)
+    private async Task OpenTextEditor(MetadataTextEditRequest request)
     {
+        Dictionary<string, object> parameters;
+        object result;
+
         if (request == null)
             return;
 
-        this._textEditRequest = request;
-        this._textEditValue = request.Value != null ? request.Value : "";
-    }
+        parameters = new Dictionary<string, object>();
+        parameters.Add(nameof(MetadataTextEditorDialogComponent.Label), request.Title);
+        parameters.Add(nameof(MetadataTextEditorDialogComponent.Value), request.Value != null ? request.Value : "");
+        result = await AppDialogs.OpenAsync<MetadataTextEditorDialogComponent>(this.DialogService, request.Title, parameters,
+            AppDialogs.CreateOptions(AppDialogs.WIDTH_TEXT_EDITOR, null, this.JsModule), this.JsModule);
 
-    /// <summary>
-    /// Applica valore editor testo espanso
-    /// </summary>
-    private void ApplyTextEditor()
-    {
-        if (this._textEditRequest != null && this._textEditRequest.Commit != null)
-            this._textEditRequest.Commit(this._textEditValue != null ? this._textEditValue : "");
-
-        this.CancelTextEditor();
-    }
-
-    /// <summary>
-    /// Chiude editor testo espanso senza applicare
-    /// </summary>
-    private void CancelTextEditor()
-    {
-        this._textEditRequest = null;
-        this._textEditValue = "";
+        // Solo OK restituisce il testo: Annulla, X ed Esc lasciano il valore invariato
+        if (result is string value && request.Commit != null)
+            request.Commit(value);
     }
 
     /// <summary>
@@ -1523,7 +1460,7 @@
 
         this._activeTextInput.Value = value;
         this._activeTextInput.Commit(value);
-        this._message = "";
+        this.SetMessage("", AlertStyle.Danger);
 
         if (this._interopModule != null && !string.IsNullOrEmpty(this._activeTextInput.InputId))
         {
@@ -1575,16 +1512,6 @@
     private static bool ContainsIgnoreCase(string text, string value)
     {
         return text != null && value != null && text.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0;
-    }
-
-    /// <summary>
-    /// Converte valore evento change in stringa
-    /// </summary>
-    /// <param name="e">Argomenti change</param>
-    /// <returns>Valore testuale</returns>
-    private static string GetChangeValue(ChangeEventArgs e)
-    {
-        return e != null && e.Value != null ? e.Value.ToString() : "";
     }
 
     /// <summary>

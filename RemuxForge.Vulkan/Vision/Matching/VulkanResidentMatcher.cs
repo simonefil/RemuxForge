@@ -74,10 +74,10 @@ namespace RemuxForge.Vulkan.Vision.Matching
                     JobPush jobPush = new JobPush { PairCount = (uint)count, ForwardJobCapacity = (uint)workspace.ForwardJobCapacity };
                     jobPush.Operation = 0;
                     this.Dispatch(commandBuffer, jobPipeline, jobSet, jobPush, (uint)count, 1, diagnostics);
-                    this.Barrier(commandBuffer);
+                    this._runtime.RecordComputeBarrier(commandBuffer);
                     jobPush.Operation = 1;
                     this.Dispatch(commandBuffer, jobPipeline, jobSet, jobPush, (uint)count, 1, diagnostics);
-                    this.Barrier(commandBuffer);
+                    this._runtime.RecordComputeBarrier(commandBuffer);
                     jobPush.Operation = 2;
                     this.Dispatch(commandBuffer, jobPipeline, jobSet, jobPush, 1, 1, diagnostics);
                     VkMemoryBarrier indirectBarrier = new VkMemoryBarrier { srcAccessMask = VkAccessFlags.ShaderWrite, dstAccessMask = VkAccessFlags.IndirectCommandRead | VkAccessFlags.ShaderRead };
@@ -87,20 +87,20 @@ namespace RemuxForge.Vulkan.Vision.Matching
                     this.Bind(commandBuffer, matchPipeline, matchSet, push);
                     this._runtime.DeviceApi.vkCmdDispatchIndirect(commandBuffer, workspace.Control.Buffer, 2UL * sizeof(uint));
                     diagnostics.DispatchCount++;
-                    this.Barrier(commandBuffer);
+                    this._runtime.RecordComputeBarrier(commandBuffer);
                     push.Operation = 1;
                     this.Bind(commandBuffer, matchPipeline, matchSet, push);
                     this._runtime.DeviceApi.vkCmdDispatchIndirect(commandBuffer, workspace.Control.Buffer, 5UL * sizeof(uint));
                     diagnostics.DispatchCount++;
-                    this.Barrier(commandBuffer);
+                    this._runtime.RecordComputeBarrier(commandBuffer);
                     // Compact matches that pass both the ratio test and reciprocal filtering
                     push.Operation = 2;
                     this.Dispatch(commandBuffer, matchPipeline, matchSet, push, DivideRoundUp((uint)Math.Max(1, workspace.MaximumFirstCapacity), 256), (uint)count, diagnostics);
-                    this.Barrier(commandBuffer);
+                    this._runtime.RecordComputeBarrier(commandBuffer);
                     this.RecordScan(commandBuffer, workspace, descriptorSets, diagnostics);
                     push.Operation = 3;
                     this.Dispatch(commandBuffer, matchPipeline, matchSet, push, DivideRoundUp((uint)Math.Max(1, workspace.MaximumFirstCapacity), 256), (uint)count, diagnostics);
-                    this.Barrier(commandBuffer);
+                    this._runtime.RecordComputeBarrier(commandBuffer);
                 }, diagnostics, VulkanGpuPhase.Matching, cancellationToken))
                     submission.Wait(diagnostics, cancellationToken);
                 return workspace;
@@ -148,7 +148,7 @@ namespace RemuxForge.Vulkan.Vision.Matching
                 scratchCursor += blocks;
                 PrefixPush push = new PrefixPush { InputOffset = (uint)inputOffset, OutputOffset = (uint)outputOffset, BlockOffset = (uint)sumsOffset, ElementCount = (uint)count };
                 this.Dispatch(commandBuffer, pipeline, set, push, (uint)blocks, 1, diagnostics);
-                this.Barrier(commandBuffer);
+                this._runtime.RecordComputeBarrier(commandBuffer);
                 levels.Add(new ScanLevel(set, outputOffset, count));
                 if (blocks <= 1)
                     break;
@@ -164,7 +164,7 @@ namespace RemuxForge.Vulkan.Vision.Matching
                 ScanLevel parent = levels[i + 1];
                 PrefixPush add = new PrefixPush { OutputOffset = (uint)level.OutputOffset, BlockOffset = (uint)parent.OutputOffset, ElementCount = (uint)level.ElementCount, Operation = 2 };
                 this.Dispatch(commandBuffer, pipeline, level.Set, add, (uint)((level.ElementCount + 255) / 256), 1, diagnostics);
-                this.Barrier(commandBuffer);
+                this._runtime.RecordComputeBarrier(commandBuffer);
             }
         }
 
@@ -198,16 +198,6 @@ namespace RemuxForge.Vulkan.Vision.Matching
             VkDescriptorSet descriptorSet = set.DescriptorSet;
             this._runtime.DeviceApi.vkCmdBindDescriptorSets(commandBuffer, VkPipelineBindPoint.Compute, pipeline.PipelineLayout, 0, descriptorSet);
             this._runtime.DeviceApi.vkCmdPushConstants(commandBuffer, pipeline.PipelineLayout, VkShaderStageFlags.Compute, 0, (uint)sizeof(T), &push);
-        }
-
-        /// <summary>
-        /// Records a compute-to-compute memory barrier for shader writes consumed by subsequent dispatches
-        /// </summary>
-        /// <param name="commandBuffer">Command buffer that receives the barrier</param>
-        private void Barrier(VkCommandBuffer commandBuffer)
-        {
-            VkMemoryBarrier barrier = new VkMemoryBarrier { srcAccessMask = VkAccessFlags.ShaderWrite, dstAccessMask = VkAccessFlags.ShaderRead | VkAccessFlags.ShaderWrite };
-            this._runtime.DeviceApi.vkCmdPipelineBarrier(commandBuffer, VkPipelineStageFlags.ComputeShader, VkPipelineStageFlags.ComputeShader, VkDependencyFlags.None, 1, &barrier, 0, null, 0, null);
         }
 
         /// <summary>

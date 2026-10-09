@@ -1,5 +1,6 @@
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Transcoding;
@@ -113,7 +114,7 @@ namespace RemuxForge.Core.Pipeline
             }
             else
             {
-                ConsoleHelper.Write(LogSection.Merge, LogLevel.Info, "  Unione in corso...");
+                ConsoleHelper.Write(LogSection.Merge, LogLevel.Info, AppText.T("remux.pipeline.merging"));
                 ConsoleHelper.Progress(LogSection.Merge, 65, "Merge: mux");
 
                 mergeStopwatch = new Stopwatch();
@@ -126,14 +127,14 @@ namespace RemuxForge.Core.Pipeline
 
                 if (exitCode == 0 || exitCode == 1)
                 {
-                    ConsoleHelper.Write(LogSection.Merge, LogLevel.Success, "  Unione completata (" + record.MergeTimeMs + "ms)");
-                    ConsoleHelper.Progress(LogSection.Merge, 100, "Merge: completato");
+                    ConsoleHelper.Write(LogSection.Merge, LogLevel.Success, AppText.F("remux.pipeline.mergeCompleted", record.MergeTimeMs));
+                    ConsoleHelper.Progress(LogSection.Merge, 100, AppText.T("remux.pipeline.progressMergeCompleted"));
 
                     if (options.Overwrite)
                     {
                         File.Delete(finalOutput);
                         File.Move(tempOutput, finalOutput);
-                        ConsoleHelper.Write(LogSection.Merge, LogLevel.Success, "  File originale sostituito");
+                        ConsoleHelper.Write(LogSection.Merge, LogLevel.Success, AppText.T("remux.pipeline.originalReplaced"));
                     }
 
                     if (File.Exists(finalOutput))
@@ -147,7 +148,7 @@ namespace RemuxForge.Core.Pipeline
                 }
                 else
                 {
-                    ConsoleHelper.Write(LogSection.Merge, LogLevel.Error, "  mkvmerge fallito con codice " + exitCode);
+                    ConsoleHelper.Write(LogSection.Merge, LogLevel.Error, AppText.F("remux.pipeline.mkvmergeFailed", exitCode));
                     if (!string.IsNullOrEmpty(mergeOutput))
                     {
                         ConsoleHelper.Write(LogSection.Merge, LogLevel.Error, "  Output: " + mergeOutput);
@@ -155,7 +156,7 @@ namespace RemuxForge.Core.Pipeline
 
                     FileHelper.DeleteTempFile(tempOutput);
 
-                    record.ErrorMessage = "Merge fallito: codice " + exitCode;
+                    record.ErrorMessage = AppText.F("remux.pipeline.mergeFailed", exitCode);
                     record.Status = FileStatus.Error;
                 }
             }
@@ -179,7 +180,7 @@ namespace RemuxForge.Core.Pipeline
             profile = AppSettingsService.Instance.GetProfile(options.EncodingProfileName);
             if (profile == null)
             {
-                ConsoleHelper.Write(LogSection.Encode, LogLevel.Warning, "  Profilo '" + options.EncodingProfileName + "' non trovato, encoding saltato");
+                ConsoleHelper.Write(LogSection.Encode, LogLevel.Warning, AppText.F("remux.pipeline.profileNotFoundSkipped", options.EncodingProfileName));
                 return;
             }
 
@@ -193,7 +194,7 @@ namespace RemuxForge.Core.Pipeline
             encService = new VideoEncodingService(ffmpegPath);
             record.EncodingCommand = encService.BuildCommandString(mergedFile, mergedFile, profile);
 
-            ConsoleHelper.Write(LogSection.Encode, LogLevel.Info, "  Encoding con profilo '" + profile.Name + "' (" + profile.Codec + ")...");
+            ConsoleHelper.Write(LogSection.Encode, LogLevel.Info, AppText.F("remux.pipeline.encodingWithProfile", profile.Name, profile.Codec));
 
             encStopwatch = new Stopwatch();
             encStopwatch.Start();
@@ -214,14 +215,14 @@ namespace RemuxForge.Core.Pipeline
                     record.EncodedSize = encodedInfo.Length;
                 }
 
-                ConsoleHelper.Write(LogSection.Encode, LogLevel.Success, "  Encoding completato (" + record.EncodingTimeMs + "ms)");
+                ConsoleHelper.Write(LogSection.Encode, LogLevel.Success, AppText.F("remux.pipeline.encodingCompleted", record.EncodingTimeMs));
                 record.Success = true;
                 record.Status = FileStatus.Done;
             }
             else
             {
-                ConsoleHelper.Write(LogSection.Encode, LogLevel.Error, "  Encoding fallito");
-                record.ErrorMessage = "Encoding fallito con profilo " + profile.Name;
+                ConsoleHelper.Write(LogSection.Encode, LogLevel.Error, AppText.T("remux.pipeline.encodingFailedLog"));
+                record.ErrorMessage = AppText.F("remux.pipeline.encodingFailed", profile.Name);
                 record.Status = FileStatus.Error;
             }
         }

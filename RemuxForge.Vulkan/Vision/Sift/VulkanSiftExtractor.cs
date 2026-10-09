@@ -45,10 +45,9 @@ namespace RemuxForge.Vulkan.Vision.Sift
         /// <param name="frames">Input image frames to process in their original order</param>
         /// <param name="options">SIFT thresholds, scale-space settings and intensity conversion options</param>
         /// <param name="diagnostics">Mutable diagnostic accumulator updated by CPU and GPU stages</param>
-        /// <param name="progress">Optional progress sink that receives upload and completion counters</param>
         /// <param name="cancellationToken">Token checked while submissions are scheduled and completed</param>
         /// <returns>A feature collection containing the merged result for every input frame</returns>
-        public VulkanSiftFeatureCollection Extract(IReadOnlyList<VulkanImageFrame> frames, VulkanSiftOptions options, VulkanVisionDiagnostics diagnostics, IProgress<VulkanVisionProgress> progress, CancellationToken cancellationToken)
+        public VulkanSiftFeatureCollection Extract(IReadOnlyList<VulkanImageFrame> frames, VulkanSiftOptions options, VulkanVisionDiagnostics diagnostics, CancellationToken cancellationToken)
         {
             // Build every plan before allocating the resident result collection
             List<VulkanSiftPlan> plans = new List<VulkanSiftPlan>(frames.Count);
@@ -78,7 +77,6 @@ namespace RemuxForge.Vulkan.Vision.Sift
                         diagnostics.PeakVramBytes = Math.Max(diagnostics.PeakVramBytes, memory.AllocatedBytes);
                         PendingExtraction extraction = this.Submit(workspace, features, i, weightsLease.Buffer, options, diagnostics, cancellationToken);
                         pending.Enqueue(extraction);
-                        progress?.Report(new VulkanVisionProgress { UploadedFrames = i + 1, TotalFrames = frames.Count, ExtractedFrames = i + 1 - pending.Count, ResidentBytes = this._runtime.Allocator.GetStatistics().UsedBytes });
                     }
                     // Complete all remaining submissions in submission order
                     while (pending.Count > 0)
@@ -105,13 +103,12 @@ namespace RemuxForge.Vulkan.Vision.Sift
         /// <param name="frames">Input image frames to process in their original order</param>
         /// <param name="options">SIFT thresholds, scale-space settings and intensity conversion options</param>
         /// <param name="diagnostics">Mutable diagnostic accumulator updated by CPU and GPU stages</param>
-        /// <param name="progress">Optional progress sink that receives batch completion counters</param>
         /// <param name="cancellationToken">Token checked before each packed batch is built and executed</param>
         /// <returns>A feature collection containing the merged result for every input frame</returns>
-        public VulkanSiftFeatureCollection ExtractPacked(IReadOnlyList<VulkanImageFrame> frames, VulkanSiftOptions options, VulkanVisionDiagnostics diagnostics, IProgress<VulkanVisionProgress> progress, CancellationToken cancellationToken)
+        public VulkanSiftFeatureCollection ExtractPacked(IReadOnlyList<VulkanImageFrame> frames, VulkanSiftOptions options, VulkanVisionDiagnostics diagnostics, CancellationToken cancellationToken)
         {
             if (frames.Count < 2 || !IsHomogeneous(frames))
-                return this.Extract(frames, options, diagnostics, progress, cancellationToken);
+                return this.Extract(frames, options, diagnostics, cancellationToken);
 
             List<VulkanSiftPlan> plans = new List<VulkanSiftPlan>(frames.Count);
             for (int frameIndex = 0; frameIndex < frames.Count; frameIndex++)
@@ -147,7 +144,6 @@ namespace RemuxForge.Vulkan.Vision.Sift
                             this.ExecutePackedBatch(workspaces, features, batchStart, weightsLease.Buffer, options, diagnostics, cancellationToken);
                             VulkanMemoryStatistics memory = this._runtime.Allocator.GetStatistics();
                             diagnostics.PeakVramBytes = Math.Max(diagnostics.PeakVramBytes, memory.AllocatedBytes);
-                            progress?.Report(new VulkanVisionProgress { UploadedFrames = batchStart + batchCount, TotalFrames = frames.Count, ExtractedFrames = batchStart + batchCount, ResidentBytes = memory.UsedBytes });
                         }
                         batchStart += batchCount;
                     }

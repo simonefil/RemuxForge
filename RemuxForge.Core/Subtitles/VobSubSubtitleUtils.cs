@@ -1,3 +1,4 @@
+using RemuxForge.Core.Localization;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -132,11 +133,11 @@ namespace RemuxForge.Core.Subtitles
         public static byte[] RewritePesTimestamps(byte[] header, long pts)
         {
             if (pts < 0 || pts >= (1L << 33) || header == null || header.Length < 3)
-                throw new InvalidDataException("Invalid VobSub PES timestamp/header");
+                throw new InvalidDataException(AppText.T("remux.subtitles.vobsubPesInvalid"));
             byte[] result = (byte[])header.Clone();
             int flags = header[1] & 0xc0;
             if (flags == 0x40 || header.Length < 3 + header[2] || header[2] < (flags == 0xc0 ? 10 : flags == 0x80 ? 5 : 0))
-                throw new InvalidDataException("Truncated VobSub PES timestamps");
+                throw new InvalidDataException(AppText.T("remux.subtitles.vobsubPesTruncated"));
             if (flags != 0) WritePesTimestamp(result, 3, pts);
             if (flags == 0xc0) WritePesTimestamp(result, 8, pts);
             return result;
@@ -385,7 +386,7 @@ namespace RemuxForge.Core.Subtitles
             if (rawSpu == null || rawSpu.Length == 0 || rawSpu.Length > 0xffff || packHeader == null ||
                 firstPesHeader == null || packHeader.Length + 10 >= SECTOR_SIZE)
             {
-                errorMessage = "SPU VobSub non pacchettizzabile";
+                errorMessage = AppText.T("remux.subtitles.vobsubSpuNotPacketizable");
                 return null;
             }
 
@@ -405,7 +406,7 @@ namespace RemuxForge.Core.Subtitles
                 }
                 if (chunkLength <= 0)
                 {
-                    errorMessage = "capacità settore VobSub insufficiente";
+                    errorMessage = AppText.T("remux.subtitles.vobsubSectorCapacity");
                     return null;
                 }
 
@@ -488,7 +489,7 @@ namespace RemuxForge.Core.Subtitles
                 }
             }
 
-            errorMessage = "SPU VobSub non trovata nel blocco SUB";
+            errorMessage = AppText.T("remux.subtitles.vobsubSpuNotFound");
             return false;
         }
 
@@ -551,11 +552,11 @@ namespace RemuxForge.Core.Subtitles
             requiresCrop = cropLeft > 0 || cropRight > 0 || cropTop > 0 || cropBottom > 0;
             if (newWidth <= 0 || newHeight <= 0)
             {
-                errorMessage = "SET_DAREA VobSub interamente fuori canvas: " +
+                errorMessage = AppText.F("remux.subtitles.vobsubDareaOutside",
                     info.X.ToString(CultureInfo.InvariantCulture) + ":" + info.Y.ToString(CultureInfo.InvariantCulture) + " " +
                     info.Width.ToString(CultureInfo.InvariantCulture) + "x" + info.Height.ToString(CultureInfo.InvariantCulture) +
                     " -> " + newX.ToString(CultureInfo.InvariantCulture) + ":" + newY.ToString(CultureInfo.InvariantCulture) + " " +
-                    mappedWidth.ToString(CultureInfo.InvariantCulture) + "x" + mappedHeight.ToString(CultureInfo.InvariantCulture);
+                    mappedWidth.ToString(CultureInfo.InvariantCulture) + "x" + mappedHeight.ToString(CultureInfo.InvariantCulture));
                 return false;
             }
             newX = Math.Max(0, newX);
@@ -607,7 +608,7 @@ namespace RemuxForge.Core.Subtitles
             if (output.Length > 0xffff)
             {
                 output = null;
-                errorMessage = "SPU VobSub oltre il limite di 65535 byte";
+                errorMessage = AppText.T("remux.subtitles.vobsubSpuTooLarge");
                 return false;
             }
             WriteUInt16BigEndian(output, 0, output.Length);
@@ -689,7 +690,7 @@ namespace RemuxForge.Core.Subtitles
             newLength = length + diff;
             if (newLength <= 0 || newLength > 0xffff)
             {
-                errorMessage = "PES VobSub troppo grande dopo rewrite";
+                errorMessage = AppText.T("remux.subtitles.vobsubPesTooLarge");
                 return false;
             }
 
@@ -811,7 +812,7 @@ namespace RemuxForge.Core.Subtitles
                     {
                         if (strict || info.HasDisplayArea || info.HasPixelOffsets)
                         {
-                            errorMessage = "comando SPU VobSub non trasformabile: 0x" + command.ToString("x2", CultureInfo.InvariantCulture);
+                            errorMessage = AppText.F("remux.subtitles.vobsubCommandUntransformable", command.ToString("x2", CultureInfo.InvariantCulture));
                         }
                         return false;
                     }
@@ -997,7 +998,7 @@ namespace RemuxForge.Core.Subtitles
                 {
                     if (!reader.TryReadRun(width - x, out run, out color))
                     {
-                        errorMessage = "RLE VobSub non decodificabile";
+                        errorMessage = AppText.T("remux.subtitles.vobsubRleUndecodable");
                         return false;
                     }
 

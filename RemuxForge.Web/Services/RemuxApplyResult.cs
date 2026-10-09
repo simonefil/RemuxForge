@@ -3,6 +3,6 @@ using System.Collections.Generic;
 
 namespace RemuxForge.Web.Services
 {
-    public sealed record RemuxApplyResult(bool Success, bool ScanRequired, IReadOnlyList<PipelineInitializationIssue> Errors,
+    public sealed record RemuxApplyResult(bool Success, IReadOnlyList<PipelineInitializationIssue> Errors,
         IReadOnlyList<PipelineInitializationIssue> Warnings);
 }

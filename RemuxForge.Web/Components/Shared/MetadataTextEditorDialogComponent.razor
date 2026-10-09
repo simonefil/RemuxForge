@@ -1,0 +1,44 @@
+@inherits AppDialogContentBase
+
+<div class="rf-dialog" @ref="DialogContent">
+    <div class="rf-dialog-body metadata-text-editor-body">
+        <RadzenTextArea class="metadata-text-editor-textarea" aria-label="@Label" @bind-Value="_value" Immediate="true" />
+    </div>
+    <div class="rf-dialog-footer">
+        <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@Apply" />
+        <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => CloseDialog())" />
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Etichetta accessibile del campo, uguale al titolo del dialog
+    /// </summary>
+    [Parameter] public string Label { get; set; }
+
+    /// <summary>
+    /// Testo iniziale
+    /// </summary>
+    [Parameter] public string Value { get; set; }
+
+    /// <summary>
+    /// Testo in modifica
+    /// </summary>
+    private string _value = "";
+
+    /// <summary>
+    /// Copia il testo iniziale
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        this._value = this.Value ?? "";
+    }
+
+    /// <summary>
+    /// Chiude restituendo il testo modificato
+    /// </summary>
+    private void Apply()
+    {
+        this.CloseDialog(this._value ?? "");
+    }
+}

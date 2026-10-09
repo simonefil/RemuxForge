@@ -1,3 +1,4 @@
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -69,7 +70,7 @@ namespace RemuxForge.Core.Subtitles
 
             if (context == null || context.Transform == null)
             {
-                result.ErrorMessage = "contesto canvas ASS mancante";
+                result.ErrorMessage = AppText.T("remux.subtitles.assContextMissing");
                 return false;
             }
 
@@ -112,7 +113,7 @@ namespace RemuxForge.Core.Subtitles
             this.RewriteBody(document, scriptTransform, inputPlayResX, inputPlayResY, outputPlayResX, outputPlayResY, scaledBorderAndShadow, result);
             if (result.Get("parse-errors") > 0)
             {
-                result.ErrorMessage = "ASS canvas rewrite incompleto: tag geometrici non parsabili";
+                result.ErrorMessage = AppText.T("remux.subtitles.assIncomplete");
                 return false;
             }
 

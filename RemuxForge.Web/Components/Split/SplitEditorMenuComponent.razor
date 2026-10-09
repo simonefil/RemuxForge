@@ -1,0 +1,113 @@
+@* Menu contestuale dell'editor di taglio aperto con ContextMenuService: voci e sottomenu. *@
+
+<div class="split-editor-menu">
+    <RadzenMenu IsContextMenu="true" Flyout="true" Responsive="false" ClickToOpen="false" AriaLabel="@AriaLabel" Click="SelectAsync" Close="CloseAsync">
+        @foreach (Entry entry in Items)
+        {
+            @RenderEntry(entry)
+        }
+    </RadzenMenu>
+</div>
+
+@code {
+
+    #region Proprietà
+
+    /// <summary>Voci del menu, nell'ordine di visualizzazione.</summary>
+    [Parameter] public List<Entry> Items { get; set; } = new List<Entry>();
+
+    /// <summary>Etichetta del menu, per la lettura assistita.</summary>
+    [Parameter] public string AriaLabel { get; set; } = string.Empty;
+
+    /// <summary>Invocata con la voce scelta; le voci con sottomenu non la invocano.</summary>
+    [Parameter] public EventCallback<Entry> OnSelect { get; set; }
+
+    /// <summary>Invocata quando il menu chiede di chiudersi, per esempio con Esc.</summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    #endregion
+
+    #region Metodi privati
+
+    /// <summary>
+    /// Voce del menu con il suo eventuale sottomenu
+    /// </summary>
+    /// <param name="entry">Voce da disegnare</param>
+    /// <returns>Frammento della voce</returns>
+    private RenderFragment RenderEntry(Entry entry)
+    {
+        // Il contenuto figlio si passa solo con un sottomenu: Radzen mostra la freccia per ogni voce che ne ha uno
+        if (entry.Children.Count == 0)
+            return @<RadzenMenuItem Text="@entry.Text" Icon="@entry.Icon" Value="@entry" Disabled="@entry.Disabled" title="@entry.Title" class="@EntryClass(entry)" />;
+        return @<RadzenMenuItem Text="@entry.Text" Icon="@entry.Icon" Value="@entry" Disabled="@entry.Disabled" title="@entry.Title" class="@EntryClass(entry)">
+            @foreach (Entry child in entry.Children)
+            {
+                @RenderEntry(child)
+            }
+        </RadzenMenuItem>;
+    }
+
+    /// <summary>
+    /// Classi CSS di una voce: separatore prima della voce e azione distruttiva
+    /// </summary>
+    /// <param name="entry">Voce</param>
+    /// <returns>Classi CSS</returns>
+    private static string EntryClass(Entry entry)
+    {
+        return (entry.Separated ? "is-separated " : "") + (entry.Danger ? "is-danger" : "");
+    }
+
+    /// <summary>
+    /// Inoltra la voce scelta, se ha un'azione
+    /// </summary>
+    /// <param name="args">Voce cliccata</param>
+    private async Task SelectAsync(MenuItemEventArgs args)
+    {
+        if (args.Value is Entry entry && entry.Action != null && !entry.Disabled)
+            await this.OnSelect.InvokeAsync(entry);
+    }
+
+    /// <summary>
+    /// Inoltra la richiesta di chiusura del menu
+    /// </summary>
+    private async Task CloseAsync()
+    {
+        await this.OnClose.InvokeAsync();
+    }
+
+    #endregion
+
+    #region Tipi annidati
+
+    /// <summary>
+    /// Voce del menu contestuale
+    /// </summary>
+    public class Entry
+    {
+        /// <summary>Testo della voce</summary>
+        public string Text { get; set; } = string.Empty;
+
+        /// <summary>Icona Material della voce, vuota per nessuna</summary>
+        public string Icon { get; set; } = string.Empty;
+
+        /// <summary>Tooltip della voce: cosa fa, oppure cosa serve per usarla quando è disabilitata</summary>
+        public string Title { get; set; } = string.Empty;
+
+        /// <summary>True se la voce non è utilizzabile</summary>
+        public bool Disabled { get; set; }
+
+        /// <summary>True per un'azione distruttiva</summary>
+        public bool Danger { get; set; }
+
+        /// <summary>True per una linea di separazione prima della voce</summary>
+        public bool Separated { get; set; }
+
+        /// <summary>Azione della voce, null per una voce che apre solo il sottomenu</summary>
+        public Func<Task> Action { get; set; }
+
+        /// <summary>Voci del sottomenu</summary>
+        public List<Entry> Children { get; set; } = new List<Entry>();
+    }
+
+    #endregion
+}

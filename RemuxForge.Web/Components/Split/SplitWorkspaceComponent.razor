@@ -15,6 +15,7 @@
                             ColumnWidth="120px"
                             CellContextMenu="HandleContextMenu"
                             Density="Density.Compact"
+                            EmptyText="@AppText.T("web.split.gridEmpty")"
                             GridLines="DataGridGridLines.Both"
                             RowClick="HandleRowClick"
                             RowRender="RenderRow">
@@ -54,11 +55,8 @@
     <RadzenSplitterPane>
         <div class="rf-workspace-pane rf-workspace-pane-detail">
             <SplitDetailPanelComponent Record="@SelectedRecord"
-                                       SelectedSegmentNum="@SelectedSegmentNum"
                                        IsBusy="@IsBusy"
-                                       OnAnalyze="@OnAnalyze"
-                                       OnSegmentSelected="@OnSegmentSelected"
-                                       OnOpenEditor="@OnOpenEditor" />
+                                       OnAnalyze="@OnAnalyze" />
         </div>
     </RadzenSplitterPane>
 </RadzenSplitter>
@@ -84,10 +82,6 @@
     /// </summary>
     [Parameter] public List<int> SelectedIndices { get; set; }
 
-    /// <summary>
-    /// Numero del segmento evidenziato nel dettaglio
-    /// </summary>
-    [Parameter] public int SelectedSegmentNum { get; set; }
 
     /// <summary>
     /// Indica che la pipeline Split è occupata
@@ -109,15 +103,12 @@
     /// </summary>
     [Parameter] public EventCallback OnAnalyze { get; set; }
 
-    /// <summary>
-    /// Evento selezione di un segmento nel dettaglio
-    /// </summary>
-    [Parameter] public EventCallback<int> OnSegmentSelected { get; set; }
+
 
     /// <summary>
-    /// Evento apertura editor su un segmento
+    /// Modalità di taglio configurata, come la sceglie l'utente nel wizard
     /// </summary>
-    [Parameter] public EventCallback<int> OnOpenEditor { get; set; }
+    [Parameter] public string ModeLabel { get; set; } = "";
 
     /// <summary>
     /// Testo della colonna modalità applicata
@@ -131,7 +122,10 @@
 
         // Un file in override non risponde più alla configurazione globale, e dirne la modalità
         // sarebbe fuorviante: i segmenti li ha messi l'utente
-        return record.IsOverride ? AppText.T("web.split.overrideBadge") : Utils.GetSplitModeText(record.Plan.Mode);
+        if (record.IsOverride)
+            return AppText.T("web.split.overrideBadge");
+        // Il core tratta un solo intervallo come trim: la colonna mostra la modalità scelta nel wizard
+        return !string.IsNullOrEmpty(ModeLabel) ? ModeLabel : Utils.GetSplitModeText(record.Plan.Mode);
     }
 
     /// <summary>

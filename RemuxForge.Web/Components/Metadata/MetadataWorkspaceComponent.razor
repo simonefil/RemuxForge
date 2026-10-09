@@ -6,58 +6,47 @@
         <div class="rf-panel-body split-input-body">
             <div class="metadata-toolbar">
                 <div class="metadata-toolbar-row metadata-toolbar-main-row">
-                    <label class="metadata-toolbar-field metadata-toolbar-preset-field">
-                        <span class="metadata-toolbar-label">@AppText.T("web.metadata.presetLabel")</span>
-                        <select class="form-input metadata-preset-select" value="@Options.Metadata.PresetPath" @onchange="OnPresetChanged">
-                            <option value="">@AppText.T("web.metadata.noPreset")</option>
-                            @for (int i = 0; i < PresetFiles.Count; i++)
-                            {
-                                <option value="@PresetFiles[i]">@System.IO.Path.GetFileNameWithoutExtension(PresetFiles[i])</option>
-                            }
-                        </select>
-                    </label>
-                    <label class="metadata-toolbar-field metadata-toolbar-path-field">
-                        <span class="metadata-toolbar-label">@AppText.T("web.metadata.toolbar.inputPath")</span>
+                    <div class="metadata-toolbar-field metadata-toolbar-preset-field">
+                        <RadzenLabel class="metadata-toolbar-label" Text="@AppText.T("web.metadata.presetLabel")" Component="MetadataToolbarPreset" />
+                        <RadzenDropDown TValue="string" Name="MetadataToolbarPreset" class="metadata-preset-select" Data="@PresetFiles" Value="@(string.IsNullOrEmpty(Options.Metadata.PresetPath) ? null : Options.Metadata.PresetPath)"
+                                        Change="@((object value) => OnPresetChanged.InvokeAsync(value as string ?? ""))" AllowClear="true" Placeholder="@AppText.T("web.metadata.noPreset")">
+                            <Template Context="file">@System.IO.Path.GetFileNameWithoutExtension((string)file)</Template>
+                            <ValueTemplate Context="file">@System.IO.Path.GetFileNameWithoutExtension((string)file)</ValueTemplate>
+                        </RadzenDropDown>
+                    </div>
+                    <div class="metadata-toolbar-field metadata-toolbar-path-field">
+                        <RadzenLabel class="metadata-toolbar-label" Text="@AppText.T("web.metadata.toolbar.inputPath")" Component="MetadataToolbarSource" />
                         <span class="metadata-path-control">
-                            <input class="form-input metadata-path-input" value="@Options.Metadata.SourcePath" @onchange="OnSourcePathChanged" />
+                            <RadzenTextBox Name="MetadataToolbarSource" class="metadata-path-input" Value="@Options.Metadata.SourcePath" Change="@OnSourcePathChanged" />
                             <RadzenButton Icon="folder_open" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.metadata.toolbar.inputPath")" aria-label="@AppText.T("web.metadata.toolbar.inputPath")" Click="@OnBrowseSource" />
                         </span>
-                    </label>
+                    </div>
                 </div>
                 <div class="metadata-toolbar-row metadata-toolbar-options-row">
-                    <label class="metadata-toolbar-field metadata-toolbar-policy-field">
-                        <span class="metadata-toolbar-label">@AppText.T("web.metadata.toolbar.output")</span>
-                        <select class="form-input metadata-output-policy-select" value="@GetOutputPolicyValue()" @onchange="OnOutputPolicyChanged">
-                            <option value="overwrite">@AppText.T("web.metadata.toolbar.overwrite")</option>
-                            <option value="output">@AppText.T("web.metadata.toolbar.outputPath")</option>
-                        </select>
-                    </label>
-                    <div class="ui-switch metadata-toolbar-toggle">
-                        <RadzenSwitch TValue="bool" Value="@Options.Metadata.Recursive" Change="@((bool _) => OnToggleRecursive.InvokeAsync())" />
-                        <span>@AppText.T("web.metadata.toolbar.recursive")</span>
+                    <div class="metadata-toolbar-field metadata-toolbar-policy-field">
+                        <RadzenLabel class="metadata-toolbar-label" Text="@AppText.T("web.metadata.toolbar.output")" Component="MetadataToolbarPolicy" />
+                        <RadzenDropDown TValue="string" Name="MetadataToolbarPolicy" class="metadata-output-policy-select" Data="@OutputPolicyValues" Value="@GetOutputPolicyValue()" Change="@((object value) => OnOutputPolicyChanged.InvokeAsync(value as string ?? ""))">
+                            <Template Context="policy">@GetOutputPolicyLabel((string)policy)</Template>
+                            <ValueTemplate Context="policy">@GetOutputPolicyLabel((string)policy)</ValueTemplate>
+                        </RadzenDropDown>
                     </div>
+                    <LabeledSwitchComponent CssClass="metadata-toolbar-toggle" Label="@AppText.T("web.metadata.toolbar.recursive")" Value="@Options.Metadata.Recursive" ValueChanged="@((bool _) => OnToggleRecursive.InvokeAsync())" />
                     @if (Options.Metadata.OutputPolicy == MkvMetadataOutputPolicy.OutputPath)
                     {
-                        <div class="ui-switch metadata-toolbar-toggle">
-                            <RadzenSwitch TValue="bool" Value="@Options.Metadata.PreserveFolderStructure" Change="@((bool _) => OnTogglePreserveFolders.InvokeAsync())" />
-                            <span>@AppText.T("web.metadata.toolbar.preserveFolders")</span>
-                        </div>
-                        <div class="ui-switch metadata-toolbar-toggle">
-                            <RadzenSwitch TValue="bool" Value="@Options.Metadata.OverwriteOutput" Change="@((bool _) => OnToggleOverwriteOutput.InvokeAsync())" />
-                            <span>@AppText.T("web.metadata.toolbar.overwriteOutput")</span>
-                        </div>
+                        <LabeledSwitchComponent CssClass="metadata-toolbar-toggle" Label="@AppText.T("web.metadata.toolbar.preserveFolders")" Value="@Options.Metadata.PreserveFolderStructure" ValueChanged="@((bool _) => OnTogglePreserveFolders.InvokeAsync())" />
+                        <LabeledSwitchComponent CssClass="metadata-toolbar-toggle" Label="@AppText.T("web.metadata.toolbar.overwriteOutput")" Value="@Options.Metadata.OverwriteOutput" ValueChanged="@((bool _) => OnToggleOverwriteOutput.InvokeAsync())" />
                     }
                 </div>
                 @if (Options.Metadata.OutputPolicy == MkvMetadataOutputPolicy.OutputPath)
                 {
                     <div class="metadata-toolbar-row metadata-toolbar-output-row">
-                        <label class="metadata-toolbar-field metadata-toolbar-path-field">
-                            <span class="metadata-toolbar-label">@AppText.T("web.metadata.toolbar.outputDir")</span>
+                        <div class="metadata-toolbar-field metadata-toolbar-path-field">
+                            <RadzenLabel class="metadata-toolbar-label" Text="@AppText.T("web.metadata.toolbar.outputDir")" Component="MetadataToolbarOutputDir" />
                             <span class="metadata-path-control">
-                                <input class="form-input metadata-path-input" value="@Options.Metadata.OutputDir" @onchange="OnOutputPathChanged" />
+                                <RadzenTextBox Name="MetadataToolbarOutputDir" class="metadata-path-input" Value="@Options.Metadata.OutputDir" Change="@OnOutputPathChanged" />
                                 <RadzenButton Icon="folder_open" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.metadata.toolbar.outputDir")" aria-label="@AppText.T("web.metadata.toolbar.outputDir")" Click="@OnBrowseOutput" />
                             </span>
-                        </label>
+                        </div>
                     </div>
                 }
             </div>
@@ -292,10 +281,10 @@
     /// <summary>
     /// Eventi della toolbar e della selezione
     /// </summary>
-    [Parameter] public EventCallback<ChangeEventArgs> OnPresetChanged { get; set; }
-    [Parameter] public EventCallback<ChangeEventArgs> OnSourcePathChanged { get; set; }
-    [Parameter] public EventCallback<ChangeEventArgs> OnOutputPolicyChanged { get; set; }
-    [Parameter] public EventCallback<ChangeEventArgs> OnOutputPathChanged { get; set; }
+    [Parameter] public EventCallback<string> OnPresetChanged { get; set; }
+    [Parameter] public EventCallback<string> OnSourcePathChanged { get; set; }
+    [Parameter] public EventCallback<string> OnOutputPolicyChanged { get; set; }
+    [Parameter] public EventCallback<string> OnOutputPathChanged { get; set; }
     [Parameter] public EventCallback OnBrowseSource { get; set; }
     [Parameter] public EventCallback OnBrowseOutput { get; set; }
     [Parameter] public EventCallback OnToggleRecursive { get; set; }
@@ -321,8 +310,24 @@
     }
 
     /// <summary>
+    /// Valori serializzati della policy output
+    /// </summary>
+    private static readonly List<string> OutputPolicyValues = new List<string> { "overwrite", "output" };
+
+    /// <summary>
+    /// Etichetta della policy output
+    /// </summary>
+    /// <param name="policy">Valore policy</param>
+    /// <returns>Etichetta localizzata</returns>
+    private static string GetOutputPolicyLabel(string policy)
+    {
+        return AppText.T(policy == "output" ? "web.metadata.toolbar.outputPath" : "web.metadata.toolbar.overwrite");
+    }
+
+    /// <summary>
     /// Restituisce il valore serializzato della policy output
     /// </summary>
+    /// <returns>Valore policy</returns>
     private string GetOutputPolicyValue()
     {
         return this.OutputPolicyValueProvider != null ? this.OutputPolicyValueProvider() : "overwrite";

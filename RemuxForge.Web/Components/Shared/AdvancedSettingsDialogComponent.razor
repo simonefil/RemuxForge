@@ -1,74 +1,82 @@
-<div class="dialog-overlay visible">
-    <div class="dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="advanced-settings-dialog-title" style="min-width: 60ch; max-height: 80vh; overflow-y: auto;" @onclick:stopPropagation="true">
-        <div id="advanced-settings-dialog-title" class="dialog-title">@AppText.T("web.advanced.title")</div>
-        <div class="dialog-body">
+@inherits AppDialogContentBase
 
-            <AdvancedSettingsSection Title="@AppText.T("web.advanced.section.analysis")">
-                <AdvancedSettingsToggleRow Label="@AppText.T("web.advanced.deepAnalysisDiagnostics")" Value="_deepAnalysisDiagnostics" ValueChanged="ChangeDeepAnalysisDiagnostics" />
-                <AdvancedSettingsToggleRow Label="@AppText.T("web.advanced.hardwareAcceleration")" Value="_ffHardwareAcceleration" ValueChanged="ChangeHardwareAcceleration" Disabled="_ffHardwareProbeRunning" />
-                @if (_ffHardwareProbeRunning)
-                {
-                    <div class="form-row">
-                        <span class="form-label">@AppText.T("web.advanced.hardwareBackend")</span>
-                        <span>@AppText.T("web.advanced.probeRunning")</span>
-                    </div>
-                }
-                else if (_ffHardwareAcceleration && _ffHardwareAccelerationMethods.Count > 0)
-                {
-                    <div class="form-row">
-                        <span class="form-label">@AppText.T("web.advanced.hardwareBackend")</span>
-                        <select class="form-input" style="width: 18ch;" aria-label="@AppText.T("web.advanced.hardwareBackend")" value="@_ffHardwareAccelerationMethod" @onchange="ChangeHardwareAccelerationMethod">
-                            <option value="">@AppText.T("web.advanced.select")</option>
-                            @for (int i = 0; i < _ffHardwareAccelerationMethods.Count; i++)
-                            {
-                                <option value="@_ffHardwareAccelerationMethods[i]">@_ffHardwareAccelerationMethods[i]</option>
-                            }
-                        </select>
-                    </div>
-                }
-                <div class="form-row">
-                    <span class="form-label">@AppText.T("web.advanced.visionBackend")</span>
-                    <select class="form-input" style="width: 18ch;" aria-label="@AppText.T("web.advanced.visionBackend")" value="@AdvancedConfig.GetVisionBackendValue(_visionBackend)" @onchange="ChangeVisionBackend" disabled="@_siftVulkanProbeRunning">
-                        <option value="@AdvancedConfig.GetVisionBackendValue(VisionBackendKind.Cpu)">CPU</option>
-                        <option value="@AdvancedConfig.GetVisionBackendValue(VisionBackendKind.Vulkan)">Vulkan</option>
-                    </select>
-                    @if (_siftVulkanProbeRunning)
-                    {
-                        <span>@AppText.T("web.advanced.probeRunning")</span>
-                    }
-                    else if (_visionBackend == VisionBackendKind.Vulkan && !string.IsNullOrEmpty(_siftVulkanDeviceName))
-                    {
-                        <span>@_siftVulkanDeviceName</span>
-                    }
-                </div>
-                <div class="form-row">
-                    <span class="form-label">@AppText.T("web.advanced.offsetSearchRadius")</span>
-                    <input class="form-input" style="width: 8ch;" aria-label="@AppText.T("web.advanced.offsetSearchRadius")" @bind="_offsetSearchRadiusMs" /> <span style="margin-left: 0.5ch;">ms</span>
-                </div>
-                <div class="form-row">
-                    <span class="form-label">@AppText.T("web.advanced.minimumCoverage")</span>
-                    <input class="form-input" type="number" min="0" max="100" step="0.1" style="width: 8ch;" aria-label="@AppText.T("web.advanced.minimumCoverage")" @bind="_minimumCoveragePercent" /> <span style="margin-left: 0.5ch;">%</span>
-                </div>
-            </AdvancedSettingsSection>
+<div class="rf-dialog" @ref="DialogContent">
+    <div class="rf-dialog-body">
 
-        </div>
+        <AdvancedSettingsSection Title="@AppText.T("web.advanced.section.analysis")">
+            <AdvancedSettingsToggleRow Label="@AppText.T("web.advanced.deepAnalysisDiagnostics")" Value="_deepAnalysisDiagnostics" ValueChanged="ChangeDeepAnalysisDiagnostics" />
+            <AdvancedSettingsToggleRow Label="@AppText.T("web.advanced.hardwareAcceleration")" Value="_ffHardwareAcceleration" ValueChanged="ChangeHardwareAcceleration" Disabled="_ffHardwareProbeRunning" />
+            @if (_ffHardwareProbeRunning)
+            {
+                <div class="form-row">
+                    <span class="form-label">@AppText.T("web.advanced.hardwareBackend")</span>
+                    <span>@AppText.T("web.advanced.probeRunning")</span>
+                </div>
+            }
+            else if (_ffHardwareAcceleration && _ffHardwareAccelerationMethods.Count > 0)
+            {
+                <div class="form-row">
+                    <RadzenLabel class="form-label" Text="@AppText.T("web.advanced.hardwareBackend")" Component="AdvancedHardwareBackend" />
+                    <RadzenDropDown TValue="string" Name="AdvancedHardwareBackend" Data="@_ffHardwareAccelerationMethods" Value="@(string.IsNullOrEmpty(_ffHardwareAccelerationMethod) ? null : _ffHardwareAccelerationMethod)" Change="@ChangeHardwareAccelerationMethod" AllowClear="true" Placeholder="@AppText.T("web.advanced.select")" Style="max-width: 18rem;" />
+                </div>
+            }
+            <div class="form-row">
+                <RadzenLabel class="form-label" Text="@AppText.T("web.advanced.visionBackend")" Component="AdvancedVisionBackend" />
+                <RadzenDropDown TValue="VisionBackendKind" Name="AdvancedVisionBackend" Data="@VisionBackends" Value="@_visionBackend" Change="@ChangeVisionBackend" Disabled="@_siftVulkanProbeRunning" Style="max-width: 18rem;">
+                    <Template Context="backend">@GetVisionBackendLabel((VisionBackendKind)backend)</Template>
+                    <ValueTemplate Context="backend">@GetVisionBackendLabel((VisionBackendKind)backend)</ValueTemplate>
+                </RadzenDropDown>
+                @if (_siftVulkanProbeRunning)
+                {
+                    <span style="margin-left: 0.5ch;">@AppText.T("web.advanced.probeRunning")</span>
+                }
+                else if (_visionBackend == VisionBackendKind.Vulkan && !string.IsNullOrEmpty(_siftVulkanDeviceName))
+                {
+                    <span style="margin-left: 0.5ch;">@_siftVulkanDeviceName</span>
+                }
+            </div>
+            <div class="form-row">
+                <RadzenLabel class="form-label" Text="@AppText.T("web.advanced.offsetSearchRadius")" Component="AdvancedOffsetSearchRadius" />
+                <RadzenNumeric TValue="int" Name="AdvancedOffsetSearchRadius" Min="@OFFSET_SEARCH_RADIUS_MIN_MS" Max="@OFFSET_SEARCH_RADIUS_MAX_MS" @bind-Value="_offsetSearchRadiusMs" Style="max-width: 12rem;" /> <span style="margin-left: 0.5ch;">ms</span>
+            </div>
+            <div class="form-row">
+                <RadzenLabel class="form-label" Text="@AppText.T("web.advanced.minimumCoverage")" Component="AdvancedMinimumCoverage" />
+                <RadzenNumeric TValue="double" Name="AdvancedMinimumCoverage" Min="0" Max="100" Step="0.1" @bind-Value="_minimumCoveragePercent" Style="max-width: 12rem;" /> <span style="margin-left: 0.5ch;">%</span>
+            </div>
+        </AdvancedSettingsSection>
+
+    </div>
+    <div class="rf-dialog-footer">
         @if (!string.IsNullOrEmpty(_validationError))
         {
-            <div style="padding: 0.5em 1em; color: var(--rz-danger); white-space: pre-line;">@_validationError</div>
+            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="rf-dialog-message">@_validationError</RadzenAlert>
         }
-        <div class="dialog-footer">
-            <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@Save" Disabled="@(_ffHardwareProbeRunning || _siftVulkanProbeRunning)" />
-            <RadzenButton Text="@AppText.T("web.advanced.resetDefault")" Icon="restart_alt" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@ResetDefaults" Disabled="@(_ffHardwareProbeRunning || _siftVulkanProbeRunning)" />
-            <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" Disabled="@(_ffHardwareProbeRunning || _siftVulkanProbeRunning)" />
-        </div>
+        <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@Save" Disabled="@ProbeRunning" />
+        <RadzenButton Text="@AppText.T("web.advanced.resetDefault")" Icon="restart_alt" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@ResetDefaults" Disabled="@ProbeRunning" />
+        <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => CloseDialog())" Disabled="@ProbeRunning" />
     </div>
 </div>
 
 @code {
     /// <summary>
-    /// Evento chiusura dialog
+    /// Raggio minimo di ricerca dell'offset in ms, come nella validazione del Core
     /// </summary>
-    [Parameter] public EventCallback OnClose { get; set; }
+    private const int OFFSET_SEARCH_RADIUS_MIN_MS = 5000;
+
+    /// <summary>
+    /// Raggio massimo di ricerca dell'offset in ms, come nella validazione del Core
+    /// </summary>
+    private const int OFFSET_SEARCH_RADIUS_MAX_MS = 600000;
+
+    /// <summary>
+    /// Backend visuali selezionabili
+    /// </summary>
+    private static readonly List<VisionBackendKind> VisionBackends = new List<VisionBackendKind> { VisionBackendKind.Cpu, VisionBackendKind.Vulkan };
+
+    /// <summary>
+    /// True durante un probe: il dialog resta aperto fino al suo esito
+    /// </summary>
+    private bool ProbeRunning => _ffHardwareProbeRunning || _siftVulkanProbeRunning;
 
     #region Campi backend visuale
 
@@ -114,14 +122,14 @@
     #endregion
 
     /// <summary>
-    /// Raggio di ricerca dell'offset in ms (stringa per binding input)
+    /// Raggio di ricerca dell'offset in ms
     /// </summary>
-    private string _offsetSearchRadiusMs = "";
+    private int _offsetSearchRadiusMs;
 
     /// <summary>
-    /// Copertura minima Deep Analysis in percentuale (stringa per binding input)
+    /// Copertura minima Deep Analysis in percentuale
     /// </summary>
-    private string _minimumCoveragePercent = "";
+    private double _minimumCoveragePercent;
 
     /// <summary>
     /// Abilita la diagnostica JSON Deep Analysis per episodio
@@ -138,6 +146,9 @@
     /// </summary>
     protected override async System.Threading.Tasks.Task OnInitializedAsync()
     {
+        // Esc e la X restano inattivi durante un probe, come il pulsante Annulla
+        if (this.HostOptions != null)
+            this.HostOptions.CanClose = () => System.Threading.Tasks.Task.FromResult(!this.ProbeRunning);
         this.LoadFields();
         await this.ProbePersistedBackends();
     }
@@ -158,8 +169,8 @@
     {
         this._visionBackend = adv.GetVisionBackendKind();
         this._siftVulkanDeviceName = "";
-        this._offsetSearchRadiusMs = adv.DeepAnalysis.OffsetSearchRadiusMs.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        this._minimumCoveragePercent = (adv.DeepAnalysis.MinimumCoverage * 100.0).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        this._offsetSearchRadiusMs = adv.DeepAnalysis.OffsetSearchRadiusMs;
+        this._minimumCoveragePercent = Math.Round(adv.DeepAnalysis.MinimumCoverage * 100.0, 3);
         this._deepAnalysisDiagnostics = adv.DeepAnalysis.DiagnosticsEnabled;
 
         // Ffmpeg: booleani
@@ -258,10 +269,8 @@
             return;
 
         adv.SetVisionBackendKind(this._visionBackend);
-        int.TryParse(this._offsetSearchRadiusMs, out int offsetSearchRadiusMs);
-        adv.DeepAnalysis.OffsetSearchRadiusMs = offsetSearchRadiusMs;
-        double.TryParse(this._minimumCoveragePercent, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double minimumCoveragePercent);
-        adv.DeepAnalysis.MinimumCoverage = minimumCoveragePercent / 100.0;
+        adv.DeepAnalysis.OffsetSearchRadiusMs = this._offsetSearchRadiusMs;
+        adv.DeepAnalysis.MinimumCoverage = this._minimumCoveragePercent / 100.0;
         adv.DeepAnalysis.DiagnosticsEnabled = this._deepAnalysisDiagnostics;
 
         // Parsing Ffmpeg: booleani
@@ -276,7 +285,7 @@
             return;
         }
         this._validationError = "";
-        this.OnClose.InvokeAsync();
+        this.CloseDialog();
     }
 
     /// <summary>
@@ -303,10 +312,10 @@
         if (this._ffHardwareAcceleration && !this._ffHardwareAccelerationMethods.Contains(this._ffHardwareAccelerationMethod))
             errors.Add(AppText.T("web.advanced.invalidHardwareBackend"));
 
-        if (!int.TryParse(this._offsetSearchRadiusMs, out int offsetSearchRadiusMs) || offsetSearchRadiusMs < 5000 || offsetSearchRadiusMs > 600000)
+        if (this._offsetSearchRadiusMs < OFFSET_SEARCH_RADIUS_MIN_MS || this._offsetSearchRadiusMs > OFFSET_SEARCH_RADIUS_MAX_MS)
             errors.Add(AppText.T("web.advanced.invalidOffsetSearchRadius"));
 
-        if (!double.TryParse(this._minimumCoveragePercent, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double minimumCoveragePercent) || minimumCoveragePercent < 0.0 || minimumCoveragePercent > 100.0)
+        if (this._minimumCoveragePercent < 0.0 || this._minimumCoveragePercent > 100.0)
             errors.Add(AppText.T("web.advanced.invalidMinimumCoverage"));
 
         if (errors.Count > 0)
@@ -328,15 +337,24 @@
     }
 
     /// <summary>
+    /// Etichetta di un backend visuale
+    /// </summary>
+    /// <param name="backend">Backend</param>
+    /// <returns>Etichetta mostrata nella tendina</returns>
+    private static string GetVisionBackendLabel(VisionBackendKind backend)
+    {
+        return backend == VisionBackendKind.Vulkan ? "Vulkan" : "CPU";
+    }
+
+    /// <summary>
     /// Aggiorna il backend visuale condiviso selezionato
     /// </summary>
-    /// <param name="args">Evento di selezione</param>
-    private async System.Threading.Tasks.Task ChangeVisionBackend(ChangeEventArgs args)
+    /// <param name="value">Backend scelto nella tendina</param>
+    private async System.Threading.Tasks.Task ChangeVisionBackend(object value)
     {
-        string selectedValue = args.Value != null ? args.Value.ToString() : "";
         this._validationError = "";
         this._siftVulkanDeviceName = "";
-        if (!AdvancedConfig.TryParseVisionBackend(selectedValue, out VisionBackendKind selectedBackend))
+        if (value is not VisionBackendKind selectedBackend || !VisionBackends.Contains(selectedBackend))
         {
             this._visionBackend = VisionBackendKind.Cpu;
             this._validationError = AppText.T("web.advanced.invalidVisionBackend");
@@ -422,10 +440,10 @@
     /// <summary>
     /// Aggiorna il backend hardware selezionato nella tendina
     /// </summary>
-    /// <param name="args">Valore selezionato</param>
-    private void ChangeHardwareAccelerationMethod(ChangeEventArgs args)
+    /// <param name="value">Valore selezionato, null quando la scelta viene rimossa</param>
+    private void ChangeHardwareAccelerationMethod(object value)
     {
-        this._ffHardwareAccelerationMethod = args.Value != null ? args.Value.ToString() : "";
+        this._ffHardwareAccelerationMethod = value as string ?? "";
     }
 
 }

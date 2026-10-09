@@ -1,0 +1,163 @@
+@using System.Linq
+@implements IAsyncDisposable
+
+<div class="rf-remux-wizard rf-split-wizard" @ref="_content">
+    <CascadingValue TValue="IWizardFieldHost" Value="this" IsFixed="true">
+        <fieldset disabled="@_applying" class="rf-remux-wizard-body">
+            <nav class="rf-remux-sections" aria-label="@T("sections")">
+                <RadzenStack Gap="0.5rem">
+                    @for (int i = 0; i < Sections.Length; i++)
+                    {
+                        int index = i;
+                        <RadzenButton class="rf-remux-step"
+                                      Variant="@(_section == i ? Variant.Filled : Variant.Text)" ButtonStyle="ButtonStyle.Base"
+                                      aria-current="@(_section == i ? "step" : null)" Disabled="@_applying" Click="@(() => Navigate(index))">
+                            <span class="rf-remux-step-content">
+                                <span class="rf-remux-step-number">@(index + 1).</span>
+                                <span>@T("section." + Sections[index])</span>
+                                @if (SectionHasErrors(index))
+                                {
+                                    <span class="rf-remux-step-error"><RadzenIcon Icon="error" aria-hidden="true" /><span class="rf-sr-only">@AppText.T("web.remux.sectionHasErrors")</span></span>
+                                }
+                            </span>
+                        </RadzenButton>
+                    }
+                </RadzenStack>
+            </nav>
+            <main class="rf-remux-content">
+                @if (AlertErrors.Any())
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="rf-remux-issues">
+                        @foreach (PipelineInitializationIssue error in AlertErrors)
+                        {
+                            <div class="rf-remux-issue-row">
+                                <span>@error.Message</span>
+                                @if (IssueSection(error) >= 0)
+                                {
+                                    <RadzenButton Text="@AppText.T("web.remux.edit")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.Small"
+                                                  aria-label="@(AppText.T("web.remux.edit") + ": " + error.Message)" Disabled="@_applying" Click="@(() => GoToError(error))" />
+                                }
+                            </div>
+                        }
+                    </RadzenAlert>
+                }
+                @if (_section == 0)
+                {
+                    <RemuxFieldComponent Label="@L("source")" Required="true" Field="Source" HelpKey="source">
+                        <RadzenTextBox Name="Source" Value="@Draft.Source" Change="ChangeSource" aria-required="true" aria-invalid="@Invalid("Source")" Style="width:100%" />
+                        <RadzenButton Icon="folder_open" Text="@AppText.T("web.remux.browse")" Variant="Variant.Outlined" Disabled="@_applying" Click="@(() => BrowseAsync(true))" />
+                    </RemuxFieldComponent>
+                    <RemuxFieldComponent Label="@L("recursive")" Component="Recursive" Field="Recursive" HelpKey="recursive" Note="@(Draft.SourceIsFile ? T("note.folderOnly") : "")">
+                        <RadzenSwitch TValue="bool" Name="Recursive" Value="@Draft.Recursive" Disabled="@(_applying || Draft.SourceIsFile)" Change="@(v => Edit(() => Draft.Recursive = v))" />
+                    </RemuxFieldComponent>
+                    <RemuxFieldComponent Label="@L("extensions")" Required="true" Field="FileExtensions" HelpKey="extensions">
+                        <RadzenTextBox Name="FileExtensions" Value="@Draft.Extensions" Change="@(v => Edit(() => Draft.Extensions = v))" aria-required="true" aria-invalid="@Invalid("FileExtensions")" Style="width:100%" />
+                    </RemuxFieldComponent>
+                }
+                else if (_section == 1)
+                {
+                    <RemuxFieldComponent Label="@L("mode")" Required="true" Field="CutMode" Component="CutMode" HelpKey="mode">
+                        <div class="rf-mux-cards rf-split-mode-cards" role="radiogroup" id="CutMode" aria-label="@L("mode")" aria-required="true" aria-invalid="@Invalid("CutMode")">
+                            @for (int i = 0; i < SplitCutModes.Cards.Length; i++)
+                            {
+                                int cardIndex = i;
+                                string mode = SplitCutModes.Cards[i].Mode;
+                                bool selected = Draft.CutMode == mode;
+                                <button type="button" role="radio" aria-checked="@(selected ? "true" : "false")" tabindex="@(ModeCardTabIndex(cardIndex))" class="rf-mux-card @(selected ? "selected" : "")" disabled="@_applying"
+                                        @ref="_modeCardRefs[cardIndex]" @onclick="@(() => SetCutMode(mode))" @onkeydown="@(e => ModeCardKey(e, cardIndex))"
+                                        @onmouseenter="@(() => SetModeHelp(mode))" @onfocus="@(() => SetModeHelp(mode))">
+                                    <span class="rf-mux-card-check" aria-hidden="true"><RadzenIcon Icon="check_circle" /></span>
+                                    <span class="rf-mux-card-icon" aria-hidden="true"><RadzenIcon Icon="@SplitCutModes.Cards[i].Icon" /></span>
+                                    <span class="rf-mux-card-title">@SplitCutModes.Label(mode)</span>
+                                    <span class="rf-mux-card-text">@T("mode." + mode + ".text")</span>
+                                </button>
+                            }
+                        </div>
+                    </RemuxFieldComponent>
+                    @if (Draft.CutMode == SplitCutModes.CHAPTERS_PER_EPISODE)
+                    {
+                        <RemuxFieldComponent Label="@L("chaptersPerEpisode")" Required="true" Field="ChaptersPerEpisode" HelpKey="chaptersPerEpisode">
+                            <RadzenNumeric TValue="int?" Name="ChaptersPerEpisode" Min="1" Value="@Draft.ChaptersPerEpisode" Change="@(v => Edit(() => Draft.ChaptersPerEpisode = v))" aria-required="true" aria-invalid="@Invalid("ChaptersPerEpisode")" />
+                        </RemuxFieldComponent>
+                    }
+                    else if (RuleMode.Length > 0)
+                    {
+                        <RemuxFieldComponent Label="@L(RuleHelpKey)" Required="true" Field="@RuleField" Component="@(RuleField + "0")" HelpKey="@RuleHelpKey">
+                            <SplitRuleRowsComponent @key="Draft.CutMode" Mode="@RuleMode" Name="@RuleField" Value="@Draft.RuleValue()" ShowErrors="@FieldErrors(RuleField).Any()" Disabled="@_applying"
+                                                    ValueChanged="@(v => Edit(() => Draft.SetRuleValue(v)))" />
+                        </RemuxFieldComponent>
+                    }
+                    else if (Draft.CutMode == SplitCutModes.TRIM)
+                    {
+                        <RemuxFieldComponent Label="@L("trimStart")" Field="TrimStart" HelpKey="trimStart">
+                            <RadzenTextBox Name="TrimStart" Value="@Draft.TrimStart" Placeholder="@T("placeholder.fileStart")" Change="@(v => Edit(() => Draft.TrimStart = v))" aria-invalid="@Invalid("TrimStart")" Style="width:100%" />
+                        </RemuxFieldComponent>
+                        <RemuxFieldComponent Label="@L("trimEnd")" Field="TrimEnd" HelpKey="trimEnd">
+                            <RadzenTextBox Name="TrimEnd" Value="@Draft.TrimEnd" Placeholder="@T("placeholder.fileEnd")" Change="@(v => Edit(() => Draft.TrimEnd = v))" aria-invalid="@Invalid("TrimEnd")" Style="width:100%" />
+                        </RemuxFieldComponent>
+                    }
+                    <RemuxFieldComponent Label="@L("snap")" Field="Snap" Component="Snap" HelpKey="snap">
+                        <RadzenDropDown TValue="MkvSplitSnapMode" Name="Snap" Data="@SnapModes" Value="@Draft.Snap" Change="@(v => Edit(() => Draft.Snap = (MkvSplitSnapMode)v))" Disabled="@_applying" Style="width:100%">
+                            <Template Context="snap">@SnapLabel((MkvSplitSnapMode)snap)</Template>
+                            <ValueTemplate Context="snap">@SnapLabel((MkvSplitSnapMode)snap)</ValueTemplate>
+                        </RadzenDropDown>
+                    </RemuxFieldComponent>
+                }
+                else if (_section == 2)
+                {
+                    <RemuxFieldComponent Label="@L("template")" Field="Template" HelpKey="template">
+                        <RadzenTextBox Name="Template" Value="@Draft.Template" Immediate="true" Placeholder="@DefaultTemplate" Change="@(v => Edit(() => Draft.Template = v))" aria-invalid="@Invalid("Template")" Style="width:100%" />
+                    </RemuxFieldComponent>
+                    <RemuxFieldComponent Label="@L("startNumber")" Required="true" Field="StartNumber" HelpKey="startNumber">
+                        <RadzenNumeric TValue="int?" Name="StartNumber" Min="0" Value="@Draft.StartNumber" Change="@(v => Edit(() => Draft.StartNumber = v))" aria-required="true" aria-invalid="@Invalid("StartNumber")" />
+                    </RemuxFieldComponent>
+                    <RemuxFieldComponent Label="@L("namePreview")" Component="NamePreview" HelpKey="namePreview">
+                        <output id="NamePreview" class="rf-split-name-preview" aria-live="polite">
+                            @foreach (string line in Draft.NamePreview())
+                            {
+                                <span class="rf-split-name-preview-line">@line</span>
+                            }
+                        </output>
+                    </RemuxFieldComponent>
+                }
+                else if (_section == 3)
+                {
+                    <RemuxFieldComponent Label="@L("outputDir")" Field="OutputDir" HelpKey="outputDir">
+                        <RadzenTextBox Name="OutputDir" Value="@Draft.OutputDir" Placeholder="@T("placeholder.besideSource")" Change="@(v => Edit(() => Draft.OutputDir = v))" aria-invalid="@Invalid("OutputDir")" Style="width:100%" />
+                        <RadzenButton Icon="folder_open" Text="@AppText.T("web.remux.browse")" Variant="Variant.Outlined" Disabled="@_applying" Click="@(() => BrowseAsync(false))" />
+                    </RemuxFieldComponent>
+                    <RemuxFieldComponent Label="@L("force")" Component="Force" Field="Force" HelpKey="force">
+                        <RadzenSwitch TValue="bool" Name="Force" Value="@Draft.Force" Disabled="@_applying" Change="@(v => Edit(() => Draft.Force = v))" />
+                    </RemuxFieldComponent>
+                }
+                else
+                {
+                    <RadzenPanel Text="@T("section.summary")" AllowCollapse="false">
+                        <dl class="rf-remux-summary">
+                            @foreach ((int Section, string Label, string Value) row in SummaryRows())
+                            {
+                                <div class="rf-remux-summary-row">
+                                    <dt>@row.Label</dt>
+                                    <dd>@row.Value</dd>
+                                    <RadzenButton Text="@AppText.T("web.remux.edit")" Variant="Variant.Text" Size="ButtonSize.Small" aria-label="@(AppText.T("web.remux.edit") + ": " + row.Label)" Disabled="@_applying" Click="@(() => Navigate(row.Section))" />
+                                </div>
+                            }
+                        </dl>
+                    </RadzenPanel>
+                }
+            </main>
+            <aside class="config-help-pane rf-remux-help" aria-live="polite">
+                <RadzenText TextStyle="TextStyle.Subtitle1">@_helpTitle</RadzenText>
+                <RadzenText>@_helpText</RadzenText>
+            </aside>
+        </fieldset>
+    </CascadingValue>
+    <div class="rf-remux-bottom">
+        <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@_applying" Click="Cancel" />
+        <div class="rf-remux-nav">
+            <RadzenButton Text="@AppText.T("web.remux.back")" Icon="arrow_back" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@(_section == 0 || _applying)" Click="@(() => Navigate(_section - 1))" />
+            <RadzenButton ButtonType="ButtonType.Button" Text="@(_section == LastSection ? T("confirm") : AppText.T("web.remux.next"))" Icon="@(_section == LastSection ? "check" : "arrow_forward")" ButtonStyle="ButtonStyle.Primary"
+                          Disabled="@_applying" IsBusy="@_applying" Click="Next" />
+        </div>
+    </div>
+</div>

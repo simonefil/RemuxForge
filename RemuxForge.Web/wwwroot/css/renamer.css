@@ -70,15 +70,9 @@
     flex-shrink: 0;
 }
 
-.renamer-method-selector select {
+.renamer-method-selector > .rz-dropdown {
     flex: 1;
     min-width: 20ch;
-    background-color: var(--rz-base-background-color);
-    color: var(--rz-text-color);
-    border: 1px solid var(--rz-text-disabled-color);
-    font-family: var(--rz-text-font-family);
-    font-size: var(--rz-body-font-size);
-    line-height: 1em;
 }
 
 .renamer-params {
@@ -87,48 +81,28 @@
     border-bottom: 1px solid var(--rz-text-disabled-color);
 }
 
-.renamer-params label {
+.renamer-param-row {
     display: flex;
     align-items: center;
     gap: 1ch;
-    line-height: 1.5em;
+    margin-bottom: 0.35em;
 }
 
-.renamer-params label > span:first-child {
+.renamer-param-row > .rz-label {
     min-width: 10ch;
     flex-shrink: 0;
 }
 
-.renamer-params input[type="text"],
-.renamer-params input[type="number"] {
-    background-color: var(--rz-base-background-color);
-    color: var(--rz-text-color);
-    border: 1px solid var(--rz-text-disabled-color);
-    font-family: var(--rz-text-font-family);
-    font-size: var(--rz-body-font-size);
-    padding: 0 0.5ch;
-    line-height: 1em;
+.renamer-param-row > .rz-textbox,
+.renamer-param-row > .rz-numeric,
+.renamer-param-row > .rz-dropdown {
     flex: 1;
     min-width: 0;
 }
 
-.renamer-params select {
-    flex: 1;
-    min-width: 18ch;
-    background-color: var(--rz-base-background-color);
-    color: var(--rz-text-color);
-    border: 1px solid var(--rz-text-disabled-color);
-    font-family: var(--rz-text-font-family);
-    font-size: var(--rz-body-font-size);
-    line-height: 1em;
-}
-
-.renamer-params label.renamer-checkbox-row {
+.renamer-params .ui-switch.renamer-checkbox-row {
     padding-left: 11ch;
-}
-
-.renamer-params label.renamer-checkbox-row > span {
-    min-width: 0;
+    margin-bottom: 0.35em;
 }
 
 .renamer-params .rz-switch {
@@ -136,9 +110,8 @@
     margin: 0;
 }
 
-.renamer-params-error {
-    color: var(--rz-danger);
-    line-height: 1em;
+.rz-alert.renamer-params-error {
+    margin: 0 0 0.5em;
 }
 
 .renamer-tag-help {

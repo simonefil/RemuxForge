@@ -59,10 +59,8 @@ namespace RemuxForge.Core.Analysis.Features
         /// <param name="languageAnchors">Ancore della timeline language ordinate per PTS</param>
         /// <param name="maxDegreeOfParallelism">Numero massimo di worker utilizzabili dal backend</param>
         /// <param name="cancellationToken">Token per richiedere l'annullamento cooperativo</param>
-        /// <param name="progress">Destinatario opzionale degli aggiornamenti di progresso</param>
-        /// <param name="plannedPairs">Coppie sparse da valutare, oppure null per valutare tutte le combinazioni</param>
         /// <returns>Risultato del matching con matrice, contatori e diagnostica del batch</returns>
-        public abstract DeepSiftBatchMatchResult BuildMatrix(IReadOnlyList<DeepSiftVisualAnchor> sourceAnchors, IReadOnlyList<DeepSiftVisualAnchor> languageAnchors, int maxDegreeOfParallelism, CancellationToken cancellationToken, IProgress<DeepSiftBatchProgress> progress = null, IReadOnlyList<DeepSiftFramePair> plannedPairs = null);
+        public abstract DeepSiftBatchMatchResult BuildMatrix(IReadOnlyList<DeepSiftVisualAnchor> sourceAnchors, IReadOnlyList<DeepSiftVisualAnchor> languageAnchors, int maxDegreeOfParallelism, CancellationToken cancellationToken);
 
         /// <summary>
         /// Rilascia le risorse possedute dal backend
@@ -193,16 +191,7 @@ namespace RemuxForge.Core.Analysis.Features
             pair.LanguageAnchorIndex = languageIndex;
             pair.SourcePtsMs = batch.SourceAnchors[sourceIndex].PtsMs;
             pair.LanguagePtsMs = batch.LanguageAnchors[languageIndex].PtsMs;
-            pair.SourceFrameDurationMs = batch.SourceAnchors[sourceIndex].FrameDurationMs;
-            pair.LanguageFrameDurationMs = batch.LanguageAnchors[languageIndex].FrameDurationMs;
-            pair.SourceSamplingDurationMs = batch.SourceAnchors[sourceIndex].DurationMs;
-            pair.LanguageSamplingDurationMs = batch.LanguageAnchors[languageIndex].DurationMs;
             pair.Score = cell.Score;
-            pair.InlierCount = cell.InlierCount;
-            pair.InlierRatio = cell.InlierRatio;
-            pair.SourceCoverage = cell.SourceCoverage;
-            pair.LanguageCoverage = cell.LanguageCoverage;
-            pair.MeanReprojectionError = cell.MeanReprojectionError;
             pair.Homography = homography;
             batch.AcceptedPairs.Add(pair);
         }

@@ -1,7 +1,7 @@
-<div class="dialog-overlay visible">
-    <div class="dialog-box dialog-fullscreen metadata-mapped-dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="metadata-mapped-dialog-title" @onclick:stopPropagation="true">
-        <div id="metadata-mapped-dialog-title" class="dialog-title">@GetTitle()</div>
-        <div class="dialog-body metadata-mapped-dialog-body @(Editable ? "metadata-mapped-dialog-body-editable" : "")">
+@inherits AppDialogContentBase
+
+<div class="rf-dialog" @ref="DialogContent">
+        <div class="rf-dialog-body metadata-mapped-dialog-body @(Editable ? "metadata-mapped-dialog-body-editable" : "")">
             <div class="metadata-mapped-content">
                 @if (Record == null)
                 {
@@ -18,22 +18,20 @@
                         <div class="metadata-sheet-selectors">
                             <div class="metadata-sheet-selector-row">
                                 <span class="metadata-sheet-selector-label">@AppText.T("web.metadata.mapped.containerStream")</span>
-                                <select class="form-input metadata-sheet-select" value="@CONTAINER_SELECTOR" aria-label="@AppText.T("web.metadata.mapped.containerStream")" @onfocus="ActivateContainerTags" @onchange="ChangeContainerSelection">
-                                    <option value="@CONTAINER_SELECTOR">@BuildContainerOptionLabel(info)</option>
-                                </select>
+                                <RadzenDropDown TValue="string" class="metadata-sheet-select" Data="@ContainerSelectors" Value="@CONTAINER_SELECTOR" aria-label="@AppText.T("web.metadata.mapped.containerStream")" @onfocusin="ActivateContainerTags" Change="@ChangeContainerSelection">
+                                    <Template Context="selector">@BuildContainerOptionLabel(info)</Template>
+                                    <ValueTemplate Context="selector">@BuildContainerOptionLabel(info)</ValueTemplate>
+                                </RadzenDropDown>
                             </div>
 
                             @if (videoTracks.Count > 0)
                             {
                                 <div class="metadata-sheet-selector-row">
                                     <span class="metadata-sheet-selector-label">@AppText.T("web.metadata.mapped.videoStream")</span>
-                                    <select class="form-input metadata-sheet-select" value="@_selectedVideoSelector" aria-label="@AppText.T("web.metadata.mapped.videoStream")" @onfocus="ActivateVideoTags" @onchange="ChangeVideoSelection">
-                                        @for (int i = 0; i < videoTracks.Count; i++)
-                                        {
-                                            MkvMetadataTrackInfo track = videoTracks[i];
-                                            <option value="@GetSheetTrackSelector(track)">@BuildTrackOptionLabel(track)</option>
-                                        }
-                                    </select>
+                                    <RadzenDropDown TValue="string" class="metadata-sheet-select" Data="@GetSheetTrackSelectors(videoTracks)" Value="@_selectedVideoSelector" aria-label="@AppText.T("web.metadata.mapped.videoStream")" @onfocusin="ActivateVideoTags" Change="@ChangeVideoSelection">
+                                        <Template Context="selector">@BuildSelectorOptionLabel(videoTracks, (string)selector)</Template>
+                                        <ValueTemplate Context="selector">@BuildSelectorOptionLabel(videoTracks, (string)selector)</ValueTemplate>
+                                    </RadzenDropDown>
                                 </div>
                             }
 
@@ -41,13 +39,10 @@
                             {
                                 <div class="metadata-sheet-selector-row">
                                     <span class="metadata-sheet-selector-label">@AppText.T("web.metadata.mapped.audioStream")</span>
-                                    <select class="form-input metadata-sheet-select" value="@_selectedAudioSelector" aria-label="@AppText.T("web.metadata.mapped.audioStream")" @onfocus="ActivateAudioTags" @onchange="ChangeAudioSelection">
-                                        @for (int i = 0; i < audioTracks.Count; i++)
-                                        {
-                                            MkvMetadataTrackInfo track = audioTracks[i];
-                                            <option value="@GetSheetTrackSelector(track)">@BuildTrackOptionLabel(track)</option>
-                                        }
-                                    </select>
+                                    <RadzenDropDown TValue="string" class="metadata-sheet-select" Data="@GetSheetTrackSelectors(audioTracks)" Value="@_selectedAudioSelector" aria-label="@AppText.T("web.metadata.mapped.audioStream")" @onfocusin="ActivateAudioTags" Change="@ChangeAudioSelection">
+                                        <Template Context="selector">@BuildSelectorOptionLabel(audioTracks, (string)selector)</Template>
+                                        <ValueTemplate Context="selector">@BuildSelectorOptionLabel(audioTracks, (string)selector)</ValueTemplate>
+                                    </RadzenDropDown>
                                 </div>
                             }
 
@@ -55,13 +50,10 @@
                             {
                                 <div class="metadata-sheet-selector-row">
                                     <span class="metadata-sheet-selector-label">@AppText.T("web.metadata.mapped.textStream")</span>
-                                    <select class="form-input metadata-sheet-select" value="@_selectedTextSelector" aria-label="@AppText.T("web.metadata.mapped.textStream")" @onfocus="ActivateTextTags" @onchange="ChangeTextSelection">
-                                        @for (int i = 0; i < textTracks.Count; i++)
-                                        {
-                                            MkvMetadataTrackInfo track = textTracks[i];
-                                            <option value="@GetSheetTrackSelector(track)">@BuildTrackOptionLabel(track)</option>
-                                        }
-                                    </select>
+                                    <RadzenDropDown TValue="string" class="metadata-sheet-select" Data="@GetSheetTrackSelectors(textTracks)" Value="@_selectedTextSelector" aria-label="@AppText.T("web.metadata.mapped.textStream")" @onfocusin="ActivateTextTags" Change="@ChangeTextSelection">
+                                        <Template Context="selector">@BuildSelectorOptionLabel(textTracks, (string)selector)</Template>
+                                        <ValueTemplate Context="selector">@BuildSelectorOptionLabel(textTracks, (string)selector)</ValueTemplate>
+                                    </RadzenDropDown>
                                 </div>
                             }
                         </div>
@@ -69,10 +61,7 @@
                         @if (Simulated && !Editable)
                         {
                             <div class="metadata-sheet-actions">
-                                <div class="ui-switch">
-                                    <RadzenSwitch TValue="bool" @bind-Value="@_showChangesOnly" />
-                                    <span>@AppText.T("web.metadata.mapped.changesOnly")</span>
-                                </div>
+                                <LabeledSwitchComponent Label="@AppText.T("web.metadata.mapped.changesOnly")" @bind-Value="_showChangesOnly" />
                             </div>
                         }
 
@@ -145,8 +134,8 @@
                                         {
                                             MkvMetadataChapterInfo chapter = item;
                                             <div class="metadata-chapter-row" style="padding-left: @(chapter.Depth * 24)px">
-                                                <input class="form-input metadata-chapter-time-input @GetChapterTimeClass(chapter)" aria-label="@AppText.F("web.metadata.mapped.chapterTime", this._chapters.IndexOf(chapter) + 1)" value="@GetChapterTimeText(chapter)" @onchange="@((ChangeEventArgs e) => ChangeChapterTime(chapter, e.Value != null ? e.Value.ToString() : ""))" />
-                                                <input class="form-input metadata-chapter-name @(IsChapterNameChanged(chapter) ? "metadata-manual-input-changed" : "")" aria-label="@AppText.F("web.metadata.mapped.chapterName", this._chapters.IndexOf(chapter) + 1)" value="@chapter.Name" @onchange="@((ChangeEventArgs e) => ChangeChapterName(chapter, e.Value != null ? e.Value.ToString() : ""))" />
+                                                <RadzenTextBox class="@("metadata-chapter-time-input " + GetChapterTimeClass(chapter))" aria-label="@AppText.F("web.metadata.mapped.chapterTime", this._chapters.IndexOf(chapter) + 1)" Value="@GetChapterTimeText(chapter)" Change="@((string value) => ChangeChapterTime(chapter, value ?? ""))" />
+                                                <RadzenTextBox class="@("metadata-chapter-name" + (IsChapterNameChanged(chapter) ? " metadata-manual-input-changed" : ""))" aria-label="@AppText.F("web.metadata.mapped.chapterName", this._chapters.IndexOf(chapter) + 1)" Value="@chapter.Name" Change="@((string value) => ChangeChapterName(chapter, value ?? ""))" />
                                                 <RadzenButton Icon="delete" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" title="@AppText.T("web.common.delete")" aria-label="@AppText.T("web.common.delete")" Click="@(() => RemoveChapter(chapter))" />
                                             </div>
                                         }
@@ -166,7 +155,7 @@
                 </div>
             }
         </div>
-        <div class="dialog-footer">
+        <div class="rf-dialog-footer">
             @if (!Editable && Record != null)
             {
                 <RadzenButton Text="@AppText.T("web.metadata.mapped.copyValues")" Icon="content_copy" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@CopyValuesAsync" />
@@ -176,9 +165,8 @@
                 <span class="metadata-manual-message">@_editMessage</span>
                 <RadzenButton Text="@AppText.T("web.metadata.manualEdit.apply")" Icon="check" Click="@ApplyManualEdit" />
             }
-            <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.close")" Icon="close" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" />
+            <RadzenButton Text="@AppText.T("web.common.close")" Icon="close" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@CloseAsync" />
         </div>
-    </div>
 </div>
 
 @code {
@@ -203,19 +191,9 @@
     [Parameter] public bool Editable { get; set; }
 
     /// <summary>
-    /// Evento chiusura dialog
+    /// Unico selettore della tendina container
     /// </summary>
-    [Parameter] public EventCallback OnClose { get; set; }
-
-    /// <summary>
-    /// Evento applicazione modifiche manuali
-    /// </summary>
-    [Parameter] public EventCallback<List<MkvMetadataChange>> OnApply { get; set; }
-
-    /// <summary>
-    /// Modulo JavaScript condiviso per la clipboard
-    /// </summary>
-    [Parameter] public IJSObjectReference JsModule { get; set; }
+    private static readonly List<string> ContainerSelectors = new List<string> { CONTAINER_SELECTOR };
 
     /// <summary>
     /// Titolo helper contestuale
@@ -293,6 +271,20 @@
     private bool _showChangesOnly;
 
     /// <summary>
+    /// True mentre è aperta la conferma di chiusura
+    /// </summary>
+    private bool _confirmingClose;
+
+    /// <summary>
+    /// Collega Esc e la X del dialog alla conferma delle modifiche non applicate
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        if (this.Editable && this.HostOptions != null)
+            this.HostOptions.CanClose = this.ConfirmDiscardAsync;
+    }
+
+    /// <summary>
     /// Aggiorna stato derivato dai parametri
     /// </summary>
     protected override void OnParametersSet()
@@ -309,13 +301,25 @@
     /// <returns>Titolo localizzato</returns>
     private string GetTitle()
     {
-        string fileName = this.Record != null ? System.IO.Path.GetFileName(this.Record.InputFile) : "";
-        if (this.Editable)
+        return BuildTitle(this.Record, this.Editable, this.Simulated);
+    }
+
+    /// <summary>
+    /// Costruisce il titolo del dialog per record e modalità
+    /// </summary>
+    /// <param name="record">Record visualizzato</param>
+    /// <param name="editable">True per la modifica manuale</param>
+    /// <param name="simulated">True per il risultato simulato</param>
+    /// <returns>Titolo localizzato</returns>
+    public static string BuildTitle(MkvMetadataRecord record, bool editable, bool simulated)
+    {
+        string fileName = record != null ? System.IO.Path.GetFileName(record.InputFile) : "";
+        if (editable)
         {
             return AppText.F("web.metadata.manualEdit.title", fileName);
         }
 
-        return this.Simulated
+        return simulated
             ? AppText.F("web.metadata.mapped.simulatedTitle", fileName)
             : AppText.F("web.metadata.mapped.currentTitle", fileName);
     }
@@ -1315,7 +1319,7 @@
     /// <summary>
     /// Applica modifiche manuali validate
     /// </summary>
-    private async System.Threading.Tasks.Task ApplyManualEdit()
+    private void ApplyManualEdit()
     {
         List<MkvMetadataChange> changes = this.BuildManualChanges();
         if (changes.Count == 0)
@@ -1328,7 +1332,70 @@
             return;
         }
 
-        await this.OnApply.InvokeAsync(changes);
+        this.CloseDialog(changes);
+    }
+
+    /// <summary>
+    /// Chiude il dialog dopo la conferma delle modifiche non applicate
+    /// </summary>
+    private async Task CloseAsync()
+    {
+        if (await this.ConfirmDiscardAsync())
+            this.CloseDialog();
+    }
+
+    /// <summary>
+    /// Chiede se scartare le modifiche manuali non applicate
+    /// </summary>
+    /// <returns>True se il dialog può chiudersi</returns>
+    private async Task<bool> ConfirmDiscardAsync()
+    {
+        bool result;
+
+        if (this._confirmingClose)
+            return false;
+        if (!this.Editable || !this.HasUnappliedChanges())
+            return true;
+
+        this._confirmingClose = true;
+        try
+        {
+            result = await AppDialogs.ConfirmAsync(this.DialogService, this.GetTitle(), AppText.T("web.metadata.manualEdit.discardConfirm"),
+                AppText.T("web.metadata.manualEdit.discard"), AppText.T("web.metadata.manualEdit.continue"));
+        }
+        finally
+        {
+            this._confirmingClose = false;
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Indica se l'editor contiene modifiche manuali non ancora applicate
+    /// </summary>
+    /// <returns>True se valori, capitoli o ordine tracce differiscono dal file</returns>
+    private bool HasUnappliedChanges()
+    {
+        if (this._chapterTimeTexts.Count > 0 || this.BuildChapterChange() != null)
+            return true;
+
+        foreach (KeyValuePair<string, List<string>> pair in this._trackOrders)
+        {
+            for (int i = 0; i < pair.Value.Count; i++)
+            {
+                if (this.IsTrackMoved(pair.Key, i))
+                    return true;
+            }
+        }
+
+        foreach (KeyValuePair<string, string> pair in this._editValues)
+        {
+            if (!string.Equals(this.GetCurrentValueFromEditKey(pair.Key), pair.Value != null ? pair.Value : "", StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -1813,31 +1880,61 @@
     /// <summary>
     /// Cambia traccia video selezionata
     /// </summary>
-    /// <param name="args">Argomenti change</param>
-    private void ChangeVideoSelection(ChangeEventArgs args)
+    /// <param name="value">Selettore scelto</param>
+    private void ChangeVideoSelection(object value)
     {
-        this._selectedVideoSelector = args.Value != null ? args.Value.ToString() : "";
+        this._selectedVideoSelector = value as string ?? "";
         this.ActivateTrackTags(this._selectedVideoSelector);
     }
 
     /// <summary>
     /// Cambia traccia audio selezionata
     /// </summary>
-    /// <param name="args">Argomenti change</param>
-    private void ChangeAudioSelection(ChangeEventArgs args)
+    /// <param name="value">Selettore scelto</param>
+    private void ChangeAudioSelection(object value)
     {
-        this._selectedAudioSelector = args.Value != null ? args.Value.ToString() : "";
+        this._selectedAudioSelector = value as string ?? "";
         this.ActivateTrackTags(this._selectedAudioSelector);
     }
 
     /// <summary>
     /// Cambia traccia sottotitoli selezionata
     /// </summary>
-    /// <param name="args">Argomenti change</param>
-    private void ChangeTextSelection(ChangeEventArgs args)
+    /// <param name="value">Selettore scelto</param>
+    private void ChangeTextSelection(object value)
     {
-        this._selectedTextSelector = args.Value != null ? args.Value.ToString() : "";
+        this._selectedTextSelector = value as string ?? "";
         this.ActivateTrackTags(this._selectedTextSelector);
+    }
+
+    /// <summary>
+    /// Selettori delle tracce mostrate in una tendina
+    /// </summary>
+    /// <param name="tracks">Tracce dello stesso tipo</param>
+    /// <returns>Selettori nell'ordine delle tracce</returns>
+    private List<string> GetSheetTrackSelectors(List<MkvMetadataTrackInfo> tracks)
+    {
+        List<string> selectors = new List<string>();
+        for (int i = 0; i < tracks.Count; i++)
+            selectors.Add(GetSheetTrackSelector(tracks[i]));
+        return selectors;
+    }
+
+    /// <summary>
+    /// Etichetta della traccia che corrisponde a un selettore della tendina
+    /// </summary>
+    /// <param name="tracks">Tracce dello stesso tipo</param>
+    /// <param name="selector">Selettore</param>
+    /// <returns>Etichetta della traccia</returns>
+    private string BuildSelectorOptionLabel(List<MkvMetadataTrackInfo> tracks, string selector)
+    {
+        for (int i = 0; i < tracks.Count; i++)
+        {
+            if (GetSheetTrackSelector(tracks[i]) == selector)
+                return this.BuildTrackOptionLabel(tracks[i]);
+        }
+
+        return selector;
     }
 
     /// <summary>

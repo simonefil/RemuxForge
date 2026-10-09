@@ -9,59 +9,28 @@
     overflow: hidden !important;
 }
 
-/* Only the embedded picker fills the fixed-height child dialog. */
-.rz-dialog > .rz-dialog-content.rf-remux-picker-dialog-content {
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-    min-width: 0;
-    min-height: 0;
-    padding: 0 !important;
-    overflow: hidden !important;
-}
-/* Split montage: bounded scrolling body and stable footer, shared Radzen theme. */
-.split-montage-body { flex: 1; min-height: 0; overflow: auto; padding: .5rem; }
-.split-montage-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(20rem, 1fr); gap: .5rem; height: 20rem; }
-.split-montage-output-list { display: flex; flex-direction: column; gap: .3rem; overflow: auto; min-width: 0; }
-.split-montage-actions, .split-montage-clips { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; margin: .35rem 0; }
-.split-montage-actions label { display: flex; align-items: center; gap: .3rem; }
-.split-montage-actions input[type=number] { width: 7rem; }
-.split-montage-source .media-timeline-pane { height: 10rem; }
-.split-montage-result .media-timeline-pane { height: 14rem; }
-.split-montage-diagnostics { color: var(--rz-danger); white-space: pre-line; }
-.split-montage .edit-map-page-footer { flex-wrap: wrap; flex-shrink: 0; }
-.split-montage { height: 100dvh; }
-.split-montage .edit-map-page-header { flex-wrap: wrap; }
-.split-montage-body { min-width: 0; overscroll-behavior: contain; }
-.split-montage-top > * { min-height: 0; }
-.split-montage-output-list > .rz-button { flex-shrink: 0; white-space: normal; text-align: start; }
-.split-montage-output-list .rz-button-text { white-space: normal; overflow-wrap: anywhere; }
-.split-montage-output-list label { display: flex; flex-wrap: wrap; }
-.split-montage-output-list input { min-width: 0; width: 100%; }
-.split-montage .media-timeline-toolbar { display: flex; flex-wrap: wrap; }
-.split-montage .media-audio-control { width: min(20rem, 35vw); }
-.split-montage .media-audio-mode-button.rz-button { width: auto; }
-.split-montage .media-timeline-toolbar .rz-slider { width: 8rem; }
-.split-montage .media-timeline-host { min-height: 5rem; }
-.split-montage-source .media-timeline-pane { height: 12rem; }
-.split-montage-result .media-timeline-pane { height: 16rem; }
-.split-montage-clips { max-height: 8rem; overflow: auto; }
-.split-montage-diagnostics { overflow-wrap: anywhere; }
-.split-montage :focus-visible, .split-plan-review :focus-visible { outline: 2px solid var(--rz-primary); outline-offset: 2px; }
+.split-plan-review :focus-visible { outline: 2px solid var(--rz-primary); outline-offset: 2px; }
 .split-guided-workspace { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .split-guided-workspace > .split-workspace { flex: 1; min-height: 12rem; }
-.split-plan-review { flex: 0 1 auto; max-height: 48%; min-height: 8rem; overflow: auto; padding: .6rem; border-bottom: var(--rz-border-normal); }
+.split-plan-review { flex: 0 1 auto; max-height: 48%; min-height: 8rem; display: flex; flex-direction: column; overflow: hidden; padding: .6rem; border-bottom: var(--rz-border-normal); }
+.split-plan-review-head { flex-shrink: 0; }
 .split-plan-review h2 { font-size: var(--rz-text-subtitle1-font-size); margin: 0 0 .35rem; }
-.split-plan-review-files details { margin: .35rem 0; padding: .35rem; border: var(--rz-border-normal); }
+.split-plan-review-files { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.rz-alert.split-plan-review-alert { margin: .35rem 0; }
+.split-plan-review-alert-row { white-space: pre-line; overflow-wrap: anywhere; }
 .split-plan-review-output { padding: .35rem; overflow-wrap: anywhere; }
-.split-guided-config .config-dialog-body { grid-template-columns: minmax(0, 1fr) minmax(15rem, .4fr); }
-.split-guided-config .form-row { flex-wrap: wrap; }
-.split-rule-rows { min-width: 0; width: 100%; }
-.split-rule-rows .form-row { flex-wrap: wrap; align-items: start; gap: .3rem; }
-.split-rule-rows label { display: flex; flex-direction: column; min-width: 0; flex: 1 1 8rem; }
-.split-rule-rows input { min-width: 0; width: 100%; }
-@media (max-width: 1280px) {
-    .split-guided-config .config-dialog-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(5rem, .2fr); }
-    .split-guided-config .config-help-pane { padding: .5rem 0 0; border-left: 0; border-top: var(--rz-border-normal); }
-}
-@media (max-width: 1050px) { .split-montage-top { grid-template-columns: minmax(0, 1fr) minmax(18rem, .8fr); height: 18rem; } }
+.split-plan-review-actions { flex-shrink: 0; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding-top: .5rem; border-top: var(--rz-border-normal); }
+/* Stato vuoto Split: stesso schema dell'invito Remux */
+.split-empty-state { height: 100%; padding: 1rem; text-align: center; }
+/* Nota accanto ai comandi di esportazione spenti durante la revisione */
+.rf-command-toolbar-note { align-self: center; font-size: .875rem; color: var(--rz-text-secondary-color); }
+/* Wizard Split: righe della regola, anteprima nomi e schede modalità */
+.rf-split-wizard .rf-split-rule-rows { display: flex; flex-direction: column; gap: .5rem; min-width: 0; width: 100%; }
+.rf-split-wizard .rf-split-rule-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .5rem; min-width: 0; }
+.rf-split-wizard .rf-split-rule-number { flex: 0 0 1.75rem; align-self: center; text-align: right; color: var(--rz-text-secondary-color); font-variant-numeric: tabular-nums; }
+.rf-split-wizard .rf-split-rule-cell { display: flex; flex-direction: column; gap: .25rem; flex: 1 1 9rem; min-width: 0; }
+.rf-split-wizard .rf-split-rule-row [aria-invalid="true"] { border-color: var(--rz-danger); }
+.rf-split-wizard .rf-split-rule-add { align-self: flex-start; }
+.rf-split-wizard .rf-split-name-preview { display: flex; flex-direction: column; gap: .25rem; width: 100%; min-width: 0; padding: .5rem .75rem; font-family: var(--rz-font-family-monospace, monospace); background: color-mix(in srgb, var(--rz-text-color) 6%, transparent); border-radius: var(--rz-border-radius, 4px); }
+.rf-split-wizard .rf-split-name-preview-line { overflow-wrap: anywhere; }
+.rf-split-wizard .rf-split-mode-cards { grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }

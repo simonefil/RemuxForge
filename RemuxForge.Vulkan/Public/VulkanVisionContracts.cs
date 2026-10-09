@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Threading;
 
 namespace RemuxForge.Vulkan
 {
@@ -72,8 +71,6 @@ namespace RemuxForge.Vulkan
         public int MaximumInFlightWorkloads { get; set; }
         /// <summary>Enables the Vulkan validation layers when they are available</summary>
         public bool EnableValidation { get; set; }
-        /// <summary>Optional pipeline-cache data produced by the same device and driver</summary>
-        public byte[] InitialPipelineCache { get; set; }
     }
 
     /// <summary>Configures SIFT extraction, reciprocal matching and RANSAC</summary>
@@ -282,8 +279,6 @@ namespace RemuxForge.Vulkan
         public IReadOnlyList<VulkanFramePair> Pairs { get; }
         /// <summary>Algorithm options retained by the request</summary>
         public VulkanSiftOptions Options { get; }
-        /// <summary>Optional recipient of aggregate progress snapshots</summary>
-        public IProgress<VulkanVisionProgress> Progress { get; set; }
         /// <summary>Omits results for pairs containing a frame without enough features</summary>
         public bool OmitFeaturelessPairResults { get; set; }
     }
@@ -309,14 +304,6 @@ namespace RemuxForge.Vulkan
         public int ReciprocalMatchCount { get; set; }
         /// <summary>Inlier count for the selected homography</summary>
         public int InlierCount { get; set; }
-        /// <summary>Ratio of inliers to reciprocal matches</summary>
-        public float InlierRatio { get; set; }
-        /// <summary>Normalized geometric coverage of the first frame</summary>
-        public float FirstCoverage { get; set; }
-        /// <summary>Normalized geometric coverage of the second frame</summary>
-        public float SecondCoverage { get; set; }
-        /// <summary>Mean reprojection error in pixels</summary>
-        public float MeanReprojectionError { get; set; }
         /// <summary>Nine-element 3x3 homography in row-major order</summary>
         public float[] Homography { get; set; }
     }
@@ -336,28 +323,7 @@ namespace RemuxForge.Vulkan
         public IReadOnlyList<int> FirstFrameKeypointCounts { get; internal set; }
         /// <summary>Keypoint counts for the second collection in frame order</summary>
         public IReadOnlyList<int> SecondFrameKeypointCounts { get; internal set; }
-        /// <summary>Capabilities of the device that executed the batch</summary>
-        public VulkanDeviceCapabilities Capabilities { get; internal set; }
         /// <summary>Aggregated diagnostics for the execution</summary>
         public VulkanVisionDiagnostics Diagnostics { get; internal set; }
-    }
-
-    /// <summary>Aggregate progress for upload, extraction and matching</summary>
-    public sealed class VulkanVisionProgress
-    {
-        /// <summary>Frames uploaded to the device</summary>
-        public int UploadedFrames { get; set; }
-        /// <summary>Total frames in both input collections</summary>
-        public int TotalFrames { get; set; }
-        /// <summary>Frames whose feature extraction has completed</summary>
-        public int ExtractedFrames { get; set; }
-        /// <summary>Pairs processed so far</summary>
-        public int ProcessedPairs { get; set; }
-        /// <summary>Total active pairs considered for processing</summary>
-        public int TotalPairs { get; set; }
-        /// <summary>Completed GPU tiles</summary>
-        public int CompletedTiles { get; set; }
-        /// <summary>Current resident device memory in bytes</summary>
-        public ulong ResidentBytes { get; set; }
     }
 }

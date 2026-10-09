@@ -111,7 +111,7 @@ namespace RemuxForge.Core.Ai
                 }
                 catch (HttpRequestException ex)
                 {
-                    throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), "", ex);
+                    throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
                 }
             }
 
@@ -120,7 +120,7 @@ namespace RemuxForge.Core.Ai
                 throw CreateError(credentials.Mode, status, root != null ? root["error"] as JsonObject : null);
 
             if (root == null)
-                throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.invalidResponse"), "");
+                throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.invalidResponse"));
 
             // L'abbonamento risponde con "models" e la visibilità, la API key con l'elenco standard "data"
             JsonArray models = root["models"] as JsonArray;
@@ -212,11 +212,11 @@ namespace RemuxForge.Core.Ai
                 }
                 catch (HttpRequestException ex)
                 {
-                    throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), "", ex);
+                    throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
                 }
                 catch (IOException ex)
                 {
-                    throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), "", ex);
+                    throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
                 }
             }
         }
@@ -235,7 +235,7 @@ namespace RemuxForge.Core.Ai
             AiCredentials credentials = this._credentialService.Load();
 
             if (!AiCredentialService.IsConfigured(credentials))
-                throw new AiServiceException(AiErrorKind.NotConfigured, AppText.T("ai.error.notConfigured"), "");
+                throw new AiServiceException(AiErrorKind.NotConfigured, AppText.T("ai.error.notConfigured"));
 
             if (credentials.Mode == AiConnectionMode.ApiKey || !NeedsRefresh(credentials))
                 return credentials;
@@ -246,7 +246,7 @@ namespace RemuxForge.Core.Ai
                 // Un'altra richiesta può aver già rinnovato mentre questa era in attesa
                 credentials = this._credentialService.Load();
                 if (!AiCredentialService.IsConfigured(credentials))
-                    throw new AiServiceException(AiErrorKind.NotConfigured, AppText.T("ai.error.notConfigured"), "");
+                    throw new AiServiceException(AiErrorKind.NotConfigured, AppText.T("ai.error.notConfigured"));
 
                 if (credentials.Mode == AiConnectionMode.ChatGptAccount && NeedsRefresh(credentials))
                 {
@@ -327,7 +327,7 @@ namespace RemuxForge.Core.Ai
                 }
                 else if (type == "response.incomplete")
                 {
-                    throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.incomplete"), "");
+                    throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.incomplete"));
                 }
                 else if (type == "error")
                 {
@@ -337,7 +337,7 @@ namespace RemuxForge.Core.Ai
             }
 
             // Lo stream valido termina sempre con response.completed
-            throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.incomplete"), "");
+            throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.incomplete"));
         }
 
         /// <summary>
@@ -353,26 +353,26 @@ namespace RemuxForge.Core.Ai
             string message = error != null ? AiOAuthFlow.GetString(error, "message") : "";
 
             if (code == "subscription_sharing_usage_limit_exceeded" || (status == 429 && string.IsNullOrEmpty(code)) || code == "rate_limit_exceeded" || code == "insufficient_quota")
-                return new AiServiceException(AiErrorKind.UsageLimit, AppText.T(mode == AiConnectionMode.ChatGptAccount ? "ai.error.usageLimitAccount" : "ai.error.usageLimitApiKey"), code);
+                return new AiServiceException(AiErrorKind.UsageLimit, AppText.T(mode == AiConnectionMode.ChatGptAccount ? "ai.error.usageLimitAccount" : "ai.error.usageLimitApiKey"));
 
             if (code == "subscription_sharing_user_not_eligible")
-                return new AiServiceException(AiErrorKind.NotEligible, AppText.T("ai.error.notEligible"), code);
+                return new AiServiceException(AiErrorKind.NotEligible, AppText.T("ai.error.notEligible"));
 
             if (code == "subscription_sharing_usage_unavailable" || status == 503)
-                return new AiServiceException(AiErrorKind.Unavailable, AppText.T("ai.error.unavailable"), code);
+                return new AiServiceException(AiErrorKind.Unavailable, AppText.T("ai.error.unavailable"));
 
             if (code == "subscription_sharing_invalid_user" || status == 401)
             {
                 if (mode == AiConnectionMode.ApiKey)
-                    return new AiServiceException(AiErrorKind.InvalidApiKey, AppText.T("ai.error.invalidApiKey"), code);
+                    return new AiServiceException(AiErrorKind.InvalidApiKey, AppText.T("ai.error.invalidApiKey"));
 
-                return new AiServiceException(AiErrorKind.SignInRequired, AppText.T("ai.error.signInRequired"), code);
+                return new AiServiceException(AiErrorKind.SignInRequired, AppText.T("ai.error.signInRequired"));
             }
 
             if (code == "subscription_sharing_unsupported_capability" || code == "subscription_sharing_route_not_supported")
-                return new AiServiceException(AiErrorKind.Unsupported, AppText.F("ai.error.unsupported", string.IsNullOrEmpty(message) ? code : message), code);
+                return new AiServiceException(AiErrorKind.Unsupported, AppText.F("ai.error.unsupported", string.IsNullOrEmpty(message) ? code : message));
 
-            return new AiServiceException(AiErrorKind.Unknown, AppText.F("ai.error.service", status, string.IsNullOrEmpty(message) ? code : message), code);
+            return new AiServiceException(AiErrorKind.Unknown, AppText.F("ai.error.service", status, string.IsNullOrEmpty(message) ? code : message));
         }
 
         /// <summary>

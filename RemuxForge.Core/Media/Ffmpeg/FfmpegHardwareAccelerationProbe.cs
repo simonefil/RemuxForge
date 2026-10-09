@@ -1,4 +1,5 @@
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System.Collections.Generic;
 using System.IO;
@@ -55,14 +56,14 @@ namespace RemuxForge.Core.Media.Ffmpeg
 
             if (string.IsNullOrEmpty(this._ffmpegPath) || !File.Exists(this._ffmpegPath))
             {
-                result.ErrorMessage = "Percorso ffmpeg non valido";
+                result.ErrorMessage = AppText.T("remux.media.hwaccelInvalidPath");
                 return result;
             }
 
             listResult = ProcessRunner.Run(this._ffmpegPath, new string[] { "-hide_banner", "-hwaccels" }, PROBE_TIMEOUT_MS);
             if (listResult.ExitCode != 0)
             {
-                result.ErrorMessage = "Impossibile leggere i metodi hardware da ffmpeg";
+                result.ErrorMessage = AppText.T("remux.media.hwaccelListFailed");
                 return result;
             }
 
@@ -74,7 +75,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
             }
 
             if (result.Methods.Count == 0)
-                result.ErrorMessage = "Nessun metodo di accelerazione hardware ffmpeg inizializzabile";
+                result.ErrorMessage = AppText.T("remux.media.hwaccelNoneUsable");
 
             return result;
         }

@@ -9,29 +9,35 @@
             <RadzenText TextStyle="TextStyle.Subtitle2">@AppText.T(available ? "web.remux.availableLang" : "web.remux.resultTracks")</RadzenText>
             <RadzenDataGrid TItem="RemuxTrackGroup" Data="@(available ? Available : Result)" AllowPaging="false" AllowSorting="false" Density="Density.Compact" RowRender="RenderRow" class="rf-remux-track-grid" Style="max-height:28rem;overflow:auto">
                 <Columns>
-                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Title="@AppText.T("web.remux.column.origin")" Width="60px">
+                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Title="@AppText.T("web.remux.column.origin")" Width="4.25rem">
+                        <HeaderTemplate><span class="rf-remux-track-title" title="@AppText.T("web.remux.column.origin")">@AppText.T("web.remux.column.origin")</span></HeaderTemplate>
                         <Template Context="group"><span class="rf-remux-origin" title="@group.Side"><RadzenIcon Icon="@(group.Side == RemuxTrackSide.Source ? "movie" : "content_copy")" />@group.Side</span></Template>
                     </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Property="Language" Title="@AppText.T("web.remux.column.language")" Width="40px">
-                        <HeaderTemplate><span title="@AppText.T("web.remux.column.language")" aria-label="@AppText.T("web.remux.column.language")">Lang</span></HeaderTemplate>
+                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Property="Language" Title="@AppText.T("web.remux.column.language")" Width="2.75rem">
+                        <HeaderTemplate><span class="rf-remux-track-title" title="@AppText.T("web.remux.column.language")" aria-label="@AppText.T("web.remux.column.language")">Lang</span></HeaderTemplate>
+                        <Template Context="group"><span class="rf-remux-track-title" title="@group.Language">@group.Language</span></Template>
                     </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Title="Codec" Width="60px"><Template Context="group"><span class="rf-remux-track-title" title="@group.Codec">@group.Codec</span></Template></RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Title="Codec" Width="4rem"><HeaderTemplate><span class="rf-remux-track-title" title="Codec">Codec</span></HeaderTemplate><Template Context="group"><span class="rf-remux-track-title" title="@group.Codec">@group.Codec</span></Template></RadzenDataGridColumn>
                     @if (string.Equals(Type, "audio", StringComparison.OrdinalIgnoreCase))
                     {
-                        <RadzenDataGridColumn TItem="RemuxTrackGroup" Property="Channels" Title="@AppText.T("web.remux.column.channels")" Width="30px">
-                            <HeaderTemplate><span title="@AppText.T("web.remux.column.channels")" aria-label="@AppText.T("web.remux.column.channels")">Ch</span></HeaderTemplate>
+                        <RadzenDataGridColumn TItem="RemuxTrackGroup" Property="Channels" Title="@AppText.T("web.remux.column.channels")" Width="2rem">
+                            <HeaderTemplate><span class="rf-remux-track-title" title="@AppText.T("web.remux.column.channels")" aria-label="@AppText.T("web.remux.column.channels")">Ch</span></HeaderTemplate>
+                            <Template Context="group"><span class="rf-remux-track-title" title="@group.Channels">@group.Channels</span></Template>
                         </RadzenDataGridColumn>
                     }
-                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Title="@AppText.T("web.remux.column.flags")" Width="40px">
+                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Title="@AppText.T("web.remux.column.flags")" Width="2.75rem">
+                        <HeaderTemplate><span class="rf-remux-track-title" title="@(AppText.T("web.remux.column.default") + " / " + AppText.T("web.remux.column.forced"))">@AppText.T("web.remux.column.flags")</span></HeaderTemplate>
                         <Template Context="group"><span class="rf-remux-track-flags"><span title="@(AppText.T("web.remux.column.default") + ": " + AppText.T(group.DefaultTrack ? "web.common.yes" : "web.common.no"))" aria-label="@(AppText.T("web.remux.column.default") + ": " + AppText.T(group.DefaultTrack ? "web.common.yes" : "web.common.no"))">D@(group.DefaultTrack ? "✓" : "—")</span><span title="@(AppText.T("web.remux.column.forced") + ": " + AppText.T(group.ForcedTrack ? "web.common.yes" : "web.common.no"))" aria-label="@(AppText.T("web.remux.column.forced") + ": " + AppText.T(group.ForcedTrack ? "web.common.yes" : "web.common.no"))">F@(group.ForcedTrack ? "✓" : "—")</span></span></Template>
                     </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Title="@AppText.T("web.remux.column.title")" MinWidth="60px">
+                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Title="@AppText.T("web.remux.column.title")" MinWidth="4rem">
+                        <HeaderTemplate><span class="rf-remux-track-title" title="@AppText.T("web.remux.column.title")">@AppText.T("web.remux.column.title")</span></HeaderTemplate>
                         <Template Context="group"><span class="rf-remux-track-title" title="@(string.IsNullOrWhiteSpace(group.Title) ? AppText.T("web.remux.untitled") : group.Title)">@(string.IsNullOrWhiteSpace(group.Title) ? AppText.T("web.remux.untitled") : group.Title)</span></Template>
                     </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Title="@AppText.T("web.remux.column.coverage")" Width="60px">
-                        <Template Context="group"><span class="rf-remux-track-coverage" title="@Coverage(group)" aria-label="@Coverage(group)">@group.CoveredPairs/@group.TotalPairs <span role="img" aria-label="@AppText.T(group.IsPartial ? "web.remux.partial" : "web.remux.all")">@(group.IsPartial ? "◐" : "✓")</span></span></Template>
+                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Title="@AppText.T("web.remux.column.coverage")" Width="5.25rem">
+                        <HeaderTemplate><span class="rf-remux-track-title" title="@AppText.T("web.remux.column.coverage")">@AppText.T("web.remux.column.coverage")</span></HeaderTemplate>
+                        <Template Context="group"><span class="rf-remux-track-coverage rf-remux-track-title" title="@Coverage(group)" aria-label="@Coverage(group)">@group.CoveredPairs/@group.TotalPairs <span role="img" aria-label="@AppText.T(group.IsPartial ? "web.remux.partial" : "web.remux.all")">@(group.IsPartial ? "◐" : "✓")</span></span></Template>
                     </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Title="@AppText.T("web.remux.column.action")" Width="34px">
+                    <RadzenDataGridColumn TItem="RemuxTrackGroup" Title="@AppText.T("web.remux.column.action")" Width="2.25rem">
                         <HeaderTemplate><RadzenIcon Icon="touch_app" title="@AppText.T("web.remux.column.action")" aria-label="@AppText.T("web.remux.column.action")" /></HeaderTemplate>
                         <Template Context="group">
                             @if (available)

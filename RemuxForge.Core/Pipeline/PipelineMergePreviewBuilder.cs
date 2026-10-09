@@ -47,12 +47,10 @@ namespace RemuxForge.Core.Pipeline
         /// <param name="fileInfoProvider">Provider metadata file</param>
         /// <param name="needsMerge">True se serve merge</param>
         /// <param name="needsRemux">True se serve remux</param>
-        /// <param name="filterSourceAudio">True se filtrare audio sorgente</param>
-        /// <param name="filterSourceSubs">True se filtrare sottotitoli sorgente</param>
         /// <param name="codecPatterns">Pattern codec lingua</param>
         /// <param name="sourceAudioCodecPatterns">Pattern codec audio sorgente</param>
         /// <param name="ffmpegPath">Percorso ffmpeg per fallback durata preview audio</param>
-        public void Build(FileProcessingRecord record, Options options, MkvToolsService mkvService, Func<string, MkvFileInfo> fileInfoProvider, bool needsMerge, bool needsRemux, bool filterSourceAudio, bool filterSourceSubs, string[] codecPatterns, string[] sourceAudioCodecPatterns, string ffmpegPath)
+        public void Build(FileProcessingRecord record, Options options, MkvToolsService mkvService, Func<string, MkvFileInfo> fileInfoProvider, bool needsMerge, bool needsRemux, string[] codecPatterns, string[] sourceAudioCodecPatterns, string ffmpegPath)
         {
             record.MergeCommand = "";
             if (record.ExplicitTrackSelection != null && !record.ExplicitTrackSelection.HasLangTracks)
@@ -70,10 +68,12 @@ namespace RemuxForge.Core.Pipeline
             MkvFileInfo langInfo = null;
             List<TrackInfo> sourceTracks;
             List<TrackInfo> langTracks = null;
-            List<int> sourceAudioIds = new List<int>();
-            List<int> sourceSubIds = new List<int>();
-            List<TrackInfo> audioTracks = new List<TrackInfo>();
-            List<TrackInfo> subtitleTracks = new List<TrackInfo>();
+            List<int> sourceAudioIds;
+            List<int> sourceSubIds;
+            List<TrackInfo> audioTracks;
+            List<TrackInfo> subtitleTracks;
+            bool filterSourceAudio;
+            bool filterSourceSubs;
             Dictionary<int, string> convertedSourceTracks = new Dictionary<int, string>();
             Dictionary<int, string> convertedLangTracks = new Dictionary<int, string>();
             Dictionary<int, TrackInfo> processedSourceAudioInfo = new Dictionary<int, TrackInfo>();
@@ -114,7 +114,7 @@ namespace RemuxForge.Core.Pipeline
                 record.ImportedAudioTracks = audioTracks;
                 record.ImportedSubTracks = subtitleTracks;
                 record.DisplayAudioFormat = Utils.FormatAudioFormat(options.AudioFormat);
-                this._trackMapper.PopulateResultLanguages(record, sourceTracks, sourceAudioIds, audioTracks, subtitleTracks, filterSourceAudio, filterSourceSubs, options);
+                this._trackMapper.PopulateResultLanguages(record, sourceTracks, sourceAudioIds, audioTracks, subtitleTracks, filterSourceAudio, filterSourceSubs);
 
                 if (hasWork)
                 {
@@ -144,11 +144,13 @@ namespace RemuxForge.Core.Pipeline
                     mergeReq.FilterSourceAudio = filterSourceAudio || convertedSourceTracks.Count > 0;
                     mergeReq.FilterSourceSubs = filterSourceSubs;
                     mergeReq.SubtitleStretchFactor = stretchFactor;
-                    mergeReq.AudioFormat = options.AudioFormat;
                     mergeReq.SourceTitle = (sourceInfo != null) ? sourceInfo.ContainerTitle : "";
                     mergeReq.ConvertedSourceTracks = convertedSourceTracks;
                     mergeReq.ConvertedLangTracks = convertedLangTracks;
-                    this.AddRequiredProcessedLangTrackIds(record.AudioProcessingPreview, mergeReq.RequiredProcessedLangTrackIds);
+                    if (record.AudioProcessingPreview != null)
+                    {
+                        record.AudioProcessingPreview.AddRequiredLangTrackIds(mergeReq.RequiredProcessedLangTrackIds);
+                    }
                     mergeReq.ProcessedSourceAudioInfo = processedSourceAudioInfo;
                     mergeReq.ProcessedLangAudioInfo = processedLangAudioInfo;
                     mergeReq.ProcessedLangSubTracks = processedLangSubTracks;
@@ -234,25 +236,6 @@ namespace RemuxForge.Core.Pipeline
             this.EnsureSourceAudioIdsForProcessedTracks(sourceTracks, sourceAudioIds, convertedSourceTracks, filterSourceAudio);
 
             return true;
-        }
-
-        /// <summary>
-        /// Copia nel merge gli ID Language per cui il piano impone un output FFmpeg
-        /// </summary>
-        private void AddRequiredProcessedLangTrackIds(AudioProcessingPlan plan, HashSet<int> destination)
-        {
-            if (plan == null || destination == null)
-            {
-                return;
-            }
-
-            for (int i = 0; i < plan.LangTracks.Count; i++)
-            {
-                if (plan.LangTracks[i].RenderRequired && plan.LangTracks[i].Track != null)
-                {
-                    destination.Add(plan.LangTracks[i].Track.Id);
-                }
-            }
         }
 
         /// <summary>

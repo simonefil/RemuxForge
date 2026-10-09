@@ -100,7 +100,7 @@ namespace RemuxForge.Core.Audio
             if (request == null || request.Options == null || request.Record == null)
             {
                 result.Success = false;
-                result.ErrorMessage = "Richiesta processing audio non valida";
+                result.ErrorMessage = AppText.T("remux.audio.invalidRequest");
                 return result;
             }
 
@@ -114,7 +114,7 @@ namespace RemuxForge.Core.Audio
 
             if (string.IsNullOrEmpty(request.Options.AudioFormat))
             {
-                errorMessage = "Processing audio richiesto ma formato audio non impostato";
+                errorMessage = AppText.T("remux.pipeline.audioFormatMissing");
                 ConsoleHelper.Write(LogSection.Conv, LogLevel.Error, "  " + errorMessage);
                 request.Record.ErrorMessage = errorMessage;
                 request.Record.Status = FileStatus.Error;
@@ -190,7 +190,7 @@ namespace RemuxForge.Core.Audio
             catch (Exception ex)
             {
                 result.Success = false;
-                result.ErrorMessage = "Processing audio fallito: " + ex.Message;
+                result.ErrorMessage = AppText.F("remux.audio.failed", ex.Message);
             }
 
             if (!result.Success)
@@ -213,7 +213,7 @@ namespace RemuxForge.Core.Audio
                          !File.Exists(result.LangOutputFiles[requiredPlan.Track.Id])))
                     {
                         result.Success = false;
-                        result.ErrorMessage = "Output audio Language obbligatorio mancante per track " + (requiredPlan.Track != null ? requiredPlan.Track.Id.ToString(CultureInfo.InvariantCulture) : "?");
+                        result.ErrorMessage = AppText.F("remux.audio.requiredLangOutputMissing", requiredPlan.Track != null ? requiredPlan.Track.Id.ToString(CultureInfo.InvariantCulture) : "?");
                         this.DeleteCreatedFiles();
                         request.Record.ErrorMessage = result.ErrorMessage;
                         request.Record.Status = FileStatus.Error;
@@ -248,13 +248,13 @@ namespace RemuxForge.Core.Audio
 
             if (job.Track == null)
             {
-                result.ErrorMessage = "Processing audio fallito: traccia non valida";
+                result.ErrorMessage = AppText.T("remux.audio.failedInvalidTrack");
                 return result;
             }
 
             if (CodecMapping.IsSpatialCodec(job.Track))
             {
-                result.ErrorMessage = "Traccia audio spaziale/object selezionata per processing: track " + job.Track.Id + " (" + job.Track.Codec + ")";
+                result.ErrorMessage = AppText.F("remux.audio.spatialTrackSelected", job.Track.Id, job.Track.Codec);
                 return result;
             }
 
@@ -271,7 +271,7 @@ namespace RemuxForge.Core.Audio
             {
                 if (sourceFillTrack == null)
                 {
-                    result.ErrorMessage = "Audio source fill fallito: tracce non valide per lang track " + job.Track.Id;
+                    result.ErrorMessage = AppText.F("remux.audio.sourceFillInvalidTracks", job.Track.Id);
                     return result;
                 }
                 if (!this.ProcessSourceFill(request, sourceFillTrack, job.Track, fillPlan, outputFile, result))
@@ -296,7 +296,7 @@ namespace RemuxForge.Core.Audio
             else
             {
                 result.Success = true;
-                ConsoleHelper.Write(LogSection.Conv, LogLevel.Notice, "  " + this.FormatAudioTrackLabel(job.IsSource, job.Track) + " già nel formato richiesto, processing saltato");
+                ConsoleHelper.Write(LogSection.Conv, LogLevel.Notice, AppText.F("remux.audio.alreadyInFormat", this.FormatAudioTrackLabel(job.IsSource, job.Track)));
                 return result;
             }
 
@@ -332,12 +332,12 @@ namespace RemuxForge.Core.Audio
                 tempFile = this.RenderSimpleTemp(request, inputFile, track, trackPlan);
                 if (string.IsNullOrEmpty(tempFile))
                 {
-                    result.ErrorMessage = "Peak normalization fallita: impossibile creare temp audio per track " + track.Id + this.FormatLastFfmpegError();
+                    result.ErrorMessage = AppText.F("remux.audio.peakTempFailed", track.Id, this.FormatLastFfmpegError());
                     return false;
                 }
                 if (!this.MeasurePeakGain(tempFile, request.Options.AudioPeakTargetDb, out gainDb))
                 {
-                    result.ErrorMessage = "Peak normalization fallita: peak non rilevato per track " + track.Id;
+                    result.ErrorMessage = AppText.F("remux.audio.peakNotDetected", track.Id);
                     return false;
                 }
                 args = this.BuildEncodeFromTempArgs(tempFile, track, request.Options, outputFile, gainDb);
@@ -386,12 +386,12 @@ namespace RemuxForge.Core.Audio
                 tempFile = this.RunFfmpegToTemp(args, tempFile) ? tempFile : "";
                 if (string.IsNullOrEmpty(tempFile))
                 {
-                    result.ErrorMessage = "Deep audio render fallito su temp track " + track.Id + this.FormatLastFfmpegError();
+                    result.ErrorMessage = AppText.F("remux.audio.deepRenderFailed", track.Id, this.FormatLastFfmpegError());
                     return false;
                 }
                 if (!this.MeasurePeakGain(tempFile, request.Options.AudioPeakTargetDb, out gainDb))
                 {
-                    result.ErrorMessage = "Peak normalization fallita: peak non rilevato per track " + track.Id;
+                    result.ErrorMessage = AppText.F("remux.audio.peakNotDetected", track.Id);
                     return false;
                 }
                 args = this.BuildEncodeFromTempArgs(tempFile, track, request.Options, outputFile, gainDb);
@@ -420,7 +420,7 @@ namespace RemuxForge.Core.Audio
             string tempFile;
             double gainDb;
 
-            ConsoleHelper.Write(LogSection.Conv, LogLevel.Notice, "  Audio source fill " + this.FormatAudioTrackLabel(false, langTrack) + " da " + this.FormatAudioTrackLabel(true, sourceTrack));
+            ConsoleHelper.Write(LogSection.Conv, LogLevel.Notice, AppText.F("remux.audio.sourceFillFrom", this.FormatAudioTrackLabel(false, langTrack), this.FormatAudioTrackLabel(true, sourceTrack)));
 
             if (request.Options.AudioPeakNormalize)
             {
@@ -431,12 +431,12 @@ namespace RemuxForge.Core.Audio
                 tempFile = this.RunFfmpegToTemp(args, tempFile) ? tempFile : "";
                 if (string.IsNullOrEmpty(tempFile))
                 {
-                    result.ErrorMessage = "Audio source fill fallito su temp track " + langTrack.Id + this.FormatLastFfmpegError();
+                    result.ErrorMessage = AppText.F("remux.audio.sourceFillTempFailed", langTrack.Id, this.FormatLastFfmpegError());
                     return false;
                 }
                 if (!this.MeasurePeakGain(tempFile, request.Options.AudioPeakTargetDb, out gainDb))
                 {
-                    result.ErrorMessage = "Peak normalization fallita: peak non rilevato per track " + langTrack.Id;
+                    result.ErrorMessage = AppText.F("remux.audio.peakNotDetected", langTrack.Id);
                     return false;
                 }
                 args = this.BuildEncodeFromTempArgs(tempFile, langTrack, request.Options, outputFile, gainDb);
@@ -753,7 +753,7 @@ namespace RemuxForge.Core.Audio
                     {
                         if (!AudioTempoFilterBuilder.TryBuildFromTempo(segment.Tempo, out string segmentTempoFilter, out _))
                         {
-                            throw new InvalidOperationException("Tempo audio FFmpeg non valido");
+                            throw new InvalidOperationException(AppText.T("remux.audio.invalidTempo"));
                         }
                         filter += "," + segmentTempoFilter;
                     }
@@ -1023,7 +1023,7 @@ namespace RemuxForge.Core.Audio
             }
 
             gainDb = targetDb - peakDb;
-            ConsoleHelper.Write(LogSection.Conv, LogLevel.Debug, "  Peak: " + peakDb.ToString("F2", CultureInfo.InvariantCulture) + " dB, gain: " + gainDb.ToString("F2", CultureInfo.InvariantCulture) + " dB");
+            ConsoleHelper.Write(LogSection.Conv, LogLevel.Debug, AppText.F("remux.audio.peakGainLog", peakDb.ToString("F2", CultureInfo.InvariantCulture), gainDb.ToString("F2", CultureInfo.InvariantCulture)));
             return true;
         }
 
@@ -1080,7 +1080,7 @@ namespace RemuxForge.Core.Audio
 
             FileHelper.DeleteTempFile(outputFile);
             // Alcune build ffmpeg loggano fallback non accettabili senza exit code esplicito
-            result.ErrorMessage = "ffmpeg audio fallito: " + this.ResolveFfmpegError(processResult);
+            result.ErrorMessage = AppText.F("remux.audio.ffmpegFailed", this.ResolveFfmpegError(processResult));
             return false;
         }
 
@@ -1119,12 +1119,12 @@ namespace RemuxForge.Core.Audio
 
             if (output.IndexOf("Requested resampling engine is unavailable", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                return "ffmpeg non supporta il resampler soxr richiesto";
+                return AppText.T("remux.audio.soxrUnavailable");
             }
 
             if (output.IndexOf("Requested noise shaping dither not available", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                return "ffmpeg non può applicare il dither shibata alla frequenza richiesta";
+                return AppText.T("remux.audio.shibataUnavailable");
             }
 
             return this.LastErrorLine(output);
@@ -1271,11 +1271,11 @@ namespace RemuxForge.Core.Audio
             string reason;
 
             target = Utils.FormatAudioFormat(request.Options.AudioFormat);
-            downsample = request.Options.AudioDownsample24To16 ? "si" : "no";
-            normalize = request.Options.AudioPeakNormalize ? request.Options.AudioPeakTargetDb.ToString("F2", CultureInfo.InvariantCulture) + " dB" : "no";
-            gain = request.Options.AudioFixedGain ? request.Options.AudioFixedGainDb.ToString("F2", CultureInfo.InvariantCulture) + " dB" : "no";
+            downsample = AppText.T(request.Options.AudioDownsample24To16 ? "remux.audio.logYes" : "remux.audio.logNo");
+            normalize = request.Options.AudioPeakNormalize ? request.Options.AudioPeakTargetDb.ToString("F2", CultureInfo.InvariantCulture) + " dB" : AppText.T("remux.audio.logNo");
+            gain = request.Options.AudioFixedGain ? request.Options.AudioFixedGainDb.ToString("F2", CultureInfo.InvariantCulture) + " dB" : AppText.T("remux.audio.logNo");
 
-            ConsoleHelper.Write(LogSection.Conv, LogLevel.Debug, "  Audio request: format=" + target + ", scope=" + request.Options.AudioProcessingScope + ", normalize=" + normalize + ", gain=" + gain + ", 24to16=" + downsample + ", jobs=" + jobs.Count);
+            ConsoleHelper.Write(LogSection.Conv, LogLevel.Debug, AppText.F("remux.audio.requestLog", target, request.Options.AudioProcessingScope, normalize, gain, downsample, jobs.Count));
             for (int i = 0; i < jobs.Count; i++)
             {
                 generic = jobs[i].GenericProcessing;
@@ -1284,12 +1284,12 @@ namespace RemuxForge.Core.Audio
                 ConsoleHelper.Write(
                     LogSection.Conv,
                     LogLevel.Debug,
-                    "    " + this.FormatAudioTrackLabel(jobs[i].IsSource, jobs[i].Track) +
-                    ", generic=" + (generic ? "si" : "no") +
-                    ", render=" + (render ? "si" : "no") +
-                    ", motivo=" + reason +
-                    ", track-start=" + (jobs[i].Plan != null ? jobs[i].Plan.InitialTimelineOffsetMs.ToString(CultureInfo.InvariantCulture) : "0") + "ms" +
-                    this.FormatAudioTempoLog(jobs[i].Plan));
+                    AppText.F("remux.audio.planLog", this.FormatAudioTrackLabel(jobs[i].IsSource, jobs[i].Track),
+                        AppText.T(generic ? "remux.audio.logYes" : "remux.audio.logNo"),
+                        AppText.T(render ? "remux.audio.logYes" : "remux.audio.logNo"),
+                        reason,
+                        jobs[i].Plan != null ? jobs[i].Plan.InitialTimelineOffsetMs.ToString(CultureInfo.InvariantCulture) : "0",
+                        this.FormatAudioTempoLog(jobs[i].Plan)));
             }
         }
 
@@ -1308,7 +1308,7 @@ namespace RemuxForge.Core.Audio
             }
             if (!string.IsNullOrEmpty(plan.ErrorMessage))
             {
-                result = "errore";
+                result = AppText.T("remux.audio.reasonError");
             }
             else if (plan.SourceFillHasWork)
             {
@@ -1320,7 +1320,7 @@ namespace RemuxForge.Core.Audio
             }
             else if (plan.StretchRender)
             {
-                result = "stretch-materializzato";
+                result = AppText.T("remux.audio.reasonStretch");
             }
             else if (plan.TimelinePolicyRenderRequired)
             {

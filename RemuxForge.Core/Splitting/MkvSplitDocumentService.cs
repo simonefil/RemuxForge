@@ -166,7 +166,7 @@ namespace RemuxForge.Core.Splitting
         /// <returns>Proiezione con eventuali diagnostiche</returns>
         public MkvSplitTimelineProjection Project(MkvSplitDocument document, MkvSplitAnalysis analysis, MkvSplitOptions options)
         {
-            MkvSplitTimelineProjection projection = new MkvSplitTimelineProjection { DocumentId = document?.Id ?? Guid.Empty };
+            MkvSplitTimelineProjection projection = new MkvSplitTimelineProjection();
             projection.Diagnostics.AddRange(ValidateStructure(document, analysis));
             if (!projection.IsValid)
                 return projection;
@@ -221,13 +221,9 @@ namespace RemuxForge.Core.Splitting
                         MkvSplitSegmentService.RenderOutputName(options, document.OriginMode, document.Source.FullPath,
                             projection.Outputs.Count, result.Clips.FirstOrDefault()?.SourceStartSeconds ?? 0,
                             result.Clips.LastOrDefault()?.SourceEndSeconds ?? 0, result.DurationSeconds, result.Chapters);
-                    string normalized = (result.FileName ?? "").Replace('\\', '/');
-                    if (string.IsNullOrWhiteSpace(normalized) || Path.IsPathRooted(normalized)
-                        || normalized.Split('/').Any(part => part.Length == 0 || part == "." || part == ".."
-                            || part.Any(character => char.IsControl(character) || ":*?\"<>|".Contains(character)))
-                        || !normalized.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase))
+                    if (!IsValidOutputFileName(result.FileName))
                         throw new ArgumentException();
-                    result.FullPath = Path.GetFullPath(Path.Combine(directory, normalized));
+                    result.FullPath = Path.GetFullPath(Path.Combine(directory, result.FileName.Replace('\\', '/')));
                     if (string.Equals(result.FullPath, document.Source.FullPath, StringComparison.OrdinalIgnoreCase)
                         || !paths.Add(result.FullPath))
                         projection.Diagnostics.Add(Diagnostic("nameCollision", output.Id, null, result.FileName));
@@ -247,6 +243,36 @@ namespace RemuxForge.Core.Splitting
                 coveredEnd = Math.Max(coveredEnd, range.end);
             }
             return projection;
+        }
+
+        /// <summary>
+        /// Crea il documento della regola: il sorgente intero in manuale, un output per segmento del piano in batch.
+        /// Il documento conserva l'identità indicata, cosi' sostituisce il draft della stessa sessione.
+        /// </summary>
+        /// <param name="legacy">Piano della regola batch, null in manuale</param>
+        /// <param name="source">Identità del sorgente</param>
+        /// <param name="analysis">Analisi del sorgente</param>
+        /// <param name="documentId">Identità del documento da sostituire</param>
+        /// <returns>Documento della regola</returns>
+        public MkvSplitDocument CreateRuleDocument(MkvSplitPlan legacy, MkvSplitSourceIdentity source, MkvSplitAnalysis analysis, Guid documentId)
+        {
+            MkvSplitDocument document = legacy == null ? this.CreateFullSource(source, analysis) : this.FromLegacyPlan(legacy, source);
+            document.Id = documentId;
+            return document;
+        }
+
+        /// <summary>
+        /// Verifica un nome file output: percorso MKV relativo, senza risalite e senza caratteri vietati
+        /// </summary>
+        /// <param name="fileName">Nome file da verificare</param>
+        /// <returns>True se il nome è utilizzabile</returns>
+        public static bool IsValidOutputFileName(string fileName)
+        {
+            string normalized = (fileName ?? "").Replace('\\', '/');
+            return !string.IsNullOrWhiteSpace(normalized) && !Path.IsPathRooted(normalized)
+                && !normalized.Split('/').Any(part => part.Length == 0 || part == "." || part == ".."
+                    || part.Any(character => char.IsControl(character) || ":*?\"<>|".Contains(character)))
+                && normalized.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -276,7 +302,6 @@ namespace RemuxForge.Core.Splitting
             {
                 IsValid = true,
                 SourceFrame = frame,
-                BoundaryFrame = frame,
                 SourceSeconds = analysis.SourcePts[frame]
             };
         }
@@ -300,7 +325,7 @@ namespace RemuxForge.Core.Splitting
             // la tolleranza e il limite inferiore della clip evitano di risolvere il frame precedente
             double sourceSeconds = clip.SourceStartSeconds + resultSeconds - clip.ResultStartSeconds;
             int frame = Math.Max(clip.StartFrame, Math.Min(clip.EndFrameExclusive - 1, ContainingFrame(analysis.SourcePts, sourceSeconds + RESOLVE_TOLERANCE_SECONDS)));
-            return ResolveProjectedClipFrame(analysis, outputId, clip, frame, false);
+            return ResolveProjectedClipFrame(analysis, clip, frame, false);
         }
 
         /// <summary>
@@ -322,10 +347,10 @@ namespace RemuxForge.Core.Splitting
                 || (!boundary && resultFrame == output.FrameCount))
                 return new MkvSplitFrameResolution();
             if (resultFrame == output.FrameCount)
-                return ResolveProjectedClipFrame(analysis, outputId, output.Clips.Last(), output.Clips.Last().EndFrameExclusive, true);
+                return ResolveProjectedClipFrame(analysis, output.Clips.Last(), output.Clips.Last().EndFrameExclusive, true);
             MkvSplitClipProjection clip = output.Clips.Find(item => resultFrame >= item.ResultStartFrame
                 && resultFrame - item.ResultStartFrame < item.FrameCount);
-            return clip == null ? new MkvSplitFrameResolution() : ResolveProjectedClipFrame(analysis, outputId, clip,
+            return clip == null ? new MkvSplitFrameResolution() : ResolveProjectedClipFrame(analysis, clip,
                 clip.StartFrame + (resultFrame - clip.ResultStartFrame), boundary);
         }
 
@@ -345,7 +370,7 @@ namespace RemuxForge.Core.Splitting
         {
             MkvSplitOutputProjection output = FindResolvableOutput(projection, analysis, outputId);
             MkvSplitClipProjection clip = output?.Clips.Find(item => item.ClipId == clipId);
-            return clip == null ? new MkvSplitFrameResolution() : ResolveProjectedClipFrame(analysis, outputId, clip, sourceFrame, boundary);
+            return clip == null ? new MkvSplitFrameResolution() : ResolveProjectedClipFrame(analysis, clip, sourceFrame, boundary);
         }
 
         /// <summary>
@@ -362,38 +387,10 @@ namespace RemuxForge.Core.Splitting
             MkvSplitOutputProjection output = projection.Outputs.Find(item => item.OutputId == outputId);
             if (result.IsValid && resultSeconds == output.DurationSeconds)
             {
-                result.BoundaryFrame = output.Clips.Last().EndFrameExclusive;
                 result.ResultFrame = output.FrameCount;
                 result.ResultSeconds = output.DurationSeconds;
             }
             return result;
-        }
-
-        /// <summary>
-        /// Risolve il confine iniziale o finale di una clip del documento
-        /// </summary>
-        /// <param name="document">Documento</param>
-        /// <param name="analysis">Analisi del sorgente</param>
-        /// <param name="outputId">Output della clip</param>
-        /// <param name="clipId">Clip di riferimento</param>
-        /// <param name="isStart">Vero per il confine iniziale, falso per quello finale</param>
-        /// <returns>Risoluzione, non valida se la clip non esiste o non è coerente</returns>
-        public MkvSplitFrameResolution ResolveClipBoundary(MkvSplitDocument document, MkvSplitAnalysis analysis, Guid outputId, Guid clipId, bool isStart)
-        {
-            MkvSplitOutput output = document.Outputs.Find(item => item.Id == outputId);
-            MkvSplitClip clip = output?.Clips.Find(item => item.Id == clipId);
-            if (clip == null || clip.StartFrame < 0 || clip.EndFrameExclusive > analysis.SourcePts.Length || clip.EndFrameExclusive <= clip.StartFrame)
-                return new MkvSplitFrameResolution();
-            int frame = isStart ? clip.StartFrame : clip.EndFrameExclusive - 1;
-            return new MkvSplitFrameResolution
-            {
-                IsValid = true,
-                OutputId = outputId,
-                ClipId = clipId,
-                SourceFrame = frame,
-                BoundaryFrame = isStart ? clip.StartFrame : clip.EndFrameExclusive,
-                SourceSeconds = analysis.SourcePts[frame]
-            };
         }
 
         /// <summary>
@@ -428,7 +425,9 @@ namespace RemuxForge.Core.Splitting
                     bool startKey = clip.StartFrame < analysis.KeyFlags.Count && analysis.KeyFlags[clip.StartFrame].Key;
                     bool endKey = clip.EndFrameExclusive == analysis.SourcePts.Length
                         || (clip.EndFrameExclusive < analysis.KeyFlags.Count && analysis.KeyFlags[clip.EndFrameExclusive].Key);
-                    bool fast = startKey && endKey;
+                    // Un keyframe di GOP aperto si taglia dallo slow path, che ricodifica solo i fotogrammi che lo attraversano
+                    bool fast = startKey && endKey && !analysis.KeyFlags[clip.StartFrame].OpenGop
+                        && (clip.EndFrameExclusive == analysis.SourcePts.Length || !analysis.KeyFlags[clip.EndFrameExclusive].OpenGop);
                     int reencode = 0;
                     if (!fast && !MkvSplitPipeline.TryParseCodec(analysis.VideoParams?.CodecName ?? "", out _))
                         plan.Projection.Diagnostics.Add(Diagnostic("unsupportedVideo", output.OutputId, clip.ClipId, analysis.VideoParams?.CodecName));
@@ -450,7 +449,6 @@ namespace RemuxForge.Core.Splitting
                     }
                     execution.Clips.Add(new MkvSplitExecutionClip
                     {
-                        ClipId = clip.ClipId,
                         UsesFastPath = fast,
                         Segment = new MkvSplitSegment
                         {
@@ -517,6 +515,13 @@ namespace RemuxForge.Core.Splitting
                             }
                             MkvSplitSubtitleTrack subtitle = MkvSplitSubtitleService.ReadSource(document.Source.FullPath, track, temporary, analysis.Duration);
                             plan.Subtitles.Add(subtitle);
+                            // Una traccia sorgente senza eventi resta vuota in ogni taglio: si copia nativa, senza riscriverla
+                            if (subtitle.Events.Count == 0)
+                            {
+                                foreach (MkvSplitExecutionOutput output in plan.Outputs.Where(output => !output.NativeSubtitleTrackIds.Contains(track.Id)))
+                                    output.NativeSubtitleTrackIds.Add(track.Id);
+                                continue;
+                            }
                             bool fitsVideo = subtitle.Events.All(item => item.StartSeconds >= analysis.SourcePts[0] && item.EndSeconds <= analysis.Duration);
                             if (fitsVideo && !bitmap)
                             {
@@ -622,12 +627,11 @@ namespace RemuxForge.Core.Splitting
         /// Risolve un frame o confine sorgente interno a una clip proiettata nelle coordinate sorgente e risultato
         /// </summary>
         /// <param name="analysis">Analisi del sorgente</param>
-        /// <param name="outputId">Output della clip</param>
         /// <param name="clip">Clip proiettata</param>
         /// <param name="sourceFrame">Frame sorgente</param>
         /// <param name="boundary">Vero per risolvere un confine invece di un frame incluso</param>
         /// <returns>Risoluzione, non valida se il frame è fuori dalla clip</returns>
-        private static MkvSplitFrameResolution ResolveProjectedClipFrame(MkvSplitAnalysis analysis, Guid outputId,
+        private static MkvSplitFrameResolution ResolveProjectedClipFrame(MkvSplitAnalysis analysis,
             MkvSplitClipProjection clip, int sourceFrame, bool boundary)
         {
             if (sourceFrame < clip.StartFrame || sourceFrame > clip.EndFrameExclusive
@@ -641,10 +645,8 @@ namespace RemuxForge.Core.Splitting
             return new MkvSplitFrameResolution
             {
                 IsValid = true,
-                OutputId = outputId,
                 ClipId = clip.ClipId,
                 SourceFrame = included,
-                BoundaryFrame = sourceFrame,
                 ResultFrame = clip.ResultStartFrame + (sourceFrame - clip.StartFrame),
                 SourceSeconds = seconds,
                 ResultSeconds = end ? clip.ResultEndSeconds : clip.ResultStartSeconds + seconds - clip.SourceStartSeconds

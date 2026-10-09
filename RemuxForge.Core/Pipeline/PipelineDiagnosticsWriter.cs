@@ -2,6 +2,7 @@ using RemuxForge.Core.Analysis.Deep;
 using RemuxForge.Core.Analysis.FrameSync;
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 
@@ -33,12 +34,12 @@ namespace RemuxForge.Core.Pipeline
                 diagnosticsPath = writer.Write(record, options);
                 if (!string.IsNullOrEmpty(diagnosticsPath))
                 {
-                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, "  Diagnostica frame-sync: " + diagnosticsPath);
+                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("remux.pipeline.frameSyncDiagnostics", diagnosticsPath));
                 }
             }
             catch (Exception ex)
             {
-                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Warning, "  Errore diagnostica frame-sync: " + ex.Message);
+                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Warning, AppText.F("remux.pipeline.frameSyncDiagnosticsError", ex.Message));
             }
         }
 
@@ -65,12 +66,12 @@ namespace RemuxForge.Core.Pipeline
                 if (!string.IsNullOrEmpty(diagnosticsPath))
                 {
                     record.DeepAnalysisDiagnosticsPath = diagnosticsPath;
-                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, "  Diagnostica deep-analysis: " + diagnosticsPath);
+                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Debug, AppText.F("remux.pipeline.deepDiagnostics", diagnosticsPath));
                 }
             }
             catch (Exception ex)
             {
-                ConsoleHelper.Write(LogSection.Deep, LogLevel.Warning, "  Errore diagnostica deep-analysis: " + ex.Message);
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Warning, AppText.F("remux.pipeline.deepDiagnosticsError", ex.Message));
             }
         }
 

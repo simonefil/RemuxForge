@@ -4,7 +4,6 @@ using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
-using RemuxForge.Core.Models;
 using RemuxForge.Core.Tools;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -18,9 +17,7 @@ using RemuxForge.Web.Components;
 using RemuxForge.Web.Services;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace RemuxForge.Web
@@ -165,6 +162,7 @@ namespace RemuxForge.Web
             // Registra servizi
             builder.Services.AddSingleton(new VideoFrameAccessService(ffprobePath, mkvMergePath, mkvExtractPath, ffmpegPath, AppSettingsService.Instance.Settings.Advanced.Ffmpeg));
             builder.Services.AddSingleton(new AudioEnvelopeExtractor(ffmpegPath, ffprobePath));
+            builder.Services.AddSingleton<StaticAssetVersionService>();
             builder.Services.AddSingleton<MergeOrchestrator>();
             builder.Services.AddSingleton<SplitOrchestrator>();
             builder.Services.AddSingleton<MetadataOrchestrator>();
@@ -237,7 +235,7 @@ namespace RemuxForge.Web
             }
 
             if (string.IsNullOrEmpty(readyUrl))
-                throw new InvalidOperationException("Il server desktop non ha pubblicato un indirizzo locale");
+                throw new InvalidOperationException(AppText.T("web.desktop.noLocalAddress"));
 
             Console.Out.WriteLine("REMUXFORGE_READY " + JsonSerializer.Serialize(new { url = readyUrl }));
             Console.Out.Flush();

@@ -50,16 +50,14 @@ namespace RemuxForge.Core.Analysis.Features
         }
 
         /// <summary>
-        /// Costruisce in parallelo la matrice SIFT completa o le sole coppie pianificate
+        /// Costruisce in parallelo la matrice SIFT completa
         /// </summary>
         /// <param name="sourceAnchors">Ancore visuali della timeline source</param>
         /// <param name="languageAnchors">Ancore visuali della timeline language</param>
         /// <param name="maxDegreeOfParallelism">Numero massimo di worker eseguibili in parallelo</param>
         /// <param name="cancellationToken">Token per annullare l'elaborazione</param>
-        /// <param name="progress">Destinatario opzionale degli aggiornamenti di avanzamento</param>
-        /// <param name="plannedPairs">Coppie source-language da valutare, oppure null per valutare tutte le coppie</param>
         /// <returns>Risultato del matching batch con matrice e diagnostica dell'elaborazione</returns>
-        public override DeepSiftBatchMatchResult BuildMatrix(IReadOnlyList<DeepSiftVisualAnchor> sourceAnchors, IReadOnlyList<DeepSiftVisualAnchor> languageAnchors, int maxDegreeOfParallelism, CancellationToken cancellationToken, IProgress<DeepSiftBatchProgress> progress = null, IReadOnlyList<DeepSiftFramePair> plannedPairs = null)
+        public override DeepSiftBatchMatchResult BuildMatrix(IReadOnlyList<DeepSiftVisualAnchor> sourceAnchors, IReadOnlyList<DeepSiftVisualAnchor> languageAnchors, int maxDegreeOfParallelism, CancellationToken cancellationToken)
         {
             if (sourceAnchors == null)
                 throw new ArgumentNullException(nameof(sourceAnchors));
@@ -71,13 +69,9 @@ namespace RemuxForge.Core.Analysis.Features
             DeepSiftBatchMatchResult result = new DeepSiftBatchMatchResult();
             result.BackendName = this.BackendName;
             int configuredWorkerCount = Math.Min(maxDegreeOfParallelism, Math.Max(1, Environment.ProcessorCount));
-            result.DeclaredSourceAnchorCount = sourceAnchors.Count;
-            result.DeclaredLanguageAnchorCount = languageAnchors.Count;
             OpenCvSiftFeatureSet[] sourceFeatures = new OpenCvSiftFeatureSet[sourceAnchors.Count];
             OpenCvSiftFeatureSet[] languageFeatures = new OpenCvSiftFeatureSet[languageAnchors.Count];
             Stopwatch stopwatch = Stopwatch.StartNew();
-            ConcurrentDictionary<int, byte> workerThreads = new ConcurrentDictionary<int, byte>();
-            HashSet<long> plannedPairKeys = this.CreatePlannedPairKeys(plannedPairs, sourceAnchors.Count, languageAnchors.Count);
 
             try
             {
@@ -90,7 +84,6 @@ namespace RemuxForge.Core.Analysis.Features
 
                 Parallel.For<OpenCvSiftFeatureMatcher>(0, sourceAnchors.Count, options, this.CreateMatcher, (index, _, matcher) =>
                 {
-                    workerThreads.TryAdd(Thread.CurrentThread.ManagedThreadId, 0);
                     DeepSiftVisualAnchor anchor = sourceAnchors[index];
                     sourceFeatures[index] = matcher.ExtractFeatures(anchor.Frame, anchor.Width, anchor.Height);
                     return matcher;
@@ -98,7 +91,6 @@ namespace RemuxForge.Core.Analysis.Features
 
                 Parallel.For<OpenCvSiftFeatureMatcher>(0, languageAnchors.Count, options, this.CreateMatcher, (index, _, matcher) =>
                 {
-                    workerThreads.TryAdd(Thread.CurrentThread.ManagedThreadId, 0);
                     DeepSiftVisualAnchor anchor = languageAnchors[index];
                     languageFeatures[index] = matcher.ExtractFeatures(anchor.Frame, anchor.Width, anchor.Height);
                     return matcher;
@@ -110,25 +102,20 @@ namespace RemuxForge.Core.Analysis.Features
                 result.LanguageFeaturelessAnchorCount = this.CountFeatureless(languageFeatures);
                 List<int> activeSourceIndexes = this.GetActiveIndexes(sourceFeatures);
                 List<int> activeLanguageIndexes = this.GetActiveIndexes(languageFeatures);
-                bool preserveInputIndexes = plannedPairKeys != null;
-                result.SourceAnchors = preserveInputIndexes ? new List<DeepSiftVisualAnchor>(sourceAnchors) : this.GetActiveAnchors(sourceAnchors, activeSourceIndexes);
-                result.LanguageAnchors = preserveInputIndexes ? new List<DeepSiftVisualAnchor>(languageAnchors) : this.GetActiveAnchors(languageAnchors, activeLanguageIndexes);
+                result.SourceAnchors = this.GetActiveAnchors(sourceAnchors, activeSourceIndexes);
+                result.LanguageAnchors = this.GetActiveAnchors(languageAnchors, activeLanguageIndexes);
                 result.SourceAnchorCount = result.SourceAnchors.Count;
                 result.LanguageAnchorCount = result.LanguageAnchors.Count;
                 result.Matrix = new DeepSiftMatchMatrix(result.SourceAnchorCount, result.LanguageAnchorCount);
                 const int TILE_ROW_COUNT = 4;
-                int totalTiles = activeSourceIndexes.Count == 0 ? 0 : (activeSourceIndexes.Count + TILE_ROW_COUNT - 1) / TILE_ROW_COUNT;
-                long totalCells = plannedPairKeys != null ? plannedPairKeys.Count : (long)activeSourceIndexes.Count * activeLanguageIndexes.Count;
                 long processedCells = 0;
                 long descriptorMatchingTicks = 0;
                 long geometryTicks = 0;
-                int completedTiles = 0;
                 ConcurrentDictionary<string, int> rejectionCounts = new ConcurrentDictionary<string, int>(StringComparer.Ordinal);
                 if (activeSourceIndexes.Count > 0 && activeLanguageIndexes.Count > 0)
                 {
                     Parallel.ForEach<Tuple<int, int>, OpenCvSiftFeatureMatcher>(Partitioner.Create(0, activeSourceIndexes.Count, TILE_ROW_COUNT), options, this.CreateMatcher, (range, _, matcher) =>
                     {
-                        workerThreads.TryAdd(Thread.CurrentThread.ManagedThreadId, 0);
                         for (int sourceIndex = range.Item1; sourceIndex < range.Item2; sourceIndex++)
                         {
                             int originalSourceIndex = activeSourceIndexes[sourceIndex];
@@ -136,8 +123,6 @@ namespace RemuxForge.Core.Analysis.Features
                             {
                                 cancellationToken.ThrowIfCancellationRequested();
                                 int originalLanguageIndex = activeLanguageIndexes[languageIndex];
-                                if (plannedPairKeys != null && !plannedPairKeys.Contains(this.GetPairKey(originalSourceIndex, originalLanguageIndex)))
-                                    continue;
                                 int randomSeed = this.GetStablePairSeed(sourceAnchors[originalSourceIndex], languageAnchors[originalLanguageIndex]);
                                 FrameFeatureMatchResult match = matcher.Match(sourceFeatures[originalSourceIndex], languageFeatures[originalLanguageIndex], randomSeed);
                                 if (match == null || !match.Accepted)
@@ -150,24 +135,19 @@ namespace RemuxForge.Core.Analysis.Features
                                     Interlocked.Add(ref descriptorMatchingTicks, match.DescriptorMatchingTicks);
                                     Interlocked.Add(ref geometryTicks, match.GeometryTicks);
                                 }
-                                int matrixSourceIndex = preserveInputIndexes ? originalSourceIndex : sourceIndex;
-                                int matrixLanguageIndex = preserveInputIndexes ? originalLanguageIndex : languageIndex;
                                 DeepSiftMatchCell cell = this.CreateCell(match);
-                                result.Matrix.Set(matrixSourceIndex, matrixLanguageIndex, cell);
+                                result.Matrix.Set(sourceIndex, languageIndex, cell);
                                 if (cell.State == DeepSiftMatchState.Accepted)
                                 {
                                     lock (result.AcceptedPairs)
                                     {
-                                        this.AddAcceptedPair(result, matrixSourceIndex, matrixLanguageIndex, cell, match.Homography);
+                                        this.AddAcceptedPair(result, sourceIndex, languageIndex, cell, match.Homography);
                                     }
                                 }
                                 Interlocked.Increment(ref processedCells);
                             }
                         }
 
-                        long currentProcessed = Interlocked.Read(ref processedCells);
-                        int currentTiles = Interlocked.Increment(ref completedTiles);
-                        progress?.Report(new DeepSiftBatchProgress { CompletedTiles = currentTiles, TotalTiles = totalTiles, ProcessedCells = currentProcessed, TotalCells = totalCells });
                         return matcher;
                     }, matcher => matcher.Dispose());
                 }
@@ -182,14 +162,10 @@ namespace RemuxForge.Core.Analysis.Features
                 result.DescriptorMatchingMs = (long)Math.Round(descriptorMatchingTicks * 1000.0 / Stopwatch.Frequency);
                 result.GeometryMs = (long)Math.Round(geometryTicks * 1000.0 / Stopwatch.Frequency);
                 this.UpdateMatrixCounters(result.Matrix, processedCells);
-                result.WorkerCount = workerThreads.Count;
                 result.ProcessedCellCount = result.Matrix.ProcessedCellCount;
                 result.AcceptedCellCount = result.Matrix.AcceptedCellCount;
                 foreach (KeyValuePair<string, int> entry in rejectionCounts)
                     result.RejectionCounts[entry.Key] = entry.Value;
-                result.MatrixSizeBytes = result.Matrix.CompactSizeBytes;
-                result.CompletedTileCount = completedTiles;
-                result.PeakWorkingSetBytes = Process.GetCurrentProcess().PeakWorkingSet64;
                 return result;
             }
             catch (OperationCanceledException)
@@ -251,11 +227,6 @@ namespace RemuxForge.Core.Analysis.Features
             DeepSiftMatchCell result = new DeepSiftMatchCell();
             result.State = match != null && match.Accepted ? DeepSiftMatchState.Accepted : DeepSiftMatchState.Rejected;
             result.Score = match != null ? match.Score : 0.0;
-            result.InlierCount = match != null ? match.InlierCount : 0;
-            result.InlierRatio = match != null ? match.InlierRatio : 0.0;
-            result.SourceCoverage = match != null ? match.SourceCoverage : 0.0;
-            result.LanguageCoverage = match != null ? match.LanguageCoverage : 0.0;
-            result.MeanReprojectionError = match != null ? match.MeanReprojectionError : 0.0;
             return result;
         }
 
@@ -290,39 +261,6 @@ namespace RemuxForge.Core.Analysis.Features
                     result.Add(i);
             }
             return result;
-        }
-
-        /// <summary>
-        /// Converte le coppie pianificate in chiavi valide per la matrice locale
-        /// </summary>
-        /// <param name="pairs">Coppie richieste dal pianificatore temporale</param>
-        /// <param name="sourceCount">Numero di ancore source</param>
-        /// <param name="languageCount">Numero di ancore language</param>
-        /// <returns>Chiavi delle sole celle valide</returns>
-        private HashSet<long> CreatePlannedPairKeys(IReadOnlyList<DeepSiftFramePair> pairs, int sourceCount, int languageCount)
-        {
-            if (pairs == null)
-                return null;
-            HashSet<long> result = new HashSet<long>();
-            for (int i = 0; i < pairs.Count; i++)
-            {
-                DeepSiftFramePair pair = pairs[i];
-                if (pair.SourceAnchorIndex < 0 || pair.SourceAnchorIndex >= sourceCount || pair.LanguageAnchorIndex < 0 || pair.LanguageAnchorIndex >= languageCount)
-                    throw new ArgumentOutOfRangeException(nameof(pairs));
-                result.Add(this.GetPairKey(pair.SourceAnchorIndex, pair.LanguageAnchorIndex));
-            }
-            return result;
-        }
-
-        /// <summary>
-        /// Compone gli indici source e language in una chiave di cella
-        /// </summary>
-        /// <param name="sourceIndex">Indice source</param>
-        /// <param name="languageIndex">Indice language</param>
-        /// <returns>Chiave intera della coppia</returns>
-        private long GetPairKey(int sourceIndex, int languageIndex)
-        {
-            return ((long)sourceIndex << 32) | (uint)languageIndex;
         }
 
         #endregion

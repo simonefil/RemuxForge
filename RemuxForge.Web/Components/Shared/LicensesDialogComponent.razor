@@ -1,61 +1,88 @@
-<div class="dialog-overlay visible">
-    <div class="dialog-box dialog-box-wide licenses-dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="licenses-dialog-title" @onclick:stopPropagation="true">
-        <div id="licenses-dialog-title" class="dialog-title">@AppText.T("web.licenses.title")</div>
-        <div class="dialog-body">
-            <p class="licenses-intro">@AppText.T("web.licenses.intro")</p>
-            <table class="licenses-table">
-                <thead>
-                    <tr>
-                        <th>@AppText.T("web.licenses.component")</th>
-                        <th>@AppText.T("web.licenses.license")</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr><td>RemuxForge</td><td><a href="https://github.com/simonefil/RemuxForge/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">GNU GPL v3.0 or later</a></td></tr>
-                    <tr><td>.NET / ASP.NET Core</td><td><a href="https://github.com/dotnet/runtime/blob/main/LICENSE.TXT" target="_blank" rel="noopener noreferrer">MIT</a></td></tr>
-                    <tr><td>Radzen Blazor</td><td><a href="https://github.com/radzenhq/radzen-blazor/blob/master/LICENSE" target="_blank" rel="noopener noreferrer">MIT</a></td></tr>
-                    <tr><td>OpenCvSharp</td><td><a href="https://github.com/shimat/opencvsharp/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Apache License 2.0</a></td></tr>
-                    <tr><td>OpenCV</td><td><a href="https://github.com/opencv/opencv/blob/4.x/LICENSE" target="_blank" rel="noopener noreferrer">Apache License 2.0</a></td></tr>
-                    <tr><td>SkiaSharp</td><td><a href="https://github.com/mono/SkiaSharp/blob/main/LICENSE.md" target="_blank" rel="noopener noreferrer">MIT</a></td></tr>
-                    <tr><td>Skia</td><td><a href="https://github.com/google/skia/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">BSD 3-Clause</a></td></tr>
-                    <tr><td>ZstdSharp.Port</td><td><a href="https://github.com/oleg-st/ZstdSharp/blob/master/LICENSE" target="_blank" rel="noopener noreferrer">MIT</a></td></tr>
-                    <tr><td>Vortice.Vulkan</td><td><a href="https://github.com/amerkoleci/Vortice.Vulkan/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT</a></td></tr>
-                    <tr><td>Tauri</td><td><a href="https://github.com/tauri-apps/tauri#license" target="_blank" rel="noopener noreferrer">MIT OR Apache License 2.0</a></td></tr>
-                    <tr><td>Tauri plugins</td><td><a href="https://github.com/tauri-apps/plugins-workspace/blob/v2/LICENSE_MIT" target="_blank" rel="noopener noreferrer">MIT OR Apache License 2.0</a></td></tr>
-                    <tr><td>Serde</td><td><a href="https://github.com/serde-rs/serde#license" target="_blank" rel="noopener noreferrer">MIT OR Apache License 2.0</a></td></tr>
-                    <tr><td>serde_json</td><td><a href="https://github.com/serde-rs/json#license" target="_blank" rel="noopener noreferrer">MIT OR Apache License 2.0</a></td></tr>
-                    <tr><td>ArrayFire</td><td><a href="https://github.com/arrayfire/arrayfire/blob/v3.10.0/LICENSE" target="_blank" rel="noopener noreferrer">BSD 3-Clause</a></td></tr>
-                    <tr><td>OpenSIFT</td><td><a href="https://github.com/simonefil/RemuxForge/blob/main/RemuxForge.Vulkan/THIRD-PARTY-NOTICES.md" target="_blank" rel="noopener noreferrer">BSD 3-Clause</a></td></tr>
-                </tbody>
-            </table>
-            <p class="licenses-note">@AppText.T("web.licenses.note")</p>
-        </div>
-        <div class="dialog-footer">
-            <RadzenButton Text="@AppText.T("web.common.close")" Icon="close" class="dialog-close-button" Click="@OnClose" />
-        </div>
+@inherits AppDialogContentBase
+
+<div class="rf-dialog" @ref="DialogContent">
+    <div class="rf-dialog-body">
+        <p class="licenses-intro">@AppText.T("web.licenses.intro")</p>
+        <RadzenTable GridLines="DataGridGridLines.Horizontal" AllowAlternatingRows="false" class="licenses-table">
+            <RadzenTableHeader>
+                <RadzenTableHeaderRow>
+                    <RadzenTableHeaderCell>@AppText.T("web.licenses.component")</RadzenTableHeaderCell>
+                    <RadzenTableHeaderCell>@AppText.T("web.licenses.license")</RadzenTableHeaderCell>
+                </RadzenTableHeaderRow>
+            </RadzenTableHeader>
+            <RadzenTableBody>
+                <RadzenTableRow>
+                    <RadzenTableCell>RemuxForge</RadzenTableCell>
+                    <RadzenTableCell><a href="https://github.com/simonefil/RemuxForge/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">GNU GPL v3.0 or later</a></RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell>.NET / ASP.NET Core</RadzenTableCell>
+                    <RadzenTableCell><a href="https://github.com/dotnet/runtime/blob/main/LICENSE.TXT" target="_blank" rel="noopener noreferrer">MIT</a></RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell>Radzen Blazor</RadzenTableCell>
+                    <RadzenTableCell><a href="https://github.com/radzenhq/radzen-blazor/blob/master/LICENSE" target="_blank" rel="noopener noreferrer">MIT</a></RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell>OpenCvSharp</RadzenTableCell>
+                    <RadzenTableCell><a href="https://github.com/shimat/opencvsharp/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Apache License 2.0</a></RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell>OpenCV</RadzenTableCell>
+                    <RadzenTableCell><a href="https://github.com/opencv/opencv/blob/4.x/LICENSE" target="_blank" rel="noopener noreferrer">Apache License 2.0</a></RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell>SkiaSharp</RadzenTableCell>
+                    <RadzenTableCell><a href="https://github.com/mono/SkiaSharp/blob/main/LICENSE.md" target="_blank" rel="noopener noreferrer">MIT</a></RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell>Skia</RadzenTableCell>
+                    <RadzenTableCell><a href="https://github.com/google/skia/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">BSD 3-Clause</a></RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell>ZstdSharp.Port</RadzenTableCell>
+                    <RadzenTableCell><a href="https://github.com/oleg-st/ZstdSharp/blob/master/LICENSE" target="_blank" rel="noopener noreferrer">MIT</a></RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell>Vortice.Vulkan</RadzenTableCell>
+                    <RadzenTableCell><a href="https://github.com/amerkoleci/Vortice.Vulkan/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT</a></RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell>Tauri</RadzenTableCell>
+                    <RadzenTableCell><a href="https://github.com/tauri-apps/tauri#license" target="_blank" rel="noopener noreferrer">MIT OR Apache License 2.0</a></RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell>Tauri plugins</RadzenTableCell>
+                    <RadzenTableCell><a href="https://github.com/tauri-apps/plugins-workspace/blob/v2/LICENSE_MIT" target="_blank" rel="noopener noreferrer">MIT OR Apache License 2.0</a></RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell>Serde</RadzenTableCell>
+                    <RadzenTableCell><a href="https://github.com/serde-rs/serde#license" target="_blank" rel="noopener noreferrer">MIT OR Apache License 2.0</a></RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell>serde_json</RadzenTableCell>
+                    <RadzenTableCell><a href="https://github.com/serde-rs/json#license" target="_blank" rel="noopener noreferrer">MIT OR Apache License 2.0</a></RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell>ArrayFire</RadzenTableCell>
+                    <RadzenTableCell><a href="https://github.com/arrayfire/arrayfire/blob/v3.10.0/LICENSE" target="_blank" rel="noopener noreferrer">BSD 3-Clause</a></RadzenTableCell>
+                </RadzenTableRow>
+                <RadzenTableRow>
+                    <RadzenTableCell>OpenSIFT</RadzenTableCell>
+                    <RadzenTableCell><a href="https://github.com/simonefil/RemuxForge/blob/main/RemuxForge.Vulkan/THIRD-PARTY-NOTICES.md" target="_blank" rel="noopener noreferrer">BSD 3-Clause</a></RadzenTableCell>
+                </RadzenTableRow>
+            </RadzenTableBody>
+        </RadzenTable>
+        <p class="licenses-note">@AppText.T("web.licenses.note")</p>
+    </div>
+    <div class="rf-dialog-footer">
+        <RadzenButton Text="@AppText.T("web.common.close")" Icon="close" Click="@(() => CloseDialog())" />
     </div>
 </div>
 
 <style>
-    .licenses-dialog-box {
-        width: min(56rem, calc(100vw - 4rem));
-    }
-
     .licenses-intro {
         margin-top: 0;
-    }
-
-    .licenses-table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-
-    .licenses-table th,
-    .licenses-table td {
-        padding: 0.65rem 0.8rem;
-        border-bottom: 1px solid var(--rz-border-color);
-        text-align: left;
-        vertical-align: top;
     }
 
     .licenses-table th:last-child,
@@ -73,10 +100,3 @@
         font-size: 0.9rem;
     }
 </style>
-
-@code {
-    /// <summary>
-    /// Evento chiusura dialog
-    /// </summary>
-    [Parameter] public EventCallback OnClose { get; set; }
-}

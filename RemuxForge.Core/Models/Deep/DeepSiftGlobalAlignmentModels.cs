@@ -17,9 +17,6 @@ namespace RemuxForge.Core.Models
         public DeepSiftVisualAnchor()
         {
             this.Frame = Array.Empty<byte>();
-            this.CompactSignature = Array.Empty<byte>();
-            this.AppliedGeometry = "";
-            this.CompactSignatureBackend = "";
         }
 
         #endregion
@@ -67,21 +64,6 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public int Height { get; set; }
 
-        /// <summary>
-        /// Firma visuale compatta deterministica conservata senza raw frame residente
-        /// </summary>
-        public byte[] CompactSignature { get; set; }
-
-        /// <summary>
-        /// Geometria e crop effettivamente applicati prima della firma
-        /// </summary>
-        public string AppliedGeometry { get; set; }
-
-        /// <summary>
-        /// Backend deterministico che ha prodotto la firma compatta
-        /// </summary>
-        public string CompactSignatureBackend { get; set; }
-
         #endregion
     }
 
@@ -113,26 +95,6 @@ namespace RemuxForge.Core.Models
         /// </summary>
         private float _score;
 
-        /// <summary>
-        /// Rapporto di inlier memorizzato in precisione singola
-        /// </summary>
-        private float _inlierRatio;
-
-        /// <summary>
-        /// Copertura spaziale source memorizzata in precisione singola
-        /// </summary>
-        private float _sourceCoverage;
-
-        /// <summary>
-        /// Copertura spaziale language memorizzata in precisione singola
-        /// </summary>
-        private float _languageCoverage;
-
-        /// <summary>
-        /// Errore medio di riproiezione memorizzato in precisione singola
-        /// </summary>
-        private float _meanReprojectionError;
-
         #endregion
 
         #region Proprietà
@@ -149,47 +111,6 @@ namespace RemuxForge.Core.Models
         {
             get { return this._score; }
             set { this._score = (float)value; }
-        }
-
-        /// <summary>
-        /// Numero di inlier geometrici
-        /// </summary>
-        public int InlierCount { get; set; }
-
-        /// <summary>
-        /// Rapporto di inlier geometrici
-        /// </summary>
-        public double InlierRatio
-        {
-            get { return this._inlierRatio; }
-            set { this._inlierRatio = (float)value; }
-        }
-
-        /// <summary>
-        /// Copertura spaziale source
-        /// </summary>
-        public double SourceCoverage
-        {
-            get { return this._sourceCoverage; }
-            set { this._sourceCoverage = (float)value; }
-        }
-
-        /// <summary>
-        /// Copertura spaziale language
-        /// </summary>
-        public double LanguageCoverage
-        {
-            get { return this._languageCoverage; }
-            set { this._languageCoverage = (float)value; }
-        }
-
-        /// <summary>
-        /// Errore medio di riproiezione
-        /// </summary>
-        public double MeanReprojectionError
-        {
-            get { return this._meanReprojectionError; }
-            set { this._meanReprojectionError = (float)value; }
         }
 
         #endregion
@@ -280,11 +201,6 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public long ProcessedCellCount { get; internal set; }
 
-        /// <summary>
-        /// Dimensione compatta approssimativa della matrice in byte
-        /// </summary>
-        public long CompactSizeBytes { get { return (long)this._cells.Length * 28L; } }
-
         #endregion
 
         #region Metodi privati
@@ -319,7 +235,6 @@ namespace RemuxForge.Core.Models
         {
             this.BackendName = "";
             this.RejectReason = "";
-            this.VulkanDeviceName = "";
             this.AcceptedPairs = new List<DeepSiftAcceptedPairDiagnostic>();
             this.RejectionCounts = new Dictionary<string, int>(StringComparer.Ordinal);
         }
@@ -345,11 +260,6 @@ namespace RemuxForge.Core.Models
         public string RejectReason { get; set; }
 
         /// <summary>
-        /// Numero di worker usati
-        /// </summary>
-        public int WorkerCount { get; set; }
-
-        /// <summary>
         /// Numero di ancore source elaborate
         /// </summary>
         public int SourceAnchorCount { get; set; }
@@ -358,16 +268,6 @@ namespace RemuxForge.Core.Models
         /// Numero di ancore language elaborate
         /// </summary>
         public int LanguageAnchorCount { get; set; }
-
-        /// <summary>
-        /// Numero di ancore source dichiarate prima della rimozione featureless
-        /// </summary>
-        public int DeclaredSourceAnchorCount { get; set; }
-
-        /// <summary>
-        /// Numero di ancore language dichiarate prima della rimozione featureless
-        /// </summary>
-        public int DeclaredLanguageAnchorCount { get; set; }
 
         /// <summary>
         /// Ancore source informative effettivamente indicizzate dalla matrice
@@ -412,21 +312,6 @@ namespace RemuxForge.Core.Models
         public int LanguageFeaturelessAnchorCount { get; set; }
 
         /// <summary>
-        /// Dimensione compatta approssimativa della matrice
-        /// </summary>
-        public long MatrixSizeBytes { get; set; }
-
-        /// <summary>
-        /// Picco working set osservato dal processo durante il batch
-        /// </summary>
-        public long PeakWorkingSetBytes { get; set; }
-
-        /// <summary>
-        /// Numero di tile completate
-        /// </summary>
-        public int CompletedTileCount { get; set; }
-
-        /// <summary>
         /// Tempo estrazione descriptor
         /// </summary>
         public long FeatureExtractionMs { get; set; }
@@ -447,109 +332,14 @@ namespace RemuxForge.Core.Models
         public long GeometryMs { get; set; }
 
         /// <summary>
-        /// Nome del device Vulkan, vuoto per backend CPU
-        /// </summary>
-        public string VulkanDeviceName { get; set; }
-
-        /// <summary>
         /// Tempo di upload e preparazione buffer Vulkan
         /// </summary>
         public long UploadMs { get; set; }
 
         /// <summary>
-        /// Tempo trascorso fra submit e completamento dei kernel Vulkan
-        /// </summary>
-        public long KernelMs { get; set; }
-
-        /// <summary>
-        /// Tempo GPU upload misurato tramite timestamp Vulkan
-        /// </summary>
-        public long GpuUploadMs { get; set; }
-
-        /// <summary>
-        /// Tempo GPU normalizzazione input
-        /// </summary>
-        public long GpuNormalizeMs { get; set; }
-
-        /// <summary>
-        /// Tempo GPU costruzione piramidi Gaussiane
-        /// </summary>
-        public long GpuGaussianPyramidMs { get; set; }
-
-        /// <summary>
-        /// Tempo GPU rilevamento e raffinamento extrema
-        /// </summary>
-        public long GpuExtremaMs { get; set; }
-
-        /// <summary>
-        /// Tempo GPU assegnazione orientamento e compattazione
-        /// </summary>
-        public long GpuOrientationMs { get; set; }
-
-        /// <summary>
-        /// Tempo GPU orientamento e descriptor
-        /// </summary>
-        public long GpuDescriptorMs { get; set; }
-
-        /// <summary>
-        /// Tempo GPU descriptor matching
-        /// </summary>
-        public long GpuMatchingMs { get; set; }
-
-        /// <summary>
-        /// Tempo GPU RANSAC
-        /// </summary>
-        public long GpuRansacMs { get; set; }
-
-        /// <summary>
-        /// Tempo host trascorso in attesa della GPU
-        /// </summary>
-        public long HostWaitMs { get; set; }
-
-        /// <summary>
-        /// Picco VRAM osservato dall'allocator Vulkan
-        /// </summary>
-        public long PeakVramBytes { get; set; }
-
-        /// <summary>
         /// Tempo di readback degli output Vulkan
         /// </summary>
         public long ReadbackMs { get; set; }
-
-        /// <summary>
-        /// Numero di submit Vulkan usati per la matrice
-        /// </summary>
-        public int SubmitCount { get; set; }
-
-        /// <summary>
-        /// Numero di dispatch compute Vulkan
-        /// </summary>
-        public int DispatchCount { get; set; }
-
-        /// <summary>
-        /// Numero di attese timeline Vulkan
-        /// </summary>
-        public int WaitCount { get; set; }
-
-        /// <summary>
-        /// Numero cumulativo di candidati SIFT rilevati
-        /// </summary>
-        public long CandidateKeypointCount { get; set; }
-
-        /// <summary>
-        /// Numero cumulativo di keypoint raffinati
-        /// </summary>
-        public long RefinedKeypointCount { get; set; }
-
-        /// <summary>
-        /// Numero cumulativo di descriptor prodotti
-        /// </summary>
-        public long DescriptorCount { get; set; }
-
-        /// <summary>
-        /// Numero cumulativo di feature eliminate dal limite per frame
-        /// </summary>
-        public long TruncatedKeypointCount { get; set; }
 
         /// <summary>
         /// Indica se l'operazione è stata cancellata
@@ -585,103 +375,14 @@ namespace RemuxForge.Core.Models
         public double LanguagePtsMs { get; set; }
 
         /// <summary>
-        /// Durata del frame source in millisecondi
-        /// </summary>
-        public double SourceFrameDurationMs { get; set; }
-
-        /// <summary>
-        /// Durata del frame language in millisecondi
-        /// </summary>
-        public double LanguageFrameDurationMs { get; set; }
-
-        /// <summary>
-        /// Durata PTS rappresentata dall'ancora source nella griglia di campionamento
-        /// </summary>
-        public double SourceSamplingDurationMs { get; set; }
-
-        /// <summary>
-        /// Durata PTS rappresentata dall'ancora language nella griglia di campionamento
-        /// </summary>
-        public double LanguageSamplingDurationMs { get; set; }
-
-        /// <summary>
         /// Punteggio normalizzato del match geometrico
         /// </summary>
         public double Score { get; set; }
-
-        /// <summary>
-        /// Numero di corrispondenze inlier
-        /// </summary>
-        public int InlierCount { get; set; }
-
-        /// <summary>
-        /// Rapporto tra inlier e corrispondenze reciproche
-        /// </summary>
-        public double InlierRatio { get; set; }
-
-        /// <summary>
-        /// Copertura spaziale delle feature source
-        /// </summary>
-        public double SourceCoverage { get; set; }
-
-        /// <summary>
-        /// Copertura spaziale delle feature language
-        /// </summary>
-        public double LanguageCoverage { get; set; }
-
-        /// <summary>
-        /// Errore medio di riproiezione degli inlier
-        /// </summary>
-        public double MeanReprojectionError { get; set; }
 
         /// <summary>
         /// Omografia 3x3 row-major dalla source alla language, mantenuta soltanto in memoria
         /// </summary>
         [JsonIgnore]
         public double[] Homography { get; set; }
-
     }
-
-    /// <summary>
-    /// Coppia source-language pianificata esplicitamente dal solver temporale
-    /// </summary>
-    public struct DeepSiftFramePair
-    {
-        /// <summary>
-        /// Indice dell'ancora source
-        /// </summary>
-        public int SourceAnchorIndex { get; set; }
-
-        /// <summary>
-        /// Indice dell'ancora language
-        /// </summary>
-        public int LanguageAnchorIndex { get; set; }
-    }
-
-    /// <summary>
-    /// Avanzamento aggregato della costruzione della matrice a tile
-    /// </summary>
-    public class DeepSiftBatchProgress
-    {
-        /// <summary>
-        /// Numero di tile completati
-        /// </summary>
-        public int CompletedTiles { get; set; }
-
-        /// <summary>
-        /// Numero totale di tile
-        /// </summary>
-        public int TotalTiles { get; set; }
-
-        /// <summary>
-        /// Numero di celle elaborate
-        /// </summary>
-        public long ProcessedCells { get; set; }
-
-        /// <summary>
-        /// Numero totale di celle pianificate
-        /// </summary>
-        public long TotalCells { get; set; }
-    }
-
 }

@@ -82,7 +82,6 @@ namespace RemuxForge.Core.Analysis.Deep
             {
                 AdvancedConfig advanced = AppSettingsService.Instance.Settings.Advanced;
                 string configuredBackend = AdvancedConfig.GetVisionBackendValue(advanced.GetVisionBackendKind());
-                result.BackendName = configuredBackend;
                 cancellationToken.ThrowIfCancellationRequested();
 
                 // Il backend si apre prima di decodificare: se non c'è, si dice subito e non

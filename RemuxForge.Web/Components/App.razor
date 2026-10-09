@@ -1,3 +1,5 @@
+@inject RemuxForge.Web.Services.StaticAssetVersionService AssetVersion
+
 <!DOCTYPE html>
 <html lang="@AppText.Language">
 
@@ -10,8 +12,19 @@
     <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
-    <link rel="stylesheet" href="@Assets["css/app.css"]" />
-    <link rel="stylesheet" href="@Assets["RemuxForge.Web.styles.css"]" />
+    <link rel="stylesheet" href="@AssetVersion.Url("css/layout.css")" />
+    <link rel="stylesheet" href="@AssetVersion.Url("css/metadata.css")" />
+    <link rel="stylesheet" href="@AssetVersion.Url("css/renamer.css")" />
+    <link rel="stylesheet" href="@AssetVersion.Url("css/remux.css")" />
+    <link rel="stylesheet" href="@AssetVersion.Url("css/wizard.css")" />
+    <link rel="stylesheet" href="@AssetVersion.Url("css/media-editor.css")" />
+    <link rel="stylesheet" href="@AssetVersion.Url("css/edit-map-editor.css")" />
+    <link rel="stylesheet" href="@AssetVersion.Url("css/split-editor.css")" />
+    <link rel="stylesheet" href="@AssetVersion.Url("css/base.css")" />
+    <link rel="stylesheet" href="@AssetVersion.Url("css/shell.css")" />
+    <link rel="stylesheet" href="@AssetVersion.Url("css/app.css")" />
+    <link rel="stylesheet" href="@AssetVersion.Url("RemuxForge.Web.styles.css")" />
+    <script type="importmap">@((MarkupString)AssetVersion.ImportMap("js"))</script>
     <HeadOutlet />
 </head>
 

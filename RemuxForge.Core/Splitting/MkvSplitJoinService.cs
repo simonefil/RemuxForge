@@ -246,9 +246,11 @@ namespace RemuxForge.Core.Splitting
                 ProcessResult result = MkvSplitExternalTools.Instance.RunMkvmergeResult(args);
                 ThrowIfStopped(stopRequested);
 
-                // Come nel resto di Split un'uscita diversa da 0 è un errore: anche gli avvisi di append incompatibile (C26)
-                if (result.ExitCode != 0)
-                    throw new InvalidOperationException(AppText.F("split.join.mkvmergeFailed", result.ExitCode, MkvmergeMessages(result)));
+                // Come nel resto di Split l'uscita 1 sono avvisi con il file completo: lo verifica il controllo sul file unito
+                if (result.ExitCode == 1)
+                    MkvSplitExternalTools.LogMkvmergeWarnings(result);
+                else if (result.ExitCode != 0)
+                    throw new InvalidOperationException(AppText.F("split.join.mkvmergeFailed", result.ExitCode, MkvSplitExternalTools.MkvmergeMessages(result)));
 
                 this.ValidateOutputFile(plan, joined);
                 this.EnsurePartsUnchanged(plan);
@@ -333,7 +335,7 @@ namespace RemuxForge.Core.Splitting
         }
 
         /// <summary>
-        /// Controlla che il file prodotto abbia le tracce attese
+        /// Controlla che il file prodotto abbia le tracce e i fotogrammi attesi
         /// </summary>
         /// <param name="plan">Piano dell'unione</param>
         /// <param name="joined">File prodotto</param>
@@ -342,24 +344,12 @@ namespace RemuxForge.Core.Splitting
             MkvFileInfo info = MkvSplitExternalTools.Instance.GetFileInfo(joined);
             if (info == null || info.Tracks.Count != plan.Parts[0].Tracks.Count || info.ContainerDurationNs <= 0)
                 throw new InvalidOperationException(AppText.T("split.join.outputMismatch"));
-        }
-
-        /// <summary>
-        /// Righe di errore e avviso di mkvmerge, per un messaggio che dica quale parte e traccia
-        /// </summary>
-        /// <param name="result">Risultato del processo</param>
-        /// <returns>Messaggi concatenati</returns>
-        private static string MkvmergeMessages(ProcessResult result)
-        {
-            List<string> lines = new List<string>();
-            string all = (result.Stdout ?? "") + "\n" + (result.Stderr ?? "");
-            foreach (string raw in all.Split('\n'))
-            {
-                string line = raw.Trim();
-                if (line.StartsWith("Error:", StringComparison.Ordinal) || line.StartsWith("Warning:", StringComparison.Ordinal))
-                    lines.Add(line);
-            }
-            return lines.Count > 0 ? string.Join(" ", lines) : all.Trim();
+            // Gli avvisi di mkvmerge non fermano l'unione: il file unito deve però contenere ogni fotogramma delle parti
+            int expected = 0;
+            foreach (MkvSplitJoinPart part in plan.Parts)
+                expected += MkvSplitExternalTools.Instance.CountPackets(part.FilePath);
+            if (MkvSplitExternalTools.Instance.CountPackets(joined) != expected)
+                throw new InvalidOperationException(AppText.T("split.join.outputMismatch"));
         }
 
         /// <summary>

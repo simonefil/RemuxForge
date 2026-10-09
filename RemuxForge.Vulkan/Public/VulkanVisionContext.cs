@@ -91,19 +91,6 @@ namespace RemuxForge.Vulkan
         }
 
         /// <summary>
-        /// Exports the pipeline cache compatible with the current device
-        /// </summary>
-        /// <returns>The identifying header and opaque pipeline-cache payload</returns>
-        public byte[] GetPipelineCacheData()
-        {
-            lock (this._lifecycleLock)
-            {
-                this.ThrowIfDisposed();
-                return this._runtime.GetPipelineCacheData();
-            }
-        }
-
-        /// <summary>
         /// Disposes all created pipelines and the Vulkan runtime
         /// </summary>
         public void Dispose()

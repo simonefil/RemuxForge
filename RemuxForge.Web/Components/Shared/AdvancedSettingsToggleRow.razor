@@ -1,8 +1,5 @@
 <div class="form-row">
-    <div class="ui-switch">
-        <RadzenSwitch TValue="bool" Value="@Value" Change="@ValueChanged" Disabled="@Disabled" AriaLabel="@Label" />
-        <span>@Label</span>
-    </div>
+    <LabeledSwitchComponent Label="@Label" Value="@Value" ValueChanged="@ValueChanged" Disabled="@Disabled" />
 </div>
 
 @code {

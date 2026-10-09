@@ -124,8 +124,6 @@ namespace RemuxForge.Core.Media
             catch (Exception ex)
             {
                 result.ErrorCode = "exception";
-                result.ExceptionType = ex.GetType().FullName;
-                result.ExceptionMessage = ex.Message;
                 result.ExceptionDetails = ex.ToString();
                 result.ErrorMessage = ex.Message;
             }
@@ -157,37 +155,24 @@ namespace RemuxForge.Core.Media
             }
             catch (Exception ex)
             {
-                ConsoleHelper.Write(LogSection.General, LogLevel.Warning, "Errore lettura FrameRate_Mode MediaInfo: " + ex.Message);
+                ConsoleHelper.Write(LogSection.General, LogLevel.Warning, AppText.F("remux.media.frameRateModeReadFailed", ex.Message));
             }
 
             return result;
         }
 
         /// <summary>
-        /// Legge campi timing video principali tramite MediaInfo
+        /// Legge la durata video tramite MediaInfo
         /// </summary>
         /// <param name="filePath">Percorso file</param>
-        /// <param name="frameRateMode">Modalità frame rate</param>
-        /// <param name="frameRate">Frame rate nominale</param>
-        /// <param name="originalFrameRate">Frame rate originale</param>
-        /// <param name="frameCount">Numero frame</param>
         /// <param name="durationMs">Durata in millisecondi</param>
-        /// <param name="minFrameRate">Frame rate minimo</param>
-        /// <param name="maxFrameRate">Frame rate massimo</param>
-        /// <returns>True se almeno un campo utile è stato letto</returns>
-        public bool TryGetVideoTiming(string filePath, out string frameRateMode, out double frameRate, out double originalFrameRate, out long frameCount, out double durationMs, out double minFrameRate, out double maxFrameRate)
+        /// <returns>True se la durata è stata letta</returns>
+        public bool TryGetVideoDuration(string filePath, out double durationMs)
         {
             bool result = false;
             string output;
-            string[] parts;
 
-            frameRateMode = "";
-            frameRate = 0.0;
-            originalFrameRate = 0.0;
-            frameCount = 0;
             durationMs = 0.0;
-            minFrameRate = 0.0;
-            maxFrameRate = 0.0;
 
             if (!File.Exists(filePath))
             {
@@ -196,23 +181,13 @@ namespace RemuxForge.Core.Media
 
             try
             {
-                output = this.RunProcess(QUICK_QUERY_TIMEOUT_MS, "--Output=Video;%FrameRate_Mode%|%FrameRate%|%OriginalFrameRate%|%FrameCount%|%Duration%|%FrameRate_Minimum%|%FrameRate_Maximum%", filePath).Trim();
-                parts = output.Split('|');
-                if (parts.Length >= 7)
-                {
-                    frameRateMode = parts[0].Trim();
-                    _ = TryParseDouble(parts[1], out frameRate);
-                    _ = TryParseDouble(parts[2], out originalFrameRate);
-                    long.TryParse(parts[3].Trim(), out frameCount);
-                    _ = TryParseDouble(parts[4], out durationMs);
-                    _ = TryParseDouble(parts[5], out minFrameRate);
-                    _ = TryParseDouble(parts[6], out maxFrameRate);
-                    result = !string.IsNullOrEmpty(frameRateMode) || frameRate > 0.0 || frameCount > 0 || durationMs > 0.0;
-                }
+                // Il separatore isola la prima traccia video quando il file ne contiene più di una
+                output = this.RunProcess(QUICK_QUERY_TIMEOUT_MS, "--Output=Video;%Duration%|", filePath).Trim();
+                result = TryParseDouble(output.Split('|')[0], out durationMs) && durationMs > 0.0;
             }
             catch (Exception ex)
             {
-                ConsoleHelper.Write(LogSection.General, LogLevel.Warning, "Errore lettura timing MediaInfo: " + ex.Message);
+                ConsoleHelper.Write(LogSection.General, LogLevel.Warning, AppText.F("remux.media.timingReadFailed", ex.Message));
             }
 
             return result;
@@ -261,8 +236,6 @@ namespace RemuxForge.Core.Media
         public string Stderr { get; internal set; } = "";
         public string ErrorCode { get; internal set; } = "";
         public string ErrorMessage { get; internal set; } = "";
-        public string ExceptionType { get; internal set; } = "";
-        public string ExceptionMessage { get; internal set; } = "";
         public string ExceptionDetails { get; internal set; } = "";
         public bool Cancelled { get; internal set; }
         public bool TimedOut { get; internal set; }

@@ -1,151 +1,155 @@
-<div class="dialog-overlay visible">
-    <div class="dialog-box" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="audio-settings-dialog-title" style="min-width: 40ch;" @onclick:stopPropagation="true">
-        <div id="audio-settings-dialog-title" class="dialog-title">@AppText.T("web.audioSettings.title")</div>
-        <div class="dialog-body">
-            <div class="form-section">@AppText.T("web.audioSettings.flacSection")</div>
-            <div class="form-row">
-                <span class="form-label">@AppText.T("web.audioSettings.compression")</span>
-                <input class="form-input" style="width: 6ch;" aria-label="@(AppText.T("web.audioSettings.flacSection") + " - " + AppText.T("web.audioSettings.compression"))" @bind="_flacCompression" />
-            </div>
-            <div class="form-row" style="color: var(--rz-text-disabled-color);">
-                @AppText.T("web.common.range"): @AppSettingsModel.FLAC_COMPRESSION_MIN-@AppSettingsModel.FLAC_COMPRESSION_MAX
-            </div>
+@inherits AppDialogContentBase
 
-            <div class="form-section">@AppText.T("web.audioSettings.opusSection")</div>
-            <div class="form-row">
-                <span class="form-label">@AppText.T("web.audioSettings.mono")</span>
-                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.opusSection") + " - " + AppText.T("web.audioSettings.mono"))" @bind="_opusMono" />
-            </div>
-            <div class="form-row">
-                <span class="form-label">@AppText.T("web.audioSettings.stereo")</span>
-                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.opusSection") + " - " + AppText.T("web.audioSettings.stereo"))" @bind="_opusStereo" />
-            </div>
-            <div class="form-row">
-                <span class="form-label">@AppText.T("web.audioSettings.surround51")</span>
-                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.opusSection") + " - " + AppText.T("web.audioSettings.surround51"))" @bind="_opusS51" />
-            </div>
-            <div class="form-row">
-                <span class="form-label">@AppText.T("web.audioSettings.surround71")</span>
-                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.opusSection") + " - " + AppText.T("web.audioSettings.surround71"))" @bind="_opusS71" />
-            </div>
-            <div class="form-row" style="color: var(--rz-text-disabled-color);">
-                @AppText.T("web.common.range"): @AppSettingsModel.OPUS_BITRATE_MIN-@AppSettingsModel.OPUS_BITRATE_MAX kbps
-            </div>
-
-            <div class="form-section">@AppText.T("web.audioSettings.aacSection")</div>
-            <div class="form-row">
-                <span class="form-label">@AppText.T("web.audioSettings.mono")</span>
-                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.aacSection") + " - " + AppText.T("web.audioSettings.mono"))" @bind="_aacMono" />
-            </div>
-            <div class="form-row">
-                <span class="form-label">@AppText.T("web.audioSettings.stereo")</span>
-                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.aacSection") + " - " + AppText.T("web.audioSettings.stereo"))" @bind="_aacStereo" />
-            </div>
-            <div class="form-row">
-                <span class="form-label">@AppText.T("web.audioSettings.surround51")</span>
-                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.aacSection") + " - " + AppText.T("web.audioSettings.surround51"))" @bind="_aacS51" />
-            </div>
-            <div class="form-row">
-                <span class="form-label">@AppText.T("web.audioSettings.surround71")</span>
-                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.aacSection") + " - " + AppText.T("web.audioSettings.surround71"))" @bind="_aacS71" />
-            </div>
-            <div class="form-row" style="color: var(--rz-text-disabled-color);">
-                @AppText.T("web.common.range"): @AppSettingsModel.AAC_BITRATE_MIN-@AppSettingsModel.AAC_BITRATE_MAX kbps
-            </div>
-
-            <div class="form-section">@AppText.T("web.audioSettings.ac3Section")</div>
-            <div class="form-row">
-                <span class="form-label">@AppText.T("web.audioSettings.mono")</span>
-                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.ac3Section") + " - " + AppText.T("web.audioSettings.mono"))" @bind="_ac3Mono" />
-            </div>
-            <div class="form-row">
-                <span class="form-label">@AppText.T("web.audioSettings.stereo")</span>
-                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.ac3Section") + " - " + AppText.T("web.audioSettings.stereo"))" @bind="_ac3Stereo" />
-            </div>
-            <div class="form-row">
-                <span class="form-label">@AppText.T("web.audioSettings.surround51")</span>
-                <input class="form-input" style="width: 8ch;" aria-label="@(AppText.T("web.audioSettings.ac3Section") + " - " + AppText.T("web.audioSettings.surround51"))" @bind="_ac3S51" />
-            </div>
-            <div class="form-row" style="color: var(--rz-text-disabled-color);">
-                @AppText.T("web.audioSettings.validBitrates"): @System.String.Join(", ", AppSettingsModel.AC3_VALID_BITRATES_KBPS) kbps
-            </div>
+<div class="rf-dialog" @ref="DialogContent">
+    <div class="rf-dialog-body">
+        <div class="form-section">@AppText.T("web.audioSettings.flacSection")</div>
+        <div class="form-row">
+            <span class="form-label">@AppText.T("web.audioSettings.compression")</span>
+            <RadzenNumeric TValue="int" AriaLabel="@(AppText.T("web.audioSettings.flacSection") + " - " + AppText.T("web.audioSettings.compression"))" Min="@AppSettingsModel.FLAC_COMPRESSION_MIN" Max="@AppSettingsModel.FLAC_COMPRESSION_MAX" @bind-Value="_flacCompression" />
         </div>
+        <div class="form-row" style="color: var(--rz-text-disabled-color);">
+            @AppText.T("web.common.range"): @AppSettingsModel.FLAC_COMPRESSION_MIN-@AppSettingsModel.FLAC_COMPRESSION_MAX
+        </div>
+
+        <div class="form-section">@AppText.T("web.audioSettings.opusSection")</div>
+        <div class="form-row">
+            <span class="form-label">@AppText.T("web.audioSettings.mono")</span>
+            <RadzenNumeric TValue="int" AriaLabel="@(AppText.T("web.audioSettings.opusSection") + " - " + AppText.T("web.audioSettings.mono"))" Min="@AppSettingsModel.OPUS_BITRATE_MIN" Max="@AppSettingsModel.OPUS_BITRATE_MAX" @bind-Value="_opusMono" />
+        </div>
+        <div class="form-row">
+            <span class="form-label">@AppText.T("web.audioSettings.stereo")</span>
+            <RadzenNumeric TValue="int" AriaLabel="@(AppText.T("web.audioSettings.opusSection") + " - " + AppText.T("web.audioSettings.stereo"))" Min="@AppSettingsModel.OPUS_BITRATE_MIN" Max="@AppSettingsModel.OPUS_BITRATE_MAX" @bind-Value="_opusStereo" />
+        </div>
+        <div class="form-row">
+            <span class="form-label">@AppText.T("web.audioSettings.surround51")</span>
+            <RadzenNumeric TValue="int" AriaLabel="@(AppText.T("web.audioSettings.opusSection") + " - " + AppText.T("web.audioSettings.surround51"))" Min="@AppSettingsModel.OPUS_BITRATE_MIN" Max="@AppSettingsModel.OPUS_BITRATE_MAX" @bind-Value="_opusS51" />
+        </div>
+        <div class="form-row">
+            <span class="form-label">@AppText.T("web.audioSettings.surround71")</span>
+            <RadzenNumeric TValue="int" AriaLabel="@(AppText.T("web.audioSettings.opusSection") + " - " + AppText.T("web.audioSettings.surround71"))" Min="@AppSettingsModel.OPUS_BITRATE_MIN" Max="@AppSettingsModel.OPUS_BITRATE_MAX" @bind-Value="_opusS71" />
+        </div>
+        <div class="form-row" style="color: var(--rz-text-disabled-color);">
+            @AppText.T("web.common.range"): @AppSettingsModel.OPUS_BITRATE_MIN-@AppSettingsModel.OPUS_BITRATE_MAX kbps
+        </div>
+
+        <div class="form-section">@AppText.T("web.audioSettings.aacSection")</div>
+        <div class="form-row">
+            <span class="form-label">@AppText.T("web.audioSettings.mono")</span>
+            <RadzenNumeric TValue="int" AriaLabel="@(AppText.T("web.audioSettings.aacSection") + " - " + AppText.T("web.audioSettings.mono"))" Min="@AppSettingsModel.AAC_BITRATE_MIN" Max="@AppSettingsModel.AAC_BITRATE_MAX" @bind-Value="_aacMono" />
+        </div>
+        <div class="form-row">
+            <span class="form-label">@AppText.T("web.audioSettings.stereo")</span>
+            <RadzenNumeric TValue="int" AriaLabel="@(AppText.T("web.audioSettings.aacSection") + " - " + AppText.T("web.audioSettings.stereo"))" Min="@AppSettingsModel.AAC_BITRATE_MIN" Max="@AppSettingsModel.AAC_BITRATE_MAX" @bind-Value="_aacStereo" />
+        </div>
+        <div class="form-row">
+            <span class="form-label">@AppText.T("web.audioSettings.surround51")</span>
+            <RadzenNumeric TValue="int" AriaLabel="@(AppText.T("web.audioSettings.aacSection") + " - " + AppText.T("web.audioSettings.surround51"))" Min="@AppSettingsModel.AAC_BITRATE_MIN" Max="@AppSettingsModel.AAC_BITRATE_MAX" @bind-Value="_aacS51" />
+        </div>
+        <div class="form-row">
+            <span class="form-label">@AppText.T("web.audioSettings.surround71")</span>
+            <RadzenNumeric TValue="int" AriaLabel="@(AppText.T("web.audioSettings.aacSection") + " - " + AppText.T("web.audioSettings.surround71"))" Min="@AppSettingsModel.AAC_BITRATE_MIN" Max="@AppSettingsModel.AAC_BITRATE_MAX" @bind-Value="_aacS71" />
+        </div>
+        <div class="form-row" style="color: var(--rz-text-disabled-color);">
+            @AppText.T("web.common.range"): @AppSettingsModel.AAC_BITRATE_MIN-@AppSettingsModel.AAC_BITRATE_MAX kbps
+        </div>
+
+        <div class="form-section">@AppText.T("web.audioSettings.ac3Section")</div>
+        <div class="form-row">
+            <span class="form-label">@AppText.T("web.audioSettings.mono")</span>
+            <RadzenNumeric TValue="int" AriaLabel="@(AppText.T("web.audioSettings.ac3Section") + " - " + AppText.T("web.audioSettings.mono"))" Min="@AC3_MIN" Max="@AC3_MAX" @bind-Value="_ac3Mono" />
+        </div>
+        <div class="form-row">
+            <span class="form-label">@AppText.T("web.audioSettings.stereo")</span>
+            <RadzenNumeric TValue="int" AriaLabel="@(AppText.T("web.audioSettings.ac3Section") + " - " + AppText.T("web.audioSettings.stereo"))" Min="@AC3_MIN" Max="@AC3_MAX" @bind-Value="_ac3Stereo" />
+        </div>
+        <div class="form-row">
+            <span class="form-label">@AppText.T("web.audioSettings.surround51")</span>
+            <RadzenNumeric TValue="int" AriaLabel="@(AppText.T("web.audioSettings.ac3Section") + " - " + AppText.T("web.audioSettings.surround51"))" Min="@AC3_MIN" Max="@AC3_MAX" @bind-Value="_ac3S51" />
+        </div>
+        <div class="form-row" style="color: var(--rz-text-disabled-color);">
+            @AppText.T("web.audioSettings.validBitrates"): @System.String.Join(", ", AppSettingsModel.AC3_VALID_BITRATES_KBPS) kbps
+        </div>
+    </div>
+    <div class="rf-dialog-footer">
         @if (!string.IsNullOrEmpty(_validationError))
         {
-            <div style="padding: 0.5em 1em; color: var(--rz-danger); white-space: pre-line;">@_validationError</div>
+            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="rf-dialog-message">@_validationError</RadzenAlert>
         }
-        <div class="dialog-footer">
-            <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@Save" />
-            <RadzenButton class="dialog-close-button" Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@OnClose" />
-        </div>
+        <RadzenButton Text="@AppText.T("web.common.ok")" Icon="check" Click="@Save" />
+        <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => CloseDialog())" />
     </div>
 </div>
 
 @code {
     /// <summary>
-    /// Evento chiusura dialog
+    /// Bitrate AC-3 minimo ammesso
     /// </summary>
-    [Parameter] public EventCallback OnClose { get; set; }
+    private static readonly int AC3_MIN = AppSettingsModel.AC3_VALID_BITRATES_KBPS[0];
 
     /// <summary>
-    /// Livello compressione FLAC (stringa per binding input)
+    /// Bitrate AC-3 massimo ammesso
     /// </summary>
-    private string _flacCompression = "";
+    private static readonly int AC3_MAX = AppSettingsModel.AC3_VALID_BITRATES_KBPS[AppSettingsModel.AC3_VALID_BITRATES_KBPS.Length - 1];
 
     /// <summary>
-    /// Bitrate Opus mono (stringa per binding input)
+    /// Livello compressione FLAC
     /// </summary>
-    private string _opusMono = "";
+    private int _flacCompression;
 
     /// <summary>
-    /// Bitrate Opus stereo (stringa per binding input)
+    /// Bitrate Opus mono
     /// </summary>
-    private string _opusStereo = "";
+    private int _opusMono;
 
     /// <summary>
-    /// Bitrate Opus surround 5.1 (stringa per binding input)
+    /// Bitrate Opus stereo
     /// </summary>
-    private string _opusS51 = "";
+    private int _opusStereo;
 
     /// <summary>
-    /// Bitrate Opus surround 7.1 (stringa per binding input)
+    /// Bitrate Opus surround 5.1
     /// </summary>
-    private string _opusS71 = "";
+    private int _opusS51;
+
+    /// <summary>
+    /// Bitrate Opus surround 7.1
+    /// </summary>
+    private int _opusS71;
 
     /// <summary>
     /// Bitrate AAC mono
     /// </summary>
-    private string _aacMono = "";
+    private int _aacMono;
 
     /// <summary>
     /// Bitrate AAC stereo
     /// </summary>
-    private string _aacStereo = "";
+    private int _aacStereo;
 
     /// <summary>
     /// Bitrate AAC surround 5.1
     /// </summary>
-    private string _aacS51 = "";
+    private int _aacS51;
 
     /// <summary>
     /// Bitrate AAC surround 7.1
     /// </summary>
-    private string _aacS71 = "";
+    private int _aacS71;
 
     /// <summary>
     /// Bitrate AC-3 mono
     /// </summary>
-    private string _ac3Mono = "";
+    private int _ac3Mono;
 
     /// <summary>
     /// Bitrate AC-3 stereo
     /// </summary>
-    private string _ac3Stereo = "";
+    private int _ac3Stereo;
 
     /// <summary>
     /// Bitrate AC-3 surround 5.1
     /// </summary>
-    private string _ac3S51 = "";
+    private int _ac3S51;
 
     /// <summary>
     /// Messaggio errore validazione
@@ -157,18 +161,18 @@
     /// </summary>
     protected override void OnInitialized()
     {
-        this._flacCompression = AppSettingsService.Instance.Settings.Flac.CompressionLevel.ToString();
-        this._opusMono = AppSettingsService.Instance.Settings.Opus.Bitrate.Mono.ToString();
-        this._opusStereo = AppSettingsService.Instance.Settings.Opus.Bitrate.Stereo.ToString();
-        this._opusS51 = AppSettingsService.Instance.Settings.Opus.Bitrate.Surround51.ToString();
-        this._opusS71 = AppSettingsService.Instance.Settings.Opus.Bitrate.Surround71.ToString();
-        this._aacMono = AppSettingsService.Instance.Settings.Aac.Bitrate.Mono.ToString();
-        this._aacStereo = AppSettingsService.Instance.Settings.Aac.Bitrate.Stereo.ToString();
-        this._aacS51 = AppSettingsService.Instance.Settings.Aac.Bitrate.Surround51.ToString();
-        this._aacS71 = AppSettingsService.Instance.Settings.Aac.Bitrate.Surround71.ToString();
-        this._ac3Mono = AppSettingsService.Instance.Settings.Ac3.Bitrate.Mono.ToString();
-        this._ac3Stereo = AppSettingsService.Instance.Settings.Ac3.Bitrate.Stereo.ToString();
-        this._ac3S51 = AppSettingsService.Instance.Settings.Ac3.Bitrate.Surround51.ToString();
+        this._flacCompression = AppSettingsService.Instance.Settings.Flac.CompressionLevel;
+        this._opusMono = AppSettingsService.Instance.Settings.Opus.Bitrate.Mono;
+        this._opusStereo = AppSettingsService.Instance.Settings.Opus.Bitrate.Stereo;
+        this._opusS51 = AppSettingsService.Instance.Settings.Opus.Bitrate.Surround51;
+        this._opusS71 = AppSettingsService.Instance.Settings.Opus.Bitrate.Surround71;
+        this._aacMono = AppSettingsService.Instance.Settings.Aac.Bitrate.Mono;
+        this._aacStereo = AppSettingsService.Instance.Settings.Aac.Bitrate.Stereo;
+        this._aacS51 = AppSettingsService.Instance.Settings.Aac.Bitrate.Surround51;
+        this._aacS71 = AppSettingsService.Instance.Settings.Aac.Bitrate.Surround71;
+        this._ac3Mono = AppSettingsService.Instance.Settings.Ac3.Bitrate.Mono;
+        this._ac3Stereo = AppSettingsService.Instance.Settings.Ac3.Bitrate.Stereo;
+        this._ac3S51 = AppSettingsService.Instance.Settings.Ac3.Bitrate.Surround51;
     }
 
     /// <summary>
@@ -176,45 +180,21 @@
     /// </summary>
     private void Save()
     {
-        int val;
         string errorMessage;
 
-        // Parsing valori nel model
-        if (int.TryParse(this._flacCompression, out val))
-            AppSettingsService.Instance.Settings.Flac.CompressionLevel = val;
-
-        if (int.TryParse(this._opusMono, out val))
-            AppSettingsService.Instance.Settings.Opus.Bitrate.Mono = val;
-
-        if (int.TryParse(this._opusStereo, out val))
-            AppSettingsService.Instance.Settings.Opus.Bitrate.Stereo = val;
-
-        if (int.TryParse(this._opusS51, out val))
-            AppSettingsService.Instance.Settings.Opus.Bitrate.Surround51 = val;
-
-        if (int.TryParse(this._opusS71, out val))
-            AppSettingsService.Instance.Settings.Opus.Bitrate.Surround71 = val;
-
-        if (int.TryParse(this._aacMono, out val))
-            AppSettingsService.Instance.Settings.Aac.Bitrate.Mono = val;
-
-        if (int.TryParse(this._aacStereo, out val))
-            AppSettingsService.Instance.Settings.Aac.Bitrate.Stereo = val;
-
-        if (int.TryParse(this._aacS51, out val))
-            AppSettingsService.Instance.Settings.Aac.Bitrate.Surround51 = val;
-
-        if (int.TryParse(this._aacS71, out val))
-            AppSettingsService.Instance.Settings.Aac.Bitrate.Surround71 = val;
-
-        if (int.TryParse(this._ac3Mono, out val))
-            AppSettingsService.Instance.Settings.Ac3.Bitrate.Mono = val;
-
-        if (int.TryParse(this._ac3Stereo, out val))
-            AppSettingsService.Instance.Settings.Ac3.Bitrate.Stereo = val;
-
-        if (int.TryParse(this._ac3S51, out val))
-            AppSettingsService.Instance.Settings.Ac3.Bitrate.Surround51 = val;
+        // Valori nel model
+        AppSettingsService.Instance.Settings.Flac.CompressionLevel = this._flacCompression;
+        AppSettingsService.Instance.Settings.Opus.Bitrate.Mono = this._opusMono;
+        AppSettingsService.Instance.Settings.Opus.Bitrate.Stereo = this._opusStereo;
+        AppSettingsService.Instance.Settings.Opus.Bitrate.Surround51 = this._opusS51;
+        AppSettingsService.Instance.Settings.Opus.Bitrate.Surround71 = this._opusS71;
+        AppSettingsService.Instance.Settings.Aac.Bitrate.Mono = this._aacMono;
+        AppSettingsService.Instance.Settings.Aac.Bitrate.Stereo = this._aacStereo;
+        AppSettingsService.Instance.Settings.Aac.Bitrate.Surround51 = this._aacS51;
+        AppSettingsService.Instance.Settings.Aac.Bitrate.Surround71 = this._aacS71;
+        AppSettingsService.Instance.Settings.Ac3.Bitrate.Mono = this._ac3Mono;
+        AppSettingsService.Instance.Settings.Ac3.Bitrate.Stereo = this._ac3Stereo;
+        AppSettingsService.Instance.Settings.Ac3.Bitrate.Surround51 = this._ac3S51;
 
         // Valida
         if (!AppSettingsService.Instance.ValidateAudio(out errorMessage))
@@ -225,6 +205,6 @@
 
         this._validationError = "";
         AppSettingsService.Instance.Save();
-        this.OnClose.InvokeAsync();
+        this.CloseDialog();
     }
 }

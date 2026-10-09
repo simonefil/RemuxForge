@@ -1,0 +1,27 @@
+/* Colori sempre dal tema Radzen attivo: primary, secondary e info. */
+.ai-thinking { display:flex; align-items:center; gap:2rem; padding:2rem 1rem; min-width:0; }
+.ai-thinking-core { position:relative; width:7rem; height:7rem; flex:none; }
+.ai-thinking-aurora { position:absolute; inset:0; border-radius:50%; background:conic-gradient(from 0deg, var(--rz-primary), var(--rz-secondary), var(--rz-info), var(--rz-primary)); filter:blur(14px); opacity:0.75; animation:ai-spin 3s linear infinite, ai-breathe 2.4s ease-in-out infinite; }
+.ai-thinking-ring { position:absolute; inset:6px; border-radius:50%; background:conic-gradient(from 0deg, transparent 0 60%, var(--rz-secondary) 85%, var(--rz-on-primary) 100%); -webkit-mask:radial-gradient(circle, transparent 60%, #000 61%); mask:radial-gradient(circle, transparent 60%, #000 61%); animation:ai-spin 1.3s linear infinite; }
+.ai-thinking-ring-dashed { position:absolute; inset:18px; border-radius:50%; border:1.5px dashed color-mix(in srgb, var(--rz-info) 70%, transparent); animation:ai-spin 5s linear infinite reverse; }
+.ai-thinking-orbit { position:absolute; inset:0; animation:ai-spin linear infinite; }
+.ai-thinking-orbit i { position:absolute; left:50%; width:6px; height:6px; margin-left:-3px; border-radius:50%; background:var(--rz-on-primary); }
+.ai-thinking-orbit-1 { animation-duration:2.2s; }
+.ai-thinking-orbit-1 i { top:-2px; box-shadow:0 0 8px 2px var(--rz-secondary); }
+.ai-thinking-orbit-2 { animation-duration:3.4s; animation-direction:reverse; }
+.ai-thinking-orbit-2 i { top:12px; box-shadow:0 0 8px 2px var(--rz-info); }
+.ai-thinking-orbit-3 { animation-duration:4.6s; }
+.ai-thinking-orbit-3 i { top:22px; box-shadow:0 0 8px 2px var(--rz-primary); }
+.ai-thinking-heart { position:absolute; inset:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--rz-dialog-background-color); box-shadow:inset 0 0 12px color-mix(in srgb, var(--rz-primary) 45%, transparent); }
+::deep .ai-thinking-heart .rzi { font-size:1.9rem; font-variation-settings:'FILL' 1; background:linear-gradient(135deg, var(--rz-secondary), var(--rz-primary)); -webkit-background-clip:text; background-clip:text; color:transparent; animation:ai-breathe 1.4s ease-in-out infinite; }
+.ai-thinking-text { min-width:0; }
+.ai-thinking-phrase { font-style:italic; font-size:1.25rem; line-height:1.35; overflow-wrap:anywhere; background:linear-gradient(90deg, var(--rz-text-color) 0%, var(--rz-text-color) 35%, var(--rz-secondary) 50%, var(--rz-text-color) 65%, var(--rz-text-color) 100%); background-size:250% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:ai-shimmer 2.8s linear infinite, ai-enter 0.5s ease; }
+.ai-thinking-detail { margin-top:0.5rem; font-size:0.875rem; color:var(--rz-text-secondary-color); }
+@keyframes ai-spin { to { transform:rotate(360deg); } }
+@keyframes ai-breathe { 0%, 100% { transform:scale(1); } 50% { transform:scale(1.12); } }
+@keyframes ai-shimmer { from { background-position:100% 0; } to { background-position:-150% 0; } }
+@keyframes ai-enter { from { opacity:0; transform:translateY(8px); filter:blur(4px); } to { opacity:1; transform:none; filter:none; } }
+@media (prefers-reduced-motion: reduce) {
+    .ai-thinking-aurora, .ai-thinking-ring, .ai-thinking-ring-dashed, .ai-thinking-orbit, .ai-thinking-phrase, ::deep .ai-thinking-heart .rzi { animation-duration:6s; }
+    .ai-thinking-phrase { animation:none; color:var(--rz-text-color); background:none; }
+}

@@ -65,8 +65,6 @@ namespace RemuxForge.Core.Metadata
         {
             MkvMetadataExecutionResult result = new MkvMetadataExecutionResult();
             string targetFile;
-
-            result.InputFile = record != null ? record.InputFile : "";
             if (record == null)
             {
                 result.ExitCode = 1;
@@ -84,7 +82,6 @@ namespace RemuxForge.Core.Metadata
             if (record.Changes == null || record.Changes.Count == 0 || record.ExecutionMode == MkvMetadataExecutionMode.NoOp)
             {
                 result.OutputFile = record.InputFile;
-                result.CommandText = "NoOp";
                 return result;
             }
 
@@ -102,17 +99,17 @@ namespace RemuxForge.Core.Metadata
             {
                 if (record.ExecutionMode == MkvMetadataExecutionMode.PropEdit)
                 {
-                    result.CommandText = this.ApplyPropEdit(record.InputFile, record.Changes, null, null, null);
+                    this.ApplyPropEdit(record.InputFile, record.Changes, null, null, null);
                 }
                 else if (record.ExecutionMode == MkvMetadataExecutionMode.CopyPropEdit)
                 {
                     EnsureParentFolder(targetFile);
                     File.Copy(record.InputFile, targetFile, true);
-                    result.CommandText = this.ApplyPropEdit(targetFile, record.Changes, null, null, null);
+                    this.ApplyPropEdit(targetFile, record.Changes, null, null, null);
                 }
                 else if (record.ExecutionMode == MkvMetadataExecutionMode.MkvMerge)
                 {
-                    result.CommandText = this.ExecuteRemux(record, options, targetFile);
+                    this.ExecuteRemux(record, options, targetFile);
                 }
             }
             catch (Exception ex)
