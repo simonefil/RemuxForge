@@ -384,3 +384,6 @@ MigrationBackup/
 # Local OS and IDE files
 .DS_Store
 .idea/
+
+# Claude Code
+.claude/
