@@ -308,32 +308,6 @@
     flex: 1 1 auto;
 }
 
-/* Errori e avvisi della validazione sopra la griglia delle operazioni */
-.edit-map-issues {
-    flex: 0 0 auto;
-    max-height: 9rem;
-    margin: calc(var(--rz-gap) * 0.35) 0 0;
-    overflow: auto;
-    font-size: var(--rz-text-caption-font-size);
-}
-
-.edit-map-issue-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: calc(var(--rz-gap) * 0.5);
-}
-
-.edit-map-issue-row + .edit-map-issue-row {
-    margin-top: calc(var(--rz-gap) * 0.4);
-}
-
-.edit-map-issue-row > span {
-    flex: 1 1 12rem;
-    min-width: 0;
-    overflow-wrap: anywhere;
-}
-
 .edit-map-row-number {
     display: inline-flex;
     align-items: center;

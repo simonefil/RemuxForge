@@ -637,15 +637,3 @@ class EditMapTimeline extends TimelineCanvas {
 export function createTimeline(host, canvas, dotNetReference, model) {
     return new EditMapTimeline(host, canvas, dotNetReference, model);
 }
-
-// Porta il focus sul campo del pannello operazione indicato, preferendo quello della dialog di precisione quando è aperta
-export function focusEditorField(root, field, precision) {
-    const selector = '[data-edit-field="' + CSS.escape(field) + '"]';
-    const scope = precision ? root?.querySelector('.edit-map-precision-box') : null;
-    const target = scope?.querySelector(selector) || (precision ? null : root?.querySelector(selector));
-    if (!target) return false;
-    target.scrollIntoView({ block: 'nearest' });
-    target.focus({ preventScroll: true });
-    target.select?.();
-    return true;
-}

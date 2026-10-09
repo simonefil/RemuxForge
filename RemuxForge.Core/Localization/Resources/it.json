@@ -3091,8 +3091,6 @@
   "web.remux.skip.noEpisodeId": "Episodio non riconosciuto nel nome",
   "web.remux.skip.noMatchingTracks": "Nessuna traccia corrispondente",
   "web.remux.destinationOverwrite": "Con la sovrascrittura i risultati prendono il posto dei file Source.",
-  "web.editMap.issueOperation": "Operazione {0} ({1}): {2}",
-  "web.editMap.editIssue": "Modifica",
   "web.editMap.rowHasErrors": "Operazione con errori",
   "web.editMap.rowHasWarnings": "Operazione con avvisi",
   "web.editMap.noOperations": "La EditMap non contiene operazioni. Aggiungi un Cut o un Insert dalla timeline o dai comandi qui sopra.",

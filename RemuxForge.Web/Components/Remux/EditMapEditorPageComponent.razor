@@ -75,10 +75,6 @@
                                     <RadzenButton Icon="add_to_queue" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.addInsertHelp")" aria-label="@AppText.T("web.editMap.addInsertHelp")" Disabled="@(!CanCreateOperation())" Click="@(() => AddOperationAsync(EditOperation.INSERT_SILENCE))" />
                                     <RadzenButton Icon="delete" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" title="@AppText.T("web.editMap.deleteHelp")" aria-label="@AppText.T("web.editMap.deleteHelp")" Disabled="@(_selectedOperation == null)" Click="DeleteSelectedOperationAsync" />
                                 </div>
-                                @if (!_precisionEditorOpen)
-                                {
-                                    @ValidationIssues
-                                }
                                 <RadzenDataGrid @ref="_operationGrid" Data="@_workingMap.Operations" EmptyText="@AppText.T("web.editMap.noOperations")" TItem="EditOperation" AllowSorting="false" AllowFiltering="false" AllowColumnResize="true" AllowRowSelectOnRowClick="true" GridLines="DataGridGridLines.Both" Density="Density.Compact" RowClick="SelectOperationRowAsync" RowRender="RenderOperationRow" class="edit-map-operation-grid">
                                     <Columns>@OperationColumns</Columns>
                                 </RadzenDataGrid>
@@ -135,7 +131,6 @@
                                                     <RadzenButton Text="@AppText.T("web.editMap.addInsert")" Icon="add_to_queue" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@AppText.T("web.editMap.addInsertHelp")" aria-label="@AppText.T("web.editMap.addInsertHelp")" Disabled="@(!CanCreateOperation())" Click="@(() => AddOperationAsync(EditOperation.INSERT_SILENCE))" />
                                                     <RadzenButton Text="@AppText.T("web.common.delete")" Icon="delete" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Danger" title="@AppText.T("web.editMap.deleteHelp")" aria-label="@AppText.T("web.editMap.deleteHelp")" Disabled="@(_selectedOperation == null)" Click="DeleteSelectedOperationAsync" />
                                                 </div>
-                                                @ValidationIssues
                                                 <RadzenDataGrid @ref="_precisionOperationGrid" Data="@_workingMap.Operations" EmptyText="@AppText.T("web.editMap.noOperations")" TItem="EditOperation" AllowSorting="false" AllowFiltering="false" AllowColumnResize="true" AllowRowSelectOnRowClick="true" GridLines="DataGridGridLines.Both" Density="Density.Compact" RowClick="SelectOperationRowAsync" RowRender="RenderOperationRow" class="edit-map-operation-grid">
                                                     <Columns>@OperationColumns</Columns>
                                                 </RadzenDataGrid>
@@ -147,7 +142,7 @@
                                 @if (_precisionEditorOpen)
                                 {
                                     <div class="edit-map-precision-footer">
-                                        <span class="edit-map-validation-summary">@GetFooterSummary()</span>
+                                        <span class="edit-map-validation-summary" title="@GetMapIssues()">@GetFooterSummary()</span>
                                         @StatusMessage
                                         <span class="edit-map-footer-spacer"></span>
                                         <RadzenButton Text="@AppText.T("web.common.close")" Icon="close_fullscreen" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="ClosePrecisionEditorAsync" />
@@ -168,7 +163,7 @@
     </main>
 
     <footer class="edit-map-page-footer">
-        <span class="edit-map-validation-summary">@GetFooterSummary()</span>
+        <span class="edit-map-validation-summary" title="@GetMapIssues()">@GetFooterSummary()</span>
         @if (!_precisionEditorOpen)
         {
             @StatusMessage
@@ -293,7 +288,6 @@
     private string _operationErrorField = "";
     private string _operationError = "";
     private string _statusMessage = "";
-    private string _focusOperationField;
 
     /// <summary>
     /// Colonne condivise dalle due griglie delle operazioni, con l'icona sulle righe coinvolte in errori o avvisi
@@ -304,17 +298,19 @@
             <Template Context="operation">
                 @{
                     int index = _workingMap.Operations.IndexOf(operation);
+                    string errors = GetOperationIssues(index, true);
+                    string warnings = GetOperationIssues(index, false);
                 }
                 <span class="edit-map-row-number">
                     @((index + 1).ToString())
-                    @if (OperationHasIssue(index, true))
+                    @if (errors.Length > 0)
                     {
-                        <RadzenIcon Icon="error" IconStyle="IconStyle.Danger" class="edit-map-row-issue" aria-hidden="true" />
+                        <RadzenIcon Icon="error" IconStyle="IconStyle.Danger" class="edit-map-row-issue" title="@(warnings.Length > 0 ? errors + "\n" + warnings : errors)" aria-hidden="true" />
                         <span class="edit-map-sr-only">@AppText.T("web.editMap.rowHasErrors")</span>
                     }
-                    else if (OperationHasIssue(index, false))
+                    else if (warnings.Length > 0)
                     {
-                        <RadzenIcon Icon="warning" IconStyle="IconStyle.Warning" class="edit-map-row-issue" aria-hidden="true" />
+                        <RadzenIcon Icon="warning" IconStyle="IconStyle.Warning" class="edit-map-row-issue" title="@warnings" aria-hidden="true" />
                         <span class="edit-map-sr-only">@AppText.T("web.editMap.rowHasWarnings")</span>
                     }
                 </span>
@@ -324,48 +320,6 @@
         <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.source")" Width="6.25rem"><Template Context="operation">@FormatTimestamp(operation.SourceTimestampMs)</Template></RadzenDataGridColumn>
         <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.language")" Width="6.25rem"><Template Context="operation">@FormatTimestamp(operation.LangTimestampMs)</Template></RadzenDataGridColumn>
         <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.detail.durationLabel")" Width="5.25rem"><Template Context="operation">@FormatDuration(operation.DurationMs)</Template></RadzenDataGridColumn>
-    };
-
-    /// <summary>
-    /// Riquadri sopra la griglia con errori e avvisi della validazione, ciascuno con il comando per correggerlo
-    /// </summary>
-    private RenderFragment ValidationIssues => __builder =>
-    {
-        if (_projection != null && _projection.Validation.Errors.Count > 0)
-        {
-            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="edit-map-issues">
-                @foreach (EditMapValidationIssue issue in _projection.Validation.Errors)
-                {
-                    @IssueRow(issue)
-                }
-            </RadzenAlert>
-        }
-        if (_projection != null && _projection.Validation.Warnings.Count > 0)
-        {
-            <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="edit-map-issues">
-                @foreach (EditMapValidationIssue issue in _projection.Validation.Warnings)
-                {
-                    @IssueRow(issue)
-                }
-            </RadzenAlert>
-        }
-    };
-
-    /// <summary>
-    /// Riga di una segnalazione: testo e, quando riguarda un'operazione, il comando che la seleziona
-    /// </summary>
-    /// <param name="issue">Segnalazione da descrivere</param>
-    private RenderFragment IssueRow(EditMapValidationIssue issue) => __builder =>
-    {
-        string text = DescribeIssue(issue);
-        <div class="edit-map-issue-row">
-            <span>@text</span>
-            @if (issue.OperationIndex >= 0 && issue.OperationIndex < _workingMap.Operations.Count)
-            {
-                <RadzenButton Text="@AppText.T("web.editMap.editIssue")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.Small"
-                              aria-label="@(AppText.T("web.editMap.editIssue") + ": " + text)" Click="@(() => GoToIssueAsync(issue))" />
-            }
-        </div>
     };
 
     /// <summary>
@@ -417,7 +371,7 @@
         bool invalid = visible && string.Equals(_operationErrorField, field, StringComparison.Ordinal) && !string.IsNullOrEmpty(_operationError);
         <label>
             <span>@AppText.T(labelKey)</span>
-            <RadzenTextBox class="edit-map-inspector-input" data-edit-field="@field" aria-label="@AppText.T(labelKey)" aria-invalid="@(invalid ? "true" : null)" inputmode="@inputMode" Value="@value" @oninput="onInput" @onblur="CommitSelectedOperationAsync" @onkeydown="HandleOperationFieldKeyAsync" />
+            <RadzenTextBox class="edit-map-inspector-input" aria-label="@AppText.T(labelKey)" aria-invalid="@(invalid ? "true" : null)" inputmode="@inputMode" Value="@value" @oninput="onInput" @onblur="CommitSelectedOperationAsync" @onkeydown="HandleOperationFieldKeyAsync" />
             @if (invalid)
             {
                 <span class="rf-remux-error edit-map-field-error" role="alert">@_operationError</span>
@@ -505,13 +459,6 @@
     {
         if (firstRender)
             this._module = await this.JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/edit-map-timeline.js");
-        if (this._focusOperationField != null && this._module != null && this._interactiveInitialized)
-        {
-            // Il campo da correggere esiste solo dopo il render che ha selezionato l'operazione
-            string field = this._focusOperationField;
-            this._focusOperationField = null;
-            await this._module.InvokeAsync<bool>("focusEditorField", this._pageRoot, field, this._precisionEditorOpen);
-        }
         if (!this.IndexesReady || this._interactiveInitialized || this._module == null)
             return;
 
@@ -1447,17 +1394,25 @@
     }
 
     /// <summary>
-    /// Seleziona un'operazione e porta le anteprime sul suo confine
+    /// Seleziona un'operazione e, quando richiesto, porta le anteprime sul suo confine
     /// </summary>
     /// <param name="index">Indice dell'operazione nella mappa di lavoro</param>
     /// <param name="center">True per riportare la timeline al centro sull'operazione</param>
-    private async Task SelectOperationAsync(int index, bool center)
+    /// <param name="navigate">False per lasciare il cursore dov'è, come quando l'operazione si prende sulla timeline</param>
+    private async Task SelectOperationAsync(int index, bool center, bool navigate = true)
     {
         if (index < 0 || index >= this._workingMap.Operations.Count)
             return;
         this.ClearTimelineSelection();
         this._selectedOperation = this._workingMap.Operations[index];
         this.RefreshOperationFields();
+        if (!navigate)
+        {
+            await this.ReloadOperationGridsAsync();
+            this.StateHasChanged();
+            await this.UpdateTimelineAsync();
+            return;
+        }
         if (string.Equals(this._selectedOperation.Type, EditOperation.CUT_SEGMENT, StringComparison.Ordinal))
             this.NavigateFromLanguage(Math.Min(this._languageIndex.EndPtsMs, this._selectedOperation.LangTimestampMs + this._selectedOperation.DurationMs));
         else
@@ -2034,19 +1989,6 @@
     }
 
     /// <summary>
-    /// Descrive una segnalazione della validazione, indicando l'operazione coinvolta quando c'è
-    /// </summary>
-    /// <param name="issue">Segnalazione da descrivere</param>
-    /// <returns>Testo localizzato</returns>
-    private string DescribeIssue(EditMapValidationIssue issue)
-    {
-        string text = AppText.T("web.editMap.issue." + issue.Code);
-        if (issue.OperationIndex < 0 || issue.OperationIndex >= this._workingMap.Operations.Count)
-            return text;
-        return AppText.F("web.editMap.issueOperation", issue.OperationIndex + 1, this.GetOperationTypeLabel(this._workingMap.Operations[issue.OperationIndex]), text);
-    }
-
-    /// <summary>
     /// Indica il campo del pannello operazione da correggere per una regola
     /// </summary>
     /// <param name="code">Codice della regola</param>
@@ -2061,33 +2003,30 @@
     }
 
     /// <summary>
-    /// True quando l'operazione compare negli errori o negli avvisi della validazione corrente
+    /// Testo del tooltip sull'icona della riga: errori o avvisi della validazione corrente che riguardano l'operazione, uno per riga
     /// </summary>
-    /// <param name="index">Indice dell'operazione</param>
+    /// <param name="index">Indice dell'operazione, -1 per le segnalazioni sulla mappa intera</param>
     /// <param name="errors">True per gli errori, false per gli avvisi</param>
-    /// <returns>True quando almeno una segnalazione riguarda l'operazione</returns>
-    private bool OperationHasIssue(int index, bool errors)
+    /// <returns>Segnalazioni localizzate, vuoto quando nessuna riguarda l'operazione</returns>
+    private string GetOperationIssues(int index, bool errors)
     {
-        if (this._projection == null || index < 0)
-            return false;
+        if (this._projection == null || index < -1)
+            return "";
         List<EditMapValidationIssue> issues = errors ? this._projection.Validation.Errors : this._projection.Validation.Warnings;
-        return issues.Exists(issue => issue.OperationIndex == index);
+        return string.Join("\n", issues.Where(issue => issue.OperationIndex == index).Select(issue => AppText.T("web.editMap.issue." + issue.Code)));
     }
 
     /// <summary>
-    /// Seleziona l'operazione di una segnalazione e porta il focus sul campo da correggere
+    /// Tooltip del riepilogo nel piè di pagina: errori e avvisi che non riguardano una singola operazione, uno per riga
     /// </summary>
-    /// <param name="issue">Segnalazione scelta</param>
-    private async Task GoToIssueAsync(EditMapValidationIssue issue)
+    /// <returns>Segnalazioni localizzate, vuoto in verifica o quando non ce ne sono</returns>
+    private string GetMapIssues()
     {
-        if (issue.OperationIndex < 0 || issue.OperationIndex >= this._workingMap.Operations.Count)
-            return;
-        string field = GetIssueField(issue.Code);
-        EditOperation operation = this._workingMap.Operations[issue.OperationIndex];
-        if (string.Equals(field, FIELD_GAIN, StringComparison.Ordinal) && !string.Equals(operation.Type, EditOperation.INSERT_SILENCE, StringComparison.Ordinal))
-            field = FIELD_LANGUAGE_TIME;
-        this._focusOperationField = field;
-        await this.SelectOperationAsync(issue.OperationIndex, true);
+        if (this.VerificationOnly)
+            return "";
+        string errors = this.GetOperationIssues(-1, true);
+        string warnings = this.GetOperationIssues(-1, false);
+        return errors.Length > 0 && warnings.Length > 0 ? errors + "\n" + warnings : errors + warnings;
     }
 
     /// <summary>
@@ -2191,7 +2130,7 @@
             if (operationIndex >= 0 && operationIndex < this._workingMap.Operations.Count)
             {
                 // L'operazione si seleziona subito, così si vede quale verrà eliminata
-                await this.SelectOperationAsync(operationIndex, false);
+                await this.SelectOperationAsync(operationIndex, false, false);
                 commands.Add(new UiCommandDefinition { Label = AppText.T("web.editMap.contextDeleteOperation"), Placement = UiCommandPlacement.ContextMenu, AsyncCallback = this.DeleteSelectedOperationAsync });
             }
             else if (insideSelection && this.CanCreateCutFromSelection())
@@ -2429,7 +2368,8 @@
     [JSInvokable]
     public async Task OnTimelineOperationSelected(int operationIndex)
     {
-        await this.InvokeAsync(async () => await this.SelectOperationAsync(operationIndex, false));
+        // Il cursore resta dove l'utente l'ha messo: è il fotogramma su cui confronta mentre trascina
+        await this.InvokeAsync(async () => await this.SelectOperationAsync(operationIndex, false, false));
     }
 
     /// <summary>
@@ -2476,16 +2416,17 @@
         this._statusMessage = "";
         this.UpdateDirtyState();
         this.RefreshOperationFields();
-        this.NavigateFromSource(this._selectedOperation.SourceTimestampMs);
+        // Il cursore resta fermo sul Source: la mappa nuova sposta solo il fotogramma Language che gli corrisponde
+        VideoFrameIndexEntry previousLanguageFrame = this._languageFrame;
+        this.NavigateFromSource(this._sourcePlayheadMs);
         await this.InvokeAsync(async () =>
         {
             await this.ReloadOperationGridsAsync();
             this.StateHasChanged();
             if (final)
-            {
                 await this.UpdateTimelineAsync();
+            if (final || this._languageFrame != previousLanguageFrame)
                 await this.RefreshPreviewAsync();
-            }
         });
     }
 
@@ -2531,16 +2472,17 @@
         this._statusMessage = "";
         this.UpdateDirtyState();
         this.RefreshOperationFields();
-        this.NavigateFromSource(this._selectedOperation.SourceTimestampMs);
+        // Il cursore resta fermo sul Source: la mappa nuova sposta solo il fotogramma Language che gli corrisponde
+        VideoFrameIndexEntry previousLanguageFrame = this._languageFrame;
+        this.NavigateFromSource(this._sourcePlayheadMs);
         await this.InvokeAsync(async () =>
         {
             await this.ReloadOperationGridsAsync();
             this.StateHasChanged();
             if (final)
-            {
                 await this.UpdateTimelineAsync();
+            if (final || this._languageFrame != previousLanguageFrame)
                 await this.RefreshPreviewAsync();
-            }
         });
     }
 

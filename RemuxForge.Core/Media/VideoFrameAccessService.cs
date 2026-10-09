@@ -306,7 +306,13 @@ namespace RemuxForge.Core.Media
             result.FileLength = sourceFile.Length;
             result.FileLastWriteTicks = sourceFile.LastWriteTimeUtc.Ticks;
             this.ReadVideoProperties(filePath, result, timeoutMs, cancellationToken);
-            List<bool> keyframes = this.ReadKeyframeFlags(filePath, cancellationToken);
+            // Anche i flag keyframe richiedono una scansione completa dei packet del video.
+            PacketTimeline packets = this.ReadPacketTimeline(filePath, 0, cancellationToken, true);
+            List<bool> keyframes = packets.Keyframes;
+            // timestamps_v2 può chiudere con la fine dell'ultimo frame, che non è un frame: la stessa
+            // scansione ne dà il numero reale di packet senza letture aggiuntive.
+            if (packets.PacketCount > 0 && timestamps.Count == packets.PacketCount + 1)
+                timestamps.RemoveAt(timestamps.Count - 1);
             double medianDurationMs = ComputeMedianFrameDuration(timestamps);
             result.MedianFrameDurationMs = medianDurationMs;
             for (int i = 0; i < timestamps.Count; i++)
@@ -543,6 +549,8 @@ namespace RemuxForge.Core.Media
                 string value = lines[i].Trim();
                 if (string.IsNullOrEmpty(value))
                     continue;
+                // Il conteggio include i packet senza PTS, che non entrano nella timeline.
+                result.PacketCount++;
                 string[] fields = value.Split(',');
                 if (!double.TryParse(fields[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double seconds))
                     continue;
@@ -561,15 +569,6 @@ namespace RemuxForge.Core.Media
                 result.Keyframes.Add(packets[i].KeyFrame);
             }
             return result;
-        }
-
-        /// <summary>
-        /// Legge i flag keyframe nello stesso ordine di presentazione dei PTS
-        /// </summary>
-        private List<bool> ReadKeyframeFlags(string filePath, CancellationToken cancellationToken)
-        {
-            // Anche i flag richiedono una scansione completa dei packet del video.
-            return this.ReadPacketTimeline(filePath, 0, cancellationToken, true).Keyframes;
         }
 
         /// <summary>
@@ -647,6 +646,10 @@ namespace RemuxForge.Core.Media
                 arguments.Add("-ss");
                 arguments.Add((index.Frames[decodeStartIndex].PtsMs / 1000.0).ToString("0.######", CultureInfo.InvariantCulture));
             }
+            // Con PTS di packet duplicati la stima best-effort del decoder passa ai DTS per il resto
+            // della sessione: senza DTS, quando il PTS esiste, i frame escono con i PTS dell'indice.
+            arguments.Add("-fflags");
+            arguments.Add("+igndts");
             arguments.Add("-i");
             arguments.Add(filePath);
             arguments.Add("-copyts");
@@ -656,10 +659,21 @@ namespace RemuxForge.Core.Media
             arguments.Add("-sn");
             arguments.Add("-dn");
             arguments.Add("-vf");
-            string targetSeconds = (requested.PtsMs / 1000.0).ToString("0.######", CultureInfo.InvariantCulture);
+            // I frame con lo stesso PTS che precedono il richiesto nell'indice passano comunque il
+            // select: escono prima di lui nello stesso ordine e vengono scartati.
+            int duplicateCount = 0;
+            while (requested.PresentationIndex - duplicateCount > 0 && index.Frames[requested.PresentationIndex - duplicateCount - 1].PtsMs == requested.PtsMs)
+                duplicateCount++;
+            // Il target arretra di mezzo frame, senza raggiungere il frame distinto precedente: con time base
+            // non decimali i sei decimali possono superare il PTS reale ed escludere il frame richiesto.
+            double guardMs = Math.Min(requested.DurationMs, index.MedianFrameDurationMs) / 2.0;
+            int previousIndex = requested.PresentationIndex - duplicateCount - 1;
+            if (previousIndex >= 0)
+                guardMs = Math.Min(guardMs, (requested.PtsMs - index.Frames[previousIndex].PtsMs) / 2.0);
+            string targetSeconds = ((requested.PtsMs - guardMs) / 1000.0).ToString("0.######", CultureInfo.InvariantCulture);
             arguments.Add("select='gte(pts*TB," + targetSeconds + ")',scale=" + width.ToString(CultureInfo.InvariantCulture) + ":" + height.ToString(CultureInfo.InvariantCulture) + ":flags=lanczos,setsar=1,format=" + pixelFormat + ",showinfo");
             arguments.Add("-frames:v");
-            arguments.Add(count.ToString(CultureInfo.InvariantCulture));
+            arguments.Add((count + duplicateCount).ToString(CultureInfo.InvariantCulture));
             arguments.Add("-fps_mode");
             arguments.Add("passthrough");
             arguments.Add("-f");
@@ -671,27 +685,26 @@ namespace RemuxForge.Core.Media
                 ProcessBinaryResult run = ProcessRunner.RunBinaryStdout(this._ffmpegPath, arguments.ToArray(), (buffer, count) => output.Write(buffer, 0, count), timeoutMs, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 int frameBytes = pixelFormat == "p010le" ? width * height * 3 : width * height * 3 / 2;
-                if (run.ExitCode != 0 || output.Length != (long)frameBytes * count)
+                if (run.ExitCode != 0 || output.Length != (long)frameBytes * (count + duplicateCount))
                     return null;
 
                 MatchCollection matches = s_ptsTimeRegex.Matches(run.Stderr ?? "");
-                if (matches.Count < count)
+                if (matches.Count < count + duplicateCount)
                     return null;
                 byte[] raw = output.ToArray();
                 List<VideoRawFrame> result = new List<VideoRawFrame>();
                 for (int i = 0; i < count; i++)
                 {
-                    if (!double.TryParse(matches[i].Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double ptsSeconds))
-                        return null;
-                    VideoFrameIndexEntry actual = index.FindNearestFrame(ptsSeconds * 1000.0);
-                    if (actual == null)
+                    if (!double.TryParse(matches[duplicateCount + i].Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double ptsSeconds))
                         return null;
                     byte[] frameData = new byte[frameBytes];
-                    Buffer.BlockCopy(raw, i * frameBytes, frameData, 0, frameBytes);
+                    Buffer.BlockCopy(raw, (duplicateCount + i) * frameBytes, frameData, 0, frameBytes);
+                    // L'indice si assegna per posizione perché i PTS duplicati non lo identificano:
+                    // FramesMatchIndex verifica poi il PTS decodificato contro quello atteso.
                     result.Add(new VideoRawFrame
                     {
                         Data = frameData,
-                        PresentationIndex = actual.PresentationIndex,
+                        PresentationIndex = requested.PresentationIndex + i,
                         PtsMs = ptsSeconds * 1000.0,
                         Width = width,
                         Height = height,
@@ -965,6 +978,7 @@ namespace RemuxForge.Core.Media
 
             public List<double> Timestamps { get; set; }
             public List<bool> Keyframes { get; set; }
+            public int PacketCount { get; set; }
         }
 
         private class PacketEntry
