@@ -213,7 +213,9 @@ namespace RemuxForge.Core.Models
             for (int i = 0; i < this.Segments.Count; i++)
             {
                 EditMapTimelineSegment segment = this.Segments[i];
-                if (segment.Kind == EditMapTimelineSegmentKind.CutJump && ContainsLanguage(segment, languageTimestampMs, false))
+                // Un cut che arriva alla fine della Language non ha un segmento mappato dopo di sé: la sua fine gli appartiene
+                bool cutReachesEnd = this.LanguageDurationMs > 0.0 && segment.LanguageEndMs >= this.LanguageDurationMs;
+                if (segment.Kind == EditMapTimelineSegmentKind.CutJump && ContainsLanguage(segment, languageTimestampMs, cutReachesEnd))
                 {
                     result.Kind = EditMapMappingKind.NoSourceFrame;
                     result.SourceTimestampMs = segment.SourceStartMs;
