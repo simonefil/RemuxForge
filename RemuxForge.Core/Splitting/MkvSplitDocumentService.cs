@@ -567,7 +567,7 @@ namespace RemuxForge.Core.Splitting
             if (plan.Outputs.Any(output => output.Clips.Any(clip => !clip.UsesFastPath))
                 && MkvSplitCodecCapabilities.IsExactCutAvailable(analysis.VideoParams?.CodecName, analysis.ScanType, out _))
             {
-                foreach (string error in MkvSplitCodecCapabilities.ValidateEncodeSettings(MkvSplitCodecCapabilities.Find(analysis.VideoParams.CodecName), options.EncodeQuality, options.EncodeSpeed))
+                foreach (string error in MkvSplitCodecCapabilities.ValidateEncodeSettings(MkvSplitCodecCapabilities.FindExactCut(analysis.VideoParams.CodecName), options.EncodeQuality, options.EncodeSpeed))
                     plan.Projection.Diagnostics.Add(new MkvSplitDiagnostic { Code = "encodeSettings", Message = error, Severity = MkvSplitDiagnosticSeverity.Error });
             }
             // La disponibilità delle tracce è una proprietà del piano eseguibile, non della proiezione del draft: inventario ed

@@ -8,6 +8,7 @@ using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Splitting.Codecs;
 
 namespace RemuxForge.Core.Splitting
 {
@@ -24,13 +25,6 @@ namespace RemuxForge.Core.Splitting
 
         /// <summary>Finestra entro cui cercare il riordino dei B-frame oltre la fine del segmento (in frame).</summary>
         private const int REORDER_LOOKAHEAD = 64;
-
-        #endregion
-
-        #region Variabili di classe
-
-        /// <summary>Access unit delimiter H.264 (NAL type 9, primary_pic_type = I) in formato Annex B.</summary>
-        private static readonly byte[] s_h264AccessUnitDelimiter = new byte[] { 0x00, 0x00, 0x00, 0x01, 0x09, 0x10 };
 
         #endregion
 
@@ -53,13 +47,13 @@ namespace RemuxForge.Core.Splitting
         /// <param name="sourcePts">PTS del sorgente ordinati crescente, cioè in ordine di presentazione.</param>
         /// <param name="presentationToDecode">Indice nel raw di ogni frame, indicizzato per presentazione.</param>
         /// <param name="headArgs">Argomenti ffmpeg per la ri-codifica del GOP iniziale.</param>
-        /// <param name="codec">MkvSplitCodec video canonico.</param>
+        /// <param name="codec">Codec video tagliato a byte.</param>
         /// <param name="outputFile">File MKV di output.</param>
         /// <param name="tempDir">Directory temporanea dedicata al segmento.</param>
         /// <param name="tracks">Tracce del file normalizzato, nel loro ordine.</param>
         /// <param name="subtitleIds">Tracce di sottotitoli da tagliare al pacchetto, vuota se non ce ne sono.</param>
         /// <param name="subtitles">Matroska con le sole tracce di subtitleIds, nell'ordine del sorgente; null se non ce ne sono.</param>
-        public void SplitSlow(MkvSplitSegment seg, string inputFile, string rawFile, List<MkvSplitFrameInfo> frameMap, double[] sourcePts, int[] presentationToDecode, List<string> headArgs, MkvSplitCodec codec, string outputFile, string tempDir, List<TrackInfo> tracks, List<int> subtitleIds, string subtitles)
+        public void SplitSlow(MkvSplitSegment seg, string inputFile, string rawFile, List<MkvSplitFrameInfo> frameMap, double[] sourcePts, int[] presentationToDecode, List<string> headArgs, MkvSplitByteCodecBase codec, string outputFile, string tempDir, List<TrackInfo> tracks, List<int> subtitleIds, string subtitles)
         {
             int epStartFrame;
             int epFrameCount;
@@ -102,7 +96,7 @@ namespace RemuxForge.Core.Splitting
                 totalBytes = ExtractPresentationRange(rawFile, frameMap, presentationToDecode, epStartFrame, tailStart - 1, restFile, tempDir);
                 ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.exec.copyFrames", tailStart - epStartFrame, (totalBytes / 1048576.0).ToString("F1", CultureInfo.InvariantCulture)));
                 parameterSetsFile = Path.Combine(tempDir, "parameter_sets.bs");
-                WriteRestHeader(rawFile, codec, parameterSetsFile);
+                codec.WriteParameterSets(rawFile, parameterSetsFile);
                 tailFile = BuildTail(inputFile, tailStart, epEndFrame, headArgs, codec, tempDir);
                 if (tailFile != null)
                 {
@@ -163,7 +157,7 @@ namespace RemuxForge.Core.Splitting
                 // Il rest originale richiede i parameter set originali; dopo la HEAD ricodificata
                 // il decoder ha in memoria quelli del nuovo encoder.
                 parameterSetsFile = Path.Combine(tempDir, "parameter_sets.bs");
-                WriteRestHeader(rawFile, codec, parameterSetsFile);
+                codec.WriteParameterSets(rawFile, parameterSetsFile);
 
                 // Concatenazione binaria di head + parameter set originali + rest + eventuale coda ricodificata
                 tailFile = BuildTail(inputFile, tailStart, epEndFrame, headArgs, codec, tempDir);
@@ -195,13 +189,13 @@ namespace RemuxForge.Core.Splitting
         /// <param name="keyFlags">Keyframe reali del sorgente, in ordine di presentazione.</param>
         /// <param name="presentationToDecode">Posizione in ordine di decodifica di ogni frame, indicizzata per presentazione.</param>
         /// <param name="headArgs">Argomenti ffmpeg della ricodifica di testa e coda.</param>
-        /// <param name="codec">Codec video canonico.</param>
+        /// <param name="codec">Codec video tagliato a pacchetti.</param>
         /// <param name="outputFile">File MKV di output.</param>
         /// <param name="tempDir">Directory temporanea dedicata al segmento.</param>
         /// <param name="tracks">Tracce del file normalizzato, nel loro ordine.</param>
         /// <param name="subtitleIds">Tracce di sottotitoli da tagliare al pacchetto, vuota se non ce ne sono.</param>
         /// <param name="subtitles">Matroska con le sole tracce di subtitleIds, nell'ordine del sorgente; null se non ce ne sono.</param>
-        public void SplitPackets(MkvSplitSegment seg, string inputFile, double[] sourcePts, List<MkvSplitFrameInfo> keyFlags, int[] presentationToDecode, List<string> headArgs, MkvSplitCodec codec, string outputFile, string tempDir, List<TrackInfo> tracks, List<int> subtitleIds, string subtitles)
+        public void SplitPackets(MkvSplitSegment seg, string inputFile, double[] sourcePts, List<MkvSplitFrameInfo> keyFlags, int[] presentationToDecode, List<string> headArgs, MkvSplitPacketCodecBase codec, string outputFile, string tempDir, List<TrackInfo> tracks, List<int> subtitleIds, string subtitles)
         {
             int startFrame = seg.StartFrame;
             int endFrame = seg.StartFrame + seg.FrameCount - 1;
@@ -236,10 +230,8 @@ namespace RemuxForge.Core.Splitting
 
             if (bodyCount > 0)
             {
-                // Selezione per PTS con soglie a metà fra fotogrammi contigui, immuni dall'arrotondamento dei timestamp. Il VOL
-                // dell'MPEG-4 ASP sta solo nei dati privati: va reinserito nel primo keyframe del corpo, dopo il VOL della testa.
-                // In AVI il corpo riparte da 0: il muxer conta come fotogrammi saltati i tick prima del primo pacchetto e oltre
-                // 60000 rifiuta il file, cioè ogni corpo che inizia dopo un minuto
+                // Selezione per PTS con soglie a metà fra fotogrammi contigui, immuni dall'arrotondamento dei timestamp, seguita
+                // dai filtri del codec
                 drop = "lt(pts*tb\\," + Threshold(sourcePts, kfAfter) + ")";
                 if (tailStart < sourcePts.Length)
                 {
@@ -250,8 +242,8 @@ namespace RemuxForge.Core.Splitting
                 MkvSplitExternalTools.Instance.RunFfmpeg(new string[]
                 {
                     "-y", "-hide_banner", "-loglevel", "warning", "-i", inputFile, "-map", "0:v:0", "-c:v", "copy",
-                    "-bsf:v", "noise=drop='" + drop + "'" + (codec == MkvSplitCodec.Mpeg4 ? ",dump_extra=freq=k" : "") + (RawFormat(codec) == "avi" ? ",setts=ts=TS-STARTPTS" : ""),
-                    "-an", "-sn", "-dn", "-f", RawFormat(codec), bodyFile
+                    "-bsf:v", "noise=drop='" + drop + "'" + codec.BodyBitstreamFilters,
+                    "-an", "-sn", "-dn", "-f", codec.RawMuxer, bodyFile
                 });
                 if (MkvSplitExternalTools.Instance.CountPackets(bodyFile) != bodyCount)
                 {
@@ -551,10 +543,10 @@ namespace RemuxForge.Core.Splitting
         /// <param name="tailStart">Primo fotogramma della coda.</param>
         /// <param name="lastPresentation">Ultimo fotogramma del segmento.</param>
         /// <param name="headArgs">Argomenti encoder.</param>
-        /// <param name="codec">Codec video canonico.</param>
+        /// <param name="codec">Codec video con il muxer delle parti ricodificate.</param>
         /// <param name="tempDir">Directory temporanea del segmento.</param>
         /// <returns>Path del bitstream della coda, oppure null se la coda non serve.</returns>
-        private static string BuildTail(string inputFile, int tailStart, int lastPresentation, List<string> headArgs, MkvSplitCodec codec, string tempDir)
+        private static string BuildTail(string inputFile, int tailStart, int lastPresentation, List<string> headArgs, MkvSplitExactCutCodecBase codec, string tempDir)
         {
             string tailFile;
             int tailCount;
@@ -573,225 +565,6 @@ namespace RemuxForge.Core.Splitting
 
         #endregion
 
-        #region Helper parameter sets
-
-        /// <summary>
-        /// Scrive l'intestazione che precede la parte copiata byte-exact: i parameter set originali
-        /// (H.264 SPS/PPS, HEVC VPS/SPS/PPS, MPEG-2 sequence header) e, per il solo H.264, un access
-        /// unit delimiter. Serve perché il rest riparte da un keyframe interno al raw: senza parameter
-        /// set il decoder non ha extradata, e in H.264 due IDR consecutivi con lo stesso idr_pic_id
-        /// vengono fusi dal parser di mkvmerge in un'unica access unit, perdendo un fotogramma.
-        /// </summary>
-        /// <param name="rawFile">Elementary stream raw originale.</param>
-        /// <param name="codec">MkvSplitCodec del raw.</param>
-        /// <param name="outputFile">File di output contenente l'intestazione.</param>
-        private static void WriteRestHeader(string rawFile, MkvSplitCodec codec, string outputFile)
-        {
-            byte[] data;
-            byte[] buf;
-            int read;
-            bool ready;
-            int sequence;
-            List<(int start, int end, int type)> nals;
-            bool hasVps;
-            bool hasSps;
-            bool hasPps;
-            FileStream inF;
-            FileStream outF;
-
-            // I parameter set precedono il primo fotogramma del raw: se ne legge a blocchi solo il prefisso, fino al primo
-            // fotogramma (che chiude l'ultimo parameter set) o alla fine del file. Il raw di un episodio intero può superare
-            // i 2 GB che un array in memoria ammette
-            data = new byte[0];
-            buf = new byte[BUF_SIZE];
-            ready = false;
-            inF = null;
-            try
-            {
-                inF = new FileStream(rawFile, FileMode.Open, FileAccess.Read, FileShare.Read, BUF_SIZE, FileOptions.SequentialScan);
-                while (!ready && (read = inF.Read(buf, 0, buf.Length)) > 0)
-                {
-                    Array.Resize(ref data, data.Length + read);
-                    Buffer.BlockCopy(buf, 0, data, data.Length - read, read);
-                    if (codec == MkvSplitCodec.Mpeg2)
-                    {
-                        sequence = MpegStartCode.Find(data, 0, 0xB3);
-                        ready = sequence >= 0 && MpegStartCode.Find(data, sequence + 4, 0x00) >= 0;
-                    }
-                    else
-                    {
-                        ready = FindAnnexBNals(data, codec).Exists(nal => codec == MkvSplitCodec.H264 ? nal.type >= 1 && nal.type <= 5 : nal.type < 32);
-                    }
-                }
-            }
-            finally
-            {
-                if (inF != null) { inF.Dispose(); }
-            }
-
-            if (codec == MkvSplitCodec.Mpeg2)
-            {
-                WriteMpeg2SequenceHeader(data, outputFile);
-                return;
-            }
-
-            nals = FindAnnexBNals(data, codec);
-            hasVps = codec == MkvSplitCodec.H264;
-            hasSps = false;
-            hasPps = false;
-
-            outF = null;
-            try
-            {
-                outF = new FileStream(outputFile, FileMode.Create, FileAccess.Write, FileShare.None);
-                if (codec == MkvSplitCodec.H264)
-                {
-                    outF.Write(s_h264AccessUnitDelimiter, 0, s_h264AccessUnitDelimiter.Length);
-                }
-
-                foreach ((int start, int end, int type) nal in nals)
-                {
-                    if (IsParameterSet(codec, nal.type))
-                    {
-                        outF.Write(data, nal.start, nal.end - nal.start);
-                        if (codec == MkvSplitCodec.H264)
-                        {
-                            if (nal.type == 7) { hasSps = true; }
-                            if (nal.type == 8) { hasPps = true; }
-                        }
-                        else
-                        {
-                            if (nal.type == 32) { hasVps = true; }
-                            if (nal.type == 33) { hasSps = true; }
-                            if (nal.type == 34) { hasPps = true; }
-                        }
-                    }
-
-                    if (hasVps && hasSps && hasPps) { break; }
-                }
-            }
-            finally
-            {
-                if (outF != null) { outF.Dispose(); }
-            }
-
-            if (!hasVps || !hasSps || !hasPps)
-            {
-                throw new InvalidOperationException(AppText.T("split.exec.noParameterSets"));
-            }
-        }
-
-        /// <summary>
-        /// Scrive l'header di sequenza MPEG-2: dal primo sequence header start code (0x000001B3)
-        /// fino al primo picture start code (0x00000100), così da includere sequence extension,
-        /// eventuale GOP header e user data senza portarsi dietro alcun fotogramma.
-        /// </summary>
-        /// <param name="data">Elementary stream raw completo.</param>
-        /// <param name="outputFile">File di output contenente l'header.</param>
-        private static void WriteMpeg2SequenceHeader(byte[] data, string outputFile)
-        {
-            int start;
-            int cursor;
-            int next;
-            int end;
-
-            start = MpegStartCode.Find(data, 0, 0xB3);
-            if (start < 0)
-            {
-                throw new InvalidOperationException(AppText.T("split.exec.noParameterSets"));
-            }
-
-            end = -1;
-            cursor = start + 4;
-            while (true)
-            {
-                next = MpegStartCode.Find(data, cursor, data.Length, code => true);
-                if (next < 0)
-                {
-                    break;
-                }
-
-                if (data[next + 3] == 0x00)
-                {
-                    end = next;
-                    break;
-                }
-
-                cursor = next + 4;
-            }
-
-            if (end < 0)
-            {
-                throw new InvalidOperationException(AppText.T("split.exec.noParameterSets"));
-            }
-
-            File.WriteAllBytes(outputFile, new ArraySegment<byte>(data, start, end - start).ToArray());
-        }
-
-        /// <summary>Ritorna true se il NAL type è un parameter set per il codec indicato.</summary>
-        private static bool IsParameterSet(MkvSplitCodec codec, int nalType)
-        {
-            if (codec == MkvSplitCodec.H264) { return nalType == 7 || nalType == 8; }
-            return nalType == 32 || nalType == 33 || nalType == 34;
-        }
-
-        /// <summary>Trova i NAL Annex B nel buffer, includendo lo start code nel range restituito.</summary>
-        private static List<(int start, int end, int type)> FindAnnexBNals(byte[] data, MkvSplitCodec codec)
-        {
-            List<(int start, int end, int type)> nals;
-            List<int> starts;
-            int pos;
-            int sc;
-            int type;
-            int nalHeader;
-
-            nals = new List<(int, int, int)>();
-            starts = new List<int>();
-            pos = 0;
-            while (pos < data.Length - 3)
-            {
-                sc = StartCodeLength(data, pos);
-                if (sc > 0)
-                {
-                    starts.Add(pos);
-                    pos += sc;
-                }
-                else
-                {
-                    pos++;
-                }
-            }
-
-            for (int i = 0; i < starts.Count; i++)
-            {
-                int start = starts[i];
-                int end = (i + 1 < starts.Count) ? starts[i + 1] : data.Length;
-                int payload = start + StartCodeLength(data, start);
-                if (payload >= end) { continue; }
-
-                nalHeader = data[payload];
-                type = codec == MkvSplitCodec.H264 ? (nalHeader & 31) : ((nalHeader >> 1) & 63);
-                nals.Add((start, end, type));
-            }
-            return nals;
-        }
-
-        /// <summary>Ritorna 3 o 4 se in offset c'è uno start code Annex B, altrimenti 0.</summary>
-        private static int StartCodeLength(byte[] data, int offset)
-        {
-            if (offset + 3 <= data.Length && data[offset] == 0 && data[offset + 1] == 0 && data[offset + 2] == 1)
-            {
-                return 3;
-            }
-            if (offset + 4 <= data.Length && data[offset] == 0 && data[offset + 1] == 0 && data[offset + 2] == 0 && data[offset + 3] == 1)
-            {
-                return 4;
-            }
-            return 0;
-        }
-
-        #endregion
-
         #region Helper re-encode
 
         /// <summary>Ricodifica un range inclusivo di frame video dal container originale in un elementary stream raw, o nel contenitore delle parti del taglio a pacchetti,
@@ -800,10 +573,10 @@ namespace RemuxForge.Core.Splitting
         /// <param name="startFrame">Primo frame da includere.</param>
         /// <param name="endFrame">Ultimo frame da includere.</param>
         /// <param name="headArgs">Argomenti encoder già costruiti.</param>
-        /// <param name="codec">MkvSplitCodec raw di output.</param>
+        /// <param name="codec">Codec video con il muxer delle parti ricodificate.</param>
         /// <param name="outputFile">Elementary stream raw di output.</param>
         /// <exception cref="InvalidOperationException">Il numero di pacchetti ricodificati non è quello dei fotogrammi richiesti</exception>
-        private static void ReencodeFrameRange(string inputFile, int startFrame, int endFrame, List<string> headArgs, MkvSplitCodec codec, string outputFile)
+        private static void ReencodeFrameRange(string inputFile, int startFrame, int endFrame, List<string> headArgs, MkvSplitExactCutCodecBase codec, string outputFile)
         {
             List<string> ffArgs;
             int expected = endFrame - startFrame + 1;
@@ -815,7 +588,7 @@ namespace RemuxForge.Core.Splitting
             ffArgs.Add("-map"); ffArgs.Add("0:v:0");
             ffArgs.Add("-vf"); ffArgs.Add("select=between(n\\," + startFrame.ToString(CultureInfo.InvariantCulture) + "\\," + endFrame.ToString(CultureInfo.InvariantCulture) + "),setpts=N/FRAME_RATE/TB");
             foreach (string a in headArgs) { ffArgs.Add(a); }
-            ffArgs.Add("-an"); ffArgs.Add("-f"); ffArgs.Add(RawFormat(codec)); ffArgs.Add(outputFile);
+            ffArgs.Add("-an"); ffArgs.Add("-f"); ffArgs.Add(codec.RawMuxer); ffArgs.Add(outputFile);
             MkvSplitExternalTools.Instance.RunFfmpeg(ffArgs);
 
             actual = MkvSplitExternalTools.Instance.CountPackets(outputFile);
@@ -823,21 +596,6 @@ namespace RemuxForge.Core.Splitting
             {
                 throw new InvalidOperationException(AppText.F("split.exec.headReencodeMismatch", actual, expected));
             }
-        }
-
-        /// <summary>
-        /// Nome del muxer ffmpeg delle parti ricodificate o copiate: elementary stream raw per il taglio a byte, contenitore per
-        /// quello a pacchetti, AVI per i codec Video for Windows e Matroska per gli altri.
-        /// </summary>
-        /// <param name="codec">Codec video canonico.</param>
-        /// <returns>Nome del formato da passare a -f.</returns>
-        private static string RawFormat(MkvSplitCodec codec)
-        {
-            if (codec == MkvSplitCodec.Hevc) { return "hevc"; }
-            if (codec == MkvSplitCodec.H264) { return "h264"; }
-            if (codec == MkvSplitCodec.Mpeg2) { return "mpeg2video"; }
-            if (codec == MkvSplitCodec.MsMpeg4v3 || codec == MkvSplitCodec.MsMpeg4v2 || codec == MkvSplitCodec.H263) { return "avi"; }
-            return "matroska";
         }
 
         #endregion

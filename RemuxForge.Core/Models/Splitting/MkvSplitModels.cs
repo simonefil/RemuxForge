@@ -185,42 +185,6 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
-    /// Codec video della tabella delle capacità di taglio
-    /// </summary>
-    public enum MkvSplitCodec
-    {
-        /// <summary>HEVC / H.265</summary>
-        Hevc,
-
-        /// <summary>AVC / H.264</summary>
-        H264,
-
-        /// <summary>MPEG-2 Video</summary>
-        Mpeg2,
-
-        /// <summary>MPEG-4 ASP (Xvid/DivX)</summary>
-        Mpeg4,
-
-        /// <summary>DivX 3 (MS-MPEG4v3)</summary>
-        MsMpeg4v3,
-
-        /// <summary>MS-MPEG4v2</summary>
-        MsMpeg4v2,
-
-        /// <summary>H.263</summary>
-        H263,
-
-        /// <summary>AV1</summary>
-        Av1,
-
-        /// <summary>VP9</summary>
-        Vp9,
-
-        /// <summary>VC-1</summary>
-        Vc1
-    }
-
-    /// <summary>
     /// Metodo con cui un codec si taglia al fotogramma
     /// </summary>
     public enum MkvSplitExactCutMethod
@@ -233,58 +197,6 @@ namespace RemuxForge.Core.Models
 
         /// <summary>Testa e coda ricodificate e corpo copiato selezionando i pacchetti per PTS</summary>
         Packets
-    }
-
-    /// <summary>
-    /// Capacità di taglio di un codec video e parametri della sua ricodifica
-    /// </summary>
-    public sealed class MkvSplitCodecCapability
-    {
-        #region Proprietà
-
-        /// <summary>Nome del codec come lo riporta ffprobe</summary>
-        public string CodecName { get; set; }
-
-        /// <summary>Nome mostrato all'utente</summary>
-        public string DisplayName { get; set; }
-
-        /// <summary>Codec canonico</summary>
-        public MkvSplitCodec Codec { get; set; }
-
-        /// <summary>Metodo del taglio al fotogramma, None se il codec si taglia solo al keyframe</summary>
-        public MkvSplitExactCutMethod Method { get; set; }
-
-        /// <summary>Encoder ffmpeg della ricodifica, null senza taglio al fotogramma</summary>
-        public string Encoder { get; set; }
-
-        /// <summary>Nome tecnico del parametro di qualità (CRF o q)</summary>
-        public string QualityName { get; set; }
-
-        /// <summary>Qualità predefinita</summary>
-        public int QualityDefault { get; set; }
-
-        /// <summary>Qualità minima ammessa</summary>
-        public int QualityMin { get; set; }
-
-        /// <summary>Qualità massima ammessa</summary>
-        public int QualityMax { get; set; }
-
-        /// <summary>Nome tecnico del parametro di velocità (preset o cpu-used), null se l'encoder non lo prevede</summary>
-        public string SpeedName { get; set; }
-
-        /// <summary>Velocità predefinita, null se l'encoder non la prevede</summary>
-        public string SpeedDefault { get; set; }
-
-        /// <summary>Velocità ammesse per nome, null quando la velocità è un numero fra SpeedMin e SpeedMax</summary>
-        public string[] SpeedValues { get; set; }
-
-        /// <summary>Velocità numerica minima</summary>
-        public int SpeedMin { get; set; }
-
-        /// <summary>Velocità numerica massima</summary>
-        public int SpeedMax { get; set; }
-
-        #endregion
     }
 
     /// <summary>

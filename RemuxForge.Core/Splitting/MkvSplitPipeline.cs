@@ -4,6 +4,7 @@ using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Media;
+using RemuxForge.Core.Splitting.Codecs;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -18,15 +19,6 @@ namespace RemuxForge.Core.Splitting
     /// </summary>
     public class MkvSplitPipeline
     {
-        #region Variabili di classe
-
-        /// <summary>
-        /// Formati di immagine ammessi dall'encoder h263 (sub-QCIF, QCIF, CIF, 4CIF, 16CIF)
-        /// </summary>
-        private static readonly string[] s_h263StandardSizes = new string[] { "128x96", "176x144", "352x288", "704x576", "1408x1152" };
-
-        #endregion
-
         #region Metodi pubblici
 
         /// <summary>
@@ -241,8 +233,8 @@ namespace RemuxForge.Core.Splitting
             string raw = null;
             List<MkvSplitFrameInfo> map = null;
             int[] decodeMap = null;
-            MkvSplitCodecCapability capability = null;
-            bool packets = false;
+            MkvSplitByteCodecBase byteCodec = null;
+            MkvSplitPacketCodecBase packetCodec = null;
             List<string> head = null;
             string subtitles = null;
             bool hasFlac = plan.Tracks.Exists(MkvSplitExternalTools.IsFlacAudio);
@@ -297,21 +289,22 @@ namespace RemuxForge.Core.Splitting
                     {
                         if (!MkvSplitCodecCapabilities.IsExactCutAvailable(video.CodecName, plan.Analysis.ScanType, out string reason))
                             throw new InvalidOperationException(reason);
-                        capability = MkvSplitCodecCapabilities.Find(video.CodecName);
+                        MkvSplitExactCutCodecBase codec = MkvSplitCodecCapabilities.FindExactCut(video.CodecName);
                         // Il taglio a pacchetti legge il Matroska normalizzato: nessun flusso grezzo né mappa dei byte
-                        packets = capability.Method == MkvSplitExactCutMethod.Packets;
-                        ConsoleHelper.Write(LogSection.Split, LogLevel.Phase, AppText.T(packets ? "split.packetPath" : "split.slowPath"));
-                        if (!packets)
+                        byteCodec = codec as MkvSplitByteCodecBase;
+                        packetCodec = codec as MkvSplitPacketCodecBase;
+                        ConsoleHelper.Write(LogSection.Split, LogLevel.Phase, AppText.T(packetCodec != null ? "split.packetPath" : "split.slowPath"));
+                        if (byteCodec != null)
                         {
                             ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.T("split.extractingRawVideo"));
-                            raw = Path.Combine(planFolder, "source." + RawExtension(capability.Codec));
+                            raw = Path.Combine(planFolder, "source." + byteCodec.RawExtension);
                             MkvSplitExternalTools.Instance.ExtractRawTrack(media, 0, raw);
                             map = MkvSplitExternalTools.Instance.GetFrameByteMap(raw);
                         }
                         decodeMap = BuildPresentationToDecodeMap(media, plan.Analysis.SourcePts.Length);
                         if ((map != null && map.Count != plan.Analysis.SourcePts.Length) || decodeMap == null)
                             throw new InvalidOperationException(AppText.T("split.montage.invalidTimeline"));
-                        head = BuildHeadEncodeArgs(video, capability, args);
+                        head = codec.BuildHeadEncodeArgs(video, args);
                         // Sottotitoli che il ritaglio non sa riscrivere: le clip ricodificate li tagliano al pacchetto da qui
                         List<int> fallback = exact.SelectMany(output => output.FallbackSubtitleTrackIds).Distinct().ToList();
                         if (fallback.Count > 0)
@@ -360,8 +353,8 @@ namespace RemuxForge.Core.Splitting
                             Directory.CreateDirectory(work);
                             string clipPath = Path.Combine(work, "clip.mkv");
                             if (clip.UsesFastPath) executor.SplitFast(clip.Segment, media, clipPath, work, plan.Tracks, output.FallbackSubtitleTrackIds);
-                            else if (packets) executor.SplitPackets(clip.Segment, media, plan.Analysis.SourcePts, plan.Analysis.KeyFlags, decodeMap, head, capability.Codec, clipPath, work, plan.Tracks, output.FallbackSubtitleTrackIds, clipSubtitles);
-                            else executor.SplitSlow(clip.Segment, media, raw, map, plan.Analysis.SourcePts, decodeMap, head, capability.Codec, clipPath, work, plan.Tracks, output.FallbackSubtitleTrackIds, clipSubtitles);
+                            else if (packetCodec != null) executor.SplitPackets(clip.Segment, media, plan.Analysis.SourcePts, plan.Analysis.KeyFlags, decodeMap, head, packetCodec, clipPath, work, plan.Tracks, output.FallbackSubtitleTrackIds, clipSubtitles);
+                            else executor.SplitSlow(clip.Segment, media, raw, map, plan.Analysis.SourcePts, decodeMap, head, byteCodec, clipPath, work, plan.Tracks, output.FallbackSubtitleTrackIds, clipSubtitles);
                             // Il keyframe di GOP aperto toglie i B iniziali alla fine e li lascia come pacchetti in testa (D25): né più né meno
                             int clipPackets = clip.Segment.FrameCount + clip.OpenGop.HeadPackets + clip.OpenGop.DroppedPackets - clip.OpenGop.LostFrames;
                             if (MkvSplitExternalTools.Instance.CountPackets(clipPath) != clipPackets)
@@ -678,122 +671,6 @@ namespace RemuxForge.Core.Splitting
         }
 
         /// <summary>
-        /// Costruisce gli argomenti dell'encoder per testa e coda ricodificate: qualità e velocità dalle opzioni
-        /// del lavoro, oppure i default del codec; pix_fmt e colori dal sorgente
-        /// </summary>
-        /// <param name="p">Parametri video del sorgente</param>
-        /// <param name="capability">Capacità del codec, con taglio al fotogramma</param>
-        /// <param name="options">Opzioni Split del lavoro</param>
-        /// <returns>Argomenti ffmpeg dell'encoder</returns>
-        internal static List<string> BuildHeadEncodeArgs(MkvSplitVideoParams p, MkvSplitCodecCapability capability, MkvSplitOptions options)
-        {
-            string paramsFlag;
-            string defaultPixFmt;
-            string pixFmt;
-            int quality = options.EncodeQuality ?? capability.QualityDefault;
-            string speed = string.IsNullOrWhiteSpace(options.EncodeSpeed) ? capability.SpeedDefault : options.EncodeSpeed.Trim().ToLowerInvariant();
-            List<string> args = new List<string>();
-            List<string> encParams = new List<string>();
-
-            if (capability.Method == MkvSplitExactCutMethod.Packets)
-            {
-                // L'encoder h263 accetta solo i formati standard: le altre risoluzioni sono H.263+ e si ricodificano con h263p
-                args.Add("-c:v");
-                args.Add(capability.Codec == MkvSplitCodec.H263 && Array.IndexOf(s_h263StandardSizes, p.Width + "x" + p.Height) < 0 ? "h263p" : capability.Encoder);
-                if (capability.Codec == MkvSplitCodec.Av1 || capability.Codec == MkvSplitCodec.Vp9)
-                {
-                    args.Add("-crf"); args.Add(quality.ToString(CultureInfo.InvariantCulture));
-                    // libvpx-vp9 è in modalità a qualità costante solo senza bitrate obiettivo
-                    if (capability.Codec == MkvSplitCodec.Vp9) { args.Add("-b:v"); args.Add("0"); }
-                    args.Add("-" + capability.SpeedName); args.Add(speed);
-                    args.Add("-g"); args.Add("1");
-                    args.Add("-pix_fmt"); args.Add(p.PixFmt != null ? p.PixFmt : "yuv420p");
-                    // Colori del sorgente come per H.264, H.265 e MPEG-2: libsvtav1 li scrive tutti nel bitstream, libvpx-vp9 solo
-                    // spazio colore e range, primarie e trasferimento restano al contenitore
-                    if (p.ColorSpace != null) { args.Add("-colorspace"); args.Add(p.ColorSpace); }
-                    if (p.ColorPrimaries != null) { args.Add("-color_primaries"); args.Add(p.ColorPrimaries); }
-                    if (p.ColorTransfer != null) { args.Add("-color_trc"); args.Add(p.ColorTransfer); }
-                    if (p.ColorRange != null) { args.Add("-color_range"); args.Add(p.ColorRange); }
-                }
-                else
-                {
-                    args.Add("-q:v"); args.Add(quality.ToString(CultureInfo.InvariantCulture));
-                    // MPEG-4 ASP con B-frame: una testa tutta intra avrebbe un VOL low delay diverso da quello del corpo (§3.3 punto 3)
-                    if (capability.Codec == MkvSplitCodec.Mpeg4) { args.Add("-bf"); args.Add("2"); }
-                    else { args.Add("-g"); args.Add("1"); }
-                    // Video for Windows: testa e coda con il fourcc del sorgente, o l'unione con il corpo non è compatibile
-                    if (p.CodecTag != null) { args.Add("-vtag"); args.Add(p.CodecTag); }
-                }
-
-                return args;
-            }
-
-            if (capability.Codec == MkvSplitCodec.H264)
-            {
-                paramsFlag = "-x264-params";
-                defaultPixFmt = "yuv420p";
-            }
-            else if (capability.Codec == MkvSplitCodec.Mpeg2)
-            {
-                paramsFlag = null;
-                defaultPixFmt = "yuv420p";
-            }
-            else
-            {
-                paramsFlag = "-x265-params";
-                defaultPixFmt = "yuv420p10le";
-            }
-
-            pixFmt = p.PixFmt != null ? p.PixFmt : defaultPixFmt;
-            args.Add("-c:v"); args.Add(capability.Encoder);
-            if (capability.Codec == MkvSplitCodec.Mpeg2)
-            {
-                // MPEG-2 non ha CRF: la qualità si esprime con il quantizzatore, e l'all-intra
-                // si ottiene con i flag dell'encoder invece che con i parametri di x264/x265
-                args.Add("-q:v"); args.Add(quality.ToString(CultureInfo.InvariantCulture));
-                args.Add("-g"); args.Add("1");
-                args.Add("-bf"); args.Add("0");
-            }
-            else
-            {
-                args.Add("-crf"); args.Add(quality.ToString(CultureInfo.InvariantCulture));
-                args.Add("-preset"); args.Add(speed);
-                encParams.Add("keyint=1");
-                encParams.Add("bframes=0");
-            }
-            args.Add("-pix_fmt"); args.Add(pixFmt);
-
-            if (p.ColorSpace != null)
-            {
-                args.Add("-colorspace"); args.Add(p.ColorSpace);
-                encParams.Add("colormatrix=" + p.ColorSpace);
-            }
-            if (p.ColorPrimaries != null)
-            {
-                args.Add("-color_primaries"); args.Add(p.ColorPrimaries);
-                encParams.Add("colorprim=" + p.ColorPrimaries);
-            }
-            if (p.ColorTransfer != null)
-            {
-                args.Add("-color_trc"); args.Add(p.ColorTransfer);
-                encParams.Add("transfer=" + p.ColorTransfer);
-            }
-            if (p.ColorRange != null)
-            {
-                args.Add("-color_range"); args.Add(p.ColorRange);
-                encParams.Add("range=" + (p.ColorRange == "pc" ? "full" : "limited"));
-            }
-
-            if (paramsFlag != null)
-            {
-                args.Add(paramsFlag);
-                args.Add(string.Join(":", encParams));
-            }
-
-            return args;
-        }
-
-        /// <summary>
         /// Costruisce la corrispondenza fra indice di presentazione e indice nel raw bitstream,
         /// ordinando per PTS i packet letti in ordine di decodifica. Senza B-frame è l'identità.
         /// </summary>
@@ -820,18 +697,6 @@ namespace RemuxForge.Core.Splitting
 
             Array.Sort(keys, map);
             return map;
-        }
-
-        /// <summary>
-        /// Estensione dell'elementary stream raw per il codec indicato
-        /// </summary>
-        /// <param name="codec">Codec video canonico</param>
-        /// <returns>Estensione senza punto</returns>
-        private static string RawExtension(MkvSplitCodec codec)
-        {
-            if (codec == MkvSplitCodec.Hevc) { return "h265"; }
-            if (codec == MkvSplitCodec.H264) { return "h264"; }
-            return "m2v";
         }
 
         #endregion

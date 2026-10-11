@@ -102,7 +102,7 @@
                     </RemuxFieldComponent>
                     @if (Draft.ShowsEncodeSettings)
                     {
-                        MkvSplitCodecCapability encode = Draft.EncodeCapability;
+                        MkvSplitExactCutCodecBase encode = Draft.EncodeCapability;
                         <RemuxFieldComponent Label="@L("encodeQuality")" Required="true" Field="EncodeQuality" HelpKey="encodeQuality"
                                              Note="@AppText.F("web.splitWizard.note.encodeRange", encode.QualityName, encode.DisplayName, encode.QualityMin, encode.QualityMax, encode.QualityDefault)">
                             <RadzenNumeric TValue="int?" Name="EncodeQuality" Min="@encode.QualityMin" Max="@encode.QualityMax" Value="@Draft.EncodeQuality" Change="@(v => Edit(() => Draft.EncodeQuality = v))"

@@ -5,6 +5,7 @@ using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Splitting.Codecs;
 using RemuxForge.Core.Tools;
 using System;
 using System.Collections.Generic;
@@ -30,16 +31,6 @@ namespace RemuxForge.Core.Splitting
         /// Istanza singleton
         /// </summary>
         public static MkvSplitExternalTools Instance { get { return s_instance; } }
-
-        #endregion
-
-        #region Costanti
-
-        /// <summary>
-        /// Byte letti dall'inizio del pacchetto di un keyframe MPEG-2 per trovarne l'header GOP: lo precedono solo il blocco
-        /// Matroska, il sequence header con le matrici, la sua estensione e gli eventuali user data
-        /// </summary>
-        private const int GOP_HEADER_WINDOW = 4096;
 
         #endregion
 
@@ -313,7 +304,7 @@ namespace RemuxForge.Core.Splitting
         }
 
         /// <summary>
-        /// Legge i keyflag video, marcando i keyframe di GOP aperto
+        /// Legge i keyflag video, marcando i keyframe di GOP aperto; il codec corregge i flag e marca i B iniziali decodificabili
         /// </summary>
         /// <param name="inputFile">File sorgente MKV</param>
         /// <param name="codecName">Codec video come lo riporta ffprobe</param>
@@ -324,6 +315,7 @@ namespace RemuxForge.Core.Splitting
             List<double> pts = new List<double>(1 << 17);
             List<MkvSplitFrameInfo> byPresentation;
             double value;
+            MkvSplitVideoCodecBase codec = MkvSplitCodecCapabilities.FindForKeyFlags(codecName);
 
             ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.T("split.tools.probingKeyflags"));
 
@@ -349,64 +341,41 @@ namespace RemuxForge.Core.Splitting
                 pts.Add(value);
             });
 
-            // In Video for Windows il flag è dell'indice AVI, non del fotogramma: un H.263 può avere ogni packet marcato
-            // keyframe. Il decoder con skip_frame nokey decodifica solo gli I reali, leggendo l'header di ogni packet.
-            if (codecName == "h263" || codecName == "msmpeg4v1" || codecName == "msmpeg4v2" || codecName == "msmpeg4v3")
-            {
-                HashSet<long> intra = new HashSet<long>();
-                this.RunStreamed(this._ffprobe, new string[]
-                {
-                    "-v", "quiet", "-select_streams", "v:0", "-skip_frame", "nokey",
-                    "-show_entries", "frame=pts_time", "-of", "csv=p=0", inputFile
-                }, delegate (string line)
-                {
-                    if (double.TryParse(line.Trim().TrimEnd(','), NumberStyles.Float, CultureInfo.InvariantCulture, out double framePts))
-                        intra.Add((long)Math.Round(framePts * 1000.0));
-                });
-                for (int i = 0; i < frames.Count; i++)
-                {
-                    MkvSplitFrameInfo f = frames[i];
-                    f.Key = intra.Contains((long)Math.Round(pts[i] * 1000.0));
-                    frames[i] = f;
-                }
-            }
-
+            codec?.CorrectKeyFlags(inputFile, frames, pts);
             byPresentation = ToPresentationOrder(frames, pts.ToArray());
-
-            // MPEG-2, keyframe di GOP aperto con i B iniziali: closed_gop=1 nell'header GOP dice che i B iniziali sono predetti
-            // solo all'indietro e si decodificano da soli. Si legge solo l'header del keyframe, senza decodificare; senza header
-            // GOP leggibile i B iniziali restano dipendenti dal GOP precedente, come con closed_gop=0 (§11 (o))
-            if (codecName == "mpeg2video" && byPresentation.Exists(f => f.LeadingFrames > 0))
-            {
-                byte[] window = new byte[GOP_HEADER_WINDOW];
-                FileStream inF = null;
-                try
-                {
-                    inF = new FileStream(inputFile, FileMode.Open, FileAccess.Read, FileShare.Read);
-                    for (int i = 0; i < byPresentation.Count; i++)
-                    {
-                        MkvSplitFrameInfo f = byPresentation[i];
-                        if (f.LeadingFrames == 0 || f.Pos < 0)
-                            continue;
-
-                        inF.Seek(f.Pos, SeekOrigin.Begin);
-                        int read = inF.ReadAtLeast(window, window.Length, false);
-                        // Header GOP (00 00 01 B8): 25 bit di time_code, poi closed_gop; vale solo se precede il picture header (00 00 01 00).
-                        // Il limite tiene dentro la lettura anche il byte di closed_gop, quattro dopo lo start code
-                        int header = MpegStartCode.Find(window, 0, read - 4, code => code == 0xB8 || code == 0x00);
-                        if (header >= 0 && window[header + 3] == 0xB8)
-                            f.LeadingDecodable = (window[header + 7] & 0x40) != 0;
-                        byPresentation[i] = f;
-                    }
-                }
-                finally
-                {
-                    if (inF != null) { inF.Dispose(); }
-                }
-            }
+            codec?.MarkDecodableLeadingFrames(inputFile, byPresentation);
 
             ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.tools.packetsProbed", byPresentation.Count));
             return byPresentation;
+        }
+
+        /// <summary>
+        /// Tiene come keyframe solo i fotogrammi intra reali. In Video for Windows il flag è dell'indice AVI, non del fotogramma: un
+        /// H.263 può avere ogni packet marcato keyframe. Il decoder con skip_frame nokey decodifica solo gli I reali, leggendo l'header
+        /// di ogni packet
+        /// </summary>
+        /// <param name="inputFile">File sorgente MKV</param>
+        /// <param name="frames">Pacchetti in ordine di decodifica</param>
+        /// <param name="pts">PTS dei pacchetti in ordine di decodifica</param>
+        public void CorrectAviIndexKeyFlags(string inputFile, List<MkvSplitFrameInfo> frames, List<double> pts)
+        {
+            HashSet<long> intra = new HashSet<long>();
+
+            this.RunStreamed(this._ffprobe, new string[]
+            {
+                "-v", "quiet", "-select_streams", "v:0", "-skip_frame", "nokey",
+                "-show_entries", "frame=pts_time", "-of", "csv=p=0", inputFile
+            }, delegate (string line)
+            {
+                if (double.TryParse(line.Trim().TrimEnd(','), NumberStyles.Float, CultureInfo.InvariantCulture, out double framePts))
+                    intra.Add((long)Math.Round(framePts * 1000.0));
+            });
+            for (int i = 0; i < frames.Count; i++)
+            {
+                MkvSplitFrameInfo f = frames[i];
+                f.Key = intra.Contains((long)Math.Round(pts[i] * 1000.0));
+                frames[i] = f;
+            }
         }
 
         /// <summary>

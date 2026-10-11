@@ -2,6 +2,7 @@ using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Splitting;
+using RemuxForge.Core.Splitting.Codecs;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -376,8 +377,8 @@ namespace RemuxForge.Web.Services
         /// <summary>Errore della cartella con codec o scansione diversi fra i file, vuoto se omogenea o non letta</summary>
         public string BatchVideoError { get; private set; } = "";
 
-        /// <summary>Capacità del codec del sorgente quando ammette il taglio esatto, altrimenti null</summary>
-        public MkvSplitCodecCapability EncodeCapability { get; private set; }
+        /// <summary>Codec del sorgente quando ammette il taglio esatto, altrimenti null</summary>
+        public MkvSplitExactCutCodecBase EncodeCapability { get; private set; }
 
         /// <summary>Qualità della ricodifica, null se il campo è vuoto</summary>
         public int? EncodeQuality { get; set; }
@@ -450,7 +451,7 @@ namespace RemuxForge.Web.Services
             this.EncodeSpeed = null;
             if (MkvSplitCodecCapabilities.IsExactCutAvailable(codecName, scanType, out string reason))
             {
-                this.EncodeCapability = MkvSplitCodecCapabilities.Find(codecName);
+                this.EncodeCapability = MkvSplitCodecCapabilities.FindExactCut(codecName);
                 bool keep = quality.HasValue && MkvSplitCodecCapabilities.ValidateEncodeSettings(this.EncodeCapability, quality, speed).Count == 0;
                 this.EncodeQuality = keep ? quality : this.EncodeCapability.QualityDefault;
                 this.EncodeSpeed = keep && !string.IsNullOrWhiteSpace(speed) ? speed : this.EncodeCapability.SpeedDefault;
