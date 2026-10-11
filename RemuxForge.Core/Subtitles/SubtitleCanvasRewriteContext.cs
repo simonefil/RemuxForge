@@ -30,6 +30,11 @@ namespace RemuxForge.Core.Subtitles
         public FileProcessingRecord Record { get; set; }
 
         /// <summary>
+        /// Matroska da cui si leggono le tracce del file lingua
+        /// </summary>
+        public string LanguageMediaPath { get; set; }
+
+        /// <summary>
         /// Opzioni correnti
         /// </summary>
         public Options Options { get; set; }

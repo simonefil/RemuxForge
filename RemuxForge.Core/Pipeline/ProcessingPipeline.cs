@@ -13,7 +13,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using System.Threading;
 
 namespace RemuxForge.Core.Pipeline
 {
@@ -657,6 +656,17 @@ namespace RemuxForge.Core.Pipeline
         }
 
         /// <summary>
+        /// Tiene i Matroska normalizzati di un record finché il chiamante non rilascia il risultato: analisi ed elaborazione
+        /// eseguite di seguito leggono lo stesso temporaneo invece di normalizzare due volte. Non normalizza: lo fa la prima lettura
+        /// </summary>
+        /// <param name="record">Record da analizzare ed elaborare</param>
+        /// <returns>Riferimento da rilasciare con Dispose dopo l'elaborazione</returns>
+        public IDisposable RetainMedia(FileProcessingRecord record)
+        {
+            return NormalizedMediaStore.Instance.AcquirePair(record.SourceFilePath, this._needsMerge ? record.LangFilePath : "", false, this._opts.MkvMergePath);
+        }
+
+        /// <summary>
         /// Analizza un singolo file: rilevamento velocità e frame-sync
         /// </summary>
         /// <param name="record">Record del file da analizzare</param>
@@ -734,7 +744,7 @@ namespace RemuxForge.Core.Pipeline
             List<TrackInfo> sourceTracks = null;
             int effectiveAudioDelay = 0;
             int effectiveSubDelay = 0;
-            NormalizedMediaPair media = null;
+            PipelineRecordMedia media = null;
             // Verifica stato
             if (record.Status != FileStatus.Analyzed)
             {
@@ -769,14 +779,9 @@ namespace RemuxForge.Core.Pipeline
                     {
                         normalizeError = AppText.F("remux.pipeline.outputIsLangFile", Path.GetFileName(record.LangFilePath));
                     }
-                    else if (!this._opts.DryRun || (this._needsMerge && (this._opts.CopyLangChapters || record.DeepAnalysisApplied)))
+                    else
                     {
-                        // mkvextract e la mappatura ID→stream di ffmpeg valgono solo su Matroska: gli altri container passano da un temporaneo cancellato a fine elaborazione (D12).
-                        // In dry-run si normalizza solo il Lang, quando capitoli Lang o Deep sui sottotitoli lo leggono con mkvextract
-                        MediaContainerNormalizer normalizer = MediaContainerNormalizer.Create(this._opts.MkvMergePath);
-                        media = this._opts.DryRun ? new NormalizedMediaPair(null, normalizer.Normalize(record.LangFilePath, false, CancellationToken.None)) :
-                            normalizer.NormalizePair(record.SourceFilePath, this._needsMerge ? record.LangFilePath : "", false, CancellationToken.None);
-                        normalizeError = media.Error;
+                        media = PipelineRecordMedia.Open(record, this._opts, this._needsMerge, out normalizeError);
                     }
                     if (normalizeError.Length > 0)
                     {
@@ -787,12 +792,8 @@ namespace RemuxForge.Core.Pipeline
                     }
                     else
                     {
-                        // In dry-run il Source non si normalizza e il comando mostrato usa i file originali
-                        record.SourceMediaPath = media?.Source != null ? media.Source.Path : record.SourceFilePath;
-                        record.LangMediaPath = media?.Lang != null ? media.Lang.Path : this._needsMerge && this._opts.DryRun ? record.LangFilePath : "";
-
                         // Ottieni info file sorgente
-                        sourceInfo = this.GetCachedFileInfo(record.SourceMediaPath);
+                        sourceInfo = this.GetCachedFileInfo(media.SourcePath);
                         sourceTracks = (sourceInfo != null) ? sourceInfo.Tracks : null;
                     }
                 }
@@ -800,7 +801,7 @@ namespace RemuxForge.Core.Pipeline
                 // Fase remux (merge e/o filtro tracce)
                 if (!done && this._needsRemux)
                 {
-                    finalOutput = this.ExecuteRemuxPhase(record, sourceInfo, effectiveAudioDelay, effectiveSubDelay);
+                    finalOutput = this.ExecuteRemuxPhase(record, media, sourceInfo, effectiveAudioDelay, effectiveSubDelay);
                     if (record.Status == FileStatus.Error || record.Status == FileStatus.Skipped)
                     {
                         done = true;
@@ -810,7 +811,7 @@ namespace RemuxForge.Core.Pipeline
                 // Fase encode-only (senza remux)
                 if (!done && !this._needsRemux && this._needsEncode)
                 {
-                    finalOutput = this.ExecuteEncodeOnlyPhase(record, sourceTracks);
+                    finalOutput = this.ExecuteEncodeOnlyPhase(record, media, sourceTracks);
                 }
 
                 // Fase encoding video
@@ -823,17 +824,16 @@ namespace RemuxForge.Core.Pipeline
             }
             finally
             {
-                // I temporanei normalizzati non servono oltre l'elaborazione: via dal disco e dalla cache delle info
-                lock (this._fileInfoCacheLock)
+                // I temporanei normalizzati non servono oltre l'elaborazione: via dalla cache delle info e, con l'ultimo lease, dal disco
+                if (media != null)
                 {
-                    if (media?.Source != null && media.Source.IsTemporary)
-                        this._fileInfoCache.Remove(media.Source.Path);
-                    if (media?.Lang != null && media.Lang.IsTemporary)
-                        this._fileInfoCache.Remove(media.Lang.Path);
+                    lock (this._fileInfoCacheLock)
+                    {
+                        foreach (string temporary in media.TemporaryPaths)
+                            this._fileInfoCache.Remove(temporary);
+                    }
+                    media.Dispose();
                 }
-                media?.Dispose();
-                record.SourceMediaPath = "";
-                record.LangMediaPath = "";
 
                 // Notifica e cleanup garantito anche in caso di errore
                 if (started)
@@ -924,11 +924,12 @@ namespace RemuxForge.Core.Pipeline
         /// Esegue la fase remux: filtro tracce, raccolta lingua, conversione, merge
         /// </summary>
         /// <param name="record">Record del file</param>
+        /// <param name="media">Matroska da leggere e Lang da scrivere nel comando</param>
         /// <param name="sourceInfo">Info complete file sorgente (tracce, titolo container)</param>
         /// <param name="effectiveAudioDelay">Delay audio effettivo in ms</param>
         /// <param name="effectiveSubDelay">Delay sottotitoli effettivo in ms</param>
         /// <returns>Percorso output finale o stringa vuota se errore</returns>
-        private string ExecuteRemuxPhase(FileProcessingRecord record, MkvFileInfo sourceInfo, int effectiveAudioDelay, int effectiveSubDelay)
+        private string ExecuteRemuxPhase(FileProcessingRecord record, PipelineRecordMedia media, MkvFileInfo sourceInfo, int effectiveAudioDelay, int effectiveSubDelay)
         {
             List<TrackInfo> sourceTracks = (sourceInfo != null) ? sourceInfo.Tracks : null;
             string finalOutput = "";
@@ -955,7 +956,7 @@ namespace RemuxForge.Core.Pipeline
             // Raccogli tracce dal file lingua (solo se merge attivo)
             if (this._needsMerge)
             {
-                langInfo = this.GetCachedFileInfo(record.LangMediaPath);
+                langInfo = this.GetCachedFileInfo(media.LangPath);
                 langTracks = langInfo?.Tracks;
                 ResolvedRemuxTracks resolved = PipelineTrackSelectionResolver.Resolve(record, this._opts, sourceTracks, langTracks, this._mkvService, this._codecPatterns, this._sourceAudioCodecPatterns);
                 sourceAudioIds = resolved.SourceAudioIds;
@@ -998,7 +999,7 @@ namespace RemuxForge.Core.Pipeline
                     this._opts.AudioSourceFillThresholdMs > 0 ||
                     (record.DeepAnalysisApplied && record.DeepAnalysisMap != null && (record.DeepAnalysisMap.Operations.Count > 0 || record.DeepAnalysisMap.LanguageAudioOffsetMs != 0) && audioTracks.Count > 0)))
                 {
-                    AudioProcessingRequest audioRequest = this._audioRequestBuilder.Build(record, this._opts, sourceInfo, langInfo, sourceTracks, sourceAudioIds, audioTracks, this._needsMerge, this._filterSourceAudio, effectiveAudioDelay);
+                    AudioProcessingRequest audioRequest = this._audioRequestBuilder.Build(record, media, this._opts, sourceInfo, langInfo, sourceTracks, sourceAudioIds, audioTracks, this._needsMerge, this._filterSourceAudio, effectiveAudioDelay);
                     if (string.IsNullOrEmpty(this._opts.AudioFormat) && (audioRequest.SourceTracksToProcess.Count > 0 || audioRequest.LangTracksToProcess.Count > 0))
                     {
                         record.ErrorMessage = AppText.T("remux.pipeline.audioFormatMissing");
@@ -1042,7 +1043,7 @@ namespace RemuxForge.Core.Pipeline
                 }
 
                 // Deep analysis: applica qui la EditMap solo ai sottotitoli; AudioProcessingService materializza EditMap e stretch audio.
-                if (!done && this._deepEditApplier.ApplySubtitles(record, subtitleTracks, processedLangSubTracks, this._opts, this._ffmpegPath))
+                if (!done && this._deepEditApplier.ApplySubtitles(record, media, subtitleTracks, processedLangSubTracks, this._opts, this._ffmpegPath))
                 {
                 }
                 else if (!done && record.Status == FileStatus.Error)
@@ -1056,6 +1057,7 @@ namespace RemuxForge.Core.Pipeline
                     SubtitleCanvasRewriteService subtitleCanvasService = new SubtitleCanvasRewriteService(this._toolPathResolver);
                     subtitleCanvasService.ProcessImportedSubtitles(
                         record,
+                        media,
                         subtitleTracks,
                         processedLangSubTracks,
                         this._opts,
@@ -1068,7 +1070,7 @@ namespace RemuxForge.Core.Pipeline
                 {
                     long sourceDurationNs = (sourceInfo != null) ? sourceInfo.ContainerDurationNs : 0;
                     string mkvExtractPath = this._toolPathResolver.ResolveMkvExtractPath(this._opts.MkvMergePath, false);
-                    done = !new PipelineLangChaptersBuilder().Build(record, sourceDurationNs, effectiveSubDelay, stretchFactor, mkvExtractPath, AppSettingsService.Instance.GetTempFolder(), out langChaptersFile);
+                    done = !new PipelineLangChaptersBuilder().Build(record, media, sourceDurationNs, effectiveSubDelay, stretchFactor, mkvExtractPath, AppSettingsService.Instance.GetTempFolder(), out langChaptersFile);
                 }
 
                 // Costruzione e esecuzione merge
@@ -1077,9 +1079,8 @@ namespace RemuxForge.Core.Pipeline
                     this._outputManager.PrepareOutputPaths(record.SourceFilePath, this._opts, out tempOutput, out finalOutput);
 
                     MergeRequest mergeReq = new MergeRequest();
-                    mergeReq.SourceFile = record.SourceMediaPath;
-                    // In dry-run il Lang normalizzato serve solo alle letture: il comando mostrato resta sul file originale, con gli stessi ID
-                    mergeReq.LanguageFile = this._needsMerge ? (this._opts.DryRun ? record.LangFilePath : record.LangMediaPath) : "";
+                    mergeReq.SourceFile = media.SourcePath;
+                    mergeReq.LanguageFile = this._needsMerge ? media.LangCommandPath : "";
                     mergeReq.OutputFile = tempOutput;
                     mergeReq.SourceAudioIds = sourceAudioIds;
                     if (sourceAudioIds.Count > 0)
@@ -1159,9 +1160,10 @@ namespace RemuxForge.Core.Pipeline
         /// Esegue la fase encode-only: prepara file e stato per encoding
         /// </summary>
         /// <param name="record">Record del file</param>
+        /// <param name="media">Matroska da leggere</param>
         /// <param name="sourceTracks">Tracce file sorgente</param>
         /// <returns>Percorso output finale</returns>
-        private string ExecuteEncodeOnlyPhase(FileProcessingRecord record, List<TrackInfo> sourceTracks)
+        private string ExecuteEncodeOnlyPhase(FileProcessingRecord record, PipelineRecordMedia media, List<TrackInfo> sourceTracks)
         {
             string finalOutput;
             ConsoleHelper.Write(LogSection.Encode, LogLevel.Header, "Encode: " + record.SourceFileName);
@@ -1172,7 +1174,7 @@ namespace RemuxForge.Core.Pipeline
             if (!this._opts.Overwrite || !MediaContainerFormats.IsMatroska(record.SourceFilePath))
             {
                 ConsoleHelper.Write(LogSection.Encode, LogLevel.Debug, AppText.T("remux.pipeline.copyingToDestination"));
-                File.Copy(record.SourceMediaPath, finalOutput, true);
+                File.Copy(media.SourcePath, finalOutput, true);
             }
 
             record.ResultFileName = Path.GetFileName(finalOutput);

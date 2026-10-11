@@ -145,20 +145,6 @@ namespace RemuxForge.Core.Media
             return new NormalizedMediaFile(filePath, tempPath, true, "");
         }
 
-        /// <summary>
-        /// Normalizza il file Source e poi, se indicato e solo se il primo è riuscito, il file Lang
-        /// </summary>
-        /// <param name="sourcePath">File Source</param>
-        /// <param name="langPath">File Lang, vuoto per non normalizzarlo</param>
-        /// <param name="requireNativeMpeg4">True per rimuxare anche gli MKV con MPEG-4 Part 2 in modalità Video for Windows</param>
-        /// <param name="cancellationToken">Token di annullamento</param>
-        /// <returns>Coppia normalizzata; il Lang è null se non richiesto o se il Source è fallito</returns>
-        public NormalizedMediaPair NormalizePair(string sourcePath, string langPath, bool requireNativeMpeg4, CancellationToken cancellationToken)
-        {
-            NormalizedMediaFile source = this.Normalize(sourcePath, requireNativeMpeg4, cancellationToken);
-            return new NormalizedMediaPair(source, source.Success && !string.IsNullOrEmpty(langPath) ? this.Normalize(langPath, requireNativeMpeg4, cancellationToken) : null);
-        }
-
         #endregion
 
         #region Metodi privati
@@ -252,59 +238,6 @@ namespace RemuxForge.Core.Media
             }
 
             this._disposed = true;
-        }
-
-        #endregion
-    }
-
-    /// <summary>
-    /// Source e Lang normalizzati insieme; i temporanei vengono cancellati al Dispose
-    /// </summary>
-    public sealed class NormalizedMediaPair : IDisposable
-    {
-        #region Costruttore
-
-        /// <summary>
-        /// Costruttore
-        /// </summary>
-        /// <param name="source">Source normalizzato, null se non richiesto</param>
-        /// <param name="lang">Lang normalizzato, null se non richiesto</param>
-        public NormalizedMediaPair(NormalizedMediaFile source, NormalizedMediaFile lang)
-        {
-            this.Source = source;
-            this.Lang = lang;
-        }
-
-        #endregion
-
-        #region Proprietà
-
-        /// <summary>
-        /// Source normalizzato, null se non richiesto
-        /// </summary>
-        public NormalizedMediaFile Source { get; }
-
-        /// <summary>
-        /// Lang normalizzato, null se non richiesto o se il Source è fallito
-        /// </summary>
-        public NormalizedMediaFile Lang { get; }
-
-        /// <summary>
-        /// Motivo del primo fallimento, prima del Source e poi del Lang; vuoto se tutto è riuscito
-        /// </summary>
-        public string Error => this.Source != null && !this.Source.Success ? this.Source.Error : this.Lang != null && !this.Lang.Success ? this.Lang.Error : "";
-
-        #endregion
-
-        #region Metodi pubblici
-
-        /// <summary>
-        /// Cancella i temporanei di Source e Lang, se esistono
-        /// </summary>
-        public void Dispose()
-        {
-            this.Source?.Dispose();
-            this.Lang?.Dispose();
         }
 
         #endregion

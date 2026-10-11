@@ -22,12 +22,13 @@ namespace RemuxForge.Core.Pipeline
         /// vengono registrati nella mappa dei sottotitoli processati
         /// </summary>
         /// <param name="record">Record del file in elaborazione con la EditMap prodotta dalla deep analysis</param>
+        /// <param name="media">Matroska letti dall'elaborazione del record</param>
         /// <param name="subtitleTracks">Lista delle tracce sottotitoli importate da aggiornare</param>
         /// <param name="processedLangSubTracks">Mappa in cui registrare i file riscritti per ID traccia</param>
         /// <param name="options">Opzioni operative, inclusa la configurazione di mkvmerge</param>
         /// <param name="ffmpegPath">Percorso dell'eseguibile ffmpeg richiesto per la riscrittura</param>
         /// <returns>True se l'elaborazione è completata o non sono presenti tracce da riscrivere, false se la EditMap non è applicabile o si verifica un errore</returns>
-        public bool ApplySubtitles(FileProcessingRecord record, List<TrackInfo> subtitleTracks, Dictionary<int, string> processedLangSubTracks, Options options, string ffmpegPath)
+        public bool ApplySubtitles(FileProcessingRecord record, PipelineRecordMedia media, List<TrackInfo> subtitleTracks, Dictionary<int, string> processedLangSubTracks, Options options, string ffmpegPath)
         {
             string tempFolder;
             int ffmpegTimeoutMs;
@@ -67,7 +68,7 @@ namespace RemuxForge.Core.Pipeline
             for (int s = 0; s < subtitleTracks.Count; s++)
             {
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, AppText.F("deep.temporal.applySubtitles.track", subtitleTracks[s].Id, subtitleTracks[s].Codec, record.DeepAnalysisMap.Operations.Count));
-                processedFile = subtitleService.Apply(record.LangMediaPath, subtitleTracks[s].Id, subtitleTracks[s].Codec, record.DeepAnalysisMap, splitLabel, out emptyTrack);
+                processedFile = subtitleService.Apply(media.LangPath, subtitleTracks[s].Id, subtitleTracks[s].Codec, record.DeepAnalysisMap, splitLabel, out emptyTrack);
 
                 if (!string.IsNullOrEmpty(processedFile))
                 {

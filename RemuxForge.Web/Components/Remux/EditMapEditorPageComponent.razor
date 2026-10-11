@@ -224,6 +224,11 @@
     [Parameter] public EventCallback<(EditMap Map, double SourceDurationMs, double LanguageDurationMs, double SourceTailToleranceMs)> OnApply { get; set; }
 
     private readonly CancellationTokenSource _cancellation = new CancellationTokenSource();
+
+    /// <summary>
+    /// Sessione dei Matroska letti dall'editor, Guid.Empty finché non è aperta
+    /// </summary>
+    private Guid _mediaSessionId = Guid.Empty;
     private EditMap _originalMap = new EditMap();
     private EditMap _workingMap = new EditMap();
     private EditMapProjection _projection;
@@ -443,12 +448,20 @@
 
         // I container diversi da MKV si leggono da un temporaneo che vive quanto l'editor (D18)
         string mediaError = "";
+        Guid sessionId = Guid.Empty;
         try
         {
-            mediaError = await Task.Run(() => this.Orchestrator.OpenEditorMedia(this.RecordIndex, this._cancellation.Token), this._cancellation.Token);
+            mediaError = await Task.Run(() => this.Orchestrator.OpenEditorMedia(this.RecordIndex, this._cancellation.Token, out sessionId), this._cancellation.Token);
         }
         catch (OperationCanceledException)
         {
+            return;
+        }
+        this._mediaSessionId = sessionId;
+        // L'editor chiuso mentre la sessione si apriva non l'ha potuta rilasciare
+        if (this._cancellation.IsCancellationRequested)
+        {
+            this.Orchestrator.CloseEditorMedia(sessionId);
             return;
         }
         if (mediaError.Length > 0)
@@ -517,7 +530,7 @@
     {
         try
         {
-            string path = this.Orchestrator.ResolveMediaSource(this.RecordIndex, source ? "source" : "language").FilePath;
+            string path = this.Orchestrator.ResolveEditorMedia(this._mediaSessionId, this.RecordIndex).ResolveMediaSource(this.RecordIndex, source ? "source" : "language").FilePath;
             VideoFrameIndex index = await Task.Run(() => this.FrameAccess.GetOrBuildIndex(path, 120000, this._cancellation.Token), this._cancellation.Token);
             if (source)
                 this._sourceIndex = index;
@@ -834,8 +847,8 @@
     {
         if (this._previewPair == null)
             return;
-        string sourceUrl = this._sourceFrame != null ? "/api/edit-map-preview/" + this.RecordIndex.ToString() + "/source/" + this._sourceFrame.PresentationIndex.ToString() : null;
-        string languageUrl = this._languageFrame != null ? "/api/edit-map-preview/" + this.RecordIndex.ToString() + "/language/" + this._languageFrame.PresentationIndex.ToString() : null;
+        string sourceUrl = this._sourceFrame != null ? "/api/edit-map-preview/" + this.RecordIndex.ToString() + "/source/" + this._sourceFrame.PresentationIndex.ToString() + "?sessionId=" + this._mediaSessionId.ToString() : null;
+        string languageUrl = this._languageFrame != null ? "/api/edit-map-preview/" + this.RecordIndex.ToString() + "/language/" + this._languageFrame.PresentationIndex.ToString() + "?sessionId=" + this._mediaSessionId.ToString() : null;
         this._previewFailed = false;
         if (sourceUrl != null)
             this._sourcePreviewMessage = AppText.F("web.editMap.loadingFrame", this._sourceFrame.PresentationIndex + 1);
@@ -1023,7 +1036,7 @@
     {
         if (!trackId.HasValue)
             return null;
-        return "/api/edit-map-audio/" + this.RecordIndex.ToString() + "/" + side + "?trackId=" + trackId.Value.ToString() + "&durationMs=" + durationMs.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "&mode=" + this._audioMode + "&quality=" + (this._precisionEditorOpen ? "high" : "low");
+        return "/api/edit-map-audio/" + this.RecordIndex.ToString() + "/" + side + "?trackId=" + trackId.Value.ToString() + "&durationMs=" + durationMs.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "&mode=" + this._audioMode + "&quality=" + (this._precisionEditorOpen ? "high" : "low") + "&sessionId=" + this._mediaSessionId.ToString();
     }
 
     /// <summary>
@@ -2700,7 +2713,7 @@
         this.ContextMenuService.OnClose -= this.HandleContextMenuClosed;
         this.CloseContextMenu();
         this._cancellation.Cancel();
-        this.Orchestrator.CloseEditorMedia(this.RecordIndex);
+        this.Orchestrator.CloseEditorMedia(this._mediaSessionId);
         if (this._previewPair != null)
         {
             try { await this._previewPair.InvokeVoidAsync("dispose"); } catch { }

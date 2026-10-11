@@ -167,7 +167,7 @@ namespace RemuxForge.Core.Splitting
             MkvSplitAnalysis analysis = new MkvSplitAnalysis();
             // La chiave resta il sorgente: la normalizzazione è deterministica, l'analisi vale anche per il temporaneo successivo.
             // Il lease è condiviso con l'editor o l'esecuzione che lo tengono già; altrimenti il temporaneo sparisce a fine analisi
-            using (MkvSplitSourceMediaLease lease = MkvSplitSourceMedia.Instance.Acquire(inputFile))
+            using (NormalizedMediaLease lease = NormalizedMediaStore.Instance.Acquire(inputFile, true))
             {
                 string media = lease.Path;
                 ChapterReadResult chapters = MkvSplitExternalTools.Instance.ReadChapters(media);
@@ -217,7 +217,7 @@ namespace RemuxForge.Core.Splitting
                     if (Directory.Exists(temporary))
                         Directory.Delete(temporary, true);
                 }
-                lease.VerifiedAnalysis = analysis;
+                lease.VerifiedContent = analysis;
             }
 
             lock (this._lock)

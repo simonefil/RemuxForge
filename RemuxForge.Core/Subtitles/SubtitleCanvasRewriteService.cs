@@ -2,6 +2,7 @@ using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Pipeline;
 using RemuxForge.Core.Tools;
 using System;
 using System.Collections.Generic;
@@ -54,6 +55,7 @@ namespace RemuxForge.Core.Subtitles
         /// Processa i sottotitoli importati che supportano rewrite canvas
         /// </summary>
         /// <param name="record">Record elaborazione corrente</param>
+        /// <param name="media">Matroska letti dall'elaborazione del record</param>
         /// <param name="subtitleTracks">Tracce sottotitoli importate dal file lingua</param>
         /// <param name="processedLangSubTracks">Mappa tracce sottotitolo già sostituite da file temporanei</param>
         /// <param name="options">Opzioni correnti</param>
@@ -61,6 +63,7 @@ namespace RemuxForge.Core.Subtitles
         /// <param name="tempFolder">Cartella temporanea</param>
         public void ProcessImportedSubtitles(
             FileProcessingRecord record,
+            PipelineRecordMedia media,
             List<TrackInfo> subtitleTracks,
             Dictionary<int, string> processedLangSubTracks,
             Options options,
@@ -81,7 +84,7 @@ namespace RemuxForge.Core.Subtitles
                 return;
             }
 
-            if (!this.TryBuildContext(record, options, ffmpegPath, tempFolder, out context))
+            if (!this.TryBuildContext(record, media.LangPath, options, ffmpegPath, tempFolder, out context))
             {
                 return;
             }
@@ -106,12 +109,13 @@ namespace RemuxForge.Core.Subtitles
         /// Costruisce il contesto comune dal crop effettivamente applicato in analisi
         /// </summary>
         /// <param name="record">Record pipeline corrente</param>
+        /// <param name="languageMediaPath">Matroska da cui si leggono le tracce del file lingua</param>
         /// <param name="options">Opzioni correnti</param>
         /// <param name="ffmpegPath">Path ffmpeg risolto</param>
         /// <param name="tempFolder">Cartella temporanea pipeline</param>
         /// <param name="context">Contesto canvas costruito</param>
         /// <returns>True se il contesto è valido e richiede rewrite</returns>
-        private bool TryBuildContext(FileProcessingRecord record, Options options, string ffmpegPath, string tempFolder, out SubtitleCanvasRewriteContext context)
+        private bool TryBuildContext(FileProcessingRecord record, string languageMediaPath, Options options, string ffmpegPath, string tempFolder, out SubtitleCanvasRewriteContext context)
         {
             FrameSyncGeometryInfo sourceGeometry;
             FrameSyncGeometryInfo languageGeometry;
@@ -178,6 +182,7 @@ namespace RemuxForge.Core.Subtitles
             // Il context viene passato ai rewriter formato-specifici insieme ai path tool/temp risolti dalla pipeline
             context = new SubtitleCanvasRewriteContext();
             context.Record = record;
+            context.LanguageMediaPath = languageMediaPath;
             context.Options = options;
             context.Transform = transform;
             context.SourceCropMode = sourceCrop.Mode;
@@ -331,7 +336,7 @@ namespace RemuxForge.Core.Subtitles
                 // Altrimenti estrae solo la traccia richiesta dal lang, lasciando invariato il container originale
                 inputFile = Path.Combine(context.TempFolder, "subcanvas_t" + track.Id.ToString(CultureInfo.InvariantCulture) + "_src_" + Guid.NewGuid().ToString("N").Substring(0, 8) + rewriter.GetPrimaryExtension(track));
                 extractedInput = true;
-                if (!this.ExtractSubtitleTrack(context.Record.LangMediaPath, track.Id, inputFile, context.Options))
+                if (!this.ExtractSubtitleTrack(context.LanguageMediaPath, track.Id, inputFile, context.Options))
                 {
                     FileHelper.DeleteTempSubtitleFile(inputFile);
                     ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, AppText.F("remux.subtitles.canvasExtractFailed", track.Id));

@@ -17,6 +17,7 @@ namespace RemuxForge.Core.Pipeline
         /// Costruisce la richiesta audio usando solo tracce che finiranno nel file di output
         /// </summary>
         /// <param name="record">Record elaborazione corrente</param>
+        /// <param name="media">Matroska letti per il record: quelli dell'elaborazione, oppure gli originali per l'anteprima</param>
         /// <param name="options">Opzioni correnti</param>
         /// <param name="sourceInfo">Metadata source</param>
         /// <param name="langInfo">Metadata language</param>
@@ -27,7 +28,7 @@ namespace RemuxForge.Core.Pipeline
         /// <param name="filterSourceAudio">True se filtro source audio attivo</param>
         /// <param name="effectiveAudioDelay">Delay audio effettivo</param>
         /// <returns>Richiesta audio per planner/render</returns>
-        public AudioProcessingRequest Build(FileProcessingRecord record, Options options, MkvFileInfo sourceInfo, MkvFileInfo langInfo, List<TrackInfo> sourceTracks, List<int> sourceAudioIds, List<TrackInfo> audioTracks, bool needsMerge, bool filterSourceAudio, int effectiveAudioDelay)
+        public AudioProcessingRequest Build(FileProcessingRecord record, PipelineRecordMedia media, Options options, MkvFileInfo sourceInfo, MkvFileInfo langInfo, List<TrackInfo> sourceTracks, List<int> sourceAudioIds, List<TrackInfo> audioTracks, bool needsMerge, bool filterSourceAudio, int effectiveAudioDelay)
         {
             AudioProcessingRequest request = new AudioProcessingRequest();
             List<TrackInfo> finalSourceAudioTracks = this.ResolveFinalSourceAudioTracks(sourceTracks, sourceAudioIds, filterSourceAudio);
@@ -37,8 +38,8 @@ namespace RemuxForge.Core.Pipeline
 
             request.Record = record;
             request.Options = options;
-            request.SourceFilePath = record.SourceMediaPath;
-            request.LanguageFilePath = needsMerge ? record.LangMediaPath : "";
+            request.SourceFilePath = media.SourcePath;
+            request.LanguageFilePath = needsMerge ? media.LangPath : "";
             request.SourceInfo = sourceInfo;
             request.LangInfo = langInfo;
             request.LangEditMap = record.DeepAnalysisMap;

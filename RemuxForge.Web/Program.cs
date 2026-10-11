@@ -184,10 +184,16 @@ namespace RemuxForge.Web
 
             app.UseAntiforgery();
             app.UseStaticFiles();
-            app.MapGet("/api/edit-map-preview/{recordIndex:int}/{side}/{frameIndex:int}", (int recordIndex, string side, int frameIndex, int width, int height, int? count, HttpContext context, MergeOrchestrator orchestrator, VideoFrameAccessService frameAccess) =>
-                MediaEndpoints.ServePreview(orchestrator, recordIndex, side, frameIndex, width, height, count, context, frameAccess));
-            app.MapGet("/api/edit-map-audio/{recordIndex:int}/{side}", (int recordIndex, string side, int trackId, double durationMs, string mode, string quality, HttpContext context, MergeOrchestrator orchestrator, AudioEnvelopeExtractor audioExtractor, VideoFrameAccessService frameAccess) =>
-                MediaEndpoints.ServeAudioTimeline(orchestrator, recordIndex, side, trackId, durationMs, mode, quality, context, audioExtractor, frameAccess));
+            app.MapGet("/api/edit-map-preview/{recordIndex:int}/{side}/{frameIndex:int}", (int recordIndex, string side, int frameIndex, int width, int height, int? count, Guid? sessionId, HttpContext context, MergeOrchestrator orchestrator, VideoFrameAccessService frameAccess) =>
+            {
+                IMediaSourceResolver resolver = sessionId.HasValue ? orchestrator.ResolveEditorMedia(sessionId.Value, recordIndex) : orchestrator;
+                return resolver == null ? Task.FromResult<IResult>(Results.NotFound()) : MediaEndpoints.ServePreview(resolver, recordIndex, side, frameIndex, width, height, count, context, frameAccess);
+            });
+            app.MapGet("/api/edit-map-audio/{recordIndex:int}/{side}", (int recordIndex, string side, int trackId, double durationMs, string mode, string quality, Guid? sessionId, HttpContext context, MergeOrchestrator orchestrator, AudioEnvelopeExtractor audioExtractor, VideoFrameAccessService frameAccess) =>
+            {
+                IMediaSourceResolver resolver = sessionId.HasValue ? orchestrator.ResolveEditorMedia(sessionId.Value, recordIndex) : orchestrator;
+                return resolver == null ? Task.FromResult<IResult>(Results.NotFound()) : MediaEndpoints.ServeAudioTimeline(resolver, recordIndex, side, trackId, durationMs, mode, quality, context, audioExtractor, frameAccess);
+            });
             app.MapGet("/api/split-preview/{recordIndex:int}/{side}/{frameIndex:int}", (int recordIndex, string side, int frameIndex, int width, int height, int? count, Guid? sessionId, HttpContext context, SplitOrchestrator orchestrator, VideoFrameAccessService frameAccess) =>
             {
                 IMediaSourceResolver resolver = sessionId.HasValue ? orchestrator.ResolveEditorMedia(sessionId.Value) : orchestrator;

@@ -209,7 +209,7 @@ namespace RemuxForge.Core.Pipeline
                 return true;
             }
 
-            request = this._audioRequestBuilder.Build(record, options, sourceInfo, langInfo, sourceTracks, sourceAudioIds, audioTracks, needsMerge, filterSourceAudio, effectiveAudioDelay);
+            request = this._audioRequestBuilder.Build(record, PipelineRecordMedia.Originals(record), options, sourceInfo, langInfo, sourceTracks, sourceAudioIds, audioTracks, needsMerge, filterSourceAudio, effectiveAudioDelay);
             if (request.SourceTracksToProcess.Count == 0 && request.LangTracksToProcess.Count == 0)
             {
                 record.AudioProcessingPreview = null;

@@ -29,6 +29,7 @@ namespace RemuxForge.Core.Pipeline
         /// Costruisce l'XML dei capitoli lang ricalcolati per il record
         /// </summary>
         /// <param name="record">Record in elaborazione</param>
+        /// <param name="media">Matroska letti dall'elaborazione del record</param>
         /// <param name="sourceDurationNs">Durata del contenitore source: i capitoli oltre vengono eliminati (C7)</param>
         /// <param name="effectiveSubDelayMs">Ritardo sottotitoli effettivo (sync + globale + manuale)</param>
         /// <param name="stretchFactor">Fattore di stretch dei sottotitoli, vuoto se assente</param>
@@ -36,12 +37,12 @@ namespace RemuxForge.Core.Pipeline
         /// <param name="tempFolder">Cartella dei temporanei</param>
         /// <param name="chaptersFile">XML scritto, vuoto se il lang non ha capitoli (C8)</param>
         /// <returns>True se si può procedere; false con il record già in errore</returns>
-        public bool Build(FileProcessingRecord record, long sourceDurationNs, int effectiveSubDelayMs, string stretchFactor, string mkvExtractPath, string tempFolder, out string chaptersFile)
+        public bool Build(FileProcessingRecord record, PipelineRecordMedia media, long sourceDurationNs, int effectiveSubDelayMs, string stretchFactor, string mkvExtractPath, string tempFolder, out string chaptersFile)
         {
             chaptersFile = "";
             ConsoleHelper.Write(LogSection.Merge, LogLevel.Phase, AppText.T("remux.langChapters.start"));
 
-            ChapterReadResult read = ChapterTimelineService.Read(mkvExtractPath, record.LangMediaPath);
+            ChapterReadResult read = ChapterTimelineService.Read(mkvExtractPath, media.LangPath);
             if (read.Error.Length > 0)
             {
                 // Capitoli ordered o illeggibili bloccano il file: copiarli in parte darebbe un output ingannevole (C16)

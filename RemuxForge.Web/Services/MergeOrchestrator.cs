@@ -67,8 +67,8 @@ namespace RemuxForge.Web.Services
         private volatile bool _configurationPreparing;
         private string _appliedSnapshotSignature;
 
-        /// <summary>Matroska letti dagli editor EditMap aperti, per indice di record: creati all'apertura e cancellati alla chiusura (D18)</summary>
-        private readonly Dictionary<int, NormalizedMediaPair> _editorMedia = new Dictionary<int, NormalizedMediaPair>();
+        /// <summary>Matroska letti dagli editor EditMap aperti, per sessione: creati all'apertura e cancellati alla chiusura (D18)</summary>
+        private readonly Dictionary<Guid, EditorMediaSession> _editorSessions = new Dictionary<Guid, EditorMediaSession>();
 
         #endregion
 
@@ -349,6 +349,13 @@ namespace RemuxForge.Web.Services
                 this._pipeline = new ProcessingPipeline();
                 this.ConnectPipeline();
                 this.ResetIdleWorkState();
+            }
+            // Le sessioni chiuse rilasciano i loro temporanei
+            lock (this._editorSessions)
+            {
+                foreach (EditorMediaSession session in this._editorSessions.Values)
+                    session.Dispose();
+                this._editorSessions.Clear();
             }
             this.NotifyRecordsChanged();
             this.NotifyProgressChanged();
@@ -1041,66 +1048,76 @@ namespace RemuxForge.Web.Services
         public MediaSource ResolveMediaSource(int recordIndex, string side)
         {
             FileProcessingRecord record = this.GetRecord(recordIndex);
-            NormalizedMediaPair media;
-            if (record == null)
+            if (record == null || !this.SupportsSide(side))
                 return null;
-            lock (this._editorMedia)
-            {
-                // Una sessione aperta su file diversi da quelli del record (scan nel frattempo) non vale più
-                if (!this._editorMedia.TryGetValue(recordIndex, out media) || media.Source.OriginalPath != record.SourceFilePath || media.Lang.OriginalPath != record.LangFilePath)
-                    media = null;
-            }
             bool source = string.Equals(side, "source", StringComparison.OrdinalIgnoreCase);
-            if (!source && !string.Equals(side, "language", StringComparison.OrdinalIgnoreCase))
-                return null;
-            string original = source ? record.SourceFilePath : record.LangFilePath;
-            NormalizedMediaFile file = media == null ? null : source ? media.Source : media.Lang;
-            // Senza il temporaneo della sessione un file non MKV non si legge: l'editor riporta l'errore invece di aprire l'originale (D18).
-            // Vale anche per un temporaneo sparito dalla cartella temp a sessione aperta
-            if ((file == null && !MediaContainerFormats.IsMatroska(original)) || (file != null && file.IsTemporary && !File.Exists(file.Path)))
-                throw new SessionMediaMissingException(AppText.F("web.editMap.sessionMediaMissing", Path.GetFileName(original)));
-            return new MediaSource(file != null ? file.Path : original, PipelineTrackSelectionResolver.ResolveDisplayAudio(record, source));
+            return new MediaSource(EditorMediaSession.RequireMatroska(source ? record.SourceFilePath : record.LangFilePath), PipelineTrackSelectionResolver.ResolveDisplayAudio(record, source));
         }
 
         /// <summary>
-        /// Prepara i Matroska letti dall'editor EditMap di un record: i container diversi da MKV passano da un temporaneo
+        /// Risolutore per una richiesta di anteprima o audio vincolata a una sessione dell'editor EditMap
+        /// </summary>
+        /// <param name="sessionId">Identificativo della sessione</param>
+        /// <param name="recordIndex">Indice del record della richiesta</param>
+        /// <returns>Risolutore della sessione; l'orchestratore, che legge solo i Matroska originali, se la sessione è chiusa o il record
+        /// ha cambiato file nel frattempo; null se il record non esiste</returns>
+        public IMediaSourceResolver ResolveEditorMedia(Guid sessionId, int recordIndex)
+        {
+            FileProcessingRecord record = this.GetRecord(recordIndex);
+            EditorMediaSession session;
+            if (record == null)
+                return null;
+            lock (this._editorSessions)
+                this._editorSessions.TryGetValue(sessionId, out session);
+            // Una sessione aperta su file diversi da quelli del record (scan nel frattempo) non vale più
+            if (session == null || session.GetOriginalPath("source") != record.SourceFilePath || session.GetOriginalPath("language") != record.LangFilePath)
+                return this;
+            return new EditorMediaSessionResolver(session, (index, side) => PipelineTrackSelectionResolver.ResolveDisplayAudio(record, string.Equals(side, "source", StringComparison.OrdinalIgnoreCase)));
+        }
+
+        /// <summary>
+        /// Apre la sessione dei Matroska letti dall'editor EditMap di un record: i container diversi da MKV passano da un temporaneo,
+        /// condiviso con l'analisi o l'elaborazione che tengono già lo stesso file
         /// </summary>
         /// <param name="recordIndex">Indice del record</param>
         /// <param name="cancellation">Annullamento dell'apertura</param>
-        /// <returns>Source e Lang da leggere; con errore il messaggio, altrimenti stringa vuota</returns>
-        public string OpenEditorMedia(int recordIndex, CancellationToken cancellation)
+        /// <param name="sessionId">Identificativo della sessione aperta, Guid.Empty senza sessione</param>
+        /// <returns>Con errore il messaggio, altrimenti stringa vuota</returns>
+        public string OpenEditorMedia(int recordIndex, CancellationToken cancellation, out Guid sessionId)
         {
             FileProcessingRecord record = this.GetRecord(recordIndex);
+            sessionId = Guid.Empty;
             if (record == null)
                 return "";
-            this.CloseEditorMedia(recordIndex);
-            NormalizedMediaPair media = MediaContainerNormalizer.Create().NormalizePair(record.SourceFilePath, record.LangFilePath, false, cancellation);
-            if (media.Error.Length > 0 || cancellation.IsCancellationRequested)
+            EditorMediaSession session = new EditorMediaSession(NormalizedMediaStore.Instance.AcquirePair(record.SourceFilePath, record.LangFilePath, false), "source", "language");
+            Guid opened = Guid.NewGuid();
+            // Registrata prima di normalizzare: Clear durante l'apertura la rilascia come le altre
+            lock (this._editorSessions)
+                this._editorSessions[opened] = session;
+            string error = session.Open(cancellation);
+            // L'editor chiuso durante la normalizzazione ha annullato l'apertura: il temporaneo non deve restare
+            if (error.Length > 0 || cancellation.IsCancellationRequested)
             {
-                media.Dispose();
-                return media.Error;
+                this.CloseEditorMedia(opened);
+                return error;
             }
-            lock (this._editorMedia)
-                this._editorMedia[recordIndex] = media;
-            // L'editor chiuso durante la normalizzazione ha già chiamato CloseEditorMedia: il temporaneo non deve restare
-            if (cancellation.IsCancellationRequested)
-                this.CloseEditorMedia(recordIndex);
+            sessionId = opened;
             return "";
         }
 
         /// <summary>
-        /// Cancella i temporanei dell'editor EditMap di un record
+        /// Chiude una sessione dell'editor EditMap: l'ultimo lease di un file cancella il suo temporaneo
         /// </summary>
-        /// <param name="recordIndex">Indice del record</param>
-        public void CloseEditorMedia(int recordIndex)
+        /// <param name="sessionId">Identificativo della sessione</param>
+        public void CloseEditorMedia(Guid sessionId)
         {
-            NormalizedMediaPair media;
-            lock (this._editorMedia)
+            EditorMediaSession session;
+            lock (this._editorSessions)
             {
-                if (!this._editorMedia.Remove(recordIndex, out media))
+                if (!this._editorSessions.Remove(sessionId, out session))
                     return;
             }
-            media.Dispose();
+            session.Dispose();
         }
 
         /// <summary>

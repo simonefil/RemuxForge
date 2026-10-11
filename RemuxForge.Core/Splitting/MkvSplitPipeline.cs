@@ -190,7 +190,7 @@ namespace RemuxForge.Core.Splitting
                     return result;
                 }
                 // Il lease tiene il temporaneo dall'analisi all'esecuzione del file: una sola normalizzazione, poi sparisce
-                using (MkvSplitSourceMediaLease lease = MkvSplitSourceMedia.Instance.Acquire(inputFile))
+                using (NormalizedMediaLease lease = NormalizedMediaStore.Instance.Acquire(inputFile, true))
                 {
                     MkvSplitPlan legacy = service.PlanRule(splitOptions, MkvSplitSourceIdentity.FromFile(inputFile), null, Guid.NewGuid(), out MkvSplitDocument document);
                     MkvSplitPlanner planner = new MkvSplitPlanner();
@@ -235,7 +235,7 @@ namespace RemuxForge.Core.Splitting
             MkvSplitMontageExecutionResult result = new MkvSplitMontageExecutionResult();
             MkvSplitSourceIdentity source = plan.Document.Source;
             string outputDir = plan.Outputs.Count > 0 ? Path.GetDirectoryName(plan.Outputs[0].Projection.FullPath) : "";
-            MkvSplitSourceMediaLease lease = null;
+            NormalizedMediaLease lease = null;
             string planFolder = null;
             string media = null;
             string raw = null;
@@ -280,15 +280,15 @@ namespace RemuxForge.Core.Splitting
                     cancellationToken.ThrowIfCancellationRequested();
                     // Il sorgente resta identità e nome; video, tracce e allegati si leggono dal Matroska normalizzato. Rifatto
                     // dopo l'analisi, deve avere gli stessi fotogrammi con gli stessi tempi: il piano li indirizza per indice
-                    lease = MkvSplitSourceMedia.Instance.Acquire(source.FullPath);
+                    lease = NormalizedMediaStore.Instance.Acquire(source.FullPath, true);
                     media = lease.Path;
-                    if (lease.IsTemporary && !ReferenceEquals(lease.VerifiedAnalysis, plan.Analysis))
+                    if (lease.IsTemporary && !ReferenceEquals(lease.VerifiedContent, plan.Analysis))
                     {
                         int count = MkvSplitExternalTools.Instance.CountPackets(media);
                         double[] pts = MkvSplitExternalTools.Instance.ExtractSourcePts(media, count, out _);
                         if (count != plan.Analysis.PacketCount || !pts.AsSpan().SequenceEqual(plan.Analysis.SourcePts))
                             throw new InvalidOperationException(AppText.T("split.montage.sourceContentChanged"));
-                        lease.VerifiedAnalysis = plan.Analysis;
+                        lease.VerifiedContent = plan.Analysis;
                     }
                     planFolder = Path.Combine(AppSettingsService.Instance.GetTempFolder(), "split_" + Guid.NewGuid().ToString("N"));
                     Directory.CreateDirectory(planFolder);

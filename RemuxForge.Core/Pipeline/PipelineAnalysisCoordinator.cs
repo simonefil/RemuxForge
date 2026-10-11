@@ -243,15 +243,17 @@ namespace RemuxForge.Core.Pipeline
                 }
             }
 
-            // Le analisi leggono i fotogrammi solo da Matroska: gli altri container passano da un temporaneo cancellato a fine analisi (D12)
-            using NormalizedMediaPair media = readsVideo && !done ? MediaContainerNormalizer.Create(this._opts.MkvMergePath).NormalizePair(record.SourceFilePath, record.LangFilePath, false, cancellationToken) : null;
+            // Le analisi leggono i fotogrammi solo da Matroska: gli altri container passano da un temporaneo rilasciato a fine analisi (D12),
+            // che resta a chi tiene già lo stesso file: l'elaborazione che segue nella CLI, un editor EditMap aperto
+            using NormalizedMediaPair media = readsVideo && !done ? NormalizedMediaStore.Instance.AcquirePair(record.SourceFilePath, record.LangFilePath, false, this._opts.MkvMergePath) : null;
             if (media != null)
             {
+                string mediaError = media.Open(cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
-                if (media.Error.Length > 0)
+                if (mediaError.Length > 0)
                 {
-                    ConsoleHelper.Write(LogSection.General, LogLevel.Error, media.Error);
-                    done = this.FailAndFinalizeRecord(record, media.Error, true);
+                    ConsoleHelper.Write(LogSection.General, LogLevel.Error, mediaError);
+                    done = this.FailAndFinalizeRecord(record, mediaError, true);
                 }
             }
 

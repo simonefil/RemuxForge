@@ -111,11 +111,12 @@ namespace RemuxForge.Core.Splitting
             }
 
             // Tracce, durata e capitoli si leggono sul Matroska che verrà accodato: il confronto fra parti vale sulle parti normalizzate (D20)
-            using (NormalizedMediaFile media = MediaContainerNormalizer.Create().Normalize(filePath, true, CancellationToken.None))
+            using (NormalizedMediaLease media = NormalizedMediaStore.Instance.Acquire(filePath, true))
             {
-                if (!media.Success)
+                string error = media.Open(CancellationToken.None);
+                if (error.Length > 0)
                 {
-                    part.Error = media.Error;
+                    part.Error = error;
                     return part;
                 }
 
@@ -307,7 +308,7 @@ namespace RemuxForge.Core.Splitting
 
             string outputDir = Path.GetDirectoryName(outputPath);
             string temporary = Path.Combine(outputDir, TEMP_PREFIX + Guid.NewGuid().ToString("N"));
-            List<NormalizedMediaFile> media = new List<NormalizedMediaFile>();
+            List<NormalizedMediaLease> media = new List<NormalizedMediaLease>();
             try
             {
                 this.EnsurePartsUnchanged(plan);
@@ -316,15 +317,15 @@ namespace RemuxForge.Core.Splitting
                 List<string> args = new List<string> { "-o", joined };
 
                 // Un temporaneo per parte, dall'avvio alla fine dell'unione: mkvmerge accoda solo Matroska con le stesse tracce lette dal piano
-                MediaContainerNormalizer normalizer = MediaContainerNormalizer.Create();
                 foreach (MkvSplitJoinPart part in plan.Parts)
                 {
                     ThrowIfStopped(stopRequested);
-                    NormalizedMediaFile normalized = normalizer.Normalize(part.FilePath, true, cancellationToken);
+                    NormalizedMediaLease normalized = NormalizedMediaStore.Instance.Acquire(part.FilePath, true);
                     media.Add(normalized);
+                    string error = normalized.Open(cancellationToken);
                     cancellationToken.ThrowIfCancellationRequested();
-                    if (!normalized.Success)
-                        throw new InvalidOperationException(normalized.Error);
+                    if (error.Length > 0)
+                        throw new InvalidOperationException(error);
                 }
 
                 // Gli avvisi del piano (quantizzazione MPEG-4, D24) restano anche nel log dell'esecuzione
@@ -394,7 +395,7 @@ namespace RemuxForge.Core.Splitting
             }
             finally
             {
-                foreach (NormalizedMediaFile normalized in media)
+                foreach (NormalizedMediaLease normalized in media)
                     normalized.Dispose();
                 try
                 {

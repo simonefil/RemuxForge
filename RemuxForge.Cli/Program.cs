@@ -177,11 +177,15 @@ namespace RemuxForge.Cli
                 {
                     if (records[i].Status == FileStatus.Pending)
                     {
-                        pipeline.AnalyzeFile(records[i], cancellation.Token);
-
-                        if (records[i].Status == FileStatus.Analyzed && !cancellation.IsCancellationRequested)
+                        // Analisi ed elaborazione di seguito: il temporaneo normalizzato del record resta fra le due, poi sparisce
+                        using (pipeline.RetainMedia(records[i]))
                         {
-                            pipeline.ProcessFile(records[i]);
+                            pipeline.AnalyzeFile(records[i], cancellation.Token);
+
+                            if (records[i].Status == FileStatus.Analyzed && !cancellation.IsCancellationRequested)
+                            {
+                                pipeline.ProcessFile(records[i]);
+                            }
                         }
                     }
                 }

@@ -444,17 +444,17 @@ namespace RemuxForge.Web.Services
                 revision = this._optionsRevision;
                 this.BusyState = true;
             }
-            // Un temporaneo per sessione, creato all'apertura e cancellato alla chiusura; l'esecuzione dello stesso file lo condivide
-            MkvSplitSourceMediaLease media = null;
+            // La sessione tiene il lease del sorgente senza normalizzarlo: il temporaneo nasce alla prima anteprima o all'analisi
+            // non ancora in cache, si condivide con l'esecuzione dello stesso file e sparisce alla chiusura
+            EditorMediaSession media = null;
             try
             {
                 cancellation.ThrowIfCancellationRequested();
                 MkvSplitSourceIdentity source = MkvSplitSourceIdentity.FromFile(record.InputFile);
-                media = MkvSplitSourceMedia.Instance.Acquire(record.InputFile);
+                media = new EditorMediaSession(new NormalizedMediaPair(NormalizedMediaStore.Instance.Acquire(record.InputFile, true), null), "input", null);
                 MkvSplitAnalysis analysis = await Task.Run(() =>
                 {
                     MkvSplitExternalTools.Instance.ResolveBinaries();
-                    _ = media.Path;
                     return MkvSplitAnalysisCache.Instance.GetOrBuild(record.InputFile);
                 }, cancellation);
                 cancellation.ThrowIfCancellationRequested();
@@ -612,8 +612,8 @@ namespace RemuxForge.Web.Services
                 if (!this._sessions.TryGetValue(sessionId, out EditorSession session)) return null;
                 MkvSplitRecord record = this._records.Find(item => item.RecordId == session.RecordId);
                 if (record == null || !session.Source.Matches(MkvSplitSourceIdentity.FromFile(session.Source.FullPath))) return null;
-                return new SessionMediaResolver(new MediaSource(session.Media.Path,
-                    Copy(session.SourceInfo.Tracks.FindAll(track => track.Type == "audio"))), session.Media.IsTemporary, Path.GetFileName(session.Source.FullPath));
+                List<TrackInfo> tracks = Copy(session.SourceInfo.Tracks.FindAll(track => track.Type == "audio"));
+                return new EditorMediaSessionResolver(session.Media, (_, _) => tracks);
             }
         }
 
@@ -639,10 +639,7 @@ namespace RemuxForge.Web.Services
             if (record == null || !this.SupportsSide(side))
                 return null;
             List<TrackInfo> tracks = record.SourceInfo != null ? record.SourceInfo.Tracks.FindAll(track => string.Equals(track.Type, "audio", StringComparison.OrdinalIgnoreCase)) : new List<TrackInfo>();
-            // Senza sessione non si normalizza: un file non MKV non si legge e l'errore lo riporta, come nell'editor EditMap (D18)
-            if (!MediaContainerFormats.IsMatroska(record.InputFile))
-                throw new SessionMediaMissingException(AppText.F("web.editMap.sessionMediaMissing", Path.GetFileName(record.InputFile)));
-            return new MediaSource(record.InputFile, tracks);
+            return new MediaSource(EditorMediaSession.RequireMatroska(record.InputFile), tracks);
         }
 
         #endregion
@@ -863,7 +860,7 @@ namespace RemuxForge.Web.Services
             MkvSplitPipeline pipeline = new MkvSplitPipeline();
             MkvSplitPlanner planner = new MkvSplitPlanner();
             MkvSplitRecord record;
-            MkvSplitSourceMediaLease media;
+            NormalizedMediaLease media;
             MkvSplitPlan plan;
             Options options;
             OperationSummary summary = null;
@@ -913,7 +910,7 @@ namespace RemuxForge.Web.Services
                         this.ReportProgress(i, targets.Count, Path.GetFileName(record.InputFile));
 
                         // Il temporaneo vive dall'analisi all'esecuzione del sorgente (D13): un file mai analizzato non si normalizza due volte
-                        media = MkvSplitSourceMedia.Instance.Acquire(record.InputFile);
+                        media = NormalizedMediaStore.Instance.Acquire(record.InputFile, true);
                         // Un file mai analizzato riceve il suo piano adesso: lo split non ricostruisce mai i segmenti da sé
                         AppliedMontage applied;
                         lock (this.StateLock) { this._applied.TryGetValue(record.InputFile, out applied); }
@@ -1561,81 +1558,9 @@ namespace RemuxForge.Web.Services
             public string RuleDocument;
 
             /// <summary>
-            /// Matroska normalizzato della sessione, rilasciato alla chiusura
+            /// Lease del sorgente della sessione, normalizzato alla prima lettura e rilasciato alla chiusura
             /// </summary>
-            public MkvSplitSourceMediaLease Media;
-
-            #endregion
-        }
-
-        /// <summary>
-        /// Risolutore media vincolato al sorgente di una sessione editor
-        /// </summary>
-        private class SessionMediaResolver : IMediaSourceResolver
-        {
-            #region Variabili di classe
-
-            /// <summary>
-            /// Sorgente esposta dal risolutore
-            /// </summary>
-            private readonly MediaSource _source;
-
-            /// <summary>
-            /// True se il file esposto è il temporaneo normalizzato della sessione
-            /// </summary>
-            private readonly bool _temporary;
-
-            /// <summary>
-            /// Nome del file sorgente, per il messaggio del temporaneo mancante
-            /// </summary>
-            private readonly string _sourceName;
-
-            #endregion
-
-            #region Costruttore
-
-            /// <summary>
-            /// Costruttore
-            /// </summary>
-            /// <param name="source">Sorgente da esporre</param>
-            /// <param name="temporary">True se il file esposto è il temporaneo normalizzato della sessione</param>
-            /// <param name="sourceName">Nome del file sorgente</param>
-            public SessionMediaResolver(MediaSource source, bool temporary, string sourceName)
-            {
-                this._source = source;
-                this._temporary = temporary;
-                this._sourceName = sourceName;
-            }
-
-            #endregion
-
-            #region Metodi pubblici
-
-            /// <summary>
-            /// Indica se il lato richiesto è esposto
-            /// </summary>
-            /// <param name="side">Nome del lato</param>
-            /// <returns>True solo per input</returns>
-            public bool SupportsSide(string side)
-            {
-                return string.Equals(side, "input", StringComparison.OrdinalIgnoreCase);
-            }
-
-            /// <summary>
-            /// Risolve la sorgente della sessione
-            /// </summary>
-            /// <param name="recordIndex">Indice del record, ignorato</param>
-            /// <param name="side">Nome del lato</param>
-            /// <returns>Sorgente della sessione, null se il lato non è esposto</returns>
-            public MediaSource ResolveMediaSource(int recordIndex, string side)
-            {
-                if (!this.SupportsSide(side))
-                    return null;
-                // Il temporaneo sparito dalla cartella temp a sessione aperta non si rifà qui: l'editor va chiuso e riaperto
-                if (this._temporary && !File.Exists(this._source.FilePath))
-                    throw new SessionMediaMissingException(AppText.F("web.editMap.sessionMediaMissing", this._sourceName));
-                return this._source;
-            }
+            public EditorMediaSession Media;
 
             #endregion
         }
