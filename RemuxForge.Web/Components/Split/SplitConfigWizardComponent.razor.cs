@@ -298,7 +298,7 @@ namespace RemuxForge.Web.Components.Split
             bool recursive = this.Draft.Recursive;
             if (!this.Draft.SourceIsFile && !Directory.Exists(path))
                 return;
-            (string Codec, string ScanType, string Mismatch)? video = await Task.Run<(string, string, string)?>(() =>
+            (string Codec, VideoScanType ScanType, string Mismatch)? video = await Task.Run<(string, VideoScanType, string)?>(() =>
             {
                 try
                 {
@@ -306,13 +306,13 @@ namespace RemuxForge.Web.Components.Split
                     List<string> files = MkvSplitPipeline.ResolveInputFiles(path, recursive);
                     if (files.Count == 0)
                         return null;
-                    string mismatch = MkvSplitPipeline.CheckBatchVideo(files, out string codec, out string scanType);
+                    string mismatch = MkvSplitPipeline.CheckBatchVideo(files, out string codec, out VideoScanType scanType);
                     return (codec, scanType, mismatch);
                 }
                 catch (InvalidOperationException exception)
                 {
                     // Strumenti mancanti o MediaInfo che non risponde: non parte nulla e il motivo compare sotto la sorgente
-                    return (null, "", exception.Message);
+                    return (null, new VideoScanType(""), exception.Message);
                 }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
                 {

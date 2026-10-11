@@ -207,43 +207,10 @@ namespace RemuxForge.Core.Splitting
         /// <summary>Separa i PTS dei frame dal confine finale aggiuntivo di timestamps_v2.</summary>
         public double[] ExtractSourcePts(string sourceFile, int packetCount, out double endTimestamp)
         {
-            string tempFile;
-            List<double> pts = new List<double>(1 << 17);
-            StreamReader reader = null;
-            string line;
-            double value = double.NaN;
+            double value;
 
             ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.T("split.tools.extractingPts"));
-            tempFile = Path.Combine(AppSettingsService.Instance.GetTempFolder(), "mkv_pts_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".txt");
-            try
-            {
-                this.Run(this._mkvextract, new string[] { sourceFile, "timestamps_v2", "0:" + tempFile });
-                reader = new StreamReader(tempFile);
-                while ((line = reader.ReadLine()) != null)
-                {
-                    line = line.Trim();
-                    if (string.IsNullOrEmpty(line) || line[0] == '#')
-                        continue;
-
-                    if (double.TryParse(line, NumberStyles.Float, CultureInfo.InvariantCulture, out value))
-                    {
-                        pts.Add(value / 1000.0);
-                    }
-                }
-            }
-            finally
-            {
-                if (reader != null)
-                    reader.Dispose();
-
-                try
-                {
-                    File.Delete(tempFile);
-                }
-                catch (IOException)
-                {
-                }
-            }
+            List<double> pts = this.ReadTimestamps(sourceFile, 0, "mkv_pts_");
 
             endTimestamp = double.NaN;
             if (pts.Count == packetCount + 1)
@@ -424,16 +391,11 @@ namespace RemuxForge.Core.Splitting
 
                         inF.Seek(f.Pos, SeekOrigin.Begin);
                         int read = inF.ReadAtLeast(window, window.Length, false);
-                        // Header GOP (00 00 01 B8): 25 bit di time_code, poi closed_gop; vale solo se precede il picture header (00 00 01 00)
-                        for (int b = 0; b + 7 < read; b++)
-                        {
-                            if (window[b] != 0 || window[b + 1] != 0 || window[b + 2] != 1)
-                                continue;
-                            if (window[b + 3] == 0xB8)
-                                f.LeadingDecodable = (window[b + 7] & 0x40) != 0;
-                            if (window[b + 3] == 0xB8 || window[b + 3] == 0x00)
-                                break;
-                        }
+                        // Header GOP (00 00 01 B8): 25 bit di time_code, poi closed_gop; vale solo se precede il picture header (00 00 01 00).
+                        // Il limite tiene dentro la lettura anche il byte di closed_gop, quattro dopo lo start code
+                        int header = MpegStartCode.Find(window, 0, read - 4, code => code == 0xB8 || code == 0x00);
+                        if (header >= 0 && window[header + 3] == 0xB8)
+                            f.LeadingDecodable = (window[header + 7] & 0x40) != 0;
                         byPresentation[i] = f;
                     }
                 }
@@ -519,28 +481,7 @@ namespace RemuxForge.Core.Splitting
         /// <returns>Inizio in secondi del pacchetto, infinito se nessun pacchetto supera il tempo</returns>
         public double GetAudioOverrunStart(string inputFile, int trackId, double endTimestamp)
         {
-            string tempFile = Path.Combine(AppSettingsService.Instance.GetTempFolder(), "mkv_audio_ts_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".txt");
-            List<double> timestamps = new List<double>();
-
-            try
-            {
-                this.Run(this._mkvextract, new string[] { inputFile, "timestamps_v2", trackId.ToString(CultureInfo.InvariantCulture) + ":" + tempFile });
-                foreach (string line in File.ReadLines(tempFile))
-                {
-                    if (line.Length > 0 && line[0] != '#' && double.TryParse(line.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double value))
-                        timestamps.Add(value / 1000.0);
-                }
-            }
-            finally
-            {
-                try
-                {
-                    File.Delete(tempFile);
-                }
-                catch (IOException)
-                {
-                }
-            }
+            List<double> timestamps = this.ReadTimestamps(inputFile, trackId, "mkv_audio_ts_");
 
             // Tempi al millesimo: un pacchetto che finisce sull'ultimo fotogramma entro mezzo millisecondo non lo supera
             for (int index = 0; index + 1 < timestamps.Count; index++)
@@ -550,30 +491,6 @@ namespace RemuxForge.Core.Splitting
             }
 
             return double.PositiveInfinity;
-        }
-
-        /// <summary>
-        /// Probe dimensione/posizione packet
-        /// </summary>
-        /// <param name="file">File video da analizzare</param>
-        /// <returns>Lista dimensione/posizione dei packet</returns>
-        public List<(int size, long pos)> ProbePacketsSizePos(string file)
-        {
-            List<(int size, long pos)> frames = new List<(int, long)>();
-            this.RunStreamed(this._ffprobe, new string[]
-            {
-                "-v", "quiet", "-select_streams", "v:0",
-                "-show_entries", "packet=pos,size", "-of", "csv=p=0", file
-            }, delegate (string line)
-            {
-                string[] parts = line.Split(',');
-                if (parts.Length < 2)
-                    return;
-
-                frames.Add((int.Parse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture), long.Parse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture)));
-            });
-
-            return frames;
         }
 
         /// <summary>
@@ -642,6 +559,29 @@ namespace RemuxForge.Core.Splitting
         }
 
         /// <summary>
+        /// Aggiunge al comando mkvmerge lingua, nome e flag della traccia originale, per la traccia con l'ID indicato nel file che segue
+        /// </summary>
+        /// <param name="command">Argomenti mkvmerge</param>
+        /// <param name="id">ID della traccia nel file che segue gli argomenti</param>
+        /// <param name="track">Traccia del sorgente da cui copiare le proprietà</param>
+        public static void AddTrackOptions(List<string> command, int id, TrackInfo track)
+        {
+            command.AddRange(new string[] { "--language", id + ":" + (string.IsNullOrEmpty(track.LanguageIetf) ? (string.IsNullOrEmpty(track.Language) ? "und" : track.Language) : track.LanguageIetf),
+                "--track-name", id + ":" + (track.Name ?? ""), "--default-track-flag", id + ":" + (track.DefaultTrack ? "yes" : "no"),
+                "--forced-display-flag", id + ":" + (track.ForcedTrack ? "yes" : "no") });
+        }
+
+        /// <summary>
+        /// Indica se la traccia è audio FLAC, che mkvmerge non taglia insieme al video: lo Split lo taglia a parte
+        /// </summary>
+        /// <param name="track">Traccia da controllare</param>
+        /// <returns>True per una traccia audio FLAC</returns>
+        public static bool IsFlacAudio(TrackInfo track)
+        {
+            return track.Type == "audio" && track.Codec.IndexOf("FLAC", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        /// <summary>
         /// Righe di errore e avviso di mkvmerge, per un messaggio che dica quale parte e traccia
         /// </summary>
         /// <param name="result">Risultato del processo</param>
@@ -686,11 +626,11 @@ namespace RemuxForge.Core.Splitting
         /// Legge la scansione del video da MediaInfo CLI
         /// </summary>
         /// <param name="inputFile">File sorgente</param>
-        /// <returns>Valore ScanType, vuoto se non dichiarato</returns>
+        /// <returns>Scansione MediaInfo, vuota se non dichiarata</returns>
         /// <exception cref="InvalidOperationException">MediaInfo non risponde: il file non si tratta come progressivo</exception>
-        public string GetVideoScanType(string inputFile)
+        public VideoScanType GetVideoScanType(string inputFile)
         {
-            if (!new MediaInfoService(this._mediainfo).TryGetVideoScanType(inputFile, out string scanType))
+            if (!new MediaInfoService(this._mediainfo).TryGetVideoScanType(inputFile, out VideoScanType scanType))
                 throw new InvalidOperationException(AppText.F("split.tools.scanTypeReadFailed", Path.GetFileName(inputFile)));
             return scanType;
         }
@@ -698,6 +638,42 @@ namespace RemuxForge.Core.Splitting
         #endregion
 
         #region Metodi privati
+
+        /// <summary>
+        /// Legge con mkvextract i timestamps v2 di una traccia, nell'ordine del file, passando da un temporaneo cancellato subito
+        /// </summary>
+        /// <param name="inputFile">File MKV</param>
+        /// <param name="trackId">ID mkvmerge della traccia</param>
+        /// <param name="tempPrefix">Prefisso del temporaneo nella cartella temp</param>
+        /// <returns>Timestamp in secondi; righe vuote, commenti e valori non numerici sono saltati</returns>
+        private List<double> ReadTimestamps(string inputFile, int trackId, string tempPrefix)
+        {
+            string tempFile = Path.Combine(AppSettingsService.Instance.GetTempFolder(), tempPrefix + Guid.NewGuid().ToString("N").Substring(0, 8) + ".txt");
+            List<double> timestamps = new List<double>(1 << 17);
+
+            try
+            {
+                this.Run(this._mkvextract, new string[] { inputFile, "timestamps_v2", trackId.ToString(CultureInfo.InvariantCulture) + ":" + tempFile });
+                foreach (string line in File.ReadLines(tempFile))
+                {
+                    string text = line.Trim();
+                    if (text.Length > 0 && text[0] != '#' && double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double value))
+                        timestamps.Add(value / 1000.0);
+                }
+            }
+            finally
+            {
+                try
+                {
+                    File.Delete(tempFile);
+                }
+                catch (IOException)
+                {
+                }
+            }
+
+            return timestamps;
+        }
 
         /// <summary>
         /// Esegue processo con throw su exit code diverso da zero

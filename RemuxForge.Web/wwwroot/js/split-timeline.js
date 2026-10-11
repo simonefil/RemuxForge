@@ -16,8 +16,8 @@ const previews = new Map();
 const editorFocus = new WeakMap();
 export function rememberEditorFocus(root) { editorFocus.set(root, root.contains(document.activeElement) ? document.activeElement : root); }
 export function restoreEditorFocus(root) { const target = editorFocus.get(root); (target?.isConnected ? target : root)?.focus({ preventScroll: true }); }
-export function createFramePreview(canvas) {
-    const preview = sharedPreview(canvas);
+export function createFramePreview(canvas, reference, side) {
+    const preview = sharedPreview(canvas, reference, side);
     const load = preview.load.bind(preview), dispose = preview.dispose.bind(preview);
     preview.load = async url => { try { return await load(url); } catch (error) { if (error?.name === 'AbortError') return false; throw error; } };
     preview.dispose = () => { previews.delete(canvas); dispose(); };

@@ -616,10 +616,9 @@
     gap: var(--split-gap);
 }
 
-/* Quattro gruppi: pulsanti del tratto, traccia audio, visualizzazione, altezza della forma d'onda */
+/* Quattro gruppi: pulsanti del tratto, traccia audio, visualizzazione, altezza della forma d'onda, nella barra che va a capo
+   (media-timeline-wrapping) */
 .split-editor-timeline .media-timeline-toolbar {
-    display: flex;
-    flex-wrap: wrap;
     gap: var(--split-gap);
     font-size: var(--split-fs);
 }
@@ -635,7 +634,6 @@
 }
 
 .split-editor-timeline .rz-dropdown.media-audio-control {
-    width: min(20rem, 35vw);
     height: var(--split-control-h);
     padding-block: 0;
     justify-content: center;
@@ -645,23 +643,8 @@
     font-size: var(--split-fs);
 }
 
-.split-editor-timeline .rz-selectbar.media-audio-mode {
-    width: auto;
-}
-
-/* Ogni voce larga quanto il suo testo più il padding, non metà della barra */
-.split-editor-timeline .rz-selectbar.media-audio-mode > .rz-button {
-    flex: 0 0 auto;
-}
-
 .split-editor-timeline .media-timeline-toolbar output {
     font-variant-numeric: tabular-nums;
-}
-
-/* Margine pari al raggio della maniglia, che a valore minimo sporge a sinistra sull'etichetta */
-.split-editor-timeline .media-timeline-toolbar .rz-slider {
-    width: 8rem;
-    margin-inline: .625rem;
 }
 
 .split-editor-hint {

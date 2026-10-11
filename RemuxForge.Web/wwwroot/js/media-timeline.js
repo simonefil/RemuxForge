@@ -269,8 +269,9 @@ export function captureEditorKeyboard(root, dotNetReference, options) {
  * Anteprima di un singolo fotogramma su un canvas WebGL: prepara l'URL con le dimensioni
  * correnti, scarica la finestra di fotogrammi riusando la cache e disegna. Le tre fasi sono
  * separate perché chi mostra più anteprime insieme deve aggiornarle in un colpo solo.
+ * Il temporaneo della sessione mancante arriva al componente con OnSessionMediaMissing(side, messaggio).
  */
-export function createFramePreview(canvas) {
+export function createFramePreview(canvas, dotNetReference, side) {
     fitPreviewCanvas(canvas);
     const renderer = new RawFrameRenderer(canvas);
     const cache = new Map();
@@ -303,7 +304,14 @@ export function createFramePreview(canvas) {
             if (controller) controller.abort();
             controller = new AbortController();
             const request = preview.prepare(url);
-            const frame = request ? await preview.fetchWindow(request.sizedUrl, controller.signal) : null;
+            let frame = null;
+            try {
+                frame = request ? await preview.fetchWindow(request.sizedUrl, controller.signal) : null;
+            } catch (error) {
+                if (current !== generation || error?.sessionMediaMissing === undefined) throw error;
+                await notifySessionMediaMissing(dotNetReference, side, error);
+                return false;
+            }
             if (current !== generation) return false;
             preview.commit(request ? request.index : null, frame);
             return true;
@@ -323,10 +331,13 @@ export function createFramePreview(canvas) {
     return preview;
 }
 
-/** Coppia di anteprime aggiornate insieme: il disegno avviene solo quando entrambe le richieste sono concluse. */
-export function createPreviewPair(sourceCanvas, languageCanvas) {
-    const source = createFramePreview(sourceCanvas);
-    const language = createFramePreview(languageCanvas);
+/**
+ * Coppia di anteprime aggiornate insieme: il disegno avviene solo quando entrambe le richieste sono concluse. Il temporaneo
+ * della sessione mancante del primo lato fallito arriva al componente con OnSessionMediaMissing, e la coppia non disegna.
+ */
+export function createPreviewPair(sourceCanvas, languageCanvas, dotNetReference) {
+    const source = createFramePreview(sourceCanvas, dotNetReference, 'source');
+    const language = createFramePreview(languageCanvas, dotNetReference, 'language');
     let generation = 0;
     let controller = null;
     let resizeTimer = null;
@@ -349,8 +360,13 @@ export function createPreviewPair(sourceCanvas, languageCanvas) {
                 languageRequest ? language.fetchWindow(languageRequest.sizedUrl, controller.signal) : Promise.resolve(null)
             ]);
             if (current !== generation) return false;
-            if (results[0].status === 'rejected') throw new Error(`Source: ${results[0].reason}`);
-            if (results[1].status === 'rejected') throw new Error(`Language: ${results[1].reason}`);
+            const failed = results[0].status === 'rejected' ? 0 : results[1].status === 'rejected' ? 1 : -1;
+            if (failed >= 0 && results[failed].reason?.sessionMediaMissing !== undefined) {
+                await notifySessionMediaMissing(dotNetReference, failed === 0 ? 'source' : 'language', results[failed].reason);
+                return false;
+            }
+            if (failed === 0) throw new Error(`Source: ${results[0].reason}`);
+            if (failed === 1) throw new Error(`Language: ${results[1].reason}`);
             source.commit(sourceRequest ? sourceRequest.index : null, results[0].value);
             language.commit(languageRequest ? languageRequest.index : null, results[1].value);
             loadedSize = currentSize();
@@ -490,7 +506,7 @@ export class TimelineCanvas {
             this.draw();
         } catch (error) {
             // Il temporaneo della sessione mancante lo segnala il componente, una volta sola
-            if (error?.sessionMediaMissing !== undefined) this.dotNetReference?.invokeMethodAsync('OnSessionMediaMissing', error.sessionMediaMissing).catch(() => {});
+            if (error?.sessionMediaMissing !== undefined) notifySessionMediaMissing(this.dotNetReference, null, error);
             else if (error?.name !== 'AbortError') console.warn('Audio timeline unavailable', error);
         }
     }
@@ -1182,18 +1198,20 @@ export function formatTimelineTime(milliseconds) {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
 }
 
-// Prefisso dell'errore di una risposta 409, quando manca il temporaneo della sessione dell'editor (SessionMediaMissingException.CLIENT_MARKER)
-const SESSION_MEDIA_MISSING = 'session-media-missing:';
-
-/** Errore di una risposta non riuscita: con 409 porta il messaggio del server dietro il prefisso del temporaneo mancante. */
+/** Errore di una risposta non riuscita: con 409, il temporaneo della sessione mancante, porta il messaggio del server in sessionMediaMissing. */
 async function requestError(response, fallback) {
     const text = await response.text();
     if (response.status !== 409) return new Error(text || `${fallback}: ${response.status}`);
     let detail = text;
     try { detail = JSON.parse(text).detail || text; } catch { }
-    const error = new Error(SESSION_MEDIA_MISSING + detail);
+    const error = new Error(detail);
     error.sessionMediaMissing = detail;
     return error;
+}
+
+/** Consegna al componente la risposta 409 di una richiesta: il lato dell'anteprima fallita, null per un'immagine audio, e il messaggio del server. */
+function notifySessionMediaMissing(dotNetReference, side, error) {
+    return dotNetReference ? dotNetReference.invokeMethodAsync('OnSessionMediaMissing', side, error.sessionMediaMissing).catch(() => {}) : Promise.resolve();
 }
 
 async function fetchRawFrameWindow(url, previousIndex, cache, signal) {

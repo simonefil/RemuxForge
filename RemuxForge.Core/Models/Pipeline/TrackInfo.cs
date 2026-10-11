@@ -14,6 +14,7 @@ namespace RemuxForge.Core.Models
         {
             this.Type = "";
             this.Codec = "";
+            this.CodecId = "";
             this.Language = "";
             this.LanguageIetf = "";
             this.Name = "";
@@ -41,6 +42,11 @@ namespace RemuxForge.Core.Models
         /// Codec utilizzato per la traccia, come riportato da mkvmerge
         /// </summary>
         public string Codec { get; set; }
+
+        /// <summary>
+        /// CodecID Matroska della traccia come riportato da mkvmerge, vuoto se non dichiarato (container diversi da MKV)
+        /// </summary>
+        public string CodecId { get; set; }
 
         /// <summary>
         /// Codice lingua ISO 639-2 della traccia

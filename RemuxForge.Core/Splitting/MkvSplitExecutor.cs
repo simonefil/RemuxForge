@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
+using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
 
 namespace RemuxForge.Core.Splitting
@@ -67,16 +68,15 @@ namespace RemuxForge.Core.Splitting
             string videoBs;
             long totalBytes;
             int kfAfter;
-            int lookAhead;
             int headCount;
             int restStart;
             int restCount;
             int kfBefore;
             int tailStart;
+            MkvSplitKeyframeIndex keyframes = new MkvSplitKeyframeIndex(frameMap, presentationToDecode);
             string tailFile;
             int headEndFrame;
             int localSkip;
-            List<(int size, long pos)> reencFrames;
             string headFile;
             string parameterSetsFile;
             long restBytes;
@@ -87,7 +87,7 @@ namespace RemuxForge.Core.Splitting
             epStartFrame = seg.StartFrame;
             epFrameCount = seg.FrameCount;
             epEndFrame = epStartFrame + epFrameCount - 1;
-            startIsKey = frameMap[presentationToDecode[epStartFrame]].Key;
+            startIsKey = keyframes.IsKey(epStartFrame);
 
             // Path del bitstream video del segmento ricostruito (keyframe copy o head re-encoded + rest copy)
             videoBs = Path.Combine(tempDir, "video.bs");
@@ -120,12 +120,7 @@ namespace RemuxForge.Core.Splitting
                 // Ricerca del primo keyframe dopo lo start (entro una finestra ragionevole). La ricerca
                 // scorre l'ordine di presentazione: le immagini leading di un GOP aperto stanno nel raw
                 // dopo il keyframe ma vanno mostrate prima, e cadono quindi nella testa ricodificata.
-                kfAfter = -1;
-                lookAhead = Math.Min(epStartFrame + KEYFRAME_LOOKAHEAD, presentationToDecode.Length);
-                for (int i = epStartFrame + 1; i < lookAhead; i++)
-                {
-                    if (frameMap[presentationToDecode[i]].Key) { kfAfter = i; break; }
-                }
+                kfAfter = keyframes.Next(epStartFrame + 1, epStartFrame + KEYFRAME_LOOKAHEAD);
                 if (kfAfter < 0 || kfAfter > epEndFrame)
                 {
                     throw new InvalidOperationException(AppText.F("split.exec.noKeyframeInEpisode", epStartFrame));
@@ -142,11 +137,12 @@ namespace RemuxForge.Core.Splitting
                     throw new InvalidOperationException(AppText.F("split.exec.noKeyframeInEpisode", epStartFrame));
                 }
 
-                // Ricerca del keyframe precedente: serve come punto di decode valido per la ri-codifica
-                kfBefore = epStartFrame;
-                for (int i = epStartFrame - 1; i >= 0; i--)
+                // Ricerca del keyframe precedente: serve come punto di decode valido per la ri-codifica; la cerca sugli indici
+                // della mappa, che è in ordine di decodifica, e senza keyframe precedente vale lo start
+                kfBefore = new MkvSplitKeyframeIndex(frameMap).Previous(epStartFrame - 1);
+                if (kfBefore < 0)
                 {
-                    if (frameMap[i].Key) { kfBefore = i; break; }
+                    kfBefore = epStartFrame;
                 }
 
                 // Ricodifica della testa direttamente dal container originale: il decoder riceve extradata
@@ -157,13 +153,6 @@ namespace RemuxForge.Core.Splitting
                 ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.exec.headReencode", epStartFrame, headEndFrame, headCount, localSkip));
 
                 ReencodeFrameRange(inputFile, epStartFrame, headEndFrame, headArgs, codec, headFile);
-
-                // Probe del numero di frame ri-codificati: deve combaciare esattamente con la testa richiesta.
-                reencFrames = MkvSplitExternalTools.Instance.ProbePacketsSizePos(headFile);
-                if (reencFrames.Count != headCount)
-                {
-                    throw new InvalidOperationException(AppText.F("split.exec.headReencodeMismatch", reencFrames.Count, headCount));
-                }
                 ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.exec.headDone", headCount));
 
                 // Copia byte-exact del rest, dal keyframe fino all'inizio della coda in ordine di presentazione
@@ -216,7 +205,7 @@ namespace RemuxForge.Core.Splitting
         {
             int startFrame = seg.StartFrame;
             int endFrame = seg.StartFrame + seg.FrameCount - 1;
-            int kfAfter = endFrame + 1;
+            int kfAfter = new MkvSplitKeyframeIndex(keyFlags).Next(startFrame, endFrame + 1);
             int tailStart;
             int bodyCount;
             string headFile;
@@ -229,9 +218,9 @@ namespace RemuxForge.Core.Splitting
 
             // Primo keyframe reale dall'inizio del taglio in ordine di presentazione: le immagini leading di un GOP aperto
             // lo precedono e cadono nella testa. Senza keyframe prima della fine la testa è l'intera clip
-            for (int i = startFrame; i <= endFrame; i++)
+            if (kfAfter < 0)
             {
-                if (keyFlags[i].Key) { kfAfter = i; break; }
+                kfAfter = endFrame + 1;
             }
             tailStart = kfAfter <= endFrame ? FindTailStart(presentationToDecode, kfAfter, endFrame) : endFrame + 1;
             bodyCount = tailStart - kfAfter;
@@ -241,10 +230,6 @@ namespace RemuxForge.Core.Splitting
                 headFile = Path.Combine(tempDir, "head.part");
                 ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.exec.packetHead", startFrame, kfAfter - 1, kfAfter - startFrame));
                 ReencodeFrameRange(inputFile, startFrame, kfAfter - 1, headArgs, codec, headFile);
-                if (MkvSplitExternalTools.Instance.CountPackets(headFile) != kfAfter - startFrame)
-                {
-                    throw new InvalidOperationException(AppText.F("split.exec.headReencodeMismatch", MkvSplitExternalTools.Instance.CountPackets(headFile), kfAfter - startFrame));
-                }
                 ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.exec.headDone", kfAfter - startFrame));
                 parts.Add(headFile);
             }
@@ -442,7 +427,7 @@ namespace RemuxForge.Core.Splitting
             startTc = MkvSplitSegmentService.SecsToTs(seg.StartTs);
             endTc = MkvSplitSegmentService.SecsToTs(seg.EndTs);
 
-            if (tracks.Exists(track => track.Type == "audio" && track.Codec.IndexOf("FLAC", StringComparison.OrdinalIgnoreCase) >= 0))
+            if (tracks.Exists(MkvSplitExternalTools.IsFlacAudio))
             {
                 string videoMkv = Path.Combine(tempDir, "video.mkv");
                 string avFile = Path.Combine(tempDir, "av.mkv");
@@ -573,7 +558,6 @@ namespace RemuxForge.Core.Splitting
         {
             string tailFile;
             int tailCount;
-            List<(int size, long pos)> tailFrames;
 
             tailCount = lastPresentation - tailStart + 1;
             if (tailCount < 1)
@@ -584,12 +568,6 @@ namespace RemuxForge.Core.Splitting
             tailFile = Path.Combine(tempDir, "tail.bs");
             ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.exec.tailReencode", tailStart, lastPresentation, tailCount));
             ReencodeFrameRange(inputFile, tailStart, lastPresentation, headArgs, codec, tailFile);
-            tailFrames = MkvSplitExternalTools.Instance.ProbePacketsSizePos(tailFile);
-            if (tailFrames.Count != tailCount)
-            {
-                throw new InvalidOperationException(AppText.F("split.exec.headReencodeMismatch", tailFrames.Count, tailCount));
-            }
-
             return tailFile;
         }
 
@@ -637,8 +615,8 @@ namespace RemuxForge.Core.Splitting
                     Buffer.BlockCopy(buf, 0, data, data.Length - read, read);
                     if (codec == MkvSplitCodec.Mpeg2)
                     {
-                        sequence = FindStartCode(data, 0, 0xB3);
-                        ready = sequence >= 0 && FindStartCode(data, sequence + 4, 0x00) >= 0;
+                        sequence = MpegStartCode.Find(data, 0, 0xB3);
+                        ready = sequence >= 0 && MpegStartCode.Find(data, sequence + 4, 0x00) >= 0;
                     }
                     else
                     {
@@ -717,7 +695,7 @@ namespace RemuxForge.Core.Splitting
             int next;
             int end;
 
-            start = FindStartCode(data, 0, 0xB3);
+            start = MpegStartCode.Find(data, 0, 0xB3);
             if (start < 0)
             {
                 throw new InvalidOperationException(AppText.T("split.exec.noParameterSets"));
@@ -727,7 +705,7 @@ namespace RemuxForge.Core.Splitting
             cursor = start + 4;
             while (true)
             {
-                next = FindStartCode(data, cursor, -1);
+                next = MpegStartCode.Find(data, cursor, data.Length, code => true);
                 if (next < 0)
                 {
                     break;
@@ -748,27 +726,6 @@ namespace RemuxForge.Core.Splitting
             }
 
             File.WriteAllBytes(outputFile, new ArraySegment<byte>(data, start, end - start).ToArray());
-        }
-
-        /// <summary>
-        /// Cerca il prossimo start code MPEG-2 (0x000001) a partire da un offset, opzionalmente
-        /// filtrando sul byte che lo segue.
-        /// </summary>
-        /// <param name="data">Buffer da scandire.</param>
-        /// <param name="from">Offset iniziale.</param>
-        /// <param name="wanted">Byte atteso dopo lo start code, oppure -1 per qualunque.</param>
-        /// <returns>Offset dello start code, oppure -1.</returns>
-        private static int FindStartCode(byte[] data, int from, int wanted)
-        {
-            for (int i = from; i + 3 < data.Length; i++)
-            {
-                if (data[i] == 0x00 && data[i + 1] == 0x00 && data[i + 2] == 0x01 && (wanted < 0 || data[i + 3] == wanted))
-                {
-                    return i;
-                }
-            }
-
-            return -1;
         }
 
         /// <summary>Ritorna true se il NAL type è un parameter set per il codec indicato.</summary>
@@ -837,16 +794,20 @@ namespace RemuxForge.Core.Splitting
 
         #region Helper re-encode
 
-        /// <summary>Ricodifica un range inclusivo di frame video dal container originale in un elementary stream raw, o nel contenitore delle parti del taglio a pacchetti.</summary>
+        /// <summary>Ricodifica un range inclusivo di frame video dal container originale in un elementary stream raw, o nel contenitore delle parti del taglio a pacchetti,
+        /// e verifica che il risultato abbia esattamente un pacchetto per fotogramma richiesto.</summary>
         /// <param name="inputFile">File MKV originale.</param>
         /// <param name="startFrame">Primo frame da includere.</param>
         /// <param name="endFrame">Ultimo frame da includere.</param>
         /// <param name="headArgs">Argomenti encoder già costruiti.</param>
         /// <param name="codec">MkvSplitCodec raw di output.</param>
         /// <param name="outputFile">Elementary stream raw di output.</param>
+        /// <exception cref="InvalidOperationException">Il numero di pacchetti ricodificati non è quello dei fotogrammi richiesti</exception>
         private static void ReencodeFrameRange(string inputFile, int startFrame, int endFrame, List<string> headArgs, MkvSplitCodec codec, string outputFile)
         {
             List<string> ffArgs;
+            int expected = endFrame - startFrame + 1;
+            int actual;
 
             ffArgs = new List<string>();
             ffArgs.Add("-y"); ffArgs.Add("-hide_banner"); ffArgs.Add("-loglevel"); ffArgs.Add("warning");
@@ -856,6 +817,12 @@ namespace RemuxForge.Core.Splitting
             foreach (string a in headArgs) { ffArgs.Add(a); }
             ffArgs.Add("-an"); ffArgs.Add("-f"); ffArgs.Add(RawFormat(codec)); ffArgs.Add(outputFile);
             MkvSplitExternalTools.Instance.RunFfmpeg(ffArgs);
+
+            actual = MkvSplitExternalTools.Instance.CountPackets(outputFile);
+            if (actual != expected)
+            {
+                throw new InvalidOperationException(AppText.F("split.exec.headReencodeMismatch", actual, expected));
+            }
         }
 
         /// <summary>

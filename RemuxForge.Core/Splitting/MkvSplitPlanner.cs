@@ -235,8 +235,8 @@ namespace RemuxForge.Core.Splitting
         /// <param name="exactCut">True se il video si taglia al fotogramma: altrimenti il motivo del «solo keyframe» lo dà il piano eseguibile e il keyframe mancante non conta</param>
         private void AnnotateCost(MkvSplitPlan plan, List<MkvSplitFrameInfo> keyFlags, bool packets, bool exactCut)
         {
-            int lookAhead;
             int keyAfter;
+            MkvSplitKeyframeIndex keyframes = new MkvSplitKeyframeIndex(keyFlags);
 
             plan.TotalReencodeFrames = 0;
             foreach (MkvSplitSegment seg in plan.Segments)
@@ -254,12 +254,7 @@ namespace RemuxForge.Core.Splitting
                 }
 
                 // La testa va ricodificata fino al primo keyframe successivo, con la stessa finestra dell'esecutore
-                keyAfter = -1;
-                lookAhead = Math.Min(seg.StartFrame + (packets ? seg.FrameCount : MkvSplitExecutor.KEYFRAME_LOOKAHEAD), keyFlags.Count);
-                for (int i = seg.StartFrame + 1; i < lookAhead; i++)
-                {
-                    if (keyFlags[i].Key) { keyAfter = i; break; }
-                }
+                keyAfter = keyframes.Next(seg.StartFrame + 1, seg.StartFrame + (packets ? seg.FrameCount : MkvSplitExecutor.KEYFRAME_LOOKAHEAD));
 
                 if ((keyAfter < 0 || keyAfter > seg.StartFrame + seg.FrameCount - 1) && packets)
                 {
@@ -323,7 +318,7 @@ namespace RemuxForge.Core.Splitting
                 outPath = Path.GetFullPath(Path.Combine(plan.OutputDir, seg.File));
 
                 // Un segmento che scrive sull'input distruggerebbe la sorgente a metà batch
-                if (string.Equals(outPath, plan.InputFile, StringComparison.OrdinalIgnoreCase))
+                if (FileHelper.IsSamePath(outPath, plan.InputFile))
                 {
                     plan.ErrorMessage = AppText.F("split.segmentWouldOverwriteInput", seg.Num, seg.File);
                     continue;

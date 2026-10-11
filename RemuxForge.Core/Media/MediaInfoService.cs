@@ -145,15 +145,10 @@ namespace RemuxForge.Core.Media
         public string GetVideoFrameRateMode(string filePath)
         {
             string result = "";
-            if (!File.Exists(filePath))
-            {
-                return result;
-            }
 
             try
             {
-                // Il separatore isola la prima traccia video quando il file ne contiene più di una
-                result = this.RunProcess(QUICK_QUERY_TIMEOUT_MS, "--Output=Video;%FrameRate_Mode%|", filePath).Trim().Split('|')[0].Trim();
+                this.TryReadFirstVideoField(filePath, "FrameRate_Mode", out result);
             }
             catch (Exception ex)
             {
@@ -172,20 +167,12 @@ namespace RemuxForge.Core.Media
         public bool TryGetVideoDuration(string filePath, out double durationMs)
         {
             bool result = false;
-            string output;
 
             durationMs = 0.0;
-
-            if (!File.Exists(filePath))
-            {
-                return result;
-            }
-
             try
             {
-                // Il separatore isola la prima traccia video quando il file ne contiene più di una
-                output = this.RunProcess(QUICK_QUERY_TIMEOUT_MS, "--Output=Video;%Duration%|", filePath).Trim();
-                result = TryParseDouble(output.Split('|')[0], out durationMs) && durationMs > 0.0;
+                this.TryReadFirstVideoField(filePath, "Duration", out string output);
+                result = TryParseDouble(output, out durationMs) && durationMs > 0.0;
             }
             catch (Exception ex)
             {
@@ -199,42 +186,14 @@ namespace RemuxForge.Core.Media
         /// Legge la scansione della prima traccia video
         /// </summary>
         /// <param name="filePath">Percorso file</param>
-        /// <param name="scanType">Valore MediaInfo ScanType, vuoto se non dichiarato</param>
+        /// <param name="scanType">Scansione MediaInfo, vuota se non dichiarata o non letta</param>
         /// <returns>True se MediaInfo ha risposto</returns>
-        public bool TryGetVideoScanType(string filePath, out string scanType)
+        public bool TryGetVideoScanType(string filePath, out VideoScanType scanType)
         {
-            bool result = false;
-            ProcessResult process;
+            bool result = this.TryReadFirstVideoField(filePath, "ScanType", out string value);
 
-            scanType = "";
-            if (!File.Exists(filePath))
-            {
-                return result;
-            }
-
-            // Il separatore isola la prima traccia video quando il file ne contiene più di una
-            process = ProcessRunner.Run(this._mediaInfoPath, new string[] { "--Output=Video;%ScanType%|", filePath }, QUICK_QUERY_TIMEOUT_MS);
-            if (process.ExitCode == 0)
-            {
-                scanType = process.Stdout.Trim().Split('|')[0].Trim();
-                result = true;
-            }
-
+            scanType = new VideoScanType(result ? value : "");
             return result;
-        }
-
-        /// <summary>
-        /// Indica se una scansione MediaInfo è interlacciata
-        /// </summary>
-        /// <remarks>
-        /// Il pulldown morbido è dichiarato Progressive con ScanType_Original interlacciato: è progressivo.
-        /// Il campo assente (tipico di AV1 e VP9) vale progressivo.
-        /// </remarks>
-        /// <param name="scanType">Valore MediaInfo ScanType</param>
-        /// <returns>True per Interlaced, MBAFF, PAFF e Mixed</returns>
-        public static bool IsInterlacedScanType(string scanType)
-        {
-            return scanType == "Interlaced" || scanType == "MBAFF" || scanType == "PAFF" || scanType == "Mixed";
         }
 
         #endregion
@@ -242,16 +201,25 @@ namespace RemuxForge.Core.Media
         #region Metodi privati
 
         /// <summary>
-        /// Esegue mediainfo con gli argomenti dati e restituisce stdout
+        /// Legge un campo della prima traccia video: il separatore isola la prima traccia quando il file ne contiene più di una
         /// </summary>
-        /// <param name="timeoutMs">Timeout in millisecondi, 0 = nessun timeout</param>
-        /// <param name="arguments">Argomenti da passare a mediainfo</param>
-        /// <returns>Output stdout del processo</returns>
-        private string RunProcess(int timeoutMs, params string[] arguments)
+        /// <param name="filePath">Percorso file</param>
+        /// <param name="field">Nome del campo MediaInfo della sezione Video</param>
+        /// <param name="value">Valore del campo letto dallo stdout anche con exit code diverso da zero, vuoto se il file non esiste</param>
+        /// <returns>True se il file esiste e MediaInfo è uscito con 0</returns>
+        private bool TryReadFirstVideoField(string filePath, string field, out string value)
         {
-            ProcessResult result = ProcessRunner.Run(this._mediaInfoPath, arguments, timeoutMs);
+            ProcessResult result;
 
-            return result.Stdout;
+            value = "";
+            if (!File.Exists(filePath))
+            {
+                return false;
+            }
+
+            result = ProcessRunner.Run(this._mediaInfoPath, new string[] { "--Output=Video;%" + field + "%|", filePath }, QUICK_QUERY_TIMEOUT_MS);
+            value = result.Stdout.Trim().Split('|')[0].Trim();
+            return result.ExitCode == 0;
         }
 
         /// <summary>

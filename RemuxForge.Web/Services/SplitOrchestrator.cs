@@ -45,9 +45,9 @@ namespace RemuxForge.Web.Services
         private List<MkvSplitRecord> _records;
 
         /// <summary>
-        /// Annullamento dell'unione in corso, cancellato dallo stop
+        /// Annullamento dello split o dell'unione in corso, cancellato dallo stop
         /// </summary>
-        private CancellationTokenSource _joinCancellation;
+        private CancellationTokenSource _runCancellation;
 
         /// <summary>
         /// Revisione delle opzioni, incrementata a ogni applicazione
@@ -346,9 +346,10 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void Stop()
         {
-            this.RequestStop(AppText.T("web.split.stopRequested"));
+            // Il token prima del flag: il flag ferma i processi, e chi vede un processo interrotto deve trovare già l'annullamento.
             // L'unione in corso interrompe anche la normalizzazione delle parti
-            this._joinCancellation?.Cancel();
+            this._runCancellation?.Cancel();
+            this.RequestStop(AppText.T("web.split.stopRequested"));
         }
 
         /// <summary>
@@ -659,7 +660,7 @@ namespace RemuxForge.Web.Services
 
             this.SetBusy(true, AppText.T("web.progress.join"));
             this.StopRequested = false;
-            this._joinCancellation = new CancellationTokenSource();
+            this._runCancellation = new CancellationTokenSource();
             ProcessRunner.SetStopRequestedCallback(this.IsStopRequested);
             ConsoleHelper.SetLogCallback((section, _, text) =>
             {
@@ -681,7 +682,7 @@ namespace RemuxForge.Web.Services
 
                 result.OutputPath = outputPath;
                 this.ReportProgress(0, 1, Path.GetFileName(outputPath));
-                service.Execute(plan, outputPath, force, this.IsStopRequested, this._joinCancellation.Token);
+                service.Execute(plan, outputPath, force, this.IsStopRequested, this._runCancellation.Token);
                 result.Success = true;
             }
             catch (Exception ex)
@@ -870,9 +871,12 @@ namespace RemuxForge.Web.Services
             int errorCount = 0;
             int skippedCount = 0;
             int exitCode;
+            CancellationToken cancellation;
 
             this.SetBusy(true, AppText.T("web.progress.split"));
             this.StopRequested = false;
+            this._runCancellation = new CancellationTokenSource();
+            cancellation = this._runCancellation.Token;
             ProcessRunner.SetStopRequestedCallback(this.IsStopRequested);
             ConsoleHelper.SetLogCallback((section, _, text) =>
             {
@@ -886,7 +890,7 @@ namespace RemuxForge.Web.Services
                 options = this._options;
                 for (int i = 0; i < targets.Count; i++)
                 {
-                    if (this.StopRequested)
+                    if (cancellation.IsCancellationRequested)
                     {
                         this.SetRecordStatus(targets[i], MkvSplitStatus.Stopped, AppText.T("web.split.stopRequested"));
                         break;
@@ -940,7 +944,7 @@ namespace RemuxForge.Web.Services
                             // Senza Sovrascrivi gli output gia' prodotti non si rifanno; con Sovrascrivi si rigenerano tutti
                             Outputs = montage.Outputs.Where(output => options.Split.Force || !record.OutputResults.Any(state => state.OutputId == output.OutputId
                                 && state.Status == MkvSplitOutputExecutionStatus.Done)).ToList() };
-                        MkvSplitMontageExecutionResult execution = pipeline.ExecutePlan(pending, options.Split.Clone(), this.IsStopRequested);
+                        MkvSplitMontageExecutionResult execution = pipeline.ExecutePlan(pending, options.Split.Clone(), cancellation);
                         lock (this.StateLock)
                             foreach (MkvSplitOutputExecutionResult state in execution.Outputs)
                             {
@@ -948,7 +952,7 @@ namespace RemuxForge.Web.Services
                                 record.OutputResults.Add(state);
                             }
                         exitCode = execution.ExitCode;
-                        if (this.StopRequested)
+                        if (cancellation.IsCancellationRequested)
                         {
                             this.UpdateRecord(targets[i], MkvSplitStatus.Stopped, false, AppText.T("web.split.stopRequested"), plan.Segments);
                             break;
@@ -976,12 +980,12 @@ namespace RemuxForge.Web.Services
                     }
                 }
 
-                summary = new OperationSummary(successCount, errorCount, skippedCount, this.StopRequested);
-                if (errorCount == 0 && !this.StopRequested)
+                summary = new OperationSummary(successCount, errorCount, skippedCount, cancellation.IsCancellationRequested);
+                if (errorCount == 0 && !cancellation.IsCancellationRequested)
                 {
                     this.AppendLog(AppText.Count("web.split.completed", successCount));
                 }
-                else if (this.StopRequested)
+                else if (cancellation.IsCancellationRequested)
                 {
                     this.AppendLog(AppText.Count("web.split.stoppedSummary", errorCount, successCount));
                 }
@@ -1091,30 +1095,14 @@ namespace RemuxForge.Web.Services
             ToolPathResolverService resolver = new ToolPathResolverService(AppSettingsService.Instance.ConfigFolder);
             string mkvMergePath = resolver.ResolveMkvMergePath(false);
             string source = this._options.Split.SourcePath;
-            SearchOption searchOption = this._options.Recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
             if (string.IsNullOrEmpty(source))
             {
                 throw new InvalidOperationException(AppText.T("web.split.configureSource"));
             }
 
-            if (File.Exists(source))
+            foreach (string file in MkvSplitPipeline.ResolveInputFiles(source, this._options.Recursive))
             {
-                result.Add(this.CreateRecord(Path.GetFullPath(source), mkvMergePath));
-            }
-            else if (Directory.Exists(source))
-            {
-                foreach (string file in Directory.GetFiles(source, "*", searchOption))
-                {
-                    if (MediaContainerFormats.IsSupported(file))
-                    {
-                        result.Add(this.CreateRecord(Path.GetFullPath(file), mkvMergePath));
-                    }
-                }
-                result.Sort((a, b) => string.Compare(a.InputFile, b.InputFile, StringComparison.OrdinalIgnoreCase));
-            }
-            else
-            {
-                throw new FileNotFoundException(AppText.F("validation.splitSourceNotFound", source), source);
+                result.Add(this.CreateRecord(file, mkvMergePath));
             }
 
             return result;

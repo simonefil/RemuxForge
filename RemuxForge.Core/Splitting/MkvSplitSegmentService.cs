@@ -916,6 +916,7 @@ namespace RemuxForge.Core.Splitting
 
             changed = new List<(int, int)>();
             if (mode == MkvSplitSnapMode.Off) { return changed; }
+            MkvSplitKeyframeIndex keyframes = new MkvSplitKeyframeIndex(frameMap);
 
             // I confini candidati sono gli inizi dei segmenti: la fine di un segmento non richiede
             // un keyframe per decodificare, e quando è condivisa coincide già con l'inizio del successivo.
@@ -931,7 +932,7 @@ namespace RemuxForge.Core.Splitting
                 if (boundary < 0 || boundary >= frameMap.Count) { continue; }
                 if (frameMap[boundary].Key) { continue; }
 
-                newB = FindSnapTarget(frameMap, boundary, mode);
+                newB = FindSnapTarget(keyframes, boundary, mode);
                 if (newB == null)
                 {
                     this.AddWarning(MkvSplitWarningKind.SnapNoKeyframe, AppText.F("split.warnSnapNoKeyframe", boundary));
@@ -992,48 +993,20 @@ namespace RemuxForge.Core.Splitting
             return changed;
         }
 
-        /// <summary>Sceglie il keyframe verso cui spostare un confine secondo la strategia.</summary>
-        /// <param name="frameMap">Mappa dei frame con flag keyframe.</param>
+        /// <summary>Sceglie il keyframe verso cui spostare un confine secondo la strategia; a pari distanza vince quello prima.</summary>
+        /// <param name="keyframes">Keyframe della mappa dei frame.</param>
         /// <param name="boundary">Frame del confine richiesto.</param>
         /// <param name="mode">Strategia di snap.</param>
         /// <returns>Frame del keyframe scelto, oppure null se non ne esiste uno nella direzione richiesta.</returns>
-        private static int? FindSnapTarget(List<MkvSplitFrameInfo> frameMap, int boundary, MkvSplitSnapMode mode)
+        private static int? FindSnapTarget(MkvSplitKeyframeIndex keyframes, int boundary, MkvSplitSnapMode mode)
         {
-            int? before;
-            int? after;
+            int before = mode == MkvSplitSnapMode.After ? -1 : keyframes.Previous(boundary - 1);
+            int after = mode == MkvSplitSnapMode.Before ? -1 : keyframes.Next(boundary + 1, keyframes.Count);
 
-            if (mode == MkvSplitSnapMode.Before)
-            {
-                return boundary > 0 ? FindKeyframe(frameMap, boundary - 1, true) : null;
-            }
-            if (mode == MkvSplitSnapMode.After)
-            {
-                return boundary + 1 < frameMap.Count ? FindKeyframe(frameMap, boundary + 1, false) : null;
-            }
-
-            before = boundary > 0 ? FindKeyframe(frameMap, boundary - 1, true) : null;
-            after = boundary + 1 < frameMap.Count ? FindKeyframe(frameMap, boundary + 1, false) : null;
-            if (before == null) { return after; }
-            if (after == null) { return before; }
-            return (boundary - before.Value) <= (after.Value - boundary) ? before : after;
-        }
-
-        /// <summary>Cerca il keyframe più vicino in una direzione (prima=true, dopo=false).</summary>
-        /// <param name="frameMap">Mappa dei frame con flag keyframe.</param>
-        /// <param name="start">Indice iniziale della ricerca.</param>
-        /// <param name="goBefore">True per cercare a ritroso, false per cercare avanti.</param>
-        /// <returns>Indice del keyframe trovato oppure null se nessuno.</returns>
-        private static int? FindKeyframe(List<MkvSplitFrameInfo> frameMap, int start, bool goBefore)
-        {
-            if (goBefore)
-            {
-                for (int i = start; i >= 0; i--) { if (frameMap[i].Key) { return i; } }
-            }
-            else
-            {
-                for (int i = start; i < frameMap.Count; i++) { if (frameMap[i].Key) { return i; } }
-            }
-            return null;
+            if (before < 0 && after < 0) { return null; }
+            if (before < 0) { return after; }
+            if (after < 0) { return before; }
+            return (boundary - before) <= (after - boundary) ? before : after;
         }
 
         #endregion

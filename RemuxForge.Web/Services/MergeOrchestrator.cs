@@ -68,7 +68,7 @@ namespace RemuxForge.Web.Services
         private string _appliedSnapshotSignature;
 
         /// <summary>Matroska letti dagli editor EditMap aperti, per indice di record: creati all'apertura e cancellati alla chiusura (D18)</summary>
-        private readonly Dictionary<int, NormalizedMediaFile[]> _editorMedia = new Dictionary<int, NormalizedMediaFile[]>();
+        private readonly Dictionary<int, NormalizedMediaPair> _editorMedia = new Dictionary<int, NormalizedMediaPair>();
 
         #endregion
 
@@ -1041,24 +1041,25 @@ namespace RemuxForge.Web.Services
         public MediaSource ResolveMediaSource(int recordIndex, string side)
         {
             FileProcessingRecord record = this.GetRecord(recordIndex);
-            NormalizedMediaFile[] media;
+            NormalizedMediaPair media;
             if (record == null)
                 return null;
             lock (this._editorMedia)
             {
                 // Una sessione aperta su file diversi da quelli del record (scan nel frattempo) non vale più
-                if (!this._editorMedia.TryGetValue(recordIndex, out media) || media[0].OriginalPath != record.SourceFilePath || media[1].OriginalPath != record.LangFilePath)
+                if (!this._editorMedia.TryGetValue(recordIndex, out media) || media.Source.OriginalPath != record.SourceFilePath || media.Lang.OriginalPath != record.LangFilePath)
                     media = null;
             }
             bool source = string.Equals(side, "source", StringComparison.OrdinalIgnoreCase);
             if (!source && !string.Equals(side, "language", StringComparison.OrdinalIgnoreCase))
                 return null;
             string original = source ? record.SourceFilePath : record.LangFilePath;
+            NormalizedMediaFile file = media == null ? null : source ? media.Source : media.Lang;
             // Senza il temporaneo della sessione un file non MKV non si legge: l'editor riporta l'errore invece di aprire l'originale (D18).
             // Vale anche per un temporaneo sparito dalla cartella temp a sessione aperta
-            if ((media == null && !MediaContainerFormats.IsMatroska(original)) || (media != null && media[source ? 0 : 1].IsTemporary && !File.Exists(media[source ? 0 : 1].Path)))
+            if ((file == null && !MediaContainerFormats.IsMatroska(original)) || (file != null && file.IsTemporary && !File.Exists(file.Path)))
                 throw new SessionMediaMissingException(AppText.F("web.editMap.sessionMediaMissing", Path.GetFileName(original)));
-            return new MediaSource(media != null ? media[source ? 0 : 1].Path : original, PipelineTrackSelectionResolver.ResolveDisplayAudio(record, source));
+            return new MediaSource(file != null ? file.Path : original, PipelineTrackSelectionResolver.ResolveDisplayAudio(record, source));
         }
 
         /// <summary>
@@ -1073,16 +1074,14 @@ namespace RemuxForge.Web.Services
             if (record == null)
                 return "";
             this.CloseEditorMedia(recordIndex);
-            MediaContainerNormalizer normalizer = new MediaContainerNormalizer(new ToolPathResolverService(AppSettingsService.Instance.ConfigFolder).ResolveMkvMergePath(false), AppSettingsService.Instance.GetTempFolder());
-            string error = normalizer.NormalizePair(record.SourceFilePath, record.LangFilePath, false, cancellation, out NormalizedMediaFile source, out NormalizedMediaFile language);
-            if (error.Length > 0 || cancellation.IsCancellationRequested)
+            NormalizedMediaPair media = MediaContainerNormalizer.Create().NormalizePair(record.SourceFilePath, record.LangFilePath, false, cancellation);
+            if (media.Error.Length > 0 || cancellation.IsCancellationRequested)
             {
-                source.Dispose();
-                language?.Dispose();
-                return error;
+                media.Dispose();
+                return media.Error;
             }
             lock (this._editorMedia)
-                this._editorMedia[recordIndex] = new NormalizedMediaFile[] { source, language };
+                this._editorMedia[recordIndex] = media;
             // L'editor chiuso durante la normalizzazione ha già chiamato CloseEditorMedia: il temporaneo non deve restare
             if (cancellation.IsCancellationRequested)
                 this.CloseEditorMedia(recordIndex);
@@ -1095,14 +1094,13 @@ namespace RemuxForge.Web.Services
         /// <param name="recordIndex">Indice del record</param>
         public void CloseEditorMedia(int recordIndex)
         {
-            NormalizedMediaFile[] media;
+            NormalizedMediaPair media;
             lock (this._editorMedia)
             {
                 if (!this._editorMedia.Remove(recordIndex, out media))
                     return;
             }
-            media[0].Dispose();
-            media[1].Dispose();
+            media.Dispose();
         }
 
         /// <summary>

@@ -1,9 +1,9 @@
 # ![icon](icons/icon-48.png) RemuxForge
 
-RemuxForge is a cross-platform MKV utility for technical MKV workflows:
+RemuxForge is a cross-platform utility for technical MKV workflows. Remux and Split read MKV, MP4, AVI and M2TS/TS sources and always write MKV:
 
-- **Remux**: import audio tracks and subtitles from another MKV release, with optional speed correction, Automatic sync (FrameSync) for a constant offset or Edit alignment (Deep Analysis) for edited releases, plus a timeline editor to adjust the alignment by hand.
-- **Split**: cut MKV files into episodes or parts, by chapters, times or frames, or build the parts by hand in a cut editor, while preserving VFR timing, chapters, audio and subtitles; join parts back into one file.
+- **Remux**: import audio tracks and subtitles from another release, with optional speed correction, Automatic sync (FrameSync) for a constant offset or Edit alignment (Deep Analysis) for edited releases, plus a timeline editor to adjust the alignment by hand.
+- **Split**: cut files into episodes or parts, by chapters, times or frames, or build the parts by hand in a cut editor, while preserving VFR timing, chapters, audio and subtitles; join parts back into one file. Frame-exact cuts re-encode only the frames next to each cut, for H.264, HEVC, MPEG-2, Xvid/DivX, MS-MPEG4, H.263, AV1 and VP9; VC-1 and interlaced video are cut on keyframes.
 - **Metadata**: batch-edit MKV container, track metadata and managed Matroska tags through reusable rule presets, written by hand or generated with AI, with separate analysis and apply steps; edit a single file by hand, chapters included.
 - **Advanced rename**: preview and apply batch filename changes from the Metadata workspace, using stacked rename methods.
 
@@ -15,7 +15,7 @@ For questions, feedback and ideas, join the RemuxForge [Discord](https://discord
 
 - [MKVToolNix](https://mkvtoolnix.download/) (`mkvmerge`, `mkvextract`, `mkvpropedit`)
 - [ffmpeg](https://ffmpeg.org/) (`ffmpeg`, `ffprobe`)
-- [MediaInfo CLI](https://mediaarea.net/en/MediaInfo) (`mediainfo`)
+- [MediaInfo CLI](https://mediaarea.net/en/MediaInfo) (`mediainfo`), required by Split, Automatic sync and Edit alignment
 - UTF-8 locale on Linux
 
 The optional Vulkan SIFT backend for Deep Analysis requires a Vulkan 1.2 loader and a compatible compute device with timeline semaphore support. CPU SIFT is the default and does not require Vulkan. On macOS, Vulkan is provided through MoltenVK.

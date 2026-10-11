@@ -523,14 +523,10 @@ namespace RemuxForge.Core.Models
         /// <summary>Exit code della pipeline</summary>
         public int ExitCode { get; set; }
 
-        /// <summary>Messaggio errore sintetico</summary>
-        public string ErrorMessage { get; set; }
-
         /// <summary>Costruttore</summary>
         public MkvSplitExecutionResult()
         {
             this.ExitCode = 0;
-            this.ErrorMessage = "";
         }
     }
 }

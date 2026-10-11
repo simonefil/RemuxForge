@@ -69,25 +69,25 @@
                         <Template Context="record"><span title="@record.InputFile">@System.IO.Path.GetFileName(record.InputFile)</span></Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="MkvMetadataRecord" Title="@AppText.T("web.metadata.container")" Width="8%" MinWidth="2.5rem" MaxWidth="200px">
-                        <Template Context="record"><span title="@System.IO.Path.GetExtension(record.InputFile).TrimStart('.').ToUpperInvariant()">@System.IO.Path.GetExtension(record.InputFile).TrimStart('.').ToUpperInvariant()</span></Template>
+                        <Template Context="record"><CellText Text="@System.IO.Path.GetExtension(record.InputFile).TrimStart('.').ToUpperInvariant()" /></Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="MkvMetadataRecord" Title="@AppText.T("web.metadata.tracks")" Width="18%" MinWidth="2.5rem" MaxWidth="440px">
-                        <Template Context="record"><span title="@BuildTrackSummary(record)">@BuildTrackSummary(record)</span></Template>
+                        <Template Context="record"><CellText Text="@BuildTrackSummary(record)" /></Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="MkvMetadataRecord" Title="@AppText.T("web.dashboard.statusLabel")" Width="10%" MinWidth="2.5rem" MaxWidth="260px">
-                        <Template Context="record"><span title="@Utils.GetMetadataStatusText(record.Status)">@Utils.GetMetadataStatusText(record.Status)</span></Template>
+                        <Template Context="record"><CellText Text="@Utils.GetMetadataStatusText(record.Status)" /></Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="MkvMetadataRecord" Title="@AppText.T("web.metadata.analysis")" Width="10%" MinWidth="2.5rem" MaxWidth="260px">
-                        <Template Context="record"><span title="@Utils.GetMetadataAnalysisStatusText(record.AnalysisStatus)">@Utils.GetMetadataAnalysisStatusText(record.AnalysisStatus)</span></Template>
+                        <Template Context="record"><CellText Text="@Utils.GetMetadataAnalysisStatusText(record.AnalysisStatus)" /></Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="MkvMetadataRecord" Title="@AppText.T("web.metadata.mode")" Width="10%" MinWidth="2.5rem" MaxWidth="260px">
-                        <Template Context="record"><span title="@Utils.GetMetadataExecutionModeText(record.ExecutionMode)">@Utils.GetMetadataExecutionModeText(record.ExecutionMode)</span></Template>
+                        <Template Context="record"><CellText Text="@Utils.GetMetadataExecutionModeText(record.ExecutionMode)" /></Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="MkvMetadataRecord" Title="@AppText.T("web.metadata.changesShort")" Width="8%" MinWidth="2.5rem" MaxWidth="220px">
-                        <Template Context="record"><span title="@record.ChangeCount">@record.ChangeCount</span></Template>
+                        <Template Context="record"><CellText Text="@record.ChangeCount.ToString()" /></Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="MkvMetadataRecord" Title="@AppText.T("web.dashboard.warningError")" Width="14%" MinWidth="2.5rem" MaxWidth="440px">
-                        <Template Context="record"><span title="@record.ErrorMessage">@record.ErrorMessage</span></Template>
+                        <Template Context="record"><CellText Text="@record.ErrorMessage" /></Template>
                     </RadzenDataGridColumn>
                 </Columns>
             </RadzenDataGrid>

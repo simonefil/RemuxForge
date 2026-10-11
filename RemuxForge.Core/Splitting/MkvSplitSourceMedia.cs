@@ -1,7 +1,5 @@
-using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
-using RemuxForge.Core.Tools;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -115,8 +113,7 @@ namespace RemuxForge.Core.Splitting
                 this.Identity = identity;
                 this.Media = new Lazy<NormalizedMediaFile>(() =>
                 {
-                    ToolPathResolverService resolver = new ToolPathResolverService(AppSettingsService.Instance.ConfigFolder);
-                    NormalizedMediaFile media = new MediaContainerNormalizer(resolver.ResolveMkvMergePath(false), AppSettingsService.Instance.GetTempFolder()).Normalize(fullPath, true, CancellationToken.None);
+                    NormalizedMediaFile media = MediaContainerNormalizer.Create().Normalize(fullPath, true, CancellationToken.None);
                     if (!media.Success)
                         throw new InvalidOperationException(media.Error);
                     return media;

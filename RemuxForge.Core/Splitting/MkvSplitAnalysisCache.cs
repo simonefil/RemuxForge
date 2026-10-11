@@ -1,6 +1,7 @@
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
+using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -25,7 +26,7 @@ namespace RemuxForge.Core.Splitting
             this.SourcePts = new double[0];
             this.KeyFlags = new List<MkvSplitFrameInfo>();
             this.FrameRateMode = MkvSplitFrameRateMode.Unknown;
-            this.ScanType = "";
+            this.ScanType = new VideoScanType("");
             this.Tracks = new List<TrackInfo>();
             this.Subtitles = new List<MkvSplitSubtitleTrack>();
             this.TrackInventoryError = "";
@@ -60,7 +61,7 @@ namespace RemuxForge.Core.Splitting
         public MkvSplitFrameRateMode FrameRateMode { get; set; }
 
         /// <summary>Scansione MediaInfo del video, vuota se non dichiarata: un video interlacciato si taglia solo al keyframe (D07)</summary>
-        public string ScanType { get; set; }
+        public VideoScanType ScanType { get; set; }
 
         /// <summary>Tracce del Matroska letto, con gli ID del sorgente; fuori dallo snapshot dell'editor</summary>
         [JsonIgnore]

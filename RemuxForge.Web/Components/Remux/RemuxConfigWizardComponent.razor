@@ -112,7 +112,7 @@
                                 <Columns>
                                     <RadzenDataGridColumn TItem="RemuxPreviewPair" Title="Source"><Template Context="pair"><span title="@pair.SourceFilePath">@Path.GetFileName(pair.SourceFilePath)</span></Template></RadzenDataGridColumn>
                                     <RadzenDataGridColumn TItem="RemuxPreviewPair" Title="Lang"><Template Context="pair"><span title="@pair.LangFilePath">@Path.GetFileName(pair.LangFilePath)</span></Template></RadzenDataGridColumn>
-                                    <RadzenDataGridColumn TItem="RemuxPreviewPair" Title="@AppText.T("web.dashboard.status")"><Template Context="pair"><span title="@PairStatus(pair)">@PairStatus(pair)</span></Template></RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="RemuxPreviewPair" Title="@AppText.T("web.dashboard.status")"><Template Context="pair"><CellText Text="@PairStatus(pair)" /></Template></RadzenDataGridColumn>
                                 </Columns>
                             </RadzenDataGrid>
                         }

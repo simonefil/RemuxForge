@@ -15,6 +15,15 @@ namespace RemuxForge.Core.Splitting
     /// </remarks>
     public static class MkvSplitCodecCapabilities
     {
+        #region Costanti
+
+        /// <summary>
+        /// Codec mkvmerge di MPEG-4 Part 2 (Xvid, DivX 4 e successivi)
+        /// </summary>
+        public const string MPEG4_PART2_CODEC = "MPEG-4p2";
+
+        #endregion
+
         #region Variabili di classe
 
         /// <summary>
@@ -79,7 +88,7 @@ namespace RemuxForge.Core.Splitting
         /// <param name="scanType">Scansione letta da MediaInfo, vuota se non dichiarata</param>
         /// <param name="reason">Motivo localizzato del solo taglio al keyframe, vuoto se il taglio al fotogramma è disponibile</param>
         /// <returns>True se il taglio al fotogramma è disponibile</returns>
-        public static bool IsExactCutAvailable(string codecName, string scanType, out string reason)
+        public static bool IsExactCutAvailable(string codecName, VideoScanType scanType, out string reason)
         {
             MkvSplitCodecCapability capability = Find(codecName);
 
@@ -87,7 +96,7 @@ namespace RemuxForge.Core.Splitting
             if (capability == null || capability.Method == MkvSplitExactCutMethod.None)
                 reason = AppText.F("split.unsupportedVideoCodec", GetDisplayName(codecName));
             // Un video interlacciato non ha un fotogramma da ricodificare al giunto (D07)
-            else if (MediaInfoService.IsInterlacedScanType(scanType))
+            else if (scanType.IsInterlaced)
                 reason = AppText.F("split.interlacedKeyframeOnly", scanType);
 
             return reason.Length == 0;
@@ -100,9 +109,9 @@ namespace RemuxForge.Core.Splitting
         /// <param name="frame">Fotogramma del confine, in ordine di presentazione</param>
         /// <param name="scanType">Scansione letta da MediaInfo, vuota se non dichiarata (P4: progressivo)</param>
         /// <returns>True se mkvmerge può tagliare sul fotogramma</returns>
-        public static bool IsCopyCutKeyframe(MkvSplitFrameInfo frame, string scanType)
+        public static bool IsCopyCutKeyframe(MkvSplitFrameInfo frame, VideoScanType scanType)
         {
-            return frame.Key && (!frame.OpenGop || (frame.LeadingFrames > 0 && MediaInfoService.IsInterlacedScanType(scanType)));
+            return frame.Key && (!frame.OpenGop || (frame.LeadingFrames > 0 && scanType.IsInterlaced));
         }
 
         /// <summary>

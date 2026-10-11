@@ -1,4 +1,5 @@
 using RemuxForge.Core.Chapters;
+using RemuxForge.Core.Infrastructure;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -239,7 +240,7 @@ namespace RemuxForge.Core.Splitting
                     if (!IsValidOutputFileName(result.FileName))
                         throw new ArgumentException();
                     result.FullPath = Path.GetFullPath(Path.Combine(directory, result.FileName.Replace('\\', '/')));
-                    if (string.Equals(result.FullPath, document.Source.FullPath, StringComparison.OrdinalIgnoreCase)
+                    if (FileHelper.IsSamePath(result.FullPath, document.Source.FullPath)
                         || !paths.Add(result.FullPath))
                         projection.Diagnostics.Add(Diagnostic("nameCollision", output.Id, null, result.FileName));
                     result.OutputState = File.Exists(result.FullPath) ? (options.Force ? MkvSplitOutputState.ExistsOverwrite : MkvSplitOutputState.ExistsSkip) : MkvSplitOutputState.New;
@@ -485,7 +486,7 @@ namespace RemuxForge.Core.Splitting
                     if (!fast && !MkvSplitCodecCapabilities.IsExactCutAvailable(analysis.VideoParams?.CodecName, analysis.ScanType, out string keyframeOnly))
                     {
                         keyframeOnlyVideo = true;
-                        if (startKey && endKey && MediaInfoService.IsInterlacedScanType(analysis.ScanType))
+                        if (startKey && endKey && analysis.ScanType.IsInterlaced)
                         {
                             int frame = startCopy ? clip.EndFrameExclusive : clip.StartFrame;
                             plan.Projection.Diagnostics.Add(new MkvSplitDiagnostic
@@ -507,8 +508,8 @@ namespace RemuxForge.Core.Splitting
                     int leading = fast && startOpen ? analysis.KeyFlags[clip.StartFrame].LeadingFrames : 0;
                     bool decodable = leading > 0 && analysis.KeyFlags[clip.StartFrame].LeadingDecodable;
                     int headPackets = clip == output.Clips[0] || decodable ? leading : 0;
-                    int droppedPackets = leading - headPackets;
                     int lostFrames = fast && endOpen ? analysis.KeyFlags[clip.EndFrameExclusive].LeadingFrames : 0;
+                    MkvSplitOpenGopJoin openGop = new MkvSplitOpenGopJoin(analysis.SourcePts, clip.StartFrame, clip.EndFrameExclusive, clip.SourceEndSeconds, leading, headPackets, lostFrames);
                     // Con closed_gop=1 i B iniziali che la clip perde si ritrovano in testa alla clip che inizia sul keyframe, in qualsiasi output
                     bool shownElsewhere = lostFrames > 0 && analysis.KeyFlags[clip.EndFrameExclusive].LeadingDecodable
                         && plan.Projection.Outputs.Exists(other => other.Clips.Exists(next => next.StartFrame == clip.EndFrameExclusive));
@@ -516,8 +517,7 @@ namespace RemuxForge.Core.Splitting
                         plan.Projection.Diagnostics.Add(new MkvSplitDiagnostic
                         {
                             Code = decodable ? "openGopShift" : headPackets > 0 ? "openGopHead" : "openGopDropped",
-                            Message = decodable ? AppText.F("split.openGopShift", output.FileName, leading,
-                                    Math.Round((analysis.SourcePts[clip.StartFrame] - analysis.SourcePts[clip.StartFrame - leading]) * 1000.0).ToString(CultureInfo.InvariantCulture))
+                            Message = decodable ? AppText.F("split.openGopShift", output.FileName, leading, Math.Round(openGop.LeadingSeconds * 1000.0).ToString(CultureInfo.InvariantCulture))
                                 : AppText.F(headPackets > 0 ? "split.openGopHead" : "split.openGopDropped", output.FileName, leading),
                             Severity = MkvSplitDiagnosticSeverity.Warning,
                             OutputId = output.OutputId,
@@ -535,16 +535,8 @@ namespace RemuxForge.Core.Splitting
                         });
                     if (!startKey)
                     {
-                        int nextKey = -1;
-                        int limit = Math.Min(clip.EndFrameExclusive, packets ? analysis.KeyFlags.Count : Math.Min(analysis.KeyFlags.Count, clip.StartFrame + MkvSplitExecutor.KEYFRAME_LOOKAHEAD));
-                        for (int frame = clip.StartFrame + 1; frame < limit; frame++)
-                        {
-                            if (analysis.KeyFlags[frame].Key)
-                            {
-                                nextKey = frame;
-                                break;
-                            }
-                        }
+                        int nextKey = new MkvSplitKeyframeIndex(analysis.KeyFlags).Next(clip.StartFrame + 1,
+                            packets ? clip.EndFrameExclusive : Math.Min(clip.EndFrameExclusive, clip.StartFrame + MkvSplitExecutor.KEYFRAME_LOOKAHEAD));
                         if (nextKey < 0 && packets)
                             reencode = clip.FrameCount;
                         // Sul video che si taglia solo al keyframe il motivo è già detto: la testa non si ricodifica comunque
@@ -556,9 +548,7 @@ namespace RemuxForge.Core.Splitting
                     execution.Clips.Add(new MkvSplitExecutionClip
                     {
                         UsesFastPath = fast,
-                        OpenGopHeadPackets = headPackets,
-                        OpenGopDroppedPackets = droppedPackets,
-                        OpenGopLostFrames = lostFrames,
+                        OpenGop = openGop,
                         Segment = new MkvSplitSegment
                         {
                             StartFrame = clip.StartFrame,
@@ -568,7 +558,7 @@ namespace RemuxForge.Core.Splitting
                             StartsOnKeyframe = startKey,
                             ReencodeFrames = reencode,
                             // La clip copiata contiene i pacchetti di tutti i B iniziali finché ExecutePlan non toglie quelli da togliere
-                            OpenGopHeadSeconds = leading > 0 ? analysis.SourcePts[clip.StartFrame] - analysis.SourcePts[clip.StartFrame - leading] : 0
+                            OpenGopHeadSeconds = openGop.LeadingSeconds
                         }
                     });
                 }

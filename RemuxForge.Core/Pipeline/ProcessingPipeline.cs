@@ -734,8 +734,7 @@ namespace RemuxForge.Core.Pipeline
             List<TrackInfo> sourceTracks = null;
             int effectiveAudioDelay = 0;
             int effectiveSubDelay = 0;
-            NormalizedMediaFile sourceMedia = null;
-            NormalizedMediaFile langMedia = null;
+            NormalizedMediaPair media = null;
             // Verifica stato
             if (record.Status != FileStatus.Analyzed)
             {
@@ -774,14 +773,10 @@ namespace RemuxForge.Core.Pipeline
                     {
                         // mkvextract e la mappatura ID→stream di ffmpeg valgono solo su Matroska: gli altri container passano da un temporaneo cancellato a fine elaborazione (D12).
                         // In dry-run si normalizza solo il Lang, quando capitoli Lang o Deep sui sottotitoli lo leggono con mkvextract
-                        MediaContainerNormalizer normalizer = new MediaContainerNormalizer(this._opts.MkvMergePath, AppSettingsService.Instance.GetTempFolder());
-                        if (this._opts.DryRun)
-                        {
-                            langMedia = normalizer.Normalize(record.LangFilePath, false, CancellationToken.None);
-                            normalizeError = langMedia.Error;
-                        }
-                        else
-                            normalizeError = normalizer.NormalizePair(record.SourceFilePath, this._needsMerge ? record.LangFilePath : "", false, CancellationToken.None, out sourceMedia, out langMedia);
+                        MediaContainerNormalizer normalizer = MediaContainerNormalizer.Create(this._opts.MkvMergePath);
+                        media = this._opts.DryRun ? new NormalizedMediaPair(null, normalizer.Normalize(record.LangFilePath, false, CancellationToken.None)) :
+                            normalizer.NormalizePair(record.SourceFilePath, this._needsMerge ? record.LangFilePath : "", false, CancellationToken.None);
+                        normalizeError = media.Error;
                     }
                     if (normalizeError.Length > 0)
                     {
@@ -793,8 +788,8 @@ namespace RemuxForge.Core.Pipeline
                     else
                     {
                         // In dry-run il Source non si normalizza e il comando mostrato usa i file originali
-                        record.SourceMediaPath = sourceMedia != null ? sourceMedia.Path : record.SourceFilePath;
-                        record.LangMediaPath = langMedia != null ? langMedia.Path : this._needsMerge && this._opts.DryRun ? record.LangFilePath : "";
+                        record.SourceMediaPath = media?.Source != null ? media.Source.Path : record.SourceFilePath;
+                        record.LangMediaPath = media?.Lang != null ? media.Lang.Path : this._needsMerge && this._opts.DryRun ? record.LangFilePath : "";
 
                         // Ottieni info file sorgente
                         sourceInfo = this.GetCachedFileInfo(record.SourceMediaPath);
@@ -831,13 +826,12 @@ namespace RemuxForge.Core.Pipeline
                 // I temporanei normalizzati non servono oltre l'elaborazione: via dal disco e dalla cache delle info
                 lock (this._fileInfoCacheLock)
                 {
-                    if (sourceMedia != null && sourceMedia.IsTemporary)
-                        this._fileInfoCache.Remove(sourceMedia.Path);
-                    if (langMedia != null && langMedia.IsTemporary)
-                        this._fileInfoCache.Remove(langMedia.Path);
+                    if (media?.Source != null && media.Source.IsTemporary)
+                        this._fileInfoCache.Remove(media.Source.Path);
+                    if (media?.Lang != null && media.Lang.IsTemporary)
+                        this._fileInfoCache.Remove(media.Lang.Path);
                 }
-                sourceMedia?.Dispose();
-                langMedia?.Dispose();
+                media?.Dispose();
                 record.SourceMediaPath = "";
                 record.LangMediaPath = "";
 

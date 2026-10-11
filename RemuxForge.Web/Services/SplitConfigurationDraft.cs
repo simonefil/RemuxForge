@@ -1,4 +1,5 @@
 using RemuxForge.Core.Localization;
+using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Splitting;
 using System;
@@ -438,7 +439,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         /// <param name="codecName">Codec come lo riporta ffprobe</param>
         /// <param name="scanType">Scansione letta da MediaInfo, vuota se non dichiarata</param>
-        public void SetSourceVideo(string codecName, string scanType)
+        public void SetSourceVideo(string codecName, VideoScanType scanType)
         {
             int? quality = this.EncodeQuality;
             string speed = this.EncodeSpeed;

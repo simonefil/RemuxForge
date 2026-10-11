@@ -713,22 +713,92 @@ namespace RemuxForge.Core.Models
         public bool UsesFastPath { get; set; }
 
         /// <summary>
+        /// B iniziali dei keyframe di GOP aperto ai due confini della clip copiata (D25, §11 (q)); vuoto se la clip non ne ha
+        /// </summary>
+        public MkvSplitOpenGopJoin OpenGop { get; set; } = MkvSplitOpenGopJoin.None;
+
+        #endregion
+    }
+
+    /// <summary>
+    /// B iniziali dei keyframe di GOP aperto ai confini di una clip copiata (D25, §11 (q)): quanti pacchetti restano in testa, quanti
+    /// se ne tolgono, quanti fotogrammi la clip perde alla fine e le durate che ne derivano. Calcolato una volta nel piano eseguibile
+    /// </summary>
+    public sealed class MkvSplitOpenGopJoin
+    {
+        #region Variabili statiche
+
+        /// <summary>
+        /// Clip senza B iniziali ai confini
+        /// </summary>
+        public static readonly MkvSplitOpenGopJoin None = new MkvSplitOpenGopJoin(null, 0, 0, 0, 0, 0, 0);
+
+        #endregion
+
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        /// <param name="sourcePts">PTS del sorgente in ordine di presentazione; null solo senza B iniziali</param>
+        /// <param name="startFrame">Primo fotogramma della clip, il keyframe di GOP aperto su cui inizia</param>
+        /// <param name="endFrameExclusive">Fotogramma dopo l'ultimo della clip, il keyframe di GOP aperto su cui finisce</param>
+        /// <param name="sourceEndSeconds">Fine della clip nel sorgente, in secondi</param>
+        /// <param name="leadingFrames">B iniziali del keyframe di inizio copiati con la clip</param>
+        /// <param name="headPackets">B iniziali che restano in testa all'output</param>
+        /// <param name="lostFrames">B iniziali del keyframe di fine, che la clip perde</param>
+        public MkvSplitOpenGopJoin(double[] sourcePts, int startFrame, int endFrameExclusive, double sourceEndSeconds, int leadingFrames, int headPackets, int lostFrames)
+        {
+            this.LeadingFrames = leadingFrames;
+            this.HeadPackets = headPackets;
+            this.DroppedPackets = leadingFrames - headPackets;
+            this.LostFrames = lostFrames;
+            this.LeadingSeconds = leadingFrames > 0 ? sourcePts[startFrame] - sourcePts[startFrame - leadingFrames] : 0;
+            this.HeadSeconds = headPackets > 0 ? sourcePts[startFrame] - sourcePts[startFrame - headPackets] : 0;
+            this.LostSeconds = lostFrames > 0 ? sourceEndSeconds - sourcePts[endFrameExclusive - lostFrames] : 0;
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// B iniziali del keyframe di inizio che la clip copiata contiene finché ExecutePlan non toglie quelli da togliere
+        /// </summary>
+        public int LeadingFrames { get; }
+
+        /// <summary>
         /// Pacchetti in testa alla clip copiata che appartengono ai B iniziali del keyframe di GOP aperto su cui inizia e che
         /// restano nell'output (D25): in apertura dell'output sempre, in una giunta interna solo se decodificabili da soli (§11 (q))
         /// </summary>
-        public int OpenGopHeadPackets { get; set; }
+        public int HeadPackets { get; }
 
         /// <summary>
         /// Pacchetti dei B iniziali tolti dalla testa della clip in una giunta interna, perché senza il GOP precedente si
         /// decodificherebbero con i riferimenti della clip prima (§11 (q)): la clip inizia dal keyframe
         /// </summary>
-        public int OpenGopDroppedPackets { get; set; }
+        public int DroppedPackets { get; }
 
         /// <summary>
         /// Ultimi fotogrammi che la clip copiata perde perché finisce su un keyframe di GOP aperto: i suoi B iniziali (D25).
         /// Se la segue un'altra clip, il suo audio si ferma alla fine del video e la clip successiva parte prima della stessa durata
         /// </summary>
-        public int OpenGopLostFrames { get; set; }
+        public int LostFrames { get; }
+
+        /// <summary>
+        /// Durata in secondi di tutti i B iniziali copiati in testa alla clip, prima che se ne tolga qualcuno
+        /// </summary>
+        public double LeadingSeconds { get; }
+
+        /// <summary>
+        /// Durata in secondi dei B iniziali che restano in testa: il keyframe e tutto ciò che segue arrivano dopo questa durata
+        /// </summary>
+        public double HeadSeconds { get; }
+
+        /// <summary>
+        /// Durata in secondi dei B iniziali persi alla fine: il video della clip finisce prima del taglio di questa durata
+        /// </summary>
+        public double LostSeconds { get; }
 
         #endregion
     }

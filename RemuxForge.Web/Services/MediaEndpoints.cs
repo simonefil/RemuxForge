@@ -227,18 +227,9 @@ namespace RemuxForge.Web.Services
             if (!resolver.SupportsSide(side))
                 return Results.BadRequest("Invalid preview side");
 
-            MediaSource source;
-            try
-            {
-                source = resolver.ResolveMediaSource(recordIndex, side);
-            }
-            catch (SessionMediaMissingException exception)
-            {
-                // Senza il temporaneo della sessione la richiesta non può riuscire finché l'editor non viene riaperto
-                return Results.Problem(exception.Message, statusCode: StatusCodes.Status409Conflict);
-            }
-            if (source == null)
-                return Results.NotFound();
+            IResult unavailable = ResolveMediaSource(resolver, recordIndex, side, out MediaSource source);
+            if (unavailable != null)
+                return unavailable;
 
             string filePath = source.FilePath;
             if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
@@ -331,18 +322,9 @@ namespace RemuxForge.Web.Services
             if (!resolver.SupportsSide(side))
                 return Results.BadRequest("Invalid audio timeline side");
 
-            MediaSource source;
-            try
-            {
-                source = resolver.ResolveMediaSource(recordIndex, side);
-            }
-            catch (SessionMediaMissingException exception)
-            {
-                // Senza il temporaneo della sessione la richiesta non può riuscire finché l'editor non viene riaperto
-                return Results.Problem(exception.Message, statusCode: StatusCodes.Status409Conflict);
-            }
-            if (source == null)
-                return Results.NotFound();
+            IResult unavailable = ResolveMediaSource(resolver, recordIndex, side, out MediaSource source);
+            if (unavailable != null)
+                return unavailable;
 
             string filePath = source.FilePath;
             List<TrackInfo> tracks = source.AudioTracks;
@@ -432,6 +414,31 @@ namespace RemuxForge.Web.Services
         #endregion
 
         #region Metodi privati
+
+        /// <summary>
+        /// Risolve il file del lato richiesto secondo lo scope: 409 quando manca il temporaneo della sessione dell'editor, 404
+        /// quando il record o il lato non hanno un file
+        /// </summary>
+        /// <param name="resolver">Risolutore del file secondo lo scope della richiesta</param>
+        /// <param name="recordIndex">Indice del record</param>
+        /// <param name="side">Lato richiesto</param>
+        /// <param name="source">File risolto, null quando non è servibile</param>
+        /// <returns>Esito negativo da restituire, null se il file è risolto</returns>
+        private static IResult ResolveMediaSource(IMediaSourceResolver resolver, int recordIndex, string side, out MediaSource source)
+        {
+            try
+            {
+                source = resolver.ResolveMediaSource(recordIndex, side);
+            }
+            catch (SessionMediaMissingException exception)
+            {
+                // Senza il temporaneo della sessione la richiesta non può riuscire finché l'editor non viene riaperto
+                source = null;
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status409Conflict);
+            }
+
+            return source == null ? Results.NotFound() : null;
+        }
 
         /// <summary>
         /// Sanitizza il nome episodio usato nell'allegato HTTP

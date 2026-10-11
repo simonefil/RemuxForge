@@ -173,6 +173,12 @@ namespace RemuxForge.Web.Components.Split
         private long _requestSequence;
 
         /// <summary>
+        /// True quando l'anteprima in caricamento ha ricevuto il 409 del temporaneo mancante: lo legge e lo azzera la richiesta
+        /// che si conclude, che mostra l'errore solo se non è stata superata
+        /// </summary>
+        private bool _previewMediaMissing;
+
+        /// <summary>
         /// Token del gesto JS in corso
         /// </summary>
         private string _gestureToken;
@@ -408,13 +414,20 @@ namespace RemuxForge.Web.Components.Split
         #region Metodi pubblici
 
         /// <summary>
-        /// Riceve dalla timeline JavaScript la risposta 409 di un'immagine audio: manca il temporaneo della sessione
+        /// Riceve da JavaScript la risposta 409 dell'anteprima o di un'immagine audio: manca il temporaneo della sessione.
+        /// Si notifica una volta sola; l'errore dell'anteprima lo mostra LoadPreviewAsync, se la richiesta non è superata
         /// </summary>
+        /// <param name="side">Lato dell'anteprima fallita, null per un'immagine audio</param>
         /// <param name="message">Messaggio localizzato del server</param>
         [JSInvokable]
-        public Task OnSessionMediaMissing(string message)
+        public Task OnSessionMediaMissing(string side, string message)
         {
-            return this.InvokeAsync(() => this._sessionMediaNotice.Notify(this.NotificationService, message));
+            return this.InvokeAsync(() =>
+            {
+                this._sessionMediaNotice.Notify(this.NotificationService, message);
+                if (side != null)
+                    this._previewMediaMissing = true;
+            });
         }
 
         /// <summary>
@@ -677,7 +690,7 @@ namespace RemuxForge.Web.Components.Split
                 }
                 if (this._snapshot != null && this._preview != null && this._timeline != null && (this._framePreview == null || !this._timeline.IsAttached))
                 {
-                    this._framePreview ??= await this._module.InvokeAsync<IJSObjectReference>("createFramePreview", this._preview.Canvas);
+                    this._framePreview ??= await this._module.InvokeAsync<IJSObjectReference>("createFramePreview", this._preview.Canvas, this._reference, "input");
                     if (this._disposed)
                         return;
                     await this._timeline.AttachAsync(this._module, this._reference, this.TimelineModel());
@@ -2242,18 +2255,25 @@ namespace RemuxForge.Web.Components.Split
             long revision = this._revision;
             this._previewMessage = frame.IsValid ? T("loading") : this.UnresolvedPreviewMessage();
             this.StateHasChanged();
+            bool committed = false;
+            bool failed = false;
             try
             {
-                bool committed = await this._framePreview.InvokeAsync<bool>("load", frame.IsValid ? $"/api/split-preview/{this.RecordIndex}/input/{frame.SourceFrame}?sessionId={this._snapshot.SessionId}&draftRevision={revision}&request={sequence}" : null);
-                if (!this._disposed && sequence == this._requestSequence && revision == this._revision && committed)
-                    this._previewMessage = frame.IsValid ? "" : this.UnresolvedPreviewMessage();
+                committed = await this._framePreview.InvokeAsync<bool>("load", frame.IsValid ? $"/api/split-preview/{this.RecordIndex}/input/{frame.SourceFrame}?sessionId={this._snapshot.SessionId}&draftRevision={revision}&request={sequence}" : null);
             }
-            catch (JSException exception)
+            catch (JSException)
             {
-                if (!this._disposed && sequence == this._requestSequence && revision == this._revision)
+                failed = true;
+            }
+            // Il 409 arriva con OnSessionMediaMissing prima che il caricamento si concluda: vale come errore solo per la richiesta corrente
+            bool mediaMissing = this._previewMediaMissing;
+            this._previewMediaMissing = false;
+            if (!this._disposed && sequence == this._requestSequence && revision == this._revision)
+            {
+                if (committed)
+                    this._previewMessage = frame.IsValid ? "" : this.UnresolvedPreviewMessage();
+                else if (failed || mediaMissing)
                     this._previewMessage = T("previewError");
-                // Il temporaneo della sessione mancante si notifica una volta sola, non a ogni fotogramma
-                this._sessionMediaNotice.HandleClientError(this.NotificationService, exception.Message);
             }
             if (!this._disposed)
                 this.StateHasChanged();

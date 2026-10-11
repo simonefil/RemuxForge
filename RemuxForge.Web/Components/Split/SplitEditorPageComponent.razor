@@ -188,7 +188,7 @@
                 </div>
             </aside>
         </main>
-        <section class="split-editor-timeline" style="--split-lanes: @LaneCount()">
+        <section class="split-editor-timeline media-timeline-wrapping" style="--split-lanes: @LaneCount()">
             <MediaTimelinePanelComponent @ref="_timeline" AudioLanes="@AudioLanes()" AudioMode="@_audioMode" AudioModeChanged="AudioModeAsync" WaveformGain="@_gain" WaveformGainChanged="GainAsync" WaveformText="@T("waveform")" SpectrogramText="@T("spectrogram")" WaveformHeightText="@T("gain")" HostAlternative="@T("source")" CanvasAlternative="@T("timeline")" ActionsLabel="@T("rangeMenu")">
                 <Actions>
                     <RadzenButton Text="@T("markIn")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" title="@T("markInHelp")" Click="@(() => MarkAsync(true))" />

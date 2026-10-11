@@ -4,7 +4,6 @@ using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
-using RemuxForge.Core.Tools;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -112,7 +111,7 @@ namespace RemuxForge.Core.Splitting
             }
 
             // Tracce, durata e capitoli si leggono sul Matroska che verrà accodato: il confronto fra parti vale sulle parti normalizzate (D20)
-            using (NormalizedMediaFile media = this.CreateNormalizer().Normalize(filePath, true, CancellationToken.None))
+            using (NormalizedMediaFile media = MediaContainerNormalizer.Create().Normalize(filePath, true, CancellationToken.None))
             {
                 if (!media.Success)
                 {
@@ -136,7 +135,7 @@ namespace RemuxForge.Core.Splitting
                 part.Tracks = info.Tracks;
                 // Il VOL si legge sulla parte normalizzata finché il temporaneo esiste: il piano confronta le firme senza rinormalizzare
                 TrackInfo video = info.Tracks.Find(track => track.Type == "video");
-                if (video != null && video.Codec == MediaContainerNormalizer.MPEG4_PART2_CODEC)
+                if (video != null && video.Codec == MkvSplitCodecCapabilities.MPEG4_PART2_CODEC)
                     part.Mpeg4Quantization = this.ReadMpeg4Quantization(video.CodecPrivateData);
 
                 ChapterReadResult chapters = MkvSplitExternalTools.Instance.ReadChapters(media.Path);
@@ -186,7 +185,7 @@ namespace RemuxForge.Core.Splitting
                 // MPEG-4 Part 2: l'avviso sulla quantizzazione compare prima della conferma e l'esecuzione lo riporta nel log.
                 // Il riferimento è la prima parte con la firma leggibile
                 TrackInfo video = part.Tracks.Find(track => track.Type == "video");
-                if (video != null && video.Codec == MediaContainerNormalizer.MPEG4_PART2_CODEC)
+                if (video != null && video.Codec == MkvSplitCodecCapabilities.MPEG4_PART2_CODEC)
                 {
                     if (part.Mpeg4Quantization.Length == 0)
                         plan.Warnings.Add(AppText.F("split.join.mpeg4QuantizationUnreadable", name));
@@ -281,7 +280,7 @@ namespace RemuxForge.Core.Splitting
             outputPath = Path.GetFullPath(Path.Combine(outputDir, name));
             foreach (MkvSplitJoinPart part in plan.Parts)
             {
-                if (string.Equals(part.FilePath, outputPath, StringComparison.OrdinalIgnoreCase))
+                if (FileHelper.IsSamePath(part.FilePath, outputPath))
                 {
                     issues.Add(AppText.F("split.join.outputIsPart", name));
                     return issues;
@@ -317,7 +316,7 @@ namespace RemuxForge.Core.Splitting
                 List<string> args = new List<string> { "-o", joined };
 
                 // Un temporaneo per parte, dall'avvio alla fine dell'unione: mkvmerge accoda solo Matroska con le stesse tracce lette dal piano
-                MediaContainerNormalizer normalizer = this.CreateNormalizer();
+                MediaContainerNormalizer normalizer = MediaContainerNormalizer.Create();
                 foreach (MkvSplitJoinPart part in plan.Parts)
                 {
                     ThrowIfStopped(stopRequested);
@@ -340,7 +339,7 @@ namespace RemuxForge.Core.Splitting
                 {
                     MkvSplitJoinPart part = plan.Parts[i];
                     TrackInfo video = part.Tracks.Find(track => track.Type == "video");
-                    if (video == null || video.Codec != MediaContainerNormalizer.MPEG4_PART2_CODEC)
+                    if (video == null || video.Codec != MkvSplitCodecCapabilities.MPEG4_PART2_CODEC)
                     {
                         appended.Add(media[i].Path);
                         continue;
@@ -351,13 +350,12 @@ namespace RemuxForge.Core.Splitting
                     string recomposed = Path.Combine(temporary, "part-" + i + ".mkv");
                     MkvSplitExternalTools.Instance.RunFfmpeg(new string[] { "-y", "-v", "error", "-i", media[i].Path,
                         "-map", "0:v:0", "-c", "copy", "-bsf:v", "dump_extra=freq=k", videoPath });
-                    MkvSplitExternalTools.Instance.RunMkvmerge(new string[] { "-o", recomposed,
-                        "--language", "0:" + (string.IsNullOrEmpty(video.LanguageIetf) ? (string.IsNullOrEmpty(video.Language) ? "und" : video.Language) : video.LanguageIetf),
-                        "--track-name", "0:" + (video.Name ?? ""), "--default-track-flag", "0:" + (video.DefaultTrack ? "yes" : "no"),
-                        "--forced-display-flag", "0:" + (video.ForcedTrack ? "yes" : "no"),
-                        "--no-chapters", "--no-attachments", "--no-global-tags", "--no-track-tags", videoPath,
+                    List<string> recompose = new List<string> { "-o", recomposed };
+                    MkvSplitExternalTools.AddTrackOptions(recompose, 0, video);
+                    recompose.AddRange(new string[] { "--no-chapters", "--no-attachments", "--no-global-tags", "--no-track-tags", videoPath,
                         "--video-tracks", "!" + video.Id, media[i].Path,
                         "--track-order", string.Join(",", part.Tracks.ConvertAll(track => track.Id == video.Id ? "0:0" : "1:" + track.Id)) });
+                    MkvSplitExternalTools.Instance.RunMkvmerge(recompose);
                     appended.Add(recomposed);
                 }
 
@@ -517,17 +515,10 @@ namespace RemuxForge.Core.Splitting
 
             // Start code del VOL: 00 00 01 20..2F
             byte[] data = Convert.FromHexString(hex);
-            long position = -1;
-            for (int i = 0; i + 3 < data.Length; i++)
-            {
-                if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1 && (data[i + 3] & 0xF0) == 0x20)
-                {
-                    position = (i + 4) * 8L;
-                    break;
-                }
-            }
-            if (position < 0)
+            int volStart = MpegStartCode.Find(data, 0, data.Length, code => (code & 0xF0) == 0x20);
+            if (volStart < 0)
                 return "";
+            long position = (volStart + 4) * 8L;
 
             bool overrun = false;
             int Bits(int count)
@@ -641,16 +632,6 @@ namespace RemuxForge.Core.Splitting
                 }
             }
             return overrun ? "" : signature.ToString();
-        }
-
-        /// <summary>
-        /// Normalizzatore delle parti, con mkvmerge e cartella temporanea della configurazione
-        /// </summary>
-        /// <returns>Normalizzatore</returns>
-        private MediaContainerNormalizer CreateNormalizer()
-        {
-            ToolPathResolverService resolver = new ToolPathResolverService(AppSettingsService.Instance.ConfigFolder);
-            return new MediaContainerNormalizer(resolver.ResolveMkvMergePath(false), AppSettingsService.Instance.GetTempFolder());
         }
 
         /// <summary>

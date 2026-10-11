@@ -730,6 +730,11 @@ namespace RemuxForge.Core.Media.Mkv
 
             if (trackEl.TryGetProperty("properties", out JsonElement propsEl))
             {
+                if (propsEl.TryGetProperty("codec_id", out JsonElement codecIdEl) && codecIdEl.ValueKind == JsonValueKind.String)
+                {
+                    track.CodecId = codecIdEl.GetString() ?? "";
+                }
+
                 if (propsEl.TryGetProperty("language", out JsonElement langEl))
                 {
                     track.Language = langEl.GetString();

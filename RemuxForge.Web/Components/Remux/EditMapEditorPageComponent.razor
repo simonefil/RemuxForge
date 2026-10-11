@@ -102,7 +102,7 @@
                                     </div>
                                 }
                                 <div class="@GetTimelineBodyClass()">
-                                    <div class="edit-map-timeline-stage">
+                                    <div class="edit-map-timeline-stage media-timeline-wrapping">
                                         <MediaTimelinePanelComponent @ref="_timelinePanel"
                                                                      AudioLanes="@GetAudioLanes()"
                                                                      ToolbarLabel="@AppText.T("web.editMap.audioVisualization")"
@@ -317,10 +317,10 @@
                 </span>
             </Template>
         </RadzenDataGridColumn>
-        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.type")" Width="18%" MinWidth="2.5rem"><Template Context="operation"><span title="@GetOperationTypeLabel(operation)">@GetOperationTypeLabel(operation)</span></Template></RadzenDataGridColumn>
-        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.source")" Width="25%" MinWidth="2.5rem"><Template Context="operation"><span title="@FormatTimestamp(operation.SourceTimestampMs)">@FormatTimestamp(operation.SourceTimestampMs)</span></Template></RadzenDataGridColumn>
-        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.language")" Width="25%" MinWidth="2.5rem"><Template Context="operation"><span title="@FormatTimestamp(operation.LangTimestampMs)">@FormatTimestamp(operation.LangTimestampMs)</span></Template></RadzenDataGridColumn>
-        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.detail.durationLabel")" Width="20%" MinWidth="2.5rem"><Template Context="operation"><span title="@FormatDuration(operation.DurationMs)">@FormatDuration(operation.DurationMs)</span></Template></RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.type")" Width="18%" MinWidth="2.5rem"><Template Context="operation"><CellText Text="@GetOperationTypeLabel(operation)" /></Template></RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.source")" Width="25%" MinWidth="2.5rem"><Template Context="operation"><CellText Text="@FormatTimestamp(operation.SourceTimestampMs)" /></Template></RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.language")" Width="25%" MinWidth="2.5rem"><Template Context="operation"><CellText Text="@FormatTimestamp(operation.LangTimestampMs)" /></Template></RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.detail.durationLabel")" Width="20%" MinWidth="2.5rem"><Template Context="operation"><CellText Text="@FormatDuration(operation.DurationMs)" /></Template></RadzenDataGridColumn>
     };
 
     /// <summary>
@@ -487,7 +487,7 @@
         this._keyboard = await this._module.InvokeAsync<IJSObjectReference>("captureEditorKeyboard", this._pageRoot, this._dotNetReference);
         try
         {
-            this._previewPair = await this._module.InvokeAsync<IJSObjectReference>("createPreviewPair", this._sourcePreview.Canvas, this._languagePreview.Canvas);
+            this._previewPair = await this._module.InvokeAsync<IJSObjectReference>("createPreviewPair", this._sourcePreview.Canvas, this._languagePreview.Canvas, this._dotNetReference);
         }
         catch (JSException exception)
         {
@@ -844,11 +844,15 @@
         this.StateHasChanged();
         try
         {
-            await this._previewPair.InvokeAsync<bool>("loadPair", sourceUrl, languageUrl);
-            if (sourceUrl != null)
-                this._sourcePreviewMessage = "";
-            if (languageUrl != null)
-                this._languagePreviewMessage = "";
+            // Il temporaneo della sessione mancante l'ha già segnato OnSessionMediaMissing: il suo messaggio resta
+            bool committed = await this._previewPair.InvokeAsync<bool>("loadPair", sourceUrl, languageUrl);
+            if (committed || !this._previewFailed)
+            {
+                if (sourceUrl != null)
+                    this._sourcePreviewMessage = "";
+                if (languageUrl != null)
+                    this._languagePreviewMessage = "";
+            }
         }
         catch (JSException exception)
         {
@@ -864,9 +868,7 @@
                     this._sourcePreviewMessage = AppText.T("web.editMap.previewError");
                     this._languagePreviewMessage = AppText.T("web.editMap.previewError");
                 }
-                // Il temporaneo della sessione mancante si notifica una volta sola, non a ogni fotogramma
-                if (!this._sessionMediaNotice.HandleClientError(this.NotificationService, exception.Message))
-                    this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.editMap.previewError"), exception.Message, 8000);
+                this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.editMap.previewError"), exception.Message, 8000);
             }
         }
         this.StateHasChanged();
@@ -2256,13 +2258,26 @@
     }
 
     /// <summary>
-    /// Riceve dalla timeline JavaScript la risposta 409 di un'immagine audio: manca il temporaneo della sessione
+    /// Riceve da JavaScript la risposta 409 di un'anteprima o di un'immagine audio: manca il temporaneo della sessione.
+    /// Si notifica una volta sola, e l'anteprima fallita mostra l'errore
     /// </summary>
+    /// <param name="side">Lato dell'anteprima fallita, source o language, null per un'immagine audio</param>
     /// <param name="message">Messaggio localizzato del server</param>
     [JSInvokable]
-    public Task OnSessionMediaMissing(string message)
+    public Task OnSessionMediaMissing(string side, string message)
     {
-        return this.InvokeAsync(() => this._sessionMediaNotice.Notify(this.NotificationService, message));
+        return this.InvokeAsync(() =>
+        {
+            this._sessionMediaNotice.Notify(this.NotificationService, message);
+            if (side == null)
+                return;
+            this._previewFailed = true;
+            if (string.Equals(side, "source", StringComparison.Ordinal))
+                this._sourcePreviewMessage = AppText.T("web.editMap.previewError");
+            else
+                this._languagePreviewMessage = AppText.T("web.editMap.previewError");
+            this.StateHasChanged();
+        });
     }
 
     /// <summary>

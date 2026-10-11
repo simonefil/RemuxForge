@@ -33,20 +33,6 @@ namespace RemuxForge.Web.Services
             notifications.Notify(NotificationSeverity.Error, AppText.T("web.editor.sessionMediaMissingTitle"), message, 8000);
         }
 
-        /// <summary>
-        /// Riconosce nell'errore JavaScript di un'anteprima la risposta 409 e la notifica, solo la prima volta
-        /// </summary>
-        /// <param name="notifications">Servizio delle notifiche</param>
-        /// <param name="error">Messaggio dell'errore JavaScript</param>
-        /// <returns>True se l'errore è il temporaneo mancante, che il chiamante non deve notificare di nuovo</returns>
-        public bool HandleClientError(NotificationService notifications, string error)
-        {
-            if (!SessionMediaMissingException.TryReadClientError(error, out string message))
-                return false;
-            this.Notify(notifications, message);
-            return true;
-        }
-
         #endregion
     }
 }

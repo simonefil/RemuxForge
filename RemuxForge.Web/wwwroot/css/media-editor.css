@@ -197,6 +197,32 @@
     text-align: end;
 }
 
+/* Barra della timeline che va a capo quando lo spazio finisce, negli editor EditMap e di taglio dello Split: ogni controllo
+   tiene la sua larghezza invece delle colonne della griglia, che sotto i 958px tagliavano visualizzazione e altezza */
+.media-timeline-wrapping .media-timeline-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.media-timeline-wrapping .rz-dropdown.media-audio-control {
+    width: min(20rem, 35vw);
+}
+
+.media-timeline-wrapping .rz-selectbar.media-audio-mode {
+    width: auto;
+}
+
+/* Ogni voce larga quanto il suo testo più il padding, non metà della barra */
+.media-timeline-wrapping .rz-selectbar.media-audio-mode > .rz-button {
+    flex: 0 0 auto;
+}
+
+/* Margine pari al raggio della maniglia, che a valore minimo sporge a sinistra sull'etichetta */
+.media-timeline-wrapping .media-timeline-toolbar .rz-slider {
+    width: 8rem;
+    margin-inline: .625rem;
+}
+
 .timeline-scroll-range {
     height: 1px;
 }

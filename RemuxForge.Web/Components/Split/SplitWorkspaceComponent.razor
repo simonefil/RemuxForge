@@ -23,28 +23,28 @@
                         <Template Context="record"><span title="@record.InputFile">@System.IO.Path.GetFileName(record.InputFile)</span></Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.dashboard.status")" Width="10%" MinWidth="2.5rem" MaxWidth="280px">
-                        <Template Context="record"><span title="@Utils.GetSplitStatusText(record.Status)">@Utils.GetSplitStatusText(record.Status)</span></Template>
+                        <Template Context="record"><CellText Text="@Utils.GetSplitStatusText(record.Status)" /></Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.mode")" Width="12%" MinWidth="2.5rem" MaxWidth="320px">
-                        <Template Context="record"><span title="@ModeCell(record)">@ModeCell(record)</span></Template>
+                        <Template Context="record"><CellText Text="@ModeCell(record)" /></Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.splitMontage.outputs")" Width="7%" MinWidth="2.5rem" MaxWidth="200px">
                         <Template Context="record">@(record.MontageProjection != null ? record.MontageProjection.Outputs.Count.ToString() : record.Plan != null ? record.Plan.Segments.Count.ToString() : "-")</Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.outputDuration")" Width="10%" MinWidth="2.5rem" MaxWidth="220px">
-                        <Template Context="record"><span title="@OutputDurationCell(record)">@OutputDurationCell(record)</span></Template>
+                        <Template Context="record"><CellText Text="@OutputDurationCell(record)" /></Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.planOutcome")" Width="11%" MinWidth="2.5rem" MaxWidth="320px">
-                        <Template Context="record"><span title="@PlanOutcomeCell(record)">@PlanOutcomeCell(record)</span></Template>
+                        <Template Context="record"><CellText Text="@PlanOutcomeCell(record)" /></Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.warnings")" Width="7%" MinWidth="2.5rem" MaxWidth="200px">
                         <Template Context="record">@(record.Plan != null && record.Plan.Warnings.Count > 0 ? record.Plan.Warnings.Count.ToString() : "-")</Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.existingOutputs")" Width="9%" MinWidth="2.5rem" MaxWidth="240px">
-                        <Template Context="record"><span title="@ExistingOutputsCell(record)">@ExistingOutputsCell(record)</span></Template>
+                        <Template Context="record"><CellText Text="@ExistingOutputsCell(record)" /></Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.dashboard.warningError")" Width="14%" MinWidth="2.5rem" MaxWidth="440px">
-                        <Template Context="record"><span title="@record.ErrorMessage">@record.ErrorMessage</span></Template>
+                        <Template Context="record"><CellText Text="@record.ErrorMessage" /></Template>
                     </RadzenDataGridColumn>
                 </Columns>
             </RadzenDataGrid>

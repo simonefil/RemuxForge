@@ -1,4 +1,5 @@
 using RemuxForge.Core.Localization;
+using RemuxForge.Core.Media;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -316,7 +317,7 @@ namespace RemuxForge.Core.Subtitles
 
             while (scan + 10 <= block.Length)
             {
-                pesStart = FindStartCode(block, scan, 0xbd);
+                pesStart = MpegStartCode.Find(block, scan, 0xbd);
                 if (pesStart < 0 || pesStart + 9 > block.Length)
                     break;
 
@@ -440,24 +441,6 @@ namespace RemuxForge.Core.Subtitles
             }
 
             return output.ToArray();
-        }
-
-        /// <summary>
-        /// Cerca uno start code MPEG con stream id specifico
-        /// </summary>
-        /// <param name="data">Buffer</param>
-        /// <param name="start">Offset iniziale</param>
-        /// <param name="streamId">Stream id</param>
-        /// <returns>Offset dello start code, -1 se assente</returns>
-        private static int FindStartCode(byte[] data, int start, byte streamId)
-        {
-            for (int i = Math.Max(0, start); i + 4 <= data.Length; i++)
-            {
-                if (data[i] == 0x00 && data[i + 1] == 0x00 && data[i + 2] == 0x01 && data[i + 3] == streamId)
-                    return i;
-            }
-
-            return -1;
         }
 
         /// <summary>
@@ -665,21 +648,14 @@ namespace RemuxForge.Core.Subtitles
         /// <returns>True se la lunghezza PES è coerente o non necessaria</returns>
         private static bool TryUpdateContainingPesLength(byte[] block, int payloadOffset, int diff, out string errorMessage)
         {
-            int pesStart = -1;
+            int pesStart;
             int length;
             int newLength;
 
             errorMessage = "";
 
-            // Cerca all'indietro il packet PES private stream che contiene la SPU
-            for (int i = payloadOffset; i >= 0 && i >= payloadOffset - 4096; i--)
-            {
-                if (i + 6 <= block.Length && block[i] == 0x00 && block[i + 1] == 0x00 && block[i + 2] == 0x01 && block[i + 3] == 0xbd)
-                {
-                    pesStart = i;
-                    break;
-                }
-            }
+            // Cerca all'indietro il packet PES private stream che contiene la SPU, con i due byte della lunghezza dentro il blocco
+            pesStart = MpegStartCode.FindLast(block, Math.Min(payloadOffset, block.Length - 6), payloadOffset - 4096, 0xbd);
 
             if (pesStart < 0)
             {

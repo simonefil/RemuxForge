@@ -7,6 +7,7 @@ using RemuxForge.Core.Pipeline;
 using RemuxForge.Core.Splitting;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace RemuxForge.Cli
 {
@@ -15,20 +16,42 @@ namespace RemuxForge.Cli
     /// </summary>
     internal class Program
     {
+        #region Costanti
+
+        /// <summary>
+        /// Codice di uscita dopo l'interruzione con Ctrl+C: 128 + SIGINT, come le shell
+        /// </summary>
+        private const int EXIT_INTERRUPTED = 130;
+
+        #endregion
+
         #region Entry point
 
         /// <summary>
         /// Entry point
         /// </summary>
         /// <param name="args">Argomenti riga di comando</param>
-        /// <returns>Codice uscita: 0 successo, 1 errore</returns>
+        /// <returns>Codice uscita: 0 successo, 1 errore, 130 interruzione con Ctrl+C</returns>
         static int Main(string[] args)
         {
             bool done = false;
             int exitCode = 0;
             Options opts = null;
             OptionsValidationResult validation;
+            using CancellationTokenSource cancellation = new CancellationTokenSource();
             ConsoleHelper.SetRuntimeMode(LogRuntimeMode.Cli);
+
+            // Il primo Ctrl+C ferma il lavoro come lo Stop del Web, che ripulisce staging e temporanei; il secondo termina il processo
+            Console.CancelKeyPress += (sender, e) =>
+            {
+                if (cancellation.IsCancellationRequested)
+                    return;
+                e.Cancel = true;
+                ConsoleHelper.Write(LogSection.General, LogLevel.Notice, AppText.T("cli.cancelRequested"));
+                cancellation.Cancel();
+            };
+            // I processi esterni in corso si fermano subito, come con lo Stop del Web
+            ProcessRunner.SetStopRequestedCallback(() => cancellation.IsCancellationRequested);
 
             // Abilita log su file se variabile d'ambiente impostata
             string logFilePath = Environment.GetEnvironmentVariable("REMUXFORGE_LOG_FILE");
@@ -95,7 +118,7 @@ namespace RemuxForge.Cli
                 try
                 {
                     MkvSplitPipeline splitPipeline = new MkvSplitPipeline();
-                    exitCode = splitPipeline.Execute(opts);
+                    exitCode = splitPipeline.Execute(opts, cancellation.Token);
                 }
                 catch (Exception ex)
                 {
@@ -149,14 +172,14 @@ namespace RemuxForge.Cli
                 // Scan file
                 records = pipeline.ScanFiles();
 
-                // Analizza e processa ogni file
-                for (int i = 0; i < records.Count; i++)
+                // Analizza e processa ogni file, fino all'interruzione
+                for (int i = 0; i < records.Count && !cancellation.IsCancellationRequested; i++)
                 {
                     if (records[i].Status == FileStatus.Pending)
                     {
-                        pipeline.AnalyzeFile(records[i]);
+                        pipeline.AnalyzeFile(records[i], cancellation.Token);
 
-                        if (records[i].Status == FileStatus.Analyzed)
+                        if (records[i].Status == FileStatus.Analyzed && !cancellation.IsCancellationRequested)
                         {
                             pipeline.ProcessFile(records[i]);
                         }
@@ -167,6 +190,12 @@ namespace RemuxForge.Cli
                 stats = ComputeStats(records);
                 PrintDetailedReport(records, opts.DryRun);
                 PrintSummary(stats);
+            }
+
+            if (cancellation.IsCancellationRequested)
+            {
+                ConsoleHelper.Write(LogSection.General, LogLevel.Notice, AppText.T("cli.cancelled"));
+                exitCode = EXIT_INTERRUPTED;
             }
 
             return exitCode;

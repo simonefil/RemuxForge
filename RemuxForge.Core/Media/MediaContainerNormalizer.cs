@@ -1,12 +1,14 @@
+using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
+using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Splitting;
+using RemuxForge.Core.Tools;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Globalization;
 using System.IO;
-using System.Text.Json;
 using System.Threading;
 
 namespace RemuxForge.Core.Media
@@ -17,11 +19,6 @@ namespace RemuxForge.Core.Media
     public class MediaContainerNormalizer
     {
         #region Costanti
-
-        /// <summary>
-        /// Codec mkvmerge di MPEG-4 Part 2 (Xvid, DivX 4 e successivi)
-        /// </summary>
-        public const string MPEG4_PART2_CODEC = "MPEG-4p2";
 
         /// <summary>
         /// CodecID Matroska della modalità di compatibilità Video for Windows
@@ -43,6 +40,11 @@ namespace RemuxForge.Core.Media
         private readonly string _mkvMergePath;
 
         /// <summary>
+        /// Lettore delle tracce, sullo stesso mkvmerge della normalizzazione
+        /// </summary>
+        private readonly MkvToolsService _mkvTools;
+
+        /// <summary>
         /// Cartella dei file temporanei
         /// </summary>
         private readonly string _tempFolder;
@@ -52,14 +54,38 @@ namespace RemuxForge.Core.Media
         #region Costruttore
 
         /// <summary>
-        /// Costruttore
+        /// Costruttore; fuori dai test si passa da Create, che fissa la cartella temporanea della configurazione
         /// </summary>
         /// <param name="mkvMergePath">Percorso eseguibile mkvmerge</param>
         /// <param name="tempFolder">Cartella dei file temporanei</param>
-        public MediaContainerNormalizer(string mkvMergePath, string tempFolder)
+        internal MediaContainerNormalizer(string mkvMergePath, string tempFolder)
         {
             this._mkvMergePath = mkvMergePath;
             this._tempFolder = tempFolder;
+            this._mkvTools = new MkvToolsService(mkvMergePath);
+        }
+
+        #endregion
+
+        #region Metodi pubblici statici
+
+        /// <summary>
+        /// Normalizzatore con il mkvmerge risolto dalla configurazione e la cartella temporanea della configurazione
+        /// </summary>
+        /// <returns>Normalizzatore</returns>
+        public static MediaContainerNormalizer Create()
+        {
+            return Create(new ToolPathResolverService(AppSettingsService.Instance.ConfigFolder).ResolveMkvMergePath(false));
+        }
+
+        /// <summary>
+        /// Normalizzatore con il mkvmerge scelto dal chiamante, per esempio quello delle opzioni della pipeline, e la cartella temporanea della configurazione
+        /// </summary>
+        /// <param name="mkvMergePath">Percorso eseguibile mkvmerge</param>
+        /// <returns>Normalizzatore</returns>
+        public static MediaContainerNormalizer Create(string mkvMergePath)
+        {
+            return new MediaContainerNormalizer(mkvMergePath, AppSettingsService.Instance.GetTempFolder());
         }
 
         #endregion
@@ -75,8 +101,8 @@ namespace RemuxForge.Core.Media
         /// <returns>File normalizzato; con errore il percorso è vuoto e non c'è nulla da cancellare</returns>
         public NormalizedMediaFile Normalize(string filePath, bool requireNativeMpeg4, CancellationToken cancellationToken)
         {
-            List<string[]> sourceTracks = this.ReadTracks(filePath, cancellationToken);
-            bool vfwMpeg4 = sourceTracks.Exists(t => t[2] == MPEG4_PART2_CODEC && t[3] == VFW_CODEC_ID);
+            List<TrackInfo> sourceTracks = this.ReadTracks(filePath);
+            bool vfwMpeg4 = sourceTracks.Exists(t => t.Codec == MkvSplitCodecCapabilities.MPEG4_PART2_CODEC && t.CodecId == VFW_CODEC_ID);
             if (MediaContainerFormats.IsMatroska(filePath) && !(requireNativeMpeg4 && vfwMpeg4))
             {
                 return new NormalizedMediaFile(filePath, filePath, false, "");
@@ -88,7 +114,7 @@ namespace RemuxForge.Core.Media
             // native_mpeg4 porta MPEG-4 Part 2 fuori da Video for Windows con timestamp di presentazione puliti. Solo con una traccia
             // MPEG-4 Part 2: mkvmerge applica la modalità nativa anche a MS-MPEG4v2 (MP42), che non ha configurazione e fallisce
             List<string> arguments = new List<string> { "-q", "-o", tempPath, filePath };
-            if (sourceTracks.Exists(t => t[2] == MPEG4_PART2_CODEC))
+            if (sourceTracks.Exists(t => t.Codec == MkvSplitCodecCapabilities.MPEG4_PART2_CODEC))
             {
                 arguments.InsertRange(1, new string[] { "--engage", "native_mpeg4" });
             }
@@ -108,8 +134,8 @@ namespace RemuxForge.Core.Media
             }
 
             // Selezioni e mappature usano gli ID letti sull'originale: il temporaneo deve avere le stesse tracce con gli stessi ID
-            List<string[]> normalizedTracks = this.ReadTracks(tempPath, cancellationToken);
-            if (sourceTracks.Count == 0 || sourceTracks.Count != normalizedTracks.Count || sourceTracks.FindIndex(t => normalizedTracks.FindIndex(n => n[0] == t[0] && n[1] == t[1]) < 0) >= 0)
+            List<TrackInfo> normalizedTracks = this.ReadTracks(tempPath);
+            if (sourceTracks.Count == 0 || sourceTracks.Count != normalizedTracks.Count || sourceTracks.FindIndex(t => normalizedTracks.FindIndex(n => n.Id == t.Id && n.Type == t.Type) < 0) >= 0)
             {
                 FileHelper.DeleteTempFile(tempPath);
                 return new NormalizedMediaFile(filePath, "", false, AppText.F("media.normalize.failed", Path.GetFileName(filePath), AppText.T("media.normalize.tracksChanged")));
@@ -126,14 +152,11 @@ namespace RemuxForge.Core.Media
         /// <param name="langPath">File Lang, vuoto per non normalizzarlo</param>
         /// <param name="requireNativeMpeg4">True per rimuxare anche gli MKV con MPEG-4 Part 2 in modalità Video for Windows</param>
         /// <param name="cancellationToken">Token di annullamento</param>
-        /// <param name="source">Source normalizzato</param>
-        /// <param name="lang">Lang normalizzato, null se non richiesto o se il Source è fallito</param>
-        /// <returns>Motivo del primo fallimento, vuoto se tutto è riuscito</returns>
-        public string NormalizePair(string sourcePath, string langPath, bool requireNativeMpeg4, CancellationToken cancellationToken, out NormalizedMediaFile source, out NormalizedMediaFile lang)
+        /// <returns>Coppia normalizzata; il Lang è null se non richiesto o se il Source è fallito</returns>
+        public NormalizedMediaPair NormalizePair(string sourcePath, string langPath, bool requireNativeMpeg4, CancellationToken cancellationToken)
         {
-            source = this.Normalize(sourcePath, requireNativeMpeg4, cancellationToken);
-            lang = source.Success && !string.IsNullOrEmpty(langPath) ? this.Normalize(langPath, requireNativeMpeg4, cancellationToken) : null;
-            return !source.Success ? source.Error : lang != null && !lang.Success ? lang.Error : "";
+            NormalizedMediaFile source = this.Normalize(sourcePath, requireNativeMpeg4, cancellationToken);
+            return new NormalizedMediaPair(source, source.Success && !string.IsNullOrEmpty(langPath) ? this.Normalize(langPath, requireNativeMpeg4, cancellationToken) : null);
         }
 
         #endregion
@@ -141,31 +164,14 @@ namespace RemuxForge.Core.Media
         #region Metodi privati
 
         /// <summary>
-        /// Legge le tracce con mkvmerge come righe id, tipo, codec e CodecID
+        /// Legge le tracce con mkvmerge senza token: la lettura dura pochi istanti e l'annullamento lo osservano mkvmerge e il chiamante,
+        /// così un temporaneo appena scritto non resta orfano di un'eccezione
         /// </summary>
-        /// <returns>Una riga per traccia, lista vuota se mkvmerge non risponde</returns>
-        private List<string[]> ReadTracks(string filePath, CancellationToken cancellationToken)
+        /// <param name="filePath">File da leggere</param>
+        /// <returns>Tracce del file, lista vuota se mkvmerge non risponde</returns>
+        private List<TrackInfo> ReadTracks(string filePath)
         {
-            List<string[]> tracks = new List<string[]>();
-            ProcessResult result = ProcessRunner.Run(this._mkvMergePath, new string[] { "-J", filePath }, 0, cancellationToken);
-            if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(result.Stdout))
-            {
-                return tracks;
-            }
-
-            using JsonDocument document = JsonDocument.Parse(result.Stdout);
-            if (!document.RootElement.TryGetProperty("tracks", out JsonElement elements))
-            {
-                return tracks;
-            }
-
-            foreach (JsonElement track in elements.EnumerateArray())
-            {
-                string codecId = track.TryGetProperty("properties", out JsonElement properties) && properties.TryGetProperty("codec_id", out JsonElement codecIdElement) ? codecIdElement.GetString() : "";
-                tracks.Add(new string[] { track.GetProperty("id").GetInt32().ToString(CultureInfo.InvariantCulture), track.GetProperty("type").GetString(), track.GetProperty("codec").GetString(), codecId });
-            }
-
-            return tracks;
+            return this._mkvTools.GetFileInfo(filePath, 0, CancellationToken.None)?.Tracks ?? new List<TrackInfo>();
         }
 
         #endregion
@@ -246,6 +252,59 @@ namespace RemuxForge.Core.Media
             }
 
             this._disposed = true;
+        }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Source e Lang normalizzati insieme; i temporanei vengono cancellati al Dispose
+    /// </summary>
+    public sealed class NormalizedMediaPair : IDisposable
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        /// <param name="source">Source normalizzato, null se non richiesto</param>
+        /// <param name="lang">Lang normalizzato, null se non richiesto</param>
+        public NormalizedMediaPair(NormalizedMediaFile source, NormalizedMediaFile lang)
+        {
+            this.Source = source;
+            this.Lang = lang;
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Source normalizzato, null se non richiesto
+        /// </summary>
+        public NormalizedMediaFile Source { get; }
+
+        /// <summary>
+        /// Lang normalizzato, null se non richiesto o se il Source è fallito
+        /// </summary>
+        public NormalizedMediaFile Lang { get; }
+
+        /// <summary>
+        /// Motivo del primo fallimento, prima del Source e poi del Lang; vuoto se tutto è riuscito
+        /// </summary>
+        public string Error => this.Source != null && !this.Source.Success ? this.Source.Error : this.Lang != null && !this.Lang.Success ? this.Lang.Error : "";
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Cancella i temporanei di Source e Lang, se esistono
+        /// </summary>
+        public void Dispose()
+        {
+            this.Source?.Dispose();
+            this.Lang?.Dispose();
         }
 
         #endregion
