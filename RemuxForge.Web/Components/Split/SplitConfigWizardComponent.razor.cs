@@ -298,21 +298,20 @@ namespace RemuxForge.Web.Components.Split
             bool recursive = this.Draft.Recursive;
             if (!this.Draft.SourceIsFile && !Directory.Exists(path))
                 return;
-            (string Codec, VideoScanType ScanType, string Mismatch)? video = await Task.Run<(string, VideoScanType, string)?>(() =>
+            MkvSplitBatchVideoCheck video = await Task.Run(() =>
             {
                 try
                 {
                     MkvSplitExternalTools.Instance.ResolveBinaries();
-                    List<string> files = MkvSplitPipeline.ResolveInputFiles(path, recursive);
+                    List<string> files = MkvSplitOptions.ResolveInputFiles(path, recursive);
                     if (files.Count == 0)
                         return null;
-                    string mismatch = MkvSplitPipeline.CheckBatchVideo(files, out string codec, out VideoScanType scanType);
-                    return (codec, scanType, mismatch);
+                    return MkvSplitVideoProfile.CheckBatch(files);
                 }
                 catch (InvalidOperationException exception)
                 {
                     // Strumenti mancanti o MediaInfo che non risponde: non parte nulla e il motivo compare sotto la sorgente
-                    return (null, new VideoScanType(""), exception.Message);
+                    return new MkvSplitBatchVideoCheck(new MkvSplitVideoProfile(null, new VideoScanType("")), exception.Message);
                 }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
                 {
@@ -322,14 +321,14 @@ namespace RemuxForge.Web.Components.Split
             // Una risposta arrivata dopo un nuovo cambio di sorgente o di sottocartelle non vale più
             if (video == null || this._disposed || this._applying || this.Draft.Source != path || this.Draft.Recursive != recursive)
                 return;
-            if (video.Value.Mismatch.Length > 0)
+            if (video.Mismatch.Length > 0)
             {
                 // L'errore compare subito sotto la sorgente, senza aspettare Avanti
-                this.Edit(() => this.Draft.SetBatchVideoMismatch(video.Value.Mismatch));
+                this.Edit(() => this.Draft.SetBatchVideoMismatch(video.Mismatch));
                 this.RevalidateSection(0);
             }
             else
-                this.Edit(() => this.Draft.SetSourceVideo(video.Value.Codec, video.Value.ScanType));
+                this.Edit(() => this.Draft.SetSourceVideo(video.Profile));
             this.StateHasChanged();
         }
 

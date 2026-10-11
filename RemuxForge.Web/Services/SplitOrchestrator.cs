@@ -486,8 +486,8 @@ namespace RemuxForge.Web.Services
                     document = await Task.Run(() =>
                     {
                         // Con un piano non valido l'editor apre i suoi segmenti e la diagnostica arriva dal piano eseguibile
-                        MkvSplitPlan legacy = service.PlanRule(split, source, analysis, Guid.NewGuid(), out MkvSplitDocument rule);
-                        return rule ?? service.FromLegacyPlan(legacy, source);
+                        MkvSplitRulePlan rule = service.PlanRule(split, source, analysis, Guid.NewGuid());
+                        return rule.Document ?? service.FromLegacyPlan(rule.Plan, source);
                     }, cancellation);
                 cancellation.ThrowIfCancellationRequested();
                 Guid sessionId = Guid.NewGuid();
@@ -583,9 +583,9 @@ namespace RemuxForge.Web.Services
             {
                 cancellation.ThrowIfCancellationRequested();
                 if (!session.Source.Matches(MkvSplitSourceIdentity.FromFile(record.InputFile))) return RuleFailure("sourceChanged");
-                MkvSplitDocument document = null;
-                MkvSplitPlan legacy = await Task.Run(() => new MkvSplitDocumentService().PlanRule(options, session.Source, session.Analysis, session.DocumentId, out document), cancellation);
-                if (document == null) return RuleFailure("preparationFailed", legacy.ErrorMessage);
+                MkvSplitRulePlan rule = await Task.Run(() => new MkvSplitDocumentService().PlanRule(options, session.Source, session.Analysis, session.DocumentId), cancellation);
+                MkvSplitDocument document = rule.Document;
+                if (document == null) return RuleFailure("preparationFailed", rule.Plan.ErrorMessage);
                 cancellation.ThrowIfCancellationRequested();
                 lock (this.StateLock)
                 {
@@ -710,7 +710,7 @@ namespace RemuxForge.Web.Services
                 if (scanned.Count > 1)
                 {
                     MkvSplitExternalTools.Instance.ResolveBinaries();
-                    mismatch = MkvSplitPipeline.CheckBatchVideo(scanned.Select(record => record.InputFile).ToList(), out _, out _);
+                    mismatch = MkvSplitVideoProfile.CheckBatch(scanned.Select(record => record.InputFile).ToList()).Mismatch;
                     if (mismatch.Length > 0)
                     {
                         this.AppendLog(AppText.F("web.split.scanError", mismatch));
@@ -1097,7 +1097,7 @@ namespace RemuxForge.Web.Services
                 throw new InvalidOperationException(AppText.T("web.split.configureSource"));
             }
 
-            foreach (string file in MkvSplitPipeline.ResolveInputFiles(source, this._options.Recursive))
+            foreach (string file in MkvSplitOptions.ResolveInputFiles(source, this._options.Recursive))
             {
                 result.Add(this.CreateRecord(file, mkvMergePath));
             }
@@ -1269,8 +1269,9 @@ namespace RemuxForge.Web.Services
                 MkvSplitDocumentService service = new MkvSplitDocumentService();
                 if (reset)
                 {
-                    MkvSplitPlan legacy = await Task.Run(() => service.PlanRule(options, session.Source, session.Analysis, session.DocumentId, out candidate), cancellation);
-                    if (candidate == null) return ApplyFailure(SplitApplyStatus.Invalid, "preparationFailed", legacy.ErrorMessage);
+                    MkvSplitRulePlan rule = await Task.Run(() => service.PlanRule(options, session.Source, session.Analysis, session.DocumentId), cancellation);
+                    candidate = rule.Document;
+                    if (candidate == null) return ApplyFailure(SplitApplyStatus.Invalid, "preparationFailed", rule.Plan.ErrorMessage);
                 }
                 MkvSplitExecutionPlan plan = await Task.Run(() => service.BuildExecutionPlan(candidate, session.Analysis, options), cancellation);
                 cancellation.ThrowIfCancellationRequested();
@@ -1411,8 +1412,9 @@ namespace RemuxForge.Web.Services
             }
             if (document == null)
             {
-                MkvSplitPlan legacy = service.PlanRule(split, source, analysis, Guid.NewGuid(), out document);
-                if (document == null) throw new InvalidOperationException(legacy.ErrorMessage);
+                MkvSplitRulePlan rule = service.PlanRule(split, source, analysis, Guid.NewGuid());
+                document = rule.Document;
+                if (document == null) throw new InvalidOperationException(rule.Plan.ErrorMessage);
             }
             MkvSplitExecutionPlan plan = service.BuildExecutionPlan(document, analysis, split);
             lock (this.StateLock)

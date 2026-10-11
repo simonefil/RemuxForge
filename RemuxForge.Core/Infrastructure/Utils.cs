@@ -3,6 +3,7 @@ using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Reflection;
 using System.Text;
 
@@ -97,6 +98,18 @@ namespace RemuxForge.Core.Infrastructure
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Formatta secondi come timestamp HH:MM:SS.mmm, la forma che accettano mkvmerge e le opzioni di taglio
+        /// </summary>
+        /// <param name="seconds">Numero di secondi</param>
+        /// <returns>Stringa nel formato HH:MM:SS.mmm</returns>
+        public static string SecsToTs(double seconds)
+        {
+            // Arrotonda prima al millisecondo: 119.9996 diventa 00:02:00.000 e non 00:01:60.000
+            long ms = (long)Math.Round(seconds * 1000.0, MidpointRounding.AwayFromZero);
+            return string.Format(CultureInfo.InvariantCulture, "{0:D2}:{1:D2}:{2:D2}.{3:D3}", ms / 3600000, ms / 60000 % 60, ms / 1000 % 60, ms % 1000);
         }
 
         /// <summary>

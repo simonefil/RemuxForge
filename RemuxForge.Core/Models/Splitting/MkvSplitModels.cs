@@ -1,5 +1,8 @@
+using RemuxForge.Core.Localization;
+using RemuxForge.Core.Media;
 using System.Collections.Generic;
 using System;
+using System.IO;
 
 namespace RemuxForge.Core.Models
 {
@@ -134,6 +137,63 @@ namespace RemuxForge.Core.Models
         public MkvSplitOptions Clone()
         {
             return (MkvSplitOptions)this.MemberwiseClone();
+        }
+
+        /// <summary>
+        /// Risolve i file da dividere: il file indicato, oppure i file supportati della cartella in ordine di percorso
+        /// </summary>
+        /// <param name="source">File o cartella sorgente</param>
+        /// <param name="recursive">True per cercare anche nelle sottocartelle</param>
+        /// <returns>Percorsi assoluti dei file</returns>
+        public static List<string> ResolveInputFiles(string source, bool recursive)
+        {
+            List<string> files = new List<string>();
+            SearchOption searchOption = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
+
+            if (File.Exists(source))
+            {
+                files.Add(Path.GetFullPath(source));
+            }
+            else if (Directory.Exists(source))
+            {
+                foreach (string file in Directory.GetFiles(source, "*", searchOption))
+                {
+                    if (MediaContainerFormats.IsSupported(file))
+                    {
+                        files.Add(Path.GetFullPath(file));
+                    }
+                }
+                files.Sort(StringComparer.OrdinalIgnoreCase);
+            }
+            else
+            {
+                throw new FileNotFoundException(AppText.F("validation.splitSourceNotFound", source), source);
+            }
+
+            return files;
+        }
+
+        /// <summary>
+        /// Cartella di uscita di un file: accanto al sorgente se non è configurata, altrimenti la cartella configurata con le
+        /// sottocartelle del file rispetto alla cartella sorgente, ricreate come nella Remux (PipelineOutputManager.ComputeFinalOutputPath)
+        /// </summary>
+        /// <param name="inputFile">File da dividere</param>
+        /// <returns>Percorso assoluto della cartella di uscita del file</returns>
+        public string ResolveOutputDir(string inputFile)
+        {
+            string input = Path.GetFullPath(inputFile);
+            if (string.IsNullOrEmpty(this.OutputDir))
+                return Path.GetDirectoryName(input);
+
+            string result = Path.GetFullPath(this.OutputDir);
+            if (!string.IsNullOrEmpty(this.SourcePath) && Directory.Exists(this.SourcePath))
+            {
+                string relative = Path.GetRelativePath(Path.GetFullPath(this.SourcePath), Path.GetDirectoryName(input));
+                // Un file fuori dalla cartella sorgente non ha sottocartelle da ricreare
+                if (!relative.StartsWith("..", StringComparison.Ordinal) && !Path.IsPathRooted(relative))
+                    result = Path.GetFullPath(Path.Combine(result, relative));
+            }
+            return result;
         }
 
         #endregion
@@ -306,6 +366,19 @@ namespace RemuxForge.Core.Models
         {
             this.Chapters = new List<ChapterMark>();
             this.File = "";
+        }
+
+        /// <summary>Clip del documento con gli stessi confini, effettivi e chiesti prima dello snap</summary>
+        /// <returns>Clip nuova</returns>
+        public MkvSplitClip ToClip()
+        {
+            return new MkvSplitClip
+            {
+                StartFrame = this.StartFrame,
+                EndFrameExclusive = checked(this.StartFrame + this.FrameCount),
+                RequestedStartFrame = this.RequestedStartFrame,
+                RequestedEndFrame = this.RequestedEndFrame
+            };
         }
     }
 

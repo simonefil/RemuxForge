@@ -20,12 +20,12 @@
                         @foreach (MkvSplitOutputProjection output in record.MontageProjection.Outputs)
                         {
                             <div class="split-plan-review-output">
-                                <strong>@output.FileName</strong> · @RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(output.DurationSeconds) · @AppText.Count("web.splitMontage.clipCount", output.Clips.Count)
+                                <strong>@output.FileName</strong> · @Utils.SecsToTs(output.DurationSeconds) · @AppText.Count("web.splitMontage.clipCount", output.Clips.Count)
                                 <div>@output.FullPath</div>
                                 @foreach (MkvSplitClipProjection clip in output.Clips)
                                 {
-                                    <div>@AppText.T("web.splitMontage.source"): @AppText.F("web.splitMontage.clipLabel", output.Clips.IndexOf(clip) + 1, RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(clip.SourceStartSeconds), RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(clip.SourceEndSeconds))</div>
-                                    <div>@AppText.T("web.splitMontage.result"): @RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(clip.ResultStartSeconds)–@RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(clip.ResultEndSeconds)</div>
+                                    <div>@AppText.T("web.splitMontage.source"): @AppText.F("web.splitMontage.clipLabel", output.Clips.IndexOf(clip) + 1, Utils.SecsToTs(clip.SourceStartSeconds), Utils.SecsToTs(clip.SourceEndSeconds))</div>
+                                    <div>@AppText.T("web.splitMontage.result"): @Utils.SecsToTs(clip.ResultStartSeconds)–@Utils.SecsToTs(clip.ResultEndSeconds)</div>
                                 }
                             </div>
                         }
@@ -43,7 +43,7 @@
                     }
                     else if (record.Plan != null)
                     {
-                        @foreach (MkvSplitSegment output in record.Plan.Segments) { <div>@output.File · @RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(output.EndTs - output.StartTs)</div> }
+                        @foreach (MkvSplitSegment output in record.Plan.Segments) { <div>@output.File · @Utils.SecsToTs(output.EndTs - output.StartTs)</div> }
                     }
                     @if (!string.IsNullOrEmpty(record.ErrorMessage)) { <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="split-plan-review-alert"><div class="split-plan-review-alert-row">@record.ErrorMessage</div></RadzenAlert> }
                     @* Con il montaggio gli avvisi del piano sono le sue diagnostiche, già mostrate sopra *@

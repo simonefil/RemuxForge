@@ -2,13 +2,13 @@ using RemuxForge.Core.Chapters;
 using RemuxForge.Core.Infrastructure;
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Splitting.Cutters;
+using RemuxForge.Core.Splitting.Planning;
 
 namespace RemuxForge.Core.Splitting
 {
@@ -45,16 +45,7 @@ namespace RemuxForge.Core.Splitting
             {
                 document.Outputs.Add(new MkvSplitOutput
                 {
-                    Clips = new List<MkvSplitClip>
-                    {
-                        new MkvSplitClip
-                        {
-                            StartFrame = segment.StartFrame,
-                            EndFrameExclusive = checked(segment.StartFrame + segment.FrameCount),
-                            RequestedStartFrame = segment.RequestedStartFrame,
-                            RequestedEndFrame = segment.RequestedEndFrame
-                        }
-                    }
+                    Clips = new List<MkvSplitClip> { segment.ToClip() }
                 });
             }
             return document;
@@ -189,7 +180,7 @@ namespace RemuxForge.Core.Splitting
                 return projection;
             List<(int start, int end)> coverage = new List<(int, int)>();
             HashSet<string> paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            string directory = MkvSplitPlanner.ResolveOutputDir(options.OutputDir, options.SourcePath, document.Source.FullPath);
+            string directory = options.ResolveOutputDir(document.Source.FullPath);
             // {source} si risolve una volta: la disambiguazione D21 legge la cartella del sorgente
             string sourceName = MkvSplitSegmentService.ResolveSourceName(document.Source.FullPath);
             if (document.Outputs.Count == 0)
@@ -217,13 +208,8 @@ namespace RemuxForge.Core.Splitting
                     });
                     chapterRanges.Add(new ChapterRange((long)Math.Round(start * 1000000000.0), (long)Math.Round(end * 1000000000.0)));
                     // Confini della clip che lo snap della regola ha spostato: i capitoli fra il confine chiesto e quello effettivo lo seguono,
-                    // come nel piano della regola (MkvSplitPlanner.SelectChapters). Un confine che l'utente ha poi spostato non è più della regola
-                    List<(int oldB, int newB)> snapped = new List<(int, int)>();
-                    if (clip.RequestedStartFrame.HasValue && clip.RequestedStartFrame.Value != clip.StartFrame)
-                        snapped.Add((clip.RequestedStartFrame.Value, clip.StartFrame));
-                    if (clip.RequestedEndFrame.HasValue && clip.RequestedEndFrame.Value != clip.EndFrameExclusive)
-                        snapped.Add((clip.RequestedEndFrame.Value, clip.EndFrameExclusive));
-                    chapterSets.Add(MkvSplitPlanner.SelectChapters(analysis.Chapters, clip.StartFrame, clip.EndFrameExclusive, start, snapped, analysis.SourcePts));
+                    // come nel piano della regola. Un confine che l'utente ha poi spostato non è più della regola
+                    chapterSets.Add(analysis.SelectChapters(clip, start, new[] { clip }));
                     result.DurationSeconds += end - start;
                     result.FrameCount += clip.EndFrameExclusive - clip.StartFrame;
                     coverage.Add((clip.StartFrame, clip.EndFrameExclusive));
@@ -286,13 +272,11 @@ namespace RemuxForge.Core.Splitting
         /// <param name="source">Identità del sorgente</param>
         /// <param name="analysis">Analisi del sorgente</param>
         /// <param name="documentId">Identità del documento</param>
-        /// <param name="document">Documento della regola, null se il piano non è valido</param>
-        /// <returns>Piano della regola, null in manuale</returns>
-        public MkvSplitPlan PlanRule(MkvSplitOptions options, MkvSplitSourceIdentity source, MkvSplitAnalysis analysis, Guid documentId, out MkvSplitDocument document)
+        /// <returns>Piano della regola, null in manuale, e documento, null se il piano non è valido</returns>
+        public MkvSplitRulePlan PlanRule(MkvSplitOptions options, MkvSplitSourceIdentity source, MkvSplitAnalysis analysis, Guid documentId)
         {
             MkvSplitPlan legacy = options.Manual ? null : new MkvSplitPlanner().BuildPlan(options, source.FullPath, null);
-            document = legacy == null || legacy.IsValid ? this.CreateRuleDocument(legacy, source, analysis, documentId) : null;
-            return legacy;
+            return new MkvSplitRulePlan(legacy, legacy == null || legacy.IsValid ? this.CreateRuleDocument(legacy, source, analysis, documentId) : null);
         }
 
         /// <summary>
@@ -331,7 +315,7 @@ namespace RemuxForge.Core.Splitting
             if (analysis?.SourcePts == null || analysis.SourcePts.Length == 0 || !double.IsFinite(sourceSeconds)
                 || sourceSeconds < analysis.SourcePts[0] || sourceSeconds > analysis.Duration)
                 return new MkvSplitFrameResolution();
-            int frame = ContainingFrame(analysis.SourcePts, sourceSeconds);
+            int frame = analysis.ContainingFrame(sourceSeconds);
             return new MkvSplitFrameResolution
             {
                 IsValid = true,
@@ -358,7 +342,7 @@ namespace RemuxForge.Core.Splitting
             // L'andata e ritorno risultato/sorgente in double puo' cadere un ulp sotto il PTS del frame:
             // la tolleranza e il limite inferiore della clip evitano di risolvere il frame precedente
             double sourceSeconds = clip.SourceStartSeconds + resultSeconds - clip.ResultStartSeconds;
-            int frame = Math.Max(clip.StartFrame, Math.Min(clip.EndFrameExclusive - 1, ContainingFrame(analysis.SourcePts, sourceSeconds + RESOLVE_TOLERANCE_SECONDS)));
+            int frame = Math.Max(clip.StartFrame, Math.Min(clip.EndFrameExclusive - 1, analysis.ContainingFrame(sourceSeconds + RESOLVE_TOLERANCE_SECONDS)));
             return ResolveProjectedClipFrame(analysis, clip, frame, false);
         }
 
@@ -456,7 +440,8 @@ namespace RemuxForge.Core.Splitting
                     Severity = MkvSplitDiagnosticSeverity.Error
                 });
             // La testa da ricodificare la dà la strategia del codec; senza strategia il costo segue la regola del taglio a byte
-            MkvSplitExactCutterBase cutter = MkvSplitCodecCapabilities.FindExactCut(analysis.VideoParams?.CodecName)?.CreateCutter();
+            MkvSplitVideoProfile profile = analysis.VideoProfile;
+            MkvSplitExactCutterBase cutter = profile.ExactCutCodec?.CreateCutter();
             foreach (MkvSplitOutputProjection output in plan.Projection.Outputs)
             {
                 MkvSplitExecutionOutput execution = new MkvSplitExecutionOutput
@@ -467,107 +452,16 @@ namespace RemuxForge.Core.Splitting
                 plan.Outputs.Add(execution);
                 foreach (MkvSplitClipProjection clip in output.Clips)
                 {
-                    bool startKey = clip.StartFrame < analysis.KeyFlags.Count && analysis.KeyFlags[clip.StartFrame].Key;
-                    bool endKey = clip.EndFrameExclusive == analysis.SourcePts.Length
-                        || (clip.EndFrameExclusive < analysis.KeyFlags.Count && analysis.KeyFlags[clip.EndFrameExclusive].Key);
-                    // Un keyframe di GOP aperto si taglia dallo slow path, che ricodifica solo i fotogrammi che lo attraversano.
-                    // Sull'interlacciato si copia (D25). In apertura i B iniziali restano come pacchetti in testa; in una giunta
-                    // interna restano solo se si decodificano da soli (closed_gop=1), altrimenti seguirebbero la clip precedente
-                    // e si decodificherebbero con i suoi riferimenti, quindi si tolgono (§11 (q)). In chiusura la clip perde i
-                    // suoi B iniziali; se la segue un'altra clip, alla giunta il suo audio si ferma alla fine del video (ExecutePlan)
-                    bool startOpen = startKey && analysis.KeyFlags[clip.StartFrame].OpenGop;
-                    bool endOpen = endKey && clip.EndFrameExclusive < analysis.SourcePts.Length && analysis.KeyFlags[clip.EndFrameExclusive].OpenGop;
-                    bool startCopy = startKey && (!startOpen || MkvSplitCodecCapabilities.IsCopyCutKeyframe(analysis.KeyFlags[clip.StartFrame], analysis.ScanType));
-                    bool endCopy = endKey && (!endOpen || MkvSplitCodecCapabilities.IsCopyCutKeyframe(analysis.KeyFlags[clip.EndFrameExclusive], analysis.ScanType));
-                    bool fast = startCopy && endCopy;
-                    int reencode = 0;
-                    bool keyframeOnlyVideo = false;
-                    // Una clip da ricodificare su un video che si taglia solo al keyframe, con il motivo: codec, interlacciato o,
-                    // con entrambi i confini su keyframe dell'interlacciato, il GOP aperto
-                    if (!fast && !MkvSplitCodecCapabilities.IsExactCutAvailable(analysis.VideoParams?.CodecName, analysis.ScanType, out string keyframeOnly))
-                    {
-                        keyframeOnlyVideo = true;
-                        if (startKey && endKey && analysis.ScanType.IsInterlaced)
-                        {
-                            int frame = startCopy ? clip.EndFrameExclusive : clip.StartFrame;
-                            plan.Projection.Diagnostics.Add(new MkvSplitDiagnostic
-                            {
-                                Code = "openGop",
-                                Message = AppText.F("split.openGopRejected", analysis.ScanType, frame, MkvSplitSegmentService.SecsToTs(analysis.SourcePts[frame])),
-                                Severity = MkvSplitDiagnosticSeverity.Error,
-                                OutputId = output.OutputId,
-                                ClipId = clip.ClipId
-                            });
-                        }
-                        else
-                        {
-                            MkvSplitDiagnostic unsupported = Diagnostic("unsupportedVideo", output.OutputId, clip.ClipId, keyframeOnly);
-                            unsupported.Reason = keyframeOnly;
-                            plan.Projection.Diagnostics.Add(unsupported);
-                        }
-                    }
-                    int leading = fast && startOpen ? analysis.KeyFlags[clip.StartFrame].LeadingFrames : 0;
-                    bool decodable = leading > 0 && analysis.KeyFlags[clip.StartFrame].LeadingDecodable;
-                    int headPackets = clip == output.Clips[0] || decodable ? leading : 0;
-                    int lostFrames = fast && endOpen ? analysis.KeyFlags[clip.EndFrameExclusive].LeadingFrames : 0;
-                    MkvSplitOpenGopJoin openGop = new MkvSplitOpenGopJoin(analysis.SourcePts, clip.StartFrame, clip.EndFrameExclusive, clip.SourceEndSeconds, leading, headPackets, lostFrames);
-                    // Con closed_gop=1 i B iniziali che la clip perde si ritrovano in testa alla clip che inizia sul keyframe, in qualsiasi output
-                    bool shownElsewhere = lostFrames > 0 && analysis.KeyFlags[clip.EndFrameExclusive].LeadingDecodable
-                        && plan.Projection.Outputs.Exists(other => other.Clips.Exists(next => next.StartFrame == clip.EndFrameExclusive));
-                    if (leading > 0)
-                        plan.Projection.Diagnostics.Add(new MkvSplitDiagnostic
-                        {
-                            Code = decodable ? "openGopShift" : headPackets > 0 ? "openGopHead" : "openGopDropped",
-                            Message = decodable ? AppText.F("split.openGopShift", output.FileName, leading, Math.Round(openGop.LeadingSeconds * 1000.0).ToString(CultureInfo.InvariantCulture))
-                                : AppText.F(headPackets > 0 ? "split.openGopHead" : "split.openGopDropped", output.FileName, leading),
-                            Severity = MkvSplitDiagnosticSeverity.Warning,
-                            OutputId = output.OutputId,
-                            ClipId = clip.ClipId
-                        });
-                    if (lostFrames > 0 && !shownElsewhere)
-                        plan.Projection.Diagnostics.Add(new MkvSplitDiagnostic
-                        {
-                            Code = "openGopCut",
-                            Message = AppText.F("split.openGopCut", output.FileName, lostFrames,
-                                Math.Round((analysis.SourcePts[clip.EndFrameExclusive] - analysis.SourcePts[clip.EndFrameExclusive - lostFrames]) * 1000.0).ToString(CultureInfo.InvariantCulture)),
-                            Severity = MkvSplitDiagnosticSeverity.Warning,
-                            OutputId = output.OutputId,
-                            ClipId = clip.ClipId
-                        });
-                    if (!startKey)
-                    {
-                        MkvSplitKeyframeIndex keyframes = new MkvSplitKeyframeIndex(analysis.KeyFlags);
-                        int headCount = cutter != null ? cutter.HeadReencodeCount(keyframes, clip.StartFrame, clip.FrameCount)
-                            : MkvSplitByteExactCutter.LookaheadHeadReencodeCount(keyframes, clip.StartFrame, clip.FrameCount);
-                        // Sul video che si taglia solo al keyframe il motivo è già detto: la testa non si ricodifica comunque
-                        if (headCount < 0 && !keyframeOnlyVideo)
-                            plan.Projection.Diagnostics.Add(Diagnostic("shortClip", output.OutputId, clip.ClipId));
-                        else if (headCount >= 0)
-                            reencode = headCount;
-                    }
-                    execution.Clips.Add(new MkvSplitExecutionClip
-                    {
-                        UsesFastPath = fast,
-                        OpenGop = openGop,
-                        Segment = new MkvSplitSegment
-                        {
-                            StartFrame = clip.StartFrame,
-                            FrameCount = clip.FrameCount,
-                            StartTs = clip.SourceStartSeconds,
-                            EndTs = clip.SourceEndSeconds,
-                            StartsOnKeyframe = startKey,
-                            ReencodeFrames = reencode,
-                            // La clip copiata contiene i pacchetti di tutti i B iniziali finché ExecutePlan non toglie quelli da togliere
-                            OpenGopHeadSeconds = openGop.LeadingSeconds
-                        }
-                    });
+                    MkvSplitClipCutDecision decision = new MkvSplitClipCutDecision(analysis, profile, cutter, plan.Projection, output, clip);
+                    plan.Projection.Diagnostics.AddRange(decision.Diagnostics);
+                    execution.Clips.Add(decision.ToExecutionClip());
                 }
             }
             // Qualità e velocità valgono per tutte le clip ricodificate: stessi range del planner CLI
             if (plan.Outputs.Any(output => output.Clips.Any(clip => !clip.UsesFastPath))
-                && MkvSplitCodecCapabilities.IsExactCutAvailable(analysis.VideoParams?.CodecName, analysis.ScanType, out _))
+                && profile.IsExactCutAvailable)
             {
-                foreach (string error in MkvSplitCodecCapabilities.ValidateEncodeSettings(MkvSplitCodecCapabilities.FindExactCut(analysis.VideoParams.CodecName), options.EncodeQuality, options.EncodeSpeed))
+                foreach (string error in MkvSplitCodecCapabilities.ValidateEncodeSettings(profile.ExactCutCodec, options.EncodeQuality, options.EncodeSpeed))
                     plan.Projection.Diagnostics.Add(new MkvSplitDiagnostic { Code = "encodeSettings", Message = error, Severity = MkvSplitDiagnosticSeverity.Error });
             }
             // La disponibilità delle tracce è una proprietà del piano eseguibile, non della proiezione del draft: inventario ed
@@ -588,101 +482,13 @@ namespace RemuxForge.Core.Splitting
             TrackInfo mainVideo = analysis.Tracks.FirstOrDefault(item => item.Type == "video");
             if (mainVideo == null || mainVideo.Id != 0)
                 plan.Projection.Diagnostics.Add(Diagnostic("videoTrackLayout"));
-            List<Guid> unchangedOutputs = new List<Guid>();
-            foreach (MkvSplitOutputProjection output in plan.Projection.Outputs)
-            {
-                int next = 0;
-                bool unchanged = true;
-                foreach (MkvSplitClipProjection clip in output.Clips)
-                {
-                    if (clip.StartFrame != next)
-                        unchanged = false;
-                    next = clip.EndFrameExclusive;
-                }
-                if (unchanged && next == analysis.SourcePts.Length)
-                    unchangedOutputs.Add(output.OutputId);
-            }
-            List<MkvSplitOutputProjection> cutOutputs = plan.Projection.Outputs.Where(output => !unchangedOutputs.Contains(output.OutputId)).ToList();
-            // I codec che il ritaglio non sa riscrivere li taglia mkvmerge al pacchetto insieme alle clip
-            foreach (TrackInfo track in analysis.Tracks.Where(item => item.Type == "subtitles" && !MkvSplitSubtitleClippers.IsSupported(item)))
-            {
-                foreach (MkvSplitExecutionOutput output in plan.Outputs)
-                {
-                    if (unchangedOutputs.Contains(output.OutputId))
-                        output.NativeSubtitleTrackIds.Add(track.Id);
-                    else
-                        output.FallbackSubtitleTrackIds.Add(track.Id);
-                }
-            }
-            if (plan.IsValid)
-            {
-                foreach (MkvSplitSubtitleTrack subtitle in analysis.Subtitles)
-                {
-                    TrackInfo track = subtitle.Track;
-                    bool bitmap = subtitle.Clipper.IsBitmap;
-                    if (bitmap)
-                    {
-                        foreach (MkvSplitExecutionOutput output in plan.Outputs.Where(output => unchangedOutputs.Contains(output.OutputId)))
-                            output.NativeSubtitleTrackIds.Add(track.Id);
-                        if (cutOutputs.Count == 0)
-                            continue;
-                    }
-                    plan.Subtitles.Add(subtitle);
-                    // Una traccia sorgente senza eventi resta vuota in ogni taglio: si copia nativa, senza riscriverla
-                    if (subtitle.Events.Count == 0)
-                    {
-                        foreach (MkvSplitExecutionOutput output in plan.Outputs.Where(output => !output.NativeSubtitleTrackIds.Contains(track.Id)))
-                            output.NativeSubtitleTrackIds.Add(track.Id);
-                        continue;
-                    }
-                    bool fitsVideo = subtitle.Events.All(item => item.StartSeconds >= analysis.SourcePts[0] && item.EndSeconds <= analysis.Duration);
-                    if (fitsVideo && !bitmap)
-                    {
-                        foreach (MkvSplitExecutionOutput output in plan.Outputs.Where(output => unchangedOutputs.Contains(output.OutputId)))
-                            output.NativeSubtitleTrackIds.Add(track.Id);
-                    }
-                    foreach (MkvSplitOutputProjection output in plan.Projection.Outputs.Where(output => !plan.Outputs.Find(item => item.OutputId == output.OutputId).NativeSubtitleTrackIds.Contains(track.Id)))
-                    {
-                        foreach (MkvSplitClipProjection clip in output.Clips)
-                        {
-                            foreach (MkvSplitSubtitleEvent item in subtitle.Events.Where(item => item.HasTimedEffects))
-                            {
-                                if (item.StartSeconds < clip.SourceEndSeconds && item.EndSeconds > clip.SourceStartSeconds
-                                    && (item.StartSeconds < clip.SourceStartSeconds || item.EndSeconds > clip.SourceEndSeconds))
-                                    plan.Projection.Diagnostics.Add(Diagnostic("subtitleTimedBoundary", output.OutputId, clip.ClipId,
-                                        track.Id, clip.SourceStartSeconds, clip.SourceEndSeconds));
-                            }
-                        }
-                    }
-                }
-            }
+            new MkvSplitSubtitleRouter(plan, analysis).Route();
             return plan;
         }
 
         #endregion
 
         #region Metodi privati
-
-        /// <summary>
-        /// Ricerca binaria dell'ultimo frame con PTS minore o uguale al tempo indicato
-        /// </summary>
-        /// <param name="pts">PTS del sorgente ordinati crescente</param>
-        /// <param name="seconds">Tempo in secondi</param>
-        /// <returns>Indice del frame che contiene il tempo, almeno 0</returns>
-        private static int ContainingFrame(double[] pts, double seconds)
-        {
-            int low = 0;
-            int high = pts.Length;
-            while (low < high)
-            {
-                int mid = low + ((high - low) >> 1);
-                if (pts[mid] <= seconds)
-                    low = mid + 1;
-                else
-                    high = mid;
-            }
-            return Math.Max(0, low - 1);
-        }
 
         /// <summary>
         /// Una proiezione draft può avere altri output vuoti o problemi di naming: validare la geometria

@@ -137,7 +137,7 @@
     private string OutputDurationCell(MkvSplitRecord record)
     {
         if (record.MontageProjection != null)
-            return RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(record.MontageProjection.DurationSeconds);
+            return Utils.SecsToTs(record.MontageProjection.DurationSeconds);
         double total = 0.0;
 
         if (record.Plan == null)
@@ -148,7 +148,7 @@
             total += System.Math.Max(0.0, segment.EndTs - segment.StartTs);
         }
 
-        return RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(total);
+        return Utils.SecsToTs(total);
     }
 
     /// <summary>

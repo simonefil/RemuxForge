@@ -5,6 +5,7 @@ using System.IO;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
+using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
 
 namespace RemuxForge.Core.Splitting
@@ -38,8 +39,8 @@ namespace RemuxForge.Core.Splitting
             double sizeMb;
             List<string> subtitleArgs = subtitleIds.Count > 0 ? new List<string> { "--subtitle-tracks", string.Join(",", subtitleIds) } : new List<string> { "--no-subtitles" };
 
-            startTc = MkvSplitSegmentService.SecsToTs(seg.StartTs);
-            endTc = MkvSplitSegmentService.SecsToTs(seg.EndTs);
+            startTc = Utils.SecsToTs(seg.StartTs);
+            endTc = Utils.SecsToTs(seg.EndTs);
 
             if (tracks.Exists(MkvSplitExternalTools.IsFlacAudio))
             {
@@ -47,7 +48,6 @@ namespace RemuxForge.Core.Splitting
                 string avFile = Path.Combine(tempDir, "av.mkv");
                 List<string> videoArgs = new List<string>();
                 List<string> avArgs = new List<string>();
-                List<string> order = new List<string>();
                 int fromVideo = 0;
                 int fromAudio = 0;
                 int avExit;
@@ -78,26 +78,24 @@ namespace RemuxForge.Core.Splitting
                 hasAv = avExit == 0 && File.Exists(avFile) && new FileInfo(avFile).Length > 0;
                 if (!hasAv) throw new InvalidOperationException(AppText.F("split.montage.avFailed", avExit));
 
+                // Il video di una parte che inizia su un keyframe di GOP aperto parte dai pacchetti dei B iniziali e mostra il
+                // keyframe dopo la loro durata (D25); ffmpeg taglia l'audio dal keyframe e lo porta a 0: si sposta della stessa
+                // durata, come fa mkvmerge quando taglia video e audio insieme
+                MkvmergeCommand mux = new MkvmergeCommand(outputFile);
+                int videoInput = mux.AddInput(videoMkv, "--no-chapters");
+                int audioInput = seg.OpenGopHeadSeconds > 0
+                    ? mux.AddInput(avFile, "--sync", "-1:" + Math.Round(seg.OpenGopHeadSeconds * 1000.0).ToString(CultureInfo.InvariantCulture))
+                    : mux.AddInput(avFile);
                 // Le tracce tornano nell'ordine del sorgente, che le clip accodate devono condividere
                 foreach (TrackInfo track in tracks)
                 {
                     if (track.Type == "audio")
-                        order.Add("1:" + fromAudio++);
+                        mux.Place(track.Id, audioInput, fromAudio++);
                     else if (track.Type == "video" || (track.Type == "subtitles" && subtitleIds.Contains(track.Id)))
-                        order.Add("0:" + fromVideo++);
+                        mux.Place(track.Id, videoInput, fromVideo++);
                 }
-                muxArgs = new List<string>();
-                muxArgs.Add("-o"); muxArgs.Add(outputFile);
-                muxArgs.Add("--no-chapters"); muxArgs.Add(videoMkv);
-                // Il video di una parte che inizia su un keyframe di GOP aperto parte dai pacchetti dei B iniziali e mostra il
-                // keyframe dopo la loro durata (D25); ffmpeg taglia l'audio dal keyframe e lo porta a 0: si sposta della stessa
-                // durata, come fa mkvmerge quando taglia video e audio insieme
-                if (seg.OpenGopHeadSeconds > 0)
-                {
-                    muxArgs.Add("--sync"); muxArgs.Add("-1:" + Math.Round(seg.OpenGopHeadSeconds * 1000.0).ToString(CultureInfo.InvariantCulture));
-                }
-                muxArgs.Add(avFile);
-                muxArgs.Add("--track-order"); muxArgs.Add(string.Join(",", order));
+                mux.AddTrackOrder();
+                muxArgs = mux.ToArguments();
                 MkvSplitExternalTools.Instance.RunMkvmerge(muxArgs);
             }
             else

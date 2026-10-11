@@ -1,3 +1,4 @@
+using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Splitting;
@@ -732,7 +733,7 @@ namespace RemuxForge.Web.Components.Split
         /// <returns>Timestamp formattato</returns>
         private static string Time(double seconds)
         {
-            return MkvSplitSegmentService.SecsToTs(seconds);
+            return Utils.SecsToTs(seconds);
         }
 
         /// <summary>

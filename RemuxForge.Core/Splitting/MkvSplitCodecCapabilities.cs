@@ -1,6 +1,4 @@
 using RemuxForge.Core.Localization;
-using RemuxForge.Core.Media;
-using RemuxForge.Core.Models;
 using RemuxForge.Core.Splitting.Codecs;
 using System;
 using System.Collections.Generic;
@@ -108,39 +106,6 @@ namespace RemuxForge.Core.Splitting
         public static string GetDisplayName(string codecName)
         {
             return Find(codecName)?.DisplayName ?? codecName ?? "";
-        }
-
-        /// <summary>
-        /// Indica se il video si può tagliare al fotogramma, cioè con la ricodifica della testa
-        /// </summary>
-        /// <param name="codecName">Nome del codec come lo riporta ffprobe</param>
-        /// <param name="scanType">Scansione letta da MediaInfo, vuota se non dichiarata</param>
-        /// <param name="reason">Motivo localizzato del solo taglio al keyframe, vuoto se il taglio al fotogramma è disponibile</param>
-        /// <returns>True se il taglio al fotogramma è disponibile</returns>
-        public static bool IsExactCutAvailable(string codecName, VideoScanType scanType, out string reason)
-        {
-            MkvSplitVideoCodecBase capability = Find(codecName);
-
-            reason = "";
-            if (capability == null || capability.Method == MkvSplitExactCutMethod.None)
-                reason = AppText.F("split.unsupportedVideoCodec", GetDisplayName(codecName));
-            // Un video interlacciato non ha un fotogramma da ricodificare al giunto (D07)
-            else if (scanType.IsInterlaced)
-                reason = AppText.F("split.interlacedKeyframeOnly", scanType);
-
-            return reason.Length == 0;
-        }
-
-        /// <summary>
-        /// Indica se un fotogramma è un punto di taglio senza ricodifica: keyframe chiuso oppure, su video interlacciato
-        /// che non si può ricodificare (D07), keyframe di GOP aperto con i soli B iniziali, che il taglio perde (D25)
-        /// </summary>
-        /// <param name="frame">Fotogramma del confine, in ordine di presentazione</param>
-        /// <param name="scanType">Scansione letta da MediaInfo, vuota se non dichiarata (P4: progressivo)</param>
-        /// <returns>True se mkvmerge può tagliare sul fotogramma</returns>
-        public static bool IsCopyCutKeyframe(MkvSplitFrameInfo frame, VideoScanType scanType)
-        {
-            return frame.Key && (!frame.OpenGop || (frame.LeadingFrames > 0 && scanType.IsInterlaced));
         }
 
         /// <summary>

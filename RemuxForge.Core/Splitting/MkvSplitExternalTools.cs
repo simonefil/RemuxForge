@@ -528,19 +528,6 @@ namespace RemuxForge.Core.Splitting
         }
 
         /// <summary>
-        /// Aggiunge al comando mkvmerge lingua, nome e flag della traccia originale, per la traccia con l'ID indicato nel file che segue
-        /// </summary>
-        /// <param name="command">Argomenti mkvmerge</param>
-        /// <param name="id">ID della traccia nel file che segue gli argomenti</param>
-        /// <param name="track">Traccia del sorgente da cui copiare le proprietà</param>
-        public static void AddTrackOptions(List<string> command, int id, TrackInfo track)
-        {
-            command.AddRange(new string[] { "--language", id + ":" + (string.IsNullOrEmpty(track.LanguageIetf) ? (string.IsNullOrEmpty(track.Language) ? "und" : track.Language) : track.LanguageIetf),
-                "--track-name", id + ":" + (track.Name ?? ""), "--default-track-flag", id + ":" + (track.DefaultTrack ? "yes" : "no"),
-                "--forced-display-flag", id + ":" + (track.ForcedTrack ? "yes" : "no") });
-        }
-
-        /// <summary>
         /// Indica se la traccia è audio FLAC, che mkvmerge non taglia insieme al video: lo Split lo taglia a parte
         /// </summary>
         /// <param name="track">Traccia da controllare</param>

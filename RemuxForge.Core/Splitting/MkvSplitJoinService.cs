@@ -3,11 +3,11 @@ using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
+using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 
@@ -35,51 +35,6 @@ namespace RemuxForge.Core.Splitting
         /// </summary>
         private static readonly Regex s_partSuffixRe = new Regex(@"^(?<base>.*?[^\s._-])(?:[\s._-]+|(?<=\d))(?:part|pt|cd|disc|disk|p)[\s._-]*\d{1,3}$",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
-        /// <summary>
-        /// Matrice intra predefinita di MPEG-4 Part 2 (ISO/IEC 14496-2), in ordine raster come ff_mpeg4_default_intra_matrix di libavcodec
-        /// </summary>
-        private static readonly int[] s_mpeg4DefaultIntraMatrix = new int[]
-        {
-             8, 17, 18, 19, 21, 23, 25, 27,
-            17, 18, 19, 21, 23, 25, 27, 28,
-            20, 21, 22, 23, 24, 26, 28, 30,
-            21, 22, 23, 24, 26, 28, 30, 32,
-            22, 23, 24, 26, 28, 30, 32, 35,
-            23, 24, 26, 28, 30, 32, 35, 38,
-            25, 26, 28, 30, 32, 35, 38, 41,
-            27, 28, 30, 32, 35, 38, 41, 45
-        };
-
-        /// <summary>
-        /// Matrice non intra predefinita di MPEG-4 Part 2 (ISO/IEC 14496-2), in ordine raster come ff_mpeg4_default_non_intra_matrix di libavcodec
-        /// </summary>
-        private static readonly int[] s_mpeg4DefaultNonIntraMatrix = new int[]
-        {
-            16, 17, 18, 19, 20, 21, 22, 23,
-            17, 18, 19, 20, 21, 22, 23, 24,
-            18, 19, 20, 21, 22, 23, 24, 25,
-            19, 20, 21, 22, 23, 24, 26, 27,
-            20, 21, 22, 23, 25, 26, 27, 28,
-            21, 22, 23, 24, 26, 27, 28, 30,
-            22, 23, 24, 26, 27, 28, 30, 31,
-            23, 24, 25, 27, 28, 30, 31, 33
-        };
-
-        /// <summary>
-        /// Posizione raster di ogni coefficiente nell'ordine zigzag con cui il VOL scrive le matrici caricate, come ff_zigzag_direct di libavcodec
-        /// </summary>
-        private static readonly int[] s_zigzag = new int[]
-        {
-             0,  1,  8, 16,  9,  2,  3, 10,
-            17, 24, 32, 25, 18, 11,  4,  5,
-            12, 19, 26, 33, 40, 48, 41, 34,
-            27, 20, 13,  6,  7, 14, 21, 28,
-            35, 42, 49, 56, 57, 50, 43, 36,
-            29, 22, 15, 23, 30, 37, 44, 51,
-            58, 59, 52, 45, 38, 31, 39, 46,
-            53, 60, 61, 54, 47, 55, 62, 63
-        };
 
         #endregion
 
@@ -137,7 +92,7 @@ namespace RemuxForge.Core.Splitting
                 // Il VOL si legge sulla parte normalizzata finché il temporaneo esiste: il piano confronta le firme senza rinormalizzare
                 TrackInfo video = info.Tracks.Find(track => track.Type == "video");
                 if (video != null && video.Codec == MkvSplitCodecCapabilities.MPEG4_PART2_CODEC)
-                    part.Mpeg4Quantization = this.ReadMpeg4Quantization(video.CodecPrivateData);
+                    part.Mpeg4Quantization = Mpeg4VolHeader.Parse(video.CodecPrivateData)?.QuantizationSignature ?? "";
 
                 ChapterReadResult chapters = MkvSplitExternalTools.Instance.ReadChapters(media.Path);
                 if (chapters.Error.Length > 0)
@@ -351,12 +306,14 @@ namespace RemuxForge.Core.Splitting
                     string recomposed = Path.Combine(temporary, "part-" + i + ".mkv");
                     MkvSplitExternalTools.Instance.RunFfmpeg(new string[] { "-y", "-v", "error", "-i", media[i].Path,
                         "-map", "0:v:0", "-c", "copy", "-bsf:v", "dump_extra=freq=k", videoPath });
-                    List<string> recompose = new List<string> { "-o", recomposed };
-                    MkvSplitExternalTools.AddTrackOptions(recompose, 0, video);
-                    recompose.AddRange(new string[] { "--no-chapters", "--no-attachments", "--no-global-tags", "--no-track-tags", videoPath,
-                        "--video-tracks", "!" + video.Id, media[i].Path,
-                        "--track-order", string.Join(",", part.Tracks.ConvertAll(track => track.Id == video.Id ? "0:0" : "1:" + track.Id)) });
-                    MkvSplitExternalTools.Instance.RunMkvmerge(recompose);
+                    MkvmergeCommand recompose = new MkvmergeCommand(recomposed);
+                    List<string> videoOptions = new List<string>(MkvmergeCommand.TrackOptions(0, video)) { "--no-chapters", "--no-attachments", "--no-global-tags", "--no-track-tags" };
+                    int videoInput = recompose.AddInput(videoPath, videoOptions.ToArray());
+                    int partInput = recompose.AddInput(media[i].Path, "--video-tracks", "!" + video.Id);
+                    foreach (TrackInfo track in part.Tracks)
+                        recompose.Place(track.Id, track.Id == video.Id ? videoInput : partInput, track.Id == video.Id ? 0 : track.Id);
+                    recompose.AddTrackOrder();
+                    MkvSplitExternalTools.Instance.RunMkvmerge(recompose.ToArguments());
                     appended.Add(recomposed);
                 }
 
@@ -501,138 +458,6 @@ namespace RemuxForge.Core.Splitting
                 expected += MkvSplitExternalTools.Instance.CountPackets(part);
             if (MkvSplitExternalTools.Instance.CountPackets(joined) != expected)
                 throw new InvalidOperationException(AppText.T("split.join.outputMismatch"));
-        }
-
-        /// <summary>
-        /// Legge dal VOL nei dati privati della traccia video quant_type e matrici di quantizzazione caricate.
-        /// I campi precedenti si leggono solo per arrivarci, secondo la sintassi di ISO/IEC 14496-2 §6.2.3
-        /// </summary>
-        /// <param name="hex">Dati privati della traccia video della parte normalizzata, con MPEG-4 Part 2 nativo, già letti da mkvmerge</param>
-        /// <returns>Firma della quantizzazione, oppure stringa vuota se il VOL non è leggibile</returns>
-        private string ReadMpeg4Quantization(string hex)
-        {
-            if (string.IsNullOrEmpty(hex) || hex.Length % 2 != 0)
-                return "";
-
-            // Start code del VOL: 00 00 01 20..2F
-            byte[] data = Convert.FromHexString(hex);
-            int volStart = MpegStartCode.Find(data, 0, data.Length, code => (code & 0xF0) == 0x20);
-            if (volStart < 0)
-                return "";
-            long position = (volStart + 4) * 8L;
-
-            bool overrun = false;
-            int Bits(int count)
-            {
-                int value = 0;
-                for (int b = 0; b < count; b++)
-                {
-                    if (position >= data.Length * 8L)
-                    {
-                        overrun = true;
-                        return 0;
-                    }
-                    value = (value << 1) | ((data[position >> 3] >> (7 - (int)(position & 7))) & 1);
-                    position++;
-                }
-                return value;
-            }
-
-            // random_accessible_vol, video_object_type_indication
-            Bits(1);
-            Bits(8);
-            int verid = 1;
-            if (Bits(1) == 1)
-            {
-                verid = Bits(4);
-                Bits(3);
-            }
-            // aspect_ratio_info, con par_width e par_height se esteso
-            if (Bits(4) == 15)
-                Bits(16);
-            // vol_control_parameters: chroma_format, low_delay, vbv_parameters
-            if (Bits(1) == 1)
-            {
-                Bits(3);
-                if (Bits(1) == 1)
-                {
-                    Bits(15); Bits(1); Bits(15); Bits(1); Bits(15); Bits(1);
-                    Bits(3); Bits(11); Bits(1); Bits(15); Bits(1);
-                }
-            }
-            // video_object_layer_shape: 0 rettangolare, 2 solo binaria, 3 scala di grigi
-            int shape = Bits(2);
-            if (shape == 3 && verid != 1)
-                Bits(4);
-            Bits(1);
-            int resolution = Bits(16);
-            Bits(1);
-            if (Bits(1) == 1)
-            {
-                int incrementBits = 1;
-                while ((1 << incrementBits) < resolution)
-                    incrementBits++;
-                Bits(incrementBits);
-            }
-            // Senza texture o in scala di grigi la quantizzazione non segue nella forma attesa
-            if (shape == 2 || shape == 3)
-                return "";
-            if (shape == 0)
-            {
-                Bits(1); Bits(13); Bits(1); Bits(13); Bits(1);
-            }
-            // interlaced, obmc_disable, sprite_enable
-            Bits(1);
-            Bits(1);
-            int sprite = Bits(verid == 1 ? 1 : 2);
-            if (sprite == 1 || sprite == 2)
-            {
-                if (sprite != 2)
-                {
-                    Bits(13); Bits(1); Bits(13); Bits(1); Bits(13); Bits(1); Bits(13); Bits(1);
-                }
-                Bits(6); Bits(2); Bits(1);
-                if (sprite != 2)
-                    Bits(1);
-            }
-            if (verid != 1 && shape != 0)
-                Bits(1);
-            // not_8_bit: quant_precision e bits_per_pixel
-            if (Bits(1) == 1)
-            {
-                Bits(4);
-                Bits(4);
-            }
-
-            // quant_type e, con la quantizzazione MPEG, le matrici effettive intra e non intra: si parte dalla predefinita e
-            // i valori caricati, in ordine zigzag e chiusi da uno zero, la sostituiscono ripetendo l'ultimo fino al 64° come
-            // libavcodec. Così una matrice caricata uguale alla predefinita ha la stessa firma della predefinita non caricata
-            int quantType = Bits(1);
-            StringBuilder signature = new StringBuilder("quant_type=" + quantType);
-            if (quantType == 1)
-            {
-                for (int matrix = 0; matrix < 2; matrix++)
-                {
-                    int[] effective = (int[])(matrix == 0 ? s_mpeg4DefaultIntraMatrix : s_mpeg4DefaultNonIntraMatrix).Clone();
-                    if (Bits(1) == 1)
-                    {
-                        int last = 0;
-                        int k = 0;
-                        for (; k < 64; k++)
-                        {
-                            int value = Bits(8);
-                            if (value == 0)
-                                break;
-                            last = value;
-                            effective[s_zigzag[k]] = value;
-                        }
-                        for (; k < 64; k++)
-                            effective[s_zigzag[k]] = last;
-                    }
-                    signature.Append(matrix == 0 ? ";intra=" : ";inter=").Append(string.Join(",", effective));
-                }
-            }
-            return overrun ? "" : signature.ToString();
         }
 
         /// <summary>

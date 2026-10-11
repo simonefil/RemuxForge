@@ -1,5 +1,4 @@
 using RemuxForge.Core.Localization;
-using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Splitting;
 using RemuxForge.Core.Splitting.Codecs;
@@ -438,9 +437,8 @@ namespace RemuxForge.Web.Services
         /// un taglio esatto non più ammesso (P1) e tiene i parametri di encode applicati se il codec li ammette,
         /// altrimenti, o dopo un cambio di sorgente, riparte dai predefiniti del codec (D10)
         /// </summary>
-        /// <param name="codecName">Codec come lo riporta ffprobe</param>
-        /// <param name="scanType">Scansione letta da MediaInfo, vuota se non dichiarata</param>
-        public void SetSourceVideo(string codecName, VideoScanType scanType)
+        /// <param name="profile">Codec e scansione del video del sorgente</param>
+        public void SetSourceVideo(MkvSplitVideoProfile profile)
         {
             int? quality = this.EncodeQuality;
             string speed = this.EncodeSpeed;
@@ -449,16 +447,16 @@ namespace RemuxForge.Web.Services
             this.EncodeCapability = null;
             this.EncodeQuality = null;
             this.EncodeSpeed = null;
-            if (MkvSplitCodecCapabilities.IsExactCutAvailable(codecName, scanType, out string reason))
+            if (profile.IsExactCutAvailable)
             {
-                this.EncodeCapability = MkvSplitCodecCapabilities.FindExactCut(codecName);
+                this.EncodeCapability = profile.ExactCutCodec;
                 bool keep = quality.HasValue && MkvSplitCodecCapabilities.ValidateEncodeSettings(this.EncodeCapability, quality, speed).Count == 0;
                 this.EncodeQuality = keep ? quality : this.EncodeCapability.QualityDefault;
                 this.EncodeSpeed = keep && !string.IsNullOrWhiteSpace(speed) ? speed : this.EncodeCapability.SpeedDefault;
             }
             else if (this.Snap == MkvSplitSnapMode.Off)
                 this.Snap = MkvSplitSnapMode.Nearest;
-            this.KeyframeOnlyReason = reason;
+            this.KeyframeOnlyReason = profile.KeyframeOnlyReason;
         }
 
         /// <summary>

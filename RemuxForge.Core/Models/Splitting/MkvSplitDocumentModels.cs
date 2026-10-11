@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Splitting;
 using RemuxForge.Core.Splitting.Subtitles;
@@ -212,7 +213,7 @@ namespace RemuxForge.Core.Models
 
         /// <summary>
         /// Inizio chiesto dalla regola prima dello snap al keyframe, null se lo snap non l'ha spostato o se l'ha deciso l'utente:
-        /// i capitoli fra l'inizio chiesto e quello effettivo seguono il confine (MkvSplitPlanner.SelectChapters)
+        /// i capitoli fra l'inizio chiesto e quello effettivo seguono il confine (MkvSplitAnalysis.SelectChapters)
         /// </summary>
         public int? RequestedStartFrame { get; set; }
 
@@ -233,6 +234,90 @@ namespace RemuxForge.Core.Models
         {
             return (MkvSplitClip)this.MemberwiseClone();
         }
+
+        /// <summary>
+        /// Copia della clip come occorrenza nuova
+        /// </summary>
+        /// <returns>Nuova clip con gli stessi confini e un identificativo nuovo</returns>
+        public MkvSplitClip CloneWithNewId()
+        {
+            MkvSplitClip clone = this.Clone();
+            clone.Id = Guid.NewGuid();
+            return clone;
+        }
+
+        /// <summary>
+        /// Sposta l'inizio dove lo decide l'utente. Un confine deciso dall'utente è letterale: perde quello chiesto dalla regola
+        /// prima dello snap
+        /// </summary>
+        /// <param name="frame">Primo frame sorgente incluso</param>
+        public void MoveStart(int frame)
+        {
+            this.StartFrame = frame;
+            this.RequestedStartFrame = null;
+        }
+
+        /// <summary>
+        /// Sposta la fine dove la decide l'utente. Un confine deciso dall'utente è letterale: perde quello chiesto dalla regola
+        /// prima dello snap
+        /// </summary>
+        /// <param name="frame">Primo frame sorgente escluso</param>
+        public void MoveEnd(int frame)
+        {
+            this.EndFrameExclusive = frame;
+            this.RequestedEndFrame = null;
+        }
+
+        /// <summary>
+        /// Confine effettivo che segue un fotogramma caduto fra il confine chiesto dalla regola e quello dove lo snap l'ha spostato,
+        /// estremi esclusi dal lato del confine effettivo: prima l'inizio, poi la fine
+        /// </summary>
+        /// <param name="frame">Fotogramma sorgente</param>
+        /// <returns>Confine effettivo, null se il fotogramma non cade nella distanza di uno snap della clip</returns>
+        public int? SnappedBoundary(int frame)
+        {
+            foreach ((int? requested, int effective) in new[] { (this.RequestedStartFrame, this.StartFrame), (this.RequestedEndFrame, this.EndFrameExclusive) })
+            {
+                if (requested.HasValue && ((requested.Value <= frame && frame < effective) || (effective < frame && frame <= requested.Value)))
+                    return effective;
+            }
+            return null;
+        }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Piano della regola corrente e documento che ne deriva (MkvSplitDocumentService.PlanRule)
+    /// </summary>
+    public sealed class MkvSplitRulePlan
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        /// <param name="plan">Piano della regola, null in manuale</param>
+        /// <param name="document">Documento della regola, null se il piano non è valido</param>
+        public MkvSplitRulePlan(MkvSplitPlan plan, MkvSplitDocument document)
+        {
+            this.Plan = plan;
+            this.Document = document;
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Piano della regola, null in manuale
+        /// </summary>
+        public MkvSplitPlan Plan { get; }
+
+        /// <summary>
+        /// Documento della regola, null se il piano non è valido
+        /// </summary>
+        public MkvSplitDocument Document { get; }
 
         #endregion
     }
@@ -1356,6 +1441,41 @@ namespace RemuxForge.Core.Models
         /// Codice di uscita complessivo
         /// </summary>
         public int ExitCode { get; set; }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Chiude gli output ancora in attesa quando l'esecuzione si interrompe: senza Matroska o senza preparazione nessuno può
+        /// partire, quindi falliscono tutti con lo stesso motivo, oppure risultano annullati
+        /// </summary>
+        /// <param name="cancelled">True se l'esecuzione è stata annullata</param>
+        /// <param name="message">Motivo localizzato del fallimento</param>
+        public void ClosePending(bool cancelled, string message)
+        {
+            foreach (MkvSplitOutputExecutionResult pending in this.Outputs.FindAll(item => item.Status == MkvSplitOutputExecutionStatus.Pending))
+            {
+                pending.Status = cancelled ? MkvSplitOutputExecutionStatus.Cancelled : MkvSplitOutputExecutionStatus.Failed;
+                pending.ErrorMessage = cancelled ? pending.ErrorMessage : message;
+            }
+            this.ExitCode = 1;
+        }
+
+        /// <summary>
+        /// Scrive il riepilogo nel log: gli output scritti e, a parte, quelli falliti
+        /// </summary>
+        /// <param name="plan">Piano eseguibile</param>
+        /// <param name="outputDir">Cartella degli output</param>
+        public void WriteSummary(MkvSplitExecutionPlan plan, string outputDir)
+        {
+            List<string> failed = plan.Outputs.FindAll(output => this.Outputs.Find(item => item.OutputId == output.OutputId).Status == MkvSplitOutputExecutionStatus.Failed)
+                .ConvertAll(output => output.Projection.FileName);
+            ConsoleHelper.Write(LogSection.Split, failed.Count == 0 ? LogLevel.Success : LogLevel.Notice,
+                AppText.Count("split.done", this.Outputs.Count(item => item.Status == MkvSplitOutputExecutionStatus.Done), outputDir));
+            if (failed.Count > 0)
+                ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.Count("split.failedOutputs", failed.Count, string.Join(", ", failed)));
+        }
 
         #endregion
     }

@@ -7,6 +7,7 @@ using System.Text;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
+using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Splitting.Codecs;
 
@@ -346,13 +347,11 @@ namespace RemuxForge.Core.Splitting.Cutters
             string avFile;
             int avExit;
             bool hasAv;
-            List<string> muxCmd;
             double sizeMb;
             StreamWriter sw;
             double first;
             double rel;
             List<TrackInfo> videos = this._tracks.FindAll(track => track.Type == "video");
-            List<string> order = new List<string>();
             int secondary = 0;
             int audio = 0;
             int subtitle = 0;
@@ -414,13 +413,10 @@ namespace RemuxForge.Core.Splitting.Cutters
             if (expectsAv && !hasAv) throw new InvalidOperationException(AppText.F("split.montage.avFailed", avExit));
 
             // Mux finale: video con timecodes, audio e video secondari, sottotitoli tagliati al pacchetto
-            muxCmd = new List<string>();
-            muxCmd.Add("-o"); muxCmd.Add(context.OutputFile);
-            muxCmd.Add("--no-chapters"); muxCmd.Add(videoMkv);
-            if (hasAv)
-            {
-                muxCmd.Add("--no-chapters"); muxCmd.Add(avFile);
-            }
+            MkvmergeCommand mux = new MkvmergeCommand(context.OutputFile);
+            int videoInput = mux.AddInput(videoMkv, "--no-chapters");
+            int avInput = hasAv ? mux.AddInput(avFile, "--no-chapters") : -1;
+            int subtitleInput = -1;
             if (context.Subtitles != null)
             {
                 // mkvmerge porta a zero il primo pacchetto di una parte senza video: un sottotitolo àncora esattamente all'inizio
@@ -429,27 +425,26 @@ namespace RemuxForge.Core.Splitting.Cutters
                 long anchorMs = (long)Math.Ceiling(seg.StartTs * 1000.0 - 1e-6);
                 string anchor = Path.Combine(context.TempDir, "anchor.srt");
                 string cutSubtitles = Path.Combine(context.TempDir, "subtitles.mks");
-                File.WriteAllText(anchor, "1\n" + MkvSplitSegmentService.SecsToTs(anchorMs / 1000.0).Replace('.', ',') + " --> "
-                    + MkvSplitSegmentService.SecsToTs((anchorMs + 1) / 1000.0).Replace('.', ',') + "\n.\n", new UTF8Encoding(false));
+                File.WriteAllText(anchor, "1\n" + Utils.SecsToTs(anchorMs / 1000.0).Replace('.', ',') + " --> "
+                    + Utils.SecsToTs((anchorMs + 1) / 1000.0).Replace('.', ',') + "\n.\n", new UTF8Encoding(false));
                 MkvSplitExternalTools.Instance.RunMkvmerge(new string[] { "-o", cutSubtitles, anchor, "--no-chapters", context.Subtitles,
-                    "--split", "parts:" + MkvSplitSegmentService.SecsToTs(anchorMs / 1000.0) + "-" + MkvSplitSegmentService.SecsToTs(seg.EndTs) });
-                muxCmd.Add("--subtitle-tracks"); muxCmd.Add(string.Join(",", Enumerable.Range(1, context.SubtitleIds.Count)));
-                muxCmd.Add("--no-chapters"); muxCmd.Add(cutSubtitles);
+                    "--split", "parts:" + Utils.SecsToTs(anchorMs / 1000.0) + "-" + Utils.SecsToTs(seg.EndTs) });
+                subtitleInput = mux.AddInput(cutSubtitles, "--subtitle-tracks", string.Join(",", Enumerable.Range(1, context.SubtitleIds.Count)), "--no-chapters");
             }
             // Le tracce arrivano da tre file: si rimettono nell'ordine del sorgente, che le clip accodate devono condividere
             foreach (TrackInfo track in this._tracks)
             {
                 if (track == videos[0])
-                    order.Add("0:0");
+                    mux.Place(track.Id, videoInput, 0);
                 else if (track.Type == "video")
-                    order.Add("1:" + secondary++);
+                    mux.Place(track.Id, avInput, secondary++);
                 else if (track.Type == "audio")
-                    order.Add("1:" + (videos.Count - 1 + audio++));
+                    mux.Place(track.Id, avInput, videos.Count - 1 + audio++);
                 else if (track.Type == "subtitles" && context.Subtitles != null && context.SubtitleIds.Contains(track.Id))
-                    order.Add((hasAv ? "2:" : "1:") + (1 + subtitle++));
+                    mux.Place(track.Id, subtitleInput, 1 + subtitle++);
             }
-            muxCmd.Add("--track-order"); muxCmd.Add(string.Join(",", order));
-            MkvSplitExternalTools.Instance.RunMkvmerge(muxCmd);
+            mux.AddTrackOrder();
+            MkvSplitExternalTools.Instance.RunMkvmerge(mux.ToArguments());
 
             // Log finale con dimensione del file prodotto
             sizeMb = new FileInfo(context.OutputFile).Length / 1048576.0;

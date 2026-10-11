@@ -53,24 +53,6 @@ namespace RemuxForge.Core.Splitting
 
         #region Utility tempo (static, pubbliche perché usate anche da EpisodeSplitter)
 
-        /// <summary>Converte secondi in stringa HH:MM:SS.mmm.</summary>
-        /// <param name="s">Numero di secondi da formattare.</param>
-        /// <returns>Stringa nel formato HH:MM:SS.mmm.</returns>
-        public static string SecsToTs(double s)
-        {
-            long ms;
-            long h;
-            long m;
-            long sec;
-
-            // Arrotonda prima al millisecondo: 119.9996 diventa 00:02:00.000 e non 00:01:60.000
-            ms = (long)Math.Round(s * 1000.0, MidpointRounding.AwayFromZero);
-            h = ms / 3600000;
-            m = ms / 60000 % 60;
-            sec = ms / 1000 % 60;
-            return string.Format(CultureInfo.InvariantCulture, "{0:D2}:{1:D2}:{2:D2}.{3:D3}", h, m, sec, ms % 1000);
-        }
-
         /// <summary>Parsa un token tempo accettando HH:MM:SS.mmm, MM:SS.mmm, SS.mmm, f&lt;int&gt; (frame index) oppure END.</summary>
         /// <param name="s">Stringa da parsare.</param>
         /// <param name="duration">Durata totale del file, usata per interpretare END.</param>
@@ -123,7 +105,7 @@ namespace RemuxForge.Core.Splitting
         public static int TimeToFrame(double value, bool isFrame, double[] sourcePts)
         {
             if (isFrame) { return (int)value; }
-            return BisectLeft(sourcePts, value);
+            return MkvSplitAnalysis.BisectLeft(sourcePts, value);
         }
 
         /// <summary>
@@ -135,28 +117,7 @@ namespace RemuxForge.Core.Splitting
         /// <returns>Indice del fotogramma, oppure il numero di fotogrammi se il capitolo cade dopo l'ultimo.</returns>
         public static int ChapterFrame(double[] sourcePts, double chapterSeconds)
         {
-            return BisectLeft(sourcePts, chapterSeconds - ChapterTimelineService.FRAME_ROUNDING_NS / 1000000000.0);
-        }
-
-        /// <summary>Equivalente di Python bisect.bisect_left su array di double: ritorna il minimo indice i tale che arr[i] &gt;= value.</summary>
-        /// <param name="arr">Array ordinato crescente.</param>
-        /// <param name="value">Valore da inserire.</param>
-        /// <returns>Minimo indice i tale che arr[i] &gt;= value.</returns>
-        public static int BisectLeft(double[] arr, double value)
-        {
-            int lo;
-            int hi;
-            int mid;
-
-            lo = 0;
-            hi = arr.Length;
-            while (lo < hi)
-            {
-                mid = lo + ((hi - lo) >> 1);
-                if (arr[mid] < value) { lo = mid + 1; }
-                else { hi = mid; }
-            }
-            return lo;
+            return MkvSplitAnalysis.BisectLeft(sourcePts, chapterSeconds - ChapterTimelineService.FRAME_ROUNDING_NS / 1000000000.0);
         }
 
         #endregion
@@ -595,7 +556,7 @@ namespace RemuxForge.Core.Splitting
             for (int i = 0; i < nCh; i++)
             {
                 string chName = chapters[i].Name ?? string.Empty;
-                ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("split.chapterLine", i + 1, SecsToTs(chapters[i].StartSeconds), chName));
+                ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("split.chapterLine", i + 1, Utils.SecsToTs(chapters[i].StartSeconds), chName));
             }
         }
 
@@ -904,18 +865,17 @@ namespace RemuxForge.Core.Splitting
         /// <param name="frameMap">Mappa dei frame con flag keyframe.</param>
         /// <param name="sourcePts">PTS del sorgente ordinati crescente.</param>
         /// <param name="mode">Strategia di snap scelta.</param>
-        /// <returns>Confini spostati, come coppie fotogramma richiesto e fotogramma effettivo.</returns>
-        public List<(int oldB, int newB)> ApplySnap(List<MkvSplitSegment> segments, List<MkvSplitFrameInfo> frameMap, double[] sourcePts, MkvSplitSnapMode mode)
+        public void ApplySnap(List<MkvSplitSegment> segments, List<MkvSplitFrameInfo> frameMap, double[] sourcePts, MkvSplitSnapMode mode)
         {
             List<int> boundaries;
             List<MkvSplitSegment> opening;
             List<MkvSplitSegment> closing;
-            List<(int oldB, int newB)> changed;
+            List<MkvSplitSegment> moved;
             int? newB;
             bool eatsSegment;
 
-            changed = new List<(int, int)>();
-            if (mode == MkvSplitSnapMode.Off) { return changed; }
+            moved = new List<MkvSplitSegment>();
+            if (mode == MkvSplitSnapMode.Off) { return; }
             MkvSplitKeyframeIndex keyframes = new MkvSplitKeyframeIndex(frameMap);
 
             // I confini candidati sono gli inizi dei segmenti: la fine di un segmento non richiede
@@ -979,18 +939,18 @@ namespace RemuxForge.Core.Splitting
                     seg.RequestedStartFrame = boundary;
                 }
 
-                changed.Add((boundary, newB.Value));
+                // Ogni confine spostato apre almeno un segmento: i confini candidati sono gli inizi
+                moved.Add(opening[0]);
             }
 
-            if (changed.Count > 0)
+            if (moved.Count > 0)
             {
                 ConsoleHelper.Write(LogSection.Split, LogLevel.Info, AppText.T("split.snapApplied"));
-                foreach ((int oldB, int newB) ch in changed)
+                foreach (MkvSplitSegment seg in moved)
                 {
-                    ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.snapBoundary", ch.oldB, ch.newB, ch.newB - ch.oldB));
+                    ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.snapBoundary", seg.RequestedStartFrame.Value, seg.StartFrame, seg.StartFrame - seg.RequestedStartFrame.Value));
                 }
             }
-            return changed;
         }
 
         /// <summary>Sceglie il keyframe verso cui spostare un confine secondo la strategia; a pari distanza vince quello prima.</summary>

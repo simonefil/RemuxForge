@@ -63,6 +63,10 @@ namespace RemuxForge.Core.Splitting
         /// <summary>Scansione MediaInfo del video, vuota se non dichiarata: un video interlacciato si taglia solo al keyframe (D07)</summary>
         public VideoScanType ScanType { get; set; }
 
+        /// <summary>Profilo del video per il taglio, dal codec dei parametri video e dalla scansione; fuori dallo snapshot dell'editor, che conserva i due campi</summary>
+        [JsonIgnore]
+        public MkvSplitVideoProfile VideoProfile => new MkvSplitVideoProfile(this.VideoParams?.CodecName, this.ScanType);
+
         /// <summary>Tracce del Matroska letto, con gli ID del sorgente; fuori dallo snapshot dell'editor</summary>
         [JsonIgnore]
         public List<TrackInfo> Tracks { get; set; }
@@ -74,6 +78,93 @@ namespace RemuxForge.Core.Splitting
         /// <summary>Errore localizzato di lettura delle tracce o dei sottotitoli, vuoto se la lettura è riuscita</summary>
         [JsonIgnore]
         public string TrackInventoryError { get; set; }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Equivalente di Python bisect.bisect_left su PTS ordinati: il minimo indice i tale che pts[i] &gt;= value
+        /// </summary>
+        /// <param name="pts">PTS ordinati crescente</param>
+        /// <param name="value">Tempo in secondi</param>
+        /// <returns>Minimo indice i tale che pts[i] &gt;= value, la lunghezza se non c'è</returns>
+        public static int BisectLeft(double[] pts, double value)
+        {
+            int lo = 0;
+            int hi = pts.Length;
+            while (lo < hi)
+            {
+                int mid = lo + ((hi - lo) >> 1);
+                if (pts[mid] < value) { lo = mid + 1; }
+                else { hi = mid; }
+            }
+            return lo;
+        }
+
+        /// <summary>
+        /// Ricerca binaria dell'ultimo frame con PTS minore o uguale al tempo indicato
+        /// </summary>
+        /// <param name="seconds">Tempo sorgente in secondi</param>
+        /// <returns>Indice del frame che contiene il tempo, almeno 0</returns>
+        public int ContainingFrame(double seconds)
+        {
+            int low = 0;
+            int high = this.SourcePts.Length;
+            while (low < high)
+            {
+                int mid = low + ((high - low) >> 1);
+                if (this.SourcePts[mid] <= seconds)
+                    low = mid + 1;
+                else
+                    high = mid;
+            }
+            return Math.Max(0, low - 1);
+        }
+
+        /// <summary>
+        /// Capitoli del sorgente che marcano un fotogramma della clip, nel tempo del sorgente. Il fotogramma marcato è quello
+        /// di MkvSplitSegmentService.ChapterFrame, entro lo scarto di arrotondamento (ChapterTimelineService.FRAME_ROUNDING_NS),
+        /// come nella costruzione dei segmenti. Un capitolo che cade fra il confine richiesto e quello effettivo, cioè dentro la
+        /// distanza dello snap, segue il confine: passa all'inizio della parte nuova invece di restare in coda alla precedente;
+        /// il capitolo sul confine richiesto lo segue anche quando lo snap va indietro. Un capitolo sul primo fotogramma della
+        /// clip cade sul suo inizio, anche se il suo tempo lo precede (primo PTS del file dopo lo zero)
+        /// </summary>
+        /// <param name="clip">Clip con i confini effettivi</param>
+        /// <param name="startSeconds">Tempo sorgente del primo fotogramma</param>
+        /// <param name="snappedBy">Clip i cui confini chiesti prima dello snap spostano i capitoli: la clip stessa nel documento,
+        /// tutti i segmenti nel piano della regola</param>
+        /// <returns>Capitoli della clip</returns>
+        public List<ChapterMark> SelectChapters(MkvSplitClip clip, double startSeconds, IEnumerable<MkvSplitClip> snappedBy)
+        {
+            List<ChapterMark> result = new List<ChapterMark>();
+
+            foreach (ChapterMark chapter in this.Chapters)
+            {
+                int frame = MkvSplitSegmentService.ChapterFrame(this.SourcePts, chapter.StartSeconds);
+                foreach (MkvSplitClip snapped in snappedBy)
+                {
+                    int? boundary = snapped.SnappedBoundary(frame);
+                    if (boundary.HasValue)
+                    {
+                        frame = boundary.Value;
+                        break;
+                    }
+                }
+                if (frame < clip.StartFrame || frame >= clip.EndFrameExclusive)
+                    continue;
+                if (frame == clip.StartFrame)
+                {
+                    ChapterMark placed = chapter.Clone();
+                    placed.StartNs = (long)Math.Round(startSeconds * 1000000000.0);
+                    result.Add(placed);
+                }
+                else
+                    result.Add(chapter);
+            }
+
+            return result;
+        }
 
         #endregion
     }

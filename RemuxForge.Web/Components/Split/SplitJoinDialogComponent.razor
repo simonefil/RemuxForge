@@ -587,7 +587,7 @@
     /// <returns>Testo hh:mm:ss.mmm</returns>
     private static string Time(long ns)
     {
-        return MkvSplitSegmentService.SecsToTs(ns / 1000000000.0);
+        return Utils.SecsToTs(ns / 1000000000.0);
     }
 
     #endregion
