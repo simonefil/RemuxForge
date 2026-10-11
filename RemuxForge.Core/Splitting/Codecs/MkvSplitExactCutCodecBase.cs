@@ -1,4 +1,5 @@
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Splitting.Cutters;
 using System.Collections.Generic;
 using System.Globalization;
 
@@ -92,6 +93,13 @@ namespace RemuxForge.Core.Splitting.Codecs
             this.AddEncodeArgs(args, p, speed);
             return args;
         }
+
+        /// <summary>
+        /// Crea la strategia del taglio al fotogramma del metodo del codec: il piano ne legge il costo della testa, l'esecuzione la
+        /// prepara una volta e taglia con lei le clip ricodificate
+        /// </summary>
+        /// <returns>Strategia nuova, legata al codec</returns>
+        public abstract MkvSplitExactCutterBase CreateCutter();
 
         #endregion
 

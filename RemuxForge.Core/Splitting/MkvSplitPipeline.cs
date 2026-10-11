@@ -4,7 +4,7 @@ using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Media;
-using RemuxForge.Core.Splitting.Codecs;
+using RemuxForge.Core.Splitting.Cutters;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -230,12 +230,7 @@ namespace RemuxForge.Core.Splitting
             NormalizedMediaLease lease = null;
             string planFolder = null;
             string media = null;
-            string raw = null;
-            List<MkvSplitFrameInfo> map = null;
-            int[] decodeMap = null;
-            MkvSplitByteCodecBase byteCodec = null;
-            MkvSplitPacketCodecBase packetCodec = null;
-            List<string> head = null;
+            MkvSplitExactCutterBase cutter = null;
             string subtitles = null;
             bool hasFlac = plan.Tracks.Exists(MkvSplitExternalTools.IsFlacAudio);
             List<TrackInfo> sourceAudio = plan.Tracks.FindAll(track => track.Type == "audio");
@@ -289,22 +284,10 @@ namespace RemuxForge.Core.Splitting
                     {
                         if (!MkvSplitCodecCapabilities.IsExactCutAvailable(video.CodecName, plan.Analysis.ScanType, out string reason))
                             throw new InvalidOperationException(reason);
-                        MkvSplitExactCutCodecBase codec = MkvSplitCodecCapabilities.FindExactCut(video.CodecName);
-                        // Il taglio a pacchetti legge il Matroska normalizzato: nessun flusso grezzo né mappa dei byte
-                        byteCodec = codec as MkvSplitByteCodecBase;
-                        packetCodec = codec as MkvSplitPacketCodecBase;
-                        ConsoleHelper.Write(LogSection.Split, LogLevel.Phase, AppText.T(packetCodec != null ? "split.packetPath" : "split.slowPath"));
-                        if (byteCodec != null)
-                        {
-                            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.T("split.extractingRawVideo"));
-                            raw = Path.Combine(planFolder, "source." + byteCodec.RawExtension);
-                            MkvSplitExternalTools.Instance.ExtractRawTrack(media, 0, raw);
-                            map = MkvSplitExternalTools.Instance.GetFrameByteMap(raw);
-                        }
-                        decodeMap = BuildPresentationToDecodeMap(media, plan.Analysis.SourcePts.Length);
-                        if ((map != null && map.Count != plan.Analysis.SourcePts.Length) || decodeMap == null)
-                            throw new InvalidOperationException(AppText.T("split.montage.invalidTimeline"));
-                        head = codec.BuildHeadEncodeArgs(video, args);
+                        // La strategia la sceglie il codec: il taglio a byte estrae qui il flusso grezzo, quello a pacchetti legge il
+                        // Matroska normalizzato
+                        cutter = MkvSplitCodecCapabilities.FindExactCut(video.CodecName).CreateCutter();
+                        cutter.Prepare(media, planFolder, plan, args);
                         // Sottotitoli che il ritaglio non sa riscrivere: le clip ricodificate li tagliano al pacchetto da qui
                         List<int> fallback = exact.SelectMany(output => output.FallbackSubtitleTrackIds).Distinct().ToList();
                         if (fallback.Count > 0)
@@ -353,8 +336,7 @@ namespace RemuxForge.Core.Splitting
                             Directory.CreateDirectory(work);
                             string clipPath = Path.Combine(work, "clip.mkv");
                             if (clip.UsesFastPath) executor.SplitFast(clip.Segment, media, clipPath, work, plan.Tracks, output.FallbackSubtitleTrackIds);
-                            else if (packetCodec != null) executor.SplitPackets(clip.Segment, media, plan.Analysis.SourcePts, plan.Analysis.KeyFlags, decodeMap, head, packetCodec, clipPath, work, plan.Tracks, output.FallbackSubtitleTrackIds, clipSubtitles);
-                            else executor.SplitSlow(clip.Segment, media, raw, map, plan.Analysis.SourcePts, decodeMap, head, byteCodec, clipPath, work, plan.Tracks, output.FallbackSubtitleTrackIds, clipSubtitles);
+                            else cutter.Split(new MkvSplitExactCutContext { Segment = clip.Segment, OutputFile = clipPath, TempDir = work, SubtitleIds = output.FallbackSubtitleTrackIds, Subtitles = clipSubtitles });
                             // Il keyframe di GOP aperto toglie i B iniziali alla fine e li lascia come pacchetti in testa (D25): né più né meno
                             int clipPackets = clip.Segment.FrameCount + clip.OpenGop.HeadPackets + clip.OpenGop.DroppedPackets - clip.OpenGop.LostFrames;
                             if (MkvSplitExternalTools.Instance.CountPackets(clipPath) != clipPackets)
@@ -668,35 +650,6 @@ namespace RemuxForge.Core.Splitting
                         throw new InvalidOperationException(AppText.T("split.montage.outputMismatch"));
                 shift -= openGop.LostSeconds;
             }
-        }
-
-        /// <summary>
-        /// Costruisce la corrispondenza fra indice di presentazione e indice nel raw bitstream,
-        /// ordinando per PTS i packet letti in ordine di decodifica. Senza B-frame è l'identità.
-        /// </summary>
-        /// <param name="inputFile">File sorgente MKV</param>
-        /// <param name="frameCount">Numero di frame atteso, per verificare la coerenza</param>
-        /// <returns>Mappa indicizzata per presentazione, oppure null se i conteggi non tornano</returns>
-        private static int[] BuildPresentationToDecodeMap(string inputFile, int frameCount)
-        {
-            List<double> decodePts = MkvSplitExternalTools.Instance.GetDecodeOrderPts(inputFile);
-            double[] keys;
-            int[] map;
-
-            if (decodePts.Count != frameCount)
-            {
-                return null;
-            }
-
-            keys = decodePts.ToArray();
-            map = new int[frameCount];
-            for (int i = 0; i < frameCount; i++)
-            {
-                map[i] = i;
-            }
-
-            Array.Sort(keys, map);
-            return map;
         }
 
         #endregion

@@ -721,6 +721,41 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
+    /// Clip da tagliare al fotogramma, con i file di lavoro e i sottotitoli da tagliare al pacchetto
+    /// </summary>
+    public class MkvSplitExactCutContext
+    {
+        #region Proprietà
+
+        /// <summary>
+        /// Segmento da estrarre dal sorgente
+        /// </summary>
+        public MkvSplitSegment Segment { get; set; }
+
+        /// <summary>
+        /// File MKV di output della clip
+        /// </summary>
+        public string OutputFile { get; set; }
+
+        /// <summary>
+        /// Cartella temporanea dedicata alla clip
+        /// </summary>
+        public string TempDir { get; set; }
+
+        /// <summary>
+        /// Tracce di sottotitoli da tagliare al pacchetto, vuota se non ce ne sono
+        /// </summary>
+        public List<int> SubtitleIds { get; set; } = new List<int>();
+
+        /// <summary>
+        /// Matroska con le sole tracce di SubtitleIds, nell'ordine del sorgente; null se non ce ne sono
+        /// </summary>
+        public string Subtitles { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
     /// B iniziali dei keyframe di GOP aperto ai confini di una clip copiata (D25, §11 (q)): quanti pacchetti restano in testa, quanti
     /// se ne tolgono, quanti fotogrammi la clip perde alla fine e le durate che ne derivano. Calcolato una volta nel piano eseguibile
     /// </summary>

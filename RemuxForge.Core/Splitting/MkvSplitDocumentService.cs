@@ -8,6 +8,7 @@ using System.Linq;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Splitting.Cutters;
 
 namespace RemuxForge.Core.Splitting
 {
@@ -454,8 +455,8 @@ namespace RemuxForge.Core.Splitting
                     Message = AppText.T("split.plan.frameRateUnknown"),
                     Severity = MkvSplitDiagnosticSeverity.Error
                 });
-            // Il taglio a pacchetti cerca il keyframe fino alla fine della clip e, se non c'è, la ricodifica per intero
-            bool packets = MkvSplitCodecCapabilities.Find(analysis.VideoParams?.CodecName)?.Method == MkvSplitExactCutMethod.Packets;
+            // La testa da ricodificare la dà la strategia del codec; senza strategia il costo segue la regola del taglio a byte
+            MkvSplitExactCutterBase cutter = MkvSplitCodecCapabilities.FindExactCut(analysis.VideoParams?.CodecName)?.CreateCutter();
             foreach (MkvSplitOutputProjection output in plan.Projection.Outputs)
             {
                 MkvSplitExecutionOutput execution = new MkvSplitExecutionOutput
@@ -535,15 +536,14 @@ namespace RemuxForge.Core.Splitting
                         });
                     if (!startKey)
                     {
-                        int nextKey = new MkvSplitKeyframeIndex(analysis.KeyFlags).Next(clip.StartFrame + 1,
-                            packets ? clip.EndFrameExclusive : Math.Min(clip.EndFrameExclusive, clip.StartFrame + MkvSplitExecutor.KEYFRAME_LOOKAHEAD));
-                        if (nextKey < 0 && packets)
-                            reencode = clip.FrameCount;
+                        MkvSplitKeyframeIndex keyframes = new MkvSplitKeyframeIndex(analysis.KeyFlags);
+                        int headCount = cutter != null ? cutter.HeadReencodeCount(keyframes, clip.StartFrame, clip.FrameCount)
+                            : MkvSplitByteExactCutter.LookaheadHeadReencodeCount(keyframes, clip.StartFrame, clip.FrameCount);
                         // Sul video che si taglia solo al keyframe il motivo è già detto: la testa non si ricodifica comunque
-                        else if (nextKey < 0 && !keyframeOnlyVideo)
+                        if (headCount < 0 && !keyframeOnlyVideo)
                             plan.Projection.Diagnostics.Add(Diagnostic("shortClip", output.OutputId, clip.ClipId));
-                        else
-                            reencode = nextKey - clip.StartFrame;
+                        else if (headCount >= 0)
+                            reencode = headCount;
                     }
                     execution.Clips.Add(new MkvSplitExecutionClip
                     {

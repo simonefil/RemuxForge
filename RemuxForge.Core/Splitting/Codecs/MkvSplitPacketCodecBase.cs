@@ -1,4 +1,5 @@
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Splitting.Cutters;
 
 namespace RemuxForge.Core.Splitting.Codecs
 {
@@ -19,6 +20,19 @@ namespace RemuxForge.Core.Splitting.Codecs
         /// Filtri di bitstream del corpo copiato dopo la selezione per PTS, ognuno preceduto dalla virgola; vuoto se non ne servono
         /// </summary>
         public abstract string BodyBitstreamFilters { get; }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Strategia del taglio a pacchetti
+        /// </summary>
+        /// <returns>Strategia nuova sul codec</returns>
+        public override MkvSplitExactCutterBase CreateCutter()
+        {
+            return new MkvSplitPacketCutter(this);
+        }
 
         #endregion
     }

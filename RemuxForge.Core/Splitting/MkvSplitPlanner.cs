@@ -3,6 +3,7 @@ using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Splitting.Cutters;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -130,7 +131,7 @@ namespace RemuxForge.Core.Splitting
 
             // Percorso, GOP aperto, codec, frame rate e ricodifica li decide il piano eseguibile (MkvSplitDocumentService.BuildExecutionPlan):
             // qui restano i confini, i nomi e il costo annunciato
-            this.AnnotateCost(plan, analysis.KeyFlags, MkvSplitCodecCapabilities.Find(plan.VideoParams.CodecName)?.Method == MkvSplitExactCutMethod.Packets,
+            this.AnnotateCost(plan, analysis.KeyFlags, MkvSplitCodecCapabilities.FindExactCut(plan.VideoParams.CodecName)?.CreateCutter(),
                 MkvSplitCodecCapabilities.IsExactCutAvailable(plan.VideoParams.CodecName, analysis.ScanType, out _));
             this.AnnotateCoverage(plan);
             this.AnnotateOutputs(plan, args.Force);
@@ -231,11 +232,12 @@ namespace RemuxForge.Core.Splitting
         /// </summary>
         /// <param name="plan">Piano da annotare</param>
         /// <param name="keyFlags">Flag keyframe per packet</param>
-        /// <param name="packets">True per il taglio a pacchetti: keyframe cercato fino alla fine del segmento e, se manca, segmento ricodificato per intero</param>
+        /// <param name="cutter">Strategia del taglio al fotogramma del codec, che dà la testa da ricodificare; null se il codec non ne ha,
+        /// e il costo annunciato segue allora la regola del taglio a byte</param>
         /// <param name="exactCut">True se il video si taglia al fotogramma: altrimenti il motivo del «solo keyframe» lo dà il piano eseguibile e il keyframe mancante non conta</param>
-        private void AnnotateCost(MkvSplitPlan plan, List<MkvSplitFrameInfo> keyFlags, bool packets, bool exactCut)
+        private void AnnotateCost(MkvSplitPlan plan, List<MkvSplitFrameInfo> keyFlags, MkvSplitExactCutterBase cutter, bool exactCut)
         {
-            int keyAfter;
+            int headCount;
             MkvSplitKeyframeIndex keyframes = new MkvSplitKeyframeIndex(keyFlags);
 
             plan.TotalReencodeFrames = 0;
@@ -253,21 +255,17 @@ namespace RemuxForge.Core.Splitting
                     continue;
                 }
 
-                // La testa va ricodificata fino al primo keyframe successivo, con la stessa finestra dell'esecutore
-                keyAfter = keyframes.Next(seg.StartFrame + 1, seg.StartFrame + (packets ? seg.FrameCount : MkvSplitExecutor.KEYFRAME_LOOKAHEAD));
-
-                if ((keyAfter < 0 || keyAfter > seg.StartFrame + seg.FrameCount - 1) && packets)
-                {
-                    keyAfter = seg.StartFrame + seg.FrameCount;
-                }
-                else if (keyAfter < 0 || keyAfter > seg.StartFrame + seg.FrameCount - 1)
+                // La testa va ricodificata fino al primo keyframe successivo, con la regola dell'esecuzione
+                headCount = cutter != null ? cutter.HeadReencodeCount(keyframes, seg.StartFrame, seg.FrameCount)
+                    : MkvSplitByteExactCutter.LookaheadHeadReencodeCount(keyframes, seg.StartFrame, seg.FrameCount);
+                if (headCount < 0)
                 {
                     if (exactCut)
                         plan.ErrorMessage = AppText.F("split.exec.noKeyframeInEpisode", seg.StartFrame);
                     continue;
                 }
 
-                seg.ReencodeFrames = keyAfter - seg.StartFrame;
+                seg.ReencodeFrames = headCount;
                 plan.TotalReencodeFrames += seg.ReencodeFrames;
                 plan.Warnings.Add(new MkvSplitWarning(MkvSplitWarningKind.Reencode, AppText.F("split.plan.reencodeSegment", seg.Num, seg.ReencodeFrames)));
             }

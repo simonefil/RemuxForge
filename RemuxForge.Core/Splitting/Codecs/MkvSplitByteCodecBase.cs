@@ -1,4 +1,5 @@
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Splitting.Cutters;
 using System;
 using System.IO;
 
@@ -67,6 +68,15 @@ namespace RemuxForge.Core.Splitting.Codecs
             }
 
             this.WriteParameterSets(data, outputFile);
+        }
+
+        /// <summary>
+        /// Strategia del taglio a byte
+        /// </summary>
+        /// <returns>Strategia nuova sul codec</returns>
+        public override MkvSplitExactCutterBase CreateCutter()
+        {
+            return new MkvSplitByteExactCutter(this);
         }
 
         #endregion
