@@ -542,8 +542,8 @@ namespace RemuxForge.Core.Splitting
                         foreach (MkvSplitSubtitleTrack subtitle in plan.Subtitles)
                         {
                             if (output.NativeSubtitleTrackIds.Contains(subtitle.Track.Id)) continue;
-                            string subtitlePath = Path.Combine(temporary, "result-sub-" + subtitle.Track.Id + subtitle.Extension);
-                            MkvSplitSubtitleService.WriteOutput(subtitle, placed, subtitlePath);
+                            string subtitlePath = Path.Combine(temporary, "result-sub-" + subtitle.Track.Id + subtitle.Clipper.Extension(subtitle.Track));
+                            subtitle.Clipper.Write(subtitle, placed, subtitlePath);
                             MkvSplitExternalTools.AddTrackOptions(mux, 0, subtitle.Track);
                             mux.Add(subtitlePath);
                             trackOrder.Add(subtitle.Track.Id, inputIndex++ + ":0");

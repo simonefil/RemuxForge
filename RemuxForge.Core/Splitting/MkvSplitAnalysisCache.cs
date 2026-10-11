@@ -200,11 +200,11 @@ namespace RemuxForge.Core.Splitting
                     if (containerInfo == null)
                         throw new InvalidOperationException(AppText.T("split.montage.trackInventory"));
                     analysis.Tracks = containerInfo.Tracks;
-                    if (analysis.Tracks.Any(item => item.Type == "subtitles" && MkvSplitSubtitleService.IsSupported(item)))
+                    if (analysis.Tracks.Any(item => item.Type == "subtitles" && MkvSplitSubtitleClippers.IsSupported(item)))
                     {
                         Directory.CreateDirectory(temporary);
-                        foreach (TrackInfo track in analysis.Tracks.Where(item => item.Type == "subtitles" && MkvSplitSubtitleService.IsSupported(item)))
-                            analysis.Subtitles.Add(MkvSplitSubtitleService.ReadSource(media, track, temporary, analysis.Duration));
+                        foreach (TrackInfo track in analysis.Tracks.Where(item => item.Type == "subtitles" && MkvSplitSubtitleClippers.IsSupported(item)))
+                            analysis.Subtitles.Add(MkvSplitSubtitleClippers.ReadSource(media, track, temporary, analysis.Duration));
                     }
                 }
                 catch (Exception exception)
@@ -264,13 +264,7 @@ namespace RemuxForge.Core.Splitting
             {
                 subtitleBytes += (subtitle.SourceContent?.Length ?? 0) * sizeof(char) + (subtitle.BitmapPresentationHeader?.LongLength ?? 0);
                 foreach (MkvSplitSubtitleEvent item in subtitle.Events)
-                {
-                    subtitleBytes += (item.Text?.Length ?? 0) * sizeof(char) + (item.BinaryPayload?.LongLength ?? 0);
-                    if (item.Fields != null)
-                        subtitleBytes += item.Fields.Sum(field => (long)(field?.Length ?? 0) * sizeof(char));
-                    if (item.BitmapSegments != null)
-                        subtitleBytes += item.BitmapSegments.Sum(segment => segment.Data?.LongLength ?? 0);
-                }
+                    subtitleBytes += item.SizeBytes;
             }
             return sourcePtsBytes + keyFlagsBytes + subtitleBytes;
         }

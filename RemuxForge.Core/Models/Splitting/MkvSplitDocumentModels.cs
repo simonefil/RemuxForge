@@ -2,7 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Splitting;
+using RemuxForge.Core.Splitting.Subtitles;
+using RemuxForge.Core.Subtitles;
 
 namespace RemuxForge.Core.Models
 {
@@ -919,9 +922,9 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
-    /// Eventi estratti dal sorgente, mai dagli intermedi tagliati.
+    /// Eventi estratti dal sorgente, mai dagli intermedi tagliati. La legge e la scrive il clipper del suo formato
     /// </summary>
-    public class MkvSplitSubtitleTrack
+    public abstract class MkvSplitSubtitleTrack
     {
         #region Proprietà
 
@@ -931,14 +934,9 @@ namespace RemuxForge.Core.Models
         public TrackInfo Track { get; set; }
 
         /// <summary>
-        /// Estensione del file estratto
-        /// </summary>
-        public string Extension { get; set; }
-
-        /// <summary>
         /// Eventi nel tempo del sorgente
         /// </summary>
-        public List<MkvSplitSubtitleEvent> Events { get; set; } = new List<MkvSplitSubtitleEvent>();
+        public abstract IReadOnlyList<MkvSplitSubtitleEvent> Events { get; }
 
         /// <summary>
         /// Intestazione PCS del primo display-set PGS, usata per una traccia vuota
@@ -950,13 +948,34 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public string SourceContent { get; set; }
 
+        /// <summary>
+        /// Clipper che ha letto la traccia e che la scrive
+        /// </summary>
+        internal IMkvSplitSubtitleClipper Clipper { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Traccia di sottotitoli con gli eventi del suo formato
+    /// </summary>
+    /// <typeparam name="TEvent">Evento del formato</typeparam>
+    public class MkvSplitSubtitleTrack<TEvent> : MkvSplitSubtitleTrack where TEvent : MkvSplitSubtitleEvent
+    {
+        #region Proprietà
+
+        /// <summary>
+        /// Eventi nel tempo del sorgente
+        /// </summary>
+        public override List<TEvent> Events { get; } = new List<TEvent>();
+
         #endregion
     }
 
     /// <summary>
     /// Evento di sottotitolo nel tempo del sorgente
     /// </summary>
-    public class MkvSplitSubtitleEvent
+    public abstract class MkvSplitSubtitleEvent
     {
         #region Proprietà
 
@@ -971,6 +990,26 @@ namespace RemuxForge.Core.Models
         public double EndSeconds { get; set; }
 
         /// <summary>
+        /// Vero se l'evento ha effetti temporizzati che non si possono tagliare
+        /// </summary>
+        public bool HasTimedEffects { get; set; }
+
+        /// <summary>
+        /// Memoria stimata dei dati dell'evento, in byte
+        /// </summary>
+        public abstract long SizeBytes { get; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Evento SRT o riga Dialogue ASS/SSA
+    /// </summary>
+    public class MkvSplitTextSubtitleEvent : MkvSplitSubtitleEvent
+    {
+        #region Proprietà
+
+        /// <summary>
         /// Testo dell'evento SRT
         /// </summary>
         public string Text { get; set; }
@@ -981,27 +1020,7 @@ namespace RemuxForge.Core.Models
         public string[] Fields { get; set; }
 
         /// <summary>
-        /// Vero se l'evento ha effetti temporizzati che non si possono tagliare
-        /// </summary>
-        public bool HasTimedEffects { get; set; }
-
-        /// <summary>
-        /// Segmenti del display-set PGS
-        /// </summary>
-        public List<MkvSplitBitmapSegment> BitmapSegments { get; set; }
-
-        /// <summary>
-        /// Payload SPU VobSub
-        /// </summary>
-        public byte[] BinaryPayload { get; set; }
-
-        /// <summary>
-        /// Sequenze di controllo dello SPU VobSub, nell'ordine della catena
-        /// </summary>
-        public List<MkvSplitSpuControlSequence> ControlSequences { get; set; }
-
-        /// <summary>
-        /// Indice della riga di origine nel file sorgente
+        /// Indice della riga Dialogue nel file sorgente
         /// </summary>
         public int SourceLineIndex { get; set; }
 
@@ -1016,19 +1035,166 @@ namespace RemuxForge.Core.Models
         public int EndColumn { get; set; }
 
         /// <summary>
-        /// Intestazione pack MPEG del pacchetto VobSub
+        /// Testo e campi, due byte per carattere
+        /// </summary>
+        public override long SizeBytes => (this.Text?.Length ?? 0) * sizeof(char) + (this.Fields?.Sum(column => (long)(column?.Length ?? 0) * sizeof(char)) ?? 0);
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Display-set PGS autonomo rispetto all'epoch
+    /// </summary>
+    public class MkvSplitPgsSubtitleEvent : MkvSplitSubtitleEvent
+    {
+        #region Proprietà
+
+        /// <summary>
+        /// Segmenti del display-set
+        /// </summary>
+        public List<MkvSplitBitmapSegment> Segments { get; set; }
+
+        /// <summary>
+        /// Dati dei segmenti
+        /// </summary>
+        public override long SizeBytes => this.Segments?.Sum(segment => segment.Data?.LongLength ?? 0) ?? 0;
+
+        #endregion
+    }
+
+    /// <summary>
+    /// SPU VobSub con la catena delle sequenze di controllo e il pacchetto da cui viene
+    /// </summary>
+    public class MkvSplitVobSubSubtitleEvent : MkvSplitSubtitleEvent
+    {
+        #region Proprietà
+
+        /// <summary>
+        /// Payload SPU
+        /// </summary>
+        public byte[] BinaryPayload { get; set; }
+
+        /// <summary>
+        /// Sequenze di controllo dello SPU, nell'ordine della catena
+        /// </summary>
+        public List<MkvSplitSpuControlSequence> ControlSequences { get; set; }
+
+        /// <summary>
+        /// Indice della riga dell'entry nel file IDX sorgente
+        /// </summary>
+        public int SourceLineIndex { get; set; }
+
+        /// <summary>
+        /// Intestazione pack MPEG del pacchetto
         /// </summary>
         public byte[] PacketPackHeader { get; set; }
 
         /// <summary>
-        /// Intestazione PES del pacchetto VobSub
+        /// Intestazione PES del pacchetto
         /// </summary>
         public byte[] PacketPesHeader { get; set; }
 
         /// <summary>
-        /// Substream DVD del pacchetto VobSub
+        /// Substream DVD del pacchetto
         /// </summary>
         public byte SubstreamId { get; set; }
+
+        /// <summary>
+        /// Payload SPU
+        /// </summary>
+        public override long SizeBytes => this.BinaryPayload?.LongLength ?? 0;
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Ritaglia la catena su un'occorrenza. Le sequenze prima dell'inizio si fondono in una a ritardo 0, quelle dopo la fine si
+        /// tolgono e la fine riceve STP_DSP. Se all'inizio il sottotitolo è nascosto, l'occorrenza parte dalla sequenza che lo mostra
+        /// </summary>
+        /// <param name="start">Inizio dell'occorrenza nel tempo del sorgente</param>
+        /// <param name="end">Fine dell'occorrenza nel tempo del sorgente</param>
+        /// <param name="shift">Spostamento dal tempo del sorgente a quello dell'output</param>
+        /// <param name="resultStart">Inizio dell'occorrenza nel tempo dell'output</param>
+        /// <param name="sequences">Catena ritagliata, con i ritardi dall'inizio dell'occorrenza</param>
+        /// <returns>False se l'occorrenza non mostra niente o dura meno di un'unità di ritardo</returns>
+        public bool TryClip(double start, double end, double shift, out double resultStart, out List<MkvSplitSpuControlSequence> sequences)
+        {
+            // Stato persistente all'inizio dell'occorrenza: per ogni comando vale l'ultimo, e i tre di visualizzazione si escludono
+            List<byte[]> state = new List<byte[]>();
+            bool visible = false;
+            int next = 0;
+            for (; next < this.ControlSequences.Count; next++)
+            {
+                MkvSplitSpuControlSequence sequence = this.ControlSequences[next];
+                if (sequence.Seconds > start && (visible || sequence.Seconds >= end))
+                    break;
+                start = Math.Max(start, sequence.Seconds);
+                sequence.MergeInto(state);
+                visible = sequence.IsVisibleAfter(visible);
+            }
+            resultStart = start + shift;
+            sequences = null;
+            if (!visible)
+                return false;
+            end += shift;
+            sequences = new List<MkvSplitSpuControlSequence> { new MkvSplitSpuControlSequence { Commands = state } };
+            for (; next < this.ControlSequences.Count && this.ControlSequences[next].Seconds + shift < end; next++)
+            {
+                MkvSplitSpuControlSequence sequence = this.ControlSequences[next];
+                sequences.Add(new MkvSplitSpuControlSequence
+                {
+                    Delay = checked((int)Math.Floor((sequence.Seconds + shift - resultStart) * 90000 / 1024)),
+                    Commands = sequence.Commands
+                });
+                visible = sequence.IsVisibleAfter(visible);
+            }
+            if (visible)
+                sequences.Add(new MkvSplitSpuControlSequence { Delay = checked((int)Math.Floor((end - resultStart) * 90000 / 1024)), Commands = new List<byte[]> { new byte[] { 2 } } });
+            return sequences[^1].Delay != 0;
+        }
+
+        /// <summary>
+        /// SPU con la catena indicata: se cambiano solo i ritardi resta byte per byte quello del sorgente, altrimenti la tabella di
+        /// controllo si riscrive dopo i dati dei pixel
+        /// </summary>
+        /// <param name="sequences">Catena ritagliata da TryClip</param>
+        /// <returns>Payload SPU nuovo</returns>
+        public byte[] Serialize(List<MkvSplitSpuControlSequence> sequences)
+        {
+            if (sequences.Max(sequence => sequence.Delay) > ushort.MaxValue)
+                throw new InvalidDataException(AppText.T("split.montage.vobsubDateRange"));
+            byte[] spu;
+            if (sequences.Count == this.ControlSequences.Count
+                && sequences.Select((sequence, index) => sequence.Commands.SelectMany(command => command)
+                    .SequenceEqual(this.ControlSequences[index].Commands.SelectMany(command => command))).All(same => same))
+            {
+                spu = (byte[])this.BinaryPayload.Clone();
+                for (int index = 0; index < sequences.Count; index++)
+                    VobSubSubtitleUtils.WriteUInt16BigEndian(spu, this.ControlSequences[index].Offset, sequences[index].Delay);
+            }
+            else
+            {
+                // La tabella riscritta segue i dati dei pixel; l'ultima sequenza punta a se stessa e lo SPU resta di dimensione pari, come quelli dei DVD
+                int commandOffset = VobSubSubtitleUtils.ReadUInt16BigEndian(this.BinaryPayload, 2);
+                List<byte> table = new List<byte>();
+                for (int index = 0; index < sequences.Count; index++)
+                {
+                    int position = commandOffset + table.Count;
+                    int following = index + 1 < sequences.Count ? position + 5 + sequences[index].Commands.Sum(command => command.Length) : position;
+                    table.AddRange(new[] { (byte)(sequences[index].Delay >> 8), (byte)sequences[index].Delay, (byte)(following >> 8), (byte)following });
+                    table.AddRange(sequences[index].Commands.SelectMany(command => command));
+                    table.Add(0xff);
+                }
+                if ((commandOffset + table.Count) % 2 != 0)
+                    table.Add(0xff);
+                spu = this.BinaryPayload.Take(commandOffset).Concat(table).ToArray();
+                if (spu.Length > ushort.MaxValue)
+                    throw new InvalidDataException(AppText.T("remux.subtitles.vobsubSpuTooLarge"));
+                VobSubSubtitleUtils.WriteUInt16BigEndian(spu, 0, spu.Length);
+            }
+            return spu;
+        }
 
         #endregion
     }
@@ -1059,6 +1225,41 @@ namespace RemuxForge.Core.Models
         /// Comandi con i loro parametri, senza il terminatore 0xFF
         /// </summary>
         public List<byte[]> Commands { get; set; } = new List<byte[]>();
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Visibilità dopo i comandi della sequenza: FSTA_DSP e STA_DSP mostrano, STP_DSP nasconde, gli altri la lasciano com'è
+        /// </summary>
+        /// <param name="visible">Visibilità prima della sequenza</param>
+        /// <returns>Visibilità dopo la sequenza</returns>
+        public bool IsVisibleAfter(bool visible)
+        {
+            foreach (byte[] command in this.Commands)
+            {
+                if (command[0] <= 2)
+                    visible = command[0] != 2;
+            }
+            return visible;
+        }
+
+        /// <summary>
+        /// Fonde i comandi nello stato persistente: per ogni comando vale l'ultimo, e i tre di visualizzazione si escludono
+        /// </summary>
+        /// <param name="state">Stato da aggiornare</param>
+        public void MergeInto(List<byte[]> state)
+        {
+            foreach (byte[] command in this.Commands)
+            {
+                int same = state.FindIndex(existing => existing[0] == command[0] || (existing[0] <= 2 && command[0] <= 2));
+                if (same >= 0)
+                    state[same] = command;
+                else
+                    state.Add(command);
+            }
+        }
 
         #endregion
     }

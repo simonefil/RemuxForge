@@ -604,7 +604,7 @@ namespace RemuxForge.Core.Splitting
             }
             List<MkvSplitOutputProjection> cutOutputs = plan.Projection.Outputs.Where(output => !unchangedOutputs.Contains(output.OutputId)).ToList();
             // I codec che il ritaglio non sa riscrivere li taglia mkvmerge al pacchetto insieme alle clip
-            foreach (TrackInfo track in analysis.Tracks.Where(item => item.Type == "subtitles" && !MkvSplitSubtitleService.IsSupported(item)))
+            foreach (TrackInfo track in analysis.Tracks.Where(item => item.Type == "subtitles" && !MkvSplitSubtitleClippers.IsSupported(item)))
             {
                 foreach (MkvSplitExecutionOutput output in plan.Outputs)
                 {
@@ -619,8 +619,7 @@ namespace RemuxForge.Core.Splitting
                 foreach (MkvSplitSubtitleTrack subtitle in analysis.Subtitles)
                 {
                     TrackInfo track = subtitle.Track;
-                    bool bitmap = track.Codec == "S_HDMV/PGS" || track.Codec == "S_VOBSUB"
-                        || track.Codec.Equals("HDMV PGS", StringComparison.OrdinalIgnoreCase) || track.Codec.Equals("VobSub", StringComparison.OrdinalIgnoreCase);
+                    bool bitmap = subtitle.Clipper.IsBitmap;
                     if (bitmap)
                     {
                         foreach (MkvSplitExecutionOutput output in plan.Outputs.Where(output => unchangedOutputs.Contains(output.OutputId)))

@@ -1,36 +1,105 @@
+using RemuxForge.Core.Localization;
+using RemuxForge.Core.Models;
+using RemuxForge.Core.Subtitles;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using RemuxForge.Core.Localization;
-using RemuxForge.Core.Models;
-using RemuxForge.Core.Subtitles;
 using static RemuxForge.Core.Subtitles.PgsSubtitleUtils;
 
-namespace RemuxForge.Core.Splitting
+namespace RemuxForge.Core.Splitting.Subtitles
 {
     /// <summary>
     /// Ricomposizione di display-set PGS senza decodifica grafica. Ogni show emesso è autonomo rispetto all'epoch.
     /// </summary>
-    internal static class MkvSplitPgsSubtitleService
+    internal sealed class MkvSplitPgsSubtitleClipper : MkvSplitBitmapSubtitleClipperBase<MkvSplitPgsSubtitleEvent>
     {
+        #region Variabili di classe
+
+        /// <summary>
+        /// Formato HDMV PGS, estratto in SUP
+        /// </summary>
+        private static readonly MkvSplitSubtitleFormat[] s_formats = new MkvSplitSubtitleFormat[]
+        {
+            new MkvSplitSubtitleFormat(".sup", new[] { "HDMV PGS" }, new[] { "S_HDMV/PGS" })
+        };
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// HDMV PGS
+        /// </summary>
+        protected override MkvSplitSubtitleFormat[] Formats => s_formats;
+
+        /// <summary>
+        /// Errore di una traccia PGS
+        /// </summary>
+        protected override string TrackErrorKey => "split.montage.pgsTrackError";
+
+        #endregion
+
         #region Metodi pubblici
+
+        /// <summary>
+        /// Scrive il file SUP di un output: ogni occorrenza è un display-set completo seguito da un display-set di cancellazione
+        /// </summary>
+        /// <param name="track">Traccia letta dal sorgente</param>
+        /// <param name="output">Proiezione dell'output</param>
+        /// <param name="path">File SUP di destinazione</param>
+        public override void Write(MkvSplitSubtitleTrack<MkvSplitPgsSubtitleEvent> track, MkvSplitOutputProjection output, string path)
+        {
+            using FileStream stream = File.Create(path);
+            int composition = 0;
+            bool any = false;
+            foreach ((MkvSplitPgsSubtitleEvent item, double sourceStart, double sourceEnd, double shift) in Clip(track, output))
+            {
+                double start = sourceStart + shift;
+                double end = sourceEnd + shift;
+                if (Math.Round(start * 90000) == Math.Round(end * 90000))
+                    continue;
+                byte[] header = null;
+                foreach (MkvSplitBitmapSegment segment in item.Segments)
+                {
+                    byte[] data = segment.Data;
+                    if (segment.Type == SEGMENT_PRESENTATION)
+                    {
+                        data = (byte[])data.Clone();
+                        WriteUInt16BigEndian(data, 5, composition++);
+                        data[7] = 0x80;
+                        data[8] = 0;
+                        header = data;
+                    }
+                    Packet(stream, segment.Type, data, start);
+                }
+                Packet(stream, SEGMENT_END, Array.Empty<byte>(), start);
+                Clear(stream, header, end, composition++);
+                any = true;
+            }
+            // Conservare una traccia vuota, non scartarla: un display-set clear è un payload PGS valido.
+            if (!any)
+            {
+                if (track.BitmapPresentationHeader == null)
+                    throw new InvalidDataException(AppText.T("split.montage.pgsNoPresentationHeader"));
+                Clear(stream, track.BitmapPresentationHeader, 0, composition);
+            }
+        }
+
+        #endregion
+
+        #region Metodi protetti
 
         /// <summary>
         /// Legge un file SUP e lo converte in eventi autonomi, ciascuno con i segmenti necessari a ridisegnarlo
         /// </summary>
         /// <param name="path">File SUP estratto</param>
-        /// <param name="track">Traccia sorgente</param>
+        /// <param name="result">Traccia da riempire</param>
         /// <param name="videoEnd">Fine del video in secondi, usata se l'ultimo display-set non viene cancellato</param>
-        /// <returns>Traccia letta</returns>
-        public static MkvSplitSubtitleTrack Read(string path, TrackInfo track, double videoEnd)
+        protected override void ReadEvents(string path, MkvSplitSubtitleTrack<MkvSplitPgsSubtitleEvent> result, double videoEnd)
         {
+            TrackInfo track = result.Track;
             byte[] bytes = File.ReadAllBytes(path);
-            MkvSplitSubtitleTrack result = new MkvSplitSubtitleTrack
-            {
-                Track = track,
-                Extension = ".sup"
-            };
             Dictionary<int, PgsObjectDefinition> objects = new Dictionary<int, PgsObjectDefinition>();
             Dictionary<int, Dictionary<byte, byte[]>> palettes = new Dictionary<int, Dictionary<byte, byte[]>>();
             Dictionary<int, byte> paletteVersions = new Dictionary<int, byte>();
@@ -39,7 +108,7 @@ namespace RemuxForge.Core.Splitting
             double timestamp = 0;
             double lastTimestamp = -1;
             int setStart = 0;
-            MkvSplitSubtitleEvent active = null;
+            MkvSplitPgsSubtitleEvent active = null;
             for (int offset = 0; offset < bytes.Length;)
             {
                 Require(TryGetPacketLength(bytes, offset, out int packetLength), track, AppText.F("split.montage.pgsInvalidPacket", offset));
@@ -149,11 +218,11 @@ namespace RemuxForge.Core.Splitting
                             }
                         }
                         Require(position == pcs.Length, track, AppText.T("split.montage.pgsNonStandardPcs"));
-                        active = new MkvSplitSubtitleEvent
+                        active = new MkvSplitPgsSubtitleEvent
                         {
                             StartSeconds = timestamp,
                             EndSeconds = double.NaN,
-                            BitmapSegments = segments
+                            Segments = segments
                         };
                         result.Events.Add(active);
                     }
@@ -177,75 +246,11 @@ namespace RemuxForge.Core.Splitting
             }
             result.Events.RemoveAll(item => item.EndSeconds == item.StartSeconds);
             Require(result.Events.All(item => double.IsFinite(item.EndSeconds) && item.EndSeconds > item.StartSeconds), track, AppText.T("split.montage.pgsInvalidInterval"));
-            return result;
-        }
-
-        /// <summary>
-        /// Scrive il file SUP di un output: ogni occorrenza è un display-set completo seguito da un display-set di cancellazione
-        /// </summary>
-        /// <param name="track">Traccia letta dal sorgente</param>
-        /// <param name="output">Proiezione dell'output</param>
-        /// <param name="path">File SUP di destinazione</param>
-        public static void Write(MkvSplitSubtitleTrack track, MkvSplitOutputProjection output, string path)
-        {
-            using FileStream stream = File.Create(path);
-            int composition = 0;
-            bool any = false;
-            foreach (MkvSplitClipProjection clip in output.Clips)
-            {
-                foreach (MkvSplitSubtitleEvent item in track.Events)
-                {
-                    double start = Math.Max(item.StartSeconds, clip.SourceStartSeconds);
-                    double end = Math.Min(item.EndSeconds, clip.SourceEndSeconds);
-                    if (end <= start)
-                        continue;
-                    start += clip.ResultStartSeconds - clip.SourceStartSeconds;
-                    end += clip.ResultStartSeconds - clip.SourceStartSeconds;
-                    if (Math.Round(start * 90000) == Math.Round(end * 90000))
-                        continue;
-                    byte[] header = null;
-                    foreach (MkvSplitBitmapSegment segment in item.BitmapSegments)
-                    {
-                        byte[] data = segment.Data;
-                        if (segment.Type == SEGMENT_PRESENTATION)
-                        {
-                            data = (byte[])data.Clone();
-                            WriteUInt16BigEndian(data, 5, composition++);
-                            data[7] = 0x80;
-                            data[8] = 0;
-                            header = data;
-                        }
-                        Packet(stream, segment.Type, data, start);
-                    }
-                    Packet(stream, SEGMENT_END, Array.Empty<byte>(), start);
-                    Clear(stream, header, end, composition++);
-                    any = true;
-                }
-            }
-            // Conservare una traccia vuota, non scartarla: un display-set clear è un payload PGS valido.
-            if (!any)
-            {
-                if (track.BitmapPresentationHeader == null)
-                    throw new InvalidDataException(AppText.T("split.montage.pgsNoPresentationHeader"));
-                Clear(stream, track.BitmapPresentationHeader, 0, composition);
-            }
         }
 
         #endregion
 
         #region Metodi privati
-
-        /// <summary>
-        /// Interrompe la lettura con InvalidDataException se la condizione non è soddisfatta
-        /// </summary>
-        /// <param name="valid">Condizione richiesta</param>
-        /// <param name="track">Traccia in lettura</param>
-        /// <param name="detail">Dettaglio dell'errore</param>
-        private static void Require(bool valid, TrackInfo track, string detail)
-        {
-            if (!valid)
-                throw new InvalidDataException(AppText.F("split.montage.pgsTrackError", track.Id, detail));
-        }
 
         /// <summary>
         /// Scrive un pacchetto SUP con PTS e DTS uguali al tempo indicato
