@@ -11,7 +11,7 @@ namespace RemuxForge.Web.Services
             return new RemuxPreset
             {
                 Name = name, MuxKind = kind,
-                Recursive = o.Recursive, MatchPattern = o.MatchPattern, FileExtensions = new List<string>(o.FileExtensions),
+                Recursive = o.Recursive, MatchPattern = o.MatchPattern,
                 TargetLanguage = new List<string>(o.TargetLanguage), AudioCodec = new List<string>(o.AudioCodec),
                 KeepSourceAudioLangs = new List<string>(o.KeepSourceAudioLangs), KeepSourceAudioCodec = new List<string>(o.KeepSourceAudioCodec),
                 KeepSourceSubtitleLangs = new List<string>(o.KeepSourceSubtitleLangs), SubOnly = o.SubOnly, AudioOnly = o.AudioOnly,
@@ -34,7 +34,7 @@ namespace RemuxForge.Web.Services
             return new Options
             {
                 Mode = Options.MODE_REMUX, FrameSync = p.MuxKind == RemuxMuxKind.DelayCorrection, DeepAnalysis = p.MuxKind == RemuxMuxKind.DeepAnalysis,
-                Recursive = p.Recursive, MatchPattern = p.MatchPattern ?? "", FileExtensions = p.FileExtensions,
+                Recursive = p.Recursive, MatchPattern = p.MatchPattern ?? "",
                 TargetLanguage = p.TargetLanguage, AudioCodec = p.AudioCodec, KeepSourceAudioLangs = p.KeepSourceAudioLangs,
                 KeepSourceAudioCodec = p.KeepSourceAudioCodec, KeepSourceSubtitleLangs = p.KeepSourceSubtitleLangs,
                 SubOnly = p.SubOnly, AudioOnly = p.AudioOnly, SpeedCorrectionMode = p.SpeedCorrectionMode ?? "",

@@ -331,7 +331,7 @@ namespace RemuxForge.Core.Subtitles
                 // Altrimenti estrae solo la traccia richiesta dal lang, lasciando invariato il container originale
                 inputFile = Path.Combine(context.TempFolder, "subcanvas_t" + track.Id.ToString(CultureInfo.InvariantCulture) + "_src_" + Guid.NewGuid().ToString("N").Substring(0, 8) + rewriter.GetPrimaryExtension(track));
                 extractedInput = true;
-                if (!this.ExtractSubtitleTrack(context.Record.LangFilePath, track.Id, inputFile, context.Options))
+                if (!this.ExtractSubtitleTrack(context.Record.LangMediaPath, track.Id, inputFile, context.Options))
                 {
                     FileHelper.DeleteTempSubtitleFile(inputFile);
                     ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, AppText.F("remux.subtitles.canvasExtractFailed", track.Id));

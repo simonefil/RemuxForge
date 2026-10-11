@@ -42,7 +42,7 @@ namespace RemuxForge.Core.Splitting
         /// <param name="source">File sorgente</param>
         /// <param name="track">Traccia da estrarre</param>
         /// <param name="directory">Cartella temporanea per l'estrazione</param>
-        /// <param name="videoEndSeconds">Fine del video, usata per chiudere l'ultimo display-set PGS</param>
+        /// <param name="videoEndSeconds">Fine del video, usata per chiudere l'ultimo display-set PGS e l'unico SPU VobSub senza stop</param>
         /// <returns>Traccia letta</returns>
         public static MkvSplitSubtitleTrack ReadSource(string source, TrackInfo track, string directory, double videoEndSeconds = double.NaN)
         {
@@ -54,7 +54,7 @@ namespace RemuxForge.Core.Splitting
             if (extension == ".sup")
                 return MkvSplitPgsSubtitleService.Read(path, track, videoEndSeconds);
             if (extension == ".idx")
-                return MkvSplitVobSubSubtitleService.Read(path, track);
+                return MkvSplitVobSubSubtitleService.Read(path, track, videoEndSeconds);
             string content = File.ReadAllText(path);
             MkvSplitSubtitleTrack result = new MkvSplitSubtitleTrack
             {

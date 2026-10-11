@@ -41,7 +41,7 @@ namespace RemuxForge.Core.Pipeline
             chaptersFile = "";
             ConsoleHelper.Write(LogSection.Merge, LogLevel.Phase, AppText.T("remux.langChapters.start"));
 
-            ChapterReadResult read = ChapterTimelineService.Read(mkvExtractPath, record.LangFilePath);
+            ChapterReadResult read = ChapterTimelineService.Read(mkvExtractPath, record.LangMediaPath);
             if (read.Error.Length > 0)
             {
                 // Capitoli ordered o illeggibili bloccano il file: copiarli in parte darebbe un output ingannevole (C16)

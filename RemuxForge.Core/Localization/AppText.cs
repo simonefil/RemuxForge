@@ -99,6 +99,21 @@ namespace RemuxForge.Core.Localization
         }
 
         /// <summary>
+        /// Restituisce il testo localizzato di una quantità, con la forma singolare (chiave + "One") per 1 e plurale (chiave + "Many") altrimenti
+        /// </summary>
+        /// <param name="key">Radice della chiave testo</param>
+        /// <param name="count">Quantità, primo placeholder del testo</param>
+        /// <param name="args">Valori dei placeholder successivi</param>
+        /// <returns>Testo localizzato formattato</returns>
+        public static string Count(string key, long count, params object[] args)
+        {
+            object[] values = new object[args.Length + 1];
+            values[0] = count;
+            args.CopyTo(values, 1);
+            return F(key + (count == 1 ? "One" : "Many"), values);
+        }
+
+        /// <summary>
         /// Normalizza una lingua supportata
         /// </summary>
         /// <param name="value">Valore lingua</param>

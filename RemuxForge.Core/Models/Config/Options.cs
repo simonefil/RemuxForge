@@ -58,7 +58,6 @@ namespace RemuxForge.Core.Models
             this.MkvMergePath = useGlobalToolSettings && !string.IsNullOrEmpty(AppSettingsService.Instance.Settings.Tools.MkvMergePath) ? AppSettingsService.Instance.Settings.Tools.MkvMergePath : "mkvmerge";
             this.Recursive = true;
             this.DryRun = false;
-            this.FileExtensions = new List<string> { "mkv" };
             this.AudioFormat = "";
             this.AudioProcessingScope = "disabled";
             this.AudioDownsample24To16 = false;
@@ -323,15 +322,6 @@ namespace RemuxForge.Core.Models
                 options.Recursive = false;
                 options.Metadata.Recursive = false;
                 i++;
-            }
-            else if (key == "ext" || key == "extensions")
-            {
-                if (RequireValue(args, i, options))
-                {
-                    options.FileExtensions.Clear();
-                    ParseExtensions(args[i + 1], options.FileExtensions);
-                    i += 2;
-                }
             }
             else if (key == "lang")
             {
@@ -793,6 +783,18 @@ namespace RemuxForge.Core.Models
                     {
                         options.Split.Snap = ParseSnapMode(value, options);
                     }
+                    else if (key == "split-quality")
+                    {
+                        // Il range dipende dal codec del file: lo controlla il planner
+                        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int quality))
+                            options.Split.EncodeQuality = quality;
+                        else
+                            options.ErrorMessage = AppText.T("options.invalidSplitQuality");
+                    }
+                    else if (key == "split-speed")
+                    {
+                        options.Split.EncodeSpeed = value;
+                    }
                     i += 2;
                 }
             }
@@ -821,7 +823,9 @@ namespace RemuxForge.Core.Models
                 key == "output-template" ||
                 key == "start-number" ||
                 key == "chapters-per-episode" ||
-                key == "snap";
+                key == "snap" ||
+                key == "split-quality" ||
+                key == "split-speed";
         }
 
         /// <summary>
@@ -914,24 +918,6 @@ namespace RemuxForge.Core.Models
                 else
                 {
                     options.ErrorMessage = AppText.F("options.invalidAudioSourceFillMode", mode);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Parsa estensioni CSV rimuovendo il punto iniziale
-        /// </summary>
-        private static void ParseExtensions(string value, List<string> target)
-        {
-            string[] parts = value.Split(',');
-            string trimmed;
-
-            for (int j = 0; j < parts.Length; j++)
-            {
-                trimmed = parts[j].Trim().TrimStart('.');
-                if (!string.IsNullOrEmpty(trimmed))
-                {
-                    target.Add(trimmed);
                 }
             }
         }
@@ -1213,11 +1199,6 @@ namespace RemuxForge.Core.Models
         /// Modalità dry run: mostra cosa verrebbe fatto senza eseguire (-n, --dry-run)
         /// </summary>
         public bool DryRun { get; set; }
-
-        /// <summary>
-        /// Lista di estensioni file da cercare (-ext, --extensions). Default: mkv
-        /// </summary>
-        public List<string> FileExtensions { get; set; }
 
         /// <summary>
         /// Messaggio di errore dal parsing. Vuoto se nessun errore

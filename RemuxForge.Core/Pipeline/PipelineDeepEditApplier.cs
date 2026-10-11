@@ -67,7 +67,7 @@ namespace RemuxForge.Core.Pipeline
             for (int s = 0; s < subtitleTracks.Count; s++)
             {
                 ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, AppText.F("deep.temporal.applySubtitles.track", subtitleTracks[s].Id, subtitleTracks[s].Codec, record.DeepAnalysisMap.Operations.Count));
-                processedFile = subtitleService.Apply(record.LangFilePath, subtitleTracks[s].Id, subtitleTracks[s].Codec, record.DeepAnalysisMap, splitLabel, out emptyTrack);
+                processedFile = subtitleService.Apply(record.LangMediaPath, subtitleTracks[s].Id, subtitleTracks[s].Codec, record.DeepAnalysisMap, splitLabel, out emptyTrack);
 
                 if (!string.IsNullOrEmpty(processedFile))
                 {

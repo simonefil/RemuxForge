@@ -92,9 +92,6 @@
                         <RemuxFieldComponent Label="@AppText.T("web.remux.label.recursive")" Component="Recursive" HelpKey="recursive">
                             <RadzenSwitch TValue="bool" Name="Recursive" Value="@O.Recursive" Disabled="@EditingLocked" Change="@(v => Edit(() => { O.Recursive = v; InvalidatePreview(); }))" />
                         </RemuxFieldComponent>
-                        <RemuxFieldComponent Label="@AppText.T("web.remux.label.extensions")" Required="true" Field="FileExtensions" HelpKey="extensions">
-                            <RadzenTextBox Name="FileExtensions" Value="@string.Join(",", O.FileExtensions)" Disabled="@EditingLocked" Change="@(v => Edit(() => { O.FileExtensions = Csv(v, true); InvalidatePreview(); }))" Style="width:100%" />
-                        </RemuxFieldComponent>
                         <RemuxFieldComponent Label="@AppText.T("web.remux.label.matchPattern")" Field="MatchPattern" HelpKey="match" Note="@(_sourceIsFile ? AppText.T("web.remux.matchPatternFile") : "")">
                             <RadzenTextBox Name="MatchPattern" Value="@O.MatchPattern" Change="@(v => Edit(() => { O.MatchPattern = v; InvalidatePreview(); }))" Disabled="@(EditingLocked || _sourceIsFile)" Style="width:100%" />
                         </RemuxFieldComponent>
@@ -102,11 +99,11 @@
                         @if (_reading)
                         {
                             <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
-                            <RadzenText role="status">@AppText.F("web.remux.readingTracks", _progress.CompletedFiles, _progress.TotalFiles)</RadzenText>
+                            <RadzenText role="status">@AppText.Count("web.remux.readingTracks", _progress.TotalFiles, _progress.CompletedFiles)</RadzenText>
                         }
                         @if (Draft.HasCurrentSnapshot)
                         {
-                            <RadzenText>@AppText.F("web.remux.matchCounts", Draft.Snapshot.Pairs.Count, Draft.Snapshot.MatchedPairs, Draft.Snapshot.Pairs.Count - Draft.Snapshot.MatchedPairs)</RadzenText>
+                            <RadzenText>@AppText.Count("web.remux.matchCounts", Draft.Snapshot.Pairs.Count, AppText.Count("web.remux.summary.pairs", Draft.Snapshot.MatchedPairs), Draft.Snapshot.Pairs.Count - Draft.Snapshot.MatchedPairs)</RadzenText>
                             @foreach (RemuxPreviewError error in Draft.Snapshot.Errors)
                             {
                                 <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false">@error.FilePath — @error.Message</RadzenAlert>
@@ -115,7 +112,7 @@
                                 <Columns>
                                     <RadzenDataGridColumn TItem="RemuxPreviewPair" Title="Source"><Template Context="pair"><span title="@pair.SourceFilePath">@Path.GetFileName(pair.SourceFilePath)</span></Template></RadzenDataGridColumn>
                                     <RadzenDataGridColumn TItem="RemuxPreviewPair" Title="Lang"><Template Context="pair"><span title="@pair.LangFilePath">@Path.GetFileName(pair.LangFilePath)</span></Template></RadzenDataGridColumn>
-                                    <RadzenDataGridColumn TItem="RemuxPreviewPair" Title="@AppText.T("web.dashboard.status")"><Template Context="pair">@PairStatus(pair)</Template></RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="RemuxPreviewPair" Title="@AppText.T("web.dashboard.status")"><Template Context="pair"><span title="@PairStatus(pair)">@PairStatus(pair)</span></Template></RadzenDataGridColumn>
                                 </Columns>
                             </RadzenDataGrid>
                         }

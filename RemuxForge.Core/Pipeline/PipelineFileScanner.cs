@@ -1,5 +1,8 @@
+using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
+using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -55,13 +58,17 @@ namespace RemuxForge.Core.Pipeline
         public List<FileProcessingRecord> Scan(Options options, bool needsMerge, CancellationToken cancellationToken = default)
         {
             List<FileProcessingRecord> records = new List<FileProcessingRecord>();
-            Dictionary<string, string> languageIndex = new Dictionary<string, string>();
-            string extList = string.Join(", ", options.FileExtensions);
+            Dictionary<string, List<string>> languageIndex = new Dictionary<string, List<string>>();
+            Dictionary<string, List<string>> sourceIndex = new Dictionary<string, List<string>>();
+            string extList = string.Join(", ", MediaContainerFormats.Extensions);
             cancellationToken.ThrowIfCancellationRequested();
-            List<string> sourceFiles = this.FindVideoFiles(options.SourceFolder, options.FileExtensions, options.Recursive, cancellationToken);
+            List<string> sourceFiles = this.FindVideoFiles(options.SourceFolder, options.Recursive, cancellationToken);
             bool singleFileMode = File.Exists(options.SourceFolder);
+            // Percorso Lang vuoto: la pipeline lo riempie con la cartella Source e ogni file si abbina soltanto a sé stesso
+            // Lang e Source si confrontano come cartelle sul disco, non come testo (D22)
+            bool selfPairing = !singleFileMode && (string.IsNullOrEmpty(options.LanguageFolder) || FileHelper.IsSamePath(options.SourceFolder, options.LanguageFolder));
 
-            this._log(LogSection.General, LogLevel.Success, AppText.F("remux.pipeline.sourceFilesFound", sourceFiles.Count, extList));
+            this._log(LogSection.General, LogLevel.Success, AppText.Count("remux.pipeline.sourceFilesFound", sourceFiles.Count, extList));
 
             if (needsMerge)
             {
@@ -69,10 +76,10 @@ namespace RemuxForge.Core.Pipeline
                 {
                     this._log(LogSection.General, LogLevel.Success, AppText.T("remux.pipeline.singleLangFile"));
                 }
-                else
+                else if (!selfPairing)
                 {
                     this._log(LogSection.General, LogLevel.Info, AppText.T("remux.pipeline.indexingLangFolder"));
-                    List<string> languageFiles = this.FindVideoFiles(options.LanguageFolder, options.FileExtensions, options.Recursive, cancellationToken);
+                    List<string> languageFiles = this.FindVideoFiles(options.LanguageFolder, options.Recursive, cancellationToken);
 
                     for (int i = 0; i < languageFiles.Count; i++)
                     {
@@ -81,11 +88,28 @@ namespace RemuxForge.Core.Pipeline
                         string langEpisodeId = this.GetEpisodeIdentifier(langFileName, options.MatchPattern);
                         if (!string.IsNullOrEmpty(langEpisodeId))
                         {
-                            languageIndex[langEpisodeId] = languageFiles[i];
+                            if (!languageIndex.ContainsKey(langEpisodeId))
+                                languageIndex[langEpisodeId] = new List<string>();
+                            languageIndex[langEpisodeId].Add(languageFiles[i]);
                         }
                     }
 
-                    this._log(LogSection.General, LogLevel.Success, AppText.F("remux.pipeline.langFilesIndexed", languageIndex.Count));
+                    this._log(LogSection.General, LogLevel.Success, AppText.Count("remux.pipeline.langFilesIndexed", languageIndex.Count));
+                }
+            }
+
+            // Lo stesso episodio in due container (ep01.mp4 e ep01.mkv) non ha un abbinamento univoco: il record si salta con i file in conflitto (D03)
+            if (needsMerge && !singleFileMode && !selfPairing)
+            {
+                for (int i = 0; i < sourceFiles.Count; i++)
+                {
+                    string sourceEpisodeId = this.GetEpisodeIdentifier(Path.GetFileName(sourceFiles[i]), options.MatchPattern);
+                    if (!string.IsNullOrEmpty(sourceEpisodeId))
+                    {
+                        if (!sourceIndex.ContainsKey(sourceEpisodeId))
+                            sourceIndex[sourceEpisodeId] = new List<string>();
+                        sourceIndex[sourceEpisodeId].Add(sourceFiles[i]);
+                    }
                 }
             }
 
@@ -104,7 +128,14 @@ namespace RemuxForge.Core.Pipeline
 
                 if (needsMerge)
                 {
-                    if (singleFileMode)
+                    if (selfPairing)
+                    {
+                        record.EpisodeId = !string.IsNullOrEmpty(episodeId) ? episodeId : sourceFileName;
+                        record.LangFileName = sourceFileName;
+                        record.LangFilePath = sourceFilePath;
+                        record.LangSize = record.SourceSize;
+                    }
+                    else if (singleFileMode)
                     {
                         string languageFilePath = options.LanguageFolder;
                         record.EpisodeId = episodeId;
@@ -121,6 +152,18 @@ namespace RemuxForge.Core.Pipeline
                         records.Add(record);
                         continue;
                     }
+                    else if (sourceIndex[episodeId].Count > 1 || (languageIndex.ContainsKey(episodeId) && languageIndex[episodeId].Count > 1))
+                    {
+                        List<string> conflicting = new List<string>();
+                        foreach (string file in sourceIndex[episodeId].Count > 1 ? sourceIndex[episodeId] : languageIndex[episodeId])
+                            conflicting.Add(Path.GetFileName(file));
+                        record.EpisodeId = episodeId;
+                        record.SkipReason = AppText.F(sourceIndex[episodeId].Count > 1 ? "remux.pipeline.duplicateSourceEpisode" : "remux.pipeline.duplicateLangEpisode", string.Join(", ", conflicting));
+                        record.Status = FileStatus.Skipped;
+                        this._log(LogSection.General, LogLevel.Warning, record.SourceFileName + ": " + record.SkipReason);
+                        records.Add(record);
+                        continue;
+                    }
                     else if (!languageIndex.ContainsKey(episodeId))
                     {
                         record.SkipCode = FileProcessingRecord.SKIP_NO_MATCH;
@@ -131,7 +174,7 @@ namespace RemuxForge.Core.Pipeline
                     else
                     {
                         record.EpisodeId = episodeId;
-                        string languageFilePath = languageIndex[episodeId];
+                        string languageFilePath = languageIndex[episodeId][0];
                         record.LangFileName = Path.GetFileName(languageFilePath);
                         record.LangFilePath = languageFilePath;
 
@@ -146,6 +189,59 @@ namespace RemuxForge.Core.Pipeline
 
                 record.Status = FileStatus.Pending;
                 records.Add(record);
+            }
+
+            // Due sorgenti che producono lo stesso file di output, o un output che cade su un altro sorgente: come per D03
+            // si saltano tutti i file in conflitto. L'output è noto solo con Sovrascrivi o con una destinazione
+            if (options.Overwrite || !string.IsNullOrEmpty(options.DestinationFolder))
+            {
+                PipelineOutputManager outputManager = new PipelineOutputManager();
+                Dictionary<string, FileProcessingRecord> sourceByIdentity = new Dictionary<string, FileProcessingRecord>(StringComparer.Ordinal);
+                Dictionary<string, List<FileProcessingRecord>> recordsByOutput = new Dictionary<string, List<FileProcessingRecord>>(StringComparer.Ordinal);
+                Dictionary<string, string> outputNames = new Dictionary<string, string>(StringComparer.Ordinal);
+                for (int i = 0; i < records.Count; i++)
+                {
+                    sourceByIdentity[FileHelper.GetPathIdentity(records[i].SourceFilePath)] = records[i];
+                }
+                for (int i = 0; i < records.Count; i++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (records[i].Status != FileStatus.Pending)
+                    {
+                        continue;
+                    }
+
+                    string outputPath = outputManager.ComputeFinalOutputPath(records[i].SourceFilePath, options);
+                    string outputIdentity = FileHelper.GetPathIdentity(outputPath);
+                    if (!recordsByOutput.ContainsKey(outputIdentity))
+                    {
+                        recordsByOutput[outputIdentity] = new List<FileProcessingRecord>();
+                        outputNames[outputIdentity] = Path.GetFileName(outputPath);
+                    }
+                    recordsByOutput[outputIdentity].Add(records[i]);
+                    if (sourceByIdentity.TryGetValue(outputIdentity, out FileProcessingRecord other) && !recordsByOutput[outputIdentity].Contains(other))
+                    {
+                        recordsByOutput[outputIdentity].Add(other);
+                    }
+                }
+
+                foreach (KeyValuePair<string, List<FileProcessingRecord>> output in recordsByOutput)
+                {
+                    if (output.Value.Count < 2)
+                    {
+                        continue;
+                    }
+
+                    List<string> conflicting = new List<string>();
+                    foreach (FileProcessingRecord conflict in output.Value)
+                        conflicting.Add(conflict.SourceFileName);
+                    foreach (FileProcessingRecord conflict in output.Value)
+                    {
+                        conflict.SkipReason = AppText.F("remux.pipeline.duplicateOutput", outputNames[output.Key], string.Join(", ", conflicting));
+                        conflict.Status = FileStatus.Skipped;
+                        this._log(LogSection.General, LogLevel.Warning, conflict.SourceFileName + ": " + conflict.SkipReason);
+                    }
+                }
             }
 
             return records;
@@ -191,43 +287,32 @@ namespace RemuxForge.Core.Pipeline
         }
 
         /// <summary>
-        /// Cerca i file video nella cartella usando le estensioni configurate
+        /// Cerca i file video con le estensioni accettate (D02)
         /// </summary>
-        /// <param name="folder">Cartella da scansionare</param>
-        /// <param name="extensions">Estensioni video senza punto</param>
+        /// <param name="folder">Cartella da scansionare, o file singolo</param>
         /// <param name="recursive">True per scansione ricorsiva</param>
         /// <returns>Lista file trovati</returns>
-        private List<string> FindVideoFiles(string folder, List<string> extensions, bool recursive, CancellationToken cancellationToken)
+        private List<string> FindVideoFiles(string folder, bool recursive, CancellationToken cancellationToken)
         {
             List<string> files = new List<string>();
 
             if (File.Exists(folder))
             {
-                string fileExtension = Path.GetExtension(folder).TrimStart('.');
-                for (int e = 0; e < extensions.Count; e++)
+                if (MediaContainerFormats.IsSupported(folder))
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    if (string.Equals(fileExtension, extensions[e].Trim().TrimStart('.'), System.StringComparison.OrdinalIgnoreCase))
-                    {
-                        files.Add(folder);
-                        break;
-                    }
+                    files.Add(folder);
                 }
 
                 return files;
             }
 
-            SearchOption searchOption = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-
-            for (int e = 0; e < extensions.Count; e++)
+            // Il filtro per estensione si applica dopo: il pattern di GetFiles su Linux distingue le maiuscole
+            string[] found = Directory.GetFiles(folder, "*", recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly);
+            for (int i = 0; i < found.Length; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                // Mantiene il pattern locale estensione-per-estensione per rispettare l'ordine configurato
-                string pattern = "*." + extensions[e];
-                string[] found = Directory.GetFiles(folder, pattern, searchOption);
-                for (int i = 0; i < found.Length; i++)
+                if (MediaContainerFormats.IsSupported(found[i]))
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
                     files.Add(found[i]);
                 }
             }

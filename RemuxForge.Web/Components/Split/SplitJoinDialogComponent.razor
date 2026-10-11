@@ -108,6 +108,17 @@
                             </ul>
                         </RadzenAlert>
                     }
+                    @if (_plan.Warnings.Count > 0)
+                    {
+                        <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="split-join-alert">
+                            <ul class="split-join-alert-list">
+                                @foreach (string warning in _plan.Warnings)
+                                {
+                                    <li>@warning</li>
+                                }
+                            </ul>
+                        </RadzenAlert>
+                    }
                 }
             }
 
@@ -152,9 +163,9 @@
     #region Variabili statiche
 
     /// <summary>
-    /// Estensioni ammesse per le parti
+    /// Estensioni ammesse per le parti: gli stessi container di Remux e Split (D20)
     /// </summary>
-    private static readonly List<string> s_extensions = new List<string> { "mkv" };
+    private static readonly List<string> s_extensions = new List<string>(MediaContainerFormats.Extensions);
 
     #endregion
 

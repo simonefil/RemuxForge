@@ -258,6 +258,11 @@ namespace RemuxForge.Web.Components.Split
         private DotNetObjectReference<SplitEditorPageComponent> _reference;
 
         /// <summary>
+        /// Notifica del temporaneo della sessione mancante, mostrata una volta sola
+        /// </summary>
+        private readonly SessionMediaMissingNotice _sessionMediaNotice = new SessionMediaMissingNotice();
+
+        /// <summary>
         /// Vista vuota usata quando l'output non ha stato
         /// </summary>
         private OutputView _emptyView = new OutputView();
@@ -401,6 +406,16 @@ namespace RemuxForge.Web.Components.Split
         #endregion
 
         #region Metodi pubblici
+
+        /// <summary>
+        /// Riceve dalla timeline JavaScript la risposta 409 di un'immagine audio: manca il temporaneo della sessione
+        /// </summary>
+        /// <param name="message">Messaggio localizzato del server</param>
+        [JSInvokable]
+        public Task OnSessionMediaMissing(string message)
+        {
+            return this.InvokeAsync(() => this._sessionMediaNotice.Notify(this.NotificationService, message));
+        }
 
         /// <summary>
         /// Gesto dalla timeline JS. Ogni movimento si valuta sul draft invariato. Solo la fine applica, una volta.
@@ -2233,10 +2248,12 @@ namespace RemuxForge.Web.Components.Split
                 if (!this._disposed && sequence == this._requestSequence && revision == this._revision && committed)
                     this._previewMessage = frame.IsValid ? "" : this.UnresolvedPreviewMessage();
             }
-            catch (JSException)
+            catch (JSException exception)
             {
                 if (!this._disposed && sequence == this._requestSequence && revision == this._revision)
                     this._previewMessage = T("previewError");
+                // Il temporaneo della sessione mancante si notifica una volta sola, non a ogni fotogramma
+                this._sessionMediaNotice.HandleClientError(this.NotificationService, exception.Message);
             }
             if (!this._disposed)
                 this.StateHasChanged();

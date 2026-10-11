@@ -10,13 +10,13 @@
     </colgroup>
     <thead>
         <tr>
-            <th>@AppText.T("web.metadata.detail.selector")</th>
-            <th>@AppText.T("web.metadata.detail.type")</th>
-            <th>@AppText.T("web.metadata.detail.languageHeader")</th>
-            <th>@AppText.T("web.metadata.detail.format")</th>
-            <th>@AppText.T("web.metadata.detail.title")</th>
-            <th>@AppText.T("web.metadata.detail.sizeHeader")</th>
-            <th>@AppText.T("web.metadata.detail.extra")</th>
+            <th title="@AppText.T("web.metadata.detail.selector")">@AppText.T("web.metadata.detail.selector")</th>
+            <th title="@AppText.T("web.metadata.detail.type")">@AppText.T("web.metadata.detail.type")</th>
+            <th title="@AppText.T("web.metadata.detail.languageHeader")">@AppText.T("web.metadata.detail.languageHeader")</th>
+            <th title="@AppText.T("web.metadata.detail.format")">@AppText.T("web.metadata.detail.format")</th>
+            <th title="@AppText.T("web.metadata.detail.title")">@AppText.T("web.metadata.detail.title")</th>
+            <th title="@AppText.T("web.metadata.detail.sizeHeader")">@AppText.T("web.metadata.detail.sizeHeader")</th>
+            <th title="@AppText.T("web.metadata.detail.extra")">@AppText.T("web.metadata.detail.extra")</th>
         </tr>
     </thead>
     <tbody>
@@ -24,13 +24,13 @@
         {
             string rowClass = IsTrackRemoved(track.TrackSelector) ? "metadata-diff-removed" : "";
             <tr class="@rowClass">
-                <td>@track.TrackSelector</td>
-                <td>@track.TrackKind</td>
-                <td class="@GetFieldClass(track.TrackSelector, GetDomainFieldKey(track, "language"))">@FormatValue(track.Language)</td>
-                <td>@FormatValue(track.Format)</td>
-                <td class="@GetFieldClass(track.TrackSelector, GetDomainFieldKey(track, "title"))">@FormatValue(track.Title)</td>
-                <td>@FormatSize(track.StreamSize)</td>
-                <td>@BuildExtra(track)</td>
+                <td title="@track.TrackSelector">@track.TrackSelector</td>
+                <td title="@track.TrackKind">@track.TrackKind</td>
+                <td class="@GetFieldClass(track.TrackSelector, GetDomainFieldKey(track, "language"))" title="@FormatValue(track.Language)">@FormatValue(track.Language)</td>
+                <td title="@FormatValue(track.Format)">@FormatValue(track.Format)</td>
+                <td class="@GetFieldClass(track.TrackSelector, GetDomainFieldKey(track, "title"))" title="@FormatValue(track.Title)">@FormatValue(track.Title)</td>
+                <td title="@FormatSize(track.StreamSize)">@FormatSize(track.StreamSize)</td>
+                <td title="@BuildExtra(track)">@BuildExtra(track)</td>
             </tr>
         }
     </tbody>
@@ -160,8 +160,13 @@
         else if (track.TrackKind == "audio")
         {
             AddPart(ref result, channels);
-            if (!string.IsNullOrEmpty(bitDepth) || !string.IsNullOrEmpty(sampleRate))
+            // Un codec senza profondità di bit (AAC, AC-3...) mostra solo il campionamento
+            if (!string.IsNullOrEmpty(bitDepth) && !string.IsNullOrEmpty(sampleRate))
                 AddPart(ref result, bitDepth + "bit/" + sampleRate + "kHz");
+            else if (!string.IsNullOrEmpty(bitDepth))
+                AddPart(ref result, bitDepth + "bit");
+            else if (!string.IsNullOrEmpty(sampleRate))
+                AddPart(ref result, sampleRate + "kHz");
         }
         else if (track.TrackKind == "subtitles")
         {

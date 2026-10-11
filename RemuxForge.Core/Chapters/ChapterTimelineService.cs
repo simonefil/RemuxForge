@@ -15,6 +15,18 @@ namespace RemuxForge.Core.Chapters
     /// </summary>
     public static class ChapterTimelineService
     {
+        #region Costanti
+
+        /// <summary>
+        /// Scarto ammesso fra l'inizio di un capitolo e il PTS del fotogramma che marca. I fotogrammi Matroska hanno tempi al
+        /// millisecondo e i capitoli al nanosecondo, e un taglio di mkvmerge sposta gli uni e gli altri di quantità arrotondate
+        /// in modo diverso: sui rip reali lo scarto arriva a 0,5 ms nei sorgenti e a 1,43 ms nelle parti già tagliate. Un
+        /// capitolo che cade entro lo scarto prima di un fotogramma marca quel fotogramma, non il precedente
+        /// </summary>
+        public const long FRAME_ROUNDING_NS = 2000000;
+
+        #endregion
+
         #region Metodi pubblici
 
         /// <summary>
@@ -108,14 +120,16 @@ namespace RemuxForge.Core.Chapters
                 result.Warnings.Add(AppText.F("chapters.editionsSkipped", otherEditions));
 
             if (nested > 0)
-                result.Warnings.Add(AppText.F("chapters.nestedSkipped", nested));
+                result.Warnings.Add(AppText.Count("chapters.nestedSkipped", nested));
 
             SortByStart(result.Chapters);
             return result;
         }
 
         /// <summary>
-        /// Capitoli di un taglio: restano quelli con inizio in [start, end), ribasati a zero, con la fine troncata al taglio
+        /// Capitoli di un taglio: restano quelli con inizio in [start, end), ribasati a zero, con la fine troncata al taglio.
+        /// I confini del taglio sono PTS di fotogrammi: un capitolo entro FRAME_ROUNDING_NS prima di un confine appartiene al
+        /// fotogramma del confine, quindi apre il taglio che ci inizia e non chiude quello che ci finisce
         /// </summary>
         /// <param name="chapters">Capitoli nel tempo del sorgente</param>
         /// <param name="startNs">Inizio del tratto conservato, incluso</param>
@@ -130,11 +144,11 @@ namespace RemuxForge.Core.Chapters
                 ChapterMark chapter = chapters[i];
                 ChapterMark cut;
 
-                if (chapter.StartNs < startNs || chapter.StartNs >= endNs)
+                if (chapter.StartNs < startNs - FRAME_ROUNDING_NS || chapter.StartNs >= endNs - FRAME_ROUNDING_NS)
                     continue;
 
                 cut = chapter.Clone();
-                cut.StartNs = chapter.StartNs - startNs;
+                cut.StartNs = Math.Max(0, chapter.StartNs - startNs);
                 cut.EndNs = chapter.HasEnd ? Math.Min(chapter.EndNs, endNs) - startNs : ChapterMark.NO_END;
                 if (cut.HasEnd && cut.EndNs <= cut.StartNs)
                     cut.EndNs = ChapterMark.NO_END;
@@ -154,12 +168,29 @@ namespace RemuxForge.Core.Chapters
         /// <returns>Capitoli nel tempo del risultato</returns>
         public static List<ChapterMark> Montage(List<ChapterMark> chapters, IList<ChapterRange> ranges)
         {
+            List<List<ChapterMark>> perRange = new List<List<ChapterMark>>();
+
+            for (int i = 0; ranges != null && i < ranges.Count; i++)
+                perRange.Add(chapters);
+
+            return Montage(perRange, ranges);
+        }
+
+        /// <summary>
+        /// Capitoli di un montaggio con i capitoli candidati scelti tratto per tratto: ogni tratto contribuisce i capitoli
+        /// del proprio taglio fra i suoi candidati, nella sua posizione del risultato
+        /// </summary>
+        /// <param name="chapters">Capitoli candidati di ogni tratto, nel tempo del sorgente</param>
+        /// <param name="ranges">Tratti del sorgente nell'ordine del risultato, anche ripetuti</param>
+        /// <returns>Capitoli nel tempo del risultato</returns>
+        public static List<ChapterMark> Montage(IList<List<ChapterMark>> chapters, IList<ChapterRange> ranges)
+        {
             List<ChapterMark> result = new List<ChapterMark>();
             long offset = 0;
 
             for (int i = 0; ranges != null && i < ranges.Count; i++)
             {
-                List<ChapterMark> cut = Cut(chapters, ranges[i].StartNs, ranges[i].EndNs);
+                List<ChapterMark> cut = Cut(chapters[i], ranges[i].StartNs, ranges[i].EndNs);
 
                 for (int j = 0; j < cut.Count; j++)
                 {

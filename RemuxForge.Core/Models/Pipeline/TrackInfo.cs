@@ -20,6 +20,7 @@ namespace RemuxForge.Core.Models
             this.DefaultTrack = false;
             this.ForcedTrack = false;
             this.PixelDimensions = "";
+            this.CodecPrivateData = "";
         }
 
         #endregion
@@ -110,6 +111,11 @@ namespace RemuxForge.Core.Models
         /// Dimensioni in pixel della traccia video (es. "1920x1080"), vuote se non dichiarate
         /// </summary>
         public string PixelDimensions { get; set; }
+
+        /// <summary>
+        /// Dati privati del codec della traccia video in esadecimale, come li riporta mkvmerge; vuoti per le altre tracce o se assenti
+        /// </summary>
+        public string CodecPrivateData { get; set; }
 
         #endregion
     }

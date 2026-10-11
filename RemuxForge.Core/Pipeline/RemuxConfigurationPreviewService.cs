@@ -2,6 +2,7 @@ using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Media;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -23,8 +24,7 @@ namespace RemuxForge.Core.Pipeline
         public Task<RemuxPreviewSnapshot> PreviewAsync(RemuxPreviewRequest request,
             IProgress<RemuxPreviewProgress> progress = null, CancellationToken cancellationToken = default)
         {
-            RemuxPreviewRequest detached = request with { FileExtensions = request.FileExtensions.ToArray() };
-            return Task.Run(() => this.Preview(detached, progress, cancellationToken), cancellationToken);
+            return Task.Run(() => this.Preview(request, progress, cancellationToken), cancellationToken);
         }
 
         private RemuxPreviewSnapshot Preview(RemuxPreviewRequest request, IProgress<RemuxPreviewProgress> progress, CancellationToken cancellation)
@@ -41,15 +41,13 @@ namespace RemuxForge.Core.Pipeline
                     throw new ArgumentException(AppText.T("remuxConfiguration.inputPathsUnavailable"));
                 if (File.Exists(request.SourcePath) != File.Exists(request.LangPath))
                     throw new ArgumentException(AppText.T("remuxConfiguration.inputPairType"));
-                if (request.FileExtensions.Count == 0) throw new ArgumentException(AppText.T("validation.extensionRequired"));
-                if (File.Exists(request.SourcePath) && new[] { request.SourcePath, request.LangPath }.Any(file =>
-                    !request.FileExtensions.Any(extension => string.Equals(Path.GetExtension(file).TrimStart('.'), extension.Trim().TrimStart('.'), StringComparison.OrdinalIgnoreCase))))
+                if (File.Exists(request.SourcePath) && new[] { request.SourcePath, request.LangPath }.Any(file => !MediaContainerFormats.IsSupported(file)))
                     throw new ArgumentException(AppText.T("remuxConfiguration.inputExtensionNotAllowed"));
                 if (!File.Exists(request.SourcePath)) _ = new Regex(request.MatchPattern);
                 Options scanOptions = new Options(false)
                 {
                     SourceFolder = Path.GetFullPath(request.SourcePath), LanguageFolder = Path.GetFullPath(request.LangPath),
-                    MatchPattern = request.MatchPattern, FileExtensions = request.FileExtensions.ToList(), Recursive = request.Recursive
+                    MatchPattern = request.MatchPattern, Recursive = request.Recursive
                 };
                 PipelineFileScanner scanner = new PipelineFileScanner((section, level, text) => { });
                 foreach (FileProcessingRecord record in scanner.Scan(scanOptions, true, cancellation))

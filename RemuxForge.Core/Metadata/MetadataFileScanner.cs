@@ -1,4 +1,5 @@
 using RemuxForge.Core.Localization;
+using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -36,6 +37,15 @@ namespace RemuxForge.Core.Metadata
 
         #endregion
 
+        #region Proprietà
+
+        /// <summary>
+        /// File video non MKV trovati nell'ultima scansione di cartella e ignorati
+        /// </summary>
+        public int IgnoredFileCount { get; private set; }
+
+        #endregion
+
         #region Metodi pubblici
 
         /// <summary>
@@ -63,14 +73,17 @@ namespace RemuxForge.Core.Metadata
             string source = sourcePath != null ? sourcePath.Trim() : "";
             string rootFolder;
 
+            this.IgnoredFileCount = 0;
             if (string.IsNullOrEmpty(source))
                 throw new InvalidOperationException(AppText.T("metadata.scanner.inputNotConfigured"));
 
             if (File.Exists(source))
             {
                 string fullPath = Path.GetFullPath(source);
-                if (string.Equals(Path.GetExtension(fullPath), ".mkv", StringComparison.OrdinalIgnoreCase))
-                    records.Add(this.CreateRecord(fullPath, Path.GetDirectoryName(fullPath)));
+                if (!MediaContainerFormats.IsMatroska(fullPath))
+                    throw new InvalidOperationException(AppText.T("metadata.validation.onlyMkv"));
+
+                records.Add(this.CreateRecord(fullPath, Path.GetDirectoryName(fullPath)));
             }
             else if (Directory.Exists(source))
             {
@@ -107,7 +120,8 @@ namespace RemuxForge.Core.Metadata
 
             try
             {
-                files = Directory.GetFiles(currentFolder, "*.mkv", SearchOption.TopDirectoryOnly);
+                // Il filtro per estensione si applica dopo: il pattern di GetFiles su Linux distingue le maiuscole
+                files = Directory.GetFiles(currentFolder, "*", SearchOption.TopDirectoryOnly);
             }
             catch (UnauthorizedAccessException)
             {
@@ -130,6 +144,14 @@ namespace RemuxForge.Core.Metadata
                 // su una cartella grande è l'unico punto in cui la richiesta può essere onorata
                 if (stopRequested != null && stopRequested())
                     return;
+
+                if (!MediaContainerFormats.IsMatroska(files[i]))
+                {
+                    if (MediaContainerFormats.IsSupported(files[i]))
+                        this.IgnoredFileCount++;
+
+                    continue;
+                }
 
                 records.Add(this.CreateRecord(Path.GetFullPath(files[i]), rootFolder));
                 if (progressCallback != null)

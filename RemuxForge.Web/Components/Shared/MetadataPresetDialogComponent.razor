@@ -194,7 +194,7 @@
                             else if (_previewResult != null)
                             {
                                 <div class="metadata-preview-summary">
-                                    <span>@AppText.F("web.metadata.presetDialog.previewTotals", _previewResult.MatchCount, _previewResult.ChangeCount)</span>
+                                    <span>@AppText.Count("web.metadata.presetDialog.previewTotals", _previewResult.MatchCount, AppText.Count("web.metadata.presetDialog.changeCount", _previewResult.ChangeCount))</span>
                                     <span>@Utils.GetMetadataExecutionModeText(_previewResult.ExecutionMode)</span>
                                 </div>
                                 @if (GetSelectedRuleChanges().Count == 0)

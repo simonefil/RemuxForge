@@ -49,7 +49,7 @@
                             }
                             <div class="metadata-ai-preview-file-name" title="@record.InputFile">@System.IO.Path.GetFileName(record.InputFile)</div>
                             <div style="color: @(string.IsNullOrEmpty(record.ErrorMessage) ? "var(--rz-text-secondary-color)" : "var(--rz-danger)"); font-size: 0.9em;">
-                                @(string.IsNullOrEmpty(record.ErrorMessage) ? AppText.F("web.metadata.ai.previewFileChanges", record.ChangeCount, Utils.GetMetadataExecutionModeText(record.ExecutionMode)) : record.ErrorMessage)
+                                @(string.IsNullOrEmpty(record.ErrorMessage) ? AppText.Count("web.metadata.ai.previewFileChanges", record.ChangeCount, Utils.GetMetadataExecutionModeText(record.ExecutionMode)) : record.ErrorMessage)
                             </div>
                         </Template>
                     </RadzenListBox>
@@ -452,7 +452,7 @@
 
             this._containerDataLoaded = true;
             if (failed > 0)
-                this._error = AppText.F("web.metadata.ai.readingFailures", failed);
+                this._error = AppText.Count("web.metadata.ai.readingFailures", failed);
 
             await this.StartGenerationAsync();
         });
@@ -497,7 +497,7 @@
             }
             else
             {
-                this._error = AppText.F("web.metadata.ai.maxRounds", result.Rounds) + (result.Errors.Count > 0 ? Environment.NewLine + string.Join(Environment.NewLine, result.Errors) : "");
+                this._error = AppText.Count("web.metadata.ai.maxRounds", result.Rounds) + (result.Errors.Count > 0 ? Environment.NewLine + string.Join(Environment.NewLine, result.Errors) : "");
             }
         }
         catch (OperationCanceledException)
@@ -883,9 +883,9 @@
 
             if (fileCount > 0 && (inPlace || trackRemovalCount > 0) && !options.DryRun)
             {
-                parts.Add(inPlace ? AppText.F("web.metadata.confirmOverwrite", fileCount) : AppText.F("web.metadata.confirmApply", fileCount));
+                parts.Add(inPlace ? AppText.Count("web.metadata.confirmOverwrite", fileCount) : AppText.Count("web.metadata.confirmApply", fileCount));
                 if (trackRemovalCount > 0)
-                    parts.Add(AppText.F("web.metadata.confirmTrackRemoval", trackRemovalCount));
+                    parts.Add(AppText.Count("web.metadata.confirmTrackRemoval", trackRemovalCount));
             }
         }
 

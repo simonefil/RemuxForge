@@ -458,7 +458,7 @@ namespace RemuxForge.Web.Components.Pages
                 if (this._splitReviewStage == "analyze")
                     this._splitReviewStage = SplitReviewGate.RequiresReview(this.SplitOrchestrator.GetRecords()) ? "ready" : null;
                 NotificationSeverity severity = summary.Failed > 0 ? NotificationSeverity.Warning : NotificationSeverity.Success;
-                this.NotificationService.Notify(severity, AppText.T("web.split.notify.analyzeTitle"), AppText.F("web.split.notify.analyzeBody", summary.Succeeded, summary.Failed), 6000);
+                this.NotificationService.Notify(severity, AppText.T("web.split.notify.analyzeTitle"), AppText.Count("web.split.notify.analyzeBody", summary.Succeeded, summary.Failed), 6000);
                 this.NotifySplitWarnings();
                 this.StateHasChanged();
             });
@@ -477,8 +477,8 @@ namespace RemuxForge.Web.Components.Pages
 
                 NotificationSeverity severity = summary.Failed > 0 ? NotificationSeverity.Error : (summary.Stopped ? NotificationSeverity.Warning : NotificationSeverity.Success);
                 string body = summary.Stopped
-                    ? AppText.F("web.split.notify.splitStopped", summary.Succeeded, summary.Failed)
-                    : AppText.F("web.split.notify.splitBody", summary.Succeeded, summary.Failed, summary.Skipped);
+                    ? AppText.Count("web.split.notify.splitStopped", summary.Failed, summary.Succeeded)
+                    : AppText.Count("web.split.notify.splitBody", summary.Failed, summary.Succeeded, summary.Skipped);
                 this.NotificationService.Notify(severity, AppText.T("web.split.notify.splitTitle"), body, 8000);
                 this.StateHasChanged();
             });
@@ -544,12 +544,12 @@ namespace RemuxForge.Web.Components.Pages
             if (files == 0)
                 return;
 
-            if (outputs > 0) { categories.Add(AppText.F("web.split.notify.catOutputs", outputs)); }
-            if (collisions > 0) { categories.Add(AppText.F("web.split.notify.catCollisions", collisions)); }
-            if (reencodes > 0) { categories.Add(AppText.F("web.split.notify.catReencode", reencodes)); }
+            if (outputs > 0) { categories.Add(AppText.Count("web.split.notify.catOutputs", outputs)); }
+            if (collisions > 0) { categories.Add(AppText.Count("web.split.notify.catCollisions", collisions)); }
+            if (reencodes > 0) { categories.Add(AppText.Count("web.split.notify.catReencode", reencodes)); }
             if (categories.Count == 0) { categories.Add(AppText.T("web.split.notify.catOther")); }
 
-            this.NotificationService.Notify(NotificationSeverity.Info, AppText.T("web.split.notify.warningsTitle"), AppText.F("web.split.notify.warningsBody", files, string.Join(", ", categories)), 8000);
+            this.NotificationService.Notify(NotificationSeverity.Info, AppText.T("web.split.notify.warningsTitle"), AppText.Count("web.split.notify.warningsBody", files, string.Join(", ", categories)), 8000);
         }
 
         /// <summary>
@@ -591,7 +591,7 @@ namespace RemuxForge.Web.Components.Pages
             this.InvokeAsync(() =>
             {
                 NotificationSeverity severity = failed > 0 ? NotificationSeverity.Warning : NotificationSeverity.Success;
-                this.NotificationService.Notify(severity, AppText.T("web.metadata.notify.analyzeTitle"), AppText.F("web.metadata.notify.analyzeBody", analyzed, failed), 6000);
+                this.NotificationService.Notify(severity, AppText.T("web.metadata.notify.analyzeTitle"), AppText.Count("web.metadata.notify.analyzeBody", analyzed, failed), 6000);
                 this.StateHasChanged();
             });
         }
@@ -606,7 +606,7 @@ namespace RemuxForge.Web.Components.Pages
             this.InvokeAsync(() =>
             {
                 NotificationSeverity severity = failed > 0 ? NotificationSeverity.Error : NotificationSeverity.Success;
-                this.NotificationService.Notify(severity, AppText.T("web.metadata.notify.applyTitle"), AppText.F("web.metadata.notify.applyBody", applied, failed), 6000);
+                this.NotificationService.Notify(severity, AppText.T("web.metadata.notify.applyTitle"), AppText.Count("web.metadata.notify.applyBody", applied, failed), 6000);
                 this.StateHasChanged();
             });
         }
@@ -2577,7 +2577,7 @@ namespace RemuxForge.Web.Components.Pages
             Options options = this.Orchestrator.CurrentOptions;
             RemuxPreviewRequest request = new RemuxPreviewRequest(options.SourceFolder,
                 string.IsNullOrWhiteSpace(options.LanguageFolder) ? options.SourceFolder : options.LanguageFolder,
-                options.MatchPattern, options.FileExtensions, options.Recursive);
+                options.MatchPattern, options.Recursive);
             if (options.ExplicitTrackSelection == null || !this._remuxTrackUiState.Matches(request)) this._remuxTrackUiState = null;
         }
 
@@ -3219,11 +3219,11 @@ namespace RemuxForge.Web.Components.Pages
             if (this.MetadataOrchestrator.NeedsApplyConfirmation(selectedIndex, out fileCount, out trackRemovalCount, out inPlace))
             {
                 message = inPlace
-                    ? AppText.F("web.metadata.confirmOverwrite", fileCount)
-                    : AppText.F("web.metadata.confirmApply", fileCount);
+                    ? AppText.Count("web.metadata.confirmOverwrite", fileCount)
+                    : AppText.Count("web.metadata.confirmApply", fileCount);
 
                 if (trackRemovalCount > 0)
-                    message += Environment.NewLine + AppText.F("web.metadata.confirmTrackRemoval", trackRemovalCount);
+                    message += Environment.NewLine + AppText.Count("web.metadata.confirmTrackRemoval", trackRemovalCount);
 
                 if (!await this.ConfirmAsync(message, AppText.T("web.metadata.progress.apply")))
                     return;
@@ -3262,7 +3262,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private async Task ConfirmSplitScanAsync()
         {
-            bool confirmed = await this.ConfirmAsync(AppText.F("web.split.scanClearsOverrides", this.SplitOrchestrator.CountOverrides()), AppText.T("web.status.scan"));
+            bool confirmed = await this.ConfirmAsync(AppText.Count("web.split.scanClearsOverrides", this.SplitOrchestrator.CountOverrides()), AppText.T("web.status.scan"));
 
             if (!confirmed)
                 return;

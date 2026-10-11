@@ -367,7 +367,9 @@ namespace RemuxForge.Web.Services
                     this.SelectedIndexState = records.Count > 0 ? 0 : -1;
                 }
 
-                this.AppendLog(AppText.F("web.metadata.scanCompleted", records.Count));
+                this.AppendLog(AppText.Count("web.metadata.scanCompleted", records.Count));
+                if (scanner.IgnoredFileCount > 0)
+                    this.AppendLog(AppText.F("web.metadata.scanIgnored", scanner.IgnoredFileCount));
                 this.NotifyRecordsChanged();
             }
             catch (Exception ex)

@@ -3,9 +3,10 @@
     {
         <button type="button"
                 class="cmd-key"
+                title="@command.GetStatusLabel()"
                 disabled="@command.Disabled"
                 @onclick="() => ExecuteCommandAsync(command)">
-            <span class="key-label">@command.Shortcut</span>@command.GetStatusLabel()
+            <span class="key-label">@command.Shortcut</span><span class="cmd-key-text">@command.GetStatusLabel()</span>
         </button>
     }
 </div>

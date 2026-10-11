@@ -33,6 +33,16 @@ namespace RemuxForge.Core.Splitting
 
         #endregion
 
+        #region Costanti
+
+        /// <summary>
+        /// Byte letti dall'inizio del pacchetto di un keyframe MPEG-2 per trovarne l'header GOP: lo precedono solo il blocco
+        /// Matroska, il sequence header con le matrici, la sua estensione e gli eventuali user data
+        /// </summary>
+        private const int GOP_HEADER_WINDOW = 4096;
+
+        #endregion
+
         #region Variabili di classe
 
         /// <summary>
@@ -44,11 +54,6 @@ namespace RemuxForge.Core.Splitting
         /// Percorso mkvmerge
         /// </summary>
         private string _mkvmerge;
-
-        /// <summary>
-        /// Percorso mkvpropedit
-        /// </summary>
-        private string _mkvpropedit;
 
         /// <summary>
         /// Percorso ffmpeg
@@ -76,7 +81,6 @@ namespace RemuxForge.Core.Splitting
         {
             this._mkvextract = "";
             this._mkvmerge = "";
-            this._mkvpropedit = "";
             this._ffmpeg = "";
             this._ffprobe = "";
             this._mediainfo = "";
@@ -96,7 +100,6 @@ namespace RemuxForge.Core.Splitting
 
             this._mkvmerge = resolver.ResolveMkvMergePath(true);
             this._mkvextract = resolver.ResolveMkvExtractPath(this._mkvmerge, true);
-            this._mkvpropedit = resolver.ResolveMkvPropEditPath(this._mkvmerge, true);
             this._ffmpeg = resolver.ResolveFfmpegPath(true, true);
             this._ffprobe = resolver.ResolveFfprobePath(this._ffmpeg, true);
             this._mediainfo = resolver.ResolveMediaInfoPath(true);
@@ -106,9 +109,6 @@ namespace RemuxForge.Core.Splitting
 
             if (string.IsNullOrEmpty(this._mkvextract))
                 missing.Add("mkvextract");
-
-            if (string.IsNullOrEmpty(this._mkvpropedit))
-                missing.Add("mkvpropedit");
 
             if (string.IsNullOrEmpty(this._ffmpeg))
                 missing.Add("ffmpeg");
@@ -142,7 +142,7 @@ namespace RemuxForge.Core.Splitting
             r = this.Run(this._ffprobe, new string[]
             {
                 "-v", "quiet", "-select_streams", "v:0",
-                "-show_entries", "stream=pix_fmt,color_space,color_primaries,color_transfer,color_range,codec_name",
+                "-show_entries", "stream=pix_fmt,color_space,color_primaries,color_transfer,color_range,codec_name,codec_tag_string,width,height",
                 "-of", "default=noprint_wrappers=1:nokey=0", inputFile
             });
 
@@ -186,6 +186,19 @@ namespace RemuxForge.Core.Splitting
                 {
                     vp.ColorRange = val;
                 }
+                // Le tracce native non hanno fourcc: ffprobe scrive i byte nulli come [0][0][0][0]
+                else if (key == "codec_tag_string" && val.IndexOf('[') < 0)
+                {
+                    vp.CodecTag = val;
+                }
+                else if (key == "width")
+                {
+                    vp.Width = int.Parse(val, NumberStyles.Integer, CultureInfo.InvariantCulture);
+                }
+                else if (key == "height")
+                {
+                    vp.Height = int.Parse(val, NumberStyles.Integer, CultureInfo.InvariantCulture);
+                }
             }
 
             return vp;
@@ -201,7 +214,7 @@ namespace RemuxForge.Core.Splitting
             double value = double.NaN;
 
             ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.T("split.tools.extractingPts"));
-            tempFile = Path.Combine(Path.GetTempPath(), "mkv_pts_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".txt");
+            tempFile = Path.Combine(AppSettingsService.Instance.GetTempFolder(), "mkv_pts_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".txt");
             try
             {
                 this.Run(this._mkvextract, new string[] { sourceFile, "timestamps_v2", "0:" + tempFile });
@@ -336,8 +349,9 @@ namespace RemuxForge.Core.Splitting
         /// Legge i keyflag video, marcando i keyframe di GOP aperto
         /// </summary>
         /// <param name="inputFile">File sorgente MKV</param>
+        /// <param name="codecName">Codec video come lo riporta ffprobe</param>
         /// <returns>Fotogrammi in ordine di presentazione con flag keyframe</returns>
-        public List<MkvSplitFrameInfo> GetKeyFlags(string inputFile)
+        public List<MkvSplitFrameInfo> GetKeyFlags(string inputFile, string codecName)
         {
             List<MkvSplitFrameInfo> frames = new List<MkvSplitFrameInfo>(1 << 17);
             List<double> pts = new List<double>(1 << 17);
@@ -349,24 +363,85 @@ namespace RemuxForge.Core.Splitting
             this.RunStreamed(this._ffprobe, new string[]
             {
                 "-v", "quiet", "-select_streams", "v:0",
-                "-show_entries", "packet=pts_time,flags", "-of", "csv=p=0", inputFile
+                "-show_entries", "packet=pts_time,pos,flags", "-of", "csv=p=0", inputFile
             }, delegate (string line)
             {
                 MkvSplitFrameInfo f;
                 string[] parts = line.Split(',');
-                if (parts.Length < 2)
+                if (parts.Length < 3)
                     return;
 
                 if (!double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out value))
                     return;
 
                 f = new MkvSplitFrameInfo();
-                f.Key = parts[1].IndexOf('K') >= 0;
+                // Offset del pacchetto nel Matroska: serve solo a leggere l'header GOP dei keyframe MPEG-2
+                f.Pos = long.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out long pos) ? pos : -1;
+                f.Key = parts[2].IndexOf('K') >= 0;
                 frames.Add(f);
                 pts.Add(value);
             });
 
+            // In Video for Windows il flag è dell'indice AVI, non del fotogramma: un H.263 può avere ogni packet marcato
+            // keyframe. Il decoder con skip_frame nokey decodifica solo gli I reali, leggendo l'header di ogni packet.
+            if (codecName == "h263" || codecName == "msmpeg4v1" || codecName == "msmpeg4v2" || codecName == "msmpeg4v3")
+            {
+                HashSet<long> intra = new HashSet<long>();
+                this.RunStreamed(this._ffprobe, new string[]
+                {
+                    "-v", "quiet", "-select_streams", "v:0", "-skip_frame", "nokey",
+                    "-show_entries", "frame=pts_time", "-of", "csv=p=0", inputFile
+                }, delegate (string line)
+                {
+                    if (double.TryParse(line.Trim().TrimEnd(','), NumberStyles.Float, CultureInfo.InvariantCulture, out double framePts))
+                        intra.Add((long)Math.Round(framePts * 1000.0));
+                });
+                for (int i = 0; i < frames.Count; i++)
+                {
+                    MkvSplitFrameInfo f = frames[i];
+                    f.Key = intra.Contains((long)Math.Round(pts[i] * 1000.0));
+                    frames[i] = f;
+                }
+            }
+
             byPresentation = ToPresentationOrder(frames, pts.ToArray());
+
+            // MPEG-2, keyframe di GOP aperto con i B iniziali: closed_gop=1 nell'header GOP dice che i B iniziali sono predetti
+            // solo all'indietro e si decodificano da soli. Si legge solo l'header del keyframe, senza decodificare; senza header
+            // GOP leggibile i B iniziali restano dipendenti dal GOP precedente, come con closed_gop=0 (§11 (o))
+            if (codecName == "mpeg2video" && byPresentation.Exists(f => f.LeadingFrames > 0))
+            {
+                byte[] window = new byte[GOP_HEADER_WINDOW];
+                FileStream inF = null;
+                try
+                {
+                    inF = new FileStream(inputFile, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    for (int i = 0; i < byPresentation.Count; i++)
+                    {
+                        MkvSplitFrameInfo f = byPresentation[i];
+                        if (f.LeadingFrames == 0 || f.Pos < 0)
+                            continue;
+
+                        inF.Seek(f.Pos, SeekOrigin.Begin);
+                        int read = inF.ReadAtLeast(window, window.Length, false);
+                        // Header GOP (00 00 01 B8): 25 bit di time_code, poi closed_gop; vale solo se precede il picture header (00 00 01 00)
+                        for (int b = 0; b + 7 < read; b++)
+                        {
+                            if (window[b] != 0 || window[b + 1] != 0 || window[b + 2] != 1)
+                                continue;
+                            if (window[b + 3] == 0xB8)
+                                f.LeadingDecodable = (window[b + 7] & 0x40) != 0;
+                            if (window[b + 3] == 0xB8 || window[b + 3] == 0x00)
+                                break;
+                        }
+                        byPresentation[i] = f;
+                    }
+                }
+                finally
+                {
+                    if (inF != null) { inF.Dispose(); }
+                }
+            }
 
             ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.tools.packetsProbed", byPresentation.Count));
             return byPresentation;
@@ -398,6 +473,10 @@ namespace RemuxForge.Core.Splitting
             {
                 if (frames[decode].Key && (maxBefore != decode - 1 || presentationOf[decode] != decode))
                     frames[decode].OpenGop = true;
+                // I fotogrammi decodificati prima sono tutti e soli i primi in presentazione: quelli che mancano fino al
+                // keyframe sono i B iniziali, decodificati dopo e mostrati subito prima (D25)
+                if (frames[decode].Key && maxBefore == decode - 1 && presentationOf[decode] > decode)
+                    frames[decode].LeadingFrames = presentationOf[decode] - decode;
                 maxBefore = Math.Max(maxBefore, presentationOf[decode]);
             }
 
@@ -427,6 +506,50 @@ namespace RemuxForge.Core.Splitting
             });
 
             return count;
+        }
+
+        /// <summary>
+        /// Inizio del primo pacchetto di una traccia audio che finisce oltre il tempo indicato. I tempi sono quelli dei blocchi
+        /// Matroska, come li confronta mkvmerge, senza il ritardo del codec che ffprobe sottrae; ogni pacchetto finisce dove inizia
+        /// il successivo e l'ultimo dove mkvextract chiude la traccia
+        /// </summary>
+        /// <param name="inputFile">File MKV</param>
+        /// <param name="trackId">ID mkvmerge della traccia audio</param>
+        /// <param name="endTimestamp">Tempo in secondi oltre cui l'audio non deve arrivare</param>
+        /// <returns>Inizio in secondi del pacchetto, infinito se nessun pacchetto supera il tempo</returns>
+        public double GetAudioOverrunStart(string inputFile, int trackId, double endTimestamp)
+        {
+            string tempFile = Path.Combine(AppSettingsService.Instance.GetTempFolder(), "mkv_audio_ts_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".txt");
+            List<double> timestamps = new List<double>();
+
+            try
+            {
+                this.Run(this._mkvextract, new string[] { inputFile, "timestamps_v2", trackId.ToString(CultureInfo.InvariantCulture) + ":" + tempFile });
+                foreach (string line in File.ReadLines(tempFile))
+                {
+                    if (line.Length > 0 && line[0] != '#' && double.TryParse(line.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double value))
+                        timestamps.Add(value / 1000.0);
+                }
+            }
+            finally
+            {
+                try
+                {
+                    File.Delete(tempFile);
+                }
+                catch (IOException)
+                {
+                }
+            }
+
+            // Tempi al millesimo: un pacchetto che finisce sull'ultimo fotogramma entro mezzo millisecondo non lo supera
+            for (int index = 0; index + 1 < timestamps.Count; index++)
+            {
+                if (timestamps[index + 1] > endTimestamp + 0.0005)
+                    return timestamps[index];
+            }
+
+            return double.PositiveInfinity;
         }
 
         /// <summary>
@@ -542,40 +665,7 @@ namespace RemuxForge.Core.Splitting
         }
 
         /// <summary>
-        /// Esegue mkvpropedit
-        /// </summary>
-        /// <param name="args">Argomenti mkvpropedit</param>
-        public void RunMkvpropedit(IEnumerable<string> args)
-        {
-            this.Run(this._mkvpropedit, args);
-        }
-
-        /// <summary>
-        /// True se il file contiene audio FLAC
-        /// </summary>
-        /// <param name="inputFile">File sorgente MKV</param>
-        /// <returns>True se almeno una traccia audio è FLAC</returns>
-        public bool HasFlacAudio(string inputFile)
-        {
-            MkvToolsService service = new MkvToolsService(this._mkvmerge);
-            MkvFileInfo info = service.GetFileInfo(inputFile);
-            if (info == null)
-                return false;
-
-            for (int i = 0; i < info.Tracks.Count; i++)
-            {
-                if (string.Equals(info.Tracks[i].Type, "audio", StringComparison.OrdinalIgnoreCase) &&
-                    info.Tracks[i].Codec.IndexOf("FLAC", StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Rileva CFR/VFR da MediaInfo CLI
+        /// Rileva CFR/VFR della traccia video principale da MediaInfo CLI
         /// </summary>
         /// <param name="inputFile">File sorgente MKV</param>
         /// <returns>Modalità framerate rilevata</returns>
@@ -590,6 +680,19 @@ namespace RemuxForge.Core.Splitting
                 return MkvSplitFrameRateMode.Vfr;
 
             return MkvSplitFrameRateMode.Unknown;
+        }
+
+        /// <summary>
+        /// Legge la scansione del video da MediaInfo CLI
+        /// </summary>
+        /// <param name="inputFile">File sorgente</param>
+        /// <returns>Valore ScanType, vuoto se non dichiarato</returns>
+        /// <exception cref="InvalidOperationException">MediaInfo non risponde: il file non si tratta come progressivo</exception>
+        public string GetVideoScanType(string inputFile)
+        {
+            if (!new MediaInfoService(this._mediainfo).TryGetVideoScanType(inputFile, out string scanType))
+                throw new InvalidOperationException(AppText.F("split.tools.scanTypeReadFailed", Path.GetFileName(inputFile)));
+            return scanType;
         }
 
         #endregion

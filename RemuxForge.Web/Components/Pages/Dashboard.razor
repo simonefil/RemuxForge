@@ -37,7 +37,7 @@ else
         <header class="rf-app-header">
             <div class="rf-app-title">
                 <span class="rf-app-title-mode">@GetCurrentModeTitle()</span>
-                <span class="rf-app-title-description">@GetCurrentModeDescription()</span>
+                <span class="rf-app-title-description" title="@GetCurrentModeDescription()">@GetCurrentModeDescription()</span>
             </div>
 
             <MenuBarComponent Commands="@BuildUiCommands()"

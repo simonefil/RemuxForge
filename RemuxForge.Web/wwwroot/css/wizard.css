@@ -84,7 +84,7 @@
 /* Audio: 23rem di colonne fisse + almeno 4rem di titolo flessibile; le larghezze in rem seguono la dimensione del testo. */
 .rf-remux-wizard .rf-remux-track-table { min-width:0; overflow-x:auto; }
 .rf-remux-wizard .rf-remux-track-table:focus-visible { outline:2px solid var(--rz-primary); outline-offset:2px; }
-.rf-remux-wizard .rf-remux-track-grid .rz-grid-table { width:100%; min-width:27rem; table-layout:fixed; }
+.rf-remux-wizard .rf-remux-track-grid .rz-grid-table { width:100%; table-layout:fixed; }
 .rf-remux-wizard .rf-remux-track-grid .rz-data-grid-data td { padding:2px; height:36px; font-size:0.8125rem; white-space:nowrap; overflow-wrap:normal; }
 .rf-remux-wizard .rf-remux-track-grid .rz-cell-data { min-width:0; padding:0; font-size:inherit; line-height:1.25; }
 .rf-remux-wizard .rf-remux-track-grid th { padding:4px 2px; font-size:0.75rem; }

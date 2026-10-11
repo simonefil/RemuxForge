@@ -1,4 +1,6 @@
 using RemuxForge.Core.Audio;
+using RemuxForge.Core.Tools;
+using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Analysis.Edit.Extraction;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
@@ -64,6 +66,9 @@ namespace RemuxForge.Web.Services
 
         private volatile bool _configurationPreparing;
         private string _appliedSnapshotSignature;
+
+        /// <summary>Matroska letti dagli editor EditMap aperti, per indice di record: creati all'apertura e cancellati alla chiusura (D18)</summary>
+        private readonly Dictionary<int, NormalizedMediaFile[]> _editorMedia = new Dictionary<int, NormalizedMediaFile[]>();
 
         #endregion
 
@@ -315,8 +320,8 @@ namespace RemuxForge.Web.Services
                 foreach (PipelineInitializationLog line in publicationLog)
                     Publish(() => this.AppendLog(ConsoleHelper.FormatSectionPrefix(line.Section) + line.Message));
                 Publish(() => this.AppendLog(scan ? AppText.T("web.merge.configAppliedScanInvalidated") : resetCount > 0 ?
-                    AppText.F("web.merge.configAppliedAnalysisReset", resetCount) : renderChanged && refreshedCount > 0 ?
-                    AppText.F("web.merge.configAppliedPreviewRefreshed", refreshedCount) : AppText.T("web.merge.configApplied")));
+                    AppText.Count("web.merge.configAppliedAnalysisReset", resetCount) : renderChanged && refreshedCount > 0 ?
+                    AppText.Count("web.merge.configAppliedPreviewRefreshed", refreshedCount) : AppText.T("web.merge.configApplied")));
                 if (scan)
                 {
                     Publish(() => this.BeginProgress(AppText.T("web.progress.scan"), scannedCount, false));
@@ -424,7 +429,7 @@ namespace RemuxForge.Web.Services
                         }
 
                         this.NotifyRecordsChanged();
-                        this.AppendLog(AppText.F("web.merge.scanCompleted", scanned.Count, pending, skipped));
+                        this.AppendLog(AppText.Count("web.merge.scanCompleted", scanned.Count, pending, skipped));
                         this.CompleteProgress(AppText.T("web.progress.scanCompleted"));
                     }
                     catch (Exception ex)
@@ -1036,13 +1041,68 @@ namespace RemuxForge.Web.Services
         public MediaSource ResolveMediaSource(int recordIndex, string side)
         {
             FileProcessingRecord record = this.GetRecord(recordIndex);
+            NormalizedMediaFile[] media;
             if (record == null)
                 return null;
-            if (string.Equals(side, "source", StringComparison.OrdinalIgnoreCase))
-                return new MediaSource(record.SourceFilePath, PipelineTrackSelectionResolver.ResolveDisplayAudio(record, true));
-            if (string.Equals(side, "language", StringComparison.OrdinalIgnoreCase))
-                return new MediaSource(record.LangFilePath, PipelineTrackSelectionResolver.ResolveDisplayAudio(record, false));
-            return null;
+            lock (this._editorMedia)
+            {
+                // Una sessione aperta su file diversi da quelli del record (scan nel frattempo) non vale più
+                if (!this._editorMedia.TryGetValue(recordIndex, out media) || media[0].OriginalPath != record.SourceFilePath || media[1].OriginalPath != record.LangFilePath)
+                    media = null;
+            }
+            bool source = string.Equals(side, "source", StringComparison.OrdinalIgnoreCase);
+            if (!source && !string.Equals(side, "language", StringComparison.OrdinalIgnoreCase))
+                return null;
+            string original = source ? record.SourceFilePath : record.LangFilePath;
+            // Senza il temporaneo della sessione un file non MKV non si legge: l'editor riporta l'errore invece di aprire l'originale (D18).
+            // Vale anche per un temporaneo sparito dalla cartella temp a sessione aperta
+            if ((media == null && !MediaContainerFormats.IsMatroska(original)) || (media != null && media[source ? 0 : 1].IsTemporary && !File.Exists(media[source ? 0 : 1].Path)))
+                throw new SessionMediaMissingException(AppText.F("web.editMap.sessionMediaMissing", Path.GetFileName(original)));
+            return new MediaSource(media != null ? media[source ? 0 : 1].Path : original, PipelineTrackSelectionResolver.ResolveDisplayAudio(record, source));
+        }
+
+        /// <summary>
+        /// Prepara i Matroska letti dall'editor EditMap di un record: i container diversi da MKV passano da un temporaneo
+        /// </summary>
+        /// <param name="recordIndex">Indice del record</param>
+        /// <param name="cancellation">Annullamento dell'apertura</param>
+        /// <returns>Source e Lang da leggere; con errore il messaggio, altrimenti stringa vuota</returns>
+        public string OpenEditorMedia(int recordIndex, CancellationToken cancellation)
+        {
+            FileProcessingRecord record = this.GetRecord(recordIndex);
+            if (record == null)
+                return "";
+            this.CloseEditorMedia(recordIndex);
+            MediaContainerNormalizer normalizer = new MediaContainerNormalizer(new ToolPathResolverService(AppSettingsService.Instance.ConfigFolder).ResolveMkvMergePath(false), AppSettingsService.Instance.GetTempFolder());
+            string error = normalizer.NormalizePair(record.SourceFilePath, record.LangFilePath, false, cancellation, out NormalizedMediaFile source, out NormalizedMediaFile language);
+            if (error.Length > 0 || cancellation.IsCancellationRequested)
+            {
+                source.Dispose();
+                language?.Dispose();
+                return error;
+            }
+            lock (this._editorMedia)
+                this._editorMedia[recordIndex] = new NormalizedMediaFile[] { source, language };
+            // L'editor chiuso durante la normalizzazione ha già chiamato CloseEditorMedia: il temporaneo non deve restare
+            if (cancellation.IsCancellationRequested)
+                this.CloseEditorMedia(recordIndex);
+            return "";
+        }
+
+        /// <summary>
+        /// Cancella i temporanei dell'editor EditMap di un record
+        /// </summary>
+        /// <param name="recordIndex">Indice del record</param>
+        public void CloseEditorMedia(int recordIndex)
+        {
+            NormalizedMediaFile[] media;
+            lock (this._editorMedia)
+            {
+                if (!this._editorMedia.Remove(recordIndex, out media))
+                    return;
+            }
+            media[0].Dispose();
+            media[1].Dispose();
         }
 
         /// <summary>
@@ -1084,6 +1144,8 @@ namespace RemuxForge.Web.Services
                     new MediaSource(record.SourceFilePath, PipelineTrackSelectionResolver.ResolveDisplayAudio(record, true)),
                     new MediaSource(record.LangFilePath, new List<TrackInfo>(languageTracks))
                 };
+                // L'editor legge gli altri container da un proprio temporaneo: prepararne le cache sull'originale non serve
+                media.RemoveAll(item => !MediaContainerFormats.IsMatroska(item.FilePath));
                 CancellationTokenSource warmupCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation, this._audioCacheCancellation.Token);
                 _ = Task.Run(async () =>
                 {
@@ -1193,8 +1255,7 @@ namespace RemuxForge.Web.Services
             if (!string.Equals(previousOptions.SourceFolder, newOptions.SourceFolder, StringComparison.Ordinal) ||
                 !string.Equals(previousOptions.LanguageFolder, newOptions.LanguageFolder, StringComparison.Ordinal) ||
                 !string.Equals(previousOptions.MatchPattern, newOptions.MatchPattern, StringComparison.Ordinal) ||
-                previousOptions.Recursive != newOptions.Recursive ||
-                !this.StringListsEqual(previousOptions.FileExtensions, newOptions.FileExtensions))
+                previousOptions.Recursive != newOptions.Recursive)
             {
                 result = true;
             }

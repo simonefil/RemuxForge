@@ -242,6 +242,7 @@
     private IJSObjectReference _previewPair;
     private IJSObjectReference _keyboard;
     private DotNetObjectReference<EditMapEditorPageComponent> _dotNetReference;
+    private readonly SessionMediaMissingNotice _sessionMediaNotice = new SessionMediaMissingNotice();
     private string _sourceError = "";
     private string _languageError = "";
     private string _sourcePreviewMessage = "";
@@ -294,7 +295,7 @@
     /// </summary>
     private RenderFragment OperationColumns => __builder =>
     {
-        <RadzenDataGridColumn TItem="EditOperation" Title="#" Width="3rem" Resizable="false">
+        <RadzenDataGridColumn TItem="EditOperation" Title="#" Width="12%" MinWidth="2.5rem" Resizable="false">
             <Template Context="operation">
                 @{
                     int index = _workingMap.Operations.IndexOf(operation);
@@ -316,10 +317,10 @@
                 </span>
             </Template>
         </RadzenDataGridColumn>
-        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.type")" Width="4.25rem"><Template Context="operation">@GetOperationTypeLabel(operation)</Template></RadzenDataGridColumn>
-        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.source")" Width="6.25rem"><Template Context="operation">@FormatTimestamp(operation.SourceTimestampMs)</Template></RadzenDataGridColumn>
-        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.language")" Width="6.25rem"><Template Context="operation">@FormatTimestamp(operation.LangTimestampMs)</Template></RadzenDataGridColumn>
-        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.detail.durationLabel")" Width="5.25rem"><Template Context="operation">@FormatDuration(operation.DurationMs)</Template></RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.type")" Width="18%" MinWidth="2.5rem"><Template Context="operation"><span title="@GetOperationTypeLabel(operation)">@GetOperationTypeLabel(operation)</span></Template></RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.source")" Width="25%" MinWidth="2.5rem"><Template Context="operation"><span title="@FormatTimestamp(operation.SourceTimestampMs)">@FormatTimestamp(operation.SourceTimestampMs)</span></Template></RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.editMap.language")" Width="25%" MinWidth="2.5rem"><Template Context="operation"><span title="@FormatTimestamp(operation.LangTimestampMs)">@FormatTimestamp(operation.LangTimestampMs)</span></Template></RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="EditOperation" Title="@AppText.T("web.detail.durationLabel")" Width="20%" MinWidth="2.5rem"><Template Context="operation"><span title="@FormatDuration(operation.DurationMs)">@FormatDuration(operation.DurationMs)</span></Template></RadzenDataGridColumn>
     };
 
     /// <summary>
@@ -440,6 +441,25 @@
         this._sourcePlayheadMs = 0.0;
         this._languageCursorMs = double.NaN;
 
+        // I container diversi da MKV si leggono da un temporaneo che vive quanto l'editor (D18)
+        string mediaError = "";
+        try
+        {
+            mediaError = await Task.Run(() => this.Orchestrator.OpenEditorMedia(this.RecordIndex, this._cancellation.Token), this._cancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        if (mediaError.Length > 0)
+        {
+            this._sourceError = mediaError;
+            this._languageError = mediaError;
+            this._sourceIndexing = false;
+            this._languageIndexing = false;
+            return;
+        }
+
         Task sourceTask = this.BuildIndexAsync(true);
         Task languageTask = this.BuildIndexAsync(false);
         await Task.WhenAll(sourceTask, languageTask);
@@ -497,7 +517,7 @@
     {
         try
         {
-            string path = source ? this.Record.SourceFilePath : this.Record.LangFilePath;
+            string path = this.Orchestrator.ResolveMediaSource(this.RecordIndex, source ? "source" : "language").FilePath;
             VideoFrameIndex index = await Task.Run(() => this.FrameAccess.GetOrBuildIndex(path, 120000, this._cancellation.Token), this._cancellation.Token);
             if (source)
                 this._sourceIndex = index;
@@ -844,7 +864,9 @@
                     this._sourcePreviewMessage = AppText.T("web.editMap.previewError");
                     this._languagePreviewMessage = AppText.T("web.editMap.previewError");
                 }
-                this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.editMap.previewError"), exception.Message, 8000);
+                // Il temporaneo della sessione mancante si notifica una volta sola, non a ogni fotogramma
+                if (!this._sessionMediaNotice.HandleClientError(this.NotificationService, exception.Message))
+                    this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.editMap.previewError"), exception.Message, 8000);
             }
         }
         this.StateHasChanged();
@@ -2234,6 +2256,16 @@
     }
 
     /// <summary>
+    /// Riceve dalla timeline JavaScript la risposta 409 di un'immagine audio: manca il temporaneo della sessione
+    /// </summary>
+    /// <param name="message">Messaggio localizzato del server</param>
+    [JSInvokable]
+    public Task OnSessionMediaMissing(string message)
+    {
+        return this.InvokeAsync(() => this._sessionMediaNotice.Notify(this.NotificationService, message));
+    }
+
+    /// <summary>
     /// Sposta il playhead Source dalla timeline JavaScript
     /// </summary>
     /// <param name="sourceMs">Timestamp Source relativo</param>
@@ -2653,6 +2685,7 @@
         this.ContextMenuService.OnClose -= this.HandleContextMenuClosed;
         this.CloseContextMenu();
         this._cancellation.Cancel();
+        this.Orchestrator.CloseEditorMedia(this.RecordIndex);
         if (this._previewPair != null)
         {
             try { await this._previewPair.InvokeVoidAsync("dispose"); } catch { }

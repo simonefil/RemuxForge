@@ -160,13 +160,13 @@ namespace RemuxForge.Web.Services
             this.Options.AudioOnly = false;
             this.Options.ExplicitTrackSelection = null;
             this.ResetGroupChoices();
-            this._choicesRequest = this.HasCurrentSnapshot ? this.SnapshotRequest with { FileExtensions = this.SnapshotRequest.FileExtensions.ToArray() } : null;
+            this._choicesRequest = this.HasCurrentSnapshot ? this.SnapshotRequest : null;
             this._knownGroups = this.HasCurrentSnapshot ? new HashSet<string>(this.Snapshot.Groups.Select(g => g.Key), StringComparer.Ordinal) : new HashSet<string>(StringComparer.Ordinal);
         }
 
         public RemuxPreviewRequest PreviewRequest() => new RemuxPreviewRequest(this.Options.SourceFolder,
             string.IsNullOrWhiteSpace(this.Options.LanguageFolder) ? this.Options.SourceFolder : this.Options.LanguageFolder,
-            this.Options.MatchPattern, this.Options.FileExtensions.ToArray(), this.Options.Recursive);
+            this.Options.MatchPattern, this.Options.Recursive);
 
         public bool HasCurrentSnapshot => this.Snapshot != null && this.SnapshotRequest != null &&
             SameRequest(this.SnapshotRequest, this.PreviewRequest());
@@ -174,7 +174,7 @@ namespace RemuxForge.Web.Services
 
         public static bool SameRequest(RemuxPreviewRequest left, RemuxPreviewRequest right) =>
             left.SourcePath == right.SourcePath && left.LangPath == right.LangPath && left.MatchPattern == right.MatchPattern &&
-            left.Recursive == right.Recursive && left.FileExtensions.SequenceEqual(right.FileExtensions);
+            left.Recursive == right.Recursive;
 
         public void InvalidatePreview()
         {
@@ -232,7 +232,7 @@ namespace RemuxForge.Web.Services
                     }
                 }
             }
-            this._choicesRequest = request with { FileExtensions = request.FileExtensions.ToArray() };
+            this._choicesRequest = request;
             this._knownGroups = available;
             // Old Web state could contain struck-out Lang copies. They now mean deletion.
             foreach (RemuxTrackGroup group in snapshot.Groups.Where(g => g.Side == RemuxTrackSide.Lang && this.ExcludedGroups.Contains(g.Key)))
@@ -246,7 +246,7 @@ namespace RemuxForge.Web.Services
         public RemuxTrackUiState CaptureTrackUiState() => !this.Advanced || !this.HasCurrentSnapshot || !this.Snapshot.InventoryComplete ? null :
             new RemuxTrackUiState
             {
-                Request = this.SnapshotRequest with { FileExtensions = this.SnapshotRequest.FileExtensions.ToArray() },
+                Request = this.SnapshotRequest,
                 ResultGroups = new HashSet<string>(this.ResultGroups, StringComparer.Ordinal),
                 ExcludedGroups = new HashSet<string>(this.ExcludedGroups, StringComparer.Ordinal),
                 KnownGroups = new HashSet<string>(this._knownGroups, StringComparer.Ordinal)

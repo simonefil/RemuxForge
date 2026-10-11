@@ -1,6 +1,7 @@
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
+using RemuxForge.Core.Media;
 using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
 using RemuxForge.Core.Transcoding;
@@ -42,14 +43,15 @@ namespace RemuxForge.Core.Pipeline
                 }
                 sourceNameNoExt = Path.GetFileNameWithoutExtension(sourceFilePath);
                 tempOutput = Path.Combine(sourceDir, sourceNameNoExt + "_TEMP.mkv");
-                finalOutput = sourceFilePath;
+                // L'output è sempre Matroska: da un .mkv sostituisce l'originale con il suo nome, maiuscole comprese, da un altro container gli nasce accanto (D05)
+                finalOutput = MediaContainerFormats.IsMatroska(sourceFilePath) ? sourceFilePath : Path.ChangeExtension(sourceFilePath, MediaContainerFormats.OUTPUT_EXTENSION);
             }
             else
             {
                 normalizedSource = this.NormalizePath(sourceFilePath);
                 normalizedFolder = this.ResolveSourceBaseFolder(options.SourceFolder);
                 relativePath = normalizedSource.Substring(normalizedFolder.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                finalOutput = Path.Combine(options.DestinationFolder, relativePath);
+                finalOutput = Path.ChangeExtension(Path.Combine(options.DestinationFolder, relativePath), MediaContainerFormats.OUTPUT_EXTENSION);
                 tempOutput = finalOutput;
 
                 destDir = Path.GetDirectoryName(finalOutput);
@@ -78,14 +80,14 @@ namespace RemuxForge.Core.Pipeline
             string relativePath;
             if (options.Overwrite)
             {
-                finalOutput = sourceFilePath;
+                finalOutput = MediaContainerFormats.IsMatroska(sourceFilePath) ? sourceFilePath : Path.ChangeExtension(sourceFilePath, MediaContainerFormats.OUTPUT_EXTENSION);
             }
             else
             {
                 normalizedSource = this.NormalizePath(sourceFilePath);
                 normalizedFolder = this.ResolveSourceBaseFolder(options.SourceFolder);
                 relativePath = normalizedSource.Substring(normalizedFolder.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                finalOutput = Path.Combine(options.DestinationFolder, relativePath);
+                finalOutput = Path.ChangeExtension(Path.Combine(options.DestinationFolder, relativePath), MediaContainerFormats.OUTPUT_EXTENSION);
             }
 
             return finalOutput;
@@ -132,9 +134,11 @@ namespace RemuxForge.Core.Pipeline
 
                     if (options.Overwrite)
                     {
+                        // Un .mkv già presente con il nome di destinazione viene sostituito anche se non è il sorgente (D04)
                         File.Delete(finalOutput);
                         File.Move(tempOutput, finalOutput);
-                        ConsoleHelper.Write(LogSection.Merge, LogLevel.Success, AppText.T("remux.pipeline.originalReplaced"));
+                        ConsoleHelper.Write(LogSection.Merge, LogLevel.Success, string.Equals(finalOutput, record.SourceFilePath, StringComparison.OrdinalIgnoreCase) ?
+                            AppText.T("remux.pipeline.originalReplaced") : AppText.F("remux.pipeline.writtenBesideOriginal", Path.GetFileName(finalOutput)));
                     }
 
                     if (File.Exists(finalOutput))

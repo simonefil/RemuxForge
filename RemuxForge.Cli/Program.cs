@@ -310,7 +310,11 @@ namespace RemuxForge.Cli
                     ConsoleHelper.Write(LogSection.General, LogLevel.Warning, AppText.F("cli.metadata.skipped", conflicts[i].InputFile, MetadataOutputValidator.DescribeConflict(conflicts[i])));
                 }
 
-                ConsoleHelper.Write(LogSection.General, LogLevel.Success, AppText.F("cli.metadata.scanned", records.Count));
+                ConsoleHelper.Write(LogSection.General, LogLevel.Success, AppText.Count("cli.metadata.scanned", records.Count));
+                if (scanner.IgnoredFileCount > 0)
+                {
+                    ConsoleHelper.Write(LogSection.General, LogLevel.Warning, AppText.F("cli.metadata.ignored", scanner.IgnoredFileCount));
+                }
                 ConsoleHelper.Write(LogSection.General, LogLevel.Info, AppText.F("cli.metadata.presetLoaded", preset.Name));
 
                 for (int i = 0; i < records.Count; i++)
@@ -359,7 +363,8 @@ namespace RemuxForge.Cli
         {
             ConsoleHelper.Write(LogSection.Config, LogLevel.Info, AppText.T("cli.config.title"));
             ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.sourceFolder", opts.SourceFolder));
-            if (string.Equals(opts.SourceFolder, opts.LanguageFolder, StringComparison.OrdinalIgnoreCase))
+            // Lang uguale a Source come cartella reale sul disco, non come testo: ogni file si abbina a sé stesso (D22)
+            if (FileHelper.IsSamePath(opts.SourceFolder, opts.LanguageFolder))
             {
                 ConsoleHelper.Write(LogSection.Config, LogLevel.Phase, AppText.T("cli.config.singleSource"));
             }
@@ -369,7 +374,6 @@ namespace RemuxForge.Cli
             }
             ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.targetLanguage", string.Join(", ", opts.TargetLanguage)));
             ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.matchPattern", opts.MatchPattern));
-            ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.fileExtensions", string.Join(", ", opts.FileExtensions)));
             if (opts.Overwrite)
             {
                 ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.T("cli.config.outputOverwrite"));
@@ -561,7 +565,7 @@ namespace RemuxForge.Cli
                     string delayStr = Utils.FormatDelay(r.AudioDelayApplied);
                     string frameSyncStr = r.FrameSyncTimeMs > 0 ? r.FrameSyncTimeMs + "ms" : "-";
                     string frameSyncConfidenceStr = r.FrameSyncResult != null ? r.FrameSyncResult.Confidence.ToString("P0", System.Globalization.CultureInfo.InvariantCulture) : "-";
-                    string deepStr = r.DeepAnalysisApplied && r.DeepAnalysisMap != null ? AppText.F("cli.report.deepOps", r.DeepAnalysisMap.Operations.Count) : "-";
+                    string deepStr = r.DeepAnalysisApplied && r.DeepAnalysisMap != null ? AppText.Count("cli.report.deepOps", r.DeepAnalysisMap.Operations.Count) : "-";
                     string speedStr = r.SpeedCorrectionTimeMs > 0 ? r.SpeedCorrectionTimeMs + "ms" : "-";
                     string mergeStr = r.MergeTimeMs > 0 ? r.MergeTimeMs + "ms" : (isDryRun ? AppText.T("cli.na") : "-");
 

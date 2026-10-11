@@ -792,6 +792,12 @@ namespace RemuxForge.Core.Media.Mkv
                     track.PixelDimensions = pixelEl.GetString() ?? "";
                 }
 
+                // Dati privati del codec solo per il video: servono a leggere il VOL MPEG-4 senza rilanciare mkvmerge
+                if (string.Equals(track.Type, "video", StringComparison.Ordinal) && propsEl.TryGetProperty("codec_private_data", out JsonElement privateEl) && privateEl.ValueKind == JsonValueKind.String)
+                {
+                    track.CodecPrivateData = privateEl.GetString() ?? "";
+                }
+
                 if (propsEl.TryGetProperty("audio_channels", out JsonElement chEl))
                 {
                     track.Channels = chEl.GetInt32();

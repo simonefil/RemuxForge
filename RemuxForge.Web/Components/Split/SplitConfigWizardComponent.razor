@@ -1,3 +1,4 @@
+@using System.Globalization
 @using System.Linq
 @implements IAsyncDisposable
 
@@ -48,10 +49,7 @@
                         <RadzenButton Icon="folder_open" Text="@AppText.T("web.remux.browse")" Variant="Variant.Outlined" Disabled="@_applying" Click="@(() => BrowseAsync(true))" />
                     </RemuxFieldComponent>
                     <RemuxFieldComponent Label="@L("recursive")" Component="Recursive" Field="Recursive" HelpKey="recursive" Note="@(Draft.SourceIsFile ? T("note.folderOnly") : "")">
-                        <RadzenSwitch TValue="bool" Name="Recursive" Value="@Draft.Recursive" Disabled="@(_applying || Draft.SourceIsFile)" Change="@(v => Edit(() => Draft.Recursive = v))" />
-                    </RemuxFieldComponent>
-                    <RemuxFieldComponent Label="@L("extensions")" Required="true" Field="FileExtensions" HelpKey="extensions">
-                        <RadzenTextBox Name="FileExtensions" Value="@Draft.Extensions" Change="@(v => Edit(() => Draft.Extensions = v))" aria-required="true" aria-invalid="@Invalid("FileExtensions")" Style="width:100%" />
+                        <RadzenSwitch TValue="bool" Name="Recursive" Value="@Draft.Recursive" Disabled="@(_applying || Draft.SourceIsFile)" Change="@((bool v) => ChangeRecursive(v))" />
                     </RemuxFieldComponent>
                 }
                 else if (_section == 1)
@@ -96,12 +94,37 @@
                             <RadzenTextBox Name="TrimEnd" Value="@Draft.TrimEnd" Placeholder="@T("placeholder.fileEnd")" Change="@(v => Edit(() => Draft.TrimEnd = v))" aria-invalid="@Invalid("TrimEnd")" Style="width:100%" />
                         </RemuxFieldComponent>
                     }
-                    <RemuxFieldComponent Label="@L("snap")" Field="Snap" Component="Snap" HelpKey="snap">
-                        <RadzenDropDown TValue="MkvSplitSnapMode" Name="Snap" Data="@SnapModes" Value="@Draft.Snap" Change="@(v => Edit(() => Draft.Snap = (MkvSplitSnapMode)v))" Disabled="@_applying" Style="width:100%">
+                    <RemuxFieldComponent Label="@L("snap")" Field="Snap" Component="Snap" HelpKey="snap" Note="@Draft.KeyframeOnlyReason">
+                        <RadzenDropDown TValue="MkvSplitSnapMode" Name="Snap" Data="@Draft.SnapModes" Value="@Draft.Snap" Change="@(v => Edit(() => Draft.Snap = (MkvSplitSnapMode)v))" Disabled="@_applying" Style="width:100%">
                             <Template Context="snap">@SnapLabel((MkvSplitSnapMode)snap)</Template>
                             <ValueTemplate Context="snap">@SnapLabel((MkvSplitSnapMode)snap)</ValueTemplate>
                         </RadzenDropDown>
                     </RemuxFieldComponent>
+                    @if (Draft.ShowsEncodeSettings)
+                    {
+                        MkvSplitCodecCapability encode = Draft.EncodeCapability;
+                        <RemuxFieldComponent Label="@L("encodeQuality")" Required="true" Field="EncodeQuality" HelpKey="encodeQuality"
+                                             Note="@AppText.F("web.splitWizard.note.encodeRange", encode.QualityName, encode.DisplayName, encode.QualityMin, encode.QualityMax, encode.QualityDefault)">
+                            <RadzenNumeric TValue="int?" Name="EncodeQuality" Min="@encode.QualityMin" Max="@encode.QualityMax" Value="@Draft.EncodeQuality" Change="@(v => Edit(() => Draft.EncodeQuality = v))"
+                                           aria-required="true" aria-invalid="@Invalid("EncodeQuality")" />
+                        </RemuxFieldComponent>
+                        @if (encode.SpeedValues != null)
+                        {
+                            <RemuxFieldComponent Label="@L("encodeSpeed")" Field="EncodeSpeed" Component="EncodeSpeed" HelpKey="encodeSpeed"
+                                                 Note="@AppText.F("web.splitWizard.note.encodePresets", encode.SpeedName, encode.DisplayName, encode.SpeedDefault)">
+                                <RadzenDropDown TValue="string" Name="EncodeSpeed" Data="@encode.SpeedValues" Value="@Draft.EncodeSpeed" Change="@(v => Edit(() => Draft.EncodeSpeed = (string)v))"
+                                                Disabled="@_applying" aria-invalid="@Invalid("EncodeSpeed")" Style="width:100%" />
+                            </RemuxFieldComponent>
+                        }
+                        else if (encode.SpeedName != null)
+                        {
+                            <RemuxFieldComponent Label="@L("encodeSpeed")" Field="EncodeSpeed" HelpKey="encodeSpeed"
+                                                 Note="@AppText.F("web.splitWizard.note.encodeRange", encode.SpeedName, encode.DisplayName, encode.SpeedMin, encode.SpeedMax, encode.SpeedDefault)">
+                                <RadzenNumeric TValue="int?" Name="EncodeSpeed" Min="@encode.SpeedMin" Max="@encode.SpeedMax" Value="@(int.TryParse(Draft.EncodeSpeed, NumberStyles.None, CultureInfo.InvariantCulture, out int speed) ? speed : (int?)null)" Change="@(v => Edit(() => Draft.EncodeSpeed = v?.ToString(CultureInfo.InvariantCulture)))"
+                                               aria-invalid="@Invalid("EncodeSpeed")" />
+                            </RemuxFieldComponent>
+                        }
+                    }
                 }
                 else if (_section == 2)
                 {

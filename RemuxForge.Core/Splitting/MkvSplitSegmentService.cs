@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using RemuxForge.Core.Chapters;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
+using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
 
 namespace RemuxForge.Core.Splitting
@@ -122,6 +124,18 @@ namespace RemuxForge.Core.Splitting
         {
             if (isFrame) { return (int)value; }
             return BisectLeft(sourcePts, value);
+        }
+
+        /// <summary>
+        /// Fotogramma marcato da un capitolo: il primo con PTS non inferiore al suo inizio, entro lo scarto di arrotondamento
+        /// fra il tempo del capitolo e quello del fotogramma (ChapterTimelineService.FRAME_ROUNDING_NS)
+        /// </summary>
+        /// <param name="sourcePts">PTS del sorgente ordinati crescente.</param>
+        /// <param name="chapterSeconds">Inizio del capitolo in secondi.</param>
+        /// <returns>Indice del fotogramma, oppure il numero di fotogrammi se il capitolo cade dopo l'ultimo.</returns>
+        public static int ChapterFrame(double[] sourcePts, double chapterSeconds)
+        {
+            return BisectLeft(sourcePts, chapterSeconds - ChapterTimelineService.FRAME_ROUNDING_NS / 1000000000.0);
         }
 
         /// <summary>Equivalente di Python bisect.bisect_left su array di double: ritorna il minimo indice i tale che arr[i] &gt;= value.</summary>
@@ -388,7 +402,8 @@ namespace RemuxForge.Core.Splitting
 
         #region Costruzione segmenti
 
-        /// <summary>Costruisce la lista dei segmenti in base alla modalità scelta e ritorna anche la MkvSplitMode effettiva.</summary>
+        /// <summary>Costruisce la lista dei segmenti in base alla modalità scelta e ritorna anche la MkvSplitMode effettiva.
+        /// I capitoli dei segmenti li assegna il planner sui confini effettivi, dopo lo snap.</summary>
         /// <param name="args">Argomenti CLI parsati.</param>
         /// <param name="chapters">Capitoli estratti dal sorgente.</param>
         /// <param name="sourcePts">PTS del sorgente ordinati crescente.</param>
@@ -406,12 +421,10 @@ namespace RemuxForge.Core.Splitting
             MkvSplitSegment seg;
             List<(int startFrame, int endFrame)> frameRanges;
             MkvSplitMode mode;
-            List<ChapterMark> segChapters;
             int[] pattern;
             int sum;
             int chIdx;
             int numCh;
-            List<ChapterMark> epChs;
             int epNum;
             int startIdx;
             int endIdx;
@@ -439,12 +452,11 @@ namespace RemuxForge.Core.Splitting
                 for (chIdx = 0; chIdx < nCh; chIdx += args.ChaptersPerEpisode)
                 {
                     numCh = Math.Min(args.ChaptersPerEpisode, nCh - chIdx);
-                    epChs = chapters.GetRange(chIdx, numCh);
                     epNum++;
-                    startTs = epChs[0].StartSeconds;
-                    endTs = (chIdx + numCh < nCh) ? chapters[chIdx + numCh].StartSeconds : duration;
-                    startIdx = BisectLeft(sourcePts, startTs);
-                    endIdx = (chIdx + numCh >= nCh) ? totalFrames : BisectLeft(sourcePts, endTs);
+                    startIdx = ChapterFrame(sourcePts, chapters[chIdx].StartSeconds);
+                    endIdx = (chIdx + numCh >= nCh) ? totalFrames : ChapterFrame(sourcePts, chapters[chIdx + numCh].StartSeconds);
+                    startTs = startIdx < totalFrames ? sourcePts[startIdx] : duration;
+                    endTs = endIdx < totalFrames ? sourcePts[endIdx] : duration;
 
                     seg = new MkvSplitSegment();
                     seg.Num = epNum;
@@ -453,7 +465,6 @@ namespace RemuxForge.Core.Splitting
                     seg.EndTs = endTs;
                     seg.StartFrame = startIdx;
                     seg.FrameCount = endIdx - startIdx;
-                    seg.Chapters = epChs;
                     segments.Add(seg);
                 }
 
@@ -479,10 +490,10 @@ namespace RemuxForge.Core.Splitting
                 // Ogni capitolo diventa un segmento; l'ultimo chiude a duration
                 for (int i = 0; i < nCh; i++)
                 {
-                    startTs = chapters[i].StartSeconds;
-                    endTs = (i + 1 < nCh) ? chapters[i + 1].StartSeconds : duration;
-                    startF = BisectLeft(sourcePts, startTs);
-                    endF = (i + 1 < nCh) ? BisectLeft(sourcePts, endTs) : totalFrames;
+                    startF = ChapterFrame(sourcePts, chapters[i].StartSeconds);
+                    endF = (i + 1 < nCh) ? ChapterFrame(sourcePts, chapters[i + 1].StartSeconds) : totalFrames;
+                    startTs = startF < totalFrames ? sourcePts[startF] : duration;
+                    endTs = endF < totalFrames ? sourcePts[endF] : duration;
                     seg = new MkvSplitSegment();
                     seg.Num = i + 1;
                     seg.Episode = i + 1;
@@ -490,8 +501,6 @@ namespace RemuxForge.Core.Splitting
                     seg.EndTs = endTs;
                     seg.StartFrame = startF;
                     seg.FrameCount = endF - startF;
-                    seg.Chapters = new List<ChapterMark>();
-                    seg.Chapters.Add(chapters[i]);
                     segments.Add(seg);
                 }
                 return (segments, MkvSplitMode.ChaptersEach);
@@ -507,18 +516,13 @@ namespace RemuxForge.Core.Splitting
                 else { mode = (frameRanges.Count == 1) ? MkvSplitMode.Trim : MkvSplitMode.Ranges; }
                 segments = new List<MkvSplitSegment>(frameRanges.Count);
 
-                // Ogni range diventa un segmento; i capitoli del range vengono inclusi
+                // Ogni range diventa un segmento
                 for (int i = 0; i < frameRanges.Count; i++)
                 {
                     startF = frameRanges[i].startFrame;
                     endF = frameRanges[i].endFrame;
                     startTs = sourcePts[startF];
                     endTs = (endF < totalFrames) ? sourcePts[endF] : duration;
-                    segChapters = new List<ChapterMark>();
-                    foreach (ChapterMark c in chapters)
-                    {
-                        if (c.StartSeconds >= startTs && c.StartSeconds < endTs) { segChapters.Add(c); }
-                    }
                     seg = new MkvSplitSegment();
                     seg.Num = i + 1;
                     seg.Episode = i + 1;
@@ -526,7 +530,6 @@ namespace RemuxForge.Core.Splitting
                     seg.EndTs = endTs;
                     seg.StartFrame = startF;
                     seg.FrameCount = endF - startF;
-                    seg.Chapters = segChapters;
                     segments.Add(seg);
                 }
                 return (segments, mode);
@@ -547,10 +550,10 @@ namespace RemuxForge.Core.Splitting
             for (int i = 0; i < pattern.Length; i++) { sum += pattern[i]; }
             if (sum != nCh)
             {
-                throw new ArgumentException(AppText.F("split.patternSumMismatch", sum, nCh));
+                throw new ArgumentException(AppText.Count("split.patternSumMismatch", nCh, sum));
             }
 
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Info, AppText.F("split.patternSummary", string.Join(",", pattern), pattern.Length));
+            ConsoleHelper.Write(LogSection.Split, LogLevel.Info, AppText.Count("split.patternSummary", pattern.Length, string.Join(",", pattern)));
             ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "");
 
             // Costruzione degli episodi secondo il pattern di capitoli
@@ -559,14 +562,13 @@ namespace RemuxForge.Core.Splitting
             for (int epI = 0; epI < pattern.Length; epI++)
             {
                 numCh = pattern[epI];
-                epChs = chapters.GetRange(chIdx, numCh);
-                startTs = epChs[0].StartSeconds;
-                endTs = (chIdx + numCh < nCh) ? chapters[chIdx + numCh].StartSeconds : duration;
                 epNum = epI + 1;
 
                 // Range frame reale del blocco di capitoli (O(log N) per ciascun episodio).
-                startIdx = BisectLeft(sourcePts, startTs);
-                endIdx = (chIdx + numCh >= nCh) ? sourcePts.Length : BisectLeft(sourcePts, endTs);
+                startIdx = ChapterFrame(sourcePts, chapters[chIdx].StartSeconds);
+                endIdx = (chIdx + numCh >= nCh) ? sourcePts.Length : ChapterFrame(sourcePts, chapters[chIdx + numCh].StartSeconds);
+                startTs = startIdx < sourcePts.Length ? sourcePts[startIdx] : duration;
+                endTs = endIdx < sourcePts.Length ? sourcePts[endIdx] : duration;
                 frameCount = endIdx - startIdx;
 
                 seg = new MkvSplitSegment();
@@ -576,7 +578,6 @@ namespace RemuxForge.Core.Splitting
                 seg.EndTs = endTs;
                 seg.StartFrame = startIdx;
                 seg.FrameCount = frameCount;
-                seg.Chapters = epChs;
                 segments.Add(seg);
 
                 chIdx += numCh;
@@ -590,7 +591,7 @@ namespace RemuxForge.Core.Splitting
         private static void PrintNoModeSelected(List<ChapterMark> chapters, int nCh)
         {
             ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.T("split.noModeSelected"));
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("split.fileHasChapters", nCh));
+            ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.Count("split.fileHasChapters", nCh));
             for (int i = 0; i < nCh; i++)
             {
                 string chName = chapters[i].Name ?? string.Empty;
@@ -632,10 +633,39 @@ namespace RemuxForge.Core.Splitting
             string template;
 
             template = !string.IsNullOrEmpty(args.OutputTemplate) ? args.OutputTemplate : DefaultTemplate(mode);
+            // Il nome del sorgente si risolve una volta per tutti i segmenti: la disambiguazione D21 legge la cartella
+            string sourceName = ResolveSourceName(inputFile);
             foreach (MkvSplitSegment seg in segments)
             {
-                seg.File = SanitizeRelativePath(RenderTemplate(template, seg, inputFile, args.StartNumber)) + ".mkv";
+                seg.File = SanitizeRelativePath(RenderTemplate(template, seg, sourceName, args.StartNumber)) + ".mkv";
             }
+        }
+
+        /// <summary>
+        /// Valore di {source}: il nome del file senza estensione, oppure con l'estensione d'origine quando nella stessa cartella
+        /// c'è un altro container accettato con lo stesso nome base (D21). Il .mkv tiene il nome normale; le maiuscole non contano,
+        /// su nessun file system
+        /// </summary>
+        /// <param name="inputFile">File sorgente</param>
+        /// <returns>Nome da usare nel template</returns>
+        public static string ResolveSourceName(string inputFile)
+        {
+            string sourceName = Path.GetFileNameWithoutExtension(inputFile);
+            string directory = Path.GetDirectoryName(inputFile);
+            if (!MediaContainerFormats.IsMatroska(inputFile) && !string.IsNullOrEmpty(directory) && Directory.Exists(directory))
+            {
+                foreach (string sibling in Directory.EnumerateFiles(directory, sourceName + ".*", new EnumerationOptions { MatchCasing = MatchCasing.CaseInsensitive }))
+                {
+                    if (MediaContainerFormats.IsSupported(sibling)
+                        && string.Equals(Path.GetFileNameWithoutExtension(sibling), sourceName, StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(Path.GetFileName(sibling), Path.GetFileName(inputFile), StringComparison.Ordinal))
+                    {
+                        return Path.GetFileName(inputFile);
+                    }
+                }
+            }
+
+            return sourceName;
         }
 
         /// <summary>Ritorna il template di default della modalità, senza estensione.</summary>
@@ -733,12 +763,11 @@ namespace RemuxForge.Core.Splitting
         /// <summary>Renderizza il template sostituendo le variabili del set chiuso.</summary>
         /// <param name="template">Template da renderizzare.</param>
         /// <param name="seg">Segmento corrente.</param>
-        /// <param name="inputFile">File di input, da cui si ricava {source}.</param>
+        /// <param name="sourceName">Valore di {source}, da ResolveSourceName.</param>
         /// <param name="startNumber">Numero da cui parte la numerazione degli episodi.</param>
         /// <returns>Stringa renderizzata, ancora da sanificare.</returns>
-        private static string RenderTemplate(string template, MkvSplitSegment seg, string inputFile, int startNumber, double? resultDuration = null)
+        private static string RenderTemplate(string template, MkvSplitSegment seg, string sourceName, int startNumber, double? resultDuration = null)
         {
-            string sourceName;
             string chapterName;
             StringBuilder sb;
             int close;
@@ -749,7 +778,6 @@ namespace RemuxForge.Core.Splitting
             int episode;
             int i;
 
-            sourceName = Path.GetFileNameWithoutExtension(inputFile);
             chapterName = (seg.Chapters != null && seg.Chapters.Count > 0 && seg.Chapters[0].Name != null) ? seg.Chapters[0].Name : string.Empty;
             episode = startNumber + (seg.Episode > 0 ? seg.Episode : seg.Num) - 1;
             sb = new StringBuilder(template.Length + 32);
@@ -794,13 +822,14 @@ namespace RemuxForge.Core.Splitting
         }
 
         /// <summary>Naming output multiclip: start/end seguono l'ordine risultato, duration conta tutte le occorrenze.</summary>
-        public static string RenderOutputName(MkvSplitOptions options, MkvSplitMode mode, string inputFile,
+        /// <param name="sourceName">Valore di {source}, da ResolveSourceName: si risolve una volta per tutti gli output.</param>
+        public static string RenderOutputName(MkvSplitOptions options, MkvSplitMode mode, string sourceName,
             int number, double start, double end, double duration, List<ChapterMark> chapters)
         {
             MkvSplitSegment segment = new MkvSplitSegment { Num = number, Episode = number,
                 StartTs = start, EndTs = end, Chapters = chapters };
             string template = string.IsNullOrEmpty(options.OutputTemplate) ? DefaultTemplate(mode) : options.OutputTemplate;
-            return SanitizeRelativePath(RenderTemplate(template, segment, inputFile, options.StartNumber, duration)) + ".mkv";
+            return SanitizeRelativePath(RenderTemplate(template, segment, sourceName, options.StartNumber, duration)) + ".mkv";
         }
 
         /// <summary>Formatta un intero: nessun padding, oppure "02" per lo zero-pad a due cifre.</summary>
@@ -875,7 +904,8 @@ namespace RemuxForge.Core.Splitting
         /// <param name="frameMap">Mappa dei frame con flag keyframe.</param>
         /// <param name="sourcePts">PTS del sorgente ordinati crescente.</param>
         /// <param name="mode">Strategia di snap scelta.</param>
-        public void ApplySnap(List<MkvSplitSegment> segments, List<MkvSplitFrameInfo> frameMap, double[] sourcePts, MkvSplitSnapMode mode)
+        /// <returns>Confini spostati, come coppie fotogramma richiesto e fotogramma effettivo.</returns>
+        public List<(int oldB, int newB)> ApplySnap(List<MkvSplitSegment> segments, List<MkvSplitFrameInfo> frameMap, double[] sourcePts, MkvSplitSnapMode mode)
         {
             List<int> boundaries;
             List<MkvSplitSegment> opening;
@@ -884,9 +914,8 @@ namespace RemuxForge.Core.Splitting
             int? newB;
             bool eatsSegment;
 
-            if (mode == MkvSplitSnapMode.Off) { return; }
-
             changed = new List<(int, int)>();
+            if (mode == MkvSplitSnapMode.Off) { return changed; }
 
             // I confini candidati sono gli inizi dei segmenti: la fine di un segmento non richiede
             // un keyframe per decodificare, e quando è condivisa coincide già con l'inizio del successivo.
@@ -934,16 +963,19 @@ namespace RemuxForge.Core.Splitting
                     continue;
                 }
 
+                // Il confine chiesto resta sul segmento: i capitoli fra il confine chiesto e quello effettivo lo seguono anche nel documento
                 foreach (MkvSplitSegment seg in closing)
                 {
                     seg.FrameCount = newB.Value - seg.StartFrame;
                     seg.EndTs = newB.Value < sourcePts.Length ? sourcePts[newB.Value] : seg.EndTs;
+                    seg.RequestedEndFrame = boundary;
                 }
                 foreach (MkvSplitSegment seg in opening)
                 {
                     seg.FrameCount = seg.StartFrame + seg.FrameCount - newB.Value;
                     seg.StartFrame = newB.Value;
                     seg.StartTs = sourcePts[newB.Value];
+                    seg.RequestedStartFrame = boundary;
                 }
 
                 changed.Add((boundary, newB.Value));
@@ -957,6 +989,7 @@ namespace RemuxForge.Core.Splitting
                     ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.snapBoundary", ch.oldB, ch.newB, ch.newB - ch.oldB));
                 }
             }
+            return changed;
         }
 
         /// <summary>Sceglie il keyframe verso cui spostare un confine secondo la strategia.</summary>

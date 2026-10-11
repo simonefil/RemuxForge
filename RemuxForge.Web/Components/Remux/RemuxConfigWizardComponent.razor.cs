@@ -147,7 +147,7 @@ namespace RemuxForge.Web.Components.Remux
             e.Code != "inventory" && IssueSection(e) == this._section);
         private static readonly HashSet<string> InlineFields = new HashSet<string>(StringComparer.Ordinal)
         {
-            "Mode", "SourceFolder", "LanguageFolder", "FileExtensions", "MatchPattern", "ExplicitTrackSelection", "TargetLanguage", "AudioCodec",
+            "Mode", "SourceFolder", "LanguageFolder", "MatchPattern", "ExplicitTrackSelection", "TargetLanguage", "AudioCodec",
             "KeepSourceAudioLangs", "KeepSourceAudioCodec", "KeepSourceSubtitleLangs", "SubOnly", "AudioOnly", "AudioDelay", "SubtitleDelay",
             "AnalysisCropSourcePx", "AnalysisCropLanguagePx", "SpeedCorrectionMode", "ManualStretchFactor", "AudioFormat", "AudioProcessingScope",
             "AudioDownsample24To16", "AudioPeakNormalize", "AudioPeakTargetDb", "AudioFixedGainDb", "AudioSourceFillThresholdMs", "AudioSourceFillLanguage",
@@ -284,7 +284,6 @@ namespace RemuxForge.Web.Components.Remux
         }
         private void SetAdvanced(bool advanced) => this.Edit(() => { this.Draft.SetAdvanced(advanced); this._errors.Clear(); });
         private void TracksChanged() => this.Edit(() => this._errors.RemoveAll(e => e.Section == "Tracks"));
-        private static List<string> Csv(string value, bool extensions = false) => (value ?? "").Split(',').Select(v => extensions ? v.Trim().TrimStart('.') : v.Trim()).Where(v => v.Length > 0).Distinct().ToList();
 
         private void ChangeInput(int field, string path)
         {
@@ -310,7 +309,7 @@ namespace RemuxForge.Web.Components.Remux
         {
             if (this.CannotEdit) return;
             string path = await AppDialogs.BrowseAsync(this.DialogService, this.JsModule, field == 0 ? this.O.SourceFolder : field == 1 ? this.O.LanguageFolder : this.O.DestinationFolder,
-                field != 2, true, new List<string>(this.O.FileExtensions));
+                field != 2, true, new List<string>(MediaContainerFormats.Extensions));
             if (path != null && !this._disposed) this.ChangeInput(field, path);
         }
 
@@ -658,7 +657,7 @@ namespace RemuxForge.Web.Components.Remux
             get
             {
                 int matched = this.Draft.Snapshot.MatchedPairs, processable = this.Draft.ProcessablePairs();
-                string text = AppText.F("web.remux.processCounts", matched, processable);
+                string text = AppText.F("web.remux.processCounts", AppText.Count("web.remux.summary.pairs", matched), processable);
                 return matched > processable ? text + " · " + AppText.F("web.remux.processSkipped", matched - processable) : text;
             }
         }
@@ -671,7 +670,7 @@ namespace RemuxForge.Web.Components.Remux
         private IEnumerable<(int Section, string Label, string Value)> SummaryRows()
         {
             yield return (0, AppText.T("web.remux.muxKind"), MuxLabel(this.Draft.MuxKind));
-            string files = AppText.F("web.remux.summary.pairs", this.Draft.HasCurrentSnapshot ? this.Draft.Snapshot.MatchedPairs : 0) + Environment.NewLine +
+            string files = AppText.Count("web.remux.summary.pairs", this.Draft.HasCurrentSnapshot ? this.Draft.Snapshot.MatchedPairs : 0) + Environment.NewLine +
                 "Source: " + this.O.SourceFolder + Environment.NewLine + "Lang: " + this.Draft.PreviewRequest().LangPath;
             yield return (1, AppText.T("web.remux.summary.files"), files);
             string tracks = this.Draft.Advanced

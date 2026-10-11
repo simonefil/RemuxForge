@@ -20,7 +20,7 @@
                         @foreach (MkvSplitOutputProjection output in record.MontageProjection.Outputs)
                         {
                             <div class="split-plan-review-output">
-                                <strong>@output.FileName</strong> · @RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(output.DurationSeconds) · @AppText.F(output.Clips.Count == 1 ? "web.splitMontage.clipCountOne" : "web.splitMontage.clipCountMany", output.Clips.Count)
+                                <strong>@output.FileName</strong> · @RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(output.DurationSeconds) · @AppText.Count("web.splitMontage.clipCount", output.Clips.Count)
                                 <div>@output.FullPath</div>
                                 @foreach (MkvSplitClipProjection clip in output.Clips)
                                 {
@@ -29,11 +29,16 @@
                                 }
                             </div>
                         }
-                        @if (record.MontageProjection.Diagnostics.Count > 0)
+                        @* Errori e avvisi separati come nel dettaglio del file: un avviso (es. GOP aperto) non è un errore *@
+                        @foreach (MkvSplitDiagnosticSeverity severity in new[] { MkvSplitDiagnosticSeverity.Error, MkvSplitDiagnosticSeverity.Warning })
                         {
-                            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="split-plan-review-alert">
-                                @foreach (MkvSplitDiagnostic diagnostic in record.MontageProjection.Diagnostics) { <div class="split-plan-review-alert-row">@diagnostic.Message</div> }
-                            </RadzenAlert>
+                            List<MkvSplitDiagnostic> diagnostics = record.MontageProjection.Diagnostics.Where(d => d.Severity == severity).ToList();
+                            if (diagnostics.Count > 0)
+                            {
+                                <RadzenAlert AlertStyle="@(severity == MkvSplitDiagnosticSeverity.Error ? AlertStyle.Danger : AlertStyle.Warning)" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="split-plan-review-alert">
+                                    @foreach (MkvSplitDiagnostic diagnostic in diagnostics) { <div class="split-plan-review-alert-row">@diagnostic.Message</div> }
+                                </RadzenAlert>
+                            }
                         }
                     }
                     else if (record.Plan != null)
@@ -41,7 +46,8 @@
                         @foreach (MkvSplitSegment output in record.Plan.Segments) { <div>@output.File · @RemuxForge.Core.Splitting.MkvSplitSegmentService.SecsToTs(output.EndTs - output.StartTs)</div> }
                     }
                     @if (!string.IsNullOrEmpty(record.ErrorMessage)) { <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="split-plan-review-alert"><div class="split-plan-review-alert-row">@record.ErrorMessage</div></RadzenAlert> }
-                    @if (record.Plan != null) { @foreach (MkvSplitWarning warning in record.Plan.Warnings) { <div>@warning.Message</div> } }
+                    @* Con il montaggio gli avvisi del piano sono le sue diagnostiche, già mostrate sopra *@
+                    @if (record.Plan != null && record.MontageProjection == null) { @foreach (MkvSplitWarning warning in record.Plan.Warnings) { <div>@warning.Message</div> } }
                     <RadzenButton Text="@AppText.T("web.split.openEditor")" Icon="content_cut" Disabled="@Busy" Click="@(() => OnOpenEditor.InvokeAsync(Records.IndexOf(record)))" />
                 </RadzenAccordionItem>
             }

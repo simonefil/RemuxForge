@@ -43,8 +43,11 @@
     -webkit-user-select: text;
 }
 
+/* Le righe lunghe vanno a capo come nel corpo: il pre del browser le terrebbe su una riga, tagliata dal pannello */
 .log-panel pre {
     margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
     cursor: text;
     user-select: text;
     -webkit-user-select: text;
@@ -98,13 +101,29 @@
     gap: 0.75rem;
 }
 
+/* Pulsanti dell'intestazione: nel riquadro stretto le etichette vanno in ellissi, il testo intero resta nel tooltip */
 .detail-panel-title .rz-button {
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.detail-panel-title .rz-button .rz-button-box {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.detail-panel-title .rz-button .rz-button-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .detail-panel-actions {
     display: flex;
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    min-width: 0;
     align-items: center;
     gap: 0.25rem;
 }
@@ -148,7 +167,8 @@
 }
 
 .detail-file-grid {
-    grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+    /* Nel riquadro più stretto di 18rem la scheda prende tutta la larghezza invece di uscirne */
+    grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
 }
 
 .detail-card-stack {

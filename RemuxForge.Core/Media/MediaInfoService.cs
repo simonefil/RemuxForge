@@ -137,7 +137,8 @@ namespace RemuxForge.Core.Media
         }
 
         /// <summary>
-        /// Legge la modalità frame rate video tramite MediaInfo
+        /// Legge la modalità frame rate della prima traccia video tramite MediaInfo: è la traccia principale, la stessa che lo
+        /// Split taglia, mentre copertine e fotogrammi singoli in altre tracce video non contano
         /// </summary>
         /// <param name="filePath">Percorso file</param>
         /// <returns>Valore MediaInfo FrameRate_Mode, stringa vuota se non disponibile</returns>
@@ -151,7 +152,8 @@ namespace RemuxForge.Core.Media
 
             try
             {
-                result = this.RunProcess(QUICK_QUERY_TIMEOUT_MS, "--Output=Video;%FrameRate_Mode%", filePath).Trim();
+                // Il separatore isola la prima traccia video quando il file ne contiene più di una
+                result = this.RunProcess(QUICK_QUERY_TIMEOUT_MS, "--Output=Video;%FrameRate_Mode%|", filePath).Trim().Split('|')[0].Trim();
             }
             catch (Exception ex)
             {
@@ -191,6 +193,48 @@ namespace RemuxForge.Core.Media
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Legge la scansione della prima traccia video
+        /// </summary>
+        /// <param name="filePath">Percorso file</param>
+        /// <param name="scanType">Valore MediaInfo ScanType, vuoto se non dichiarato</param>
+        /// <returns>True se MediaInfo ha risposto</returns>
+        public bool TryGetVideoScanType(string filePath, out string scanType)
+        {
+            bool result = false;
+            ProcessResult process;
+
+            scanType = "";
+            if (!File.Exists(filePath))
+            {
+                return result;
+            }
+
+            // Il separatore isola la prima traccia video quando il file ne contiene più di una
+            process = ProcessRunner.Run(this._mediaInfoPath, new string[] { "--Output=Video;%ScanType%|", filePath }, QUICK_QUERY_TIMEOUT_MS);
+            if (process.ExitCode == 0)
+            {
+                scanType = process.Stdout.Trim().Split('|')[0].Trim();
+                result = true;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Indica se una scansione MediaInfo è interlacciata
+        /// </summary>
+        /// <remarks>
+        /// Il pulldown morbido è dichiarato Progressive con ScanType_Original interlacciato: è progressivo.
+        /// Il campo assente (tipico di AV1 e VP9) vale progressivo.
+        /// </remarks>
+        /// <param name="scanType">Valore MediaInfo ScanType</param>
+        /// <returns>True per Interlaced, MBAFF, PAFF e Mixed</returns>
+        public static bool IsInterlacedScanType(string scanType)
+        {
+            return scanType == "Interlaced" || scanType == "MBAFF" || scanType == "PAFF" || scanType == "Mixed";
         }
 
         #endregion

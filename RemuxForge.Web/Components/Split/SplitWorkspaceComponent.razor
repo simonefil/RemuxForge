@@ -12,7 +12,6 @@
                             AllowPaging="false"
                             AllowRowSelectOnRowClick="false"
                             AllowSorting="false"
-                            ColumnWidth="120px"
                             CellContextMenu="HandleContextMenu"
                             Density="Density.Compact"
                             EmptyText="@AppText.T("web.split.gridEmpty")"
@@ -20,31 +19,33 @@
                             RowClick="HandleRowClick"
                             RowRender="RenderRow">
                 <Columns>
-                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.dashboard.file")" Width="280px" MinWidth="160px" MaxWidth="560px">
-                        <Template Context="record">@System.IO.Path.GetFileName(record.InputFile)</Template>
+                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.dashboard.file")" Width="20%" MinWidth="2.5rem" MaxWidth="560px">
+                        <Template Context="record"><span title="@record.InputFile">@System.IO.Path.GetFileName(record.InputFile)</span></Template>
                     </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.dashboard.status")" Width="130px" MinWidth="90px" MaxWidth="280px">
-                        <Template Context="record">@Utils.GetSplitStatusText(record.Status)</Template>
+                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.dashboard.status")" Width="10%" MinWidth="2.5rem" MaxWidth="280px">
+                        <Template Context="record"><span title="@Utils.GetSplitStatusText(record.Status)">@Utils.GetSplitStatusText(record.Status)</span></Template>
                     </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.mode")" Width="180px" MinWidth="110px" MaxWidth="320px">
-                        <Template Context="record">@ModeCell(record)</Template>
+                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.mode")" Width="12%" MinWidth="2.5rem" MaxWidth="320px">
+                        <Template Context="record"><span title="@ModeCell(record)">@ModeCell(record)</span></Template>
                     </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.splitMontage.outputs")" Width="100px" MinWidth="70px" MaxWidth="200px">
+                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.splitMontage.outputs")" Width="7%" MinWidth="2.5rem" MaxWidth="200px">
                         <Template Context="record">@(record.MontageProjection != null ? record.MontageProjection.Outputs.Count.ToString() : record.Plan != null ? record.Plan.Segments.Count.ToString() : "-")</Template>
                     </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.outputDuration")" Width="130px" MinWidth="90px" MaxWidth="220px">
-                        <Template Context="record">@OutputDurationCell(record)</Template>
+                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.outputDuration")" Width="10%" MinWidth="2.5rem" MaxWidth="220px">
+                        <Template Context="record"><span title="@OutputDurationCell(record)">@OutputDurationCell(record)</span></Template>
                     </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.planOutcome")" Width="150px" MinWidth="100px" MaxWidth="320px">
-                        <Template Context="record">@PlanOutcomeCell(record)</Template>
+                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.planOutcome")" Width="11%" MinWidth="2.5rem" MaxWidth="320px">
+                        <Template Context="record"><span title="@PlanOutcomeCell(record)">@PlanOutcomeCell(record)</span></Template>
                     </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.warnings")" Width="100px" MinWidth="70px" MaxWidth="200px">
+                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.warnings")" Width="7%" MinWidth="2.5rem" MaxWidth="200px">
                         <Template Context="record">@(record.Plan != null && record.Plan.Warnings.Count > 0 ? record.Plan.Warnings.Count.ToString() : "-")</Template>
                     </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.existingOutputs")" Width="130px" MinWidth="90px" MaxWidth="240px">
-                        <Template Context="record">@ExistingOutputsCell(record)</Template>
+                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.split.column.existingOutputs")" Width="9%" MinWidth="2.5rem" MaxWidth="240px">
+                        <Template Context="record"><span title="@ExistingOutputsCell(record)">@ExistingOutputsCell(record)</span></Template>
                     </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="MkvSplitRecord" Property="ErrorMessage" Title="@AppText.T("web.dashboard.warningError")" Width="220px" MinWidth="120px" MaxWidth="440px" />
+                    <RadzenDataGridColumn TItem="MkvSplitRecord" Title="@AppText.T("web.dashboard.warningError")" Width="14%" MinWidth="2.5rem" MaxWidth="440px">
+                        <Template Context="record"><span title="@record.ErrorMessage">@record.ErrorMessage</span></Template>
+                    </RadzenDataGridColumn>
                 </Columns>
             </RadzenDataGrid>
         </div>
@@ -163,7 +164,7 @@
             return "-";
 
         if (record.Plan.IsValid)
-            return record.Plan.TotalReencodeFrames == 0 ? AppText.T("web.split.detail.costCopy") : AppText.F("web.split.detail.costReencode", record.Plan.TotalReencodeFrames);
+            return record.Plan.TotalReencodeFrames == 0 ? AppText.T("web.split.detail.costCopy") : AppText.Count("web.split.detail.costReencode", record.Plan.TotalReencodeFrames);
 
         return AppText.T("web.split.column.planInvalid");
     }

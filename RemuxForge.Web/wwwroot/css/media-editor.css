@@ -168,6 +168,11 @@
     gap: calc(var(--rz-gap) * 0.45);
 }
 
+/* Gruppo etichetta-controllo: trasparente per la griglia e per la barra dello Split, che dispongono i figli direttamente. */
+.media-timeline-group {
+    display: contents;
+}
+
 /* Strumenti della timeline: decidono cosa fa il tasto sinistro sulle corsie. */
 .media-timeline-tools {
     display: flex;

@@ -28,6 +28,8 @@ namespace RemuxForge.Core.Models
             this.OutputTemplate = "";
             this.StartNumber = 1;
             this.Snap = MkvSplitSnapMode.Nearest;
+            this.EncodeQuality = null;
+            this.EncodeSpeed = null;
             this.Force = false;
             this.DryRun = false;
         }
@@ -102,6 +104,16 @@ namespace RemuxForge.Core.Models
         public MkvSplitSnapMode Snap { get; set; }
 
         /// <summary>
+        /// Qualità della ricodifica (CRF o quantizzatore, secondo il codec), null per il default del codec
+        /// </summary>
+        public int? EncodeQuality { get; set; }
+
+        /// <summary>
+        /// Velocità della ricodifica (preset o cpu-used, secondo il codec), null per il default del codec
+        /// </summary>
+        public string EncodeSpeed { get; set; }
+
+        /// <summary>
         /// Sovrascrive output esistenti
         /// </summary>
         public bool Force { get; set; }
@@ -110,6 +122,19 @@ namespace RemuxForge.Core.Models
         /// Stampa i segmenti senza eseguire lo split
         /// </summary>
         public bool DryRun { get; set; }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Copia indipendente delle opzioni, per un lavoro che non deve vedere modifiche successive
+        /// </summary>
+        /// <returns>Opzioni con gli stessi valori: sono tutti valori o stringhe, la copia superficiale basta</returns>
+        public MkvSplitOptions Clone()
+        {
+            return (MkvSplitOptions)this.MemberwiseClone();
+        }
 
         #endregion
     }
@@ -160,7 +185,7 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
-    /// Codec video supportato dalla pipeline slow
+    /// Codec video della tabella delle capacità di taglio
     /// </summary>
     public enum MkvSplitCodec
     {
@@ -171,7 +196,95 @@ namespace RemuxForge.Core.Models
         H264,
 
         /// <summary>MPEG-2 Video</summary>
-        Mpeg2
+        Mpeg2,
+
+        /// <summary>MPEG-4 ASP (Xvid/DivX)</summary>
+        Mpeg4,
+
+        /// <summary>DivX 3 (MS-MPEG4v3)</summary>
+        MsMpeg4v3,
+
+        /// <summary>MS-MPEG4v2</summary>
+        MsMpeg4v2,
+
+        /// <summary>H.263</summary>
+        H263,
+
+        /// <summary>AV1</summary>
+        Av1,
+
+        /// <summary>VP9</summary>
+        Vp9,
+
+        /// <summary>VC-1</summary>
+        Vc1
+    }
+
+    /// <summary>
+    /// Metodo con cui un codec si taglia al fotogramma
+    /// </summary>
+    public enum MkvSplitExactCutMethod
+    {
+        /// <summary>Nessuno: solo taglio al keyframe</summary>
+        None,
+
+        /// <summary>Testa ricodificata e corpo copiato a livello di byte dal flusso grezzo</summary>
+        Bytes,
+
+        /// <summary>Testa e coda ricodificate e corpo copiato selezionando i pacchetti per PTS</summary>
+        Packets
+    }
+
+    /// <summary>
+    /// Capacità di taglio di un codec video e parametri della sua ricodifica
+    /// </summary>
+    public sealed class MkvSplitCodecCapability
+    {
+        #region Proprietà
+
+        /// <summary>Nome del codec come lo riporta ffprobe</summary>
+        public string CodecName { get; set; }
+
+        /// <summary>Nome mostrato all'utente</summary>
+        public string DisplayName { get; set; }
+
+        /// <summary>Codec canonico</summary>
+        public MkvSplitCodec Codec { get; set; }
+
+        /// <summary>Metodo del taglio al fotogramma, None se il codec si taglia solo al keyframe</summary>
+        public MkvSplitExactCutMethod Method { get; set; }
+
+        /// <summary>Encoder ffmpeg della ricodifica, null senza taglio al fotogramma</summary>
+        public string Encoder { get; set; }
+
+        /// <summary>Nome tecnico del parametro di qualità (CRF o q)</summary>
+        public string QualityName { get; set; }
+
+        /// <summary>Qualità predefinita</summary>
+        public int QualityDefault { get; set; }
+
+        /// <summary>Qualità minima ammessa</summary>
+        public int QualityMin { get; set; }
+
+        /// <summary>Qualità massima ammessa</summary>
+        public int QualityMax { get; set; }
+
+        /// <summary>Nome tecnico del parametro di velocità (preset o cpu-used), null se l'encoder non lo prevede</summary>
+        public string SpeedName { get; set; }
+
+        /// <summary>Velocità predefinita, null se l'encoder non la prevede</summary>
+        public string SpeedDefault { get; set; }
+
+        /// <summary>Velocità ammesse per nome, null quando la velocità è un numero fra SpeedMin e SpeedMax</summary>
+        public string[] SpeedValues { get; set; }
+
+        /// <summary>Velocità numerica minima</summary>
+        public int SpeedMin { get; set; }
+
+        /// <summary>Velocità numerica massima</summary>
+        public int SpeedMax { get; set; }
+
+        #endregion
     }
 
     /// <summary>
@@ -260,8 +373,21 @@ namespace RemuxForge.Core.Models
         /// <summary>Frame che andranno ricodificati per aprire il segmento</summary>
         public int ReencodeFrames { get; set; }
 
+        /// <summary>Inizio chiesto prima dello snap al keyframe, null se lo snap non l'ha spostato</summary>
+        public int? RequestedStartFrame { get; set; }
+
+        /// <summary>Fine chiesta prima dello snap al keyframe, null se lo snap non l'ha spostata</summary>
+        public int? RequestedEndFrame { get; set; }
+
         /// <summary>Stato del file di output su disco</summary>
         public MkvSplitOutputState OutputState { get; set; }
+
+        /// <summary>
+        /// Durata in secondi dei pacchetti dei B iniziali in testa alla parte che inizia su un keyframe di GOP aperto (D25):
+        /// la parte parte dal primo di loro e il keyframe arriva dopo, quindi l'audio FLAC tagliato a parte da ffmpeg si sposta
+        /// della stessa durata. Zero negli altri casi
+        /// </summary>
+        public double OpenGopHeadSeconds { get; set; }
 
         /// <summary>Costruttore</summary>
         public MkvSplitSegment()
@@ -287,6 +413,20 @@ namespace RemuxForge.Core.Models
 
         /// <summary>True se keyframe di GOP aperto: fotogrammi decodificati dopo si mostrano prima, quindi un taglio senza ricodifica li sposterebbe</summary>
         public bool OpenGop { get; set; }
+
+        /// <summary>
+        /// Keyframe di GOP aperto: numero dei fotogrammi che lo precedono subito in presentazione e si decodificano dopo di lui
+        /// (B iniziali). Zero se il keyframe è chiuso o se il GOP è aperto in un altro modo. Un taglio senza ricodifica li
+        /// toglie dalla parte che finisce sul keyframe e li lascia come pacchetti in testa a quella che ci inizia (D25)
+        /// </summary>
+        public int LeadingFrames { get; set; }
+
+        /// <summary>
+        /// Keyframe MPEG-2 di GOP aperto con i B iniziali e closed_gop=1 nell'header GOP: i B iniziali sono predetti solo
+        /// all'indietro e si decodificano anche senza il GOP precedente. Il flag non dice se il GOP è aperto, lo dicono
+        /// OpenGop e LeadingFrames: dice solo se i B iniziali già rilevati si possono mostrare (§11 (o))
+        /// </summary>
+        public bool LeadingDecodable { get; set; }
     }
 
     /// <summary>
@@ -311,6 +451,15 @@ namespace RemuxForge.Core.Models
 
         /// <summary>Color range</summary>
         public string ColorRange { get; set; }
+
+        /// <summary>Fourcc della traccia Video for Windows, null se la traccia è nativa</summary>
+        public string CodecTag { get; set; }
+
+        /// <summary>Larghezza in pixel</summary>
+        public int Width { get; set; }
+
+        /// <summary>Altezza in pixel</summary>
+        public int Height { get; set; }
     }
 
     /// <summary>

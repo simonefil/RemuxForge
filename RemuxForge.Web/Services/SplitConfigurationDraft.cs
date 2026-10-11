@@ -289,6 +289,9 @@ namespace RemuxForge.Web.Services
         /// <summary>Passo Destinazione</summary>
         public const string SECTION_DESTINATION = "Destination";
 
+        /// <summary>Allineamenti nell'ordine del menu</summary>
+        private static readonly MkvSplitSnapMode[] AllSnapModes = { MkvSplitSnapMode.Nearest, MkvSplitSnapMode.Before, MkvSplitSnapMode.After, MkvSplitSnapMode.Off };
+
         #endregion
 
         #region Costruttore
@@ -304,7 +307,6 @@ namespace RemuxForge.Web.Services
             this.OutputDir = split.OutputDir ?? "";
             this.Recursive = options?.Recursive ?? false;
             this.Force = split.Force;
-            this.Extensions = options != null && options.FileExtensions.Count > 0 ? string.Join(",", options.FileExtensions) : "mkv";
             this.CutMode = SplitCutModes.Detect(split);
             this.Pattern = split.Pattern ?? "";
             this.Ranges = split.Ranges ?? "";
@@ -313,6 +315,9 @@ namespace RemuxForge.Web.Services
             this.TrimEnd = split.TrimEnd ?? "";
             this.ChaptersPerEpisode = split.ChaptersPerEpisode > 0 ? split.ChaptersPerEpisode : 1;
             this.Snap = split.Snap;
+            // Come gli altri campi: la lettura del video del sorgente li conferma se il codec li ammette
+            this.EncodeQuality = split.EncodeQuality;
+            this.EncodeSpeed = split.EncodeSpeed;
             this.Template = split.OutputTemplate ?? "";
             this.StartNumber = split.StartNumber;
             this.SyncSourceKind();
@@ -336,9 +341,6 @@ namespace RemuxForge.Web.Services
 
         /// <summary>Sostituisce i file di uscita già presenti</summary>
         public bool Force { get; set; }
-
-        /// <summary>Estensioni separate da virgola</summary>
-        public string Extensions { get; set; }
 
         /// <summary>Modalità di taglio scelta</summary>
         public string CutMode { get; private set; }
@@ -364,6 +366,32 @@ namespace RemuxForge.Web.Services
         /// <summary>Allineamento dei tagli</summary>
         public MkvSplitSnapMode Snap { get; set; }
 
+        /// <summary>True quando codec e scansione del video sorgente sono stati letti: del file singolo, o comuni a tutti i file della cartella</summary>
+        public bool SourceVideoKnown { get; private set; }
+
+        /// <summary>Motivo localizzato per cui il sorgente si taglia solo al keyframe, vuoto se il taglio esatto è disponibile o il video non è noto</summary>
+        public string KeyframeOnlyReason { get; private set; } = "";
+
+        /// <summary>Errore della cartella con codec o scansione diversi fra i file, vuoto se omogenea o non letta</summary>
+        public string BatchVideoError { get; private set; } = "";
+
+        /// <summary>Capacità del codec del sorgente quando ammette il taglio esatto, altrimenti null</summary>
+        public MkvSplitCodecCapability EncodeCapability { get; private set; }
+
+        /// <summary>Qualità della ricodifica, null se il campo è vuoto</summary>
+        public int? EncodeQuality { get; set; }
+
+        /// <summary>Velocità della ricodifica, null se il codec non la prevede</summary>
+        public string EncodeSpeed { get; set; }
+
+        /// <summary>Allineamenti offerti dal menu: senza il taglio esatto quando il sorgente noto lo esclude</summary>
+        public MkvSplitSnapMode[] SnapModes => this.SourceVideoKnown && this.EncodeCapability == null
+            ? AllSnapModes.Where(mode => mode != MkvSplitSnapMode.Off).ToArray()
+            : AllSnapModes;
+
+        /// <summary>True se il pannello dei parametri di encode è visibile: taglio esatto su un sorgente noto che lo ammette</summary>
+        public bool ShowsEncodeSettings => this.Snap == MkvSplitSnapMode.Off && this.EncodeCapability != null;
+
         /// <summary>Schema del nome dei file</summary>
         public string Template { get; set; }
 
@@ -382,6 +410,53 @@ namespace RemuxForge.Web.Services
         {
             this.Source = path ?? "";
             this.SyncSourceKind();
+            // Il video del sorgente precedente non vale più: lo rilegge il chiamante, solo per un file
+            this.SourceVideoKnown = false;
+            this.KeyframeOnlyReason = "";
+            this.BatchVideoError = "";
+            this.EncodeCapability = null;
+            this.EncodeQuality = null;
+            this.EncodeSpeed = null;
+        }
+
+        /// <summary>
+        /// Registra una cartella con codec o scansione diversi fra i file: il video non è noto e l'errore blocca l'applicazione
+        /// </summary>
+        /// <param name="error">Errore con i file diversi</param>
+        public void SetBatchVideoMismatch(string error)
+        {
+            this.SourceVideoKnown = false;
+            this.KeyframeOnlyReason = "";
+            this.EncodeCapability = null;
+            this.BatchVideoError = error ?? "";
+        }
+
+        /// <summary>
+        /// Registra codec e scansione del video del sorgente: filtra gli allineamenti, riporta a «Più vicino»
+        /// un taglio esatto non più ammesso (P1) e tiene i parametri di encode applicati se il codec li ammette,
+        /// altrimenti, o dopo un cambio di sorgente, riparte dai predefiniti del codec (D10)
+        /// </summary>
+        /// <param name="codecName">Codec come lo riporta ffprobe</param>
+        /// <param name="scanType">Scansione letta da MediaInfo, vuota se non dichiarata</param>
+        public void SetSourceVideo(string codecName, string scanType)
+        {
+            int? quality = this.EncodeQuality;
+            string speed = this.EncodeSpeed;
+            this.SourceVideoKnown = true;
+            this.BatchVideoError = "";
+            this.EncodeCapability = null;
+            this.EncodeQuality = null;
+            this.EncodeSpeed = null;
+            if (MkvSplitCodecCapabilities.IsExactCutAvailable(codecName, scanType, out string reason))
+            {
+                this.EncodeCapability = MkvSplitCodecCapabilities.Find(codecName);
+                bool keep = quality.HasValue && MkvSplitCodecCapabilities.ValidateEncodeSettings(this.EncodeCapability, quality, speed).Count == 0;
+                this.EncodeQuality = keep ? quality : this.EncodeCapability.QualityDefault;
+                this.EncodeSpeed = keep && !string.IsNullOrWhiteSpace(speed) ? speed : this.EncodeCapability.SpeedDefault;
+            }
+            else if (this.Snap == MkvSplitSnapMode.Off)
+                this.Snap = MkvSplitSnapMode.Nearest;
+            this.KeyframeOnlyReason = reason;
         }
 
         /// <summary>
@@ -458,15 +533,6 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
-        /// Estensioni normalizzate, senza punto iniziale e senza duplicati
-        /// </summary>
-        /// <returns>Estensioni</returns>
-        public List<string> ExtensionList()
-        {
-            return (this.Extensions ?? "").Split(',').Select(item => item.Trim().TrimStart('.')).Where(item => item.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        }
-
-        /// <summary>
         /// Valida tutti i passi; ogni errore porta il campo e il passo a cui appartiene
         /// </summary>
         /// <param name="checkDisk">True per controllare l'esistenza della sorgente e della destinazione</param>
@@ -481,8 +547,8 @@ namespace RemuxForge.Web.Services
                 errors.Add(Issue("required", "web.splitWizard.validation.sourceRequired", "Source", SECTION_SOURCE));
             else if (checkDisk && !File.Exists(source) && !Directory.Exists(source))
                 errors.Add(new PipelineInitializationIssue("notFound", AppText.F("web.splitWizard.validation.sourceNotFound", source), "Source", SECTION_SOURCE));
-            if (this.ExtensionList().Count == 0)
-                errors.Add(Issue("required", "web.splitWizard.validation.extensionsRequired", "FileExtensions", SECTION_SOURCE));
+            else if (this.BatchVideoError.Length > 0)
+                errors.Add(new PipelineInitializationIssue("batchVideo", this.BatchVideoError, "Source", SECTION_SOURCE));
 
             // Taglio
             if (string.IsNullOrEmpty(this.CutMode))
@@ -498,6 +564,15 @@ namespace RemuxForge.Web.Services
                 this.ValidateRows(errors);
             else if (this.CutMode == SplitCutModes.TRIM)
                 this.ValidateTrim(errors);
+            if (this.ShowsEncodeSettings)
+            {
+                if (!this.EncodeQuality.HasValue)
+                    errors.Add(Issue("required", "web.splitWizard.validation.numberRequired", "EncodeQuality", SECTION_CUT));
+                foreach (string error in MkvSplitCodecCapabilities.ValidateEncodeSettings(this.EncodeCapability, this.EncodeQuality, null))
+                    errors.Add(new PipelineInitializationIssue("range", error, "EncodeQuality", SECTION_CUT));
+                foreach (string error in MkvSplitCodecCapabilities.ValidateEncodeSettings(this.EncodeCapability, null, this.EncodeSpeed))
+                    errors.Add(new PipelineInitializationIssue("range", error, "EncodeSpeed", SECTION_CUT));
+            }
 
             // Nomi dei file
             foreach (string templateError in MkvSplitSegmentService.ValidateTemplate((this.Template ?? "").Trim()))
@@ -547,9 +622,13 @@ namespace RemuxForge.Web.Services
             options.Split.OutputTemplate = (this.Template ?? "").Trim();
             options.Split.StartNumber = this.StartNumber ?? 0;
             options.Split.Snap = this.Snap;
+            // Senza pannello visibile ogni file usa i default del proprio codec
+            if (this.ShowsEncodeSettings)
+            {
+                options.Split.EncodeQuality = this.EncodeQuality;
+                options.Split.EncodeSpeed = this.EncodeSpeed;
+            }
             options.Split.Force = this.Force;
-            options.FileExtensions.Clear();
-            options.FileExtensions.AddRange(this.ExtensionList());
             return options;
         }
 

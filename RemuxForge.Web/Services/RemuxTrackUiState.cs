@@ -16,7 +16,7 @@ namespace RemuxForge.Web.Services
 
         public RemuxTrackUiState Clone() => new RemuxTrackUiState
         {
-            Request = this.Request with { FileExtensions = this.Request.FileExtensions.ToArray() },
+            Request = this.Request,
             ResultGroups = new HashSet<string>(this.ResultGroups, StringComparer.Ordinal),
             ExcludedGroups = new HashSet<string>(this.ExcludedGroups, StringComparer.Ordinal),
             KnownGroups = new HashSet<string>(this.KnownGroups, StringComparer.Ordinal)
@@ -34,7 +34,7 @@ namespace RemuxForge.Web.Services
             }
             return left != null && right != null && FullPath(left.SourcePath) == FullPath(right.SourcePath) &&
                 FullPath(left.LangPath) == FullPath(right.LangPath) && left.MatchPattern == right.MatchPattern &&
-                left.Recursive == right.Recursive && left.FileExtensions.SequenceEqual(right.FileExtensions);
+                left.Recursive == right.Recursive;
         }
     }
 }

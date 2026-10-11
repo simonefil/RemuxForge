@@ -7,8 +7,7 @@ namespace RemuxForge.Core.Models
     public enum RemuxTrackSide { Source, Lang }
 
     /// <summary>Richiesta detached: non richiede output, target o impostazioni audio.</summary>
-    public sealed record RemuxPreviewRequest(string SourcePath, string LangPath, string MatchPattern,
-        IReadOnlyList<string> FileExtensions, bool Recursive);
+    public sealed record RemuxPreviewRequest(string SourcePath, string LangPath, string MatchPattern, bool Recursive);
 
     public sealed record RemuxPreviewPair(string PairKey, string SourceFilePath, string LangFilePath,
         string EpisodeId, string SkipReason)

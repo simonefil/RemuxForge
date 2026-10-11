@@ -207,6 +207,17 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public int EndFrameExclusive { get; set; }
 
+        /// <summary>
+        /// Inizio chiesto dalla regola prima dello snap al keyframe, null se lo snap non l'ha spostato o se l'ha deciso l'utente:
+        /// i capitoli fra l'inizio chiesto e quello effettivo seguono il confine (MkvSplitPlanner.SelectChapters)
+        /// </summary>
+        public int? RequestedStartFrame { get; set; }
+
+        /// <summary>
+        /// Fine chiesta dalla regola prima dello snap al keyframe, null se lo snap non l'ha spostata o se l'ha decisa l'utente
+        /// </summary>
+        public int? RequestedEndFrame { get; set; }
+
         #endregion
 
         #region Metodi pubblici
@@ -255,6 +266,11 @@ namespace RemuxForge.Core.Models
         /// Messaggio localizzato
         /// </summary>
         public string Message { get; set; } = "";
+
+        /// <summary>
+        /// Motivo senza il riferimento alla clip, per i messaggi che non mostrano la clip (CLI); vuoto se coincide con il messaggio
+        /// </summary>
+        public string Reason { get; set; } = "";
 
         /// <summary>
         /// Gravità
@@ -696,6 +712,24 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public bool UsesFastPath { get; set; }
 
+        /// <summary>
+        /// Pacchetti in testa alla clip copiata che appartengono ai B iniziali del keyframe di GOP aperto su cui inizia e che
+        /// restano nell'output (D25): in apertura dell'output sempre, in una giunta interna solo se decodificabili da soli (§11 (q))
+        /// </summary>
+        public int OpenGopHeadPackets { get; set; }
+
+        /// <summary>
+        /// Pacchetti dei B iniziali tolti dalla testa della clip in una giunta interna, perché senza il GOP precedente si
+        /// decodificherebbero con i riferimenti della clip prima (§11 (q)): la clip inizia dal keyframe
+        /// </summary>
+        public int OpenGopDroppedPackets { get; set; }
+
+        /// <summary>
+        /// Ultimi fotogrammi che la clip copiata perde perché finisce su un keyframe di GOP aperto: i suoi B iniziali (D25).
+        /// Se la segue un'altra clip, il suo audio si ferma alla fine del video e la clip successiva parte prima della stessa durata
+        /// </summary>
+        public int OpenGopLostFrames { get; set; }
+
         #endregion
     }
 
@@ -725,6 +759,11 @@ namespace RemuxForge.Core.Models
         /// Tracce da rimuxare dal sorgente senza clipping per questo output equivalente al sorgente intero.
         /// </summary>
         public List<int> NativeSubtitleTrackIds { get; set; } = new List<int>();
+
+        /// <summary>
+        /// Tracce di sottotitoli che il ritaglio non sa riscrivere: le taglia mkvmerge insieme alle clip, al pacchetto
+        /// </summary>
+        public List<int> FallbackSubtitleTrackIds { get; set; } = new List<int>();
 
         #endregion
     }
@@ -852,14 +891,9 @@ namespace RemuxForge.Core.Models
         public byte[] BinaryPayload { get; set; }
 
         /// <summary>
-        /// Offset della sequenza di controllo di inizio nello SPU
+        /// Sequenze di controllo dello SPU VobSub, nell'ordine della catena
         /// </summary>
-        public int StartControlOffset { get; set; }
-
-        /// <summary>
-        /// Offset della sequenza di controllo di fine nello SPU
-        /// </summary>
-        public int EndControlOffset { get; set; }
+        public List<MkvSplitSpuControlSequence> ControlSequences { get; set; }
 
         /// <summary>
         /// Indice della riga di origine nel file sorgente
@@ -890,6 +924,36 @@ namespace RemuxForge.Core.Models
         /// Substream DVD del pacchetto VobSub
         /// </summary>
         public byte SubstreamId { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Sequenza di controllo di uno SPU VobSub
+    /// </summary>
+    public class MkvSplitSpuControlSequence
+    {
+        #region Proprietà
+
+        /// <summary>
+        /// Ritardo dal PTS del pacchetto, in unità di 1024/90000 s
+        /// </summary>
+        public int Delay { get; set; }
+
+        /// <summary>
+        /// Offset della sequenza nello SPU
+        /// </summary>
+        public int Offset { get; set; }
+
+        /// <summary>
+        /// Istante della sequenza nel tempo del sorgente, in secondi
+        /// </summary>
+        public double Seconds { get; set; }
+
+        /// <summary>
+        /// Comandi con i loro parametri, senza il terminatore 0xFF
+        /// </summary>
+        public List<byte[]> Commands { get; set; } = new List<byte[]>();
 
         #endregion
     }

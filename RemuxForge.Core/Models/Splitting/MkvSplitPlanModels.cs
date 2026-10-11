@@ -44,7 +44,14 @@ namespace RemuxForge.Core.Models
         ChapterGrouping,
 
         /// <summary>Capitoli del sorgente non riportati (edizioni ulteriori, capitoli annidati)</summary>
-        ChapterNotCarried
+        ChapterNotCarried,
+
+        /// <summary>Video interlacciato tagliato senza ricodifica su un keyframe di GOP aperto: la parte che ci finisce perde i B iniziali
+        /// oppure, con closed_gop=1, il confine si sposta indietro e la parte che ci inizia li mostra in testa (D25, §11 (o))</summary>
+        OpenGopBoundary,
+
+        /// <summary>Avviso del piano eseguibile senza una categoria propria</summary>
+        General
     }
 
     /// <summary>
@@ -165,9 +172,6 @@ namespace RemuxForge.Core.Models
 
         /// <summary>Frame totali che verranno ricodificati</summary>
         public int TotalReencodeFrames { get; set; }
-
-        /// <summary>True se lo split userà il percorso veloce senza ricodifica</summary>
-        public bool UsesFastPath { get; set; }
 
         #endregion
     }

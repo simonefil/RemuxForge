@@ -9,8 +9,11 @@ using RemuxForge.Core.Splitting;
 using RemuxForge.Web.Components.Remux;
 using RemuxForge.Web.Components.Shared;
 using RemuxForge.Web.Services;
+using RemuxForge.Core.Media;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -28,9 +31,6 @@ namespace RemuxForge.Web.Components.Split
 
         /// <summary>Indice del Riepilogo</summary>
         private const int LastSection = 4;
-
-        /// <summary>Allineamenti nell'ordine del menu</summary>
-        private static readonly MkvSplitSnapMode[] SnapModes = { MkvSplitSnapMode.Nearest, MkvSplitSnapMode.Before, MkvSplitSnapMode.After, MkvSplitSnapMode.Off };
 
         #endregion
 
@@ -179,6 +179,14 @@ namespace RemuxForge.Web.Components.Split
         }
 
         /// <summary>
+        /// Legge il video del sorgente iniziale, quando è un file
+        /// </summary>
+        protected override Task OnInitializedAsync()
+        {
+            return this.ReadSourceVideoAsync();
+        }
+
+        /// <summary>
         /// Focus iniziale, della card scelta con le frecce e del campo indicato da Modifica
         /// </summary>
         /// <param name="firstRender">True al primo render</param>
@@ -254,15 +262,76 @@ namespace RemuxForge.Web.Components.Split
         }
 
         /// <summary>
-        /// Cambia sorgente: con un file la ricerca nelle sottocartelle non si applica e si spegne
+        /// Cambia sorgente: con un file la ricerca nelle sottocartelle non si applica e si spegne,
+        /// e il video del file decide gli allineamenti e i parametri di encode
         /// </summary>
         /// <param name="value">Percorso scritto</param>
-        private void ChangeSource(string value) => this.Edit(() =>
+        private async Task ChangeSource(string value)
         {
-            this.Draft.SetSource(value);
-            if (this.Draft.SourceIsFile)
-                this.Draft.Recursive = false;
-        });
+            this.Edit(() =>
+            {
+                this.Draft.SetSource(value);
+                if (this.Draft.SourceIsFile)
+                    this.Draft.Recursive = false;
+            });
+            await this.ReadSourceVideoAsync();
+        }
+
+        /// <summary>
+        /// Cambia la ricerca nelle sottocartelle: i file della cartella cambiano, quindi si rilegge il loro video
+        /// </summary>
+        /// <param name="value">Nuovo valore</param>
+        private async Task ChangeRecursive(bool value)
+        {
+            this.Edit(() => this.Draft.Recursive = value);
+            await this.ReadSourceVideoAsync();
+        }
+
+        /// <summary>
+        /// Legge codec e scansione del sorgente fuori dal thread del circuito: del file, oppure di ogni file della cartella,
+        /// che per un batch devono coincidere. Senza file il video resta non noto e il menu offre tutti gli allineamenti; strumenti mancanti
+        /// o MediaInfo che non risponde bloccano la sorgente con il motivo
+        /// </summary>
+        private async Task ReadSourceVideoAsync()
+        {
+            string path = this.Draft.Source;
+            bool recursive = this.Draft.Recursive;
+            if (!this.Draft.SourceIsFile && !Directory.Exists(path))
+                return;
+            (string Codec, string ScanType, string Mismatch)? video = await Task.Run<(string, string, string)?>(() =>
+            {
+                try
+                {
+                    MkvSplitExternalTools.Instance.ResolveBinaries();
+                    List<string> files = MkvSplitPipeline.ResolveInputFiles(path, recursive);
+                    if (files.Count == 0)
+                        return null;
+                    string mismatch = MkvSplitPipeline.CheckBatchVideo(files, out string codec, out string scanType);
+                    return (codec, scanType, mismatch);
+                }
+                catch (InvalidOperationException exception)
+                {
+                    // Strumenti mancanti o MediaInfo che non risponde: non parte nulla e il motivo compare sotto la sorgente
+                    return (null, "", exception.Message);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    return null;
+                }
+            });
+            // Una risposta arrivata dopo un nuovo cambio di sorgente o di sottocartelle non vale più
+            if (video == null || this._disposed || this._applying || this.Draft.Source != path || this.Draft.Recursive != recursive)
+                return;
+            if (video.Value.Mismatch.Length > 0)
+            {
+                // L'errore compare subito sotto la sorgente, senza aspettare Avanti
+                this.Edit(() => this.Draft.SetBatchVideoMismatch(video.Value.Mismatch));
+                this.RevalidateSection(0);
+            }
+            else
+                this.Edit(() => this.Draft.SetSourceVideo(video.Value.Codec, video.Value.ScanType));
+            this.StateHasChanged();
+        }
 
         /// <summary>
         /// Sceglie la modalità di taglio
@@ -272,7 +341,7 @@ namespace RemuxForge.Web.Components.Split
         {
             this.Draft.SetCutMode(mode);
             // I campi della modalità precedente non esistono più: i loro errori non vanno trascinati
-            this._errors.RemoveAll(e => IssueSection(e) == 1 && e.Field != "CutMode" && e.Field != "Snap");
+            this._errors.RemoveAll(e => IssueSection(e) == 1 && e.Field != "CutMode" && e.Field != "Snap" && e.Field != "EncodeQuality" && e.Field != "EncodeSpeed");
             this.SetModeHelp(mode);
         });
 
@@ -411,11 +480,11 @@ namespace RemuxForge.Web.Components.Split
         {
             if (this._applying)
                 return;
-            string path = await AppDialogs.BrowseAsync(this.DialogService, this.JsModule, source ? this.Draft.Source : this.Draft.OutputDir, source, true, this.Draft.ExtensionList());
+            string path = await AppDialogs.BrowseAsync(this.DialogService, this.JsModule, source ? this.Draft.Source : this.Draft.OutputDir, source, true, new List<string>(MediaContainerFormats.Extensions));
             if (path == null || this._disposed)
                 return;
             if (source)
-                this.ChangeSource(path);
+                await this.ChangeSource(path);
             else
                 this.Edit(() => this.Draft.OutputDir = path);
         }
@@ -440,10 +509,16 @@ namespace RemuxForge.Web.Components.Split
             string no = AppText.T("web.common.no");
             string source = string.IsNullOrWhiteSpace(this.Draft.Source) ? "—" : this.Draft.Source.Trim();
             if (!this.Draft.SourceIsFile)
-                source += Environment.NewLine + L("recursive") + ": " + (this.Draft.Recursive ? yes : no) +
-                    " · " + L("extensions") + ": " + string.Join(", ", this.Draft.ExtensionList());
+                source += Environment.NewLine + L("recursive") + ": " + (this.Draft.Recursive ? yes : no);
             yield return (0, T("section.source"), source);
-            yield return (1, T("section.cut"), this.CutSummary() + Environment.NewLine + L("snap") + ": " + SnapLabel(this.Draft.Snap));
+            string cut = this.CutSummary() + Environment.NewLine + L("snap") + ": " + SnapLabel(this.Draft.Snap);
+            if (this.Draft.ShowsEncodeSettings)
+            {
+                cut += Environment.NewLine + L("encodeQuality") + ": " + this.Draft.EncodeCapability.QualityName + " " + (this.Draft.EncodeQuality?.ToString(CultureInfo.InvariantCulture) ?? "—");
+                if (this.Draft.EncodeCapability.SpeedName != null)
+                    cut += Environment.NewLine + L("encodeSpeed") + ": " + this.Draft.EncodeCapability.SpeedName + " " + (this.Draft.EncodeSpeed ?? "—");
+            }
+            yield return (1, T("section.cut"), cut);
             string template = string.IsNullOrWhiteSpace(this.Draft.Template) ? this.DefaultTemplate : this.Draft.Template.Trim();
             yield return (2, T("section.naming"), template + Environment.NewLine + L("startNumber") + ": " + (this.Draft.StartNumber?.ToString() ?? "—"));
             string output = string.IsNullOrWhiteSpace(this.Draft.OutputDir) ? T("placeholder.besideSource") : this.Draft.OutputDir.Trim();

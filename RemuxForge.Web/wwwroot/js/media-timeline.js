@@ -477,7 +477,7 @@ export class TimelineCanvas {
             if (url) {
                 const response = await fetch(url, { signal: controller.signal, cache: 'no-store' });
                 if (response.status !== 204) {
-                    if (!response.ok) throw new Error(await response.text() || `Audio timeline request failed: ${response.status}`);
+                    if (!response.ok) throw await requestError(response, 'Audio timeline request failed');
                     image = await parseAudioTimelineImage(await response.arrayBuffer());
                 }
             }
@@ -489,7 +489,9 @@ export class TimelineCanvas {
             this.audioImages.set(key, image);
             this.draw();
         } catch (error) {
-            if (error?.name !== 'AbortError') console.warn('Audio timeline unavailable', error);
+            // Il temporaneo della sessione mancante lo segnala il componente, una volta sola
+            if (error?.sessionMediaMissing !== undefined) this.dotNetReference?.invokeMethodAsync('OnSessionMediaMissing', error.sessionMediaMissing).catch(() => {});
+            else if (error?.name !== 'AbortError') console.warn('Audio timeline unavailable', error);
         }
     }
 
@@ -1180,6 +1182,20 @@ export function formatTimelineTime(milliseconds) {
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
 }
 
+// Prefisso dell'errore di una risposta 409, quando manca il temporaneo della sessione dell'editor (SessionMediaMissingException.CLIENT_MARKER)
+const SESSION_MEDIA_MISSING = 'session-media-missing:';
+
+/** Errore di una risposta non riuscita: con 409 porta il messaggio del server dietro il prefisso del temporaneo mancante. */
+async function requestError(response, fallback) {
+    const text = await response.text();
+    if (response.status !== 409) return new Error(text || `${fallback}: ${response.status}`);
+    let detail = text;
+    try { detail = JSON.parse(text).detail || text; } catch { }
+    const error = new Error(SESSION_MEDIA_MISSING + detail);
+    error.sessionMediaMissing = detail;
+    return error;
+}
+
 async function fetchRawFrameWindow(url, previousIndex, cache, signal) {
     if (cache.has(url)) return cache.get(url);
     await waitForPreviewRequest(signal);
@@ -1189,7 +1205,7 @@ async function fetchRawFrameWindow(url, previousIndex, cache, signal) {
     const startIndex = previousIndex !== null && parsed.index < previousIndex ? Math.max(0, parsed.index - (batchSize - 1)) : parsed.index;
     const requestUrl = `${parsed.prefix}${startIndex}${parsed.query}${parsed.query ? '&' : '?'}count=${batchSize}`;
     const response = await fetch(requestUrl, { signal, cache: 'default' });
-    if (!response.ok) throw new Error(await response.text() || `Preview request failed: ${response.status}`);
+    if (!response.ok) throw await requestError(response, 'Preview request failed');
     const buffer = await response.arrayBuffer();
     const count = Number(response.headers.get('X-Frame-Count')) || 1;
     const frameBytes = Number(response.headers.get('X-Frame-Bytes')) || buffer.byteLength;

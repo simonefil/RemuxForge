@@ -1,9 +1,12 @@
+using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.Json.Serialization;
 
 namespace RemuxForge.Core.Splitting
 {
@@ -22,6 +25,10 @@ namespace RemuxForge.Core.Splitting
             this.SourcePts = new double[0];
             this.KeyFlags = new List<MkvSplitFrameInfo>();
             this.FrameRateMode = MkvSplitFrameRateMode.Unknown;
+            this.ScanType = "";
+            this.Tracks = new List<TrackInfo>();
+            this.Subtitles = new List<MkvSplitSubtitleTrack>();
+            this.TrackInventoryError = "";
         }
 
         #endregion
@@ -52,6 +59,21 @@ namespace RemuxForge.Core.Splitting
         /// <summary>Modalità frame rate rilevata</summary>
         public MkvSplitFrameRateMode FrameRateMode { get; set; }
 
+        /// <summary>Scansione MediaInfo del video, vuota se non dichiarata: un video interlacciato si taglia solo al keyframe (D07)</summary>
+        public string ScanType { get; set; }
+
+        /// <summary>Tracce del Matroska letto, con gli ID del sorgente; fuori dallo snapshot dell'editor</summary>
+        [JsonIgnore]
+        public List<TrackInfo> Tracks { get; set; }
+
+        /// <summary>Tracce di sottotitoli ritagliabili lette dal Matroska, con gli eventi nel tempo del sorgente; fuori dallo snapshot dell'editor</summary>
+        [JsonIgnore]
+        public List<MkvSplitSubtitleTrack> Subtitles { get; set; }
+
+        /// <summary>Errore localizzato di lettura delle tracce o dei sottotitoli, vuoto se la lettura è riuscita</summary>
+        [JsonIgnore]
+        public string TrackInventoryError { get; set; }
+
         #endregion
     }
 
@@ -66,7 +88,7 @@ namespace RemuxForge.Core.Splitting
         private const long CACHE_LIMIT_BYTES = 256L * 1024L * 1024L;
 
         /// <summary>Dimensione CLR corrente di un elemento della mappa packet</summary>
-        private const int FRAME_INFO_SIZE_BYTES = 16;
+        private const int FRAME_INFO_SIZE_BYTES = 24;
 
         #endregion
 
@@ -142,27 +164,60 @@ namespace RemuxForge.Core.Splitting
             }
 
             MkvSplitAnalysis analysis = new MkvSplitAnalysis();
-            ChapterReadResult chapters = MkvSplitExternalTools.Instance.ReadChapters(inputFile);
-
-            // Capitoli che non si possono spostare nel tempo (ordered) bloccano il sorgente
-            if (chapters.Error.Length > 0)
-                throw new InvalidOperationException(chapters.Error);
-
-            analysis.Chapters = chapters.Chapters;
-            analysis.ChapterWarnings = chapters.Warnings;
-            analysis.PacketCount = MkvSplitExternalTools.Instance.CountPackets(inputFile);
-            analysis.SourcePts = MkvSplitExternalTools.Instance.ExtractSourcePts(inputFile, analysis.PacketCount, out double videoEnd);
-            // Senza la fine esatta del video si ripiega sulla durata del container letta da mkvmerge
-            if (!double.IsFinite(videoEnd))
+            // La chiave resta il sorgente: la normalizzazione è deterministica, l'analisi vale anche per il temporaneo successivo.
+            // Il lease è condiviso con l'editor o l'esecuzione che lo tengono già; altrimenti il temporaneo sparisce a fine analisi
+            using (MkvSplitSourceMediaLease lease = MkvSplitSourceMedia.Instance.Acquire(inputFile))
             {
-                MkvFileInfo containerInfo = MkvSplitExternalTools.Instance.GetFileInfo(inputFile);
-                videoEnd = containerInfo != null && containerInfo.ContainerDurationNs > 0 ? containerInfo.ContainerDurationNs / 1000000000.0 : double.NaN;
-                ConsoleHelper.Write(LogSection.Split, LogLevel.Warning, AppText.F("split.tools.videoEndFromContainer", Path.GetFileName(inputFile)));
+                string media = lease.Path;
+                ChapterReadResult chapters = MkvSplitExternalTools.Instance.ReadChapters(media);
+
+                // Capitoli che non si possono spostare nel tempo (ordered) bloccano il sorgente
+                if (chapters.Error.Length > 0)
+                    throw new InvalidOperationException(chapters.Error);
+
+                analysis.Chapters = chapters.Chapters;
+                analysis.ChapterWarnings = chapters.Warnings;
+                analysis.PacketCount = MkvSplitExternalTools.Instance.CountPackets(media);
+                analysis.SourcePts = MkvSplitExternalTools.Instance.ExtractSourcePts(media, analysis.PacketCount, out double videoEnd);
+                // Senza la fine esatta del video si ripiega sulla durata del container letta da mkvmerge
+                MkvFileInfo containerInfo = MkvSplitExternalTools.Instance.GetFileInfo(media);
+                if (!double.IsFinite(videoEnd))
+                {
+                    videoEnd = containerInfo != null && containerInfo.ContainerDurationNs > 0 ? containerInfo.ContainerDurationNs / 1000000000.0 : double.NaN;
+                    ConsoleHelper.Write(LogSection.Split, LogLevel.Warning, AppText.F("split.tools.videoEndFromContainer", Path.GetFileName(inputFile)));
+                }
+                analysis.Duration = videoEnd;
+                analysis.VideoParams = MkvSplitExternalTools.Instance.GetVideoParams(media);
+                analysis.KeyFlags = MkvSplitExternalTools.Instance.GetKeyFlags(media, analysis.VideoParams.CodecName);
+                analysis.FrameRateMode = MkvSplitExternalTools.Instance.DetectFrameRateMode(media);
+                analysis.ScanType = MkvSplitExternalTools.Instance.GetVideoScanType(inputFile);
+                // Inventario delle tracce ed eventi dei sottotitoli: il piano eseguibile non rilegge il Matroska. Un errore qui
+                // blocca solo l'esecuzione, come diagnostica del piano, non l'analisi
+                string temporary = Path.Combine(AppSettingsService.Instance.GetTempFolder(), "remuxforge-split-sub-" + Guid.NewGuid().ToString("N"));
+                try
+                {
+                    if (containerInfo == null)
+                        throw new InvalidOperationException(AppText.T("split.montage.trackInventory"));
+                    analysis.Tracks = containerInfo.Tracks;
+                    if (analysis.Tracks.Any(item => item.Type == "subtitles" && MkvSplitSubtitleService.IsSupported(item)))
+                    {
+                        Directory.CreateDirectory(temporary);
+                        foreach (TrackInfo track in analysis.Tracks.Where(item => item.Type == "subtitles" && MkvSplitSubtitleService.IsSupported(item)))
+                            analysis.Subtitles.Add(MkvSplitSubtitleService.ReadSource(media, track, temporary, analysis.Duration));
+                    }
+                }
+                catch (Exception exception)
+                {
+                    analysis.Subtitles.Clear();
+                    analysis.TrackInventoryError = exception.Message;
+                }
+                finally
+                {
+                    if (Directory.Exists(temporary))
+                        Directory.Delete(temporary, true);
+                }
+                lease.VerifiedAnalysis = analysis;
             }
-            analysis.Duration = videoEnd;
-            analysis.KeyFlags = MkvSplitExternalTools.Instance.GetKeyFlags(inputFile);
-            analysis.VideoParams = MkvSplitExternalTools.Instance.GetVideoParams(inputFile);
-            analysis.FrameRateMode = MkvSplitExternalTools.Instance.DetectFrameRateMode(inputFile);
 
             lock (this._lock)
             {
@@ -194,7 +249,7 @@ namespace RemuxForge.Core.Splitting
         #region Metodi privati
 
         /// <summary>
-        /// Stima la memoria occupata dalle strutture proporzionali al numero di frame
+        /// Stima la memoria occupata dalle strutture proporzionali al numero di frame e dai sottotitoli letti
         /// </summary>
         /// <param name="analysis">Analisi da misurare</param>
         /// <returns>Dimensione stimata in byte</returns>
@@ -202,7 +257,21 @@ namespace RemuxForge.Core.Splitting
         {
             long sourcePtsBytes = analysis.SourcePts != null ? analysis.SourcePts.LongLength * sizeof(double) : 0;
             long keyFlagsBytes = analysis.KeyFlags != null ? (long)analysis.KeyFlags.Count * FRAME_INFO_SIZE_BYTES : 0;
-            return sourcePtsBytes + keyFlagsBytes;
+            long subtitleBytes = 0;
+            // I sottotitoli bitmap tengono in memoria i display-set: contano come i dati per fotogramma
+            foreach (MkvSplitSubtitleTrack subtitle in analysis.Subtitles)
+            {
+                subtitleBytes += (subtitle.SourceContent?.Length ?? 0) * sizeof(char) + (subtitle.BitmapPresentationHeader?.LongLength ?? 0);
+                foreach (MkvSplitSubtitleEvent item in subtitle.Events)
+                {
+                    subtitleBytes += (item.Text?.Length ?? 0) * sizeof(char) + (item.BinaryPayload?.LongLength ?? 0);
+                    if (item.Fields != null)
+                        subtitleBytes += item.Fields.Sum(field => (long)(field?.Length ?? 0) * sizeof(char));
+                    if (item.BitmapSegments != null)
+                        subtitleBytes += item.BitmapSegments.Sum(segment => segment.Data?.LongLength ?? 0);
+                }
+            }
+            return sourcePtsBytes + keyFlagsBytes + subtitleBytes;
         }
 
         /// <summary>

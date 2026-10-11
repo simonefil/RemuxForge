@@ -11,7 +11,6 @@ namespace RemuxForge.Core.Models
         public RemuxMuxKind MuxKind { get; set; }
         public bool Recursive { get; set; } = true;
         public string MatchPattern { get; set; } = @"S(\d+)E(\d+)";
-        public List<string> FileExtensions { get; set; } = new List<string> { "mkv" };
         public List<string> TargetLanguage { get; set; } = new List<string>();
         public List<string> AudioCodec { get; set; } = new List<string>();
         public List<string> KeepSourceAudioLangs { get; set; } = new List<string>();
@@ -45,7 +44,6 @@ namespace RemuxForge.Core.Models
         public RemuxPreset Clone()
         {
             RemuxPreset copy = (RemuxPreset)this.MemberwiseClone();
-            copy.FileExtensions = new List<string>(this.FileExtensions ?? new List<string>());
             copy.TargetLanguage = new List<string>(this.TargetLanguage ?? new List<string>());
             copy.AudioCodec = new List<string>(this.AudioCodec ?? new List<string>());
             copy.KeepSourceAudioLangs = new List<string>(this.KeepSourceAudioLangs ?? new List<string>());

@@ -52,13 +52,8 @@
                         <div class="detail-section-body detail-card-stack">
                             @if (Record.Plan != null)
                             {
+                                @* Gli avvisi del piano sono le diagnostiche del montaggio, mostrate più sotto *@
                                 @PropertyRow(AppText.T("web.split.detail.cost"), DescribeCost(Record.Plan))
-                                @if (Record.Plan.Warnings.Count > 0)
-                                {
-                                    <RadzenAlert AlertStyle="AlertStyle.Warning" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="split-warning-alert">
-                                        @foreach (MkvSplitWarning warning in Record.Plan.Warnings) { <div class="split-warning-row">@warning.Message</div> }
-                                    </RadzenAlert>
-                                }
                             }
                             @foreach (MkvSplitOutputProjection output in Record.MontageProjection.Outputs)
                             {
@@ -187,7 +182,7 @@
         if (plan.TotalReencodeFrames == 0)
             return AppText.T("web.split.detail.costCopy");
 
-        return AppText.F("web.split.detail.costReencode", plan.TotalReencodeFrames);
+        return AppText.Count("web.split.detail.costReencode", plan.TotalReencodeFrames);
     }
 
     /// <summary>

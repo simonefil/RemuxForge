@@ -1,8 +1,8 @@
-using RemuxForge.Core.Chapters;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
@@ -46,7 +46,7 @@ namespace RemuxForge.Core.Splitting
 
         /// <summary>Slow path: usa il raw bitstream per tagliare byte-perfect, ri-codifica il GOP iniziale se lo start non è un keyframe.</summary>
         /// <param name="seg">Segmento da produrre.</param>
-        /// <param name="inputFile">File MKV originale (da cui estrarre audio/sub).</param>
+        /// <param name="inputFile">File MKV normalizzato, da cui si leggono audio e tracce video secondarie.</param>
         /// <param name="rawFile">Bitstream video raw già estratto.</param>
         /// <param name="frameMap">Mappa dei packet del raw (posizione + keyflag), in ordine di decodifica.</param>
         /// <param name="sourcePts">PTS del sorgente ordinati crescente, cioè in ordine di presentazione.</param>
@@ -55,13 +55,15 @@ namespace RemuxForge.Core.Splitting
         /// <param name="codec">MkvSplitCodec video canonico.</param>
         /// <param name="outputFile">File MKV di output.</param>
         /// <param name="tempDir">Directory temporanea dedicata al segmento.</param>
-        public void SplitSlow(MkvSplitSegment seg, string inputFile, string rawFile, List<MkvSplitFrameInfo> frameMap, double[] sourcePts, int[] presentationToDecode, List<string> headArgs, MkvSplitCodec codec, string outputFile, string tempDir, bool omitSubtitles = false)
+        /// <param name="tracks">Tracce del file normalizzato, nel loro ordine.</param>
+        /// <param name="subtitleIds">Tracce di sottotitoli da tagliare al pacchetto, vuota se non ce ne sono.</param>
+        /// <param name="subtitles">Matroska con le sole tracce di subtitleIds, nell'ordine del sorgente; null se non ce ne sono.</param>
+        public void SplitSlow(MkvSplitSegment seg, string inputFile, string rawFile, List<MkvSplitFrameInfo> frameMap, double[] sourcePts, int[] presentationToDecode, List<string> headArgs, MkvSplitCodec codec, string outputFile, string tempDir, List<TrackInfo> tracks, List<int> subtitleIds, string subtitles)
         {
             int epStartFrame;
             int epFrameCount;
             int epEndFrame;
             bool startIsKey;
-            string tcFile;
             string videoBs;
             long totalBytes;
             int kfAfter;
@@ -79,15 +81,6 @@ namespace RemuxForge.Core.Splitting
             string parameterSetsFile;
             long restBytes;
             string restFile;
-            string videoMkv;
-            int actual;
-            string avFile;
-            int avExit;
-            bool hasAv;
-            bool hasChapters;
-            string chFile;
-            List<string> muxCmd;
-            double sizeMb;
 
             // Estrazione dei dati principali dal segmento: gli indici del segmento sono di presentazione,
             // quelli del raw di decodifica, e la mappa traduce dagli uni agli altri
@@ -95,10 +88,6 @@ namespace RemuxForge.Core.Splitting
             epFrameCount = seg.FrameCount;
             epEndFrame = epStartFrame + epFrameCount - 1;
             startIsKey = frameMap[presentationToDecode[epStartFrame]].Key;
-
-            // Generazione del file timecodes v2 rebasato a 0 dal primo frame del segmento
-            tcFile = Path.Combine(tempDir, "timecodes.txt");
-            WriteTimecodesFile(tcFile, sourcePts, epStartFrame, epFrameCount);
 
             // Path del bitstream video del segmento ricostruito (keyframe copy o head re-encoded + rest copy)
             videoBs = Path.Combine(tempDir, "video.bs");
@@ -199,60 +188,231 @@ namespace RemuxForge.Core.Splitting
                 }
             }
 
-            // Remux del bitstream applicando i timecodes v2 (VFR preservato)
+            MuxSegment(seg, inputFile, sourcePts, videoBs, outputFile, tempDir, tracks, subtitleIds, subtitles);
+        }
+
+        #endregion
+
+        #region Pipeline a pacchetti (corpo copiato per PTS)
+
+        /// <summary>
+        /// Taglio esatto a pacchetti: testa e coda ricodificate con lo stesso codec, corpo copiato selezionando i pacchetti del
+        /// sorgente per PTS e parti accodate con mkvmerge. Serve ai codec il cui flusso non si copia a byte da un elementary stream:
+        /// MPEG-4 ASP, AV1 e VP9 con parti in Matroska, MS-MPEG4 e H.263 con parti in AVI e il fourcc del sorgente.
+        /// </summary>
+        /// <param name="seg">Segmento da produrre.</param>
+        /// <param name="inputFile">File MKV normalizzato, da cui si leggono video, audio e tracce video secondarie.</param>
+        /// <param name="sourcePts">PTS del sorgente ordinati crescente, cioè in ordine di presentazione.</param>
+        /// <param name="keyFlags">Keyframe reali del sorgente, in ordine di presentazione.</param>
+        /// <param name="presentationToDecode">Posizione in ordine di decodifica di ogni frame, indicizzata per presentazione.</param>
+        /// <param name="headArgs">Argomenti ffmpeg della ricodifica di testa e coda.</param>
+        /// <param name="codec">Codec video canonico.</param>
+        /// <param name="outputFile">File MKV di output.</param>
+        /// <param name="tempDir">Directory temporanea dedicata al segmento.</param>
+        /// <param name="tracks">Tracce del file normalizzato, nel loro ordine.</param>
+        /// <param name="subtitleIds">Tracce di sottotitoli da tagliare al pacchetto, vuota se non ce ne sono.</param>
+        /// <param name="subtitles">Matroska con le sole tracce di subtitleIds, nell'ordine del sorgente; null se non ce ne sono.</param>
+        public void SplitPackets(MkvSplitSegment seg, string inputFile, double[] sourcePts, List<MkvSplitFrameInfo> keyFlags, int[] presentationToDecode, List<string> headArgs, MkvSplitCodec codec, string outputFile, string tempDir, List<TrackInfo> tracks, List<int> subtitleIds, string subtitles)
+        {
+            int startFrame = seg.StartFrame;
+            int endFrame = seg.StartFrame + seg.FrameCount - 1;
+            int kfAfter = endFrame + 1;
+            int tailStart;
+            int bodyCount;
+            string headFile;
+            string bodyFile;
+            string tailFile;
+            string drop;
+            string videoFile;
+            List<string> parts = new List<string>();
+            List<string> append;
+
+            // Primo keyframe reale dall'inizio del taglio in ordine di presentazione: le immagini leading di un GOP aperto
+            // lo precedono e cadono nella testa. Senza keyframe prima della fine la testa è l'intera clip
+            for (int i = startFrame; i <= endFrame; i++)
+            {
+                if (keyFlags[i].Key) { kfAfter = i; break; }
+            }
+            tailStart = kfAfter <= endFrame ? FindTailStart(presentationToDecode, kfAfter, endFrame) : endFrame + 1;
+            bodyCount = tailStart - kfAfter;
+
+            if (kfAfter > startFrame)
+            {
+                headFile = Path.Combine(tempDir, "head.part");
+                ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.exec.packetHead", startFrame, kfAfter - 1, kfAfter - startFrame));
+                ReencodeFrameRange(inputFile, startFrame, kfAfter - 1, headArgs, codec, headFile);
+                if (MkvSplitExternalTools.Instance.CountPackets(headFile) != kfAfter - startFrame)
+                {
+                    throw new InvalidOperationException(AppText.F("split.exec.headReencodeMismatch", MkvSplitExternalTools.Instance.CountPackets(headFile), kfAfter - startFrame));
+                }
+                ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.exec.headDone", kfAfter - startFrame));
+                parts.Add(headFile);
+            }
+
+            if (bodyCount > 0)
+            {
+                // Selezione per PTS con soglie a metà fra fotogrammi contigui, immuni dall'arrotondamento dei timestamp. Il VOL
+                // dell'MPEG-4 ASP sta solo nei dati privati: va reinserito nel primo keyframe del corpo, dopo il VOL della testa.
+                // In AVI il corpo riparte da 0: il muxer conta come fotogrammi saltati i tick prima del primo pacchetto e oltre
+                // 60000 rifiuta il file, cioè ogni corpo che inizia dopo un minuto
+                drop = "lt(pts*tb\\," + Threshold(sourcePts, kfAfter) + ")";
+                if (tailStart < sourcePts.Length)
+                {
+                    drop += "+gte(pts*tb\\," + Threshold(sourcePts, tailStart) + ")";
+                }
+                bodyFile = Path.Combine(tempDir, "body.part");
+                ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.exec.packetBody", bodyCount));
+                MkvSplitExternalTools.Instance.RunFfmpeg(new string[]
+                {
+                    "-y", "-hide_banner", "-loglevel", "warning", "-i", inputFile, "-map", "0:v:0", "-c:v", "copy",
+                    "-bsf:v", "noise=drop='" + drop + "'" + (codec == MkvSplitCodec.Mpeg4 ? ",dump_extra=freq=k" : "") + (RawFormat(codec) == "avi" ? ",setts=ts=TS-STARTPTS" : ""),
+                    "-an", "-sn", "-dn", "-f", RawFormat(codec), bodyFile
+                });
+                if (MkvSplitExternalTools.Instance.CountPackets(bodyFile) != bodyCount)
+                {
+                    throw new InvalidOperationException(AppText.F("split.exec.packetBodyMismatch", MkvSplitExternalTools.Instance.CountPackets(bodyFile), bodyCount));
+                }
+                parts.Add(bodyFile);
+            }
+
+            // I B-frame finali che puntano a un'ancora esclusa non si copiano: il decoder li scarterebbe
+            tailFile = BuildTail(inputFile, tailStart, endFrame, headArgs, codec, tempDir);
+            if (tailFile != null)
+            {
+                parts.Add(tailFile);
+            }
+
+            // Accodamento delle parti: i tempi definitivi li applica MuxSegment dai PTS del sorgente
+            videoFile = Path.Combine(tempDir, "video.parts.mkv");
+            append = new List<string> { "-o", videoFile };
+            for (int i = 0; i < parts.Count; i++)
+            {
+                if (i > 0) { append.Add("+"); }
+                append.Add(parts[i]);
+            }
+            MkvSplitExternalTools.Instance.RunMkvmerge(append);
+
+            MuxSegment(seg, inputFile, sourcePts, videoFile, outputFile, tempDir, tracks, subtitleIds, subtitles);
+        }
+
+        /// <summary>
+        /// Soglia in secondi fra un fotogramma e il precedente, a metà fra i due PTS
+        /// </summary>
+        /// <param name="sourcePts">PTS del sorgente in ordine di presentazione.</param>
+        /// <param name="frame">Primo fotogramma oltre la soglia.</param>
+        /// <returns>Soglia formattata per un'espressione ffmpeg.</returns>
+        private static string Threshold(double[] sourcePts, int frame)
+        {
+            double value = frame > 0 ? (sourcePts[frame - 1] + sourcePts[frame]) / 2.0 : sourcePts[frame] - 1.0;
+            return value.ToString("0.000000", CultureInfo.InvariantCulture);
+        }
+
+        #endregion
+
+        #region Mux del segmento
+
+        /// <summary>
+        /// Chiude il segmento: applica al video i timecodes v2 del sorgente (VFR preservato), verifica il numero di fotogrammi
+        /// e unisce audio, tracce video secondarie e sottotitoli tagliati al pacchetto, nell'ordine del sorgente.
+        /// </summary>
+        /// <param name="seg">Segmento da produrre.</param>
+        /// <param name="inputFile">File MKV da cui estrarre audio e tracce video secondarie.</param>
+        /// <param name="sourcePts">PTS del sorgente in ordine di presentazione.</param>
+        /// <param name="video">Video del segmento, bitstream o Matroska, senza tempi definitivi.</param>
+        /// <param name="outputFile">File MKV di output.</param>
+        /// <param name="tempDir">Directory temporanea dedicata al segmento.</param>
+        /// <param name="tracks">Tracce del file normalizzato, nel loro ordine.</param>
+        /// <param name="subtitleIds">Tracce di sottotitoli da tagliare al pacchetto, vuota se non ce ne sono.</param>
+        /// <param name="subtitles">Matroska con le sole tracce di subtitleIds, nell'ordine del sorgente; null se non ce ne sono.</param>
+        private static void MuxSegment(MkvSplitSegment seg, string inputFile, double[] sourcePts, string video, string outputFile, string tempDir, List<TrackInfo> tracks, List<int> subtitleIds, string subtitles)
+        {
+            string tcFile;
+            string videoMkv;
+            int actual;
+            string avFile;
+            int avExit;
+            bool hasAv;
+            List<string> muxCmd;
+            double sizeMb;
+            List<TrackInfo> videos = tracks.FindAll(track => track.Type == "video");
+            List<string> order = new List<string>();
+            int secondary = 0;
+            int audio = 0;
+            int subtitle = 0;
+
+            // Generazione del file timecodes v2 rebasato a 0 dal primo frame del segmento
+            tcFile = Path.Combine(tempDir, "timecodes.txt");
+            WriteTimecodesFile(tcFile, sourcePts, seg.StartFrame, seg.FrameCount, seg.EndTs);
+
+            // Remux del video applicando i timecodes v2 (VFR preservato)
             videoMkv = Path.Combine(tempDir, "video.mkv");
-            MkvSplitExternalTools.Instance.RunMkvmerge(new string[] { "-o", videoMkv, "--timestamps", "0:" + tcFile, videoBs });
+            MkvSplitExternalTools.Instance.RunMkvmerge(new string[] { "-o", videoMkv, "--timestamps", "0:" + tcFile, video });
 
             // Sanity check sul numero di frame risultanti
             actual = MkvSplitExternalTools.Instance.CountPackets(videoMkv);
-            if (actual != epFrameCount)
+            if (actual != seg.FrameCount)
             {
-                throw new InvalidOperationException(AppText.F("split.exec.remuxFrameMismatch", actual, epFrameCount));
+                throw new InvalidOperationException(AppText.F("split.exec.remuxFrameMismatch", actual, seg.FrameCount));
             }
             else
             {
                 ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.exec.videoFrames", actual));
             }
 
-            // Estrazione audio + sottotitoli in un unico container con stream copy (tutte le tracce via -map 0:a? + 0:s?)
+            // Audio e tracce video secondarie in un unico container con stream copy: prima le video, poi l'audio. Una traccia
+            // secondaria senza pacchetti nel tratto (la copertina MJPEG all'inizio del file) resta come traccia vuota
             avFile = Path.Combine(tempDir, "av.mkv");
-            bool expectsAv = HasAssociatedTracks(inputFile, omitSubtitles);
+            bool expectsAv = videos.Count > 1 || tracks.Exists(track => track.Type == "audio");
             List<string> avArgs = new List<string>
             {
                 "-y", "-hide_banner", "-loglevel", "warning",
                 "-i", inputFile,
                 "-ss", seg.StartTs.ToString("G", CultureInfo.InvariantCulture),
                 "-to", seg.EndTs.ToString("G", CultureInfo.InvariantCulture),
-                "-map", "0:a?",
-                "-c:a", "copy", "-c:s", "copy", "-vn",
+                "-map", "0:v?", "-map", "-0:v:0", "-map", "0:a?",
+                "-c:v", "copy", "-c:a", "copy",
                 avFile
             };
-            if (!omitSubtitles) avArgs.InsertRange(avArgs.Count - 1, new string[] { "-map", "0:s?" });
             avExit = expectsAv ? MkvSplitExternalTools.Instance.RunFfmpegNoThrow(avArgs) : 0;
             hasAv = expectsAv && avExit == 0 && File.Exists(avFile) && new FileInfo(avFile).Length > 0;
             if (expectsAv && !hasAv) throw new InvalidOperationException(AppText.F("split.montage.avFailed", avExit));
 
-            // File capitoli nel tempo del segmento, solo quando presenti
-            hasChapters = seg.Chapters != null && seg.Chapters.Count > 0;
-            chFile = null;
-            if (hasChapters)
-            {
-                chFile = Path.Combine(tempDir, "chapters.xml");
-                WriteChaptersFile(seg, chFile);
-            }
-
-            // Mux finale: video con timecodes + av e capitoli custom quando presenti
+            // Mux finale: video con timecodes, audio e video secondari, sottotitoli tagliati al pacchetto
             muxCmd = new List<string>();
             muxCmd.Add("-o"); muxCmd.Add(outputFile);
             muxCmd.Add("--no-chapters"); muxCmd.Add(videoMkv);
             if (hasAv)
             {
-                muxCmd.Add("--no-video"); muxCmd.Add("--no-chapters"); muxCmd.Add(avFile);
+                muxCmd.Add("--no-chapters"); muxCmd.Add(avFile);
             }
-            if (hasChapters)
+            if (subtitles != null)
             {
-                muxCmd.Add("--chapters"); muxCmd.Add(chFile);
+                // mkvmerge porta a zero il primo pacchetto di una parte senza video: un sottotitolo àncora esattamente all'inizio
+                // del tratto (arrotondato per eccesso al millisecondo dei timestamp Matroska) tiene lo zero sul primo fotogramma
+                // e poi si scarta. I pacchetti oltre la fine del tratto restano fuori come nel taglio con il video
+                long anchorMs = (long)Math.Ceiling(seg.StartTs * 1000.0 - 1e-6);
+                string anchor = Path.Combine(tempDir, "anchor.srt");
+                string cutSubtitles = Path.Combine(tempDir, "subtitles.mks");
+                File.WriteAllText(anchor, "1\n" + MkvSplitSegmentService.SecsToTs(anchorMs / 1000.0).Replace('.', ',') + " --> "
+                    + MkvSplitSegmentService.SecsToTs((anchorMs + 1) / 1000.0).Replace('.', ',') + "\n.\n", new UTF8Encoding(false));
+                MkvSplitExternalTools.Instance.RunMkvmerge(new string[] { "-o", cutSubtitles, anchor, "--no-chapters", subtitles,
+                    "--split", "parts:" + MkvSplitSegmentService.SecsToTs(anchorMs / 1000.0) + "-" + MkvSplitSegmentService.SecsToTs(seg.EndTs) });
+                muxCmd.Add("--subtitle-tracks"); muxCmd.Add(string.Join(",", Enumerable.Range(1, subtitleIds.Count)));
+                muxCmd.Add("--no-chapters"); muxCmd.Add(cutSubtitles);
             }
+            // Le tracce arrivano da tre file: si rimettono nell'ordine del sorgente, che le clip accodate devono condividere
+            foreach (TrackInfo track in tracks)
+            {
+                if (track == videos[0])
+                    order.Add("0:0");
+                else if (track.Type == "video")
+                    order.Add("1:" + secondary++);
+                else if (track.Type == "audio")
+                    order.Add("1:" + (videos.Count - 1 + audio++));
+                else if (track.Type == "subtitles" && subtitles != null && subtitleIds.Contains(track.Id))
+                    order.Add((hasAv ? "2:" : "1:") + (1 + subtitle++));
+            }
+            muxCmd.Add("--track-order"); muxCmd.Add(string.Join(",", order));
             MkvSplitExternalTools.Instance.RunMkvmerge(muxCmd);
 
             // Log finale con dimensione del file prodotto
@@ -264,46 +424,40 @@ namespace RemuxForge.Core.Splitting
 
         #region Pipeline fast (ffmpeg seek + stream copy)
 
-        /// <summary>Fast path: mkvmerge --split parts per il video e, quando presente FLAC, ffmpeg stream copy per audio e sottotitoli.</summary>
+        /// <summary>Fast path: mkvmerge --split parts per video e sottotitoli e, quando presente FLAC, ffmpeg stream copy per l'audio.</summary>
         /// <param name="seg">Segmento da elaborare.</param>
         /// <param name="inputFile">File MKV di input.</param>
         /// <param name="outputFile">Path del file di output.</param>
         /// <param name="tempDir">Directory temporanea per i file intermedi.</param>
-        /// <param name="hasFlac">Se true separa il video con mkvmerge e audio/sottotitoli con ffmpeg, perché mkvmerge non splitta FLAC insieme al video.</param>
-        public void SplitFast(MkvSplitSegment seg, string inputFile, string outputFile, string tempDir, bool hasFlac, bool omitSubtitles = false)
+        /// <param name="tracks">Tracce del file normalizzato, nel loro ordine: con il FLAC si separa il video con mkvmerge e l'audio con ffmpeg, perché mkvmerge non splitta FLAC insieme al video.</param>
+        /// <param name="subtitleIds">Tracce di sottotitoli che mkvmerge taglia insieme al video, vuota se non ce ne sono.</param>
+        public void SplitFast(MkvSplitSegment seg, string inputFile, string outputFile, string tempDir, List<TrackInfo> tracks, List<int> subtitleIds)
         {
             string startTc;
             string endTc;
-            bool hasChapters;
-            string chFile;
             List<string> muxArgs;
             double sizeMb;
+            List<string> subtitleArgs = subtitleIds.Count > 0 ? new List<string> { "--subtitle-tracks", string.Join(",", subtitleIds) } : new List<string> { "--no-subtitles" };
 
             startTc = MkvSplitSegmentService.SecsToTs(seg.StartTs);
             endTc = MkvSplitSegmentService.SecsToTs(seg.EndTs);
 
-            // File capitoli nel tempo del segmento, solo quando presenti
-            hasChapters = seg.Chapters != null && seg.Chapters.Count > 0;
-            chFile = null;
-            if (hasChapters)
-            {
-                chFile = Path.Combine(tempDir, "chapters.xml");
-                WriteChaptersFile(seg, chFile);
-            }
-
-            if (hasFlac)
+            if (tracks.Exists(track => track.Type == "audio" && track.Codec.IndexOf("FLAC", StringComparison.OrdinalIgnoreCase) >= 0))
             {
                 string videoMkv = Path.Combine(tempDir, "video.mkv");
                 string avFile = Path.Combine(tempDir, "av.mkv");
                 List<string> videoArgs = new List<string>();
                 List<string> avArgs = new List<string>();
+                List<string> order = new List<string>();
+                int fromVideo = 0;
+                int fromAudio = 0;
                 int avExit;
                 bool hasAv;
 
-                // mkvmerge non splitta FLAC insieme al video; si splitta il video separatamente e si rimuxa l'audio estratto da FFmpeg
+                // mkvmerge non splitta FLAC insieme al video; si splittano video e sottotitoli separatamente e si rimuxa l'audio estratto da FFmpeg
                 videoArgs.Add("-o"); videoArgs.Add(videoMkv);
                 videoArgs.Add("--no-audio");
-                videoArgs.Add("--no-subtitles");
+                videoArgs.AddRange(subtitleArgs);
                 videoArgs.Add("--no-chapters");
                 videoArgs.Add("--split"); videoArgs.Add("parts:" + startTc + "-" + endTc);
                 videoArgs.Add(inputFile);
@@ -315,9 +469,7 @@ namespace RemuxForge.Core.Splitting
                 avArgs.Add("-ss"); avArgs.Add(startTc);
                 avArgs.Add("-to"); avArgs.Add(endTc);
                 avArgs.Add("-map"); avArgs.Add("0:a?");
-                if (!omitSubtitles) { avArgs.Add("-map"); avArgs.Add("0:s?"); }
                 avArgs.Add("-c:a"); avArgs.Add("copy");
-                avArgs.Add("-c:s"); avArgs.Add("copy");
                 avArgs.Add("-vn");
                 avArgs.Add("-avoid_negative_ts"); avArgs.Add("make_zero");
                 avArgs.Add("-map_chapters"); avArgs.Add("-1");
@@ -327,17 +479,26 @@ namespace RemuxForge.Core.Splitting
                 hasAv = avExit == 0 && File.Exists(avFile) && new FileInfo(avFile).Length > 0;
                 if (!hasAv) throw new InvalidOperationException(AppText.F("split.montage.avFailed", avExit));
 
+                // Le tracce tornano nell'ordine del sorgente, che le clip accodate devono condividere
+                foreach (TrackInfo track in tracks)
+                {
+                    if (track.Type == "audio")
+                        order.Add("1:" + fromAudio++);
+                    else if (track.Type == "video" || (track.Type == "subtitles" && subtitleIds.Contains(track.Id)))
+                        order.Add("0:" + fromVideo++);
+                }
                 muxArgs = new List<string>();
                 muxArgs.Add("-o"); muxArgs.Add(outputFile);
                 muxArgs.Add("--no-chapters"); muxArgs.Add(videoMkv);
-                if (hasAv)
+                // Il video di una parte che inizia su un keyframe di GOP aperto parte dai pacchetti dei B iniziali e mostra il
+                // keyframe dopo la loro durata (D25); ffmpeg taglia l'audio dal keyframe e lo porta a 0: si sposta della stessa
+                // durata, come fa mkvmerge quando taglia video e audio insieme
+                if (seg.OpenGopHeadSeconds > 0)
                 {
-                    muxArgs.Add(avFile);
+                    muxArgs.Add("--sync"); muxArgs.Add("-1:" + Math.Round(seg.OpenGopHeadSeconds * 1000.0).ToString(CultureInfo.InvariantCulture));
                 }
-                if (hasChapters)
-                {
-                    muxArgs.Add("--chapters"); muxArgs.Add(chFile);
-                }
+                muxArgs.Add(avFile);
+                muxArgs.Add("--track-order"); muxArgs.Add(string.Join(",", order));
                 MkvSplitExternalTools.Instance.RunMkvmerge(muxArgs);
             }
             else
@@ -346,28 +507,15 @@ namespace RemuxForge.Core.Splitting
                 muxArgs = new List<string>();
                 muxArgs.Add("-o"); muxArgs.Add(outputFile);
                 muxArgs.Add("--no-chapters");
-                if (omitSubtitles) muxArgs.Add("--no-subtitles");
+                muxArgs.AddRange(subtitleArgs);
                 muxArgs.Add("--split"); muxArgs.Add("parts:" + startTc + "-" + endTc);
                 muxArgs.Add(inputFile);
                 ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.exec.mkvmergeSplit", startTc, endTc));
                 MkvSplitExternalTools.Instance.RunMkvmerge(muxArgs);
-
-                // Capitoli aggiunti post-split con mkvpropedit (modifica header in-place)
-                if (hasChapters)
-                {
-                    MkvSplitExternalTools.Instance.RunMkvpropedit(new string[] { outputFile, "--chapters", chFile });
-                }
             }
 
             sizeMb = new FileInfo(outputFile).Length / 1048576.0;
             ConsoleHelper.Write(LogSection.Split, LogLevel.Success, AppText.F("split.exec.ok", Path.GetFileName(outputFile), sizeMb.ToString("F1", CultureInfo.InvariantCulture)));
-        }
-
-        private static bool HasAssociatedTracks(string inputFile, bool omitSubtitles)
-        {
-            MkvFileInfo info = MkvSplitExternalTools.Instance.GetFileInfo(inputFile);
-            if (info == null) throw new InvalidOperationException(AppText.T("split.montage.trackInventory"));
-            return info.Tracks.Exists(track => track.Type == "audio" || (!omitSubtitles && track.Type == "subtitles"));
         }
 
         /// <summary>
@@ -462,13 +610,47 @@ namespace RemuxForge.Core.Splitting
         private static void WriteRestHeader(string rawFile, MkvSplitCodec codec, string outputFile)
         {
             byte[] data;
+            byte[] buf;
+            int read;
+            bool ready;
+            int sequence;
             List<(int start, int end, int type)> nals;
             bool hasVps;
             bool hasSps;
             bool hasPps;
+            FileStream inF;
             FileStream outF;
 
-            data = File.ReadAllBytes(rawFile);
+            // I parameter set precedono il primo fotogramma del raw: se ne legge a blocchi solo il prefisso, fino al primo
+            // fotogramma (che chiude l'ultimo parameter set) o alla fine del file. Il raw di un episodio intero può superare
+            // i 2 GB che un array in memoria ammette
+            data = new byte[0];
+            buf = new byte[BUF_SIZE];
+            ready = false;
+            inF = null;
+            try
+            {
+                inF = new FileStream(rawFile, FileMode.Open, FileAccess.Read, FileShare.Read, BUF_SIZE, FileOptions.SequentialScan);
+                while (!ready && (read = inF.Read(buf, 0, buf.Length)) > 0)
+                {
+                    Array.Resize(ref data, data.Length + read);
+                    Buffer.BlockCopy(buf, 0, data, data.Length - read, read);
+                    if (codec == MkvSplitCodec.Mpeg2)
+                    {
+                        sequence = FindStartCode(data, 0, 0xB3);
+                        ready = sequence >= 0 && FindStartCode(data, sequence + 4, 0x00) >= 0;
+                    }
+                    else
+                    {
+                        ready = FindAnnexBNals(data, codec).Exists(nal => codec == MkvSplitCodec.H264 ? nal.type >= 1 && nal.type <= 5 : nal.type < 32);
+                    }
+                }
+            }
+            finally
+            {
+                if (inF != null) { inF.Dispose(); }
+            }
+
             if (codec == MkvSplitCodec.Mpeg2)
             {
                 WriteMpeg2SequenceHeader(data, outputFile);
@@ -655,7 +837,7 @@ namespace RemuxForge.Core.Splitting
 
         #region Helper re-encode
 
-        /// <summary>Ricodifica un range inclusivo di frame video dal container originale in un elementary stream raw.</summary>
+        /// <summary>Ricodifica un range inclusivo di frame video dal container originale in un elementary stream raw, o nel contenitore delle parti del taglio a pacchetti.</summary>
         /// <param name="inputFile">File MKV originale.</param>
         /// <param name="startFrame">Primo frame da includere.</param>
         /// <param name="endFrame">Ultimo frame da includere.</param>
@@ -676,14 +858,19 @@ namespace RemuxForge.Core.Splitting
             MkvSplitExternalTools.Instance.RunFfmpeg(ffArgs);
         }
 
-        /// <summary>Nome del muxer ffmpeg dell'elementary stream raw per il codec indicato.</summary>
+        /// <summary>
+        /// Nome del muxer ffmpeg delle parti ricodificate o copiate: elementary stream raw per il taglio a byte, contenitore per
+        /// quello a pacchetti, AVI per i codec Video for Windows e Matroska per gli altri.
+        /// </summary>
         /// <param name="codec">Codec video canonico.</param>
         /// <returns>Nome del formato da passare a -f.</returns>
         private static string RawFormat(MkvSplitCodec codec)
         {
             if (codec == MkvSplitCodec.Hevc) { return "hevc"; }
             if (codec == MkvSplitCodec.H264) { return "h264"; }
-            return "mpeg2video";
+            if (codec == MkvSplitCodec.Mpeg2) { return "mpeg2video"; }
+            if (codec == MkvSplitCodec.MsMpeg4v3 || codec == MkvSplitCodec.MsMpeg4v2 || codec == MkvSplitCodec.H263) { return "avi"; }
+            return "matroska";
         }
 
         #endregion
@@ -845,12 +1032,17 @@ namespace RemuxForge.Core.Splitting
             }
         }
 
-        /// <summary>Scrive il file timecodes v2 rebasato a 0 dal primo frame del segmento.</summary>
+        /// <summary>
+        /// Scrive il file timecodes v2 rebasato a 0 dal primo frame del segmento, con la fine del segmento come riga in più:
+        /// mkvmerge ne ricava la durata dell'ultimo fotogramma, che altrimenti sarebbe la sua durata predefinita (su un VFR la
+        /// distanza più frequente, per esempio 50 ms invece di 33 ms con il pulldown 3:2)
+        /// </summary>
         /// <param name="path">File di output.</param>
         /// <param name="sourcePts">PTS del sorgente.</param>
         /// <param name="epStartFrame">Indice del primo frame del segmento.</param>
         /// <param name="epFrameCount">Numero di frame del segmento.</param>
-        private static void WriteTimecodesFile(string path, double[] sourcePts, int epStartFrame, int epFrameCount)
+        /// <param name="epEndTs">Fine esclusiva del segmento in secondi: PTS del fotogramma successivo o fine del video.</param>
+        private static void WriteTimecodesFile(string path, double[] sourcePts, int epStartFrame, int epFrameCount, double epEndTs)
         {
             StreamWriter sw;
             double first;
@@ -870,28 +1062,13 @@ namespace RemuxForge.Core.Splitting
                     rel = (sourcePts[epStartFrame + i] - first) * 1000.0;
                     sw.WriteLine(rel.ToString("0.000", CultureInfo.InvariantCulture));
                 }
+                rel = (epEndTs - first) * 1000.0;
+                sw.WriteLine(rel.ToString("0.000", CultureInfo.InvariantCulture));
             }
             finally
             {
                 if (sw != null) { sw.Dispose(); }
             }
-        }
-
-        #endregion
-
-        #region Helper chapter (privati, riusati da Slow e Fast)
-
-        /// <summary>
-        /// Scrive in XML i capitoli del segmento nel suo tempo: inizio nel segmento, fine troncata al taglio, titoli invariati
-        /// </summary>
-        /// <param name="seg">Segmento con i capitoli nel tempo del sorgente</param>
-        /// <param name="filepath">File di output</param>
-        private static void WriteChaptersFile(MkvSplitSegment seg, string filepath)
-        {
-            long startNs = (long)Math.Round(seg.StartTs * 1000000000.0);
-            long endNs = (long)Math.Round(seg.EndTs * 1000000000.0);
-
-            ChapterTimelineService.WriteXmlFile(ChapterTimelineService.Cut(seg.Chapters, startNs, endNs), filepath);
         }
 
         #endregion

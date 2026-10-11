@@ -227,7 +227,16 @@ namespace RemuxForge.Web.Services
             if (!resolver.SupportsSide(side))
                 return Results.BadRequest("Invalid preview side");
 
-            MediaSource source = resolver.ResolveMediaSource(recordIndex, side);
+            MediaSource source;
+            try
+            {
+                source = resolver.ResolveMediaSource(recordIndex, side);
+            }
+            catch (SessionMediaMissingException exception)
+            {
+                // Senza il temporaneo della sessione la richiesta non può riuscire finché l'editor non viene riaperto
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status409Conflict);
+            }
             if (source == null)
                 return Results.NotFound();
 
@@ -322,7 +331,16 @@ namespace RemuxForge.Web.Services
             if (!resolver.SupportsSide(side))
                 return Results.BadRequest("Invalid audio timeline side");
 
-            MediaSource source = resolver.ResolveMediaSource(recordIndex, side);
+            MediaSource source;
+            try
+            {
+                source = resolver.ResolveMediaSource(recordIndex, side);
+            }
+            catch (SessionMediaMissingException exception)
+            {
+                // Senza il temporaneo della sessione la richiesta non può riuscire finché l'editor non viene riaperto
+                return Results.Problem(exception.Message, statusCode: StatusCodes.Status409Conflict);
+            }
             if (source == null)
                 return Results.NotFound();
 

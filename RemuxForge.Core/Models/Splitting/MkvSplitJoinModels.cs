@@ -19,6 +19,7 @@ namespace RemuxForge.Core.Models
             this.Tracks = new List<TrackInfo>();
             this.Chapters = new List<ChapterMark>();
             this.ChapterWarnings = new List<string>();
+            this.Mpeg4Quantization = "";
             this.Error = "";
         }
 
@@ -60,6 +61,11 @@ namespace RemuxForge.Core.Models
         public List<string> ChapterWarnings { get; set; }
 
         /// <summary>
+        /// Firma della quantizzazione MPEG-4 Part 2 letta dal VOL della parte normalizzata, vuota se assente o non leggibile
+        /// </summary>
+        public string Mpeg4Quantization { get; set; }
+
+        /// <summary>
         /// Errore localizzato di lettura, vuoto se la parte è utilizzabile
         /// </summary>
         public string Error { get; set; }
@@ -82,6 +88,7 @@ namespace RemuxForge.Core.Models
             this.Parts = new List<MkvSplitJoinPart>();
             this.Chapters = new List<ChapterMark>();
             this.Issues = new List<string>();
+            this.Warnings = new List<string>();
             this.TotalDurationNs = 0;
         }
 
@@ -103,6 +110,11 @@ namespace RemuxForge.Core.Models
         /// Motivi localizzati che bloccano l'unione, uno per parte e traccia
         /// </summary>
         public List<string> Issues { get; set; }
+
+        /// <summary>
+        /// Avvisi localizzati che non bloccano l'unione
+        /// </summary>
+        public List<string> Warnings { get; set; }
 
         /// <summary>
         /// Durata totale prevista in nanosecondi

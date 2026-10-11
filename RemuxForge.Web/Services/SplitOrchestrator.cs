@@ -5,6 +5,7 @@ using RemuxForge.Core.Models;
 using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Tools;
 using RemuxForge.Core.Splitting;
+using RemuxForge.Core.Media;
 
 using System;
 using System.Collections.Generic;
@@ -42,6 +43,11 @@ namespace RemuxForge.Web.Services
         /// Record split correnti
         /// </summary>
         private List<MkvSplitRecord> _records;
+
+        /// <summary>
+        /// Annullamento dell'unione in corso, cancellato dallo stop
+        /// </summary>
+        private CancellationTokenSource _joinCancellation;
 
         /// <summary>
         /// Revisione delle opzioni, incrementata a ogni applicazione
@@ -341,6 +347,8 @@ namespace RemuxForge.Web.Services
         public void Stop()
         {
             this.RequestStop(AppText.T("web.split.stopRequested"));
+            // L'unione in corso interrompe anche la normalizzazione delle parti
+            this._joinCancellation?.Cancel();
         }
 
         /// <summary>
@@ -354,6 +362,9 @@ namespace RemuxForge.Web.Services
                 if (this.BusyState) return false;
                 this._records.Clear();
                 this._applied.Clear();
+                // Le sessioni chiuse rilasciano il loro temporaneo
+                foreach (EditorSession session in this._sessions.Values)
+                    session.Media.Dispose();
                 this._sessions.Clear();
                 this._options = new Options { Mode = Options.MODE_SPLIT };
                 this._optionsRevision++;
@@ -432,13 +443,17 @@ namespace RemuxForge.Web.Services
                 revision = this._optionsRevision;
                 this.BusyState = true;
             }
+            // Un temporaneo per sessione, creato all'apertura e cancellato alla chiusura; l'esecuzione dello stesso file lo condivide
+            MkvSplitSourceMediaLease media = null;
             try
             {
                 cancellation.ThrowIfCancellationRequested();
                 MkvSplitSourceIdentity source = MkvSplitSourceIdentity.FromFile(record.InputFile);
+                media = MkvSplitSourceMedia.Instance.Acquire(record.InputFile);
                 MkvSplitAnalysis analysis = await Task.Run(() =>
                 {
                     MkvSplitExternalTools.Instance.ResolveBinaries();
+                    _ = media.Path;
                     return MkvSplitAnalysisCache.Instance.GetOrBuild(record.InputFile);
                 }, cancellation);
                 cancellation.ThrowIfCancellationRequested();
@@ -447,7 +462,7 @@ namespace RemuxForge.Web.Services
                     throw new InvalidOperationException(AppText.T("split.montage.trackInventory"));
                 cancellation.ThrowIfCancellationRequested();
                 MkvSplitDocumentService service = new MkvSplitDocumentService();
-                MkvSplitOptions split = CloneSplitOptionsFor(options);
+                MkvSplitOptions split = options.Split.Clone();
                 MkvSplitDocument document;
                 long appliedRevision;
                 lock (this.StateLock)
@@ -467,10 +482,12 @@ namespace RemuxForge.Web.Services
                     }
                 }
                 if (document == null)
-                {
-                    MkvSplitPlan legacy = split.Manual ? null : await Task.Run(() => new MkvSplitPlanner().BuildPlan(split, record.InputFile, null), cancellation);
-                    document = split.Manual ? service.CreateFullSource(source, analysis) : service.FromLegacyPlan(legacy, source);
-                }
+                    document = await Task.Run(() =>
+                    {
+                        // Con un piano non valido l'editor apre i suoi segmenti e la diagnostica arriva dal piano eseguibile
+                        MkvSplitPlan legacy = service.PlanRule(split, source, analysis, Guid.NewGuid(), out MkvSplitDocument rule);
+                        return rule ?? service.FromLegacyPlan(legacy, source);
+                    }, cancellation);
                 cancellation.ThrowIfCancellationRequested();
                 Guid sessionId = Guid.NewGuid();
                 lock (this.StateLock)
@@ -479,7 +496,8 @@ namespace RemuxForge.Web.Services
                         return new SplitEditorOpenResult { Diagnostics = new List<MkvSplitDiagnostic> { EditorDiagnostic("conflict") } };
                     record.SourceInfo = Copy(sourceInfo);
                     this._sessions.Add(sessionId, new EditorSession { RecordId = record.RecordId, Source = source.Clone(), DocumentId = document.Id,
-                        Analysis = analysis, SourceInfo = sourceInfo });
+                        Analysis = analysis, SourceInfo = sourceInfo, Media = media });
+                    media = null;
                 }
                 return new SplitEditorOpenResult { Snapshot = new SplitEditorSnapshot {
                     SessionId = sessionId,
@@ -490,6 +508,8 @@ namespace RemuxForge.Web.Services
             catch (Exception exception) { return new SplitEditorOpenResult { Diagnostics = new List<MkvSplitDiagnostic> { EditorDiagnostic("preparationFailed", exception.Message) } }; }
             finally
             {
+                // Senza sessione aperta il lease non ha proprietario
+                media?.Dispose();
                 lock (this.StateLock) { this.BusyState = false; }
                 this.NotifyProgressChanged();
             }
@@ -501,7 +521,12 @@ namespace RemuxForge.Web.Services
         /// <param name="sessionId">Identificativo della sessione</param>
         public void CloseEditor(Guid sessionId)
         {
-            lock (this.StateLock) { this._sessions.Remove(sessionId); }
+            EditorSession session;
+            lock (this.StateLock)
+            {
+                if (!this._sessions.Remove(sessionId, out session)) return;
+            }
+            session.Media.Dispose();
         }
 
         /// <summary>
@@ -551,20 +576,16 @@ namespace RemuxForge.Web.Services
                 if (this.BusyState) return RuleFailure("busy");
                 record = this._records.Find(item => item.RecordId == session.RecordId);
                 if (record == null) return RuleFailure("conflict");
-                options = CloneSplitOptionsFor(this._options);
+                options = this._options.Split.Clone();
             }
             try
             {
                 cancellation.ThrowIfCancellationRequested();
                 if (!session.Source.Matches(MkvSplitSourceIdentity.FromFile(record.InputFile))) return RuleFailure("sourceChanged");
-                MkvSplitPlan legacy = null;
-                if (!options.Manual)
-                {
-                    legacy = await Task.Run(() => new MkvSplitPlanner().BuildPlan(options, record.InputFile, null), cancellation);
-                    if (!legacy.IsValid) return RuleFailure("preparationFailed", legacy.ErrorMessage);
-                }
+                MkvSplitDocument document = null;
+                MkvSplitPlan legacy = await Task.Run(() => new MkvSplitDocumentService().PlanRule(options, session.Source, session.Analysis, session.DocumentId, out document), cancellation);
+                if (document == null) return RuleFailure("preparationFailed", legacy.ErrorMessage);
                 cancellation.ThrowIfCancellationRequested();
-                MkvSplitDocument document = new MkvSplitDocumentService().CreateRuleDocument(legacy, session.Source, session.Analysis, session.DocumentId);
                 lock (this.StateLock)
                 {
                     if (!this._sessions.TryGetValue(sessionId, out EditorSession current) || !ReferenceEquals(current, session) || expectedOptionsRevision != this._optionsRevision)
@@ -590,8 +611,8 @@ namespace RemuxForge.Web.Services
                 if (!this._sessions.TryGetValue(sessionId, out EditorSession session)) return null;
                 MkvSplitRecord record = this._records.Find(item => item.RecordId == session.RecordId);
                 if (record == null || !session.Source.Matches(MkvSplitSourceIdentity.FromFile(session.Source.FullPath))) return null;
-                return new SessionMediaResolver(new MediaSource(session.Source.FullPath,
-                    Copy(session.SourceInfo.Tracks.FindAll(track => track.Type == "audio"))));
+                return new SessionMediaResolver(new MediaSource(session.Media.Path,
+                    Copy(session.SourceInfo.Tracks.FindAll(track => track.Type == "audio"))), session.Media.IsTemporary, Path.GetFileName(session.Source.FullPath));
             }
         }
 
@@ -617,6 +638,9 @@ namespace RemuxForge.Web.Services
             if (record == null || !this.SupportsSide(side))
                 return null;
             List<TrackInfo> tracks = record.SourceInfo != null ? record.SourceInfo.Tracks.FindAll(track => string.Equals(track.Type, "audio", StringComparison.OrdinalIgnoreCase)) : new List<TrackInfo>();
+            // Senza sessione non si normalizza: un file non MKV non si legge e l'errore lo riporta, come nell'editor EditMap (D18)
+            if (!MediaContainerFormats.IsMatroska(record.InputFile))
+                throw new SessionMediaMissingException(AppText.F("web.editMap.sessionMediaMissing", Path.GetFileName(record.InputFile)));
             return new MediaSource(record.InputFile, tracks);
         }
 
@@ -635,6 +659,7 @@ namespace RemuxForge.Web.Services
 
             this.SetBusy(true, AppText.T("web.progress.join"));
             this.StopRequested = false;
+            this._joinCancellation = new CancellationTokenSource();
             ProcessRunner.SetStopRequestedCallback(this.IsStopRequested);
             ConsoleHelper.SetLogCallback((section, _, text) =>
             {
@@ -656,7 +681,7 @@ namespace RemuxForge.Web.Services
 
                 result.OutputPath = outputPath;
                 this.ReportProgress(0, 1, Path.GetFileName(outputPath));
-                service.Execute(plan, outputPath, force, this.IsStopRequested);
+                service.Execute(plan, outputPath, force, this.IsStopRequested, this._joinCancellation.Token);
                 result.Success = true;
             }
             catch (Exception ex)
@@ -682,6 +707,18 @@ namespace RemuxForge.Web.Services
             try
             {
                 List<MkvSplitRecord> scanned = this.ScanSource();
+                // Un batch parte solo con lo stesso codec e lo stesso tipo di scansione in tutti i file, come in CLI: altrimenti nessun record
+                string mismatch = "";
+                if (scanned.Count > 1)
+                {
+                    MkvSplitExternalTools.Instance.ResolveBinaries();
+                    mismatch = MkvSplitPipeline.CheckBatchVideo(scanned.Select(record => record.InputFile).ToList(), out _, out _);
+                    if (mismatch.Length > 0)
+                    {
+                        this.AppendLog(AppText.F("web.split.scanError", mismatch));
+                        scanned = new List<MkvSplitRecord>();
+                    }
+                }
                 lock (this.StateLock)
                 {
                     foreach (MkvSplitRecord record in scanned)
@@ -708,7 +745,8 @@ namespace RemuxForge.Web.Services
                     foreach (string path in this._applied.Keys.ToList())
                         if (!scanned.Any(record => string.Equals(record.InputFile, path, StringComparison.OrdinalIgnoreCase))) this._applied.Remove(path);
                 }
-                this.AppendLog(AppText.F("web.split.scanCompleted", scanned.Count));
+                if (mismatch.Length == 0)
+                    this.AppendLog(AppText.Count("web.split.scanCompleted", scanned.Count));
                 this.NotifyRecordsChanged();
             }
             catch (Exception ex)
@@ -799,7 +837,7 @@ namespace RemuxForge.Web.Services
                 }
 
                 summary = new OperationSummary(plannedCount, invalidCount, warningFiles, this.StopRequested);
-                this.AppendLog(AppText.F("web.split.analyzeCompleted", plannedCount, invalidCount));
+                this.AppendLog(AppText.Count("web.split.analyzeCompleted", plannedCount, invalidCount));
             }
             catch (Exception ex)
             {
@@ -824,6 +862,7 @@ namespace RemuxForge.Web.Services
             MkvSplitPipeline pipeline = new MkvSplitPipeline();
             MkvSplitPlanner planner = new MkvSplitPlanner();
             MkvSplitRecord record;
+            MkvSplitSourceMediaLease media;
             MkvSplitPlan plan;
             Options options;
             OperationSummary summary = null;
@@ -855,6 +894,9 @@ namespace RemuxForge.Web.Services
 
                     // Il try sta dentro il ciclo: un file che esplode non deve abortire il
                     // batch ne' marcare Error gli altri record, come gia' fa la CLI
+                    // Azzerati a ogni giro: il finally non deve rilasciare il lease del giro precedente
+                    record = null;
+                    media = null;
                     try
                     {
                         record = this.GetRecordAt(targets[i]);
@@ -866,6 +908,8 @@ namespace RemuxForge.Web.Services
 
                         this.ReportProgress(i, targets.Count, Path.GetFileName(record.InputFile));
 
+                        // Il temporaneo vive dall'analisi all'esecuzione del sorgente (D13): un file mai analizzato non si normalizza due volte
+                        media = MkvSplitSourceMedia.Instance.Acquire(record.InputFile);
                         // Un file mai analizzato riceve il suo piano adesso: lo split non ricostruisce mai i segmenti da sé
                         AppliedMontage applied;
                         lock (this.StateLock) { this._applied.TryGetValue(record.InputFile, out applied); }
@@ -896,7 +940,7 @@ namespace RemuxForge.Web.Services
                             // Senza Sovrascrivi gli output gia' prodotti non si rifanno; con Sovrascrivi si rigenerano tutti
                             Outputs = montage.Outputs.Where(output => options.Split.Force || !record.OutputResults.Any(state => state.OutputId == output.OutputId
                                 && state.Status == MkvSplitOutputExecutionStatus.Done)).ToList() };
-                        MkvSplitMontageExecutionResult execution = pipeline.ExecutePlan(pending, CloneSplitOptionsFor(options), this.IsStopRequested);
+                        MkvSplitMontageExecutionResult execution = pipeline.ExecutePlan(pending, options.Split.Clone(), this.IsStopRequested);
                         lock (this.StateLock)
                             foreach (MkvSplitOutputExecutionResult state in execution.Outputs)
                             {
@@ -926,20 +970,24 @@ namespace RemuxForge.Web.Services
                         this.UpdateRecord(targets[i], MkvSplitStatus.Error, false, ex.Message, null);
                         this.AppendLog(AppText.F("cli.splitError", ex.Message));
                     }
+                    finally
+                    {
+                        media?.Dispose();
+                    }
                 }
 
                 summary = new OperationSummary(successCount, errorCount, skippedCount, this.StopRequested);
                 if (errorCount == 0 && !this.StopRequested)
                 {
-                    this.AppendLog(AppText.F("web.split.completed", successCount));
+                    this.AppendLog(AppText.Count("web.split.completed", successCount));
                 }
                 else if (this.StopRequested)
                 {
-                    this.AppendLog(AppText.F("web.split.stoppedSummary", successCount, errorCount));
+                    this.AppendLog(AppText.Count("web.split.stoppedSummary", errorCount, successCount));
                 }
                 else
                 {
-                    this.AppendLog(AppText.F("web.split.errorSummary", successCount, errorCount));
+                    this.AppendLog(AppText.Count("web.split.errorSummary", errorCount, successCount));
                 }
             }
             catch (Exception ex)
@@ -1034,32 +1082,6 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
-        /// Clona le opzioni split correnti
-        /// </summary>
-        /// <param name="options">Opzioni correnti</param>
-        /// <returns>Opzioni split del file</returns>
-        private static MkvSplitOptions CloneSplitOptionsFor(Options options)
-        {
-            MkvSplitOptions result = new MkvSplitOptions();
-            result.SourcePath = options.Split.SourcePath;
-            result.OutputDir = options.Split.OutputDir;
-            result.Pattern = options.Split.Pattern;
-            result.Ranges = options.Split.Ranges;
-            result.SplitAt = options.Split.SplitAt;
-            result.TrimStart = options.Split.TrimStart;
-            result.TrimEnd = options.Split.TrimEnd;
-            result.ChaptersEach = options.Split.ChaptersEach;
-            result.ChaptersPerEpisode = options.Split.ChaptersPerEpisode;
-            result.Manual = options.Split.Manual;
-            result.OutputTemplate = options.Split.OutputTemplate;
-            result.StartNumber = options.Split.StartNumber;
-            result.Snap = options.Split.Snap;
-            result.Force = options.Split.Force;
-            result.DryRun = options.Split.DryRun;
-            return result;
-        }
-
-        /// <summary>
         /// Scansiona source file/cartella
         /// </summary>
         /// <returns>Record creati, ordinati per percorso</returns>
@@ -1081,9 +1103,9 @@ namespace RemuxForge.Web.Services
             }
             else if (Directory.Exists(source))
             {
-                for (int i = 0; i < this._options.FileExtensions.Count; i++)
+                foreach (string file in Directory.GetFiles(source, "*", searchOption))
                 {
-                    foreach (string file in Directory.GetFiles(source, "*." + this._options.FileExtensions[i].TrimStart('.'), searchOption))
+                    if (MediaContainerFormats.IsSupported(file))
                     {
                         result.Add(this.CreateRecord(Path.GetFullPath(file), mkvMergePath));
                     }
@@ -1252,7 +1274,7 @@ namespace RemuxForge.Web.Services
                 if (!reset && (request.Document == null || request.Document.Id != session.DocumentId || !session.Source.Matches(request.Document.Source)))
                     return ApplyFailure(SplitApplyStatus.Invalid, "invalidDocument");
                 candidate = request.Document?.Clone();
-                options = CloneSplitOptionsFor(this._options);
+                options = this._options.Split.Clone();
                 session.LastDraftRevision = request.DraftRevision;
             }
             try
@@ -1262,14 +1284,8 @@ namespace RemuxForge.Web.Services
                 MkvSplitDocumentService service = new MkvSplitDocumentService();
                 if (reset)
                 {
-                    if (options.Manual) candidate = service.CreateFullSource(session.Source, session.Analysis);
-                    else
-                    {
-                        MkvSplitPlan legacy = await Task.Run(() => new MkvSplitPlanner().BuildPlan(options, record.InputFile, null), cancellation);
-                        if (!legacy.IsValid) return ApplyFailure(SplitApplyStatus.Invalid, "preparationFailed", legacy.ErrorMessage);
-                        candidate = service.FromLegacyPlan(legacy, session.Source);
-                    }
-                    candidate.Id = session.DocumentId;
+                    MkvSplitPlan legacy = await Task.Run(() => service.PlanRule(options, session.Source, session.Analysis, session.DocumentId, out candidate), cancellation);
+                    if (candidate == null) return ApplyFailure(SplitApplyStatus.Invalid, "preparationFailed", legacy.ErrorMessage);
                 }
                 MkvSplitExecutionPlan plan = await Task.Run(() => service.BuildExecutionPlan(candidate, session.Analysis, options), cancellation);
                 cancellation.ThrowIfCancellationRequested();
@@ -1351,7 +1367,8 @@ namespace RemuxForge.Web.Services
             record.Status = plan.IsValid ? MkvSplitStatus.Planned : MkvSplitStatus.PlanInvalid;
             record.Success = retained.Count > 0 && retained.All(item => item.Status == MkvSplitOutputExecutionStatus.Done || item.Status == MkvSplitOutputExecutionStatus.ExistsSkipped);
             if (record.Success) record.Status = MkvSplitStatus.Done;
-            record.ErrorMessage = plan.IsValid ? "" : string.Join(" ", plan.Projection.Diagnostics.Select(item => item.Message));
+            // Gli avvisi del piano (D25) non sono il motivo dell'invalidità
+            record.ErrorMessage = plan.IsValid ? "" : string.Join(" ", plan.Projection.Diagnostics.Where(item => item.Severity == MkvSplitDiagnosticSeverity.Error).Select(item => item.Message));
         }
 
         /// <summary>
@@ -1365,14 +1382,23 @@ namespace RemuxForge.Web.Services
                 Duration = plan.Analysis.Duration, SourcePts = plan.Analysis.SourcePts,
                 FrameCount = plan.Analysis.SourcePts.Length, Chapters = plan.Analysis.Chapters, FrameRateMode = plan.Analysis.FrameRateMode,
                 VideoParams = plan.Analysis.VideoParams, IsValid = plan.IsValid,
-                ErrorMessage = string.Join(" ", plan.Projection.Diagnostics.Select(item => item.Message)) };
+                ErrorMessage = string.Join(" ", plan.Projection.Diagnostics.Where(item => item.Severity == MkvSplitDiagnosticSeverity.Error).Select(item => item.Message)) };
+            // Tempi del sorgente come nel piano della CLI quando l'output è un solo tratto; un montaggio di più clip non ha un
+            // intervallo del sorgente e resta nei tempi dell'output, così la durata letta da EndTs - StartTs resta vera
             foreach (MkvSplitOutputProjection output in plan.Projection.Outputs)
+            {
+                MkvSplitClipProjection single = output.Clips.Count == 1 ? output.Clips[0] : null;
                 legacy.Segments.Add(new MkvSplitSegment { Num = legacy.Segments.Count + 1, Episode = legacy.Segments.Count + 1,
                     File = output.FileName, StartFrame = output.Clips.FirstOrDefault()?.StartFrame ?? 0, FrameCount = output.FrameCount,
-                    StartTs = 0, EndTs = output.DurationSeconds, Chapters = output.Chapters, OutputState = output.OutputState });
+                    StartTs = single?.SourceStartSeconds ?? 0, EndTs = single?.SourceEndSeconds ?? output.DurationSeconds, Chapters = output.Chapters, OutputState = output.OutputState });
+            }
             legacy.OutputDir = plan.Outputs.Count > 0 ? Path.GetDirectoryName(plan.Outputs[0].Projection.FullPath) : "";
             legacy.DiscardedFrames = legacy.FrameCount - plan.Projection.CoveredSourceFrames;
             legacy.Coverage = legacy.DiscardedFrames == 0 ? MkvSplitCoverage.Partition : MkvSplitCoverage.Extract;
+            // Gli avvisi del montaggio arrivano a griglia e notifiche come gli avvisi del piano CLI: quelli del GOP aperto (D25) con
+            // la loro categoria, gli altri come avviso generico
+            foreach (MkvSplitDiagnostic warning in plan.Projection.Diagnostics.Where(item => item.Severity == MkvSplitDiagnosticSeverity.Warning))
+                legacy.Warnings.Add(new MkvSplitWarning(warning.Code.StartsWith("openGop", StringComparison.Ordinal) ? MkvSplitWarningKind.OpenGopBoundary : MkvSplitWarningKind.General, warning.Message));
             return legacy;
         }
 
@@ -1385,7 +1411,7 @@ namespace RemuxForge.Web.Services
         private MkvSplitExecutionPlan PrepareMontageForRecord(MkvSplitRecord record, Options options)
         {
             MkvSplitDocumentService service = new MkvSplitDocumentService();
-            MkvSplitOptions split = CloneSplitOptionsFor(options);
+            MkvSplitOptions split = options.Split.Clone();
             MkvSplitSourceIdentity source = MkvSplitSourceIdentity.FromFile(record.InputFile);
             MkvSplitAnalysis analysis = MkvSplitAnalysisCache.Instance.GetOrBuild(record.InputFile);
             MkvSplitDocument document;
@@ -1400,9 +1426,8 @@ namespace RemuxForge.Web.Services
             }
             if (document == null)
             {
-                MkvSplitPlan legacy = split.Manual ? null : new MkvSplitPlanner().BuildPlan(split, record.InputFile, null);
-                if (legacy != null && !legacy.IsValid) throw new InvalidOperationException(legacy.ErrorMessage);
-                document = split.Manual ? service.CreateFullSource(source, analysis) : service.FromLegacyPlan(legacy, source);
+                MkvSplitPlan legacy = service.PlanRule(split, source, analysis, Guid.NewGuid(), out document);
+                if (document == null) throw new InvalidOperationException(legacy.ErrorMessage);
             }
             MkvSplitExecutionPlan plan = service.BuildExecutionPlan(document, analysis, split);
             lock (this.StateLock)
@@ -1547,6 +1572,11 @@ namespace RemuxForge.Web.Services
             /// </summary>
             public string RuleDocument;
 
+            /// <summary>
+            /// Matroska normalizzato della sessione, rilasciato alla chiusura
+            /// </summary>
+            public MkvSplitSourceMediaLease Media;
+
             #endregion
         }
 
@@ -1562,6 +1592,16 @@ namespace RemuxForge.Web.Services
             /// </summary>
             private readonly MediaSource _source;
 
+            /// <summary>
+            /// True se il file esposto è il temporaneo normalizzato della sessione
+            /// </summary>
+            private readonly bool _temporary;
+
+            /// <summary>
+            /// Nome del file sorgente, per il messaggio del temporaneo mancante
+            /// </summary>
+            private readonly string _sourceName;
+
             #endregion
 
             #region Costruttore
@@ -1570,9 +1610,13 @@ namespace RemuxForge.Web.Services
             /// Costruttore
             /// </summary>
             /// <param name="source">Sorgente da esporre</param>
-            public SessionMediaResolver(MediaSource source)
+            /// <param name="temporary">True se il file esposto è il temporaneo normalizzato della sessione</param>
+            /// <param name="sourceName">Nome del file sorgente</param>
+            public SessionMediaResolver(MediaSource source, bool temporary, string sourceName)
             {
                 this._source = source;
+                this._temporary = temporary;
+                this._sourceName = sourceName;
             }
 
             #endregion
@@ -1597,7 +1641,12 @@ namespace RemuxForge.Web.Services
             /// <returns>Sorgente della sessione, null se il lato non è esposto</returns>
             public MediaSource ResolveMediaSource(int recordIndex, string side)
             {
-                return this.SupportsSide(side) ? this._source : null;
+                if (!this.SupportsSide(side))
+                    return null;
+                // Il temporaneo sparito dalla cartella temp a sessione aperta non si rifà qui: l'editor va chiuso e riaperto
+                if (this._temporary && !File.Exists(this._source.FilePath))
+                    throw new SessionMediaMissingException(AppText.F("web.editMap.sessionMediaMissing", this._sourceName));
+                return this._source;
             }
 
             #endregion

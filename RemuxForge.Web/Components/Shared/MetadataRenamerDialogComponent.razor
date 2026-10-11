@@ -10,18 +10,22 @@
                             AllowColumnResize="true"
                             AllowPaging="false"
                             AllowSorting="false"
-                            ColumnWidth="360px"
                             GridLines="DataGridGridLines.Both"
                             RowRender="this.RenderPreviewRow">
                 <Columns>
                     <RadzenDataGridColumn TItem="RenamePreviewItem"
-                                          Property="OriginalName"
                                           Title="@AppText.T("web.rename.originalName")"
-                                          MinWidth="160px"
-                                          MaxWidth="720px" />
+                                          Width="50%"
+                                          MinWidth="2.5rem"
+                                          MaxWidth="720px">
+                        <Template Context="item">
+                            <span title="@item.OriginalName">@item.OriginalName</span>
+                        </Template>
+                    </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="RenamePreviewItem"
                                           Title="@AppText.T("web.rename.newName")"
-                                          MinWidth="160px"
+                                          Width="50%"
+                                          MinWidth="2.5rem"
                                           MaxWidth="720px">
                         <Template Context="item">
                             <span title="@(!string.IsNullOrEmpty(item.ErrorMessage) ? item.ErrorMessage : item.NewName)">@item.NewName</span>
@@ -534,14 +538,14 @@
             }
         }
 
-        this._statusText = AppText.F("web.rename.statusBase", fileCount, changedCount);
+        this._statusText = AppText.Count("web.rename.statusBase", fileCount, changedCount);
         if (conflictCount > 0)
         {
-            this._statusText = this._statusText + AppText.F("web.rename.statusConflictsSuffix", conflictCount);
+            this._statusText = this._statusText + AppText.Count("web.rename.statusConflictsSuffix", conflictCount);
         }
         if (errorCount > 0)
         {
-            this._statusText = this._statusText + AppText.F("web.rename.statusErrorsSuffix", errorCount);
+            this._statusText = this._statusText + AppText.Count("web.rename.statusErrorsSuffix", errorCount);
         }
     }
 
@@ -689,7 +693,7 @@
         if (result.Success)
         {
             this._didRename = result.SuccessCount > 0;
-            this._statusText = AppText.F("web.rename.renamedFiles", result.SuccessCount);
+            this._statusText = AppText.Count("web.rename.renamedFiles", result.SuccessCount);
             this.DialogService.Close(this._didRename);
         }
         else

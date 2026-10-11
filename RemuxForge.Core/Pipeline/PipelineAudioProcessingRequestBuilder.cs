@@ -37,8 +37,8 @@ namespace RemuxForge.Core.Pipeline
 
             request.Record = record;
             request.Options = options;
-            request.SourceFilePath = record.SourceFilePath;
-            request.LanguageFilePath = needsMerge ? record.LangFilePath : "";
+            request.SourceFilePath = record.SourceMediaPath;
+            request.LanguageFilePath = needsMerge ? record.LangMediaPath : "";
             request.SourceInfo = sourceInfo;
             request.LangInfo = langInfo;
             request.LangEditMap = record.DeepAnalysisMap;

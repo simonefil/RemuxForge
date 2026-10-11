@@ -4,6 +4,7 @@ using RemuxForge.Core.Models;
 using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Pipeline;
 using RemuxForge.Core.Splitting;
+using RemuxForge.Core.Media;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -47,7 +48,7 @@ namespace RemuxForge.Core.Configuration
                 return result;
             }
 
-            if (options.TargetLanguage == null || options.AudioCodec == null || options.KeepSourceAudioLangs == null || options.KeepSourceAudioCodec == null || options.KeepSourceSubtitleLangs == null || options.FileExtensions == null)
+            if (options.TargetLanguage == null || options.AudioCodec == null || options.KeepSourceAudioLangs == null || options.KeepSourceAudioCodec == null || options.KeepSourceSubtitleLangs == null)
             {
                 result.AddError(AppText.T("validation.invalidConfig"));
                 return result;
@@ -97,7 +98,6 @@ namespace RemuxForge.Core.Configuration
             ValidateAnalysisCrop(options, result);
             if (!File.Exists(options.SourceFolder))
                 ValidateRegex(options.MatchPattern, result);
-            ValidateExtensions(options, result);
             if (options.ExplicitTrackSelection == null)
             {
                 ValidateLanguages(options, needsMerge, result);
@@ -151,15 +151,16 @@ namespace RemuxForge.Core.Configuration
                 result.AddError(AppText.T("metadata.validation.presetRequired"));
             }
 
-            if (validateFolderExists && !string.IsNullOrEmpty(options.Metadata.SourcePath))
+            if (!string.IsNullOrEmpty(options.Metadata.SourcePath))
             {
                 sourceIsFile = File.Exists(options.Metadata.SourcePath);
                 sourceIsFolder = Directory.Exists(options.Metadata.SourcePath);
-                if (!sourceIsFile && !sourceIsFolder)
+                if (validateFolderExists && !sourceIsFile && !sourceIsFolder)
                 {
                     result.AddError(AppText.F("metadata.validation.inputNotFound", options.Metadata.SourcePath));
                 }
-                else if (sourceIsFile && !string.Equals(Path.GetExtension(options.Metadata.SourcePath), ".mkv", StringComparison.OrdinalIgnoreCase))
+                // Un file singolo non MKV si rifiuta già qui, in CLI e Web, anche senza il controllo delle cartelle (D16)
+                else if (sourceIsFile && !MediaContainerFormats.IsMatroska(options.Metadata.SourcePath))
                 {
                     result.AddError(AppText.T("metadata.validation.onlyMkv"));
                 }
@@ -469,19 +470,6 @@ namespace RemuxForge.Core.Configuration
         }
 
         /// <summary>
-        /// Valida che sia configurata almeno una estensione video
-        /// </summary>
-        /// <param name="options">Opzioni da validare</param>
-        /// <param name="result">Risultato validazione da aggiornare</param>
-        private static void ValidateExtensions(Options options, OptionsValidationResult result)
-        {
-            if (options.FileExtensions.Count == 0)
-            {
-                result.AddError(AppText.T("validation.extensionRequired"), nameof(Options.FileExtensions), "Files");
-            }
-        }
-
-        /// <summary>
         /// Valida lingue target e filtri lingua
         /// </summary>
         /// <param name="options">Opzioni da validare</param>
@@ -587,12 +575,12 @@ namespace RemuxForge.Core.Configuration
                     result.AddError(AppText.T("validation.singleFilePairRequired"), nameof(Options.LanguageFolder), "Files");
                 }
 
-                if (!IsAllowedFileExtension(options.SourceFolder, options.FileExtensions))
+                if (!MediaContainerFormats.IsSupported(options.SourceFolder))
                 {
                     result.AddError(AppText.F("validation.fileExtensionNotAllowed", options.SourceFolder), nameof(Options.SourceFolder), "Files");
                 }
 
-                if (languageIsFile && !IsAllowedFileExtension(options.LanguageFolder, options.FileExtensions))
+                if (languageIsFile && !MediaContainerFormats.IsSupported(options.LanguageFolder))
                 {
                     result.AddError(AppText.F("validation.fileExtensionNotAllowed", options.LanguageFolder), nameof(Options.LanguageFolder), "Files");
                 }
@@ -617,24 +605,6 @@ namespace RemuxForge.Core.Configuration
         }
 
         /// <summary>
-        /// Verifica se il file usa una delle estensioni configurate
-        /// </summary>
-        /// <param name="filePath">Percorso file</param>
-        /// <param name="extensions">Estensioni ammesse</param>
-        /// <returns>True se l'estensione è ammessa</returns>
-        private static bool IsAllowedFileExtension(string filePath, List<string> extensions)
-        {
-            string fileExtension = Path.GetExtension(filePath).TrimStart('.');
-            for (int i = 0; i < extensions.Count; i++)
-            {
-                if (string.Equals(fileExtension, extensions[i].Trim().TrimStart('.'), StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-
-            return false;
-        }
-
-        /// <summary>
         /// Valida opzioni della modalità split
         /// </summary>
         /// <param name="options">Opzioni da validare</param>
@@ -645,8 +615,6 @@ namespace RemuxForge.Core.Configuration
         {
             int modes = 0;
             bool sourceIsFile;
-
-            ValidateExtensions(options, result);
 
             if (options.Split == null)
             {
@@ -691,6 +659,12 @@ namespace RemuxForge.Core.Configuration
             else if (modes > 1)
             {
                 result.AddError(AppText.T("validation.splitModesExclusive"));
+            }
+
+            // Qualità e velocità valgono solo per il taglio esatto, come nel wizard Web
+            if (options.Split.Snap != MkvSplitSnapMode.Off && (options.Split.EncodeQuality.HasValue || !string.IsNullOrWhiteSpace(options.Split.EncodeSpeed)))
+            {
+                result.AddError(AppText.T("validation.splitEncodeNeedsSnapOff"));
             }
 
             foreach (string templateError in MkvSplitSegmentService.ValidateTemplate(options.Split.OutputTemplate))

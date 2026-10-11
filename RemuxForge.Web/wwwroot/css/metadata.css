@@ -500,13 +500,14 @@
     margin: 0.35em 0;
 }
 
-.metadata-track-col-selector { width: 10ch; }
-.metadata-track-col-type { width: 8ch; }
-.metadata-track-col-language { width: 5ch; }
-.metadata-track-col-format { width: 8ch; }
+/* Larghezze relative al riquadro: la tabella non supera mai il pannello, il testo lungo va in ellissi con tooltip */
+.metadata-track-col-selector { width: 12%; }
+.metadata-track-col-type { width: 10%; }
+.metadata-track-col-language { width: 8%; }
+.metadata-track-col-format { width: 11%; }
 .metadata-track-col-title { width: auto; }
-.metadata-track-col-size { width: 10ch; }
-.metadata-track-col-extra { width: 18ch; }
+.metadata-track-col-size { width: 12%; }
+.metadata-track-col-extra { width: 22%; }
 
 .metadata-detail-track-table td:nth-child(6) {
     text-align: right;
@@ -626,14 +627,14 @@ tr.metadata-diff-removed > td {
 }
 
 .metadata-sheet-field-cell {
-    width: 28ch;
+    width: 30%;
     min-width: 0;
     max-width: 28ch;
     color: var(--rz-text-color);
 }
 
 .metadata-sheet-token-cell {
-    width: 24ch;
+    width: 25%;
     min-width: 0;
     max-width: 24ch;
     color: var(--rz-text-disabled-color);
@@ -662,12 +663,13 @@ tr.metadata-diff-removed > td {
     color: var(--rz-text-disabled-color);
 }
 
+/* Colonne relative al dialog: la tabella non supera mai il riquadro */
 .metadata-manual-field-col {
-    width: 27ch;
+    width: 19%;
 }
 
 .metadata-manual-token-col {
-    width: 27ch;
+    width: 19%;
 }
 
 .metadata-manual-separator-col {
@@ -675,11 +677,11 @@ tr.metadata-diff-removed > td {
 }
 
 .metadata-manual-current-col {
-    width: 34%;
+    width: 26%;
 }
 
 .metadata-manual-new-col {
-    width: 56ch;
+    width: 34%;
 }
 
 .metadata-manual-header-row td {

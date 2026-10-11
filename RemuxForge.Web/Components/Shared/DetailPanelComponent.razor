@@ -6,6 +6,7 @@
             {
                 <RadzenButton Icon="download"
                               Text="@AppText.T("web.detail.diagnostics")"
+                              title="@AppText.T("web.detail.diagnostics")"
                               Size="ButtonSize.Small"
                               Variant="Variant.Text"
                               ButtonStyle="ButtonStyle.Base"
@@ -14,6 +15,7 @@
             }
             <RadzenButton Icon="@(IsFrameSyncVerification() ? "visibility" : "edit")"
                           Text="@AppText.T(IsFrameSyncVerification() ? "web.editMap.verify" : "web.editMap.change")"
+                          title="@AppText.T(IsFrameSyncVerification() ? "web.editMap.verify" : "web.editMap.change")"
                           Size="ButtonSize.Small"
                           Variant="Variant.Text"
                           ButtonStyle="ButtonStyle.Base"
@@ -21,6 +23,7 @@
                           Click="@OnChangeEditMap" />
             <RadzenButton Icon="content_copy"
                           Text="@AppText.T("web.common.copy")"
+                          title="@AppText.T("web.common.copy")"
                           Size="ButtonSize.Small"
                           Variant="Variant.Text"
                           ButtonStyle="ButtonStyle.Base"

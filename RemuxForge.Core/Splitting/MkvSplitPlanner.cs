@@ -1,8 +1,11 @@
+using RemuxForge.Core.Chapters;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
+using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 
 namespace RemuxForge.Core.Splitting
@@ -13,6 +16,31 @@ namespace RemuxForge.Core.Splitting
     public class MkvSplitPlanner
     {
         #region Metodi pubblici
+
+        /// <summary>
+        /// Cartella di uscita di un file: accanto al sorgente se non è configurata, altrimenti la cartella configurata con le
+        /// sottocartelle del file rispetto alla cartella sorgente, ricreate come nella Remux (PipelineOutputManager.ComputeFinalOutputPath)
+        /// </summary>
+        /// <param name="outputDir">Cartella di uscita configurata, vuota per scrivere accanto al sorgente</param>
+        /// <param name="sourcePath">File o cartella sorgente del lavoro</param>
+        /// <param name="inputFile">File da dividere</param>
+        /// <returns>Percorso assoluto della cartella di uscita del file</returns>
+        public static string ResolveOutputDir(string outputDir, string sourcePath, string inputFile)
+        {
+            string input = Path.GetFullPath(inputFile);
+            if (string.IsNullOrEmpty(outputDir))
+                return Path.GetDirectoryName(input);
+
+            string result = Path.GetFullPath(outputDir);
+            if (!string.IsNullOrEmpty(sourcePath) && Directory.Exists(sourcePath))
+            {
+                string relative = Path.GetRelativePath(Path.GetFullPath(sourcePath), Path.GetDirectoryName(input));
+                // Un file fuori dalla cartella sorgente non ha sottocartelle da ricreare
+                if (!relative.StartsWith("..", StringComparison.Ordinal) && !Path.IsPathRooted(relative))
+                    result = Path.GetFullPath(Path.Combine(result, relative));
+            }
+            return result;
+        }
 
         /// <summary>
         /// Costruisce il piano di taglio per un singolo file
@@ -29,7 +57,7 @@ namespace RemuxForge.Core.Splitting
             (List<MkvSplitSegment> segments, MkvSplitMode mode) built;
 
             plan.InputFile = Path.GetFullPath(inputFile);
-            plan.OutputDir = !string.IsNullOrEmpty(args.OutputDir) ? Path.GetFullPath(args.OutputDir) : Path.GetDirectoryName(plan.InputFile);
+            plan.OutputDir = ResolveOutputDir(args.OutputDir, args.SourcePath, plan.InputFile);
 
             if (!File.Exists(plan.InputFile))
             {
@@ -90,36 +118,22 @@ namespace RemuxForge.Core.Splitting
             plan.Mode = built.mode;
 
             // Lo snap decide i confini definitivi, quindi precede il naming: {start} deve essere l'inizio reale
-            segmentService.ApplySnap(plan.Segments, analysis.KeyFlags, plan.SourcePts, args.Snap);
+            List<(int oldB, int newB)> snapped = segmentService.ApplySnap(plan.Segments, analysis.KeyFlags, plan.SourcePts, args.Snap);
 
-            // I capitoli seguono i confini effettivi: lo snap puo' averne spostati dentro o fuori
+            // I capitoli seguono i confini effettivi: lo snap puo' averne spostati dentro o fuori. Quelli fra il confine richiesto
+            // e quello effettivo seguono il confine
             foreach (MkvSplitSegment seg in plan.Segments)
-                seg.Chapters = SelectChapters(plan.Chapters, seg.StartTs, seg.EndTs);
+                seg.Chapters = SelectChapters(plan.Chapters, seg.StartFrame, seg.StartFrame + seg.FrameCount, seg.StartTs, snapped, plan.SourcePts);
 
             segmentService.ApplyNaming(plan.Segments, args, plan.Mode, plan.InputFile);
             plan.Warnings.AddRange(segmentService.Warnings);
 
-            this.AnnotateCost(plan, analysis.KeyFlags);
+            // Percorso, GOP aperto, codec, frame rate e ricodifica li decide il piano eseguibile (MkvSplitDocumentService.BuildExecutionPlan):
+            // qui restano i confini, i nomi e il costo annunciato
+            this.AnnotateCost(plan, analysis.KeyFlags, MkvSplitCodecCapabilities.Find(plan.VideoParams.CodecName)?.Method == MkvSplitExactCutMethod.Packets,
+                MkvSplitCodecCapabilities.IsExactCutAvailable(plan.VideoParams.CodecName, analysis.ScanType, out _));
             this.AnnotateCoverage(plan);
             this.AnnotateOutputs(plan, args.Force);
-
-            plan.UsesFastPath = args.Snap != MkvSplitSnapMode.Off
-                && plan.FrameRateMode != MkvSplitFrameRateMode.Unknown
-                && EndsAreCuttable(plan, analysis.KeyFlags);
-            if (plan.UsesFastPath)
-            {
-                plan.TotalReencodeFrames = 0;
-            }
-
-            // Il fast path e' indipendente dal codec perche' mkvmerge rimuxa qualunque cosa; lo slow
-            // path lavora sul bitstream e ne conosce solo tre, quindi il piano lo dice adesso invece
-            // di lasciare che l'eccezione arrivi a esecuzione gia' partita
-            if (!plan.UsesFastPath
-                && string.IsNullOrEmpty(plan.ErrorMessage)
-                && !MkvSplitPipeline.TryParseCodec(plan.VideoParams.CodecName, out MkvSplitCodec _))
-            {
-                plan.ErrorMessage = AppText.F("split.unsupportedVideoCodec", plan.VideoParams.CodecName);
-            }
 
             plan.IsValid = string.IsNullOrEmpty(plan.ErrorMessage) && plan.Segments.Count > 0;
             if (!plan.IsValid && string.IsNullOrEmpty(plan.ErrorMessage))
@@ -131,19 +145,44 @@ namespace RemuxForge.Core.Splitting
         }
 
         /// <summary>
-        /// Capitoli del sorgente il cui inizio cade nel segmento [startTs, endTs), nel tempo del sorgente
+        /// Capitoli del sorgente che marcano un fotogramma del segmento, nel tempo del sorgente. Il fotogramma marcato è quello
+        /// di MkvSplitSegmentService.ChapterFrame, entro lo scarto di arrotondamento (ChapterTimelineService.FRAME_ROUNDING_NS),
+        /// come nella costruzione dei segmenti. Un capitolo che cade fra il confine richiesto e quello effettivo, cioè dentro la
+        /// distanza dello snap, segue il confine: passa all'inizio della parte nuova invece di restare in coda alla precedente;
+        /// il capitolo sul confine richiesto lo segue anche quando lo snap va indietro. Un capitolo sul primo fotogramma del
+        /// segmento cade sul suo inizio, anche se il suo tempo lo precede (primo PTS del file dopo lo zero)
         /// </summary>
         /// <param name="chapters">Capitoli del sorgente</param>
-        /// <param name="startTs">Inizio del segmento in secondi, incluso</param>
-        /// <param name="endTs">Fine del segmento in secondi, esclusa</param>
-        /// <returns>Capitoli del segmento</returns>
-        private static List<ChapterMark> SelectChapters(List<ChapterMark> chapters, double startTs, double endTs)
+        /// <param name="startFrame">Primo fotogramma effettivo</param>
+        /// <param name="endFrameExclusive">Primo fotogramma effettivo escluso</param>
+        /// <param name="startSeconds">Tempo sorgente del primo fotogramma</param>
+        /// <param name="snapped">Confini spostati dallo snap, come fotogramma richiesto e fotogramma effettivo</param>
+        /// <param name="sourcePts">PTS del sorgente ordinati crescente</param>
+        /// <returns>Capitoli del tratto</returns>
+        internal static List<ChapterMark> SelectChapters(List<ChapterMark> chapters, int startFrame, int endFrameExclusive, double startSeconds, List<(int oldB, int newB)> snapped, double[] sourcePts)
         {
             List<ChapterMark> result = new List<ChapterMark>();
 
             foreach (ChapterMark chapter in chapters)
             {
-                if (chapter.StartSeconds >= startTs && chapter.StartSeconds < endTs)
+                int frame = MkvSplitSegmentService.ChapterFrame(sourcePts, chapter.StartSeconds);
+                foreach ((int oldB, int newB) boundary in snapped)
+                {
+                    if ((boundary.oldB <= frame && frame < boundary.newB) || (boundary.newB < frame && frame <= boundary.oldB))
+                    {
+                        frame = boundary.newB;
+                        break;
+                    }
+                }
+                if (frame < startFrame || frame >= endFrameExclusive)
+                    continue;
+                if (frame == startFrame)
+                {
+                    ChapterMark placed = chapter.Clone();
+                    placed.StartNs = (long)Math.Round(startSeconds * 1000000000.0);
+                    result.Add(placed);
+                }
+                else
                     result.Add(chapter);
             }
 
@@ -167,7 +206,7 @@ namespace RemuxForge.Core.Splitting
                 duration = Math.Round(seg.EndTs - seg.StartTs, 2, MidpointRounding.AwayFromZero);
                 min = (int)(duration / 60.0);
                 secRem = Math.Round(duration - min * 60.0, 2, MidpointRounding.AwayFromZero);
-                ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.segmentLine", PadRight(seg.File, 40), MkvSplitSegmentService.SecsToTs(seg.StartTs), MkvSplitSegmentService.SecsToTs(seg.EndTs), min.ToString(System.Globalization.CultureInfo.InvariantCulture), secRem.ToString("00.00", System.Globalization.CultureInfo.InvariantCulture), seg.Chapters.Count, seg.FrameCount));
+                ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.segmentLine", PadRight(seg.File, 40), MkvSplitSegmentService.SecsToTs(seg.StartTs), MkvSplitSegmentService.SecsToTs(seg.EndTs), min.ToString(CultureInfo.InvariantCulture), secRem.ToString("00.00", CultureInfo.InvariantCulture), seg.Chapters.Count, seg.FrameCount));
             }
 
             ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.plan.coverage",
@@ -188,47 +227,13 @@ namespace RemuxForge.Core.Splitting
         #region Metodi privati
 
         /// <summary>
-        /// Verifica che ogni segmento finisca su un keyframe o sulla fine del file. Il fast path taglia
-        /// con mkvmerge, che può chiudere una parte solo su un keyframe: se la fine non ci cade mkvmerge
-        /// allunga il segmento fino al successivo, e il file prodotto non sarebbe quello annunciato dal
-        /// piano. In quel caso si passa dallo slow path, che la fine la rispetta al fotogramma.
-        /// </summary>
-        /// <param name="plan">Piano da controllare</param>
-        /// <param name="keyFlags">Flag keyframe per fotogramma, in ordine di presentazione</param>
-        /// <returns>True se il fast path può produrre esattamente i segmenti del piano</returns>
-        private static bool EndsAreCuttable(MkvSplitPlan plan, List<MkvSplitFrameInfo> keyFlags)
-        {
-            int end;
-
-            foreach (MkvSplitSegment seg in plan.Segments)
-            {
-                // Un keyframe di GOP aperto non si taglia esatto con mkvmerge, né in apertura né in chiusura
-                if (seg.StartFrame >= 0 && seg.StartFrame < keyFlags.Count && keyFlags[seg.StartFrame].OpenGop)
-                {
-                    return false;
-                }
-
-                end = seg.StartFrame + seg.FrameCount;
-                if (end >= keyFlags.Count)
-                {
-                    continue;
-                }
-
-                if (!keyFlags[end].Key || keyFlags[end].OpenGop)
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        /// <summary>
         /// Annota per ogni segmento se apre su keyframe e quanti frame andrebbero ricodificati
         /// </summary>
         /// <param name="plan">Piano da annotare</param>
         /// <param name="keyFlags">Flag keyframe per packet</param>
-        private void AnnotateCost(MkvSplitPlan plan, List<MkvSplitFrameInfo> keyFlags)
+        /// <param name="packets">True per il taglio a pacchetti: keyframe cercato fino alla fine del segmento e, se manca, segmento ricodificato per intero</param>
+        /// <param name="exactCut">True se il video si taglia al fotogramma: altrimenti il motivo del «solo keyframe» lo dà il piano eseguibile e il keyframe mancante non conta</param>
+        private void AnnotateCost(MkvSplitPlan plan, List<MkvSplitFrameInfo> keyFlags, bool packets, bool exactCut)
         {
             int lookAhead;
             int keyAfter;
@@ -250,15 +255,20 @@ namespace RemuxForge.Core.Splitting
 
                 // La testa va ricodificata fino al primo keyframe successivo, con la stessa finestra dell'esecutore
                 keyAfter = -1;
-                lookAhead = Math.Min(seg.StartFrame + MkvSplitExecutor.KEYFRAME_LOOKAHEAD, keyFlags.Count);
+                lookAhead = Math.Min(seg.StartFrame + (packets ? seg.FrameCount : MkvSplitExecutor.KEYFRAME_LOOKAHEAD), keyFlags.Count);
                 for (int i = seg.StartFrame + 1; i < lookAhead; i++)
                 {
                     if (keyFlags[i].Key) { keyAfter = i; break; }
                 }
 
-                if (keyAfter < 0 || keyAfter > seg.StartFrame + seg.FrameCount - 1)
+                if ((keyAfter < 0 || keyAfter > seg.StartFrame + seg.FrameCount - 1) && packets)
                 {
-                    plan.ErrorMessage = AppText.F("split.exec.noKeyframeInEpisode", seg.StartFrame);
+                    keyAfter = seg.StartFrame + seg.FrameCount;
+                }
+                else if (keyAfter < 0 || keyAfter > seg.StartFrame + seg.FrameCount - 1)
+                {
+                    if (exactCut)
+                        plan.ErrorMessage = AppText.F("split.exec.noKeyframeInEpisode", seg.StartFrame);
                     continue;
                 }
 

@@ -105,7 +105,7 @@
             <aside class="split-editor-side" aria-label="@T("outputs")">
                 <div class="split-editor-side-head">
                     <h2 class="split-editor-heading">@T("outputs")</h2>
-                    <span>@AppText.F("web.splitMontage.outputsSummary", _draft.Outputs.Count, _draft.Outputs.Sum(o => o.Clips.Count))</span>
+                    <span>@AppText.Count("web.splitMontage.outputsSummary", _draft.Outputs.Count, AppText.Count("web.splitMontage.clipCount", _draft.Outputs.Sum(o => o.Clips.Count)))</span>
                 </div>
                 <div class="split-editor-list">
                     @{ List<MkvSplitDiagnostic> issues = Issues(); }

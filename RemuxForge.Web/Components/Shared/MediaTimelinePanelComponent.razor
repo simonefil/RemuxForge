@@ -19,11 +19,14 @@
         }
         @foreach (AudioLane lane in AudioLanes)
         {
-            <RadzenLabel class="media-audio-label" Text="@lane.Label" Component="@lane.ElementId" />
-            <RadzenDropDown TValue="int?" Name="@lane.ElementId" class="media-audio-control" Data="@lane.Tracks" ValueProperty="Id" Value="@lane.SelectedTrackId" Change="@(value => ChangeTrackAsync(lane, value))" Disabled="@(lane.Tracks.Count == 0)">
-                <Template Context="track">@GetTrackLabel(track)</Template>
-                <ValueTemplate Context="track">@GetTrackLabel(track)</ValueTemplate>
-            </RadzenDropDown>
+            @* Etichetta e controllo restano insieme quando la barra va a capo *@
+            <span class="media-timeline-group">
+                <RadzenLabel class="media-audio-label" Text="@lane.Label" Component="@lane.ElementId" />
+                <RadzenDropDown TValue="int?" Name="@lane.ElementId" class="media-audio-control" Data="@lane.Tracks" ValueProperty="Id" Value="@lane.SelectedTrackId" Change="@(value => ChangeTrackAsync(lane, value))" Disabled="@(lane.Tracks.Count == 0)">
+                    <Template Context="track">@GetTrackLabel(track)</Template>
+                    <ValueTemplate Context="track">@GetTrackLabel(track)</ValueTemplate>
+                </RadzenDropDown>
+            </span>
         }
         <RadzenSelectBar TValue="string" class="media-audio-mode" Size="ButtonSize.Small" Value="@AudioMode" Change="ChangeModeAsync" AriaLabel="@(WaveformText + " / " + SpectrogramText)">
             <Items>
@@ -31,9 +34,11 @@
                 <RadzenSelectBarItem Text="@SpectrogramText" Value="@AUDIO_MODE_SPECTROGRAM" />
             </Items>
         </RadzenSelectBar>
-        <span class="media-waveform-height-label">@WaveformHeightText</span>
-        <RadzenSlider TValue="double" Value="@WaveformGain" Change="ChangeGainAsync" Min="1" Max="12" Step="0.25" Disabled="@IsSpectrogram" aria-label="@WaveformHeightText" />
-        <output>@WaveformGain.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)×</output>
+        <span class="media-timeline-group">
+            <span class="media-waveform-height-label">@WaveformHeightText</span>
+            <RadzenSlider TValue="double" Value="@WaveformGain" Change="ChangeGainAsync" Min="1" Max="12" Step="0.25" Disabled="@IsSpectrogram" aria-label="@WaveformHeightText" />
+            <output>@WaveformGain.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)×</output>
+        </span>
     </div>
     <div @ref="_host" class="media-timeline-host" aria-label="@HostAlternative">
         <div class="timeline-scroll-range"></div>

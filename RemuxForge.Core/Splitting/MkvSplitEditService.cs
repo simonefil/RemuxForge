@@ -109,7 +109,8 @@ namespace RemuxForge.Core.Splitting
                         if (command.Kind == MkvSplitEditKind.ReorderClips)
                             transfer = command.ClipIds.Select(id => transfer.Find(item => item.Id == id)).ToList();
                         if (command.Kind == MkvSplitEditKind.CopyClips)
-                            transfer = transfer.Select(item => new MkvSplitClip { StartFrame = item.StartFrame, EndFrameExclusive = item.EndFrameExclusive }).ToList();
+                            transfer = transfer.Select(item => new MkvSplitClip { StartFrame = item.StartFrame, EndFrameExclusive = item.EndFrameExclusive,
+                                RequestedStartFrame = item.RequestedStartFrame, RequestedEndFrame = item.RequestedEndFrame }).ToList();
                         else
                             output.Clips.RemoveAll(item => transfer.Contains(item));
                         Insert(destination.Clips, command.InsertIndex, transfer);
@@ -135,21 +136,29 @@ namespace RemuxForge.Core.Splitting
                         Require(index + 1 < output.Clips.Count, "notContiguous");
                         MkvSplitClip next = output.Clips[index + 1];
                         Require(next.Id == command.NextClipId && clip.EndFrameExclusive == next.StartFrame, "notContiguous");
+                        // Un confine deciso dall'utente è letterale: perde il confine chiesto dalla regola prima dello snap
                         if (command.Kind == MkvSplitEditKind.RemoveDivision)
                         {
                             clip.EndFrameExclusive = next.EndFrameExclusive;
+                            clip.RequestedEndFrame = next.RequestedEndFrame;
                             output.Clips.RemoveAt(index + 1);
                         }
                         else
                         {
                             Require(command.StartFrame > clip.StartFrame && command.StartFrame < next.EndFrameExclusive, "sharedBoundaryOutside");
                             clip.EndFrameExclusive = command.StartFrame;
+                            clip.RequestedEndFrame = null;
                             next.StartFrame = command.StartFrame;
+                            next.RequestedStartFrame = null;
                         }
                         break;
                     case MkvSplitEditKind.TrimClip:
                         Require(clip != null, "clipMissing");
                         SourceClip(command, analysis, "invalidTrimRange");
+                        if (clip.StartFrame != command.StartFrame)
+                            clip.RequestedStartFrame = null;
+                        if (clip.EndFrameExclusive != command.EndFrameExclusive)
+                            clip.RequestedEndFrame = null;
                         clip.StartFrame = command.StartFrame;
                         clip.EndFrameExclusive = command.EndFrameExclusive;
                         break;
@@ -276,8 +285,10 @@ namespace RemuxForge.Core.Splitting
                 if (frame < end)
                 {
                     int boundary = clip.StartFrame + frame - prefix;
-                    MkvSplitClip right = new MkvSplitClip { StartFrame = boundary, EndFrameExclusive = clip.EndFrameExclusive };
+                    // Il confine nuovo è dell'utente; gli estremi esterni conservano quello chiesto dalla regola
+                    MkvSplitClip right = new MkvSplitClip { StartFrame = boundary, EndFrameExclusive = clip.EndFrameExclusive, RequestedEndFrame = clip.RequestedEndFrame };
                     clip.EndFrameExclusive = boundary;
+                    clip.RequestedEndFrame = null;
                     output.Clips.Insert(index + 1, right);
                     return index + 1;
                 }

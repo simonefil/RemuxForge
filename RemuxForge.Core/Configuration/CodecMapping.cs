@@ -13,17 +13,17 @@ namespace RemuxForge.Core.Configuration
         #region Variabili di classe
 
         /// <summary>
-        /// Codec lossless riconosciuti (stringhe mkvmerge)
+        /// Codec lossless riconosciuti (stringhe mkvmerge). DTS-HD High Resolution Audio è con perdita e non entra
         /// </summary>
         private static readonly string[] s_losslessCodecs = new string[]
         {
             "DTS-HD Master Audio",
-            "DTS-HD High Resolution",
             "TrueHD",
             "PCM",
             "ALAC",
             "MLP",
-            "FLAC"
+            "FLAC",
+            "WavPack4"
         };
 
         /// <summary>
@@ -63,11 +63,11 @@ namespace RemuxForge.Core.Configuration
 
             // DTS - matching esatto per distinguere DTS core da DTS-HD
             { "DTS",       new[] { "DTS" } },
-            { "DTS-HD",    new[] { "DTS-HD Master Audio", "DTS-HD High Resolution" } },
+            { "DTS-HD",    new[] { "DTS-HD Master Audio", "DTS-HD High Resolution Audio" } },
             { "DTS-HD MA", new[] { "DTS-HD Master Audio" } },
             { "DTS-HDMA",  new[] { "DTS-HD Master Audio" } },
-            { "DTS-HD HR", new[] { "DTS-HD High Resolution" } },
-            { "DTS-HDHR",  new[] { "DTS-HD High Resolution" } },
+            { "DTS-HD HR", new[] { "DTS-HD High Resolution Audio" } },
+            { "DTS-HDHR",  new[] { "DTS-HD High Resolution Audio" } },
             { "DTS-ES",    new[] { "DTS-ES" } },
             { "DTS:X",     new[] { "DTS:X" } },
             { "DTSX",      new[] { "DTS:X" } },

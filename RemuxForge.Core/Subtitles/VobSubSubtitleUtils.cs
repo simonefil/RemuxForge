@@ -538,6 +538,13 @@ namespace RemuxForge.Core.Subtitles
                 return false;
             }
 
+            // Le aree di CHG_COLCON sono in righe e colonne della bitmap: una trasformazione del canvas le renderebbe sbagliate
+            if (info.ColorContrastCommandOffsets.Count > 0)
+            {
+                errorMessage = AppText.F("remux.subtitles.vobsubCommandUntransformable", "07");
+                return false;
+            }
+
             // Trasforma SET_DAREA e calcola l'intersezione col canvas finale senza alterare la geometria misurata
             newX = transform.MapX(info.X);
             newY = transform.MapY(info.Y);
@@ -807,7 +814,12 @@ namespace RemuxForge.Core.Subtitles
                         break;
                     }
 
-                    commandLength = GetCommandLength(command);
+                    // CHG_COLCON dichiara la propria lunghezza in una parola che conta anche se stessa
+                    commandLength = command == 0x07 && commandPos + 2 <= spuOffset + spuSize ? ReadUInt16BigEndian(data, commandPos) : GetCommandLength(command);
+                    if (command == 0x07 && commandLength < 2)
+                    {
+                        commandLength = -1;
+                    }
                     if (commandLength < 0 || commandPos + commandLength > spuOffset + spuSize)
                     {
                         if (strict || info.HasDisplayArea || info.HasPixelOffsets)
@@ -836,6 +848,12 @@ namespace RemuxForge.Core.Subtitles
                         info.BottomFieldOffset = ReadUInt16BigEndian(data, commandPos + 2);
                         info.PixelOffsetCommandOffsets.Add(commandPos - spuOffset);
                         info.HasPixelOffsets = true;
+                    }
+
+                    // CHG_COLCON porta righe e colonne della bitmap: lo si registra perché la trasformazione del canvas non lo sa rimappare
+                    else if (command == 0x07)
+                    {
+                        info.ColorContrastCommandOffsets.Add(commandPos - spuOffset);
                     }
 
                     commandPos += commandLength;
@@ -1249,6 +1267,7 @@ namespace RemuxForge.Core.Subtitles
                 this.SequenceOffsets = new List<int>();
                 this.DisplayAreaCommandOffsets = new List<int>();
                 this.PixelOffsetCommandOffsets = new List<int>();
+                this.ColorContrastCommandOffsets = new List<int>();
                 this.SequenceCommandOffsets = new Dictionary<int, List<int>>();
             }
 
@@ -1334,6 +1353,11 @@ namespace RemuxForge.Core.Subtitles
             /// Offset comandi SET_DSPXA da riscrivere
             /// </summary>
             public List<int> PixelOffsetCommandOffsets { get; private set; }
+
+            /// <summary>
+            /// Offset dei parametri dei comandi CHG_COLCON
+            /// </summary>
+            public List<int> ColorContrastCommandOffsets { get; private set; }
         }
 
         /// <summary>

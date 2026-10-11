@@ -368,6 +368,26 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public string LangFilePath { get; set; }
 
+        private string _sourceMediaPath;
+        /// <summary>
+        /// Matroska da cui l'elaborazione legge il sorgente; vale SourceFilePath se non è stato normalizzato
+        /// </summary>
+        public string SourceMediaPath
+        {
+            get { return string.IsNullOrEmpty(this._sourceMediaPath) ? this.SourceFilePath : this._sourceMediaPath; }
+            set { this._sourceMediaPath = value; }
+        }
+
+        private string _langMediaPath;
+        /// <summary>
+        /// Matroska da cui l'elaborazione legge il lang; vale LangFilePath se non è stato normalizzato
+        /// </summary>
+        public string LangMediaPath
+        {
+            get { return string.IsNullOrEmpty(this._langMediaPath) ? this.LangFilePath : this._langMediaPath; }
+            set { this._langMediaPath = value; }
+        }
+
         /// <summary>
         /// Offset sync auto-calcolato in millisecondi (da speed correction o frame-sync)
         /// </summary>
