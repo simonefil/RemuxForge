@@ -39,29 +39,9 @@ namespace RemuxForge.Core.Splitting.Codecs
         public int QualityMax { get; init; }
 
         /// <summary>
-        /// Nome tecnico del parametro di velocità (preset o cpu-used), null se l'encoder non lo prevede
+        /// Parametro di velocità dell'encoder, null se l'encoder non lo prevede
         /// </summary>
-        public string SpeedName { get; init; }
-
-        /// <summary>
-        /// Velocità predefinita, null se l'encoder non la prevede
-        /// </summary>
-        public string SpeedDefault { get; init; }
-
-        /// <summary>
-        /// Velocità ammesse per nome, null quando la velocità è un numero fra SpeedMin e SpeedMax
-        /// </summary>
-        public string[] SpeedValues { get; init; }
-
-        /// <summary>
-        /// Velocità numerica minima
-        /// </summary>
-        public int SpeedMin { get; init; }
-
-        /// <summary>
-        /// Velocità numerica massima
-        /// </summary>
-        public int SpeedMax { get; init; }
+        public MkvSplitEncodeSpeedBase Speed { get; init; }
 
         /// <summary>
         /// Muxer ffmpeg delle parti ricodificate o copiate, da passare a -f
@@ -87,7 +67,7 @@ namespace RemuxForge.Core.Splitting.Codecs
         public List<string> BuildHeadEncodeArgs(MkvSplitVideoParams p, MkvSplitOptions options)
         {
             int quality = options.EncodeQuality ?? this.QualityDefault;
-            string speed = string.IsNullOrWhiteSpace(options.EncodeSpeed) ? this.SpeedDefault : options.EncodeSpeed.Trim().ToLowerInvariant();
+            string speed = string.IsNullOrWhiteSpace(options.EncodeSpeed) ? this.Speed?.Default : options.EncodeSpeed.Trim().ToLowerInvariant();
             List<string> args = new List<string> { "-c:v", this.SelectEncoder(p), this.QualityOption, quality.ToString(CultureInfo.InvariantCulture) };
 
             this.AddEncodeArgs(args, p, speed);

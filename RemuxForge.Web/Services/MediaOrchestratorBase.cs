@@ -1,6 +1,7 @@
 using RemuxForge.Core.Localization;
 using System;
 using System.IO;
+using System.Threading;
 
 namespace RemuxForge.Web.Services
 {
@@ -27,6 +28,7 @@ namespace RemuxForge.Web.Services
         private bool _initialLogVisible;
         private string _logText;
         private int _selectedIndex;
+        private CancellationTokenSource _operationCancellation;
 
         #endregion
 
@@ -61,6 +63,7 @@ namespace RemuxForge.Web.Services
             this._initialLogVisible = this._initialLogKey.Length > 0;
             this._logText = "";
             this._selectedIndex = -1;
+            this._operationCancellation = null;
         }
 
         #endregion
@@ -143,6 +146,7 @@ namespace RemuxForge.Web.Services
         /// <param name="operation">Descrizione dell'operazione</param>
         protected void SetBusy(bool busy, string operation)
         {
+            CancellationTokenSource cancellation = null;
             lock (this._stateLock)
             {
                 this._stopRequested = false;
@@ -152,8 +156,39 @@ namespace RemuxForge.Web.Services
                 this._progress.CurrentStatus = busy ? operation : "";
                 this._progress.CurrentIndeterminate = busy;
                 this._progress.GlobalIndeterminate = busy;
+                if (!busy)
+                {
+                    cancellation = this._operationCancellation;
+                    this._operationCancellation = null;
+                }
             }
+            cancellation?.Dispose();
             this.NotifyProgressChanged();
+        }
+
+        /// <summary>
+        /// Riserva atomicamente l'orchestrator e avvia il worker in background: l'annullamento nasce con la riserva,
+        /// così uno stop che arriva prima che il worker parta non va perso; lo rilascia SetBusy(false)
+        /// </summary>
+        /// <param name="worker">Corpo dell'operazione, eseguito nel thread in background</param>
+        /// <param name="reserved">Azione eseguita dal chiamante a riserva acquisita, prima dell'avvio del thread</param>
+        /// <returns>True se la riserva è stata acquisita e il worker avviato, false se un'operazione è già in corso</returns>
+        protected bool TryRunExclusive(ThreadStart worker, Action reserved = null)
+        {
+            lock (this._stateLock)
+            {
+                if (this._isBusy)
+                    return false;
+                this._isBusy = true;
+                this._stopRequested = false;
+                this._operationCancellation = new CancellationTokenSource();
+            }
+
+            reserved?.Invoke();
+            Thread thread = new Thread(worker);
+            thread.IsBackground = true;
+            thread.Start();
+            return true;
         }
 
         /// <summary>
@@ -241,6 +276,21 @@ namespace RemuxForge.Web.Services
 
         /// <summary>Valore stop mutabile per le operazioni specializzate</summary>
         protected bool StopRequested { get { return this._stopRequested; } set { this._stopRequested = value; } }
+
+        /// <summary>Annullamento dell'operazione riservata, mutabile sotto il lock del chiamante per le prenotazioni specializzate</summary>
+        protected CancellationTokenSource OperationCancellationState { get { return this._operationCancellation; } set { this._operationCancellation = value; } }
+
+        /// <summary>Token dell'operazione riservata, non cancellabile quando nessuna operazione è riservata</summary>
+        protected CancellationToken OperationCancellationToken
+        {
+            get
+            {
+                lock (this._stateLock)
+                {
+                    return this._operationCancellation != null ? this._operationCancellation.Token : CancellationToken.None;
+                }
+            }
+        }
 
         /// <summary>Indice selezionato mutabile sotto il lock del chiamante</summary>
         protected int SelectedIndexState { get { return this._selectedIndex; } set { this._selectedIndex = value; } }

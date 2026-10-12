@@ -8,6 +8,7 @@ using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Splitting.Segments;
 
 namespace RemuxForge.Core.Splitting
 {
@@ -40,10 +41,10 @@ namespace RemuxForge.Core.Splitting
 
         #region Avvisi
 
-        /// <summary>Registra un avviso nel piano e ne scrive la riga di dettaglio nel log.</summary>
+        /// <summary>Registra un avviso nel piano e ne scrive la riga di dettaglio nel log; lo usano anche le strategie dei segmenti.</summary>
         /// <param name="kind">Categoria dell'avviso.</param>
         /// <param name="message">Testo localizzato.</param>
-        private void AddWarning(MkvSplitWarningKind kind, string message)
+        internal void AddWarning(MkvSplitWarningKind kind, string message)
         {
             this.Warnings.Add(new MkvSplitWarning(kind, message));
             ConsoleHelper.Write(LogSection.Split, LogLevel.Notice, message);
@@ -372,209 +373,7 @@ namespace RemuxForge.Core.Splitting
         /// <returns>Tupla con la lista dei segmenti e la MkvSplitMode effettiva.</returns>
         public (List<MkvSplitSegment> segments, MkvSplitMode mode) Build(MkvSplitOptions args, List<ChapterMark> chapters, double[] sourcePts, double duration)
         {
-            int totalFrames;
-            int nCh;
-            List<MkvSplitSegment> segments;
-            double startTs;
-            double endTs;
-            int startF;
-            int endF;
-            MkvSplitSegment seg;
-            List<(int startFrame, int endFrame)> frameRanges;
-            MkvSplitMode mode;
-            int[] pattern;
-            int sum;
-            int chIdx;
-            int numCh;
-            int epNum;
-            int startIdx;
-            int endIdx;
-            int frameCount;
-
-            totalFrames = sourcePts.Length;
-
-            // Modalità Manuale: nessun segmento finché non li costruisce l'editor
-            if (args.Manual)
-            {
-                return (new List<MkvSplitSegment>(), MkvSplitMode.Manual);
-            }
-
-            // Modalità ChaptersPerEpisode: blocchi di k capitoli, adattandosi a qualunque conteggio
-            if (args.ChaptersPerEpisode > 0)
-            {
-                nCh = chapters != null ? chapters.Count : 0;
-                if (nCh == 0)
-                {
-                    throw new ArgumentException(AppText.T("split.chaptersEachRequiresChapters"));
-                }
-
-                segments = new List<MkvSplitSegment>();
-                epNum = 0;
-                for (chIdx = 0; chIdx < nCh; chIdx += args.ChaptersPerEpisode)
-                {
-                    numCh = Math.Min(args.ChaptersPerEpisode, nCh - chIdx);
-                    epNum++;
-                    startIdx = ChapterFrame(sourcePts, chapters[chIdx].StartSeconds);
-                    endIdx = (chIdx + numCh >= nCh) ? totalFrames : ChapterFrame(sourcePts, chapters[chIdx + numCh].StartSeconds);
-                    startTs = startIdx < totalFrames ? sourcePts[startIdx] : duration;
-                    endTs = endIdx < totalFrames ? sourcePts[endIdx] : duration;
-
-                    seg = new MkvSplitSegment();
-                    seg.Num = epNum;
-                    seg.Episode = epNum;
-                    seg.StartTs = startTs;
-                    seg.EndTs = endTs;
-                    seg.StartFrame = startIdx;
-                    seg.FrameCount = endIdx - startIdx;
-                    segments.Add(seg);
-                }
-
-                // L'ultimo blocco più corto è legittimo ma va dichiarato: cambia la durata dell'ultimo episodio
-                if (nCh % args.ChaptersPerEpisode != 0)
-                {
-                    this.AddWarning(MkvSplitWarningKind.ChapterGrouping, AppText.F("split.warnChaptersPerEpisodeRemainder", args.ChaptersPerEpisode, nCh, nCh % args.ChaptersPerEpisode));
-                }
-
-                return (segments, MkvSplitMode.ChaptersPerEpisode);
-            }
-
-            // Modalità ChaptersEach: un segmento per capitolo
-            if (args.ChaptersEach)
-            {
-                if (chapters == null || chapters.Count == 0)
-                {
-                    throw new ArgumentException(AppText.T("split.chaptersEachRequiresChapters"));
-                }
-                nCh = chapters.Count;
-                segments = new List<MkvSplitSegment>(nCh);
-
-                // Ogni capitolo diventa un segmento; l'ultimo chiude a duration
-                for (int i = 0; i < nCh; i++)
-                {
-                    startF = ChapterFrame(sourcePts, chapters[i].StartSeconds);
-                    endF = (i + 1 < nCh) ? ChapterFrame(sourcePts, chapters[i + 1].StartSeconds) : totalFrames;
-                    startTs = startF < totalFrames ? sourcePts[startF] : duration;
-                    endTs = endF < totalFrames ? sourcePts[endF] : duration;
-                    seg = new MkvSplitSegment();
-                    seg.Num = i + 1;
-                    seg.Episode = i + 1;
-                    seg.StartTs = startTs;
-                    seg.EndTs = endTs;
-                    seg.StartFrame = startF;
-                    seg.FrameCount = endF - startF;
-                    segments.Add(seg);
-                }
-                return (segments, MkvSplitMode.ChaptersEach);
-            }
-
-            // Modalità Ranges: può diventare Trim se c'è un solo range
-            if (!string.IsNullOrEmpty(args.Ranges))
-            {
-                frameRanges = this.ParseRanges(args.Ranges, sourcePts, duration);
-                // --split-at è già stato riscritto in range, ma resta leggibile nelle opzioni: senza
-                // questo la griglia direbbe "estrai intervalli" a chi ha chiesto di tagliare a un punto
-                if (!string.IsNullOrEmpty(args.SplitAt)) { mode = MkvSplitMode.SplitAt; }
-                else { mode = (frameRanges.Count == 1) ? MkvSplitMode.Trim : MkvSplitMode.Ranges; }
-                segments = new List<MkvSplitSegment>(frameRanges.Count);
-
-                // Ogni range diventa un segmento
-                for (int i = 0; i < frameRanges.Count; i++)
-                {
-                    startF = frameRanges[i].startFrame;
-                    endF = frameRanges[i].endFrame;
-                    startTs = sourcePts[startF];
-                    endTs = (endF < totalFrames) ? sourcePts[endF] : duration;
-                    seg = new MkvSplitSegment();
-                    seg.Num = i + 1;
-                    seg.Episode = i + 1;
-                    seg.StartTs = startTs;
-                    seg.EndTs = endTs;
-                    seg.StartFrame = startF;
-                    seg.FrameCount = endF - startF;
-                    segments.Add(seg);
-                }
-                return (segments, mode);
-            }
-
-            // Modalita Pattern: raggruppa i capitoli secondo --pattern
-            nCh = chapters != null ? chapters.Count : 0;
-            if (string.IsNullOrEmpty(args.Pattern))
-            {
-                PrintNoModeSelected(chapters, nCh);
-                throw new ArgumentException(AppText.T("split.noModeSelectedShort"));
-            }
-
-            pattern = ParsePattern(args.Pattern);
-
-            // Il pattern deve sommare al numero di capitoli del file
-            sum = 0;
-            for (int i = 0; i < pattern.Length; i++) { sum += pattern[i]; }
-            if (sum != nCh)
-            {
-                throw new ArgumentException(AppText.Count("split.patternSumMismatch", nCh, sum));
-            }
-
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Info, AppText.Count("split.patternSummary", pattern.Length, string.Join(",", pattern)));
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Text, "");
-
-            // Costruzione degli episodi secondo il pattern di capitoli
-            segments = new List<MkvSplitSegment>(pattern.Length);
-            chIdx = 0;
-            for (int epI = 0; epI < pattern.Length; epI++)
-            {
-                numCh = pattern[epI];
-                epNum = epI + 1;
-
-                // Range frame reale del blocco di capitoli (O(log N) per ciascun episodio).
-                startIdx = ChapterFrame(sourcePts, chapters[chIdx].StartSeconds);
-                endIdx = (chIdx + numCh >= nCh) ? sourcePts.Length : ChapterFrame(sourcePts, chapters[chIdx + numCh].StartSeconds);
-                startTs = startIdx < sourcePts.Length ? sourcePts[startIdx] : duration;
-                endTs = endIdx < sourcePts.Length ? sourcePts[endIdx] : duration;
-                frameCount = endIdx - startIdx;
-
-                seg = new MkvSplitSegment();
-                seg.Num = epI + 1;
-                seg.Episode = epNum;
-                seg.StartTs = startTs;
-                seg.EndTs = endTs;
-                seg.StartFrame = startIdx;
-                seg.FrameCount = frameCount;
-                segments.Add(seg);
-
-                chIdx += numCh;
-            }
-            return (segments, MkvSplitMode.Pattern);
-        }
-
-        /// <summary>Stampa un errore esplicativo quando l'utente non ha scelto una modalità di split.</summary>
-        /// <param name="chapters">Capitoli del sorgente per suggerire pattern validi.</param>
-        /// <param name="nCh">Numero di capitoli del sorgente.</param>
-        private static void PrintNoModeSelected(List<ChapterMark> chapters, int nCh)
-        {
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.T("split.noModeSelected"));
-            ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.Count("split.fileHasChapters", nCh));
-            for (int i = 0; i < nCh; i++)
-            {
-                string chName = chapters[i].Name ?? string.Empty;
-                ConsoleHelper.Write(LogSection.Split, LogLevel.Error, AppText.F("split.chapterLine", i + 1, Utils.SecsToTs(chapters[i].StartSeconds), chName));
-            }
-        }
-
-        /// <summary>Parsa un pattern del tipo "5,5,5,6" in un array di interi.</summary>
-        /// <param name="patternStr">Stringa con gli interi separati da virgola.</param>
-        /// <returns>Array di interi parsati.</returns>
-        private static int[] ParsePattern(string patternStr)
-        {
-            string[] parts;
-            int[] p;
-
-            parts = patternStr.Split(',');
-            p = new int[parts.Length];
-            for (int i = 0; i < parts.Length; i++)
-            {
-                p[i] = int.Parse(parts[i].Trim(), CultureInfo.InvariantCulture);
-            }
-            return p;
+            return MkvSplitSegmentStrategyBase.For(args).Build(this, chapters, sourcePts, duration);
         }
 
         #endregion

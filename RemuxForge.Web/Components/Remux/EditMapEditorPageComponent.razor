@@ -1,9 +1,6 @@
+@inherits MediaEditorPageBase<EditMapEditorPageComponent>
 @inject VideoFrameAccessService FrameAccess
-@inject IJSRuntime JsRuntime
-@inject NotificationService NotificationService
 @inject MergeOrchestrator Orchestrator
-@inject ContextMenuService ContextMenuService
-@implements IAsyncDisposable
 
 <section @ref="_pageRoot" class="edit-map-page" data-keyboard-owner="edit-map" tabindex="-1" aria-labelledby="edit-map-page-title">
     <header class="edit-map-page-header">
@@ -223,8 +220,6 @@
     /// </summary>
     [Parameter] public EventCallback<(EditMap Map, double SourceDurationMs, double LanguageDurationMs, double SourceTailToleranceMs)> OnApply { get; set; }
 
-    private readonly CancellationTokenSource _cancellation = new CancellationTokenSource();
-
     /// <summary>
     /// Sessione dei Matroska letti dall'editor, Guid.Empty finché non è aperta
     /// </summary>
@@ -246,8 +241,6 @@
     private IJSObjectReference _module;
     private IJSObjectReference _previewPair;
     private IJSObjectReference _keyboard;
-    private DotNetObjectReference<EditMapEditorPageComponent> _dotNetReference;
-    private readonly SessionMediaMissingNotice _sessionMediaNotice = new SessionMediaMissingNotice();
     private string _sourceError = "";
     private string _languageError = "";
     private string _sourcePreviewMessage = "";
@@ -451,7 +444,7 @@
         Guid sessionId = Guid.Empty;
         try
         {
-            mediaError = await Task.Run(() => this.Orchestrator.OpenEditorMedia(this.RecordIndex, this._cancellation.Token, out sessionId), this._cancellation.Token);
+            mediaError = await Task.Run(() => this.Orchestrator.OpenEditorMedia(this.RecordIndex, this.Lifetime.Token, out sessionId), this.Lifetime.Token);
         }
         catch (OperationCanceledException)
         {
@@ -459,7 +452,7 @@
         }
         this._mediaSessionId = sessionId;
         // L'editor chiuso mentre la sessione si apriva non l'ha potuta rilasciare
-        if (this._cancellation.IsCancellationRequested)
+        if (this.Lifetime.IsCancellationRequested)
         {
             this.Orchestrator.CloseEditorMedia(sessionId);
             return;
@@ -496,11 +489,10 @@
             return;
 
         this._interactiveInitialized = true;
-        this._dotNetReference = DotNetObjectReference.Create(this);
-        this._keyboard = await this._module.InvokeAsync<IJSObjectReference>("captureEditorKeyboard", this._pageRoot, this._dotNetReference);
+        this._keyboard = await this._module.InvokeAsync<IJSObjectReference>("captureEditorKeyboard", this._pageRoot, this.DotNetReference);
         try
         {
-            this._previewPair = await this._module.InvokeAsync<IJSObjectReference>("createPreviewPair", this._sourcePreview.Canvas, this._languagePreview.Canvas, this._dotNetReference);
+            this._previewPair = await this._module.InvokeAsync<IJSObjectReference>("createPreviewPair", this._sourcePreview.Canvas, this._languagePreview.Canvas, this.DotNetReference);
         }
         catch (JSException exception)
         {
@@ -512,7 +504,7 @@
         }
         try
         {
-            await this._timelinePanel.AttachAsync(this._module, this._dotNetReference, this.BuildTimelineModel());
+            await this._timelinePanel.AttachAsync(this._module, this.DotNetReference, this.BuildTimelineModel());
         }
         catch (JSException exception)
         {
@@ -531,7 +523,7 @@
         try
         {
             string path = this.Orchestrator.ResolveEditorMedia(this._mediaSessionId, this.RecordIndex).ResolveMediaSource(this.RecordIndex, source ? "source" : "language").FilePath;
-            VideoFrameIndex index = await Task.Run(() => this.FrameAccess.GetOrBuildIndex(path, 120000, this._cancellation.Token), this._cancellation.Token);
+            VideoFrameIndex index = await Task.Run(() => this.FrameAccess.GetOrBuildIndex(path, 120000, this.Lifetime.Token), this.Lifetime.Token);
             if (source)
                 this._sourceIndex = index;
             else
@@ -1059,7 +1051,7 @@
         _ = this.InvokeAsync(async () =>
         {
             FileProcessingRecord current = this.Orchestrator.GetRecord(this.RecordIndex);
-            if (this.Record == null || this._cancellation.IsCancellationRequested)
+            if (this.Record == null || this.Lifetime.IsCancellationRequested)
                 return;
             bool unchanged = current != null && current.SourceFilePath == this.Record.SourceFilePath && current.LangFilePath == this.Record.LangFilePath &&
                 string.Equals(this._openedPreviewSignature, MergeOrchestrator.GetEditMapPreviewSignature(current, this.Orchestrator.CurrentOptions), StringComparison.Ordinal) &&
@@ -2271,26 +2263,17 @@
     }
 
     /// <summary>
-    /// Riceve da JavaScript la risposta 409 di un'anteprima o di un'immagine audio: manca il temporaneo della sessione.
-    /// Si notifica una volta sola, e l'anteprima fallita mostra l'errore
+    /// L'anteprima fallita per il temporaneo mancante mostra l'errore
     /// </summary>
-    /// <param name="side">Lato dell'anteprima fallita, source o language, null per un'immagine audio</param>
-    /// <param name="message">Messaggio localizzato del server</param>
-    [JSInvokable]
-    public Task OnSessionMediaMissing(string side, string message)
+    /// <param name="side">Lato dell'anteprima fallita, source o language</param>
+    protected override void OnPreviewMediaMissing(string side)
     {
-        return this.InvokeAsync(() =>
-        {
-            this._sessionMediaNotice.Notify(this.NotificationService, message);
-            if (side == null)
-                return;
-            this._previewFailed = true;
-            if (string.Equals(side, "source", StringComparison.Ordinal))
-                this._sourcePreviewMessage = AppText.T("web.editMap.previewError");
-            else
-                this._languagePreviewMessage = AppText.T("web.editMap.previewError");
-            this.StateHasChanged();
-        });
+        this._previewFailed = true;
+        if (string.Equals(side, "source", StringComparison.Ordinal))
+            this._sourcePreviewMessage = AppText.T("web.editMap.previewError");
+        else
+            this._languagePreviewMessage = AppText.T("web.editMap.previewError");
+        this.StateHasChanged();
     }
 
     /// <summary>
@@ -2700,19 +2683,19 @@
     /// </summary>
     private async Task CloseAsync()
     {
-        this._cancellation.Cancel();
+        this.Lifetime.Cancel();
         await this.OnClose.InvokeAsync();
     }
 
     /// <summary>
     /// Cancella indicizzazione e decode ancora in corso
     /// </summary>
-    public async ValueTask DisposeAsync()
+    protected override async Task DisposeEditorAsync()
     {
         this.Orchestrator.OnRecordsChanged -= this.HandleMediaSelectionChanged;
         this.ContextMenuService.OnClose -= this.HandleContextMenuClosed;
         this.CloseContextMenu();
-        this._cancellation.Cancel();
+        this.Lifetime.Cancel();
         this.Orchestrator.CloseEditorMedia(this._mediaSessionId);
         if (this._previewPair != null)
         {
@@ -2728,8 +2711,5 @@
         {
             try { await this._module.DisposeAsync(); } catch { }
         }
-        if (this._dotNetReference != null)
-            this._dotNetReference.Dispose();
-        this._cancellation.Dispose();
     }
 }

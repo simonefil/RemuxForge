@@ -227,7 +227,7 @@ namespace RemuxForge.Core.Splitting
                     if (!IsValidOutputFileName(result.FileName))
                         throw new ArgumentException();
                     result.FullPath = Path.GetFullPath(Path.Combine(directory, result.FileName.Replace('\\', '/')));
-                    if (FileHelper.IsSamePath(result.FullPath, document.Source.FullPath)
+                    if (PathIdentity.IsSame(result.FullPath, document.Source.FullPath)
                         || !paths.Add(result.FullPath))
                         projection.Diagnostics.Add(Diagnostic("nameCollision", output.Id, null, result.FileName));
                     result.OutputState = File.Exists(result.FullPath) ? (options.Force ? MkvSplitOutputState.ExistsOverwrite : MkvSplitOutputState.ExistsSkip) : MkvSplitOutputState.New;

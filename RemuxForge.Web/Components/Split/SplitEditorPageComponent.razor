@@ -1,9 +1,6 @@
-@inject IJSRuntime JsRuntime
+@inherits MediaEditorPageBase<SplitEditorPageComponent>
 @inject SplitOrchestrator SplitOrchestrator
 @inject DialogService DialogService
-@inject NotificationService NotificationService
-@inject ContextMenuService ContextMenuService
-@implements IAsyncDisposable
 
 <section @ref="_root" class="split-editor" tabindex="-1" aria-label="@T("title")">
     <header class="split-editor-top">

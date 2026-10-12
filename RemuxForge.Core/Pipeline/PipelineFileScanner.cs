@@ -58,15 +58,16 @@ namespace RemuxForge.Core.Pipeline
         public List<FileProcessingRecord> Scan(Options options, bool needsMerge, CancellationToken cancellationToken = default)
         {
             List<FileProcessingRecord> records = new List<FileProcessingRecord>();
-            Dictionary<string, List<string>> languageIndex = new Dictionary<string, List<string>>();
-            Dictionary<string, List<string>> sourceIndex = new Dictionary<string, List<string>>();
+            // Gli indici per episodio servono solo per abbinare due cartelle diverse
+            Dictionary<string, List<string>> languageIndex = null;
+            Dictionary<string, List<string>> sourceIndex = null;
             string extList = string.Join(", ", MediaContainerFormats.Extensions);
             cancellationToken.ThrowIfCancellationRequested();
             List<string> sourceFiles = this.FindVideoFiles(options.SourceFolder, options.Recursive, cancellationToken);
             bool singleFileMode = File.Exists(options.SourceFolder);
             // Percorso Lang vuoto: la pipeline lo riempie con la cartella Source e ogni file si abbina soltanto a sé stesso
             // Lang e Source si confrontano come cartelle sul disco, non come testo (D22)
-            bool selfPairing = !singleFileMode && (string.IsNullOrEmpty(options.LanguageFolder) || FileHelper.IsSamePath(options.SourceFolder, options.LanguageFolder));
+            bool selfPairing = !singleFileMode && (string.IsNullOrEmpty(options.LanguageFolder) || PathIdentity.IsSame(options.SourceFolder, options.LanguageFolder));
 
             this._log(LogSection.General, LogLevel.Success, AppText.Count("remux.pipeline.sourceFilesFound", sourceFiles.Count, extList));
 
@@ -79,37 +80,11 @@ namespace RemuxForge.Core.Pipeline
                 else if (!selfPairing)
                 {
                     this._log(LogSection.General, LogLevel.Info, AppText.T("remux.pipeline.indexingLangFolder"));
-                    List<string> languageFiles = this.FindVideoFiles(options.LanguageFolder, options.Recursive, cancellationToken);
-
-                    for (int i = 0; i < languageFiles.Count; i++)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        string langFileName = Path.GetFileName(languageFiles[i]);
-                        string langEpisodeId = this.GetEpisodeIdentifier(langFileName, options.MatchPattern);
-                        if (!string.IsNullOrEmpty(langEpisodeId))
-                        {
-                            if (!languageIndex.ContainsKey(langEpisodeId))
-                                languageIndex[langEpisodeId] = new List<string>();
-                            languageIndex[langEpisodeId].Add(languageFiles[i]);
-                        }
-                    }
-
+                    languageIndex = this.BuildEpisodeIndex(this.FindVideoFiles(options.LanguageFolder, options.Recursive, cancellationToken), options.MatchPattern, cancellationToken);
                     this._log(LogSection.General, LogLevel.Success, AppText.Count("remux.pipeline.langFilesIndexed", languageIndex.Count));
-                }
-            }
 
-            // Lo stesso episodio in due container (ep01.mp4 e ep01.mkv) non ha un abbinamento univoco: il record si salta con i file in conflitto (D03)
-            if (needsMerge && !singleFileMode && !selfPairing)
-            {
-                for (int i = 0; i < sourceFiles.Count; i++)
-                {
-                    string sourceEpisodeId = this.GetEpisodeIdentifier(Path.GetFileName(sourceFiles[i]), options.MatchPattern);
-                    if (!string.IsNullOrEmpty(sourceEpisodeId))
-                    {
-                        if (!sourceIndex.ContainsKey(sourceEpisodeId))
-                            sourceIndex[sourceEpisodeId] = new List<string>();
-                        sourceIndex[sourceEpisodeId].Add(sourceFiles[i]);
-                    }
+                    // Lo stesso episodio in due container (ep01.mp4 e ep01.mkv) non ha un abbinamento univoco: il record si salta con i file in conflitto (D03)
+                    sourceIndex = this.BuildEpisodeIndex(sourceFiles, options.MatchPattern, cancellationToken);
                 }
             }
 
@@ -191,57 +166,10 @@ namespace RemuxForge.Core.Pipeline
                 records.Add(record);
             }
 
-            // Due sorgenti che producono lo stesso file di output, o un output che cade su un altro sorgente: come per D03
-            // si saltano tutti i file in conflitto. L'output è noto solo con Sovrascrivi o con una destinazione
+            // L'output è noto solo con Sovrascrivi o con una destinazione
             if (options.Overwrite || !string.IsNullOrEmpty(options.DestinationFolder))
             {
-                PipelineOutputManager outputManager = new PipelineOutputManager();
-                Dictionary<string, FileProcessingRecord> sourceByIdentity = new Dictionary<string, FileProcessingRecord>(StringComparer.Ordinal);
-                Dictionary<string, List<FileProcessingRecord>> recordsByOutput = new Dictionary<string, List<FileProcessingRecord>>(StringComparer.Ordinal);
-                Dictionary<string, string> outputNames = new Dictionary<string, string>(StringComparer.Ordinal);
-                for (int i = 0; i < records.Count; i++)
-                {
-                    sourceByIdentity[FileHelper.GetPathIdentity(records[i].SourceFilePath)] = records[i];
-                }
-                for (int i = 0; i < records.Count; i++)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    if (records[i].Status != FileStatus.Pending)
-                    {
-                        continue;
-                    }
-
-                    string outputPath = outputManager.ComputeFinalOutputPath(records[i].SourceFilePath, options);
-                    string outputIdentity = FileHelper.GetPathIdentity(outputPath);
-                    if (!recordsByOutput.ContainsKey(outputIdentity))
-                    {
-                        recordsByOutput[outputIdentity] = new List<FileProcessingRecord>();
-                        outputNames[outputIdentity] = Path.GetFileName(outputPath);
-                    }
-                    recordsByOutput[outputIdentity].Add(records[i]);
-                    if (sourceByIdentity.TryGetValue(outputIdentity, out FileProcessingRecord other) && !recordsByOutput[outputIdentity].Contains(other))
-                    {
-                        recordsByOutput[outputIdentity].Add(other);
-                    }
-                }
-
-                foreach (KeyValuePair<string, List<FileProcessingRecord>> output in recordsByOutput)
-                {
-                    if (output.Value.Count < 2)
-                    {
-                        continue;
-                    }
-
-                    List<string> conflicting = new List<string>();
-                    foreach (FileProcessingRecord conflict in output.Value)
-                        conflicting.Add(conflict.SourceFileName);
-                    foreach (FileProcessingRecord conflict in output.Value)
-                    {
-                        conflict.SkipReason = AppText.F("remux.pipeline.duplicateOutput", outputNames[output.Key], string.Join(", ", conflicting));
-                        conflict.Status = FileStatus.Skipped;
-                        this._log(LogSection.General, LogLevel.Warning, conflict.SourceFileName + ": " + conflict.SkipReason);
-                    }
-                }
+                this.SkipOutputCollisions(records, options, cancellationToken);
             }
 
             return records;
@@ -250,6 +178,89 @@ namespace RemuxForge.Core.Pipeline
         #endregion
 
         #region Metodi privati
+
+        /// <summary>
+        /// Due sorgenti che producono lo stesso file di output, o un output che cade su un altro sorgente: come per D03
+        /// si saltano tutti i file in conflitto
+        /// </summary>
+        /// <param name="records">Record trovati, i pendenti in conflitto passano a saltati</param>
+        /// <param name="options">Opzioni operative con la destinazione</param>
+        /// <param name="cancellationToken">Token di annullamento cooperativo</param>
+        private void SkipOutputCollisions(List<FileProcessingRecord> records, Options options, CancellationToken cancellationToken)
+        {
+            PipelineOutputManager outputManager = new PipelineOutputManager();
+            Dictionary<PathIdentity, FileProcessingRecord> sourceByIdentity = new Dictionary<PathIdentity, FileProcessingRecord>();
+            Dictionary<PathIdentity, List<FileProcessingRecord>> recordsByOutput = new Dictionary<PathIdentity, List<FileProcessingRecord>>();
+            Dictionary<PathIdentity, string> outputNames = new Dictionary<PathIdentity, string>();
+            for (int i = 0; i < records.Count; i++)
+            {
+                sourceByIdentity[new PathIdentity(records[i].SourceFilePath)] = records[i];
+            }
+            for (int i = 0; i < records.Count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (records[i].Status != FileStatus.Pending)
+                {
+                    continue;
+                }
+
+                string outputPath = outputManager.ComputeFinalOutputPath(records[i].SourceFilePath, options);
+                PathIdentity outputIdentity = new PathIdentity(outputPath);
+                if (!recordsByOutput.ContainsKey(outputIdentity))
+                {
+                    recordsByOutput[outputIdentity] = new List<FileProcessingRecord>();
+                    outputNames[outputIdentity] = Path.GetFileName(outputPath);
+                }
+                recordsByOutput[outputIdentity].Add(records[i]);
+                if (sourceByIdentity.TryGetValue(outputIdentity, out FileProcessingRecord other) && !recordsByOutput[outputIdentity].Contains(other))
+                {
+                    recordsByOutput[outputIdentity].Add(other);
+                }
+            }
+
+            foreach (KeyValuePair<PathIdentity, List<FileProcessingRecord>> output in recordsByOutput)
+            {
+                if (output.Value.Count < 2)
+                {
+                    continue;
+                }
+
+                List<string> conflicting = new List<string>();
+                foreach (FileProcessingRecord conflict in output.Value)
+                    conflicting.Add(conflict.SourceFileName);
+                foreach (FileProcessingRecord conflict in output.Value)
+                {
+                    conflict.SkipReason = AppText.F("remux.pipeline.duplicateOutput", outputNames[output.Key], string.Join(", ", conflicting));
+                    conflict.Status = FileStatus.Skipped;
+                    this._log(LogSection.General, LogLevel.Warning, conflict.SourceFileName + ": " + conflict.SkipReason);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Indicizza i file per identificatore di episodio; i file senza identificatore restano fuori
+        /// </summary>
+        /// <param name="files">File da indicizzare</param>
+        /// <param name="pattern">Pattern regex episodio</param>
+        /// <param name="cancellationToken">Token di annullamento cooperativo</param>
+        /// <returns>File per identificatore, nell'ordine dato</returns>
+        private Dictionary<string, List<string>> BuildEpisodeIndex(List<string> files, string pattern, CancellationToken cancellationToken)
+        {
+            Dictionary<string, List<string>> index = new Dictionary<string, List<string>>();
+            for (int i = 0; i < files.Count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                string episodeId = this.GetEpisodeIdentifier(Path.GetFileName(files[i]), pattern);
+                if (!string.IsNullOrEmpty(episodeId))
+                {
+                    if (!index.ContainsKey(episodeId))
+                        index[episodeId] = new List<string>();
+                    index[episodeId].Add(files[i]);
+                }
+            }
+
+            return index;
+        }
 
         /// <summary>
         /// Estrae l'identificatore episodio dal nome file usando la regex configurata
@@ -306,17 +317,7 @@ namespace RemuxForge.Core.Pipeline
                 return files;
             }
 
-            // Il filtro per estensione si applica dopo: il pattern di GetFiles su Linux distingue le maiuscole
-            string[] found = Directory.GetFiles(folder, "*", recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly);
-            for (int i = 0; i < found.Length; i++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (MediaContainerFormats.IsSupported(found[i]))
-                {
-                    files.Add(found[i]);
-                }
-            }
-
+            files.AddRange(MediaContainerFormats.EnumerateSupported(folder, recursive, cancellationToken));
             return files;
         }
 

@@ -775,7 +775,7 @@ namespace RemuxForge.Core.Pipeline
                     // Il .mkv che verrebbe scritto è il file Lang: sostituirlo cancellerebbe l'ingresso del merge
                     string plannedOutput = this._outputManager.ComputeFinalOutputPath(record.SourceFilePath, this._opts);
                     string normalizeError = "";
-                    if (this._needsMerge && !FileHelper.IsSamePath(record.LangFilePath, record.SourceFilePath) && FileHelper.IsSamePath(plannedOutput, record.LangFilePath))
+                    if (this._needsMerge && !PathIdentity.IsSame(record.LangFilePath, record.SourceFilePath) && PathIdentity.IsSame(plannedOutput, record.LangFilePath))
                     {
                         normalizeError = AppText.F("remux.pipeline.outputIsLangFile", Path.GetFileName(record.LangFilePath));
                     }

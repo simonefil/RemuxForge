@@ -145,107 +145,29 @@ namespace RemuxForge.Core.Pipeline
         /// <param name="cancellationToken">Token per interrompere cooperativamente le analisi lunghe</param>
         public void AnalyzeFile(FileProcessingRecord record, CancellationToken cancellationToken = default)
         {
-            MkvFileInfo sourceInfo = null;
-            MkvFileInfo langInfo = null;
-            List<TrackInfo> sourceTracks;
-            List<TrackInfo> langTracks;
-            int syncOffset = 0;
-            bool speedCorrectionActive = false;
-            string speedCorrectionMode;
-            string deepManualStretchFactor;
-            string ffmpegPath;
-            int sourceDurationMs = 0;
-            SpeedCorrectionService speedService;
-            bool speedOk;
-            int frameSyncOffset;
-            bool done = false;
-            FrameSyncTimingInfo frameSyncTiming;
-            VideoTimingInfo sourceTiming = null;
-            bool readsVideo;
             // Ignora i record che non sono in uno stato rielaborabile
             if (record.Status != FileStatus.Pending && record.Status != FileStatus.Error)
             {
-                done = true;
+                return;
             }
 
-            if (!done)
+            AnalysisRun run = new AnalysisRun(record, this._opts.SpeedCorrectionMode != null ? this._opts.SpeedCorrectionMode : Options.SPEED_CORRECTION_OFF, cancellationToken);
+            if (this.ReadTrackInfo(run))
             {
-                // Pulisce gli esiti derivati per evitare di riutilizzare risultati di un tentativo precedente
-                record.ResetDerivedState();
-
-                // Associa il log al record corrente per conservare il contesto dell'analisi
-                this._setupLogRedirect(record);
-
-                // Porta il record nello stato di analisi e propaga subito l'aggiornamento
-                record.Status = FileStatus.Analyzing;
-                if (this._fileUpdated != null)
-                {
-                    this._fileUpdated(record);
-                }
-
-                ConsoleHelper.Write(LogSection.General, LogLevel.Header, AppText.F("remux.pipeline.analysisHeader", record.SourceFileName));
-                ConsoleHelper.Write(LogSection.General, LogLevel.Debug, AppText.F("remux.pipeline.episodeId", record.EpisodeId));
-
-                // Carica i metadata del file sorgente per preparare le fasi successive
-                sourceInfo = this._fileInfoProvider(record.SourceFilePath);
-                sourceTracks = (sourceInfo != null) ? sourceInfo.Tracks : null;
-
-                // Prepara nel record il riepilogo delle lingue e delle tracce sorgente
-                record.SourceAudioLangs = this._trackMapper.GetAudioLanguages(sourceTracks);
-                record.SourceSubLangs = this._trackMapper.GetSubtitleLanguages(sourceTracks);
-                record.SourceAudioTracks = this._trackMapper.FilterTracksByType(sourceTracks, "audio");
-                record.SourceSubTracks = this._trackMapper.FilterTracksByType(sourceTracks, "subtitles");
-
-                if (this._needsMerge)
-                {
-                    // Nel merge serve anche il contesto temporale e delle tracce del file lingua
-                    ConsoleHelper.Write(LogSection.General, LogLevel.Info, AppText.F("remux.pipeline.matchedLang", record.LangFileName));
-
-                    langInfo = this._fileInfoProvider(record.LangFilePath);
-                    langTracks = (langInfo != null) ? langInfo.Tracks : null;
-                    sourceTiming = this._timingResolver.Resolve(record.SourceFilePath, sourceInfo);
-
-                    record.LangAudioLangs = this._trackMapper.GetAudioLanguages(langTracks);
-                    record.LangSubLangs = this._trackMapper.GetSubtitleLanguages(langTracks);
-
-                    if (langTracks == null)
-                    {
-                        // Interrompe l'analisi perché senza metadata non è possibile costruire il merge
-                        ConsoleHelper.Write(LogSection.General, LogLevel.Error, AppText.T("remux.pipeline.langTrackInfoReadFailed"));
-                        done = this.FailAndFinalizeRecord(record, AppText.T("remux.pipeline.langTracksReadFailed"), false);
-                    }
-                }
-                else
-                {
-                    // Senza merge non servono confronti tra file e il record può essere completato subito
-                    done = this.MarkAnalyzedAndFinalize(record, 0, false, AppText.T("remux.pipeline.analysisCompletedNoMerge"));
-                }
+                return;
             }
 
-            speedCorrectionMode = this._opts.SpeedCorrectionMode != null ? this._opts.SpeedCorrectionMode : Options.SPEED_CORRECTION_OFF;
-            readsVideo = !done && sourceInfo != null && langInfo != null && (this._opts.DeepAnalysis || this._opts.FrameSync || speedCorrectionMode == Options.SPEED_CORRECTION_MANUAL);
-
-            // FrameSync e Deep confrontano fotogrammi: un video interlacciato non ha un fotogramma confrontabile (D06)
-            if (readsVideo && (this._opts.DeepAnalysis || this._opts.FrameSync))
+            bool comparesFrames = this._opts.DeepAnalysis || this._opts.FrameSync;
+            bool readsVideo = run.SourceInfo != null && run.LangInfo != null && (comparesFrames || run.SpeedCorrectionMode == Options.SPEED_CORRECTION_MANUAL);
+            if (readsVideo && comparesFrames && this.RejectInterlacedVideo(run))
             {
-                MediaInfoService mediaInfo = new MediaInfoService(this._toolPathResolver.ResolveMediaInfoPath(false));
-                string[] files = new string[] { record.SourceFilePath, record.LangFilePath };
-                for (int i = 0; i < files.Length && !done; i++)
-                {
-                    // Una scansione non letta non vale progressivo: il file va in errore
-                    string scanError = !mediaInfo.TryGetVideoScanType(files[i], out VideoScanType scanType) ? AppText.F("remux.pipeline.scanTypeReadFailed", Path.GetFileName(files[i])) :
-                        scanType.IsInterlaced ? AppText.F("remux.pipeline.interlacedUnsupported", Path.GetFileName(files[i]), scanType) : "";
-                    if (scanError.Length > 0)
-                    {
-                        ConsoleHelper.Write(LogSection.General, LogLevel.Error, scanError);
-                        done = this.FailAndFinalizeRecord(record, scanError, true);
-                    }
-                }
+                return;
             }
 
             // Le analisi leggono i fotogrammi solo da Matroska: gli altri container passano da un temporaneo rilasciato a fine analisi (D12),
             // che resta a chi tiene già lo stesso file: l'elaborazione che segue nella CLI, un editor EditMap aperto
-            using NormalizedMediaPair media = readsVideo && !done ? NormalizedMediaStore.Instance.AcquirePair(record.SourceFilePath, record.LangFilePath, false, this._opts.MkvMergePath) : null;
+            using NormalizedMediaPair media = readsVideo ? NormalizedMediaStore.Instance.AcquirePair(record.SourceFilePath, record.LangFilePath, false, this._opts.MkvMergePath) : null;
+            run.Media = media;
             if (media != null)
             {
                 string mediaError = media.Open(cancellationToken);
@@ -253,264 +175,369 @@ namespace RemuxForge.Core.Pipeline
                 if (mediaError.Length > 0)
                 {
                     ConsoleHelper.Write(LogSection.General, LogLevel.Error, mediaError);
-                    done = this.FailAndFinalizeRecord(record, mediaError, true);
+                    this.FailAndFinalizeRecord(record, mediaError, true);
+                    return;
                 }
             }
 
-            if (!done && sourceInfo != null && langInfo != null)
-                this.MediaReady?.Invoke(record, langInfo, cancellationToken);
+            if (run.SourceInfo != null && run.LangInfo != null)
+                this.MediaReady?.Invoke(record, run.LangInfo, cancellationToken);
 
             // Applica la correzione manuale quando non è attiva la deep analysis
-            if (!done && sourceInfo != null && langInfo != null && !this._opts.DeepAnalysis && speedCorrectionMode == Options.SPEED_CORRECTION_MANUAL)
+            if (run.SourceInfo != null && run.LangInfo != null && !this._opts.DeepAnalysis && run.SpeedCorrectionMode == Options.SPEED_CORRECTION_MANUAL && this.ApplyManualSpeed(run))
             {
-                ConsoleHelper.Write(LogSection.Speed, LogLevel.Phase, AppText.F("speed.pipeline.manualStart", this._opts.ManualStretchFactor));
-                ConsoleHelper.Progress(LogSection.Speed, 10, AppText.T("speed.pipeline.progressSetup"));
-
-                ffmpegPath = this.ResolveFfmpegForSpeed();
-                if (!string.IsNullOrEmpty(ffmpegPath))
-                {
-                    ConsoleHelper.Progress(LogSection.Speed, 14, AppText.T("speed.pipeline.progressFfmpeg"));
-                    this._ffmpegPath = ffmpegPath;
-                    if (sourceInfo.ContainerDurationNs > 0)
-                    {
-                        sourceDurationMs = (int)(sourceInfo.ContainerDurationNs / 1000000);
-                    }
-
-                    speedService = new SpeedCorrectionService(ffmpegPath);
-                    speedService.SetAnalysisCrop(this._opts.AnalysisCropSourcePx, this._opts.AnalysisCropLanguagePx);
-                    ConsoleHelper.Progress(LogSection.Speed, 20, AppText.T("speed.pipeline.progressStretch"));
-                    speedOk = speedService.FindDelayAndVerifyManual(media.Source.Path, media.Lang.Path, this._opts.ManualStretchFactor);
-                    record.SpeedCorrectionTimeMs = speedService.ExecutionTimeMs;
-
-                    if (speedOk)
-                    {
-                        syncOffset = speedService.SyncDelayMs;
-                        record.StretchFactor = speedService.StretchFactor;
-                        record.SpeedCorrectionApplied = true;
-                        speedCorrectionActive = true;
-
-                        ConsoleHelper.Write(LogSection.Speed, LogLevel.Success, AppText.F("speed.pipeline.manualCompleted", speedService.InitialDelayMs, speedService.SyncDelayMs, speedService.StretchFactor, speedService.ExecutionTimeMs));
-                        ConsoleHelper.Write(LogSection.Speed, LogLevel.Debug, AppText.F("speed.pipeline.verification", speedService.GetDetailSummary()));
-                        ConsoleHelper.Progress(LogSection.Speed, 90, AppText.T("speed.pipeline.progressCompleted"));
-                    }
-                    else
-                    {
-                        string speedFailure = AppText.F("speed.pipeline.manualFailed", speedService.GetDetailSummary());
-                        ConsoleHelper.Write(LogSection.Speed, LogLevel.Error, speedFailure);
-                        done = this.FailAndFinalizeRecord(record, speedFailure, true);
-                    }
-                }
-                else
-                {
-                    string ffmpegUnavailable = AppText.T("speed.pipeline.ffmpegUnavailable");
-                    ConsoleHelper.Write(LogSection.Speed, LogLevel.Error, ffmpegUnavailable);
-                    ConsoleHelper.Progress(LogSection.Speed, 90, AppText.T("speed.pipeline.progressNotApplied"));
-                    done = this.FailAndFinalizeRecord(record, ffmpegUnavailable, true);
-                }
+                return;
             }
 
             // Avvia la modalità avanzata per gestire file con edit temporali diversi
-            if (!done && !speedCorrectionActive && this._opts.DeepAnalysis)
+            if (!run.SpeedCorrectionActive && this._opts.DeepAnalysis && this.RunDeepAnalysis(run))
             {
-                ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, AppText.T("deep.temporal.pipeline.start"));
-                ConsoleHelper.Progress(LogSection.Deep, 8, AppText.T("deep.temporal.pipeline.progressStart"));
-                deepManualStretchFactor = "";
-
-                if (speedCorrectionMode == Options.SPEED_CORRECTION_MANUAL)
-                {
-                    deepManualStretchFactor = this._opts.ManualStretchFactor;
-                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, AppText.F("deep.temporal.pipeline.manualStretch", deepManualStretchFactor));
-                }
-                // Risolve ffmpeg solo quando la fase avanzata ne ha effettivamente bisogno
-                ffmpegPath = this._ffmpegPath;
-                if (string.IsNullOrEmpty(ffmpegPath))
-                {
-                    ffmpegPath = this.ResolveFfmpegForSpeed();
-                    this._ffmpegPath = ffmpegPath;
-                }
-
-                if (string.IsNullOrEmpty(ffmpegPath))
-                {
-                    string ffmpegUnavailableReason = AppText.T("deep.temporal.pipeline.ffmpegUnavailable");
-                    ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, ffmpegUnavailableReason);
-                    ConsoleHelper.Progress(LogSection.Deep, 98, AppText.T("deep.temporal.pipeline.progressError"));
-                    done = this.FailAndFinalizeRecord(record, ffmpegUnavailableReason.Trim(), true);
-                }
-
-                if (!done)
-                {
-                    if (sourceDurationMs == 0 && sourceTiming != null && sourceTiming.DurationMs > 0.0)
-                    {
-                        // Usa la timeline video perché la durata container può includere tracce non importate
-                        sourceDurationMs = (int)Math.Round(sourceTiming.DurationMs);
-                    }
-                    if (sourceDurationMs == 0 && sourceInfo != null && sourceInfo.ContainerDurationNs > 0)
-                    {
-                        sourceDurationMs = (int)(sourceInfo.ContainerDurationNs / 1000000);
-                    }
-
-                    if (!done && sourceDurationMs > 0)
-                    {
-                        EditMap editMap;
-                        DeepAnalysisService deepService = new DeepAnalysisService(ffmpegPath, this._toolPathResolver);
-                        try
-                        {
-                            bool explicitAudio = record.ExplicitTrackSelection != null;
-                            List<TrackInfo> selectedSource = PipelineTrackSelectionResolver.ResolveDisplayAudio(record, true);
-                            List<TrackInfo> languageInventory = this._trackMapper.FilterTracksByType(langInfo.Tracks, "audio");
-                            List<TrackInfo> selectedLanguage = PipelineTrackSelectionResolver.ResolveDisplayAudio(record, false, languageInventory);
-                            int? sourceStream = selectedSource.Count > 0 ? record.SourceAudioTracks.FindIndex(track => track.Id == selectedSource[0].Id) : null;
-                            int? languageStream = selectedLanguage.Count > 0 ? languageInventory.FindIndex(track => track.Id == selectedLanguage[0].Id) : null;
-                            string sourceLanguage = selectedSource.Count > 0 ? LanguageValidator.NormalizeToIso6392(selectedSource[0].Language) : "";
-                            string langLanguage = selectedLanguage.Count > 0 ? LanguageValidator.NormalizeToIso6392(selectedLanguage[0].Language) : "";
-                            bool sharedLanguage = !string.IsNullOrEmpty(sourceLanguage) && sourceLanguage != "und" && sourceLanguage != "mul" && sourceLanguage != "zxx" &&
-                                string.Equals(sourceLanguage, langLanguage, StringComparison.OrdinalIgnoreCase);
-                            editMap = deepService.Analyze(media.Source.Path, media.Lang.Path, deepManualStretchFactor, this._opts.AnalysisCropSourcePx, this._opts.AnalysisCropLanguagePx, cancellationToken,
-                                explicitAudio, sourceStream, languageStream, sharedLanguage);
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            record.DeepAnalysisResult = deepService.LastResult;
-                            record.DeepAnalysisTimeMs = deepService.LastResult != null ? deepService.LastResult.TotalElapsedMs : 0;
-                            this._diagnosticsWriter.WriteDeepAnalysisIfEnabled(record, this._opts);
-                            throw;
-                        }
-                        record.DeepAnalysisResult = deepService.LastResult;
-                        record.DeepAnalysisTimeMs = deepService.LastResult != null ? deepService.LastResult.TotalElapsedMs : 0;
-
-                        if (editMap != null)
-                        {
-                            record.DeepAnalysisMap = editMap;
-                            record.DeepAnalysisApplied = true;
-                            syncOffset = editMap.InitialDelayMs;
-
-                            if (!string.IsNullOrEmpty(editMap.StretchFactor))
-                            {
-                                record.StretchFactor = editMap.StretchFactor;
-                                record.SpeedCorrectionApplied = true;
-                            }
-                            AudioProcessingPlanner.ApplySourceFillGain(editMap, this._opts, record.StretchFactor);
-
-                            ConsoleHelper.Write(LogSection.Deep, LogLevel.Success, AppText.F("deep.temporal.pipeline.completed", editMap.Operations.Count, editMap.InitialDelayMs, record.DeepAnalysisTimeMs));
-                            ConsoleHelper.Progress(LogSection.Deep, 90, AppText.T("deep.temporal.pipeline.progressDiagnostics"));
-                            this._diagnosticsWriter.WriteDeepAnalysisIfEnabled(record, this._opts);
-                        }
-                        else
-                        {
-                            record.DeepAnalysisMap = deepService.LastCandidateMap;
-                            record.DeepAnalysisApplied = false;
-                            AudioProcessingPlanner.ApplySourceFillGain(record.DeepAnalysisMap, this._opts, !string.IsNullOrEmpty(record.DeepAnalysisMap?.StretchFactor) ? record.DeepAnalysisMap.StretchFactor : record.StretchFactor);
-                            string deepRejectReason = record.DeepAnalysisResult != null && !string.IsNullOrEmpty(record.DeepAnalysisResult.RejectReason) ? record.DeepAnalysisResult.RejectReason : AppText.T("deep.temporal.pipeline.blocked");
-                            string deepFailure = AppText.F("deep.temporal.pipeline.failed", deepRejectReason);
-                            ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, deepFailure);
-                            ConsoleHelper.Progress(LogSection.Deep, 98, AppText.T("deep.temporal.pipeline.progressError"));
-                            this._diagnosticsWriter.WriteDeepAnalysisIfEnabled(record, this._opts);
-                            done = this.FailAndFinalizeRecord(record, deepFailure.Trim(), true);
-                        }
-                    }
-                    else
-                    {
-                        string insufficientVideoData = AppText.T("deep.temporal.pipeline.insufficientVideoData");
-                        ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, insufficientVideoData);
-                        ConsoleHelper.Progress(LogSection.Deep, 98, AppText.T("deep.temporal.pipeline.progressError"));
-                        done = this.FailAndFinalizeRecord(record, insufficientVideoData.Trim(), true);
-                    }
-                }
+                return;
             }
 
             // Esegue il frame-sync solo se non è già disponibile una correzione temporale
-            if (!done && !speedCorrectionActive && this._opts.FrameSync && this._frameSyncService != null)
+            if (!run.SpeedCorrectionActive && this._opts.FrameSync && this._frameSyncService != null && this.RunFrameSync(run))
             {
-                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Phase, AppText.T("framesync.pipeline.start"));
-                ConsoleHelper.Progress(LogSection.FrameSync, 10, AppText.T("framesync.pipeline.progressSetup"));
-
-                frameSyncOffset = this._frameSyncService.RefineOffset(media.Source.Path, media.Lang.Path, speedCorrectionMode == Options.SPEED_CORRECTION_MANUAL ? this._opts.ManualStretchFactor : "");
-                record.FrameSyncTimeMs = this._frameSyncService.FrameSyncTimeMs;
-                record.FrameSyncResult = this._frameSyncService.LastResult;
-
-                int acceptedFrameSyncPoints = 0;
-                if (record.FrameSyncResult != null && record.FrameSyncResult.Points != null)
-                {
-                    for (int p = 0; p < record.FrameSyncResult.Points.Count; p++)
-                    {
-                        if (record.FrameSyncResult.Points[p].Accepted)
-                        {
-                            acceptedFrameSyncPoints++;
-                        }
-                    }
-                }
-
-                bool frameSyncAccepted = frameSyncOffset != int.MinValue &&
-                    record.FrameSyncResult != null &&
-                    record.FrameSyncResult.Success &&
-                    record.FrameSyncResult.Initial != null &&
-                    record.FrameSyncResult.Initial.Success &&
-                    acceptedFrameSyncPoints >= AppSettingsService.Instance.Settings.Advanced.FrameSync.MinValidPoints &&
-                    record.FrameSyncResult.Confidence >= AppSettingsService.Instance.Settings.Advanced.FrameSync.FinalMinConfidence;
-
-                if (frameSyncOffset != int.MinValue && !frameSyncAccepted)
-                {
-                    if (record.FrameSyncResult != null && string.IsNullOrEmpty(record.FrameSyncResult.FailureReason))
-                    {
-                        if (record.FrameSyncResult.Initial == null || !record.FrameSyncResult.Initial.Success)
-                        {
-                            record.FrameSyncResult.FailureReason = AppText.T("framesync.pipeline.initialNotVerified");
-                        }
-                        else if (acceptedFrameSyncPoints < AppSettingsService.Instance.Settings.Advanced.FrameSync.MinValidPoints)
-                        {
-                            record.FrameSyncResult.FailureReason = AppText.T("framesync.pipeline.insufficientPoints");
-                        }
-                        else
-                        {
-                            record.FrameSyncResult.FailureReason = AppText.T("framesync.pipeline.insufficientConfidence");
-                        }
-                    }
-
-                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Warning, AppText.F("framesync.pipeline.notApplicable", acceptedFrameSyncPoints, AppSettingsService.Instance.Settings.Advanced.VideoSync.NumCheckPoints, record.FrameSyncResult != null ? record.FrameSyncResult.Confidence.ToString("P0", System.Globalization.CultureInfo.InvariantCulture) : "0%", AppSettingsService.Instance.Settings.Advanced.FrameSync.FinalMinConfidence.ToString("P0", System.Globalization.CultureInfo.InvariantCulture)));
-                    ConsoleHelper.Progress(LogSection.FrameSync, 76, AppText.T("framesync.pipeline.inconclusive"));
-                }
-
-                this._diagnosticsWriter.WriteFrameSyncIfEnabled(record, this._opts);
-
-                if (frameSyncAccepted)
-                {
-                    syncOffset = frameSyncOffset;
-                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Success, AppText.F("framesync.pipeline.offset", Utils.FormatDelay(frameSyncOffset), this._frameSyncService.FrameSyncTimeMs));
-                    if (record.FrameSyncResult != null)
-                    {
-                        ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("framesync.pipeline.confidence", record.FrameSyncResult.Confidence.ToString("P0", System.Globalization.CultureInfo.InvariantCulture)));
-                        frameSyncTiming = record.FrameSyncResult.Timing;
-                        if (frameSyncTiming != null)
-                        {
-                            ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("framesync.pipeline.timing", frameSyncTiming.VideoInfoMs, frameSyncTiming.GeometryMs, frameSyncTiming.InitialSearchMs, frameSyncTiming.CheckpointsMs, frameSyncTiming.TotalMs));
-                            ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("framesync.pipeline.pairs", frameSyncTiming.InitialPairCount, frameSyncTiming.CheckpointPairCount));
-                        }
-                    }
-                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("framesync.pipeline.detail", this._frameSyncService.GetDetailSummary()));
-                    ConsoleHelper.Progress(LogSection.FrameSync, 88, AppText.T("framesync.pipeline.completed"));
-                }
-                else
-                {
-                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Error, AppText.T("framesync.pipeline.failed"));
-                    ConsoleHelper.Progress(LogSection.FrameSync, 76, AppText.T("framesync.pipeline.inconclusive"));
-                    done = this.FailAndFinalizeRecord(record, AppText.T("framesync.pipeline.failureReason"), true);
-                }
+                return;
             }
 
-            if (!done)
-            {
-                this.MarkAnalyzedAndFinalize(
-                    record,
-                    syncOffset,
-                    true,
-                    AppText.F("remux.pipeline.analysisCompleted", Utils.FormatDelay(syncOffset + this._opts.AudioDelay + record.ManualAudioDelayMs), Utils.FormatDelay(syncOffset + this._opts.SubtitleDelay + record.ManualSubDelayMs)));
-            }
+            this.MarkAnalyzedAndFinalize(
+                record,
+                run.SyncOffset,
+                true,
+                AppText.F("remux.pipeline.analysisCompleted", Utils.FormatDelay(run.SyncOffset + this._opts.AudioDelay + record.ManualAudioDelayMs), Utils.FormatDelay(run.SyncOffset + this._opts.SubtitleDelay + record.ManualSubDelayMs)));
         }
-
 
         #endregion
 
         #region Metodi privati
+
+        /// <summary>
+        /// Porta il record in analisi e legge i metadata dei file; senza merge l'analisi finisce qui
+        /// </summary>
+        /// <param name="run">Analisi in corso, riceve metadata e temporizzazione del sorgente</param>
+        /// <returns>True se il record è stato finalizzato</returns>
+        private bool ReadTrackInfo(AnalysisRun run)
+        {
+            FileProcessingRecord record = run.Record;
+
+            // Pulisce gli esiti derivati per evitare di riutilizzare risultati di un tentativo precedente
+            record.ResetDerivedState();
+
+            // Associa il log al record corrente per conservare il contesto dell'analisi
+            this._setupLogRedirect(record);
+
+            // Porta il record nello stato di analisi e propaga subito l'aggiornamento
+            record.Status = FileStatus.Analyzing;
+            if (this._fileUpdated != null)
+            {
+                this._fileUpdated(record);
+            }
+
+            ConsoleHelper.Write(LogSection.General, LogLevel.Header, AppText.F("remux.pipeline.analysisHeader", record.SourceFileName));
+            ConsoleHelper.Write(LogSection.General, LogLevel.Debug, AppText.F("remux.pipeline.episodeId", record.EpisodeId));
+
+            // Carica i metadata del file sorgente per preparare le fasi successive
+            run.SourceInfo = this._fileInfoProvider(record.SourceFilePath);
+            List<TrackInfo> sourceTracks = (run.SourceInfo != null) ? run.SourceInfo.Tracks : null;
+
+            // Prepara nel record il riepilogo delle lingue e delle tracce sorgente
+            record.SourceAudioLangs = this._trackMapper.GetAudioLanguages(sourceTracks);
+            record.SourceSubLangs = this._trackMapper.GetSubtitleLanguages(sourceTracks);
+            record.SourceAudioTracks = this._trackMapper.FilterTracksByType(sourceTracks, "audio");
+            record.SourceSubTracks = this._trackMapper.FilterTracksByType(sourceTracks, "subtitles");
+
+            if (!this._needsMerge)
+            {
+                // Senza merge non servono confronti tra file e il record può essere completato subito
+                return this.MarkAnalyzedAndFinalize(record, 0, false, AppText.T("remux.pipeline.analysisCompletedNoMerge"));
+            }
+
+            // Nel merge serve anche il contesto temporale e delle tracce del file lingua
+            ConsoleHelper.Write(LogSection.General, LogLevel.Info, AppText.F("remux.pipeline.matchedLang", record.LangFileName));
+
+            run.LangInfo = this._fileInfoProvider(record.LangFilePath);
+            List<TrackInfo> langTracks = (run.LangInfo != null) ? run.LangInfo.Tracks : null;
+            run.SourceTiming = this._timingResolver.Resolve(record.SourceFilePath, run.SourceInfo);
+
+            record.LangAudioLangs = this._trackMapper.GetAudioLanguages(langTracks);
+            record.LangSubLangs = this._trackMapper.GetSubtitleLanguages(langTracks);
+
+            if (langTracks == null)
+            {
+                // Interrompe l'analisi perché senza metadata non è possibile costruire il merge
+                ConsoleHelper.Write(LogSection.General, LogLevel.Error, AppText.T("remux.pipeline.langTrackInfoReadFailed"));
+                return this.FailAndFinalizeRecord(record, AppText.T("remux.pipeline.langTracksReadFailed"), false);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// FrameSync e Deep confrontano fotogrammi: un video interlacciato non ha un fotogramma confrontabile (D06)
+        /// </summary>
+        /// <param name="run">Analisi in corso</param>
+        /// <returns>True se il record è stato finalizzato in errore</returns>
+        private bool RejectInterlacedVideo(AnalysisRun run)
+        {
+            MediaInfoService mediaInfo = new MediaInfoService(this._toolPathResolver.ResolveMediaInfoPath(false));
+            string[] files = new string[] { run.Record.SourceFilePath, run.Record.LangFilePath };
+            for (int i = 0; i < files.Length; i++)
+            {
+                // Una scansione non letta non vale progressivo: il file va in errore
+                string scanError = !mediaInfo.TryGetVideoScanType(files[i], out VideoScanType scanType) ? AppText.F("remux.pipeline.scanTypeReadFailed", Path.GetFileName(files[i])) :
+                    scanType.IsInterlaced ? AppText.F("remux.pipeline.interlacedUnsupported", Path.GetFileName(files[i]), scanType) : "";
+                if (scanError.Length > 0)
+                {
+                    ConsoleHelper.Write(LogSection.General, LogLevel.Error, scanError);
+                    return this.FailAndFinalizeRecord(run.Record, scanError, true);
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Correzione di velocità con il fattore manuale, quando non è attiva la deep analysis
+        /// </summary>
+        /// <param name="run">Analisi in corso con i Matroska aperti; riceve offset e correzione attiva</param>
+        /// <returns>True se il record è stato finalizzato in errore</returns>
+        private bool ApplyManualSpeed(AnalysisRun run)
+        {
+            FileProcessingRecord record = run.Record;
+            ConsoleHelper.Write(LogSection.Speed, LogLevel.Phase, AppText.F("speed.pipeline.manualStart", this._opts.ManualStretchFactor));
+            ConsoleHelper.Progress(LogSection.Speed, 10, AppText.T("speed.pipeline.progressSetup"));
+
+            string ffmpegPath = this.ResolveFfmpegForSpeed();
+            if (string.IsNullOrEmpty(ffmpegPath))
+            {
+                string ffmpegUnavailable = AppText.T("speed.pipeline.ffmpegUnavailable");
+                ConsoleHelper.Write(LogSection.Speed, LogLevel.Error, ffmpegUnavailable);
+                ConsoleHelper.Progress(LogSection.Speed, 90, AppText.T("speed.pipeline.progressNotApplied"));
+                return this.FailAndFinalizeRecord(record, ffmpegUnavailable, true);
+            }
+
+            ConsoleHelper.Progress(LogSection.Speed, 14, AppText.T("speed.pipeline.progressFfmpeg"));
+            this._ffmpegPath = ffmpegPath;
+
+            SpeedCorrectionService speedService = new SpeedCorrectionService(ffmpegPath);
+            speedService.SetAnalysisCrop(this._opts.AnalysisCropSourcePx, this._opts.AnalysisCropLanguagePx);
+            ConsoleHelper.Progress(LogSection.Speed, 20, AppText.T("speed.pipeline.progressStretch"));
+            bool speedOk = speedService.FindDelayAndVerifyManual(run.Media.Source.Path, run.Media.Lang.Path, this._opts.ManualStretchFactor);
+            record.SpeedCorrectionTimeMs = speedService.ExecutionTimeMs;
+
+            if (!speedOk)
+            {
+                string speedFailure = AppText.F("speed.pipeline.manualFailed", speedService.GetDetailSummary());
+                ConsoleHelper.Write(LogSection.Speed, LogLevel.Error, speedFailure);
+                return this.FailAndFinalizeRecord(record, speedFailure, true);
+            }
+
+            run.SyncOffset = speedService.SyncDelayMs;
+            record.StretchFactor = speedService.StretchFactor;
+            record.SpeedCorrectionApplied = true;
+            run.SpeedCorrectionActive = true;
+
+            ConsoleHelper.Write(LogSection.Speed, LogLevel.Success, AppText.F("speed.pipeline.manualCompleted", speedService.InitialDelayMs, speedService.SyncDelayMs, speedService.StretchFactor, speedService.ExecutionTimeMs));
+            ConsoleHelper.Write(LogSection.Speed, LogLevel.Debug, AppText.F("speed.pipeline.verification", speedService.GetDetailSummary()));
+            ConsoleHelper.Progress(LogSection.Speed, 90, AppText.T("speed.pipeline.progressCompleted"));
+            return false;
+        }
+
+        /// <summary>
+        /// Deep analysis: mappa delle operazioni fra Source e Lang, con il fattore manuale se richiesto
+        /// </summary>
+        /// <param name="run">Analisi in corso con i Matroska aperti; riceve l'offset iniziale della mappa</param>
+        /// <returns>True se il record è stato finalizzato in errore</returns>
+        private bool RunDeepAnalysis(AnalysisRun run)
+        {
+            FileProcessingRecord record = run.Record;
+            ConsoleHelper.Write(LogSection.Deep, LogLevel.Phase, AppText.T("deep.temporal.pipeline.start"));
+            ConsoleHelper.Progress(LogSection.Deep, 8, AppText.T("deep.temporal.pipeline.progressStart"));
+            string deepManualStretchFactor = "";
+
+            if (run.SpeedCorrectionMode == Options.SPEED_CORRECTION_MANUAL)
+            {
+                deepManualStretchFactor = this._opts.ManualStretchFactor;
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Notice, AppText.F("deep.temporal.pipeline.manualStretch", deepManualStretchFactor));
+            }
+            // Risolve ffmpeg solo quando la fase avanzata ne ha effettivamente bisogno
+            string ffmpegPath = this._ffmpegPath;
+            if (string.IsNullOrEmpty(ffmpegPath))
+            {
+                ffmpegPath = this.ResolveFfmpegForSpeed();
+                this._ffmpegPath = ffmpegPath;
+            }
+
+            if (string.IsNullOrEmpty(ffmpegPath))
+            {
+                string ffmpegUnavailableReason = AppText.T("deep.temporal.pipeline.ffmpegUnavailable");
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, ffmpegUnavailableReason);
+                ConsoleHelper.Progress(LogSection.Deep, 98, AppText.T("deep.temporal.pipeline.progressError"));
+                return this.FailAndFinalizeRecord(record, ffmpegUnavailableReason.Trim(), true);
+            }
+
+            // Usa la timeline video perché la durata container può includere tracce non importate
+            int sourceDurationMs = 0;
+            if (run.SourceTiming != null && run.SourceTiming.DurationMs > 0.0)
+            {
+                sourceDurationMs = (int)Math.Round(run.SourceTiming.DurationMs);
+            }
+            if (sourceDurationMs == 0 && run.SourceInfo != null && run.SourceInfo.ContainerDurationNs > 0)
+            {
+                sourceDurationMs = (int)(run.SourceInfo.ContainerDurationNs / 1000000);
+            }
+
+            if (sourceDurationMs <= 0)
+            {
+                string insufficientVideoData = AppText.T("deep.temporal.pipeline.insufficientVideoData");
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, insufficientVideoData);
+                ConsoleHelper.Progress(LogSection.Deep, 98, AppText.T("deep.temporal.pipeline.progressError"));
+                return this.FailAndFinalizeRecord(record, insufficientVideoData.Trim(), true);
+            }
+
+            EditMap editMap;
+            DeepAnalysisService deepService = new DeepAnalysisService(ffmpegPath, this._toolPathResolver);
+            try
+            {
+                bool explicitAudio = record.ExplicitTrackSelection != null;
+                List<TrackInfo> selectedSource = PipelineTrackSelectionResolver.ResolveDisplayAudio(record, true);
+                List<TrackInfo> languageInventory = this._trackMapper.FilterTracksByType(run.LangInfo.Tracks, "audio");
+                List<TrackInfo> selectedLanguage = PipelineTrackSelectionResolver.ResolveDisplayAudio(record, false, languageInventory);
+                int? sourceStream = selectedSource.Count > 0 ? record.SourceAudioTracks.FindIndex(track => track.Id == selectedSource[0].Id) : null;
+                int? languageStream = selectedLanguage.Count > 0 ? languageInventory.FindIndex(track => track.Id == selectedLanguage[0].Id) : null;
+                string sourceLanguage = selectedSource.Count > 0 ? LanguageValidator.NormalizeToIso6392(selectedSource[0].Language) : "";
+                string langLanguage = selectedLanguage.Count > 0 ? LanguageValidator.NormalizeToIso6392(selectedLanguage[0].Language) : "";
+                bool sharedLanguage = !string.IsNullOrEmpty(sourceLanguage) && sourceLanguage != "und" && sourceLanguage != "mul" && sourceLanguage != "zxx" &&
+                    string.Equals(sourceLanguage, langLanguage, StringComparison.OrdinalIgnoreCase);
+                editMap = deepService.Analyze(run.Media.Source.Path, run.Media.Lang.Path, deepManualStretchFactor, this._opts.AnalysisCropSourcePx, this._opts.AnalysisCropLanguagePx, run.CancellationToken,
+                    explicitAudio, sourceStream, languageStream, sharedLanguage);
+            }
+            catch (OperationCanceledException)
+            {
+                record.DeepAnalysisResult = deepService.LastResult;
+                record.DeepAnalysisTimeMs = deepService.LastResult != null ? deepService.LastResult.TotalElapsedMs : 0;
+                this._diagnosticsWriter.WriteDeepAnalysisIfEnabled(record, this._opts);
+                throw;
+            }
+            record.DeepAnalysisResult = deepService.LastResult;
+            record.DeepAnalysisTimeMs = deepService.LastResult != null ? deepService.LastResult.TotalElapsedMs : 0;
+
+            if (editMap == null)
+            {
+                record.DeepAnalysisMap = deepService.LastCandidateMap;
+                record.DeepAnalysisApplied = false;
+                AudioProcessingPlanner.ApplySourceFillGain(record.DeepAnalysisMap, this._opts, !string.IsNullOrEmpty(record.DeepAnalysisMap?.StretchFactor) ? record.DeepAnalysisMap.StretchFactor : record.StretchFactor);
+                string deepRejectReason = record.DeepAnalysisResult != null && !string.IsNullOrEmpty(record.DeepAnalysisResult.RejectReason) ? record.DeepAnalysisResult.RejectReason : AppText.T("deep.temporal.pipeline.blocked");
+                string deepFailure = AppText.F("deep.temporal.pipeline.failed", deepRejectReason);
+                ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, deepFailure);
+                ConsoleHelper.Progress(LogSection.Deep, 98, AppText.T("deep.temporal.pipeline.progressError"));
+                this._diagnosticsWriter.WriteDeepAnalysisIfEnabled(record, this._opts);
+                return this.FailAndFinalizeRecord(record, deepFailure.Trim(), true);
+            }
+
+            record.DeepAnalysisMap = editMap;
+            record.DeepAnalysisApplied = true;
+            run.SyncOffset = editMap.InitialDelayMs;
+
+            if (!string.IsNullOrEmpty(editMap.StretchFactor))
+            {
+                record.StretchFactor = editMap.StretchFactor;
+                record.SpeedCorrectionApplied = true;
+            }
+            AudioProcessingPlanner.ApplySourceFillGain(editMap, this._opts, record.StretchFactor);
+
+            ConsoleHelper.Write(LogSection.Deep, LogLevel.Success, AppText.F("deep.temporal.pipeline.completed", editMap.Operations.Count, editMap.InitialDelayMs, record.DeepAnalysisTimeMs));
+            ConsoleHelper.Progress(LogSection.Deep, 90, AppText.T("deep.temporal.pipeline.progressDiagnostics"));
+            this._diagnosticsWriter.WriteDeepAnalysisIfEnabled(record, this._opts);
+            return false;
+        }
+
+        /// <summary>
+        /// FrameSync: offset raffinato sui fotogrammi, accettato solo con abbastanza punti e confidenza
+        /// </summary>
+        /// <param name="run">Analisi in corso con i Matroska aperti; riceve l'offset accettato</param>
+        /// <returns>True se il record è stato finalizzato in errore</returns>
+        private bool RunFrameSync(AnalysisRun run)
+        {
+            FileProcessingRecord record = run.Record;
+            ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Phase, AppText.T("framesync.pipeline.start"));
+            ConsoleHelper.Progress(LogSection.FrameSync, 10, AppText.T("framesync.pipeline.progressSetup"));
+
+            int frameSyncOffset = this._frameSyncService.RefineOffset(run.Media.Source.Path, run.Media.Lang.Path, run.SpeedCorrectionMode == Options.SPEED_CORRECTION_MANUAL ? this._opts.ManualStretchFactor : "");
+            record.FrameSyncTimeMs = this._frameSyncService.FrameSyncTimeMs;
+            record.FrameSyncResult = this._frameSyncService.LastResult;
+
+            int acceptedFrameSyncPoints = 0;
+            if (record.FrameSyncResult != null && record.FrameSyncResult.Points != null)
+            {
+                for (int p = 0; p < record.FrameSyncResult.Points.Count; p++)
+                {
+                    if (record.FrameSyncResult.Points[p].Accepted)
+                    {
+                        acceptedFrameSyncPoints++;
+                    }
+                }
+            }
+
+            bool frameSyncAccepted = frameSyncOffset != int.MinValue &&
+                record.FrameSyncResult != null &&
+                record.FrameSyncResult.Success &&
+                record.FrameSyncResult.Initial != null &&
+                record.FrameSyncResult.Initial.Success &&
+                acceptedFrameSyncPoints >= AppSettingsService.Instance.Settings.Advanced.FrameSync.MinValidPoints &&
+                record.FrameSyncResult.Confidence >= AppSettingsService.Instance.Settings.Advanced.FrameSync.FinalMinConfidence;
+
+            if (frameSyncOffset != int.MinValue && !frameSyncAccepted)
+            {
+                if (record.FrameSyncResult != null && string.IsNullOrEmpty(record.FrameSyncResult.FailureReason))
+                {
+                    if (record.FrameSyncResult.Initial == null || !record.FrameSyncResult.Initial.Success)
+                    {
+                        record.FrameSyncResult.FailureReason = AppText.T("framesync.pipeline.initialNotVerified");
+                    }
+                    else if (acceptedFrameSyncPoints < AppSettingsService.Instance.Settings.Advanced.FrameSync.MinValidPoints)
+                    {
+                        record.FrameSyncResult.FailureReason = AppText.T("framesync.pipeline.insufficientPoints");
+                    }
+                    else
+                    {
+                        record.FrameSyncResult.FailureReason = AppText.T("framesync.pipeline.insufficientConfidence");
+                    }
+                }
+
+                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Warning, AppText.F("framesync.pipeline.notApplicable", acceptedFrameSyncPoints, AppSettingsService.Instance.Settings.Advanced.VideoSync.NumCheckPoints, record.FrameSyncResult != null ? record.FrameSyncResult.Confidence.ToString("P0", System.Globalization.CultureInfo.InvariantCulture) : "0%", AppSettingsService.Instance.Settings.Advanced.FrameSync.FinalMinConfidence.ToString("P0", System.Globalization.CultureInfo.InvariantCulture)));
+                ConsoleHelper.Progress(LogSection.FrameSync, 76, AppText.T("framesync.pipeline.inconclusive"));
+            }
+
+            this._diagnosticsWriter.WriteFrameSyncIfEnabled(record, this._opts);
+
+            if (frameSyncAccepted)
+            {
+                run.SyncOffset = frameSyncOffset;
+                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Success, AppText.F("framesync.pipeline.offset", Utils.FormatDelay(frameSyncOffset), this._frameSyncService.FrameSyncTimeMs));
+                if (record.FrameSyncResult != null)
+                {
+                    ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("framesync.pipeline.confidence", record.FrameSyncResult.Confidence.ToString("P0", System.Globalization.CultureInfo.InvariantCulture)));
+                    FrameSyncTimingInfo frameSyncTiming = record.FrameSyncResult.Timing;
+                    if (frameSyncTiming != null)
+                    {
+                        ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("framesync.pipeline.timing", frameSyncTiming.VideoInfoMs, frameSyncTiming.GeometryMs, frameSyncTiming.InitialSearchMs, frameSyncTiming.CheckpointsMs, frameSyncTiming.TotalMs));
+                        ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("framesync.pipeline.pairs", frameSyncTiming.InitialPairCount, frameSyncTiming.CheckpointPairCount));
+                    }
+                }
+                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Debug, AppText.F("framesync.pipeline.detail", this._frameSyncService.GetDetailSummary()));
+                ConsoleHelper.Progress(LogSection.FrameSync, 88, AppText.T("framesync.pipeline.completed"));
+            }
+            else
+            {
+                ConsoleHelper.Write(LogSection.FrameSync, LogLevel.Error, AppText.T("framesync.pipeline.failed"));
+                ConsoleHelper.Progress(LogSection.FrameSync, 76, AppText.T("framesync.pipeline.inconclusive"));
+                return this.FailAndFinalizeRecord(record, AppText.T("framesync.pipeline.failureReason"), true);
+            }
+
+            return false;
+        }
 
         /// <summary>
         /// Imposta lo stato di errore del record, notifica l'aggiornamento e chiude il redirect del log
@@ -607,6 +634,70 @@ namespace RemuxForge.Core.Pipeline
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Stato di un'analisi in corso, passato fra le fasi di AnalyzeFile
+        /// </summary>
+        private sealed class AnalysisRun
+        {
+            /// <summary>
+            /// Prepara l'analisi di un record
+            /// </summary>
+            /// <param name="record">Record analizzato</param>
+            /// <param name="speedCorrectionMode">Modalità di correzione della velocità, off se non configurata</param>
+            /// <param name="cancellationToken">Token per interrompere le analisi lunghe</param>
+            public AnalysisRun(FileProcessingRecord record, string speedCorrectionMode, CancellationToken cancellationToken)
+            {
+                this.Record = record;
+                this.SpeedCorrectionMode = speedCorrectionMode;
+                this.CancellationToken = cancellationToken;
+            }
+
+            /// <summary>
+            /// Record analizzato
+            /// </summary>
+            public FileProcessingRecord Record { get; }
+
+            /// <summary>
+            /// Modalità di correzione della velocità
+            /// </summary>
+            public string SpeedCorrectionMode { get; }
+
+            /// <summary>
+            /// Token per interrompere le analisi lunghe
+            /// </summary>
+            public CancellationToken CancellationToken { get; }
+
+            /// <summary>
+            /// Metadata del sorgente, null se non leggibili
+            /// </summary>
+            public MkvFileInfo SourceInfo { get; set; }
+
+            /// <summary>
+            /// Metadata del file lingua, null senza merge o se non leggibili
+            /// </summary>
+            public MkvFileInfo LangInfo { get; set; }
+
+            /// <summary>
+            /// Temporizzazione video del sorgente, letta solo nel merge
+            /// </summary>
+            public VideoTimingInfo SourceTiming { get; set; }
+
+            /// <summary>
+            /// Coppia Matroska da cui le analisi leggono i fotogrammi, null se nessuna analisi legge il video
+            /// </summary>
+            public NormalizedMediaPair Media { get; set; }
+
+            /// <summary>
+            /// Offset di sincronizzazione trovato dall'analisi
+            /// </summary>
+            public int SyncOffset { get; set; }
+
+            /// <summary>
+            /// Vero quando la correzione manuale della velocità ha già fissato l'offset
+            /// </summary>
+            public bool SpeedCorrectionActive { get; set; }
         }
 
         #endregion

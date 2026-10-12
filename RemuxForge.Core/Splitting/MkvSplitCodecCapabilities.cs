@@ -26,9 +26,10 @@ namespace RemuxForge.Core.Splitting
         #region Variabili di classe
 
         /// <summary>
-        /// Preset per nome di libx264 e libx265, dal più veloce al più lento
+        /// Preset per nome di libx264 e libx265, dal più veloce al più lento, con medium predefinito
         /// </summary>
-        private static readonly string[] s_x26xPresets = new string[] { "ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow", "placebo" };
+        private static readonly MkvSplitPresetEncodeSpeed s_x26xPreset = new MkvSplitPresetEncodeSpeed("preset", "medium",
+            new string[] { "ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow", "placebo" });
 
         /// <summary>
         /// Codec della tabella per nome ffprobe
@@ -36,9 +37,9 @@ namespace RemuxForge.Core.Splitting
         private static readonly MkvSplitVideoCodecBase[] s_codecs = new MkvSplitVideoCodecBase[]
         {
             new MkvSplitH264Codec { CodecName = "h264", DisplayName = "H.264", Encoder = "libx264",
-                QualityName = "CRF", QualityDefault = 14, QualityMin = 0, QualityMax = 51, SpeedName = "preset", SpeedDefault = "medium", SpeedValues = s_x26xPresets },
+                QualityName = "CRF", QualityDefault = 14, QualityMin = 0, QualityMax = 51, Speed = s_x26xPreset },
             new MkvSplitHevcCodec { CodecName = "hevc", DisplayName = "H.265", Encoder = "libx265",
-                QualityName = "CRF", QualityDefault = 14, QualityMin = 0, QualityMax = 51, SpeedName = "preset", SpeedDefault = "medium", SpeedValues = s_x26xPresets },
+                QualityName = "CRF", QualityDefault = 14, QualityMin = 0, QualityMax = 51, Speed = s_x26xPreset },
             new MkvSplitMpeg2Codec { CodecName = "mpeg2video", DisplayName = "MPEG-2", Encoder = "mpeg2video",
                 QualityName = "q", QualityDefault = 2, QualityMin = 1, QualityMax = 31 },
             new MkvSplitMpeg4AspCodec { CodecName = "mpeg4", DisplayName = "Xvid/DivX (MPEG-4 ASP)", Encoder = "mpeg4",
@@ -50,9 +51,9 @@ namespace RemuxForge.Core.Splitting
             new MkvSplitH263Codec { CodecName = "h263", DisplayName = "H.263", Encoder = "h263",
                 QualityName = "q", QualityDefault = 2, QualityMin = 1, QualityMax = 31 },
             new MkvSplitAv1Vp9Codec { CodecName = "av1", DisplayName = "AV1", Encoder = "libsvtav1",
-                QualityName = "CRF", QualityDefault = 16, QualityMin = 0, QualityMax = 63, SpeedName = "preset", SpeedDefault = "6", SpeedMin = 0, SpeedMax = 13 },
+                QualityName = "CRF", QualityDefault = 16, QualityMin = 0, QualityMax = 63, Speed = new MkvSplitRangeEncodeSpeed("preset", "6", 0, 13) },
             new MkvSplitAv1Vp9Codec { CodecName = "vp9", DisplayName = "VP9", Encoder = "libvpx-vp9", ConstantQualityArgs = new string[] { "-b:v", "0" },
-                QualityName = "CRF", QualityDefault = 15, QualityMin = 0, QualityMax = 63, SpeedName = "cpu-used", SpeedDefault = "2", SpeedMin = 0, SpeedMax = 8 },
+                QualityName = "CRF", QualityDefault = 15, QualityMin = 0, QualityMax = 63, Speed = new MkvSplitRangeEncodeSpeed("cpu-used", "2", 0, 8) },
             new MkvSplitKeyframeOnlyCodec { CodecName = "vc1", DisplayName = "VC-1" }
         };
 
@@ -126,13 +127,10 @@ namespace RemuxForge.Core.Splitting
             if (value.Length == 0)
                 return errors;
 
-            if (capability.SpeedName == null)
+            if (capability.Speed == null)
                 errors.Add(AppText.F("split.encode.speedUnsupported", capability.DisplayName));
-            else if (capability.SpeedValues != null && Array.IndexOf(capability.SpeedValues, value.ToLowerInvariant()) < 0)
-                errors.Add(AppText.F("split.encode.speedInvalid", value, capability.DisplayName, capability.SpeedName, string.Join(", ", capability.SpeedValues)));
-            else if (capability.SpeedValues == null
-                && (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int number) || number < capability.SpeedMin || number > capability.SpeedMax))
-                errors.Add(AppText.F("split.encode.speedInvalid", value, capability.DisplayName, capability.SpeedName, capability.SpeedMin + "–" + capability.SpeedMax));
+            else if (!capability.Speed.Accepts(value))
+                errors.Add(AppText.F("split.encode.speedInvalid", value, capability.DisplayName, capability.Speed.Name, capability.Speed.AllowedText));
 
             return errors;
         }

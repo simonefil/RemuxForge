@@ -188,7 +188,7 @@ namespace RemuxForge.Core.Splitting
                             if (!source.Matches(MkvSplitSourceIdentity.FromFile(source.FullPath)))
                                 throw new InvalidOperationException(AppText.T("split.montage.sourceChanged"));
                             string path = output.Projection.FullPath;
-                            if (FileHelper.IsSamePath(path, source.FullPath))
+                            if (PathIdentity.IsSame(path, source.FullPath))
                                 throw new InvalidOperationException(AppText.F("split.montage.nameCollision", path));
                             if (!running.Contains(output))
                             {

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 
 namespace RemuxForge.Core.Media
 {
@@ -33,6 +35,27 @@ namespace RemuxForge.Core.Media
         {
             string extension = Path.GetExtension(filePath ?? "");
             return Array.FindIndex(Extensions, e => string.Equals(e, extension, StringComparison.OrdinalIgnoreCase)) >= 0;
+        }
+
+        /// <summary>
+        /// File con un'estensione accettata in una cartella, nell'ordine del file system
+        /// </summary>
+        /// <param name="folder">Cartella da scansionare</param>
+        /// <param name="recursive">True per cercare anche nelle sottocartelle</param>
+        /// <param name="cancellationToken">Token di annullamento cooperativo, controllato a ogni file trovato</param>
+        /// <returns>Percorsi dei file accettati, come li restituisce il file system</returns>
+        public static IEnumerable<string> EnumerateSupported(string folder, bool recursive, CancellationToken cancellationToken = default)
+        {
+            // Il filtro per estensione si applica dopo: il pattern di GetFiles su Linux distingue le maiuscole
+            string[] found = Directory.GetFiles(folder, "*", recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly);
+            for (int i = 0; i < found.Length; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (IsSupported(found[i]))
+                {
+                    yield return found[i];
+                }
+            }
         }
 
         /// <summary>

@@ -236,7 +236,7 @@ namespace RemuxForge.Core.Splitting
             outputPath = Path.GetFullPath(Path.Combine(outputDir, name));
             foreach (MkvSplitJoinPart part in plan.Parts)
             {
-                if (FileHelper.IsSamePath(part.FilePath, outputPath))
+                if (PathIdentity.IsSame(part.FilePath, outputPath))
                 {
                     issues.Add(AppText.F("split.join.outputIsPart", name));
                     return issues;

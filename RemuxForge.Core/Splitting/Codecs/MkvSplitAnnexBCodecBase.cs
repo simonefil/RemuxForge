@@ -53,7 +53,7 @@ namespace RemuxForge.Core.Splitting.Codecs
         {
             List<string> encParams = new List<string> { "keyint=1", "bframes=0" };
 
-            args.Add("-" + this.SpeedName); args.Add(speed);
+            args.Add("-" + this.Speed.Name); args.Add(speed);
             AddPictureArgs(args, p, this.DefaultPixFmt, encParams);
             args.Add(this.ParamsOption);
             args.Add(string.Join(":", encParams));

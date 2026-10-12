@@ -247,7 +247,7 @@ namespace RemuxForge.Core.Splitting
                 outPath = Path.GetFullPath(Path.Combine(plan.OutputDir, seg.File));
 
                 // Un segmento che scrive sull'input distruggerebbe la sorgente a metà batch
-                if (FileHelper.IsSamePath(outPath, plan.InputFile))
+                if (PathIdentity.IsSame(outPath, plan.InputFile))
                 {
                     plan.ErrorMessage = AppText.F("split.segmentWouldOverwriteInput", seg.Num, seg.File);
                     continue;

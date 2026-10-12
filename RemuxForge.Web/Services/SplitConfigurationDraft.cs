@@ -452,7 +452,7 @@ namespace RemuxForge.Web.Services
                 this.EncodeCapability = profile.ExactCutCodec;
                 bool keep = quality.HasValue && MkvSplitCodecCapabilities.ValidateEncodeSettings(this.EncodeCapability, quality, speed).Count == 0;
                 this.EncodeQuality = keep ? quality : this.EncodeCapability.QualityDefault;
-                this.EncodeSpeed = keep && !string.IsNullOrWhiteSpace(speed) ? speed : this.EncodeCapability.SpeedDefault;
+                this.EncodeSpeed = keep && !string.IsNullOrWhiteSpace(speed) ? speed : this.EncodeCapability.Speed?.Default;
             }
             else if (this.Snap == MkvSplitSnapMode.Off)
                 this.Snap = MkvSplitSnapMode.Nearest;

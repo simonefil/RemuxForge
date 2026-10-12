@@ -128,7 +128,7 @@ namespace RemuxForge.Core.Pipeline
                         // Un .mkv già presente con il nome di destinazione viene sostituito anche se non è il sorgente (D04)
                         File.Delete(finalOutput);
                         File.Move(tempOutput, finalOutput);
-                        ConsoleHelper.Write(LogSection.Merge, LogLevel.Success, FileHelper.IsSamePath(finalOutput, record.SourceFilePath) ?
+                        ConsoleHelper.Write(LogSection.Merge, LogLevel.Success, PathIdentity.IsSame(finalOutput, record.SourceFilePath) ?
                             AppText.T("remux.pipeline.originalReplaced") : AppText.F("remux.pipeline.writtenBesideOriginal", Path.GetFileName(finalOutput)));
                     }
 

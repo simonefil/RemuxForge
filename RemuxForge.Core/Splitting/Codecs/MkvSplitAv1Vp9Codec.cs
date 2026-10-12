@@ -46,7 +46,7 @@ namespace RemuxForge.Core.Splitting.Codecs
         protected override void AddEncodeArgs(List<string> args, MkvSplitVideoParams p, string speed)
         {
             args.AddRange(this.ConstantQualityArgs);
-            args.Add("-" + this.SpeedName); args.Add(speed);
+            args.Add("-" + this.Speed.Name); args.Add(speed);
             args.Add("-g"); args.Add("1");
             AddPictureArgs(args, p, "yuv420p", null);
         }

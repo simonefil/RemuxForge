@@ -397,7 +397,7 @@ namespace RemuxForge.Cli
             ConsoleHelper.Write(LogSection.Config, LogLevel.Info, AppText.T("cli.config.title"));
             ConsoleHelper.Write(LogSection.Config, LogLevel.Text, AppText.F("cli.config.sourceFolder", opts.SourceFolder));
             // Lang uguale a Source come cartella reale sul disco, non come testo: ogni file si abbina a sé stesso (D22)
-            if (FileHelper.IsSamePath(opts.SourceFolder, opts.LanguageFolder))
+            if (PathIdentity.IsSame(opts.SourceFolder, opts.LanguageFolder))
             {
                 ConsoleHelper.Write(LogSection.Config, LogLevel.Phase, AppText.T("cli.config.singleSource"));
             }

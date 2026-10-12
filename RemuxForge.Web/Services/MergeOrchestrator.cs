@@ -49,11 +49,6 @@ namespace RemuxForge.Web.Services
         /// </summary>
         private Options _options;
 
-        /// <summary>
-        /// Sorgente di cancellazione posseduta dall'operazione corrente
-        /// </summary>
-        private CancellationTokenSource _operationCancellation;
-
         /// <summary>Una sola preparazione audio in background lascia capacità agli editor aperti</summary>
         private readonly SemaphoreSlim _audioWarmup = new SemaphoreSlim(1, 1);
 
@@ -88,7 +83,6 @@ namespace RemuxForge.Web.Services
             this._scannedFileCount = 0;
             this._editMapLock = new object();
             this._options = new Options();
-            this._operationCancellation = null;
 
             this.ConnectPipeline();
 
@@ -144,8 +138,8 @@ namespace RemuxForge.Web.Services
                 previousStop = this.StopRequested;
                 this.BusyState = true;
                 this._configurationPreparing = true;
-                this._operationCancellation = new CancellationTokenSource();
-                cancellation = this._operationCancellation.Token;
+                this.OperationCancellationState = new CancellationTokenSource();
+                cancellation = this.OperationCancellationState.Token;
             }
             try { return await Task.Run(() => this.PrepareAndCommitConfiguration(options, snapshot, cancellation)); }
             finally
@@ -156,8 +150,8 @@ namespace RemuxForge.Web.Services
                     this.BusyState = false;
                     this.StopRequested = previousStop;
                     this._configurationPreparing = false;
-                    operation = this._operationCancellation;
-                    this._operationCancellation = null;
+                    operation = this.OperationCancellationState;
+                    this.OperationCancellationState = null;
                 }
                 operation?.Dispose();
                 // Una callback UI non deve trasformare un esito già determinato in un fallimento di Apply.
@@ -373,15 +367,7 @@ namespace RemuxForge.Web.Services
                 this.AppendLog(AppText.T("web.merge.configureSourceFirst"));
                 return;
             }
-            if (!this.TryBeginOperation())
-                return;
-
-            this._audioCacheCancellation.Cancel();
-            this._audioCacheCancellation.Dispose();
-            this._audioCacheCancellation = new CancellationTokenSource();
-            this._audioExtractor.ClearTimelineCache();
-
-            Thread thread = new Thread(() =>
+            this.TryRunExclusive(() =>
             {
                 try
                 {
@@ -450,9 +436,13 @@ namespace RemuxForge.Web.Services
                 {
                     this.SetBusy(false);
                 }
+            }, () =>
+            {
+                this._audioCacheCancellation.Cancel();
+                this._audioCacheCancellation.Dispose();
+                this._audioCacheCancellation = new CancellationTokenSource();
+                this._audioExtractor.ClearTimelineCache();
             });
-            thread.IsBackground = true;
-            thread.Start();
         }
 
         /// <summary>
@@ -463,12 +453,12 @@ namespace RemuxForge.Web.Services
         {
             FileProcessingRecord record = this.GetRecord(index);
 
-            if (record == null || !this.TryBeginOperation())
+            if (record == null)
             {
                 return;
             }
 
-            Thread thread = new Thread(() =>
+            this.TryRunExclusive(() =>
             {
                 try
                 {
@@ -477,7 +467,7 @@ namespace RemuxForge.Web.Services
                     try
                     {
                         this.UpdateProgress(record.SourceFileName, 1, 0, 5, AppText.T("web.progress.analysis"), false, false);
-                        this._pipeline.AnalyzeFile(record, this.GetOperationCancellationToken());
+                        this._pipeline.AnalyzeFile(record, this.OperationCancellationToken);
                         this.NotifyRecordsChanged();
                         this.UpdateProgress(record.SourceFileName, 1, 1, 100, AppText.T("web.progress.completed"), false, false);
                         this.CompleteProgress(AppText.T("web.progress.analysisCompleted"));
@@ -498,8 +488,6 @@ namespace RemuxForge.Web.Services
                     this.SetBusy(false);
                 }
             });
-            thread.IsBackground = true;
-            thread.Start();
         }
 
         /// <summary>
@@ -510,12 +498,12 @@ namespace RemuxForge.Web.Services
         {
             List<FileProcessingRecord> selected = this.GetRecordsByIndices(indices);
 
-            if (selected.Count == 0 || !this.TryBeginOperation())
+            if (selected.Count == 0)
             {
                 return;
             }
 
-            Thread thread = new Thread(() =>
+            this.TryRunExclusive(() =>
             {
                 try
                 {
@@ -535,7 +523,7 @@ namespace RemuxForge.Web.Services
                             }
 
                             this.UpdateProgress(selected[i].SourceFileName, i + 1, i, 5, AppText.T("web.progress.analysis"), false, false);
-                            this._pipeline.AnalyzeFile(selected[i], this.GetOperationCancellationToken());
+                            this._pipeline.AnalyzeFile(selected[i], this.OperationCancellationToken);
                             this.NotifyRecordsChanged();
                             this.UpdateProgress(selected[i].SourceFileName, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
@@ -561,8 +549,6 @@ namespace RemuxForge.Web.Services
                     this.SetBusy(false);
                 }
             });
-            thread.IsBackground = true;
-            thread.Start();
         }
 
         /// <summary>
@@ -570,12 +556,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void AnalyzeAll()
         {
-            if (!this.TryBeginOperation())
-            {
-                return;
-            }
-
-            Thread thread = new Thread(() =>
+            this.TryRunExclusive(() =>
             {
                 try
                 {
@@ -611,7 +592,7 @@ namespace RemuxForge.Web.Services
                             }
 
                             this.UpdateProgress(pending[i].SourceFileName, i + 1, i, 5, AppText.T("web.progress.analysis"), false, false);
-                            this._pipeline.AnalyzeFile(pending[i], this.GetOperationCancellationToken());
+                            this._pipeline.AnalyzeFile(pending[i], this.OperationCancellationToken);
                             this.NotifyRecordsChanged();
                             this.UpdateProgress(pending[i].SourceFileName, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
@@ -637,8 +618,6 @@ namespace RemuxForge.Web.Services
                     this.SetBusy(false);
                 }
             });
-            thread.IsBackground = true;
-            thread.Start();
         }
 
         /// <summary>
@@ -649,12 +628,12 @@ namespace RemuxForge.Web.Services
         {
             FileProcessingRecord record = this.GetRecord(index);
 
-            if (record == null || !this.TryBeginOperation())
+            if (record == null)
             {
                 return;
             }
 
-            Thread thread = new Thread(() =>
+            this.TryRunExclusive(() =>
             {
                 try
                 {
@@ -680,8 +659,6 @@ namespace RemuxForge.Web.Services
                     this.SetBusy(false);
                 }
             });
-            thread.IsBackground = true;
-            thread.Start();
         }
 
         /// <summary>
@@ -692,12 +669,12 @@ namespace RemuxForge.Web.Services
         {
             List<FileProcessingRecord> selected = this.GetRecordsByIndices(indices);
 
-            if (selected.Count == 0 || !this.TryBeginOperation())
+            if (selected.Count == 0)
             {
                 return;
             }
 
-            Thread thread = new Thread(() =>
+            this.TryRunExclusive(() =>
             {
                 try
                 {
@@ -740,8 +717,6 @@ namespace RemuxForge.Web.Services
                     this.SetBusy(false);
                 }
             });
-            thread.IsBackground = true;
-            thread.Start();
         }
 
         /// <summary>
@@ -749,12 +724,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void MergeAll()
         {
-            if (!this.TryBeginOperation())
-            {
-                return;
-            }
-
-            Thread thread = new Thread(() =>
+            this.TryRunExclusive(() =>
             {
                 try
                 {
@@ -812,8 +782,6 @@ namespace RemuxForge.Web.Services
                     this.SetBusy(false);
                 }
             });
-            thread.IsBackground = true;
-            thread.Start();
         }
 
         /// <summary>
@@ -985,12 +953,12 @@ namespace RemuxForge.Web.Services
             {
                 if (this._configurationPreparing)
                 {
-                    this._operationCancellation?.Cancel();
+                    this.OperationCancellationState?.Cancel();
                     return;
                 }
                 this.StopRequested = true;
-                if (this._operationCancellation != null)
-                    this._operationCancellation.Cancel();
+                if (this.OperationCancellationState != null)
+                    this.OperationCancellationState.Cancel();
             }
 
             this.AppendLog(AppText.T("web.merge.stopRequested"));
@@ -1520,43 +1488,14 @@ namespace RemuxForge.Web.Services
                 this.StopRequested = false;
                 if (!busy)
                 {
-                    cancellation = this._operationCancellation;
-                    this._operationCancellation = null;
+                    cancellation = this.OperationCancellationState;
+                    this.OperationCancellationState = null;
                 }
             }
             if (cancellation != null)
                 cancellation.Dispose();
 
             this.NotifyProgressChanged();
-        }
-
-        /// <summary>
-        /// Riserva atomicamente l'esecuzione di una sola operazione in background
-        /// </summary>
-        /// <returns>True se il chiamante ha acquisito la riserva</returns>
-        private bool TryBeginOperation()
-        {
-            lock (this.StateLock)
-            {
-                if (this.BusyState)
-                    return false;
-                this.BusyState = true;
-                this.StopRequested = false;
-                this._operationCancellation = new CancellationTokenSource();
-                return true;
-            }
-        }
-
-        /// <summary>
-        /// Restituisce il token dell'operazione correntemente riservata
-        /// </summary>
-        /// <returns>Token cooperativo oppure token non cancellabile</returns>
-        private CancellationToken GetOperationCancellationToken()
-        {
-            lock (this.StateLock)
-            {
-                return this._operationCancellation != null ? this._operationCancellation.Token : CancellationToken.None;
-            }
         }
 
         /// <summary>

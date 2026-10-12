@@ -148,7 +148,6 @@ namespace RemuxForge.Core.Models
         public static List<string> ResolveInputFiles(string source, bool recursive)
         {
             List<string> files = new List<string>();
-            SearchOption searchOption = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
 
             if (File.Exists(source))
             {
@@ -156,12 +155,9 @@ namespace RemuxForge.Core.Models
             }
             else if (Directory.Exists(source))
             {
-                foreach (string file in Directory.GetFiles(source, "*", searchOption))
+                foreach (string file in MediaContainerFormats.EnumerateSupported(source, recursive))
                 {
-                    if (MediaContainerFormats.IsSupported(file))
-                    {
-                        files.Add(Path.GetFullPath(file));
-                    }
+                    files.Add(Path.GetFullPath(file));
                 }
                 files.Sort(StringComparer.OrdinalIgnoreCase);
             }
@@ -366,6 +362,26 @@ namespace RemuxForge.Core.Models
         {
             this.Chapters = new List<ChapterMark>();
             this.File = "";
+        }
+
+        /// <summary>Segmento numerato fra due fotogrammi del sorgente, con gli istanti dei PTS; un fotogramma oltre l'ultimo vale la durata</summary>
+        /// <param name="number">Numero progressivo 1-based, anche come numero di episodio</param>
+        /// <param name="startFrame">Primo fotogramma</param>
+        /// <param name="endFrameExclusive">Fotogramma dopo l'ultimo</param>
+        /// <param name="sourcePts">PTS del sorgente ordinati crescente</param>
+        /// <param name="duration">Durata totale del file in secondi</param>
+        /// <returns>Segmento nuovo</returns>
+        public static MkvSplitSegment FromFrames(int number, int startFrame, int endFrameExclusive, double[] sourcePts, double duration)
+        {
+            return new MkvSplitSegment
+            {
+                Num = number,
+                Episode = number,
+                StartTs = startFrame < sourcePts.Length ? sourcePts[startFrame] : duration,
+                EndTs = endFrameExclusive < sourcePts.Length ? sourcePts[endFrameExclusive] : duration,
+                StartFrame = startFrame,
+                FrameCount = endFrameExclusive - startFrame
+            };
         }
 
         /// <summary>Clip del documento con gli stessi confini, effettivi e chiesti prima dello snap</summary>

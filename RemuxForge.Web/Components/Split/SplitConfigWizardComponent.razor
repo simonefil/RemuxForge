@@ -108,19 +108,19 @@
                             <RadzenNumeric TValue="int?" Name="EncodeQuality" Min="@encode.QualityMin" Max="@encode.QualityMax" Value="@Draft.EncodeQuality" Change="@(v => Edit(() => Draft.EncodeQuality = v))"
                                            aria-required="true" aria-invalid="@Invalid("EncodeQuality")" />
                         </RemuxFieldComponent>
-                        @if (encode.SpeedValues != null)
+                        @if (encode.Speed is MkvSplitPresetEncodeSpeed presets)
                         {
                             <RemuxFieldComponent Label="@L("encodeSpeed")" Field="EncodeSpeed" Component="EncodeSpeed" HelpKey="encodeSpeed"
-                                                 Note="@AppText.F("web.splitWizard.note.encodePresets", encode.SpeedName, encode.DisplayName, encode.SpeedDefault)">
-                                <RadzenDropDown TValue="string" Name="EncodeSpeed" Data="@encode.SpeedValues" Value="@Draft.EncodeSpeed" Change="@(v => Edit(() => Draft.EncodeSpeed = (string)v))"
+                                                 Note="@AppText.F("web.splitWizard.note.encodePresets", presets.Name, encode.DisplayName, presets.Default)">
+                                <RadzenDropDown TValue="string" Name="EncodeSpeed" Data="@presets.Values" Value="@Draft.EncodeSpeed" Change="@(v => Edit(() => Draft.EncodeSpeed = (string)v))"
                                                 Disabled="@_applying" aria-invalid="@Invalid("EncodeSpeed")" Style="width:100%" />
                             </RemuxFieldComponent>
                         }
-                        else if (encode.SpeedName != null)
+                        else if (encode.Speed is MkvSplitRangeEncodeSpeed range)
                         {
                             <RemuxFieldComponent Label="@L("encodeSpeed")" Field="EncodeSpeed" HelpKey="encodeSpeed"
-                                                 Note="@AppText.F("web.splitWizard.note.encodeRange", encode.SpeedName, encode.DisplayName, encode.SpeedMin, encode.SpeedMax, encode.SpeedDefault)">
-                                <RadzenNumeric TValue="int?" Name="EncodeSpeed" Min="@encode.SpeedMin" Max="@encode.SpeedMax" Value="@(int.TryParse(Draft.EncodeSpeed, NumberStyles.None, CultureInfo.InvariantCulture, out int speed) ? speed : (int?)null)" Change="@(v => Edit(() => Draft.EncodeSpeed = v?.ToString(CultureInfo.InvariantCulture)))"
+                                                 Note="@AppText.F("web.splitWizard.note.encodeRange", range.Name, encode.DisplayName, range.Min, range.Max, range.Default)">
+                                <RadzenNumeric TValue="int?" Name="EncodeSpeed" Min="@range.Min" Max="@range.Max" Value="@(int.TryParse(Draft.EncodeSpeed, NumberStyles.None, CultureInfo.InvariantCulture, out int speed) ? speed : (int?)null)" Change="@(v => Edit(() => Draft.EncodeSpeed = v?.ToString(CultureInfo.InvariantCulture)))"
                                                aria-invalid="@Invalid("EncodeSpeed")" />
                             </RemuxFieldComponent>
                         }

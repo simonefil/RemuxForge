@@ -34,11 +34,6 @@ namespace RemuxForge.Web.Components.Split
         private readonly MkvSplitDocumentService _service = new MkvSplitDocumentService();
 
         /// <summary>
-        /// Cancellazione legata alla vita del componente
-        /// </summary>
-        private readonly CancellationTokenSource _lifetime = new CancellationTokenSource();
-
-        /// <summary>
         /// Stato di vista per ogni output
         /// </summary>
         private readonly Dictionary<Guid, OutputView> _views = new Dictionary<Guid, OutputView>();
@@ -260,16 +255,6 @@ namespace RemuxForge.Web.Components.Split
         private IJSObjectReference _input;
 
         /// <summary>
-        /// Riferimento .NET passato al JS
-        /// </summary>
-        private DotNetObjectReference<SplitEditorPageComponent> _reference;
-
-        /// <summary>
-        /// Notifica del temporaneo della sessione mancante, mostrata una volta sola
-        /// </summary>
-        private readonly SessionMediaMissingNotice _sessionMediaNotice = new SessionMediaMissingNotice();
-
-        /// <summary>
         /// Vista vuota usata quando l'output non ha stato
         /// </summary>
         private OutputView _emptyView = new OutputView();
@@ -415,20 +400,12 @@ namespace RemuxForge.Web.Components.Split
         #region Metodi pubblici
 
         /// <summary>
-        /// Riceve da JavaScript la risposta 409 dell'anteprima o di un'immagine audio: manca il temporaneo della sessione.
-        /// Si notifica una volta sola; l'errore dell'anteprima lo mostra LoadPreviewAsync, se la richiesta non è superata
+        /// L'errore dell'anteprima per il temporaneo mancante lo mostra LoadPreviewAsync, se la richiesta non è superata
         /// </summary>
-        /// <param name="side">Lato dell'anteprima fallita, null per un'immagine audio</param>
-        /// <param name="message">Messaggio localizzato del server</param>
-        [JSInvokable]
-        public Task OnSessionMediaMissing(string side, string message)
+        /// <param name="side">Lato dell'anteprima fallita</param>
+        protected override void OnPreviewMediaMissing(string side)
         {
-            return this.InvokeAsync(() =>
-            {
-                this._sessionMediaNotice.Notify(this.NotificationService, message);
-                if (side != null)
-                    this._previewMediaMissing = true;
-            });
+            this._previewMediaMissing = true;
         }
 
         /// <summary>
@@ -599,10 +576,10 @@ namespace RemuxForge.Web.Components.Split
         /// <summary>
         /// Rilascia sessione, timeline e oggetti JS
         /// </summary>
-        public async ValueTask DisposeAsync()
+        protected override async Task DisposeEditorAsync()
         {
             this._disposed = true;
-            this._lifetime.Cancel();
+            this.Lifetime.Cancel();
             ++this._requestSequence;
             this.ContextMenuService.OnClose -= this.HandleMenuClosed;
             if (this._initializingInterop && this._interopFinished != null)
@@ -637,8 +614,6 @@ namespace RemuxForge.Web.Components.Split
                 {
                 }
             }
-            this._reference?.Dispose();
-            this._lifetime.Dispose();
         }
 
         #endregion
@@ -683,18 +658,17 @@ namespace RemuxForge.Web.Components.Split
                     this._module = await this.JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/split-timeline.js");
                     if (this._disposed)
                         return;
-                    this._reference = DotNetObjectReference.Create(this);
-                    this._input = await this._module.InvokeAsync<IJSObjectReference>("captureEditorInput", this._root, this._reference);
+                    this._input = await this._module.InvokeAsync<IJSObjectReference>("captureEditorInput", this._root, this.DotNetReference);
                     if (this._disposed)
                         return;
                     await this._module.InvokeVoidAsync("focusEditor", this._root);
                 }
                 if (this._snapshot != null && this._preview != null && this._timeline != null && (this._framePreview == null || !this._timeline.IsAttached))
                 {
-                    this._framePreview ??= await this._module.InvokeAsync<IJSObjectReference>("createFramePreview", this._preview.Canvas, this._reference, "input");
+                    this._framePreview ??= await this._module.InvokeAsync<IJSObjectReference>("createFramePreview", this._preview.Canvas, this.DotNetReference, "input");
                     if (this._disposed)
                         return;
-                    await this._timeline.AttachAsync(this._module, this._reference, this.TimelineModel());
+                    await this._timeline.AttachAsync(this._module, this.DotNetReference, this.TimelineModel());
                     await this.RefreshAsync();
                 }
             }
@@ -842,7 +816,7 @@ namespace RemuxForge.Web.Components.Split
             this._openError = "";
             try
             {
-                SplitEditorOpenResult opened = await this.SplitOrchestrator.OpenEditorAsync(this.RecordIndex, this._lifetime.Token);
+                SplitEditorOpenResult opened = await this.SplitOrchestrator.OpenEditorAsync(this.RecordIndex, this.Lifetime.Token);
                 if (this._disposed)
                 {
                     if (opened.Snapshot != null)
@@ -2307,7 +2281,7 @@ namespace RemuxForge.Web.Components.Split
                     ExpectedOptionsRevision = this._snapshot.ExpectedOptionsRevision,
                     DraftRevision = ++this._revision,
                     Document = this._draft.Clone()
-                }, this._lifetime.Token);
+                }, this.Lifetime.Token);
                 if (this._disposed)
                     return;
                 if (result.Status == SplitApplyStatus.Applied)
@@ -2339,7 +2313,7 @@ namespace RemuxForge.Web.Components.Split
             SplitRuleDocumentResult result;
             try
             {
-                result = await this.SplitOrchestrator.BuildRuleDocumentAsync(this._snapshot.SessionId, this._snapshot.ExpectedOptionsRevision, this._lifetime.Token);
+                result = await this.SplitOrchestrator.BuildRuleDocumentAsync(this._snapshot.SessionId, this._snapshot.ExpectedOptionsRevision, this.Lifetime.Token);
             }
             finally
             {
@@ -2485,7 +2459,7 @@ namespace RemuxForge.Web.Components.Split
             if (this._disposed)
                 return;
             this._disposed = true;
-            this._lifetime.Cancel();
+            this.Lifetime.Cancel();
             ++this._requestSequence;
             this.CloseMenu();
             if (this._framePreview != null)

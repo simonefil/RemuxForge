@@ -45,11 +45,6 @@ namespace RemuxForge.Web.Services
         private List<MkvSplitRecord> _records;
 
         /// <summary>
-        /// Annullamento dello split o dell'unione in corso, cancellato dallo stop
-        /// </summary>
-        private CancellationTokenSource _runCancellation;
-
-        /// <summary>
         /// Revisione delle opzioni, incrementata a ogni applicazione
         /// </summary>
         private long _optionsRevision;
@@ -197,15 +192,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void Scan()
         {
-            lock (this.StateLock)
-            {
-                if (this.BusyState) return;
-                this.BusyState = true;
-            }
-
-            Thread thread = new Thread(this.ScanWorker);
-            thread.IsBackground = true;
-            thread.Start();
+            this.TryRunExclusive(this.ScanWorker);
         }
 
         /// <summary>
@@ -229,14 +216,7 @@ namespace RemuxForge.Web.Services
                 return;
             }
 
-            Thread thread = new Thread(() => this.AnalyzeWorker(targets));
-            lock (this.StateLock)
-            {
-                if (this.BusyState) return;
-                this.BusyState = true;
-            }
-            thread.IsBackground = true;
-            thread.Start();
+            this.TryRunExclusive(() => this.AnalyzeWorker(targets));
         }
 
         /// <summary>
@@ -260,14 +240,7 @@ namespace RemuxForge.Web.Services
                 return;
             }
 
-            Thread thread = new Thread(() => this.SplitWorker(targets));
-            lock (this.StateLock)
-            {
-                if (this.BusyState) return;
-                this.BusyState = true;
-            }
-            thread.IsBackground = true;
-            thread.Start();
+            this.TryRunExclusive(() => this.SplitWorker(targets));
         }
 
         /// <summary>
@@ -331,14 +304,7 @@ namespace RemuxForge.Web.Services
                 return;
             }
 
-            Thread thread = new Thread(() => this.JoinWorker(plan, fileName));
-            lock (this.StateLock)
-            {
-                if (this.BusyState) return;
-                this.BusyState = true;
-            }
-            thread.IsBackground = true;
-            thread.Start();
+            this.TryRunExclusive(() => this.JoinWorker(plan, fileName));
         }
 
         /// <summary>
@@ -348,7 +314,10 @@ namespace RemuxForge.Web.Services
         {
             // Il token prima del flag: il flag ferma i processi, e chi vede un processo interrotto deve trovare già l'annullamento.
             // L'unione in corso interrompe anche la normalizzazione delle parti
-            this._runCancellation?.Cancel();
+            lock (this.StateLock)
+            {
+                this.OperationCancellationState?.Cancel();
+            }
             this.RequestStop(AppText.T("web.split.stopRequested"));
         }
 
@@ -657,7 +626,6 @@ namespace RemuxForge.Web.Services
 
             this.SetBusy(true, AppText.T("web.progress.join"));
             this.StopRequested = false;
-            this._runCancellation = new CancellationTokenSource();
             ProcessRunner.SetStopRequestedCallback(this.IsStopRequested);
             ConsoleHelper.SetLogCallback((section, _, text) =>
             {
@@ -679,7 +647,7 @@ namespace RemuxForge.Web.Services
 
                 result.OutputPath = outputPath;
                 this.ReportProgress(0, 1, Path.GetFileName(outputPath));
-                service.Execute(plan, outputPath, force, this.IsStopRequested, this._runCancellation.Token);
+                service.Execute(plan, outputPath, force, this.IsStopRequested, this.OperationCancellationToken);
                 result.Success = true;
             }
             catch (Exception ex)
@@ -872,8 +840,7 @@ namespace RemuxForge.Web.Services
 
             this.SetBusy(true, AppText.T("web.progress.split"));
             this.StopRequested = false;
-            this._runCancellation = new CancellationTokenSource();
-            cancellation = this._runCancellation.Token;
+            cancellation = this.OperationCancellationToken;
             ProcessRunner.SetStopRequestedCallback(this.IsStopRequested);
             ConsoleHelper.SetLogCallback((section, _, text) =>
             {

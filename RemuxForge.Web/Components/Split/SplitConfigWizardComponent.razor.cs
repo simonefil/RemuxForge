@@ -514,8 +514,8 @@ namespace RemuxForge.Web.Components.Split
             if (this.Draft.ShowsEncodeSettings)
             {
                 cut += Environment.NewLine + L("encodeQuality") + ": " + this.Draft.EncodeCapability.QualityName + " " + (this.Draft.EncodeQuality?.ToString(CultureInfo.InvariantCulture) ?? "—");
-                if (this.Draft.EncodeCapability.SpeedName != null)
-                    cut += Environment.NewLine + L("encodeSpeed") + ": " + this.Draft.EncodeCapability.SpeedName + " " + (this.Draft.EncodeSpeed ?? "—");
+                if (this.Draft.EncodeCapability.Speed != null)
+                    cut += Environment.NewLine + L("encodeSpeed") + ": " + this.Draft.EncodeCapability.Speed.Name + " " + (this.Draft.EncodeSpeed ?? "—");
             }
             yield return (1, T("section.cut"), cut);
             string template = string.IsNullOrWhiteSpace(this.Draft.Template) ? this.DefaultTemplate : this.Draft.Template.Trim();
