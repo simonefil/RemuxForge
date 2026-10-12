@@ -118,6 +118,15 @@ namespace RemuxForge.Core.Splitting.Execution
                         throw new InvalidOperationException(AppText.T("split.montage.outputMismatch"));
                 shift -= openGop.LostSeconds;
             }
+            // Una clip copiata dopo una clip tagliata si decodifica solo con i parameter set del sorgente, che i tempi non mostrano:
+            // il file si decodifica per intero. I B iniziali in testa alla prima clip non hanno riferimenti e il decoder può scartarli
+            if (this._output.Clips.Where((clip, position) => position > 0 && clip.UsesFastPath && !this._output.Clips[position - 1].UsesFastPath).Any())
+            {
+                int decodable = actual.Length - this._output.Clips[0].OpenGop.HeadPackets;
+                int decoded = MkvSplitExternalTools.Instance.CountDecodedFrames(path);
+                if (decoded < decodable)
+                    throw new InvalidOperationException(AppText.F("split.montage.junctionUndecodable", decoded, decodable));
+            }
         }
 
         #endregion

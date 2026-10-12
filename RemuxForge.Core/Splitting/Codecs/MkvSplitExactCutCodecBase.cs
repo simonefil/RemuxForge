@@ -55,6 +55,13 @@ namespace RemuxForge.Core.Splitting.Codecs
         public virtual string InBandParameterSetsFilter => "";
 
         /// <summary>
+        /// Filtro di bitstream ffmpeg che riporta in banda i parameter set del codec private, per la parte che l'Unisci accoda dopo una
+        /// parte con un codec private diverso: mkvmerge tiene quello della prima parte. Per default nessuno: il video accodato si
+        /// decodifica anche senza
+        /// </summary>
+        public virtual string AppendedPartParameterSetsFilter => "";
+
+        /// <summary>
         /// Opzione ffmpeg con cui l'encoder riceve la qualità
         /// </summary>
         protected abstract string QualityOption { get; }
@@ -68,15 +75,17 @@ namespace RemuxForge.Core.Splitting.Codecs
         /// oppure i default del codec; pix_fmt e colori dal sorgente
         /// </summary>
         /// <param name="p">Parametri video del sorgente</param>
+        /// <param name="codecPrivateData">Dati privati della traccia video del sorgente, in esadecimale come li scrive mkvmerge</param>
         /// <param name="options">Opzioni Split del lavoro</param>
         /// <returns>Argomenti ffmpeg dell'encoder</returns>
-        public List<string> BuildHeadEncodeArgs(MkvSplitVideoParams p, MkvSplitOptions options)
+        public List<string> BuildHeadEncodeArgs(MkvSplitVideoParams p, string codecPrivateData, MkvSplitOptions options)
         {
             int quality = options.EncodeQuality ?? this.QualityDefault;
             string speed = string.IsNullOrWhiteSpace(options.EncodeSpeed) ? this.Speed?.Default : options.EncodeSpeed.Trim().ToLowerInvariant();
             List<string> args = new List<string> { "-c:v", this.SelectEncoder(p), this.QualityOption, quality.ToString(CultureInfo.InvariantCulture) };
 
             this.AddEncodeArgs(args, p, speed);
+            this.AddSourceStreamArgs(args, codecPrivateData);
             return args;
         }
 
@@ -108,6 +117,16 @@ namespace RemuxForge.Core.Splitting.Codecs
         /// <param name="p">Parametri video del sorgente</param>
         /// <param name="speed">Velocità richiesta o predefinita, null se l'encoder non la prevede</param>
         protected abstract void AddEncodeArgs(List<string> args, MkvSplitVideoParams p, string speed);
+
+        /// <summary>
+        /// Aggiunge gli argomenti che la ricodifica eredita dal flusso del sorgente, dopo quelli dell'encoder: testa e coda devono
+        /// decodificarsi con lo stato che il corpo copiato lascia al decoder. Per default nessuno
+        /// </summary>
+        /// <param name="args">Argomenti in costruzione</param>
+        /// <param name="codecPrivateData">Dati privati della traccia video del sorgente, in esadecimale come li scrive mkvmerge</param>
+        protected virtual void AddSourceStreamArgs(List<string> args, string codecPrivateData)
+        {
+        }
 
         /// <summary>
         /// Aggiunge pix_fmt e colori del sorgente; per x264 e x265 i colori vanno anche nei parametri dell'encoder

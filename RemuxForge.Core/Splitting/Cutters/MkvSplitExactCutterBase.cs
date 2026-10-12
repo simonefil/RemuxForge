@@ -150,7 +150,7 @@ namespace RemuxForge.Core.Splitting.Cutters
             Array.Sort(keys, map);
             this.PresentationToDecode = map;
 
-            this._headArgs = this._codec.BuildHeadEncodeArgs(plan.Analysis.VideoParams, options);
+            this._headArgs = this._codec.BuildHeadEncodeArgs(plan.Analysis.VideoParams, this._tracks.Find(track => track.Type == "video")?.CodecPrivateData ?? "", options);
         }
 
         /// <summary>

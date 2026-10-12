@@ -590,30 +590,7 @@ namespace RemuxForge.Web.Components.Split
             // Il loro DisposeAsync e' idempotente: si ripete una volta a interop concluso.
             if (this._timeline != null)
                 await this._timeline.DisposeAsync();
-            foreach (IJSObjectReference js in new IJSObjectReference[] { this._input, this._framePreview })
-            {
-                if (js != null)
-                {
-                    try
-                    {
-                        await js.InvokeVoidAsync("dispose");
-                        await js.DisposeAsync();
-                    }
-                    catch (JSException)
-                    {
-                    }
-                }
-            }
-            if (this._module != null)
-            {
-                try
-                {
-                    await this._module.DisposeAsync();
-                }
-                catch (JSException)
-                {
-                }
-            }
+            await ReleaseJsAsync(this._module, this._input, this._framePreview);
         }
 
         #endregion

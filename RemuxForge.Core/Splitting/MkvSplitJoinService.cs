@@ -286,15 +286,23 @@ namespace RemuxForge.Core.Splitting
                 foreach (string warning in plan.Warnings)
                     ConsoleHelper.Write(LogSection.Split, LogLevel.Warning, warning);
 
-                // MPEG-4 Part 2: mkvmerge accoda tenendo solo il VOL dei dati privati della prima parte, quindi ogni parte
-                // porta il proprio VOL reinserito a ogni keyframe. ffmpeg lavora sulla sola prima traccia video, mkvmerge la ricompone
-                // con le altre tracce della parte normalizzata, altre tracce video comprese, nello stesso ordine, con gli stessi ID e le stesse proprietà
+                // mkvmerge accoda tenendo solo i dati privati della prima parte. MPEG-4 Part 2: ogni parte porta il proprio VOL reinserito
+                // a ogni keyframe. Gli altri codec: la parte con un codec private diverso da quello della prima porta in banda i propri
+                // parameter set, se il codec ne ha bisogno (H.264, H.265). ffmpeg lavora sulla sola prima traccia video, mkvmerge la
+                // ricompone con le altre tracce della parte normalizzata, altre tracce video comprese, nello stesso ordine, con gli stessi
+                // ID e le stesse proprietà
                 List<string> appended = new List<string>();
+                string firstCodecPrivate = plan.Parts[0].Tracks.Find(track => track.Type == "video")?.CodecPrivateData;
                 for (int i = 0; i < plan.Parts.Count; i++)
                 {
                     MkvSplitJoinPart part = plan.Parts[i];
                     TrackInfo video = part.Tracks.Find(track => track.Type == "video");
-                    if (video == null || video.Codec != MkvSplitCodecCapabilities.MPEG4_PART2_CODEC)
+                    string filter = "";
+                    if (video != null && video.Codec == MkvSplitCodecCapabilities.MPEG4_PART2_CODEC)
+                        filter = "dump_extra=freq=k";
+                    else if (video != null && video.CodecPrivateData != firstCodecPrivate)
+                        filter = MkvSplitCodecCapabilities.FindExactCut(MkvSplitExternalTools.Instance.GetVideoParams(media[i].Path).CodecName)?.AppendedPartParameterSetsFilter ?? "";
+                    if (filter.Length == 0)
                     {
                         appended.Add(media[i].Path);
                         continue;
@@ -302,7 +310,7 @@ namespace RemuxForge.Core.Splitting
 
                     ThrowIfStopped(stopRequested);
                     string recomposed = Path.Combine(temporary, "part-" + i + ".mkv");
-                    MkvSplitExternalTools.Instance.RecomposeFilteredVideo(media[i].Path, part.Tracks, "dump_extra=freq=k", Path.Combine(temporary, "vol-" + i + ".mkv"), recomposed);
+                    MkvSplitExternalTools.Instance.RecomposeFilteredVideo(media[i].Path, part.Tracks, filter, Path.Combine(temporary, "video-" + i + ".mkv"), recomposed);
                     appended.Add(recomposed);
                 }
 

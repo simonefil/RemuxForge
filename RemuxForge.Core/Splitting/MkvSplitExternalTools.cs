@@ -440,6 +440,24 @@ namespace RemuxForge.Core.Splitting
         }
 
         /// <summary>
+        /// Conta i fotogrammi video che il decoder restituisce decodificando l'intero file: un flusso che da un punto in poi non si
+        /// decodifica ne restituisce meno dei pacchetti
+        /// </summary>
+        /// <param name="inputFile">File MKV</param>
+        /// <returns>Fotogrammi decodificati della prima traccia video, 0 se ffprobe non li riporta</returns>
+        public int CountDecodedFrames(string inputFile)
+        {
+            ProcessResult r = this.Run(this._ffprobe, new string[]
+            {
+                "-v", "quiet", "-select_streams", "v:0", "-count_frames",
+                "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", inputFile
+            });
+
+            // Alcuni flussi (MPEG-2) aggiungono alla riga i campi vuoti dei dati laterali: il conteggio è il primo campo
+            return int.TryParse(r.Stdout.Trim().Split(',')[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int count) ? count : 0;
+        }
+
+        /// <summary>
         /// Inizio del primo pacchetto di una traccia audio che finisce oltre il tempo indicato. I tempi sono quelli dei blocchi
         /// Matroska, come li confronta mkvmerge, senza il ritardo del codec che ffprobe sottrae; ogni pacchetto finisce dove inizia
         /// il successivo e l'ultimo dove mkvextract chiude la traccia

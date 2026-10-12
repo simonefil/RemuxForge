@@ -39,6 +39,11 @@ namespace RemuxForge.Core.Splitting.Codecs
         public override string InBandParameterSetsFilter => "h264_mp4toannexb";
 
         /// <summary>
+        /// La parte accodata con un codec private diverso riceve SPS e PPS come la clip copiata del montaggio
+        /// </summary>
+        public override string AppendedPartParameterSetsFilter => this.InBandParameterSetsFilter;
+
+        /// <summary>
         /// Parametri di libx264
         /// </summary>
         protected override string ParamsOption => "-x264-params";

@@ -113,6 +113,41 @@ namespace RemuxForge.Web.Components.Shared
         /// <returns>Task del rilascio</returns>
         protected abstract Task DisposeEditorAsync();
 
+        /// <summary>
+        /// Rilascia gli oggetti JS dell'editor, ognuno con il suo dispose, poi il modulo. Un'eccezione JS ferma solo il rilascio
+        /// dell'oggetto che l'ha sollevata; le altre eccezioni si propagano
+        /// </summary>
+        /// <param name="module">Modulo JS dell'editor, null se non è stato caricato</param>
+        /// <param name="objects">Oggetti JS creati dal modulo, null quelli non creati</param>
+        /// <returns>Task del rilascio</returns>
+        protected static async Task ReleaseJsAsync(IJSObjectReference module, params IJSObjectReference[] objects)
+        {
+            foreach (IJSObjectReference js in objects)
+            {
+                if (js != null)
+                {
+                    try
+                    {
+                        await js.InvokeVoidAsync("dispose");
+                        await js.DisposeAsync();
+                    }
+                    catch (JSException)
+                    {
+                    }
+                }
+            }
+            if (module != null)
+            {
+                try
+                {
+                    await module.DisposeAsync();
+                }
+                catch (JSException)
+                {
+                }
+            }
+        }
+
         #endregion
     }
 }

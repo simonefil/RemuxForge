@@ -2697,19 +2697,6 @@
         this.CloseContextMenu();
         this.Lifetime.Cancel();
         this.Orchestrator.CloseEditorMedia(this._mediaSessionId);
-        if (this._previewPair != null)
-        {
-            try { await this._previewPair.InvokeVoidAsync("dispose"); } catch { }
-            try { await this._previewPair.DisposeAsync(); } catch { }
-        }
-        if (this._keyboard != null)
-        {
-            try { await this._keyboard.InvokeVoidAsync("dispose"); } catch { }
-            try { await this._keyboard.DisposeAsync(); } catch { }
-        }
-        if (this._module != null)
-        {
-            try { await this._module.DisposeAsync(); } catch { }
-        }
+        await ReleaseJsAsync(this._module, this._previewPair, this._keyboard);
     }
 }

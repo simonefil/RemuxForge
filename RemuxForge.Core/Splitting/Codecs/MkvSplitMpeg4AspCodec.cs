@@ -1,3 +1,4 @@
+using RemuxForge.Core.Media;
 using RemuxForge.Core.Models;
 using System.Collections.Generic;
 
@@ -40,6 +41,24 @@ namespace RemuxForge.Core.Splitting.Codecs
         {
             args.Add("-bf"); args.Add("2");
             if (p.CodecTag != null) { args.Add("-vtag"); args.Add(p.CodecTag); }
+        }
+
+        /// <summary>
+        /// Quantizzazione MPEG del VOL del sorgente con le sue matrici effettive: la coda ricodificata non porta un proprio VOL e si
+        /// decodifica con quello del corpo copiato, e la clip copiata che segue con quello della coda. Con la quantizzazione H.263 la
+        /// ricodifica usa quella predefinita dell'encoder
+        /// </summary>
+        /// <param name="args">Argomenti in costruzione</param>
+        /// <param name="codecPrivateData">Dati privati della traccia video del sorgente, con il VOL</param>
+        protected override void AddSourceStreamArgs(List<string> args, string codecPrivateData)
+        {
+            Mpeg4VolHeader vol = Mpeg4VolHeader.Parse(codecPrivateData);
+            if (vol == null || vol.QuantType != 1)
+                return;
+
+            args.Add("-mpeg_quant"); args.Add("1");
+            args.Add("-intra_matrix"); args.Add(string.Join(",", vol.IntraMatrix));
+            args.Add("-inter_matrix"); args.Add(string.Join(",", vol.NonIntraMatrix));
         }
 
         #endregion

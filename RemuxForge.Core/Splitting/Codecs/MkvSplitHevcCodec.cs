@@ -29,6 +29,12 @@ namespace RemuxForge.Core.Splitting.Codecs
         public override string RawExtension => "h265";
 
         /// <summary>
+        /// VPS, SPS e PPS del codec private davanti a ogni IRAP della parte accodata. La clip copiata del montaggio non ne ha bisogno:
+        /// mkvmerge li ripete a ogni keyframe della parte che taglia
+        /// </summary>
+        public override string AppendedPartParameterSetsFilter => "hevc_mp4toannexb";
+
+        /// <summary>
         /// Parametri di libx265
         /// </summary>
         protected override string ParamsOption => "-x265-params";

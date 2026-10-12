@@ -270,6 +270,13 @@ namespace RemuxForge.Core.Pipeline
                 return this.FailAndFinalizeRecord(record, AppText.T("remux.pipeline.langTracksReadFailed"), false);
             }
 
+            if (sourceTracks == null && (this._opts.DeepAnalysis || (this._opts.FrameSync && this._frameSyncService != null)))
+            {
+                // Deep e FrameSync leggono i fotogrammi dai Matroska aperti, che senza metadata del sorgente non si aprono
+                ConsoleHelper.Write(LogSection.General, LogLevel.Error, AppText.T("remux.pipeline.sourceTrackInfoReadFailed"));
+                return this.FailAndFinalizeRecord(record, AppText.T("remux.pipeline.sourceTracksReadFailed"), false);
+            }
+
             return false;
         }
 

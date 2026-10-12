@@ -5,7 +5,6 @@ using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Threading;
 
 namespace RemuxForge.Web.Services
 {
@@ -119,12 +118,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void Scan()
         {
-            if (this.BusyState)
-                return;
-
-            Thread thread = new Thread(this.ScanWorker);
-            thread.IsBackground = true;
-            thread.Start();
+            this.TryRunExclusive(this.ScanWorker);
         }
 
         /// <summary>
@@ -132,12 +126,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void AnalyzeAll()
         {
-            if (this.BusyState)
-                return;
-
-            Thread thread = new Thread(() => this.AnalyzeAllWorker());
-            thread.IsBackground = true;
-            thread.Start();
+            this.TryRunExclusive(() => this.AnalyzeAllWorker());
         }
 
         /// <summary>
@@ -145,12 +134,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void LoadContainerDataAll()
         {
-            if (this.BusyState)
-                return;
-
-            Thread thread = new Thread(this.LoadContainerDataWorker);
-            thread.IsBackground = true;
-            thread.Start();
+            this.TryRunExclusive(this.LoadContainerDataWorker);
         }
 
         /// <summary>
@@ -160,12 +144,7 @@ namespace RemuxForge.Web.Services
         /// <param name="temporary">True se il preset è temporaneo: a fine operazione si ripristina il preset precedente e il file viene rimosso</param>
         public void AnalyzeAndApplyAll(string presetPath, bool temporary)
         {
-            if (this.BusyState)
-                return;
-
-            Thread thread = new Thread(() => this.AnalyzeAndApplyWorker(presetPath, temporary));
-            thread.IsBackground = true;
-            thread.Start();
+            this.TryRunExclusive(() => this.AnalyzeAndApplyWorker(presetPath, temporary));
         }
 
         /// <summary>
@@ -173,12 +152,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void ApplyAll()
         {
-            if (this.BusyState)
-                return;
-
-            Thread thread = new Thread(() => this.ApplyWorker(-1));
-            thread.IsBackground = true;
-            thread.Start();
+            this.TryRunExclusive(() => this.ApplyWorker(-1));
         }
 
         /// <summary>
@@ -187,12 +161,7 @@ namespace RemuxForge.Web.Services
         /// <param name="index">Indice record</param>
         public void ApplySelected(int index)
         {
-            if (this.BusyState)
-                return;
-
-            Thread thread = new Thread(() => this.ApplyWorker(index));
-            thread.IsBackground = true;
-            thread.Start();
+            this.TryRunExclusive(() => this.ApplyWorker(index));
         }
 
         /// <summary>
@@ -237,12 +206,7 @@ namespace RemuxForge.Web.Services
         /// <param name="changes">Modifiche manuali</param>
         public void ApplyManualChanges(int index, List<MkvMetadataChange> changes)
         {
-            if (this.BusyState)
-                return;
-
-            Thread thread = new Thread(() => this.ApplyManualWorker(index, changes));
-            thread.IsBackground = true;
-            thread.Start();
+            this.TryRunExclusive(() => this.ApplyManualWorker(index, changes));
         }
 
         /// <summary>
