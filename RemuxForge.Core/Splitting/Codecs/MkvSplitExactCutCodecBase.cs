@@ -49,6 +49,12 @@ namespace RemuxForge.Core.Splitting.Codecs
         public abstract string RawMuxer { get; }
 
         /// <summary>
+        /// Filtro di bitstream ffmpeg che riporta in banda i parameter set del codec private, per la clip copiata che in un montaggio
+        /// segue una clip tagliata. Per default nessuno: il video copiato li porta già in banda ai keyframe, oppure non ne ha
+        /// </summary>
+        public virtual string InBandParameterSetsFilter => "";
+
+        /// <summary>
         /// Opzione ffmpeg con cui l'encoder riceve la qualità
         /// </summary>
         protected abstract string QualityOption { get; }

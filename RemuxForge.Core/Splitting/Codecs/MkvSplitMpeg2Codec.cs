@@ -36,6 +36,12 @@ namespace RemuxForge.Core.Splitting.Codecs
         public override string RawExtension => "m2v";
 
         /// <summary>
+        /// Sequence header del codec private davanti a ogni keyframe: un flusso che non lo ripete a ogni GOP si decodificherebbe
+        /// con le matrici di quantizzazione della ricodifica
+        /// </summary>
+        public override string InBandParameterSetsFilter => "dump_extra=freq=k";
+
+        /// <summary>
         /// MPEG-2 non ha CRF: la qualità si esprime con il quantizzatore
         /// </summary>
         protected override string QualityOption => "-q:v";

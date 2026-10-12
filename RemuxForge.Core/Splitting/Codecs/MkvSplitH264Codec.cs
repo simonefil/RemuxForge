@@ -33,6 +33,12 @@ namespace RemuxForge.Core.Splitting.Codecs
         public override string RawExtension => "h264";
 
         /// <summary>
+        /// SPS e PPS del codec private davanti a ogni IDR: mkvmerge, che nell'H.265 ripete i parameter set a ogni keyframe della
+        /// clip copiata, nell'H.264 li lascia solo nel codec private
+        /// </summary>
+        public override string InBandParameterSetsFilter => "h264_mp4toannexb";
+
+        /// <summary>
         /// Parametri di libx264
         /// </summary>
         protected override string ParamsOption => "-x264-params";

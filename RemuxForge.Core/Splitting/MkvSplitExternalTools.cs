@@ -463,6 +463,30 @@ namespace RemuxForge.Core.Splitting
         }
 
         /// <summary>
+        /// Passa la prima traccia video di un Matroska per un filtro di bitstream di ffmpeg, che lavora sulla sola traccia, e la
+        /// ricompone con mkvmerge insieme alle altre tracce del file, altre tracce video comprese, nello stesso ordine, con gli
+        /// stessi ID e le stesse proprietà
+        /// </summary>
+        /// <param name="inputFile">Matroska da ricomporre</param>
+        /// <param name="tracks">Tracce del Matroska, nel loro ordine</param>
+        /// <param name="bitstreamFilter">Filtro di bitstream ffmpeg della traccia video</param>
+        /// <param name="videoFile">Matroska intermedio con la sola traccia video filtrata</param>
+        /// <param name="outputFile">Matroska ricomposto</param>
+        public void RecomposeFilteredVideo(string inputFile, List<TrackInfo> tracks, string bitstreamFilter, string videoFile, string outputFile)
+        {
+            TrackInfo video = tracks.Find(track => track.Type == "video");
+            this.RunFfmpeg(new string[] { "-y", "-v", "error", "-i", inputFile, "-map", "0:v:0", "-c", "copy", "-bsf:v", bitstreamFilter, videoFile });
+            MkvmergeCommand recompose = new MkvmergeCommand(outputFile);
+            List<string> videoOptions = new List<string>(MkvmergeCommand.TrackOptions(0, video)) { "--no-chapters", "--no-attachments", "--no-global-tags", "--no-track-tags" };
+            int videoInput = recompose.AddInput(videoFile, videoOptions.ToArray());
+            int fileInput = recompose.AddInput(inputFile, "--video-tracks", "!" + video.Id);
+            foreach (TrackInfo track in tracks)
+                recompose.Place(track.Id, track.Id == video.Id ? videoInput : fileInput, track.Id == video.Id ? 0 : track.Id);
+            recompose.AddTrackOrder();
+            this.RunMkvmerge(recompose.ToArguments());
+        }
+
+        /// <summary>
         /// Esegue ffmpeg con throw su errore
         /// </summary>
         /// <param name="args">Argomenti ffmpeg</param>

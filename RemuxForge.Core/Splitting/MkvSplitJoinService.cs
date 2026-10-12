@@ -3,7 +3,6 @@ using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
-using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -302,18 +301,8 @@ namespace RemuxForge.Core.Splitting
                     }
 
                     ThrowIfStopped(stopRequested);
-                    string videoPath = Path.Combine(temporary, "vol-" + i + ".mkv");
                     string recomposed = Path.Combine(temporary, "part-" + i + ".mkv");
-                    MkvSplitExternalTools.Instance.RunFfmpeg(new string[] { "-y", "-v", "error", "-i", media[i].Path,
-                        "-map", "0:v:0", "-c", "copy", "-bsf:v", "dump_extra=freq=k", videoPath });
-                    MkvmergeCommand recompose = new MkvmergeCommand(recomposed);
-                    List<string> videoOptions = new List<string>(MkvmergeCommand.TrackOptions(0, video)) { "--no-chapters", "--no-attachments", "--no-global-tags", "--no-track-tags" };
-                    int videoInput = recompose.AddInput(videoPath, videoOptions.ToArray());
-                    int partInput = recompose.AddInput(media[i].Path, "--video-tracks", "!" + video.Id);
-                    foreach (TrackInfo track in part.Tracks)
-                        recompose.Place(track.Id, track.Id == video.Id ? videoInput : partInput, track.Id == video.Id ? 0 : track.Id);
-                    recompose.AddTrackOrder();
-                    MkvSplitExternalTools.Instance.RunMkvmerge(recompose.ToArguments());
+                    MkvSplitExternalTools.Instance.RecomposeFilteredVideo(media[i].Path, part.Tracks, "dump_extra=freq=k", Path.Combine(temporary, "vol-" + i + ".mkv"), recomposed);
                     appended.Add(recomposed);
                 }
 
@@ -442,13 +431,14 @@ namespace RemuxForge.Core.Splitting
             if (info == null || info.Tracks.Count != plan.Parts[0].Tracks.Count || info.ContainerDurationNs <= 0)
                 throw new InvalidOperationException(AppText.T("split.join.outputMismatch"));
             // Le tracce dell'output sono quelle della prima parte normalizzata, nello stesso ordine e con le stesse proprietà,
-            // anche quando la parte MPEG-4 è stata ricomposta attorno al video con il VOL reinserito
+            // anche quando la parte MPEG-4 è stata ricomposta attorno al video con il VOL reinserito. Una parte senza la lingua
+            // IETF (il Matroska scritto da ffmpeg) la riceve da mkvmerge, che la ricava dalla lingua: conta solo se la parte la dichiara
             for (int t = 0; t < info.Tracks.Count; t++)
             {
                 TrackInfo expectedTrack = plan.Parts[0].Tracks[t];
                 TrackInfo actual = info.Tracks[t];
-                if (actual.Id != expectedTrack.Id || actual.Type != expectedTrack.Type || actual.Codec != expectedTrack.Codec
-                    || actual.Language != expectedTrack.Language || actual.LanguageIetf != expectedTrack.LanguageIetf || actual.Name != expectedTrack.Name
+                if (actual.Id != expectedTrack.Id || actual.Type != expectedTrack.Type || actual.Codec != expectedTrack.Codec || actual.Language != expectedTrack.Language
+                    || (expectedTrack.LanguageIetf.Length > 0 && actual.LanguageIetf != expectedTrack.LanguageIetf) || actual.Name != expectedTrack.Name
                     || actual.DefaultTrack != expectedTrack.DefaultTrack || actual.ForcedTrack != expectedTrack.ForcedTrack)
                     throw new InvalidOperationException(AppText.T("split.join.outputMismatch"));
             }

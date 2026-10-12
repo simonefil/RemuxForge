@@ -88,6 +88,9 @@ namespace RemuxForge.Core.Splitting.Execution
                     }
                     if (clip.OpenGop.DroppedPackets > 0 && MkvSplitExternalTools.Instance.CountPackets(clipPath) != clipPackets - clip.OpenGop.DroppedPackets)
                         throw new InvalidOperationException(AppText.T("split.montage.outputMismatch"));
+                    // Dopo una clip tagliata la clip copiata riparte dai parameter set del sorgente
+                    if (clips.Count > 0 && !output.Clips[clips.Count - 1].UsesFastPath)
+                        this._media.Cutter.RestoreSourceParameterSets(clipPath, work);
                 }
                 if (clips.Count < output.Clips.Count - 1)
                     junctionTrim.Apply(clipPath, work, clipPackets - clip.OpenGop.DroppedPackets);

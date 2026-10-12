@@ -206,6 +206,26 @@ namespace RemuxForge.Core.Splitting.Cutters
             this.MuxSegment(context, this.Assemble(parts, context.TempDir));
         }
 
+        /// <summary>
+        /// Riporta in banda i parameter set del sorgente nella clip copiata che in un montaggio segue una clip tagliata: il decoder
+        /// arriva alla giunta con quelli dell'ultima parte ricodificata e il file accodato porta il codec private della prima clip,
+        /// quindi senza i propri la clip copiata si decodificherebbe con quelli della ricodifica. Il codec che li porta già in banda
+        /// lascia la clip com'è
+        /// </summary>
+        /// <param name="clip">Clip copiata, riscritta al suo posto</param>
+        /// <param name="tempDir">Cartella della clip</param>
+        public void RestoreSourceParameterSets(string clip, string tempDir)
+        {
+            string filter = this._codec.InBandParameterSetsFilter;
+            if (filter.Length == 0)
+                return;
+
+            string restored = Path.Combine(tempDir, "clip-parameter-sets.mkv");
+            MkvSplitExternalTools.Instance.RecomposeFilteredVideo(clip, MkvSplitExternalTools.Instance.GetFileInfo(clip).Tracks, filter,
+                Path.Combine(tempDir, "video-parameter-sets.mkv"), restored);
+            File.Move(restored, clip, true);
+        }
+
         #endregion
 
         #region Metodi protetti

@@ -1335,6 +1335,8 @@ namespace RemuxForge.Web.Services
                 Duration = plan.Analysis.Duration, SourcePts = plan.Analysis.SourcePts,
                 FrameCount = plan.Analysis.SourcePts.Length, Chapters = plan.Analysis.Chapters, FrameRateMode = plan.Analysis.FrameRateMode,
                 VideoParams = plan.Analysis.VideoParams, IsValid = plan.IsValid,
+                // Costo annunciato come nel piano della CLI: le teste da ricodificare di tutte le clip
+                TotalReencodeFrames = plan.Outputs.Sum(output => output.Clips.Sum(clip => clip.Segment.ReencodeFrames)),
                 ErrorMessage = string.Join(" ", plan.Projection.Diagnostics.Where(item => item.Severity == MkvSplitDiagnosticSeverity.Error).Select(item => item.Message)) };
             // Tempi del sorgente come nel piano della CLI quando l'output è un solo tratto; un montaggio di più clip non ha un
             // intervallo del sorgente e resta nei tempi dell'output, così la durata letta da EndTs - StartTs resta vera
