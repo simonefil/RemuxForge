@@ -140,17 +140,17 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
-        /// Aggiorna busy e stato base del progresso
+        /// Aggiorna busy e stato base del progresso. Lo stop si azzera alla riserva (TryRunExclusive) e al rilascio, non all'avvio
+        /// del worker: uno stop richiesto fra la riserva e l'avvio, o fra i passi di una catena, resta valido
         /// </summary>
         /// <param name="busy">True se è in corso un'operazione</param>
         /// <param name="operation">Descrizione dell'operazione</param>
-        /// <param name="keepStop">True per un passo di una catena già avviata: uno stop richiesto prima resta valido</param>
-        protected void SetBusy(bool busy, string operation, bool keepStop = false)
+        protected void SetBusy(bool busy, string operation)
         {
             CancellationTokenSource cancellation = null;
             lock (this._stateLock)
             {
-                if (!keepStop)
+                if (!busy)
                     this._stopRequested = false;
                 this._isBusy = busy;
                 this._progress.IsActive = busy;
@@ -169,8 +169,8 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
-        /// Riserva atomicamente l'orchestrator e avvia il worker in background: l'annullamento nasce con la riserva,
-        /// così uno stop che arriva prima che il worker parta non va perso; lo rilascia SetBusy(false)
+        /// Riserva atomicamente l'orchestrator e avvia il worker in background: lo stop si azzera e l'annullamento nasce con la
+        /// riserva, così uno stop che arriva prima che il worker parta non va perso; lo rilascia SetBusy(false)
         /// </summary>
         /// <param name="worker">Corpo dell'operazione, eseguito nel thread in background</param>
         /// <param name="reserved">Azione eseguita dal chiamante a riserva acquisita, prima dell'avvio del thread</param>

@@ -785,9 +785,7 @@ namespace RemuxForge.Core.Pipeline
                     }
                     if (normalizeError.Length > 0)
                     {
-                        ConsoleHelper.Write(LogSection.Merge, LogLevel.Error, normalizeError);
-                        record.ErrorMessage = normalizeError;
-                        record.Status = FileStatus.Error;
+                        record.Fail(LogSection.Merge, normalizeError);
                         done = true;
                     }
                     else

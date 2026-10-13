@@ -7,10 +7,11 @@ using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
+using RemuxForge.Core.Splitting.Execution;
 
 namespace RemuxForge.Core.Splitting
 {
-    /// <summary>Produce il file di output di una clip copiata senza ricodifica (mkvmerge --split parts, FFmpeg per il FLAC); il taglio al fotogramma lo fanno le strategie di MkvSplitExactCutterBase.</summary>
+    /// <summary>Produce il file di output di una clip copiata senza ricodifica (mkvmerge --split parts, l'audio che mkvmerge non taglia con il video a parte); il taglio al fotogramma lo fanno le strategie di MkvSplitExactCutterBase.</summary>
     public class MkvSplitExecutor
     {
         #region Costruttore
@@ -24,12 +25,12 @@ namespace RemuxForge.Core.Splitting
 
         #region Pipeline fast (ffmpeg seek + stream copy)
 
-        /// <summary>Fast path: mkvmerge --split parts per video e sottotitoli e, quando presente FLAC, ffmpeg stream copy per l'audio.</summary>
+        /// <summary>Fast path: mkvmerge --split parts per video e sottotitoli e, con l'audio da tagliare a parte (FLAC, Opus fuori dall'inizio del file), un taglio dell'audio riunito al video.</summary>
         /// <param name="seg">Segmento da elaborare.</param>
         /// <param name="inputFile">File MKV di input.</param>
         /// <param name="outputFile">Path del file di output.</param>
         /// <param name="tempDir">Directory temporanea per i file intermedi.</param>
-        /// <param name="tracks">Tracce del file normalizzato, nel loro ordine: con il FLAC si separa il video con mkvmerge e l'audio con ffmpeg, perché mkvmerge non splitta FLAC insieme al video.</param>
+        /// <param name="tracks">Tracce del file normalizzato, nel loro ordine: l'audio che mkvmerge non taglia insieme al video si taglia a parte (MkvSplitSeparateAudioBase).</param>
         /// <param name="subtitleIds">Tracce di sottotitoli che mkvmerge taglia insieme al video, vuota se non ce ne sono.</param>
         public void SplitFast(MkvSplitSegment seg, string inputFile, string outputFile, string tempDir, List<TrackInfo> tracks, List<int> subtitleIds)
         {
@@ -38,24 +39,28 @@ namespace RemuxForge.Core.Splitting
             List<string> muxArgs;
             double sizeMb;
             List<string> subtitleArgs = subtitleIds.Count > 0 ? new List<string> { "--subtitle-tracks", string.Join(",", subtitleIds) } : new List<string> { "--no-subtitles" };
+            MkvSplitSeparateAudioBase separateAudio = MkvSplitSeparateAudioBase.For(seg, tracks);
 
             startTc = Utils.SecsToTs(seg.StartTs);
             endTc = Utils.SecsToTs(seg.EndTs);
 
-            if (tracks.Exists(MkvSplitExternalTools.IsFlacAudio))
+            if (separateAudio != null)
             {
                 string videoMkv = Path.Combine(tempDir, "video.mkv");
                 string avFile = Path.Combine(tempDir, "av.mkv");
                 List<string> videoArgs = new List<string>();
-                List<string> avArgs = new List<string>();
+                List<int> keptAudioIds = tracks.FindAll(track => track.Type == "audio" && !separateAudio.Tracks.Contains(track)).ConvertAll(track => track.Id);
                 int fromVideo = 0;
                 int fromAudio = 0;
-                int avExit;
-                bool hasAv;
 
-                // mkvmerge non splitta FLAC insieme al video; si splittano video e sottotitoli separatamente e si rimuxa l'audio estratto da FFmpeg
+                // Video, sottotitoli e audio che resta con il video si splittano senza l'audio tagliato a parte, che poi si rimuxa
                 videoArgs.Add("-o"); videoArgs.Add(videoMkv);
-                videoArgs.Add("--no-audio");
+                if (keptAudioIds.Count == 0)
+                    videoArgs.Add("--no-audio");
+                else
+                {
+                    videoArgs.Add("--audio-tracks"); videoArgs.Add(string.Join(",", keptAudioIds));
+                }
                 videoArgs.AddRange(subtitleArgs);
                 videoArgs.Add("--no-chapters");
                 videoArgs.Add("--split"); videoArgs.Add("parts:" + startTc + "-" + endTc);
@@ -63,24 +68,11 @@ namespace RemuxForge.Core.Splitting
                 ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.exec.mkvmergeVideoSplit", startTc, endTc));
                 MkvSplitExternalTools.Instance.RunMkvmerge(videoArgs);
 
-                avArgs.Add("-y"); avArgs.Add("-hide_banner"); avArgs.Add("-loglevel"); avArgs.Add("warning");
-                avArgs.Add("-i"); avArgs.Add(inputFile);
-                avArgs.Add("-ss"); avArgs.Add(startTc);
-                avArgs.Add("-to"); avArgs.Add(endTc);
-                avArgs.Add("-map"); avArgs.Add("0:a?");
-                avArgs.Add("-c:a"); avArgs.Add("copy");
-                avArgs.Add("-vn");
-                avArgs.Add("-avoid_negative_ts"); avArgs.Add("make_zero");
-                avArgs.Add("-map_chapters"); avArgs.Add("-1");
-                avArgs.Add(avFile);
-                ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.exec.ffmpegAvCopy", startTc, endTc));
-                avExit = MkvSplitExternalTools.Instance.RunFfmpegNoThrow(avArgs);
-                hasAv = avExit == 0 && File.Exists(avFile) && new FileInfo(avFile).Length > 0;
-                if (!hasAv) throw new InvalidOperationException(AppText.F("split.montage.avFailed", avExit));
+                separateAudio.Cut(inputFile, startTc, endTc, avFile);
 
                 // Il video di una parte che inizia su un keyframe di GOP aperto parte dai pacchetti dei B iniziali e mostra il
-                // keyframe dopo la loro durata (D25); ffmpeg taglia l'audio dal keyframe e lo porta a 0: si sposta della stessa
-                // durata, come fa mkvmerge quando taglia video e audio insieme
+                // keyframe dopo la loro durata (D25); l'audio tagliato a parte comincia dal keyframe ed è portato a 0: si sposta della
+                // stessa durata, come fa mkvmerge quando taglia video e audio insieme
                 MkvmergeCommand mux = new MkvmergeCommand(outputFile);
                 int videoInput = mux.AddInput(videoMkv, "--no-chapters");
                 int audioInput = seg.OpenGopHeadSeconds > 0
@@ -89,9 +81,9 @@ namespace RemuxForge.Core.Splitting
                 // Le tracce tornano nell'ordine del sorgente, che le clip accodate devono condividere
                 foreach (TrackInfo track in tracks)
                 {
-                    if (track.Type == "audio")
+                    if (separateAudio.Tracks.Contains(track))
                         mux.Place(track.Id, audioInput, fromAudio++);
-                    else if (track.Type == "video" || (track.Type == "subtitles" && subtitleIds.Contains(track.Id)))
+                    else if (track.Type == "video" || track.Type == "audio" || (track.Type == "subtitles" && subtitleIds.Contains(track.Id)))
                         mux.Place(track.Id, videoInput, fromVideo++);
                 }
                 mux.AddTrackOrder();
@@ -101,7 +93,7 @@ namespace RemuxForge.Core.Splitting
             }
             else
             {
-                // Non-FLAC: mkvmerge --split parts per taglio frame-perfect (preserva VFR nativamente)
+                // Senza audio da tagliare a parte: mkvmerge --split parts per taglio frame-perfect (preserva VFR nativamente)
                 MkvmergeCommand split = new MkvmergeCommand(outputFile);
                 List<string> inputOptions = new List<string> { "--no-chapters" };
                 inputOptions.AddRange(subtitleArgs);

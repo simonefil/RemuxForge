@@ -580,9 +580,19 @@ namespace RemuxForge.Core.Splitting
         /// <returns>--disable-lacing con una traccia Opus, altrimenti nessuna opzione</returns>
         public static string[] ClipLacingOptions(List<TrackInfo> tracks)
         {
-            return tracks.Exists(track => track.Type == "audio" && track.Codec.IndexOf("Opus", StringComparison.OrdinalIgnoreCase) >= 0)
+            return tracks.Exists(IsOpusAudio)
                 ? new string[] { "--disable-lacing" }
                 : Array.Empty<string>();
+        }
+
+        /// <summary>
+        /// Indica se la traccia è audio Opus, di cui mkvmerge scarta il pre-roll quando taglia una parte insieme al video
+        /// </summary>
+        /// <param name="track">Traccia da controllare</param>
+        /// <returns>True per una traccia audio Opus</returns>
+        public static bool IsOpusAudio(TrackInfo track)
+        {
+            return track.Type == "audio" && track.Codec.IndexOf("Opus", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         /// <summary>
