@@ -95,20 +95,21 @@ namespace RemuxForge.Core.Splitting
                         mux.Place(track.Id, videoInput, fromVideo++);
                 }
                 mux.AddTrackOrder();
+                mux.AddGlobalOptions(MkvSplitExternalTools.ClipLacingOptions(tracks));
                 muxArgs = mux.ToArguments();
                 MkvSplitExternalTools.Instance.RunMkvmerge(muxArgs);
             }
             else
             {
                 // Non-FLAC: mkvmerge --split parts per taglio frame-perfect (preserva VFR nativamente)
-                muxArgs = new List<string>();
-                muxArgs.Add("-o"); muxArgs.Add(outputFile);
-                muxArgs.Add("--no-chapters");
-                muxArgs.AddRange(subtitleArgs);
-                muxArgs.Add("--split"); muxArgs.Add("parts:" + startTc + "-" + endTc);
-                muxArgs.Add(inputFile);
+                MkvmergeCommand split = new MkvmergeCommand(outputFile);
+                List<string> inputOptions = new List<string> { "--no-chapters" };
+                inputOptions.AddRange(subtitleArgs);
+                inputOptions.Add("--split"); inputOptions.Add("parts:" + startTc + "-" + endTc);
+                split.AddInput(inputFile, inputOptions.ToArray());
+                split.AddGlobalOptions(MkvSplitExternalTools.ClipLacingOptions(tracks));
                 ConsoleHelper.Write(LogSection.Split, LogLevel.Text, AppText.F("split.exec.mkvmergeSplit", startTc, endTc));
-                MkvSplitExternalTools.Instance.RunMkvmerge(muxArgs);
+                MkvSplitExternalTools.Instance.RunMkvmerge(split.ToArguments());
             }
 
             sizeMb = new FileInfo(outputFile).Length / 1048576.0;

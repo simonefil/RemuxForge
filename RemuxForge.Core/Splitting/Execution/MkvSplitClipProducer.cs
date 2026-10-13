@@ -1,4 +1,5 @@
 using RemuxForge.Core.Localization;
+using RemuxForge.Core.Media.Mkv;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -83,7 +84,10 @@ namespace RemuxForge.Core.Splitting.Execution
                     if (shift != 0)
                     {
                         string shifted = Path.Combine(work, "clip-shifted.mkv");
-                        MkvSplitExternalTools.Instance.RunMkvmerge(new string[] { "-o", shifted, "--sync", "-1:" + (-shift).ToString(CultureInfo.InvariantCulture), clipPath });
+                        MkvmergeCommand resync = new MkvmergeCommand(shifted);
+                        resync.AddInput(clipPath, "--sync", "-1:" + (-shift).ToString(CultureInfo.InvariantCulture));
+                        resync.AddGlobalOptions(MkvSplitExternalTools.ClipLacingOptions(this._plan.Tracks));
+                        MkvSplitExternalTools.Instance.RunMkvmerge(resync.ToArguments());
                         File.Move(shifted, clipPath, true);
                     }
                     if (clip.OpenGop.DroppedPackets > 0 && MkvSplitExternalTools.Instance.CountPackets(clipPath) != clipPackets - clip.OpenGop.DroppedPackets)

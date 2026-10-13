@@ -88,6 +88,11 @@ namespace RemuxForge.Web.Components.Pages
         private List<MkvMetadataRecord> _metadataRecords;
 
         /// <summary>
+        /// True mentre la conferma dell'applicazione Metadata è aperta: un secondo click non ne apre un'altra
+        /// </summary>
+        private bool _metadataApplyConfirming;
+
+        /// <summary>
         /// Lista preset metadata disponibili
         /// </summary>
         private List<string> _metadataPresetFiles;
@@ -3216,6 +3221,10 @@ namespace RemuxForge.Web.Components.Pages
             bool inPlace;
             string message;
 
+            // Durante la conferma l'orchestrator non è ancora occupato: senza il controllo qui un doppio click aprirebbe due dialog
+            if (this.MetadataOrchestrator.IsBusy || this._metadataApplyConfirming)
+                return;
+
             if (this.MetadataOrchestrator.NeedsApplyConfirmation(selectedIndex, out fileCount, out trackRemovalCount, out inPlace))
             {
                 message = inPlace
@@ -3225,8 +3234,16 @@ namespace RemuxForge.Web.Components.Pages
                 if (trackRemovalCount > 0)
                     message += Environment.NewLine + AppText.Count("web.metadata.confirmTrackRemoval", trackRemovalCount);
 
-                if (!await this.ConfirmAsync(message, AppText.T("web.metadata.progress.apply")))
-                    return;
+                this._metadataApplyConfirming = true;
+                try
+                {
+                    if (!await this.ConfirmAsync(message, AppText.T("web.metadata.progress.apply")))
+                        return;
+                }
+                finally
+                {
+                    this._metadataApplyConfirming = false;
+                }
             }
 
             if (this.MetadataOrchestrator.IsBusy)

@@ -31,7 +31,7 @@ namespace RemuxForge.Cli
         /// Entry point
         /// </summary>
         /// <param name="args">Argomenti riga di comando</param>
-        /// <returns>Codice uscita: 0 successo, 1 errore, 130 interruzione con Ctrl+C</returns>
+        /// <returns>Codice uscita: 0 successo, 1 errore (anche di un solo file elaborato), 130 interruzione con Ctrl+C</returns>
         static int Main(string[] args)
         {
             bool done = false;
@@ -194,6 +194,12 @@ namespace RemuxForge.Cli
                 stats = ComputeStats(records);
                 PrintDetailedReport(records, opts.DryRun);
                 PrintSummary(stats);
+
+                // Un record in errore, anche per la sincronizzazione, fa uscire con errore come un record fallito del Metadata
+                if (stats.Errors > 0 || stats.SyncFailed > 0)
+                {
+                    exitCode = 1;
+                }
             }
 
             if (cancellation.IsCancellationRequested)

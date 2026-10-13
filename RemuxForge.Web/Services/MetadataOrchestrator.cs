@@ -126,7 +126,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void AnalyzeAll()
         {
-            this.TryRunExclusive(() => this.AnalyzeAllWorker());
+            this.TryRunExclusive(() => this.AnalyzeAllWorker(true));
         }
 
         /// <summary>
@@ -152,7 +152,7 @@ namespace RemuxForge.Web.Services
         /// </summary>
         public void ApplyAll()
         {
-            this.TryRunExclusive(() => this.ApplyWorker(-1));
+            this.TryRunExclusive(() => this.ApplyWorker(-1, true));
         }
 
         /// <summary>
@@ -161,7 +161,7 @@ namespace RemuxForge.Web.Services
         /// <param name="index">Indice record</param>
         public void ApplySelected(int index)
         {
-            this.TryRunExclusive(() => this.ApplyWorker(index));
+            this.TryRunExclusive(() => this.ApplyWorker(index, true));
         }
 
         /// <summary>
@@ -427,9 +427,10 @@ namespace RemuxForge.Web.Services
                     return;
                 }
 
-                // L'applicazione parte solo se l'analisi si è conclusa senza errori globali e senza stop
-                if (this.AnalyzeAllWorker())
-                    this.ApplyWorker(-1);
+                // L'applicazione parte solo se l'analisi si è conclusa senza errori globali e senza stop; fra le due l'orchestrator
+                // resta riservato, così nessun'altra operazione parte nel mezzo
+                if (this.AnalyzeAllWorker(false))
+                    this.ApplyWorker(-1, false);
             }
             finally
             {
@@ -454,14 +455,18 @@ namespace RemuxForge.Web.Services
                         this.AppendLog(AppText.F("web.metadata.ai.tempPresetDeleteError", ex.Message));
                     }
                 }
+
+                // La catena si rilascia una volta sola, a preset ripristinato, anche quando le opzioni non si applicano
+                this.SetBusy(false, "");
             }
         }
 
         /// <summary>
         /// Worker analisi pipeline Metadata
         /// </summary>
+        /// <param name="release">True se l'analisi è l'intera operazione e a fine lavoro rilascia l'orchestrator, false se è il primo passo di una catena</param>
         /// <returns>True se l'analisi si è conclusa senza errori globali e senza stop</returns>
-        private bool AnalyzeAllWorker()
+        private bool AnalyzeAllWorker(bool release)
         {
             bool completed = false;
 
@@ -541,7 +546,8 @@ namespace RemuxForge.Web.Services
             }
             finally
             {
-                this.SetBusy(false, "");
+                if (release)
+                    this.SetBusy(false, "");
             }
 
             return completed;
@@ -551,7 +557,8 @@ namespace RemuxForge.Web.Services
         /// Worker applicazione record Metadata
         /// </summary>
         /// <param name="selectedIndex">Indice record selezionato, oppure -1 per tutti i record</param>
-        private void ApplyWorker(int selectedIndex)
+        /// <param name="release">True se l'applicazione è l'intera operazione e a fine lavoro rilascia l'orchestrator, false se chiude una catena</param>
+        private void ApplyWorker(int selectedIndex, bool release)
         {
             MetadataExecutionService executor;
             MkvMetadataExecutionResult result;
@@ -638,7 +645,8 @@ namespace RemuxForge.Web.Services
             }
             finally
             {
-                this.SetBusy(false, "");
+                if (release)
+                    this.SetBusy(false, "");
             }
         }
 

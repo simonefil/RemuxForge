@@ -114,8 +114,9 @@ namespace RemuxForge.Web.Components.Shared
         protected abstract Task DisposeEditorAsync();
 
         /// <summary>
-        /// Rilascia gli oggetti JS dell'editor, ognuno con il suo dispose, poi il modulo. Un'eccezione JS ferma solo il rilascio
-        /// dell'oggetto che l'ha sollevata; le altre eccezioni si propagano
+        /// Rilascia gli oggetti JS dell'editor, ognuno con il suo dispose, poi il modulo. Un'eccezione JS, o il circuito già
+        /// disconnesso quando il browser è stato chiuso con l'editor aperto, ferma solo il rilascio dell'oggetto che l'ha sollevata;
+        /// le altre eccezioni si propagano
         /// </summary>
         /// <param name="module">Modulo JS dell'editor, null se non è stato caricato</param>
         /// <param name="objects">Oggetti JS creati dal modulo, null quelli non creati</param>
@@ -131,7 +132,7 @@ namespace RemuxForge.Web.Components.Shared
                         await js.InvokeVoidAsync("dispose");
                         await js.DisposeAsync();
                     }
-                    catch (JSException)
+                    catch (Exception ex) when (ex is JSException || ex is JSDisconnectedException)
                     {
                     }
                 }
@@ -142,7 +143,7 @@ namespace RemuxForge.Web.Components.Shared
                 {
                     await module.DisposeAsync();
                 }
-                catch (JSException)
+                catch (Exception ex) when (ex is JSException || ex is JSDisconnectedException)
                 {
                 }
             }

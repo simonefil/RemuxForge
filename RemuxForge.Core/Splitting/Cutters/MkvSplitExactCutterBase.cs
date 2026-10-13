@@ -221,8 +221,9 @@ namespace RemuxForge.Core.Splitting.Cutters
                 return;
 
             string restored = Path.Combine(tempDir, "clip-parameter-sets.mkv");
-            MkvSplitExternalTools.Instance.RecomposeFilteredVideo(clip, MkvSplitExternalTools.Instance.GetFileInfo(clip).Tracks, filter,
-                Path.Combine(tempDir, "video-parameter-sets.mkv"), restored);
+            List<TrackInfo> tracks = MkvSplitExternalTools.Instance.GetFileInfo(clip).Tracks;
+            MkvSplitExternalTools.Instance.RecomposeFilteredVideo(clip, tracks, filter, Path.Combine(tempDir, "video-parameter-sets.mkv"), restored,
+                MkvSplitExternalTools.ClipLacingOptions(tracks));
             File.Move(restored, clip, true);
         }
 
@@ -464,6 +465,7 @@ namespace RemuxForge.Core.Splitting.Cutters
                     mux.Place(track.Id, subtitleInput, 1 + subtitle++);
             }
             mux.AddTrackOrder();
+            mux.AddGlobalOptions(MkvSplitExternalTools.ClipLacingOptions(this._tracks));
             MkvSplitExternalTools.Instance.RunMkvmerge(mux.ToArguments());
 
             // Log finale con dimensione del file prodotto

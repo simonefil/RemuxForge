@@ -196,6 +196,7 @@ namespace RemuxForge.Core.Audio
             if (!result.Success)
             {
                 this.DeleteCreatedFiles();
+                ConsoleHelper.Write(LogSection.Conv, LogLevel.Error, "  " + result.ErrorMessage);
                 request.Record.ErrorMessage = result.ErrorMessage;
                 request.Record.Status = FileStatus.Error;
                 return result;
@@ -215,6 +216,7 @@ namespace RemuxForge.Core.Audio
                         result.Success = false;
                         result.ErrorMessage = AppText.F("remux.audio.requiredLangOutputMissing", requiredPlan.Track != null ? requiredPlan.Track.Id.ToString(CultureInfo.InvariantCulture) : "?");
                         this.DeleteCreatedFiles();
+                        ConsoleHelper.Write(LogSection.Conv, LogLevel.Error, "  " + result.ErrorMessage);
                         request.Record.ErrorMessage = result.ErrorMessage;
                         request.Record.Status = FileStatus.Error;
                         return result;
@@ -816,6 +818,11 @@ namespace RemuxForge.Core.Audio
                 filter += ",";
             }
             filter += postFilter;
+
+            // L'encoder FLAC usa come blocco il primo frame che riceve: dopo l'atrim di un offset può restare di pochi campioni,
+            // sotto il minimo di 16, e l'encoder non si apre. Blocchi fissi da 4096 campioni, l'ultimo resta quello che avanza
+            if (options.AudioFormat == "flac" && !forPeakTemp)
+                filter += ",asetnsamples=n=4096:p=0";
             return filter;
         }
 

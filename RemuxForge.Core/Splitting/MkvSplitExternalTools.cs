@@ -490,7 +490,8 @@ namespace RemuxForge.Core.Splitting
         /// <param name="bitstreamFilter">Filtro di bitstream ffmpeg della traccia video</param>
         /// <param name="videoFile">Matroska intermedio con la sola traccia video filtrata</param>
         /// <param name="outputFile">Matroska ricomposto</param>
-        public void RecomposeFilteredVideo(string inputFile, List<TrackInfo> tracks, string bitstreamFilter, string videoFile, string outputFile)
+        /// <param name="globalOptions">Opzioni globali di mkvmerge per il Matroska ricomposto, nessuna se vuote</param>
+        public void RecomposeFilteredVideo(string inputFile, List<TrackInfo> tracks, string bitstreamFilter, string videoFile, string outputFile, params string[] globalOptions)
         {
             TrackInfo video = tracks.Find(track => track.Type == "video");
             this.RunFfmpeg(new string[] { "-y", "-v", "error", "-i", inputFile, "-map", "0:v:0", "-c", "copy", "-bsf:v", bitstreamFilter, videoFile });
@@ -501,6 +502,7 @@ namespace RemuxForge.Core.Splitting
             foreach (TrackInfo track in tracks)
                 recompose.Place(track.Id, track.Id == video.Id ? videoInput : fileInput, track.Id == video.Id ? 0 : track.Id);
             recompose.AddTrackOrder();
+            recompose.AddGlobalOptions(globalOptions);
             this.RunMkvmerge(recompose.ToArguments());
         }
 
@@ -567,6 +569,20 @@ namespace RemuxForge.Core.Splitting
             foreach (string line in MkvmergeLines(result))
                 if (line.StartsWith("Warning:", StringComparison.Ordinal))
                     ConsoleHelper.Write(LogSection.Split, LogLevel.Warning, AppText.F("split.tools.mkvmergeWarning", line.Substring("Warning:".Length).Trim()));
+        }
+
+        /// <summary>
+        /// Opzioni globali di mkvmerge per il file di una clip dello Split: con una traccia audio Opus il lacing si disattiva. mkvmerge
+        /// mette più frame Opus in un blocco e mkvextract dà a tutti il tempo del blocco, quindi alla giunta il taglio dell'audio non
+        /// troverebbe il frame che finisce oltre il video e la clip successiva partirebbe dopo l'audio della precedente
+        /// </summary>
+        /// <param name="tracks">Tracce del file della clip</param>
+        /// <returns>--disable-lacing con una traccia Opus, altrimenti nessuna opzione</returns>
+        public static string[] ClipLacingOptions(List<TrackInfo> tracks)
+        {
+            return tracks.Exists(track => track.Type == "audio" && track.Codec.IndexOf("Opus", StringComparison.OrdinalIgnoreCase) >= 0)
+                ? new string[] { "--disable-lacing" }
+                : Array.Empty<string>();
         }
 
         /// <summary>

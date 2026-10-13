@@ -788,6 +788,10 @@
         string presetPath;
         string message;
 
+        // Un secondo click arrivato prima che i pulsanti si disattivino non apre una seconda conferma
+        if (this._actionRunning)
+            return;
+
         this._error = "";
         if (save && string.IsNullOrEmpty(fileName))
         {
