@@ -625,8 +625,6 @@ namespace RemuxForge.Web.Services
             SplitJoinResult result = new SplitJoinResult();
 
             this.SetBusy(true, AppText.T("web.progress.join"));
-            this.StopRequested = false;
-            ProcessRunner.SetStopRequestedCallback(this.IsStopRequested);
             ConsoleHelper.SetLogCallback((section, _, text) =>
             {
                 string prefix = ConsoleHelper.FormatSectionPrefix(section);
@@ -715,6 +713,11 @@ namespace RemuxForge.Web.Services
                     this.AppendLog(AppText.Count("web.split.scanCompleted", scanned.Count));
                 this.NotifyRecordsChanged();
             }
+            catch (Exception) when (this.StopRequested)
+            {
+                // Lo stop che interrompe le sonde degli strumenti è un'interruzione, come in JoinWorker: l'elenco resta quello di prima
+                this.AppendLog(AppText.T("web.split.scanStopped"));
+            }
             catch (Exception ex)
             {
                 this.AppendLog(AppText.F("web.split.scanError", ex.Message));
@@ -738,8 +741,6 @@ namespace RemuxForge.Web.Services
             int warningFiles = 0;
 
             this.SetBusy(true, AppText.T("web.progress.analyzeSplit"));
-            this.StopRequested = false;
-            ProcessRunner.SetStopRequestedCallback(this.IsStopRequested);
             ConsoleHelper.SetLogCallback((section, _, text) =>
             {
                 string prefix = ConsoleHelper.FormatSectionPrefix(section);
@@ -805,6 +806,14 @@ namespace RemuxForge.Web.Services
                 summary = new OperationSummary(plannedCount, invalidCount, warningFiles, this.StopRequested);
                 this.AppendLog(AppText.Count("web.split.analyzeCompleted", plannedCount, invalidCount));
             }
+            catch (Exception) when (this.StopRequested)
+            {
+                // Lo stop che interrompe le sonde degli strumenti è un'interruzione, come in JoinWorker. Fuori dal ciclo l'eccezione
+                // cade prima del primo record: si ferma quello, come fa il controllo in testa al ciclo
+                this.SetRecordStatus(targets[0], MkvSplitStatus.Stopped, AppText.T("web.split.stopRequested"));
+                summary = new OperationSummary(plannedCount, invalidCount, warningFiles, true);
+                this.AppendLog(AppText.T("web.split.analyzeStopped"));
+            }
             catch (Exception ex)
             {
                 summary = new OperationSummary(plannedCount, invalidCount + 1, warningFiles, false);
@@ -839,9 +848,7 @@ namespace RemuxForge.Web.Services
             CancellationToken cancellation;
 
             this.SetBusy(true, AppText.T("web.progress.split"));
-            this.StopRequested = false;
             cancellation = this.OperationCancellationToken;
-            ProcessRunner.SetStopRequestedCallback(this.IsStopRequested);
             ConsoleHelper.SetLogCallback((section, _, text) =>
             {
                 string prefix = ConsoleHelper.FormatSectionPrefix(section);
@@ -957,6 +964,14 @@ namespace RemuxForge.Web.Services
                 {
                     this.AppendLog(AppText.Count("web.split.errorSummary", errorCount, successCount));
                 }
+            }
+            catch (Exception) when (cancellation.IsCancellationRequested)
+            {
+                // Lo stop che interrompe le sonde degli strumenti è un'interruzione, come in JoinWorker. Fuori dal ciclo l'eccezione
+                // cade prima del primo record: si ferma quello, come fa il controllo in testa al ciclo
+                this.SetRecordStatus(targets[0], MkvSplitStatus.Stopped, AppText.T("web.split.stopRequested"));
+                summary = new OperationSummary(successCount, errorCount, skippedCount, true);
+                this.AppendLog(AppText.Count("web.split.stoppedSummary", errorCount, successCount));
             }
             catch (Exception ex)
             {

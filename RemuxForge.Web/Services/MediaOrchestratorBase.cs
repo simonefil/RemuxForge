@@ -1,3 +1,4 @@
+using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using System;
 using System.IO;
@@ -170,13 +171,15 @@ namespace RemuxForge.Web.Services
 
         /// <summary>
         /// Riserva atomicamente l'orchestrator e avvia il worker in background: lo stop si azzera e l'annullamento nasce con la
-        /// riserva, così uno stop che arriva prima che il worker parta non va perso; lo rilascia SetBusy(false)
+        /// riserva, così uno stop che arriva prima che il worker parta non va perso; lo rilascia SetBusy(false). L'annullamento
+        /// governa anche i processi esterni lanciati dal worker, e solo quelli: lo stop di un orchestrator non ferma le operazioni degli altri
         /// </summary>
         /// <param name="worker">Corpo dell'operazione, eseguito nel thread in background</param>
         /// <param name="reserved">Azione eseguita dal chiamante a riserva acquisita, prima dell'avvio del thread</param>
         /// <returns>True se la riserva è stata acquisita e il worker avviato, false se un'operazione è già in corso</returns>
         protected bool TryRunExclusive(ThreadStart worker, Action reserved = null)
         {
+            CancellationToken cancellation;
             lock (this._stateLock)
             {
                 if (this._isBusy)
@@ -184,10 +187,15 @@ namespace RemuxForge.Web.Services
                 this._isBusy = true;
                 this._stopRequested = false;
                 this._operationCancellation = new CancellationTokenSource();
+                cancellation = this._operationCancellation.Token;
             }
 
             reserved?.Invoke();
-            Thread thread = new Thread(worker);
+            Thread thread = new Thread(() =>
+            {
+                ProcessRunner.SetOperationCancellation(cancellation);
+                worker();
+            });
             thread.IsBackground = true;
             thread.Start();
             return true;

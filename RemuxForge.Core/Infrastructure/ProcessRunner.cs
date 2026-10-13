@@ -77,6 +77,11 @@ namespace RemuxForge.Core.Infrastructure
         /// </summary>
         private static Func<bool> s_stopRequestedCallback;
 
+        /// <summary>
+        /// Annullamento dell'operazione corrente, locale all'ExecutionContext: ferma i soli processi lanciati dal suo flusso
+        /// </summary>
+        private static readonly AsyncLocal<CancellationToken> s_operationCancellation = new AsyncLocal<CancellationToken>();
+
         #endregion
 
         #region Metodi pubblici
@@ -88,6 +93,16 @@ namespace RemuxForge.Core.Infrastructure
         public static void SetStopRequestedCallback(Func<bool> callback)
         {
             s_stopRequestedCallback = callback;
+        }
+
+        /// <summary>
+        /// Lega l'annullamento di un'operazione ai processi lanciati dal flusso corrente e dai task che ne derivano, senza toccare
+        /// il callback globale: lo stop di un'operazione non ferma i processi di un'altra
+        /// </summary>
+        /// <param name="cancellation">Token dell'operazione</param>
+        public static void SetOperationCancellation(CancellationToken cancellation)
+        {
+            s_operationCancellation.Value = cancellation;
         }
 
         /// <summary>
@@ -635,11 +650,11 @@ namespace RemuxForge.Core.Infrastructure
         }
 
         /// <summary>
-        /// True se lo stop cooperativo è richiesto
+        /// True se lo stop cooperativo è richiesto, dall'operazione del flusso corrente o dal callback globale
         /// </summary>
         private static bool IsStopRequested()
         {
-            return s_stopRequestedCallback != null && s_stopRequestedCallback();
+            return s_operationCancellation.Value.IsCancellationRequested || (s_stopRequestedCallback != null && s_stopRequestedCallback());
         }
 
         /// <summary>

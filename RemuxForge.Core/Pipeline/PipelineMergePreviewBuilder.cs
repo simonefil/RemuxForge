@@ -226,7 +226,7 @@ namespace RemuxForge.Core.Pipeline
                 AudioTrackProcessingPlan trackPlan = plannedTracks[i];
                 if (!string.IsNullOrEmpty(trackPlan.ErrorMessage))
                 {
-                    record.ErrorMessage = trackPlan.ErrorMessage;
+                    record.Fail(LogSection.Merge, trackPlan.ErrorMessage);
                     return false;
                 }
             }

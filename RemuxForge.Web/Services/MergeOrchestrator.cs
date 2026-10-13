@@ -97,8 +97,6 @@ namespace RemuxForge.Web.Services
             {
                 this.UpdateProgressFromPipelineStep(section, percent, status);
             });
-
-            ProcessRunner.SetStopRequestedCallback(this.IsStopRequested);
         }
 
         #endregion
