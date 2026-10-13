@@ -640,7 +640,7 @@ namespace RemuxForge.Web.Services
                     try
                     {
                         this.UpdateProgress(record.SourceFileName, 1, 0, 10, AppText.T("web.progress.merge"), false, false);
-                        this._pipeline.MergeFile(record);
+                        this._pipeline.MergeFile(record, this.OperationCancellationToken);
                         this.NotifyRecordsChanged();
                         this.UpdateProgress(record.SourceFileName, 1, 1, 100, AppText.T("web.progress.completed"), false, false);
                         this.CompleteProgress(AppText.T("web.progress.mergeCompleted"));
@@ -692,7 +692,7 @@ namespace RemuxForge.Web.Services
                             }
 
                             this.UpdateProgress(selected[i].SourceFileName, i + 1, i, 10, AppText.T("web.progress.merge"), false, false);
-                            this._pipeline.MergeFile(selected[i]);
+                            this._pipeline.MergeFile(selected[i], this.OperationCancellationToken);
                             this.NotifyRecordsChanged();
                             this.UpdateProgress(selected[i].SourceFileName, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
@@ -757,7 +757,7 @@ namespace RemuxForge.Web.Services
                             }
 
                             this.UpdateProgress(analyzed[i].SourceFileName, i + 1, i, 10, AppText.T("web.progress.merge"), false, false);
-                            this._pipeline.MergeFile(analyzed[i]);
+                            this._pipeline.MergeFile(analyzed[i], this.OperationCancellationToken);
                             this.NotifyRecordsChanged();
                             this.UpdateProgress(analyzed[i].SourceFileName, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
@@ -1534,6 +1534,7 @@ namespace RemuxForge.Web.Services
             result.ManualSubDelayMs = record.ManualSubDelayMs;
             result.AnalysisLog = new List<string>(record.AnalysisLog);
             result.ErrorMessage = record.ErrorMessage;
+            result.ErrorFromPreview = record.ErrorFromPreview;
             result.SourceFilePath = record.SourceFilePath;
             result.LangFilePath = record.LangFilePath;
             result.SyncOffsetMs = record.SyncOffsetMs;

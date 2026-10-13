@@ -729,7 +729,8 @@ namespace RemuxForge.Core.Pipeline
         /// Esegue il processing di un singolo file (remux e/o encoding)
         /// </summary>
         /// <param name="record">Record del file da elaborare</param>
-        public void ProcessFile(FileProcessingRecord record)
+        /// <param name="cancellationToken">Annullamento dell'operazione: un'elaborazione interrotta torna rielaborabile</param>
+        public void ProcessFile(FileProcessingRecord record, System.Threading.CancellationToken cancellationToken = default)
         {
             if (this._isolatedPreparation) throw new InvalidOperationException(AppText.T("remuxConfiguration.preparationOutputForbidden"));
             if (!this.RefreshTrackSelectionEligibility(record))
@@ -836,6 +837,9 @@ namespace RemuxForge.Core.Pipeline
                 // Notifica e cleanup garantito anche in caso di errore
                 if (started)
                 {
+                    // Il fallimento di un processo ucciso dallo stop non è un errore della coppia
+                    if (cancellationToken.IsCancellationRequested)
+                        record.RestoreAfterCancelledProcessing();
                     if (this.OnFileUpdated != null)
                     {
                         this.OnFileUpdated(record);
@@ -849,9 +853,10 @@ namespace RemuxForge.Core.Pipeline
         /// Wrapper retrocompatibile per ProcessFile
         /// </summary>
         /// <param name="record">Record del file da elaborare</param>
-        public void MergeFile(FileProcessingRecord record)
+        /// <param name="cancellationToken">Annullamento dell'operazione</param>
+        public void MergeFile(FileProcessingRecord record, System.Threading.CancellationToken cancellationToken = default)
         {
-            this.ProcessFile(record);
+            this.ProcessFile(record, cancellationToken);
         }
 
         /// <summary>

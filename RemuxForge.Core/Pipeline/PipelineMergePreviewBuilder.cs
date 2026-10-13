@@ -226,11 +226,11 @@ namespace RemuxForge.Core.Pipeline
                 AudioTrackProcessingPlan trackPlan = plannedTracks[i];
                 if (!string.IsNullOrEmpty(trackPlan.ErrorMessage))
                 {
-                    record.Fail(LogSection.Merge, trackPlan.ErrorMessage);
+                    record.FailPreview(trackPlan.ErrorMessage);
                     return false;
                 }
             }
-            record.ErrorMessage = "";
+            record.ClearPreviewError();
             AudioProcessingDryRunHelper.AddPlaceholders(plan, options, convertedSourceTracks, convertedLangTracks, processedSourceAudioInfo, processedLangAudioInfo, audioDelayBypassedLangIds);
 
             this.EnsureSourceAudioIdsForProcessedTracks(sourceTracks, sourceAudioIds, convertedSourceTracks, filterSourceAudio);

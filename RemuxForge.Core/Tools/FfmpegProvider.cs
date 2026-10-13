@@ -464,7 +464,16 @@ namespace RemuxForge.Core.Tools
                 return false;
             }
 
-            result = ProcessRunner.Run(ffmpegPath, new string[] { "-version" });
+            // Con lo stop già richiesto la sonda verrebbe uccisa e l'ffmpeg gestito dato per non stabile, fino al download: la
+            // versione si legge con un processo isolato, fuori dallo stop, che però lancia dove Run restituisce l'errore
+            try
+            {
+                result = ProcessRunner.IsStopRequested() ? ProcessRunner.RunIsolated(ffmpegPath, new string[] { "-version" }, 0) : ProcessRunner.Run(ffmpegPath, new string[] { "-version" });
+            }
+            catch (Exception)
+            {
+                return false;
+            }
             output = result.Stdout + "\n" + result.Stderr;
 
             return result.ExitCode == 0 && !string.IsNullOrEmpty(output);

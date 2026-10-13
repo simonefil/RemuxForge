@@ -106,6 +106,14 @@ namespace RemuxForge.Core.Infrastructure
         }
 
         /// <summary>
+        /// True se lo stop cooperativo è richiesto, dall'operazione del flusso corrente o dal callback globale
+        /// </summary>
+        public static bool IsStopRequested()
+        {
+            return s_operationCancellation.Value.IsCancellationRequested || (s_stopRequestedCallback != null && s_stopRequestedCallback());
+        }
+
+        /// <summary>
         /// Esegue un processo e cattura stdout e stderr come testo
         /// </summary>
         /// <param name="fileName">Percorso dell'eseguibile</param>
@@ -647,14 +655,6 @@ namespace RemuxForge.Core.Infrastructure
             }
 
             return true;
-        }
-
-        /// <summary>
-        /// True se lo stop cooperativo è richiesto, dall'operazione del flusso corrente o dal callback globale
-        /// </summary>
-        private static bool IsStopRequested()
-        {
-            return s_operationCancellation.Value.IsCancellationRequested || (s_stopRequestedCallback != null && s_stopRequestedCallback());
         }
 
         /// <summary>

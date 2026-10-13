@@ -84,6 +84,7 @@ namespace RemuxForge.Core.Models
             this.DeepAnalysisDiagnosticsPath = "";
             this.FrameSyncResult = null;
             this.AudioProcessingPreview = null;
+            this.ErrorFromPreview = false;
         }
 
         #endregion
@@ -136,6 +137,7 @@ namespace RemuxForge.Core.Models
             this.DeepAnalysisResult = null;
             this.DeepAnalysisDiagnosticsPath = "";
             this.AudioProcessingPreview = null;
+            this.ErrorFromPreview = false;
         }
 
         /// <summary>
@@ -160,6 +162,41 @@ namespace RemuxForge.Core.Models
             ConsoleHelper.Write(section, LogLevel.Error, "  " + message);
             this.ErrorMessage = message;
             this.Status = FileStatus.Error;
+        }
+
+        /// <summary>
+        /// Mette il record in errore per il piano audio dell'anteprima; l'errore è dell'anteprima solo se il record era analizzato,
+        /// o se l'aveva già messo lei: un record con l'analisi fallita resta un errore dell'analisi
+        /// </summary>
+        /// <param name="message">Messaggio localizzato</param>
+        public void FailPreview(string message)
+        {
+            this.ErrorFromPreview = this.ErrorFromPreview || this.Status == FileStatus.Analyzed;
+            this.Fail(LogSection.Merge, message);
+        }
+
+        /// <summary>
+        /// Anteprima riuscita: azzera il messaggio e riporta ad Analyzed il record che aveva messo in errore l'anteprima
+        /// </summary>
+        public void ClearPreviewError()
+        {
+            this.ErrorMessage = "";
+            if (this.ErrorFromPreview && this.Status == FileStatus.Error)
+                this.Status = FileStatus.Analyzed;
+            this.ErrorFromPreview = false;
+        }
+
+        /// <summary>
+        /// Riporta ad Analyzed un'elaborazione interrotta, che si rilancia senza rianalizzare. Resta com'è il record saltato o
+        /// con il remux già riuscito: con la sovrascrittura il sorgente è già stato sostituito e un nuovo remux lo rielaborerebbe
+        /// </summary>
+        public void RestoreAfterCancelledProcessing()
+        {
+            if (this.Success || this.Status == FileStatus.Skipped)
+                return;
+
+            this.Status = FileStatus.Analyzed;
+            this.ErrorMessage = "";
         }
 
         #endregion
@@ -370,6 +407,11 @@ namespace RemuxForge.Core.Models
         /// Messaggio di errore se l'elaborazione è fallita
         /// </summary>
         public string ErrorMessage { get; set; }
+
+        /// <summary>
+        /// Indica che l'errore corrente l'ha messo l'anteprima del comando su un record analizzato
+        /// </summary>
+        public bool ErrorFromPreview { get; set; }
 
         /// <summary>
         /// Percorso completo al file sorgente

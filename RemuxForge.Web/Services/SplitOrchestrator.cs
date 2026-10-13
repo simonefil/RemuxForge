@@ -671,6 +671,8 @@ namespace RemuxForge.Web.Services
             try
             {
                 List<MkvSplitRecord> scanned = this.ScanSource();
+                // Le sonde di mkvmerge uccise dallo stop lasciano i record senza contenitore: è un'interruzione, non una scansione completata
+                this.OperationCancellationToken.ThrowIfCancellationRequested();
                 // Un batch parte solo con lo stesso codec e lo stesso tipo di scansione in tutti i file, come in CLI: altrimenti nessun record
                 string mismatch = "";
                 if (scanned.Count > 1)

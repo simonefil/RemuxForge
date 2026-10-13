@@ -462,8 +462,9 @@ namespace RemuxForge.Web.Components.Pages
                 // La revisione resta aperta solo se un piano è da correggere o ha avvisi, altrimenti si va alla griglia
                 if (this._splitReviewStage == "analyze")
                     this._splitReviewStage = SplitReviewGate.RequiresReview(this.SplitOrchestrator.GetRecords()) ? "ready" : null;
-                NotificationSeverity severity = summary.Failed > 0 ? NotificationSeverity.Warning : NotificationSeverity.Success;
-                this.NotificationService.Notify(severity, AppText.T("web.split.notify.analyzeTitle"), AppText.Count("web.split.notify.analyzeBody", summary.Succeeded, summary.Failed), 6000);
+                NotificationSeverity severity = summary.Failed > 0 || summary.Stopped ? NotificationSeverity.Warning : NotificationSeverity.Success;
+                string title = summary.Stopped ? AppText.T("web.split.analyzeStopped") : AppText.T("web.split.notify.analyzeTitle");
+                this.NotificationService.Notify(severity, title, AppText.Count("web.split.notify.analyzeBody", summary.Succeeded, summary.Failed), 6000);
                 this.NotifySplitWarnings();
                 this.StateHasChanged();
             });
