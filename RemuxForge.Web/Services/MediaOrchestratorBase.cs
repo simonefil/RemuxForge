@@ -263,6 +263,17 @@ namespace RemuxForge.Web.Services
             return this._stopRequested;
         }
 
+        /// <summary>
+        /// True quando un'eccezione del worker è l'effetto dello stop: un annullamento, il token dell'operazione annullato o lo stop
+        /// richiesto. Il token può precedere il flag, e chi trova un processo ucciso in quell'istante vede solo il token
+        /// </summary>
+        /// <param name="exception">Eccezione intercettata dal worker</param>
+        /// <returns>True se l'eccezione va trattata come interruzione</returns>
+        protected bool IsOperationStopped(Exception exception)
+        {
+            return exception is OperationCanceledException || this._stopRequested || this.OperationCancellationToken.IsCancellationRequested;
+        }
+
         /// <summary>Notifica che i record sono cambiati</summary>
         protected void NotifyRecordsChanged()
         {

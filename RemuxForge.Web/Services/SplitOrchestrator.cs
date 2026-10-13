@@ -650,7 +650,7 @@ namespace RemuxForge.Web.Services
             }
             catch (Exception ex)
             {
-                result.Stopped = ex is OperationCanceledException || this.StopRequested;
+                result.Stopped = this.IsOperationStopped(ex);
                 result.Message = result.Stopped ? AppText.T("web.split.stopRequested") : ex.Message;
                 this.AppendLog(result.Stopped ? AppText.T("web.splitJoin.stopped") : AppText.F("web.splitJoin.failed", ex.Message));
             }
@@ -715,7 +715,7 @@ namespace RemuxForge.Web.Services
                     this.AppendLog(AppText.Count("web.split.scanCompleted", scanned.Count));
                 this.NotifyRecordsChanged();
             }
-            catch (Exception) when (this.StopRequested)
+            catch (Exception ex) when (this.IsOperationStopped(ex))
             {
                 // Lo stop che interrompe le sonde degli strumenti è un'interruzione, come in JoinWorker: l'elenco resta quello di prima
                 this.AppendLog(AppText.T("web.split.scanStopped"));
@@ -806,9 +806,9 @@ namespace RemuxForge.Web.Services
                 }
 
                 summary = new OperationSummary(plannedCount, invalidCount, warningFiles, this.StopRequested);
-                this.AppendLog(AppText.Count("web.split.analyzeCompleted", plannedCount, invalidCount));
+                this.AppendLog(summary.Stopped ? AppText.T("web.split.analyzeStopped") : AppText.Count("web.split.analyzeCompleted", plannedCount, invalidCount));
             }
-            catch (Exception) when (this.StopRequested)
+            catch (Exception ex) when (this.IsOperationStopped(ex))
             {
                 // Lo stop che interrompe le sonde degli strumenti è un'interruzione, come in JoinWorker. Fuori dal ciclo l'eccezione
                 // cade prima del primo record: si ferma quello, come fa il controllo in testa al ciclo
@@ -967,7 +967,7 @@ namespace RemuxForge.Web.Services
                     this.AppendLog(AppText.Count("web.split.errorSummary", errorCount, successCount));
                 }
             }
-            catch (Exception) when (cancellation.IsCancellationRequested)
+            catch (Exception ex) when (this.IsOperationStopped(ex))
             {
                 // Lo stop che interrompe le sonde degli strumenti è un'interruzione, come in JoinWorker. Fuori dal ciclo l'eccezione
                 // cade prima del primo record: si ferma quello, come fa il controllo in testa al ciclo

@@ -643,7 +643,8 @@ namespace RemuxForge.Web.Services
                         this._pipeline.MergeFile(record, this.OperationCancellationToken);
                         this.NotifyRecordsChanged();
                         this.UpdateProgress(record.SourceFileName, 1, 1, 100, AppText.T("web.progress.completed"), false, false);
-                        this.CompleteProgress(AppText.T("web.progress.mergeCompleted"));
+                        // Lo stop che ha interrotto la coppia non è un merge completato
+                        this.CompleteProgress(this.IsStopRequested() ? AppText.T("web.progress.mergeStopped") : AppText.T("web.progress.mergeCompleted"));
                     }
                     catch (Exception ex)
                     {
@@ -676,28 +677,25 @@ namespace RemuxForge.Web.Services
             {
                 try
                 {
-                    bool stopped = false;
                     this.BeginProgress(AppText.T("web.progress.mergeSelection"), selected.Count, false);
 
                     try
                     {
-                        for (int i = 0; i < selected.Count; i++)
+                        for (int i = 0; i < selected.Count && !this.IsStopRequested(); i++)
                         {
-                            if (this.IsStopRequested())
-                            {
-                                stopped = true;
-                                this.AppendLog(AppText.T("web.merge.mergeSelectionStopped"));
-                                this.CompleteProgress(AppText.T("web.progress.mergeStopped"));
-                                break;
-                            }
-
                             this.UpdateProgress(selected[i].SourceFileName, i + 1, i, 10, AppText.T("web.progress.merge"), false, false);
                             this._pipeline.MergeFile(selected[i], this.OperationCancellationToken);
                             this.NotifyRecordsChanged();
                             this.UpdateProgress(selected[i].SourceFileName, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
 
-                        if (!stopped)
+                        // Lo stop si controlla anche dopo l'ultima coppia, che il controllo in testa al ciclo non rivede
+                        if (this.IsStopRequested())
+                        {
+                            this.AppendLog(AppText.T("web.merge.mergeSelectionStopped"));
+                            this.CompleteProgress(AppText.T("web.progress.mergeStopped"));
+                        }
+                        else
                         {
                             this.AppendLog(AppText.T("web.merge.mergeSelectionCompleted"));
                             this.CompleteProgress(AppText.T("web.progress.mergeSelectionCompleted"));
@@ -728,7 +726,6 @@ namespace RemuxForge.Web.Services
                 {
                     List<FileProcessingRecord> snapshot;
                     List<FileProcessingRecord> analyzed = new List<FileProcessingRecord>();
-                    bool stopped = false;
                     lock (this.StateLock)
                     {
                         snapshot = new List<FileProcessingRecord>(this._records);
@@ -746,23 +743,21 @@ namespace RemuxForge.Web.Services
 
                     try
                     {
-                        for (int i = 0; i < analyzed.Count; i++)
+                        for (int i = 0; i < analyzed.Count && !this.IsStopRequested(); i++)
                         {
-                            if (this.IsStopRequested())
-                            {
-                                stopped = true;
-                                this.AppendLog(AppText.T("web.merge.mergeBatchStopped"));
-                                this.CompleteProgress(AppText.T("web.progress.mergeStopped"));
-                                break;
-                            }
-
                             this.UpdateProgress(analyzed[i].SourceFileName, i + 1, i, 10, AppText.T("web.progress.merge"), false, false);
                             this._pipeline.MergeFile(analyzed[i], this.OperationCancellationToken);
                             this.NotifyRecordsChanged();
                             this.UpdateProgress(analyzed[i].SourceFileName, i + 1, i + 1, 100, AppText.T("web.progress.completed"), false, false);
                         }
 
-                        if (!stopped)
+                        // Lo stop si controlla anche dopo l'ultima coppia, che il controllo in testa al ciclo non rivede
+                        if (this.IsStopRequested())
+                        {
+                            this.AppendLog(AppText.T("web.merge.mergeBatchStopped"));
+                            this.CompleteProgress(AppText.T("web.progress.mergeStopped"));
+                        }
+                        else
                         {
                             this.AppendLog(AppText.T("web.merge.mergeBatchCompleted"));
                             this.CompleteProgress(AppText.T("web.progress.mergeBatchCompleted"));
