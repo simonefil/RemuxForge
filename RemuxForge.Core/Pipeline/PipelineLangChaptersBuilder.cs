@@ -46,7 +46,7 @@ namespace RemuxForge.Core.Pipeline
             if (read.Error.Length > 0)
             {
                 // Capitoli ordered o illeggibili bloccano il file: copiarli in parte darebbe un output ingannevole (C16)
-                this.Fail(record, AppText.F("remux.langChapters.readFailed", read.Error));
+                record.Fail(LogSection.Merge, AppText.F("remux.langChapters.readFailed", read.Error));
                 return false;
             }
             foreach (string warning in read.Warnings)
@@ -59,7 +59,7 @@ namespace RemuxForge.Core.Pipeline
             }
             if (!EditMapTimelineHelper.TryParseStretchFactor(stretchFactor, out double ratio, out _))
             {
-                this.Fail(record, AppText.F("remux.langChapters.invalidStretch", stretchFactor));
+                record.Fail(LogSection.Merge, AppText.F("remux.langChapters.invalidStretch", stretchFactor));
                 return false;
             }
 
@@ -130,22 +130,6 @@ namespace RemuxForge.Core.Pipeline
                 long output = (long)Math.Round(result * stretchRatio, MidpointRounding.AwayFromZero) + delayNs;
                 return new ChapterMapResult(junction ? ChapterMapKind.Junction : ChapterMapKind.Mapped, output);
             };
-        }
-
-        #endregion
-
-        #region Metodi privati
-
-        /// <summary>
-        /// Mette il record in errore
-        /// </summary>
-        /// <param name="record">Record</param>
-        /// <param name="message">Messaggio localizzato</param>
-        private void Fail(FileProcessingRecord record, string message)
-        {
-            ConsoleHelper.Write(LogSection.Merge, LogLevel.Error, "  " + message);
-            record.ErrorMessage = message;
-            record.Status = FileStatus.Error;
         }
 
         #endregion

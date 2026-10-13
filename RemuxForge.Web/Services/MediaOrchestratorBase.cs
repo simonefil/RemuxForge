@@ -144,12 +144,14 @@ namespace RemuxForge.Web.Services
         /// </summary>
         /// <param name="busy">True se è in corso un'operazione</param>
         /// <param name="operation">Descrizione dell'operazione</param>
-        protected void SetBusy(bool busy, string operation)
+        /// <param name="keepStop">True per un passo di una catena già avviata: uno stop richiesto prima resta valido</param>
+        protected void SetBusy(bool busy, string operation, bool keepStop = false)
         {
             CancellationTokenSource cancellation = null;
             lock (this._stateLock)
             {
-                this._stopRequested = false;
+                if (!keepStop)
+                    this._stopRequested = false;
                 this._isBusy = busy;
                 this._progress.IsActive = busy;
                 this._progress.Operation = operation;

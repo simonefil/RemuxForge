@@ -88,9 +88,9 @@ namespace RemuxForge.Web.Components.Pages
         private List<MkvMetadataRecord> _metadataRecords;
 
         /// <summary>
-        /// True mentre la conferma dell'applicazione Metadata è aperta: un secondo click non ne apre un'altra
+        /// True mentre è aperta la conferma che precede un'operazione Metadata o Split: un secondo click non ne apre un'altra
         /// </summary>
-        private bool _metadataApplyConfirming;
+        private bool _operationConfirming;
 
         /// <summary>
         /// Lista preset metadata disponibili
@@ -3222,7 +3222,7 @@ namespace RemuxForge.Web.Components.Pages
             string message;
 
             // Durante la conferma l'orchestrator non è ancora occupato: senza il controllo qui un doppio click aprirebbe due dialog
-            if (this.MetadataOrchestrator.IsBusy || this._metadataApplyConfirming)
+            if (this.MetadataOrchestrator.IsBusy || this._operationConfirming)
                 return;
 
             if (this.MetadataOrchestrator.NeedsApplyConfirmation(selectedIndex, out fileCount, out trackRemovalCount, out inPlace))
@@ -3234,16 +3234,8 @@ namespace RemuxForge.Web.Components.Pages
                 if (trackRemovalCount > 0)
                     message += Environment.NewLine + AppText.Count("web.metadata.confirmTrackRemoval", trackRemovalCount);
 
-                this._metadataApplyConfirming = true;
-                try
-                {
-                    if (!await this.ConfirmAsync(message, AppText.T("web.metadata.progress.apply")))
-                        return;
-                }
-                finally
-                {
-                    this._metadataApplyConfirming = false;
-                }
+                if (!await this.ConfirmOperationAsync(message, AppText.T("web.metadata.progress.apply")))
+                    return;
             }
 
             if (this.MetadataOrchestrator.IsBusy)
@@ -3275,11 +3267,35 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
+        /// Conferma che precede un'operazione Metadata o Split, segnata come aperta finché il dialog non si chiude. Il chiamante
+        /// controlla prima che l'orchestrator sia libero e che nessuna di queste conferme sia già aperta
+        /// </summary>
+        /// <param name="message">Testo della conferma, anche su più righe</param>
+        /// <param name="title">Titolo del dialog</param>
+        /// <returns>True se l'utente conferma</returns>
+        private async Task<bool> ConfirmOperationAsync(string message, string title)
+        {
+            this._operationConfirming = true;
+            try
+            {
+                return await this.ConfirmAsync(message, title);
+            }
+            finally
+            {
+                this._operationConfirming = false;
+            }
+        }
+
+        /// <summary>
         /// Chiede conferma prima di uno scan che azzera i segmenti costruiti nell'editor
         /// </summary>
         private async Task ConfirmSplitScanAsync()
         {
-            bool confirmed = await this.ConfirmAsync(AppText.Count("web.split.scanClearsOverrides", this.SplitOrchestrator.CountOverrides()), AppText.T("web.status.scan"));
+            // Durante la conferma l'orchestrator non è ancora occupato: senza il controllo qui un doppio click aprirebbe due dialog
+            if (this.SplitOrchestrator.IsBusy || this._operationConfirming)
+                return;
+
+            bool confirmed = await this.ConfirmOperationAsync(AppText.Count("web.split.scanClearsOverrides", this.SplitOrchestrator.CountOverrides()), AppText.T("web.status.scan"));
 
             if (!confirmed)
                 return;

@@ -1,4 +1,5 @@
 using RemuxForge.Core.Audio;
+using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using System.Collections.Generic;
 
@@ -147,6 +148,18 @@ namespace RemuxForge.Core.Models
 
             this.Status = FileStatus.Pending;
             this.ErrorMessage = "";
+        }
+
+        /// <summary>
+        /// Mette il record in errore e scrive il messaggio nel log: senza la riga di log la CLI mostra solo il conteggio degli errori
+        /// </summary>
+        /// <param name="section">Sezione del log</param>
+        /// <param name="message">Messaggio localizzato</param>
+        public void Fail(LogSection section, string message)
+        {
+            ConsoleHelper.Write(section, LogLevel.Error, "  " + message);
+            this.ErrorMessage = message;
+            this.Status = FileStatus.Error;
         }
 
         #endregion

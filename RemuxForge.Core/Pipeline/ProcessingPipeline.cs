@@ -967,8 +967,7 @@ namespace RemuxForge.Core.Pipeline
                 if (langTracks == null)
                 {
                     // Errore lettura tracce lingua
-                    record.ErrorMessage = AppText.T("remux.pipeline.langTracksReadFailed");
-                    record.Status = FileStatus.Error;
+                    record.Fail(LogSection.Merge, AppText.T("remux.pipeline.langTracksReadFailed"));
                     done = true;
                 }
                 else if (audioTracks.Count == 0 && subtitleTracks.Count == 0)
@@ -1002,8 +1001,7 @@ namespace RemuxForge.Core.Pipeline
                     AudioProcessingRequest audioRequest = this._audioRequestBuilder.Build(record, media, this._opts, sourceInfo, langInfo, sourceTracks, sourceAudioIds, audioTracks, this._needsMerge, this._filterSourceAudio, effectiveAudioDelay);
                     if (string.IsNullOrEmpty(this._opts.AudioFormat) && (audioRequest.SourceTracksToProcess.Count > 0 || audioRequest.LangTracksToProcess.Count > 0))
                     {
-                        record.ErrorMessage = AppText.T("remux.pipeline.audioFormatMissing");
-                        record.Status = FileStatus.Error;
+                        record.Fail(LogSection.Conv, AppText.T("remux.pipeline.audioFormatMissing"));
                         done = true;
                     }
                     else if (this._opts.DryRun)

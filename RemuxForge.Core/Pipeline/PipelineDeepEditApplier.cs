@@ -51,7 +51,7 @@ namespace RemuxForge.Core.Pipeline
 
             if (string.IsNullOrEmpty(ffmpegPath))
             {
-                this.FailApply(record, AppText.T("deep.temporal.applySubtitles.ffmpegRequired"));
+                record.Fail(LogSection.Deep, AppText.T("deep.temporal.applySubtitles.ffmpegRequired"));
                 return false;
             }
 
@@ -85,28 +85,12 @@ namespace RemuxForge.Core.Pipeline
                 else
                 {
                     // Interrompe l'applicazione per evitare di proseguire con un merge parziale
-                    this.FailApply(record, AppText.F("deep.temporal.applySubtitles.failedTrack", subtitleTracks[s].Id));
+                    record.Fail(LogSection.Deep, AppText.F("deep.temporal.applySubtitles.failedTrack", subtitleTracks[s].Id));
                     return false;
                 }
             }
 
             return true;
-        }
-
-        #endregion
-
-        #region Metodi privati
-
-        /// <summary>
-        /// Imposta il record in errore dopo un fallimento dell'applicazione della EditMap
-        /// </summary>
-        /// <param name="record">Record del file da aggiornare</param>
-        /// <param name="message">Messaggio di errore da registrare e mostrare nei log</param>
-        private void FailApply(FileProcessingRecord record, string message)
-        {
-            ConsoleHelper.Write(LogSection.Deep, LogLevel.Error, "  " + message);
-            record.ErrorMessage = message;
-            record.Status = FileStatus.Error;
         }
 
         #endregion

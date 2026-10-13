@@ -115,9 +115,7 @@ namespace RemuxForge.Core.Audio
             if (string.IsNullOrEmpty(request.Options.AudioFormat))
             {
                 errorMessage = AppText.T("remux.pipeline.audioFormatMissing");
-                ConsoleHelper.Write(LogSection.Conv, LogLevel.Error, "  " + errorMessage);
-                request.Record.ErrorMessage = errorMessage;
-                request.Record.Status = FileStatus.Error;
+                request.Record.Fail(LogSection.Conv, errorMessage);
                 result.Success = false;
                 result.ErrorMessage = errorMessage;
                 return result;
@@ -196,9 +194,7 @@ namespace RemuxForge.Core.Audio
             if (!result.Success)
             {
                 this.DeleteCreatedFiles();
-                ConsoleHelper.Write(LogSection.Conv, LogLevel.Error, "  " + result.ErrorMessage);
-                request.Record.ErrorMessage = result.ErrorMessage;
-                request.Record.Status = FileStatus.Error;
+                request.Record.Fail(LogSection.Conv, result.ErrorMessage);
                 return result;
             }
 
@@ -216,9 +212,7 @@ namespace RemuxForge.Core.Audio
                         result.Success = false;
                         result.ErrorMessage = AppText.F("remux.audio.requiredLangOutputMissing", requiredPlan.Track != null ? requiredPlan.Track.Id.ToString(CultureInfo.InvariantCulture) : "?");
                         this.DeleteCreatedFiles();
-                        ConsoleHelper.Write(LogSection.Conv, LogLevel.Error, "  " + result.ErrorMessage);
-                        request.Record.ErrorMessage = result.ErrorMessage;
-                        request.Record.Status = FileStatus.Error;
+                        request.Record.Fail(LogSection.Conv, result.ErrorMessage);
                         return result;
                     }
                 }
@@ -818,16 +812,11 @@ namespace RemuxForge.Core.Audio
                 filter += ",";
             }
             filter += postFilter;
-
-            // L'encoder FLAC usa come blocco il primo frame che riceve: dopo l'atrim di un offset può restare di pochi campioni,
-            // sotto il minimo di 16, e l'encoder non si apre. Blocchi fissi da 4096 campioni, l'ultimo resta quello che avanza
-            if (options.AudioFormat == "flac" && !forPeakTemp)
-                filter += ",asetnsamples=n=4096:p=0";
             return filter;
         }
 
         /// <summary>
-        /// Costruisce il post-filtro audio comune per formato interno, gain fisso e dither
+        /// Costruisce il post-filtro audio comune per formato interno, gain fisso, dither e blocchi dell'uscita FLAC
         /// </summary>
         /// <param name="track">Traccia audio usata per risolvere layout e sample rate target</param>
         /// <param name="options">Opzioni correnti</param>
@@ -853,6 +842,11 @@ namespace RemuxForge.Core.Audio
                 // Il dither deve essere l'ultima trasformazione PCM, dopo l'eventuale gain di normalizzazione
                 filter += ",aresample=resampler=soxr:precision=28:dither_method=shibata:osf=s16";
             }
+
+            // L'encoder FLAC usa come blocco il primo frame che riceve: dopo l'atrim di un offset o di un taglio può restare di pochi
+            // campioni, sotto il minimo di 16, e l'encoder non si apre. Blocchi fissi da 4096 campioni, l'ultimo resta quello che avanza
+            if (options.AudioFormat == "flac" && !forPeakTemp)
+                filter += ",asetnsamples=n=4096:p=0";
 
             return filter;
         }

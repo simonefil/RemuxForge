@@ -427,9 +427,9 @@ namespace RemuxForge.Web.Services
                     return;
                 }
 
-                // L'applicazione parte solo se l'analisi si è conclusa senza errori globali e senza stop; fra le due l'orchestrator
-                // resta riservato, così nessun'altra operazione parte nel mezzo
-                if (this.AnalyzeAllWorker(false))
+                // L'applicazione parte solo se l'analisi si è conclusa senza errori globali e senza stop, anche richiesto fra le due
+                // fasi; fra le due l'orchestrator resta riservato, così nessun'altra operazione parte nel mezzo
+                if (this.AnalyzeAllWorker(false) && !this.StopRequested)
                     this.ApplyWorker(-1, false);
             }
             finally
@@ -464,7 +464,7 @@ namespace RemuxForge.Web.Services
         /// <summary>
         /// Worker analisi pipeline Metadata
         /// </summary>
-        /// <param name="release">True se l'analisi è l'intera operazione e a fine lavoro rilascia l'orchestrator, false se è il primo passo di una catena</param>
+        /// <param name="release">True se l'analisi è l'intera operazione e a fine lavoro rilascia l'orchestrator, false se è il primo passo di una catena, che tiene uno stop già richiesto</param>
         /// <returns>True se l'analisi si è conclusa senza errori globali e senza stop</returns>
         private bool AnalyzeAllWorker(bool release)
         {
@@ -481,7 +481,7 @@ namespace RemuxForge.Web.Services
             int analyzedCount = 0;
             int errorCount = 0;
 
-            this.SetBusy(true, AppText.T("web.metadata.progress.analysis"));
+            this.SetBusy(true, AppText.T("web.metadata.progress.analysis"), !release);
             try
             {
                 if (!string.IsNullOrEmpty(this._options.Metadata.PresetPath))
@@ -557,7 +557,7 @@ namespace RemuxForge.Web.Services
         /// Worker applicazione record Metadata
         /// </summary>
         /// <param name="selectedIndex">Indice record selezionato, oppure -1 per tutti i record</param>
-        /// <param name="release">True se l'applicazione è l'intera operazione e a fine lavoro rilascia l'orchestrator, false se chiude una catena</param>
+        /// <param name="release">True se l'applicazione è l'intera operazione e a fine lavoro rilascia l'orchestrator, false se chiude una catena, che tiene uno stop già richiesto</param>
         private void ApplyWorker(int selectedIndex, bool release)
         {
             MetadataExecutionService executor;
@@ -571,7 +571,7 @@ namespace RemuxForge.Web.Services
             int errorCount = 0;
             int skippedCount = 0;
 
-            this.SetBusy(true, selectedIndex >= 0 ? AppText.T("web.metadata.progress.applySelected") : AppText.T("web.metadata.progress.apply"));
+            this.SetBusy(true, selectedIndex >= 0 ? AppText.T("web.metadata.progress.applySelected") : AppText.T("web.metadata.progress.apply"), !release);
             try
             {
                 skipped = this.MarkOutputConflicts(selectedIndex);
