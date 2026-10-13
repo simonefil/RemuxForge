@@ -222,24 +222,27 @@ namespace RemuxForge.Core.Audio
                 /*
                  * SOURCE FILL
                  */
-                result.SourceFillConfigured = true;
                 RemuxPairTrackSelection selection = request.Record?.ExplicitTrackSelection;
                 if (selection == null && request.Options.ExplicitTrackSelection != null)
                     throw new InvalidOperationException(AppText.T("remuxConfiguration.selectionMissingPair"));
                 result.SourceFillTrack = PipelineTrackSelectionResolver.ResolveSourceFillTrack(selection,
                     request.SourceInfo?.Tracks, request.Options.AudioSourceFillLanguage, this._mkvToolsService);
-                if (selection != null && result.SourceFillTrack == null)
+                if (result.SourceFillTrack != null)
+                {
+                    result.SourceFillConfigured = true;
+                    result.SourceFillPlan = this.BuildSourceFillPlan(request, result.SourceFillTrack, track, probeMissingDurations);
+                    result.SourceFillHasWork = result.SourceFillPlan != null && result.SourceFillPlan.HasWork;
+                    result.ActualSourceFill = this.HasActualSourceFill(result.SourceFillPlan);
+                }
+                else if (PipelineTrackSelectionResolver.IsSourceFillTrackExcluded(selection, request.SourceInfo?.Tracks, request.Options.AudioSourceFillLanguage, this._mkvToolsService))
                 {
                     result.ErrorMessage = PipelineTrackSelectionResolver.SourceFillSelectionError(selection, request.Options.AudioSourceFillLanguage);
                     return result;
                 }
-                result.SourceFillPlan = this.BuildSourceFillPlan(request, result.SourceFillTrack, track, probeMissingDurations);
-                result.SourceFillHasWork = result.SourceFillPlan != null && result.SourceFillPlan.HasWork;
-                result.ActualSourceFill = this.HasActualSourceFill(result.SourceFillPlan);
-                if (result.SourceFillHasWork && result.SourceFillTrack == null)
+                else
                 {
-                    result.ErrorMessage = AppText.F("remux.audio.sourceFillNoSourceTrack", request.Options.AudioSourceFillLanguage, track.Id);
-                    return result;
+                    // Il Source non ha la lingua: la coppia procede come senza source fill, e i buchi restano silenzio
+                    result.WarningMessage = AppText.F("remux.audio.sourceFillUnavailable", request.Record?.SourceFileName, request.Options.AudioSourceFillLanguage);
                 }
             }
 

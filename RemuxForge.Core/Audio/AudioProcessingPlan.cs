@@ -57,6 +57,23 @@ namespace RemuxForge.Core.Audio
         }
 
         /// <summary>
+        /// Restituisce gli avvisi delle tracce, una volta sola ciascuno: lo stesso avviso della coppia vale per tutte le sue tracce
+        /// </summary>
+        /// <returns>Avvisi distinti in ordine source, poi language</returns>
+        public List<string> GetWarnings()
+        {
+            List<string> result = new List<string>();
+            foreach (AudioTrackProcessingPlan track in this.GetAllTracks())
+            {
+                if (!string.IsNullOrEmpty(track.WarningMessage) && !result.Contains(track.WarningMessage))
+                {
+                    result.Add(track.WarningMessage);
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Copia nel merge gli ID Language per cui il piano impone un output FFmpeg
         /// </summary>
         /// <param name="destination">Insieme ID language da completare</param>
@@ -140,6 +157,7 @@ namespace RemuxForge.Core.Audio
             this.AudioTempoFilter = "";
             this.InitialTimelineOffsetMs = 0;
             this.ErrorMessage = "";
+            this.WarningMessage = "";
         }
 
         #endregion
@@ -245,6 +263,11 @@ namespace RemuxForge.Core.Audio
         /// Errore determinabile già in fase preview
         /// </summary>
         public string ErrorMessage { get; set; }
+
+        /// <summary>
+        /// Avviso determinabile già in fase preview: la traccia resta elaborabile
+        /// </summary>
+        public string WarningMessage { get; set; }
 
         #endregion
     }

@@ -113,6 +113,12 @@ namespace RemuxForge.Core.Pipeline
             return result;
         }
 
+        /// <summary>Source-fill escluso: la selezione non ha la lingua che l'inventario Source invece ha. Un Source senza la lingua
+        /// non è escluso: la coppia procede come senza source fill.</summary>
+        public static bool IsSourceFillTrackExcluded(RemuxPairTrackSelection selection, List<TrackInfo> sourceTracks,
+            string language, MkvToolsService service) =>
+            ResolveSourceFillTrack(selection, sourceTracks, language, service) == null && ResolveSourceFillTrack(null, sourceTracks, language, service) != null;
+
         public static string SourceFillSelectionError(RemuxPairTrackSelection selection, string language) =>
             AppText.F("remuxConfiguration.sourceFillUnavailable", nameof(Options.AudioSourceFillLanguage), selection.SourceFilePath, language);
 

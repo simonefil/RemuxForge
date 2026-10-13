@@ -106,7 +106,6 @@ namespace RemuxForge.Core.Configuration
             else
             {
                 ValidateExplicitSelection(options, validateFolderExists, result);
-                ValidateExplicitSourceFillSelection(options, result);
             }
             ValidateFolders(options, requireSourceFolder, validateFolderExists, needsMerge, result);
 
@@ -296,9 +295,10 @@ namespace RemuxForge.Core.Configuration
         }
 
         /// <summary>Valida Source-fill esplicito; il provider usa lo snapshot nel draft e la cache candidata in init.
-        /// Senza provider controlla gli insiemi vuoti, senza probe o deduzioni da lingua/codec.</summary>
+        /// È un errore solo la lingua presente nel Source ma esclusa dalla selezione: un Source senza la lingua procede senza
+        /// source fill, con l'avviso dell'analisi. Serve l'inventario: un insieme vuoto da solo non distingue i due casi.</summary>
         public static void ValidateExplicitSourceFillSelection(Options options, OptionsValidationResult result,
-            Func<RemuxPairTrackSelection, List<TrackInfo>> sourceInventory = null)
+            Func<RemuxPairTrackSelection, List<TrackInfo>> sourceInventory)
         {
             if (options?.ExplicitTrackSelection?.Pairs == null || options.AudioSourceFillThresholdMs <= 0 ||
                 string.IsNullOrEmpty(options.AudioSourceFillLanguage) ||
@@ -307,8 +307,7 @@ namespace RemuxForge.Core.Configuration
             foreach (RemuxPairTrackSelection pair in options.ExplicitTrackSelection.Pairs)
             {
                 if (pair?.SourceAudioIds == null || pair.LangAudioIds == null || pair.LangSubIds == null || !pair.HasLangTracks) continue;
-                if (pair.SourceAudioIds.Count == 0 || (sourceInventory != null &&
-                    PipelineTrackSelectionResolver.ResolveSourceFillTrack(pair, sourceInventory(pair), options.AudioSourceFillLanguage, service) == null))
+                if (PipelineTrackSelectionResolver.IsSourceFillTrackExcluded(pair, sourceInventory(pair), options.AudioSourceFillLanguage, service))
                     result.AddError(PipelineTrackSelectionResolver.SourceFillSelectionError(pair, options.AudioSourceFillLanguage),
                         nameof(Options.AudioSourceFillLanguage), "Processing");
             }

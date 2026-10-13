@@ -1612,6 +1612,7 @@ namespace RemuxForge.Web.Services
             result.SourceFillTrack = source.SourceFillTrack;
             result.SourceFillPlan = this.CloneAudioSourceFillPlan(source.SourceFillPlan);
             result.ErrorMessage = source.ErrorMessage;
+            result.WarningMessage = source.WarningMessage;
             return result;
         }
 

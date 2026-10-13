@@ -741,8 +741,10 @@ namespace RemuxForge.Web.Services
             int plannedCount = 0;
             int invalidCount = 0;
             int warningFiles = 0;
+            CancellationToken cancellation;
 
             this.SetBusy(true, AppText.T("web.progress.analyzeSplit"));
+            cancellation = this.OperationCancellationToken;
             ConsoleHelper.SetLogCallback((section, _, text) =>
             {
                 string prefix = ConsoleHelper.FormatSectionPrefix(section);
@@ -755,7 +757,7 @@ namespace RemuxForge.Web.Services
                 options = this._options;
                 for (int i = 0; i < targets.Count; i++)
                 {
-                    if (this.StopRequested)
+                    if (cancellation.IsCancellationRequested)
                     {
                         this.SetRecordStatus(targets[i], MkvSplitStatus.Stopped, AppText.T("web.split.stopRequested"));
                         break;
@@ -797,6 +799,12 @@ namespace RemuxForge.Web.Services
                         if (plan.Warnings.Count > 0) { warningFiles++; }
                         this.NotifyRecordsChanged();
                     }
+                    catch (Exception ex) when (this.IsOperationStopped(ex))
+                    {
+                        // Il processo del record ucciso dallo stop è un'interruzione, non un errore del file: si ferma qui, come SplitWorker
+                        this.SetRecordStatus(targets[i], MkvSplitStatus.Stopped, AppText.T("web.split.stopRequested"));
+                        break;
+                    }
                     catch (Exception ex)
                     {
                         invalidCount++;
@@ -805,7 +813,7 @@ namespace RemuxForge.Web.Services
                     }
                 }
 
-                summary = new OperationSummary(plannedCount, invalidCount, warningFiles, this.StopRequested);
+                summary = new OperationSummary(plannedCount, invalidCount, warningFiles, cancellation.IsCancellationRequested);
                 this.AppendLog(summary.Stopped ? AppText.T("web.split.analyzeStopped") : AppText.Count("web.split.analyzeCompleted", plannedCount, invalidCount));
             }
             catch (Exception ex) when (this.IsOperationStopped(ex))

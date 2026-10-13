@@ -294,6 +294,10 @@ namespace RemuxForge.Web.Services
             {
                 this.AddRenderPostProcessingReasons(parts, plan, options);
             }
+            if (!string.IsNullOrEmpty(plan.WarningMessage))
+            {
+                parts.Add(AppText.F("web.detail.audioWarning", plan.WarningMessage));
+            }
 
             return string.Join(", ", parts);
         }

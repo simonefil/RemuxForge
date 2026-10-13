@@ -605,6 +605,14 @@ namespace RemuxForge.Core.Pipeline
             if (buildMergeCommand)
             {
                 this._buildMergeCommand(record);
+                // Gli avvisi del piano audio si scrivono una volta, all'analisi: l'anteprima si ricostruisce a ogni modifica della coppia
+                if (record?.AudioProcessingPreview != null)
+                {
+                    foreach (string warning in record.AudioProcessingPreview.GetWarnings())
+                    {
+                        ConsoleHelper.Write(LogSection.Merge, LogLevel.Warning, "  " + warning);
+                    }
+                }
             }
 
             if (this._fileUpdated != null)
