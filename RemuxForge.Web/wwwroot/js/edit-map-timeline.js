@@ -606,7 +606,13 @@ class EditMapTimeline extends TimelineCanvas {
 
     clampOperationTime(timeMs, operationIndex) {
         let result = timeMs;
+        const operations = this.model.operations || [];
+        const position = operations.findIndex(operation => operation.index === operationIndex);
         const mapped = (this.model.segments || []).filter(segment => segment.kind === 'Mapped');
+        // Il buco dell'INSERT spostato lo apre l'operazione stessa: senza di essa quel Source è mappato,
+        // come lo considera il server, e trattarlo da vuoto farebbe saltare l'INSERT oltre la sua durata
+        if (position >= 0 && operations[position].type === 'INSERT_SILENCE')
+            mapped.push({ sourceStartMs: operations[position].sourceMs, sourceEndMs: operations[position].sourceMs + Math.abs(operations[position].durationMs) });
         let inside = false;
         let nearest = result;
         let nearestDistance = Number.POSITIVE_INFINITY;
@@ -618,10 +624,10 @@ class EditMapTimeline extends TimelineCanvas {
             }
         }
         if (!inside && mapped.length > 0) result = nearest;
-        const operations = this.model.operations || [];
-        const position = operations.findIndex(operation => operation.index === operationIndex);
         const minimum = position > 0 ? operations[position - 1].sourceMs + this.model.frameDurationMs : 0;
-        const maximum = position >= 0 && position + 1 < operations.length ? operations[position + 1].sourceMs - this.model.frameDurationMs : this.model.durationMs;
+        // L'INSERT occupa nel Source anche la sua durata: si ferma prima dell'operazione successiva invece di attraversarla
+        const ownGapMs = position >= 0 && operations[position].type === 'INSERT_SILENCE' ? Math.abs(operations[position].durationMs) : 0;
+        const maximum = position >= 0 && position + 1 < operations.length ? operations[position + 1].sourceMs - ownGapMs - this.model.frameDurationMs : this.model.durationMs;
         result = Math.max(minimum, Math.min(maximum, result));
         return Math.max(0, Math.min(this.model.durationMs, result));
     }
