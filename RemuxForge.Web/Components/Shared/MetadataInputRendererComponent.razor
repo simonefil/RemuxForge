@@ -9,6 +9,12 @@
         {
             <option value="@option.Value">@option.Label</option>
         }
+        @* Una lingua già impostata fuori dall'elenco selezionabile resta visibile, altrimenti la select la mostrerebbe vuota *@
+        @if (EffectiveSchema.InputKind == MetadataFieldInputKind.LanguageSelect && !string.IsNullOrEmpty(_currentValue) &&
+            !EffectiveSchema.Options.Any(option => string.Equals(option.Value, _currentValue, StringComparison.Ordinal)))
+        {
+            <option value="@_currentValue">@_currentValue</option>
+        }
     </select>
 }
 else if (ShouldRenderDatalist())

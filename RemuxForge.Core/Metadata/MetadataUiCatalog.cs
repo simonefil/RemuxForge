@@ -558,12 +558,12 @@ namespace RemuxForge.Core.Metadata
         }
 
         /// <summary>
-        /// Crea opzioni lingua ISO 639-2
+        /// Crea opzioni lingua ISO 639-2 selezionabili dalla Web
         /// </summary>
         /// <returns>Opzioni lingua</returns>
         private static List<MetadataInputOption> CreateLanguageOptions()
         {
-            List<string> languages = LanguageValidator.GetAll();
+            List<string> languages = LanguageValidator.GetSelectable();
             List<MetadataInputOption> result = new List<MetadataInputOption>();
             for (int i = 0; i < languages.Count; i++)
             {

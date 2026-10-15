@@ -12,9 +12,10 @@
 else
 {
     <RadzenDropDown TValue="string" Data="@Catalog" TextProperty="Label" ValueProperty="Code" Value="@Value"
-                    Change="@ChangeSingle" Disabled="@IsBlocked" AllowClear="true" AllowFiltering="true"
+                    Change="@ChangeSingle" Disabled="@IsBlocked" AllowClear="false" AllowFiltering="true"
                     FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" FilterOperator="StringFilterOperator.Contains"
                     Placeholder="@AppText.T("web.remux.searchLanguage")" aria-label="@Label" Style="width:100%">
+        @* Niente AllowClear: con il valore impostato Radzen tratta il tasto Canc nel filtro come "svuota il valore"; si rimuove con la X del chip *@
         <ValueTemplate Context="language">
             <span @onclick:stopPropagation="true">
                 <RadzenChip Text="@((language as LanguageItem)?.Label ?? Presentation(Value))" Close="RemoveSingle" Disabled="@IsBlocked"
@@ -35,8 +36,23 @@ else
     [Parameter] public Func<bool> IsReadOnly { get; set; }
     private bool IsBlocked => Disabled || (IsReadOnly?.Invoke() ?? false);
     private sealed record LanguageItem(string Code, string Label);
-    // Il solo catalogo di codici accettati è quello Core. Le risorse sono esclusivamente presentazione.
-    private List<LanguageItem> Catalog => LanguageValidator.GetAll().Select(code => new LanguageItem(code, Presentation(code))).ToList();
+    // Il catalogo selezionabile è quello ridotto del Core. I codici già impostati fuori elenco restano nei Data,
+    // altrimenti Radzen non li risolve: niente chip, e al primo cambio sparirebbero dal valore. Le risorse sono esclusivamente presentazione.
+    // Il riferimento resta stabile finché non cambiano i codici fuori elenco: a ogni Data nuovo Radzen azzera la selezione
+    // e la ricerca nella vista filtrata, perdendo i valori che il filtro attivo nasconde.
+    private List<LanguageItem> Catalog { get; set; } = new List<LanguageItem>();
+    private string _catalogExtraCodes;
+    protected override void OnParametersSet()
+    {
+        List<string> selectable = LanguageValidator.GetSelectable();
+        List<string> extra = (Multiple ? Values ?? new List<string>() : new List<string> { Value })
+            .Where(code => !string.IsNullOrEmpty(code) && !selectable.Contains(code, StringComparer.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        string extraCodes = string.Join(",", extra);
+        if (extraCodes == _catalogExtraCodes) return;
+        _catalogExtraCodes = extraCodes;
+        Catalog = selectable.Concat(extra).Select(code => new LanguageItem(code, Presentation(code))).ToList();
+    }
     private static string Presentation(string code)
     {
         string key = "web.remux.language." + code;

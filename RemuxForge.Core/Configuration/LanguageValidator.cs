@@ -219,6 +219,17 @@ namespace RemuxForge.Core.Configuration
         };
 
         /// <summary>
+        /// Codici ISO 639-2 canonici selezionabili dalle tendine della Web, in ordine alfabetico
+        /// </summary>
+        private static readonly string[] s_selectableLanguages =
+        {
+            "ara", "bul", "ces", "dan", "deu", "ell", "eng", "enm", "fin", "fra",
+            "heb", "hin", "hrv", "hun", "ind", "ita", "jpn", "kor", "lat", "msa",
+            "mul", "nld", "nor", "pol", "por", "ron", "rus", "spa", "srp", "swe",
+            "tha", "tur", "ukr", "und", "vie", "zho", "zxx"
+        };
+
+        /// <summary>
         /// Lista ordinata dei codici lingua ISO 639-2 canonici
         /// </summary>
         private static readonly List<string> s_sortedLanguages;
@@ -314,6 +325,15 @@ namespace RemuxForge.Core.Configuration
         public static List<string> GetAll()
         {
             return new List<string>(s_sortedLanguages);
+        }
+
+        /// <summary>
+        /// Restituisce i codici lingua ISO 639-2 selezionabili dalle tendine della Web; la validazione resta sull'elenco completo
+        /// </summary>
+        /// <returns>Lista ordinata dei codici selezionabili</returns>
+        public static List<string> GetSelectable()
+        {
+            return new List<string>(s_selectableLanguages);
         }
 
         /// <summary>
