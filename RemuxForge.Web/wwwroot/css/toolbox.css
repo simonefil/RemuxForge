@@ -282,6 +282,11 @@
     width: 8rem;
 }
 
+/* Etichette lunghe come «Europa occidentale, con l'euro (ISO-8859-15)»: la tendina aperta le mostra per intero */
+.rf-addtracks-charset {
+    width: 16rem;
+}
+
 .rf-tool-options .rf-addtracks-hint-icon {
     margin-inline-end: 0.25rem;
     font-size: 1rem;

@@ -27,6 +27,39 @@ namespace RemuxForge.Web.Services.Toolbox
 
         #endregion
 
+        #region Variabili statiche
+
+        /// <summary>
+        /// Codifiche offerte per i sottotitoli di testo che non sono UTF-8, con il nome che mkvmerge accetta e la chiave della
+        /// regione. Provate tutte con mkvmerge v100: ognuna converte in UTF-8 un testo di prova senza avvisi
+        /// </summary>
+        private static readonly KeyValuePair<string, string>[] s_subtitleCharsets = new KeyValuePair<string, string>[]
+        {
+            new KeyValuePair<string, string>("windows-1252", "web.toolbox.addTracks.charsetWestern"),
+            new KeyValuePair<string, string>("ISO-8859-1", "web.toolbox.addTracks.charsetWestern"),
+            new KeyValuePair<string, string>("ISO-8859-15", "web.toolbox.addTracks.charsetWesternEuro"),
+            new KeyValuePair<string, string>("windows-1250", "web.toolbox.addTracks.charsetCentral"),
+            new KeyValuePair<string, string>("ISO-8859-2", "web.toolbox.addTracks.charsetCentral"),
+            new KeyValuePair<string, string>("windows-1251", "web.toolbox.addTracks.charsetCyrillic"),
+            new KeyValuePair<string, string>("KOI8-R", "web.toolbox.addTracks.charsetRussian"),
+            new KeyValuePair<string, string>("windows-1253", "web.toolbox.addTracks.charsetGreek"),
+            new KeyValuePair<string, string>("ISO-8859-7", "web.toolbox.addTracks.charsetGreek"),
+            new KeyValuePair<string, string>("windows-1254", "web.toolbox.addTracks.charsetTurkish"),
+            new KeyValuePair<string, string>("ISO-8859-9", "web.toolbox.addTracks.charsetTurkish"),
+            new KeyValuePair<string, string>("windows-1257", "web.toolbox.addTracks.charsetBaltic"),
+            new KeyValuePair<string, string>("windows-1255", "web.toolbox.addTracks.charsetHebrew"),
+            new KeyValuePair<string, string>("windows-1256", "web.toolbox.addTracks.charsetArabic"),
+            new KeyValuePair<string, string>("windows-874", "web.toolbox.addTracks.charsetThai"),
+            new KeyValuePair<string, string>("windows-1258", "web.toolbox.addTracks.charsetVietnamese"),
+            new KeyValuePair<string, string>("Shift_JIS", "web.toolbox.addTracks.charsetJapanese"),
+            new KeyValuePair<string, string>("EUC-JP", "web.toolbox.addTracks.charsetJapanese"),
+            new KeyValuePair<string, string>("GB18030", "web.toolbox.addTracks.charsetChineseSimplified"),
+            new KeyValuePair<string, string>("Big5", "web.toolbox.addTracks.charsetChineseTraditional"),
+            new KeyValuePair<string, string>("EUC-KR", "web.toolbox.addTracks.charsetKorean")
+        };
+
+        #endregion
+
         #region Variabili di classe
 
         /// <summary>
@@ -60,6 +93,11 @@ namespace RemuxForge.Web.Services.Toolbox
         private int _delayMs;
 
         /// <summary>
+        /// Codifica dei sottotitoli di testo che non sono UTF-8
+        /// </summary>
+        private string _charset;
+
+        /// <summary>
         /// Uscita prevista dei video da elaborare, calcolata al primo disegno dopo un cambio; null fino ad allora
         /// </summary>
         private Dictionary<AddTracksVideo, string> _plan;
@@ -83,6 +121,7 @@ namespace RemuxForge.Web.Services.Toolbox
             this._replacements = new List<AddTracksReplacement>();
             this._language = "";
             this._name = "";
+            this._charset = AddTracksService.DEFAULT_SUBTITLE_CHARSET;
 
             // La sovrascrittura distrugge l'originale: si parte dalla cartella, scelta di proposito
             this.SetOutput(true, "");
@@ -236,6 +275,26 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
+        /// Imposta la codifica dei sottotitoli di testo che non sono UTF-8: con UTF-8 quei file restano bloccati, con un'altra si
+        /// sbloccano; durante il lotto non cambia
+        /// </summary>
+        /// <param name="charset">Codifica come la nomina mkvmerge</param>
+        public void SetCharset(string charset)
+        {
+            lock (this.StateLock)
+            {
+                if (this.IsBusy)
+                    return;
+
+                this._charset = string.IsNullOrEmpty(charset) ? AddTracksService.DEFAULT_SUBTITLE_CHARSET : charset;
+                foreach (AddTracksTrackFile track in this._tracks)
+                    track.ApplyCharset(this._charset);
+            }
+
+            this.NotifyRecordsChanged();
+        }
+
+        /// <summary>
         /// Svuota tutti e due gli elenchi
         /// </summary>
         public override void Clear()
@@ -275,7 +334,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     return;
 
                 List<KeyValuePair<AddTracksVideo, AddTracksTrackFile>> batch = new List<KeyValuePair<AddTracksVideo, AddTracksTrackFile>>();
-                AddedTrackProperties properties = new AddedTrackProperties(this._language, this._name.Trim(), this._isDefault, this._isForced, this._delayMs);
+                AddedTrackProperties properties = new AddedTrackProperties(this._language, this._name.Trim(), this._isDefault, this._isForced, this._delayMs, this._charset);
                 string outputFolder = this.GetBatchOutputFolder();
 
                 for (int i = 0; i < this.Records.Count; i++)
@@ -470,18 +529,21 @@ namespace RemuxForge.Web.Services.Toolbox
                     lock (this.StateLock)
                     {
                         if (read != null)
+                        {
                             track.SetReady(read);
+                            track.ApplyCharset(this._charset);
+                        }
                         else
                             track.SetBlocked(error);
                         this.ProgressState.GlobalPercent = (i + 1) * 100 / targets.Count;
                     }
                     this.NotifyProgressChanged();
-                    if (read != null)
+                    if (track.State == AddTracksTrackState.Ready)
                         ready++;
                     else
                     {
                         blocked++;
-                        this.AppendLog(AppText.F("web.toolbox.addTracks.trackBlocked", Path.GetFileName(track.InputPath), error));
+                        this.AppendLog(AppText.F("web.toolbox.addTracks.trackBlocked", Path.GetFileName(track.InputPath), track.Reason));
                     }
                     this.NotifyRecordsChanged();
                 }
@@ -726,6 +788,39 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
+        /// Codifica dei sottotitoli di testo che non sono UTF-8
+        /// </summary>
+        public string Charset
+        {
+            get
+            {
+                lock (this.StateLock)
+                {
+                    return this._charset;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Codifiche della tendina, nella lingua dell'interfaccia: il nome per mkvmerge e l'etichetta con regione e nome
+        /// </summary>
+        public static List<KeyValuePair<string, string>> CharsetChoices
+        {
+            get
+            {
+                List<KeyValuePair<string, string>> choices = new List<KeyValuePair<string, string>>
+                {
+                    new KeyValuePair<string, string>(AddTracksService.DEFAULT_SUBTITLE_CHARSET, AddTracksService.DEFAULT_SUBTITLE_CHARSET)
+                };
+
+                foreach (KeyValuePair<string, string> charset in s_subtitleCharsets)
+                    choices.Add(new KeyValuePair<string, string>(charset.Key, AppText.T(charset.Value) + " (" + charset.Key + ")"));
+
+                return choices;
+            }
+        }
+
+        /// <summary>
         /// Perché le coppie non si possono elaborare: conteggi diversi, file di tracce in lettura, bloccati o non letti; vuoto se
         /// gli elenchi sono pronti. La cartella di uscita ha il suo messaggio sotto l'uscita
         /// </summary>
@@ -736,6 +831,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 lock (this.StateLock)
                 {
                     int blocked = this._tracks.FindAll(t => t.State == AddTracksTrackState.Blocked).Count;
+                    int wrongCharset = this._tracks.FindAll(t => t.State == AddTracksTrackState.Blocked && t.Track != null && t.Track.NeedsCharset).Count;
                     int unread = this._tracks.FindAll(t => t.State == AddTracksTrackState.Reading || t.State == AddTracksTrackState.NotRead).Count;
 
                     if (this.Records.Count == 0 && this._tracks.Count == 0)
@@ -744,8 +840,10 @@ namespace RemuxForge.Web.Services.Toolbox
                         return AppText.T(this.Records.Count > this._tracks.Count ? "web.toolbox.addTracks.pairingMoreVideos" : "web.toolbox.addTracks.pairingMoreTracks");
                     if (unread > 0)
                         return AppText.Count("web.toolbox.addTracks.pairingUnread", unread);
-                    if (blocked > 0)
-                        return AppText.Count("web.toolbox.addTracks.pairingBlocked", blocked);
+                    if (blocked > wrongCharset)
+                        return AppText.Count("web.toolbox.addTracks.pairingBlocked", blocked - wrongCharset);
+                    if (wrongCharset > 0)
+                        return AppText.Count("web.toolbox.addTracks.pairingCharset", wrongCharset);
                     blocked = this.Records.FindAll(v => v.BlockedReason.Length > 0).Count;
                     if (blocked > 0)
                         return AppText.Count("web.toolbox.addTracks.pairingAlreadyAdded", blocked);
@@ -830,6 +928,21 @@ namespace RemuxForge.Web.Services.Toolbox
         {
             this.Track = track;
             this.State = AddTracksTrackState.Ready;
+        }
+
+        /// <summary>
+        /// Blocca o sblocca un sottotitolo di testo che non è UTF-8 secondo la codifica scelta: con UTF-8 mkvmerge ne scarterebbe
+        /// le battute. Gli altri file non cambiano
+        /// </summary>
+        /// <param name="charset">Codifica scelta nella testata</param>
+        public void ApplyCharset(string charset)
+        {
+            if (this.Track == null || !this.Track.NeedsCharset)
+                return;
+
+            bool blocked = charset == AddTracksService.DEFAULT_SUBTITLE_CHARSET;
+            this.Reason = blocked ? AppText.F("toolbox.addTracks.notUtf8", Path.GetFileName(this.InputPath)) : "";
+            this.State = blocked ? AddTracksTrackState.Blocked : AddTracksTrackState.Ready;
         }
 
         /// <summary>
