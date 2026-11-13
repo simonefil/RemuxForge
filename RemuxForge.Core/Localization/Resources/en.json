@@ -1451,6 +1451,7 @@
   "toolbox.addTracks.tracksChanged": "The output file does not have the expected tracks: no file written",
   "web.toolbox.home.cards": "Tools",
   "web.toolbox.home.back": "Home",
+  "web.toolbox.home.breadcrumb": "Breadcrumb",
   "web.toolbox.home.lastUsed": "Last used",
   "web.toolbox.home.running": "Running",
   "web.toolbox.cards.remux.title": "Remux",

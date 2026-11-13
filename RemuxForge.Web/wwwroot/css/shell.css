@@ -44,26 +44,60 @@
     box-shadow: var(--rz-header-shadow);
 }
 
+/* Percorso nell'header: il logo resta dove sta nella home e porta alla home, segue la card corrente */
 .rf-app-title {
     display: flex;
     min-width: 0;
-    align-items: baseline;
-    gap: calc(var(--rz-gap) * 0.75);
+    align-items: center;
+    gap: calc(var(--rz-gap) * 1.25);
 }
 
-/* Il pulsante Home sta sulla stessa linea di base di titolo e descrizione */
-.rf-app-title .rf-home-button {
+/* Stessa altezza e centratura del marchio della home: il logo non si sposta cambiando pagina */
+.rf-app-breadcrumb {
+    display: flex;
     flex-shrink: 0;
+    align-items: center;
+    min-height: 3rem;
+}
+
+.rf-app-breadcrumb .rz-breadcrumb-item + .rz-breadcrumb-item::before {
+    opacity: 0.55;
+}
+
+.rf-home-link {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.75);
+    border-radius: var(--rz-border-radius);
+    color: inherit;
+    text-decoration: none;
+}
+
+.rf-home-link .rf-brand-name {
+    opacity: 0.75;
+}
+
+.rf-home-link:hover .rf-brand-name,
+.rf-home-link:focus-visible .rf-brand-name {
+    opacity: 1;
+    text-decoration: underline;
+}
+
+.rf-home-link:focus-visible {
+    outline: var(--rz-outline-focus);
+    outline-offset: 2px;
 }
 
 .rf-app-title-mode {
-    font-size: var(--rz-text-h6-font-size);
+    font-size: var(--rz-text-subtitle1-font-size);
     font-weight: 700;
 }
 
 .rf-app-title-description {
     overflow: hidden;
     color: inherit;
+    font-size: var(--rz-text-body2-font-size);
+    opacity: 0.65;
     text-overflow: ellipsis;
     white-space: nowrap;
 }

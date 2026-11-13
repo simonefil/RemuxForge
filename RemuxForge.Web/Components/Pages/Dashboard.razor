@@ -38,13 +38,17 @@ ToolboxCard currentCard = ToolboxCatalog.Find(_currentCardId);
         else
         {
             <div class="rf-app-title">
-                <RadzenButton Icon="home"
-                              Text="@AppText.T("web.toolbox.home.back")"
-                              Variant="Variant.Text"
-                              ButtonStyle="ButtonStyle.Base"
-                              class="rf-home-button"
-                              Click="@GoHome" />
-                <span class="rf-app-title-mode">@AppText.T(currentCard.TitleKey)</span>
+                <RadzenBreadCrumb class="rf-app-breadcrumb" AriaLabel="@AppText.T("web.toolbox.home.breadcrumb")">
+                    <RadzenBreadCrumbItem>
+                        <a href="" class="rz-link rf-home-link" title="@AppText.T("web.toolbox.home.back")" @onclick="GoHome" @onclick:preventDefault>
+                            <img class="rf-brand-logo" src="apple-touch-icon.png" alt="" aria-hidden="true" />
+                            <span class="rf-brand-name">RemuxForge</span>
+                        </a>
+                    </RadzenBreadCrumbItem>
+                    <RadzenBreadCrumbItem>
+                        <span class="rf-app-title-mode" aria-current="page">@AppText.T(currentCard.TitleKey)</span>
+                    </RadzenBreadCrumbItem>
+                </RadzenBreadCrumb>
                 <span class="rf-app-title-description" title="@AppText.T(currentCard.DescriptionKey)">@AppText.T(currentCard.DescriptionKey)</span>
             </div>
         }

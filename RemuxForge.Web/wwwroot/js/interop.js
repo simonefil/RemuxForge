@@ -68,8 +68,8 @@ export function captureKeyboard(dotNetRef) {
         if (isCtrlShortcut && isTextSelectionAllowed(e.target)) {
             return;
         }
-        // Invio e Spazio sul pulsante Home lo premono come un pulsante qualsiasi, senza passare dai comandi della card
-        if ((key === 'Enter' || key === ' ') && activeElement?.closest('.rf-home-button')) {
+        // Invio sul link Home lo segue come un link qualsiasi, senza passare dai comandi della card
+        if (key === 'Enter' && activeElement?.closest('.rf-home-link')) {
             return;
         }
         // Nelle pagine dei tool Invio, Spazio e frecce restano dei controlli a fuoco: i comandi dei tool usano solo tasti funzione e Ctrl

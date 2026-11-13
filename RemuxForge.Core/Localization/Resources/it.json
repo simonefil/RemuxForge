@@ -1451,6 +1451,7 @@
   "toolbox.addTracks.tracksChanged": "Il file prodotto non ha le tracce attese: nessun file scritto",
   "web.toolbox.home.cards": "Strumenti",
   "web.toolbox.home.back": "Home",
+  "web.toolbox.home.breadcrumb": "Percorso",
   "web.toolbox.home.lastUsed": "Ultima usata",
   "web.toolbox.home.running": "In corso",
   "web.toolbox.cards.remux.title": "Remux",
