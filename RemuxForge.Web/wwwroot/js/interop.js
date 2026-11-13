@@ -45,7 +45,7 @@ export function captureKeyboard(dotNetRef) {
             return;
         }
 
-        var isFKey = key.startsWith('F') && key.length <= 3 && !isNaN(key.substring(1));
+        var isFKey = /^F\d{1,2}$/.test(key);
         var isMetadataClearShortcut = ctrl && key.toLowerCase() === 'l';
 
         // Se un campo editabile ha focus, lascia passare solo i comandi UI espliciti
