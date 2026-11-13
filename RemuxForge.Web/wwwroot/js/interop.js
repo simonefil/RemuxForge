@@ -72,6 +72,10 @@ export function captureKeyboard(dotNetRef) {
         if ((key === 'Enter' || key === ' ') && activeElement?.closest('.rf-home-button')) {
             return;
         }
+        // Nelle pagine dei tool Invio, Spazio e frecce restano dei controlli a fuoco: i comandi dei tool usano solo tasti funzione e Ctrl
+        if ((isNavigation || key === 'Enter' || key === ' ') && activeElement?.closest('.rf-tool-page')) {
+            return;
+        }
         // Nella home frecce e tasti di pagina scorrono la griglia come in una pagina qualsiasi: nessun comando li usa
         if (isNavigation && document.querySelector('.rf-toolbox-home')) {
             return;

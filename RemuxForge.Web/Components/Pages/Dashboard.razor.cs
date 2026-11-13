@@ -7,6 +7,7 @@ using RemuxForge.Web.Components.Metadata;
 using RemuxForge.Web.Components.Shared;
 using RemuxForge.Web.Components.Remux;
 using RemuxForge.Web.Components.Split;
+using RemuxForge.Web.Components.Toolbox;
 using RemuxForge.Web.Services;
 using RemuxForge.Web.Services.Toolbox;
 using Microsoft.AspNetCore.Components;
@@ -142,6 +143,11 @@ namespace RemuxForge.Web.Components.Pages
         /// Card appena chiusa con «Home», che riprende il fuoco quando la home è disegnata
         /// </summary>
         private string _homeFocusCardId;
+
+        /// <summary>
+        /// Contenitore della pagina della card tool aperta; la sua istanza fornisce i comandi del tool
+        /// </summary>
+        private DynamicComponent _toolPageHost;
 
         /// <summary>
         /// Flag: mostra dialog configurazione
@@ -728,7 +734,24 @@ namespace RemuxForge.Web.Components.Pages
             if (this._currentCardId == null)
                 return;
 
-            if (this._currentCardId == Options.MODE_SPLIT)
+            // Una card tool non ha rami propri: il tasto esegue il suo comando con la stessa scorciatoia, Stop compreso
+            if (this.ToolboxCatalog.Find(this._currentCardId).PageType != null)
+            {
+                string shortcut = ctrl ? "Ctrl+" + key.ToUpperInvariant() : key;
+                UiCommandDefinition command = null;
+                foreach (UiCommandDefinition candidate in this.BuildUiCommands())
+                {
+                    if (!candidate.Disabled && string.Equals(candidate.Shortcut, shortcut, StringComparison.OrdinalIgnoreCase))
+                    {
+                        command = candidate;
+                        break;
+                    }
+                }
+
+                if (command != null)
+                    await command.ExecuteAsync();
+            }
+            else if (this._currentCardId == Options.MODE_SPLIT)
             {
                 if (key == "F2")
                     this.ShowConfig();
@@ -1742,6 +1765,7 @@ namespace RemuxForge.Web.Components.Pages
         {
             this._homeFocusCardId = this._currentCardId;
             this._currentCardId = null;
+            this._toolPageHost = null;
         }
 
         /// <summary>
@@ -2097,6 +2121,10 @@ namespace RemuxForge.Web.Components.Pages
             else if (this._currentCardId == Options.MODE_REMUX)
             {
                 this.AddRemuxUiCommands(result, busy);
+            }
+            else if (this._toolPageHost?.Instance is ToolboxPageBase toolPage)
+            {
+                result.AddRange(toolPage.BuildUiCommands(busy));
             }
 
             result.Add(new UiCommandDefinition(

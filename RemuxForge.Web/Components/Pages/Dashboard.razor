@@ -75,7 +75,13 @@ ToolboxCard currentCard = ToolboxCatalog.Find(_currentCardId);
             <RadzenSplitterPane Size="78%" Min="210px">
                 <div class="rf-workspace-host">
                 @* Area Pannelli *@
-                @if (_currentCardId == RemuxForge.Core.Models.Options.MODE_METADATA)
+                @if (currentCard.PageType != null)
+                {
+                    <DynamicComponent @ref="_toolPageHost"
+                                      Type="@currentCard.PageType"
+                                      Parameters="@(new Dictionary<string, object> { { nameof(ToolboxPageBase.JsModule), _jsModule }, { nameof(ToolboxPageBase.OnStateChanged), EventCallback.Factory.Create(this, () => { }) } })" />
+                }
+                else if (_currentCardId == RemuxForge.Core.Models.Options.MODE_METADATA)
                 {
                     <MetadataWorkspaceComponent Options="@MetadataOrchestrator.CurrentOptions"
                                     PresetFiles="@_metadataPresetFiles"

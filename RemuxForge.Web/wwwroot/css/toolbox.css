@@ -110,3 +110,55 @@
     margin: 0;
     color: var(--rz-text-secondary-color);
 }
+
+/* Pagine dei tool: opzioni di uscita in alto, elenco dei file sotto */
+
+.rf-tool-page {
+    width: calc(100% - var(--rz-gap) * 1.5);
+    height: calc(100% - var(--rz-gap) * 0.75);
+    margin: calc(var(--rz-gap) * 0.75) calc(var(--rz-gap) * 0.75) 0;
+}
+
+.rf-tool-options {
+    display: flex;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.75) calc(var(--rz-gap) * 2);
+    padding: calc(var(--rz-gap) * 0.75) var(--rz-gap);
+    border-bottom: var(--rz-border-base-600);
+}
+
+.rf-tool-field {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.5);
+    min-width: 0;
+}
+
+.rf-tool-path-field {
+    flex: 1 1 28rem;
+}
+
+.rf-tool-label {
+    flex-shrink: 0;
+    color: var(--rz-text-secondary-color);
+    white-space: nowrap;
+}
+
+.rf-tool-path-input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.rf-tool-empty {
+    flex: 1 1 auto;
+    padding: calc(var(--rz-gap) * 2);
+    text-align: center;
+}
+
+.rf-tool-page .rf-tool-grid {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+}

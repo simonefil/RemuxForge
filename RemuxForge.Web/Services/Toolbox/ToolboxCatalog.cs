@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using RemuxForge.Core.Models;
+using RemuxForge.Web.Components.Toolbox.VideoToMkv;
 using System;
 using System.Collections.Generic;
 
@@ -30,9 +31,10 @@ namespace RemuxForge.Web.Services.Toolbox
             this._services = services;
             this.Cards = new List<ToolboxCard>
             {
-                new ToolboxCard(Options.MODE_REMUX, "web.toolbox.cards.remux.title", "web.toolbox.cards.remux.description", "movie", typeof(MergeOrchestrator)),
-                new ToolboxCard(Options.MODE_SPLIT, "web.toolbox.cards.split.title", "web.toolbox.cards.split.description", "content_cut", typeof(SplitOrchestrator)),
-                new ToolboxCard(Options.MODE_METADATA, "web.toolbox.cards.metadata.title", "web.toolbox.cards.metadata.description", "tune", typeof(MetadataOrchestrator))
+                new ToolboxCard(Options.MODE_REMUX, "web.toolbox.cards.remux.title", "web.toolbox.cards.remux.description", "movie", typeof(MergeOrchestrator), null),
+                new ToolboxCard(Options.MODE_SPLIT, "web.toolbox.cards.split.title", "web.toolbox.cards.split.description", "content_cut", typeof(SplitOrchestrator), null),
+                new ToolboxCard(Options.MODE_METADATA, "web.toolbox.cards.metadata.title", "web.toolbox.cards.metadata.description", "tune", typeof(MetadataOrchestrator), null),
+                new ToolboxCard("video-to-mkv", "web.toolbox.cards.videoToMkv.title", "web.toolbox.cards.videoToMkv.description", "video_file", typeof(VideoToMkvOrchestrator), typeof(VideoToMkvPage))
             };
         }
 
