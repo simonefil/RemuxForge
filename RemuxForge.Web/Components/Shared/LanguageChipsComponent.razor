@@ -14,7 +14,7 @@ else
     <RadzenDropDown TValue="string" Data="@Catalog" TextProperty="Label" ValueProperty="Code" Value="@Value"
                     Change="@ChangeSingle" Disabled="@IsBlocked" AllowClear="false" AllowFiltering="true"
                     FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" FilterOperator="StringFilterOperator.Contains"
-                    Placeholder="@AppText.T("web.remux.searchLanguage")" aria-label="@Label" Style="width:100%">
+                    Placeholder="@(Placeholder ?? AppText.T("web.remux.searchLanguage"))" aria-label="@Label" Style="width:100%">
         @* Niente AllowClear: con il valore impostato Radzen tratta il tasto Canc nel filtro come "svuota il valore"; si rimuove con la X del chip *@
         <ValueTemplate Context="language">
             <span @onclick:stopPropagation="true">
@@ -32,6 +32,7 @@ else
     [Parameter] public string Value { get; set; } = "";
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string Placeholder { get; set; }
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public Func<bool> IsReadOnly { get; set; }
     private bool IsBlocked => Disabled || (IsReadOnly?.Invoke() ?? false);

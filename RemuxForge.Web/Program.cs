@@ -169,6 +169,7 @@ namespace RemuxForge.Web
             builder.Services.AddSingleton<MetadataOrchestrator>();
             builder.Services.AddSingleton<VideoToMkvOrchestrator>();
             builder.Services.AddSingleton<TrackExtractionOrchestrator>();
+            builder.Services.AddSingleton<AddTracksOrchestrator>();
             builder.Services.AddSingleton<ToolboxCatalog>();
             builder.Services.AddSingleton<UpdateCheckService>();
             builder.Services.AddSingleton(new AiCredentialService(AppSettingsService.Instance.ConfigFolder));

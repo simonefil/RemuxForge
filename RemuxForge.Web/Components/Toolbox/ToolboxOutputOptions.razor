@@ -12,7 +12,7 @@
                                    Disabled="@busy" Value="@Orchestrator.UseOutputFolder"
                                    Change="@((bool value) => Orchestrator.SetOutput(value, Orchestrator.OutputFolder))">
                 <Items>
-                    <RadzenRadioButtonListItem TValue="bool" Text="@AppText.T("web.toolbox.output.nextToSource")" Value="false" />
+                    <RadzenRadioButtonListItem TValue="bool" Text="@(SourceOptionText ?? AppText.T("web.toolbox.output.nextToSource"))" Value="false" />
                     <RadzenRadioButtonListItem TValue="bool" Text="@AppText.T("web.toolbox.output.inFolder")" Value="true" />
                 </Items>
             </RadzenRadioButtonList>
@@ -53,6 +53,11 @@
     /// Prefisso degli id e dei nomi dei campi, unico nella pagina
     /// </summary>
     [Parameter] public string Id { get; set; }
+
+    /// <summary>
+    /// Testo dell'opzione che scrive senza cartella, quando la card non scrive accanto all'originale; null per il testo comune
+    /// </summary>
+    [Parameter] public string SourceOptionText { get; set; }
 
     /// <summary>
     /// Sceglie la cartella di uscita nel browser

@@ -242,3 +242,152 @@
     position: static;
     z-index: auto;
 }
+
+/* Aggiungi tracce: testata della traccia aggiunta, indicatore dell'abbinamento e due elenchi affiancati che scorrono insieme,
+   con righe della stessa altezza perché la riga i di sinistra resti accanto alla riga i di destra */
+
+.rf-tool-options .rf-addtracks-heading {
+    font-weight: 600;
+    color: var(--rz-text-color);
+}
+
+.rf-addtracks-language,
+.rf-addtracks-name {
+    width: 14rem;
+}
+
+/* Chip compatto: la lingua scelta sta nell'altezza degli altri input della testata */
+.rf-addtracks-language .rz-chip {
+    max-width: 100%;
+    min-height: 0;
+    height: auto;
+    padding-block: 0;
+}
+
+.rf-addtracks-language .rz-chip-text {
+    overflow: hidden;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rf-addtracks-language .rz-chip .rz-button {
+    height: auto;
+    min-height: 0;
+    padding-block: 0;
+    line-height: 1;
+}
+
+.rf-addtracks-delay {
+    width: 8rem;
+}
+
+.rf-tool-options .rf-addtracks-hint-icon {
+    margin-inline-end: 0.25rem;
+    font-size: 1rem;
+    vertical-align: text-bottom;
+}
+
+.rf-addtracks-pairing {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.75);
+    padding: calc(var(--rz-gap) * 0.5) var(--rz-gap);
+    border-bottom: var(--rz-border-base-600);
+}
+
+.rf-addtracks-pairing .rf-addtracks-pairing-error {
+    font-weight: 600;
+}
+
+.rf-addtracks-heads,
+.rf-addtracks-lists {
+    display: flex;
+    gap: var(--rz-gap);
+    padding: 0 var(--rz-gap);
+}
+
+.rf-addtracks-lists {
+    flex: 1 1 auto;
+    align-items: flex-start;
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: calc(var(--rz-gap) * 0.5);
+}
+
+.rf-addtracks-videos {
+    flex: 3 1 0;
+    min-width: 0;
+}
+
+.rf-addtracks-tracks {
+    flex: 2 1 0;
+    min-width: 0;
+}
+
+.rf-addtracks-list-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--rz-gap);
+    padding: calc(var(--rz-gap) * 0.5) 0;
+}
+
+.rf-addtracks-list-head h2 {
+    margin: 0;
+}
+
+.rf-addtracks-list .rf-tool-empty {
+    padding: calc(var(--rz-gap) * 1.5) var(--rz-gap);
+    border: var(--rz-border-base-600);
+    border-radius: var(--rz-border-radius);
+}
+
+/* Le griglie non scorrono da sole: scorre l'area che le contiene, e la testata resta in cima a quell'area */
+.rf-tool-page .rf-addtracks-grid.rz-data-grid,
+.rf-tool-page .rf-addtracks-grid .rz-data-grid-data {
+    height: auto;
+    overflow: visible;
+}
+
+.rf-tool-page .rf-addtracks-grid .rz-grid-table > thead > tr > th,
+.rf-tool-page .rf-addtracks-grid .rz-grid-table > tbody > tr > td {
+    height: 2.75rem;
+    vertical-align: middle;
+}
+
+.rf-tool-page .rf-addtracks-grid tr[draggable="true"] {
+    cursor: grab;
+}
+
+.rf-tool-page .rf-addtracks-grid tr[data-unpaired] > td {
+    background: var(--rz-warning-lighter);
+}
+
+.rf-addtracks-file {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    max-width: 100%;
+}
+
+.rf-addtracks-handle {
+    flex-shrink: 0;
+    color: var(--rz-text-tertiary-color);
+    font-size: 1.125rem;
+}
+
+.rf-addtracks-actions {
+    display: inline-flex;
+    gap: 0.125rem;
+}
+
+.rf-tool-page .rf-addtracks-unpaired-text {
+    color: var(--rz-text-color);
+    font-weight: 600;
+}
+
+.rf-tool-page .rf-addtracks-blocked-text {
+    color: var(--rz-danger);
+}

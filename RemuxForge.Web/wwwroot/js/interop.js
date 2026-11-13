@@ -100,6 +100,11 @@ export function focusToolboxCard(cardId) {
     document.querySelector('.rf-toolbox-card[data-card-id="' + CSS.escape(cardId) + '"]')?.focus();
 }
 
+// Ridà il fuoco a un controllo di una pagina dei tool dopo un ridisegno, ad esempio al pulsante che ha appena spostato una riga
+export function focusToolControl(selector) {
+    document.querySelector('.rf-tool-page ' + selector)?.focus();
+}
+
 // Porta una riga episodio in vista senza delegare lo scroll alle frecce del browser
 export function scrollEpisodeRowIntoView(index) {
     var row = document.querySelector('[data-episode-row-index="' + index + '"]');

@@ -1,0 +1,487 @@
+using RemuxForge.Core.Configuration;
+using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
+using RemuxForge.Core.Media;
+using RemuxForge.Core.Media.Mkv;
+using RemuxForge.Core.Models;
+using RemuxForge.Core.Toolbox.Common;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Threading;
+
+namespace RemuxForge.Core.Toolbox.AddTracks
+{
+    /// <summary>
+    /// Aggiunge a un video la traccia di un file esterno con mkvmerge, senza ricodifica: le tracce del video restano com'erano e
+    /// la nuova prende lingua, nome, flag e ritardo indicati, in coda alle tracce dello stesso tipo. Il Matroska si scrive in un
+    /// temporaneo e prende il nome finale, o sostituisce l'originale, solo se le tracce lette sul risultato sono quelle attese
+    /// </summary>
+    public sealed class AddTracksService
+    {
+        #region Variabili statiche
+
+        /// <summary>
+        /// Estensioni ammesse per i file di sottotitoli
+        /// </summary>
+        public static readonly string[] SubtitleExtensions = new string[] { ".srt", ".ass", ".ssa", ".sup", ".idx" };
+
+        /// <summary>
+        /// Estensioni ammesse per i file audio
+        /// </summary>
+        public static readonly string[] AudioExtensions = new string[] { ".ac3", ".eac3", ".dts", ".thd", ".aac", ".flac", ".opus", ".mka" };
+
+        /// <summary>
+        /// Ordine dei tipi di traccia nel file prodotto: la traccia aggiunta va dopo l'ultima del suo tipo o di un tipo che la precede
+        /// </summary>
+        private static readonly string[] s_typeOrder = new string[] { "video", "audio", "subtitles" };
+
+        #endregion
+
+        #region Variabili di classe
+
+        /// <summary>
+        /// Percorso eseguibile mkvmerge
+        /// </summary>
+        private readonly string _mkvMergePath;
+
+        /// <summary>
+        /// Lettore delle tracce, sullo stesso mkvmerge che scrive
+        /// </summary>
+        private readonly MkvToolsService _mkvTools;
+
+        #endregion
+
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        /// <param name="mkvMergePath">Percorso eseguibile mkvmerge</param>
+        public AddTracksService(string mkvMergePath)
+        {
+            this._mkvMergePath = mkvMergePath;
+            this._mkvTools = new MkvToolsService(mkvMergePath);
+        }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Legge un file di tracce esterno: deve avere un'estensione ammessa e contenere una sola traccia audio o di sottotitoli
+        /// </summary>
+        /// <param name="filePath">File da leggere</param>
+        /// <param name="cancellationToken">Annullamento che interrompe mkvmerge</param>
+        /// <returns>Traccia del file</returns>
+        /// <exception cref="InvalidOperationException">Il file non si può aggiungere; il messaggio dice perché</exception>
+        /// <exception cref="OperationCanceledException">La lettura è stata annullata</exception>
+        public ExternalTrack ReadTrackFile(string filePath, CancellationToken cancellationToken)
+        {
+            string fullPath = Path.GetFullPath(filePath);
+            string name = Path.GetFileName(fullPath);
+            string extension = Path.GetExtension(fullPath).ToLowerInvariant();
+            string companion = FileHelper.GetCompanionPath(fullPath);
+            string error = "";
+            MkvFileInfo info;
+            TrackInfo track;
+
+            if (Array.IndexOf(SubtitleExtensions, extension) < 0 && Array.IndexOf(AudioExtensions, extension) < 0)
+                throw new InvalidOperationException(AppText.F("toolbox.addTracks.extensionNotAllowed", extension.Length > 0 ? extension : name, string.Join(" ", SubtitleExtensions) + " " + string.Join(" ", AudioExtensions)));
+            if (!File.Exists(fullPath))
+                throw new InvalidOperationException(AppText.F("toolbox.addTracks.fileMissing", name));
+            if (companion.Length > 0 && !File.Exists(companion))
+                throw new InvalidOperationException(AppText.F("toolbox.addTracks.companionMissing", Path.GetFileName(companion)));
+
+            // mkvmerge termina senza errori anche su un file che non riconosce: nessuna traccia vuol dire file illeggibile
+            info = this._mkvTools.GetFileInfoIsolated(fullPath, 0, cancellationToken, message => error = message);
+            if (info == null || info.Tracks.Count == 0)
+                throw new InvalidOperationException(error.Length > 0 ? error.Replace(fullPath, name) : AppText.F("toolbox.addTracks.trackUnreadable", name));
+            if (info.Tracks.Count > 1)
+                throw new InvalidOperationException(AppText.F("toolbox.addTracks.trackMultiple", info.Tracks.Count));
+
+            track = info.Tracks[0];
+            if (track.Type != "audio" && track.Type != "subtitles")
+                throw new InvalidOperationException(AppText.F("toolbox.addTracks.trackKindNotAllowed", track.Type));
+
+            return new ExternalTrack(fullPath, track.Id, track.Type, track.Codec ?? "");
+        }
+
+        /// <summary>
+        /// Percorso voluto del video con la traccia aggiunta: il nome del video con estensione .mkv, nella cartella indicata oppure
+        /// accanto al video. Il suffisso numerico di un nome occupato lo aggiunge l'allocatore del lotto
+        /// </summary>
+        /// <param name="videoPath">Video di partenza</param>
+        /// <param name="outputFolder">Cartella di uscita, vuota per scrivere accanto al video</param>
+        /// <returns>Percorso voluto</returns>
+        public static string GetDesiredPath(string videoPath, string outputFolder)
+        {
+            string folder = string.IsNullOrEmpty(outputFolder) ? Path.GetDirectoryName(Path.GetFullPath(videoPath)) : outputFolder;
+            return Path.Combine(folder, Path.GetFileNameWithoutExtension(videoPath) + MediaContainerFormats.OUTPUT_EXTENSION);
+        }
+
+        /// <summary>
+        /// Aggiunge la traccia esterna al video. Con la cartella di uscita il Matroska nasce lì; senza, un Matroska si sostituisce
+        /// (con backup e ripristino se la sostituzione fallisce) e un altro contenitore lascia l'originale e produce un .mkv accanto.
+        /// Lo stop interrompe mkvmerge senza lasciare file, e un nome prenotato non usato torna al lotto
+        /// </summary>
+        /// <param name="videoPath">Video a cui aggiungere la traccia</param>
+        /// <param name="track">Traccia esterna letta con ReadTrackFile</param>
+        /// <param name="properties">Proprietà della traccia aggiunta</param>
+        /// <param name="outputFolder">Cartella di uscita, vuota per sovrascrivere</param>
+        /// <param name="allocator">Allocatore dei percorsi del lotto</param>
+        /// <param name="cancellationToken">Annullamento che interrompe la lettura delle tracce</param>
+        /// <param name="onProgress">Avanzamento di mkvmerge in percentuale</param>
+        /// <returns>Esito dell'aggiunta</returns>
+        public AddTracksResult Add(string videoPath, ExternalTrack track, AddedTrackProperties properties, string outputFolder, OutputPathAllocator allocator, CancellationToken cancellationToken, Action<int> onProgress)
+        {
+            AddTracksResult result = new AddTracksResult();
+            List<string> errors = new List<string>();
+            string fullVideo = Path.GetFullPath(videoPath);
+            string videoName = Path.GetFileName(fullVideo);
+            string failure = string.IsNullOrEmpty(outputFolder) ? "" : OutputPathAllocator.ValidateFolder(outputFolder);
+            bool replace = string.IsNullOrEmpty(outputFolder) && MediaContainerFormats.IsMatroska(fullVideo);
+            bool sourceIsMatroska = MediaContainerFormats.IsMatroska(fullVideo);
+            string videoError = "";
+            string finalPath = "";
+            List<TrackInfo> sourceTracks = new List<TrackInfo>();
+            int insertAt;
+
+            if (failure.Length == 0 && !File.Exists(fullVideo))
+                failure = AppText.F("toolbox.addTracks.fileMissing", videoName);
+            if (failure.Length == 0 && !File.Exists(track.Path))
+                failure = AppText.F("toolbox.addTracks.fileMissing", Path.GetFileName(track.Path));
+            if (failure.Length == 0)
+            {
+                sourceTracks = this._mkvTools.GetFileInfoIsolated(fullVideo, 0, cancellationToken, message => videoError = message)?.Tracks ?? new List<TrackInfo>();
+                if (sourceTracks.Count == 0)
+                    failure = videoError.Length > 0 ? videoError.Replace(fullVideo, videoName) : AppText.F("toolbox.addTracks.videoUnreadable", videoName);
+            }
+            if (failure.Length > 0)
+            {
+                result.Status = AddTracksStatus.Failed;
+                result.Message = failure;
+                return result;
+            }
+
+            // In coda al proprio tipo: dopo l'ultima traccia dello stesso tipo o di un tipo che lo precede (video, audio, sottotitoli)
+            insertAt = 0;
+            for (int i = 0; i < sourceTracks.Count; i++)
+            {
+                int rank = Array.IndexOf(s_typeOrder, sourceTracks[i].Type);
+                if (rank >= 0 && rank <= Array.IndexOf(s_typeOrder, track.Type))
+                    insertAt = i + 1;
+            }
+
+            // Un secondo predefinito dello stesso tipo e lingua resta com'è chiesto, ma si dice; senza lingua scelta conta il solo tipo
+            if (properties.IsDefault && sourceTracks.Exists(t => t.Type == track.Type && t.DefaultTrack &&
+                (properties.Language.Length == 0 || LanguageValidator.NormalizeToIso6392(t.Language) == properties.Language)))
+                result.Warnings.Add(properties.Language.Length > 0 ? AppText.F("toolbox.addTracks.defaultDuplicate", properties.Language) : AppText.T("toolbox.addTracks.defaultDuplicateType"));
+
+            try
+            {
+                finalPath = replace ? fullVideo : allocator.Reserve(GetDesiredPath(fullVideo, outputFolder));
+                using (StagedOutputFile output = new StagedOutputFile(finalPath))
+                {
+                    MkvmergeCommand command = new MkvmergeCommand(output.TempPath);
+                    List<string> trackOptions = new List<string>();
+                    string id = track.TrackId.ToString(CultureInfo.InvariantCulture);
+                    int videoInput = command.AddInput(fullVideo);
+                    int reference = 0;
+                    ProcessResult run;
+                    List<TrackInfo> outputTracks;
+
+                    // Le opzioni valgono solo per la traccia del file esterno; lingua e nome vuoti lasciano quelli del file
+                    if (properties.Language.Length > 0)
+                        trackOptions.AddRange(new string[] { "--language", id + ":" + properties.Language });
+                    if (properties.Name.Length > 0)
+                        trackOptions.AddRange(new string[] { "--track-name", id + ":" + properties.Name });
+                    trackOptions.AddRange(new string[] { "--default-track-flag", id + ":" + (properties.IsDefault ? "yes" : "no"), "--forced-display-flag", id + ":" + (properties.IsForced ? "yes" : "no") });
+                    if (properties.DelayMs != 0)
+                        trackOptions.AddRange(new string[] { "--sync", id + ":" + properties.DelayMs.ToString(CultureInfo.InvariantCulture) });
+                    int trackInput = command.AddInput(track.Path, trackOptions.ToArray());
+
+                    for (int i = 0; i <= sourceTracks.Count; i++)
+                    {
+                        if (i == insertAt)
+                            command.Place(reference++, trackInput, track.TrackId);
+                        if (i < sourceTracks.Count)
+                            command.Place(reference++, videoInput, sourceTracks[i].Id);
+                    }
+                    command.AddTrackOrder();
+                    if (MediaContainerNormalizer.NeedsNativeMpeg4(sourceTracks))
+                        command.AddGlobalOptions("--engage", "native_mpeg4");
+
+                    run = MkvToolNixGuiMode.Run(this._mkvMergePath, command.ToArguments(), onProgress, result.Warnings.Add, errors);
+
+                    // Un mkvmerge ucciso dallo stop ha un exit code qualsiasi: lo stop si riconosce prima del codice
+                    if (ProcessRunner.IsStopRequested())
+                    {
+                        result.Status = AddTracksStatus.Stopped;
+                        result.Message = AppText.T("toolbox.addTracks.stopped");
+                        return result;
+                    }
+
+                    if (run.ExitCode != 0 && run.ExitCode != MkvToolNixGuiMode.WARNING_EXIT_CODE)
+                    {
+                        if (errors.Count == 0)
+                            errors.Add(run.Stderr.Trim().Length > 0 ? run.Stderr.Trim() : AppText.F("toolbox.addTracks.exitCode", run.ExitCode));
+
+                        // In riga il motivo senza percorsi: mkvmerge li cita completi, il dettaglio li conserva
+                        result.Status = AddTracksStatus.Failed;
+                        result.Details = string.Join(Environment.NewLine, errors);
+                        result.Message = string.Join(" ", errors).Replace(fullVideo, videoName).Replace(track.Path, Path.GetFileName(track.Path)).Replace(output.TempPath, Path.GetFileName(finalPath));
+                        return result;
+                    }
+
+                    // Il risultato deve avere le tracce del video, nello stesso ordine, più quella aggiunta al suo posto; da un Matroska
+                    // anche lingua, nome e flag delle tracce del video restano gli stessi
+                    outputTracks = this._mkvTools.GetFileInfoIsolated(output.TempPath, 0, cancellationToken, null)?.Tracks ?? new List<TrackInfo>();
+                    bool expected = outputTracks.Count == sourceTracks.Count + 1 && outputTracks[insertAt].Type == track.Type && outputTracks[insertAt].Codec == track.Codec;
+                    for (int i = 0; expected && i < sourceTracks.Count; i++)
+                    {
+                        TrackInfo before = sourceTracks[i];
+                        TrackInfo after = outputTracks[i < insertAt ? i : i + 1];
+                        expected = before.Type == after.Type && (!sourceIsMatroska || (before.Codec == after.Codec &&
+                            LanguageValidator.NormalizeToIso6392(before.Language) == LanguageValidator.NormalizeToIso6392(after.Language) &&
+                            (before.Name ?? "") == (after.Name ?? "") && before.DefaultTrack == after.DefaultTrack && before.ForcedTrack == after.ForcedTrack));
+                    }
+                    if (!expected)
+                    {
+                        result.Status = AddTracksStatus.Failed;
+                        result.Message = AppText.T("toolbox.addTracks.tracksChanged");
+                        return result;
+                    }
+
+                    // Un nome finale che non si riesce a dare, o un originale che non si riesce a sostituire, lasciano l'originale com'era
+                    try
+                    {
+                        if (replace)
+                            output.CommitReplacing(fullVideo);
+                        else
+                            output.Commit();
+                    }
+                    catch (IOException ex)
+                    {
+                        result.Status = AddTracksStatus.Failed;
+                        result.Message = ex.Message;
+                        return result;
+                    }
+
+                    result.Status = result.Warnings.Count > 0 ? AddTracksStatus.AddedWithWarnings : AddTracksStatus.Added;
+                    result.OutputPath = finalPath;
+                    result.Replaced = replace;
+                }
+            }
+            catch (IOException ex)
+            {
+                // Cartella non scrivibile alla creazione del temporaneo
+                result.Status = AddTracksStatus.Failed;
+                result.Message = ex.Message;
+            }
+            finally
+            {
+                if (!replace && finalPath.Length > 0 && result.OutputPath.Length == 0)
+                    allocator.Release(finalPath);
+            }
+
+            return result;
+        }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Traccia di un file esterno da aggiungere
+    /// </summary>
+    public sealed class ExternalTrack
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        /// <param name="path">Percorso completo del file</param>
+        /// <param name="trackId">ID della traccia nel file, quello di mkvmerge</param>
+        /// <param name="type">Tipo della traccia secondo mkvmerge: audio o subtitles</param>
+        /// <param name="codec">Codec della traccia secondo mkvmerge</param>
+        public ExternalTrack(string path, int trackId, string type, string codec)
+        {
+            this.Path = path;
+            this.TrackId = trackId;
+            this.Type = type;
+            this.Codec = codec;
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Percorso completo del file
+        /// </summary>
+        public string Path { get; }
+
+        /// <summary>
+        /// ID della traccia nel file, quello di mkvmerge
+        /// </summary>
+        public int TrackId { get; }
+
+        /// <summary>
+        /// Tipo della traccia secondo mkvmerge: audio o subtitles
+        /// </summary>
+        public string Type { get; }
+
+        /// <summary>
+        /// Codec della traccia secondo mkvmerge
+        /// </summary>
+        public string Codec { get; }
+
+        /// <summary>
+        /// True se la traccia è di sottotitoli
+        /// </summary>
+        public bool IsSubtitles
+        {
+            get { return this.Type == "subtitles"; }
+        }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Proprietà date alla traccia aggiunta, uguali per tutti i video del lotto
+    /// </summary>
+    public sealed class AddedTrackProperties
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        /// <param name="language">Lingua ISO 639-2, vuota per lasciare quella del file</param>
+        /// <param name="name">Nome della traccia, vuoto per lasciare quello del file</param>
+        /// <param name="isDefault">True per segnarla predefinita</param>
+        /// <param name="isForced">True per segnarla forzata</param>
+        /// <param name="delayMs">Ritardo in millisecondi, negativo per anticiparla</param>
+        public AddedTrackProperties(string language, string name, bool isDefault, bool isForced, int delayMs)
+        {
+            this.Language = language ?? "";
+            this.Name = name ?? "";
+            this.IsDefault = isDefault;
+            this.IsForced = isForced;
+            this.DelayMs = delayMs;
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Lingua ISO 639-2, vuota per lasciare quella del file
+        /// </summary>
+        public string Language { get; }
+
+        /// <summary>
+        /// Nome della traccia, vuoto per lasciare quello del file
+        /// </summary>
+        public string Name { get; }
+
+        /// <summary>
+        /// True se la traccia è predefinita
+        /// </summary>
+        public bool IsDefault { get; }
+
+        /// <summary>
+        /// True se la traccia è forzata
+        /// </summary>
+        public bool IsForced { get; }
+
+        /// <summary>
+        /// Ritardo in millisecondi, negativo per anticiparla
+        /// </summary>
+        public int DelayMs { get; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Stato di un video nell'aggiunta di tracce
+    /// </summary>
+    public enum AddTracksStatus
+    {
+        /// <summary>In attesa</summary>
+        Pending,
+
+        /// <summary>Aggiunta in corso</summary>
+        Running,
+
+        /// <summary>Traccia aggiunta</summary>
+        Added,
+
+        /// <summary>Traccia aggiunta, con avvisi</summary>
+        AddedWithWarnings,
+
+        /// <summary>Aggiunta non riuscita</summary>
+        Failed,
+
+        /// <summary>Aggiunta interrotta dallo stop</summary>
+        Stopped
+    }
+
+    /// <summary>
+    /// Esito dell'aggiunta di una traccia a un video
+    /// </summary>
+    public sealed class AddTracksResult
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public AddTracksResult()
+        {
+            this.Status = AddTracksStatus.Pending;
+            this.OutputPath = "";
+            this.Message = "";
+            this.Details = "";
+            this.Warnings = new List<string>();
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Stato finale
+        /// </summary>
+        public AddTracksStatus Status { get; set; }
+
+        /// <summary>
+        /// Matroska scritto, vuoto se l'aggiunta non è riuscita
+        /// </summary>
+        public string OutputPath { get; set; }
+
+        /// <summary>
+        /// True se il Matroska scritto ha sostituito l'originale
+        /// </summary>
+        public bool Replaced { get; set; }
+
+        /// <summary>
+        /// Motivo dell'errore o dell'interruzione, senza percorsi completi
+        /// </summary>
+        public string Message { get; set; }
+
+        /// <summary>
+        /// Errori di mkvmerge così come li ha scritti, vuoto se il motivo non viene da mkvmerge
+        /// </summary>
+        public string Details { get; set; }
+
+        /// <summary>
+        /// Avvisi di mkvmerge e del controllo dei flag, anche con aggiunta riuscita
+        /// </summary>
+        public List<string> Warnings { get; }
+
+        #endregion
+    }
+}

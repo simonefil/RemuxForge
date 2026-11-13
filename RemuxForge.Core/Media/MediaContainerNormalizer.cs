@@ -100,12 +100,22 @@ namespace RemuxForge.Core.Media
         {
             List<string> arguments = new List<string> { "-o", outputPath, inputPath };
 
-            // native_mpeg4 porta MPEG-4 Part 2 fuori da Video for Windows con timestamp di presentazione puliti. Solo con una traccia
-            // MPEG-4 Part 2: mkvmerge applica la modalità nativa anche a MS-MPEG4v2 (MP42), che non ha configurazione e fallisce
-            if (sourceTracks.Exists(t => t.Codec == MkvSplitCodecCapabilities.MPEG4_PART2_CODEC))
+            if (NeedsNativeMpeg4(sourceTracks))
                 arguments.InsertRange(0, new string[] { "--engage", "native_mpeg4" });
 
             return arguments;
+        }
+
+        /// <summary>
+        /// Indica se il remux in Matroska va fatto con --engage native_mpeg4, che porta MPEG-4 Part 2 fuori da Video for Windows con
+        /// timestamp di presentazione puliti. Solo con una traccia MPEG-4 Part 2: mkvmerge applica la modalità nativa anche a
+        /// MS-MPEG4v2 (MP42), che non ha configurazione e fallisce
+        /// </summary>
+        /// <param name="sourceTracks">Tracce lette sul file d'ingresso</param>
+        /// <returns>True se serve la modalità nativa</returns>
+        public static bool NeedsNativeMpeg4(List<TrackInfo> sourceTracks)
+        {
+            return sourceTracks.Exists(t => t.Codec == MkvSplitCodecCapabilities.MPEG4_PART2_CODEC);
         }
 
         /// <summary>

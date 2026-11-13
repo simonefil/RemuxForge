@@ -46,15 +46,14 @@ namespace RemuxForge.Web.Components.Toolbox
         public override IReadOnlyList<UiCommandDefinition> BuildUiCommands(bool busy)
         {
             UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar | UiCommandPlacement.Status;
-            bool empty = this.Orchestrator.GetRecords().Count == 0;
 
             return new List<UiCommandDefinition>
             {
-                new UiCommandDefinition(AppText.T("web.toolbox.list.addFilesMenu"), "F5", "add", allSurfaces, UiCommandMenuSection.File, busy, null)
+                new UiCommandDefinition(AppText.T(this.AddFilesKey + "Menu"), "F5", "add", allSurfaces, UiCommandMenuSection.File, busy, null)
                 {
                     AsyncCallback = this.AddFilesAsync,
-                    ToolbarLabel = AppText.T("web.toolbox.list.addFiles"),
-                    StatusLabel = AppText.T("web.toolbox.list.addFiles"),
+                    ToolbarLabel = AppText.T(this.AddFilesKey),
+                    StatusLabel = AppText.T(this.AddFilesKey),
                     ToolbarOrder = 10,
                     StatusOrder = 10
                 },
@@ -63,7 +62,7 @@ namespace RemuxForge.Web.Components.Toolbox
                     ToolbarOrder = 20,
                     StatusOrder = 20
                 },
-                new UiCommandDefinition(AppText.T("web.toolbox.list.clear"), "Ctrl+L", "clear_all", allSurfaces, UiCommandMenuSection.File, busy || empty, this.Orchestrator.Clear)
+                new UiCommandDefinition(AppText.T("web.toolbox.list.clear"), "Ctrl+L", "clear_all", allSurfaces, UiCommandMenuSection.File, busy || this.IsListEmpty, this.Orchestrator.Clear)
                 {
                     SecondaryToolbar = true,
                     ToolbarOrder = 15,
@@ -147,6 +146,22 @@ namespace RemuxForge.Web.Components.Toolbox
         /// Estensioni proposte dal browser dei file
         /// </summary>
         protected abstract List<string> FileExtensions { get; }
+
+        /// <summary>
+        /// True se non c'è nulla da svuotare
+        /// </summary>
+        protected virtual bool IsListEmpty
+        {
+            get { return this.Orchestrator.GetRecords().Count == 0; }
+        }
+
+        /// <summary>
+        /// Chiave del testo di Aggiungi file; la voce di menu usa la stessa chiave con il suffisso Menu
+        /// </summary>
+        protected virtual string AddFilesKey
+        {
+            get { return "web.toolbox.list.addFiles"; }
+        }
 
         #endregion
     }

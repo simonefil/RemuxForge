@@ -25,26 +25,6 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
         #region Costanti
 
         /// <summary>
-        /// Exit code di mkvextract per estrazione riuscita con avvisi
-        /// </summary>
-        private const int MKVEXTRACT_WARNING_EXIT_CODE = 1;
-
-        /// <summary>
-        /// Prefisso delle righe di avanzamento di mkvextract --gui-mode
-        /// </summary>
-        private const string GUI_PROGRESS_PREFIX = "#GUI#progress ";
-
-        /// <summary>
-        /// Prefisso degli avvisi di mkvextract --gui-mode
-        /// </summary>
-        private const string GUI_WARNING_PREFIX = "#GUI#warning ";
-
-        /// <summary>
-        /// Prefisso degli errori di mkvextract --gui-mode
-        /// </summary>
-        private const string GUI_ERROR_PREFIX = "#GUI#error ";
-
-        /// <summary>
         /// Lingua dei messaggi di mkvextract: fissa, perché gli avvisi si attribuiscono alla traccia che nominano
         /// </summary>
         private const string MKVEXTRACT_UI_LANGUAGE = "en_US";
@@ -379,7 +359,6 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
 
             if (source.IsMatroska)
             {
-                arguments.Add("--gui-mode");
                 arguments.Add("--ui-language");
                 arguments.Add(MKVEXTRACT_UI_LANGUAGE);
                 arguments.Add(source.Path);
@@ -387,37 +366,27 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
                 for (int i = first; i < first + count; i++)
                     arguments.Add(results[i].Track.Number.ToString(CultureInfo.InvariantCulture) + ":" + staged[i].TempPath);
 
-                process = ProcessRunner.RunWithStdoutLines(this._mkvExtractPath, arguments, line =>
+                process = MkvToolNixGuiMode.Run(this._mkvExtractPath, arguments, onProgress, warning =>
                 {
-                    int percent;
-                    if (line.StartsWith(GUI_PROGRESS_PREFIX, StringComparison.Ordinal) &&
-                        int.TryParse(line.Substring(GUI_PROGRESS_PREFIX.Length).TrimEnd('%'), NumberStyles.Integer, CultureInfo.InvariantCulture, out percent))
-                        onProgress(percent);
-                    else if (line.StartsWith(GUI_WARNING_PREFIX, StringComparison.Ordinal))
-                    {
-                        string warning = line.Substring(GUI_WARNING_PREFIX.Length).Trim();
-                        int owner = count == 1 ? first : -1;
+                    int owner = count == 1 ? first : -1;
 
-                        // Con più tracce, un avviso è di una traccia solo se nomina lei e nessun'altra; altrimenti resta del file
-                        if (count > 1)
+                    // Con più tracce, un avviso è di una traccia solo se nomina lei e nessun'altra; altrimenti resta del file
+                    if (count > 1)
+                    {
+                        foreach (Match match in s_mkvExtractTrack.Matches(warning))
                         {
-                            foreach (Match match in s_mkvExtractTrack.Matches(warning))
-                            {
-                                int named = results.FindIndex(first, count, r => r.Track.Number.ToString(CultureInfo.InvariantCulture) == match.Groups[1].Value);
-                                owner = named >= 0 && (owner == -1 || owner == named) ? named : -2;
-                                if (owner == -2)
-                                    break;
-                            }
+                            int named = results.FindIndex(first, count, r => r.Track.Number.ToString(CultureInfo.InvariantCulture) == match.Groups[1].Value);
+                            owner = named >= 0 && (owner == -1 || owner == named) ? named : -2;
+                            if (owner == -2)
+                                break;
                         }
-                        if (owner >= 0)
-                            results[owner].Warnings.Add(warning);
-                        else
-                            run.Warnings.Add(warning);
                     }
-                    else if (line.StartsWith(GUI_ERROR_PREFIX, StringComparison.Ordinal))
-                        run.Errors.Add(line.Substring(GUI_ERROR_PREFIX.Length).Trim());
-                });
-                run.Succeeded = process.ExitCode == 0 || process.ExitCode == MKVEXTRACT_WARNING_EXIT_CODE;
+                    if (owner >= 0)
+                        results[owner].Warnings.Add(warning);
+                    else
+                        run.Warnings.Add(warning);
+                }, run.Errors);
+                run.Succeeded = process.ExitCode == 0 || process.ExitCode == MkvToolNixGuiMode.WARNING_EXIT_CODE;
             }
             else
             {

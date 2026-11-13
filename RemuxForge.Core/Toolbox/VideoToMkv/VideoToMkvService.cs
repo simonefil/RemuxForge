@@ -6,7 +6,6 @@ using RemuxForge.Core.Models;
 using RemuxForge.Core.Toolbox.Common;
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Threading;
 
@@ -18,30 +17,6 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
     /// </summary>
     public sealed class VideoToMkvService
     {
-        #region Costanti
-
-        /// <summary>
-        /// Exit code mkvmerge per esecuzione riuscita con avvisi
-        /// </summary>
-        private const int MKVMERGE_WARNING_EXIT_CODE = 1;
-
-        /// <summary>
-        /// Prefisso delle righe di avanzamento di mkvmerge --gui-mode
-        /// </summary>
-        private const string GUI_PROGRESS_PREFIX = "#GUI#progress ";
-
-        /// <summary>
-        /// Prefisso degli avvisi di mkvmerge --gui-mode
-        /// </summary>
-        private const string GUI_WARNING_PREFIX = "#GUI#warning ";
-
-        /// <summary>
-        /// Prefisso degli errori di mkvmerge --gui-mode
-        /// </summary>
-        private const string GUI_ERROR_PREFIX = "#GUI#error ";
-
-        #endregion
-
         #region Variabili di classe
 
         /// <summary>
@@ -112,19 +87,8 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
             {
                 using (StagedOutputFile output = new StagedOutputFile(finalPath))
                 {
-                    List<string> arguments = MediaContainerNormalizer.BuildRemuxArguments(sourceTracks, inputPath, output.TempPath);
-                    arguments.Insert(0, "--gui-mode");
-                    ProcessResult run = ProcessRunner.RunWithStdoutLines(this._mkvMergePath, arguments, line =>
-                    {
-                        int percent;
-                        if (line.StartsWith(GUI_PROGRESS_PREFIX, StringComparison.Ordinal) &&
-                            int.TryParse(line.Substring(GUI_PROGRESS_PREFIX.Length).TrimEnd('%'), NumberStyles.Integer, CultureInfo.InvariantCulture, out percent))
-                            onProgress?.Invoke(percent);
-                        else if (line.StartsWith(GUI_WARNING_PREFIX, StringComparison.Ordinal))
-                            result.Warnings.Add(line.Substring(GUI_WARNING_PREFIX.Length).Trim());
-                        else if (line.StartsWith(GUI_ERROR_PREFIX, StringComparison.Ordinal))
-                            errors.Add(line.Substring(GUI_ERROR_PREFIX.Length).Trim());
-                    });
+                    ProcessResult run = MkvToolNixGuiMode.Run(this._mkvMergePath, MediaContainerNormalizer.BuildRemuxArguments(sourceTracks, inputPath, output.TempPath),
+                        onProgress, result.Warnings.Add, errors);
 
                     // Un mkvmerge ucciso dallo stop ha un exit code qualsiasi: lo stop si riconosce prima del codice
                     if (ProcessRunner.IsStopRequested())
@@ -132,7 +96,7 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
                         result.Status = VideoToMkvStatus.Stopped;
                         result.Message = AppText.T("toolbox.videoToMkv.stopped");
                     }
-                    else if (run.ExitCode != 0 && run.ExitCode != MKVMERGE_WARNING_EXIT_CODE)
+                    else if (run.ExitCode != 0 && run.ExitCode != MkvToolNixGuiMode.WARNING_EXIT_CODE)
                     {
                         if (errors.Count == 0)
                             errors.Add(run.Stderr.Trim().Length > 0 ? run.Stderr.Trim() : AppText.F("toolbox.videoToMkv.exitCode", run.ExitCode));

@@ -290,7 +290,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <summary>
         /// Svuota l'elenco
         /// </summary>
-        public void Clear()
+        public virtual void Clear()
         {
             lock (this.StateLock)
             {
