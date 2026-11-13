@@ -139,6 +139,11 @@ namespace RemuxForge.Web.Components.Pages
         private string _currentCardId;
 
         /// <summary>
+        /// Card appena chiusa con «Home», che riprende il fuoco quando la home è disegnata
+        /// </summary>
+        private string _homeFocusCardId;
+
+        /// <summary>
         /// Flag: mostra dialog configurazione
         /// </summary>
         private bool _showConfig;
@@ -352,6 +357,12 @@ namespace RemuxForge.Web.Components.Pages
             {
                 this._splitReturnFocus = false;
                 await this._splitWorkspaceRoot.FocusAsync(true);
+            }
+            if (this._homeFocusCardId != null && this._currentCardId == null && this._jsModule != null)
+            {
+                string cardId = this._homeFocusCardId;
+                this._homeFocusCardId = null;
+                await this._jsModule.InvokeVoidAsync("focusToolboxCard", cardId);
             }
             if (firstRender)
             {
@@ -1722,6 +1733,15 @@ namespace RemuxForge.Web.Components.Pages
             this._currentCardId = card.Id;
             AppSettingsService.Instance.Settings.Ui.LastMode = card.Id;
             AppSettingsService.Instance.Save();
+        }
+
+        /// <summary>
+        /// Torna alla home e ridà il fuoco alla card appena chiusa
+        /// </summary>
+        private void GoHome()
+        {
+            this._homeFocusCardId = this._currentCardId;
+            this._currentCardId = null;
         }
 
         /// <summary>

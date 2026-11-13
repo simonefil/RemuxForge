@@ -49,7 +49,7 @@
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.rf-toolbox-card.rz-card:hover {
+.rf-toolbox-card.rz-card:not(.rf-toolbox-card-locked):hover {
     border-color: var(--rz-primary);
     box-shadow: var(--rz-shadow-2);
 }
@@ -64,15 +64,11 @@
     border-color: var(--rz-primary);
 }
 
-/* Con un'operazione in corso le altre card restano visibili ma non si aprono */
+/* Con un'operazione in corso le altre card restano visibili ma non si aprono, e il passaggio del mouse non le cambia */
 .rf-toolbox-card.rf-toolbox-card-locked.rz-card {
     cursor: not-allowed;
-    opacity: 0.5;
+    opacity: 0.62;
     box-shadow: none;
-}
-
-.rf-toolbox-card.rf-toolbox-card-locked.rz-card:hover {
-    border-color: var(--rz-base-300);
 }
 
 .rf-toolbox-card-head {

@@ -12,6 +12,7 @@
                 <RadzenCard Variant="Variant.Outlined"
                             class="@("rf-toolbox-card" + (lastUsed ? " rf-toolbox-card-last" : "") + (locked ? " rf-toolbox-card-locked" : ""))"
                             role="button"
+                            data-card-id="@card.Id"
                             tabindex="@(locked ? "-1" : "0")"
                             aria-disabled="@(locked ? "true" : "false")"
                             @onclick="@(() => OnOpen.InvokeAsync(card.Id))"

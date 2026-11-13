@@ -43,7 +43,7 @@ ToolboxCard currentCard = ToolboxCatalog.Find(_currentCardId);
                               Variant="Variant.Text"
                               ButtonStyle="ButtonStyle.Base"
                               class="rf-home-button"
-                              Click="@(() => _currentCardId = null)" />
+                              Click="@GoHome" />
                 <span class="rf-app-title-mode">@AppText.T(currentCard.TitleKey)</span>
                 <span class="rf-app-title-description" title="@AppText.T(currentCard.DescriptionKey)">@AppText.T(currentCard.DescriptionKey)</span>
             </div>

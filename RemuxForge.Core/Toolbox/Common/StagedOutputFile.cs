@@ -26,9 +26,10 @@ namespace RemuxForge.Core.Toolbox.Common
         private readonly string[] _finalPaths;
 
         /// <summary>
-        /// True quando i temporanei hanno preso il nome finale
+        /// True quando i temporanei non sono più di questo oggetto: hanno preso il nome finale, oppure un ripristino non è riuscito
+        /// e i file restano dove sono, come dice il messaggio d'errore
         /// </summary>
-        private bool _committed;
+        private bool _released;
 
         #endregion
 
@@ -43,7 +44,7 @@ namespace RemuxForge.Core.Toolbox.Common
         {
             string fullPath = Path.GetFullPath(finalPath);
             string folder = Path.GetDirectoryName(fullPath);
-            string tempPath = Path.Combine(folder, Path.GetFileNameWithoutExtension(fullPath) + ".remuxforge." + Guid.NewGuid().ToString("N") + ".tmp" + Path.GetExtension(fullPath));
+            string tempPath = Path.Combine(folder, Path.GetFileNameWithoutExtension(fullPath) + ".rf-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".tmp" + Path.GetExtension(fullPath));
             string companion = FileHelper.GetCompanionPath(fullPath);
 
             this._finalPaths = companion.Length > 0 ? new string[] { fullPath, companion } : new string[] { fullPath };
@@ -51,7 +52,7 @@ namespace RemuxForge.Core.Toolbox.Common
             try
             {
                 Directory.CreateDirectory(folder);
-                using (File.Create(tempPath))
+                using (new FileStream(tempPath, FileMode.CreateNew))
                 {
                 }
             }
@@ -73,7 +74,7 @@ namespace RemuxForge.Core.Toolbox.Common
         {
             int moved = 0;
 
-            if (this._committed)
+            if (this._released)
                 throw new InvalidOperationException(AppText.F("toolbox.output.alreadyCommitted", this.FinalPath));
 
             try
@@ -83,60 +84,75 @@ namespace RemuxForge.Core.Toolbox.Common
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
-                for (int i = 0; i < moved; i++)
-                    File.Move(this._finalPaths[i], this._tempPaths[i]);
+                List<string> failures = MoveBack(this._finalPaths, this._tempPaths, moved);
 
-                throw new IOException(AppText.F("toolbox.output.commitFailed", this._finalPaths[moved], ex.Message), ex);
+                // Un file rimasto col nome finale tiene con sé l'accoppiato temporaneo: Dispose non li separa
+                if (failures.Count > 0)
+                    this._released = true;
+
+                failures.Insert(0, AppText.F("toolbox.output.commitFailed", this._finalPaths[moved], ex.Message));
+                throw new IOException(string.Join(Environment.NewLine, failures), ex);
             }
 
-            this._committed = true;
+            this._released = true;
         }
 
         /// <summary>
         /// Sostituisce un file esistente: l'originale (con il suo accoppiato) passa a un backup con nome univoco, i temporanei prendono
-        /// il nome finale e il backup si cancella; a qualunque errore l'originale torna al suo posto intatto e il messaggio dice
-        /// quale file non si è potuto spostare
+        /// il nome finale e il backup si cancella; a qualunque errore l'originale torna al suo posto, e se non ci riesce il messaggio
+        /// nomina il file e il backup in cui è rimasto
         /// </summary>
         /// <param name="originalPath">File da sostituire, di norma lo stesso percorso finale</param>
         public void CommitReplacing(string originalPath)
         {
             string originalFull = Path.GetFullPath(originalPath);
             string originalCompanion = FileHelper.GetCompanionPath(originalFull);
-            string backupSuffix = ".remuxforge." + Guid.NewGuid().ToString("N") + ".bak";
+            string backupSuffix = ".rf-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".bak";
             List<string> originals = new List<string> { originalFull };
+            List<string> backups = new List<string>();
             int backedUp = 0;
+
+            if (this._released)
+                throw new InvalidOperationException(AppText.F("toolbox.output.alreadyCommitted", this.FinalPath));
+
+            if (!File.Exists(originalFull))
+                throw new FileNotFoundException(AppText.F("toolbox.output.originalMissing", originalFull), originalFull);
 
             if (originalCompanion.Length > 0 && File.Exists(originalCompanion))
                 originals.Add(originalCompanion);
 
+            foreach (string original in originals)
+                backups.Add(original + backupSuffix);
+
             try
             {
                 for (; backedUp < originals.Count; backedUp++)
-                    File.Move(originals[backedUp], originals[backedUp] + backupSuffix);
+                    File.Move(originals[backedUp], backups[backedUp]);
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
-                for (int i = 0; i < backedUp; i++)
-                    File.Move(originals[i] + backupSuffix, originals[i]);
-
-                throw new IOException(AppText.F("toolbox.output.replaceFailed", originals[backedUp], ex.Message), ex);
+                List<string> failures = MoveBack(backups, originals, backedUp);
+                failures.Insert(0, AppText.F("toolbox.output.replaceFailed", originals[backedUp], ex.Message));
+                throw new IOException(string.Join(Environment.NewLine, failures), ex);
             }
 
             try
             {
                 this.Commit();
             }
-            catch
+            catch (IOException ex)
             {
-                // Commit ha già liberato i nomi finali: gli originali tornano dal backup
-                foreach (string original in originals)
-                    File.Move(original + backupSuffix, original);
+                // Commit ha già liberato i nomi finali che ha potuto: gli originali tornano dal backup
+                List<string> failures = MoveBack(backups, originals, originals.Count);
+                if (failures.Count == 0)
+                    throw;
 
-                throw;
+                failures.Insert(0, ex.Message);
+                throw new IOException(string.Join(Environment.NewLine, failures), ex);
             }
 
-            foreach (string original in originals)
-                FileHelper.DeleteTempFile(original + backupSuffix);
+            foreach (string backup in backups)
+                FileHelper.DeleteTempFile(backup);
         }
 
         /// <summary>
@@ -144,11 +160,41 @@ namespace RemuxForge.Core.Toolbox.Common
         /// </summary>
         public void Dispose()
         {
-            if (!this._committed)
+            if (!this._released)
             {
                 foreach (string tempPath in this._tempPaths)
                     FileHelper.DeleteTempFile(tempPath);
             }
+        }
+
+        #endregion
+
+        #region Metodi privati
+
+        /// <summary>
+        /// Riporta indietro i primi file spostati, uno per uno: un ripristino che fallisce non ferma gli altri
+        /// </summary>
+        /// <param name="sources">Percorsi in cui i file si trovano ora</param>
+        /// <param name="targets">Percorsi a cui tornano, nello stesso ordine</param>
+        /// <param name="count">Quanti file riportare</param>
+        /// <returns>Un messaggio per ogni file non riportato, con il percorso in cui è rimasto</returns>
+        private static List<string> MoveBack(IList<string> sources, IList<string> targets, int count)
+        {
+            List<string> failures = new List<string>();
+
+            for (int i = 0; i < count; i++)
+            {
+                try
+                {
+                    File.Move(sources[i], targets[i]);
+                }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+                {
+                    failures.Add(AppText.F("toolbox.output.restoreFailed", sources[i], targets[i], ex.Message));
+                }
+            }
+
+            return failures;
         }
 
         #endregion

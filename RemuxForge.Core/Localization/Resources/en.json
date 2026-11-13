@@ -1412,6 +1412,8 @@
   "toolbox.output.folderNotWritable": "Cannot write to the destination folder {0}: {1}",
   "toolbox.output.commitFailed": "Cannot create the file {0}: {1}",
   "toolbox.output.replaceFailed": "Cannot replace the file {0}, it may be in use: {1}",
+  "toolbox.output.originalMissing": "The file to replace {0} does not exist",
+  "toolbox.output.restoreFailed": "Could not move {0} back to {1}, it is still at the first path: {2}",
   "toolbox.output.alreadyCommitted": "The file {0} has already been finalized",
   "web.toolbox.home.cards": "Tools",
   "web.toolbox.home.back": "Home",

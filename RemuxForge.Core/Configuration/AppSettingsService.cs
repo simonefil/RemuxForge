@@ -857,12 +857,6 @@ namespace RemuxForge.Core.Configuration
                 this._model.Ui.Theme = "material-dark";
             }
 
-            // Un identificativo ignoto non evidenzia nessuna card
-            if (!ToolboxCards.IsKnown(this._model.Ui.LastMode))
-            {
-                this._model.Ui.LastMode = "";
-            }
-
             string normalizedLanguage = AppText.NormalizeLanguage(this._model.Ui.Language);
             this._model.Ui.Language = !string.IsNullOrEmpty(normalizedLanguage) ? normalizedLanguage : AppText.LANG_EN;
 

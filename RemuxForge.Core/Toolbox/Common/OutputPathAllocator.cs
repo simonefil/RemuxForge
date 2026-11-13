@@ -49,9 +49,12 @@ namespace RemuxForge.Core.Toolbox.Common
             string extension = Path.GetExtension(fullPath);
             string candidate = fullPath;
             string companion = FileHelper.GetCompanionPath(candidate);
-            bool IsFree(string path) => !File.Exists(path) && !Directory.Exists(path) && !this._taken.Contains(new PathIdentity(path));
 
-            for (int suffix = 2; !IsFree(candidate) || (companion.Length > 0 && !IsFree(companion)); suffix++)
+            // Occupato = presente sul disco (file o cartella) oppure già preso dal lotto, per il principale e per l'accoppiato
+            for (int suffix = 2;
+                File.Exists(candidate) || Directory.Exists(candidate) || this._taken.Contains(new PathIdentity(candidate)) ||
+                (companion.Length > 0 && (File.Exists(companion) || Directory.Exists(companion) || this._taken.Contains(new PathIdentity(companion))));
+                suffix++)
             {
                 candidate = Path.Combine(folder, name + "." + suffix + extension);
                 companion = FileHelper.GetCompanionPath(candidate);

@@ -68,6 +68,14 @@ export function captureKeyboard(dotNetRef) {
         if (isCtrlShortcut && isTextSelectionAllowed(e.target)) {
             return;
         }
+        // Invio e Spazio sul pulsante Home lo premono come un pulsante qualsiasi, senza passare dai comandi della card
+        if ((key === 'Enter' || key === ' ') && activeElement?.closest('.rf-home-button')) {
+            return;
+        }
+        // Nella home frecce e tasti di pagina scorrono la griglia come in una pagina qualsiasi: nessun comando li usa
+        if (isNavigation && document.querySelector('.rf-toolbox-home')) {
+            return;
+        }
         if (!isFKey && !isNavigation && !isSpecial && !isCtrlShortcut && !alt) {
             return;
         }
@@ -81,6 +89,11 @@ export function captureKeyboard(dotNetRef) {
     };
 
     document.addEventListener('keydown', window._rfKeyHandler, true);
+}
+
+// Ridà il fuoco a una card della home; il browser la porta in vista se la griglia scorre
+export function focusToolboxCard(cardId) {
+    document.querySelector('.rf-toolbox-card[data-card-id="' + CSS.escape(cardId) + '"]')?.focus();
 }
 
 // Porta una riga episodio in vista senza delegare lo scroll alle frecce del browser
