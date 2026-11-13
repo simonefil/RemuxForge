@@ -597,6 +597,11 @@
     color: var(--rz-grid-selected-color);
 }
 
+/* Con la selezione multipla Maiuscolo-clic estende la selezione delle righe, non quella del testo */
+.browse-table-multiple .browse-row {
+    user-select: none;
+}
+
 .browse-table .browse-row:focus-visible {
     outline: 2px solid var(--rz-primary);
     outline-offset: -2px;
@@ -622,10 +627,22 @@
 }
 
 /* Larghezze colonne */
+.browse-col-check { width: 2.75rem; }
 .browse-col-name { width: auto; }
 .browse-col-size { width: calc(14ch + 1.3rem); }
 .browse-col-date { width: 22ch; }
 .browse-col-type { width: 14ch; }
+
+.browse-table tbody td.browse-col-check {
+    padding-block: 0 !important;
+    vertical-align: middle;
+}
+
+/* Contatore dei file scelti, a sinistra dei pulsanti del footer */
+.browse-selection-count {
+    margin-inline-end: auto;
+    color: var(--rz-text-secondary-color);
+}
 
 /* Barra Find */
 .browse-find-bar {

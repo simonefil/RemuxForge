@@ -137,6 +137,28 @@ namespace RemuxForge.Web.Components.Shared
         }
 
         /// <summary>
+        /// Apre il browser per scegliere più file della stessa cartella
+        /// </summary>
+        /// <param name="dialogService">Servizio dialog</param>
+        /// <param name="jsModule">Modulo JS interop</param>
+        /// <param name="initialPath">Percorso iniziale</param>
+        /// <param name="allowedExtensions">Estensioni ammesse senza punto, null per tutti i file</param>
+        /// <returns>Percorsi scelti nell'ordine della lista, vuota se annullato</returns>
+        public static async Task<List<string>> BrowseFilesAsync(DialogService dialogService, IJSObjectReference jsModule, string initialPath, List<string> allowedExtensions)
+        {
+            Dictionary<string, object> parameters = new Dictionary<string, object>();
+            parameters.Add(nameof(FolderBrowserDialog.InitialPath), initialPath);
+            parameters.Add(nameof(FolderBrowserDialog.ShowFiles), true);
+            parameters.Add(nameof(FolderBrowserDialog.AllowCurrentFolderSelection), false);
+            parameters.Add(nameof(FolderBrowserDialog.AllowedExtensions), allowedExtensions);
+            parameters.Add(nameof(FolderBrowserDialog.AllowMultipleFiles), true);
+
+            object result = await OpenAsync<FolderBrowserDialog>(dialogService, AppText.T("web.folder.selectFilesTitle"), parameters,
+                CreateOptions("80vw", "70vh", jsModule, "rf-browse-dialog"), jsModule);
+            return result as List<string> ?? new List<string>();
+        }
+
+        /// <summary>
         /// Apre il report MediaInfo
         /// </summary>
         /// <param name="dialogService">Servizio dialog</param>

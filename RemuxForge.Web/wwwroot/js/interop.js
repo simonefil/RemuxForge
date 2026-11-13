@@ -26,6 +26,10 @@ export function captureKeyboard(dotNetRef) {
                 if (key === 'Tab' && activeElement?.classList.contains('path-bar-input')) {
                     e.preventDefault();
                 }
+                // Ctrl/Cmd+A sulle righe del browser a selezione multipla seleziona i file, non il testo della pagina
+                if ((e.ctrlKey || e.metaKey) && key.toLowerCase() === 'a' && activeElement?.closest('.browse-table-multiple')) {
+                    e.preventDefault();
+                }
                 return;
             }
             // Overlay modale proprietario della tastiera, come la dialog di precisione EditMap
