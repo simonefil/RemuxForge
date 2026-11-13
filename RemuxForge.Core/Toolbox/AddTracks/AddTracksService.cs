@@ -174,11 +174,6 @@ namespace RemuxForge.Core.Toolbox.AddTracks
                     insertAt = i + 1;
             }
 
-            // Un secondo predefinito dello stesso tipo e lingua resta com'è chiesto, ma si dice; senza lingua scelta conta il solo tipo
-            if (properties.IsDefault && sourceTracks.Exists(t => t.Type == track.Type && t.DefaultTrack &&
-                (properties.Language.Length == 0 || LanguageValidator.NormalizeToIso6392(t.Language) == properties.Language)))
-                result.Warnings.Add(properties.Language.Length > 0 ? AppText.F("toolbox.addTracks.defaultDuplicate", properties.Language) : AppText.T("toolbox.addTracks.defaultDuplicateType"));
-
             try
             {
                 finalPath = replace ? fullVideo : allocator.Reserve(GetDesiredPath(fullVideo, outputFolder));
@@ -253,6 +248,13 @@ namespace RemuxForge.Core.Toolbox.AddTracks
                         result.Message = AppText.T("toolbox.addTracks.tracksChanged");
                         return result;
                     }
+
+                    // Un secondo predefinito dello stesso tipo e lingua resta com'è chiesto, ma si dice; senza lingua scelta conta il solo tipo.
+                    // Si guarda il risultato: da MP4, AVI o TS i flag non si leggono, e mkvmerge scrive le tracce del video come predefinite
+                    TrackInfo added = outputTracks[insertAt];
+                    if (properties.IsDefault && outputTracks.Exists(t => t != added && t.Type == track.Type && t.DefaultTrack &&
+                        (properties.Language.Length == 0 || LanguageValidator.NormalizeToIso6392(t.Language) == properties.Language)))
+                        result.Warnings.Add(properties.Language.Length > 0 ? AppText.F("toolbox.addTracks.defaultDuplicate", properties.Language) : AppText.T("toolbox.addTracks.defaultDuplicateType"));
 
                     // Un nome finale che non si riesce a dare, o un originale che non si riesce a sostituire, lasciano l'originale com'era
                     try

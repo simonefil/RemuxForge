@@ -137,7 +137,7 @@
                                 }
                                 else if (video.Message.Length > 0)
                                 {
-                                    <span title="@(video.Details.Length > 0 ? video.Details : video.Message)">@video.Message</span>
+                                    <span class="rf-addtracks-wrap" title="@(video.Details.Length > 0 ? video.Details : video.Message)">@video.Message</span>
                                 }
                                 else if (videos.IndexOf(video) >= tracks.Count)
                                 {
@@ -192,7 +192,8 @@
                                 @* Cosa si aggiunge: tipo e formato letti; altrimenti lettura in corso o perché il file è bloccato *@
                                 @if (track.State == AddTracksTrackState.Ready)
                                 {
-                                    <CellText Text="@(AppText.T(track.Track.IsSubtitles ? "web.toolbox.addTracks.kindSubtitles" : "web.toolbox.addTracks.kindAudio") + " · " + track.Track.Codec)" />
+                                    string content = AppText.T(track.Track.IsSubtitles ? "web.toolbox.addTracks.kindSubtitles" : "web.toolbox.addTracks.kindAudio") + " · " + track.Track.Codec;
+                                    <span class="rf-addtracks-wrap" title="@content">@content</span>
                                 }
                                 else if (track.State == AddTracksTrackState.Reading)
                                 {
@@ -200,7 +201,7 @@
                                 }
                                 else
                                 {
-                                    <span class="@(track.State == AddTracksTrackState.Blocked ? "rf-addtracks-blocked-text" : "rf-addtracks-unpaired-text")" title="@track.Reason">@track.Reason</span>
+                                    <span class="@("rf-addtracks-wrap " + (track.State == AddTracksTrackState.Blocked ? "rf-addtracks-blocked-text" : "rf-addtracks-unpaired-text"))" title="@track.Reason">@track.Reason</span>
                                 }
                             </Template>
                         </RadzenDataGridColumn>

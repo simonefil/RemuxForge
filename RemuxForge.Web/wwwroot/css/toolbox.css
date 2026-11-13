@@ -372,6 +372,17 @@
     max-width: 100%;
 }
 
+/* Motivi e contenuti lunghi vanno a capo su due righe al massimo: la riga resta alta quanto quella accanto, il testo intero è nel tooltip */
+.rf-addtracks-wrap {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-height: 1.05;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 .rf-addtracks-handle {
     flex-shrink: 0;
     color: var(--rz-text-tertiary-color);
