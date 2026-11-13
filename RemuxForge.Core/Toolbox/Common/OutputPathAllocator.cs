@@ -67,6 +67,20 @@ namespace RemuxForge.Core.Toolbox.Common
             return candidate;
         }
 
+        /// <summary>
+        /// Restituisce al lotto un percorso prenotato e il suo accoppiato, quando il file non è stato scritto: un'uscita fallita o
+        /// interrotta non sposta su un suffisso i file che vengono dopo
+        /// </summary>
+        /// <param name="reservedPath">Percorso restituito da Reserve</param>
+        public void Release(string reservedPath)
+        {
+            string companion = FileHelper.GetCompanionPath(reservedPath);
+
+            this._taken.Remove(new PathIdentity(reservedPath));
+            if (companion.Length > 0)
+                this._taken.Remove(new PathIdentity(companion));
+        }
+
         #endregion
     }
 }

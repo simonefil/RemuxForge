@@ -8,32 +8,41 @@
 @{
     List<VideoToMkvRecord> records = Orchestrator.GetRecords();
     bool busy = Orchestrator.IsBusy;
+    string folderError = Orchestrator.OutputFolderError;
 }
 <div class="rf-panel rf-tool-page">
     <div class="rf-tool-options">
-        <div class="rf-tool-field">
-            <span id="video-to-mkv-output-label" class="rf-tool-label">@AppText.T("web.toolbox.videoToMkv.output")</span>
-            <RadzenRadioButtonList TValue="bool" Name="VideoToMkvOutput" AriaLabelledBy="video-to-mkv-output-label" Orientation="Orientation.Horizontal" Gap="1.5rem"
-                                   Disabled="@busy" Value="@Orchestrator.UseOutputFolder"
-                                   Change="@((bool value) => Orchestrator.SetOutput(value, Orchestrator.OutputFolder))">
-                <Items>
-                    <RadzenRadioButtonListItem TValue="bool" Text="@AppText.T("web.toolbox.videoToMkv.outputNextToSource")" Value="false" />
-                    <RadzenRadioButtonListItem TValue="bool" Text="@AppText.T("web.toolbox.videoToMkv.outputFolder")" Value="true" />
-                </Items>
-            </RadzenRadioButtonList>
-        </div>
-        @if (Orchestrator.UseOutputFolder)
-        {
-            <div class="rf-tool-field rf-tool-path-field">
-                <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.videoToMkv.folder")" Component="VideoToMkvFolder" />
-                <RadzenTextBox Name="VideoToMkvFolder" class="rf-tool-path-input" Disabled="@busy" Value="@Orchestrator.OutputFolder"
-                               Placeholder="@AppText.T("web.toolbox.videoToMkv.folderPlaceholder")"
-                               Change="@((string value) => Orchestrator.SetOutput(true, value))" />
-                <RadzenButton Icon="folder_open" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@busy"
-                              title="@AppText.T("web.toolbox.videoToMkv.chooseFolder")" aria-label="@AppText.T("web.toolbox.videoToMkv.chooseFolder")"
-                              Click="@BrowseOutputFolderAsync" />
+        <div class="rf-tool-options-row">
+            <div class="rf-tool-field">
+                <span id="video-to-mkv-output-label" class="rf-tool-label">@AppText.T("web.toolbox.videoToMkv.output")</span>
+                <RadzenRadioButtonList TValue="bool" Name="VideoToMkvOutput" AriaLabelledBy="video-to-mkv-output-label" Orientation="Orientation.Horizontal" Gap="1.5rem"
+                                       Disabled="@busy" Value="@Orchestrator.UseOutputFolder"
+                                       Change="@((bool value) => Orchestrator.SetOutput(value, Orchestrator.OutputFolder))">
+                    <Items>
+                        <RadzenRadioButtonListItem TValue="bool" Text="@AppText.T("web.toolbox.videoToMkv.outputNextToSource")" Value="false" />
+                        <RadzenRadioButtonListItem TValue="bool" Text="@AppText.T("web.toolbox.videoToMkv.outputFolder")" Value="true" />
+                    </Items>
+                </RadzenRadioButtonList>
             </div>
-        }
+            @if (Orchestrator.UseOutputFolder)
+            {
+                <div class="rf-tool-field rf-tool-path-field">
+                    <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.videoToMkv.folder")" Component="VideoToMkvFolder" />
+                    <RadzenTextBox Name="VideoToMkvFolder" class="@("rf-tool-path-input" + (folderError.Length > 0 ? " rf-tool-input-invalid" : ""))" Disabled="@busy" Value="@Orchestrator.OutputFolder"
+                                   Placeholder="@AppText.T("web.toolbox.videoToMkv.folderPlaceholder")"
+                                   aria-describedby="video-to-mkv-output-hint" aria-invalid="@(folderError.Length > 0 ? "true" : "false")"
+                                   Change="@((string value) => Orchestrator.SetOutput(true, value))" />
+                    <RadzenButton Icon="folder_open" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@busy"
+                                  title="@AppText.T("web.toolbox.videoToMkv.chooseFolder")" aria-label="@AppText.T("web.toolbox.videoToMkv.chooseFolder")"
+                                  Click="@BrowseOutputFolderAsync" />
+                </div>
+            }
+        </div>
+        @* Sotto la riga: dove finiscono gli MKV, oppure perché Converti è disattivato *@
+        <RadzenText id="video-to-mkv-output-hint" TextStyle="TextStyle.Caption" TagName="TagName.P" aria-live="polite"
+                    class="@("rf-tool-hint" + (folderError.Length > 0 ? " rf-tool-hint-error" : ""))">
+            @(folderError.Length > 0 ? folderError : AppText.T(Orchestrator.UseOutputFolder ? "web.toolbox.videoToMkv.hintFolder" : "web.toolbox.videoToMkv.hintNextToSource"))
+        </RadzenText>
     </div>
 
     @if (records.Count == 0)
@@ -56,22 +65,23 @@
                         Density="Density.Compact"
                         GridLines="DataGridGridLines.Both">
             <Columns>
-                <RadzenDataGridColumn TItem="VideoToMkvRecord" Title="@AppText.T("web.dashboard.file")" Width="30%" MinWidth="2.5rem">
+                <RadzenDataGridColumn TItem="VideoToMkvRecord" Title="@AppText.T("web.dashboard.file")" Width="32%" MinWidth="2.5rem">
                     <Template Context="record"><span title="@record.InputPath">@System.IO.Path.GetFileName(record.InputPath)</span></Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="VideoToMkvRecord" Title="@AppText.T("web.metadata.container")" Width="9%" MinWidth="2.5rem">
+                <RadzenDataGridColumn TItem="VideoToMkvRecord" Title="@AppText.T("web.toolbox.videoToMkv.container")" Width="8%" MinWidth="2.5rem">
                     <Template Context="record"><CellText Text="@System.IO.Path.GetExtension(record.InputPath).TrimStart('.').ToUpperInvariant()" /></Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="VideoToMkvRecord" Title="@AppText.T("web.toolbox.videoToMkv.size")" Width="10%" MinWidth="2.5rem">
+                <RadzenDataGridColumn TItem="VideoToMkvRecord" Title="@AppText.T("web.toolbox.videoToMkv.size")" Width="8%" MinWidth="2.5rem">
                     <Template Context="record"><CellText Text="@Utils.FormatSize(record.Size)" /></Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="VideoToMkvRecord" Title="@AppText.T("web.dashboard.status")" Width="12%" MinWidth="2.5rem">
+                <RadzenDataGridColumn TItem="VideoToMkvRecord" Title="@AppText.T("web.dashboard.status")" Width="13%" MinWidth="2.5rem">
                     <Template Context="record">
                         <RadzenBadge IsPill="true"
                                      Text="@AppText.T(record.Status switch
                                      {
                                          VideoToMkvStatus.Running => "web.toolbox.videoToMkv.statusRunning",
                                          VideoToMkvStatus.Converted => "web.toolbox.videoToMkv.statusConverted",
+                                         VideoToMkvStatus.ConvertedWithWarnings => "web.toolbox.videoToMkv.statusConvertedWithWarnings",
                                          VideoToMkvStatus.Skipped => "web.toolbox.videoToMkv.statusSkipped",
                                          VideoToMkvStatus.Failed => "web.toolbox.videoToMkv.statusFailed",
                                          VideoToMkvStatus.Stopped => "web.toolbox.videoToMkv.statusStopped",
@@ -82,18 +92,19 @@
                                          VideoToMkvStatus.Running => BadgeStyle.Info,
                                          VideoToMkvStatus.Converted => BadgeStyle.Success,
                                          VideoToMkvStatus.Failed => BadgeStyle.Danger,
-                                         VideoToMkvStatus.Skipped or VideoToMkvStatus.Stopped => BadgeStyle.Warning,
+                                         VideoToMkvStatus.ConvertedWithWarnings or VideoToMkvStatus.Stopped => BadgeStyle.Warning,
+                                         VideoToMkvStatus.Skipped => BadgeStyle.Secondary,
                                          _ => BadgeStyle.Base
                                      })" />
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="VideoToMkvRecord" Title="@AppText.T("web.toolbox.videoToMkv.result")" Width="33%" MinWidth="2.5rem">
+                <RadzenDataGridColumn TItem="VideoToMkvRecord" Title="@AppText.T("web.toolbox.videoToMkv.result")" Width="34%" MinWidth="2.5rem">
                     <Template Context="record">
-                        @* Riuscita: il nome del Matroska scritto, con gli eventuali avvisi di mkvmerge; altrimenti il motivo *@
-                        <span title="@(record.OutputPath.Length > 0 && record.Message.Length > 0 ? record.OutputPath + Environment.NewLine + record.Message : record.OutputPath.Length > 0 ? record.OutputPath : record.Message)">@(record.OutputPath.Length > 0 && record.Message.Length > 0 ? System.IO.Path.GetFileName(record.OutputPath) + " · " + record.Message : record.OutputPath.Length > 0 ? System.IO.Path.GetFileName(record.OutputPath) : record.Message)</span>
+                        @* In riga il MKV scritto o il motivo breve; nel tooltip il percorso completo, gli avvisi o l'errore di mkvmerge per intero *@
+                        <span title="@(record.OutputPath.Length > 0 ? (record.Details.Length > 0 ? record.OutputPath + Environment.NewLine + record.Details : record.OutputPath) : (record.Details.Length > 0 ? record.Details : record.Message))">@(record.OutputPath.Length > 0 ? System.IO.Path.GetFileName(record.OutputPath) : record.Message)</span>
                     </Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="VideoToMkvRecord" Width="6%" MinWidth="3rem" TextAlign="TextAlign.Center">
+                <RadzenDataGridColumn TItem="VideoToMkvRecord" Width="5%" MinWidth="3rem" TextAlign="TextAlign.Center">
                     <Template Context="record">
                         <RadzenButton Icon="delete" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Disabled="@busy"
                                       title="@AppText.T("web.toolbox.videoToMkv.remove")" aria-label="@(AppText.T("web.toolbox.videoToMkv.remove") + " " + System.IO.Path.GetFileName(record.InputPath))"
@@ -181,15 +192,22 @@
     }
 
     /// <summary>
-    /// Riassume in un toast l'esito del lotto
+    /// Riassume in un toast l'esito del lotto: riuscito se ogni file è convertito senza avvisi, errore se nessun file è riuscito,
+    /// avviso negli altri casi. Il toast sta in basso a destra, sopra il log, per non coprire uscita e risultati
     /// </summary>
-    private void HandleBatchCompleted(int converted, int failed, int skipped, bool stopped)
+    private void HandleBatchCompleted(VideoToMkvBatchSummary summary)
     {
         InvokeAsync(async () =>
         {
-            NotificationSeverity severity = failed > 0 ? NotificationSeverity.Error : stopped || skipped > 0 ? NotificationSeverity.Warning : NotificationSeverity.Success;
-            NotificationService.Notify(severity, AppText.T(stopped ? "web.toolbox.videoToMkv.notifyStoppedTitle" : "web.toolbox.videoToMkv.notifyTitle"),
-                AppText.F("web.toolbox.videoToMkv.notifyBody", converted, failed, skipped), failed > 0 ? 12000 : 8000);
+            NotificationSeverity severity = summary.AllSucceeded ? NotificationSeverity.Success : summary.NothingSucceeded ? NotificationSeverity.Error : NotificationSeverity.Warning;
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = severity,
+                Summary = AppText.T(summary.Stopped ? "web.toolbox.videoToMkv.notifyStoppedTitle" : "web.toolbox.videoToMkv.notifyTitle"),
+                Detail = summary.Describe(),
+                Duration = severity == NotificationSeverity.Success ? 6000 : 8000,
+                Style = "position: fixed; inset-block-start: auto; inset-block-end: 9rem; inset-inline-end: 1rem; margin: 0"
+            });
             await OnStateChanged.InvokeAsync();
         });
     }

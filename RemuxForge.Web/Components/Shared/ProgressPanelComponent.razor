@@ -5,7 +5,7 @@
         <div class="progress-value">@BuildGlobalText()</div>
     </div>
     <div class="progress-line">
-        <div class="progress-label">@AppText.T("web.progress.episode")</div>
+        <div class="progress-label">@AppText.T(ItemLabelKey)</div>
         <RadzenProgressBar Value="@GetCurrentPercent()" ShowValue="false" Mode="@(IsCurrentIndeterminate() ? ProgressBarMode.Indeterminate : ProgressBarMode.Determinate)" />
         <div class="progress-value">@BuildCurrentText()</div>
     </div>
@@ -16,6 +16,11 @@
     /// Stato avanzamento da visualizzare
     /// </summary>
     [Parameter] public ProcessingProgressState Progress { get; set; }
+
+    /// <summary>
+    /// Chiave dell'etichetta della seconda barra: episodio per le modalità, file per i tool
+    /// </summary>
+    [Parameter] public string ItemLabelKey { get; set; }
 
     /// <summary>
     /// Testo barra globale

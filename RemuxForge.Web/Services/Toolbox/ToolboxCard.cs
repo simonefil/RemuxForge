@@ -18,7 +18,8 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <param name="icon">Icona Material</param>
         /// <param name="orchestratorType">Tipo dell'orchestratore registrato nel DI</param>
         /// <param name="pageType">Pagina del tool, derivata da ToolboxPageBase; null per le modalità, che usano il workspace della dashboard</param>
-        public ToolboxCard(string id, string titleKey, string descriptionKey, string icon, Type orchestratorType, Type pageType)
+        /// <param name="progressItemKey">Chiave dell'etichetta della barra dell'elemento in corso (episodio, file)</param>
+        public ToolboxCard(string id, string titleKey, string descriptionKey, string icon, Type orchestratorType, Type pageType, string progressItemKey)
         {
             this.Id = id;
             this.TitleKey = titleKey;
@@ -26,6 +27,7 @@ namespace RemuxForge.Web.Services.Toolbox
             this.Icon = icon;
             this.OrchestratorType = orchestratorType;
             this.PageType = pageType;
+            this.ProgressItemKey = progressItemKey;
         }
 
         #endregion
@@ -61,6 +63,11 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Pagina del tool; null per Remux, Split e Metadata
         /// </summary>
         public Type PageType { get; }
+
+        /// <summary>
+        /// Chiave dell'etichetta della barra dell'elemento in corso
+        /// </summary>
+        public string ProgressItemKey { get; }
 
         #endregion
     }

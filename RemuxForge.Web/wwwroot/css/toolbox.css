@@ -122,11 +122,34 @@
 .rf-tool-options {
     display: flex;
     flex-shrink: 0;
+    flex-direction: column;
+    gap: calc(var(--rz-gap) * 0.25);
+    padding: calc(var(--rz-gap) * 0.5) var(--rz-gap);
+    border-bottom: var(--rz-border-base-600);
+}
+
+/* Altezza fissa come il campo Cartella: la barra non cambia altezza quando il campo compare o sparisce */
+.rf-tool-options-row {
+    display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: calc(var(--rz-gap) * 0.75) calc(var(--rz-gap) * 2);
-    padding: calc(var(--rz-gap) * 0.75) var(--rz-gap);
-    border-bottom: var(--rz-border-base-600);
+    min-height: 2.5rem;
+}
+
+.rf-tool-options .rf-tool-hint {
+    margin: 0;
+    color: var(--rz-text-secondary-color);
+}
+
+.rf-tool-options .rf-tool-hint-error {
+    color: var(--rz-danger);
+}
+
+.rf-tool-options .rz-textbox.rf-tool-input-invalid,
+.rf-tool-options .rz-textbox.rf-tool-input-invalid:hover,
+.rf-tool-options .rz-textbox.rf-tool-input-invalid:focus {
+    border-color: var(--rz-danger);
 }
 
 .rf-tool-field {

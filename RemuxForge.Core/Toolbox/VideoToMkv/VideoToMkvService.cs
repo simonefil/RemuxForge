@@ -75,7 +75,8 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
         /// <summary>
         /// Converte un file in Matroska. Un file già Matroska o con un contenitore non gestito si salta; l'uscita ha il nome del file
         /// con estensione .mkv, accanto all'originale o nella cartella indicata, e un nome occupato riceve il suffisso numerico
-        /// dell'allocatore. Lo stop dell'operazione corrente interrompe mkvmerge e non lascia file
+        /// dell'allocatore. Lo stop dell'operazione corrente interrompe mkvmerge e non lascia file; un file non scritto restituisce
+        /// il nome prenotato al lotto
         /// </summary>
         /// <param name="inputPath">File da convertire</param>
         /// <param name="outputFolder">Cartella di uscita, vuota per scrivere accanto all'originale</param>
@@ -86,6 +87,7 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
         {
             VideoToMkvResult result = new VideoToMkvResult();
             List<string> errors = new List<string>();
+            string folderError = string.IsNullOrEmpty(outputFolder) ? "" : ValidateOutputFolder(outputFolder);
 
             if (MediaContainerFormats.IsMatroska(inputPath) || !MediaContainerFormats.IsSupported(inputPath))
             {
@@ -94,10 +96,10 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
                 return result;
             }
 
-            if (!File.Exists(inputPath))
+            if (folderError.Length > 0 || !File.Exists(inputPath))
             {
                 result.Status = VideoToMkvStatus.Failed;
-                result.Message = AppText.F("toolbox.videoToMkv.inputMissing", inputPath);
+                result.Message = folderError.Length > 0 ? folderError : AppText.F("toolbox.videoToMkv.inputMissing", Path.GetFileName(inputPath));
                 return result;
             }
 
@@ -106,53 +108,81 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
             string folder = string.IsNullOrEmpty(outputFolder) ? Path.GetDirectoryName(Path.GetFullPath(inputPath)) : outputFolder;
             string finalPath = allocator.Reserve(Path.Combine(folder, Path.GetFileNameWithoutExtension(inputPath) + MediaContainerFormats.OUTPUT_EXTENSION));
 
-            using (StagedOutputFile output = new StagedOutputFile(finalPath))
+            try
             {
-                List<string> arguments = MediaContainerNormalizer.BuildRemuxArguments(sourceTracks, inputPath, output.TempPath);
-                arguments.Insert(0, "--gui-mode");
-                ProcessResult run = ProcessRunner.RunWithStdoutLines(this._mkvMergePath, arguments, line =>
+                using (StagedOutputFile output = new StagedOutputFile(finalPath))
                 {
-                    int percent;
-                    if (line.StartsWith(GUI_PROGRESS_PREFIX, StringComparison.Ordinal) &&
-                        int.TryParse(line.Substring(GUI_PROGRESS_PREFIX.Length).TrimEnd('%'), NumberStyles.Integer, CultureInfo.InvariantCulture, out percent))
-                        onProgress?.Invoke(percent);
-                    else if (line.StartsWith(GUI_WARNING_PREFIX, StringComparison.Ordinal))
-                        result.Warnings.Add(line.Substring(GUI_WARNING_PREFIX.Length).Trim());
-                    else if (line.StartsWith(GUI_ERROR_PREFIX, StringComparison.Ordinal))
-                        errors.Add(line.Substring(GUI_ERROR_PREFIX.Length).Trim());
-                });
+                    List<string> arguments = MediaContainerNormalizer.BuildRemuxArguments(sourceTracks, inputPath, output.TempPath);
+                    arguments.Insert(0, "--gui-mode");
+                    ProcessResult run = ProcessRunner.RunWithStdoutLines(this._mkvMergePath, arguments, line =>
+                    {
+                        int percent;
+                        if (line.StartsWith(GUI_PROGRESS_PREFIX, StringComparison.Ordinal) &&
+                            int.TryParse(line.Substring(GUI_PROGRESS_PREFIX.Length).TrimEnd('%'), NumberStyles.Integer, CultureInfo.InvariantCulture, out percent))
+                            onProgress?.Invoke(percent);
+                        else if (line.StartsWith(GUI_WARNING_PREFIX, StringComparison.Ordinal))
+                            result.Warnings.Add(line.Substring(GUI_WARNING_PREFIX.Length).Trim());
+                        else if (line.StartsWith(GUI_ERROR_PREFIX, StringComparison.Ordinal))
+                            errors.Add(line.Substring(GUI_ERROR_PREFIX.Length).Trim());
+                    });
 
-                // Un mkvmerge ucciso dallo stop ha un exit code qualsiasi: lo stop si riconosce prima del codice
-                if (ProcessRunner.IsStopRequested())
-                {
-                    result.Status = VideoToMkvStatus.Stopped;
-                    result.Message = AppText.T("toolbox.videoToMkv.stopped");
-                    return result;
+                    // Un mkvmerge ucciso dallo stop ha un exit code qualsiasi: lo stop si riconosce prima del codice
+                    if (ProcessRunner.IsStopRequested())
+                    {
+                        result.Status = VideoToMkvStatus.Stopped;
+                        result.Message = AppText.T("toolbox.videoToMkv.stopped");
+                    }
+                    else if (run.ExitCode != 0 && run.ExitCode != MKVMERGE_WARNING_EXIT_CODE)
+                    {
+                        if (errors.Count == 0)
+                            errors.Add(run.Stderr.Trim().Length > 0 ? run.Stderr.Trim() : AppText.F("toolbox.videoToMkv.exitCode", run.ExitCode));
+
+                        // In riga il motivo senza percorsi: mkvmerge li cita completi, il dettaglio li conserva
+                        result.Status = VideoToMkvStatus.Failed;
+                        result.Details = string.Join(Environment.NewLine, errors);
+                        result.Message = string.Join(" ", errors).Replace(Path.GetFullPath(inputPath), Path.GetFileName(inputPath)).Replace(output.TempPath, Path.GetFileName(finalPath));
+                    }
+                    else if (!MediaContainerNormalizer.KeepsTracks(sourceTracks, this._mkvTools.GetFileInfoIsolated(output.TempPath, 0, CancellationToken.None, null)?.Tracks ?? new List<TrackInfo>()))
+                    {
+                        result.Status = VideoToMkvStatus.Failed;
+                        result.Message = AppText.T("toolbox.videoToMkv.tracksChanged");
+                    }
+                    else
+                    {
+                        output.Commit();
+                        result.Status = result.Warnings.Count > 0 ? VideoToMkvStatus.ConvertedWithWarnings : VideoToMkvStatus.Converted;
+                        result.OutputPath = finalPath;
+                    }
                 }
-
-                if (run.ExitCode != 0 && run.ExitCode != MKVMERGE_WARNING_EXIT_CODE)
-                {
-                    if (errors.Count == 0)
-                        errors.Add(run.Stderr.Trim().Length > 0 ? run.Stderr.Trim() : AppText.F("toolbox.videoToMkv.exitCode", run.ExitCode));
-
-                    result.Status = VideoToMkvStatus.Failed;
-                    result.Message = string.Join(" ", errors);
-                    return result;
-                }
-
-                if (!MediaContainerNormalizer.KeepsTracks(sourceTracks, this._mkvTools.GetFileInfoIsolated(output.TempPath, 0, CancellationToken.None, null)?.Tracks ?? new List<TrackInfo>()))
-                {
-                    result.Status = VideoToMkvStatus.Failed;
-                    result.Message = AppText.T("toolbox.videoToMkv.tracksChanged");
-                    return result;
-                }
-
-                output.Commit();
+            }
+            finally
+            {
+                if (result.OutputPath.Length == 0)
+                    allocator.Release(finalPath);
             }
 
-            result.Status = VideoToMkvStatus.Converted;
-            result.OutputPath = finalPath;
             return result;
+        }
+
+        /// <summary>
+        /// Controlla la cartella di uscita: deve essere un percorso completo di una cartella esistente, che non si crea in silenzio
+        /// </summary>
+        /// <param name="outputFolder">Cartella scelta</param>
+        /// <returns>Motivo per cui la cartella non va bene, vuoto se va bene</returns>
+        public static string ValidateOutputFolder(string outputFolder)
+        {
+            string folder = (outputFolder ?? "").Trim();
+
+            if (folder.Length == 0)
+                return AppText.T("toolbox.videoToMkv.folderRequired");
+            if (!Path.IsPathFullyQualified(folder))
+                return AppText.T("toolbox.videoToMkv.folderNotAbsolute");
+            if (File.Exists(folder))
+                return AppText.T("toolbox.videoToMkv.folderIsFile");
+            if (!Directory.Exists(folder))
+                return AppText.T("toolbox.videoToMkv.folderMissing");
+
+            return "";
         }
 
         #endregion
@@ -171,6 +201,9 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
 
         /// <summary>Matroska scritto</summary>
         Converted,
+
+        /// <summary>Matroska scritto, con avvisi di mkvmerge</summary>
+        ConvertedWithWarnings,
 
         /// <summary>File non convertibile, lasciato com'è</summary>
         Skipped,
@@ -197,6 +230,7 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
             this.Status = VideoToMkvStatus.Pending;
             this.OutputPath = "";
             this.Message = "";
+            this.Details = "";
             this.Warnings = new List<string>();
         }
 
@@ -215,9 +249,14 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
         public string OutputPath { get; set; }
 
         /// <summary>
-        /// Motivo del salto, dell'errore o dell'interruzione
+        /// Motivo del salto, dell'errore o dell'interruzione, senza percorsi completi
         /// </summary>
         public string Message { get; set; }
+
+        /// <summary>
+        /// Errori di mkvmerge così come li ha scritti, vuoto se il motivo non viene da mkvmerge
+        /// </summary>
+        public string Details { get; set; }
 
         /// <summary>
         /// Avvisi di mkvmerge, anche con conversione riuscita

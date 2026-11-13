@@ -167,7 +167,7 @@ ToolboxCard currentCard = ToolboxCatalog.Find(_currentCardId);
         </RadzenSplitter>
 
     @* Avanzamento *@
-    <ProgressPanelComponent Progress="@ToolboxCatalog.GetOrchestrator(currentCard).Progress" />
+    <ProgressPanelComponent Progress="@ToolboxCatalog.GetOrchestrator(currentCard).Progress" ItemLabelKey="@currentCard.ProgressItemKey" />
 
     @* Barra di Stato *@
     <StatusBarComponent Commands="@BuildUiCommands()"
