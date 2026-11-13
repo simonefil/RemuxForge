@@ -15,6 +15,7 @@ using Microsoft.Extensions.Hosting;
 using Radzen;
 using RemuxForge.Web.Components;
 using RemuxForge.Web.Services;
+using RemuxForge.Web.Services.Toolbox;
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
@@ -166,6 +167,7 @@ namespace RemuxForge.Web
             builder.Services.AddSingleton<MergeOrchestrator>();
             builder.Services.AddSingleton<SplitOrchestrator>();
             builder.Services.AddSingleton<MetadataOrchestrator>();
+            builder.Services.AddSingleton<ToolboxCatalog>();
             builder.Services.AddSingleton<UpdateCheckService>();
             builder.Services.AddSingleton(new AiCredentialService(AppSettingsService.Instance.ConfigFolder));
             builder.Services.AddSingleton<AiOAuthFlow>();
@@ -216,14 +218,11 @@ namespace RemuxForge.Web
                 return;
             }
 
-            MergeOrchestrator mergeOrchestrator = app.Services.GetRequiredService<MergeOrchestrator>();
-            SplitOrchestrator splitOrchestrator = app.Services.GetRequiredService<SplitOrchestrator>();
-            MetadataOrchestrator metadataOrchestrator = app.Services.GetRequiredService<MetadataOrchestrator>();
+            ToolboxCatalog toolboxCatalog = app.Services.GetRequiredService<ToolboxCatalog>();
             app.Lifetime.ApplicationStopping.Register(() =>
             {
-                mergeOrchestrator.RequestStop();
-                splitOrchestrator.Stop();
-                metadataOrchestrator.Stop();
+                foreach (ToolboxCard card in toolboxCatalog.Cards)
+                    toolboxCatalog.GetOrchestrator(card).Stop();
             });
 
             app.Start();

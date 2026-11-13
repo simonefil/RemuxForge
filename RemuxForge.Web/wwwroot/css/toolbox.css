@@ -1,0 +1,116 @@
+/* Home a card: brand nell'header e griglia delle card */
+
+.rf-brand {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.75);
+    min-height: 3rem;
+}
+
+.rf-brand-logo {
+    display: block;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: var(--rz-border-radius);
+}
+
+.rf-brand-name {
+    font-size: var(--rz-text-subtitle1-font-size);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+.rf-toolbox-home {
+    min-height: 0;
+    overflow-y: auto;
+    padding: calc(var(--rz-gap) * 2) calc(var(--rz-gap) * 1.5);
+}
+
+.rf-toolbox-grid {
+    display: grid;
+    /* Colonne di larghezza contenuta e centrate: poche card non si allargano fino ai bordi */
+    grid-template-columns: repeat(auto-fit, minmax(17rem, 20rem));
+    justify-content: center;
+    gap: calc(var(--rz-gap) * 1.25);
+}
+
+.rf-toolbox-grid-item {
+    display: flex;
+    min-width: 0;
+}
+
+.rf-toolbox-card.rz-card {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: calc(var(--rz-gap) * 0.5);
+    min-width: 0;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.rf-toolbox-card.rz-card:hover {
+    border-color: var(--rz-primary);
+    box-shadow: var(--rz-shadow-2);
+}
+
+.rf-toolbox-card.rz-card:focus-visible {
+    outline: var(--rz-outline-width, 2px) solid var(--rz-outline-color, var(--rz-primary));
+    outline-offset: 2px;
+}
+
+/* L'ultima card usata ha il bordo del colore primario anche senza hover */
+.rf-toolbox-card.rf-toolbox-card-last.rz-card {
+    border-color: var(--rz-primary);
+}
+
+/* Con un'operazione in corso le altre card restano visibili ma non si aprono */
+.rf-toolbox-card.rf-toolbox-card-locked.rz-card {
+    cursor: not-allowed;
+    opacity: 0.5;
+    box-shadow: none;
+}
+
+.rf-toolbox-card.rf-toolbox-card-locked.rz-card:hover {
+    border-color: var(--rz-base-300);
+}
+
+.rf-toolbox-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--rz-gap);
+    margin-bottom: calc(var(--rz-gap) * 0.25);
+}
+
+.rf-toolbox-card-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: var(--rz-border-radius);
+    background: var(--rz-primary-lighter);
+    color: var(--rz-on-primary-lighter);
+}
+
+.rf-toolbox-card-icon .rzi {
+    font-size: 1.75rem;
+}
+
+.rf-toolbox-card-badges {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: calc(var(--rz-gap) * 0.25);
+}
+
+.rf-toolbox-card .rf-toolbox-card-title {
+    margin: 0;
+}
+
+.rf-toolbox-card .rf-toolbox-card-description {
+    margin: 0;
+    color: var(--rz-text-secondary-color);
+}

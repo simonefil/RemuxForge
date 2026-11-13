@@ -268,7 +268,7 @@ namespace RemuxForge.Web.Services
         /// <summary>
         /// Richiede stop cooperativo
         /// </summary>
-        public void Stop()
+        public override void Stop()
         {
             this.RequestStop(AppText.T("web.metadata.stopRequested"));
         }

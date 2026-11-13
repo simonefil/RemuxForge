@@ -315,7 +315,7 @@ namespace RemuxForge.Core.Models
         public UiConfig()
         {
             this.Theme = "material-dark";
-            this.LastMode = Options.MODE_REMUX;
+            this.LastMode = "";
             this.Language = "en";
         }
 
@@ -329,7 +329,7 @@ namespace RemuxForge.Core.Models
         public string Theme { get; set; }
 
         /// <summary>
-        /// Ultima modalità selezionata nella UI
+        /// Ultima card aperta dalla home, evidenziata al rientro; vuoto se nessuna
         /// </summary>
         public string LastMode { get; set; }
 

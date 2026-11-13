@@ -1,0 +1,60 @@
+@inject ToolboxCatalog Catalog
+
+<div class="rf-toolbox-home">
+    <div class="rf-toolbox-grid" role="list" aria-label="@AppText.T("web.toolbox.home.cards")">
+        @foreach (ToolboxCard card in Catalog.Cards)
+        {
+            bool running = Catalog.GetOrchestrator(card).IsBusy;
+            // Un'operazione per volta: con un'operazione in corso resta apribile soltanto la card che la esegue
+            bool locked = IsBusy && !running;
+            bool lastUsed = string.Equals(card.Id, LastCardId, StringComparison.Ordinal);
+            <div role="listitem" class="rf-toolbox-grid-item">
+                <RadzenCard Variant="Variant.Outlined"
+                            class="@("rf-toolbox-card" + (lastUsed ? " rf-toolbox-card-last" : "") + (locked ? " rf-toolbox-card-locked" : ""))"
+                            role="button"
+                            tabindex="@(locked ? "-1" : "0")"
+                            aria-disabled="@(locked ? "true" : "false")"
+                            @onclick="@(() => OnOpen.InvokeAsync(card.Id))"
+                            @onkeydown="@(args => args.Key == "Enter" || args.Key == " " ? OnOpen.InvokeAsync(card.Id) : Task.CompletedTask)">
+                    <div class="rf-toolbox-card-head">
+                        <span class="rf-toolbox-card-icon"><RadzenIcon Icon="@card.Icon" /></span>
+                        <div class="rf-toolbox-card-badges">
+                            @if (running)
+                            {
+                                <RadzenBadge BadgeStyle="BadgeStyle.Warning" IsPill="true" Text="@AppText.T("web.toolbox.home.running")" />
+                            }
+                            @if (lastUsed)
+                            {
+                                <RadzenBadge BadgeStyle="BadgeStyle.Primary" IsPill="true" Text="@AppText.T("web.toolbox.home.lastUsed")" />
+                            }
+                        </div>
+                    </div>
+                    <RadzenText TextStyle="TextStyle.H6" TagName="TagName.H2" class="rf-toolbox-card-title">@AppText.T(card.TitleKey)</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Body2" TagName="TagName.P" class="rf-toolbox-card-description">@AppText.T(card.DescriptionKey)</RadzenText>
+                </RadzenCard>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Identificativo dell'ultima card aperta, evidenziata
+    /// </summary>
+    [Parameter] public string LastCardId { get; set; }
+
+    /// <summary>
+    /// Indica che una card sta eseguendo un'operazione, ridisegna blocchi e badge quando cambia
+    /// </summary>
+    [Parameter] public bool IsBusy { get; set; }
+
+    /// <summary>
+    /// Lingua corrente, ridisegna i testi quando cambia
+    /// </summary>
+    [Parameter] public string CurrentLanguage { get; set; }
+
+    /// <summary>
+    /// Evento apertura di una card, con il suo identificativo
+    /// </summary>
+    [Parameter] public EventCallback<string> OnOpen { get; set; }
+}

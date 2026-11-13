@@ -80,6 +80,11 @@ namespace RemuxForge.Web.Services
             this.AppendLog(message);
         }
 
+        /// <summary>
+        /// Richiede l'interruzione cooperativa dell'operazione in corso
+        /// </summary>
+        public abstract void Stop();
+
         #endregion
 
         #region Metodi protected

@@ -8,6 +8,7 @@ using RemuxForge.Web.Components.Shared;
 using RemuxForge.Web.Components.Remux;
 using RemuxForge.Web.Components.Split;
 using RemuxForge.Web.Services;
+using RemuxForge.Web.Services.Toolbox;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
@@ -133,14 +134,9 @@ namespace RemuxForge.Web.Components.Pages
         private string _currentLanguage;
 
         /// <summary>
-        /// Modalità corrente UI
+        /// Identificativo della card aperta; null quando è aperta la home
         /// </summary>
-        private string _currentMode;
-
-        /// <summary>
-        /// Indica che la navigazione laterale è compressa
-        /// </summary>
-        private bool _navigationCollapsed;
+        private string _currentCardId;
 
         /// <summary>
         /// Flag: mostra dialog configurazione
@@ -286,9 +282,8 @@ namespace RemuxForge.Web.Components.Pages
             if (string.IsNullOrEmpty(this._currentLanguage))
                 this._currentLanguage = AppText.LANG_EN;
 
-            this._currentMode = AppSettingsService.Instance.Settings.Ui.LastMode;
-            if (this._currentMode != Options.MODE_REMUX && this._currentMode != Options.MODE_SPLIT && this._currentMode != Options.MODE_METADATA)
-                this._currentMode = Options.MODE_REMUX;
+            // All'avvio si apre sempre la home: l'ultima card usata è soltanto evidenziata
+            this._currentCardId = null;
 
             this._showConfig = false;
             this._showMetadataPreset = false;
@@ -326,20 +321,20 @@ namespace RemuxForge.Web.Components.Pages
             this.SyncSelectedFromSplitOrchestrator();
             this.SyncSelectedFromMetadataOrchestrator();
 
-            // Sottoscrivi eventi orchestratore
-            this.Orchestrator.OnLog += this.HandleLog;
+            // Sottoscrivi eventi orchestratore: log e avanzamento sono comuni a tutte le card
+            foreach (ToolboxCard card in this.ToolboxCatalog.Cards)
+            {
+                MediaOrchestratorBase orchestrator = this.ToolboxCatalog.GetOrchestrator(card);
+                orchestrator.OnLog += this.HandleLog;
+                orchestrator.OnProgressChanged += this.HandleProgressChanged;
+            }
             this.Orchestrator.OnRecordsChanged += this.HandleRecordsChanged;
-            this.Orchestrator.OnProgressChanged += this.HandleProgressChanged;
-            this.SplitOrchestrator.OnLog += this.HandleLog;
             this.SplitOrchestrator.OnRecordsChanged += this.HandleSplitRecordsChanged;
-            this.SplitOrchestrator.OnProgressChanged += this.HandleProgressChanged;
             this.SplitOrchestrator.OnAnalysisCompleted += this.HandleSplitAnalysisCompleted;
             this.SplitOrchestrator.OnSplitCompleted += this.HandleSplitCompleted;
             this.SplitOrchestrator.OnOperationFailed += this.HandleSplitOperationFailed;
             this.SplitOrchestrator.OnJoinCompleted += this.HandleSplitJoinCompleted;
-            this.MetadataOrchestrator.OnLog += this.HandleLog;
             this.MetadataOrchestrator.OnRecordsChanged += this.HandleMetadataRecordsChanged;
-            this.MetadataOrchestrator.OnProgressChanged += this.HandleProgressChanged;
             this.MetadataOrchestrator.OnAnalysisCompleted += this.HandleMetadataAnalysisCompleted;
             this.MetadataOrchestrator.OnApplyCompleted += this.HandleMetadataApplyCompleted;
             this.MetadataOrchestrator.OnOperationFailed += this.HandleMetadataOperationFailed;
@@ -353,7 +348,7 @@ namespace RemuxForge.Web.Components.Pages
         /// <param name="firstRender">True se primo render</param>
         protected override async Task OnAfterRenderAsync(bool firstRender)
         {
-            if (this._splitReturnFocus && !this._showSplitEditor && this._currentMode == Options.MODE_SPLIT)
+            if (this._splitReturnFocus && !this._showSplitEditor && this._currentCardId == Options.MODE_SPLIT)
             {
                 this._splitReturnFocus = false;
                 await this._splitWorkspaceRoot.FocusAsync(true);
@@ -365,7 +360,7 @@ namespace RemuxForge.Web.Components.Pages
 
                 // Cattura tastiera via JS
                 this._dotNetRef = DotNetObjectReference.Create(this);
-                if (!(this._showConfig && (this._currentMode == Options.MODE_REMUX || this._currentMode == Options.MODE_SPLIT)))
+                if (!(this._showConfig && (this._currentCardId == Options.MODE_REMUX || this._currentCardId == Options.MODE_SPLIT)))
                     await this._jsModule.InvokeVoidAsync("captureKeyboard", this._dotNetRef);
                 await this._jsModule.InvokeVoidAsync("interceptExternalLinks");
 
@@ -385,19 +380,19 @@ namespace RemuxForge.Web.Components.Pages
             // Rimuovi sottoscrizioni eventi
             if (this.Orchestrator != null)
             {
-                this.Orchestrator.OnLog -= this.HandleLog;
+                foreach (ToolboxCard card in this.ToolboxCatalog.Cards)
+                {
+                    MediaOrchestratorBase orchestrator = this.ToolboxCatalog.GetOrchestrator(card);
+                    orchestrator.OnLog -= this.HandleLog;
+                    orchestrator.OnProgressChanged -= this.HandleProgressChanged;
+                }
                 this.Orchestrator.OnRecordsChanged -= this.HandleRecordsChanged;
-                this.Orchestrator.OnProgressChanged -= this.HandleProgressChanged;
-                this.SplitOrchestrator.OnLog -= this.HandleLog;
                 this.SplitOrchestrator.OnRecordsChanged -= this.HandleSplitRecordsChanged;
-                this.SplitOrchestrator.OnProgressChanged -= this.HandleProgressChanged;
                 this.SplitOrchestrator.OnAnalysisCompleted -= this.HandleSplitAnalysisCompleted;
                 this.SplitOrchestrator.OnSplitCompleted -= this.HandleSplitCompleted;
                 this.SplitOrchestrator.OnOperationFailed -= this.HandleSplitOperationFailed;
                 this.SplitOrchestrator.OnJoinCompleted -= this.HandleSplitJoinCompleted;
-                this.MetadataOrchestrator.OnLog -= this.HandleLog;
                 this.MetadataOrchestrator.OnRecordsChanged -= this.HandleMetadataRecordsChanged;
-                this.MetadataOrchestrator.OnProgressChanged -= this.HandleProgressChanged;
                 this.MetadataOrchestrator.OnAnalysisCompleted -= this.HandleMetadataAnalysisCompleted;
                 this.MetadataOrchestrator.OnApplyCompleted -= this.HandleMetadataApplyCompleted;
                 this.MetadataOrchestrator.OnOperationFailed -= this.HandleMetadataOperationFailed;
@@ -692,7 +687,7 @@ namespace RemuxForge.Web.Components.Pages
             {
                 if (key == "Escape")
                 {
-                    if (this._showConfig && (this._currentMode == Options.MODE_REMUX || this._currentMode == Options.MODE_SPLIT)) return; // Radzen possiede Escape/focus.
+                    if (this._showConfig && (this._currentCardId == Options.MODE_REMUX || this._currentCardId == Options.MODE_SPLIT)) return; // Radzen possiede Escape/focus.
                     this.CloseAllDialogs();
                     this.StateHasChanged();
                 }
@@ -710,7 +705,7 @@ namespace RemuxForge.Web.Components.Pages
             if (UiCommandDefinition.IsShortcutDisabled(this.BuildUiCommands(), key, ctrl))
                 return;
 
-            if (this.IsAnyBusy() && ((key.StartsWith("F", StringComparison.Ordinal) && key.Length <= 3) || ctrl))
+            if (this.ToolboxCatalog.IsAnyBusy() && ((key.StartsWith("F", StringComparison.Ordinal) && key.Length <= 3) || ctrl))
             {
                 if (key == "F12")
                     this.DoStop();
@@ -718,7 +713,11 @@ namespace RemuxForge.Web.Components.Pages
                 return;
             }
 
-            if (this._currentMode == Options.MODE_SPLIT)
+            // La home non ha scorciatoie proprie: le card si aprono con clic, Invio o Spazio sulla card
+            if (this._currentCardId == null)
+                return;
+
+            if (this._currentCardId == Options.MODE_SPLIT)
             {
                 if (key == "F2")
                     this.ShowConfig();
@@ -753,7 +752,7 @@ namespace RemuxForge.Web.Components.Pages
                 else if (key == "End")
                     this.SelectSplitRowWithModifiers((this._splitRecords.Count - 1, ctrl, shift));
             }
-            else if (this._currentMode == Options.MODE_METADATA)
+            else if (this._currentCardId == Options.MODE_METADATA)
             {
                 if (key == "F3")
                     await this.ShowMetadataPresetAsync();
@@ -1563,36 +1562,6 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
-        /// Restituisce log della modalità corrente
-        /// </summary>
-        /// <returns>Log corrente</returns>
-        private string GetCurrentLogText()
-        {
-            if (this._currentMode == Options.MODE_SPLIT)
-                return this.SplitOrchestrator.LogText;
-
-            if (this._currentMode == Options.MODE_METADATA)
-                return this.MetadataOrchestrator.LogText;
-
-            return this.Orchestrator.LogText;
-        }
-
-        /// <summary>
-        /// Restituisce progress della modalità corrente
-        /// </summary>
-        /// <returns>Progress corrente</returns>
-        private ProcessingProgressState GetCurrentProgress()
-        {
-            if (this._currentMode == Options.MODE_SPLIT)
-                return this.SplitOrchestrator.Progress;
-
-            if (this._currentMode == Options.MODE_METADATA)
-                return this.MetadataOrchestrator.Progress;
-
-            return this.Orchestrator.Progress;
-        }
-
-        /// <summary>
         /// Costruisce riepilogo tracce metadata
         /// </summary>
         /// <param name="record">Record metadata</param>
@@ -1737,57 +1706,22 @@ namespace RemuxForge.Web.Components.Pages
         #region Azioni
 
         /// <summary>
-        /// Restituisce il titolo della modalità corrente
+        /// Apre una card dalla home e la ricorda come ultima usata
         /// </summary>
-        /// <returns>Titolo modalità</returns>
-        private string GetCurrentModeTitle()
+        /// <param name="cardId">Identificativo della card</param>
+        private void OpenCard(string cardId)
         {
-            if (this._currentMode == Options.MODE_SPLIT)
-                return "Split";
-            if (this._currentMode == Options.MODE_METADATA)
-                return AppText.T("web.metadata.title");
-
-            return "Remux";
-        }
-
-        /// <summary>
-        /// Restituisce la descrizione della modalità corrente
-        /// </summary>
-        /// <returns>Descrizione modalità</returns>
-        private string GetCurrentModeDescription()
-        {
-            if (this._currentMode == Options.MODE_SPLIT)
-                return AppText.T("web.dashboard.splitDescription");
-            if (this._currentMode == Options.MODE_METADATA)
-                return AppText.T("web.dashboard.metadataDescription");
-
-            return AppText.T("web.dashboard.remuxDescription");
-        }
-
-        /// <summary>
-        /// Cambia modalità UI e salva preferenza
-        /// </summary>
-        /// <param name="mode">Modalità richiesta</param>
-        private void SwitchMode(string mode)
-        {
-            if (mode != Options.MODE_REMUX && mode != Options.MODE_SPLIT && mode != Options.MODE_METADATA)
+            ToolboxCard card = this.ToolboxCatalog.Find(cardId);
+            if (card == null)
                 return;
 
-            if (this.IsAnyBusy() && mode != this._currentMode)
+            // Un'operazione per volta: mentre una card lavora le altre restano chiuse
+            if (this.ToolboxCatalog.IsAnyBusy() && !this.ToolboxCatalog.GetOrchestrator(card).IsBusy)
                 return;
 
-            this._currentMode = mode;
-            AppSettingsService.Instance.Settings.Ui.LastMode = mode;
+            this._currentCardId = card.Id;
+            AppSettingsService.Instance.Settings.Ui.LastMode = card.Id;
             AppSettingsService.Instance.Save();
-        }
-
-        /// <summary>
-        /// Imposta lo stato compatto della navigazione laterale
-        /// </summary>
-        /// <param name="collapsed">True per mostrare soltanto le icone</param>
-        private void SetNavigationCollapsed(bool collapsed)
-        {
-            this._navigationCollapsed = collapsed;
         }
 
         /// <summary>
@@ -1899,7 +1833,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private async Task DoScanAsync()
         {
-            if (this._currentMode == Options.MODE_METADATA)
+            if (this._currentCardId == Options.MODE_METADATA)
             {
                 if (string.IsNullOrEmpty(this.MetadataOrchestrator.CurrentOptions.Metadata.SourcePath))
                 {
@@ -1914,7 +1848,7 @@ namespace RemuxForge.Web.Components.Pages
                 return;
             }
 
-            if (this._currentMode == Options.MODE_SPLIT)
+            if (this._currentCardId == Options.MODE_SPLIT)
             {
                 if (!this.ApplySplitConfig())
                     return;
@@ -1949,13 +1883,13 @@ namespace RemuxForge.Web.Components.Pages
         private void DoAnalyzeSelected()
         {
             List<int> selectedIndices;
-            if (this._currentMode == Options.MODE_METADATA)
+            if (this._currentCardId == Options.MODE_METADATA)
             {
                 this.DoAnalyzeAll();
                 return;
             }
 
-            if (this._currentMode == Options.MODE_SPLIT)
+            if (this._currentCardId == Options.MODE_SPLIT)
                 return;
 
             selectedIndices = this.GetActionSelectionIndices();
@@ -1982,7 +1916,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private void DoAnalyzeAll()
         {
-            if (this._currentMode == Options.MODE_METADATA)
+            if (this._currentCardId == Options.MODE_METADATA)
             {
                 if (!this.MetadataOrchestrator.IsBusy)
                 {
@@ -1991,7 +1925,7 @@ namespace RemuxForge.Web.Components.Pages
                 return;
             }
 
-            if (this._currentMode == Options.MODE_SPLIT)
+            if (this._currentCardId == Options.MODE_SPLIT)
                 return;
 
             if (!this.Orchestrator.IsBusy)
@@ -2010,10 +1944,10 @@ namespace RemuxForge.Web.Components.Pages
         private void DoToggleSkip()
         {
             List<int> selectedIndices;
-            if (this._currentMode == Options.MODE_METADATA)
+            if (this._currentCardId == Options.MODE_METADATA)
                 return;
 
-            if (this._currentMode == Options.MODE_SPLIT)
+            if (this._currentCardId == Options.MODE_SPLIT)
                 return;
 
             selectedIndices = this.GetActionSelectionIndices();
@@ -2037,7 +1971,7 @@ namespace RemuxForge.Web.Components.Pages
         private void DoMergeSelected()
         {
             List<int> selectedIndices;
-            if (this._currentMode == Options.MODE_METADATA)
+            if (this._currentCardId == Options.MODE_METADATA)
             {
                 if (!this.MetadataOrchestrator.IsBusy)
                 {
@@ -2046,7 +1980,7 @@ namespace RemuxForge.Web.Components.Pages
                 return;
             }
 
-            if (this._currentMode == Options.MODE_SPLIT)
+            if (this._currentCardId == Options.MODE_SPLIT)
             {
                 this.DoMergeAll();
                 return;
@@ -2076,7 +2010,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private void DoMergeAll()
         {
-            if (this._currentMode == Options.MODE_METADATA)
+            if (this._currentCardId == Options.MODE_METADATA)
             {
                 if (!this.MetadataOrchestrator.IsBusy)
                 {
@@ -2085,7 +2019,7 @@ namespace RemuxForge.Web.Components.Pages
                 return;
             }
 
-            if (this._currentMode == Options.MODE_SPLIT)
+            if (this._currentCardId == Options.MODE_SPLIT)
             {
                 if (!this.CanLeaveSplitReview() || this.SplitOrchestrator.IsBusy)
                     return;
@@ -2109,46 +2043,38 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private void DoStop()
         {
-            if (this.MetadataOrchestrator.IsBusy)
+            foreach (ToolboxCard card in this.ToolboxCatalog.Cards)
             {
-                this.MetadataOrchestrator.Stop();
-                return;
+                MediaOrchestratorBase orchestrator = this.ToolboxCatalog.GetOrchestrator(card);
+                if (orchestrator.IsBusy)
+                {
+                    orchestrator.Stop();
+                    return;
+                }
             }
 
-            if (this.SplitOrchestrator.IsBusy)
-            {
-                this.SplitOrchestrator.Stop();
-                return;
-            }
-
-            if (this.Orchestrator.IsBusy)
-            {
-                this.Orchestrator.RequestStop();
-            }
-            else
-            {
-                this.Orchestrator.Log(AppText.T("web.log.noOperationToStop"));
-            }
+            this.Orchestrator.Log(AppText.T("web.log.noOperationToStop"));
         }
 
         /// <summary>
-        /// Costruisce la definizione condivisa dei comandi della modalità corrente
+        /// Costruisce la definizione condivisa dei comandi della card corrente o della home
         /// </summary>
         /// <returns>Comandi per menu, toolbar e status bar</returns>
         private IReadOnlyList<UiCommandDefinition> BuildUiCommands()
         {
-            bool busy = this.IsAnyBusy();
+            bool busy = this.ToolboxCatalog.IsAnyBusy();
             List<UiCommandDefinition> result = new List<UiCommandDefinition>();
 
-            if (this._currentMode == Options.MODE_METADATA)
+            // La home non aggiunge comandi propri: restano Stop, impostazioni e aiuto
+            if (this._currentCardId == Options.MODE_METADATA)
             {
                 this.AddMetadataUiCommands(result, busy);
             }
-            else if (this._currentMode == Options.MODE_SPLIT)
+            else if (this._currentCardId == Options.MODE_SPLIT)
             {
                 this.AddSplitUiCommands(result, busy);
             }
-            else
+            else if (this._currentCardId == Options.MODE_REMUX)
             {
                 this.AddRemuxUiCommands(result, busy);
             }
@@ -2169,7 +2095,7 @@ namespace RemuxForge.Web.Components.Pages
                 ToolbarOrder = 20,
                 StatusOrder = 90
             });
-            if (this._currentMode != Options.MODE_REMUX)
+            if (this._currentCardId != Options.MODE_REMUX)
             {
                 result.Add(new UiCommandDefinition(
                     AppText.T("web.menu.toolPaths"),
@@ -2452,23 +2378,14 @@ namespace RemuxForge.Web.Components.Pages
         }
 
         /// <summary>
-        /// Verifica se uno degli orchestrator sta eseguendo un'operazione
-        /// </summary>
-        /// <returns>True se l'applicazione è occupata</returns>
-        private bool IsAnyBusy()
-        {
-            return this.Orchestrator.IsBusy || this.SplitOrchestrator.IsBusy || this.MetadataOrchestrator.IsBusy;
-        }
-
-        /// <summary>
         /// Mostra dialog configurazione
         /// </summary>
         private void ShowConfig()
         {
-            if (this.IsAnyBusy() || this._showConfig) return;
+            if (this.ToolboxCatalog.IsAnyBusy() || this._showConfig) return;
             this._showConfig = true;
-            if (this._currentMode == Options.MODE_REMUX) _ = this.ShowRemuxConfigAsync();
-            else if (this._currentMode == Options.MODE_SPLIT) _ = this.ShowSplitConfigAsync();
+            if (this._currentCardId == Options.MODE_REMUX) _ = this.ShowRemuxConfigAsync();
+            else if (this._currentCardId == Options.MODE_SPLIT) _ = this.ShowSplitConfigAsync();
         }
 
         /// <summary>
@@ -2660,7 +2577,7 @@ namespace RemuxForge.Web.Components.Pages
             Dictionary<string, object> parameters;
             object result;
 
-            if (this._currentMode != Options.MODE_METADATA)
+            if (this._currentCardId != Options.MODE_METADATA)
                 return;
 
             if (this._selectedMetadataRecord == null)
@@ -2902,7 +2819,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private async Task DoClearAsync()
         {
-            if (this._currentMode == Options.MODE_REMUX)
+            if (this._currentCardId == Options.MODE_REMUX)
             {
                 if (!this.Orchestrator.Clear()) return;
                 this._selection = new RowSelectionState();
@@ -2919,7 +2836,7 @@ namespace RemuxForge.Web.Components.Pages
                 this._remuxPreviewSnapshot = null;
                 return;
             }
-            if (this._currentMode == Options.MODE_SPLIT)
+            if (this._currentCardId == Options.MODE_SPLIT)
             {
                 if (this._splitResetInProgress || !this.SplitOrchestrator.Clear()) return;
                 this._splitSelection = new RowSelectionState();
@@ -2931,7 +2848,7 @@ namespace RemuxForge.Web.Components.Pages
                 this._contextMenuCommands.Clear();
                 return;
             }
-            if (this._currentMode == Options.MODE_METADATA)
+            if (this._currentCardId == Options.MODE_METADATA)
             {
                 this.MetadataOrchestrator.Clear();
                 await this.ShowMetadataInputPickerAsync();
@@ -2943,7 +2860,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private async Task ShowMetadataRenameAsync()
         {
-            if (this._currentMode == Options.MODE_METADATA)
+            if (this._currentCardId == Options.MODE_METADATA)
             {
                 if (this._metadataRecords.Count == 0)
                 {
@@ -3014,7 +2931,7 @@ namespace RemuxForge.Web.Components.Pages
         {
             Dictionary<string, object> parameters;
 
-            if (this._currentMode != Options.MODE_METADATA || this.MetadataOrchestrator.IsBusy)
+            if (this._currentCardId != Options.MODE_METADATA || this.MetadataOrchestrator.IsBusy)
                 return;
 
             parameters = new Dictionary<string, object>();
