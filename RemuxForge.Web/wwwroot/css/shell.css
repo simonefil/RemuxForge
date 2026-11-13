@@ -54,7 +54,6 @@
 /* Il pulsante Home sta sulla stessa linea di base di titolo e descrizione */
 .rf-app-title .rf-home-button {
     flex-shrink: 0;
-    align-self: center;
 }
 
 .rf-app-title-mode {
