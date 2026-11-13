@@ -41,9 +41,9 @@ namespace RemuxForge.Core.Toolbox.Common
         /// </summary>
         /// <param name="executable">Percorso di mkvmerge o mkvextract</param>
         /// <param name="arguments">Argomenti dello strumento, senza --gui-mode</param>
-        /// <param name="onProgress">Avanzamento in percentuale</param>
-        /// <param name="onWarning">Riceve ogni avviso</param>
-        /// <param name="errors">Riceve gli errori, nell'ordine in cui arrivano</param>
+        /// <param name="onProgress">Avanzamento in percentuale; null per ignorarlo</param>
+        /// <param name="onWarning">Riceve ogni avviso; null per ignorarli</param>
+        /// <param name="errors">Riceve gli errori, nell'ordine in cui arrivano; null per ignorarli</param>
         /// <returns>Esito del processo, con lo stderr</returns>
         public static ProcessResult Run(string executable, IEnumerable<string> arguments, Action<int> onProgress, Action<string> onWarning, List<string> errors)
         {
@@ -57,9 +57,9 @@ namespace RemuxForge.Core.Toolbox.Common
                     int.TryParse(line.Substring(PROGRESS_PREFIX.Length).TrimEnd('%'), NumberStyles.Integer, CultureInfo.InvariantCulture, out percent))
                     onProgress?.Invoke(percent);
                 else if (line.StartsWith(WARNING_PREFIX, StringComparison.Ordinal))
-                    onWarning(line.Substring(WARNING_PREFIX.Length).Trim());
+                    onWarning?.Invoke(line.Substring(WARNING_PREFIX.Length).Trim());
                 else if (line.StartsWith(ERROR_PREFIX, StringComparison.Ordinal))
-                    errors.Add(line.Substring(ERROR_PREFIX.Length).Trim());
+                    errors?.Add(line.Substring(ERROR_PREFIX.Length).Trim());
             });
         }
 

@@ -64,6 +64,12 @@ namespace RemuxForge.Web.Services.Toolbox
         /// </summary>
         private Dictionary<AddTracksVideo, string> _plan;
 
+        /// <summary>
+        /// Video sostituiti in questo processo, con i file di tracce già aggiunti e l'ultimo esito: un video sostituito contiene già
+        /// la traccia, e riabbinarlo allo stesso file la aggiungerebbe una seconda volta
+        /// </summary>
+        private readonly List<AddTracksReplacement> _replacements;
+
         #endregion
 
         #region Costruttore
@@ -74,6 +80,7 @@ namespace RemuxForge.Web.Services.Toolbox
         public AddTracksOrchestrator() : base("web.toolbox.addTracks")
         {
             this._tracks = new List<AddTracksTrackFile>();
+            this._replacements = new List<AddTracksReplacement>();
             this._language = "";
             this._name = "";
 
@@ -113,16 +120,15 @@ namespace RemuxForge.Web.Services.Toolbox
                 foreach (string path in paths)
                 {
                     AddTracksTrackFile existing = this._tracks.Find(t => PathIdentity.IsSame(t.InputPath, path));
-                    FileInfo info = new FileInfo(existing != null ? existing.InputPath : path);
 
                     if (existing == null)
                     {
-                        this._tracks.Add(new AddTracksTrackFile(info.FullName, info.Exists ? info.Length : 0));
+                        this._tracks.Add(new AddTracksTrackFile(Path.GetFullPath(path)));
                         added++;
                     }
                     else if (existing.State == AddTracksTrackState.Blocked || existing.State == AddTracksTrackState.NotRead)
                     {
-                        existing.SetReading(info.Exists ? info.Length : 0);
+                        existing.SetReading();
                         requeued++;
                     }
                     else
@@ -160,45 +166,47 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Sposta un video in un'altra posizione dell'elenco
+        /// Sposta un video di qualche posizione; la posizione si legge adesso, non quella del disegno
         /// </summary>
-        /// <param name="from">Posizione attuale</param>
-        /// <param name="to">Posizione di arrivo</param>
-        public void MoveVideo(int from, int to)
+        /// <param name="video">Video da spostare</param>
+        /// <param name="delta">Posizioni, negative verso l'alto</param>
+        /// <returns>Nuova posizione, -1 se il video non si è spostato</returns>
+        public int MoveVideo(AddTracksVideo video, int delta)
         {
-            lock (this.StateLock)
-            {
-                if (this.IsBusy || from < 0 || from >= this.Records.Count || to < 0 || to >= this.Records.Count || from == to)
-                    return;
-
-                AddTracksVideo video = this.Records[from];
-                this.Records.RemoveAt(from);
-                this.Records.Insert(to, video);
-                this.RealignResults();
-            }
-
-            this.NotifyRecordsChanged();
+            return this.Move(this.Records, video, l => l.IndexOf(video) + delta);
         }
 
         /// <summary>
-        /// Sposta un file di tracce in un'altra posizione dell'elenco
+        /// Porta un video al posto di un altro, come col trascinamento
         /// </summary>
-        /// <param name="from">Posizione attuale</param>
-        /// <param name="to">Posizione di arrivo</param>
-        public void MoveTrack(int from, int to)
+        /// <param name="video">Video da spostare</param>
+        /// <param name="target">Video di cui prende il posto</param>
+        /// <returns>Nuova posizione, -1 se il video non si è spostato</returns>
+        public int MoveVideo(AddTracksVideo video, AddTracksVideo target)
         {
-            lock (this.StateLock)
-            {
-                if (this.IsBusy || from < 0 || from >= this._tracks.Count || to < 0 || to >= this._tracks.Count || from == to)
-                    return;
+            return this.Move(this.Records, video, l => l.IndexOf(target));
+        }
 
-                AddTracksTrackFile track = this._tracks[from];
-                this._tracks.RemoveAt(from);
-                this._tracks.Insert(to, track);
-                this.RealignResults();
-            }
+        /// <summary>
+        /// Sposta un file di tracce di qualche posizione; la posizione si legge adesso, non quella del disegno
+        /// </summary>
+        /// <param name="track">File da spostare</param>
+        /// <param name="delta">Posizioni, negative verso l'alto</param>
+        /// <returns>Nuova posizione, -1 se il file non si è spostato</returns>
+        public int MoveTrack(AddTracksTrackFile track, int delta)
+        {
+            return this.Move(this._tracks, track, l => l.IndexOf(track) + delta);
+        }
 
-            this.NotifyRecordsChanged();
+        /// <summary>
+        /// Porta un file di tracce al posto di un altro, come col trascinamento
+        /// </summary>
+        /// <param name="track">File da spostare</param>
+        /// <param name="target">File di cui prende il posto</param>
+        /// <returns>Nuova posizione, -1 se il file non si è spostato</returns>
+        public int MoveTrack(AddTracksTrackFile track, AddTracksTrackFile target)
+        {
+            return this.Move(this._tracks, track, l => l.IndexOf(target));
         }
 
         /// <summary>
@@ -217,7 +225,8 @@ namespace RemuxForge.Web.Services.Toolbox
                     return;
 
                 this._language = language ?? "";
-                this._name = (name ?? "").Trim();
+                // Il nome arriva a ogni tasto: gli spazi in coda si tolgono all'avvio, non mentre si scrive
+                this._name = name ?? "";
                 this._isDefault = isDefault;
                 this._isForced = isForced;
                 this._delayMs = delayMs;
@@ -237,8 +246,9 @@ namespace RemuxForge.Web.Services.Toolbox
                     return;
 
                 this._tracks.Clear();
-                base.Clear();
             }
+
+            base.Clear();
         }
 
         /// <summary>
@@ -265,7 +275,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     return;
 
                 List<KeyValuePair<AddTracksVideo, AddTracksTrackFile>> batch = new List<KeyValuePair<AddTracksVideo, AddTracksTrackFile>>();
-                AddedTrackProperties properties = new AddedTrackProperties(this._language, this._name, this._isDefault, this._isForced, this._delayMs);
+                AddedTrackProperties properties = new AddedTrackProperties(this._language, this._name.Trim(), this._isDefault, this._isForced, this._delayMs);
                 string outputFolder = this.GetBatchOutputFolder();
 
                 for (int i = 0; i < this.Records.Count; i++)
@@ -338,17 +348,59 @@ namespace RemuxForge.Web.Services.Toolbox
 
         /// <summary>
         /// Riporta in attesa i video il cui esito è stato ottenuto con una traccia diversa da quella che ora sta nella loro
-        /// posizione, o senza più una traccia accanto: la nuova coppia va elaborata. Da chiamare sotto StateLock
+        /// posizione, o senza più una traccia accanto: la nuova coppia va elaborata. Un video sostituito in questo processo che torna
+        /// accanto a un file già aggiunto riprende l'ultimo esito se è la stessa coppia, altrimenti resta bloccato: la traccia c'è
+        /// già. Da chiamare sotto StateLock
         /// </summary>
         private void RealignResults()
         {
             for (int i = 0; i < this.Records.Count; i++)
             {
                 AddTracksVideo video = this.Records[i];
-                if (video.Status != AddTracksStatus.Pending && video.Status != AddTracksStatus.Running &&
-                    (i >= this._tracks.Count || !PathIdentity.IsSame(video.PairedTrackPath, this._tracks[i].InputPath)))
+                string trackPath = i < this._tracks.Count ? this._tracks[i].InputPath : "";
+                AddTracksReplacement replacement = this._replacements.Find(r => PathIdentity.IsSame(r.VideoPath, video.InputPath));
+
+                if (video.Status == AddTracksStatus.Running)
+                    continue;
+
+                if (replacement != null && trackPath.Length > 0 && replacement.TrackPaths.Exists(t => PathIdentity.IsSame(t, trackPath)))
+                {
+                    if (PathIdentity.IsSame(replacement.LastTrackPath, trackPath))
+                        replacement.Restore(video);
+                    else
+                        video.Block(AppText.T("web.toolbox.addTracks.alreadyAdded"), trackPath);
+                }
+                else if ((video.Status != AddTracksStatus.Pending || video.BlockedReason.Length > 0) && !PathIdentity.IsSame(video.PairedTrackPath, trackPath))
                     video.Reset();
             }
+        }
+
+        /// <summary>
+        /// Sposta un elemento di un elenco nella posizione indicata, calcolata sotto il lock
+        /// </summary>
+        /// <param name="list">Elenco dei video o dei file di tracce</param>
+        /// <param name="item">Elemento da spostare</param>
+        /// <param name="target">Posizione di arrivo, dall'elenco attuale</param>
+        /// <returns>Nuova posizione, -1 se l'elemento non si è spostato</returns>
+        private int Move<T>(List<T> list, T item, Func<List<T>, int> target)
+        {
+            int to;
+
+            lock (this.StateLock)
+            {
+                int from = list.IndexOf(item);
+
+                to = target(list);
+                if (this.IsBusy || from < 0 || to < 0 || to >= list.Count || from == to)
+                    return -1;
+
+                list.RemoveAt(from);
+                list.Insert(to, item);
+                this.RealignResults();
+            }
+
+            this.NotifyRecordsChanged();
+            return to;
         }
 
         /// <summary>
@@ -378,6 +430,7 @@ namespace RemuxForge.Web.Services.Toolbox
             CancellationToken cancellation = this.OperationCancellationToken;
             int ready = 0;
             int blocked = 0;
+            bool failed = false;
 
             this.SetBusy(true, AppText.T("web.toolbox.addTracks.reading"));
             try
@@ -386,7 +439,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 {
                     targets = this._tracks.FindAll(t => t.State == AddTracksTrackState.Reading || t.State == AddTracksTrackState.NotRead);
                     foreach (AddTracksTrackFile track in targets)
-                        track.SetReading(track.Size);
+                        track.SetReading();
                 }
                 this.NotifyRecordsChanged();
 
@@ -435,17 +488,18 @@ namespace RemuxForge.Web.Services.Toolbox
             }
             catch (Exception ex)
             {
+                failed = true;
                 this.AppendLog(AppText.F("web.toolbox.addTracks.readError", ex.Message));
             }
             finally
             {
-                // Un file non raggiunto o interrotto dallo stop non è bloccato: resta da leggere
+                // Un file non raggiunto non è bloccato: resta da leggere, e il motivo dice se l'ha fermato lo stop o un errore
                 lock (this.StateLock)
                 {
                     foreach (AddTracksTrackFile track in targets)
                     {
                         if (track.State == AddTracksTrackState.Reading)
-                            track.SetNotRead();
+                            track.SetNotRead(AppText.T(failed ? "web.toolbox.addTracks.readFailed" : "web.toolbox.addTracks.readStopped"));
                     }
                 }
 
@@ -548,9 +602,17 @@ namespace RemuxForge.Web.Services.Toolbox
                         video.Details = result.Details.Length > 0 ? result.Details : string.Join(Environment.NewLine, listed);
                         video.PairedTrackPath = track.InputPath;
 
-                        // Il video sostituito ora è il file scritto: la dimensione in riga è la sua
+                        // Il video sostituito contiene ora la traccia: si ricorda, per non aggiungerla una seconda volta
                         if (result.Replaced)
-                            video.Size = new FileInfo(result.OutputPath).Length;
+                        {
+                            AddTracksReplacement replacement = this._replacements.Find(r => PathIdentity.IsSame(r.VideoPath, video.InputPath));
+                            if (replacement == null)
+                            {
+                                replacement = new AddTracksReplacement(video.InputPath);
+                                this._replacements.Add(replacement);
+                            }
+                            replacement.Record(video);
+                        }
                     }
 
                     for (int w = 0; w < result.Warnings.Count && w < LISTED_WARNINGS; w++)
@@ -684,6 +746,9 @@ namespace RemuxForge.Web.Services.Toolbox
                         return AppText.Count("web.toolbox.addTracks.pairingUnread", unread);
                     if (blocked > 0)
                         return AppText.Count("web.toolbox.addTracks.pairingBlocked", blocked);
+                    blocked = this.Records.FindAll(v => v.BlockedReason.Length > 0).Count;
+                    if (blocked > 0)
+                        return AppText.Count("web.toolbox.addTracks.pairingAlreadyAdded", blocked);
 
                     return "";
                 }
@@ -737,11 +802,10 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Costruttore
         /// </summary>
         /// <param name="inputPath">Percorso completo del file</param>
-        /// <param name="size">Dimensione in byte</param>
-        public AddTracksTrackFile(string inputPath, long size)
+        public AddTracksTrackFile(string inputPath)
         {
             this.InputPath = inputPath;
-            this.SetReading(size);
+            this.SetReading();
         }
 
         #endregion
@@ -751,10 +815,8 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <summary>
         /// Rimette il file in lettura
         /// </summary>
-        /// <param name="size">Dimensione in byte, riletta dal disco</param>
-        public void SetReading(long size)
+        public void SetReading()
         {
-            this.Size = size;
             this.Reason = "";
             this.Track = null;
             this.State = AddTracksTrackState.Reading;
@@ -783,9 +845,10 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <summary>
         /// Registra che la lettura è stata interrotta o non è arrivata al file
         /// </summary>
-        public void SetNotRead()
+        /// <param name="reason">Perché: lo stop o un errore della lettura</param>
+        public void SetNotRead(string reason)
         {
-            this.Reason = AppText.T("web.toolbox.addTracks.readStopped");
+            this.Reason = reason;
             this.State = AddTracksTrackState.NotRead;
         }
 
@@ -797,11 +860,6 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Percorso completo del file
         /// </summary>
         public string InputPath { get; }
-
-        /// <summary>
-        /// Dimensione in byte
-        /// </summary>
-        public long Size { get; private set; }
 
         /// <summary>
         /// Stato della lettura
@@ -853,6 +911,19 @@ namespace RemuxForge.Web.Services.Toolbox
             this.Message = "";
             this.Details = "";
             this.PairedTrackPath = "";
+            this.BlockedReason = "";
+        }
+
+        /// <summary>
+        /// Blocca il video accanto a un file di tracce che non gli si può aggiungere
+        /// </summary>
+        /// <param name="reason">Motivo</param>
+        /// <param name="trackPath">File di tracce accanto al video</param>
+        public void Block(string reason, string trackPath)
+        {
+            this.Reset();
+            this.BlockedReason = reason;
+            this.PairedTrackPath = trackPath;
         }
 
         #endregion
@@ -885,9 +956,14 @@ namespace RemuxForge.Web.Services.Toolbox
         public string Details { get; set; }
 
         /// <summary>
-        /// File di tracce con cui è stato ottenuto l'esito, vuoto in attesa
+        /// File di tracce con cui è stato ottenuto l'esito, o accanto a cui il video è bloccato; vuoto in attesa
         /// </summary>
         public string PairedTrackPath { get; set; }
+
+        /// <summary>
+        /// Perché la coppia non si può elaborare, vuoto se si può
+        /// </summary>
+        public string BlockedReason { get; private set; }
 
         /// <summary>
         /// True se la traccia è già stata aggiunta, anche con avvisi, e la coppia non va rielaborata
@@ -896,6 +972,89 @@ namespace RemuxForge.Web.Services.Toolbox
         {
             get { return this.Status == AddTracksStatus.Added || this.Status == AddTracksStatus.AddedWithWarnings; }
         }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Video sostituito in questo processo: i file di tracce che contiene già e l'ultimo esito, da riprendere quando la stessa coppia
+    /// torna in elenco
+    /// </summary>
+    public sealed class AddTracksReplacement
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        /// <param name="videoPath">Percorso completo del video sostituito</param>
+        public AddTracksReplacement(string videoPath)
+        {
+            this.VideoPath = videoPath;
+            this.TrackPaths = new List<string>();
+            this.LastTrackPath = "";
+            this.LastDetails = "";
+        }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Registra l'esito di una sostituzione riuscita
+        /// </summary>
+        /// <param name="video">Video con l'esito appena scritto</param>
+        public void Record(AddTracksVideo video)
+        {
+            if (!this.TrackPaths.Exists(t => PathIdentity.IsSame(t, video.PairedTrackPath)))
+                this.TrackPaths.Add(video.PairedTrackPath);
+            this.LastTrackPath = video.PairedTrackPath;
+            this.LastStatus = video.Status;
+            this.LastDetails = video.Details;
+        }
+
+        /// <summary>
+        /// Riporta sul video l'ultimo esito
+        /// </summary>
+        /// <param name="video">Video, anche riaggiunto, dello stesso percorso</param>
+        public void Restore(AddTracksVideo video)
+        {
+            video.Reset();
+            video.Status = this.LastStatus;
+            video.OutputPath = video.InputPath;
+            video.Replaced = true;
+            video.Details = this.LastDetails;
+            video.PairedTrackPath = this.LastTrackPath;
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Percorso completo del video sostituito
+        /// </summary>
+        public string VideoPath { get; }
+
+        /// <summary>
+        /// File di tracce già aggiunti al video
+        /// </summary>
+        public List<string> TrackPaths { get; }
+
+        /// <summary>
+        /// File di tracce dell'ultima sostituzione
+        /// </summary>
+        public string LastTrackPath { get; private set; }
+
+        /// <summary>
+        /// Stato dell'ultima sostituzione
+        /// </summary>
+        public AddTracksStatus LastStatus { get; private set; }
+
+        /// <summary>
+        /// Avvisi dell'ultima sostituzione, per il tooltip
+        /// </summary>
+        public string LastDetails { get; private set; }
 
         #endregion
     }

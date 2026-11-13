@@ -85,7 +85,8 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
 
             try
             {
-                using (StagedOutputFile output = new StagedOutputFile(finalPath))
+                StagedOutputFile output = new StagedOutputFile(finalPath);
+                try
                 {
                     ProcessResult run = MkvToolNixGuiMode.Run(this._mkvMergePath, MediaContainerNormalizer.BuildRemuxArguments(sourceTracks, inputPath, output.TempPath),
                         onProgress, result.Warnings.Add, errors);
@@ -116,6 +117,18 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
                         output.Commit();
                         result.Status = result.Warnings.Count > 0 ? VideoToMkvStatus.ConvertedWithWarnings : VideoToMkvStatus.Converted;
                         result.OutputPath = finalPath;
+                    }
+                }
+                finally
+                {
+                    // Un temporaneo che non si cancella resta sul disco: la riga lo dice, con il percorso
+                    List<string> leftovers = output.Discard();
+                    if (leftovers.Count > 0)
+                    {
+                        result.Message = (result.Message + " " + string.Join(" ", leftovers)).Trim();
+                        // Il dettaglio, quando c'è, prende il posto del messaggio nel log e nel suggerimento della riga
+                        if (result.Details.Length > 0)
+                            result.Details += Environment.NewLine + string.Join(Environment.NewLine, leftovers);
                     }
                 }
             }

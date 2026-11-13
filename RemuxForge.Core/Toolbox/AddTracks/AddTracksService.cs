@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Threading;
 
 namespace RemuxForge.Core.Toolbox.AddTracks
@@ -36,6 +37,11 @@ namespace RemuxForge.Core.Toolbox.AddTracks
         /// Ordine dei tipi di traccia nel file prodotto: la traccia aggiunta va dopo l'ultima del suo tipo o di un tipo che la precede
         /// </summary>
         private static readonly string[] s_typeOrder = new string[] { "video", "audio", "subtitles" };
+
+        /// <summary>
+        /// Sottotitoli di testo, la cui codifica si controlla prima di aggiungerli
+        /// </summary>
+        private static readonly string[] s_textSubtitleExtensions = new string[] { ".srt", ".ass", ".ssa" };
 
         #endregion
 
@@ -93,6 +99,27 @@ namespace RemuxForge.Core.Toolbox.AddTracks
                 throw new InvalidOperationException(AppText.F("toolbox.addTracks.fileMissing", name));
             if (companion.Length > 0 && !File.Exists(companion))
                 throw new InvalidOperationException(AppText.F("toolbox.addTracks.companionMissing", Path.GetFileName(companion)));
+
+            // mkvmerge legge un sottotitolo di testo senza BOM come UTF-8 e scarta in silenzio le battute che non lo sono:
+            // un file così non si aggiunge. Con un BOM la codifica la dichiara il file
+            if (Array.IndexOf(s_textSubtitleExtensions, extension) >= 0)
+            {
+                byte[] bytes = File.ReadAllBytes(fullPath);
+                bool hasBom = (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) ||
+                    (bytes.Length >= 2 && ((bytes[0] == 0xFF && bytes[1] == 0xFE) || (bytes[0] == 0xFE && bytes[1] == 0xFF)));
+
+                if (!hasBom)
+                {
+                    try
+                    {
+                        new UTF8Encoding(false, true).GetString(bytes);
+                    }
+                    catch (DecoderFallbackException)
+                    {
+                        throw new InvalidOperationException(AppText.F("toolbox.addTracks.notUtf8", name));
+                    }
+                }
+            }
 
             // mkvmerge termina senza errori anche su un file che non riconosce: nessuna traccia vuol dire file illeggibile
             info = this._mkvTools.GetFileInfoIsolated(fullPath, 0, cancellationToken, message => error = message);
@@ -177,7 +204,8 @@ namespace RemuxForge.Core.Toolbox.AddTracks
             try
             {
                 finalPath = replace ? fullVideo : allocator.Reserve(GetDesiredPath(fullVideo, outputFolder));
-                using (StagedOutputFile output = new StagedOutputFile(finalPath))
+                StagedOutputFile output = new StagedOutputFile(finalPath);
+                try
                 {
                     MkvmergeCommand command = new MkvmergeCommand(output.TempPath);
                     List<string> trackOptions = new List<string>();
@@ -187,7 +215,9 @@ namespace RemuxForge.Core.Toolbox.AddTracks
                     ProcessResult run;
                     List<TrackInfo> outputTracks;
 
-                    // Le opzioni valgono solo per la traccia del file esterno; lingua e nome vuoti lasciano quelli del file
+                    // Le opzioni valgono solo per la traccia del file esterno; lingua e nome vuoti lasciano quelli del file. Dal file
+                    // esterno arriva la traccia soltanto: capitoli, allegati e tag globali di un .mka restano quelli del video
+                    trackOptions.AddRange(new string[] { "--no-chapters", "--no-attachments", "--no-global-tags" });
                     if (properties.Language.Length > 0)
                         trackOptions.AddRange(new string[] { "--language", id + ":" + properties.Language });
                     if (properties.Name.Length > 0)
@@ -205,7 +235,8 @@ namespace RemuxForge.Core.Toolbox.AddTracks
                             command.Place(reference++, videoInput, sourceTracks[i].Id);
                     }
                     command.AddTrackOrder();
-                    if (MediaContainerNormalizer.NeedsNativeMpeg4(sourceTracks))
+                    // Un Matroska tiene la sua traccia MPEG-4 com'è: native_mpeg4 la riscriverebbe
+                    if (!sourceIsMatroska && MediaContainerNormalizer.NeedsNativeMpeg4(sourceTracks))
                         command.AddGlobalOptions("--engage", "native_mpeg4");
 
                     run = MkvToolNixGuiMode.Run(this._mkvMergePath, command.ToArguments(), onProgress, result.Warnings.Add, errors);
@@ -259,8 +290,9 @@ namespace RemuxForge.Core.Toolbox.AddTracks
                     // Un nome finale che non si riesce a dare, o un originale che non si riesce a sostituire, lasciano l'originale com'era
                     try
                     {
+                        // Un backup che non si cancella non toglie nulla al risultato: diventa un avviso, con il percorso
                         if (replace)
-                            output.CommitReplacing(fullVideo);
+                            result.Warnings.AddRange(output.CommitReplacing(fullVideo));
                         else
                             output.Commit();
                     }
@@ -274,6 +306,18 @@ namespace RemuxForge.Core.Toolbox.AddTracks
                     result.Status = result.Warnings.Count > 0 ? AddTracksStatus.AddedWithWarnings : AddTracksStatus.Added;
                     result.OutputPath = finalPath;
                     result.Replaced = replace;
+                }
+                finally
+                {
+                    // Un temporaneo che non si cancella resta sul disco: la riga lo dice, con il percorso
+                    List<string> leftovers = output.Discard();
+                    if (leftovers.Count > 0)
+                    {
+                        result.Message = (result.Message + " " + string.Join(" ", leftovers)).Trim();
+                        // Il dettaglio, quando c'è, prende il posto del messaggio nel log e nel suggerimento della riga
+                        if (result.Details.Length > 0)
+                            result.Details += Environment.NewLine + string.Join(Environment.NewLine, leftovers);
+                    }
                 }
             }
             catch (IOException ex)

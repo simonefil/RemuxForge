@@ -26,8 +26,8 @@ namespace RemuxForge.Core.Toolbox.Common
         private readonly string[] _finalPaths;
 
         /// <summary>
-        /// True quando i temporanei non sono più di questo oggetto: hanno preso il nome finale, oppure un ripristino non è riuscito
-        /// e i file restano dove sono, come dice il messaggio d'errore
+        /// True quando i temporanei non sono più di questo oggetto: hanno preso il nome finale, sono stati scartati, oppure un
+        /// ripristino non è riuscito e i file restano dove sono, come dice il messaggio d'errore
         /// </summary>
         private bool _released;
 
@@ -103,8 +103,10 @@ namespace RemuxForge.Core.Toolbox.Common
         /// nomina il file e il backup in cui è rimasto
         /// </summary>
         /// <param name="originalPath">File da sostituire, di norma lo stesso percorso finale</param>
-        public void CommitReplacing(string originalPath)
+        /// <returns>Un messaggio per ogni backup che non si è potuto cancellare, con il percorso e il motivo</returns>
+        public List<string> CommitReplacing(string originalPath)
         {
+            List<string> leftovers = new List<string>();
             string originalFull = Path.GetFullPath(originalPath);
             string originalCompanion = FileHelper.GetCompanionPath(originalFull);
             string backupSuffix = ".rf-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".bak";
@@ -152,19 +154,54 @@ namespace RemuxForge.Core.Toolbox.Common
             }
 
             foreach (string backup in backups)
-                FileHelper.DeleteTempFile(backup);
+            {
+                try
+                {
+                    File.Delete(backup);
+                }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+                {
+                    leftovers.Add(AppText.F("toolbox.output.leftover", backup, ex.Message));
+                }
+            }
+
+            return leftovers;
         }
 
         /// <summary>
-        /// Senza commit cancella i temporanei, compresi i file parziali lasciati da un tool interrotto
+        /// Senza commit cancella i temporanei, compresi i file parziali lasciati da un tool interrotto; dopo un commit non fa nulla
+        /// </summary>
+        /// <returns>Un messaggio per ogni temporaneo che non si è potuto cancellare, con il percorso e il motivo</returns>
+        public List<string> Discard()
+        {
+            List<string> leftovers = new List<string>();
+
+            if (this._released)
+                return leftovers;
+
+            this._released = true;
+            foreach (string tempPath in this._tempPaths)
+            {
+                try
+                {
+                    if (File.Exists(tempPath))
+                        File.Delete(tempPath);
+                }
+                catch (Exception ex)
+                {
+                    leftovers.Add(AppText.F("toolbox.output.leftover", tempPath, ex.Message));
+                }
+            }
+
+            return leftovers;
+        }
+
+        /// <summary>
+        /// Scarta i temporanei non usati senza lanciare: chi deve dire dei file rimasti chiama Discard prima
         /// </summary>
         public void Dispose()
         {
-            if (!this._released)
-            {
-                foreach (string tempPath in this._tempPaths)
-                    FileHelper.DeleteTempFile(tempPath);
-            }
+            this.Discard();
         }
 
         #endregion

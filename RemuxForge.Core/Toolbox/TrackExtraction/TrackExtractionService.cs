@@ -323,8 +323,18 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
             }
             finally
             {
-                foreach (StagedOutputFile output in staged)
-                    output.Dispose();
+                // Un temporaneo che non si cancella resta sul disco: la riga della sua traccia lo dice, con il percorso
+                for (int i = 0; i < staged.Count; i++)
+                {
+                    List<string> leftovers = staged[i].Discard();
+                    if (leftovers.Count > 0)
+                    {
+                        results[i].Message = (results[i].Message + " " + string.Join(" ", leftovers)).Trim();
+                        // Il dettaglio, quando c'è, prende il posto del messaggio nel log e nel suggerimento della riga
+                        if (results[i].Details.Length > 0)
+                            results[i].Details += Environment.NewLine + string.Join(Environment.NewLine, leftovers);
+                    }
+                }
                 foreach (TrackExtractionResult result in results)
                 {
                     if (result.ReservedPath.Length > 0 && result.OutputPath.Length == 0)

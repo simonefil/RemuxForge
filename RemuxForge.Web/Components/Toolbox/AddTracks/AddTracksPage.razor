@@ -30,12 +30,12 @@
             </div>
             <div class="rf-tool-field">
                 <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.addTracks.name")" Component="AddTracksName" />
-                <RadzenTextBox Name="AddTracksName" class="rf-addtracks-name" Disabled="@busy" Value="@Orchestrator.Name" Placeholder="@AppText.T("web.toolbox.addTracks.nameFromFile")"
+                <RadzenTextBox Name="AddTracksName" class="rf-addtracks-name" Immediate="true" Disabled="@busy" Value="@Orchestrator.Name" Placeholder="@AppText.T("web.toolbox.addTracks.nameFromFile")"
                                Change="@((string value) => Orchestrator.SetProperties(Orchestrator.Language, value, Orchestrator.IsDefault, Orchestrator.IsForced, Orchestrator.DelayMs))" />
             </div>
             <div class="rf-tool-field">
                 <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.addTracks.delay")" Component="AddTracksDelay" />
-                <RadzenNumeric TValue="int" Name="AddTracksDelay" class="rf-addtracks-delay" Disabled="@busy" Value="@delayMs" Step="100"
+                <RadzenNumeric TValue="int" Name="AddTracksDelay" class="rf-addtracks-delay" Immediate="true" Disabled="@busy" Value="@delayMs" Step="100"
                                aria-describedby="add-tracks-properties-hint"
                                Change="@((int value) => Orchestrator.SetProperties(Orchestrator.Language, Orchestrator.Name, Orchestrator.IsDefault, Orchestrator.IsForced, value))" />
                 <span class="rf-tool-label">ms</span>
@@ -95,7 +95,7 @@
                                 AllowSorting="false"
                                 Density="Density.Compact"
                                 GridLines="DataGridGridLines.Horizontal"
-                                RowRender="@((RowRenderEventArgs<AddTracksVideo> args) => RenderRow(args.Attributes, LIST_VIDEOS, videos.IndexOf(args.Data), tracks.Count, busy))">
+                                RowRender="@((RowRenderEventArgs<AddTracksVideo> args) => RenderRow(args.Attributes, LIST_VIDEOS, args.Data, videos.IndexOf(args.Data), tracks.Count, busy))">
                     <Columns>
                         <RadzenDataGridColumn TItem="AddTracksVideo" Title="#" Width="3rem">
                             <Template Context="video"><CellText Text="@((videos.IndexOf(video) + 1).ToString())" /></Template>
@@ -135,6 +135,10 @@
                                     string written = video.Replaced ? AppText.T("web.toolbox.addTracks.resultReplaced") : System.IO.Path.GetFileName(video.OutputPath);
                                     <span title="@(video.Details.Length > 0 ? video.OutputPath + Environment.NewLine + video.Details : video.OutputPath)">@written</span>
                                 }
+                                else if (video.BlockedReason.Length > 0)
+                                {
+                                    <span class="rf-addtracks-wrap rf-addtracks-blocked-text" title="@video.BlockedReason">@video.BlockedReason</span>
+                                }
                                 else if (video.Message.Length > 0)
                                 {
                                     <span class="rf-addtracks-wrap" title="@(video.Details.Length > 0 ? video.Details : video.Message)">@video.Message</span>
@@ -151,7 +155,7 @@
                             </Template>
                         </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="AddTracksVideo" Width="7.5rem" TextAlign="TextAlign.Center">
-                            <Template Context="video">@MoveButtons(LIST_VIDEOS, videos.IndexOf(video), videos.Count, System.IO.Path.GetFileName(video.InputPath), busy)</Template>
+                            <Template Context="video">@MoveButtons(LIST_VIDEOS, video, videos.IndexOf(video), videos.Count, System.IO.Path.GetFileName(video.InputPath), busy)</Template>
                         </RadzenDataGridColumn>
                     </Columns>
                 </RadzenDataGrid>
@@ -177,7 +181,7 @@
                                 AllowSorting="false"
                                 Density="Density.Compact"
                                 GridLines="DataGridGridLines.Horizontal"
-                                RowRender="@((RowRenderEventArgs<AddTracksTrackFile> args) => RenderRow(args.Attributes, LIST_TRACKS, tracks.IndexOf(args.Data), videos.Count, busy))">
+                                RowRender="@((RowRenderEventArgs<AddTracksTrackFile> args) => RenderRow(args.Attributes, LIST_TRACKS, args.Data, tracks.IndexOf(args.Data), videos.Count, busy))">
                     <Columns>
                         <RadzenDataGridColumn TItem="AddTracksTrackFile" Title="#" Width="3rem">
                             <Template Context="track"><CellText Text="@((tracks.IndexOf(track) + 1).ToString())" /></Template>
@@ -193,7 +197,14 @@
                                 @if (track.State == AddTracksTrackState.Ready)
                                 {
                                     string content = AppText.T(track.Track.IsSubtitles ? "web.toolbox.addTracks.kindSubtitles" : "web.toolbox.addTracks.kindAudio") + " · " + track.Track.Codec;
-                                    <span class="rf-addtracks-wrap" title="@content">@content</span>
+                                    <span class="rf-addtracks-wrap" title="@content">
+                                        @if (tracks.IndexOf(track) >= videos.Count)
+                                        {
+                                            <span class="rf-addtracks-unpaired-text">@AppText.T("web.toolbox.addTracks.missingVideo")</span>
+                                            <br />
+                                        }
+                                        @content
+                                    </span>
                                 }
                                 else if (track.State == AddTracksTrackState.Reading)
                                 {
@@ -206,7 +217,7 @@
                             </Template>
                         </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="AddTracksTrackFile" Width="7.5rem" TextAlign="TextAlign.Center">
-                            <Template Context="track">@MoveButtons(LIST_TRACKS, tracks.IndexOf(track), tracks.Count, System.IO.Path.GetFileName(track.InputPath), busy)</Template>
+                            <Template Context="track">@MoveButtons(LIST_TRACKS, track, tracks.IndexOf(track), tracks.Count, System.IO.Path.GetFileName(track.InputPath), busy)</Template>
                         </RadzenDataGridColumn>
                     </Columns>
                 </RadzenDataGrid>
@@ -247,9 +258,9 @@
     private string _dragList = "";
 
     /// <summary>
-    /// Posizione della riga trascinata
+    /// Video o file di tracce trascinato
     /// </summary>
-    private int _dragIndex = -1;
+    private object _dragItem;
 
     /// <summary>
     /// Pulsante a cui ridare il fuoco dopo lo spostamento fatto da tastiera, vuoto se nessuno
@@ -306,10 +317,11 @@
     /// </summary>
     /// <param name="attributes">Attributi della riga</param>
     /// <param name="list">Elenco della riga</param>
+    /// <param name="item">Video o file di tracce della riga</param>
     /// <param name="index">Posizione della riga</param>
     /// <param name="otherCount">Righe dell'altro elenco</param>
     /// <param name="busy">True durante un'operazione</param>
-    private void RenderRow(IDictionary<string, object> attributes, string list, int index, int otherCount, bool busy)
+    private void RenderRow(IDictionary<string, object> attributes, string list, object item, int index, int otherCount, bool busy)
     {
         if (index >= otherCount)
             attributes["data-unpaired"] = "true";
@@ -321,17 +333,18 @@
         attributes["ondragstart"] = EventCallback.Factory.Create<DragEventArgs>(this, () =>
         {
             _dragList = list;
-            _dragIndex = index;
+            _dragItem = item;
         });
         attributes["ondragend"] = EventCallback.Factory.Create<DragEventArgs>(this, () => _dragList = "");
         attributes["ondrop"] = EventCallback.Factory.Create<DragEventArgs>(this, () =>
         {
-            // Una riga si sposta solo nel suo elenco: rilasciata sull'altro non cambia nulla
+            // Una riga si sposta solo nel suo elenco, al posto della riga su cui cade: rilasciata sull'altro non cambia nulla
             if (_dragList == LIST_VIDEOS && list == LIST_VIDEOS)
-                Orchestrator.MoveVideo(_dragIndex, index);
+                Orchestrator.MoveVideo((AddTracksVideo)_dragItem, (AddTracksVideo)item);
             else if (_dragList == LIST_TRACKS && list == LIST_TRACKS)
-                Orchestrator.MoveTrack(_dragIndex, index);
+                Orchestrator.MoveTrack((AddTracksTrackFile)_dragItem, (AddTracksTrackFile)item);
             _dragList = "";
+            _dragItem = null;
         });
     }
 
@@ -340,37 +353,34 @@
     /// arriva in cima o in fondo, così da tastiera lo stesso file si sposta di nuovo
     /// </summary>
     /// <param name="list">Elenco della riga</param>
-    /// <param name="index">Posizione della riga</param>
+    /// <param name="item">Video o file di tracce della riga</param>
     /// <param name="delta">-1 su, +1 giù</param>
-    /// <param name="count">Righe dell'elenco</param>
-    private void Move(string list, int index, int delta, int count)
+    private void Move(string list, object item, int delta)
     {
-        int target = index + delta;
+        int target = list == LIST_VIDEOS ? Orchestrator.MoveVideo((AddTracksVideo)item, delta) : Orchestrator.MoveTrack((AddTracksTrackFile)item, delta);
+        int count = list == LIST_VIDEOS ? Orchestrator.GetRecords().Count : Orchestrator.GetTracks().Count;
         bool edge = target == 0 || target == count - 1;
 
-        if (list == LIST_VIDEOS)
-            Orchestrator.MoveVideo(index, target);
-        else
-            Orchestrator.MoveTrack(index, target);
-        _focusAfterRender = "[data-move=\"" + list + "-" + ((delta < 0) != edge ? "up" : "down") + "-" + target + "\"]";
+        if (target >= 0)
+            _focusAfterRender = "[data-move=\"" + list + "-" + ((delta < 0) != edge ? "up" : "down") + "-" + target + "\"]";
     }
 
     /// <summary>
-    /// Pulsanti su, giù e togli di una riga
+    /// Pulsanti su, giù e togli di una riga; agiscono sull'oggetto della riga, la posizione serve solo a disattivarli ai bordi
     /// </summary>
-    private RenderFragment MoveButtons(string list, int index, int count, string fileName, bool busy) =>
+    private RenderFragment MoveButtons(string list, object item, int index, int count, string fileName, bool busy) =>
         @<span class="rf-addtracks-actions">
             <RadzenButton Icon="arrow_upward" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
                           Disabled="@(busy || index == 0)" title="@AppText.T("web.toolbox.addTracks.moveUp")"
                           aria-label="@AppText.F("web.toolbox.addTracks.moveUpFile", fileName)" data-move="@(list + "-up-" + index)"
-                          Click="@(() => Move(list, index, -1, count))" />
+                          Click="@(() => Move(list, item, -1))" />
             <RadzenButton Icon="arrow_downward" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
                           Disabled="@(busy || index == count - 1)" title="@AppText.T("web.toolbox.addTracks.moveDown")"
                           aria-label="@AppText.F("web.toolbox.addTracks.moveDownFile", fileName)" data-move="@(list + "-down-" + index)"
-                          Click="@(() => Move(list, index, 1, count))" />
+                          Click="@(() => Move(list, item, 1))" />
             <RadzenButton Icon="delete" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Disabled="@busy"
                           title="@AppText.T("web.toolbox.list.remove")" aria-label="@(AppText.T("web.toolbox.list.remove") + " " + fileName)"
-                          Click="@(() => { if (list == LIST_VIDEOS) Orchestrator.Remove(Orchestrator.GetRecords()[index]); else Orchestrator.RemoveTrack(Orchestrator.GetTracks()[index]); })" />
+                          Click="@(() => { if (item is AddTracksVideo video) Orchestrator.Remove(video); else Orchestrator.RemoveTrack((AddTracksTrackFile)item); })" />
         </span>;
 
     /// <inheritdoc />
