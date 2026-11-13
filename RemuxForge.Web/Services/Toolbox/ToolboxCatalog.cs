@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using RemuxForge.Core.Models;
+using RemuxForge.Web.Components.Toolbox.TrackExtraction;
 using RemuxForge.Web.Components.Toolbox.VideoToMkv;
 using System;
 using System.Collections.Generic;
@@ -34,7 +35,8 @@ namespace RemuxForge.Web.Services.Toolbox
                 new ToolboxCard(Options.MODE_REMUX, "web.toolbox.cards.remux.title", "web.toolbox.cards.remux.description", "movie", typeof(MergeOrchestrator), null, "web.progress.episode"),
                 new ToolboxCard(Options.MODE_SPLIT, "web.toolbox.cards.split.title", "web.toolbox.cards.split.description", "content_cut", typeof(SplitOrchestrator), null, "web.progress.episode"),
                 new ToolboxCard(Options.MODE_METADATA, "web.toolbox.cards.metadata.title", "web.toolbox.cards.metadata.description", "tune", typeof(MetadataOrchestrator), null, "web.progress.episode"),
-                new ToolboxCard("video-to-mkv", "web.toolbox.cards.videoToMkv.title", "web.toolbox.cards.videoToMkv.description", "video_file", typeof(VideoToMkvOrchestrator), typeof(VideoToMkvPage), "web.progress.file")
+                new ToolboxCard("video-to-mkv", "web.toolbox.cards.videoToMkv.title", "web.toolbox.cards.videoToMkv.description", "video_file", typeof(VideoToMkvOrchestrator), typeof(VideoToMkvPage), "web.progress.file"),
+                new ToolboxCard("track-extraction", "web.toolbox.cards.trackExtraction.title", "web.toolbox.cards.trackExtraction.description", "call_split", typeof(TrackExtractionOrchestrator), typeof(TrackExtractionPage), "web.progress.file")
             };
         }
 

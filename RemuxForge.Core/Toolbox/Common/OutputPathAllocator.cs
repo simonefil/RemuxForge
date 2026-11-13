@@ -1,4 +1,5 @@
 using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
 using System.Collections.Generic;
 using System.IO;
 
@@ -65,6 +66,27 @@ namespace RemuxForge.Core.Toolbox.Common
                 this._taken.Add(new PathIdentity(companion));
 
             return candidate;
+        }
+
+        /// <summary>
+        /// Controlla una cartella di uscita scelta: deve essere il percorso completo di una cartella esistente, che non si crea in silenzio
+        /// </summary>
+        /// <param name="outputFolder">Cartella scelta</param>
+        /// <returns>Motivo per cui la cartella non va bene, vuoto se va bene</returns>
+        public static string ValidateFolder(string outputFolder)
+        {
+            string folder = (outputFolder ?? "").Trim();
+
+            if (folder.Length == 0)
+                return AppText.T("toolbox.output.folderRequired");
+            if (!Path.IsPathFullyQualified(folder))
+                return AppText.T("toolbox.output.folderNotAbsolute");
+            if (File.Exists(folder))
+                return AppText.T("toolbox.output.folderIsFile");
+            if (!Directory.Exists(folder))
+                return AppText.T("toolbox.output.folderMissing");
+
+            return "";
         }
 
         /// <summary>

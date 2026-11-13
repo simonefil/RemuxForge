@@ -1,0 +1,67 @@
+@inject DialogService DialogService
+
+@{
+    bool busy = Orchestrator.IsBusy;
+    string folderError = Orchestrator.OutputFolderError;
+}
+<div class="rf-tool-options">
+    <div class="rf-tool-options-row">
+        <div class="rf-tool-field">
+            <span id="@(Id + "-output-label")" class="rf-tool-label">@AppText.T("web.toolbox.output.label")</span>
+            <RadzenRadioButtonList TValue="bool" Name="@(Id + "-output")" AriaLabelledBy="@(Id + "-output-label")" Orientation="Orientation.Horizontal" Gap="1.5rem"
+                                   Disabled="@busy" Value="@Orchestrator.UseOutputFolder"
+                                   Change="@((bool value) => Orchestrator.SetOutput(value, Orchestrator.OutputFolder))">
+                <Items>
+                    <RadzenRadioButtonListItem TValue="bool" Text="@AppText.T("web.toolbox.output.nextToSource")" Value="false" />
+                    <RadzenRadioButtonListItem TValue="bool" Text="@AppText.T("web.toolbox.output.inFolder")" Value="true" />
+                </Items>
+            </RadzenRadioButtonList>
+        </div>
+        @if (Orchestrator.UseOutputFolder)
+        {
+            <div class="rf-tool-field rf-tool-path-field">
+                <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.output.folder")" Component="@(Id + "-folder")" />
+                <RadzenTextBox Name="@(Id + "-folder")" class="@("rf-tool-path-input" + (folderError.Length > 0 ? " rf-tool-input-invalid" : ""))" Disabled="@busy" Value="@Orchestrator.OutputFolder"
+                               Placeholder="@AppText.T(Orchestrator.TextPrefix + ".folderPlaceholder")"
+                               aria-describedby="@(Id + "-output-hint")" aria-invalid="@(folderError.Length > 0 ? "true" : "false")"
+                               Change="@((string value) => Orchestrator.SetOutput(true, value))" />
+                <RadzenButton Icon="folder_open" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@busy"
+                              title="@AppText.T("web.toolbox.output.chooseFolder")" aria-label="@AppText.T("web.toolbox.output.chooseFolder")"
+                              Click="@BrowseOutputFolderAsync" />
+            </div>
+        }
+    </div>
+    @* Sotto la riga: dove finiscono i file prodotti, oppure perché l'avvio è disattivato *@
+    <RadzenText id="@(Id + "-output-hint")" TextStyle="TextStyle.Caption" TagName="TagName.P" aria-live="polite"
+                class="@("rf-tool-hint" + (folderError.Length > 0 ? " rf-tool-hint-error" : ""))">
+        @(folderError.Length > 0 ? folderError : AppText.T(Orchestrator.TextPrefix + (Orchestrator.UseOutputFolder ? ".hintFolder" : ".hintNextToSource")))
+    </RadzenText>
+</div>
+
+@code {
+    /// <summary>
+    /// Orchestratore della card, che conserva l'uscita scelta
+    /// </summary>
+    [Parameter] public ToolboxOrchestratorBase Orchestrator { get; set; }
+
+    /// <summary>
+    /// Modulo JS interop della dashboard, per il browser delle cartelle
+    /// </summary>
+    [Parameter] public IJSObjectReference JsModule { get; set; }
+
+    /// <summary>
+    /// Prefisso degli id e dei nomi dei campi, unico nella pagina
+    /// </summary>
+    [Parameter] public string Id { get; set; }
+
+    /// <summary>
+    /// Sceglie la cartella di uscita nel browser
+    /// </summary>
+    private async Task BrowseOutputFolderAsync()
+    {
+        string path = await AppDialogs.BrowseAsync(DialogService, JsModule, Orchestrator.OutputFolder, false, true, null);
+
+        if (!string.IsNullOrEmpty(path))
+            Orchestrator.SetOutput(true, path);
+    }
+}

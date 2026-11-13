@@ -1,5 +1,4 @@
 using RemuxForge.Core.Configuration;
-using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Toolbox.Common;
 using RemuxForge.Core.Toolbox.VideoToMkv;
@@ -12,7 +11,7 @@ namespace RemuxForge.Web.Services.Toolbox
     /// <summary>
     /// Orchestratore WebUI della conversione di file video in Matroska: elenco dei file, uscita scelta e lotto in background
     /// </summary>
-    public sealed class VideoToMkvOrchestrator : MediaOrchestratorBase
+    public sealed class VideoToMkvOrchestrator : ToolboxOrchestratorBase<VideoToMkvRecord>
     {
         #region Costanti
 
@@ -23,44 +22,13 @@ namespace RemuxForge.Web.Services.Toolbox
 
         #endregion
 
-        #region Variabili di classe
-
-        /// <summary>
-        /// File dell'elenco, nell'ordine in cui sono stati aggiunti
-        /// </summary>
-        private readonly List<VideoToMkvRecord> _records;
-
-        /// <summary>
-        /// True per scrivere i Matroska nella cartella scelta, false per scriverli accanto agli originali
-        /// </summary>
-        private bool _useOutputFolder;
-
-        /// <summary>
-        /// Cartella di uscita scelta
-        /// </summary>
-        private string _outputFolder;
-
-        #endregion
-
-        #region Eventi
-
-        /// <summary>
-        /// Evento emesso a fine lotto con il riepilogo degli esiti
-        /// </summary>
-        public event Action<VideoToMkvBatchSummary> OnBatchCompleted;
-
-        #endregion
-
         #region Costruttore
 
         /// <summary>
         /// Costruttore
         /// </summary>
-        public VideoToMkvOrchestrator() : base("web.toolbox.videoToMkv.ready", true)
+        public VideoToMkvOrchestrator() : base("web.toolbox.videoToMkv")
         {
-            this._records = new List<VideoToMkvRecord>();
-            this._useOutputFolder = false;
-            this._outputFolder = "";
         }
 
         #endregion
@@ -68,123 +36,22 @@ namespace RemuxForge.Web.Services.Toolbox
         #region Metodi pubblici
 
         /// <summary>
-        /// Accoda file all'elenco; un file già presente non si ripete
-        /// </summary>
-        /// <param name="paths">Percorsi scelti</param>
-        public void AddFiles(IEnumerable<string> paths)
-        {
-            int added = 0;
-            int duplicates = 0;
-
-            if (this.IsBusy)
-                return;
-
-            lock (this.StateLock)
-            {
-                HashSet<PathIdentity> known = new HashSet<PathIdentity>();
-                foreach (VideoToMkvRecord record in this._records)
-                    known.Add(new PathIdentity(record.InputPath));
-
-                foreach (string path in paths)
-                {
-                    if (!known.Add(new PathIdentity(path)))
-                    {
-                        duplicates++;
-                        continue;
-                    }
-
-                    FileInfo info = new FileInfo(path);
-                    this._records.Add(new VideoToMkvRecord(info.FullName, info.Exists ? info.Length : 0));
-                    added++;
-                }
-            }
-
-            this.AppendLog(duplicates > 0 ? AppText.F("web.toolbox.videoToMkv.filesAddedWithDuplicates", added, duplicates) : AppText.Count("web.toolbox.videoToMkv.filesAdded", added));
-            this.NotifyRecordsChanged();
-        }
-
-        /// <summary>
-        /// Toglie un file dall'elenco
-        /// </summary>
-        /// <param name="record">File da togliere</param>
-        public void Remove(VideoToMkvRecord record)
-        {
-            if (this.IsBusy)
-                return;
-
-            lock (this.StateLock)
-            {
-                this._records.Remove(record);
-            }
-
-            this.NotifyRecordsChanged();
-        }
-
-        /// <summary>
-        /// Svuota l'elenco
-        /// </summary>
-        public void Clear()
-        {
-            if (this.IsBusy)
-                return;
-
-            lock (this.StateLock)
-            {
-                this._records.Clear();
-            }
-
-            this.AppendLog(AppText.T("web.toolbox.videoToMkv.cleared"));
-            this.NotifyRecordsChanged();
-        }
-
-        /// <summary>
-        /// Imposta dove scrivere i Matroska
-        /// </summary>
-        /// <param name="useOutputFolder">True per la cartella scelta, false per accanto agli originali</param>
-        /// <param name="outputFolder">Cartella scelta, conservata anche quando si torna ad accanto agli originali</param>
-        public void SetOutput(bool useOutputFolder, string outputFolder)
-        {
-            lock (this.StateLock)
-            {
-                this._useOutputFolder = useOutputFolder;
-                this._outputFolder = (outputFolder ?? "").Trim();
-            }
-
-            this.NotifyRecordsChanged();
-        }
-
-        /// <summary>
         /// Converte i file in attesa, falliti o interrotti; quelli già convertiti, anche con avvisi, o saltati restano come sono
         /// </summary>
-        public void Start()
+        public override void Start()
         {
             if (this.CanStart)
                 this.TryRunExclusive(this.ConvertWorker);
         }
 
-        /// <summary>
-        /// Interrompe la conversione: mkvmerge si ferma e il file in corso non lascia temporanei
-        /// </summary>
-        public override void Stop()
-        {
-            // Il token prima del flag: chi trova mkvmerge interrotto deve trovare già l'annullamento
-            lock (this.StateLock)
-            {
-                this.OperationCancellationState?.Cancel();
-            }
-            this.RequestStop(AppText.T("web.toolbox.videoToMkv.stopRequested"));
-        }
+        #endregion
 
-        /// <summary>
-        /// Restituisce una copia dell'elenco
-        /// </summary>
-        /// <returns>File dell'elenco</returns>
-        public List<VideoToMkvRecord> GetRecords()
+        #region Metodi protected
+
+        /// <inheritdoc />
+        protected override VideoToMkvRecord CreateRecord(string inputPath, long size)
         {
-            lock (this.StateLock)
-            {
-                return new List<VideoToMkvRecord>(this._records);
-            }
+            return new VideoToMkvRecord(inputPath, size);
         }
 
         #endregion
@@ -207,9 +74,9 @@ namespace RemuxForge.Web.Services.Toolbox
             {
                 lock (this.StateLock)
                 {
-                    outputFolder = this._useOutputFolder ? this._outputFolder : "";
+                    outputFolder = this.GetBatchOutputFolder();
                     folderError = this.GetOutputFolderError();
-                    foreach (VideoToMkvRecord record in this._records)
+                    foreach (VideoToMkvRecord record in this.Records)
                     {
                         inputs.Add(record.InputPath);
                         if (!record.IsDone)
@@ -224,7 +91,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 // Gli input dell'intero elenco restano vietati come uscita, anche quelli già convertiti
                 OutputPathAllocator allocator = new OutputPathAllocator(inputs);
                 VideoToMkvService service = new VideoToMkvService(AppSettingsService.Instance.Settings.Tools.MkvMergePath);
-                this.AppendLog(AppText.Count("web.toolbox.videoToMkv.batchStarted", targets.Count, outputFolder.Length > 0 ? outputFolder : AppText.T("web.toolbox.videoToMkv.outputNextToSource")));
+                this.AppendLog(AppText.Count("web.toolbox.videoToMkv.batchStarted", targets.Count, outputFolder.Length > 0 ? outputFolder : AppText.T("web.toolbox.output.nextToSource")));
 
                 for (int i = 0; i < targets.Count; i++)
                 {
@@ -303,21 +170,9 @@ namespace RemuxForge.Web.Services.Toolbox
             }
             finally
             {
-                summary.Stopped = this.StopRequested;
                 summary.Total = targets.Count;
-                this.AppendLog(AppText.F(summary.Stopped ? "web.toolbox.videoToMkv.batchStopped" : "web.toolbox.videoToMkv.batchCompleted", summary.Describe()));
-                this.SetBusy(false, "");
-                this.OnBatchCompleted?.Invoke(summary);
+                this.FinishBatch(summary);
             }
-        }
-
-        /// <summary>
-        /// Motivo per cui l'uscita scelta non permette di convertire; da chiamare sotto StateLock
-        /// </summary>
-        /// <returns>Motivo, vuoto se l'uscita va bene</returns>
-        private string GetOutputFolderError()
-        {
-            return this._useOutputFolder ? VideoToMkvService.ValidateOutputFolder(this._outputFolder) : "";
         }
 
         #endregion
@@ -325,57 +180,15 @@ namespace RemuxForge.Web.Services.Toolbox
         #region Proprietà
 
         /// <summary>
-        /// True per scrivere i Matroska nella cartella scelta
-        /// </summary>
-        public bool UseOutputFolder
-        {
-            get
-            {
-                lock (this.StateLock)
-                {
-                    return this._useOutputFolder;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Cartella di uscita scelta
-        /// </summary>
-        public string OutputFolder
-        {
-            get
-            {
-                lock (this.StateLock)
-                {
-                    return this._outputFolder;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Motivo per cui la cartella di uscita non va bene, vuoto se va bene o se si scrive accanto agli originali
-        /// </summary>
-        public string OutputFolderError
-        {
-            get
-            {
-                lock (this.StateLock)
-                {
-                    return this.GetOutputFolderError();
-                }
-            }
-        }
-
-        /// <summary>
         /// True se c'è almeno un file da convertire e l'uscita è valida
         /// </summary>
-        public bool CanStart
+        public override bool CanStart
         {
             get
             {
                 lock (this.StateLock)
                 {
-                    return !this.IsBusy && this.GetOutputFolderError().Length == 0 && this._records.Exists(r => !r.IsDone);
+                    return !this.IsBusy && this.GetOutputFolderError().Length == 0 && this.Records.Exists(r => !r.IsDone);
                 }
             }
         }
@@ -386,7 +199,7 @@ namespace RemuxForge.Web.Services.Toolbox
     /// <summary>
     /// File nell'elenco della conversione in Matroska
     /// </summary>
-    public sealed class VideoToMkvRecord
+    public sealed class VideoToMkvRecord : ToolboxRecord
     {
         #region Costruttore
 
@@ -395,10 +208,8 @@ namespace RemuxForge.Web.Services.Toolbox
         /// </summary>
         /// <param name="inputPath">Percorso completo del file</param>
         /// <param name="size">Dimensione in byte</param>
-        public VideoToMkvRecord(string inputPath, long size)
+        public VideoToMkvRecord(string inputPath, long size) : base(inputPath, size)
         {
-            this.InputPath = inputPath;
-            this.Size = size;
             this.Status = VideoToMkvStatus.Pending;
             this.OutputPath = "";
             this.Message = "";
@@ -408,16 +219,6 @@ namespace RemuxForge.Web.Services.Toolbox
         #endregion
 
         #region Proprietà
-
-        /// <summary>
-        /// Percorso completo del file
-        /// </summary>
-        public string InputPath { get; }
-
-        /// <summary>
-        /// Dimensione in byte
-        /// </summary>
-        public long Size { get; }
 
         /// <summary>
         /// Stato della conversione
@@ -453,7 +254,7 @@ namespace RemuxForge.Web.Services.Toolbox
     /// <summary>
     /// Riepilogo di un lotto di conversione in Matroska
     /// </summary>
-    public sealed class VideoToMkvBatchSummary
+    public sealed class VideoToMkvBatchSummary : ToolboxBatchSummary
     {
         #region Metodi pubblici
 
@@ -479,7 +280,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Descrive i conteggi diversi da zero, nell'ordine convertiti, con avvisi, errori, saltati, interrotti, non elaborati
         /// </summary>
         /// <returns>Testo del riepilogo</returns>
-        public string Describe()
+        public override string Describe()
         {
             List<string> parts = new List<string>();
             string[] keys = { "summaryConverted", "summaryWithWarnings", "summaryFailed", "summarySkipped", "summaryStopped", "summaryNotProcessed" };
@@ -524,11 +325,6 @@ namespace RemuxForge.Web.Services.Toolbox
         public int Interrupted { get; private set; }
 
         /// <summary>
-        /// File del lotto, elaborati o no
-        /// </summary>
-        public int Total { get; set; }
-
-        /// <summary>
         /// File del lotto mai avviati, per lo stop o per un errore prima del primo file
         /// </summary>
         public int NotProcessed
@@ -537,14 +333,9 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// True se il lotto è stato fermato
-        /// </summary>
-        public bool Stopped { get; set; }
-
-        /// <summary>
         /// True se ogni file del lotto è stato convertito senza avvisi
         /// </summary>
-        public bool AllSucceeded
+        public override bool AllSucceeded
         {
             get { return this.Converted > 0 && this.ConvertedWithWarnings + this.Failed + this.Skipped + this.Interrupted + this.NotProcessed == 0 && !this.Stopped; }
         }
@@ -552,7 +343,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <summary>
         /// True se ci sono errori e nessun file è stato convertito
         /// </summary>
-        public bool NothingSucceeded
+        public override bool NothingSucceeded
         {
             get { return this.Failed > 0 && this.Converted + this.ConvertedWithWarnings == 0; }
         }

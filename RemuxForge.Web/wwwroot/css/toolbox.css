@@ -185,3 +185,57 @@
     height: auto;
     min-height: 0;
 }
+
+/* Estrazione tracce: due viste a schede che riempiono la pagina, tendine di filtro in testata alla vista per tipo */
+
+.rf-tool-page .rf-tool-tabs {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.rf-tool-page .rf-tool-tabs > .rz-tabview-panels {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    padding: 0;
+}
+
+.rf-tool-page .rf-tool-tabs .rz-tabview-panel {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.rf-tool-filters {
+    display: flex;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.75) calc(var(--rz-gap) * 2);
+    padding: calc(var(--rz-gap) * 0.5) var(--rz-gap);
+}
+
+.rf-tool-filter {
+    width: 14rem;
+}
+
+.rf-tool-page .rf-tool-muted {
+    color: var(--rz-text-secondary-color);
+}
+
+.rf-tool-page .rf-tool-selection {
+    flex-shrink: 0;
+    margin: 0;
+    padding: calc(var(--rz-gap) * 0.5) var(--rz-gap);
+    border-top: var(--rz-border-base-600);
+    color: var(--rz-text-secondary-color);
+}
+
+/* Le tracce stanno dentro la riga del video: la loro intestazione scorre con la riga invece di restare in cima sopra quella dei video */
+.rf-tool-page .rf-tool-track-grid.rz-data-grid thead th {
+    position: static;
+}

@@ -87,7 +87,7 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
         {
             VideoToMkvResult result = new VideoToMkvResult();
             List<string> errors = new List<string>();
-            string folderError = string.IsNullOrEmpty(outputFolder) ? "" : ValidateOutputFolder(outputFolder);
+            string folderError = string.IsNullOrEmpty(outputFolder) ? "" : OutputPathAllocator.ValidateFolder(outputFolder);
 
             if (MediaContainerFormats.IsMatroska(inputPath) || !MediaContainerFormats.IsSupported(inputPath))
             {
@@ -162,27 +162,6 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
             }
 
             return result;
-        }
-
-        /// <summary>
-        /// Controlla la cartella di uscita: deve essere un percorso completo di una cartella esistente, che non si crea in silenzio
-        /// </summary>
-        /// <param name="outputFolder">Cartella scelta</param>
-        /// <returns>Motivo per cui la cartella non va bene, vuoto se va bene</returns>
-        public static string ValidateOutputFolder(string outputFolder)
-        {
-            string folder = (outputFolder ?? "").Trim();
-
-            if (folder.Length == 0)
-                return AppText.T("toolbox.videoToMkv.folderRequired");
-            if (!Path.IsPathFullyQualified(folder))
-                return AppText.T("toolbox.videoToMkv.folderNotAbsolute");
-            if (File.Exists(folder))
-                return AppText.T("toolbox.videoToMkv.folderIsFile");
-            if (!Directory.Exists(folder))
-                return AppText.T("toolbox.videoToMkv.folderMissing");
-
-            return "";
         }
 
         #endregion
