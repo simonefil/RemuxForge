@@ -240,8 +240,13 @@ namespace RemuxForge.Web.Services.Toolbox
 
                     if (known.TryGetValue(identity, out existing))
                     {
+                        // Il file rimesso in coda può essere cambiato sul disco: la dimensione si rilegge con lui
                         if (this.Requeue(existing))
+                        {
+                            FileInfo current = new FileInfo(existing.InputPath);
+                            existing.Size = current.Exists ? current.Length : 0;
                             requeued++;
+                        }
                         else
                             duplicates++;
                         continue;
@@ -270,11 +275,11 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <param name="record">File da togliere</param>
         public void Remove(TRecord record)
         {
-            if (this.IsBusy)
-                return;
-
             lock (this.StateLock)
             {
+                if (this.IsBusy)
+                    return;
+
                 this._records.Remove(record);
                 this.OnRecordsRemoved();
             }
@@ -287,11 +292,11 @@ namespace RemuxForge.Web.Services.Toolbox
         /// </summary>
         public void Clear()
         {
-            if (this.IsBusy)
-                return;
-
             lock (this.StateLock)
             {
+                if (this.IsBusy)
+                    return;
+
                 this._records.Clear();
                 this.OnRecordsRemoved();
             }
@@ -392,9 +397,9 @@ namespace RemuxForge.Web.Services.Toolbox
         public string InputPath { get; }
 
         /// <summary>
-        /// Dimensione in byte
+        /// Dimensione in byte, riletta quando il file torna in coda
         /// </summary>
-        public long Size { get; }
+        public long Size { get; set; }
 
         #endregion
     }
