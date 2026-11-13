@@ -43,10 +43,17 @@ namespace RemuxForge.Core.Infrastructure
             }
 
             DeleteTempFile(filePath);
-            if (string.Equals(Path.GetExtension(filePath), ".idx", StringComparison.OrdinalIgnoreCase))
-            {
-                DeleteTempFile(Path.ChangeExtension(filePath, ".sub"));
-            }
+            DeleteTempFile(GetCompanionPath(filePath));
+        }
+
+        /// <summary>
+        /// File che accompagna sempre quello indicato con lo stesso nome (il .sub di un .idx VobSub)
+        /// </summary>
+        /// <param name="filePath">Percorso del file principale</param>
+        /// <returns>Percorso del file accoppiato, vuoto se il formato non ne ha</returns>
+        public static string GetCompanionPath(string filePath)
+        {
+            return string.Equals(Path.GetExtension(filePath), ".idx", StringComparison.OrdinalIgnoreCase) ? Path.ChangeExtension(filePath, ".sub") : "";
         }
 
         /// <summary>
