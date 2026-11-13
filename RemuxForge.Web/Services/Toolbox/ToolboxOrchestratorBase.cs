@@ -212,41 +212,56 @@ namespace RemuxForge.Web.Services.Toolbox
         #region Metodi pubblici
 
         /// <summary>
-        /// Accoda file all'elenco; un file già presente non si ripete
+        /// Accoda file all'elenco; un file già presente non si ripete, ma la card può rimetterlo in coda. Controllo del lotto,
+        /// accodamento e avvio del lavoro sui file accodati stanno sotto lo stesso lock: un lotto avviato da un'altra scheda non
+        /// può infilarsi fra l'uno e l'altro
         /// </summary>
         /// <param name="paths">Percorsi scelti</param>
         public void AddFiles(IEnumerable<string> paths)
         {
             int added = 0;
+            int requeued = 0;
             int duplicates = 0;
-
-            if (this.IsBusy)
-                return;
 
             lock (this.StateLock)
             {
-                HashSet<PathIdentity> known = new HashSet<PathIdentity>();
+                Dictionary<PathIdentity, TRecord> known = new Dictionary<PathIdentity, TRecord>();
+
+                if (this.IsBusy)
+                    return;
+
                 foreach (TRecord record in this._records)
-                    known.Add(new PathIdentity(record.InputPath));
+                    known[new PathIdentity(record.InputPath)] = record;
 
                 foreach (string path in paths)
                 {
-                    if (!known.Add(new PathIdentity(path)))
+                    PathIdentity identity = new PathIdentity(path);
+                    TRecord existing;
+
+                    if (known.TryGetValue(identity, out existing))
                     {
-                        duplicates++;
+                        if (this.Requeue(existing))
+                            requeued++;
+                        else
+                            duplicates++;
                         continue;
                     }
 
                     FileInfo info = new FileInfo(path);
-                    this._records.Add(this.CreateRecord(info.FullName, info.Exists ? info.Length : 0));
+                    known[identity] = this.CreateRecord(info.FullName, info.Exists ? info.Length : 0);
+                    this._records.Add(known[identity]);
                     added++;
                 }
+
+                if (added + requeued > 0)
+                    this.OnFilesAdded();
             }
 
-            this.AppendLog(duplicates > 0 ? AppText.F("web.toolbox.list.filesAddedWithDuplicates", added, duplicates) : AppText.Count("web.toolbox.list.filesAdded", added));
+            if (added > 0 || duplicates > 0 || requeued == 0)
+                this.AppendLog(duplicates > 0 ? AppText.F("web.toolbox.list.filesAddedWithDuplicates", added, duplicates) : AppText.Count("web.toolbox.list.filesAdded", added));
+            if (requeued > 0)
+                this.AppendLog(AppText.Count("web.toolbox.list.filesRequeued", requeued));
             this.NotifyRecordsChanged();
-            if (added > 0)
-                this.OnFilesAdded();
         }
 
         /// <summary>
@@ -310,7 +325,18 @@ namespace RemuxForge.Web.Services.Toolbox
         protected abstract TRecord CreateRecord(string inputPath, long size);
 
         /// <summary>
-        /// Chiamato dopo che almeno un file è entrato nell'elenco, fuori da StateLock
+        /// Rimette in coda un file già in elenco che si aggiunge di nuovo, ad esempio per rileggerlo; chiamato sotto StateLock
+        /// </summary>
+        /// <param name="record">File già in elenco</param>
+        /// <returns>True se il file torna in coda, false se resta un doppione</returns>
+        protected virtual bool Requeue(TRecord record)
+        {
+            return false;
+        }
+
+        /// <summary>
+        /// Chiamato sotto StateLock, fuori dal lotto, dopo che almeno un file è entrato nell'elenco o è tornato in coda: il lavoro che
+        /// avvia si riserva prima che un lotto possa partire
         /// </summary>
         protected virtual void OnFilesAdded()
         {

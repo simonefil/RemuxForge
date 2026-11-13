@@ -34,9 +34,10 @@
     }
     else
     {
+        @* Durante il lotto la vista estratta resta aperta: l'altra scheda non si apre *@
         <RadzenTabs class="rf-tool-tabs" RenderMode="TabRenderMode.Client" SelectedIndex="@((int)view)" Change="@((int index) => Orchestrator.SetView((TrackExtractionView)index))">
             <Tabs>
-                <RadzenTabsItem Text="@AppText.T("web.toolbox.trackExtraction.viewByFile")">
+                <RadzenTabsItem Text="@AppText.T("web.toolbox.trackExtraction.viewByFile")" Disabled="@(busy && view != TrackExtractionView.ByFile)">
                     @* Una riga per video; espandendola si spuntano le sue tracce. Le tracce video si vedono ma non si spuntano *@
                     <RadzenDataGrid TItem="TrackExtractionFile"
                                     Data="@files"
@@ -130,6 +131,7 @@
                                                  {
                                                      TrackExtractionFileOutcome.Reading => "web.toolbox.trackExtraction.fileReading",
                                                      TrackExtractionFileOutcome.Unreadable => "web.toolbox.trackExtraction.fileUnreadableStatus",
+                                                     TrackExtractionFileOutcome.NotRead => "web.toolbox.trackExtraction.fileNotRead",
                                                      TrackExtractionFileOutcome.Running => "web.toolbox.trackExtraction.fileRunning",
                                                      TrackExtractionFileOutcome.Extracted => "web.toolbox.trackExtraction.fileExtracted",
                                                      TrackExtractionFileOutcome.ExtractedWithWarnings => "web.toolbox.trackExtraction.fileExtractedWithWarnings",
@@ -143,15 +145,15 @@
                                                      TrackExtractionFileOutcome.Reading or TrackExtractionFileOutcome.Running => BadgeStyle.Info,
                                                      TrackExtractionFileOutcome.Extracted => BadgeStyle.Success,
                                                      TrackExtractionFileOutcome.Unreadable or TrackExtractionFileOutcome.Failed => BadgeStyle.Danger,
-                                                     TrackExtractionFileOutcome.ExtractedWithWarnings or TrackExtractionFileOutcome.Partial or TrackExtractionFileOutcome.Stopped => BadgeStyle.Warning,
+                                                     TrackExtractionFileOutcome.ExtractedWithWarnings or TrackExtractionFileOutcome.Partial or TrackExtractionFileOutcome.Stopped or TrackExtractionFileOutcome.NotRead => BadgeStyle.Warning,
                                                      _ => BadgeStyle.Base
                                                  })" />
                                 </Template>
                             </RadzenDataGridColumn>
                             <RadzenDataGridColumn TItem="TrackExtractionFile" Title="@AppText.T("web.toolbox.list.result")" Width="18%" MinWidth="2.5rem">
                                 <Template Context="file">
-                                    @* Illeggibile: il motivo, per intero nel tooltip; altrimenti quante tracce sono state scritte *@
-                                    @if (file.State == TrackExtractionFileState.Unreadable)
+                                    @* Illeggibile o non letto: il motivo, per intero nel tooltip; altrimenti quante tracce sono state scritte *@
+                                    @if (file.Error.Length > 0)
                                     {
                                         <span title="@file.Error">@file.Error</span>
                                     }
@@ -172,7 +174,7 @@
                         </Columns>
                     </RadzenDataGrid>
                 </RadzenTabsItem>
-                <RadzenTabsItem Text="@AppText.T("web.toolbox.trackExtraction.viewByType")">
+                <RadzenTabsItem Text="@AppText.T("web.toolbox.trackExtraction.viewByType")" Disabled="@(busy && view != TrackExtractionView.ByType)">
                     @* Tendine in testata: un filtro vuoto vale tutti i valori. Lingue e formati sono quelli presenti nei video dell'elenco *@
                     <div class="rf-tool-filters">
                         <div class="rf-tool-field">
@@ -267,7 +269,7 @@
     private static readonly List<string> s_extensions = new List<string>(MediaContainerFormats.Extensions);
 
     /// <summary>
-    /// Nome previsto di ogni traccia scelta e non ancora estratta, ricalcolato a ogni disegno fuori dal lotto
+    /// Nome previsto di ogni traccia scelta e non ancora estratta, preso dall'orchestratore a ogni disegno fuori dal lotto
     /// </summary>
     private Dictionary<TrackExtractionTrack, string> _plan = new Dictionary<TrackExtractionTrack, string>();
 
@@ -279,7 +281,8 @@
                          {
                              TrackExtractionKind.Video => "web.toolbox.trackExtraction.kindVideo",
                              TrackExtractionKind.Audio => "web.toolbox.trackExtraction.kindAudio",
-                             _ => "web.toolbox.trackExtraction.kindSubtitles"
+                             TrackExtractionKind.Subtitles => "web.toolbox.trackExtraction.kindSubtitles",
+                             _ => "web.toolbox.trackExtraction.kindOther"
                          })" />;
 
     /// <summary>

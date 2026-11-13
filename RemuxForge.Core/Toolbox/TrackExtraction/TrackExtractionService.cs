@@ -45,6 +45,11 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
         private const string GUI_ERROR_PREFIX = "#GUI#error ";
 
         /// <summary>
+        /// Lingua dei messaggi di mkvextract: fissa, perché gli avvisi si attribuiscono alla traccia che nominano
+        /// </summary>
+        private const string MKVEXTRACT_UI_LANGUAGE = "en_US";
+
+        /// <summary>
         /// Prefisso della posizione corrente in microsecondi nelle righe di -progress di ffmpeg
         /// </summary>
         private const string FFMPEG_PROGRESS_PREFIX = "out_time_us=";
@@ -67,6 +72,11 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
         /// BOM UTF-8 con cui mkvextract apre i sottotitoli di testo
         /// </summary>
         private static readonly byte[] s_utf8Bom = new byte[] { 0xEF, 0xBB, 0xBF };
+
+        /// <summary>
+        /// Traccia nominata da un messaggio di mkvextract in inglese: Track 2, track ID 2, track number 2
+        /// </summary>
+        private static readonly Regex s_mkvExtractTrack = new Regex(@"\btrack (?:ID |number )?(\d+)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         #endregion
 
@@ -120,9 +130,11 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
         /// la numerazione degli stream di ffmpeg. Capitoli, allegati e stream di dati non sono tracce e non compaiono
         /// </summary>
         /// <param name="filePath">File da leggere</param>
+        /// <param name="cancellationToken">Annullamento che interrompe lo strumento</param>
         /// <returns>File con le sue tracce</returns>
         /// <exception cref="InvalidOperationException">Il file non esiste o lo strumento non lo legge; il messaggio dice perché</exception>
-        public TrackExtractionSource ReadTracks(string filePath)
+        /// <exception cref="OperationCanceledException">La lettura è stata annullata</exception>
+        public TrackExtractionSource ReadTracks(string filePath, CancellationToken cancellationToken)
         {
             List<ExtractableTrack> tracks = new List<ExtractableTrack>();
             string fullPath = Path.GetFullPath(filePath);
@@ -133,7 +145,7 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
             if (MediaContainerFormats.IsMatroska(fullPath))
             {
                 string error = "";
-                MkvFileInfo info = this._mkvTools.GetFileInfoIsolated(fullPath, 0, CancellationToken.None, message => error = message);
+                MkvFileInfo info = this._mkvTools.GetFileInfoIsolated(fullPath, 0, cancellationToken, message => error = message);
 
                 // mkvmerge termina senza errori anche su un file che non riconosce: nessuna traccia vuol dire file illeggibile
                 if (info == null || info.Tracks.Count == 0)
@@ -141,14 +153,17 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
 
                 foreach (TrackInfo track in info.Tracks)
                 {
-                    TrackExtractionKind kind = track.Type == "audio" ? TrackExtractionKind.Audio : track.Type == "subtitles" ? TrackExtractionKind.Subtitles : TrackExtractionKind.Video;
-                    TrackExtractionFormat format = kind == TrackExtractionKind.Video ? null : TrackExtractionFormat.FromMatroskaCodecId(track.CodecId);
+                    TrackExtractionKind kind = track.Type switch
+                    {
+                        "video" => TrackExtractionKind.Video,
+                        "audio" => TrackExtractionKind.Audio,
+                        "subtitles" => TrackExtractionKind.Subtitles,
+                        _ => TrackExtractionKind.Other
+                    };
                     string language = LanguageValidator.NormalizeToIso6392(track.Language);
 
-                    tracks.Add(new ExtractableTrack(track.Id, kind, track.Codec ?? "", format, language.Length > 0 ? language : UNDEFINED_LANGUAGE, track.Name ?? "",
-                        track.DefaultTrack, track.ForcedTrack,
-                        kind == TrackExtractionKind.Video ? AppText.T("toolbox.trackExtraction.videoNotExtracted") :
-                        format == null ? AppText.F("toolbox.trackExtraction.formatNotExtracted", track.CodecId.Length > 0 ? track.CodecId : track.Codec) : ""));
+                    tracks.Add(new ExtractableTrack(track.Id, kind, track.Type ?? "", track.Codec ?? "", track.CodecId ?? "", TrackExtractionFormat.FromMatroskaCodecId(track.CodecId),
+                        language.Length > 0 ? language : UNDEFINED_LANGUAGE, track.Name ?? "", track.DefaultTrack, track.ForcedTrack));
                 }
 
                 return new TrackExtractionSource(fullPath, true, info.ContainerDurationNs / 1e9, tracks);
@@ -157,7 +172,7 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
             FfprobeMediaInfo media;
             try
             {
-                media = this._ffprobe.Read(fullPath);
+                media = this._ffprobe.Read(fullPath, cancellationToken);
             }
             catch (InvalidOperationException ex)
             {
@@ -168,7 +183,6 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
             foreach (FfprobeStream stream in media.Streams)
             {
                 TrackExtractionKind kind;
-                TrackExtractionFormat format;
                 string language;
                 string codec;
 
@@ -182,13 +196,10 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
                 else
                     continue;
 
-                format = kind == TrackExtractionKind.Video ? null : TrackExtractionFormat.FromFfmpegCodec(stream.CodecName);
                 language = LanguageValidator.NormalizeToIso6392(stream.Language);
                 codec = stream.Profile.Length > 0 && stream.Profile != "unknown" ? stream.CodecName + " (" + stream.Profile + ")" : stream.CodecName;
-                tracks.Add(new ExtractableTrack(stream.Index, kind, codec, format, language.Length > 0 ? language : UNDEFINED_LANGUAGE, stream.Title,
-                    stream.IsDefault, stream.IsForced,
-                    kind == TrackExtractionKind.Video ? AppText.T("toolbox.trackExtraction.videoNotExtracted") :
-                    format == null ? AppText.F("toolbox.trackExtraction.formatNotExtracted", stream.CodecName) : ""));
+                tracks.Add(new ExtractableTrack(stream.Index, kind, stream.CodecType, codec, stream.CodecName, TrackExtractionFormat.FromFfmpegCodec(stream.CodecName),
+                    language.Length > 0 ? language : UNDEFINED_LANGUAGE, stream.Title, stream.IsDefault, stream.IsForced));
             }
 
             return new TrackExtractionSource(fullPath, false, media.DurationSeconds, tracks);
@@ -211,19 +222,30 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
         /// <summary>
         /// Estrae le tracce scelte di un file. Tutte le tracce passano in una sola chiamata allo strumento; se la chiamata
         /// fallisce, ogni traccia si riprova da sola, così una traccia che lo strumento non scrive non ferma le altre. Una traccia
-        /// che non produce dati non si scrive. Lo stop interrompe lo strumento senza lasciare file, e un nome non usato torna al lotto
+        /// che non produce dati non si scrive. Lo stop interrompe lo strumento senza lasciare file, e un nome non usato torna al lotto.
+        /// Un avviso va alla traccia che nomina; quello che non ne nomina una riguarda il file e non cambia l'esito delle tracce
         /// </summary>
         /// <param name="source">File letto con ReadTracks</param>
         /// <param name="tracks">Tracce estraibili da estrarre, del file indicato</param>
         /// <param name="outputFolder">Cartella di uscita, vuota per scrivere accanto al video</param>
         /// <param name="allocator">Allocatore dei percorsi del lotto</param>
-        /// <param name="onProgress">Avanzamento del file in percentuale</param>
+        /// <param name="onProgress">Avanzamento del file in percentuale, che non torna indietro quando le tracce si riprovano</param>
+        /// <param name="fileWarnings">Riceve gli avvisi dello strumento che non nominano una traccia</param>
         /// <returns>Esito di ogni traccia, nello stesso ordine</returns>
-        public List<TrackExtractionResult> Extract(TrackExtractionSource source, IReadOnlyList<ExtractableTrack> tracks, string outputFolder, OutputPathAllocator allocator, Action<int> onProgress)
+        public List<TrackExtractionResult> Extract(TrackExtractionSource source, IReadOnlyList<ExtractableTrack> tracks, string outputFolder, OutputPathAllocator allocator, Action<int> onProgress, List<string> fileWarnings)
         {
             List<TrackExtractionResult> results = new List<TrackExtractionResult>();
             List<StagedOutputFile> staged = new List<StagedOutputFile>();
             string failure = string.IsNullOrEmpty(outputFolder) ? "" : OutputPathAllocator.ValidateFolder(outputFolder);
+            int reported = 0;
+            Action<int> report = percent =>
+            {
+                if (percent > reported)
+                {
+                    reported = percent;
+                    onProgress?.Invoke(percent);
+                }
+            };
             ExtractionRun all;
 
             foreach (ExtractableTrack track in tracks)
@@ -261,7 +283,9 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
                     return results;
                 }
 
-                all = this.Run(source, staged, results, 0, results.Count, percent => onProgress?.Invoke(percent));
+                all = this.Run(source, staged, results, 0, results.Count, report);
+                if (all.Succeeded)
+                    fileWarnings.AddRange(all.Warnings);
                 for (int i = 0; i < results.Count; i++)
                 {
                     TrackExtractionResult result = results[i];
@@ -273,7 +297,8 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
                     if (!ProcessRunner.IsStopRequested() && !all.Succeeded && results.Count > 1)
                     {
                         int index = i;
-                        run = this.Run(source, staged, results, i, 1, percent => onProgress?.Invoke((index * 100 + percent) / results.Count));
+                        result.Warnings.Clear();
+                        run = this.Run(source, staged, results, i, 1, percent => report((index * 100 + percent) / results.Count));
                     }
 
                     if (ProcessRunner.IsStopRequested())
@@ -305,8 +330,7 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
                         try
                         {
                             staged[i].Commit();
-                            result.Warnings.AddRange(run.Warnings);
-                            result.Status = run.Warnings.Count > 0 ? TrackExtractionStatus.ExtractedWithWarnings : TrackExtractionStatus.Extracted;
+                            result.Status = result.Warnings.Count > 0 ? TrackExtractionStatus.ExtractedWithWarnings : TrackExtractionStatus.Extracted;
                             result.OutputPath = result.ReservedPath;
                         }
                         catch (IOException ex)
@@ -337,7 +361,8 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
 
         /// <summary>
         /// Lancia mkvextract o ffmpeg su un gruppo consecutivo di tracce, ognuna verso il suo temporaneo, e ne raccoglie avanzamento,
-        /// avvisi ed errori. Nei messaggi i percorsi completi del video e dei temporanei diventano i nomi dei file
+        /// avvisi ed errori. Un avviso va alla traccia del gruppo che nomina, o all'unica traccia del gruppo; gli altri restano del
+        /// file. Nei messaggi i percorsi completi del video e dei temporanei diventano i nomi dei file
         /// </summary>
         /// <param name="source">File di partenza</param>
         /// <param name="staged">Temporanei di tutte le tracce, nell'ordine dei risultati</param>
@@ -355,6 +380,8 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
             if (source.IsMatroska)
             {
                 arguments.Add("--gui-mode");
+                arguments.Add("--ui-language");
+                arguments.Add(MKVEXTRACT_UI_LANGUAGE);
                 arguments.Add(source.Path);
                 arguments.Add("tracks");
                 for (int i = first; i < first + count; i++)
@@ -367,7 +394,26 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
                         int.TryParse(line.Substring(GUI_PROGRESS_PREFIX.Length).TrimEnd('%'), NumberStyles.Integer, CultureInfo.InvariantCulture, out percent))
                         onProgress(percent);
                     else if (line.StartsWith(GUI_WARNING_PREFIX, StringComparison.Ordinal))
-                        run.Warnings.Add(line.Substring(GUI_WARNING_PREFIX.Length).Trim());
+                    {
+                        string warning = line.Substring(GUI_WARNING_PREFIX.Length).Trim();
+                        int owner = count == 1 ? first : -1;
+
+                        // Con più tracce, un avviso è di una traccia solo se nomina lei e nessun'altra; altrimenti resta del file
+                        if (count > 1)
+                        {
+                            foreach (Match match in s_mkvExtractTrack.Matches(warning))
+                            {
+                                int named = results.FindIndex(first, count, r => r.Track.Number.ToString(CultureInfo.InvariantCulture) == match.Groups[1].Value);
+                                owner = named >= 0 && (owner == -1 || owner == named) ? named : -2;
+                                if (owner == -2)
+                                    break;
+                            }
+                        }
+                        if (owner >= 0)
+                            results[owner].Warnings.Add(warning);
+                        else
+                            run.Warnings.Add(warning);
+                    }
                     else if (line.StartsWith(GUI_ERROR_PREFIX, StringComparison.Ordinal))
                         run.Errors.Add(line.Substring(GUI_ERROR_PREFIX.Length).Trim());
                 });
@@ -435,7 +481,7 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
             public bool Succeeded;
 
             /// <summary>
-            /// Avvisi dello strumento
+            /// Avvisi dello strumento che non nominano una traccia del gruppo
             /// </summary>
             public readonly List<string> Warnings = new List<string>();
 

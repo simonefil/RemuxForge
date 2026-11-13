@@ -43,9 +43,11 @@ namespace RemuxForge.Core.Media.Ffmpeg
         /// Legge durata e stream di un file
         /// </summary>
         /// <param name="filePath">File da leggere</param>
+        /// <param name="cancellationToken">Annullamento che interrompe ffprobe</param>
         /// <returns>Durata e stream nell'ordine di ffmpeg</returns>
         /// <exception cref="InvalidOperationException">ffprobe non legge il file; il messaggio riporta il suo errore</exception>
-        public FfprobeMediaInfo Read(string filePath)
+        /// <exception cref="OperationCanceledException">La lettura è stata annullata</exception>
+        public FfprobeMediaInfo Read(string filePath, CancellationToken cancellationToken)
         {
             FfprobeMediaInfo info = new FfprobeMediaInfo();
             ProcessResult run = ProcessRunner.RunIsolated(this._ffprobePath, new string[]
@@ -54,7 +56,7 @@ namespace RemuxForge.Core.Media.Ffmpeg
                 "-show_entries", "format=duration:stream=index,codec_type,codec_name,profile:stream_tags=language,title:stream_disposition=default,forced",
                 "-of", "json",
                 filePath
-            }, 0, CancellationToken.None);
+            }, 0, cancellationToken);
 
             if (run.ExitCode != 0 || string.IsNullOrWhiteSpace(run.Stdout))
                 throw new InvalidOperationException(AppText.F("toolbox.ffprobe.readFailed", run.Stderr.Trim().Length > 0 ? run.Stderr.Trim() : AppText.F("toolbox.ffprobe.exitCode", run.ExitCode)));

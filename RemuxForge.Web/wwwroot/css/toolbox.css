@@ -235,7 +235,10 @@
     color: var(--rz-text-secondary-color);
 }
 
-/* Le tracce stanno dentro la riga del video: la loro intestazione scorre con la riga invece di restare in cima sopra quella dei video */
-.rf-tool-page .rf-tool-track-grid.rz-data-grid thead th {
+/* Le tracce stanno dentro la riga del video: la loro intestazione scorre con la riga invece di restare in cima sopra quella dei video.
+   Radzen rende sticky sia la testata sia le sue celle, quindi si fermano tutte e due */
+.rf-tool-page .rf-tool-track-grid.rz-data-grid .rz-grid-table > thead,
+.rf-tool-page .rf-tool-track-grid.rz-data-grid .rz-grid-table > thead > tr > th {
     position: static;
+    z-index: auto;
 }

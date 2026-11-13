@@ -1,3 +1,4 @@
+using RemuxForge.Core.Localization;
 using System.Collections.Generic;
 
 namespace RemuxForge.Core.Toolbox.TrackExtraction
@@ -14,7 +15,10 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
         Audio,
 
         /// <summary>Traccia di sottotitoli</summary>
-        Subtitles
+        Subtitles,
+
+        /// <summary>Traccia di un altro tipo, ad esempio i pulsanti dei menu, mostrata ma non estraibile</summary>
+        Other
     }
 
     /// <summary>
@@ -30,24 +34,26 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
         /// </summary>
         /// <param name="number">Numero della traccia per mkvextract o ffmpeg</param>
         /// <param name="kind">Tipo della traccia</param>
+        /// <param name="type">Tipo come lo indica lo strumento che legge il file</param>
         /// <param name="codec">Codec come lo descrive lo strumento che legge il file</param>
-        /// <param name="format">Formato di estrazione, null se la traccia non si estrae</param>
+        /// <param name="codecId">Codec ID Matroska o nome del codec di ffmpeg</param>
+        /// <param name="format">Formato di estrazione, null se il codec non si estrae</param>
         /// <param name="language">Lingua ISO 639-2, und se il file non la indica</param>
         /// <param name="name">Nome della traccia, vuoto se manca</param>
         /// <param name="isDefault">True se la traccia è predefinita</param>
         /// <param name="isForced">True se la traccia è forzata</param>
-        /// <param name="unavailableReason">Perché la traccia non si estrae, vuoto se si estrae</param>
-        public ExtractableTrack(int number, TrackExtractionKind kind, string codec, TrackExtractionFormat format, string language, string name, bool isDefault, bool isForced, string unavailableReason)
+        public ExtractableTrack(int number, TrackExtractionKind kind, string type, string codec, string codecId, TrackExtractionFormat format, string language, string name, bool isDefault, bool isForced)
         {
             this.Number = number;
             this.Kind = kind;
+            this.Type = type;
             this.Codec = codec;
-            this.Format = format;
+            this.CodecId = codecId;
+            this.Format = kind == TrackExtractionKind.Audio || kind == TrackExtractionKind.Subtitles ? format : null;
             this.Language = language;
             this.Name = name;
             this.IsDefault = isDefault;
             this.IsForced = isForced;
-            this.UnavailableReason = unavailableReason;
         }
 
         #endregion
@@ -65,9 +71,19 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
         public TrackExtractionKind Kind { get; }
 
         /// <summary>
+        /// Tipo come lo indica mkvmerge o ffprobe
+        /// </summary>
+        public string Type { get; }
+
+        /// <summary>
         /// Codec come lo descrive mkvmerge o ffprobe
         /// </summary>
         public string Codec { get; }
+
+        /// <summary>
+        /// Codec ID Matroska per mkvmerge, nome del codec per ffprobe
+        /// </summary>
+        public string CodecId { get; }
 
         /// <summary>
         /// Formato di estrazione, null se la traccia non si estrae
@@ -97,14 +113,25 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
         /// <summary>
         /// Perché la traccia non si estrae, vuoto se si estrae
         /// </summary>
-        public string UnavailableReason { get; }
+        public string UnavailableReason
+        {
+            get
+            {
+                return this.Kind switch
+                {
+                    TrackExtractionKind.Video => AppText.T("toolbox.trackExtraction.videoNotExtracted"),
+                    TrackExtractionKind.Other => AppText.F("toolbox.trackExtraction.kindNotExtracted", this.Type),
+                    _ => this.Format == null ? AppText.F("toolbox.trackExtraction.formatNotExtracted", this.CodecId.Length > 0 ? this.CodecId : this.Codec) : ""
+                };
+            }
+        }
 
         /// <summary>
         /// True per le tracce audio e di sottotitoli in un formato che si estrae
         /// </summary>
         public bool IsExtractable
         {
-            get { return this.UnavailableReason.Length == 0; }
+            get { return this.Format != null; }
         }
 
         #endregion

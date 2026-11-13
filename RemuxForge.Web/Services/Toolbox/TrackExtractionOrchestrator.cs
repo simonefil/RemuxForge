@@ -5,6 +5,7 @@ using RemuxForge.Core.Toolbox.TrackExtraction;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 
 namespace RemuxForge.Web.Services.Toolbox
 {
@@ -57,6 +58,11 @@ namespace RemuxForge.Web.Services.Toolbox
         /// </summary>
         private TrackExtractionView _view;
 
+        /// <summary>
+        /// Nomi previsti delle tracce scelte, calcolati al primo disegno dopo un cambio di elenco, scelte, uscita o esiti; null fino ad allora
+        /// </summary>
+        private Dictionary<TrackExtractionTrack, string> _plan;
+
         #endregion
 
         #region Costruttore
@@ -70,6 +76,15 @@ namespace RemuxForge.Web.Services.Toolbox
             this._languages = new List<string>();
             this._formats = new List<string>();
             this._view = TrackExtractionView.ByFile;
+
+            // Ogni cambio di elenco, scelte, uscita o esiti passa da qui: i nomi previsti si ricalcolano al prossimo disegno
+            this.OnRecordsChanged += () =>
+            {
+                lock (this.StateLock)
+                {
+                    this._plan = null;
+                }
+            };
         }
 
         #endregion
@@ -77,13 +92,15 @@ namespace RemuxForge.Web.Services.Toolbox
         #region Metodi pubblici
 
         /// <summary>
-        /// Apre una vista; la scelta delle due viste resta com'era
+        /// Apre una vista; la scelta delle due viste resta com'era. Durante il lotto la vista non cambia
         /// </summary>
         /// <param name="view">Vista da aprire</param>
         public void SetView(TrackExtractionView view)
         {
             lock (this.StateLock)
             {
+                if (this.IsBusy)
+                    return;
                 this._view = view;
             }
 
@@ -97,11 +114,10 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <param name="isChecked">True per spuntarla</param>
         public void SetChecked(TrackExtractionTrack track, bool isChecked)
         {
-            if (this.IsBusy || !track.Track.IsExtractable)
-                return;
-
             lock (this.StateLock)
             {
+                if (this.IsBusy || !track.Track.IsExtractable)
+                    return;
                 track.IsChecked = isChecked;
             }
 
@@ -115,11 +131,10 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <param name="isChecked">True per spuntarle</param>
         public void SetFileChecked(TrackExtractionFile file, bool isChecked)
         {
-            if (this.IsBusy)
-                return;
-
             lock (this.StateLock)
             {
+                if (this.IsBusy)
+                    return;
                 foreach (TrackExtractionTrack track in file.Tracks)
                     track.IsChecked = isChecked && track.Track.IsExtractable;
             }
@@ -128,7 +143,8 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Imposta i filtri della vista per tipo; lingue e formati che con i tipi scelti non esistono più si tolgono
+        /// Imposta i filtri della vista per tipo; lingue e formati che con i tipi scelti non esistono più si tolgono. Durante il lotto
+        /// i filtri non cambiano
         /// </summary>
         /// <param name="kinds">Tipi scelti, vuoto = tutti</param>
         /// <param name="languages">Lingue scelte, vuoto = tutte</param>
@@ -137,6 +153,8 @@ namespace RemuxForge.Web.Services.Toolbox
         {
             lock (this.StateLock)
             {
+                if (this.IsBusy)
+                    return;
                 this._kinds.Clear();
                 this._kinds.AddRange(kinds);
                 this._languages.Clear();
@@ -150,12 +168,20 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Estrae le tracce scelte nella vista aperta che non sono già state estratte
+        /// Estrae le tracce scelte nella vista aperta che non sono già state estratte. Tracce e uscita del lotto si fissano sotto lo
+        /// stesso lock della riserva: dopo, scelte e uscita non cambiano più il lotto
         /// </summary>
         public override void Start()
         {
-            if (this.CanStart)
-                this.TryRunExclusive(this.ExtractWorker);
+            lock (this.StateLock)
+            {
+                if (!this.CanStart)
+                    return;
+
+                List<TrackExtractionTrack> batch = this.SelectTracks().FindAll(t => !t.IsDone);
+                string outputFolder = this.GetBatchOutputFolder();
+                this.TryRunExclusive(() => this.ExtractWorker(batch, outputFolder));
+            }
         }
 
         /// <summary>
@@ -174,18 +200,20 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Nome che avrà ogni traccia scelta e non ancora estratta, calcolato con la stessa regola e lo stesso ordine dell'estrazione
         /// sui file presenti adesso
         /// </summary>
-        /// <returns>Percorso previsto per traccia</returns>
+        /// <returns>Percorso previsto per traccia; si ricalcola solo dopo un cambio di elenco, scelte, uscita o esiti</returns>
         public Dictionary<TrackExtractionTrack, string> PlanOutputs()
         {
-            Dictionary<TrackExtractionTrack, string> plan = new Dictionary<TrackExtractionTrack, string>();
-
             lock (this.StateLock)
             {
+                if (this._plan != null)
+                    return this._plan;
+
                 List<string> inputs = new List<string>();
                 string outputFolder = this.GetBatchOutputFolder();
 
+                this._plan = new Dictionary<TrackExtractionTrack, string>();
                 if (this.GetOutputFolderError().Length > 0)
-                    return plan;
+                    return this._plan;
 
                 foreach (TrackExtractionFile file in this.Records)
                     inputs.Add(file.InputPath);
@@ -194,11 +222,11 @@ namespace RemuxForge.Web.Services.Toolbox
                 foreach (TrackExtractionTrack track in this.SelectTracks())
                 {
                     if (!track.IsDone)
-                        plan[track] = allocator.Reserve(TrackExtractionService.GetDesiredPath(track.File.InputPath, outputFolder, track.Track));
+                        this._plan[track] = allocator.Reserve(TrackExtractionService.GetDesiredPath(track.File.InputPath, outputFolder, track.Track));
                 }
-            }
 
-            return plan;
+                return this._plan;
+            }
         }
 
         #endregion
@@ -212,7 +240,22 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Legge in background le tracce dei video appena accodati
+        /// Rimette in coda per la lettura un video illeggibile o non letto che si aggiunge di nuovo
+        /// </summary>
+        /// <param name="record">Video già in elenco</param>
+        /// <returns>True se il video torna in lettura</returns>
+        protected override bool Requeue(TrackExtractionFile record)
+        {
+            if (record.State != TrackExtractionFileState.Unreadable && record.State != TrackExtractionFileState.NotRead)
+                return false;
+
+            record.SetReading();
+            return true;
+        }
+
+        /// <summary>
+        /// Legge in background le tracce dei video accodati; la riserva avviene sotto il lock dell'accodamento e fuori dal lotto,
+        /// quindi riesce sempre
         /// </summary>
         protected override void OnFilesAdded()
         {
@@ -232,12 +275,15 @@ namespace RemuxForge.Web.Services.Toolbox
         #region Metodi privati
 
         /// <summary>
-        /// Worker della lettura: legge le tracce dei video appena aggiunti, uno alla volta; un video illeggibile resta in elenco con
-        /// il motivo
+        /// Worker della lettura: legge le tracce dei video accodati e di quelli rimasti non letti, uno alla volta; un video
+        /// illeggibile resta in elenco con il motivo. Lo stop interrompe anche lo strumento al lavoro, e i video non letti restano
+        /// tali fino al prossimo Aggiungi file
         /// </summary>
         private void ReadWorker()
         {
             List<TrackExtractionFile> targets = new List<TrackExtractionFile>();
+            CancellationToken cancellation = this.OperationCancellationToken;
+            int read = 0;
             int unreadable = 0;
 
             this.SetBusy(true, AppText.T("web.toolbox.trackExtraction.reading"));
@@ -245,8 +291,16 @@ namespace RemuxForge.Web.Services.Toolbox
             {
                 lock (this.StateLock)
                 {
-                    targets.AddRange(this.Records.FindAll(f => f.State == TrackExtractionFileState.Reading));
+                    foreach (TrackExtractionFile file in this.Records)
+                    {
+                        if (file.State == TrackExtractionFileState.Reading || file.State == TrackExtractionFileState.NotRead)
+                        {
+                            file.SetReading();
+                            targets.Add(file);
+                        }
+                    }
                 }
+                this.NotifyRecordsChanged();
 
                 TrackExtractionService service = this.CreateService();
                 for (int i = 0; i < targets.Count; i++)
@@ -261,7 +315,11 @@ namespace RemuxForge.Web.Services.Toolbox
                     this.ReportProgress(i, targets.Count, Path.GetFileName(file.InputPath));
                     try
                     {
-                        source = service.ReadTracks(file.InputPath);
+                        source = service.ReadTracks(file.InputPath, cancellation);
+                    }
+                    catch (Exception ex) when (this.IsOperationStopped(ex))
+                    {
+                        break;
                     }
                     catch (Exception ex)
                     {
@@ -278,7 +336,9 @@ namespace RemuxForge.Web.Services.Toolbox
                         this.ProgressState.GlobalPercent = (i + 1) * 100 / targets.Count;
                     }
                     this.NotifyProgressChanged();
-                    if (source == null)
+                    if (source != null)
+                        read++;
+                    else
                     {
                         unreadable++;
                         this.AppendLog(AppText.F("web.toolbox.trackExtraction.fileUnreadable", Path.GetFileName(file.InputPath), error));
@@ -292,21 +352,23 @@ namespace RemuxForge.Web.Services.Toolbox
             }
             finally
             {
-                // Un video non raggiunto dallo stop o da un errore non ha tracce: resta in elenco con il motivo
+                // Un video non raggiunto o interrotto dallo stop, o lasciato da un errore, non è illeggibile: resta da leggere
                 lock (this.StateLock)
                 {
                     foreach (TrackExtractionFile file in targets)
                     {
                         if (file.State == TrackExtractionFileState.Reading)
-                        {
-                            file.SetUnreadable(AppText.T("web.toolbox.trackExtraction.readStopped"));
-                            unreadable++;
-                        }
+                            file.SetNotRead();
                     }
                     this.PruneFilters();
                 }
 
-                this.AppendLog(unreadable > 0 ? AppText.F("web.toolbox.trackExtraction.readCompletedWithErrors", targets.Count - unreadable, unreadable) : AppText.Count("web.toolbox.trackExtraction.readCompleted", targets.Count));
+                if (read == targets.Count)
+                    this.AppendLog(AppText.Count("web.toolbox.trackExtraction.readCompleted", read));
+                else if (read + unreadable == targets.Count)
+                    this.AppendLog(AppText.F("web.toolbox.trackExtraction.readCompletedWithErrors", read, unreadable));
+                else
+                    this.AppendLog(AppText.F("web.toolbox.trackExtraction.readCompletedPartially", read, unreadable, targets.Count - read - unreadable));
                 this.SetBusy(false, "");
                 this.NotifyRecordsChanged();
             }
@@ -316,41 +378,44 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Worker dell'estrazione: un video alla volta, tutte le sue tracce scelte insieme; un errore non ferma le altre tracce né gli
         /// altri video
         /// </summary>
-        private void ExtractWorker()
+        /// <param name="batch">Tracce del lotto, fissate alla riserva</param>
+        /// <param name="outputFolder">Cartella di uscita del lotto, vuota per accanto ai video</param>
+        private void ExtractWorker(List<TrackExtractionTrack> batch, string outputFolder)
         {
             List<TrackExtractionFile> files = new List<TrackExtractionFile>();
             Dictionary<TrackExtractionFile, List<TrackExtractionTrack>> tracksByFile = new Dictionary<TrackExtractionFile, List<TrackExtractionTrack>>();
             List<string> inputs = new List<string>();
             TrackExtractionBatchSummary summary = new TrackExtractionBatchSummary();
-            string outputFolder;
             string folderError;
 
             this.SetBusy(true, AppText.T("web.toolbox.trackExtraction.progress"));
             try
             {
-                lock (this.StateLock)
+                foreach (TrackExtractionTrack track in batch)
                 {
-                    outputFolder = this.GetBatchOutputFolder();
-                    folderError = this.GetOutputFolderError();
-                    foreach (TrackExtractionFile file in this.Records)
-                        inputs.Add(file.InputPath);
-                    foreach (TrackExtractionTrack track in this.SelectTracks())
+                    if (!tracksByFile.ContainsKey(track.File))
                     {
-                        if (track.IsDone)
-                            continue;
-                        if (!tracksByFile.ContainsKey(track.File))
-                        {
-                            files.Add(track.File);
-                            tracksByFile[track.File] = new List<TrackExtractionTrack>();
-                        }
-                        tracksByFile[track.File].Add(track);
-                        summary.Total++;
+                        files.Add(track.File);
+                        tracksByFile[track.File] = new List<TrackExtractionTrack>();
                     }
+                    tracksByFile[track.File].Add(track);
                 }
+                summary.Total = batch.Count;
 
                 // La cartella può sparire fra la scelta e l'avvio: il lotto non parte e nessuna traccia cambia stato
+                folderError = outputFolder.Length > 0 ? OutputPathAllocator.ValidateFolder(outputFolder) : "";
                 if (folderError.Length > 0)
                     throw new InvalidOperationException(folderError);
+
+                // Le tracce del lotto perdono l'esito del lotto precedente: dopo uno stop quelle non raggiunte tornano da elaborare
+                lock (this.StateLock)
+                {
+                    foreach (TrackExtractionFile file in this.Records)
+                        inputs.Add(file.InputPath);
+                    foreach (TrackExtractionTrack track in batch)
+                        track.Reset(TrackExtractionStatus.Pending);
+                }
+                this.NotifyRecordsChanged();
 
                 // Gli input dell'intero elenco restano vietati come uscita
                 OutputPathAllocator allocator = new OutputPathAllocator(inputs);
@@ -363,6 +428,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     TrackExtractionFile file = files[i];
                     List<TrackExtractionTrack> tracks = tracksByFile[file];
                     List<ExtractableTrack> chosen = tracks.ConvertAll(t => t.Track);
+                    List<string> fileWarnings = new List<string>();
                     string name = Path.GetFileName(file.InputPath);
                     List<TrackExtractionResult> results;
 
@@ -389,7 +455,7 @@ namespace RemuxForge.Web.Services.Toolbox
                                 this.ProgressState.GlobalPercent = (i * 100 + percent) / files.Count;
                             }
                             this.NotifyProgressChanged();
-                        });
+                        }, fileWarnings);
                     }
                     catch (Exception ex)
                     {
@@ -400,6 +466,12 @@ namespace RemuxForge.Web.Services.Toolbox
                             Message = ex.Message
                         });
                     }
+
+                    // Gli avvisi che non nominano una traccia riguardano il video: vanno nel log una volta e non toccano gli esiti
+                    for (int w = 0; w < fileWarnings.Count && w < LISTED_WARNINGS; w++)
+                        this.AppendLog(AppText.F("web.toolbox.trackExtraction.trackWarning", name, fileWarnings[w]));
+                    if (fileWarnings.Count > LISTED_WARNINGS)
+                        this.AppendLog(AppText.Count("web.toolbox.trackExtraction.moreWarnings", fileWarnings.Count - LISTED_WARNINGS, name));
 
                     for (int t = 0; t < tracks.Count; t++)
                     {
@@ -647,8 +719,11 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <summary>Tracce lette</summary>
         Read,
 
-        /// <summary>Tracce non lette</summary>
-        Unreadable
+        /// <summary>Lo strumento non legge il video</summary>
+        Unreadable,
+
+        /// <summary>Lettura interrotta o non raggiunta: si riprende al prossimo Aggiungi file</summary>
+        NotRead
     }
 
     /// <summary>
@@ -659,8 +734,11 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <summary>Tracce in lettura</summary>
         Reading,
 
-        /// <summary>Tracce non lette</summary>
+        /// <summary>Lo strumento non legge il video</summary>
         Unreadable,
+
+        /// <summary>Lettura interrotta o non raggiunta</summary>
+        NotRead,
 
         /// <summary>Nessuna traccia ancora elaborata</summary>
         Pending,
@@ -730,6 +808,24 @@ namespace RemuxForge.Web.Services.Toolbox
             this.State = TrackExtractionFileState.Unreadable;
         }
 
+        /// <summary>
+        /// Registra che la lettura è stata interrotta o non è arrivata al video
+        /// </summary>
+        public void SetNotRead()
+        {
+            this.Error = AppText.T("web.toolbox.trackExtraction.readStopped");
+            this.State = TrackExtractionFileState.NotRead;
+        }
+
+        /// <summary>
+        /// Rimette il video in lettura
+        /// </summary>
+        public void SetReading()
+        {
+            this.Error = "";
+            this.State = TrackExtractionFileState.Reading;
+        }
+
         #endregion
 
         #region Proprietà
@@ -740,7 +836,7 @@ namespace RemuxForge.Web.Services.Toolbox
         public TrackExtractionFileState State { get; private set; }
 
         /// <summary>
-        /// Perché le tracce non si leggono, vuoto se lette o in lettura
+        /// Perché le tracce non si leggono o non sono state lette, vuoto se lette o in lettura
         /// </summary>
         public string Error { get; private set; }
 
@@ -767,7 +863,14 @@ namespace RemuxForge.Web.Services.Toolbox
                 bool stopped = false;
 
                 if (this.State != TrackExtractionFileState.Read)
-                    return this.State == TrackExtractionFileState.Reading ? TrackExtractionFileOutcome.Reading : TrackExtractionFileOutcome.Unreadable;
+                {
+                    return this.State switch
+                    {
+                        TrackExtractionFileState.Reading => TrackExtractionFileOutcome.Reading,
+                        TrackExtractionFileState.NotRead => TrackExtractionFileOutcome.NotRead,
+                        _ => TrackExtractionFileOutcome.Unreadable
+                    };
+                }
 
                 foreach (TrackExtractionTrack track in this.Tracks)
                 {
