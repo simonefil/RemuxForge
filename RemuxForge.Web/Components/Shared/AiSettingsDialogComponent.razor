@@ -55,14 +55,6 @@
             <div style="color: var(--rz-text-secondary-color);">@AppText.T("ai.credentials.disconnectBeforeApiKey")</div>
         }
 
-        @* Giri massimi *@
-        <div class="form-row" style="margin-top: 0.5em;">
-            <RadzenLabel class="form-label" Text="@AppText.T("web.aiSettings.maxRounds")" Component="AiSettingsMaxRounds" />
-            <RadzenNumeric @key="_maxRoundsInputKey" TValue="int" Name="AiSettingsMaxRounds" Style="max-width: 12ch;"
-                           Min="@MetadataAiPresetGenerator.MIN_MAX_ROUNDS" Max="@MetadataAiPresetGenerator.MAX_MAX_ROUNDS"
-                           Value="@_credentials.MaxRounds" Disabled="@_busy" Change="@OnMaxRoundsChanged" />
-            <span style="color: var(--rz-text-secondary-color);">@AppText.F("web.aiSettings.maxRoundsHint", MetadataAiPresetGenerator.MIN_MAX_ROUNDS, MetadataAiPresetGenerator.MAX_MAX_ROUNDS)</span>
-        </div>
         @if (!string.IsNullOrEmpty(_info))
         {
             <div style="margin-top: 0.5em; white-space: pre-line;">@_info</div>
@@ -107,11 +99,6 @@
     /// Flag: operazione in corso
     /// </summary>
     private bool _busy;
-
-    /// <summary>
-    /// Chiave del campo giri massimi: cambiandola il campo viene ricreato col valore salvato
-    /// </summary>
-    private int _maxRoundsInputKey;
 
     /// <summary>
     /// Carica la configurazione e si iscrive ai cambi di stato del login
@@ -337,27 +324,6 @@
         this._info = "";
         this.CredentialService.RemoveApiKey();
         this.AuthService.NotifyStateChanged();
-        this.ReloadCredentials();
-    }
-
-    /// <summary>
-    /// Salva i giri massimi; un valore fuori intervallo viene rifiutato senza salvare
-    /// </summary>
-    /// <param name="value">Valore digitato</param>
-    private void OnMaxRoundsChanged(int value)
-    {
-        this._error = "";
-        if (value < MetadataAiPresetGenerator.MIN_MAX_ROUNDS || value > MetadataAiPresetGenerator.MAX_MAX_ROUNDS)
-        {
-            this._error = AppText.F("web.aiSettings.maxRoundsInvalid", MetadataAiPresetGenerator.MIN_MAX_ROUNDS, MetadataAiPresetGenerator.MAX_MAX_ROUNDS);
-            this.ReloadCredentials();
-
-            // Il valore salvato non e' cambiato, quindi il campo va ricreato per non mostrare quello rifiutato
-            this._maxRoundsInputKey++;
-            return;
-        }
-
-        this.CredentialService.SetMaxRounds(value);
         this.ReloadCredentials();
     }
 }

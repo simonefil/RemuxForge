@@ -27,6 +27,12 @@
                     <RadzenDropDown TValue="string" Name="MetadataAiReasoning" Data="@GetEffortValues()" Value="@(string.IsNullOrEmpty(_credentials.ReasoningEffort) ? null : _credentials.ReasoningEffort)"
                                     Change="@OnEffortChanged" AllowClear="true" Disabled="@(_modelsLoading || string.IsNullOrEmpty(_credentials.Model))" Style="max-width: 20ch;" />
                 </div>
+                <div class="form-row" style="margin-top: 0.5em;">
+                    <RadzenLabel class="form-label" Text="@AppText.T("web.metadata.ai.maxRoundsLabel")" Component="MetadataAiMaxRounds" />
+                    <RadzenNumeric @key="_maxRoundsInputKey" TValue="int" Name="MetadataAiMaxRounds" Style="max-width: 12ch;"
+                                   Min="@MetadataAiPresetGenerator.MIN_MAX_ROUNDS" Max="@MetadataAiPresetGenerator.MAX_MAX_ROUNDS"
+                                   Value="@_credentials.MaxRounds" Change="@OnMaxRoundsChanged" />
+                </div>
             }
             else if (_step == WizardStep.Reading)
             {
@@ -284,6 +290,11 @@
     private bool _modelsLoading;
 
     /// <summary>
+    /// Chiave del campo giri massimi: cambiandola il campo viene ricreato col valore salvato
+    /// </summary>
+    private int _maxRoundsInputKey;
+
+    /// <summary>
     /// Legge la configurazione e si iscrive agli eventi dell'orchestrator
     /// </summary>
     protected override void OnInitialized()
@@ -463,6 +474,25 @@
     private void OnEffortChanged(object value)
     {
         this.CredentialService.SetModel(this._credentials.Model, value as string ?? "");
+        this._credentials = this.LoadCredentials();
+    }
+
+    /// <summary>
+    /// Salva i giri massimi; un valore fuori intervallo viene rifiutato senza salvare
+    /// </summary>
+    /// <param name="value">Valore digitato</param>
+    private void OnMaxRoundsChanged(int value)
+    {
+        if (value < MetadataAiPresetGenerator.MIN_MAX_ROUNDS || value > MetadataAiPresetGenerator.MAX_MAX_ROUNDS)
+        {
+            this.NotificationService.Notify(NotificationSeverity.Error, AppText.F("web.metadata.ai.maxRoundsInvalid", MetadataAiPresetGenerator.MIN_MAX_ROUNDS, MetadataAiPresetGenerator.MAX_MAX_ROUNDS), "", 8000);
+
+            // Il valore salvato non e' cambiato, quindi il campo va ricreato per non mostrare quello rifiutato
+            this._maxRoundsInputKey++;
+            return;
+        }
+
+        this.CredentialService.SetMaxRounds(value);
         this._credentials = this.LoadCredentials();
     }
 
