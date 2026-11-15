@@ -1,7 +1,6 @@
 @inherits AppDialogContentBase
 @using RemuxForge.Core.Ai
 @inject AiCredentialService CredentialService
-@inject OpenAiResponsesClient ResponsesClient
 @inject AiAuthService AuthService
 
 <div class="rf-dialog" @ref="DialogContent">
@@ -56,17 +55,6 @@
             <div style="color: var(--rz-text-secondary-color);">@AppText.T("ai.credentials.disconnectBeforeApiKey")</div>
         }
 
-        @* Modello *@
-        <div class="form-row" style="margin-top: 0.5em;">
-            <RadzenLabel class="form-label" Text="@AppText.T("web.aiSettings.model")" Component="AiSettingsModel" />
-            <RadzenDropDown TValue="string" Name="AiSettingsModel" Data="@GetModelValues()" Value="@(string.IsNullOrEmpty(_credentials.Model) ? null : _credentials.Model)" Change="@OnModelChanged"
-                            AllowClear="true" Placeholder="@AppText.T("web.aiSettings.noModel")" Disabled="@(_busy || !AiCredentialService.IsConfigured(_credentials))" Style="max-width: 40ch;">
-                <Template Context="model">@GetModelLabel((string)model)</Template>
-                <ValueTemplate Context="model">@GetModelLabel((string)model)</ValueTemplate>
-            </RadzenDropDown>
-            <RadzenButton Text="@AppText.T("web.aiSettings.refreshModels")" Icon="refresh" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@(_busy || !AiCredentialService.IsConfigured(_credentials))" Click="@RefreshModels" />
-        </div>
-
         @* Giri massimi *@
         <div class="form-row" style="margin-top: 0.5em;">
             <RadzenLabel class="form-label" Text="@AppText.T("web.aiSettings.maxRounds")" Component="AiSettingsMaxRounds" />
@@ -94,11 +82,6 @@
     /// Configurazione AI corrente
     /// </summary>
     private AiCredentials _credentials = new AiCredentials();
-
-    /// <summary>
-    /// Modelli disponibili, vuoto finché non si aggiorna l'elenco
-    /// </summary>
-    private List<AiModelInfo> _models = new List<AiModelInfo>();
 
     /// <summary>
     /// API key digitata, mai precompilata con quella salvata
@@ -202,49 +185,6 @@
     private string GetErrorText()
     {
         return !string.IsNullOrEmpty(this._error) ? this._error : this.AuthService.LastError;
-    }
-
-    /// <summary>
-    /// Valori della tendina dei modelli: il modello salvato assente dall'elenco resta selezionabile
-    /// </summary>
-    private List<string> GetModelValues()
-    {
-        List<string> values = new List<string>();
-        if (!string.IsNullOrEmpty(this._credentials.Model) && !this.ContainsModel(this._credentials.Model))
-            values.Add(this._credentials.Model);
-        for (int i = 0; i < this._models.Count; i++)
-            values.Add(this._models[i].Id);
-        return values;
-    }
-
-    /// <summary>
-    /// Nome mostrato di un modello
-    /// </summary>
-    /// <param name="id">Identificativo modello</param>
-    private string GetModelLabel(string id)
-    {
-        for (int i = 0; i < this._models.Count; i++)
-        {
-            if (this._models[i].Id == id)
-                return this._models[i].DisplayName;
-        }
-
-        return id;
-    }
-
-    /// <summary>
-    /// True se l'elenco caricato contiene il modello
-    /// </summary>
-    /// <param name="id">Identificativo modello</param>
-    private bool ContainsModel(string id)
-    {
-        for (int i = 0; i < this._models.Count; i++)
-        {
-            if (this._models[i].Id == id)
-                return true;
-        }
-
-        return false;
     }
 
     /// <summary>
@@ -352,7 +292,6 @@
         try
         {
             this._info = await this.AuthService.DisconnectAsync(CancellationToken.None);
-            this._models = new List<AiModelInfo>();
         }
         finally
         {
@@ -378,7 +317,6 @@
         {
             this.CredentialService.SetApiKey(this._apiKeyInput);
             this._apiKeyInput = "";
-            this._models = new List<AiModelInfo>();
             this.AuthService.NotifyStateChanged();
         }
         catch (Exception ex) when (ex is ArgumentException || ex is InvalidOperationException)
@@ -398,32 +336,8 @@
         this._error = "";
         this._info = "";
         this.CredentialService.RemoveApiKey();
-        this._models = new List<AiModelInfo>();
         this.AuthService.NotifyStateChanged();
         this.ReloadCredentials();
-    }
-
-    /// <summary>
-    /// Aggiorna l'elenco dei modelli disponibili
-    /// </summary>
-    private async Task RefreshModels()
-    {
-        this._error = "";
-        this._info = "";
-        this._busy = true;
-        try
-        {
-            this._models = await this.ResponsesClient.ListModelsAsync(CancellationToken.None);
-        }
-        catch (AiServiceException ex)
-        {
-            this._error = ex.Message;
-        }
-        finally
-        {
-            this._busy = false;
-            this.ReloadCredentials();
-        }
     }
 
     /// <summary>
@@ -444,16 +358,6 @@
         }
 
         this.CredentialService.SetMaxRounds(value);
-        this.ReloadCredentials();
-    }
-
-    /// <summary>
-    /// Salva il modello scelto
-    /// </summary>
-    /// <param name="value">Modello scelto, null quando la scelta viene rimossa</param>
-    private void OnModelChanged(object value)
-    {
-        this.CredentialService.SetModel(value as string ?? "");
         this.ReloadCredentials();
     }
 }

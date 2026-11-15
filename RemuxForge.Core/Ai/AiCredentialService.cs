@@ -10,7 +10,7 @@ using System.Text.Json.Serialization;
 namespace RemuxForge.Core.Ai
 {
     /// <summary>
-    /// Servizio del file di configurazione dell'integrazione AI: credenziali, modello e consenso
+    /// Servizio del file di configurazione dell'integrazione AI: credenziali, modello del Metadata AI e consenso
     /// </summary>
     public class AiCredentialService
     {
@@ -186,7 +186,7 @@ namespace RemuxForge.Core.Ai
         }
 
         /// <summary>
-        /// Scollega l'account: cancella solo i token, conserva client ID, email, host ID, modello e consenso
+        /// Scollega l'account: cancella solo i token, conserva client ID, email, host ID, modello, livello di ragionamento e consenso
         /// </summary>
         /// <returns>Configurazione aggiornata</returns>
         public AiCredentials ClearAccountTokens()
@@ -242,13 +242,15 @@ namespace RemuxForge.Core.Ai
         }
 
         /// <summary>
-        /// Salva il modello scelto
+        /// Salva modello e livello di ragionamento del Metadata AI
         /// </summary>
         /// <param name="model">Identificativo modello</param>
-        public void SetModel(string model)
+        /// <param name="reasoningEffort">Livello di ragionamento, vuoto per non mandarlo</param>
+        public void SetModel(string model, string reasoningEffort)
         {
             AiCredentials credentials = this.Load();
             credentials.Model = model != null ? model.Trim() : "";
+            credentials.ReasoningEffort = reasoningEffort != null ? reasoningEffort.Trim() : "";
             this.Save(credentials);
         }
 
@@ -310,6 +312,8 @@ namespace RemuxForge.Core.Ai
                 credentials.ExtAgentHostId = "";
             if (credentials.Model == null)
                 credentials.Model = "";
+            if (credentials.ReasoningEffort == null)
+                credentials.ReasoningEffort = "";
             if (credentials.Email == null)
                 credentials.Email = "";
             if (credentials.Subject == null)

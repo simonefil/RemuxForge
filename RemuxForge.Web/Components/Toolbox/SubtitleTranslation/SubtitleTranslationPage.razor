@@ -948,10 +948,17 @@
     }
 
     /// <summary>
-    /// Avvia o riprende l'analisi; la prima volta chiede il consenso dedicato alla traduzione
+    /// Avvia o riprende l'analisi; senza il modello dell'analisi non parte, e la prima volta chiede il consenso dedicato alla traduzione
     /// </summary>
     private async Task AnalyzeAsync()
     {
+        if (string.IsNullOrEmpty(Orchestrator.Project.Models.Analysis))
+        {
+            Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyModelMissing"),
+                AppText.F("web.toolbox.subtitleTranslation.modelMissing", AppText.T("web.toolbox.subtitleTranslation.models.phase.analysis")));
+            return;
+        }
+
         if (!Orchestrator.ConsentAccepted)
         {
             bool accepted = await AppDialogs.ConfirmAsync(DialogService, AppText.T("web.toolbox.subtitleTranslation.consentTitle"), AppText.T("web.toolbox.subtitleTranslation.consentText"),

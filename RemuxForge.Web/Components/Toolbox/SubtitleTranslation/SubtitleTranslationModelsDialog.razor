@@ -13,15 +13,26 @@
         {
             <div class="rf-translation-models-grid">
                 <span></span>
+                <span class="rf-tool-label">@AppText.T("web.toolbox.subtitleTranslation.models.difficulty")</span>
                 <span class="rf-tool-label">@AppText.T("web.toolbox.subtitleTranslation.models.model")</span>
                 <span class="rf-tool-label">@AppText.T("web.toolbox.subtitleTranslation.models.reasoning")</span>
                 @for (int i = 0; i < s_phases.Length; i++)
                 {
                     int phase = i;
-                    <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.subtitleTranslation.models.phase." + s_phases[phase])" Component="@("TranslationModel" + s_phases[phase])" />
+                    <div class="rf-translation-models-phase">
+                        <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.subtitleTranslation.models.phase." + s_phases[phase])" Component="@("TranslationModel" + s_phases[phase])" />
+                        <RadzenButton @ref="_infoButtons[phase]" Icon="info" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Size="ButtonSize.ExtraSmall"
+                                      aria-label="@AppText.T("web.toolbox.subtitleTranslation.models.phase." + s_phases[phase])"
+                                      Click="@(() => _infoPopups[phase].ToggleAsync(_infoButtons[phase].Element))" />
+                        <RadzenPopup @ref="_infoPopups[phase]" Lazy="true" class="rf-translation-models-info">
+                            @AppText.T("web.toolbox.subtitleTranslation.models.info." + s_phases[phase])
+                        </RadzenPopup>
+                    </div>
+                    <RadzenBadge IsPill="true" BadgeStyle="@s_difficultyStyles[phase]" Text="@AppText.T("web.toolbox.subtitleTranslation.models.difficulty." + s_difficulties[phase])" />
                     <RadzenDropDown TValue="string" Name="@("TranslationModel" + s_phases[phase])" Data="@_models" TextProperty="DisplayName" ValueProperty="Id" Value="@_selectedModels[phase]"
                                     Change="@((object value) => ChangeModel(phase, (string)value))" />
                     <RadzenDropDown TValue="string" Data="@(_models.Find(m => m.Id == _selectedModels[phase])?.SupportedReasoningLevels ?? new List<string>())" Value="@_selectedEfforts[phase]"
+                                    Disabled="@string.IsNullOrEmpty(_selectedModels[phase])"
                                     aria-label="@(AppText.T("web.toolbox.subtitleTranslation.models.reasoning") + " " + AppText.T("web.toolbox.subtitleTranslation.models.phase." + s_phases[phase]))"
                                     Change="@((object value) => ChangeEffort(phase, (string)value))" />
                 }
@@ -55,6 +66,16 @@
     private static readonly string[] s_phases = new string[] { "analysis", "translation", "newTerms", "review" };
 
     /// <summary>
+    /// Difficoltà di ciascun passo, nell'ordine di s_phases
+    /// </summary>
+    private static readonly string[] s_difficulties = new string[] { "high", "medium", "low", "high" };
+
+    /// <summary>
+    /// Colore del badge di ciascun passo, nell'ordine di s_phases
+    /// </summary>
+    private static readonly BadgeStyle[] s_difficultyStyles = new BadgeStyle[] { BadgeStyle.Danger, BadgeStyle.Warning, BadgeStyle.Success, BadgeStyle.Danger };
+
+    /// <summary>
     /// Orchestratore della card
     /// </summary>
     [Parameter] public SubtitleTranslationOrchestrator Orchestrator { get; set; }
@@ -75,6 +96,16 @@
     private string[] _selectedEfforts = new string[4];
 
     /// <summary>
+    /// Pulsanti delle informazioni per passo, ancore dei popup
+    /// </summary>
+    private RadzenButton[] _infoButtons = new RadzenButton[4];
+
+    /// <summary>
+    /// Popup delle informazioni per passo
+    /// </summary>
+    private RadzenPopup[] _infoPopups = new RadzenPopup[4];
+
+    /// <summary>
     /// True quando la revisione ha un modello suo e non segue più la traduzione
     /// </summary>
     private bool _reviewChosen;
@@ -90,7 +121,7 @@
     private string _error = "";
 
     /// <summary>
-    /// Legge modelli e capacità e riempie le tendine coi valori del progetto o coi default
+    /// Legge i modelli e riempie le tendine coi valori del progetto
     /// </summary>
     /// <returns>Task di inizializzazione</returns>
     protected override async Task OnInitializedAsync()
@@ -106,18 +137,18 @@
         }
 
         TranslationProject project = Orchestrator.Project;
-        AiModelInfo fallback = Orchestrator.GetDefaultModel(_models);
         string[] models = new string[] { project.Models.Analysis, project.Models.Translation, project.Models.NewTerms, project.Models.Review };
         string[] efforts = new string[] { project.ReasoningEfforts.Analysis, project.ReasoningEfforts.Translation, project.ReasoningEfforts.NewTerms, project.ReasoningEfforts.Review };
         _reviewChosen = !string.IsNullOrEmpty(project.Models.Review);
 
-        for (int i = 0; i < s_phases.Length && fallback != null; i++)
+        // Le tendine partono dai valori del progetto, vuote se il passo non ha ancora un modello
+        for (int i = 0; i < s_phases.Length; i++)
         {
             // La revisione senza modello suo mostra quello della traduzione
             int source = i == REVIEW && !_reviewChosen ? TRANSLATION : i;
-            AiModelInfo model = _models.Find(m => m.Id == models[source]) ?? fallback;
-            _selectedModels[i] = model.Id;
-            _selectedEfforts[i] = model.SupportedReasoningLevels.Contains(efforts[source] ?? "") ? efforts[source] : model.DefaultReasoningLevel;
+            AiModelInfo model = _models.Find(m => m.Id == models[source]);
+            _selectedModels[i] = string.IsNullOrEmpty(models[source]) ? null : models[source];
+            _selectedEfforts[i] = model == null || model.SupportedReasoningLevels.Contains(efforts[source] ?? "") ? efforts[source] : model.DefaultReasoningLevel;
         }
 
         _loading = false;
@@ -168,16 +199,16 @@
     {
         TranslationPhaseModels models = new TranslationPhaseModels
         {
-            Analysis = _selectedModels[0],
-            Translation = _selectedModels[TRANSLATION],
-            NewTerms = _selectedModels[2],
+            Analysis = _selectedModels[0] ?? "",
+            Translation = _selectedModels[TRANSLATION] ?? "",
+            NewTerms = _selectedModels[2] ?? "",
             Review = _reviewChosen ? _selectedModels[REVIEW] : null
         };
         TranslationPhaseModels efforts = new TranslationPhaseModels
         {
-            Analysis = _selectedEfforts[0],
-            Translation = _selectedEfforts[TRANSLATION],
-            NewTerms = _selectedEfforts[2],
+            Analysis = _selectedEfforts[0] ?? "",
+            Translation = _selectedEfforts[TRANSLATION] ?? "",
+            NewTerms = _selectedEfforts[2] ?? "",
             Review = _reviewChosen ? _selectedEfforts[REVIEW] : null
         };
 

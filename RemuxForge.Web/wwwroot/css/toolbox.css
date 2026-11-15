@@ -569,11 +569,31 @@
     overflow-wrap: anywhere;
 }
 
-/* Dialog dei modelli: griglia passo, modello, ragionamento */
+/* Dialog dei modelli: griglia passo, difficoltà, modello, ragionamento */
 
 .rf-translation-models-grid {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) 8rem;
+    grid-template-columns: auto auto minmax(0, 1fr) 8rem;
     gap: calc(var(--rz-gap) * 0.5) calc(var(--rz-gap) * 0.75);
     align-items: center;
+}
+
+.rf-translation-models-phase {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.25);
+}
+
+/* RadzenPopup non ha stile di tema: aspetto da pannello delle tendine, posizione data dal JS di Radzen */
+.rf-translation-models-info {
+    display: none;
+    position: absolute;
+    max-width: 22rem;
+    padding: calc(var(--rz-gap) * 0.75);
+    background-color: var(--rz-panel-background-color);
+    color: var(--rz-text-color);
+    border: var(--rz-dropdown-panel-border);
+    border-radius: var(--rz-border-radius);
+    box-shadow: var(--rz-tooltip-shadow);
+    white-space: normal;
 }

@@ -76,6 +76,7 @@ namespace RemuxForge.Core.Models
             this.Mode = AiConnectionMode.None;
             this.ExtAgentHostId = "";
             this.Model = "";
+            this.ReasoningEffort = "";
             this.MaxRounds = RemuxForge.Core.Ai.MetadataAiPresetGenerator.DEFAULT_MAX_ROUNDS;
             this.ConsentAccepted = false;
             this.TranslationConsentAccepted = false;
@@ -105,9 +106,14 @@ namespace RemuxForge.Core.Models
         public string ExtAgentHostId { get; set; }
 
         /// <summary>
-        /// Modello scelto nelle impostazioni
+        /// Modello del Metadata AI
         /// </summary>
         public string Model { get; set; }
+
+        /// <summary>
+        /// Livello di ragionamento del Metadata AI, vuoto per non mandarlo
+        /// </summary>
+        public string ReasoningEffort { get; set; }
 
         /// <summary>
         /// Giri massimi del modello per una generazione

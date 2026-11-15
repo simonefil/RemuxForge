@@ -330,18 +330,6 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Modello di partenza di un passo: quello globale dell'accesso se c'è fra i modelli, altrimenti il primo
-        /// </summary>
-        /// <param name="models">Modelli dell'accesso</param>
-        /// <returns>Modello, null senza modelli</returns>
-        public AiModelInfo GetDefaultModel(List<AiModelInfo> models)
-        {
-            string global = this._credentialService.Load().Model;
-            AiModelInfo model = models.Find(m => m.Id == global);
-            return model != null ? model : models.Count > 0 ? models[0] : null;
-        }
-
-        /// <summary>
         /// Salva modelli e livelli di ragionamento dei passi
         /// </summary>
         /// <param name="models">Modello per passo</param>
@@ -740,22 +728,6 @@ namespace RemuxForge.Web.Services.Toolbox
                 CancellationToken cancellation = this.OperationCancellationToken;
                 provider = this._providerFactory.Create(analysis.WebSearchRejected ? new string[] { TranslationProviderCapabilities.WEB_SEARCH } : null);
                 webSearch = provider.Capabilities.WebSearch;
-
-                // Modelli e livelli coi default del catalogo, se il dialog non li ha ancora scelti
-                if (string.IsNullOrEmpty(project.Models.Analysis))
-                {
-                    List<AiModelInfo> models = await provider.ListModelsAsync(cancellation);
-                    AiModelInfo model = this.GetDefaultModel(models);
-                    if (model == null)
-                        throw new AiServiceException(AiErrorKind.NotConfigured, AppText.T(TEXT_PREFIX + ".noModels"));
-
-                    lock (this.StateLock)
-                    {
-                        project.Models = new TranslationPhaseModels { Analysis = model.Id, Translation = model.Id, NewTerms = model.Id };
-                        project.ReasoningEfforts = new TranslationPhaseModels { Analysis = model.DefaultReasoningLevel, Translation = model.DefaultReasoningLevel, NewTerms = model.DefaultReasoningLevel };
-                        this._store.Save(project);
-                    }
-                }
 
                 GlossaryBuilder builder = new GlossaryBuilder(project.SourceLanguage, project.TargetLanguage);
                 AnalysisPlan plan;

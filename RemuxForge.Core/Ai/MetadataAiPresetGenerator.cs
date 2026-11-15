@@ -61,13 +61,14 @@ namespace RemuxForge.Core.Ai
         /// Genera un preset dalla richiesta dell'utente sui file caricati
         /// </summary>
         /// <param name="model">Modello</param>
+        /// <param name="reasoningEffort">Livello di ragionamento, vuoto per non mandarlo</param>
         /// <param name="userRequest">Richiesta dell'utente</param>
         /// <param name="records">Record dei file caricati, letti e mai modificati</param>
         /// <param name="maxRounds">Giri massimi, ricondotti all'intervallo ammesso</param>
         /// <param name="progress">Passi notificati al wizard</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Esito della generazione</returns>
-        public async Task<AiPresetGenerationResult> GenerateAsync(string model, string userRequest, List<MkvMetadataRecord> records, int maxRounds, IProgress<AiPresetGenerationStep> progress, CancellationToken cancellationToken)
+        public async Task<AiPresetGenerationResult> GenerateAsync(string model, string reasoningEffort, string userRequest, List<MkvMetadataRecord> records, int maxRounds, IProgress<AiPresetGenerationStep> progress, CancellationToken cancellationToken)
         {
             int roundLimit = Math.Clamp(maxRounds, MIN_MAX_ROUNDS, MAX_MAX_ROUNDS);
             MetadataAiTools tools = new MetadataAiTools(records);
@@ -85,6 +86,7 @@ namespace RemuxForge.Core.Ai
 
                 AiResponseRequest request = new AiResponseRequest();
                 request.Model = model;
+                request.ReasoningEffort = reasoningEffort;
                 request.Instructions = instructions;
                 request.Input = input;
                 request.Tools = toolDefinitions;
