@@ -583,7 +583,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="term">Termine o resa</param>
         /// <param name="language">Lingua ISO 639-2</param>
         /// <returns>Parola da cercare</returns>
-        private static string StripArticle(string term, string language)
+        internal static string StripArticle(string term, string language)
         {
             string word = (term ?? "").Trim().Replace('’', '\'');
             string[] articles;
@@ -605,7 +605,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="word">Parola</param>
         /// <returns>Espressione</returns>
-        private static Regex WordPattern(string word)
+        internal static Regex WordPattern(string word)
         {
             return new Regex(@"(?<![\p{L}\p{M}\p{N}])" + Regex.Escape(word) + @"(?![\p{L}\p{M}\p{N}])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         }
@@ -615,7 +615,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="text">Testo pulito o consegnato</param>
         /// <returns>Testo per il confronto</returns>
-        private static string GlossaryPlain(string text)
+        internal static string GlossaryPlain(string text)
         {
             return s_markSyntax.Replace(text, "").Replace('\n', ' ').Replace('’', '\'');
         }

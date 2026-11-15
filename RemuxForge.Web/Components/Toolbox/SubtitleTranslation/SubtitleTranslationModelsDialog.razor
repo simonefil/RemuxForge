@@ -1,0 +1,187 @@
+@using RemuxForge.Core.Toolbox.SubtitleTranslation
+@using RemuxForge.Web.Services.Toolbox
+@inherits AppDialogContentBase
+
+@* Modelli e livelli di ragionamento per passo *@
+<div class="rf-dialog rf-translation-models" @ref="DialogContent">
+    <div class="rf-dialog-body">
+        @if (_loading)
+        {
+            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
+        }
+        else if (_models.Count > 0)
+        {
+            <div class="rf-translation-models-grid">
+                <span></span>
+                <span class="rf-tool-label">@AppText.T("web.toolbox.subtitleTranslation.models.model")</span>
+                <span class="rf-tool-label">@AppText.T("web.toolbox.subtitleTranslation.models.reasoning")</span>
+                @for (int i = 0; i < s_phases.Length; i++)
+                {
+                    int phase = i;
+                    <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.subtitleTranslation.models.phase." + s_phases[phase])" Component="@("TranslationModel" + s_phases[phase])" />
+                    <RadzenDropDown TValue="string" Name="@("TranslationModel" + s_phases[phase])" Data="@_models" TextProperty="DisplayName" ValueProperty="Id" Value="@_selectedModels[phase]"
+                                    Change="@((object value) => ChangeModel(phase, (string)value))" />
+                    <RadzenDropDown TValue="string" Data="@(_models.Find(m => m.Id == _selectedModels[phase])?.SupportedReasoningLevels ?? new List<string>())" Value="@_selectedEfforts[phase]"
+                                    aria-label="@(AppText.T("web.toolbox.subtitleTranslation.models.reasoning") + " " + AppText.T("web.toolbox.subtitleTranslation.models.phase." + s_phases[phase]))"
+                                    Change="@((object value) => ChangeEffort(phase, (string)value))" />
+                }
+            </div>
+        }
+    </div>
+    <div class="rf-dialog-footer">
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="rf-dialog-message">@_error</RadzenAlert>
+        }
+        <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => CloseDialog())" />
+        <RadzenButton Text="@AppText.T("web.toolbox.subtitleTranslation.models.save")" Icon="check" Disabled="@(_loading || _models.Count == 0)" Click="@Save" />
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Posizione della revisione, che segue la traduzione finché non si cambia
+    /// </summary>
+    private const int REVIEW = 3;
+
+    /// <summary>
+    /// Posizione della traduzione
+    /// </summary>
+    private const int TRANSLATION = 1;
+
+    /// <summary>
+    /// Passi con un modello, nell'ordine del dialog: analisi, traduzione, termini nuovi, revisione
+    /// </summary>
+    private static readonly string[] s_phases = new string[] { "analysis", "translation", "newTerms", "review" };
+
+    /// <summary>
+    /// Orchestratore della card
+    /// </summary>
+    [Parameter] public SubtitleTranslationOrchestrator Orchestrator { get; set; }
+
+    /// <summary>
+    /// Modelli dell'accesso
+    /// </summary>
+    private List<AiModelInfo> _models = new List<AiModelInfo>();
+
+    /// <summary>
+    /// Modello scelto per passo
+    /// </summary>
+    private string[] _selectedModels = new string[4];
+
+    /// <summary>
+    /// Livello scelto per passo
+    /// </summary>
+    private string[] _selectedEfforts = new string[4];
+
+    /// <summary>
+    /// True quando la revisione ha un modello suo e non segue più la traduzione
+    /// </summary>
+    private bool _reviewChosen;
+
+    /// <summary>
+    /// True mentre si leggono i modelli
+    /// </summary>
+    private bool _loading = true;
+
+    /// <summary>
+    /// Errore della lettura dei modelli
+    /// </summary>
+    private string _error = "";
+
+    /// <summary>
+    /// Legge modelli e capacità e riempie le tendine coi valori del progetto o coi default
+    /// </summary>
+    /// <returns>Task di inizializzazione</returns>
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _models = await Orchestrator.ListModelsAsync();
+        }
+        catch (AiServiceException ex)
+        {
+            _error = ex.Message;
+            _models = new List<AiModelInfo>();
+        }
+
+        TranslationProject project = Orchestrator.Project;
+        AiModelInfo fallback = Orchestrator.GetDefaultModel(_models);
+        string[] models = new string[] { project.Models.Analysis, project.Models.Translation, project.Models.NewTerms, project.Models.Review };
+        string[] efforts = new string[] { project.ReasoningEfforts.Analysis, project.ReasoningEfforts.Translation, project.ReasoningEfforts.NewTerms, project.ReasoningEfforts.Review };
+        _reviewChosen = !string.IsNullOrEmpty(project.Models.Review);
+
+        for (int i = 0; i < s_phases.Length && fallback != null; i++)
+        {
+            // La revisione senza modello suo mostra quello della traduzione
+            int source = i == REVIEW && !_reviewChosen ? TRANSLATION : i;
+            AiModelInfo model = _models.Find(m => m.Id == models[source]) ?? fallback;
+            _selectedModels[i] = model.Id;
+            _selectedEfforts[i] = model.SupportedReasoningLevels.Contains(efforts[source] ?? "") ? efforts[source] : model.DefaultReasoningLevel;
+        }
+
+        _loading = false;
+    }
+
+    /// <summary>
+    /// Cambia il modello di un passo: un livello che il nuovo modello non supporta torna al suo default
+    /// </summary>
+    /// <param name="phase">Passo</param>
+    /// <param name="modelId">Modello scelto</param>
+    private void ChangeModel(int phase, string modelId)
+    {
+        AiModelInfo model = _models.Find(m => m.Id == modelId);
+        if (model == null)
+            return;
+
+        _selectedModels[phase] = model.Id;
+        if (!model.SupportedReasoningLevels.Contains(_selectedEfforts[phase] ?? ""))
+            _selectedEfforts[phase] = model.DefaultReasoningLevel;
+
+        if (phase == REVIEW)
+            _reviewChosen = true;
+        else if (phase == TRANSLATION && !_reviewChosen)
+        {
+            _selectedModels[REVIEW] = _selectedModels[TRANSLATION];
+            _selectedEfforts[REVIEW] = _selectedEfforts[TRANSLATION];
+        }
+    }
+
+    /// <summary>
+    /// Cambia il livello di ragionamento di un passo
+    /// </summary>
+    /// <param name="phase">Passo</param>
+    /// <param name="effort">Livello scelto</param>
+    private void ChangeEffort(int phase, string effort)
+    {
+        _selectedEfforts[phase] = effort;
+        if (phase == REVIEW)
+            _reviewChosen = true;
+        else if (phase == TRANSLATION && !_reviewChosen)
+            _selectedEfforts[REVIEW] = effort;
+    }
+
+    /// <summary>
+    /// Salva le scelte nel progetto; la revisione che segue la traduzione resta senza modello suo
+    /// </summary>
+    private void Save()
+    {
+        TranslationPhaseModels models = new TranslationPhaseModels
+        {
+            Analysis = _selectedModels[0],
+            Translation = _selectedModels[TRANSLATION],
+            NewTerms = _selectedModels[2],
+            Review = _reviewChosen ? _selectedModels[REVIEW] : null
+        };
+        TranslationPhaseModels efforts = new TranslationPhaseModels
+        {
+            Analysis = _selectedEfforts[0],
+            Translation = _selectedEfforts[TRANSLATION],
+            NewTerms = _selectedEfforts[2],
+            Review = _reviewChosen ? _selectedEfforts[REVIEW] : null
+        };
+
+        Orchestrator.SetModels(models, efforts);
+        CloseDialog(true);
+    }
+}

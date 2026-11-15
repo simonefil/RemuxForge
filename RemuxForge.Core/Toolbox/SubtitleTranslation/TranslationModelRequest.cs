@@ -1,4 +1,5 @@
 using RemuxForge.Core.Models;
+using System;
 
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
@@ -18,6 +19,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.ProjectId = "";
             this.FileId = TranslationSessionKey.NO_FILE;
             this.Request = new AiResponseRequest();
+            this.AttemptFinished = null;
         }
 
         #endregion
@@ -43,6 +45,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Richiesta da mandare; session_id e prompt_cache_key li imposta il provider
         /// </summary>
         public AiResponseRequest Request { get; set; }
+
+        /// <summary>
+        /// Avviso a ogni tentativo di trasporto arrivato al servizio, riuscito o fallito; null se non serve
+        /// </summary>
+        public Action<TranslationTransportAttempt> AttemptFinished { get; set; }
 
         #endregion
     }

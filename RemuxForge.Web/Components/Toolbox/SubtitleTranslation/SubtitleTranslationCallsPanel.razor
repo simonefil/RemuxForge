@@ -1,0 +1,108 @@
+@using RemuxForge.Core.Toolbox.SubtitleTranslation
+@using System.Globalization
+
+@* Registro delle chiamate del progetto: una riga per tentativo, con il dettaglio di rifiuti ed errori nella riga aperta *@
+<RadzenPanel class="rf-translation-calls" AllowCollapse="true" Collapsed="@_collapsed" Expand="@(() => _collapsed = false)" Collapse="@(() => _collapsed = true)"
+             Text="@AppText.F("web.toolbox.subtitleTranslation.calls.title", Calls.Count)">
+    <ChildContent>
+        <RadzenDataGrid TItem="TranslationCallRecord"
+                        Data="@Calls"
+                        class="rf-data-grid rf-tool-grid rf-translation-calls-grid"
+                        AllowAlternatingRows="false"
+                        AllowColumnResize="false"
+                        AllowPaging="false"
+                        AllowSorting="false"
+                        Density="Density.Compact"
+                        GridLines="DataGridGridLines.Horizontal"
+                        ExpandMode="DataGridExpandMode.Multiple"
+                        EmptyText="@AppText.T("web.toolbox.subtitleTranslation.calls.empty")"
+                        RowRender="@((RowRenderEventArgs<TranslationCallRecord> args) => args.Expandable = args.Data.Rejections.Count > 0 || args.Data.ErrorKind.HasValue || !string.IsNullOrEmpty(args.Data.IncompleteReason))">
+            <Template Context="call">
+                <div class="rf-translation-calls-detail">
+                    @if (call.ErrorKind.HasValue)
+                    {
+                        <div>@(call.ErrorKind.Value.ToString() + (string.IsNullOrEmpty(call.ServiceCode) ? "" : " · " + call.ServiceCode))</div>
+                    }
+                    @if (!string.IsNullOrEmpty(call.IncompleteReason))
+                    {
+                        <div>@call.IncompleteReason</div>
+                    }
+                    @foreach (TranslationCallRejection rejection in call.Rejections)
+                    {
+                        @foreach (string reason in rejection.Reasons)
+                        {
+                            <div>@(rejection.Id.HasValue ? rejection.Id.Value.ToString(CultureInfo.CurrentCulture) + " — " + reason : reason)</div>
+                        }
+                    }
+                </div>
+            </Template>
+            <Columns>
+                <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.time")" Width="6rem">
+                    <Template Context="call"><CellText Text="@call.StartedAt.ToLocalTime().ToString("T", CultureInfo.CurrentCulture)" /></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.kind")" Width="5rem">
+                    <Template Context="call"><CellText Text="@(call.Kind.ToString() + (call.Round.HasValue && call.Round.Value > 1 ? " · " + call.Round.Value.ToString(CultureInfo.CurrentCulture) : ""))" /></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.dashboard.file")" Width="20%">
+                    <Template Context="call">
+                        <CellText Text="@(call.FileId == null ? AppText.T("web.toolbox.subtitleTranslation.calls.allFiles") : FileNames.TryGetValue(call.FileId, out string name) ? name : call.FileId)" />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.cues")" Width="6rem" TextAlign="TextAlign.Right">
+                    <Template Context="call"><CellText Text="@(call.RequestedIds.HasValue ? call.RequestedIds.Value.ToString("N0", CultureInfo.CurrentCulture) : "—")" /></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.model")" Width="20%">
+                    <Template Context="call"><CellText Text="@(string.IsNullOrEmpty(call.ReasoningEffort) ? call.Model : call.Model + " · " + call.ReasoningEffort)" /></Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.outcome")" Width="11%">
+                    <Template Context="call">
+                        @* Un errore senza tipo è il tentativo interrotto da Stop *@
+                        <RadzenBadge IsPill="true"
+                                     BadgeStyle="@(call.Outcome == TranslationCallOutcome.Accepted ? BadgeStyle.Success : call.Outcome == TranslationCallOutcome.Error && call.ErrorKind.HasValue ? BadgeStyle.Danger
+                                         : call.Outcome == TranslationCallOutcome.Error ? BadgeStyle.Base : BadgeStyle.Warning)"
+                                     Text="@(call.Outcome == TranslationCallOutcome.Accepted ? AppText.T("web.toolbox.subtitleTranslation.calls.accepted")
+                                         : call.Outcome == TranslationCallOutcome.PartiallyRejected ? AppText.T("web.toolbox.subtitleTranslation.calls.rejected")
+                                         : call.Outcome == TranslationCallOutcome.Reduced ? AppText.T("web.toolbox.subtitleTranslation.calls.reduced")
+                                         : !call.ErrorKind.HasValue ? AppText.T("web.toolbox.subtitleTranslation.calls.stopped")
+                                         : call.HttpStatus > 0 ? AppText.F("web.toolbox.subtitleTranslation.calls.errorStatus", call.HttpStatus) : AppText.T("web.toolbox.subtitleTranslation.calls.error"))" />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.tokens")" Width="15%" TextAlign="TextAlign.Right">
+                    <Template Context="call">
+                        <CellText Text="@(call.Usage == null ? "—" : FormatTokens(call.Usage.InputTokens) + " / " + FormatTokens(call.Usage.CachedTokens) + " / " + FormatTokens(call.Usage.OutputTokens))" />
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.duration")" Width="6rem" TextAlign="TextAlign.Right">
+                    <Template Context="call"><CellText Text="@AppText.F("web.toolbox.subtitleTranslation.calls.seconds", Math.Round(call.DurationMs / 1000.0).ToString(CultureInfo.CurrentCulture))" /></Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    </ChildContent>
+</RadzenPanel>
+
+@code {
+    /// <summary>
+    /// Chiamate del progetto in ordine di registro
+    /// </summary>
+    [Parameter] public List<TranslationCallRecord> Calls { get; set; } = new List<TranslationCallRecord>();
+
+    /// <summary>
+    /// Nome del file per identificativo del progetto
+    /// </summary>
+    [Parameter] public Dictionary<string, string> FileNames { get; set; } = new Dictionary<string, string>();
+
+    /// <summary>
+    /// True col pannello chiuso, com'è all'apertura
+    /// </summary>
+    private bool _collapsed = true;
+
+    /// <summary>
+    /// Token di una colonna, trattino se il servizio non li dichiara
+    /// </summary>
+    /// <param name="tokens">Token</param>
+    /// <returns>Testo</returns>
+    private static string FormatTokens(long? tokens)
+    {
+        return tokens.HasValue ? tokens.Value.ToString("N0", CultureInfo.CurrentCulture) : "—";
+    }
+}

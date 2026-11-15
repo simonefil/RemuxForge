@@ -12,6 +12,16 @@ namespace RemuxForge.Web.Components.Toolbox
     /// </summary>
     public abstract class ToolboxPageBase : ComponentBase
     {
+        #region Costanti
+
+        /// <summary>
+        /// Posizione dei toast delle pagine: in basso a destra, sopra il log, per non coprire uscita e risultati. Le parole lunghe
+        /// come i percorsi vanno a capo per restare nel toast
+        /// </summary>
+        protected const string TOAST_STYLE = "position: fixed; inset-block-start: auto; inset-block-end: 9rem; inset-inline-end: 1rem; margin: 0; overflow-wrap: anywhere";
+
+        #endregion
+
         #region Parametri
 
         /// <summary>

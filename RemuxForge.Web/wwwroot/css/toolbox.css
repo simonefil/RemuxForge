@@ -407,3 +407,173 @@
 .rf-tool-page .rf-addtracks-blocked-text {
     color: var(--rz-danger);
 }
+
+/* Traduzione sottotitoli AI: elenco dei progetti, passi del progetto con i dati in testata, glossario a schede e registro delle chiamate in fondo */
+
+.rf-translation {
+    overflow: auto;
+}
+
+.rf-translation .rf-translation-heading {
+    margin: 0;
+    padding: calc(var(--rz-gap) * 0.5) var(--rz-gap);
+}
+
+.rf-translation .rf-translation-steps {
+    flex-shrink: 0;
+    padding: calc(var(--rz-gap) * 0.5) var(--rz-gap) 0;
+}
+
+.rf-translation-name {
+    width: 20rem;
+}
+
+.rf-translation-language {
+    width: 12rem;
+}
+
+/* Chip compatto come in Aggiungi tracce: la lingua sta nell'altezza degli altri input */
+.rf-translation-language .rz-chip {
+    max-width: 100%;
+    min-height: 0;
+    height: auto;
+    padding-block: 0;
+}
+
+.rf-translation-language .rz-chip-text {
+    overflow: hidden;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rf-translation-language .rz-chip .rz-button {
+    height: auto;
+    min-height: 0;
+    padding-block: 0;
+    line-height: 1;
+}
+
+.rf-translation .rf-translation-context {
+    flex: 1 1 auto;
+    align-items: flex-start;
+}
+
+.rf-translation .rf-translation-context .rz-textarea {
+    flex: 1 1 auto;
+    min-width: 0;
+    resize: vertical;
+}
+
+/* Accesso e stima nel passo Progetto: etichetta e valori vicini, le capacità vanno a capo */
+.rf-translation .rf-translation-access,
+.rf-translation .rf-translation-estimate {
+    gap: calc(var(--rz-gap) * 0.25) calc(var(--rz-gap) * 0.75);
+    min-height: 2rem;
+}
+
+.rf-translation-capabilities {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(var(--rz-gap) * 0.25);
+}
+
+.rf-translation-loaded {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.5);
+    margin: calc(var(--rz-gap) * 0.5) var(--rz-gap) 0;
+    padding: calc(var(--rz-gap) * 0.25) calc(var(--rz-gap) * 0.75);
+    border: var(--rz-border-base-300);
+    border-radius: var(--rz-border-radius);
+}
+
+.rf-translation-loaded .rf-translation-loaded-remove {
+    margin-inline-start: auto;
+}
+
+.rf-translation-encoding {
+    width: 100%;
+}
+
+.rf-translation-file,
+.rf-translation-cell {
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+.rf-translation-rejected {
+    display: block;
+    color: var(--rz-danger);
+    white-space: normal;
+}
+
+.rf-translation-thinking {
+    display: flex;
+    justify-content: center;
+    margin-block: calc(var(--rz-gap) * 1.5);
+}
+
+.rf-translation .rf-translation-tabs {
+    flex: 0 0 auto;
+}
+
+.rf-translation-origin {
+    margin-inline-start: calc(var(--rz-gap) * 0.375);
+    vertical-align: middle;
+}
+
+.rf-translation-cell-input {
+    width: 100%;
+}
+
+.rf-translation-actions {
+    display: inline-flex;
+    gap: 0.125rem;
+}
+
+.rf-translation .rf-translation-add {
+    align-self: flex-start;
+    margin: calc(var(--rz-gap) * 0.5) var(--rz-gap);
+}
+
+.rf-translation-texts {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--rz-gap) * 0.5);
+    padding: calc(var(--rz-gap) * 0.5) var(--rz-gap);
+}
+
+.rf-translation-texts .rf-tool-field {
+    align-items: flex-start;
+}
+
+.rf-translation-texts .rf-tool-label {
+    width: 10rem;
+}
+
+.rf-translation-texts .rz-textarea {
+    flex: 1 1 auto;
+    min-width: 0;
+    resize: vertical;
+}
+
+.rf-translation .rf-translation-calls {
+    flex-shrink: 0;
+    margin: calc(var(--rz-gap) * 0.75) var(--rz-gap);
+}
+
+.rf-translation-calls-detail {
+    padding: calc(var(--rz-gap) * 0.25) var(--rz-gap);
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+/* Dialog dei modelli: griglia passo, modello, ragionamento */
+
+.rf-translation-models-grid {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) 8rem;
+    gap: calc(var(--rz-gap) * 0.5) calc(var(--rz-gap) * 0.75);
+    align-items: center;
+}

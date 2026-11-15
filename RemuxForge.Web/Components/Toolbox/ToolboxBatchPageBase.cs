@@ -132,7 +132,7 @@ namespace RemuxForge.Web.Components.Toolbox
                     Summary = AppText.T(this.Orchestrator.TextPrefix + (summary.Stopped ? ".notifyStoppedTitle" : ".notifyTitle")),
                     Detail = summary.Describe(),
                     Duration = severity == NotificationSeverity.Success ? 6000 : 8000,
-                    Style = "position: fixed; inset-block-start: auto; inset-block-end: 9rem; inset-inline-end: 1rem; margin: 0"
+                    Style = TOAST_STYLE
                 });
                 await this.OnStateChanged.InvokeAsync();
             });

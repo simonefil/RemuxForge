@@ -1,4 +1,5 @@
 using RemuxForge.Core.Ai;
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -46,7 +47,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             AiResponseRequest prepared = this.Capabilities.Prepare(request);
             try
             {
-                return await this.SendPreparedAsync(request, prepared, cancellationToken);
+                return await this.SendWithRetryAsync(request, prepared, cancellationToken);
             }
             catch (AiServiceException ex)
             {
@@ -60,7 +61,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 this.Capabilities.Disable(capability);
             }
 
-            return await this.SendPreparedAsync(request, this.Capabilities.Prepare(request), cancellationToken);
+            return await this.SendWithRetryAsync(request, this.Capabilities.Prepare(request), cancellationToken);
         }
 
         /// <summary>
@@ -75,13 +76,64 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi protected
 
         /// <summary>
-        /// Manda la richiesta già preparata secondo le capacità, con la politica di retry del job
+        /// Manda un tentativo della richiesta già preparata secondo le capacità; il retry lo fa la base
         /// </summary>
         /// <param name="request">Chiamata della traduzione</param>
         /// <param name="prepared">Richiesta da mandare</param>
+        /// <param name="attempt">Tentativo del retry di trasporto, da 1</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Item di output, consumo ed esito</returns>
-        protected abstract Task<AiResponseResult> SendPreparedAsync(TranslationModelRequest request, AiResponseRequest prepared, CancellationToken cancellationToken);
+        protected abstract Task<AiResponseResult> SendAttemptAsync(TranslationModelRequest request, AiResponseRequest prepared, int attempt, CancellationToken cancellationToken);
+
+        #endregion
+
+        #region Metodi privati
+
+        /// <summary>
+        /// Manda una richiesta preparata con la politica di retry del job e avvisa la chiamata di ogni tentativo arrivato al servizio,
+        /// anche di quello interrotto da Stop. Il timeout del client arriva come annullamento senza che l'operazione sia ferma:
+        /// diventa un errore di rete
+        /// </summary>
+        /// <param name="request">Chiamata della traduzione</param>
+        /// <param name="prepared">Richiesta preparata secondo le capacità</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Risposta dell'ultimo tentativo</returns>
+        private Task<AiResponseResult> SendWithRetryAsync(TranslationModelRequest request, AiResponseRequest prepared, CancellationToken cancellationToken)
+        {
+            return this.Retry.ExecuteAsync(async attempt =>
+            {
+                TranslationTransportAttempt tracked = new TranslationTransportAttempt(attempt, prepared);
+                try
+                {
+                    tracked.Result = await this.SendAttemptAsync(request, prepared, attempt, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    AiServiceException error = ex as AiServiceException;
+                    bool stopped = ex is OperationCanceledException && cancellationToken.IsCancellationRequested;
+                    if (error == null && !stopped)
+                    {
+                        if (!(ex is OperationCanceledException))
+                            throw;
+                        error = new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
+                    }
+
+                    tracked.Error = error;
+                    tracked.Stopped = stopped;
+                    tracked.Finish();
+                    if (request.AttemptFinished != null)
+                        request.AttemptFinished(tracked);
+                    if (error != null && !ReferenceEquals(error, ex))
+                        throw error;
+                    throw;
+                }
+
+                tracked.Finish();
+                if (request.AttemptFinished != null)
+                    request.AttemptFinished(tracked);
+                return tracked.Result;
+            }, cancellationToken);
+        }
 
         #endregion
 

@@ -39,6 +39,21 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         private const string SOURCE_HEADER = "SOURCE EPISODE:";
 
+        /// <summary>
+        /// Sezione dei candidati nel messaggio di A1 e A2
+        /// </summary>
+        private const string CANDIDATES_HEADER = "RECURRING CANDIDATES (extracted by code; occurrences per episode file):\n";
+
+        /// <summary>
+        /// Sezione dei conflitti nel messaggio di A2
+        /// </summary>
+        private const string CONFLICTS_HEADER = "CONFLICTS (variants proposed by the episodes):\n";
+
+        /// <summary>
+        /// Secondo modello sintetico, con altri livelli di ragionamento
+        /// </summary>
+        public const string SMALL_MODEL_ID = "recorded-translation-small";
+
         #endregion
 
         #region Variabili di classe
@@ -79,6 +94,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this._scenario = scenario != null ? scenario : new RecordedTranslationScenario();
             if (this._scenario.Faults == null)
                 this._scenario.Faults = new List<RecordedTranslationFault>();
+            if (this._scenario.Deliveries == null)
+                this._scenario.Deliveries = new List<RecordedTranslationDelivery>();
             this._occurrences = new Dictionary<string, KeyValuePair<TranslationModelRequest, int>>(StringComparer.Ordinal);
             this._rejected = new Dictionary<RecordedTranslationFault, string>();
             this._lock = new object();
@@ -89,10 +106,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi pubblici
 
         /// <summary>
-        /// Elenca il solo modello sintetico, con i livelli di ragionamento della API key
+        /// Elenca i due modelli sintetici, con livelli di ragionamento diversi
         /// </summary>
         /// <param name="cancellationToken">Token di annullamento</param>
-        /// <returns>Modello sintetico</returns>
+        /// <returns>Modelli sintetici</returns>
         public override Task<List<AiModelInfo>> ListModelsAsync(CancellationToken cancellationToken)
         {
             AiModelInfo model = new AiModelInfo();
@@ -100,7 +117,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             model.DisplayName = MODEL_ID;
             model.DefaultReasoningLevel = "medium";
             model.SupportedReasoningLevels.AddRange(new string[] { "low", "medium", "high" });
-            return Task.FromResult(new List<AiModelInfo> { model });
+
+            AiModelInfo small = new AiModelInfo();
+            small.Id = SMALL_MODEL_ID;
+            small.DisplayName = SMALL_MODEL_ID;
+            small.DefaultReasoningLevel = "low";
+            small.SupportedReasoningLevels.AddRange(new string[] { "minimal", "low" });
+            return Task.FromResult(new List<AiModelInfo> { model, small });
         }
 
         #endregion
@@ -108,18 +131,22 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi protected
 
         /// <summary>
-        /// Risponde alla richiesta preparata con la politica di retry del job, simulando il guasto dello scenario
+        /// Esegue un tentativo simulato: il guasto dello scenario o la consegna sintetica
         /// </summary>
         /// <param name="request">Chiamata della traduzione</param>
         /// <param name="prepared">Richiesta da mandare</param>
+        /// <param name="attempt">Tentativo di trasporto, da 1</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Item di output, consumo ed esito</returns>
-        protected override Task<AiResponseResult> SendPreparedAsync(TranslationModelRequest request, AiResponseRequest prepared, CancellationToken cancellationToken)
+        protected override async Task<AiResponseResult> SendAttemptAsync(TranslationModelRequest request, AiResponseRequest prepared, int attempt, CancellationToken cancellationToken)
         {
             string key = request.Kind.ToString() + "/" + request.FileId;
             int occurrence;
             RecordedTranslationFault fault = null;
+            RecordedTranslationDelivery delivery = null;
 
+            // Il numero di chiamata cambia solo con una richiesta nuova: i tentativi di trasporto e la ripetizione dopo un parametro
+            // rifiutato tengono lo stesso
             lock (this._lock)
             {
                 KeyValuePair<TranslationModelRequest, int> last;
@@ -136,24 +163,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     fault = candidate;
             }
 
-            return this.Retry.ExecuteAsync(attempt => this.RespondAsync(request, prepared, fault, attempt, cancellationToken), cancellationToken);
-        }
+            for (int i = 0; i < this._scenario.Deliveries.Count && delivery == null; i++)
+            {
+                RecordedTranslationDelivery candidate = this._scenario.Deliveries[i];
+                if (candidate.Occurrence == occurrence && candidate.CallKind == request.Kind && (string.IsNullOrEmpty(candidate.FileId) || candidate.FileId == request.FileId))
+                    delivery = candidate;
+            }
 
-        #endregion
-
-        #region Metodi privati
-
-        /// <summary>
-        /// Esegue un tentativo simulato: guasto o consegna sintetica
-        /// </summary>
-        /// <param name="request">Chiamata della traduzione</param>
-        /// <param name="prepared">Richiesta preparata</param>
-        /// <param name="fault">Guasto dello scenario, null se nessuno</param>
-        /// <param name="attempt">Tentativo di trasporto, da 1</param>
-        /// <param name="cancellationToken">Token di annullamento</param>
-        /// <returns>Risultato simulato</returns>
-        private async Task<AiResponseResult> RespondAsync(TranslationModelRequest request, AiResponseRequest prepared, RecordedTranslationFault fault, int attempt, CancellationToken cancellationToken)
-        {
             if (this._scenario.LatencyMilliseconds > 0)
                 await Task.Delay(this._scenario.LatencyMilliseconds, cancellationToken);
 
@@ -195,7 +211,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
             }
 
-            // Consegna sintetica: traduzione col prefisso fisso davanti al testo sorgente, diagnosi vuota o glossario vuoto
+            // Consegna sintetica: traduzione col prefisso fisso davanti al testo sorgente, diagnosi vuota o glossario dai candidati
             StringBuilder inputText = new StringBuilder(prepared.Instructions);
             Dictionary<int, string> sources = new Dictionary<int, string>();
             List<int> requestedIds = new List<int>();
@@ -270,15 +286,70 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
             }
 
-            if (request.Kind == TranslationCallKind.A1 || request.Kind == TranslationCallKind.A2)
+            if (delivery != null)
             {
-                toolName = "submit_glossary";
-                arguments["series"] = "";
-                arguments["tone"] = "";
-                arguments["register_rules"] = "";
-                arguments["terms"] = new JsonArray();
-                arguments["characters"] = new JsonArray();
-                arguments["addressing"] = new JsonArray();
+                // Consegna dello scenario, anche non valida, per i giri di correzione e i conflitti fra file
+                toolName = request.Kind == TranslationCallKind.D1 ? "submit_diagnosis" : request.Kind == TranslationCallKind.A1 || request.Kind == TranslationCallKind.A2 ? GlossaryBuilder.SUBMIT_TOOL : "submit_translation";
+                arguments = delivery.Arguments != null ? delivery.Arguments.DeepClone().AsObject() : null;
+            }
+            else if (request.Kind == TranslationCallKind.A1 || request.Kind == TranslationCallKind.A2)
+            {
+                // Glossario sintetico valido: in A1 un nome invariato per candidato, in A2 la prima variante di ogni conflitto
+                string message = prepared.Input.Count > 0 ? AiOAuthFlow.GetString(prepared.Input[0] as JsonObject, "content") : "";
+                JsonArray terms = new JsonArray();
+                JsonArray characters = new JsonArray();
+                JsonArray addressing = new JsonArray();
+                int candidatesStart = message.IndexOf(CANDIDATES_HEADER, StringComparison.Ordinal);
+                int conflictsStart = message.IndexOf(CONFLICTS_HEADER, StringComparison.Ordinal);
+
+                if (request.Kind == TranslationCallKind.A2 && conflictsStart >= 0)
+                {
+                    int jsonStart = conflictsStart + CONFLICTS_HEADER.Length;
+                    int jsonEnd = message.IndexOf("\n\n", jsonStart, StringComparison.Ordinal);
+                    JsonObject conflicts = JsonNode.Parse(jsonEnd >= 0 ? message.Substring(jsonStart, jsonEnd - jsonStart) : message.Substring(jsonStart)).AsObject();
+                    foreach (JsonNode conflict in conflicts["terms"].AsArray())
+                    {
+                        JsonObject entry = conflict["variants"][0].DeepClone().AsObject();
+                        entry.Remove("episodes");
+                        entry.Insert(0, "source", AiOAuthFlow.GetString(conflict.AsObject(), "source"));
+                        terms.Add(entry);
+                    }
+
+                    foreach (JsonNode conflict in conflicts["characters"].AsArray())
+                    {
+                        JsonObject entry = conflict["variants"][0].DeepClone().AsObject();
+                        entry.Remove("episodes");
+                        entry.Insert(0, "name", AiOAuthFlow.GetString(conflict.AsObject(), "name"));
+                        characters.Add(entry);
+                    }
+
+                    JsonArray pairs = conflicts["addressing"] as JsonArray;
+                    for (int i = 0; pairs != null && i < pairs.Count; i++)
+                    {
+                        JsonObject entry = pairs[i]["variants"][0].DeepClone().AsObject();
+                        entry.Remove("episodes");
+                        entry.Insert(0, "addressee", AiOAuthFlow.GetString(pairs[i].AsObject(), "addressee"));
+                        entry.Insert(0, "speaker", AiOAuthFlow.GetString(pairs[i].AsObject(), "speaker"));
+                        addressing.Add(entry);
+                    }
+                }
+                else if (candidatesStart >= 0)
+                {
+                    string[] rows = message.Substring(candidatesStart + CANDIDATES_HEADER.Length).Split('\n');
+                    for (int i = 1; i < rows.Length && rows[i].Length > 0; i++)
+                    {
+                        string term = rows[i].Substring(0, rows[i].IndexOf('\t'));
+                        terms.Add(new JsonObject { ["source"] = term, ["target"] = term, ["kind"] = "name", ["invariable"] = true });
+                    }
+                }
+
+                toolName = GlossaryBuilder.SUBMIT_TOOL;
+                arguments["series"] = SYNTHETIC_PREFIX + "series";
+                arguments["tone"] = SYNTHETIC_PREFIX + "tone";
+                arguments["register_rules"] = SYNTHETIC_PREFIX + "register rules";
+                arguments["terms"] = terms;
+                arguments["characters"] = characters;
+                arguments["addressing"] = addressing;
             }
             else if (request.Kind == TranslationCallKind.D1)
             {
@@ -304,17 +375,37 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 arguments["new_terms"] = new JsonArray();
             }
 
-            string argumentsJson = arguments.ToJsonString();
+            // La ricerca web offerta lascia un item web_search_call, come nelle risposte vere
             AiResponseResult result = new AiResponseResult();
-            result.Items.Add(new JsonObject
+            for (int i = 0; i < prepared.Tools.Count; i++)
             {
-                ["type"] = "function_call",
-                ["id"] = "fc_recorded",
-                ["call_id"] = "call_recorded",
-                ["name"] = toolName,
-                ["arguments"] = argumentsJson,
-                ["status"] = "completed"
-            });
+                if (AiOAuthFlow.GetString(prepared.Tools[i] as JsonObject, "type") == TranslationProviderCapabilities.WEB_SEARCH)
+                    result.Items.Add(new JsonObject { ["type"] = "web_search_call", ["id"] = "ws_recorded", ["status"] = "completed" });
+            }
+
+            // Una consegna dello scenario senza argomenti è una risposta di solo testo, senza chiamata al tool
+            string argumentsJson = arguments != null ? arguments.ToJsonString() : "";
+            if (arguments != null)
+            {
+                result.Items.Add(new JsonObject
+                {
+                    ["type"] = "function_call",
+                    ["id"] = "fc_recorded",
+                    ["call_id"] = "call_recorded",
+                    ["name"] = toolName,
+                    ["arguments"] = argumentsJson,
+                    ["status"] = "completed"
+                });
+            }
+            else
+            {
+                result.Items.Add(new JsonObject
+                {
+                    ["type"] = "message",
+                    ["role"] = "assistant",
+                    ["content"] = new JsonArray(new JsonObject { ["type"] = "output_text", ["text"] = "Which series is this?" })
+                });
+            }
             result.ResponseId = "resp_recorded";
             result.HttpStatus = 200;
 

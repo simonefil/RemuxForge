@@ -227,7 +227,7 @@ namespace RemuxForge.Web.Services.Toolbox
             {
                 Dictionary<PathIdentity, TRecord> known = new Dictionary<PathIdentity, TRecord>();
 
-                if (this.IsBusy)
+                if (this.IsBusy || !this.AcceptsListChanges)
                     return;
 
                 foreach (TRecord record in this._records)
@@ -277,7 +277,7 @@ namespace RemuxForge.Web.Services.Toolbox
         {
             lock (this.StateLock)
             {
-                if (this.IsBusy)
+                if (this.IsBusy || !this.AcceptsListChanges)
                     return;
 
                 this._records.Remove(record);
@@ -294,7 +294,7 @@ namespace RemuxForge.Web.Services.Toolbox
         {
             lock (this.StateLock)
             {
-                if (this.IsBusy)
+                if (this.IsBusy || !this.AcceptsListChanges)
                     return;
 
                 this._records.Clear();
@@ -357,6 +357,14 @@ namespace RemuxForge.Web.Services.Toolbox
         #endregion
 
         #region Proprietà
+
+        /// <summary>
+        /// True se l'elenco accetta file aggiunti e tolti; letto sotto StateLock. La card che blocca l'elenco lo ridefinisce
+        /// </summary>
+        protected virtual bool AcceptsListChanges
+        {
+            get { return true; }
+        }
 
         /// <summary>
         /// Elenco vivo dei file; da usare sotto StateLock

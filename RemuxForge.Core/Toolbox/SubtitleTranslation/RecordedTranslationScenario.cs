@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json.Nodes;
 
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
@@ -94,6 +95,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         {
             this.LatencyMilliseconds = 0;
             this.Faults = new List<RecordedTranslationFault>();
+            this.Deliveries = new List<RecordedTranslationDelivery>();
         }
 
         #endregion
@@ -109,6 +111,56 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Guasti simulati
         /// </summary>
         public List<RecordedTranslationFault> Faults { get; set; }
+
+        /// <summary>
+        /// Consegne al posto di quella sintetica, per tipo di chiamata, file e numero di chiamata
+        /// </summary>
+        public List<RecordedTranslationDelivery> Deliveries { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Consegna di una chiamata dello scenario
+    /// </summary>
+    public class RecordedTranslationDelivery
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public RecordedTranslationDelivery()
+        {
+            this.CallKind = TranslationCallKind.A1;
+            this.FileId = "";
+            this.Occurrence = 1;
+            this.Arguments = null;
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Tipo di chiamata
+        /// </summary>
+        public TranslationCallKind CallKind { get; set; }
+
+        /// <summary>
+        /// File della chiamata, vuoto per tutti; TranslationSessionKey.NO_FILE per le chiamate su più file
+        /// </summary>
+        public string FileId { get; set; }
+
+        /// <summary>
+        /// Numero della chiamata di quel tipo su quel file, da 1; un giro di correzione è una chiamata nuova
+        /// </summary>
+        public int Occurrence { get; set; }
+
+        /// <summary>
+        /// Argomenti del tool, null per una risposta di solo testo
+        /// </summary>
+        public JsonObject Arguments { get; set; }
 
         #endregion
     }

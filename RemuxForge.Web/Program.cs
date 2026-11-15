@@ -181,6 +181,8 @@ namespace RemuxForge.Web
             // Il provider registrato della traduzione, che non consuma, si attiva con lo scenario indicato solo in Development
             string recordedTranslationScenario = builder.Environment.IsDevelopment() ? Environment.GetEnvironmentVariable("REMUXFORGE_RECORDED_TRANSLATION") : "";
             builder.Services.AddSingleton(provider => new TranslationModelProviderFactory(provider.GetRequiredService<OpenAiResponsesClient>(), provider.GetRequiredService<AiCredentialService>(), recordedTranslationScenario));
+            builder.Services.AddSingleton(new TranslationProjectStore(AppSettingsService.Instance.ConfigFolder));
+            builder.Services.AddSingleton<SubtitleTranslationOrchestrator>();
             builder.Services.AddHostedService(provider => provider.GetRequiredService<UpdateCheckService>());
             builder.Services.AddRadzenComponents();
             builder.Services.AddRazorComponents().AddInteractiveServerComponents();

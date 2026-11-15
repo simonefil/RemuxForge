@@ -53,15 +53,17 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi protected
 
         /// <summary>
-        /// Manda la richiesta preparata alla Responses API con la politica di retry del job
+        /// Manda un tentativo della richiesta preparata alla Responses API
         /// </summary>
         /// <param name="request">Chiamata della traduzione</param>
         /// <param name="prepared">Richiesta da mandare</param>
+        /// <param name="attempt">Tentativo del retry di trasporto, da 1</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Item di output, consumo ed esito</returns>
-        protected override Task<AiResponseResult> SendPreparedAsync(TranslationModelRequest request, AiResponseRequest prepared, CancellationToken cancellationToken)
+        protected override Task<AiResponseResult> SendAttemptAsync(TranslationModelRequest request, AiResponseRequest prepared, int attempt, CancellationToken cancellationToken)
         {
-            return this._client.CreateResponseAsync(prepared, this.Retry, cancellationToken);
+            // Il retry lo fa la base, che registra ogni tentativo
+            return this._client.CreateResponseAsync(prepared, AiRetryPolicy.None, cancellationToken);
         }
 
         #endregion
