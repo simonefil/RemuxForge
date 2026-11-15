@@ -5,6 +5,7 @@ using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Tools;
+using RemuxForge.Core.Toolbox.SubtitleTranslation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -176,6 +177,10 @@ namespace RemuxForge.Web
             builder.Services.AddSingleton<AiOAuthFlow>();
             builder.Services.AddSingleton<OpenAiResponsesClient>();
             builder.Services.AddSingleton<AiAuthService>();
+
+            // Il provider registrato della traduzione, che non consuma, si attiva con lo scenario indicato solo in Development
+            string recordedTranslationScenario = builder.Environment.IsDevelopment() ? Environment.GetEnvironmentVariable("REMUXFORGE_RECORDED_TRANSLATION") : "";
+            builder.Services.AddSingleton(provider => new TranslationModelProviderFactory(provider.GetRequiredService<OpenAiResponsesClient>(), provider.GetRequiredService<AiCredentialService>(), recordedTranslationScenario));
             builder.Services.AddHostedService(provider => provider.GetRequiredService<UpdateCheckService>());
             builder.Services.AddRadzenComponents();
             builder.Services.AddRazorComponents().AddInteractiveServerComponents();

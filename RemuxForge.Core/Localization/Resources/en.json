@@ -1743,6 +1743,7 @@
   "web.toolbox.addTracks.summaryStoppedMany": "{0} stopped",
   "web.toolbox.addTracks.summaryNotProcessedOne": "{0} not processed",
   "web.toolbox.addTracks.summaryNotProcessedMany": "{0} not processed",
+  "web.toolbox.subtitleTranslation.consentText": "To translate subtitles, RemuxForge sends OpenAI the text of the subtitles you add, the series/context field and the glossary built from them. During the analysis the model can run web searches about the series. No audio or video content is sent. Every request counts against your ChatGPT plan usage or your API key credit, under OpenAI's terms.",
   "web.navigation.menu": "Application menu",
   "web.navigation.actions": "Actions",
   "web.notFound.message": "Page not found.",

@@ -1,3 +1,4 @@
+using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -82,7 +83,17 @@ namespace RemuxForge.Core.Ai
                 cancellationToken.ThrowIfCancellationRequested();
                 Report(progress, AiPresetGenerationStepKind.RequestSent, round, "", null);
 
-                List<JsonObject> output = await this._client.CreateResponseAsync(model, instructions, input, toolDefinitions, cancellationToken);
+                AiResponseRequest request = new AiResponseRequest();
+                request.Model = model;
+                request.Instructions = instructions;
+                request.Input = input;
+                request.Tools = toolDefinitions;
+
+                AiResponseResult response = await this._client.CreateResponseAsync(request, AiRetryPolicy.None, cancellationToken);
+                if (response.Status == AiResponseStatus.Incomplete)
+                    throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.incomplete"));
+
+                List<JsonObject> output = response.Items;
                 List<JsonObject> calls = new List<JsonObject>();
                 StringBuilder messageText = new StringBuilder();
 

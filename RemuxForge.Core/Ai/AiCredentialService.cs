@@ -273,6 +273,16 @@ namespace RemuxForge.Core.Ai
             this.Save(credentials);
         }
 
+        /// <summary>
+        /// Registra il consenso all'invio dei sottotitoli e del contesto per la traduzione
+        /// </summary>
+        public void AcceptTranslationConsent()
+        {
+            AiCredentials credentials = this.Load();
+            credentials.TranslationConsentAccepted = true;
+            this.Save(credentials);
+        }
+
         #endregion
 
         #region Metodi privati

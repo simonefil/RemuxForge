@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Nodes;
 
 namespace RemuxForge.Core.Models
 {
@@ -47,6 +48,9 @@ namespace RemuxForge.Core.Models
         /// <summary>Richiesta non supportata dal servizio</summary>
         Unsupported,
 
+        /// <summary>Parametro facoltativo rifiutato dall'accesso corrente</summary>
+        UnsupportedCapability,
+
         /// <summary>Errore di rete</summary>
         Network,
 
@@ -74,6 +78,7 @@ namespace RemuxForge.Core.Models
             this.Model = "";
             this.MaxRounds = RemuxForge.Core.Ai.MetadataAiPresetGenerator.DEFAULT_MAX_ROUNDS;
             this.ConsentAccepted = false;
+            this.TranslationConsentAccepted = false;
             this.Email = "";
             this.Subject = "";
             this.ClientId = "";
@@ -113,6 +118,11 @@ namespace RemuxForge.Core.Models
         /// Consenso all'invio dei dati a OpenAI già accettato
         /// </summary>
         public bool ConsentAccepted { get; set; }
+
+        /// <summary>
+        /// Consenso all'invio a OpenAI dei sottotitoli e del contesto della traduzione già accettato
+        /// </summary>
+        public bool TranslationConsentAccepted { get; set; }
 
         /// <summary>
         /// Email dell'account ChatGPT, usata come login_hint ai login successivi
@@ -176,6 +186,8 @@ namespace RemuxForge.Core.Models
         {
             this.Id = "";
             this.DisplayName = "";
+            this.DefaultReasoningLevel = "";
+            this.SupportedReasoningLevels = new List<string>();
         }
 
         #endregion
@@ -191,6 +203,16 @@ namespace RemuxForge.Core.Models
         /// Nome mostrato nel dropdown
         /// </summary>
         public string DisplayName { get; set; }
+
+        /// <summary>
+        /// Livello di ragionamento predefinito del modello
+        /// </summary>
+        public string DefaultReasoningLevel { get; set; }
+
+        /// <summary>
+        /// Livelli di ragionamento accettati dal modello, nell'ordine del catalogo
+        /// </summary>
+        public List<string> SupportedReasoningLevels { get; set; }
 
         #endregion
     }
@@ -267,6 +289,8 @@ namespace RemuxForge.Core.Models
         public AiServiceException(AiErrorKind kind, string message) : base(message)
         {
             this.Kind = kind;
+            this.ServiceCode = "";
+            this.RejectedParameter = "";
         }
 
         /// <summary>
@@ -278,6 +302,26 @@ namespace RemuxForge.Core.Models
         public AiServiceException(AiErrorKind kind, string message, Exception innerException) : base(message, innerException)
         {
             this.Kind = kind;
+            this.ServiceCode = "";
+            this.RejectedParameter = "";
+        }
+
+        /// <summary>
+        /// Costruttore con i dati del servizio su cui decide la politica di retry
+        /// </summary>
+        /// <param name="kind">Categoria errore</param>
+        /// <param name="message">Messaggio localizzato</param>
+        /// <param name="serviceCode">Codice d'errore del servizio, vuoto se assente</param>
+        /// <param name="httpStatus">Stato HTTP, zero per gli errori arrivati nello stream</param>
+        /// <param name="retryAfter">Attesa chiesta dall'header Retry-After</param>
+        /// <param name="rejectedParameter">Parametro rifiutato indicato dal servizio, vuoto se assente</param>
+        public AiServiceException(AiErrorKind kind, string message, string serviceCode, int httpStatus, TimeSpan? retryAfter, string rejectedParameter) : base(message)
+        {
+            this.Kind = kind;
+            this.ServiceCode = serviceCode != null ? serviceCode : "";
+            this.HttpStatus = httpStatus;
+            this.RetryAfter = retryAfter;
+            this.RejectedParameter = rejectedParameter != null ? rejectedParameter : "";
         }
 
         #endregion
@@ -288,6 +332,26 @@ namespace RemuxForge.Core.Models
         /// Categoria errore
         /// </summary>
         public AiErrorKind Kind { get; private set; }
+
+        /// <summary>
+        /// Codice d'errore del servizio, vuoto se assente
+        /// </summary>
+        public string ServiceCode { get; private set; }
+
+        /// <summary>
+        /// Stato HTTP, zero per gli errori arrivati nello stream o fuori dal servizio
+        /// </summary>
+        public int HttpStatus { get; private set; }
+
+        /// <summary>
+        /// Attesa chiesta dall'header Retry-After
+        /// </summary>
+        public TimeSpan? RetryAfter { get; private set; }
+
+        /// <summary>
+        /// Parametro rifiutato indicato dal servizio (error.param), vuoto se assente
+        /// </summary>
+        public string RejectedParameter { get; private set; }
 
         #endregion
     }
@@ -411,6 +475,196 @@ namespace RemuxForge.Core.Models
         /// Avvisi della validazione del preset accettato
         /// </summary>
         public List<string> Warnings { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Esito di una risposta del modello arrivata al suo evento finale
+    /// </summary>
+    public enum AiResponseStatus
+    {
+        /// <summary>Risposta completa</summary>
+        Completed,
+
+        /// <summary>Risposta troncata dal servizio, con gli item ricevuti fino a lì</summary>
+        Incomplete
+    }
+
+    /// <summary>
+    /// Consumo di token di una risposta; un valore null indica un dato non riportato dal servizio
+    /// </summary>
+    public class AiUsage
+    {
+        #region Proprietà
+
+        /// <summary>
+        /// Token in input, compresi quelli in cache
+        /// </summary>
+        public long? InputTokens { get; set; }
+
+        /// <summary>
+        /// Token in input letti dalla cache
+        /// </summary>
+        public long? CachedTokens { get; set; }
+
+        /// <summary>
+        /// Token in input scritti in cache
+        /// </summary>
+        public long? CacheWriteTokens { get; set; }
+
+        /// <summary>
+        /// Token in output, compresi quelli di ragionamento
+        /// </summary>
+        public long? OutputTokens { get; set; }
+
+        /// <summary>
+        /// Token di ragionamento
+        /// </summary>
+        public long? ReasoningTokens { get; set; }
+
+        /// <summary>
+        /// Ricerche web eseguite dal modello
+        /// </summary>
+        public long? WebSearchRequests { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Richiesta alla Responses API; i campi facoltativi vuoti o null non vengono mandati
+    /// </summary>
+    public class AiResponseRequest
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public AiResponseRequest()
+        {
+            this.Model = "";
+            this.Instructions = "";
+            this.Input = new JsonArray();
+            this.Tools = new JsonArray();
+            this.SessionId = "";
+            this.ToolChoice = null;
+            this.Temperature = null;
+            this.MaxOutputTokens = null;
+            this.PromptCacheKey = "";
+            this.ReasoningEffort = "";
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Modello
+        /// </summary>
+        public string Model { get; set; }
+
+        /// <summary>
+        /// Istruzioni di sistema
+        /// </summary>
+        public string Instructions { get; set; }
+
+        /// <summary>
+        /// Storico completo degli item di input
+        /// </summary>
+        public JsonArray Input { get; set; }
+
+        /// <summary>
+        /// Tool disponibili
+        /// </summary>
+        public JsonArray Tools { get; set; }
+
+        /// <summary>
+        /// Chiave di cache mandata come header session_id
+        /// </summary>
+        public string SessionId { get; set; }
+
+        /// <summary>
+        /// Valore di tool_choice
+        /// </summary>
+        public JsonNode ToolChoice { get; set; }
+
+        /// <summary>
+        /// Temperatura, mandata solo con la API key
+        /// </summary>
+        public double? Temperature { get; set; }
+
+        /// <summary>
+        /// Tetto dei token in output, mandato solo con la API key
+        /// </summary>
+        public int? MaxOutputTokens { get; set; }
+
+        /// <summary>
+        /// Chiave di cache nel body, mandata solo con la API key
+        /// </summary>
+        public string PromptCacheKey { get; set; }
+
+        /// <summary>
+        /// Livello di ragionamento (reasoning.effort)
+        /// </summary>
+        public string ReasoningEffort { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Risultato di una richiesta alla Responses API
+    /// </summary>
+    public class AiResponseResult
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public AiResponseResult()
+        {
+            this.Items = new List<JsonObject>();
+            this.Usage = new AiUsage();
+            this.Status = AiResponseStatus.Completed;
+            this.IncompleteReason = "";
+            this.ResponseId = "";
+            this.HttpStatus = 0;
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Item di output del modello, da rimandare invariati nel giro successivo
+        /// </summary>
+        public List<JsonObject> Items { get; set; }
+
+        /// <summary>
+        /// Consumo di token
+        /// </summary>
+        public AiUsage Usage { get; set; }
+
+        /// <summary>
+        /// Risposta completa o troncata
+        /// </summary>
+        public AiResponseStatus Status { get; set; }
+
+        /// <summary>
+        /// Motivo del troncamento (incomplete_details.reason), vuoto se completa
+        /// </summary>
+        public string IncompleteReason { get; set; }
+
+        /// <summary>
+        /// Identificativo della risposta assegnato dal servizio
+        /// </summary>
+        public string ResponseId { get; set; }
+
+        /// <summary>
+        /// Stato HTTP della risposta
+        /// </summary>
+        public int HttpStatus { get; set; }
 
         #endregion
     }
