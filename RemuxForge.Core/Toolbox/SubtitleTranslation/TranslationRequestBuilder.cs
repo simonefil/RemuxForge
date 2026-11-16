@@ -84,6 +84,74 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "- Keep the subtitle concise: say what the line says, with no padding.";
 
         /// <summary>
+        /// Instructions di C: riscrittura delle battute coinvolte dai termini nuovi approvati
+        /// </summary>
+        private const string REWRITE_INSTRUCTIONS = "You apply updated glossary terms to {target_language} subtitles already translated from {source_language}.\n" +
+            "The first message gives the updated glossary and the full source episode. The last message lists the updated renderings and, for every cue to rewrite, its source and its current translation.\n" +
+            "This is not a chat: nobody reads plain text. Deliver only by calling submit_translation once, with one entry per requested id in ascending order, and new_terms empty.\n" +
+            "For each cue change only what the updated renderings require: the term itself and the words that agree with it. Keep everything else as it is.\n" +
+            "When the last message lists rejected ids with error codes, deliver only the requested ids, fixing every listed error.\n" +
+            "\n" +
+            "{record_format}\n" +
+            "\n" +
+            "{translation_rules}";
+
+        /// <summary>
+        /// Instructions di D1: diagnosi di un blocco tradotto
+        /// </summary>
+        private const string DIAGNOSIS_INSTRUCTIONS = "You review {target_language} subtitles translated from {source_language}, cue by cue, with the source beside them.\n" +
+            "The first message gives the approved glossary and the full source episode. The last message gives one block: for every cue its source record, its current translation record and, when the code noticed something, a signal record.\n" +
+            "This is not a chat: nobody reads plain text. Deliver only by calling submit_diagnosis once. Deliver an empty issues list when the block needs no change.\n" +
+            "\n" +
+            "Report real problems only, with these categories:\n" +
+            "- accuracy: meaning changed, mistranslation, false friend, literal calque, a set phrase rendered with the wrong sense;\n" +
+            "- omission: content of the source lost, or content added;\n" +
+            "- fluency: unidiomatic or ungrammatical {target_language};\n" +
+            "- terminology: a rendering of the glossary terms missing or misused;\n" +
+            "- register: address form against the glossary, wrong gender or number of speakers or addressees, insults or threats weaker or more formal than the source;\n" +
+            "- consistency: the same thing rendered differently within the block or against the glossary;\n" +
+            "- split_sentence: a [gN] group badly redistributed over its cues;\n" +
+            "- formatting: a ⟦n text⟧ span around the wrong words;\n" +
+            "- untranslated: {source_language} text left by mistake, apart from names and terms the glossary keeps.\n" +
+            "\n" +
+            "Signals point to cues worth checking. A signalled cue can be correct, and a correct cue stays as it is: report an issue only when a change makes the subtitle better. A cue with no accepted translation needs no issue: the correction step translates it.\n" +
+            "For each issue give the cue id, the category, the severity (minor, major, critical), a short explanation in {notes_language} and, when you can, a suggestion with the full corrected text of the cue.\n" +
+            "\n" +
+            "{record_format}";
+
+        /// <summary>
+        /// Instructions di D2: correzione delle battute diagnosticate e traduzione delle «da rivedere»
+        /// </summary>
+        private const string CORRECTION_INSTRUCTIONS = "You correct {target_language} subtitles translated from {source_language}, using a list of diagnosed issues and the source.\n" +
+            "The first message gives the approved glossary and the full source episode. The last message lists the diagnosed issues, then every cue to deliver with its source and its current translation.\n" +
+            "This is not a chat: nobody reads plain text. Deliver only by calling submit_translation once, with one entry per requested id in ascending order, and new_terms empty.\n" +
+            "Fix every listed issue and keep the rest of each cue as it is. Translate from scratch every cue with no accepted translation. A listed cue with no issue of its own belongs to a [gN] group: deliver it unchanged unless fixing the group requires a change.\n" +
+            "When the last message lists rejected ids with error codes, deliver only the requested ids, fixing every listed error.\n" +
+            "\n" +
+            "{record_format}\n" +
+            "\n" +
+            "{translation_rules}";
+
+        /// <summary>
+        /// Tool di consegna della diagnosi
+        /// </summary>
+        public const string SUBMIT_DIAGNOSIS_TOOL = "submit_diagnosis";
+
+        /// <summary>
+        /// Definizione del tool submit_diagnosis
+        /// </summary>
+        private const string SUBMIT_DIAGNOSIS_JSON = "{\"type\":\"function\",\"name\":\"submit_diagnosis\"," +
+            "\"description\":\"Report the problems found in the translation of the block. Empty list if there are none.\"," +
+            "\"parameters\":{\"type\":\"object\",\"properties\":{" +
+            "\"issues\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"integer\"}," +
+            "\"category\":{\"type\":\"string\",\"enum\":[\"accuracy\",\"omission\",\"fluency\",\"terminology\",\"register\",\"consistency\",\"split_sentence\",\"formatting\",\"untranslated\"]}," +
+            "\"severity\":{\"type\":\"string\",\"enum\":[\"minor\",\"major\",\"critical\"]}," +
+            "\"explanation\":{\"type\":\"string\",\"description\":\"Short explanation for the user.\"}," +
+            "\"suggestion\":{\"type\":\"string\",\"description\":\"Full corrected text of the cue, with line breaks as \\\\n and its ⟦n text⟧ spans.\"}}," +
+            "\"required\":[\"id\",\"category\",\"severity\",\"explanation\"],\"additionalProperties\":false}}}," +
+            "\"required\":[\"issues\"],\"additionalProperties\":false}}";
+
+        /// <summary>
         /// Definizione del tool submit_translation
         /// </summary>
         private const string SUBMIT_TRANSLATION_JSON = "{\"type\":\"function\",\"name\":\"submit_translation\"," +
@@ -100,6 +168,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #endregion
 
         #region Variabili statiche
+
+        /// <summary>
+        /// Categorie ammesse di un problema della diagnosi
+        /// </summary>
+        public static readonly IReadOnlyList<string> DIAGNOSIS_CATEGORIES = new string[] { "accuracy", "omission", "fluency", "terminology", "register", "consistency", "split_sentence", "formatting", "untranslated" };
+
+        /// <summary>
+        /// Gravità ammesse di un problema della diagnosi
+        /// </summary>
+        public static readonly IReadOnlyList<string> DIAGNOSIS_SEVERITIES = new string[] { "minor", "major", "critical" };
 
         /// <summary>
         /// Forme di cortesia per lingua d'arrivo ISO 639-2; le lingue assenti non hanno forme e il glossario non ha addressing
@@ -299,17 +377,64 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <returns>Testo delle instructions</returns>
         public static string CreateTranslationInstructions(string sourceLanguage, string targetLanguage)
         {
-            // Regola sulle forme di cortesia: quelle della lingua d'arrivo, o il registro di ogni personaggio dove la lingua non ne ha
-            string[] forms = GetAddressForms(targetLanguage);
-            string addressRule = forms == null ? GENERIC_ADDRESS_RULE : "Use the address form (" + string.Join(", ", forms) + ") the glossary gives for each speaker and addressee; " +
-                s_pluralAddressRules[LanguageValidator.NormalizeToIso6392(targetLanguage)];
-            string rules = TRANSLATION_RULES.Replace("{address_rule}", addressRule);
-            return TRANSLATION_INSTRUCTIONS.Replace("{record_format}", RECORD_FORMAT).Replace("{translation_rules}", rules)
-                .Replace("{source_language}", GetEnglishName(sourceLanguage)).Replace("{target_language}", GetEnglishName(targetLanguage));
+            return FillInstructions(TRANSLATION_INSTRUCTIONS, sourceLanguage, targetLanguage);
         }
 
         /// <summary>
-        /// Tool offerti da B, B′ e B″, sempre nello stesso ordine
+        /// Instructions di C coi segnaposto risolti
+        /// </summary>
+        /// <param name="sourceLanguage">Lingua d'origine ISO 639-2</param>
+        /// <param name="targetLanguage">Lingua d'arrivo ISO 639-2</param>
+        /// <returns>Testo delle instructions</returns>
+        public static string CreateRewriteInstructions(string sourceLanguage, string targetLanguage)
+        {
+            return FillInstructions(REWRITE_INSTRUCTIONS, sourceLanguage, targetLanguage);
+        }
+
+        /// <summary>
+        /// Instructions di D1 coi segnaposto risolti, con le spiegazioni nella lingua dell'interfaccia
+        /// </summary>
+        /// <param name="sourceLanguage">Lingua d'origine ISO 639-2</param>
+        /// <param name="targetLanguage">Lingua d'arrivo ISO 639-2</param>
+        /// <returns>Testo delle instructions</returns>
+        public static string CreateDiagnosisInstructions(string sourceLanguage, string targetLanguage)
+        {
+            return FillInstructions(DIAGNOSIS_INSTRUCTIONS.Replace("{notes_language}", GetNotesLanguage()), sourceLanguage, targetLanguage);
+        }
+
+        /// <summary>
+        /// Instructions di D2 coi segnaposto risolti
+        /// </summary>
+        /// <param name="sourceLanguage">Lingua d'origine ISO 639-2</param>
+        /// <param name="targetLanguage">Lingua d'arrivo ISO 639-2</param>
+        /// <returns>Testo delle instructions</returns>
+        public static string CreateCorrectionInstructions(string sourceLanguage, string targetLanguage)
+        {
+            return FillInstructions(CORRECTION_INSTRUCTIONS, sourceLanguage, targetLanguage);
+        }
+
+        /// <summary>
+        /// Tool offerto da D1
+        /// </summary>
+        /// <returns>Array nuovo con submit_diagnosis</returns>
+        public static JsonArray CreateDiagnosisTools()
+        {
+            return new JsonArray(JsonNode.Parse(SUBMIT_DIAGNOSIS_JSON));
+        }
+
+        /// <summary>
+        /// Scrive un record di segnali: testata «id !», tab e un segnale per riga
+        /// </summary>
+        /// <param name="id">Id della battuta</param>
+        /// <param name="signals">Segnali nella forma CODICE: dettaglio</param>
+        /// <returns>Record dei segnali</returns>
+        public static string FormatSignalRecord(int id, IReadOnlyList<string> signals)
+        {
+            return id.ToString(CultureInfo.InvariantCulture) + " !\t" + string.Join("\n\t", signals);
+        }
+
+        /// <summary>
+        /// Tool offerti da B, B′, B″, C e D2, sempre nello stesso ordine
         /// </summary>
         /// <returns>Array nuovo con submit_translation</returns>
         public static JsonArray CreateTranslationTools()
@@ -318,9 +443,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Messaggio di prefisso: glossario congelato e sorgente numerato intero, uguale byte per byte per tutto il job
+        /// Messaggio di prefisso: glossario del job e sorgente numerato intero, uguale byte per byte fra le chiamate di un file con
+        /// lo stesso glossario
         /// </summary>
-        /// <param name="glossary">Glossario congelato del job</param>
+        /// <param name="glossary">Glossario del job: congelato in traduzione, aggiornato dai termini nuovi dopo</param>
         /// <param name="fileName">Nome del file sorgente</param>
         /// <param name="cues">Battute congelate del file</param>
         /// <returns>Testo del primo messaggio</returns>
@@ -357,35 +483,80 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 message.Append("\n\n");
             }
 
-            List<int> ids = new List<int>();
-            List<int> groups = new List<int>();
-            foreach (FrozenCue cue in requested)
+            AppendRequested(message, "TRANSLATE", requested);
+            AppendRejected(message, rejected);
+            return message.ToString();
+        }
+
+        /// <summary>
+        /// Coda di C: rese aggiornate, id da riscrivere coi gruppi e battute con la traduzione attuale; nel ritentativo gli scarti
+        /// </summary>
+        /// <param name="terms">Termini approvati al passo dei termini nuovi, originale e resa</param>
+        /// <param name="requested">Battute da riscrivere, in ordine di id</param>
+        /// <param name="current">Traduzione attuale per id</param>
+        /// <param name="rejected">Righe del validatore della consegna precedente, vuote alla prima consegna</param>
+        /// <returns>Testo dell'ultimo messaggio</returns>
+        public static string CreateRewriteTail(IReadOnlyList<KeyValuePair<string, string>> terms, IReadOnlyList<FrozenCue> requested, IReadOnlyDictionary<int, string> current,
+            IReadOnlyList<string> rejected)
+        {
+            StringBuilder message = new StringBuilder("UPDATED TERMS (apply these renderings):");
+            foreach (KeyValuePair<string, string> term in terms)
+                message.Append('\n').Append(term.Key).Append(" => ").Append(term.Value);
+            message.Append("\n\n");
+            AppendRequested(message, "REWRITE", requested);
+            AppendCurrent(message, requested, current);
+            AppendRejected(message, rejected);
+            return message.ToString();
+        }
+
+        /// <summary>
+        /// Coda di D1: id del blocco coi gruppi e, per ogni battuta, sorgente, traduzione attuale e segnali
+        /// </summary>
+        /// <param name="cues">Battute del blocco, in ordine di id</param>
+        /// <param name="current">Traduzione attuale per id, null per una battuta senza testo accettato</param>
+        /// <param name="signals">Segnali per id, assenti per le battute senza segnali</param>
+        /// <returns>Testo dell'ultimo messaggio</returns>
+        public static string CreateDiagnosisTail(IReadOnlyList<FrozenCue> cues, IReadOnlyDictionary<int, string> current, IReadOnlyDictionary<int, List<string>> signals)
+        {
+            StringBuilder message = new StringBuilder();
+            AppendRequested(message, "REVIEW", cues);
+            message.Append('\n');
+            foreach (FrozenCue cue in cues)
             {
-                ids.Add(cue.Id);
-                if (cue.Group.HasValue && !groups.Contains(cue.Group.Value))
-                    groups.Add(cue.Group.Value);
+                string text;
+                current.TryGetValue(cue.Id, out text);
+                message.Append('\n').Append(FormatRecord(cue.Id, cue.Group, cue.Text));
+                message.Append('\n').Append(FormatTranslationRecord(cue.Id, cue.Group, text));
+                List<string> cueSignals;
+                if (signals.TryGetValue(cue.Id, out cueSignals) && cueSignals.Count > 0)
+                    message.Append('\n').Append(FormatSignalRecord(cue.Id, cueSignals));
             }
 
-            message.Append("TRANSLATE cue ids ").Append(FormatRanges(ids)).Append(" (").Append(ids.Count.ToString(CultureInfo.InvariantCulture)).Append(" cues).");
-            if (groups.Count > 0)
+            return message.ToString();
+        }
+
+        /// <summary>
+        /// Coda di D2: problemi diagnosticati, id da consegnare coi gruppi e battute con la traduzione attuale; nel ritentativo gli scarti
+        /// </summary>
+        /// <param name="issues">Problemi della diagnosi sulle battute richieste</param>
+        /// <param name="requested">Battute da consegnare, in ordine di id</param>
+        /// <param name="current">Traduzione attuale per id, null per una battuta senza testo accettato</param>
+        /// <param name="rejected">Righe del validatore della consegna precedente, vuote alla prima consegna</param>
+        /// <returns>Testo dell'ultimo messaggio</returns>
+        public static string CreateCorrectionTail(IReadOnlyList<TranslationReviewIssue> issues, IReadOnlyList<FrozenCue> requested, IReadOnlyDictionary<int, string> current,
+            IReadOnlyList<string> rejected)
+        {
+            StringBuilder message = new StringBuilder("DIAGNOSED ISSUES:");
+            foreach (TranslationReviewIssue issue in issues)
             {
-                List<string> parts = new List<string>();
-                foreach (int group in groups)
-                {
-                    List<string> members = new List<string>();
-                    foreach (FrozenCue cue in requested)
-                    {
-                        if (cue.Group == group)
-                            members.Add(cue.Id.ToString(CultureInfo.InvariantCulture));
-                    }
-                    parts.Add("g" + group.ToString(CultureInfo.InvariantCulture) + " = " + string.Join(",", members));
-                }
-                message.Append("\nSplit-sentence groups in this range: ").Append(string.Join("; ", parts));
+                message.Append('\n').Append(issue.Id.ToString(CultureInfo.InvariantCulture)).Append(" [").Append(issue.Category).Append('/').Append(issue.Severity).Append("] ").Append(issue.Explanation);
+                if (!string.IsNullOrEmpty(issue.Suggestion))
+                    message.Append("\n\tsuggestion: ").Append(issue.Suggestion.Replace("\n", "\n\t"));
             }
-
-            if (rejected.Count > 0)
-                message.Append("\n\nREJECTED in the previous delivery of these ids:\n").Append(string.Join("\n", rejected));
-
+            message.Append("\n\n");
+            AppendRequested(message, "DELIVER", requested);
+            AppendCurrent(message, requested, current);
+            AppendRejected(message, rejected);
             return message.ToString();
         }
 
@@ -412,6 +583,88 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #endregion
 
         #region Metodi privati
+
+        /// <summary>
+        /// Risolve i segnaposto comuni delle instructions: formato a record, regole di traduzione con le forme di cortesia, lingue
+        /// </summary>
+        /// <param name="template">Template delle instructions</param>
+        /// <param name="sourceLanguage">Lingua d'origine ISO 639-2</param>
+        /// <param name="targetLanguage">Lingua d'arrivo ISO 639-2</param>
+        /// <returns>Testo delle instructions</returns>
+        private static string FillInstructions(string template, string sourceLanguage, string targetLanguage)
+        {
+            // Regola sulle forme di cortesia: quelle della lingua d'arrivo, o il registro di ogni personaggio dove la lingua non ne ha
+            string[] forms = GetAddressForms(targetLanguage);
+            string addressRule = forms == null ? GENERIC_ADDRESS_RULE : "Use the address form (" + string.Join(", ", forms) + ") the glossary gives for each speaker and addressee; " +
+                s_pluralAddressRules[LanguageValidator.NormalizeToIso6392(targetLanguage)];
+            string rules = TRANSLATION_RULES.Replace("{address_rule}", addressRule);
+            return template.Replace("{record_format}", RECORD_FORMAT).Replace("{translation_rules}", rules)
+                .Replace("{source_language}", GetEnglishName(sourceLanguage)).Replace("{target_language}", GetEnglishName(targetLanguage));
+        }
+
+        /// <summary>
+        /// Aggiunge la riga degli id richiesti col loro numero e, se ce ne sono, quella dei gruppi di frase spezzata
+        /// </summary>
+        /// <param name="message">Coda in costruzione</param>
+        /// <param name="verb">TRANSLATE, REWRITE, REVIEW o DELIVER</param>
+        /// <param name="requested">Battute richieste, in ordine di id</param>
+        private static void AppendRequested(StringBuilder message, string verb, IReadOnlyList<FrozenCue> requested)
+        {
+            List<int> ids = new List<int>();
+            List<int> groups = new List<int>();
+            foreach (FrozenCue cue in requested)
+            {
+                ids.Add(cue.Id);
+                if (cue.Group.HasValue && !groups.Contains(cue.Group.Value))
+                    groups.Add(cue.Group.Value);
+            }
+
+            message.Append(verb).Append(" cue ids ").Append(FormatRanges(ids)).Append(" (").Append(ids.Count.ToString(CultureInfo.InvariantCulture)).Append(" cues).");
+            if (groups.Count > 0)
+            {
+                List<string> parts = new List<string>();
+                foreach (int group in groups)
+                {
+                    List<string> members = new List<string>();
+                    foreach (FrozenCue cue in requested)
+                    {
+                        if (cue.Group == group)
+                            members.Add(cue.Id.ToString(CultureInfo.InvariantCulture));
+                    }
+                    parts.Add("g" + group.ToString(CultureInfo.InvariantCulture) + " = " + string.Join(",", members));
+                }
+                message.Append("\nSplit-sentence groups in this range: ").Append(string.Join("; ", parts));
+            }
+        }
+
+        /// <summary>
+        /// Aggiunge la sezione delle traduzioni attuali: per ogni battuta il record sorgente e quello di traduzione
+        /// </summary>
+        /// <param name="message">Coda in costruzione</param>
+        /// <param name="requested">Battute richieste, in ordine di id</param>
+        /// <param name="current">Traduzione attuale per id, null o assente per una battuta senza testo accettato</param>
+        private static void AppendCurrent(StringBuilder message, IReadOnlyList<FrozenCue> requested, IReadOnlyDictionary<int, string> current)
+        {
+            message.Append("\n\nCURRENT TRANSLATIONS:");
+            foreach (FrozenCue cue in requested)
+            {
+                string text;
+                current.TryGetValue(cue.Id, out text);
+                message.Append('\n').Append(FormatRecord(cue.Id, cue.Group, cue.Text));
+                message.Append('\n').Append(FormatTranslationRecord(cue.Id, cue.Group, text));
+            }
+        }
+
+        /// <summary>
+        /// Aggiunge in fondo gli scarti della consegna precedente, se ce ne sono
+        /// </summary>
+        /// <param name="message">Coda in costruzione</param>
+        /// <param name="rejected">Righe del validatore</param>
+        private static void AppendRejected(StringBuilder message, IReadOnlyList<string> rejected)
+        {
+            if (rejected.Count > 0)
+                message.Append("\n\nREJECTED in the previous delivery of these ids:\n").Append(string.Join("\n", rejected));
+        }
 
         /// <summary>
         /// Testata di un record: id e, nei gruppi, [gN]

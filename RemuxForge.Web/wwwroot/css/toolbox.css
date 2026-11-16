@@ -589,6 +589,80 @@
     overflow-wrap: anywhere;
 }
 
+/* Termini nuovi: rese usate a capo, scelta su una riga */
+.rf-translation-renderings {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.rf-translation-renderings .rz-badge {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-transform: none;
+}
+
+.rf-translation-decision {
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+}
+
+/* Revisione: griglia virtualizzata ad altezza fissa, segni evidenziati, modifica nella cella */
+.rf-translation .rf-translation-review {
+    flex: 0 0 auto;
+    height: 60vh;
+    min-height: 16rem;
+}
+
+.rf-translation-review-file {
+    width: 24rem;
+    max-width: 100%;
+}
+
+.rf-translation-times {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.rf-translation-review .rf-translation-cell {
+    white-space: pre-line;
+}
+
+.rf-translation-mark {
+    padding: 0 0.125rem;
+    border-radius: 0.125rem;
+    background-color: var(--rz-warning-lighter);
+    color: var(--rz-warning-darker);
+}
+
+.rf-translation-cue,
+.rf-translation-cue-edit {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.25rem;
+}
+
+.rf-translation-cue .rf-translation-cell {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.rf-translation-cue-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    resize: vertical;
+}
+
+.rf-translation-warnings {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.rf-translation-untranslated {
+    color: var(--rz-warning);
+}
+
 /* Dialog dei modelli: griglia passo, difficoltà, modello, ragionamento */
 
 .rf-translation-models-grid {

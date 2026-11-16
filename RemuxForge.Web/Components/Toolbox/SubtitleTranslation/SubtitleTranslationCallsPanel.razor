@@ -59,11 +59,15 @@
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.outcome")" Width="11%">
                     <Template Context="call">
-                        @* Un errore senza tipo è il tentativo interrotto da Stop *@
+                        @* Un errore senza tipo è il tentativo interrotto da Stop; la diagnosi conta i problemi, la correzione le battute col testo cambiato *@
                         <RadzenBadge IsPill="true"
-                                     BadgeStyle="@(Discarded.Contains(call.CallSeq) ? BadgeStyle.Base : call.Outcome == TranslationCallOutcome.Accepted ? BadgeStyle.Success : call.Outcome == TranslationCallOutcome.Error && call.ErrorKind.HasValue ? BadgeStyle.Danger
+                                     BadgeStyle="@(Discarded.Contains(call.CallSeq) ? BadgeStyle.Base : call.Issues.HasValue && call.Issues.Value > 0 ? BadgeStyle.Warning
+                                         : call.Outcome == TranslationCallOutcome.Accepted ? BadgeStyle.Success : call.Outcome == TranslationCallOutcome.Error && call.ErrorKind.HasValue ? BadgeStyle.Danger
                                          : call.Outcome == TranslationCallOutcome.Error ? BadgeStyle.Base : BadgeStyle.Warning)"
                                      Text="@(Discarded.Contains(call.CallSeq) ? AppText.T("web.toolbox.subtitleTranslation.calls.discarded")
+                                         : call.Issues.HasValue ? AppText.Count("web.toolbox.subtitleTranslation.calls.issues", call.Issues.Value)
+                                         : call.Kind == TranslationCallKind.D1 && call.Outcome == TranslationCallOutcome.PartiallyRejected ? AppText.T("web.toolbox.subtitleTranslation.calls.diagnosisInvalid")
+                                         : call.Kind == TranslationCallKind.D2 && call.Outcome == TranslationCallOutcome.Accepted ? AppText.Count("web.toolbox.subtitleTranslation.calls.corrected", call.Corrected ?? 0)
                                          : call.Outcome == TranslationCallOutcome.Accepted ? AppText.T("web.toolbox.subtitleTranslation.calls.accepted")
                                          : call.Outcome == TranslationCallOutcome.PartiallyRejected ? AppText.T("web.toolbox.subtitleTranslation.calls.rejected")
                                          : call.Outcome == TranslationCallOutcome.Reduced ? AppText.T("web.toolbox.subtitleTranslation.calls.reduced")

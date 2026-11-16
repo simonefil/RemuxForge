@@ -11,6 +11,22 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     public sealed record CueValidationResult(int Id, string Text, IReadOnlyList<TranslationValidationIssue> Issues)
     {
         /// <summary>
+        /// Avvisi del glossario dell'esito, per lo stato della battuta
+        /// </summary>
+        /// <returns>Termini non rispettati</returns>
+        public List<GlossaryWarning> GetGlossaryWarnings()
+        {
+            List<GlossaryWarning> warnings = new List<GlossaryWarning>();
+            foreach (TranslationValidationIssue issue in this.Issues)
+            {
+                if (issue.Code == TranslationValidator.GLOSSARY_MISSING)
+                    warnings.Add(new GlossaryWarning { Source = issue.Args["source"], Target = issue.Args["target"] });
+            }
+
+            return warnings;
+        }
+
+        /// <summary>
         /// La battuta ha almeno un errore e torna al modello
         /// </summary>
         public bool HasErrors

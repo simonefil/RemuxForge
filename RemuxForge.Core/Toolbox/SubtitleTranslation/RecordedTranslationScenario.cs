@@ -24,7 +24,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         WrongCues,
 
         /// <summary>Consegna valida che segnala un termine nuovo</summary>
-        NewTerm
+        NewTerm,
+
+        /// <summary>Diagnosi con un problema per battuta segnalata, o sulla prima del blocco, e il suggerimento</summary>
+        Issues
     }
 
     /// <summary>
@@ -46,6 +49,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.RetryAfterSeconds = 0;
             this.Parameter = "";
             this.Term = "";
+            this.Rendering = "";
         }
 
         #endregion
@@ -83,9 +87,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public string Parameter { get; set; }
 
         /// <summary>
-        /// Termine nuovo segnalato con NewTerm, reso col prefisso sintetico
+        /// Termine nuovo segnalato con NewTerm
         /// </summary>
         public string Term { get; set; }
+
+        /// <summary>
+        /// Resa del termine nuovo segnalato con NewTerm, vuota per il prefisso sintetico davanti al termine
+        /// </summary>
+        public string Rendering { get; set; }
 
         #endregion
     }

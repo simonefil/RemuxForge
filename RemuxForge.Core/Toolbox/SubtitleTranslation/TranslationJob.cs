@@ -22,13 +22,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         Review,
 
         /// <summary>Revisione dell'utente</summary>
-        UserReview,
-
-        /// <summary>Pronto per l'export</summary>
-        Export,
-
-        /// <summary>Giro chiuso dall'export</summary>
-        Done
+        UserReview
     }
 
     /// <summary>
@@ -106,7 +100,64 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         Glossary,
 
         /// <summary>Il sorgente contiene un termine nuovo segnalato dal modello</summary>
-        NewTerm
+        NewTerm,
+
+        /// <summary>Testo cambiato dall'applicazione dei termini nuovi</summary>
+        RewrittenByTerms,
+
+        /// <summary>Testo cambiato dalla revisione AI</summary>
+        CorrectedByAi,
+
+        /// <summary>Testo scritto dall'utente</summary>
+        EditedByUser
+    }
+
+    /// <summary>
+    /// Decisione dell'utente su un termine nuovo
+    /// </summary>
+    public enum NewTermDecisionKind
+    {
+        /// <summary>Entra nel glossario</summary>
+        Add,
+
+        /// <summary>Resta fuori dal glossario</summary>
+        Ignore
+    }
+
+    /// <summary>
+    /// Applicazione dei termini nuovi a un file
+    /// </summary>
+    public enum TermApplicationStatus
+    {
+        /// <summary>Da fare</summary>
+        Pending,
+
+        /// <summary>Riscritture salvate</summary>
+        Done,
+
+        /// <summary>Nessuna battuta coinvolta</summary>
+        Skipped
+    }
+
+    /// <summary>
+    /// Revisione AI di un blocco
+    /// </summary>
+    public enum TranslationReviewBlockStatus
+    {
+        /// <summary>Diagnosi da fare</summary>
+        Pending,
+
+        /// <summary>Diagnosi salvata, correzione da fare</summary>
+        Diagnosed,
+
+        /// <summary>Diagnosi non valida salvata, correzione delle sole da rivedere da fare</summary>
+        DiagnosisFailed,
+
+        /// <summary>Blocco rivisto</summary>
+        Done,
+
+        /// <summary>Blocco rivisto senza una diagnosi valida</summary>
+        Failed
     }
 
     /// <summary>
@@ -145,6 +196,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Status = TranslationJobStatus.Running;
             this.Pause = null;
             this.DisabledCapabilities = new List<string>();
+            this.ReviewMode = TranslationReviewMode.Targeted;
+            this.NewTerms = new List<NewTermDecision>();
         }
 
         #endregion
@@ -226,6 +279,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         public List<string> DisabledCapabilities { get; set; }
 
+        /// <summary>
+        /// Modalità della revisione AI del progetto all'avvio
+        /// </summary>
+        public TranslationReviewMode ReviewMode { get; set; }
+
+        /// <summary>
+        /// Termini nuovi raccolti a fine traduzione, con la decisione dell'utente
+        /// </summary>
+        public List<NewTermDecision> NewTerms { get; set; }
+
         #endregion
     }
 
@@ -265,6 +328,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.BlockedReason = "";
             this.Translations = new List<TranslatedCueState>();
             this.CollectedNewTerms = new List<CollectedNewTerm>();
+            this.TermApplication = null;
+            this.ReviewBlocks = null;
         }
 
         #endregion
@@ -345,6 +410,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Termini nuovi segnalati dal modello
         /// </summary>
         public List<CollectedNewTerm> CollectedNewTerms { get; set; }
+
+        /// <summary>
+        /// Applicazione dei termini nuovi, null prima della fase
+        /// </summary>
+        public TermApplicationState TermApplication { get; set; }
+
+        /// <summary>
+        /// Blocchi scelti per la revisione AI, null prima della revisione
+        /// </summary>
+        public List<TranslationReviewBlock> ReviewBlocks { get; set; }
 
         #endregion
     }
@@ -458,7 +533,28 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.GlossaryWarnings = new List<GlossaryWarning>();
             this.Signals = new List<TranslationCueSignal>();
             this.AcceptedCallSeq = null;
-            this.Version = 0;
+            this.AiCorrection = null;
+        }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Mette un testo nuovo validato: avvisi del glossario dal validatore, segnale Glossario messo o tolto; una battuta da
+        /// rivedere diventa accettata
+        /// </summary>
+        /// <param name="text">Testo validato</param>
+        /// <param name="warnings">Avvisi del glossario del validatore sul testo</param>
+        public void SetText(string text, List<GlossaryWarning> warnings)
+        {
+            this.Text = text;
+            this.Status = TranslatedCueStatus.Accepted;
+            this.ToReviewReason = null;
+            this.GlossaryWarnings = warnings;
+            this.Signals.Remove(TranslationCueSignal.Glossary);
+            if (this.GlossaryWarnings.Count > 0)
+                this.Signals.Add(TranslationCueSignal.Glossary);
         }
 
         #endregion
@@ -511,9 +607,29 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public int? AcceptedCallSeq { get; set; }
 
         /// <summary>
-        /// Sale di uno a ogni testo accettato
+        /// Testo di prima e motivo della correzione della revisione AI, null se la revisione non l'ha cambiata
         /// </summary>
-        public int Version { get; set; }
+        public CueAiCorrection AiCorrection { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Correzione della revisione AI di una battuta, mostrata al passaggio del mouse sull'avviso
+    /// </summary>
+    public class CueAiCorrection
+    {
+        #region Proprietà
+
+        /// <summary>
+        /// Testo prima della correzione, null per una battuta senza testo accettato
+        /// </summary>
+        public string Before { get; set; }
+
+        /// <summary>
+        /// Spiegazione della diagnosi, null per una battuta senza un problema proprio
+        /// </summary>
+        public string Explanation { get; set; }
 
         #endregion
     }
@@ -630,6 +746,239 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Battute dell'intervallo il cui sorgente contiene il termine
         /// </summary>
         public List<int> CueIds { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Termine nuovo raccolto da tutti i file, con le rese usate e la decisione dell'utente
+    /// </summary>
+    public class NewTermDecision
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public NewTermDecision()
+        {
+            this.Source = "";
+            this.Renderings = new List<NewTermRendering>();
+            this.ChosenTarget = "";
+            this.Kind = GlossaryTermKind.Term;
+            this.Decision = NewTermDecisionKind.Add;
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Termine, come alla prima segnalazione
+        /// </summary>
+        public string Source { get; set; }
+
+        /// <summary>
+        /// Rese usate, nell'ordine della prima comparsa
+        /// </summary>
+        public List<NewTermRendering> Renderings { get; set; }
+
+        /// <summary>
+        /// Resa scelta; parte dalla più usata
+        /// </summary>
+        public string ChosenTarget { get; set; }
+
+        /// <summary>
+        /// Tipo del termine nel glossario
+        /// </summary>
+        public GlossaryTermKind Kind { get; set; }
+
+        /// <summary>
+        /// Aggiungi o Ignora
+        /// </summary>
+        public NewTermDecisionKind Decision { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Resa usata dal modello per un termine nuovo
+    /// </summary>
+    public class NewTermRendering
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public NewTermRendering()
+        {
+            this.Target = "";
+            this.Count = 0;
+            this.FileIds = new List<string>();
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Resa
+        /// </summary>
+        public string Target { get; set; }
+
+        /// <summary>
+        /// Segnalazioni del modello con questa resa
+        /// </summary>
+        public int Count { get; set; }
+
+        /// <summary>
+        /// File delle segnalazioni
+        /// </summary>
+        public List<string> FileIds { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Applicazione dei termini nuovi a un file del job
+    /// </summary>
+    public class TermApplicationState
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public TermApplicationState()
+        {
+            this.Status = TermApplicationStatus.Pending;
+            this.TargetIds = new List<int>();
+            this.RewrittenIds = new List<int>();
+            this.FailedIds = new List<int>();
+            this.CallSeqs = new List<int>();
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Stato
+        /// </summary>
+        public TermApplicationStatus Status { get; set; }
+
+        /// <summary>
+        /// Battute coinvolte
+        /// </summary>
+        public List<int> TargetIds { get; set; }
+
+        /// <summary>
+        /// Battute riscritte
+        /// </summary>
+        public List<int> RewrittenIds { get; set; }
+
+        /// <summary>
+        /// Battute la cui riscrittura non è riuscita: tengono il testo di prima
+        /// </summary>
+        public List<int> FailedIds { get; set; }
+
+        /// <summary>
+        /// Chiamate C del file salvate con le riscritture
+        /// </summary>
+        public List<int> CallSeqs { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Blocco del piano scelto per la revisione AI
+    /// </summary>
+    public class TranslationReviewBlock
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public TranslationReviewBlock()
+        {
+            this.BlockIndex = 0;
+            this.FirstId = 0;
+            this.LastId = 0;
+            this.Status = TranslationReviewBlockStatus.Pending;
+            this.Issues = new List<TranslationReviewIssue>();
+            this.CallSeqs = new List<int>();
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Blocco del piano
+        /// </summary>
+        public int BlockIndex { get; set; }
+
+        /// <summary>
+        /// Primo id del blocco
+        /// </summary>
+        public int FirstId { get; set; }
+
+        /// <summary>
+        /// Ultimo id del blocco
+        /// </summary>
+        public int LastId { get; set; }
+
+        /// <summary>
+        /// Stato
+        /// </summary>
+        public TranslationReviewBlockStatus Status { get; set; }
+
+        /// <summary>
+        /// Problemi della diagnosi tenuti, per la correzione anche dopo una ripresa
+        /// </summary>
+        public List<TranslationReviewIssue> Issues { get; set; }
+
+        /// <summary>
+        /// Chiamate salvate del blocco: la diagnosi, poi le correzioni
+        /// </summary>
+        public List<int> CallSeqs { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Problema di una battuta trovato dalla diagnosi
+    /// </summary>
+    public class TranslationReviewIssue
+    {
+        #region Proprietà
+
+        /// <summary>
+        /// Id della battuta
+        /// </summary>
+        public int Id { get; set; }
+
+        /// <summary>
+        /// Categoria
+        /// </summary>
+        public string Category { get; set; }
+
+        /// <summary>
+        /// Gravità
+        /// </summary>
+        public string Severity { get; set; }
+
+        /// <summary>
+        /// Spiegazione per l'utente
+        /// </summary>
+        public string Explanation { get; set; }
+
+        /// <summary>
+        /// Testo corretto suggerito, vuoto se la diagnosi non lo dà
+        /// </summary>
+        public string Suggestion { get; set; }
 
         #endregion
     }

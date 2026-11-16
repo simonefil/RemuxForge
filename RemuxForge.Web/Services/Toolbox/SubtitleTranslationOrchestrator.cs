@@ -139,9 +139,9 @@ namespace RemuxForge.Web.Services.Toolbox
         public event Action OnWebSearchRejected;
 
         /// <summary>
-        /// Traduzione conclusa o fermata: l'esito sta nel job
+        /// Una fase del giro è finita, o il giro si è fermato nella fase
         /// </summary>
-        public event Action<TranslationJob> OnTranslationFinished;
+        public event Action<TranslationPhaseResult> OnPhaseFinished;
 
         #endregion
 
@@ -263,10 +263,11 @@ namespace RemuxForge.Web.Services.Toolbox
                     if (job.Phase == TranslationJobPhase.Translation && job.Status == TranslationJobStatus.Paused &&
                         job.FileIds.TrueForAll(fileId => this._jobFiles[fileId].TranslationStatus == TranslationFileStatus.Completed))
                     {
-                        job.Phase = TranslationJobPhase.NewTerms;
+                        this.FinishTranslation();
                         job.Status = TranslationJobStatus.Idle;
                         job.Pause = null;
                         this._jobStore.Save(job);
+                        this._store.Save(project);
                     }
                     this.CheckJobSources();
                 }
@@ -355,14 +356,14 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Cambia la modalità della revisione AI
+        /// Cambia la modalità della revisione AI, fino a «Avvia traduzione»
         /// </summary>
         /// <param name="mode">Mirata o completa</param>
         public void SetReviewMode(TranslationReviewMode mode)
         {
             lock (this.StateLock)
             {
-                if (this._project == null || this.IsBusy)
+                if (this._project == null || this.IsBusy || this._job != null)
                     return;
 
                 this._project.Options.ReviewMode = mode;
@@ -744,13 +745,14 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Avvia la traduzione col glossario approvato congelato nel job, o la riprende dal primo blocco da fare di ogni file
+        /// Avvia il giro col glossario approvato congelato nel job e la modalità della revisione AI, o lo riprende nella fase in
+        /// cui si è fermato: traduzione dal primo blocco da fare, applicazione dai file non conclusi, revisione dai blocchi non rivisti
         /// </summary>
-        public void StartTranslation()
+        public void StartJob()
         {
             lock (this.StateLock)
             {
-                if (!this.CanStartTranslation)
+                if (!this.CanStartJob)
                     return;
 
                 if (this._job == null)
@@ -773,6 +775,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     };
                     job.Glossary = TranslationJsonFile.Parse<Glossary>(TranslationJsonFile.Serialize(this._project.Glossary), this._project.Id);
                     job.GlossaryRevisionAtStart = this._project.Glossary.Revision;
+                    job.ReviewMode = this._project.Options.ReviewMode;
                     job.Status = TranslationJobStatus.Idle;
                     foreach (TranslationProjectFile file in this._project.Files)
                     {
@@ -793,7 +796,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     this.CheckJobSources();
                 }
 
-                this.TryRunExclusive(() => this.TranslateAsync().GetAwaiter().GetResult());
+                this.TryRunExclusive(() => this.RunJobAsync().GetAwaiter().GetResult());
             }
         }
 
@@ -824,8 +827,6 @@ namespace RemuxForge.Web.Services.Toolbox
                 state = TranslationRunner.CreateFileState(file, document);
                 this._jobFiles[fileId] = state;
                 this._jobStore.SaveFile(this._job.Id, state);
-                if (this._job.Phase == TranslationJobPhase.NewTerms)
-                    this._job.Phase = TranslationJobPhase.Translation;
                 this._jobStore.Save(this._job);
                 this._store.Save(this._project);
                 name = Path.GetFileName(file.Path);
@@ -836,12 +837,14 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Toglie dal job un file bloccato; con tutti gli altri file conclusi la traduzione è finita
+        /// Toglie dal job un file bloccato; con tutti gli altri file conclusi la traduzione è finita e il giro prosegue: si ferma
+        /// sui termini nuovi da decidere o, senza termini, riparte con la revisione AI
         /// </summary>
         /// <param name="fileId">File del job</param>
         public void ExcludeFile(string fileId)
         {
             string name;
+            bool review = false;
             lock (this.StateLock)
             {
                 TranslationJobFileState state;
@@ -854,9 +857,11 @@ namespace RemuxForge.Web.Services.Toolbox
                 this._jobStore.DeleteFile(this._job.Id, fileId);
                 if (this._job.Phase == TranslationJobPhase.Translation && this._job.FileIds.TrueForAll(id => this._jobFiles[id].TranslationStatus == TranslationFileStatus.Completed))
                 {
-                    this._job.Phase = TranslationJobPhase.NewTerms;
+                    this.FinishTranslation();
                     this._job.Status = TranslationJobStatus.Idle;
                     this._job.Pause = null;
+                    this._store.Save(this._project);
+                    review = this._job.Phase == TranslationJobPhase.Review;
                 }
                 this._jobStore.Save(this._job);
                 name = Path.GetFileName(this._project.Files.Find(f => f.Id == fileId).Path);
@@ -864,6 +869,309 @@ namespace RemuxForge.Web.Services.Toolbox
 
             this.AppendLog(AppText.F(TEXT_PREFIX + ".fileExcluded", name));
             this.NotifyRecordsChanged();
+            if (review)
+                this.StartJob();
+        }
+
+        /// <summary>
+        /// Salva la decisione su un termine nuovo fatta dalla pagina, finché il giro aspetta i termini
+        /// </summary>
+        /// <param name="term">Termine del job</param>
+        /// <param name="change">Modifica, eseguita sotto il lock dello stato</param>
+        public void ChangeNewTerm(NewTermDecision term, Action<NewTermDecision> change)
+        {
+            lock (this.StateLock)
+            {
+                if (this._job == null || this.IsBusy || this._job.Phase != TranslationJobPhase.NewTerms || !this._job.NewTerms.Contains(term))
+                    return;
+
+                change(term);
+                this._jobStore.Save(this._job);
+            }
+
+            this.NotifyRecordsChanged();
+        }
+
+        /// <summary>
+        /// Aggiunge i termini su «Aggiungi» al glossario del job e a quello del progetto, con una revisione in più, e riprende il
+        /// giro: applicazione dei termini, o la revisione AI se sono tutti ignorati. Il progetto si salva prima del job: dopo una
+        /// chiusura brusca fra i due la conferma si ripete e il termine già nel progetto prende la decisione ripetuta
+        /// </summary>
+        public void ConfirmNewTerms()
+        {
+            int added = 0;
+            lock (this.StateLock)
+            {
+                if (!this.CanConfirmNewTerms)
+                    return;
+
+                List<TranslationJobFileState> states = new List<TranslationJobFileState>();
+                foreach (string fileId in this._job.FileIds)
+                    states.Add(this._jobFiles[fileId]);
+                foreach (NewTermDecision decision in this._job.NewTerms)
+                {
+                    if (decision.Decision != NewTermDecisionKind.Add)
+                        continue;
+                    this._job.Glossary.Terms.Add(NewTermCollector.CreateTerm(decision, this._job.Glossary, states));
+                    this._project.Glossary.Terms.RemoveAll(t => t.Origin == GlossaryOrigin.NewTerm && string.Equals(t.Source, decision.Source, StringComparison.Ordinal));
+                    this._project.Glossary.Terms.Add(NewTermCollector.CreateTerm(decision, this._job.Glossary, states));
+                    added++;
+                }
+
+                if (added > 0)
+                {
+                    this._job.Glossary.Revision++;
+                    this._project.Glossary.Revision++;
+                }
+                this._job.Phase = added > 0 ? TranslationJobPhase.Applying : TranslationJobPhase.Review;
+                if (this._job.Phase == TranslationJobPhase.Review && this._project.ReachedStep < TranslationProjectStep.Review)
+                    this._project.ReachedStep = TranslationProjectStep.Review;
+                this._store.Save(this._project);
+                this._jobStore.Save(this._job);
+            }
+
+            this.AppendLog(AppText.Count(TEXT_PREFIX + ".newTermsConfirmed", added));
+            this.StartJob();
+        }
+
+        /// <summary>
+        /// Righe della griglia dell'applicazione dei termini: battute coinvolte e riscritte per file
+        /// </summary>
+        /// <returns>Righe nell'ordine del job, vuote senza job</returns>
+        public List<TermApplicationRow> GetTermApplicationRows()
+        {
+            List<TermApplicationRow> rows = new List<TermApplicationRow>();
+            lock (this.StateLock)
+            {
+                if (this._project == null || this._job == null)
+                    return rows;
+
+                foreach (string fileId in this._job.FileIds)
+                {
+                    TermApplicationState application = this._jobFiles[fileId].TermApplication;
+                    TermApplicationRow row = new TermApplicationRow();
+                    row.FileName = Path.GetFileName(this._project.Files.Find(f => f.Id == fileId).Path);
+                    row.Status = application != null ? application.Status : TermApplicationStatus.Pending;
+                    row.Targets = application != null && application.Status != TermApplicationStatus.Pending ? application.TargetIds.Count : null;
+                    row.Rewritten = application != null && application.Status != TermApplicationStatus.Pending ? application.RewrittenIds.Count : null;
+                    row.Failed = application != null && application.Status != TermApplicationStatus.Pending ? application.FailedIds.Count : 0;
+                    rows.Add(row);
+                }
+            }
+
+            return rows;
+        }
+
+        /// <summary>
+        /// Righe della griglia della revisione di un file: tempi, originale, traduzione, stato e avvisi di ogni battuta da tradurre
+        /// </summary>
+        /// <param name="fileId">File del job</param>
+        /// <returns>Righe in ordine di id, vuote senza job o senza il documento del file</returns>
+        public List<TranslationReviewRow> GetReviewRows(string fileId)
+        {
+            List<TranslationReviewRow> rows = new List<TranslationReviewRow>();
+            lock (this.StateLock)
+            {
+                TranslationJobFileState state;
+                SubtitleTranslationDocument document;
+                if (this._job == null || fileId == null || !this._jobFiles.TryGetValue(fileId, out state) || !this._documents.TryGetValue(fileId, out document))
+                    return rows;
+
+                Dictionary<int, TranslatedCueState> translations = new Dictionary<int, TranslatedCueState>();
+                foreach (TranslatedCueState translation in state.Translations)
+                    translations[translation.Id] = translation;
+                foreach (SubtitleCue cue in document.Cues)
+                {
+                    if (!cue.Id.HasValue)
+                        continue;
+
+                    TranslatedCueState translation;
+                    translations.TryGetValue(cue.Id.Value, out translation);
+                    TranslationReviewRow row = new TranslationReviewRow();
+                    row.Id = cue.Id.Value;
+                    row.StartMs = cue.StartMs;
+                    row.EndMs = cue.EndMs;
+                    row.Source = cue.CleanText;
+                    row.Group = cue.Group;
+                    row.Text = translation != null ? translation.Text : null;
+                    row.ToReview = translation == null || translation.Status == TranslatedCueStatus.ToReview;
+                    row.Signals = translation != null ? new List<TranslationCueSignal>(translation.Signals) : new List<TranslationCueSignal>();
+                    row.CorrectionBefore = translation != null && translation.AiCorrection != null ? translation.AiCorrection.Before : null;
+                    row.CorrectionReason = translation != null && translation.AiCorrection != null ? translation.AiCorrection.Explanation : null;
+                    rows.Add(row);
+                }
+            }
+
+            return rows;
+        }
+
+        /// <summary>
+        /// Salva la modifica a mano di una battuta: stesso validatore delle consegne, avvisi del glossario ricalcolati, segnale
+        /// «Modificata a mano» e versione più uno; un testo con errori non si salva
+        /// </summary>
+        /// <param name="fileId">File del job</param>
+        /// <param name="id">Battuta</param>
+        /// <param name="text">Testo scritto dall'utente</param>
+        /// <returns>Messaggi degli errori, vuoto se la modifica è salvata o non cambia il testo</returns>
+        public string EditCue(string fileId, int id, string text)
+        {
+            lock (this.StateLock)
+            {
+                TranslationJobFileState state;
+                SubtitleTranslationDocument document;
+                if (!this.CanEditCues || !this._jobFiles.TryGetValue(fileId, out state) || !this._documents.TryGetValue(fileId, out document))
+                    return "";
+
+                SubtitleCue cue = null;
+                foreach (SubtitleCue candidate in document.Cues)
+                {
+                    if (candidate.Id == id)
+                        cue = candidate;
+                }
+                List<KeyValuePair<string, string>> terms = new List<KeyValuePair<string, string>>();
+                foreach (GlossaryTerm term in this._job.Glossary.Terms)
+                    terms.Add(new KeyValuePair<string, string>(term.Source, term.Target));
+                CueValidationResult result = new TranslationValidator(document.Format, this._job.Glossary.SourceLanguage, this._job.Glossary.TargetLanguage, terms).ValidateEdit(cue, text);
+                if (result.HasErrors)
+                {
+                    List<string> errors = new List<string>();
+                    foreach (TranslationValidationIssue issue in result.Issues)
+                    {
+                        if (issue.Severity == IssueSeverity.Error)
+                            errors.Add(AppText.F(issue.UiKey, new List<string>(issue.Args.Values).ToArray()));
+                    }
+                    return string.Join(" · ", errors);
+                }
+
+                TranslatedCueState translation = state.Translations.Find(t => t.Id == id);
+                if (translation == null)
+                {
+                    translation = new TranslatedCueState { Id = id, Status = TranslatedCueStatus.ToReview };
+                    state.Translations.Add(translation);
+                    state.Translations.Sort((a, b) => a.Id.CompareTo(b.Id));
+                }
+                if (string.Equals(translation.Text, result.Text, StringComparison.Ordinal))
+                    return "";
+
+                translation.SetText(result.Text, result.GetGlossaryWarnings());
+                if (!translation.Signals.Contains(TranslationCueSignal.EditedByUser))
+                    translation.Signals.Add(TranslationCueSignal.EditedByUser);
+                this._jobStore.SaveFile(this._job.Id, state);
+                this._jobStore.Save(this._job);
+            }
+
+            this.NotifyRecordsChanged();
+            return "";
+        }
+
+        /// <summary>
+        /// Apre il passo Esporta dalla revisione dell'utente
+        /// </summary>
+        public void AdvanceToExport()
+        {
+            lock (this.StateLock)
+            {
+                if (!this.CanEditCues)
+                    return;
+
+                if (this._project.ReachedStep < TranslationProjectStep.Export)
+                    this._project.ReachedStep = TranslationProjectStep.Export;
+                this._store.Save(this._project);
+            }
+
+            this.NotifyRecordsChanged();
+        }
+
+        /// <summary>
+        /// Righe della griglia del passo Esporta: nome d'uscita voluto con la barra Uscita, battute tradotte e senza testo tradotto
+        /// </summary>
+        /// <returns>Righe nell'ordine del job, vuote senza job</returns>
+        public List<TranslationExportRow> GetExportRows()
+        {
+            List<TranslationExportRow> rows = new List<TranslationExportRow>();
+            lock (this.StateLock)
+            {
+                if (this._project == null || this._job == null)
+                    return rows;
+
+                string folder = this.GetBatchOutputFolder();
+                foreach (string fileId in this._job.FileIds)
+                {
+                    TranslationJobFileState state = this._jobFiles[fileId];
+                    TranslationProjectFile file = this._project.Files.Find(f => f.Id == fileId);
+                    TranslationExportRow row = new TranslationExportRow();
+                    row.FileId = fileId;
+                    row.FileName = Path.GetFileName(file.Path);
+                    row.OutputPath = TranslationExporter.GetOutputPath(file.Path, this._project.TargetLanguage, folder);
+                    row.Translated = state.Translations.FindAll(t => t.Text != null).Count;
+                    row.Untranslated = state.Cues.Count - row.Translated;
+                    row.Error = this._documents.ContainsKey(fileId) ? "" : AppText.T(TEXT_PREFIX + ".fileRejected." + file.RejectedReason);
+                    rows.Add(row);
+                }
+            }
+
+            return rows;
+        }
+
+        /// <summary>
+        /// Scrive i sottotitoli tradotti con la barra Uscita, con la card occupata: un nome occupato prende il suffisso, un file
+        /// non scritto tiene il motivo nella sua riga e gli altri proseguono. Il progetto resta nella revisione dell'utente
+        /// </summary>
+        /// <returns>Righe coi percorsi scritti o il motivo, null se l'export non può partire</returns>
+        public List<TranslationExportRow> ExportSubtitles()
+        {
+            List<TranslationExportRow> rows;
+            List<TranslationRunFile> files = new List<TranslationRunFile>();
+            List<string> inputs = new List<string>();
+            lock (this.StateLock)
+            {
+                if (!this.CanEditCues || this.OutputFolderError.Length > 0)
+                    return null;
+
+                rows = this.GetExportRows();
+                foreach (TranslationProjectFile file in this._project.Files)
+                    inputs.Add(file.Path);
+                foreach (TranslationExportRow row in rows)
+                {
+                    SubtitleTranslationDocument document;
+                    files.Add(this._documents.TryGetValue(row.FileId, out document) ? new TranslationRunFile(this._jobFiles[row.FileId], document, row.FileName) : null);
+                }
+                this.BusyState = true;
+            }
+
+            this.SetBusy(true, AppText.T(TEXT_PREFIX + ".subtitlesExporting"));
+            try
+            {
+                OutputPathAllocator allocator = new OutputPathAllocator(inputs);
+                int written = 0;
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    if (files[i] == null)
+                        continue;
+                    try
+                    {
+                        rows[i].OutputPath = TranslationExporter.Export(files[i], rows[i].OutputPath, allocator);
+                        rows[i].Written = true;
+                        written++;
+                        this.AppendLog(AppText.F(TEXT_PREFIX + ".subtitleExported", rows[i].FileName, rows[i].OutputPath));
+                    }
+                    catch (Exception ex)
+                    {
+                        if (!(ex is IOException || ex is UnauthorizedAccessException))
+                            throw;
+                        rows[i].Error = ex.Message;
+                        this.AppendLog(AppText.F(TEXT_PREFIX + ".subtitleNotExported", rows[i].FileName, ex.Message));
+                    }
+                }
+
+                this.AppendLog(AppText.Count(TEXT_PREFIX + ".subtitlesExported", written));
+                return rows;
+            }
+            finally
+            {
+                this.SetBusy(false, "");
+                this.NotifyRecordsChanged();
+            }
         }
 
         /// <summary>
@@ -1050,9 +1358,10 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Chiamate di traduzione scartate da Stop, limite d'uso o chiusura: quelle che nessun blocco tradotto o diviso
-        /// riporta. Durante la traduzione contano solo quelle prima dell'ultimo blocco salvato del file, perché il blocco
-        /// in corso non è ancora salvato
+        /// Chiamate del giro scartate da Stop, limite d'uso o chiusura: quelle che nessuna unità salvata riporta, cioè un blocco
+        /// tradotto o diviso, l'applicazione dei termini di un file, la diagnosi o la correzione di un blocco della revisione.
+        /// Durante il giro contano solo quelle prima dell'ultima chiamata salvata del file, perché l'unità in corso non è ancora
+        /// salvata
         /// </summary>
         /// <returns>Numeri delle chiamate scartate</returns>
         public HashSet<int> GetDiscardedCalls()
@@ -1067,16 +1376,22 @@ namespace RemuxForge.Web.Services.Toolbox
                 HashSet<int> saved = new HashSet<int>();
                 foreach (TranslationJobFileState state in this._jobFiles.Values)
                 {
-                    int last = 0;
+                    List<int> seqs = new List<int>();
                     foreach (TranslationBlock block in state.Blocks)
                     {
-                        if (block.Status == TranslationBlockStatus.Pending)
-                            continue;
-                        foreach (int seq in block.CallSeqs)
-                        {
-                            saved.Add(seq);
-                            last = Math.Max(last, seq);
-                        }
+                        if (block.Status != TranslationBlockStatus.Pending)
+                            seqs.AddRange(block.CallSeqs);
+                    }
+                    if (state.TermApplication != null && state.TermApplication.Status != TermApplicationStatus.Pending)
+                        seqs.AddRange(state.TermApplication.CallSeqs);
+                    foreach (TranslationReviewBlock block in state.ReviewBlocks ?? new List<TranslationReviewBlock>())
+                        seqs.AddRange(block.CallSeqs);
+
+                    int last = 0;
+                    foreach (int seq in seqs)
+                    {
+                        saved.Add(seq);
+                        last = Math.Max(last, seq);
                     }
                     lastSaved[state.FileId] = last;
                 }
@@ -1084,12 +1399,10 @@ namespace RemuxForge.Web.Services.Toolbox
                 bool running = this._job.Status == TranslationJobStatus.Running;
                 foreach (TranslationCallRecord call in this._jobCalls)
                 {
-                    if (call.Kind != TranslationCallKind.B && call.Kind != TranslationCallKind.BRetry && call.Kind != TranslationCallKind.BReduced)
-                        continue;
                     if (saved.Contains(call.CallSeq))
                         continue;
-                    int last;
-                    if (running && (call.FileId == null || !lastSaved.TryGetValue(call.FileId, out last) || call.CallSeq > last))
+                    int fileLast;
+                    if (running && (call.FileId == null || !lastSaved.TryGetValue(call.FileId, out fileLast) || call.CallSeq > fileLast))
                         continue;
                     discarded.Add(call.CallSeq);
                 }
@@ -1357,17 +1670,19 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Traduzione del job, nel thread dell'operazione: i file non conclusi a blocchi, poi lo stato del job col motivo della
-        /// fermata. Nessuna eccezione ne esce, e la card si libera sempre
+        /// Giro del job, nel thread dell'operazione: dalla fase in cui si trova, traduzione, applicazione dei termini e revisione
+        /// AI si susseguono; si ferma ai termini nuovi da decidere, alla revisione dell'utente o a una fermata, con lo stato del job
+        /// e il motivo. Nessuna eccezione ne esce, e la card si libera sempre
         /// </summary>
-        /// <returns>Task della traduzione</returns>
-        private async Task TranslateAsync()
+        /// <returns>Task del giro</returns>
+        private async Task RunJobAsync()
         {
             TranslationJob job = null;
             TranslationStop stop = null;
             ITranslationModelProvider provider = null;
+            TranslationJobPhase phase = TranslationJobPhase.Translation;
 
-            this.SetBusy(true, AppText.T(TEXT_PREFIX + ".translationProgress"));
+            this.SetBusy(true, AppText.T(TEXT_PREFIX + ".jobProgress"));
             try
             {
                 List<TranslationRunFile> files = new List<TranslationRunFile>();
@@ -1375,6 +1690,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 lock (this.StateLock)
                 {
                     job = this._job;
+                    phase = job.Phase;
                     job.Status = TranslationJobStatus.Running;
                     job.Pause = null;
                     job.AccessMode = this.AccessMode;
@@ -1389,29 +1705,103 @@ namespace RemuxForge.Web.Services.Toolbox
                     this._jobStore.Save(job);
                 }
                 this.NotifyRecordsChanged();
-                this.AppendLog(AppText.Count(TEXT_PREFIX + ".translationStarted", files.FindAll(f => f.State.TranslationStatus != TranslationFileStatus.Completed).Count, parallel));
 
-                // Un solo provider per tutti i file: la pausa dei 429 vale per tutti
+                // Un solo provider per tutti i file e tutte le fasi: la pausa dei 429 vale per tutti
                 provider = this._providerFactory.Create(job.DisabledCapabilities);
-                TranslationRunner runner = new TranslationRunner(this._jobStore, job, files, this._jobCalls, this.StateLock);
-                runner.Log += this.AppendLog;
-                runner.Changed += this.NotifyRecordsChanged;
-                runner.Progress += (done, total, fileName, number, count) =>
+                while (stop == null)
                 {
-                    lock (this.StateLock)
+                    if (phase == TranslationJobPhase.Translation)
                     {
-                        this.ProgressState.Total = total;
-                        this.ProgressState.Completed = done;
-                        this.ProgressState.CurrentIndex = done;
-                        this.ProgressState.GlobalPercent = total > 0 ? done * 100 / total : 0;
-                        this.ProgressState.GlobalIndeterminate = false;
-                        this.ProgressState.CurrentEpisode = AppText.F(TEXT_PREFIX + ".blockOfFile", number, count, fileName);
-                        this.ProgressState.CurrentPercent = count > 0 ? (number - 1) * 100 / count : 0;
-                        this.ProgressState.CurrentIndeterminate = false;
+                        this.AppendLog(AppText.Count(TEXT_PREFIX + ".translationStarted", files.FindAll(f => f.State.TranslationStatus != TranslationFileStatus.Completed).Count, parallel));
+                        TranslationRunner runner = new TranslationRunner(this._jobStore, job, files, this._jobCalls, this.StateLock);
+                        this.AttachRunner(runner, TEXT_PREFIX + ".jobProgress", TEXT_PREFIX + ".blockOfFile", null);
+                        stop = await runner.RunAsync(provider, parallel, this.OperationCancellationToken);
+                        if (stop != null)
+                            break;
+
+                        bool completed;
+                        lock (this.StateLock)
+                        {
+                            completed = job.FileIds.TrueForAll(id => this._jobFiles[id].TranslationStatus == TranslationFileStatus.Completed);
+                            if (completed)
+                            {
+                                this.FinishTranslation();
+                                this._jobStore.Save(job);
+                                this._store.Save(this._project);
+                            }
+                        }
+                        if (!completed)
+                        {
+                            // File bloccati: la traduzione resta da finire, il giro si ferma senza fermata
+                            this.AppendLog(AppText.T(TEXT_PREFIX + ".translationBlocked"));
+                            this.OnPhaseFinished?.Invoke(new TranslationPhaseResult { Job = job, Phase = TranslationJobPhase.Translation });
+                            break;
+                        }
+                        this.AppendLog(AppText.T(TEXT_PREFIX + ".translationCompleted"));
+                        if (job.NewTerms.Count > 0)
+                            this.AppendLog(AppText.Count(TEXT_PREFIX + ".newTermsWaiting", job.NewTerms.Count));
+                        this.OnPhaseFinished?.Invoke(new TranslationPhaseResult { Job = job, Phase = TranslationJobPhase.Translation });
+                        phase = job.Phase;
+                        if (phase == TranslationJobPhase.NewTerms)
+                            break;
                     }
-                    this.NotifyProgressChanged();
-                };
-                stop = await runner.RunAsync(provider, parallel, this.OperationCancellationToken);
+                    else if (phase == TranslationJobPhase.Applying)
+                    {
+                        this.AppendLog(AppText.T(TEXT_PREFIX + ".termsStarted"));
+                        TermApplier applier = new TermApplier(this._jobStore, job, files, this._jobCalls, this.StateLock);
+                        this.AttachRunner(applier, TEXT_PREFIX + ".termsProgress", TEXT_PREFIX + ".callOfFile", null);
+                        stop = await applier.RunAsync(provider, parallel, this.OperationCancellationToken);
+                        if (stop != null)
+                            break;
+
+                        int rewritten = 0;
+                        lock (this.StateLock)
+                        {
+                            foreach (TranslationRunFile file in files)
+                                rewritten += file.State.TermApplication.RewrittenIds.Count;
+                            job.Phase = TranslationJobPhase.Review;
+                            this._jobStore.Save(job);
+                        }
+                        this.AppendLog(AppText.Count(TEXT_PREFIX + ".termsApplied", rewritten));
+                        this.OnPhaseFinished?.Invoke(new TranslationPhaseResult { Job = job, Phase = TranslationJobPhase.Applying });
+                        phase = job.Phase;
+                    }
+                    else
+                    {
+                        // Blocchi scelti una volta e salvati: alla ripresa la scelta non cambia
+                        TranslationReviewer reviewer = new TranslationReviewer(this._jobStore, job, files, this._jobCalls, this.StateLock);
+                        lock (this.StateLock)
+                        {
+                            if (this._project.ReachedStep < TranslationProjectStep.Review)
+                                this._project.ReachedStep = TranslationProjectStep.Review;
+                            foreach (TranslationRunFile file in files)
+                                this._jobStore.SaveFile(job.Id, file.State);
+                            this._store.Save(this._project);
+                        }
+
+                        int blocks = reviewer.BlockCount;
+                        if (blocks > 0)
+                        {
+                            this.AppendLog(AppText.Count(TEXT_PREFIX + ".reviewStarted", blocks));
+                            this.AttachRunner(reviewer, TEXT_PREFIX + ".reviewPhrase", TEXT_PREFIX + ".blockOfFile", job.Models.Review);
+                            stop = await reviewer.RunAsync(provider, parallel, this.OperationCancellationToken);
+                            if (stop != null)
+                                break;
+                        }
+
+                        int corrected = 0;
+                        lock (this.StateLock)
+                        {
+                            foreach (TranslationRunFile file in files)
+                                corrected += file.State.Translations.FindAll(t => t.Signals.Contains(TranslationCueSignal.CorrectedByAi)).Count;
+                            job.Phase = TranslationJobPhase.UserReview;
+                            this._jobStore.Save(job);
+                        }
+                        this.AppendLog(blocks > 0 ? AppText.Count(TEXT_PREFIX + ".reviewCompleted", corrected) : AppText.T(TEXT_PREFIX + ".reviewNothing"));
+                        this.OnPhaseFinished?.Invoke(new TranslationPhaseResult { Job = job, Phase = TranslationJobPhase.Review, ReviewBlocks = blocks, Corrected = corrected });
+                        break;
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -1426,17 +1816,11 @@ namespace RemuxForge.Web.Services.Toolbox
                     {
                         if (provider != null)
                             job.DisabledCapabilities = provider.Capabilities.DisabledCapabilities;
-                        if (stop != null)
-                        {
-                            job.Status = TranslationJobStatus.Paused;
-                            job.Pause = stop;
-                        }
-                        else
-                        {
-                            job.Status = TranslationJobStatus.Idle;
-                            if (job.FileIds.TrueForAll(id => this._jobFiles[id].TranslationStatus == TranslationFileStatus.Completed))
-                                job.Phase = TranslationJobPhase.NewTerms;
-                        }
+                        job.Status = stop != null ? TranslationJobStatus.Paused : TranslationJobStatus.Idle;
+                        job.Pause = stop;
+                        phase = job.Phase;
+                        this._phrase = "";
+                        this._detail = "";
                     }
 
                     // Un disco che non scrive non deve chiudere l'app: la fermata resta in memoria e all'apertura diventa Crash
@@ -1454,17 +1838,74 @@ namespace RemuxForge.Web.Services.Toolbox
                         this.AppendLog(AppText.F(TEXT_PREFIX + ".projectNotSaved", saveError.Message));
                     }
 
-                    if (stop == null)
-                        this.AppendLog(job.Phase == TranslationJobPhase.NewTerms ? AppText.T(TEXT_PREFIX + ".translationCompleted") : AppText.T(TEXT_PREFIX + ".translationBlocked"));
-                    else
-                        this.AppendLog(stop.Reason == TranslationStopReason.Stop ? AppText.T(TEXT_PREFIX + ".translationStopped") : AppText.F(TEXT_PREFIX + ".translationPaused", stop.Message));
+                    if (stop != null)
+                    {
+                        string name = phase == TranslationJobPhase.Applying ? "terms" : phase == TranslationJobPhase.Review ? "review" : "translation";
+                        this.AppendLog(stop.Reason == TranslationStopReason.Stop ? AppText.T(TEXT_PREFIX + "." + name + "Stopped") : AppText.F(TEXT_PREFIX + "." + name + "Paused", stop.Message));
+                    }
                 }
 
                 this.SetBusy(false, "");
                 this.NotifyRecordsChanged();
-                if (job != null)
-                    this.OnTranslationFinished?.Invoke(job);
+                if (job != null && stop != null)
+                    this.OnPhaseFinished?.Invoke(new TranslationPhaseResult { Job = job, Phase = phase, Stop = stop });
             }
+        }
+
+        /// <summary>
+        /// Lega una fase al log, alla pagina e alle barre: l'operazione della fase, la Globale con le unità fatte, la File con l'unità
+        /// del file; la revisione mostra anche blocco e modello nell'attesa
+        /// </summary>
+        /// <param name="runner">Fase del giro</param>
+        /// <param name="operationKey">Chiave del testo dell'operazione della fase</param>
+        /// <param name="unitKey">Chiave del testo dell'unità del file</param>
+        /// <param name="model">Modello per la riga dell'attesa, null fuori dalla revisione</param>
+        private void AttachRunner(TranslationPhaseRunner runner, string operationKey, string unitKey, string model)
+        {
+            lock (this.StateLock)
+            {
+                this.ProgressState.Operation = AppText.T(operationKey);
+                this.ProgressState.CurrentStatus = this.ProgressState.Operation;
+            }
+            runner.Log += this.AppendLog;
+            runner.Changed += this.NotifyRecordsChanged;
+            runner.Progress += (done, total, fileName, number, count) =>
+            {
+                lock (this.StateLock)
+                {
+                    this.ProgressState.Total = total;
+                    this.ProgressState.Completed = done;
+                    this.ProgressState.CurrentIndex = done;
+                    this.ProgressState.GlobalPercent = total > 0 ? done * 100 / total : 0;
+                    this.ProgressState.GlobalIndeterminate = false;
+                    this.ProgressState.CurrentEpisode = AppText.F(unitKey, number, count, fileName);
+                    this.ProgressState.CurrentPercent = count > 0 ? (number - 1) * 100 / count : 0;
+                    this.ProgressState.CurrentIndeterminate = false;
+                    if (model != null)
+                    {
+                        this._phrase = AppText.T(TEXT_PREFIX + ".reviewPhrase");
+                        this._detail = AppText.F(TEXT_PREFIX + ".reviewDetail", number, count, fileName, model);
+                    }
+                }
+                this.NotifyProgressChanged();
+            };
+        }
+
+        /// <summary>
+        /// Chiude la traduzione conclusa: raccoglie i termini nuovi di tutti i file; con termini il giro aspetta l'utente, senza
+        /// passa alla revisione AI, e il passo raggiunto segue la fase; chiamato sotto StateLock
+        /// </summary>
+        private void FinishTranslation()
+        {
+            List<TranslationJobFileState> states = new List<TranslationJobFileState>();
+            foreach (string fileId in this._job.FileIds)
+                states.Add(this._jobFiles[fileId]);
+
+            this._job.NewTerms = NewTermCollector.Collect(this._job.Glossary, states);
+            this._job.Phase = this._job.NewTerms.Count > 0 ? TranslationJobPhase.NewTerms : TranslationJobPhase.Review;
+            TranslationProjectStep reached = this._job.Phase == TranslationJobPhase.NewTerms ? TranslationProjectStep.NewTerms : TranslationProjectStep.Review;
+            if (this._project.ReachedStep < reached)
+                this._project.ReachedStep = reached;
         }
 
         /// <summary>
@@ -1896,10 +2337,10 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// True se la traduzione può partire o riprendere: glossario approvato, file preparati, job senza lavoro in corso con file
-        /// da tradurre che non siano bloccati
+        /// True se il giro può partire o riprendere: glossario approvato e file preparati; col job, la traduzione con file da
+        /// tradurre che non siano bloccati, l'applicazione dei termini o la revisione AI senza lavoro in corso
         /// </summary>
-        public bool CanStartTranslation
+        public bool CanStartJob
         {
             get
             {
@@ -1911,8 +2352,40 @@ namespace RemuxForge.Web.Services.Toolbox
                     if (this._job == null)
                         return this._documents.Count == this._project.Files.Count && this._project.Files.Count > 0;
 
+                    if (this._job.Phase == TranslationJobPhase.Applying || this._job.Phase == TranslationJobPhase.Review)
+                        return this._job.Status != TranslationJobStatus.Running;
+
                     return this._job.Phase == TranslationJobPhase.Translation && this._job.FileIds.Exists(id =>
                         this._jobFiles[id].TranslationStatus != TranslationFileStatus.Completed && this._jobFiles[id].TranslationStatus != TranslationFileStatus.Blocked);
+                }
+            }
+        }
+
+        /// <summary>
+        /// True se «Conferma e prosegui» è attivo: giro fermo sui termini nuovi, ogni termine aggiunto con una resa
+        /// </summary>
+        public bool CanConfirmNewTerms
+        {
+            get
+            {
+                lock (this.StateLock)
+                {
+                    return this._job != null && !this.IsBusy && this._job.Phase == TranslationJobPhase.NewTerms && this._job.Status == TranslationJobStatus.Idle &&
+                        !this._job.NewTerms.Exists(t => t.Decision == NewTermDecisionKind.Add && string.IsNullOrWhiteSpace(t.ChosenTarget));
+                }
+            }
+        }
+
+        /// <summary>
+        /// True nella revisione dell'utente con la card libera: le battute si modificano e i sottotitoli si esportano
+        /// </summary>
+        public bool CanEditCues
+        {
+            get
+            {
+                lock (this.StateLock)
+                {
+                    return this._job != null && !this.IsBusy && this._job.Phase == TranslationJobPhase.UserReview && this._job.Status == TranslationJobStatus.Idle;
                 }
             }
         }
@@ -2125,6 +2598,181 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Token in uscita reali, null se il registro non li ha
         /// </summary>
         public long? OutputTokens { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Fine di una fase del giro, o fermata del giro nella fase del job
+    /// </summary>
+    public sealed class TranslationPhaseResult
+    {
+        #region Proprietà
+
+        /// <summary>
+        /// Job del giro
+        /// </summary>
+        public TranslationJob Job { get; set; }
+
+        /// <summary>
+        /// Fase finita o fermata
+        /// </summary>
+        public TranslationJobPhase Phase { get; set; }
+
+        /// <summary>
+        /// Blocchi scelti dalla revisione AI
+        /// </summary>
+        public int ReviewBlocks { get; set; }
+
+        /// <summary>
+        /// Battute corrette dalla revisione AI
+        /// </summary>
+        public int Corrected { get; set; }
+
+        /// <summary>
+        /// Fermata del giro nella fase, null per la fase conclusa
+        /// </summary>
+        public TranslationStop Stop { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Riga della griglia dell'applicazione dei termini: un file del job
+    /// </summary>
+    public sealed class TermApplicationRow
+    {
+        #region Proprietà
+
+        /// <summary>
+        /// Nome del file sorgente
+        /// </summary>
+        public string FileName { get; set; }
+
+        /// <summary>
+        /// Stato dell'applicazione
+        /// </summary>
+        public TermApplicationStatus Status { get; set; }
+
+        /// <summary>
+        /// Battute coinvolte, null prima che il file sia concluso
+        /// </summary>
+        public int? Targets { get; set; }
+
+        /// <summary>
+        /// Battute riscritte, null prima che il file sia concluso
+        /// </summary>
+        public int? Rewritten { get; set; }
+
+        /// <summary>
+        /// Riscritture non riuscite, col testo di prima
+        /// </summary>
+        public int Failed { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Riga della griglia della revisione: una battuta da tradurre con lo stato della traduzione
+    /// </summary>
+    public sealed class TranslationReviewRow
+    {
+        #region Proprietà
+
+        /// <summary>
+        /// Id della battuta
+        /// </summary>
+        public int Id { get; set; }
+
+        /// <summary>
+        /// Inizio in millisecondi
+        /// </summary>
+        public long StartMs { get; set; }
+
+        /// <summary>
+        /// Fine in millisecondi
+        /// </summary>
+        public long EndMs { get; set; }
+
+        /// <summary>
+        /// Testo pulito del sorgente
+        /// </summary>
+        public string Source { get; set; }
+
+        /// <summary>
+        /// Frase spezzata della battuta, null se nessuna
+        /// </summary>
+        public int? Group { get; set; }
+
+        /// <summary>
+        /// Traduzione, null senza testo tradotto
+        /// </summary>
+        public string Text { get; set; }
+
+        /// <summary>
+        /// True per una battuta da rivedere o senza traduzione
+        /// </summary>
+        public bool ToReview { get; set; }
+
+        /// <summary>
+        /// Segnali della battuta
+        /// </summary>
+        public List<TranslationCueSignal> Signals { get; set; }
+
+        /// <summary>
+        /// Testo prima della correzione della revisione AI, null se nessuno
+        /// </summary>
+        public string CorrectionBefore { get; set; }
+
+        /// <summary>
+        /// Motivo della correzione della revisione AI, null se nessuno
+        /// </summary>
+        public string CorrectionReason { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Riga della griglia del passo Esporta: un file del job con l'uscita
+    /// </summary>
+    public sealed class TranslationExportRow
+    {
+        #region Proprietà
+
+        /// <summary>
+        /// File del job
+        /// </summary>
+        public string FileId { get; set; }
+
+        /// <summary>
+        /// Nome del file sorgente
+        /// </summary>
+        public string FileName { get; set; }
+
+        /// <summary>
+        /// Percorso voluto prima dell'export, percorso scritto dopo
+        /// </summary>
+        public string OutputPath { get; set; }
+
+        /// <summary>
+        /// True se il file è scritto
+        /// </summary>
+        public bool Written { get; set; }
+
+        /// <summary>
+        /// Battute col testo tradotto
+        /// </summary>
+        public int Translated { get; set; }
+
+        /// <summary>
+        /// Battute senza testo tradotto, che escono col testo originale
+        /// </summary>
+        public int Untranslated { get; set; }
+
+        /// <summary>
+        /// Motivo per cui il file non si scrive, vuoto se nessuno
+        /// </summary>
+        public string Error { get; set; }
 
         #endregion
     }

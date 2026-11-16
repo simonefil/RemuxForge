@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -53,6 +54,36 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Secondo modello sintetico, con altri livelli di ragionamento
         /// </summary>
         public const string SMALL_MODEL_ID = "recorded-translation-small";
+
+        /// <summary>
+        /// Coda in fondo al suggerimento dei problemi sintetici della diagnosi
+        /// </summary>
+        public const string SYNTHETIC_CORRECTION = " (rev)";
+
+        /// <summary>
+        /// Riga che apre le rese aggiornate nella coda di C
+        /// </summary>
+        private const string UPDATED_TERMS_HEADER = "UPDATED TERMS (apply these renderings):";
+
+        /// <summary>
+        /// Riga del suggerimento di un problema nella coda di D2
+        /// </summary>
+        private const string SUGGESTION_HEADER = "\tsuggestion: ";
+
+        /// <summary>
+        /// Record della traduzione attuale: id, gruppo facoltativo, freccia e testo
+        /// </summary>
+        private static readonly Regex s_translationRecord = new Regex(@"^(\d+)(?: \[g\d+\])? =>\t(.*)$", RegexOptions.CultureInvariant);
+
+        /// <summary>
+        /// Record dei segnali di una battuta nella coda di D1
+        /// </summary>
+        private static readonly Regex s_signalRecord = new Regex(@"^(\d+) !\t", RegexOptions.CultureInvariant);
+
+        /// <summary>
+        /// Riga di un problema diagnosticato nella coda di D2
+        /// </summary>
+        private static readonly Regex s_issueLine = new Regex(@"^(\d+) \[[a-z_]+/[a-z]+\] ", RegexOptions.CultureInvariant);
 
         #endregion
 
@@ -211,9 +242,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
             }
 
-            // Consegna sintetica: traduzione col prefisso fisso davanti al testo sorgente, diagnosi vuota o glossario dai candidati
+            // Consegna sintetica: traduzione col prefisso fisso davanti al testo sorgente, riscrittura con le rese aggiornate,
+            // correzione col suggerimento, diagnosi vuota o glossario dai candidati
             StringBuilder inputText = new StringBuilder(prepared.Instructions);
             Dictionary<int, string> sources = new Dictionary<int, string>();
+            Dictionary<int, string> currents = new Dictionary<int, string>();
+            Dictionary<int, string> suggestions = new Dictionary<int, string>();
+            List<KeyValuePair<string, string>> updated = new List<KeyValuePair<string, string>>();
+            List<int> signalled = new List<int>();
             List<int> requestedIds = new List<int>();
             JsonObject arguments = new JsonObject();
             string toolName;
@@ -227,7 +263,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // Battute sorgente: dopo SOURCE EPISODE fino alla riga vuota, con le righe di continuazione che iniziano col tab
                 string[] lines = content.Replace("\r\n", "\n").Split('\n');
                 bool inSource = false;
+                bool inUpdated = false;
                 int currentId = 0;
+                Dictionary<int, string> continued = null;
+                int continuedId = 0;
                 for (int j = 0; j < lines.Length; j++)
                 {
                     string line = lines[j];
@@ -265,7 +304,50 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
 
                     if (!inSource)
+                    {
+                        // Coda di C e D: rese aggiornate, traduzioni attuali, suggerimenti e battute coi segnali, righe di continuazione col tab
+                        Match match;
+                        if (line == UPDATED_TERMS_HEADER)
+                        {
+                            inUpdated = true;
+                        }
+                        else if (inUpdated)
+                        {
+                            int arrow = line.IndexOf(" => ", StringComparison.Ordinal);
+                            if (arrow > 0)
+                                updated.Add(new KeyValuePair<string, string>(line.Substring(0, arrow), line.Substring(arrow + 4)));
+                            else
+                                inUpdated = false;
+                        }
+                        else if (line.StartsWith(SUGGESTION_HEADER, StringComparison.Ordinal) && continuedId > 0)
+                        {
+                            suggestions[continuedId] = line.Substring(SUGGESTION_HEADER.Length);
+                            continued = suggestions;
+                        }
+                        else if (line.Length > 0 && line[0] == '\t' && continued != null)
+                        {
+                            continued[continuedId] = continued[continuedId] + "\n" + line.Substring(1);
+                        }
+                        else if ((match = s_translationRecord.Match(line)).Success)
+                        {
+                            continuedId = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+                            currents[continuedId] = match.Groups[2].Value;
+                            continued = currents;
+                        }
+                        else if ((match = s_issueLine.Match(line)).Success)
+                        {
+                            continuedId = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+                            continued = null;
+                        }
+                        else
+                        {
+                            match = s_signalRecord.Match(line);
+                            if (match.Success)
+                                signalled.Add(int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture));
+                            continued = null;
+                        }
                         continue;
+                    }
 
                     if (line.Length == 0)
                     {
@@ -353,8 +435,23 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
             else if (request.Kind == TranslationCallKind.D1)
             {
+                // Con il guasto Issues un problema per battuta segnalata, o sulla prima del blocco, col testo attuale corretto
+                JsonArray issues = new JsonArray();
+                if (fault != null && fault.Kind == RecordedTranslationFaultKind.Issues && requestedIds.Count > 0)
+                {
+                    List<int> diagnosed = signalled.FindAll(id => requestedIds.Contains(id));
+                    if (diagnosed.Count == 0)
+                        diagnosed.Add(requestedIds[0]);
+                    foreach (int id in diagnosed)
+                    {
+                        string current;
+                        string source;
+                        string text = currents.TryGetValue(id, out current) ? current : SYNTHETIC_PREFIX + (sources.TryGetValue(id, out source) ? source : "#" + id.ToString(CultureInfo.InvariantCulture));
+                        issues.Add(new JsonObject { ["id"] = id, ["category"] = "accuracy", ["severity"] = "minor", ["explanation"] = SYNTHETIC_PREFIX + "issue " + id.ToString(CultureInfo.InvariantCulture), ["suggestion"] = text + SYNTHETIC_CORRECTION });
+                    }
+                }
                 toolName = "submit_diagnosis";
-                arguments["issues"] = new JsonArray();
+                arguments["issues"] = issues;
             }
             else
             {
@@ -366,13 +463,26 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (fault != null && fault.Kind == RecordedTranslationFaultKind.WrongCues && requestedIds.Count > 1 && i == requestedIds.Count - 1)
                         continue;
 
+                    string current;
+                    string suggestion;
                     string text = sources.TryGetValue(id, out source) ? SYNTHETIC_PREFIX + source : SYNTHETIC_PREFIX + "#" + id.ToString(CultureInfo.InvariantCulture);
+                    if (request.Kind == TranslationCallKind.C)
+                    {
+                        // Riscrittura: la traduzione attuale con le rese aggiornate al posto dei termini
+                        text = currents.TryGetValue(id, out current) ? current : text;
+                        foreach (KeyValuePair<string, string> term in updated)
+                            text = text.Replace(term.Key, term.Value, StringComparison.Ordinal);
+                    }
+                    else if (request.Kind == TranslationCallKind.D2)
+                    {
+                        text = suggestions.TryGetValue(id, out suggestion) ? suggestion : currents.TryGetValue(id, out current) ? current : text;
+                    }
                     translations.Add(new JsonObject { ["id"] = id, ["text"] = fault != null && fault.Kind == RecordedTranslationFaultKind.WrongCues && i == 0 ? "" : text });
                 }
 
                 JsonArray newTerms = new JsonArray();
                 if (fault != null && fault.Kind == RecordedTranslationFaultKind.NewTerm)
-                    newTerms.Add(new JsonObject { ["source"] = fault.Term, ["target"] = SYNTHETIC_PREFIX + fault.Term });
+                    newTerms.Add(new JsonObject { ["source"] = fault.Term, ["target"] = string.IsNullOrEmpty(fault.Rendering) ? SYNTHETIC_PREFIX + fault.Term : fault.Rendering });
 
                 toolName = "submit_translation";
                 arguments["translations"] = translations;
