@@ -7,14 +7,30 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
     /// Export dei sottotitoli tradotti: il documento del sorgente con i soli campi testo sostituiti, accanto al sorgente o nella
-    /// cartella scelta, col nome del sorgente e la lingua d'arrivo ISO 639-2; un nome occupato prende il suffisso, mai sovrascritto
+    /// cartella scelta, col nome del sorgente e la lingua d'arrivo ISO 639-2 al posto di quella in coda; un nome occupato prende il suffisso, mai sovrascritto
     /// </summary>
     public static class TranslationExporter
     {
         #region Metodi pubblici
 
         /// <summary>
-        /// Percorso voluto dell'uscita, prima delle collisioni: «nome.lingua.ext»
+        /// Nome dell'uscita: «nome.lingua.ext», con la lingua d'arrivo al posto del codice di lingua in coda al nome del sorgente
+        /// </summary>
+        /// <param name="sourcePath">Sottotitolo sorgente</param>
+        /// <param name="targetLanguage">Lingua d'arrivo</param>
+        /// <returns>Nome del file tradotto</returns>
+        public static string GetOutputName(string sourcePath, string targetLanguage)
+        {
+            string stem = Path.GetFileNameWithoutExtension(sourcePath);
+            int dot = stem.LastIndexOf('.');
+            if (dot > 0 && LanguageValidator.IsValid(stem.Substring(dot + 1)))
+                stem = stem.Substring(0, dot);
+
+            return stem + "." + LanguageValidator.NormalizeToIso6392(targetLanguage) + Path.GetExtension(sourcePath);
+        }
+
+        /// <summary>
+        /// Percorso voluto dell'uscita, prima delle collisioni
         /// </summary>
         /// <param name="sourcePath">Sottotitolo sorgente</param>
         /// <param name="targetLanguage">Lingua d'arrivo</param>
@@ -23,7 +39,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public static string GetOutputPath(string sourcePath, string targetLanguage, string outputFolder)
         {
             string folder = string.IsNullOrEmpty(outputFolder) ? Path.GetDirectoryName(Path.GetFullPath(sourcePath)) : outputFolder;
-            return Path.Combine(folder, Path.GetFileNameWithoutExtension(sourcePath) + "." + LanguageValidator.NormalizeToIso6392(targetLanguage) + Path.GetExtension(sourcePath));
+            return Path.Combine(folder, GetOutputName(sourcePath, targetLanguage));
         }
 
         /// <summary>

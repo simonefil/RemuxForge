@@ -205,8 +205,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                 translated[translation.Id] = translation.Text;
                         }
 
-                        string partialName = Path.GetFileNameWithoutExtension(file.Path) + "." + project.TargetLanguage + Path.GetExtension(file.Path);
-                        this.AddEntry(zip, manifest, PARTIAL_FOLDER + file.Id + "/" + partialName, document.Write(translated), TranslationArchiveRole.Partial);
+                        this.AddEntry(zip, manifest, PARTIAL_FOLDER + file.Id + "/" + TranslationExporter.GetOutputName(file.Path, project.TargetLanguage), document.Write(translated), TranslationArchiveRole.Partial);
                     }
 
                     if (project.Glossary != null)
