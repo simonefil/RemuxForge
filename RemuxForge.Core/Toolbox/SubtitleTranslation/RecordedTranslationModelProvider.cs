@@ -482,7 +482,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                 JsonArray newTerms = new JsonArray();
                 if (fault != null && fault.Kind == RecordedTranslationFaultKind.NewTerm)
-                    newTerms.Add(new JsonObject { ["source"] = fault.Term, ["target"] = string.IsNullOrEmpty(fault.Rendering) ? SYNTHETIC_PREFIX + fault.Term : fault.Rendering });
+                    newTerms.Add(new JsonObject { ["source"] = fault.Term, ["target"] = string.IsNullOrEmpty(fault.Rendering) ? SYNTHETIC_PREFIX + fault.Term : fault.Rendering, ["kind"] = "name", ["invariable"] = true });
 
                 toolName = "submit_translation";
                 arguments["translations"] = translations;

@@ -425,7 +425,7 @@
                         <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termSource")" Width="17%">
                             <Template Context="term"><span class="rf-translation-cell">@term.Source</span></Template>
                         </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termRenderings")" Width="26%">
+                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termRenderings")" Width="21%">
                             <Template Context="term">
                                 <span class="rf-translation-renderings">
                                     @foreach (NewTermRendering rendering in term.Renderings)
@@ -445,7 +445,7 @@
                                 <CellText Text="@episodes.Count.ToString(CultureInfo.CurrentCulture)" />
                             </Template>
                         </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termChosen")" Width="22%">
+                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termChosen")" Width="18%">
                             <Template Context="term">
                                 <RadzenTextBox class="@("rf-translation-cell-input" + (term.Decision == NewTermDecisionKind.Add && string.IsNullOrWhiteSpace(term.ChosenTarget) ? " rf-tool-input-invalid" : ""))"
                                                Value="@term.ChosenTarget" Disabled="@(!deciding)" aria-label="@(AppText.T("web.toolbox.subtitleTranslation.termChosen") + " " + term.Source)"
@@ -460,6 +460,12 @@
                                     <Template Context="kind">@AppText.T("web.toolbox.subtitleTranslation.kind." + kind)</Template>
                                     <ValueTemplate Context="kind">@AppText.T("web.toolbox.subtitleTranslation.kind." + kind)</ValueTemplate>
                                 </RadzenDropDown>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termInvariable")" Width="9%" TextAlign="TextAlign.Center">
+                            <Template Context="term">
+                                <RadzenCheckBox TValue="bool" Value="@term.Invariable" Disabled="@(!deciding)" aria-label="@(AppText.T("web.toolbox.subtitleTranslation.termInvariable") + " " + term.Source)"
+                                                Change="@((bool value) => Orchestrator.ChangeNewTerm(term, t => t.Invariable = value))" />
                             </Template>
                         </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="NewTermDecision" Width="15%">

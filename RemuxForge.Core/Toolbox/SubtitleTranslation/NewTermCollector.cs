@@ -39,10 +39,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     NewTermDecision decision;
                     if (!byKey.TryGetValue(key, out decision))
                     {
-                        decision = new NewTermDecision { Source = report.Source };
+                        decision = new NewTermDecision { Source = report.Source, Kind = report.Kind, Invariable = report.Invariable };
                         byKey[key] = decision;
                         decisions.Add(decision);
                     }
+                    decision.Invariable &= report.Invariable;
 
                     NewTermRendering rendering = decision.Renderings.Find(r => string.Equals(r.Target, report.Target, StringComparison.Ordinal));
                     if (rendering == null)
@@ -71,8 +72,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Voce del glossario di un termine aggiunto: resa scelta, episodi delle segnalazioni e prima nota del modello. Un nome
-        /// proprio è invariabile
+        /// Voce del glossario di un termine aggiunto: resa scelta, tipo, invariabile, episodi delle segnalazioni e prima nota del
+        /// modello
         /// </summary>
         /// <param name="decision">Termine deciso con «Aggiungi»</param>
         /// <param name="glossary">Glossario del job, per la lingua d'origine</param>
@@ -84,7 +85,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             term.Source = decision.Source;
             term.Target = decision.ChosenTarget.Trim();
             term.Kind = decision.Kind;
-            term.Invariable = decision.Kind == GlossaryTermKind.Name;
+            term.Invariable = decision.Invariable;
             term.Origin = GlossaryOrigin.NewTerm;
             foreach (NewTermRendering rendering in decision.Renderings)
             {

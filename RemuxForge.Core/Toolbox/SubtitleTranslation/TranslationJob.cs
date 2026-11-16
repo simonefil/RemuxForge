@@ -708,6 +708,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Source = "";
             this.Target = "";
             this.Note = "";
+            this.Kind = GlossaryTermKind.Term;
+            this.Invariable = false;
             this.CallSeq = 0;
             this.BlockIndex = 0;
             this.CueIds = new List<int>();
@@ -731,6 +733,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Nota del modello
         /// </summary>
         public string Note { get; set; }
+
+        /// <summary>
+        /// Tipo dichiarato dal modello
+        /// </summary>
+        public GlossaryTermKind Kind { get; set; }
+
+        /// <summary>
+        /// Nome che non si flette, secondo il modello
+        /// </summary>
+        public bool Invariable { get; set; }
 
         /// <summary>
         /// Chiamata che l'ha segnalato
@@ -766,6 +778,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Renderings = new List<NewTermRendering>();
             this.ChosenTarget = "";
             this.Kind = GlossaryTermKind.Term;
+            this.Invariable = false;
             this.Decision = NewTermDecisionKind.Add;
         }
 
@@ -789,9 +802,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public string ChosenTarget { get; set; }
 
         /// <summary>
-        /// Tipo del termine nel glossario
+        /// Tipo del termine nel glossario; parte da quello della prima segnalazione
         /// </summary>
         public GlossaryTermKind Kind { get; set; }
+
+        /// <summary>
+        /// Nome che non si flette: la correzione delle battute la fa il codice. Parte vero solo se tutte le segnalazioni lo dicono
+        /// </summary>
+        public bool Invariable { get; set; }
 
         /// <summary>
         /// Aggiungi o Ignora

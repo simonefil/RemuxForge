@@ -54,7 +54,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "The first message gives the approved glossary and the full source episode. The last message shows the latest accepted translations and names the cue ids to translate now.\n" +
             "This is not a chat: nobody reads plain text. Deliver only by calling submit_translation once, with one entry per requested id in ascending order.\n" +
             "When the last message lists rejected ids with error codes, deliver only the requested ids, fixing every listed error.\n" +
-            "Report in new_terms every name or recurring term that is not among the glossary terms and that you had to render or keep, with the rendering you used. Leave new_terms empty when there are none.\n" +
+            "Report in new_terms every name or recurring term that is not among the glossary terms and that you had to render or keep, with the rendering you used and its kind. Set invariable to true for names that never inflect and must appear verbatim. Leave new_terms empty when there are none.\n" +
             "\n" +
             "{record_format}\n" +
             "\n" +
@@ -161,8 +161,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "\"text\":{\"type\":\"string\",\"description\":\"Translated cue text. Line breaks as \\\\n; every ⟦n text⟧ span of the source cue exactly once, in order.\"}}," +
             "\"required\":[\"id\",\"text\"],\"additionalProperties\":false}}," +
             "\"new_terms\":{\"type\":\"array\",\"description\":\"Names or recurring terms NOT among the glossary terms that you had to render, with the rendering you used.\"," +
-            "\"items\":{\"type\":\"object\",\"properties\":{\"source\":{\"type\":\"string\"},\"target\":{\"type\":\"string\"},\"note\":{\"type\":\"string\"}}," +
-            "\"required\":[\"source\",\"target\"],\"additionalProperties\":false}}}," +
+            "\"items\":{\"type\":\"object\",\"properties\":{\"source\":{\"type\":\"string\"},\"target\":{\"type\":\"string\"}," +
+            "\"kind\":{\"type\":\"string\",\"enum\":[\"name\",\"place\",\"organization\",\"title\",\"term\",\"catchphrase\"]}," +
+            "\"invariable\":{\"type\":\"boolean\",\"description\":\"True for proper names that never inflect and must appear verbatim.\"},\"note\":{\"type\":\"string\"}}," +
+            "\"required\":[\"source\",\"target\",\"kind\",\"invariable\"],\"additionalProperties\":false}}}," +
             "\"required\":[\"translations\",\"new_terms\"],\"additionalProperties\":false}}";
 
         #endregion

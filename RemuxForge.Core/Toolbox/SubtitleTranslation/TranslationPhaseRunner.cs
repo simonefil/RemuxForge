@@ -336,6 +336,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         term.Source = source.Trim();
                         term.Target = target.Trim();
                         term.Note = AiOAuthFlow.GetString(entry, "note") ?? "";
+                        GlossaryTermKind termKind;
+                        if (Enum.TryParse(AiOAuthFlow.GetString(entry, "kind"), true, out termKind) && Enum.IsDefined(termKind))
+                            term.Kind = termKind;
+                        term.Invariable = entry["invariable"] is JsonValue invariable && invariable.GetValueKind() == JsonValueKind.True;
                         term.BlockIndex = work.BlockIndex.Value;
                         string word = TranslationValidator.StripArticle(term.Source, LanguageValidator.NormalizeToIso6392(this._job.Glossary.SourceLanguage));
                         if (!string.IsNullOrEmpty(word))
