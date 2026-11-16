@@ -169,7 +169,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         if (!File.Exists(file.Path))
                             throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.archive.sourceMissing", file.Path));
                         byte[] source = File.ReadAllBytes(file.Path);
-                        if (Sha256(source) != file.SourceSha256)
+                        if (ComputeSha256(source) != file.SourceSha256)
                             throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.archive.sourceChanged", file.Path));
 
                         this.AddEntry(zip, manifest, archivePath, source, TranslationArchiveRole.Source);
@@ -287,7 +287,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 {
                     TranslationArchiveSource source = inspection.Manifest.Sources.Find(s => s.FileId == file.Id);
                     string desired = Path.Combine(sourceFolder, source.OriginalFileName);
-                    if (File.Exists(desired) && Sha256(File.ReadAllBytes(desired)) == source.Sha256 && !project.Files.Exists(f => !ReferenceEquals(f, file) && f.Path == desired))
+                    if (File.Exists(desired) && ComputeSha256(File.ReadAllBytes(desired)) == source.Sha256 && !project.Files.Exists(f => !ReferenceEquals(f, file) && f.Path == desired))
                     {
                         file.Path = desired;
                         continue;
@@ -498,7 +498,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     throw new InvalidDataException(mismatch);
 
                 byte[] bytes = ReadEntry(entry, file.SizeBytes, mismatch);
-                if (bytes.LongLength != file.SizeBytes || Sha256(bytes) != file.Sha256)
+                if (bytes.LongLength != file.SizeBytes || ComputeSha256(bytes) != file.Sha256)
                     throw new InvalidDataException(mismatch);
                 contents[file.Path] = bytes;
             }
@@ -526,7 +526,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 TranslationArchiveSource source = manifest.Sources.Find(s => s.FileId == file.Id);
                 byte[] bytes;
-                if (source == null || string.IsNullOrEmpty(source.ArchivePath) || !contents.TryGetValue(source.ArchivePath, out bytes) || Sha256(bytes) != file.SourceSha256 ||
+                if (source == null || string.IsNullOrEmpty(source.ArchivePath) || !contents.TryGetValue(source.ArchivePath, out bytes) || ComputeSha256(bytes) != file.SourceSha256 ||
                     source.Sha256 != file.SourceSha256 || string.IsNullOrEmpty(source.OriginalFileName) || source.OriginalFileName == "." || source.OriginalFileName == ".." ||
                     source.OriginalFileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || source.OriginalFileName.IndexOfAny(new char[] { '/', '\\' }) >= 0)
                     throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.archive.sourceInvalid", file.Id));
@@ -599,7 +599,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 target.Write(bytes, 0, bytes.Length);
             }
 
-            manifest.Files.Add(new TranslationArchiveFile { Path = path, Sha256 = Sha256(bytes), SizeBytes = bytes.LongLength, Role = role });
+            manifest.Files.Add(new TranslationArchiveFile { Path = path, Sha256 = ComputeSha256(bytes), SizeBytes = bytes.LongLength, Role = role });
         }
 
         /// <summary>
@@ -659,7 +659,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="bytes">Contenuto</param>
         /// <returns>Hash</returns>
-        private static string Sha256(byte[] bytes)
+        private static string ComputeSha256(byte[] bytes)
         {
             return Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
         }

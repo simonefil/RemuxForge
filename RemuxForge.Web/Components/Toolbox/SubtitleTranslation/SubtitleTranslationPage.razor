@@ -663,7 +663,7 @@
                         <RadzenDataGridColumn TItem="TranslationExportRow" Title="@AppText.T("web.dashboard.file")" Width="34%">
                             <Template Context="row">
                                 <span class="rf-translation-file" title="@row.FileName">@row.FileName</span>
-                                @if (row.Error.Length > 0)
+                                @if (!string.IsNullOrEmpty(row.Error))
                                 {
                                     <span class="rf-translation-rejected">@row.Error</span>
                                 }
@@ -966,20 +966,7 @@
 </div>
 
 @code {
-    /// <summary>
-    /// Estensioni dei sottotitoli proposte dal browser
-    /// </summary>
-    private static readonly List<string> s_extensions = new List<string> { "srt", "ass", "ssa" };
-
-    /// <summary>
-    /// Estensione del glossario proposta dal browser
-    /// </summary>
-    private static readonly List<string> s_glossaryExtensions = new List<string> { "xlsx" };
-
-    /// <summary>
-    /// Estensione dell'archivio del progetto proposta dal browser
-    /// </summary>
-    private static readonly List<string> s_archiveExtensions = new List<string> { "zip" };
+    #region Costanti
 
     /// <summary>
     /// Passo Glossario
@@ -1021,6 +1008,25 @@
     /// </summary>
     private const int FILTER_EDITED = 2;
 
+    #endregion
+
+    #region Variabili statiche
+
+    /// <summary>
+    /// Estensioni dei sottotitoli proposte dal browser
+    /// </summary>
+    private static readonly List<string> s_extensions = new List<string> { "srt", "ass", "ssa" };
+
+    /// <summary>
+    /// Estensione del glossario proposta dal browser
+    /// </summary>
+    private static readonly List<string> s_glossaryExtensions = new List<string> { "xlsx" };
+
+    /// <summary>
+    /// Estensione dell'archivio del progetto proposta dal browser
+    /// </summary>
+    private static readonly List<string> s_archiveExtensions = new List<string> { "zip" };
+
     /// <summary>
     /// Aperture e chiusure dei segni nel testo delle battute
     /// </summary>
@@ -1036,6 +1042,10 @@
     /// </summary>
     private static readonly List<CharacterGender> s_genders = new List<CharacterGender>((CharacterGender[])Enum.GetValues(typeof(CharacterGender)));
 
+    #endregion
+
+    #region Servizi iniettati
+
     /// <summary>
     /// Orchestratore della card, singleton che sopravvive alla pagina
     /// </summary>
@@ -1050,6 +1060,10 @@
     /// Servizio dei toast
     /// </summary>
     [Inject] private NotificationService NotificationService { get; set; }
+
+    #endregion
+
+    #region Variabili di classe
 
     /// <summary>
     /// Progetti salvati, riletti a ogni ritorno all'elenco
@@ -1151,55 +1165,60 @@
     /// </summary>
     private List<TranslationExportRow> _exported;
 
+    #endregion
+
+    #region Metodi pubblici
+
     /// <inheritdoc />
     public override IReadOnlyList<UiCommandDefinition> BuildUiCommands(bool busy)
     {
         UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar | UiCommandPlacement.Status;
-        TranslationProject project = Orchestrator.Project;
+        TranslationProject project = this.Orchestrator.Project;
         List<UiCommandDefinition> commands = new List<UiCommandDefinition>();
 
         if (project == null)
         {
-            TranslationProject selected = SelectedProject;
-            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.newProject"), "F5", "add", allSurfaces, UiCommandMenuSection.File, busy, NewProject)
+            TranslationProject selected = this.SelectedProject;
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.newProject"), "F5", "add", allSurfaces, UiCommandMenuSection.File, busy,
+                () => { this._step = 0; this.Orchestrator.NewProject(); })
             {
                 ToolbarOrder = 10,
                 StatusOrder = 10
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.openProject"), "", "folder_open", allSurfaces, UiCommandMenuSection.File, busy || selected == null,
-                () => OpenProject(selected))
+                () => this.OpenProject(selected))
             {
                 ToolbarOrder = 11,
                 StatusOrder = 11
             });
-            TranslationJob selectedJob = selected != null && _jobs.TryGetValue(selected.Id, out TranslationJob found) ? found : null;
+            TranslationJob selectedJob = selected != null && this._jobs.TryGetValue(selected.Id, out TranslationJob found) ? found : null;
             bool analysisStopped = selected != null && selected.Analysis != null && selected.Analysis.Status == TranslationAnalysisStatus.Stopped;
-            bool jobStopped = selectedJob != null && _jobsToResume.Contains(selected.Id);
+            bool jobStopped = selectedJob != null && this._jobsToResume.Contains(selected.Id);
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.resume"), "F10", "play_arrow", allSurfaces, UiCommandMenuSection.Actions,
                 busy || (!analysisStopped && !jobStopped), null)
             {
-                AsyncCallback = () => ResumeAsync(selected),
+                AsyncCallback = () => this.ResumeAsync(selected),
                 ToolbarOrder = 12,
                 StatusOrder = 12
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.importProject"), "", "unarchive", allSurfaces, UiCommandMenuSection.File, busy, null)
             {
-                AsyncCallback = ImportProjectAsync,
+                AsyncCallback = this.ImportProjectAsync,
                 SecondaryToolbar = true,
                 ToolbarOrder = 13,
                 StatusOrder = 13
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.exportProject"), "", "archive", allSurfaces, UiCommandMenuSection.File,
-                busy || !Orchestrator.CanExportProject(selected, selectedJob), null)
+                busy || !this.Orchestrator.CanExportProject(selected, selectedJob), null)
             {
-                AsyncCallback = () => ExportProjectAsync(selected),
+                AsyncCallback = () => this.ExportProjectAsync(selected),
                 SecondaryToolbar = true,
                 ToolbarOrder = 14,
                 StatusOrder = 14
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.deleteProject"), "", "delete", allSurfaces, UiCommandMenuSection.File, busy || selected == null, null)
             {
-                AsyncCallback = () => DeleteProjectAsync(selected),
+                AsyncCallback = () => this.DeleteProjectAsync(selected),
                 SecondaryToolbar = true,
                 DangerToolbar = true,
                 ToolbarOrder = 15,
@@ -1208,7 +1227,8 @@
             return commands;
         }
 
-        commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.projectsList"), "", "list", allSurfaces, UiCommandMenuSection.File, busy, CloseProject)
+        commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.projectsList"), "", "list", allSurfaces, UiCommandMenuSection.File, busy,
+            () => { this.CancelEditing(); this.Orchestrator.CloseProject(); this.ReloadProjects(); })
         {
             SecondaryToolbar = true,
             ToolbarOrder = 18,
@@ -1216,35 +1236,35 @@
         });
 
         bool stopped = project.Analysis != null && project.Analysis.Status == TranslationAnalysisStatus.Stopped;
-        if (_step == 0)
+        if (this._step == 0)
         {
-            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.list.addFiles"), "F5", "add", allSurfaces, UiCommandMenuSection.File, busy || Orchestrator.FilesLocked, null)
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.list.addFiles"), "F5", "add", allSurfaces, UiCommandMenuSection.File, busy || this.Orchestrator.FilesLocked, null)
             {
-                AsyncCallback = AddFilesAsync,
+                AsyncCallback = this.AddFilesAsync,
                 ToolbarOrder = 10,
                 StatusOrder = 10
             });
-            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.importGlossary"), "", "upload_file", allSurfaces, UiCommandMenuSection.File, busy || !Orchestrator.CanImportGlossary, null)
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.importGlossary"), "", "upload_file", allSurfaces, UiCommandMenuSection.File, busy || !this.Orchestrator.CanImportGlossary, null)
             {
-                AsyncCallback = ImportGlossaryAsync,
+                AsyncCallback = this.ImportGlossaryAsync,
                 ToolbarOrder = 11,
                 StatusOrder = 11
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.exportGlossary"), "", "download", allSurfaces, UiCommandMenuSection.File, busy || project.Glossary == null, null)
             {
-                AsyncCallback = ExportGlossaryAsync,
+                AsyncCallback = this.ExportGlossaryAsync,
                 SecondaryToolbar = true,
                 ToolbarOrder = 15,
                 StatusOrder = 15
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.models"), "", "tune", allSurfaces, UiCommandMenuSection.Actions, busy, null)
             {
-                AsyncCallback = OpenModelsAsync,
+                AsyncCallback = this.OpenModelsAsync,
                 SecondaryToolbar = true,
                 ToolbarOrder = 16,
                 StatusOrder = 16
             });
-            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.list.clear"), "Ctrl+L", "clear_all", allSurfaces, UiCommandMenuSection.File, busy || Orchestrator.FilesLocked || Orchestrator.GetRecords().Count == 0, Orchestrator.Clear)
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.list.clear"), "Ctrl+L", "clear_all", allSurfaces, UiCommandMenuSection.File, busy || this.Orchestrator.FilesLocked || this.Orchestrator.GetRecords().Count == 0, this.Orchestrator.Clear)
             {
                 SecondaryToolbar = true,
                 ToolbarOrder = 17,
@@ -1252,15 +1272,21 @@
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.next"), "", "arrow_forward", allSurfaces, UiCommandMenuSection.Actions,
                 busy || project.ReachedStep < TranslationProjectStep.Glossary,
-                () => { _step = STEP_GLOSSARY; OnStateChanged.InvokeAsync(); })
+                () => { this._step = STEP_GLOSSARY; this.OnStateChanged.InvokeAsync(); })
             {
                 ToolbarOrder = 13,
                 StatusOrder = 13
             });
         }
-        else if (_step == STEP_GLOSSARY)
+        else if (this._step == STEP_GLOSSARY)
         {
-            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.approve"), "", "check", allSurfaces, UiCommandMenuSection.Actions, busy || !Orchestrator.CanApprove, ApproveGlossary)
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.approve"), "", "check", allSurfaces, UiCommandMenuSection.Actions, busy || !this.Orchestrator.CanApprove,
+                () =>
+                {
+                    this.CancelEditing();
+                    this.Orchestrator.ApproveGlossary();
+                    this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyApproved"), AppText.F("web.toolbox.subtitleTranslation.revision", this.Orchestrator.Project.Glossary.Revision));
+                })
             {
                 ToolbarOrder = 10,
                 StatusOrder = 10
@@ -1268,13 +1294,13 @@
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.exportGlossary"), "", "download", allSurfaces, UiCommandMenuSection.File,
                 busy || project.Glossary == null, null)
             {
-                AsyncCallback = ExportGlossaryAsync,
+                AsyncCallback = this.ExportGlossaryAsync,
                 ToolbarOrder = 11,
                 StatusOrder = 11
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.next"), "", "arrow_forward", allSurfaces, UiCommandMenuSection.Actions,
                 busy || project.ReachedStep < TranslationProjectStep.Translation,
-                () => { CancelEditing(); _step = STEP_TRANSLATION; OnStateChanged.InvokeAsync(); })
+                () => { this.CancelEditing(); this._step = STEP_TRANSLATION; this.OnStateChanged.InvokeAsync(); })
             {
                 ToolbarOrder = 13,
                 StatusOrder = 13
@@ -1284,78 +1310,82 @@
         {
             // Avvia traduzione senza job; dopo una fermata Riprova per un errore, Riprendi per Stop, chiusura o limite d'uso, sul
             // passo della fase fermata
-            TranslationJob job = Orchestrator.Job;
-            TranslationJobPhase stepPhase = _step == STEP_TRANSLATION ? TranslationJobPhase.Translation : _step == STEP_NEW_TERMS ? TranslationJobPhase.Applying : TranslationJobPhase.Review;
+            TranslationJob job = this.Orchestrator.Job;
+            TranslationJobPhase stepPhase = this._step == STEP_TRANSLATION ? TranslationJobPhase.Translation : this._step == STEP_NEW_TERMS ? TranslationJobPhase.Applying : TranslationJobPhase.Review;
             bool failed = job != null && job.Pause != null && (job.Pause.Reason == TranslationStopReason.AccessError || job.Pause.Reason == TranslationStopReason.ServiceError);
-            if (_step != STEP_EXPORT && (job == null ? _step == STEP_TRANSLATION : job.Phase == stepPhase && (stepPhase != TranslationJobPhase.Applying || job.Status == TranslationJobStatus.Paused)))
+            if (this._step != STEP_EXPORT && (job == null ? this._step == STEP_TRANSLATION : job.Phase == stepPhase && (stepPhase != TranslationJobPhase.Applying || job.Status == TranslationJobStatus.Paused)))
             {
                 string label = job == null ? "web.toolbox.subtitleTranslation.startTranslation" : failed ? "web.toolbox.subtitleTranslation.retry" : "web.toolbox.subtitleTranslation.resume";
                 commands.Add(new UiCommandDefinition(AppText.T(label), "F10", job == null ? "translate" : failed ? "refresh" : "play_arrow", allSurfaces, UiCommandMenuSection.Actions,
-                    busy || !Orchestrator.CanStartJob, null)
+                    busy || !this.Orchestrator.CanStartJob, null)
                 {
-                    AsyncCallback = StartJobAsync,
+                    AsyncCallback = this.StartJobAsync,
                     ToolbarOrder = 10,
                     StatusOrder = 10
                 });
             }
-            if (_step == STEP_NEW_TERMS && (job == null || job.Phase == TranslationJobPhase.NewTerms))
+
+            if (this._step == STEP_NEW_TERMS && (job == null || job.Phase == TranslationJobPhase.NewTerms))
             {
                 commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.confirmTerms"), "F10", "check", allSurfaces, UiCommandMenuSection.Actions,
-                    busy || !Orchestrator.CanConfirmNewTerms, null)
+                    busy || !this.Orchestrator.CanConfirmNewTerms, null)
                 {
-                    AsyncCallback = ConfirmNewTermsAsync,
+                    AsyncCallback = this.ConfirmNewTermsAsync,
                     ToolbarOrder = 10,
                     StatusOrder = 10
                 });
             }
-            if (_step == STEP_REVIEW && job != null && job.Phase == TranslationJobPhase.UserReview)
+
+            if (this._step == STEP_REVIEW && job != null && job.Phase == TranslationJobPhase.UserReview)
             {
                 commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.next"), "", "arrow_forward", allSurfaces, UiCommandMenuSection.Actions,
-                    busy || !Orchestrator.CanEditCues,
-                    () => { CancelCueEditing(); Orchestrator.AdvanceToExport(); _step = STEP_EXPORT; OnStateChanged.InvokeAsync(); })
+                    busy || !this.Orchestrator.CanEditCues,
+                    () => { this.CancelCueEditing(); this.Orchestrator.AdvanceToExport(); this._step = STEP_EXPORT; this.OnStateChanged.InvokeAsync(); })
                 {
                     ToolbarOrder = 13,
                     StatusOrder = 13
                 });
             }
-            if (_step == STEP_EXPORT)
+
+            if (this._step == STEP_EXPORT)
             {
                 commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.exportSubtitles"), "F10", "save", allSurfaces, UiCommandMenuSection.Actions,
-                    busy || !Orchestrator.CanEditCues || Orchestrator.OutputFolderError.Length > 0, null)
+                    busy || !this.Orchestrator.CanEditCues || !string.IsNullOrEmpty(this.Orchestrator.OutputFolderError), null)
                 {
-                    AsyncCallback = ExportSubtitlesAsync,
+                    AsyncCallback = this.ExportSubtitlesAsync,
                     ToolbarOrder = 10,
                     StatusOrder = 10
                 });
                 commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.exportGlossary"), "", "download", allSurfaces, UiCommandMenuSection.File,
                     busy || project.Glossary == null, null)
                 {
-                    AsyncCallback = ExportGlossaryAsync,
+                    AsyncCallback = this.ExportGlossaryAsync,
                     SecondaryToolbar = true,
                     ToolbarOrder = 12,
                     StatusOrder = 12
                 });
             }
+
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.exportProject"), "", "archive", allSurfaces, UiCommandMenuSection.File,
-                busy || !Orchestrator.CanExportProject(project, job), null)
+                busy || !this.Orchestrator.CanExportProject(project, job), null)
             {
-                AsyncCallback = () => ExportProjectAsync(project),
-                SecondaryToolbar = _step == STEP_EXPORT,
+                AsyncCallback = () => this.ExportProjectAsync(project),
+                SecondaryToolbar = this._step == STEP_EXPORT,
                 ToolbarOrder = 11,
                 StatusOrder = 11
             });
         }
 
         // Analizza sul passo Progetto; dopo una fermata Riprova per un errore, Riprendi per Stop o limite d'uso, sui passi Progetto e Glossario
-        if (_step == 0 || (_step == STEP_GLOSSARY && stopped))
+        if (this._step == 0 || (this._step == STEP_GLOSSARY && stopped))
         {
             bool failed = stopped && project.Analysis.Stop != null &&
                 (project.Analysis.Stop.Reason == TranslationStopReason.AccessError || project.Analysis.Stop.Reason == TranslationStopReason.ServiceError);
             string label = failed ? "web.toolbox.subtitleTranslation.retry" : stopped ? "web.toolbox.subtitleTranslation.resume" : "web.toolbox.subtitleTranslation.analyze";
             commands.Add(new UiCommandDefinition(AppText.T(label), "F10", failed ? "refresh" : stopped ? "play_arrow" : "auto_awesome",
-                allSurfaces, UiCommandMenuSection.Actions, busy || !Orchestrator.CanStart, null)
+                allSurfaces, UiCommandMenuSection.Actions, busy || !this.Orchestrator.CanStart, null)
             {
-                AsyncCallback = AnalyzeAsync,
+                AsyncCallback = this.AnalyzeAsync,
                 ToolbarOrder = 12,
                 StatusOrder = 12
             });
@@ -1369,23 +1399,27 @@
     /// </summary>
     public void Dispose()
     {
-        Orchestrator.OnRecordsChanged -= HandleRecordsChanged;
-        Orchestrator.OnAnalysisFinished -= HandleAnalysisFinished;
-        Orchestrator.OnWebSearchRejected -= HandleWebSearchRejected;
-        Orchestrator.OnPhaseFinished -= HandlePhaseFinished;
+        this.Orchestrator.OnRecordsChanged -= this.HandleRecordsChanged;
+        this.Orchestrator.OnAnalysisFinished -= this.HandleAnalysisFinished;
+        this.Orchestrator.OnWebSearchRejected -= this.HandleWebSearchRejected;
+        this.Orchestrator.OnPhaseFinished -= this.HandlePhaseFinished;
     }
+
+    #endregion
+
+    #region Metodi protected
 
     /// <inheritdoc />
     protected override void OnInitialized()
     {
-        Orchestrator.OnRecordsChanged += HandleRecordsChanged;
-        Orchestrator.OnAnalysisFinished += HandleAnalysisFinished;
-        Orchestrator.OnWebSearchRejected += HandleWebSearchRejected;
-        Orchestrator.OnPhaseFinished += HandlePhaseFinished;
-        ReloadProjects();
-        _accessMode = Orchestrator.AccessMode;
-        TranslationProviderCapabilities capabilities = Orchestrator.GetCapabilities();
-        _capabilities = new List<KeyValuePair<string, bool>>
+        this.Orchestrator.OnRecordsChanged += this.HandleRecordsChanged;
+        this.Orchestrator.OnAnalysisFinished += this.HandleAnalysisFinished;
+        this.Orchestrator.OnWebSearchRejected += this.HandleWebSearchRejected;
+        this.Orchestrator.OnPhaseFinished += this.HandlePhaseFinished;
+        this.ReloadProjects();
+        this._accessMode = this.Orchestrator.AccessMode;
+        TranslationProviderCapabilities capabilities = this.Orchestrator.GetCapabilities();
+        this._capabilities = new List<KeyValuePair<string, bool>>
         {
             new KeyValuePair<string, bool>(TranslationProviderCapabilities.WEB_SEARCH, capabilities.WebSearch),
             new KeyValuePair<string, bool>(TranslationProviderCapabilities.REASONING, capabilities.Reasoning),
@@ -1393,19 +1427,23 @@
             new KeyValuePair<string, bool>(TranslationProviderCapabilities.MAX_OUTPUT_TOKENS, capabilities.MaxOutputTokens),
             new KeyValuePair<string, bool>(TranslationProviderCapabilities.PROMPT_CACHE_KEY, capabilities.PromptCacheKey)
         };
-        _step = ProjectStep();
+        this._step = this.ProjectStep();
     }
+
+    #endregion
+
+    #region Metodi privati
 
     /// <summary>
     /// Ridisegna pagina e comandi quando cambia lo stato della card
     /// </summary>
     private void HandleRecordsChanged()
     {
-        InvokeAsync(() =>
+        this.InvokeAsync(() =>
         {
-            _reviewRows = null;
-            _reviewView = null;
-            return OnStateChanged.InvokeAsync();
+            this._reviewRows = null;
+            this._reviewView = null;
+            return this.OnStateChanged.InvokeAsync();
         });
     }
 
@@ -1415,28 +1453,28 @@
     /// <param name="analysis">Analisi conclusa o fermata</param>
     private void HandleAnalysisFinished(TranslationAnalysis analysis)
     {
-        InvokeAsync(async () =>
+        this.InvokeAsync(async () =>
         {
-            TranslationProject project = Orchestrator.Project;
+            TranslationProject project = this.Orchestrator.Project;
             if (analysis.Status == TranslationAnalysisStatus.Completed && project != null && project.Glossary != null)
             {
-                Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyProposed"),
+                this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyProposed"),
                     AppText.Count("web.toolbox.subtitleTranslation.termsCount", project.Glossary.Terms.Count) + " · " + AppText.Count("web.toolbox.subtitleTranslation.charactersCount", project.Glossary.Characters.Count));
             }
             else if (analysis.Stop != null && analysis.Stop.Reason == TranslationStopReason.Stop)
             {
-                Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.notifyStopped"), AppText.T("web.toolbox.subtitleTranslation.notifyResumable"));
+                this.Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.notifyStopped"), AppText.T("web.toolbox.subtitleTranslation.notifyResumable"));
             }
             else if (analysis.Stop != null && analysis.Stop.Reason == TranslationStopReason.UsageLimit)
             {
-                Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.analysisPaused"), analysis.Stop.Message);
+                this.Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.analysisPaused"), analysis.Stop.Message);
             }
             else if (analysis.Stop != null)
             {
-                Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyFailed"), analysis.Stop.Message);
+                this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyFailed"), analysis.Stop.Message);
             }
 
-            await OnStateChanged.InvokeAsync();
+            await this.OnStateChanged.InvokeAsync();
         });
     }
 
@@ -1445,7 +1483,7 @@
     /// </summary>
     private void HandleWebSearchRejected()
     {
-        InvokeAsync(() => Notify(NotificationSeverity.Info, AppText.T("web.toolbox.subtitleTranslation.notifyWebSearchTitle"), AppText.T("web.toolbox.subtitleTranslation.notifyWebSearch")));
+        this.InvokeAsync(() => this.Notify(NotificationSeverity.Info, AppText.T("web.toolbox.subtitleTranslation.notifyWebSearchTitle"), AppText.T("web.toolbox.subtitleTranslation.notifyWebSearch")));
     }
 
     /// <summary>
@@ -1456,7 +1494,7 @@
     /// <param name="detail">Testo</param>
     private void Notify(NotificationSeverity severity, string summary, string detail)
     {
-        NotificationService.Notify(new NotificationMessage
+        this.NotificationService.Notify(new NotificationMessage
         {
             Severity = severity,
             Summary = summary,
@@ -1464,15 +1502,6 @@
             Duration = severity == NotificationSeverity.Success ? 6000 : 8000,
             Style = TOAST_STYLE
         });
-    }
-
-    /// <summary>
-    /// Apre un progetto nuovo sul passo Progetto
-    /// </summary>
-    private void NewProject()
-    {
-        _step = 0;
-        Orchestrator.NewProject();
     }
 
     /// <summary>
@@ -1484,19 +1513,19 @@
     {
         try
         {
-            Orchestrator.OpenProject(project.Id);
+            this.Orchestrator.OpenProject(project.Id);
         }
         catch (Exception ex)
         {
             if (!(ex is InvalidDataException || ex is IOException || ex is UnauthorizedAccessException))
                 throw;
 
-            Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyOpenFailed"), ex.Message);
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyOpenFailed"), ex.Message);
             return false;
         }
 
-        _step = ProjectStep();
-        CancelEditing();
+        this._step = this.ProjectStep();
+        this.CancelEditing();
         return true;
     }
 
@@ -1506,23 +1535,17 @@
     /// <param name="project">Progetto della riga</param>
     private async Task ResumeAsync(TranslationProject project)
     {
-        if (!OpenProject(project))
+        if (!this.OpenProject(project))
             return;
 
-        if (Orchestrator.Job != null)
-            await StartJobAsync();
+        if (this.Orchestrator.Job != null)
+        {
+            await this.StartJobAsync();
+        }
         else
-            await AnalyzeAsync();
-    }
-
-    /// <summary>
-    /// Torna all'elenco dei progetti
-    /// </summary>
-    private void CloseProject()
-    {
-        CancelEditing();
-        Orchestrator.CloseProject();
-        ReloadProjects();
+        {
+            await this.AnalyzeAsync();
+        }
     }
 
     /// <summary>
@@ -1532,18 +1555,18 @@
     private async Task DeleteProjectAsync(TranslationProject project)
     {
         string name = SubtitleTranslationOrchestrator.DisplayName(project);
-        bool confirmed = await AppDialogs.ConfirmAsync(DialogService, AppText.T("web.toolbox.subtitleTranslation.deleteTitle"), AppText.F("web.toolbox.subtitleTranslation.deleteMessage", name),
+        bool confirmed = await AppDialogs.ConfirmAsync(this.DialogService, AppText.T("web.toolbox.subtitleTranslation.deleteTitle"), AppText.F("web.toolbox.subtitleTranslation.deleteMessage", name),
             AppText.T("web.common.delete"), AppText.T("web.common.cancel"));
         if (!confirmed)
             return;
 
-        if (!Orchestrator.DeleteProject(project))
+        if (!this.Orchestrator.DeleteProject(project))
             return;
 
-        _selectedId = "";
-        ReloadProjects();
-        Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyDeleted"), name);
-        await OnStateChanged.InvokeAsync();
+        this._selectedId = "";
+        this.ReloadProjects();
+        this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyDeleted"), name);
+        await this.OnStateChanged.InvokeAsync();
     }
 
     /// <summary>
@@ -1551,12 +1574,12 @@
     /// </summary>
     private async Task AddFilesAsync()
     {
-        List<TranslationFileRecord> records = Orchestrator.GetRecords();
+        List<TranslationFileRecord> records = this.Orchestrator.GetRecords();
         string initialPath = records.Count > 0 ? System.IO.Path.GetDirectoryName(records[records.Count - 1].InputPath) : "";
-        List<string> paths = await AppDialogs.BrowseFilesAsync(DialogService, JsModule, initialPath, s_extensions);
+        List<string> paths = await AppDialogs.BrowseFilesAsync(this.DialogService, this.JsModule, initialPath, s_extensions);
 
         if (paths.Count > 0)
-            Orchestrator.AddFiles(paths);
+            this.Orchestrator.AddFiles(paths);
     }
 
     /// <summary>
@@ -1564,24 +1587,25 @@
     /// </summary>
     private async Task ImportGlossaryAsync()
     {
-        List<TranslationFileRecord> records = Orchestrator.GetRecords();
+        List<TranslationFileRecord> records = this.Orchestrator.GetRecords();
         string initialPath = records.Count > 0 ? System.IO.Path.GetDirectoryName(records[0].InputPath) : "";
-        string path = await AppDialogs.BrowseAsync(DialogService, JsModule, initialPath, true, false, s_glossaryExtensions);
+        string path = await AppDialogs.BrowseAsync(this.DialogService, this.JsModule, initialPath, true, false, s_glossaryExtensions);
         if (string.IsNullOrEmpty(path))
             return;
 
-        GlossaryImportResult result = Orchestrator.ImportGlossary(path);
+        GlossaryImportResult result = this.Orchestrator.ImportGlossary(path);
         if (result.Glossary != null)
         {
-            Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyImported"),
-                AppText.Count("web.toolbox.subtitleTranslation.termsCount", Orchestrator.Project.ImportedGlossary.TermCount) + " · " +
-                AppText.Count("web.toolbox.subtitleTranslation.charactersCount", Orchestrator.Project.ImportedGlossary.CharacterCount));
+            this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyImported"),
+                AppText.Count("web.toolbox.subtitleTranslation.termsCount", this.Orchestrator.Project.ImportedGlossary.TermCount) + " · " +
+                AppText.Count("web.toolbox.subtitleTranslation.charactersCount", this.Orchestrator.Project.ImportedGlossary.CharacterCount));
         }
         else if (!string.IsNullOrEmpty(result.Code))
         {
-            Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyImportFailed"),
-                AppText.F((result.Code == GlossaryFile.FILE_INVALID || result.Code == GlossaryFile.LANGUAGE_MISMATCH ? "toolbox.subtitleTranslation.glossaryImport." : "toolbox.subtitleTranslation.validation.") + result.Code, result.Location, result.Detail, LanguageName(result.SourceLanguage), LanguageName(result.TargetLanguage),
-                    LanguageName(Orchestrator.Project.SourceLanguage), LanguageName(Orchestrator.Project.TargetLanguage)));
+            string keyPrefix = result.Code == GlossaryFile.FILE_INVALID || result.Code == GlossaryFile.LANGUAGE_MISMATCH ? "toolbox.subtitleTranslation.glossaryImport." : "toolbox.subtitleTranslation.validation.";
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyImportFailed"),
+                AppText.F(keyPrefix + result.Code, result.Location, result.Detail, LanguageName(result.SourceLanguage), LanguageName(result.TargetLanguage),
+                    LanguageName(this.Orchestrator.Project.SourceLanguage), LanguageName(this.Orchestrator.Project.TargetLanguage)));
         }
     }
 
@@ -1591,9 +1615,9 @@
     private async Task OpenModelsAsync()
     {
         Dictionary<string, object> parameters = new Dictionary<string, object>();
-        parameters.Add(nameof(SubtitleTranslationModelsDialog.Orchestrator), Orchestrator);
-        await AppDialogs.OpenAsync<SubtitleTranslationModelsDialog>(DialogService, AppText.T("web.toolbox.subtitleTranslation.models"), parameters,
-            AppDialogs.CreateOptions(AppDialogs.WIDTH_COMPACT, null, JsModule), JsModule);
+        parameters.Add(nameof(SubtitleTranslationModelsDialog.Orchestrator), this.Orchestrator);
+        await AppDialogs.OpenAsync<SubtitleTranslationModelsDialog>(this.DialogService, AppText.T("web.toolbox.subtitleTranslation.models"), parameters,
+            AppDialogs.CreateOptions(AppDialogs.WIDTH_COMPACT, null, this.JsModule), this.JsModule);
     }
 
     /// <summary>
@@ -1601,26 +1625,26 @@
     /// </summary>
     private async Task AnalyzeAsync()
     {
-        if (string.IsNullOrEmpty(Orchestrator.Project.Models.Analysis))
+        if (string.IsNullOrEmpty(this.Orchestrator.Project.Models.Analysis))
         {
-            Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyModelMissing"),
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyModelMissing"),
                 AppText.F("web.toolbox.subtitleTranslation.modelMissing", AppText.T("web.toolbox.subtitleTranslation.models.phase.analysis")));
             return;
         }
 
-        if (!Orchestrator.ConsentAccepted)
+        if (!this.Orchestrator.ConsentAccepted)
         {
-            bool accepted = await AppDialogs.ConfirmAsync(DialogService, AppText.T("web.toolbox.subtitleTranslation.consentTitle"), AppText.T("web.toolbox.subtitleTranslation.consentText"),
+            bool accepted = await AppDialogs.ConfirmAsync(this.DialogService, AppText.T("web.toolbox.subtitleTranslation.consentTitle"), AppText.T("web.toolbox.subtitleTranslation.consentText"),
                 AppText.T("web.toolbox.subtitleTranslation.consentAccept"), AppText.T("web.common.cancel"));
             if (!accepted)
                 return;
 
-            Orchestrator.AcceptConsent();
+            this.Orchestrator.AcceptConsent();
         }
 
-        CancelEditing();
-        _step = STEP_GLOSSARY;
-        Orchestrator.Start();
+        this.CancelEditing();
+        this._step = STEP_GLOSSARY;
+        this.Orchestrator.Start();
     }
 
     /// <summary>
@@ -1628,13 +1652,13 @@
     /// </summary>
     private async Task StartJobAsync()
     {
-        TranslationJob job = Orchestrator.Job;
+        TranslationJob job = this.Orchestrator.Job;
         TranslationJobPhase phase = job != null ? job.Phase : TranslationJobPhase.Translation;
-        if (!await CheckModelAsync(phase))
+        if (!await this.CheckModelAsync(phase))
             return;
 
-        _step = phase == TranslationJobPhase.Applying ? STEP_NEW_TERMS : phase == TranslationJobPhase.Review ? STEP_REVIEW : STEP_TRANSLATION;
-        Orchestrator.StartJob();
+        this._step = phase == TranslationJobPhase.Applying ? STEP_NEW_TERMS : phase == TranslationJobPhase.Review ? STEP_REVIEW : STEP_TRANSLATION;
+        this.Orchestrator.StartJob();
     }
 
     /// <summary>
@@ -1642,13 +1666,13 @@
     /// </summary>
     private async Task ConfirmNewTermsAsync()
     {
-        TranslationJob job = Orchestrator.Job;
+        TranslationJob job = this.Orchestrator.Job;
         bool adding = job.NewTerms.Exists(t => t.Decision == NewTermDecisionKind.Add);
-        if (!await CheckModelAsync(adding ? TranslationJobPhase.Applying : TranslationJobPhase.Review))
+        if (!await this.CheckModelAsync(adding ? TranslationJobPhase.Applying : TranslationJobPhase.Review))
             return;
 
-        _step = adding ? STEP_NEW_TERMS : STEP_REVIEW;
-        Orchestrator.ConfirmNewTerms();
+        this._step = adding ? STEP_NEW_TERMS : STEP_REVIEW;
+        this.Orchestrator.ConfirmNewTerms();
     }
 
     /// <summary>
@@ -1658,25 +1682,25 @@
     /// <returns>True se la fase può partire</returns>
     private async Task<bool> CheckModelAsync(TranslationJobPhase phase)
     {
-        TranslationJob job = Orchestrator.Job;
-        TranslationPhaseModels models = job != null ? job.Models : Orchestrator.Project.Models;
+        TranslationJob job = this.Orchestrator.Job;
+        TranslationPhaseModels models = job != null ? job.Models : this.Orchestrator.Project.Models;
         string model = phase == TranslationJobPhase.Applying ? models.NewTerms : phase == TranslationJobPhase.Review ? models.ResolveReview() : models.Translation;
         if (string.IsNullOrEmpty(model))
         {
             string name = phase == TranslationJobPhase.Applying ? "newTerms" : phase == TranslationJobPhase.Review ? "review" : "translation";
-            Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyModelMissing"),
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyModelMissing"),
                 AppText.F("web.toolbox.subtitleTranslation.modelMissing", AppText.T("web.toolbox.subtitleTranslation.models.phase." + name)));
             return false;
         }
 
-        if (!Orchestrator.ConsentAccepted)
+        if (!this.Orchestrator.ConsentAccepted)
         {
-            bool accepted = await AppDialogs.ConfirmAsync(DialogService, AppText.T("web.toolbox.subtitleTranslation.consentTitle"), AppText.T("web.toolbox.subtitleTranslation.consentText"),
+            bool accepted = await AppDialogs.ConfirmAsync(this.DialogService, AppText.T("web.toolbox.subtitleTranslation.consentTitle"), AppText.T("web.toolbox.subtitleTranslation.consentText"),
                 AppText.T("web.toolbox.subtitleTranslation.consentAcceptTranslation"), AppText.T("web.common.cancel"));
             if (!accepted)
                 return false;
 
-            Orchestrator.AcceptConsent();
+            this.Orchestrator.AcceptConsent();
         }
 
         return true;
@@ -1689,29 +1713,44 @@
     /// <param name="result">Fase conclusa o fermata</param>
     private void HandlePhaseFinished(TranslationPhaseResult result)
     {
-        InvokeAsync(async () =>
+        this.InvokeAsync(async () =>
         {
             TranslationJob job = result.Job;
             TranslationStop stop = result.Stop;
             string name = result.Phase == TranslationJobPhase.Applying ? "Terms" : result.Phase == TranslationJobPhase.Review ? "Review" : "Translation";
             if (stop != null && stop.Reason == TranslationStopReason.Stop)
-                Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.notify" + name + "Stopped"), AppText.T("web.toolbox.subtitleTranslation.notifyJobResumable"));
+            {
+                this.Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.notify" + name + "Stopped"), AppText.T("web.toolbox.subtitleTranslation.notifyJobResumable"));
+            }
             else if (stop != null && stop.Reason == TranslationStopReason.UsageLimit)
-                Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.notify" + name + "Paused"), stop.Message);
+            {
+                this.Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.notify" + name + "Paused"), stop.Message);
+            }
             else if (stop != null)
-                Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notify" + name + "Failed"), stop.Message);
+            {
+                this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notify" + name + "Failed"), stop.Message);
+            }
             else if (result.Phase == TranslationJobPhase.Translation && job.Phase == TranslationJobPhase.Translation)
-                Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.notifyBlocked"), AppText.T("web.toolbox.subtitleTranslation.notifyBlockedDetail"));
+            {
+                this.Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.notifyBlocked"), AppText.T("web.toolbox.subtitleTranslation.notifyBlockedDetail"));
+            }
             else if (result.Phase == TranslationJobPhase.Translation)
-                Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyTranslated"), AppText.Count("web.toolbox.subtitleTranslation.filesCount", job.FileIds.Count));
+            {
+                this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyTranslated"), AppText.Count("web.toolbox.subtitleTranslation.filesCount", job.FileIds.Count));
+            }
             else if (result.Phase == TranslationJobPhase.Review && result.ReviewBlocks > 0)
-                Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyReviewed"), AppText.Count("web.toolbox.subtitleTranslation.correctedCount", result.Corrected));
+            {
+                this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyReviewed"), AppText.Count("web.toolbox.subtitleTranslation.correctedCount", result.Corrected));
+            }
             else if (result.Phase == TranslationJobPhase.Review)
-                Notify(NotificationSeverity.Info, AppText.T("web.toolbox.subtitleTranslation.notifyReviewed"), AppText.T("web.toolbox.subtitleTranslation.notifyNothingToReview"));
+            {
+                this.Notify(NotificationSeverity.Info, AppText.T("web.toolbox.subtitleTranslation.notifyReviewed"), AppText.T("web.toolbox.subtitleTranslation.notifyNothingToReview"));
+            }
 
             if (stop == null)
-                _step = ProjectStep();
-            await OnStateChanged.InvokeAsync();
+                this._step = this.ProjectStep();
+
+            await this.OnStateChanged.InvokeAsync();
         });
     }
 
@@ -1721,14 +1760,14 @@
     /// <param name="row">Riga della battuta</param>
     private void SaveCue(TranslationReviewRow row)
     {
-        string error = Orchestrator.EditCue(_reviewFileId, row.Id, _cueDraft ?? "");
-        if (error.Length > 0)
+        string error = this.Orchestrator.EditCue(this._reviewFileId, row.Id, this._cueDraft ?? "");
+        if (!string.IsNullOrEmpty(error))
         {
-            Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyCueInvalid"), error);
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyCueInvalid"), error);
             return;
         }
 
-        CancelCueEditing();
+        this.CancelCueEditing();
     }
 
     /// <summary>
@@ -1736,8 +1775,8 @@
     /// </summary>
     private void CancelCueEditing()
     {
-        _editingCue = null;
-        _cueDraft = "";
+        this._editingCue = null;
+        this._cueDraft = "";
     }
 
     /// <summary>
@@ -1746,27 +1785,33 @@
     private async Task ExportSubtitlesAsync()
     {
         int untranslated = 0;
-        foreach (TranslationExportRow row in Orchestrator.GetExportRows())
+        foreach (TranslationExportRow row in this.Orchestrator.GetExportRows())
             untranslated += row.Untranslated;
+
         if (untranslated > 0)
         {
-            bool confirmed = await AppDialogs.ConfirmAsync(DialogService, AppText.T("web.toolbox.subtitleTranslation.exportSubtitles"),
+            bool confirmed = await AppDialogs.ConfirmAsync(this.DialogService, AppText.T("web.toolbox.subtitleTranslation.exportSubtitles"),
                 AppText.Count("web.toolbox.subtitleTranslation.exportUntranslated", untranslated), AppText.T("web.toolbox.subtitleTranslation.exportSubtitles"), AppText.T("web.common.cancel"));
             if (!confirmed)
                 return;
         }
 
-        List<TranslationExportRow> rows = await Task.Run(() => Orchestrator.ExportSubtitles());
+        List<TranslationExportRow> rows = await Task.Run(() => this.Orchestrator.ExportSubtitles());
         if (rows == null)
             return;
 
-        _exported = rows;
+        this._exported = rows;
         int failed = rows.FindAll(r => !r.Written).Count;
         if (failed == 0)
-            Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifySubtitlesExported"), AppText.Count("web.toolbox.subtitleTranslation.filesCount", rows.Count));
+        {
+            this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifySubtitlesExported"), AppText.Count("web.toolbox.subtitleTranslation.filesCount", rows.Count));
+        }
         else
-            Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifySubtitlesNotExported"), AppText.Count("web.toolbox.subtitleTranslation.filesCount", failed));
-        await OnStateChanged.InvokeAsync();
+        {
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifySubtitlesNotExported"), AppText.Count("web.toolbox.subtitleTranslation.filesCount", failed));
+        }
+
+        await this.OnStateChanged.InvokeAsync();
     }
 
     /// <summary>
@@ -1775,10 +1820,10 @@
     /// <param name="row">Riga del file</param>
     private async Task RestartFileAsync(TranslationJobFileRow row)
     {
-        bool confirmed = await AppDialogs.ConfirmAsync(DialogService, AppText.T("web.toolbox.subtitleTranslation.restartFile"), AppText.F("web.toolbox.subtitleTranslation.restartMessage", row.FileName),
+        bool confirmed = await AppDialogs.ConfirmAsync(this.DialogService, AppText.T("web.toolbox.subtitleTranslation.restartFile"), AppText.F("web.toolbox.subtitleTranslation.restartMessage", row.FileName),
             AppText.T("web.toolbox.subtitleTranslation.restartFile"), AppText.T("web.common.cancel"));
         if (confirmed)
-            Orchestrator.RestartFile(row.FileId);
+            this.Orchestrator.RestartFile(row.FileId);
     }
 
     /// <summary>
@@ -1788,21 +1833,22 @@
     private async Task ExportProjectAsync(TranslationProject project)
     {
         string initialPath = project.Files.Count > 0 ? System.IO.Path.GetDirectoryName(project.Files[0].Path) : "";
-        string folder = await AppDialogs.BrowseAsync(DialogService, JsModule, initialPath, false, true, null);
+        string folder = await AppDialogs.BrowseAsync(this.DialogService, this.JsModule, initialPath, false, true, null);
         if (string.IsNullOrEmpty(folder))
             return;
 
         try
         {
-            string path = await Task.Run(() => Orchestrator.ExportProject(project, folder));
+            string path = await Task.Run(() => this.Orchestrator.ExportProject(project, folder));
             if (!string.IsNullOrEmpty(path))
-                Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyProjectExported"), path);
+                this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyProjectExported"), path);
         }
         catch (Exception ex)
         {
             if (!(ex is IOException || ex is UnauthorizedAccessException || ex is InvalidDataException))
                 throw;
-            Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyProjectExportFailed"), ex.Message);
+
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyProjectExportFailed"), ex.Message);
         }
     }
 
@@ -1812,26 +1858,27 @@
     /// </summary>
     private async Task ImportProjectAsync()
     {
-        string zipPath = await AppDialogs.BrowseAsync(DialogService, JsModule, "", true, false, s_archiveExtensions);
+        string zipPath = await AppDialogs.BrowseAsync(this.DialogService, this.JsModule, "", true, false, s_archiveExtensions);
         if (string.IsNullOrEmpty(zipPath))
             return;
 
         TranslationArchiveInspection inspection;
         try
         {
-            inspection = await Task.Run(() => Orchestrator.InspectArchive(zipPath));
+            inspection = await Task.Run(() => this.Orchestrator.InspectArchive(zipPath));
         }
         catch (Exception ex)
         {
             if (!(ex is IOException || ex is UnauthorizedAccessException || ex is InvalidDataException))
                 throw;
-            Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyProjectImportFailed"), ex.Message);
+
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyProjectImportFailed"), ex.Message);
             return;
         }
 
         if (inspection.Existing != null)
         {
-            bool replace = await AppDialogs.ConfirmAsync(DialogService, AppText.T("web.toolbox.subtitleTranslation.importReplaceTitle"),
+            bool replace = await AppDialogs.ConfirmAsync(this.DialogService, AppText.T("web.toolbox.subtitleTranslation.importReplaceTitle"),
                 AppText.F("web.toolbox.subtitleTranslation.importReplaceMessage", SubtitleTranslationOrchestrator.DisplayName(inspection.Existing),
                     inspection.Existing.UpdatedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture), SubtitleTranslationOrchestrator.DisplayName(inspection.Project),
                     inspection.Project.UpdatedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)),
@@ -1840,39 +1887,30 @@
                 return;
         }
 
-        string folder = await AppDialogs.BrowseAsync(DialogService, JsModule, System.IO.Path.GetDirectoryName(zipPath), false, true, null);
+        string folder = await AppDialogs.BrowseAsync(this.DialogService, this.JsModule, System.IO.Path.GetDirectoryName(zipPath), false, true, null);
         if (string.IsNullOrEmpty(folder))
             return;
 
         TranslationProject project;
         try
         {
-            project = await Task.Run(() => Orchestrator.ImportProject(zipPath, folder, inspection.Existing != null));
+            project = await Task.Run(() => this.Orchestrator.ImportProject(zipPath, folder, inspection.Existing != null));
         }
         catch (Exception ex)
         {
             if (!(ex is IOException || ex is UnauthorizedAccessException || ex is InvalidDataException || ex is InvalidOperationException))
                 throw;
-            Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyProjectImportFailed"), ex.Message);
+
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyProjectImportFailed"), ex.Message);
             return;
         }
 
         if (project == null)
             return;
 
-        ReloadProjects();
-        Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyProjectImported"), SubtitleTranslationOrchestrator.DisplayName(project));
-        OpenProject(project);
-    }
-
-    /// <summary>
-    /// Approva il glossario
-    /// </summary>
-    private void ApproveGlossary()
-    {
-        CancelEditing();
-        Orchestrator.ApproveGlossary();
-        Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyApproved"), AppText.F("web.toolbox.subtitleTranslation.revision", Orchestrator.Project.Glossary.Revision));
+        this.ReloadProjects();
+        this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyProjectImported"), SubtitleTranslationOrchestrator.DisplayName(project));
+        this.OpenProject(project);
     }
 
     /// <summary>
@@ -1880,24 +1918,24 @@
     /// </summary>
     private async Task ExportGlossaryAsync()
     {
-        List<TranslationFileRecord> records = Orchestrator.GetRecords();
+        List<TranslationFileRecord> records = this.Orchestrator.GetRecords();
         string initialPath = records.Count > 0 ? System.IO.Path.GetDirectoryName(records[0].InputPath) : "";
-        string folder = await AppDialogs.BrowseAsync(DialogService, JsModule, initialPath, false, true, null);
+        string folder = await AppDialogs.BrowseAsync(this.DialogService, this.JsModule, initialPath, false, true, null);
         if (string.IsNullOrEmpty(folder))
             return;
 
         try
         {
-            string path = Orchestrator.ExportGlossary(folder);
-            Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyExported"), path);
+            string path = this.Orchestrator.ExportGlossary(folder);
+            this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyExported"), path);
         }
         catch (IOException ex)
         {
-            Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyExportFailed"), ex.Message);
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyExportFailed"), ex.Message);
         }
         catch (UnauthorizedAccessException ex)
         {
-            Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyExportFailed"), ex.Message);
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyExportFailed"), ex.Message);
         }
     }
 
@@ -1910,7 +1948,7 @@
     private List<T> WithDraft<T>(List<T> entries)
     {
         List<T> rows = new List<T>(entries);
-        if (_adding && _editing is T draft)
+        if (this._adding && this._editing is T draft)
             rows.Add(draft);
         return rows;
     }
@@ -1922,7 +1960,7 @@
     /// <returns>True in modifica</returns>
     private bool IsEditing(object entry)
     {
-        return ReferenceEquals(entry, _editing);
+        return ReferenceEquals(entry, this._editing);
     }
 
     /// <summary>
@@ -1932,14 +1970,20 @@
     /// <param name="adding">True se la voce è nuova</param>
     private void StartEditing(object entry, bool adding)
     {
-        _editing = entry;
-        _adding = adding;
+        this._editing = entry;
+        this._adding = adding;
         if (entry is GlossaryTerm term)
-            _termDraft = new GlossaryTerm { Source = term.Source, Target = term.Target, Kind = term.Kind, Invariable = term.Invariable, Note = term.Note, Origin = term.Origin };
+        {
+            this._termDraft = new GlossaryTerm { Source = term.Source, Target = term.Target, Kind = term.Kind, Invariable = term.Invariable, Note = term.Note, Origin = term.Origin };
+        }
         else if (entry is GlossaryCharacter character)
-            _characterDraft = new GlossaryCharacter { Name = character.Name, Gender = character.Gender, Role = character.Role, Relationships = character.Relationships, Origin = character.Origin };
+        {
+            this._characterDraft = new GlossaryCharacter { Name = character.Name, Gender = character.Gender, Role = character.Role, Relationships = character.Relationships, Origin = character.Origin };
+        }
         else if (entry is GlossaryAddressing pair)
-            _addressingDraft = new GlossaryAddressing { Speaker = pair.Speaker, Addressee = pair.Addressee, Form = pair.Form, Note = pair.Note, Origin = pair.Origin };
+        {
+            this._addressingDraft = new GlossaryAddressing { Speaker = pair.Speaker, Addressee = pair.Addressee, Form = pair.Form, Note = pair.Note, Origin = pair.Origin };
+        }
     }
 
     /// <summary>
@@ -1947,8 +1991,8 @@
     /// </summary>
     private void CancelEditing()
     {
-        _editing = null;
-        _adding = false;
+        this._editing = null;
+        this._adding = false;
     }
 
     /// <summary>
@@ -1956,83 +2000,95 @@
     /// </summary>
     private void SaveEditing()
     {
-        TranslationProject project = Orchestrator.Project;
+        TranslationProject project = this.Orchestrator.Project;
         Glossary glossary = project.Glossary;
         GlossaryBuilder builder = new GlossaryBuilder(project.SourceLanguage, project.TargetLanguage);
         string error = "";
 
-        if (_editing is GlossaryTerm term)
+        if (this._editing is GlossaryTerm term)
         {
-            string key = builder.TermKey(_termDraft.Source ?? "");
-            if (string.IsNullOrWhiteSpace(_termDraft.Source) || string.IsNullOrWhiteSpace(_termDraft.Target))
-                error = AppText.T("web.toolbox.subtitleTranslation.editTermEmpty");
-            else if (glossary.Terms.Exists(t => !ReferenceEquals(t, term) && builder.TermKey(t.Source) == key))
-                error = AppText.F("web.toolbox.subtitleTranslation.editDuplicate", _termDraft.Source.Trim());
-
-            if (error.Length == 0)
+            string key = builder.TermKey(this._termDraft.Source ?? "");
+            if (string.IsNullOrWhiteSpace(this._termDraft.Source) || string.IsNullOrWhiteSpace(this._termDraft.Target))
             {
-                Orchestrator.ChangeGlossary(g =>
+                error = AppText.T("web.toolbox.subtitleTranslation.editTermEmpty");
+            }
+            else if (glossary.Terms.Exists(t => !ReferenceEquals(t, term) && builder.TermKey(t.Source) == key))
+            {
+                error = AppText.F("web.toolbox.subtitleTranslation.editDuplicate", this._termDraft.Source.Trim());
+            }
+
+            if (string.IsNullOrEmpty(error))
+            {
+                this.Orchestrator.ChangeGlossary(g =>
                 {
-                    term.Source = _termDraft.Source.Trim();
-                    term.Target = _termDraft.Target.Trim();
-                    term.Kind = _termDraft.Kind;
-                    term.Invariable = _termDraft.Invariable;
-                    term.Note = (_termDraft.Note ?? "").Trim();
-                    if (_adding)
+                    term.Source = this._termDraft.Source.Trim();
+                    term.Target = this._termDraft.Target.Trim();
+                    term.Kind = this._termDraft.Kind;
+                    term.Invariable = this._termDraft.Invariable;
+                    term.Note = (this._termDraft.Note ?? "").Trim();
+                    if (this._adding)
                         g.Terms.Add(term);
                 });
             }
         }
-        else if (_editing is GlossaryCharacter character)
+        else if (this._editing is GlossaryCharacter character)
         {
-            string key = GlossaryBuilder.CharacterKey(_characterDraft.Name ?? "");
-            if (string.IsNullOrWhiteSpace(_characterDraft.Name))
-                error = AppText.T("web.toolbox.subtitleTranslation.editCharacterEmpty");
-            else if (glossary.Characters.Exists(c => !ReferenceEquals(c, character) && GlossaryBuilder.CharacterKey(c.Name) == key))
-                error = AppText.F("web.toolbox.subtitleTranslation.editDuplicate", _characterDraft.Name.Trim());
-
-            if (error.Length == 0)
+            string key = GlossaryBuilder.CharacterKey(this._characterDraft.Name ?? "");
+            if (string.IsNullOrWhiteSpace(this._characterDraft.Name))
             {
-                Orchestrator.ChangeGlossary(g =>
+                error = AppText.T("web.toolbox.subtitleTranslation.editCharacterEmpty");
+            }
+            else if (glossary.Characters.Exists(c => !ReferenceEquals(c, character) && GlossaryBuilder.CharacterKey(c.Name) == key))
+            {
+                error = AppText.F("web.toolbox.subtitleTranslation.editDuplicate", this._characterDraft.Name.Trim());
+            }
+
+            if (string.IsNullOrEmpty(error))
+            {
+                this.Orchestrator.ChangeGlossary(g =>
                 {
-                    character.Name = _characterDraft.Name.Trim();
-                    character.Gender = _characterDraft.Gender;
-                    character.Role = (_characterDraft.Role ?? "").Trim();
-                    character.Relationships = (_characterDraft.Relationships ?? "").Trim();
-                    if (_adding)
+                    character.Name = this._characterDraft.Name.Trim();
+                    character.Gender = this._characterDraft.Gender;
+                    character.Role = (this._characterDraft.Role ?? "").Trim();
+                    character.Relationships = (this._characterDraft.Relationships ?? "").Trim();
+                    if (this._adding)
                         g.Characters.Add(character);
                 });
             }
         }
-        else if (_editing is GlossaryAddressing pair)
+        else if (this._editing is GlossaryAddressing pair)
         {
-            string key = GlossaryBuilder.AddressingKey(_addressingDraft.Speaker ?? "", _addressingDraft.Addressee ?? "");
-            if (string.IsNullOrWhiteSpace(_addressingDraft.Speaker) || string.IsNullOrWhiteSpace(_addressingDraft.Addressee))
-                error = AppText.T("web.toolbox.subtitleTranslation.editAddressingEmpty");
-            else if (glossary.Addressing.Exists(a => !ReferenceEquals(a, pair) && GlossaryBuilder.AddressingKey(a.Speaker, a.Addressee) == key))
-                error = AppText.F("web.toolbox.subtitleTranslation.editDuplicate", _addressingDraft.Speaker.Trim() + " → " + _addressingDraft.Addressee.Trim());
-
-            if (error.Length == 0)
+            string key = GlossaryBuilder.AddressingKey(this._addressingDraft.Speaker ?? "", this._addressingDraft.Addressee ?? "");
+            if (string.IsNullOrWhiteSpace(this._addressingDraft.Speaker) || string.IsNullOrWhiteSpace(this._addressingDraft.Addressee))
             {
-                Orchestrator.ChangeGlossary(g =>
+                error = AppText.T("web.toolbox.subtitleTranslation.editAddressingEmpty");
+            }
+            else if (glossary.Addressing.Exists(a => !ReferenceEquals(a, pair) && GlossaryBuilder.AddressingKey(a.Speaker, a.Addressee) == key))
+            {
+                error = AppText.F("web.toolbox.subtitleTranslation.editDuplicate", this._addressingDraft.Speaker.Trim() + " → " + this._addressingDraft.Addressee.Trim());
+            }
+
+            if (string.IsNullOrEmpty(error))
+            {
+                this.Orchestrator.ChangeGlossary(g =>
                 {
-                    pair.Speaker = _addressingDraft.Speaker.Trim();
-                    pair.Addressee = _addressingDraft.Addressee.Trim();
-                    pair.Form = _addressingDraft.Form;
-                    pair.Note = (_addressingDraft.Note ?? "").Trim();
-                    if (_adding)
+                    pair.Speaker = this._addressingDraft.Speaker.Trim();
+                    pair.Addressee = this._addressingDraft.Addressee.Trim();
+                    pair.Form = this._addressingDraft.Form;
+                    pair.Note = (this._addressingDraft.Note ?? "").Trim();
+                    if (this._adding)
                         g.Addressing.Add(pair);
                 });
             }
         }
 
-        if (error.Length > 0)
+        if (!string.IsNullOrEmpty(error))
         {
-            Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyEditInvalid"), error);
+            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyEditInvalid"), error);
             return;
         }
 
-        CancelEditing();
+        this.CancelEditing();
     }
 
     /// <summary>
@@ -2041,20 +2097,29 @@
     /// <param name="entry">Voce della riga</param>
     private void DeleteEntry(object entry)
     {
-        Orchestrator.ChangeGlossary(g =>
+        this.Orchestrator.ChangeGlossary(g =>
         {
             if (entry is GlossaryTerm term)
+            {
                 g.Terms.Remove(term);
+            }
             else if (entry is GlossaryCharacter character)
+            {
                 g.Characters.Remove(character);
+            }
             else if (entry is GlossaryAddressing pair)
+            {
                 g.Addressing.Remove(pair);
+            }
         });
     }
 
     /// <summary>
     /// Pulsanti di una riga del glossario: modifica e cancella, oppure salva e annulla sulla riga in modifica
     /// </summary>
+    /// <param name="entry">Voce della riga</param>
+    /// <param name="name">Nome della voce per le etichette accessibili</param>
+    /// <returns>Frammento della cella</returns>
     private RenderFragment RowActions(object entry, string name) =>
         @<span class="rf-translation-actions">
             @if (IsEditing(entry))
@@ -2080,21 +2145,21 @@
     /// </summary>
     private void ReloadProjects()
     {
-        _projects = Orchestrator.ListProjects();
-        _jobs = new Dictionary<string, TranslationJob>(StringComparer.Ordinal);
-        _jobsToResume = new HashSet<string>(StringComparer.Ordinal);
-        foreach (TranslationProject project in _projects)
+        this._projects = this.Orchestrator.ListProjects();
+        this._jobs = new Dictionary<string, TranslationJob>(StringComparer.Ordinal);
+        this._jobsToResume = new HashSet<string>(StringComparer.Ordinal);
+        foreach (TranslationProject project in this._projects)
         {
             try
             {
-                TranslationJob job = Orchestrator.LoadJob(project);
+                TranslationJob job = this.Orchestrator.LoadJob(project);
                 if (job == null)
                     continue;
 
-                _jobs[project.Id] = job;
+                this._jobs[project.Id] = job;
                 if (job.Status == TranslationJobStatus.Paused && (job.Phase == TranslationJobPhase.Applying || job.Phase == TranslationJobPhase.Review ||
-                    (job.Phase == TranslationJobPhase.Translation && Orchestrator.HasFilesToTranslate(job))))
-                    _jobsToResume.Add(project.Id);
+                    (job.Phase == TranslationJobPhase.Translation && this.Orchestrator.HasFilesToTranslate(job))))
+                    this._jobsToResume.Add(project.Id);
             }
             catch (Exception ex)
             {
@@ -2111,10 +2176,11 @@
     /// <returns>Indice del passo</returns>
     private int ProjectStep()
     {
-        TranslationProject project = Orchestrator.Project;
+        TranslationProject project = this.Orchestrator.Project;
         if (project == null)
             return 0;
-        TranslationJob job = Orchestrator.Job;
+
+        TranslationJob job = this.Orchestrator.Job;
         if (job != null && (job.Phase == TranslationJobPhase.NewTerms || job.Phase == TranslationJobPhase.Applying))
             return STEP_NEW_TERMS;
         if (job != null && job.Phase == TranslationJobPhase.Review)
@@ -2124,7 +2190,7 @@
         if (job != null)
             return STEP_TRANSLATION;
 
-        return Orchestrator.IsBusy || project.ReachedStep >= TranslationProjectStep.Glossary ? STEP_GLOSSARY : 0;
+        return this.Orchestrator.IsBusy || project.ReachedStep >= TranslationProjectStep.Glossary ? STEP_GLOSSARY : 0;
     }
 
     /// <summary>
@@ -2217,6 +2283,10 @@
         return name == "[" + key + "]" ? code : name;
     }
 
+    #endregion
+
+    #region Proprietà
+
     /// <summary>
     /// Battute del file in revisione, il primo del job se non scelto; si rileggono al cambio di stato della card
     /// </summary>
@@ -2224,18 +2294,20 @@
     {
         get
         {
-            TranslationJob job = Orchestrator.Job;
-            if (_reviewFileId == null || job == null || !job.FileIds.Contains(_reviewFileId))
+            TranslationJob job = this.Orchestrator.Job;
+            if (this._reviewFileId == null || job == null || !job.FileIds.Contains(this._reviewFileId))
             {
-                _reviewFileId = job != null && job.FileIds.Count > 0 ? job.FileIds[0] : null;
-                _reviewRows = null;
+                this._reviewFileId = job != null && job.FileIds.Count > 0 ? job.FileIds[0] : null;
+                this._reviewRows = null;
             }
-            if (_reviewRows == null)
+
+            if (this._reviewRows == null)
             {
-                _reviewRows = Orchestrator.GetReviewRows(_reviewFileId);
-                _reviewView = null;
+                this._reviewRows = this.Orchestrator.GetReviewRows(this._reviewFileId);
+                this._reviewView = null;
             }
-            return _reviewRows;
+
+            return this._reviewRows;
         }
     }
 
@@ -2246,13 +2318,14 @@
     {
         get
         {
-            if (_reviewView == null)
+            if (this._reviewView == null)
             {
-                List<TranslationReviewRow> rows = ReviewRows;
-                _reviewView = _reviewFilter == FILTER_TO_CHECK ? rows.FindAll(r => NeedsCheck(r))
-                    : _reviewFilter == FILTER_EDITED ? rows.FindAll(r => r.Signals.Contains(TranslationCueSignal.EditedByUser)) : rows;
+                List<TranslationReviewRow> rows = this.ReviewRows;
+                this._reviewView = this._reviewFilter == FILTER_TO_CHECK ? rows.FindAll(r => NeedsCheck(r))
+                    : this._reviewFilter == FILTER_EDITED ? rows.FindAll(r => r.Signals.Contains(TranslationCueSignal.EditedByUser)) : rows;
             }
-            return _reviewView;
+
+            return this._reviewView;
         }
     }
 
@@ -2261,6 +2334,8 @@
     /// </summary>
     private TranslationProject SelectedProject
     {
-        get { return _projects.Find(p => p.Id == _selectedId); }
+        get { return this._projects.Find(p => p.Id == this._selectedId); }
     }
+
+    #endregion
 }

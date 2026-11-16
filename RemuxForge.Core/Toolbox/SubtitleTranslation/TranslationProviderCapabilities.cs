@@ -262,11 +262,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public bool Reasoning { get { return this.IsEnabled(REASONING, true); } }
 
         /// <summary>
-        /// Batch API: assente col piano e rinviata con la API key
-        /// </summary>
-        public bool Batch { get { return false; } }
-
-        /// <summary>
         /// Capacità spente nel job, da salvare per la ripresa
         /// </summary>
         public List<string> DisabledCapabilities

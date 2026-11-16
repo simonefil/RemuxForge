@@ -152,6 +152,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 .Replace("{notes_language}", notes).Replace("{address_procedure}", TranslationRequestBuilder.GetAddressProcedure(targetLanguage))
                 .Replace("{record_format}", TranslationRequestBuilder.RECORD_FORMAT);
             this.MergeInstructions = MERGE_TEMPLATE.Replace("{source_language}", source).Replace("{target_language}", target).Replace("{notes_language}", notes);
+
             // Definizione di submit_glossary: addressing c'è solo per le lingue con forme di cortesia
             string formDescription = TranslationRequestBuilder.GetAddressFormDescription(targetLanguage);
             JsonObject properties = new JsonObject
@@ -335,9 +336,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 input.Add(item.DeepClone());
                 if (AiOAuthFlow.GetString(item, "type") == "function_call")
+                {
                     calls.Add(item);
+                }
                 else if (AiOAuthFlow.GetString(item, "type") == "web_search_call")
+                {
                     delivery.WebSearchCalls++;
+                }
             }
 
             if (calls.Count == 0)
@@ -363,9 +368,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 {
                     Glossary glossary = this.Validate(AiOAuthFlow.GetString(call, "arguments"), merge, errors);
                     if (errors.Count == 0)
+                    {
                         delivery.Glossary = glossary;
+                    }
                     else
+                    {
                         delivery.Errors = errors;
+                    }
                 }
 
                 outputs.Add(new KeyValuePair<string, string>(AiOAuthFlow.GetString(call, "call_id"), new JsonObject { ["valid"] = errors.Count == 0, ["errors"] = CreateArray(errors) }.ToJsonString()));
@@ -394,7 +403,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public Glossary Validate(string arguments, GlossaryMergeResult merge, List<string> errors)
         {
             Glossary glossary = new Glossary();
-            JsonObject root = null;
+            JsonObject root;
             try
             {
                 root = JsonNode.Parse(string.IsNullOrEmpty(arguments) ? "null" : arguments) as JsonObject;
@@ -429,11 +438,17 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 term.Kind = (GlossaryTermKind)ReadEnum(item, "kind", path + ".kind", s_termKinds, errors);
                 JsonNode invariable;
                 if (!item.TryGetPropertyValue("invariable", out invariable) || invariable == null)
+                {
                     errors.Add("GLOSSARY_FIELD_MISSING " + path + ".invariable: required field is missing.");
+                }
                 else if (invariable.GetValueKind() != JsonValueKind.True && invariable.GetValueKind() != JsonValueKind.False)
+                {
                     errors.Add("GLOSSARY_TYPE " + path + ".invariable: expected boolean.");
+                }
                 else
+                {
                     term.Invariable = invariable.GetValueKind() == JsonValueKind.True;
+                }
                 term.Note = ReadString(item, "note", path + ".note", false, false, errors);
                 term.Origin = GlossaryOrigin.Analysis;
                 AddDuplicateCheck(seenTerms, this.TermKey(term.Source), path + ".source", errors);
@@ -670,25 +685,37 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             foreach (GlossaryTerm term in delivered.Terms)
             {
                 if (merge.TermConflicts.Contains(this.TermKey(term.Source)))
+                {
                     result.Terms.Add(term);
+                }
                 else
+                {
                     discarded++;
+                }
             }
 
             foreach (GlossaryCharacter character in delivered.Characters)
             {
                 if (merge.CharacterConflicts.Contains(CharacterKey(character.Name)))
+                {
                     result.Characters.Add(character);
+                }
                 else
+                {
                     discarded++;
+                }
             }
 
             foreach (GlossaryAddressing pair in delivered.Addressing)
             {
                 if (merge.AddressingConflicts.Contains(AddressingKey(pair.Speaker, pair.Addressee)))
+                {
                     result.Addressing.Add(pair);
+                }
                 else
+                {
                     discarded++;
+                }
             }
 
             result.Series = delivered.Series;
@@ -746,25 +773,37 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             foreach (GlossaryTerm term in delivered.Terms)
             {
                 if (termKeys.Contains(this.TermKey(term.Source)))
+                {
                     discarded.Add(new GlossaryDiscard { Kind = GlossaryEntryKind.Term, Key = term.Source, Delivered = term.Target, Term = term });
+                }
                 else
+                {
                     result.Terms.Add(term);
+                }
             }
 
             foreach (GlossaryCharacter character in delivered.Characters)
             {
                 if (characterKeys.Contains(CharacterKey(character.Name)))
+                {
                     discarded.Add(new GlossaryDiscard { Kind = GlossaryEntryKind.Character, Key = character.Name, Delivered = character.Gender.ToString(), Character = character });
+                }
                 else
+                {
                     result.Characters.Add(character);
+                }
             }
 
             foreach (GlossaryAddressing pair in delivered.Addressing)
             {
                 if (addressingKeys.Contains(AddressingKey(pair.Speaker, pair.Addressee)))
+                {
                     discarded.Add(new GlossaryDiscard { Kind = GlossaryEntryKind.Addressing, Key = pair.Speaker + " → " + pair.Addressee, Delivered = pair.Form, Addressing = pair });
+                }
                 else
+                {
                     result.Addressing.Add(pair);
+                }
             }
 
             // I testi del glossario caricato valgono quando non sono vuoti; quello proposto resta fra gli scarti, anche vuoto, per
@@ -1070,9 +1109,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
             string other;
             if (seen.TryGetValue(key, out other))
+            {
                 errors.Add("GLOSSARY_DUPLICATE " + path + ": duplicates " + other + ".");
+            }
             else
+            {
                 seen[key] = path;
+            }
         }
 
         /// <summary>
@@ -1112,9 +1155,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 string value = variant(proposal.Key);
                 int index = variants.FindIndex(v => v.Key == value);
                 if (index < 0)
+                {
                     variants.Add(new KeyValuePair<string, List<KeyValuePair<T, string>>>(value, new List<KeyValuePair<T, string>> { proposal }));
+                }
                 else
+                {
                     variants[index].Value.Add(proposal);
+                }
             }
 
             return variants;

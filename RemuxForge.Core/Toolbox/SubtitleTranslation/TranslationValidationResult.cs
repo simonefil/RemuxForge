@@ -25,6 +25,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         lines.Add(issue.ToModelLine());
                 }
             }
+
             if (lines.Count == 0)
                 return lines;
 

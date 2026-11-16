@@ -123,8 +123,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="sourceLanguage">Lingua d'origine</param>
         /// <param name="targetLanguage">Lingua d'arrivo</param>
         /// <param name="glossary">Termini del glossario in uso: termine del sorgente e resa</param>
-        public TranslationValidator(SubtitleTranslationFormat format, string sourceLanguage, string targetLanguage,
-            IReadOnlyList<KeyValuePair<string, string>> glossary)
+        public TranslationValidator(SubtitleTranslationFormat format, string sourceLanguage, string targetLanguage, IReadOnlyList<KeyValuePair<string, string>> glossary)
         {
             this._format = format;
             this._terms = new List<GlossaryTerm>();
@@ -328,6 +327,53 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
 
             return result;
+        }
+
+        #endregion
+
+        #region Metodi interni
+
+        /// <summary>
+        /// Toglie l'articolo iniziale di un termine con l'elenco della sua lingua
+        /// </summary>
+        /// <param name="term">Termine o resa</param>
+        /// <param name="language">Lingua ISO 639-2</param>
+        /// <returns>Parola da cercare</returns>
+        internal static string StripArticle(string term, string language)
+        {
+            string word = (term ?? "").Trim().Replace('’', '\'');
+            string[] articles;
+            if (!s_articles.TryGetValue(language, out articles))
+                return word;
+
+            foreach (string article in articles)
+            {
+                string head = article.EndsWith("'", StringComparison.Ordinal) ? article : article + " ";
+                if (word.Length > head.Length && word.StartsWith(head, StringComparison.OrdinalIgnoreCase))
+                    return word.Substring(head.Length).Trim();
+            }
+
+            return word;
+        }
+
+        /// <summary>
+        /// Espressione che trova una parola intera senza distinguere maiuscole
+        /// </summary>
+        /// <param name="word">Parola</param>
+        /// <returns>Espressione</returns>
+        internal static Regex WordPattern(string word)
+        {
+            return new Regex(@"(?<![\p{L}\p{M}\p{N}])" + Regex.Escape(word) + @"(?![\p{L}\p{M}\p{N}])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        }
+
+        /// <summary>
+        /// Testo su cui si confrontano i termini: senza la sintassi dei segni, a capo come spazi, apostrofo dritto
+        /// </summary>
+        /// <param name="text">Testo pulito o consegnato</param>
+        /// <returns>Testo per il confronto</returns>
+        internal static string GlossaryPlain(string text)
+        {
+            return s_markSyntax.Replace(text, "").Replace('\n', ' ').Replace('’', '\'');
         }
 
         #endregion
@@ -564,49 +610,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
 
             return list.ToString();
-        }
-
-        /// <summary>
-        /// Toglie l'articolo iniziale di un termine con l'elenco della sua lingua
-        /// </summary>
-        /// <param name="term">Termine o resa</param>
-        /// <param name="language">Lingua ISO 639-2</param>
-        /// <returns>Parola da cercare</returns>
-        internal static string StripArticle(string term, string language)
-        {
-            string word = (term ?? "").Trim().Replace('’', '\'');
-            string[] articles;
-            if (!s_articles.TryGetValue(language, out articles))
-                return word;
-
-            foreach (string article in articles)
-            {
-                string head = article.EndsWith("'", StringComparison.Ordinal) ? article : article + " ";
-                if (word.Length > head.Length && word.StartsWith(head, StringComparison.OrdinalIgnoreCase))
-                    return word.Substring(head.Length).Trim();
-            }
-
-            return word;
-        }
-
-        /// <summary>
-        /// Espressione che trova una parola intera senza distinguere maiuscole
-        /// </summary>
-        /// <param name="word">Parola</param>
-        /// <returns>Espressione</returns>
-        internal static Regex WordPattern(string word)
-        {
-            return new Regex(@"(?<![\p{L}\p{M}\p{N}])" + Regex.Escape(word) + @"(?![\p{L}\p{M}\p{N}])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        }
-
-        /// <summary>
-        /// Testo su cui si confrontano i termini: senza la sintassi dei segni, a capo come spazi, apostrofo dritto
-        /// </summary>
-        /// <param name="text">Testo pulito o consegnato</param>
-        /// <returns>Testo per il confronto</returns>
-        internal static string GlossaryPlain(string text)
-        {
-            return s_markSyntax.Replace(text, "").Replace('\n', ' ').Replace('’', '\'');
         }
 
         #endregion

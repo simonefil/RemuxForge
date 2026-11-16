@@ -78,7 +78,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 foreach (NewTermRendering rendering in decision.Renderings)
                 {
                     string used = rendering.Target.Trim();
-                    if (used.Length > 0 && !string.Equals(used, term.Target, StringComparison.Ordinal) && !usages.Contains(used))
+                    if (!string.IsNullOrEmpty(used) &&!string.Equals(used, term.Target, StringComparison.Ordinal) && !usages.Contains(used))
                         usages.Add(used);
                 }
                 Regex usage = null;
@@ -222,15 +222,19 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             Dictionary<int, KeyValuePair<string, List<GlossaryWarning>>> texts = new Dictionary<int, KeyValuePair<string, List<GlossaryWarning>>>();
             foreach (KeyValuePair<int, CueValidationResult> pair in replaced)
                 texts[pair.Key] = new KeyValuePair<string, List<GlossaryWarning>>(pair.Value.Text, pair.Value.GetGlossaryWarnings());
-            int rewritten = 0;
+            int rewritten;
             lock (this._lock)
             {
                 foreach (TranslatedCueState result in work.Results.Values)
                 {
                     if (result.Status == TranslatedCueStatus.Accepted)
+                    {
                         texts[result.Id] = new KeyValuePair<string, List<GlossaryWarning>>(result.Text, result.GlossaryWarnings);
+                    }
                     else if (!replaced.ContainsKey(result.Id) && targets.Contains(result.Id))
+                    {
                         state.TermApplication.FailedIds.Add(result.Id);
+                    }
                 }
                 foreach (int id in state.TermApplication.FailedIds)
                 {

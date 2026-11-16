@@ -89,6 +89,8 @@
 </RadzenPanel>
 
 @code {
+    #region Parametri
+
     /// <summary>
     /// Chiamate del progetto in ordine di registro
     /// </summary>
@@ -104,10 +106,18 @@
     /// </summary>
     [Parameter] public HashSet<int> Discarded { get; set; } = new HashSet<int>();
 
+    #endregion
+
+    #region Variabili di classe
+
     /// <summary>
     /// True col pannello chiuso, com'è all'apertura
     /// </summary>
     private bool _collapsed = true;
+
+    #endregion
+
+    #region Metodi privati
 
     /// <summary>
     /// Token di una colonna, trattino se il servizio non li dichiara
@@ -118,4 +128,6 @@
     {
         return tokens.HasValue ? tokens.Value.ToString("N0", CultureInfo.CurrentCulture) : "—";
     }
+
+    #endregion
 }

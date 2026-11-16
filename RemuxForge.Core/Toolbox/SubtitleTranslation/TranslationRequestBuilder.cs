@@ -28,6 +28,21 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "- In submit_translation, a line break inside a cue is \"\\n\" inside the JSON string.";
 
         /// <summary>
+        /// Tool di consegna della traduzione
+        /// </summary>
+        public const string SUBMIT_TRANSLATION_TOOL = "submit_translation";
+
+        /// <summary>
+        /// Tool di consegna della diagnosi
+        /// </summary>
+        public const string SUBMIT_DIAGNOSIS_TOOL = "submit_diagnosis";
+
+        /// <summary>
+        /// Coppie accettate mostrate nella coda prima dell'intervallo richiesto
+        /// </summary>
+        public const int TAIL_PAIRS = 15;
+
+        /// <summary>
         /// Passo dell'analisi sulle forme di cortesia per le lingue senza forme grammaticali
         /// </summary>
         private const string GENERIC_ADDRESS_PROCEDURE = "Describe in register_rules how formal each recurring character is with the others.";
@@ -36,16 +51,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Regola di traduzione sulle forme di cortesia per le lingue senza forme grammaticali
         /// </summary>
         private const string GENERIC_ADDRESS_RULE = "Keep the register of each speaker as described in register_rules.";
-
-        /// <summary>
-        /// Tool di consegna della traduzione
-        /// </summary>
-        public const string SUBMIT_TRANSLATION_TOOL = "submit_translation";
-
-        /// <summary>
-        /// Coppie accettate mostrate nella coda prima dell'intervallo richiesto
-        /// </summary>
-        public const int TAIL_PAIRS = 15;
 
         /// <summary>
         /// Instructions di B, B′ e B″: un solo testo, perché il ritentativo trovi la cache del prefisso
@@ -131,11 +136,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "{record_format}\n" +
             "\n" +
             "{translation_rules}";
-
-        /// <summary>
-        /// Tool di consegna della diagnosi
-        /// </summary>
-        public const string SUBMIT_DIAGNOSIS_TOOL = "submit_diagnosis";
 
         /// <summary>
         /// Definizione del tool submit_diagnosis
@@ -482,6 +482,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     message.Append('\n').Append(FormatRecord(pair.Key.Id, pair.Key.Group, pair.Key.Text));
                     message.Append('\n').Append(FormatTranslationRecord(pair.Key.Id, pair.Key.Group, pair.Value));
                 }
+
                 message.Append("\n\n");
             }
 
@@ -504,6 +505,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             StringBuilder message = new StringBuilder("UPDATED TERMS (apply these renderings):");
             foreach (KeyValuePair<string, string> term in terms)
                 message.Append('\n').Append(term.Key).Append(" => ").Append(term.Value);
+
             message.Append("\n\n");
             AppendRequested(message, "REWRITE", requested);
             AppendCurrent(message, requested, current);
@@ -555,6 +557,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 if (!string.IsNullOrEmpty(issue.Suggestion))
                     message.Append("\n\tsuggestion: ").Append(issue.Suggestion.Replace("\n", "\n\t"));
             }
+
             message.Append("\n\n");
             AppendRequested(message, "DELIVER", requested);
             AppendCurrent(message, requested, current);
@@ -633,8 +636,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         if (cue.Group == group)
                             members.Add(cue.Id.ToString(CultureInfo.InvariantCulture));
                     }
+
                     parts.Add("g" + group.ToString(CultureInfo.InvariantCulture) + " = " + string.Join(",", members));
                 }
+
                 message.Append("\nSplit-sentence groups in this range: ").Append(string.Join("; ", parts));
             }
         }

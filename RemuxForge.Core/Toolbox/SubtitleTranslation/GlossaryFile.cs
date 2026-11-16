@@ -119,11 +119,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
 
                 IXLWorksheet series = AddSheet(workbook, SERIES_SHEET);
-                string[] values = new string[]
-                {
-                    FORMAT, VERSION.ToString(CultureInfo.InvariantCulture), glossary.SourceLanguage, glossary.TargetLanguage, glossary.Series, glossary.Tone,
-                    glossary.RegisterRules
-                };
+                string[] values = new string[] { FORMAT, VERSION.ToString(CultureInfo.InvariantCulture), glossary.SourceLanguage, glossary.TargetLanguage, glossary.Series, glossary.Tone, glossary.RegisterRules };
                 for (int i = 0; i < s_seriesFields.Length; i++)
                     WriteRow(series, i + 2, s_seriesFields[i], values[i]);
 

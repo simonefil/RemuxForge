@@ -1137,7 +1137,7 @@ namespace RemuxForge.Web.Services.Toolbox
             List<string> inputs = new List<string>();
             lock (this.StateLock)
             {
-                if (!this.CanEditCues || this.OutputFolderError.Length > 0)
+                if (!this.CanEditCues || !string.IsNullOrEmpty(this.OutputFolderError))
                     return null;
 
                 rows = this.GetExportRows();
@@ -1331,9 +1331,14 @@ namespace RemuxForge.Web.Services.Toolbox
                     foreach (TranslatedCueState translation in state.Translations)
                     {
                         if (translation.Status == TranslatedCueStatus.Accepted)
+                        {
                             row.CuesDone++;
+                        }
                         else
+                        {
                             row.ToReview++;
+                        }
+
                         if (translation.Signals.Contains(TranslationCueSignal.Retried))
                             row.Retried++;
                     }
@@ -2199,18 +2204,30 @@ namespace RemuxForge.Web.Services.Toolbox
             foreach (GlossaryDiscard discard in this._project.Analysis.DiscardedForImport)
             {
                 if (discard.Term != null && !restored.Terms.Exists(t => builder.TermKey(t.Source) == builder.TermKey(discard.Term.Source)))
+                {
                     restored.Terms.Add(discard.Term);
+                }
                 else if (discard.Character != null && !restored.Characters.Exists(c => GlossaryBuilder.CharacterKey(c.Name) == GlossaryBuilder.CharacterKey(discard.Character.Name)))
+                {
                     restored.Characters.Add(discard.Character);
+                }
                 else if (discard.Addressing != null &&
                     !restored.Addressing.Exists(a => GlossaryBuilder.AddressingKey(a.Speaker, a.Addressee) == GlossaryBuilder.AddressingKey(discard.Addressing.Speaker, discard.Addressing.Addressee)))
+                {
                     restored.Addressing.Add(discard.Addressing);
+                }
                 else if (discard.Kind == GlossaryEntryKind.Series)
+                {
                     restored.Series = discard.Delivered;
+                }
                 else if (discard.Kind == GlossaryEntryKind.Tone)
+                {
                     restored.Tone = discard.Delivered;
+                }
                 else if (discard.Kind == GlossaryEntryKind.RegisterRules)
+                {
                     restored.RegisterRules = discard.Delivered;
+                }
             }
 
             return restored;
@@ -2224,9 +2241,13 @@ namespace RemuxForge.Web.Services.Toolbox
         {
             SubtitleTranslationDocument document = TranslationFilePreparer.Prepare(file, this._project.SourceLanguage, this._project.Analysis != null);
             if (document != null)
+            {
                 this._documents[file.Id] = document;
+            }
             else
+            {
                 this._documents.Remove(file.Id);
+            }
         }
 
         /// <summary>

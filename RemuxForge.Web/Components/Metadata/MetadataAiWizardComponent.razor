@@ -20,7 +20,7 @@
                         <ValueTemplate Context="model">@GetModelLabel((string)model)</ValueTemplate>
                     </RadzenDropDown>
                     <RadzenButton Text="@AppText.T("web.metadata.ai.refreshModels")" Icon="refresh" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base"
-                                  Disabled="@(_modelsLoading || !AiCredentialService.IsConfigured(_credentials))" Click="@RefreshModels" />
+                                  Disabled="@(_modelsLoading || !AiCredentialService.IsConfigured(_credentials))" Click="@RefreshModelsAsync" />
                 </div>
                 <div class="form-row" style="margin-top: 0.5em;">
                     <RadzenLabel class="form-label" Text="@AppText.T("web.metadata.ai.reasoning")" Component="MetadataAiReasoning" />
@@ -394,6 +394,7 @@
     /// <summary>
     /// Valori della tendina dei modelli: il modello salvato assente dall'elenco resta selezionabile
     /// </summary>
+    /// <returns>Identificativi dei modelli</returns>
     private List<string> GetModelValues()
     {
         List<string> values = new List<string>();
@@ -408,6 +409,7 @@
     /// Nome mostrato di un modello
     /// </summary>
     /// <param name="id">Identificativo modello</param>
+    /// <returns>Nome del modello, l'identificativo se l'elenco non lo conosce</returns>
     private string GetModelLabel(string id)
     {
         AiModelInfo model = this._models.Find(m => m.Id == id);
@@ -417,6 +419,7 @@
     /// <summary>
     /// Livelli della tendina del ragionamento: quelli del modello scelto, e il livello salvato che l'elenco non conosce
     /// </summary>
+    /// <returns>Livelli di ragionamento</returns>
     private List<string> GetEffortValues()
     {
         List<string> values = new List<string>();
@@ -431,7 +434,8 @@
     /// <summary>
     /// Aggiorna l'elenco dei modelli dell'accesso
     /// </summary>
-    private async Task RefreshModels()
+    /// <returns>Task della lettura</returns>
+    private async Task RefreshModelsAsync()
     {
         this._error = "";
         this._modelsLoading = true;
@@ -487,7 +491,7 @@
         {
             this.NotificationService.Notify(NotificationSeverity.Error, AppText.F("web.metadata.ai.maxRoundsInvalid", MetadataAiPresetGenerator.MIN_MAX_ROUNDS, MetadataAiPresetGenerator.MAX_MAX_ROUNDS), "", 8000);
 
-            // Il valore salvato non e' cambiato, quindi il campo va ricreato per non mostrare quello rifiutato
+            // Il valore salvato non è cambiato, quindi il campo va ricreato per non mostrare quello rifiutato
             this._maxRoundsInputKey++;
             return;
         }

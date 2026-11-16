@@ -361,10 +361,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
 
                 if (halves != null && halves.Count == 2)
+                {
                     this.RaiseLog(AppText.F("toolbox.subtitleTranslation.run.blockReduced", file.FileName, number, halves[0].Count, halves[1].Count));
+                }
                 else
+                {
                     this.RaiseLog(AppText.F("toolbox.subtitleTranslation.run.blockSaved", file.FileName, number, count, work.FirstAccepted, work.FirstRejected,
                         work.FirstReasons.Count > 0 ? string.Join(", ", work.FirstReasons) : "-"));
+                }
 
                 this.ReportProgress(file.FileName, number, count);
                 this.RaiseChanged();

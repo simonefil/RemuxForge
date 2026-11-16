@@ -156,6 +156,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 same = encoded[i] == data[offset + i];
             if (!same)
                 return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, 0, REJECTION_ROUNDTRIP_MISMATCH);
+
             byte[] preamble = new byte[offset];
             Array.Copy(data, preamble, offset);
 
@@ -170,6 +171,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         lines.Add(new SourceLine(lineStart, i - lineStart, ""));
                     break;
                 }
+
                 if (text[i] != '\r' && text[i] != '\n')
                     continue;
 
@@ -205,6 +207,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         if (text.IndexOf("-->", lines[l].Start, lines[l].Length, StringComparison.Ordinal) >= 0)
                             timing = l;
                     }
+
                     long startMs = 0;
                     long endMs = 0;
                     bool timed = false;
@@ -217,6 +220,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             && SrtSubtitleTimelineRewriter.TryParseTimestamp(timingLine.Substring(0, arrow).Trim(), out startMs, true)
                             && SrtSubtitleTimelineRewriter.TryParseTimestamp(endTokens[0], out endMs, true);
                     }
+
                     if (!timed)
                     {
                         untimed++;
@@ -349,6 +353,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 content.Append(cleaner.Recompose(cue, translation));
                 copied = cue.TextStart + cue.TextLength;
             }
+
             content.Append(this._text, copied, this._text.Length - copied);
 
             byte[] body = this._outputEncoding.GetBytes(content.ToString());

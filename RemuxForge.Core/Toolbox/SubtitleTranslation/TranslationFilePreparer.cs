@@ -66,12 +66,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public static SubtitleTranslationDocument Prepare(TranslationProjectFile file, string sourceLanguage, bool locked)
         {
             byte[] bytes;
-            SubtitleTranslationFormat format;
             file.RejectedReason = "";
             if (!locked)
                 file.Preparation = new TranslationFilePreparation();
 
-            if (!TryGetFormat(file.Path, out format))
+            if (!TryGetFormat(file.Path, out _))
             {
                 file.RejectedReason = REJECTION_FORMAT_UNKNOWN;
                 return null;
@@ -125,9 +124,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             foreach (SubtitleCue cue in document.Cues)
             {
                 if (cue.Id.HasValue)
+                {
                     preparation.CueCount++;
+                }
                 else
+                {
                     preparation.ExcludedCount++;
+                }
             }
 
             preparation.NumberedSourceSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(TranslationRequestBuilder.FormatSource(document.Cues)))).ToLowerInvariant();

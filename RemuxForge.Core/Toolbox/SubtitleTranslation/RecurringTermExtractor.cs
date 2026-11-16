@@ -96,6 +96,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         continue;
 
                     string[] lines = s_markSyntax.Replace(cue.CleanText, "").Replace('’', '\'').Split('\n');
+
                     // Una riga di continuazione apre una frase se la riga prima ne chiude una
                     for (int i = 0; i < lines.Length; i++)
                         this.ScanLine(lines[i], i == 0 || this.FollowsSentenceEnd(lines[i - 1], lines[i - 1].Length), english, file.Key, stats);
@@ -166,7 +167,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
             // Un trattino di dialogo apre una frase, anche su una riga di continuazione
             string trimmed = text.TrimStart();
-            if (trimmed.Length > 0 && (trimmed[0] == '-' || trimmed[0] == '–' || trimmed[0] == '—'))
+            if (!string.IsNullOrEmpty(trimmed) && (trimmed[0] == '-' || trimmed[0] == '–' || trimmed[0] == '—'))
                 sentenceStart = true;
 
             if (english)
@@ -184,16 +185,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // Possessivo tolto; le altre contrazioni non sono nomi
                 if (word.EndsWith("'s", StringComparison.Ordinal))
                     word = word.Substring(0, word.Length - 2);
-                bool candidateWord = word.Length > 0 && word.IndexOf('\'') < 0 && char.IsUpper(word[0]) && !(english && s_englishCommonWords.Contains(word));
+                bool candidateWord = !string.IsNullOrEmpty(word) && word.IndexOf('\'') < 0 && char.IsUpper(word[0]) && !(english && s_englishCommonWords.Contains(word));
 
                 // La sequenza continua solo fra parole maiuscole separate da uno spazio, senza punteggiatura in mezzo
                 bool joins = sequence.Count > 0 && match.Index == sequenceEnd + 1 && text[sequenceEnd] == ' ';
-                if (!joins || word.Length == 0 || !char.IsUpper(word[0]))
+                if (!joins || string.IsNullOrEmpty(word) || !char.IsUpper(word[0]))
                 {
                     this.CloseSequence(sequence, english, fileId, stats);
                     sequence.Clear();
                 }
-                if (word.Length > 0 && char.IsUpper(word[0]) && word.IndexOf('\'') < 0)
+                if (!string.IsNullOrEmpty(word) && char.IsUpper(word[0]) && word.IndexOf('\'') < 0)
                 {
                     sequence.Add(word);
                     sequenceEnd = match.Index + match.Length;

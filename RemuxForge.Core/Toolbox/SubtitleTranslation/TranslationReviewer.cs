@@ -15,8 +15,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
     /// Revisione AI di un job: per ogni blocco scelto una diagnosi D1 senza ritentativi, poi D2 sulle battute diagnosticate e
-    /// su quelle da rivedere, coi gruppi interi. La diagnosi si salva, anche
-    /// quella non valida, e alla ripresa il blocco riparte da D2; i blocchi di un file vanno in sequenza
+    /// su quelle da rivedere, coi gruppi interi. La diagnosi si salva, anche quella non valida, e alla ripresa il blocco riparte
+    /// da D2; i blocchi di un file vanno in sequenza
     /// </summary>
     public sealed class TranslationReviewer : TranslationPhaseRunner
     {
@@ -246,7 +246,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                 string severity = AiOAuthFlow.GetString(entry, "severity");
                                 string explanation = (AiOAuthFlow.GetString(entry, "explanation") ?? "").Trim();
                                 if (!((IList<string>)TranslationRequestBuilder.DIAGNOSIS_CATEGORIES).Contains(category) || !((IList<string>)TranslationRequestBuilder.DIAGNOSIS_SEVERITIES).Contains(severity)
-                                    || explanation.Length == 0)
+                                    || string.IsNullOrEmpty(explanation))
                                     continue;
                                 string suggestion = AiOAuthFlow.GetString(entry, "suggestion");
                                 issues.Add(new TranslationReviewIssue { Id = id, Category = category, Severity = severity, Explanation = explanation, Suggestion = string.IsNullOrEmpty(suggestion) ? null : suggestion });
@@ -336,7 +336,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
 
             int found = 0;
-            int changed = 0;
+            int changed;
             lock (this._lock)
             {
                 foreach (TranslationReviewBlock block in state.ReviewBlocks)

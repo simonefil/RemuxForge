@@ -31,6 +31,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public const string SYNTHETIC_PREFIX = "[tr] ";
 
         /// <summary>
+        /// Secondo modello sintetico, con altri livelli di ragionamento
+        /// </summary>
+        public const string SMALL_MODEL_ID = "recorded-translation-small";
+
+        /// <summary>
+        /// Coda in fondo al suggerimento dei problemi sintetici della diagnosi
+        /// </summary>
+        public const string SYNTHETIC_CORRECTION = " (rev)";
+
+        /// <summary>
         /// Righe della coda che elencano gli id richiesti
         /// </summary>
         private static readonly string[] REQUESTED_IDS_HEADERS = new string[] { "TRANSLATE cue ids ", "REWRITE cue ids ", "DELIVER cue ids ", "REVIEW cue ids " };
@@ -51,16 +61,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private const string CONFLICTS_HEADER = "CONFLICTS (variants proposed by the episodes):\n";
 
         /// <summary>
-        /// Secondo modello sintetico, con altri livelli di ragionamento
-        /// </summary>
-        public const string SMALL_MODEL_ID = "recorded-translation-small";
-
-        /// <summary>
-        /// Coda in fondo al suggerimento dei problemi sintetici della diagnosi
-        /// </summary>
-        public const string SYNTHETIC_CORRECTION = " (rev)";
-
-        /// <summary>
         /// Riga che apre le rese aggiornate nella coda di C
         /// </summary>
         private const string UPDATED_TERMS_HEADER = "UPDATED TERMS (apply these renderings):";
@@ -69,6 +69,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Riga del suggerimento di un problema nella coda di D2
         /// </summary>
         private const string SUGGESTION_HEADER = "\tsuggestion: ";
+
+        #endregion
+
+        #region Variabili statiche
 
         /// <summary>
         /// Record della traduzione attuale: id, gruppo facoltativo, freccia e testo
@@ -450,6 +454,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         issues.Add(new JsonObject { ["id"] = id, ["category"] = "accuracy", ["severity"] = "minor", ["explanation"] = SYNTHETIC_PREFIX + "issue " + id.ToString(CultureInfo.InvariantCulture), ["suggestion"] = text + SYNTHETIC_CORRECTION });
                     }
                 }
+
                 toolName = "submit_diagnosis";
                 arguments["issues"] = issues;
             }
@@ -520,6 +525,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     ["content"] = new JsonArray(new JsonObject { ["type"] = "output_text", ["text"] = "Which series is this?" })
                 });
             }
+
             result.ResponseId = "resp_recorded";
             result.HttpStatus = 200;
 

@@ -85,8 +85,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 value = JsonSerializer.Deserialize<T>(File.ReadAllText(path, Encoding.UTF8), s_options);
             }
-            catch (Exception ex) when (ex is JsonException || ex is FileNotFoundException || ex is DirectoryNotFoundException)
+            catch (Exception ex)
             {
+                if (!(ex is JsonException || ex is FileNotFoundException || ex is DirectoryNotFoundException))
+                    throw;
                 throw new InvalidDataException(unreadableMessage, ex);
             }
 

@@ -58,6 +58,8 @@
 </div>
 
 @code {
+    #region Costanti
+
     /// <summary>
     /// Posizione della revisione, che segue la traduzione finché non si cambia
     /// </summary>
@@ -67,6 +69,10 @@
     /// Posizione della traduzione
     /// </summary>
     private const int TRANSLATION = 1;
+
+    #endregion
+
+    #region Variabili statiche
 
     /// <summary>
     /// Passi con un modello, nell'ordine del dialog: analisi, traduzione, termini nuovi, revisione
@@ -83,10 +89,18 @@
     /// </summary>
     private static readonly BadgeStyle[] s_difficultyStyles = new BadgeStyle[] { BadgeStyle.Danger, BadgeStyle.Warning, BadgeStyle.Success, BadgeStyle.Danger };
 
+    #endregion
+
+    #region Parametri
+
     /// <summary>
     /// Orchestratore della card
     /// </summary>
     [Parameter] public SubtitleTranslationOrchestrator Orchestrator { get; set; }
+
+    #endregion
+
+    #region Variabili di classe
 
     /// <summary>
     /// Modelli dell'accesso
@@ -133,6 +147,10 @@
     /// </summary>
     private string _error = "";
 
+    #endregion
+
+    #region Metodi protected
+
     /// <summary>
     /// Legge i modelli e riempie le tendine coi valori del progetto
     /// </summary>
@@ -141,32 +159,36 @@
     {
         try
         {
-            _models = await Orchestrator.ListModelsAsync();
+            this._models = await this.Orchestrator.ListModelsAsync();
         }
         catch (AiServiceException ex)
         {
-            _error = ex.Message;
-            _models = new List<AiModelInfo>();
+            this._error = ex.Message;
+            this._models = new List<AiModelInfo>();
         }
 
-        TranslationProject project = Orchestrator.Project;
+        TranslationProject project = this.Orchestrator.Project;
         string[] models = new string[] { project.Models.Analysis, project.Models.Translation, project.Models.NewTerms, project.Models.Review };
         string[] efforts = new string[] { project.ReasoningEfforts.Analysis, project.ReasoningEfforts.Translation, project.ReasoningEfforts.NewTerms, project.ReasoningEfforts.Review };
-        _reviewChosen = !string.IsNullOrEmpty(project.Models.Review);
-        _parallelFiles = project.Options.MaxParallelFiles;
+        this._reviewChosen = !string.IsNullOrEmpty(project.Models.Review);
+        this._parallelFiles = project.Options.MaxParallelFiles;
 
         // Le tendine partono dai valori del progetto, vuote se il passo non ha ancora un modello
         for (int i = 0; i < s_phases.Length; i++)
         {
             // La revisione senza modello suo mostra quello della traduzione
-            int source = i == REVIEW && !_reviewChosen ? TRANSLATION : i;
-            AiModelInfo model = _models.Find(m => m.Id == models[source]);
-            _selectedModels[i] = string.IsNullOrEmpty(models[source]) ? null : models[source];
-            _selectedEfforts[i] = model == null || model.SupportedReasoningLevels.Contains(efforts[source] ?? "") ? efforts[source] : model.DefaultReasoningLevel;
+            int source = i == REVIEW && !this._reviewChosen ? TRANSLATION : i;
+            AiModelInfo model = this._models.Find(m => m.Id == models[source]);
+            this._selectedModels[i] = string.IsNullOrEmpty(models[source]) ? null : models[source];
+            this._selectedEfforts[i] = model == null || model.SupportedReasoningLevels.Contains(efforts[source] ?? "") ? efforts[source] : model.DefaultReasoningLevel;
         }
 
-        _loading = false;
+        this._loading = false;
     }
+
+    #endregion
+
+    #region Metodi privati
 
     /// <summary>
     /// Cambia il modello di un passo: un livello che il nuovo modello non supporta torna al suo default
@@ -175,20 +197,22 @@
     /// <param name="modelId">Modello scelto</param>
     private void ChangeModel(int phase, string modelId)
     {
-        AiModelInfo model = _models.Find(m => m.Id == modelId);
+        AiModelInfo model = this._models.Find(m => m.Id == modelId);
         if (model == null)
             return;
 
-        _selectedModels[phase] = model.Id;
-        if (!model.SupportedReasoningLevels.Contains(_selectedEfforts[phase] ?? ""))
-            _selectedEfforts[phase] = model.DefaultReasoningLevel;
+        this._selectedModels[phase] = model.Id;
+        if (!model.SupportedReasoningLevels.Contains(this._selectedEfforts[phase] ?? ""))
+            this._selectedEfforts[phase] = model.DefaultReasoningLevel;
 
         if (phase == REVIEW)
-            _reviewChosen = true;
-        else if (phase == TRANSLATION && !_reviewChosen)
         {
-            _selectedModels[REVIEW] = _selectedModels[TRANSLATION];
-            _selectedEfforts[REVIEW] = _selectedEfforts[TRANSLATION];
+            this._reviewChosen = true;
+        }
+        else if (phase == TRANSLATION && !this._reviewChosen)
+        {
+            this._selectedModels[REVIEW] = this._selectedModels[TRANSLATION];
+            this._selectedEfforts[REVIEW] = this._selectedEfforts[TRANSLATION];
         }
     }
 
@@ -199,11 +223,15 @@
     /// <param name="effort">Livello scelto</param>
     private void ChangeEffort(int phase, string effort)
     {
-        _selectedEfforts[phase] = effort;
+        this._selectedEfforts[phase] = effort;
         if (phase == REVIEW)
-            _reviewChosen = true;
-        else if (phase == TRANSLATION && !_reviewChosen)
-            _selectedEfforts[REVIEW] = effort;
+        {
+            this._reviewChosen = true;
+        }
+        else if (phase == TRANSLATION && !this._reviewChosen)
+        {
+            this._selectedEfforts[REVIEW] = effort;
+        }
     }
 
     /// <summary>
@@ -213,20 +241,22 @@
     {
         TranslationPhaseModels models = new TranslationPhaseModels
         {
-            Analysis = _selectedModels[0] ?? "",
-            Translation = _selectedModels[TRANSLATION] ?? "",
-            NewTerms = _selectedModels[2] ?? "",
-            Review = _reviewChosen ? _selectedModels[REVIEW] : null
+            Analysis = this._selectedModels[0] ?? "",
+            Translation = this._selectedModels[TRANSLATION] ?? "",
+            NewTerms = this._selectedModels[2] ?? "",
+            Review = this._reviewChosen ? this._selectedModels[REVIEW] : null
         };
         TranslationPhaseModels efforts = new TranslationPhaseModels
         {
-            Analysis = _selectedEfforts[0] ?? "",
-            Translation = _selectedEfforts[TRANSLATION] ?? "",
-            NewTerms = _selectedEfforts[2] ?? "",
-            Review = _reviewChosen ? _selectedEfforts[REVIEW] : null
+            Analysis = this._selectedEfforts[0] ?? "",
+            Translation = this._selectedEfforts[TRANSLATION] ?? "",
+            NewTerms = this._selectedEfforts[2] ?? "",
+            Review = this._reviewChosen ? this._selectedEfforts[REVIEW] : null
         };
 
-        Orchestrator.SetModels(models, efforts, _parallelFiles);
-        CloseDialog(true);
+        this.Orchestrator.SetModels(models, efforts, this._parallelFiles);
+        this.CloseDialog(true);
     }
+
+    #endregion
 }

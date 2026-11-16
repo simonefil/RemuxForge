@@ -672,10 +672,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         protected sealed class FileContext
         {
+            #region Variabili di classe
+
             /// <summary>
             /// Battute vive del documento per id
             /// </summary>
             private readonly Dictionary<int, SubtitleCue> _live;
+
+            #endregion
+
+            #region Costruttore
 
             /// <summary>
             /// Costruttore
@@ -698,6 +704,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         this._live[cue.Id.Value] = cue;
                 }
             }
+
+            #endregion
+
+            #region Metodi pubblici
 
             /// <summary>
             /// Battute del documento con gli id dati, per il validatore e il pianificatore
@@ -722,6 +732,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 return this._live[id];
             }
 
+            #endregion
+
+            #region Proprietà
+
             /// <summary>
             /// File del job
             /// </summary>
@@ -741,6 +755,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             /// Battute congelate per id
             /// </summary>
             public Dictionary<int, FrozenCue> Frozen { get; }
+
+            #endregion
         }
 
         /// <summary>
@@ -794,6 +810,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         protected sealed class DeliveryWork
         {
+            #region Costruttore
+
             /// <summary>
             /// Costruttore
             /// </summary>
@@ -807,6 +825,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 this.CallSeqs = new List<int>();
                 this.FirstReasons = new SortedSet<string>(StringComparer.Ordinal);
             }
+
+            #endregion
+
+            #region Metodi pubblici
 
             /// <summary>
             /// Lascia la battuta senza testo nuovo
@@ -840,6 +862,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
                 return state;
             }
+
+            #endregion
+
+            #region Proprietà
 
             /// <summary>
             /// Blocco dell'unità, null fuori dai blocchi
@@ -880,6 +906,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             /// Codici dei motivi della prima consegna
             /// </summary>
             public SortedSet<string> FirstReasons { get; }
+
+            #endregion
         }
 
         #endregion
