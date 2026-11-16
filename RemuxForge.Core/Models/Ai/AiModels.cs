@@ -635,6 +635,7 @@ namespace RemuxForge.Core.Models
             this.Status = AiResponseStatus.Completed;
             this.IncompleteReason = "";
             this.ResponseId = "";
+            this.PromptCacheKey = "";
             this.HttpStatus = 0;
         }
 
@@ -666,6 +667,11 @@ namespace RemuxForge.Core.Models
         /// Identificativo della risposta assegnato dal servizio
         /// </summary>
         public string ResponseId { get; set; }
+
+        /// <summary>
+        /// Chiave di cache applicata dal servizio (response.prompt_cache_key), vuota se non dichiarata
+        /// </summary>
+        public string PromptCacheKey { get; set; }
 
         /// <summary>
         /// Stato HTTP della risposta

@@ -640,6 +640,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             record.Model = attempt.Model;
             record.ReasoningEffort = attempt.ReasoningEffort;
             record.SessionId = attempt.SessionId;
+            record.ServerCacheKey = attempt.Result != null && !string.IsNullOrEmpty(attempt.Result.PromptCacheKey) ? attempt.Result.PromptCacheKey : null;
             record.StartedAt = attempt.StartedAt;
             record.DurationMs = attempt.DurationMs;
             return record;

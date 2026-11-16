@@ -343,6 +343,7 @@ namespace RemuxForge.Core.Ai
         private static async Task<AiResponseResult> ReadStreamAsync(StreamReader reader, AiConnectionMode mode, CancellationToken cancellationToken)
         {
             List<JsonObject> doneItems = new List<JsonObject>();
+            string createdCacheKey = "";
             string line;
 
             while ((line = await reader.ReadLineAsync(cancellationToken)) != null)
@@ -357,7 +358,11 @@ namespace RemuxForge.Core.Ai
                 JsonObject streamEvent = AiOAuthFlow.TryParseObject(data);
                 string type = streamEvent != null ? AiOAuthFlow.GetString(streamEvent, "type") : "";
 
-                if (type == "response.output_item.done")
+                if (type == "response.created")
+                {
+                    createdCacheKey = AiOAuthFlow.GetString(streamEvent["response"] as JsonObject, "prompt_cache_key");
+                }
+                else if (type == "response.output_item.done")
                 {
                     JsonObject item = streamEvent["item"] as JsonObject;
                     if (item != null)
@@ -387,6 +392,11 @@ namespace RemuxForge.Core.Ai
                     }
 
                     result.ResponseId = AiOAuthFlow.GetString(responseObject, "id");
+
+                    // La chiave applicata dal servizio sta nella risposta finale; se manca vale quella dell'evento iniziale
+                    result.PromptCacheKey = AiOAuthFlow.GetString(responseObject, "prompt_cache_key");
+                    if (string.IsNullOrEmpty(result.PromptCacheKey))
+                        result.PromptCacheKey = createdCacheKey;
                     result.Usage.InputTokens = GetOptionalLong(usage, "input_tokens");
                     result.Usage.CachedTokens = GetOptionalLong(usage != null ? usage["input_tokens_details"] as JsonObject : null, "cached_tokens");
                     result.Usage.CacheWriteTokens = GetOptionalLong(usage != null ? usage["input_tokens_details"] as JsonObject : null, "cache_write_tokens");

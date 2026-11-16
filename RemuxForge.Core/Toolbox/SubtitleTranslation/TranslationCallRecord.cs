@@ -57,6 +57,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Model = "";
             this.ReasoningEffort = null;
             this.SessionId = null;
+            this.ServerCacheKey = null;
             this.StartedAt = DateTimeOffset.Now;
             this.DurationMs = 0;
             this.HttpStatus = 0;
@@ -147,6 +148,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Valore di session_id mandato
         /// </summary>
         public string SessionId { get; set; }
+
+        /// <summary>
+        /// Chiave di cache applicata dal servizio, null se la risposta non la dichiara o se il tentativo è fallito
+        /// </summary>
+        public string ServerCacheKey { get; set; }
 
         /// <summary>
         /// Ora d'invio
