@@ -252,9 +252,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public bool MaxOutputTokens { get { return this.IsEnabled(MAX_OUTPUT_TOKENS, this.AccessMode == AiConnectionMode.ApiKey); } }
 
         /// <summary>
-        /// Chiave di cache nel body: solo con la API key, che documenta prompt_cache_key; col piano vale l'header session_id
+        /// Chiave di cache nel body, uguale all'header session_id: col piano senza la chiave nel body la cache vale solo fra
+        /// richieste identiche
         /// </summary>
-        public bool PromptCacheKey { get { return this.IsEnabled(PROMPT_CACHE_KEY, this.AccessMode == AiConnectionMode.ApiKey); } }
+        public bool PromptCacheKey { get { return this.IsEnabled(PROMPT_CACHE_KEY, true); } }
 
         /// <summary>
         /// Livello di ragionamento disponibile

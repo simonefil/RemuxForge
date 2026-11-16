@@ -227,12 +227,13 @@ namespace RemuxForge.Core.Ai
             if (request.ToolChoice != null)
                 body["tool_choice"] = request.ToolChoice.DeepClone();
 
-            // Col piano ChatGPT temperatura, tetto di output e chiave di cache nel body non partono
+            // Col piano ChatGPT temperatura e tetto di output non partono; la chiave di cache nel body serve anche al piano, che
+            // senza riusa la cache solo fra richieste identiche
             if (apiKey && request.Temperature.HasValue)
                 body["temperature"] = request.Temperature.Value;
             if (apiKey && request.MaxOutputTokens.HasValue)
                 body["max_output_tokens"] = request.MaxOutputTokens.Value;
-            if (apiKey && !string.IsNullOrEmpty(request.PromptCacheKey))
+            if (!string.IsNullOrEmpty(request.PromptCacheKey))
                 body["prompt_cache_key"] = request.PromptCacheKey;
 
             // Senza stato lato server il ragionamento torna al modello solo come contenuto cifrato
