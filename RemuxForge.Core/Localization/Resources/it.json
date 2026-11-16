@@ -1759,6 +1759,7 @@
   "toolbox.subtitleTranslation.review.fileReviewed": "[{0}] revisione AI: {1} problemi, {2} battute corrette",
   "toolbox.subtitleTranslation.archive.invalid": "{0} non è un archivio di progetto di RemuxForge",
   "toolbox.subtitleTranslation.archive.sourceChanged": "Il sorgente {0} è cambiato dopo l'analisi",
+  "toolbox.subtitleTranslation.archive.sourceMissing": "Il sorgente {0} non c'è più",
   "toolbox.subtitleTranslation.archive.projectExists": "Il progetto «{0}» c'è già",
   "toolbox.subtitleTranslation.archive.entryUnsafe": "Voce dell'archivio non ammessa: {0}",
   "toolbox.subtitleTranslation.archive.entryUnlisted": "Voce dell'archivio fuori dal manifest: {0}",

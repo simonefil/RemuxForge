@@ -4,6 +4,7 @@ using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -235,15 +236,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="ids">Id da consegnare</param>
         /// <param name="kind">Tipo della prima consegna</param>
         /// <param name="attempt">Ritentativi già fatti</param>
+        /// <param name="rejectedLines">Righe degli errori della consegna precedente per la prima richiesta, vuote per una consegna nuova</param>
         /// <param name="whole">True per la prima consegna di un'unità che si divide dal chiamante</param>
         /// <param name="provider">Provider condiviso</param>
         /// <param name="cancellation">Annullamento di Stop</param>
         /// <returns>True se la prima consegna con whole è tornata troncata</returns>
-        protected async Task<bool> DeliverAsync(FileContext context, DeliveryWork work, DeliveryPlan plan, List<int> ids, TranslationCallKind kind, int attempt, bool whole,
-            ITranslationModelProvider provider, CancellationToken cancellation)
+        protected async Task<bool> DeliverAsync(FileContext context, DeliveryWork work, DeliveryPlan plan, List<int> ids, TranslationCallKind kind, int attempt,
+            IReadOnlyList<string> rejectedLines, bool whole, ITranslationModelProvider provider, CancellationToken cancellation)
         {
             List<int> pending = ids;
-            IReadOnlyList<string> rejectedLines = new string[0];
             TranslationCallKind currentKind = kind;
             int currentAttempt = attempt;
             bool first = whole;
@@ -292,7 +293,17 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         List<int> halfIds = new List<int>();
                         foreach (SubtitleCue cue in half)
                             halfIds.Add(cue.Id.Value);
-                        await this.DeliverAsync(context, work, plan, halfIds, plan.ReducedKind, currentAttempt, false, provider, cancellation);
+
+                        // Ogni metà si porta gli errori delle sue battute e quelli senza id
+                        List<string> halfLines = new List<string>();
+                        foreach (string line in rejectedLines)
+                        {
+                            int space = line.IndexOf(' ');
+                            int id;
+                            if (space < 0 || !int.TryParse(line.Substring(0, space), NumberStyles.None, CultureInfo.InvariantCulture, out id) || halfIds.Contains(id))
+                                halfLines.Add(line);
+                        }
+                        await this.DeliverAsync(context, work, plan, halfIds, plan.ReducedKind, currentAttempt, halfLines, false, provider, cancellation);
                     }
                     return false;
                 }

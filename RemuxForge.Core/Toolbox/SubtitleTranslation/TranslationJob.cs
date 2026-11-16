@@ -37,10 +37,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         Idle,
 
         /// <summary>Lavoro interrotto, col motivo nella pausa</summary>
-        Paused,
-
-        /// <summary>Giro chiuso dall'export</summary>
-        Completed
+        Paused
     }
 
     /// <summary>

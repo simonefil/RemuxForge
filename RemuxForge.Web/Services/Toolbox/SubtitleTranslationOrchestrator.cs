@@ -727,8 +727,8 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// True se un job dell'elenco ha file da tradurre che non siano bloccati, dagli stati dei file salvati; uno stato illeggibile
-        /// dà l'eccezione col motivo
+        /// True se un job dell'elenco ha file non conclusi, bloccati compresi: la ripresa ricontrolla i sorgenti. Dagli stati dei file
+        /// salvati; uno stato illeggibile dà l'eccezione col motivo
         /// </summary>
         /// <param name="job">Job attivo di un progetto dell'elenco</param>
         /// <returns>True se resta lavoro che «Riprendi» può fare</returns>
@@ -737,7 +737,7 @@ namespace RemuxForge.Web.Services.Toolbox
             foreach (string fileId in job.FileIds)
             {
                 TranslationFileStatus status = this._jobStore.LoadFile(job.Id, fileId).TranslationStatus;
-                if (status != TranslationFileStatus.Completed && status != TranslationFileStatus.Blocked)
+                if (status != TranslationFileStatus.Completed)
                     return true;
             }
 
@@ -746,10 +746,12 @@ namespace RemuxForge.Web.Services.Toolbox
 
         /// <summary>
         /// Avvia il giro col glossario approvato congelato nel job e la modalità della revisione AI, o lo riprende nella fase in
-        /// cui si è fermato: traduzione dal primo blocco da fare, applicazione dai file non conclusi, revisione dai blocchi non rivisti
+        /// cui si è fermato: traduzione dal primo blocco da fare, applicazione dai file non conclusi, revisione dai blocchi non rivisti.
+        /// La ripresa ricontrolla i sorgenti, e una traduzione coi soli file bloccati non parte
         /// </summary>
         public void StartJob()
         {
+            TranslationJob blocked = null;
             lock (this.StateLock)
             {
                 if (!this.CanStartJob)
@@ -794,9 +796,19 @@ namespace RemuxForge.Web.Services.Toolbox
                 else
                 {
                     this.CheckJobSources();
+                    if (this._job.Phase == TranslationJobPhase.Translation && !this._job.FileIds.Exists(id =>
+                        this._jobFiles[id].TranslationStatus != TranslationFileStatus.Completed && this._jobFiles[id].TranslationStatus != TranslationFileStatus.Blocked))
+                        blocked = this._job;
                 }
 
-                this.TryRunExclusive(() => this.RunJobAsync().GetAwaiter().GetResult());
+                if (blocked == null)
+                    this.TryRunExclusive(() => this.RunJobAsync().GetAwaiter().GetResult());
+            }
+
+            if (blocked != null)
+            {
+                this.NotifyRecordsChanged();
+                this.OnPhaseFinished?.Invoke(new TranslationPhaseResult { Job = blocked, Phase = TranslationJobPhase.Translation });
             }
         }
 
@@ -2337,8 +2349,8 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// True se il giro può partire o riprendere: glossario approvato e file preparati; col job, la traduzione con file da
-        /// tradurre che non siano bloccati, l'applicazione dei termini o la revisione AI senza lavoro in corso
+        /// True se il giro può partire o riprendere: glossario approvato e file preparati; col job, la traduzione con file non
+        /// conclusi, anche bloccati, l'applicazione dei termini o la revisione AI senza lavoro in corso
         /// </summary>
         public bool CanStartJob
         {
@@ -2355,8 +2367,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     if (this._job.Phase == TranslationJobPhase.Applying || this._job.Phase == TranslationJobPhase.Review)
                         return this._job.Status != TranslationJobStatus.Running;
 
-                    return this._job.Phase == TranslationJobPhase.Translation && this._job.FileIds.Exists(id =>
-                        this._jobFiles[id].TranslationStatus != TranslationFileStatus.Completed && this._jobFiles[id].TranslationStatus != TranslationFileStatus.Blocked);
+                    return this._job.Phase == TranslationJobPhase.Translation && this._job.FileIds.Exists(id => this._jobFiles[id].TranslationStatus != TranslationFileStatus.Completed);
                 }
             }
         }

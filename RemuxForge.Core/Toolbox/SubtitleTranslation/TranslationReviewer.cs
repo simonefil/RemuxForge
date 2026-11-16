@@ -15,7 +15,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
     /// Revisione AI di un job: per ogni blocco scelto una diagnosi D1 senza ritentativi, poi D2 sulle battute diagnosticate e
-    /// su quelle da rivedere, coi gruppi interi e senza i gruppi toccati da una modifica a mano. La diagnosi si salva, anche
+    /// su quelle da rivedere, coi gruppi interi. La diagnosi si salva, anche
     /// quella non valida, e alla ripresa il blocco riparte da D2; i blocchi di un file vanno in sequenza
     /// </summary>
     public sealed class TranslationReviewer : TranslationPhaseRunner
@@ -271,7 +271,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
                 }
 
-                // D2: diagnosticate e da rivedere, coi gruppi interi, meno i gruppi con una battuta scritta dall'utente
+                // D2: diagnosticate e da rivedere, coi gruppi interi
                 HashSet<int> wanted = new HashSet<int>();
                 foreach (TranslationReviewIssue issue in issues)
                     wanted.Add(issue.Id);
@@ -280,13 +280,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (translation.Status == TranslatedCueStatus.ToReview)
                         wanted.Add(translation.Id);
                 }
-                HashSet<int> locked = new HashSet<int>();
-                foreach (TranslatedCueState translation in translations.Values)
-                {
-                    if (translation.Signals.Contains(TranslationCueSignal.EditedByUser))
-                        locked.UnionWith(ExpandToGroups(state, new int[] { translation.Id }));
-                }
-                List<int> deliver = ExpandToGroups(state, wanted).FindAll(id => !locked.Contains(id));
+                List<int> deliver = ExpandToGroups(state, wanted);
 
                 int corrected = 0;
                 DeliveryWork correction = new DeliveryWork(block.BlockIndex);
@@ -310,7 +304,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             return TranslationRequestBuilder.CreateCorrectionTail(shown, requested, current, rejected);
                         }
                     };
-                    await this.DeliverAsync(context, correction, plan, deliver, TranslationCallKind.D2, 0, false, provider, cancellation);
+                    await this.DeliverAsync(context, correction, plan, deliver, TranslationCallKind.D2, 0, new string[0], false, provider, cancellation);
                 }
 
                 lock (this._lock)

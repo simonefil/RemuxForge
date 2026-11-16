@@ -1759,6 +1759,7 @@
   "toolbox.subtitleTranslation.review.fileReviewed": "[{0}] AI review: {1} issues, {2} cues corrected",
   "toolbox.subtitleTranslation.archive.invalid": "{0} is not a RemuxForge project archive",
   "toolbox.subtitleTranslation.archive.sourceChanged": "Source {0} changed after the analysis",
+  "toolbox.subtitleTranslation.archive.sourceMissing": "Source {0} no longer exists",
   "toolbox.subtitleTranslation.archive.projectExists": "Project “{0}” already exists",
   "toolbox.subtitleTranslation.archive.entryUnsafe": "Archive entry not allowed: {0}",
   "toolbox.subtitleTranslation.archive.entryUnlisted": "Archive entry missing from the manifest: {0}",

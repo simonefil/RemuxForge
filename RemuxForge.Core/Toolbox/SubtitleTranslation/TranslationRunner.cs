@@ -284,7 +284,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 };
 
                 TranslationCallKind kind = block.SplitFrom.HasValue ? TranslationCallKind.BReduced : TranslationCallKind.B;
-                bool incomplete = await this.DeliverAsync(context, work, plan, ids, kind, 0, true, provider, cancellation);
+                bool incomplete = await this.DeliverAsync(context, work, plan, ids, kind, 0, new string[0], true, provider, cancellation);
                 List<SubtitleCue> live = context.GetLiveCues(ids);
                 IReadOnlyList<IReadOnlyList<SubtitleCue>> halves = incomplete ? new SubtitleBlockPlanner(live).SplitBlock(live) : null;
 

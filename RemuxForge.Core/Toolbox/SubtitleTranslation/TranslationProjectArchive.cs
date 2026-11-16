@@ -129,10 +129,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi pubblici
 
         /// <summary>
-        /// Scrive l'archivio di un progetto nella cartella scelta, senza sovrascrivere: i percorsi assoluti dei sorgenti diventano
-        /// relativi all'archivio, i parziali si ricompongono dalle battute accettate dei file non bloccati
+        /// Scrive l'archivio di un progetto col job attivo nella cartella scelta, senza sovrascrivere: il progetto tiene solo i file
+        /// del job, i percorsi assoluti dei sorgenti diventano relativi all'archivio, i parziali si ricompongono dalle battute
+        /// accettate dei file non bloccati
         /// </summary>
-        /// <param name="project">Progetto salvato</param>
+        /// <param name="project">Progetto salvato, col job attivo</param>
         /// <param name="folder">Cartella di destinazione</param>
         /// <param name="name">Nome dell'archivio senza estensione</param>
         /// <returns>File scritto</returns>
@@ -150,18 +151,23 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             manifest.SourceLanguage = project.SourceLanguage;
             manifest.TargetLanguage = project.TargetLanguage;
 
+            TranslationJob job = this._jobs.Load(project.ActiveJobId);
+            List<TranslationProjectFile> files = project.Files.FindAll(f => job.FileIds.Contains(f.Id));
             string path = new OutputPathAllocator(new string[0]).Reserve(Path.Combine(folder, name + EXTENSION));
             using (StagedOutputFile staged = new StagedOutputFile(path))
             {
                 using (FileStream stream = new FileStream(staged.TempPath, FileMode.Create, FileAccess.Write, FileShare.None))
                 using (ZipArchive zip = new ZipArchive(stream, ZipArchiveMode.Create))
                 {
-                    // Copia del progetto coi percorsi dei sorgenti dentro l'archivio
+                    // Copia del progetto coi soli file del job e i percorsi dei sorgenti dentro l'archivio
                     TranslationProject copy = TranslationJsonFile.Parse<TranslationProject>(TranslationJsonFile.Serialize(project), project.Id);
+                    copy.Files.RemoveAll(f => !job.FileIds.Contains(f.Id));
                     Dictionary<string, TranslationJobFileState> activeStates = new Dictionary<string, TranslationJobFileState>(StringComparer.Ordinal);
                     foreach (TranslationProjectFile file in copy.Files)
                     {
                         string archivePath = SOURCES_FOLDER + file.Id + "/" + Path.GetFileName(file.Path);
+                        if (!File.Exists(file.Path))
+                            throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.archive.sourceMissing", file.Path));
                         byte[] source = File.ReadAllBytes(file.Path);
                         if (Sha256(source) != file.SourceSha256)
                             throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.archive.sourceChanged", file.Path));
@@ -181,7 +187,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         string prefix = JOBS_FOLDER + jobId + "/";
                         this.AddFile(zip, manifest, prefix + TranslationJobStore.JOB_FILE, Path.Combine(jobFolder, TranslationJobStore.JOB_FILE), TranslationArchiveRole.Job);
                         this.AddFile(zip, manifest, prefix + TranslationJobStore.CALLS_FILE, Path.Combine(jobFolder, TranslationJobStore.CALLS_FILE), TranslationArchiveRole.JobCalls);
-                        foreach (TranslationProjectFile file in project.Files)
+                        foreach (TranslationProjectFile file in files)
                         {
                             string statePath = Path.Combine(jobFolder, TranslationJobStore.FILES_FOLDER, file.Id + ".json");
                             this.AddFile(zip, manifest, prefix + TranslationJobStore.FILES_FOLDER + "/" + file.Id + ".json", statePath, TranslationArchiveRole.JobFile);
@@ -191,7 +197,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
 
                     // Parziali del job attivo: le battute accettate col testo tradotto, le altre col testo d'origine
-                    foreach (TranslationProjectFile file in project.Files)
+                    foreach (TranslationProjectFile file in files)
                     {
                         TranslationJobFileState state;
                         if (!activeStates.TryGetValue(file.Id, out state) || state.TranslationStatus == TranslationFileStatus.Blocked)

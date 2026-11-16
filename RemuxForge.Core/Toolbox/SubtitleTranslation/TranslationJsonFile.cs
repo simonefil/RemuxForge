@@ -72,7 +72,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Legge un file intero; un contenuto guasto dà InvalidDataException col messaggio indicato
+        /// Legge un file intero; un file mancante o un contenuto guasto dà InvalidDataException col messaggio indicato
         /// </summary>
         /// <typeparam name="T">Tipo del contenuto</typeparam>
         /// <param name="path">File da leggere</param>
@@ -85,7 +85,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 value = JsonSerializer.Deserialize<T>(File.ReadAllText(path, Encoding.UTF8), s_options);
             }
-            catch (JsonException ex)
+            catch (Exception ex) when (ex is JsonException || ex is FileNotFoundException || ex is DirectoryNotFoundException)
             {
                 throw new InvalidDataException(unreadableMessage, ex);
             }

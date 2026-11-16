@@ -213,7 +213,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 cancellation.ThrowIfCancellationRequested();
                 this.ReportProgress(file.FileName, c + 1, chunks.Count);
-                await this.DeliverAsync(context, work, plan, chunks[c], TranslationCallKind.C, 0, false, provider, cancellation);
+                await this.DeliverAsync(context, work, plan, chunks[c], TranslationCallKind.C, 0, new string[0], false, provider, cancellation);
             }
 
             // Esiti nello stato: la consegna di C vince sulla sostituzione del codice; respinte e troncate tengono il testo di prima.

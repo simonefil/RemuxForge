@@ -149,7 +149,7 @@
                     <span class="rf-translation-capabilities">
                         @foreach (KeyValuePair<string, bool> capability in _capabilities)
                         {
-                            <RadzenBadge IsPill="true" Variant="Variant.Outlined" BadgeStyle="@(capability.Value ? BadgeStyle.Success : BadgeStyle.Base)"
+                            <RadzenBadge IsPill="true" BadgeStyle="@(capability.Value ? BadgeStyle.Success : BadgeStyle.Base)"
                                          Text="@AppText.T("web.toolbox.subtitleTranslation.capability." + capability.Key)" title="@AppText.T(capability.Value ? "web.toolbox.subtitleTranslation.capabilityOn" : "web.toolbox.subtitleTranslation.capabilityOff")" />
                         }
                     </span>
@@ -2149,14 +2149,14 @@
     }
 
     /// <summary>
-    /// True se la battuta è da controllare: da rivedere, col glossario non rispettato, ritentata o corretta dall'AI
+    /// True se la battuta è da controllare: da rivedere, col glossario non rispettato, ritentata, corretta dall'AI o modificata a mano
     /// </summary>
     /// <param name="row">Riga della revisione</param>
     /// <returns>True per il filtro «Da controllare»</returns>
     private static bool NeedsCheck(TranslationReviewRow row)
     {
         return row.ToReview || row.Signals.Contains(TranslationCueSignal.Glossary) || row.Signals.Contains(TranslationCueSignal.Retried) ||
-            row.Signals.Contains(TranslationCueSignal.CorrectedByAi);
+            row.Signals.Contains(TranslationCueSignal.CorrectedByAi) || row.Signals.Contains(TranslationCueSignal.EditedByUser);
     }
 
     /// <summary>
