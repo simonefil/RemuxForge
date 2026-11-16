@@ -41,7 +41,8 @@
                     <Template Context="call"><CellText Text="@call.StartedAt.ToLocalTime().ToString("T", CultureInfo.CurrentCulture)" /></Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.kind")" Width="5rem">
-                    <Template Context="call"><CellText Text="@(call.Kind.ToString() + (call.Round.HasValue && call.Round.Value > 1 ? " · " + call.Round.Value.ToString(CultureInfo.CurrentCulture) : ""))" /></Template>
+                    <Template Context="call"><CellText Text="@(call.Kind.ToString() + (call.Round.HasValue && call.Round.Value > 1 ? " · " + call.Round.Value.ToString(CultureInfo.CurrentCulture)
+                        : call.Attempt.HasValue && call.Attempt.Value > 0 ? " · " + call.Attempt.Value.ToString(CultureInfo.CurrentCulture) : ""))" /></Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.dashboard.file")" Width="20%">
                     <Template Context="call">
@@ -49,7 +50,9 @@
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.cues")" Width="6rem" TextAlign="TextAlign.Right">
-                    <Template Context="call"><CellText Text="@(call.RequestedIds.HasValue ? call.RequestedIds.Value.ToString("N0", CultureInfo.CurrentCulture) : "—")" /></Template>
+                    <Template Context="call"><CellText Text="@(!call.RequestedIds.HasValue ? "—" : call.FirstId.HasValue && call.LastId.HasValue
+                        ? call.RequestedIds.Value.ToString("N0", CultureInfo.CurrentCulture) + " · " + call.FirstId.Value.ToString(CultureInfo.CurrentCulture) + "–" + call.LastId.Value.ToString(CultureInfo.CurrentCulture)
+                        : call.RequestedIds.Value.ToString("N0", CultureInfo.CurrentCulture))" /></Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.model")" Width="20%">
                     <Template Context="call"><CellText Text="@(string.IsNullOrEmpty(call.ReasoningEffort) ? call.Model : call.Model + " · " + call.ReasoningEffort)" /></Template>
@@ -58,9 +61,10 @@
                     <Template Context="call">
                         @* Un errore senza tipo è il tentativo interrotto da Stop *@
                         <RadzenBadge IsPill="true"
-                                     BadgeStyle="@(call.Outcome == TranslationCallOutcome.Accepted ? BadgeStyle.Success : call.Outcome == TranslationCallOutcome.Error && call.ErrorKind.HasValue ? BadgeStyle.Danger
+                                     BadgeStyle="@(Discarded.Contains(call.CallSeq) ? BadgeStyle.Base : call.Outcome == TranslationCallOutcome.Accepted ? BadgeStyle.Success : call.Outcome == TranslationCallOutcome.Error && call.ErrorKind.HasValue ? BadgeStyle.Danger
                                          : call.Outcome == TranslationCallOutcome.Error ? BadgeStyle.Base : BadgeStyle.Warning)"
-                                     Text="@(call.Outcome == TranslationCallOutcome.Accepted ? AppText.T("web.toolbox.subtitleTranslation.calls.accepted")
+                                     Text="@(Discarded.Contains(call.CallSeq) ? AppText.T("web.toolbox.subtitleTranslation.calls.discarded")
+                                         : call.Outcome == TranslationCallOutcome.Accepted ? AppText.T("web.toolbox.subtitleTranslation.calls.accepted")
                                          : call.Outcome == TranslationCallOutcome.PartiallyRejected ? AppText.T("web.toolbox.subtitleTranslation.calls.rejected")
                                          : call.Outcome == TranslationCallOutcome.Reduced ? AppText.T("web.toolbox.subtitleTranslation.calls.reduced")
                                          : !call.ErrorKind.HasValue ? AppText.T("web.toolbox.subtitleTranslation.calls.stopped")
@@ -90,6 +94,11 @@
     /// Nome del file per identificativo del progetto
     /// </summary>
     [Parameter] public Dictionary<string, string> FileNames { get; set; } = new Dictionary<string, string>();
+
+    /// <summary>
+    /// Chiamate di blocchi scartati, mostrate come «scartata»
+    /// </summary>
+    [Parameter] public HashSet<int> Discarded { get; set; } = new HashSet<int>();
 
     /// <summary>
     /// True col pannello chiuso, com'è all'apertura

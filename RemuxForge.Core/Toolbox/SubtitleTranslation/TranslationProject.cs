@@ -77,6 +77,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.ImportedGlossary = null;
             this.Analysis = null;
             this.ReachedStep = TranslationProjectStep.Project;
+            this.ActiveJobId = null;
+            this.JobIds = new List<string>();
         }
 
         #endregion
@@ -167,6 +169,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Passo raggiunto
         /// </summary>
         public TranslationProjectStep ReachedStep { get; set; }
+
+        /// <summary>
+        /// Job del progetto, null prima di «Avvia traduzione»
+        /// </summary>
+        public string ActiveJobId { get; set; }
+
+        /// <summary>
+        /// Job del progetto, il più recente in fondo
+        /// </summary>
+        public List<string> JobIds { get; set; }
 
         #endregion
     }
@@ -366,6 +378,25 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// </summary>
     public class TranslationProjectOptions
     {
+        #region Costanti
+
+        /// <summary>
+        /// File tradotti in parallelo di un progetto nuovo
+        /// </summary>
+        public const int DEFAULT_PARALLEL_FILES = 2;
+
+        /// <summary>
+        /// Minimo dei file tradotti in parallelo
+        /// </summary>
+        public const int MIN_PARALLEL_FILES = 1;
+
+        /// <summary>
+        /// Massimo dei file tradotti in parallelo
+        /// </summary>
+        public const int MAX_PARALLEL_FILES = 10;
+
+        #endregion
+
         #region Costruttore
 
         /// <summary>
@@ -374,11 +405,17 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public TranslationProjectOptions()
         {
             this.ReviewMode = TranslationReviewMode.Targeted;
+            this.MaxParallelFiles = DEFAULT_PARALLEL_FILES;
         }
 
         #endregion
 
         #region Proprietà
+
+        /// <summary>
+        /// File tradotti in parallelo, da MIN_PARALLEL_FILES a MAX_PARALLEL_FILES
+        /// </summary>
+        public int MaxParallelFiles { get; set; }
 
         /// <summary>
         /// Modalità della revisione AI

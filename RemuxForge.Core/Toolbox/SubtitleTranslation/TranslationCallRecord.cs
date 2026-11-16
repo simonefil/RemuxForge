@@ -47,7 +47,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.CallSeq = 0;
             this.Kind = TranslationCallKind.A1;
             this.FileId = null;
+            this.BlockIndex = null;
+            this.FirstId = null;
+            this.LastId = null;
             this.RequestedIds = null;
+            this.Attempt = null;
             this.Round = null;
             this.TransportAttempt = 1;
             this.Model = "";
@@ -61,7 +65,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.ErrorKind = null;
             this.ServiceCode = null;
             this.Outcome = TranslationCallOutcome.Accepted;
+            this.Accepted = null;
+            this.Rejected = null;
             this.Rejections = new List<TranslationCallRejection>();
+            this.NewTerms = null;
             this.Usage = null;
         }
 
@@ -90,9 +97,29 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public string FileId { get; set; }
 
         /// <summary>
+        /// Blocco del piano, per B, B′ e B″
+        /// </summary>
+        public int? BlockIndex { get; set; }
+
+        /// <summary>
+        /// Primo id richiesto
+        /// </summary>
+        public int? FirstId { get; set; }
+
+        /// <summary>
+        /// Ultimo id richiesto
+        /// </summary>
+        public int? LastId { get; set; }
+
+        /// <summary>
         /// Numero di id richiesti: le battute mandate al modello
         /// </summary>
         public int? RequestedIds { get; set; }
+
+        /// <summary>
+        /// Ritentativo di B′, 1 o 2
+        /// </summary>
+        public int? Attempt { get; set; }
 
         /// <summary>
         /// Giro di correzione di A1 e A2, da 1
@@ -160,9 +187,24 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public TranslationCallOutcome Outcome { get; set; }
 
         /// <summary>
+        /// Battute accettate dalla validazione
+        /// </summary>
+        public int? Accepted { get; set; }
+
+        /// <summary>
+        /// Battute respinte dalla validazione
+        /// </summary>
+        public int? Rejected { get; set; }
+
+        /// <summary>
         /// Motivi dei rifiuti della validazione, la riga espandibile del pannello Chiamate
         /// </summary>
         public List<TranslationCallRejection> Rejections { get; set; }
+
+        /// <summary>
+        /// Termini nuovi segnalati
+        /// </summary>
+        public int? NewTerms { get; set; }
 
         /// <summary>
         /// Consumo, null se la chiamata non ha avuto risposta

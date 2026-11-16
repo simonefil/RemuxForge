@@ -2,9 +2,7 @@ using RemuxForge.Core.Localization;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
@@ -24,26 +22,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// File del progetto
         /// </summary>
-        private const string PROJECT_FILE = "project.json";
+        public const string PROJECT_FILE = "project.json";
 
         /// <summary>
         /// Registro delle chiamate del progetto
         /// </summary>
-        private const string CALLS_FILE = "calls.jsonl";
-
-        #endregion
-
-        #region Variabili statiche
-
-        /// <summary>
-        /// Opzioni JSON dei file della traduzione: nomi camelCase, enum col nome del membro, date con offset
-        /// </summary>
-        private static readonly JsonSerializerOptions s_options = CreateOptions(true);
-
-        /// <summary>
-        /// Opzioni JSON delle righe del registro, una per riga
-        /// </summary>
-        private static readonly JsonSerializerOptions s_lineOptions = CreateOptions(false);
+        public const string CALLS_FILE = "calls.jsonl";
 
         #endregion
 
@@ -116,18 +100,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
             lock (this._lock)
             {
-                try
-                {
-                    project = JsonSerializer.Deserialize<TranslationProject>(File.ReadAllText(path, Encoding.UTF8), s_options);
-                }
-                catch (JsonException ex)
-                {
-                    throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.projectUnreadable", path), ex);
-                }
+                project = TranslationJsonFile.Read<TranslationProject>(path, AppText.F("toolbox.subtitleTranslation.projectUnreadable", path));
             }
 
-            if (project == null)
-                throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.projectUnreadable", path));
             if (project.SchemaVersion > TranslationProject.SCHEMA_VERSION)
                 throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.projectTooNew", path));
 
@@ -155,42 +130,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 throw new ArgumentNullException(nameof(project));
 
             project.UpdatedAt = DateTimeOffset.Now;
-            string folder = Path.Combine(this._root, project.Id);
-            string path = Path.Combine(folder, PROJECT_FILE);
-            string tempPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            string json = JsonSerializer.Serialize(project, s_options);
-
             lock (this._lock)
             {
-                try
-                {
-                    Directory.CreateDirectory(folder);
-                    using (FileStream stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                    using (StreamWriter writer = new StreamWriter(stream, new UTF8Encoding(false)))
-                    {
-                        writer.Write(json);
-                        writer.Flush();
-                        stream.Flush(true);
-                    }
-
-                    File.Move(tempPath, path, true);
-                }
-                finally
-                {
-                    try
-                    {
-                        if (File.Exists(tempPath))
-                            File.Delete(tempPath);
-                    }
-                    catch (IOException)
-                    {
-                        // La scrittura ha già propagato l'errore principale; la pulizia resta best-effort
-                    }
-                    catch (UnauthorizedAccessException)
-                    {
-                        // La scrittura ha già propagato l'errore principale; la pulizia resta best-effort
-                    }
-                }
+                TranslationJsonFile.Write(Path.Combine(this._root, project.Id, PROJECT_FILE), project);
             }
         }
 
@@ -217,25 +159,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="record">Chiamata da registrare</param>
         public void AppendCall(string projectId, TranslationCallRecord record)
         {
-            string folder = Path.Combine(this._root, projectId);
-            byte[] line = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(record, s_lineOptions) + "\n");
-
             lock (this._lock)
             {
-                Directory.CreateDirectory(folder);
-                using (FileStream stream = new FileStream(Path.Combine(folder, CALLS_FILE), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read))
-                {
-                    if (stream.Length > 0)
-                    {
-                        stream.Seek(-1, SeekOrigin.End);
-                        if (stream.ReadByte() != '\n')
-                            stream.WriteByte((byte)'\n');
-                    }
-
-                    stream.Seek(0, SeekOrigin.End);
-                    stream.Write(line, 0, line.Length);
-                    stream.Flush(true);
-                }
+                TranslationJsonFile.AppendLine(Path.Combine(this._root, projectId, CALLS_FILE), record);
             }
         }
 
@@ -246,54 +172,20 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <returns>Chiamate nell'ordine del registro</returns>
         public List<TranslationCallRecord> ReadCalls(string projectId)
         {
-            string path = Path.Combine(this._root, projectId, CALLS_FILE);
-            List<TranslationCallRecord> calls = new List<TranslationCallRecord>();
-            string[] lines;
-
             lock (this._lock)
             {
-                if (!File.Exists(path))
-                    return calls;
-                lines = File.ReadAllLines(path, Encoding.UTF8);
+                return TranslationJsonFile.ReadLines<TranslationCallRecord>(Path.Combine(this._root, projectId, CALLS_FILE));
             }
-
-            foreach (string line in lines)
-            {
-                if (string.IsNullOrEmpty(line.Trim()))
-                    continue;
-
-                try
-                {
-                    TranslationCallRecord record = JsonSerializer.Deserialize<TranslationCallRecord>(line, s_lineOptions);
-                    if (record != null)
-                        calls.Add(record);
-                }
-                catch (JsonException)
-                {
-                    // Riga incompleta: il registro è in sola aggiunta e le righe intere restano valide
-                }
-            }
-
-            return calls;
         }
 
-        #endregion
-
-        #region Metodi privati
-
         /// <summary>
-        /// Crea le opzioni JSON dei file della traduzione
+        /// Cartella di un progetto
         /// </summary>
-        /// <param name="indented">True per i file interi, false per le righe del registro</param>
-        /// <returns>Opzioni del serializzatore</returns>
-        private static JsonSerializerOptions CreateOptions(bool indented)
+        /// <param name="id">Identificativo del progetto</param>
+        /// <returns>Percorso della cartella, anche se non esiste</returns>
+        public string GetFolder(string id)
         {
-            JsonSerializerOptions options = new JsonSerializerOptions();
-            options.WriteIndented = indented;
-            options.PropertyNameCaseInsensitive = true;
-            options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-            options.Converters.Add(new JsonStringEnumConverter(null, false));
-            return options;
+            return Path.Combine(this._root, id);
         }
 
         #endregion

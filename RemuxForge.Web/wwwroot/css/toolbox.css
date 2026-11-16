@@ -558,9 +558,29 @@
     resize: vertical;
 }
 
+.rf-translation-blocks {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.5);
+}
+
+.rf-translation-blocks .rf-translation-blocks-bar {
+    flex: 1 1 auto;
+    min-width: 2rem;
+    height: 0.375rem;
+}
+
 .rf-translation .rf-translation-calls {
     flex-shrink: 0;
     margin: calc(var(--rz-gap) * 0.75) var(--rz-gap);
+}
+
+.rf-translation .rf-translation-calls-grid {
+    max-height: 40vh;
+}
+
+.rf-translation .rf-translation-job {
+    min-height: 6rem;
 }
 
 .rf-translation-calls-detail {
@@ -576,6 +596,17 @@
     grid-template-columns: auto auto minmax(0, 1fr) 8rem;
     gap: calc(var(--rz-gap) * 0.5) calc(var(--rz-gap) * 0.75);
     align-items: center;
+}
+
+.rf-translation-models-parallel {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--rz-gap) * 0.75);
+    margin-top: var(--rz-gap);
+}
+
+.rf-translation-models-parallel-input {
+    width: 6rem;
 }
 
 .rf-translation-models-phase {

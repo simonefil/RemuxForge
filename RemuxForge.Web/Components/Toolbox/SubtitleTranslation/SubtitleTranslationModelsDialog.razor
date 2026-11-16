@@ -37,6 +37,12 @@
                                     Change="@((object value) => ChangeEffort(phase, (string)value))" />
                 }
             </div>
+            <div class="rf-translation-models-parallel">
+                <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.toolbox.subtitleTranslation.models.parallelFiles")" Component="TranslationParallelFiles" />
+                <RadzenNumeric TValue="int" Name="TranslationParallelFiles" class="rf-translation-models-parallel-input" Value="@_parallelFiles"
+                               Min="@TranslationProjectOptions.MIN_PARALLEL_FILES" Max="@TranslationProjectOptions.MAX_PARALLEL_FILES"
+                               Change="@((int value) => _parallelFiles = value)" />
+            </div>
         }
     </div>
     <div class="rf-dialog-footer">
@@ -45,7 +51,9 @@
             <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" AllowClose="false" class="rf-dialog-message">@_error</RadzenAlert>
         }
         <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => CloseDialog())" />
-        <RadzenButton Text="@AppText.T("web.toolbox.subtitleTranslation.models.save")" Icon="check" Disabled="@(_loading || _models.Count == 0)" Click="@Save" />
+        <RadzenButton Text="@AppText.T("web.toolbox.subtitleTranslation.models.save")" Icon="check"
+                      Disabled="@(_loading || _models.Count == 0 || _parallelFiles < TranslationProjectOptions.MIN_PARALLEL_FILES || _parallelFiles > TranslationProjectOptions.MAX_PARALLEL_FILES)"
+                      Click="@Save" />
     </div>
 </div>
 
@@ -106,6 +114,11 @@
     private RadzenPopup[] _infoPopups = new RadzenPopup[4];
 
     /// <summary>
+    /// File tradotti in parallelo
+    /// </summary>
+    private int _parallelFiles = TranslationProjectOptions.DEFAULT_PARALLEL_FILES;
+
+    /// <summary>
     /// True quando la revisione ha un modello suo e non segue più la traduzione
     /// </summary>
     private bool _reviewChosen;
@@ -140,6 +153,7 @@
         string[] models = new string[] { project.Models.Analysis, project.Models.Translation, project.Models.NewTerms, project.Models.Review };
         string[] efforts = new string[] { project.ReasoningEfforts.Analysis, project.ReasoningEfforts.Translation, project.ReasoningEfforts.NewTerms, project.ReasoningEfforts.Review };
         _reviewChosen = !string.IsNullOrEmpty(project.Models.Review);
+        _parallelFiles = project.Options.MaxParallelFiles;
 
         // Le tendine partono dai valori del progetto, vuote se il passo non ha ancora un modello
         for (int i = 0; i < s_phases.Length; i++)
@@ -193,7 +207,7 @@
     }
 
     /// <summary>
-    /// Salva le scelte nel progetto; la revisione che segue la traduzione resta senza modello suo
+    /// Salva le scelte e i file in parallelo nel progetto; la revisione che segue la traduzione resta senza modello suo
     /// </summary>
     private void Save()
     {
@@ -212,7 +226,7 @@
             Review = _reviewChosen ? _selectedEfforts[REVIEW] : null
         };
 
-        Orchestrator.SetModels(models, efforts);
+        Orchestrator.SetModels(models, efforts, _parallelFiles);
         CloseDialog(true);
     }
 }

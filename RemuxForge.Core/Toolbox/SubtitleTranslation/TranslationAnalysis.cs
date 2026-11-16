@@ -1,3 +1,4 @@
+using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
 
@@ -148,6 +149,45 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Reason = TranslationStopReason.Stop;
             this.Message = "";
             this.At = DateTimeOffset.Now;
+        }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Fermata per l'eccezione che ha interrotto un lavoro: Stop se l'ha chiesto l'utente, limite d'uso o credito, errore
+        /// dell'accesso, altrimenti errore del servizio. Il timeout del client non è uno Stop: lo è solo l'annullamento chiesto
+        /// </summary>
+        /// <param name="error">Eccezione del lavoro</param>
+        /// <param name="stopped">True se l'utente ha chiesto lo Stop</param>
+        /// <returns>Fermata col messaggio da mostrare</returns>
+        public static TranslationStop Create(Exception error, bool stopped)
+        {
+            AiServiceException service = error as AiServiceException;
+            TranslationStop stop = new TranslationStop();
+            if (stopped)
+            {
+                stop.Reason = TranslationStopReason.Stop;
+            }
+            else if (service != null && service.Kind == AiErrorKind.UsageLimit)
+            {
+                stop.Reason = TranslationStopReason.UsageLimit;
+                stop.Message = service.Message;
+            }
+            else if (service != null && (service.Kind == AiErrorKind.NotConfigured || service.Kind == AiErrorKind.SignInRequired || service.Kind == AiErrorKind.InvalidApiKey ||
+                service.Kind == AiErrorKind.InvalidSignIn || service.Kind == AiErrorKind.NotEligible))
+            {
+                stop.Reason = TranslationStopReason.AccessError;
+                stop.Message = service.Message;
+            }
+            else
+            {
+                stop.Reason = TranslationStopReason.ServiceError;
+                stop.Message = error.Message;
+            }
+
+            return stop;
         }
 
         #endregion

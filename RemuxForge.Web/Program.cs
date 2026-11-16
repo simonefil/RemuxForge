@@ -182,6 +182,7 @@ namespace RemuxForge.Web
             string recordedTranslationScenario = builder.Environment.IsDevelopment() ? Environment.GetEnvironmentVariable("REMUXFORGE_RECORDED_TRANSLATION") : "";
             builder.Services.AddSingleton(provider => new TranslationModelProviderFactory(provider.GetRequiredService<OpenAiResponsesClient>(), provider.GetRequiredService<AiCredentialService>(), recordedTranslationScenario));
             builder.Services.AddSingleton(new TranslationProjectStore(AppSettingsService.Instance.ConfigFolder));
+            builder.Services.AddSingleton(new TranslationJobStore(AppSettingsService.Instance.ConfigFolder));
             builder.Services.AddSingleton<SubtitleTranslationOrchestrator>();
             builder.Services.AddHostedService(provider => provider.GetRequiredService<UpdateCheckService>());
             builder.Services.AddRadzenComponents();

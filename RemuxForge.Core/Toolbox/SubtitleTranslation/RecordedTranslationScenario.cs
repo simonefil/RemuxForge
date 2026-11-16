@@ -21,7 +21,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         UnsupportedCapability,
 
         /// <summary>Consegna con la prima battuta vuota e l'ultima mancante</summary>
-        WrongCues
+        WrongCues,
+
+        /// <summary>Consegna valida che segnala un termine nuovo</summary>
+        NewTerm
     }
 
     /// <summary>
@@ -42,6 +45,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Occurrence = 1;
             this.RetryAfterSeconds = 0;
             this.Parameter = "";
+            this.Term = "";
         }
 
         #endregion
@@ -77,6 +81,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Parametro rifiutato (error.param), vuoto per lasciarlo dedurre al provider
         /// </summary>
         public string Parameter { get; set; }
+
+        /// <summary>
+        /// Termine nuovo segnalato con NewTerm, reso col prefisso sintetico
+        /// </summary>
+        public string Term { get; set; }
 
         #endregion
     }

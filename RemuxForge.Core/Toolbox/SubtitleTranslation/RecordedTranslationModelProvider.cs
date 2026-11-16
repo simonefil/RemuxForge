@@ -370,9 +370,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     translations.Add(new JsonObject { ["id"] = id, ["text"] = fault != null && fault.Kind == RecordedTranslationFaultKind.WrongCues && i == 0 ? "" : text });
                 }
 
+                JsonArray newTerms = new JsonArray();
+                if (fault != null && fault.Kind == RecordedTranslationFaultKind.NewTerm)
+                    newTerms.Add(new JsonObject { ["source"] = fault.Term, ["target"] = SYNTHETIC_PREFIX + fault.Term });
+
                 toolName = "submit_translation";
                 arguments["translations"] = translations;
-                arguments["new_terms"] = new JsonArray();
+                arguments["new_terms"] = newTerms;
             }
 
             // La ricerca web offerta lascia un item web_search_call, come nelle risposte vere

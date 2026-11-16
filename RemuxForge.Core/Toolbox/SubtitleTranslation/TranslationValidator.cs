@@ -169,18 +169,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
 
             // Intervalli degli id richiesti nella forma 1-60,62
-            StringBuilder ranges = new StringBuilder();
-            for (int i = 0; i < requested.Count; i++)
-            {
-                int start = i;
-                while (i + 1 < requested.Count && requested[i + 1] == requested[i] + 1)
-                    i++;
-                if (ranges.Length > 0)
-                    ranges.Append(',');
-                ranges.Append(requested[start].ToString(CultureInfo.InvariantCulture));
-                if (i > start)
-                    ranges.Append('-').Append(requested[i].ToString(CultureInfo.InvariantCulture));
-            }
+            string ranges = TranslationRequestBuilder.FormatRanges(requested);
 
             // Consegna: la prima chiamata con un oggetto JSON e l'array translations
             string deliveryCode = NO_SUBMISSION;
