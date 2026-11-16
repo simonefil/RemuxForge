@@ -1838,6 +1838,10 @@ namespace RemuxForge.Web.Services.Toolbox
                         phase = job.Phase;
                         this._phrase = "";
                         this._detail = "";
+
+                        // Una fase finita lascia la barra piena; Stop e pausa lasciano il punto raggiunto
+                        if (stop == null)
+                            this.ProgressState.CurrentPercent = 100;
                     }
 
                     // Un disco che non scrive non deve chiudere l'app: la fermata resta in memoria e all'apertura diventa Crash
