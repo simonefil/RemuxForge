@@ -2094,7 +2094,7 @@
   "web.toolbox.subtitleTranslation.models.difficulty.low": "Bassa",
   "web.toolbox.subtitleTranslation.models.info.analysis": "Legge gli episodi, cerca la serie sul web e propone il glossario: termini, personaggi, registro e tono. Un errore qui si ripete in tutte le traduzioni.",
   "web.toolbox.subtitleTranslation.models.info.translation": "Traduce le battute a blocchi rispettando il glossario approvato. È il passo con più chiamate.",
-  "web.toolbox.subtitleTranslation.models.info.newTerms": "Propone la resa dei termini ricorrenti trovati durante la traduzione e non presenti nel glossario. Le proposte le approvi tu.",
+  "web.toolbox.subtitleTranslation.models.info.newTerms": "Riscrive le battute che contengono i termini nuovi che hai confermato, perché usino la resa scelta.",
   "web.toolbox.subtitleTranslation.models.info.review": "Rilegge la traduzione e corregge gli errori di senso. Deve essere almeno capace quanto il modello della traduzione.",
   "web.toolbox.subtitleTranslation.models.save": "Salva",
   "web.toolbox.subtitleTranslation.projectCreated": "Nuovo progetto di traduzione",
