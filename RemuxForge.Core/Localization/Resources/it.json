@@ -4147,7 +4147,7 @@
   "web.mediaCatalogSettings.modeApi": "API",
   "web.mediaCatalogSettings.modeSite": "Sito",
   "web.mediaCatalogSettings.tvdbApiKey": "Chiave API TheTVDB:",
-  "web.mediaCatalogSettings.tmdbCredential": "Token o API key TMDB:",
+  "web.mediaCatalogSettings.tmdbCredential": "Chiave API TMDB:",
   "web.mediaCatalogSettings.credentialSaved": "Salvata (inseriscine una nuova per sostituirla)",
   "web.mediaCatalogSettings.remove": "Rimuovi",
   "web.mediaCatalogSettings.defaultLanguage": "Lingua di default:",

@@ -7,14 +7,14 @@
     <div class="rf-dialog-body">
         <div class="form-row">
             <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogSettings.tvdbMode")" Component="MediaCatalogTvdbMode" />
-            <RadzenDropDown TValue="TvdbAccessMode" Name="MediaCatalogTvdbMode" Data="@s_modes" Value="@_settings.TvdbMode" Change="@ChangeModeAsync" Style="max-width: 20ch;">
+            <RadzenDropDown TValue="TvdbAccessMode" Name="MediaCatalogTvdbMode" Data="@s_modes" Value="@_settings.TvdbMode" Change="@ChangeModeAsync">
                 <Template Context="mode">@GetModeLabel((TvdbAccessMode)mode)</Template>
                 <ValueTemplate Context="mode">@GetModeLabel((TvdbAccessMode)mode)</ValueTemplate>
             </RadzenDropDown>
         </div>
         <div class="form-row" style="margin-top: 0.5em;">
             <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogSettings.tvdbApiKey")" Component="MediaCatalogTvdbApiKey" />
-            <RadzenPassword Name="MediaCatalogTvdbApiKey" AutoCompleteType="AutoCompleteType.Off" Style="max-width: 40ch;"
+            <RadzenPassword Name="MediaCatalogTvdbApiKey" AutoCompleteType="AutoCompleteType.Off"
                             Placeholder="@(_settings.TvdbApiKey.Length > 0 ? AppText.T("web.mediaCatalogSettings.credentialSaved") : "")"
                             @bind-Value="_tvdbApiKeyInput" Immediate="true" />
             @if (_settings.TvdbApiKey.Length > 0)
@@ -24,7 +24,7 @@
         </div>
         <div class="form-row" style="margin-top: 0.5em;">
             <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogSettings.tmdbCredential")" Component="MediaCatalogTmdbCredential" />
-            <RadzenPassword Name="MediaCatalogTmdbCredential" AutoCompleteType="AutoCompleteType.Off" Style="max-width: 40ch;"
+            <RadzenPassword Name="MediaCatalogTmdbCredential" AutoCompleteType="AutoCompleteType.Off"
                             Placeholder="@(_settings.TmdbCredential.Length > 0 ? AppText.T("web.mediaCatalogSettings.credentialSaved") : "")"
                             @bind-Value="_tmdbCredentialInput" Immediate="true" />
             @if (_settings.TmdbCredential.Length > 0)
@@ -34,7 +34,7 @@
         </div>
         <div class="form-row" style="margin-top: 0.5em;">
             <span class="form-label">@AppText.T("web.mediaCatalogSettings.defaultLanguage")</span>
-            <div style="max-width: 40ch; flex: 1;">
+            <div style="flex: 1; min-width: 0;">
                 <LanguageChipsComponent Multiple="false" Label="@AppText.T("web.mediaCatalogSettings.defaultLanguage")" Value="@_settings.DefaultLanguage" ValueChanged="@(value => _settings.DefaultLanguage = value)" />
             </div>
         </div>

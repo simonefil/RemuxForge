@@ -41,7 +41,7 @@
         @* API key *@
         <div class="form-row" style="margin-top: 0.5em;">
             <RadzenLabel class="form-label" Text="@AppText.T("web.aiSettings.apiKey")" Component="AiSettingsApiKey" />
-            <RadzenPassword Name="AiSettingsApiKey" AutoCompleteType="AutoCompleteType.Off" Style="max-width: 40ch;"
+            <RadzenPassword Name="AiSettingsApiKey" AutoCompleteType="AutoCompleteType.Off"
                             Placeholder="@(IsApiKeyConfigured() ? AppText.T("web.aiSettings.apiKeyConfigured") : "sk-...")"
                             Disabled="@(_busy || IsAccountConnected())" @bind-Value="_apiKeyInput" Immediate="true" />
             <RadzenButton Text="@AppText.T("web.aiSettings.saveApiKey")" Icon="save" Size="ButtonSize.Small" Disabled="@(_busy || IsAccountConnected() || string.IsNullOrWhiteSpace(_apiKeyInput))" Click="@RequestSaveApiKey" />
