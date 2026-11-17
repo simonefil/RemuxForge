@@ -4205,7 +4205,6 @@
   "web.mediaCatalogMatch.apply": "Applica",
   "web.mediaCatalogMatch.confirm": "Usa l'abbinamento",
   "web.mediaCatalogMatch.applyFailed": "Scrittura non avviata",
-  "web.mediaCatalogMatch.coverNotJpeg": "Copertina non in JPEG: non allegata",
   "web.mediaCatalogMatch.noChanges": "Nessuna modifica da scrivere",
   "web.mediaCatalogMatch.orchestratorBusy": "Un'altra operazione è in corso",
   "web.rename.method.Catalog": "Catalogo",

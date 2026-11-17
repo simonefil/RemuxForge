@@ -4,6 +4,7 @@ using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 
 namespace RemuxForge.Core.MediaCatalog
@@ -27,9 +28,14 @@ namespace RemuxForge.Core.MediaCatalog
         public const string MOVIE_TITLE_TEMPLATE = "<Title>";
 
         /// <summary>
-        /// Nome dell'allegato della copertina
+        /// Nome dell'allegato della copertina JPEG
         /// </summary>
-        public const string COVER_NAME = "cover.jpg";
+        public const string COVER_JPEG_NAME = "cover.jpg";
+
+        /// <summary>
+        /// Nome dell'allegato della copertina PNG
+        /// </summary>
+        public const string COVER_PNG_NAME = "cover.png";
 
         /// <summary>
         /// Campo del titolo del segmento
@@ -206,12 +212,12 @@ namespace RemuxForge.Core.MediaCatalog
         }
 
         /// <summary>
-        /// Aggiunge la copertina, sostituendo quella che il file ha già
+        /// Aggiunge la copertina come cover.jpg o cover.png secondo il formato, sostituendo quella che il file ha già anche se di formato diverso
         /// </summary>
         /// <param name="changes">Modifiche</param>
         /// <param name="fileInfo">Dati attuali del file</param>
         /// <param name="description">Descrizione della provenienza</param>
-        /// <param name="coverSource">File della copertina, vuoto per non scriverla</param>
+        /// <param name="coverSource">File o indirizzo della copertina, vuoto per non scriverla</param>
         private static void AddCover(List<MkvMetadataChange> changes, MkvMetadataFileInfo fileInfo, string description, string coverSource)
         {
             MkvMetadataAttachmentInfo existing = null;
@@ -219,9 +225,12 @@ namespace RemuxForge.Core.MediaCatalog
             if (string.IsNullOrEmpty(coverSource))
                 return;
 
+            // Nell'anteprima la sorgente è l'indirizzo del poster, nella scrittura il file scaricato: in entrambi l'estensione dice il formato
+            string name = string.Equals(Path.GetExtension(coverSource.Split('?')[0]), ".png", StringComparison.OrdinalIgnoreCase) ? COVER_PNG_NAME : COVER_JPEG_NAME;
             for (int i = 0; fileInfo.Attachments != null && i < fileInfo.Attachments.Count; i++)
             {
-                if (string.Equals(fileInfo.Attachments[i].FileName, COVER_NAME, StringComparison.OrdinalIgnoreCase))
+                string fileName = fileInfo.Attachments[i].FileName;
+                if (string.Equals(fileName, COVER_JPEG_NAME, StringComparison.OrdinalIgnoreCase) || string.Equals(fileName, COVER_PNG_NAME, StringComparison.OrdinalIgnoreCase))
                 {
                     existing = fileInfo.Attachments[i];
                     break;
@@ -233,10 +242,10 @@ namespace RemuxForge.Core.MediaCatalog
             change.Scope = MkvMetadataTargetScope.Container;
             change.OperationType = MkvMetadataOperationType.SetAttachment;
             change.BeforeValue = existing != null ? existing.FileName : "";
-            change.AfterValue = COVER_NAME;
-            change.AttachmentName = existing != null ? existing.FileName : COVER_NAME;
+            change.AfterValue = name;
+            change.AttachmentName = name;
             change.AttachmentSourcePath = coverSource;
-            change.AttachmentMimeType = MetadataContainerReader.GuessMimeType(COVER_NAME);
+            change.AttachmentMimeType = MetadataContainerReader.GuessMimeType(name);
             changes.Add(change);
         }
 

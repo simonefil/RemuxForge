@@ -739,7 +739,6 @@
         Dictionary<string, string> covers = new Dictionary<string, string>(StringComparer.Ordinal);
         List<string> tempFiles = new List<string>();
         List<MetadataDirectEdit> edits = new List<MetadataDirectEdit>();
-        bool skippedCover = false;
 
         this._busy = true;
         try
@@ -751,12 +750,10 @@
 
                 if (url.Length > 0 && !covers.TryGetValue(url, out coverPath))
                 {
-                    coverPath = await this.ImageDownloader.DownloadJpegAsync(url, CancellationToken.None);
+                    coverPath = await this.ImageDownloader.DownloadCoverAsync(url, CancellationToken.None);
                     covers[url] = coverPath;
                     if (coverPath.Length > 0)
                         tempFiles.Add(coverPath);
-                    else
-                        skippedCover = true;
                 }
 
                 List<MkvMetadataChange> changes = this.BuildChanges(file, url.Length > 0 ? covers[url] : "");
@@ -775,8 +772,6 @@
         }
 
         this._busy = false;
-        if (skippedCover)
-            this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.mediaCatalogMatch.coverNotJpeg"), "", 8000);
 
         if (edits.Count == 0)
         {
