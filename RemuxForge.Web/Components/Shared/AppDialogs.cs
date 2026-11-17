@@ -198,10 +198,25 @@ namespace RemuxForge.Web.Components.Shared
         /// <returns>True se confermato</returns>
         public static async Task<bool> ConfirmAsync(DialogService dialogService, string title, string message, string okText, string cancelText)
         {
+            return await ConfirmAsync(dialogService, title, message, okText, cancelText, WIDTH_CONFIRM);
+        }
+
+        /// <summary>
+        /// Chiede una conferma con un dialog Radzen della larghezza indicata, per i testi lunghi
+        /// </summary>
+        /// <param name="dialogService">Servizio dialog</param>
+        /// <param name="title">Titolo</param>
+        /// <param name="message">Messaggio, gli a capo vengono mostrati</param>
+        /// <param name="okText">Testo del pulsante di conferma</param>
+        /// <param name="cancelText">Testo del pulsante di annullamento</param>
+        /// <param name="width">Larghezza del dialog, una delle costanti WIDTH_</param>
+        /// <returns>True se confermato</returns>
+        public static async Task<bool> ConfirmAsync(DialogService dialogService, string title, string message, string okText, string cancelText, string width)
+        {
             ConfirmOptions options = new ConfirmOptions();
             options.OkButtonText = okText;
             options.CancelButtonText = cancelText;
-            options.Width = WIDTH_CONFIRM;
+            options.Width = width;
             options.CloseDialogOnOverlayClick = false;
             options.CloseDialogOnEsc = true;
             options.CssClass = "rf-confirm";

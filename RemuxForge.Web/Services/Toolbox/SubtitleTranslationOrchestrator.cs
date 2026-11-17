@@ -436,14 +436,6 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Registra il consenso dedicato alla traduzione
-        /// </summary>
-        public void AcceptConsent()
-        {
-            this._credentialService.AcceptTranslationConsent();
-        }
-
-        /// <summary>
         /// Avvia l'analisi, o la riprende dalle chiamate mancanti dopo una fermata o un errore
         /// </summary>
         public override void Start()
@@ -2425,14 +2417,6 @@ namespace RemuxForge.Web.Services.Toolbox
                     return this._job != null && !this.IsBusy && this._job.Phase == TranslationJobPhase.UserReview && this._job.Status == TranslationJobStatus.Idle;
                 }
             }
-        }
-
-        /// <summary>
-        /// True se il consenso dedicato alla traduzione è già stato dato
-        /// </summary>
-        public bool ConsentAccepted
-        {
-            get { return this._credentialService.Load().TranslationConsentAccepted; }
         }
 
         /// <summary>

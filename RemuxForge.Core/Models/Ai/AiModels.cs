@@ -78,8 +78,6 @@ namespace RemuxForge.Core.Models
             this.Model = "";
             this.ReasoningEffort = "";
             this.MaxRounds = RemuxForge.Core.Ai.MetadataAiPresetGenerator.DEFAULT_MAX_ROUNDS;
-            this.ConsentAccepted = false;
-            this.TranslationConsentAccepted = false;
             this.Email = "";
             this.Subject = "";
             this.ClientId = "";
@@ -119,16 +117,6 @@ namespace RemuxForge.Core.Models
         /// Giri massimi del modello per una generazione
         /// </summary>
         public int MaxRounds { get; set; }
-
-        /// <summary>
-        /// Consenso all'invio dei dati a OpenAI già accettato
-        /// </summary>
-        public bool ConsentAccepted { get; set; }
-
-        /// <summary>
-        /// Consenso all'invio a OpenAI dei sottotitoli e del contesto della traduzione già accettato
-        /// </summary>
-        public bool TranslationConsentAccepted { get; set; }
 
         /// <summary>
         /// Email dell'account ChatGPT, usata come login_hint ai login successivi

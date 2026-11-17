@@ -175,26 +175,18 @@
     }
 
     /// <summary>
-    /// Esegue l'azione subito se il consenso è già dato, altrimenti la esegue dopo l'accettazione del consenso
+    /// Esegue l'azione dopo l'accettazione del consenso, chiesto a ogni collegamento dell'account e a ogni salvataggio della API key
     /// </summary>
     /// <param name="action">Azione da eseguire</param>
     private async Task RunWithConsent(Func<Task> action)
     {
         this._error = "";
         this._info = "";
-        if (this._credentials.ConsentAccepted)
-        {
-            await action();
-            return;
-        }
-
         bool accepted = await AppDialogs.ConfirmAsync(this.DialogService, AppText.T("web.aiSettings.consentTitle"), AppText.T("web.aiSettings.consentText"),
-            AppText.T("web.aiSettings.consentAccept"), AppText.T("web.common.cancel"));
+            AppText.T("web.aiSettings.consentAccept"), AppText.T("web.common.cancel"), AppDialogs.WIDTH_AI_SETTINGS);
         if (!accepted)
             return;
 
-        this.CredentialService.AcceptConsent();
-        this.ReloadCredentials();
         await action();
     }
 

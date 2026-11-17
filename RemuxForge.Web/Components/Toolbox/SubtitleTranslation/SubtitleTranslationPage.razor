@@ -1197,7 +1197,7 @@
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.resume"), "F10", "play_arrow", allSurfaces, UiCommandMenuSection.Actions,
                 busy || (!analysisStopped && !jobStopped), null)
             {
-                AsyncCallback = () => this.ResumeAsync(selected),
+                Callback = () => this.Resume(selected),
                 ToolbarOrder = 12,
                 StatusOrder = 12
             });
@@ -1319,7 +1319,7 @@
                 commands.Add(new UiCommandDefinition(AppText.T(label), "F10", job == null ? "translate" : failed ? "refresh" : "play_arrow", allSurfaces, UiCommandMenuSection.Actions,
                     busy || !this.Orchestrator.CanStartJob, null)
                 {
-                    AsyncCallback = this.StartJobAsync,
+                    Callback = this.StartJob,
                     ToolbarOrder = 10,
                     StatusOrder = 10
                 });
@@ -1330,7 +1330,7 @@
                 commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.confirmTerms"), "F10", "check", allSurfaces, UiCommandMenuSection.Actions,
                     busy || !this.Orchestrator.CanConfirmNewTerms, null)
                 {
-                    AsyncCallback = this.ConfirmNewTermsAsync,
+                    Callback = this.ConfirmNewTerms,
                     ToolbarOrder = 10,
                     StatusOrder = 10
                 });
@@ -1385,7 +1385,7 @@
             commands.Add(new UiCommandDefinition(AppText.T(label), "F10", failed ? "refresh" : stopped ? "play_arrow" : "auto_awesome",
                 allSurfaces, UiCommandMenuSection.Actions, busy || !this.Orchestrator.CanStart, null)
             {
-                AsyncCallback = this.AnalyzeAsync,
+                Callback = this.Analyze,
                 ToolbarOrder = 12,
                 StatusOrder = 12
             });
@@ -1533,18 +1533,18 @@
     /// Apre il progetto scelto e ne riprende la traduzione o l'analisi fermata
     /// </summary>
     /// <param name="project">Progetto della riga</param>
-    private async Task ResumeAsync(TranslationProject project)
+    private void Resume(TranslationProject project)
     {
         if (!this.OpenProject(project))
             return;
 
         if (this.Orchestrator.Job != null)
         {
-            await this.StartJobAsync();
+            this.StartJob();
         }
         else
         {
-            await this.AnalyzeAsync();
+            this.Analyze();
         }
     }
 
@@ -1621,9 +1621,9 @@
     }
 
     /// <summary>
-    /// Avvia o riprende l'analisi; senza il modello dell'analisi non parte, e la prima volta chiede il consenso dedicato alla traduzione
+    /// Avvia o riprende l'analisi; senza il modello dell'analisi non parte
     /// </summary>
-    private async Task AnalyzeAsync()
+    private void Analyze()
     {
         if (string.IsNullOrEmpty(this.Orchestrator.Project.Models.Analysis))
         {
@@ -1632,29 +1632,19 @@
             return;
         }
 
-        if (!this.Orchestrator.ConsentAccepted)
-        {
-            bool accepted = await AppDialogs.ConfirmAsync(this.DialogService, AppText.T("web.toolbox.subtitleTranslation.consentTitle"), AppText.T("web.toolbox.subtitleTranslation.consentText"),
-                AppText.T("web.toolbox.subtitleTranslation.consentAccept"), AppText.T("web.common.cancel"));
-            if (!accepted)
-                return;
-
-            this.Orchestrator.AcceptConsent();
-        }
-
         this.CancelEditing();
         this._step = STEP_GLOSSARY;
         this.Orchestrator.Start();
     }
 
     /// <summary>
-    /// Avvia o riprende il giro nella fase del job; senza il modello della fase non parte, e senza il consenso dedicato lo chiede
+    /// Avvia o riprende il giro nella fase del job; senza il modello della fase non parte
     /// </summary>
-    private async Task StartJobAsync()
+    private void StartJob()
     {
         TranslationJob job = this.Orchestrator.Job;
         TranslationJobPhase phase = job != null ? job.Phase : TranslationJobPhase.Translation;
-        if (!await this.CheckModelAsync(phase))
+        if (!this.CheckModel(phase))
             return;
 
         this._step = phase == TranslationJobPhase.Applying ? STEP_NEW_TERMS : phase == TranslationJobPhase.Review ? STEP_REVIEW : STEP_TRANSLATION;
@@ -1664,11 +1654,11 @@
     /// <summary>
     /// Conferma i termini nuovi e prosegue il giro: applicazione coi termini aggiunti, altrimenti la revisione AI
     /// </summary>
-    private async Task ConfirmNewTermsAsync()
+    private void ConfirmNewTerms()
     {
         TranslationJob job = this.Orchestrator.Job;
         bool adding = job.NewTerms.Exists(t => t.Decision == NewTermDecisionKind.Add);
-        if (!await this.CheckModelAsync(adding ? TranslationJobPhase.Applying : TranslationJobPhase.Review))
+        if (!this.CheckModel(adding ? TranslationJobPhase.Applying : TranslationJobPhase.Review))
             return;
 
         this._step = adding ? STEP_NEW_TERMS : STEP_REVIEW;
@@ -1676,11 +1666,11 @@
     }
 
     /// <summary>
-    /// Controlla il modello della fase che parte e il consenso dedicato, chiedendolo se manca
+    /// Controlla il modello della fase che parte
     /// </summary>
     /// <param name="phase">Fase che parte: traduzione, applicazione dei termini o revisione AI</param>
     /// <returns>True se la fase può partire</returns>
-    private async Task<bool> CheckModelAsync(TranslationJobPhase phase)
+    private bool CheckModel(TranslationJobPhase phase)
     {
         TranslationJob job = this.Orchestrator.Job;
         TranslationPhaseModels models = job != null ? job.Models : this.Orchestrator.Project.Models;
@@ -1691,16 +1681,6 @@
             this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyModelMissing"),
                 AppText.F("web.toolbox.subtitleTranslation.modelMissing", AppText.T("web.toolbox.subtitleTranslation.models.phase." + name)));
             return false;
-        }
-
-        if (!this.Orchestrator.ConsentAccepted)
-        {
-            bool accepted = await AppDialogs.ConfirmAsync(this.DialogService, AppText.T("web.toolbox.subtitleTranslation.consentTitle"), AppText.T("web.toolbox.subtitleTranslation.consentText"),
-                AppText.T("web.toolbox.subtitleTranslation.consentAcceptTranslation"), AppText.T("web.common.cancel"));
-            if (!accepted)
-                return false;
-
-            this.Orchestrator.AcceptConsent();
         }
 
         return true;
