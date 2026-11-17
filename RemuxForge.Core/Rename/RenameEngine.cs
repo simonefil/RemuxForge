@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace RemuxForge.Core.Rename
@@ -25,6 +26,11 @@ namespace RemuxForge.Core.Rename
         /// Caratteri non validi nei nomi file
         /// </summary>
         private static readonly char[] s_invalidChars = Path.GetInvalidFileNameChars();
+
+        /// <summary>
+        /// Caratteri tolti dai valori del catalogo oltre a quelli non validi del sistema, perché non validi su Windows
+        /// </summary>
+        private const string CATALOG_REMOVED_CHARS = "?*\"<>|";
 
         #endregion
 
@@ -455,7 +461,23 @@ namespace RemuxForge.Core.Rename
             return ExpandTags(method.CatalogPattern, tagContent =>
             {
                 string value;
-                return MediaCatalogPlaceholders.TryResolve(tagContent, values, out value) ? value : ResolveTag(tagContent, originalName, originalExt, fileIndex, lastModified, parentFolder);
+                StringBuilder clean = new StringBuilder();
+
+                if (!MediaCatalogPlaceholders.TryResolve(tagContent, values, out value))
+                    return ResolveTag(tagContent, originalName, originalExt, fileIndex, lastModified, parentFolder);
+
+                // I valori del catalogo entrano nel nome file: i separatori diventano trattini e gli altri caratteri non validi si tolgono
+                foreach (char c in value)
+                {
+                    if (c == '/' || c == '\\')
+                        clean.Append('-');
+                    else if (c == ':')
+                        clean.Append(" -");
+                    else if (!char.IsControl(c) && Array.IndexOf(s_invalidChars, c) < 0 && CATALOG_REMOVED_CHARS.IndexOf(c) < 0)
+                        clean.Append(c);
+                }
+
+                return Regex.Replace(clean.ToString(), @"\s+", " ").Trim();
             });
         }
 

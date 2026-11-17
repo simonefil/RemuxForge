@@ -28,7 +28,7 @@
                                           MinWidth="2.5rem"
                                           MaxWidth="720px">
                         <Template Context="item">
-                            <span title="@(!string.IsNullOrEmpty(item.ErrorMessage) ? item.ErrorMessage : item.NewName)">@item.NewName</span>
+                            <span title="@(!string.IsNullOrEmpty(item.ErrorMessage) ? item.NewName + "\n" + item.ErrorMessage : item.NewName)">@item.NewName</span>
                         </Template>
                     </RadzenDataGridColumn>
                 </Columns>
@@ -42,7 +42,7 @@
                     <Template Context="type">@GetRenameMethodTypeLabel((RenameMethodType)type)</Template>
                     <ValueTemplate Context="type">@GetRenameMethodTypeLabel((RenameMethodType)type)</ValueTemplate>
                 </RadzenDropDown>
-                <RadzenButton class="renamer-add-btn" Text="@AppText.T("web.rename.add")" Icon="add" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@this.HandleAddMethod" />
+                <RadzenButton class="renamer-add-btn" Text="@AppText.T("web.rename.add")" Icon="add" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@(!this.HasEditingMethodInput())" Click="@this.HandleAddMethod" />
             </div>
 
             <div class="renamer-params">
@@ -641,11 +641,6 @@
     /// </summary>
     private void HandleAddMethod()
     {
-        if (!this.HasEditingMethodInput())
-        {
-            return;
-        }
-
         string error = this.ValidateEditingMethod();
         if (!string.IsNullOrEmpty(error))
         {
