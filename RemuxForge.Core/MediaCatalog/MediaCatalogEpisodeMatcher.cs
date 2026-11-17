@@ -132,7 +132,7 @@ namespace RemuxForge.Core.MediaCatalog
         }
 
         /// <summary>
-        /// Stacca l'ultimo episodio della riga in una riga nuova subito sotto, senza file
+        /// Stacca l'ultimo episodio della riga: torna al file subito sotto rimasto senza episodi, come dopo un'unione, altrimenti va in una riga nuova senza file
         /// </summary>
         /// <param name="rows">Righe</param>
         /// <param name="index">Riga con più episodi</param>
@@ -144,7 +144,10 @@ namespace RemuxForge.Core.MediaCatalog
             List<MediaCatalogEpisode> episodes = rows[index].Episodes;
             MediaCatalogEpisode last = episodes[episodes.Count - 1];
             episodes.RemoveAt(episodes.Count - 1);
-            rows.Insert(index + 1, new MediaCatalogMatchRow("", new List<MediaCatalogEpisode> { last }));
+            if (index + 1 < rows.Count && rows[index + 1].FilePath.Length > 0 && rows[index + 1].Episodes.Count == 0)
+                rows[index + 1].Episodes = new List<MediaCatalogEpisode> { last };
+            else
+                rows.Insert(index + 1, new MediaCatalogMatchRow("", new List<MediaCatalogEpisode> { last }));
         }
 
         /// <summary>

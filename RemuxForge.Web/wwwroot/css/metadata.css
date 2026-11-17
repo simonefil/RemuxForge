@@ -1067,11 +1067,17 @@ tr.metadata-diff-removed > td {
 }
 
 .catalog-match-query {
-    flex: 1 1 20rem;
+    flex: 1 1 18rem;
 }
 
 .catalog-match-language {
     flex: 1 1 16rem;
+}
+
+/* Dropdown largo quanto la voce scelta, senza troncarla */
+.rz-dropdown.catalog-match-fit {
+    width: max-content;
+    max-width: 100%;
 }
 
 .catalog-match-grid {
@@ -1097,10 +1103,14 @@ tr.metadata-diff-removed > td {
 }
 
 .catalog-match-episode {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: 0.25rem;
-    max-width: 100%;
+    min-width: 0;
+}
+
+.catalog-match-episode > span {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1116,7 +1126,72 @@ tr.metadata-diff-removed > td {
     gap: 0.125rem;
 }
 
+.catalog-match-preview table {
+    table-layout: fixed;
+}
+
+.catalog-match-preview th.catalog-match-preview-field {
+    width: 22%;
+}
+
+.catalog-match-preview th.catalog-match-preview-level {
+    width: 4.5rem;
+}
+
 .catalog-match-preview td {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Finestra stretta: ogni riga va in colonna, come i pannelli affiancati delle altre dialog */
+@media (max-width: 760px) {
+    .catalog-match-rows .rz-grid-table > thead {
+        display: none;
+    }
+
+    .catalog-match-rows .rz-grid-table,
+    .catalog-match-rows .rz-grid-table > tbody {
+        display: block;
+        width: 100%;
+    }
+
+    .catalog-match-rows .rz-grid-table > tbody > tr {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .catalog-match-rows .rz-grid-table > tbody > tr > td {
+        width: auto !important;
+        min-width: 0;
+    }
+
+    .catalog-match-rows .rz-grid-table > tbody > tr > td:first-child {
+        grid-column: 1 / -1;
+        font-weight: 600;
+    }
+
+    .catalog-match-preview thead {
+        display: none;
+    }
+
+    .catalog-match-preview table,
+    .catalog-match-preview tbody {
+        display: block;
+        width: 100%;
+    }
+
+    .catalog-match-preview tr {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .catalog-match-preview td {
+        min-width: 0;
+    }
+
+    .catalog-match-preview td.metadata-preview-before,
+    .catalog-match-preview td.metadata-preview-after {
+        grid-column: 1 / -1;
+    }
 }
