@@ -11,7 +11,7 @@
 }
 else
 {
-    <RadzenDropDown TValue="string" Data="@Catalog" TextProperty="Label" ValueProperty="Code" Value="@Value"
+    <RadzenDropDown TValue="string" class="rf-language-single" Data="@Catalog" TextProperty="Label" ValueProperty="Code" Value="@Value"
                     Change="@ChangeSingle" Disabled="@IsBlocked" AllowClear="false" AllowFiltering="true"
                     FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" FilterOperator="StringFilterOperator.Contains"
                     Placeholder="@(Placeholder ?? AppText.T("web.remux.searchLanguage"))" aria-label="@Label" Style="width:100%">

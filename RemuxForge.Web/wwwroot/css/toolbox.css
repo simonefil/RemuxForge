@@ -256,27 +256,6 @@
     width: 14rem;
 }
 
-/* Chip compatto: la lingua scelta sta nell'altezza degli altri input della testata */
-.rf-addtracks-language .rz-chip {
-    max-width: 100%;
-    min-height: 0;
-    height: auto;
-    padding-block: 0;
-}
-
-.rf-addtracks-language .rz-chip-text {
-    overflow: hidden;
-    line-height: 1.2;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.rf-addtracks-language .rz-chip .rz-button {
-    height: auto;
-    min-height: 0;
-    padding-block: 0;
-    line-height: 1;
-}
 
 .rf-addtracks-delay {
     width: 8rem;
@@ -432,27 +411,6 @@
     width: 12rem;
 }
 
-/* Chip compatto come in Aggiungi tracce: la lingua sta nell'altezza degli altri input */
-.rf-translation-language .rz-chip {
-    max-width: 100%;
-    min-height: 0;
-    height: auto;
-    padding-block: 0;
-}
-
-.rf-translation-language .rz-chip-text {
-    overflow: hidden;
-    line-height: 1.2;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.rf-translation-language .rz-chip .rz-button {
-    height: auto;
-    min-height: 0;
-    padding-block: 0;
-    line-height: 1;
-}
 
 .rf-translation .rf-translation-context {
     flex: 1 1 auto;
