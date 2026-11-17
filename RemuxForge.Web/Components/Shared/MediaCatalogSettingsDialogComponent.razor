@@ -4,7 +4,7 @@
 @inject NotificationService NotificationService
 
 <div class="rf-dialog" @ref="DialogContent">
-    <div class="rf-dialog-body">
+    <div class="rf-dialog-body form-stack">
         <div class="form-row">
             <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogSettings.tvdbMode")" Component="MediaCatalogTvdbMode" />
             <RadzenDropDown TValue="TvdbAccessMode" Name="MediaCatalogTvdbMode" Data="@s_modes" Value="@_settings.TvdbMode" Change="@ChangeModeAsync">
@@ -12,29 +12,29 @@
                 <ValueTemplate Context="mode">@GetModeLabel((TvdbAccessMode)mode)</ValueTemplate>
             </RadzenDropDown>
         </div>
-        <div class="form-row" style="margin-top: 0.5em;">
+        <div class="form-row">
             <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogSettings.tvdbApiKey")" Component="MediaCatalogTvdbApiKey" />
             <RadzenPassword Name="MediaCatalogTvdbApiKey" AutoCompleteType="AutoCompleteType.Off"
                             Placeholder="@(_settings.TvdbApiKey.Length > 0 ? AppText.T("web.mediaCatalogSettings.credentialSaved") : "")"
                             @bind-Value="_tvdbApiKeyInput" Immediate="true" />
             @if (_settings.TvdbApiKey.Length > 0)
             {
-                <RadzenButton Text="@AppText.T("web.mediaCatalogSettings.remove")" Icon="delete" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => _settings.TvdbApiKey = "")" />
+                <RadzenButton Text="@AppText.T("web.mediaCatalogSettings.remove")" Icon="delete" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => _settings.TvdbApiKey = "")" />
             }
         </div>
-        <div class="form-row" style="margin-top: 0.5em;">
+        <div class="form-row">
             <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogSettings.tmdbCredential")" Component="MediaCatalogTmdbCredential" />
             <RadzenPassword Name="MediaCatalogTmdbCredential" AutoCompleteType="AutoCompleteType.Off"
                             Placeholder="@(_settings.TmdbCredential.Length > 0 ? AppText.T("web.mediaCatalogSettings.credentialSaved") : "")"
                             @bind-Value="_tmdbCredentialInput" Immediate="true" />
             @if (_settings.TmdbCredential.Length > 0)
             {
-                <RadzenButton Text="@AppText.T("web.mediaCatalogSettings.remove")" Icon="delete" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => _settings.TmdbCredential = "")" />
+                <RadzenButton Text="@AppText.T("web.mediaCatalogSettings.remove")" Icon="delete" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => _settings.TmdbCredential = "")" />
             }
         </div>
-        <div class="form-row" style="margin-top: 0.5em;">
+        <div class="form-row">
             <span class="form-label">@AppText.T("web.mediaCatalogSettings.defaultLanguage")</span>
-            <div style="flex: 1; min-width: 0;">
+            <div class="form-field">
                 <LanguageChipsComponent Multiple="false" Label="@AppText.T("web.mediaCatalogSettings.defaultLanguage")" Value="@_settings.DefaultLanguage" ValueChanged="@(value => _settings.DefaultLanguage = value)" />
             </div>
         </div>

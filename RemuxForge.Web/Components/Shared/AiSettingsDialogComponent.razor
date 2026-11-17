@@ -4,60 +4,62 @@
 @inject AiAuthService AuthService
 
 <div class="rf-dialog" @ref="DialogContent">
-    <div class="rf-dialog-body">
+    <div class="rf-dialog-body form-stack">
         <div class="form-row">
             <span class="form-label">@AppText.T("web.aiSettings.status")</span>
-            <span>@GetStatusText()</span>
+            <span class="form-field">@GetStatusText()</span>
         </div>
 
         @* Account ChatGPT *@
-        <div class="form-row" style="margin-top: 0.5em;">
+        <div class="form-row">
             <span class="form-label">@AppText.T("web.aiSettings.account")</span>
             @if (IsAccountConnected())
             {
-                <RadzenButton Text="@AppText.T("web.aiSettings.disconnect")" Icon="link_off" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@_busy" Click="@Disconnect" />
+                <RadzenButton Text="@AppText.T("web.aiSettings.disconnect")" Icon="link_off" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@_busy" Click="@Disconnect" />
             }
             else
             {
-                <RadzenButton Text="@AppText.T("web.aiSettings.connect")" Icon="link" Size="ButtonSize.Small" Disabled="@(_busy || IsApiKeyConfigured())" Click="@RequestConnect" />
+                <RadzenButton Text="@AppText.T("web.aiSettings.connect")" Icon="link" Disabled="@(_busy || IsApiKeyConfigured())" Click="@RequestConnect" />
             }
         </div>
         @if (AuthService.IsLoginPending)
         {
-            <div style="margin: 0.25em 0 0.5em 0; padding: 0.5em; border: 1px solid var(--rz-base-300);">
-                <div>@AppText.T("web.aiSettings.loginPending")</div>
-                <div style="margin-top: 0.25em;">
-                    <a href="@AuthService.PendingAuthorizationUrl" target="_blank" rel="noopener noreferrer">@AppText.T("web.aiSettings.openLoginPage")</a>
-                </div>
-                <div style="margin-top: 0.5em;">@AppText.T("web.aiSettings.pasteHint")</div>
-                <div class="form-row">
-                    <RadzenTextBox aria-label="@AppText.T("web.aiSettings.pasteLabel")" Placeholder="http://127.0.0.1:.../callback?..." @bind-Value="_pastedUrl" Immediate="true" />
-                    <RadzenButton Text="@AppText.T("web.aiSettings.completeLogin")" Icon="check" Size="ButtonSize.Small" Disabled="@(_busy || string.IsNullOrWhiteSpace(_pastedUrl))" Click="@CompletePasted" />
-                    <RadzenButton Text="@AppText.T("web.common.cancel")" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@_busy" Click="@CancelLogin" />
+            <div class="form-row form-row-offset">
+                <div class="form-field form-stack ai-login-pending">
+                    <div>@AppText.T("web.aiSettings.loginPending")</div>
+                    <div>
+                        <a href="@AuthService.PendingAuthorizationUrl" target="_blank" rel="noopener noreferrer">@AppText.T("web.aiSettings.openLoginPage")</a>
+                    </div>
+                    <div>@AppText.T("web.aiSettings.pasteHint")</div>
+                    <div class="form-row">
+                        <RadzenTextBox aria-label="@AppText.T("web.aiSettings.pasteLabel")" Placeholder="http://127.0.0.1:.../callback?..." @bind-Value="_pastedUrl" Immediate="true" />
+                        <RadzenButton Text="@AppText.T("web.aiSettings.completeLogin")" Icon="check" Disabled="@(_busy || string.IsNullOrWhiteSpace(_pastedUrl))" Click="@CompletePasted" />
+                        <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@_busy" Click="@CancelLogin" />
+                    </div>
                 </div>
             </div>
         }
 
         @* API key *@
-        <div class="form-row" style="margin-top: 0.5em;">
+        <div class="form-row">
             <RadzenLabel class="form-label" Text="@AppText.T("web.aiSettings.apiKey")" Component="AiSettingsApiKey" />
             <RadzenPassword Name="AiSettingsApiKey" AutoCompleteType="AutoCompleteType.Off"
                             Placeholder="@(IsApiKeyConfigured() ? AppText.T("web.aiSettings.apiKeyConfigured") : "sk-...")"
                             Disabled="@(_busy || IsAccountConnected())" @bind-Value="_apiKeyInput" Immediate="true" />
-            <RadzenButton Text="@AppText.T("web.aiSettings.saveApiKey")" Icon="save" Size="ButtonSize.Small" Disabled="@(_busy || IsAccountConnected() || string.IsNullOrWhiteSpace(_apiKeyInput))" Click="@RequestSaveApiKey" />
+            <RadzenButton Text="@AppText.T("web.aiSettings.saveApiKey")" Icon="save" Disabled="@(_busy || IsAccountConnected() || string.IsNullOrWhiteSpace(_apiKeyInput))" Click="@RequestSaveApiKey" />
             @if (IsApiKeyConfigured())
             {
-                <RadzenButton Text="@AppText.T("web.aiSettings.removeApiKey")" Icon="delete" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@_busy" Click="@RemoveApiKey" />
+                <RadzenButton Text="@AppText.T("web.aiSettings.removeApiKey")" Icon="delete" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@_busy" Click="@RemoveApiKey" />
             }
         </div>
         @if (IsAccountConnected())
         {
-            <div style="color: var(--rz-text-secondary-color);">@AppText.T("ai.credentials.disconnectBeforeApiKey")</div>
+            <div class="form-row form-row-offset form-note">@AppText.T("ai.credentials.disconnectBeforeApiKey")</div>
         }
 
         @if (!string.IsNullOrEmpty(_info))
         {
-            <div style="margin-top: 0.5em; white-space: pre-line;">@_info</div>
+            <div class="rf-dialog-message">@_info</div>
         }
     </div>
     <div class="rf-dialog-footer">

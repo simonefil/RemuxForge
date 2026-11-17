@@ -1,7 +1,6 @@
 @inherits AppDialogContentBase
 @using RemuxForge.Core.MediaCatalog
 @using System.Linq
-@using System.Text.RegularExpressions
 @inject MediaCatalogSourceProvider SourceProvider
 @inject MediaCatalogSettingsService SettingsService
 @inject MediaCatalogImageDownloader ImageDownloader
@@ -38,34 +37,38 @@
         }
         else if (_step == MatchStep.Search)
         {
-            <div class="catalog-match-search">
-                <div class="rf-tool-field">
-                    <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.mediaCatalogMatch.catalog")" Component="CatalogMatchProvider" />
-                    <RadzenDropDown TValue="MediaCatalogProvider" Name="CatalogMatchProvider" class="catalog-match-fit" Data="@s_providers" @bind-Value="_provider">
+            <div class="form-stack">
+                <div class="form-row">
+                    <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogMatch.catalog")" Component="CatalogMatchProvider" />
+                    <RadzenDropDown TValue="MediaCatalogProvider" Name="CatalogMatchProvider" Data="@s_providers" @bind-Value="_provider">
                         <Template Context="provider">@MediaCatalogSourceProvider.GetCatalogName((MediaCatalogProvider)provider)</Template>
                         <ValueTemplate Context="provider">@MediaCatalogSourceProvider.GetCatalogName((MediaCatalogProvider)provider)</ValueTemplate>
                     </RadzenDropDown>
                 </div>
-                <div class="rf-tool-field">
-                    <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.mediaCatalogMatch.kind")" Component="CatalogMatchKind" />
-                    <RadzenDropDown TValue="MediaCatalogKind" Name="CatalogMatchKind" class="catalog-match-fit" Data="@s_kinds" @bind-Value="_kind">
+                <div class="form-row">
+                    <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogMatch.kind")" Component="CatalogMatchKind" />
+                    <RadzenDropDown TValue="MediaCatalogKind" Name="CatalogMatchKind" Data="@s_kinds" @bind-Value="_kind">
                         <Template Context="kind">@GetKindLabel((MediaCatalogKind)kind)</Template>
                         <ValueTemplate Context="kind">@GetKindLabel((MediaCatalogKind)kind)</ValueTemplate>
                     </RadzenDropDown>
                 </div>
-                <div class="rf-tool-field catalog-match-query">
-                    <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.mediaCatalogMatch.query")" Component="CatalogMatchQuery" />
-                    <RadzenTextBox Name="CatalogMatchQuery" @bind-Value="_query" Immediate="true" Style="width: 100%;" />
+                <div class="form-row">
+                    <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogMatch.query")" Component="CatalogMatchQuery" />
+                    <RadzenTextBox Name="CatalogMatchQuery" @bind-Value="_query" Immediate="true" />
                 </div>
-                <div class="rf-tool-field">
-                    <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.mediaCatalogMatch.year")" Component="CatalogMatchYear" />
-                    <RadzenNumeric TValue="int?" Name="CatalogMatchYear" @bind-Value="_year" Min="1870" Max="2200" ShowUpDown="false" class="catalog-match-year" />
+                <div class="form-row">
+                    <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogMatch.year")" Component="CatalogMatchYear" />
+                    <RadzenNumeric TValue="int?" Name="CatalogMatchYear" @bind-Value="_year" Min="1870" Max="2200" ShowUpDown="false" />
                 </div>
-                <div class="rf-tool-field catalog-match-language">
-                    <span class="rf-tool-label">@AppText.T("web.mediaCatalogMatch.language")</span>
-                    <LanguageChipsComponent Multiple="false" Label="@AppText.T("web.mediaCatalogMatch.language")" Value="@_language" ValueChanged="@(value => _language = value)" />
+                <div class="form-row">
+                    <span class="form-label">@AppText.T("web.mediaCatalogMatch.language")</span>
+                    <div class="form-field">
+                        <LanguageChipsComponent Multiple="false" Label="@AppText.T("web.mediaCatalogMatch.language")" Value="@_language" ValueChanged="@(value => _language = value)" />
+                    </div>
                 </div>
-                <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.search")" Icon="search" Disabled="@(_busy || string.IsNullOrWhiteSpace(_query))" Click="@SearchAsync" />
+                <div class="form-row form-row-offset">
+                    <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.search")" Icon="search" Disabled="@(_busy || string.IsNullOrWhiteSpace(_query))" Click="@SearchAsync" />
+                </div>
             </div>
             @if (_busy)
             {
@@ -73,7 +76,7 @@
             }
             @if (_hits.Count > 0)
             {
-                <RadzenDataGrid TItem="MediaCatalogSearchHit" Data="@_hits" class="rf-data-grid catalog-match-grid" AllowPaging="false" AllowSorting="false" AllowColumnResize="false"
+                <RadzenDataGrid TItem="MediaCatalogSearchHit" Data="@_hits" class="rf-data-grid catalog-match-grid catalog-match-stacked catalog-match-hits" AllowPaging="false" AllowSorting="false" AllowColumnResize="false"
                                 Density="Density.Compact" GridLines="DataGridGridLines.Horizontal" SelectionMode="DataGridSelectionMode.Single" RowSelect="@SelectHitAsync">
                     <Columns>
                         <RadzenDataGridColumn TItem="MediaCatalogSearchHit" Title="@AppText.T("web.mediaCatalogMatch.resultTitle")" Width="28%">
@@ -105,7 +108,7 @@
         }
         else if (_step == MatchStep.Match)
         {
-            <RadzenDataGrid TItem="MediaCatalogMatchRow" Data="@_rows.ToList()" class="rf-data-grid catalog-match-grid catalog-match-rows" AllowPaging="false" AllowSorting="false" AllowColumnResize="false"
+            <RadzenDataGrid TItem="MediaCatalogMatchRow" Data="@_rows.ToList()" class="rf-data-grid catalog-match-grid catalog-match-stacked catalog-match-rows" AllowPaging="false" AllowSorting="false" AllowColumnResize="false"
                             Density="Density.Compact" GridLines="DataGridGridLines.Horizontal" RowRender="@RenderMatchRow">
                 <Columns>
                     <RadzenDataGridColumn TItem="MediaCatalogMatchRow" Title="@AppText.T("web.mediaCatalogMatch.file")" Width="45%">
@@ -128,7 +131,7 @@
                             }
                             else
                             {
-                                <span class="catalog-match-missing">@AppText.T("web.mediaCatalogMatch.noEpisode")</span>
+                                <span class="catalog-match-missing catalog-match-no-episode">@AppText.T("web.mediaCatalogMatch.noEpisode")</span>
                             }
                         </Template>
                     </RadzenDataGridColumn>
@@ -154,14 +157,14 @@
         }
         else if (_step == MatchStep.Preview)
         {
-            <div class="catalog-match-search">
-                <div class="rf-tool-field catalog-match-query">
-                    <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.mediaCatalogMatch.titleTemplate")" Component="CatalogMatchTemplate" />
-                    <RadzenTextBox Name="CatalogMatchTemplate" @bind-Value="_titleTemplate" Immediate="true" Style="width: 100%;" />
+            <div class="form-stack">
+                <div class="form-row">
+                    <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogMatch.titleTemplate")" Component="CatalogMatchTemplate" />
+                    <RadzenTextBox Name="CatalogMatchTemplate" @bind-Value="_titleTemplate" Immediate="true" />
                 </div>
-                <div class="rf-tool-field catalog-match-query">
-                    <RadzenLabel class="rf-tool-label" Text="@AppText.T("web.mediaCatalogMatch.file")" Component="CatalogMatchPreviewFile" />
-                    <RadzenDropDown TValue="string" Name="CatalogMatchPreviewFile" Data="@GetWrittenFiles()" @bind-Value="_previewFile" Style="width: 100%;">
+                <div class="form-row">
+                    <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogMatch.file")" Component="CatalogMatchPreviewFile" />
+                    <RadzenDropDown TValue="string" Name="CatalogMatchPreviewFile" Data="@GetWrittenFiles()" @bind-Value="_previewFile">
                         <Template Context="file">@System.IO.Path.GetFileName((string)file)</Template>
                         <ValueTemplate Context="file">@System.IO.Path.GetFileName((string)file)</ValueTemplate>
                     </RadzenDropDown>
@@ -181,7 +184,7 @@
                     {
                         <RadzenTableRow>
                             <RadzenTableCell class="catalog-match-preview-field"><CellText Text="@GetFieldLabel(change)" /></RadzenTableCell>
-                            <RadzenTableCell class="catalog-match-preview-level">@(change.OperationType == MkvMetadataOperationType.SetTagField ? change.TagTargetTypeValue.ToString() : "")</RadzenTableCell>
+                            <RadzenTableCell class="catalog-match-preview-level">@(change.OperationType == MkvMetadataOperationType.SetTagField ? MetadataPresetUiHelper.GetTagTargetLevelLabel(change.TagTargetTypeValue) : "")</RadzenTableCell>
                             <RadzenTableCell class="metadata-preview-before"><CellText Text="@change.BeforeValue" /></RadzenTableCell>
                             <RadzenTableCell class="metadata-preview-after"><CellText Text="@(change.OperationType == MkvMetadataOperationType.SetAttachment ? change.AfterValue + " · " + change.AttachmentSourcePath : change.AfterValue)" /></RadzenTableCell>
                         </RadzenTableRow>
@@ -247,21 +250,6 @@
     /// Tipi di titolo selezionabili
     /// </summary>
     private static readonly List<MediaCatalogKind> s_kinds = new List<MediaCatalogKind> { MediaCatalogKind.Series, MediaCatalogKind.Movie };
-
-    /// <summary>
-    /// Parte del nome file prima di SxxEyy, usata come testo di ricerca proposto
-    /// </summary>
-    private static readonly Regex s_queryPattern = new Regex(@"^(.*?)(?:[\s._-]*S\d{1,3}E\d{1,4}|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
-    /// <summary>
-    /// Anno fra parentesi nel nome file, proposto nel campo Anno
-    /// </summary>
-    private static readonly Regex s_yearPattern = new Regex(@"[(\[](\d{4})[)\]]", RegexOptions.CultureInvariant);
-
-    /// <summary>
-    /// Parti fra parentesi del nome file, tolte dal testo di ricerca proposto
-    /// </summary>
-    private static readonly Regex s_bracketPattern = new Regex(@"\[[^\]]*\]|\([^)]*\)", RegexOptions.CultureInvariant);
 
     /// <summary>
     /// File fra cui scegliere, nell'ordine del percorso
@@ -490,22 +478,10 @@
     }
 
     /// <summary>
-    /// Passa alla ricerca, proponendo titolo e anno dal nome del primo file
+    /// Passa alla ricerca
     /// </summary>
     private void GoToSearch()
     {
-        if (string.IsNullOrWhiteSpace(this._query))
-        {
-            string stem = System.IO.Path.GetFileNameWithoutExtension(this.GetSelectedFiles()[0]);
-            string title = s_queryPattern.Match(stem).Groups[1].Value;
-            Match yearMatch = s_yearPattern.Match(title);
-            int year;
-
-            this._query = Regex.Replace(s_bracketPattern.Replace(title, " ").Replace('.', ' ').Replace('_', ' '), @"\s+", " ").Trim();
-            if (!this._year.HasValue && yearMatch.Success && int.TryParse(yearMatch.Groups[1].Value, out year) && year >= 1870 && year <= DateTime.Today.Year + 2)
-                this._year = year;
-        }
-
         this._step = MatchStep.Search;
     }
 

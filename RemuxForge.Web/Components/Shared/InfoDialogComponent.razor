@@ -61,6 +61,11 @@
     .info-table table {
         table-layout: auto;
     }
+    /* Versione, indirizzi e avvisi vanno a capo nella finestra stretta invece di uscirne */
+    .info-table table td:not(.info-label) .rz-cell-data {
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
     .info-table .info-label {
         font-weight: bold;
         width: 1%;

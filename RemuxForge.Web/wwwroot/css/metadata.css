@@ -1059,31 +1059,6 @@ tr.metadata-diff-removed > td {
     gap: calc(var(--rz-gap) * 0.5);
 }
 
-.catalog-match-search {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--rz-gap);
-}
-
-.catalog-match-query {
-    flex: 1 1 18rem;
-}
-
-.catalog-match-language {
-    flex: 1 1 16rem;
-}
-
-/* Dropdown largo quanto la voce scelta, senza troncarla */
-.rz-dropdown.catalog-match-fit {
-    width: max-content;
-    max-width: 100%;
-}
-
-.catalog-match-year {
-    width: 6rem;
-}
-
 .catalog-match-grid {
     max-height: 55vh;
 }
@@ -1113,16 +1088,25 @@ tr.metadata-diff-removed > td {
     min-width: 0;
 }
 
+/* Nell'abbinamento file ed episodi si leggono interi: vanno a capo invece di essere troncati */
 .catalog-match-episode > span {
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+}
+
+.catalog-match-rows .rz-grid-table td .rz-cell-data {
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .catalog-match-handle {
     flex-shrink: 0;
     color: var(--rz-text-secondary-color);
+}
+
+/* «Nessun episodio» parte dove parte il testo degli episodi, dopo la maniglia */
+.catalog-match-no-episode {
+    padding-inline-start: calc(var(--rz-icon-size) + 0.25rem);
 }
 
 .catalog-match-actions {
@@ -1139,7 +1123,7 @@ tr.metadata-diff-removed > td {
 }
 
 .catalog-match-preview th.catalog-match-preview-level {
-    width: 4.5rem;
+    width: 14rem;
 }
 
 .catalog-match-preview td {
@@ -1148,31 +1132,45 @@ tr.metadata-diff-removed > td {
     white-space: nowrap;
 }
 
-/* Finestra stretta: ogni riga va in colonna, come i pannelli affiancati delle altre dialog */
+/* Finestra stretta: ogni riga va in colonna, come i pannelli affiancati delle altre dialog; i testi vanno a capo invece di essere troncati */
 @media (max-width: 760px) {
-    .catalog-match-rows .rz-grid-table > thead {
+    .catalog-match-stacked .rz-grid-table > thead {
         display: none;
     }
 
-    .catalog-match-rows .rz-grid-table,
-    .catalog-match-rows .rz-grid-table > tbody {
+    .catalog-match-stacked .rz-grid-table,
+    .catalog-match-stacked .rz-grid-table > tbody {
         display: block;
         width: 100%;
     }
 
-    .catalog-match-rows .rz-grid-table > tbody > tr {
+    .catalog-match-stacked .rz-grid-table > tbody > tr {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
     }
 
-    .catalog-match-rows .rz-grid-table > tbody > tr > td {
+    .catalog-match-stacked .rz-grid-table > tbody > tr > td {
         width: auto !important;
         min-width: 0;
     }
 
-    .catalog-match-rows .rz-grid-table > tbody > tr > td:first-child {
+    .catalog-match-stacked .rz-grid-table > tbody > tr > td:first-child {
         grid-column: 1 / -1;
         font-weight: 600;
+    }
+
+    .catalog-match-hits .rz-grid-table td .rz-cell-data {
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    /* La trama resta su una riga, intera nel tooltip, come nella finestra larga */
+    .catalog-match-hits .rz-grid-table td:last-child .rz-cell-data {
+        white-space: nowrap;
+    }
+
+    .catalog-match-hits .rz-grid-table > tbody > tr > td:last-child {
+        grid-column: 1 / -1;
     }
 
     .catalog-match-preview thead {
@@ -1201,5 +1199,10 @@ tr.metadata-diff-removed > td {
     .catalog-match-preview td.metadata-preview-before,
     .catalog-match-preview td.metadata-preview-after {
         grid-column: 1 / -1;
+    }
+
+    .catalog-match-preview table td .rz-cell-data {
+        white-space: normal;
+        overflow-wrap: anywhere;
     }
 }

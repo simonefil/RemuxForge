@@ -515,6 +515,17 @@
     overflow-wrap: anywhere;
 }
 
+/* Impostazioni AI: riquadro del login in corso */
+.ai-login-pending {
+    padding: 0.5em;
+    border: 1px solid var(--rz-base-300);
+}
+
+/* Il link segue il colore del testo, leggibile anche col tema scuro, come in Info */
+.ai-login-pending a {
+    color: inherit;
+}
+
 /* Conferme: il messaggio conserva gli a capo dei testi localizzati */
 .rz-dialog.rf-confirm .rz-dialog-confirm-message {
     white-space: pre-line;
