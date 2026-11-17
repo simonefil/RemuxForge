@@ -44,6 +44,11 @@ namespace RemuxForge.Core.MediaCatalog
         /// </summary>
         private const int SEARCH_LIMIT = 20;
 
+        /// <summary>
+        /// Risultati chiesti al catalogo: la ricerca è approssimata e il titolo cercato può stare oltre i primi venti
+        /// </summary>
+        private const int SEARCH_FETCH_LIMIT = 50;
+
         #endregion
 
         #region Variabili di classe
@@ -111,8 +116,11 @@ namespace RemuxForge.Core.MediaCatalog
         public override async Task<List<MediaCatalogSearchHit>> SearchAsync(MediaCatalogKind kind, string query, int? year, string language, CancellationToken cancellationToken)
         {
             List<MediaCatalogSearchHit> result = new List<MediaCatalogSearchHit>();
+            List<MediaCatalogSearchHit> others = new List<MediaCatalogSearchHit>();
+            CompareInfo compare = CultureInfo.InvariantCulture.CompareInfo;
+            string text = (query ?? "").Trim();
             string tvdbLanguage = await this.ResolveLanguageAsync(language, cancellationToken);
-            string url = API_BASE_URL + "/search?query=" + Uri.EscapeDataString(query ?? "") + "&type=" + (kind == MediaCatalogKind.Movie ? "movie" : "series") + "&limit=" + SEARCH_LIMIT.ToString(CultureInfo.InvariantCulture);
+            string url = API_BASE_URL + "/search?query=" + Uri.EscapeDataString(text) + "&type=" + (kind == MediaCatalogKind.Movie ? "movie" : "series") + "&limit=" + SEARCH_FETCH_LIMIT.ToString(CultureInfo.InvariantCulture);
             if (year.HasValue)
                 url += "&year=" + year.Value.ToString(CultureInfo.InvariantCulture);
 
@@ -141,10 +149,22 @@ namespace RemuxForge.Core.MediaCatalog
                 hit.Year = ReadPositiveInt(item["year"]);
                 hit.Overview = PickFromMap(item["overviews"] as JsonObject, tvdbLanguage, ReadString(item["overview"]));
                 hit.PosterUrl = ToArtworkUrl(ReadString(item["image_url"]));
-                result.Add(hit);
+
+                // In testa, nell'ordine del catalogo, i titoli che contengono il testo cercato nel nome, in una traduzione o in un alias
+                List<string> titles = new List<string> { name };
+                if (item["translations"] is JsonObject translations)
+                    titles.AddRange(translations.Select(pair => ReadString(pair.Value)));
+                if (item["aliases"] is JsonArray aliases)
+                    titles.AddRange(aliases.Select(ReadString));
+
+                if (text.Length > 0 && titles.Any(title => compare.IndexOf(title, text, CompareOptions.IgnoreCase | CompareOptions.IgnoreNonSpace) >= 0))
+                    result.Add(hit);
+                else
+                    others.Add(hit);
             }
 
-            return result;
+            result.AddRange(others);
+            return result.Count > SEARCH_LIMIT ? result.GetRange(0, SEARCH_LIMIT) : result;
         }
 
         /// <summary>
