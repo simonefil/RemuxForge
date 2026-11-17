@@ -689,8 +689,10 @@
     gap: 0.5em;
 }
 
-/* Riga senza etichetta: i controlli partono dal bordo dei campi */
+/* Riga senza etichetta: i controlli partono dal bordo dei campi; gli switch affiancati, se non c'è spazio, vanno a capo */
 .form-row.form-row-offset {
+    flex-wrap: wrap;
+    column-gap: var(--rz-gap);
     padding-inline-start: calc(var(--rf-form-label-width) + var(--rf-form-gap));
 }
 
@@ -797,12 +799,7 @@ textarea.form-input {
     margin-inline-start: var(--rz-gap);
 }
 
-/* Switch affiancati senza etichetta a sinistra: se non c'è spazio vanno a capo, allineati ai campi */
-.form-row.form-row-offset {
-    flex-wrap: wrap;
-    column-gap: var(--rz-gap);
-}
-
+/* Switch affiancati senza etichetta a sinistra: la distanza la dà il column-gap della riga */
 .form-row.form-row-offset > .ui-switch + .ui-switch {
     margin-inline-start: 0;
 }
