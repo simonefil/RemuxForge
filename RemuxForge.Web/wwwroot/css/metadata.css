@@ -1080,6 +1080,10 @@ tr.metadata-diff-removed > td {
     max-width: 100%;
 }
 
+.catalog-match-year {
+    width: 6rem;
+}
+
 .catalog-match-grid {
     max-height: 55vh;
 }
@@ -1181,13 +1185,17 @@ tr.metadata-diff-removed > td {
         width: 100%;
     }
 
+    /* Un campo è un blocco: le sue righe hanno lo stesso sfondo, il separatore sta fra un campo e l'altro */
     .catalog-match-preview tr {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
+        border-bottom: 1px solid var(--rz-base-300);
     }
 
-    .catalog-match-preview td {
+    .catalog-match-preview tr > td {
         min-width: 0;
+        border: 0 !important;
+        background: transparent !important;
     }
 
     .catalog-match-preview td.metadata-preview-before,
