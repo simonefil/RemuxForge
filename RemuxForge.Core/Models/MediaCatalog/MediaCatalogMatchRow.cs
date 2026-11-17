@@ -18,6 +18,7 @@ namespace RemuxForge.Core.Models
         {
             this.FilePath = filePath;
             this.Episodes = episodes;
+            this.OriginFiles = new Dictionary<MediaCatalogEpisode, string>();
         }
 
         #endregion
@@ -33,6 +34,11 @@ namespace RemuxForge.Core.Models
         /// Episodi consecutivi della stessa stagione, vuota se la riga non ha episodi
         /// </summary>
         public List<MediaCatalogEpisode> Episodes { get; set; }
+
+        /// <summary>
+        /// File con cui erano abbinati gli episodi prima di un'unione o di uno spostamento; gli episodi mai spostati non ci sono
+        /// </summary>
+        public Dictionary<MediaCatalogEpisode, string> OriginFiles { get; set; }
 
         #endregion
     }

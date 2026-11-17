@@ -2,6 +2,7 @@ using RemuxForge.Core.Models;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace RemuxForge.Core.MediaCatalog
@@ -117,7 +118,7 @@ namespace RemuxForge.Core.MediaCatalog
         }
 
         /// <summary>
-        /// Unisce gli episodi della riga a quelli della riga sopra
+        /// Unisce gli episodi della riga a quelli della riga sopra, ricordando per ognuno il file con cui era abbinato
         /// </summary>
         /// <param name="rows">Righe</param>
         /// <param name="index">Riga da unire</param>
@@ -126,13 +127,21 @@ namespace RemuxForge.Core.MediaCatalog
             if (!CanMergeWithPrevious(rows, index))
                 return;
 
+            foreach (MediaCatalogEpisode episode in rows[index].Episodes)
+            {
+                string origin;
+                rows[index - 1].OriginFiles[episode] = rows[index].OriginFiles.TryGetValue(episode, out origin) ? origin : rows[index].FilePath;
+            }
+
             rows[index - 1].Episodes.AddRange(rows[index].Episodes);
             rows[index].Episodes = new List<MediaCatalogEpisode>();
+            rows[index].OriginFiles = new Dictionary<MediaCatalogEpisode, string>();
             RemoveEmptyRows(rows);
         }
 
         /// <summary>
-        /// Stacca l'ultimo episodio della riga: torna al file subito sotto rimasto senza episodi, come dopo un'unione, altrimenti va in una riga nuova senza file
+        /// Stacca l'ultimo episodio della riga: torna al file con cui era abbinato prima dell'unione se è ancora senza episodi,
+        /// altrimenti al primo file più in basso rimasto senza episodi, altrimenti in una riga nuova senza file
         /// </summary>
         /// <param name="rows">Righe</param>
         /// <param name="index">Riga con più episodi</param>
@@ -143,15 +152,25 @@ namespace RemuxForge.Core.MediaCatalog
 
             List<MediaCatalogEpisode> episodes = rows[index].Episodes;
             MediaCatalogEpisode last = episodes[episodes.Count - 1];
+            string origin;
             episodes.RemoveAt(episodes.Count - 1);
-            if (index + 1 < rows.Count && rows[index + 1].FilePath.Length > 0 && rows[index + 1].Episodes.Count == 0)
-                rows[index + 1].Episodes = new List<MediaCatalogEpisode> { last };
+
+            MediaCatalogMatchRow target = rows[index].OriginFiles.TryGetValue(last, out origin) && origin.Length > 0
+                ? rows.Find(row => row.FilePath == origin && row.Episodes.Count == 0)
+                : null;
+            if (target == null)
+                target = rows.Skip(index + 1).FirstOrDefault(row => row.FilePath.Length > 0 && row.Episodes.Count == 0);
+
+            rows[index].OriginFiles.Remove(last);
+            if (target != null)
+                target.Episodes = new List<MediaCatalogEpisode> { last };
             else
                 rows.Insert(index + 1, new MediaCatalogMatchRow("", new List<MediaCatalogEpisode> { last }));
         }
 
         /// <summary>
-        /// Scambia gli episodi di due righe; i file restano dove sono
+        /// Scambia gli episodi di due righe; i file restano dove sono e ogni episodio porta con sé il file da cui parte,
+        /// così Separa lo riporta lì anche se è stato spostato solo per unirlo a un'altra riga
         /// </summary>
         /// <param name="rows">Righe</param>
         /// <param name="from">Riga di partenza</param>
@@ -161,9 +180,21 @@ namespace RemuxForge.Core.MediaCatalog
             if (from < 0 || to < 0 || from >= rows.Count || to >= rows.Count || from == to)
                 return;
 
+            foreach (MediaCatalogMatchRow row in new[] { rows[from], rows[to] })
+            {
+                foreach (MediaCatalogEpisode episode in row.Episodes)
+                {
+                    if (row.FilePath.Length > 0 && !row.OriginFiles.ContainsKey(episode))
+                        row.OriginFiles[episode] = row.FilePath;
+                }
+            }
+
             List<MediaCatalogEpisode> episodes = rows[from].Episodes;
+            Dictionary<MediaCatalogEpisode, string> originFiles = rows[from].OriginFiles;
             rows[from].Episodes = rows[to].Episodes;
+            rows[from].OriginFiles = rows[to].OriginFiles;
             rows[to].Episodes = episodes;
+            rows[to].OriginFiles = originFiles;
             RemoveEmptyRows(rows);
         }
 
