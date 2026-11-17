@@ -1044,3 +1044,79 @@ tr.metadata-diff-removed > td {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* Abbinamento dei file ai dati del catalogo */
+.catalog-match-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rz-gap);
+    min-width: 0;
+}
+
+.catalog-match-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(var(--rz-gap) * 0.5);
+}
+
+.catalog-match-search {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--rz-gap);
+}
+
+.catalog-match-query {
+    flex: 1 1 20rem;
+}
+
+.catalog-match-language {
+    flex: 1 1 16rem;
+}
+
+.catalog-match-grid {
+    max-height: 55vh;
+}
+
+.catalog-match-loading {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--rz-gap) * 0.5);
+}
+
+.catalog-match-rows tr[draggable="true"] {
+    cursor: grab;
+}
+
+.catalog-match-rows tr[data-unpaired] > td {
+    background: var(--rz-warning-lighter);
+}
+
+.catalog-match-missing {
+    color: var(--rz-text-secondary-color);
+}
+
+.catalog-match-episode {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.catalog-match-handle {
+    flex-shrink: 0;
+    color: var(--rz-text-secondary-color);
+}
+
+.catalog-match-actions {
+    display: inline-flex;
+    gap: 0.125rem;
+}
+
+.catalog-match-preview td {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}

@@ -1,0 +1,822 @@
+@inherits AppDialogContentBase
+@using RemuxForge.Core.MediaCatalog
+@using System.Linq
+@using System.Text.RegularExpressions
+@inject MediaCatalogSourceProvider SourceProvider
+@inject MediaCatalogSettingsService SettingsService
+@inject MediaCatalogImageDownloader ImageDownloader
+@inject MetadataOrchestrator Orchestrator
+@inject NotificationService NotificationService
+
+<div class="rf-dialog" @ref="DialogContent">
+    <div class="rf-dialog-body catalog-match-body">
+        <div class="catalog-match-steps">
+            @foreach (MatchStep step in GetVisibleSteps())
+            {
+                <RadzenBadge IsPill="true" BadgeStyle="@(step == GetStepGroup() ? BadgeStyle.Primary : BadgeStyle.Light)" Text="@GetStepLabel(step)" />
+            }
+        </div>
+
+        @if (_step == MatchStep.Files)
+        {
+            <RadzenDataGrid TItem="string" Data="@Files" class="rf-data-grid catalog-match-grid" AllowPaging="false" AllowSorting="false" AllowColumnResize="false"
+                            Density="Density.Compact" GridLines="DataGridGridLines.Horizontal">
+                <Columns>
+                    <RadzenDataGridColumn TItem="string" Width="3rem" Sortable="false">
+                        <HeaderTemplate>
+                            <RadzenCheckBox TValue="bool" Value="@(_selectedFiles.Count == Files.Count && Files.Count > 0)" Change="@SelectAll" aria-label="@AppText.T("web.mediaCatalogMatch.selectAll")" />
+                        </HeaderTemplate>
+                        <Template Context="file">
+                            <RadzenCheckBox TValue="bool" Value="@_selectedFiles.Contains(file)" Change="@(value => ToggleFile(file, value))" aria-label="@System.IO.Path.GetFileName(file)" />
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="string" Title="@AppText.T("web.mediaCatalogMatch.file")">
+                        <Template Context="file"><CellText Text="@System.IO.Path.GetFileName(file)" /></Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid>
+        }
+        else if (_step == MatchStep.Search)
+        {
+            <div class="catalog-match-search">
+                <div class="rf-tool-field">
+                    <RadzenLabel Text="@AppText.T("web.mediaCatalogMatch.catalog")" Component="CatalogMatchProvider" />
+                    <RadzenDropDown TValue="MediaCatalogProvider" Name="CatalogMatchProvider" Data="@s_providers" @bind-Value="_provider" Style="width: 12ch;">
+                        <Template Context="provider">@MediaCatalogSourceProvider.GetCatalogName((MediaCatalogProvider)provider)</Template>
+                        <ValueTemplate Context="provider">@MediaCatalogSourceProvider.GetCatalogName((MediaCatalogProvider)provider)</ValueTemplate>
+                    </RadzenDropDown>
+                </div>
+                <div class="rf-tool-field">
+                    <RadzenLabel Text="@AppText.T("web.mediaCatalogMatch.kind")" Component="CatalogMatchKind" />
+                    <RadzenDropDown TValue="MediaCatalogKind" Name="CatalogMatchKind" Data="@s_kinds" @bind-Value="_kind" Style="width: 18ch;">
+                        <Template Context="kind">@GetKindLabel((MediaCatalogKind)kind)</Template>
+                        <ValueTemplate Context="kind">@GetKindLabel((MediaCatalogKind)kind)</ValueTemplate>
+                    </RadzenDropDown>
+                </div>
+                <div class="rf-tool-field catalog-match-query">
+                    <RadzenLabel Text="@AppText.T("web.mediaCatalogMatch.query")" Component="CatalogMatchQuery" />
+                    <RadzenTextBox Name="CatalogMatchQuery" @bind-Value="_query" Immediate="true" Style="width: 100%;" />
+                </div>
+                <div class="rf-tool-field">
+                    <RadzenLabel Text="@AppText.T("web.mediaCatalogMatch.year")" Component="CatalogMatchYear" />
+                    <RadzenNumeric TValue="int?" Name="CatalogMatchYear" @bind-Value="_year" Min="1870" Max="2200" ShowUpDown="false" Style="width: 8ch;" />
+                </div>
+                <div class="rf-tool-field catalog-match-language">
+                    <span>@AppText.T("web.mediaCatalogMatch.language")</span>
+                    <LanguageChipsComponent Multiple="false" Label="@AppText.T("web.mediaCatalogMatch.language")" Value="@_language" ValueChanged="@(value => _language = value)" />
+                </div>
+                <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.search")" Icon="search" Disabled="@(_busy || string.IsNullOrWhiteSpace(_query))" Click="@SearchAsync" />
+            </div>
+            @if (_busy)
+            {
+                <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" ShowValue="false" />
+            }
+            @if (_hits.Count > 0)
+            {
+                <RadzenDataGrid TItem="MediaCatalogSearchHit" Data="@_hits" class="rf-data-grid catalog-match-grid" AllowPaging="false" AllowSorting="false" AllowColumnResize="false"
+                                Density="Density.Compact" GridLines="DataGridGridLines.Horizontal" SelectionMode="DataGridSelectionMode.Single" RowSelect="@SelectHitAsync">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="MediaCatalogSearchHit" Title="@AppText.T("web.mediaCatalogMatch.resultTitle")" Width="28%">
+                            <Template Context="hit"><CellText Text="@hit.Title" /></Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="MediaCatalogSearchHit" Title="@AppText.T("web.mediaCatalogMatch.resultOriginal")" Width="22%">
+                            <Template Context="hit"><CellText Text="@hit.OriginalTitle" /></Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="MediaCatalogSearchHit" Title="@AppText.T("web.mediaCatalogMatch.year")" Width="6rem">
+                            <Template Context="hit"><CellText Text="@(hit.Year.HasValue ? hit.Year.Value.ToString() : "")" /></Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="MediaCatalogSearchHit" Title="@AppText.T("web.mediaCatalogMatch.resultOverview")">
+                            <Template Context="hit"><CellText Text="@hit.Overview" /></Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        }
+        else if (_step == MatchStep.Loading)
+        {
+            <div class="catalog-match-loading">
+                <RadzenProgressBar Value="@(_loadTotal > 0 ? _loadCompleted * 100.0 / _loadTotal : 0)" ShowValue="false"
+                                   Mode="@(_loadTotal > 0 ? ProgressBarMode.Determinate : ProgressBarMode.Indeterminate)" />
+                @if (_loadTotal > 0)
+                {
+                    <span>@AppText.F("web.mediaCatalogMatch.loadingEpisodes", _loadCompleted, _loadTotal)</span>
+                }
+            </div>
+        }
+        else if (_step == MatchStep.Match)
+        {
+            <RadzenDataGrid TItem="MediaCatalogMatchRow" Data="@_rows.ToList()" class="rf-data-grid catalog-match-grid catalog-match-rows" AllowPaging="false" AllowSorting="false" AllowColumnResize="false"
+                            Density="Density.Compact" GridLines="DataGridGridLines.Horizontal" RowRender="@RenderMatchRow">
+                <Columns>
+                    <RadzenDataGridColumn TItem="MediaCatalogMatchRow" Title="@AppText.T("web.mediaCatalogMatch.file")" Width="45%">
+                        <Template Context="row">
+                            @if (row.FilePath.Length > 0)
+                            {
+                                <CellText Text="@System.IO.Path.GetFileName(row.FilePath)" />
+                            }
+                            else
+                            {
+                                <span class="catalog-match-missing">@AppText.T("web.mediaCatalogMatch.noFile")</span>
+                            }
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="MediaCatalogMatchRow" Title="@AppText.T("web.mediaCatalogMatch.episode")">
+                        <Template Context="row">
+                            @if (row.Episodes.Count > 0)
+                            {
+                                <span class="catalog-match-episode" title="@FormatEpisodes(row.Episodes)"><RadzenIcon Icon="drag_indicator" class="catalog-match-handle" aria-hidden="true" />@FormatEpisodes(row.Episodes)</span>
+                            }
+                            else
+                            {
+                                <span class="catalog-match-missing">@AppText.T("web.mediaCatalogMatch.noEpisode")</span>
+                            }
+                        </Template>
+                    </RadzenDataGridColumn>
+                    <RadzenDataGridColumn TItem="MediaCatalogMatchRow" Width="10rem" Sortable="false">
+                        <Template Context="row">
+                            @{
+                                int index = _rows.IndexOf(row);
+                            }
+                            <span class="catalog-match-actions">
+                                <RadzenButton Icon="arrow_upward" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@(index == 0)"
+                                              title="@AppText.T("web.mediaCatalogMatch.moveUp")" aria-label="@AppText.T("web.mediaCatalogMatch.moveUp")" Click="@(() => MoveEpisodes(index, index - 1))" />
+                                <RadzenButton Icon="arrow_downward" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@(index == _rows.Count - 1)"
+                                              title="@AppText.T("web.mediaCatalogMatch.moveDown")" aria-label="@AppText.T("web.mediaCatalogMatch.moveDown")" Click="@(() => MoveEpisodes(index, index + 1))" />
+                                <RadzenButton Icon="vertical_align_top" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@(!MediaCatalogEpisodeMatcher.CanMergeWithPrevious(_rows, index))"
+                                              title="@AppText.T("web.mediaCatalogMatch.merge")" aria-label="@AppText.T("web.mediaCatalogMatch.merge")" Click="@(() => MediaCatalogEpisodeMatcher.MergeWithPrevious(_rows, index))" />
+                                <RadzenButton Icon="call_split" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@(row.Episodes.Count < 2)"
+                                              title="@AppText.T("web.mediaCatalogMatch.split")" aria-label="@AppText.T("web.mediaCatalogMatch.split")" Click="@(() => MediaCatalogEpisodeMatcher.Split(_rows, index))" />
+                            </span>
+                        </Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid>
+        }
+        else if (_step == MatchStep.Preview)
+        {
+            <div class="catalog-match-search">
+                <div class="rf-tool-field catalog-match-query">
+                    <RadzenLabel Text="@AppText.T("web.mediaCatalogMatch.titleTemplate")" Component="CatalogMatchTemplate" />
+                    <RadzenTextBox Name="CatalogMatchTemplate" @bind-Value="_titleTemplate" Immediate="true" Style="width: 100%;" />
+                </div>
+                <div class="rf-tool-field catalog-match-query">
+                    <RadzenLabel Text="@AppText.T("web.mediaCatalogMatch.file")" Component="CatalogMatchPreviewFile" />
+                    <RadzenDropDown TValue="string" Name="CatalogMatchPreviewFile" Data="@GetWrittenFiles()" @bind-Value="_previewFile" Style="width: 100%;">
+                        <Template Context="file">@System.IO.Path.GetFileName((string)file)</Template>
+                        <ValueTemplate Context="file">@System.IO.Path.GetFileName((string)file)</ValueTemplate>
+                    </RadzenDropDown>
+                </div>
+            </div>
+            <RadzenTable GridLines="DataGridGridLines.Horizontal" class="metadata-preview-table catalog-match-preview">
+                <RadzenTableHeader>
+                    <RadzenTableHeaderRow>
+                        <RadzenTableHeaderCell Style="width: 22%;">@AppText.T("web.mediaCatalogMatch.field")</RadzenTableHeaderCell>
+                        <RadzenTableHeaderCell Style="width: 4.5rem;">@AppText.T("web.mediaCatalogMatch.level")</RadzenTableHeaderCell>
+                        <RadzenTableHeaderCell>@AppText.T("web.mediaCatalogMatch.before")</RadzenTableHeaderCell>
+                        <RadzenTableHeaderCell>@AppText.T("web.mediaCatalogMatch.after")</RadzenTableHeaderCell>
+                    </RadzenTableHeaderRow>
+                </RadzenTableHeader>
+                <RadzenTableBody>
+                    @foreach (MkvMetadataChange change in BuildChanges(_previewFile, GetCoverUrl(_previewFile)))
+                    {
+                        <RadzenTableRow>
+                            <RadzenTableCell>@GetFieldLabel(change)</RadzenTableCell>
+                            <RadzenTableCell>@(change.OperationType == MkvMetadataOperationType.SetTagField ? change.TagTargetTypeValue.ToString() : "")</RadzenTableCell>
+                            <RadzenTableCell class="metadata-preview-before"><CellText Text="@change.BeforeValue" /></RadzenTableCell>
+                            <RadzenTableCell class="metadata-preview-after"><CellText Text="@(change.OperationType == MkvMetadataOperationType.SetAttachment ? change.AfterValue + " · " + change.AttachmentSourcePath : change.AfterValue)" /></RadzenTableCell>
+                        </RadzenTableRow>
+                    }
+                </RadzenTableBody>
+            </RadzenTable>
+        }
+    </div>
+    <div class="rf-dialog-footer">
+        @if (_step == MatchStep.Files)
+        {
+            <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.next")" Icon="arrow_forward" Disabled="@(_selectedFiles.Count == 0 || (!RenameMode && !_containerDataLoaded))" Click="@GoToSearch" />
+        }
+        else if (_step == MatchStep.Search)
+        {
+            <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.back")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@_busy" Click="@(() => _step = MatchStep.Files)" />
+        }
+        else if (_step == MatchStep.Loading)
+        {
+            <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@CancelLoading" />
+        }
+        else if (_step == MatchStep.Match)
+        {
+            <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.back")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => _step = MatchStep.Search)" />
+            @if (RenameMode)
+            {
+                <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.confirm")" Icon="check" Disabled="@(GetWrittenFiles().Count == 0)" Click="@ConfirmRename" />
+            }
+            else
+            {
+                <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.next")" Icon="arrow_forward" Disabled="@(GetWrittenFiles().Count == 0)" Click="@GoToPreview" />
+            }
+        }
+        else if (_step == MatchStep.Preview)
+        {
+            <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.back")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Disabled="@_busy"
+                          Click="@(() => _step = _movie != null ? MatchStep.Search : MatchStep.Match)" />
+            <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.apply")" Icon="publish" Disabled="@_busy" Click="@ApplyAsync" />
+        }
+        <RadzenButton Text="@AppText.T("web.common.close")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => CloseDialog())" />
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Passi della dialog
+    /// </summary>
+    private enum MatchStep
+    {
+        Files,
+        Search,
+        Loading,
+        Match,
+        Preview
+    }
+
+    /// <summary>
+    /// Cataloghi selezionabili
+    /// </summary>
+    private static readonly List<MediaCatalogProvider> s_providers = new List<MediaCatalogProvider> { MediaCatalogProvider.Tvdb, MediaCatalogProvider.Tmdb };
+
+    /// <summary>
+    /// Tipi di titolo selezionabili
+    /// </summary>
+    private static readonly List<MediaCatalogKind> s_kinds = new List<MediaCatalogKind> { MediaCatalogKind.Series, MediaCatalogKind.Movie };
+
+    /// <summary>
+    /// Parte del nome file prima di SxxEyy, usata come testo di ricerca proposto
+    /// </summary>
+    private static readonly Regex s_queryPattern = new Regex(@"^(.*?)(?:[\s._-]*S\d{1,3}E\d{1,4}|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// Parti fra parentesi del nome file, tolte dal testo di ricerca proposto
+    /// </summary>
+    private static readonly Regex s_bracketPattern = new Regex(@"\[[^\]]*\]|\([^)]*\)", RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// File fra cui scegliere, nell'ordine del percorso
+    /// </summary>
+    [Parameter] public List<string> Files { get; set; } = new List<string>();
+
+    /// <summary>
+    /// True quando la dialog è aperta dalla rinomina: niente anteprima, l'esito sono i valori dei segnaposto
+    /// </summary>
+    [Parameter] public bool RenameMode { get; set; }
+
+    /// <summary>
+    /// Passo corrente
+    /// </summary>
+    private MatchStep _step = MatchStep.Files;
+
+    /// <summary>
+    /// File scelti
+    /// </summary>
+    private HashSet<string> _selectedFiles = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Catalogo scelto
+    /// </summary>
+    private MediaCatalogProvider _provider = MediaCatalogProvider.Tvdb;
+
+    /// <summary>
+    /// Tipo di titolo scelto
+    /// </summary>
+    private MediaCatalogKind _kind = MediaCatalogKind.Series;
+
+    /// <summary>
+    /// Testo cercato
+    /// </summary>
+    private string _query = "";
+
+    /// <summary>
+    /// Anno cercato, null per non filtrare
+    /// </summary>
+    private int? _year;
+
+    /// <summary>
+    /// Lingua dei testi
+    /// </summary>
+    private string _language = "";
+
+    /// <summary>
+    /// Risultati della ricerca
+    /// </summary>
+    private List<MediaCatalogSearchHit> _hits = new List<MediaCatalogSearchHit>();
+
+    /// <summary>
+    /// True durante ricerca, caricamento o applicazione
+    /// </summary>
+    private bool _busy;
+
+    /// <summary>
+    /// Annulla il caricamento in corso
+    /// </summary>
+    private CancellationTokenSource _cancellation;
+
+    /// <summary>
+    /// Episodi caricati
+    /// </summary>
+    private int _loadCompleted;
+
+    /// <summary>
+    /// Episodi da caricare
+    /// </summary>
+    private int _loadTotal;
+
+    /// <summary>
+    /// Fonte che ha caricato il titolo
+    /// </summary>
+    private IMediaCatalogSource _source;
+
+    /// <summary>
+    /// Serie caricata
+    /// </summary>
+    private MediaCatalogSeries _series;
+
+    /// <summary>
+    /// Film caricato
+    /// </summary>
+    private MediaCatalogMovie _movie;
+
+    /// <summary>
+    /// Righe dell'abbinamento della serie
+    /// </summary>
+    private List<MediaCatalogMatchRow> _rows = new List<MediaCatalogMatchRow>();
+
+    /// <summary>
+    /// Riga trascinata
+    /// </summary>
+    private int _dragIndex = -1;
+
+    /// <summary>
+    /// Modello del titolo del segmento
+    /// </summary>
+    private string _titleTemplate = "";
+
+    /// <summary>
+    /// File mostrato nell'anteprima
+    /// </summary>
+    private string _previewFile = "";
+
+    /// <summary>
+    /// True quando tag e allegati dei file sono stati letti
+    /// </summary>
+    private bool _containerDataLoaded;
+
+    /// <summary>
+    /// Legge la lingua di default e, nel modo Metadata, avvia la lettura di tag e allegati per i valori «prima»
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        this._language = this.SettingsService.Load().DefaultLanguage;
+        if (this.RenameMode)
+            return;
+
+        this.Orchestrator.OnContainerDataLoaded += this.HandleContainerDataLoaded;
+        this.Orchestrator.LoadContainerDataAll();
+    }
+
+    /// <summary>
+    /// Annulla il caricamento e rimuove la sottoscrizione
+    /// </summary>
+    public override async ValueTask DisposeAsync()
+    {
+        if (!this.RenameMode)
+            this.Orchestrator.OnContainerDataLoaded -= this.HandleContainerDataLoaded;
+
+        if (this._cancellation != null)
+            this._cancellation.Cancel();
+
+        await base.DisposeAsync();
+    }
+
+    /// <summary>
+    /// Segna come letti tag e allegati
+    /// </summary>
+    /// <param name="loaded">File letti</param>
+    /// <param name="failed">File non letti</param>
+    private void HandleContainerDataLoaded(int loaded, int failed)
+    {
+        _ = this.InvokeAsync(() =>
+        {
+            this._containerDataLoaded = true;
+            this.StateHasChanged();
+        });
+    }
+
+    /// <summary>
+    /// Passi mostrati in testa: l'anteprima solo nel modo Metadata
+    /// </summary>
+    /// <returns>Passi</returns>
+    private List<MatchStep> GetVisibleSteps()
+    {
+        List<MatchStep> steps = new List<MatchStep> { MatchStep.Files, MatchStep.Search, MatchStep.Match };
+        if (!this.RenameMode)
+            steps.Add(MatchStep.Preview);
+
+        return steps;
+    }
+
+    /// <summary>
+    /// Passo evidenziato in testa: il caricamento fa parte della ricerca
+    /// </summary>
+    /// <returns>Passo</returns>
+    private MatchStep GetStepGroup()
+    {
+        return this._step == MatchStep.Loading ? MatchStep.Search : this._step;
+    }
+
+    /// <summary>
+    /// Etichetta numerata del passo
+    /// </summary>
+    /// <param name="step">Passo</param>
+    /// <returns>Etichetta</returns>
+    private string GetStepLabel(MatchStep step)
+    {
+        return (this.GetVisibleSteps().IndexOf(step) + 1).ToString() + " " + AppText.T("web.mediaCatalogMatch.step." + step.ToString());
+    }
+
+    /// <summary>
+    /// Etichetta del tipo di titolo
+    /// </summary>
+    /// <param name="kind">Tipo</param>
+    /// <returns>Etichetta localizzata</returns>
+    private static string GetKindLabel(MediaCatalogKind kind)
+    {
+        return AppText.T(kind == MediaCatalogKind.Movie ? "web.mediaCatalogMatch.kindMovie" : "web.mediaCatalogMatch.kindSeries");
+    }
+
+    /// <summary>
+    /// Seleziona o deseleziona tutti i file
+    /// </summary>
+    /// <param name="value">True per selezionare</param>
+    private void SelectAll(bool value)
+    {
+        this._selectedFiles.Clear();
+        if (value)
+            this._selectedFiles.UnionWith(this.Files);
+    }
+
+    /// <summary>
+    /// Seleziona o deseleziona un file
+    /// </summary>
+    /// <param name="file">File</param>
+    /// <param name="value">True per selezionare</param>
+    private void ToggleFile(string file, bool value)
+    {
+        if (value)
+            this._selectedFiles.Add(file);
+        else
+            this._selectedFiles.Remove(file);
+    }
+
+    /// <summary>
+    /// File scelti nell'ordine del percorso
+    /// </summary>
+    /// <returns>File</returns>
+    private List<string> GetSelectedFiles()
+    {
+        return this.Files.Where(file => this._selectedFiles.Contains(file)).ToList();
+    }
+
+    /// <summary>
+    /// Passa alla ricerca, proponendo il titolo dal nome del primo file
+    /// </summary>
+    private void GoToSearch()
+    {
+        if (string.IsNullOrWhiteSpace(this._query))
+        {
+            string stem = System.IO.Path.GetFileNameWithoutExtension(this.GetSelectedFiles()[0]);
+            string title = s_queryPattern.Match(stem).Groups[1].Value;
+            this._query = Regex.Replace(s_bracketPattern.Replace(title, " ").Replace('.', ' ').Replace('_', ' '), @"\s+", " ").Trim();
+        }
+
+        this._step = MatchStep.Search;
+    }
+
+    /// <summary>
+    /// Cerca sul catalogo scelto
+    /// </summary>
+    private async Task SearchAsync()
+    {
+        this._busy = true;
+        this._hits = new List<MediaCatalogSearchHit>();
+        try
+        {
+            this._hits = await this.SourceProvider.GetSource(this._provider).SearchAsync(this._kind, this._query.Trim(), this._year, this.GetLanguage(), CancellationToken.None);
+            if (this._hits.Count == 0)
+                this.NotificationService.Notify(NotificationSeverity.Info, AppText.T("web.mediaCatalogMatch.noResults"), "", 4000);
+        }
+        catch (MediaCatalogException ex)
+        {
+            this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.mediaCatalogMatch.searchFailed"), ex.Message, 8000);
+        }
+        finally
+        {
+            this._busy = false;
+        }
+    }
+
+    /// <summary>
+    /// Carica il titolo scelto: la serie passa all'abbinamento, il film all'anteprima o direttamente all'esito della rinomina
+    /// </summary>
+    /// <param name="hit">Risultato scelto</param>
+    private async Task SelectHitAsync(MediaCatalogSearchHit hit)
+    {
+        List<string> files = this.GetSelectedFiles();
+        CancellationTokenSource cancellation = new CancellationTokenSource();
+
+        if (hit.Kind == MediaCatalogKind.Movie && files.Count > 1)
+        {
+            this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.mediaCatalogMatch.oneMovie"), "", 6000);
+            return;
+        }
+
+        this._cancellation = cancellation;
+        this._source = this.SourceProvider.GetSource(this._provider);
+        this._series = null;
+        this._movie = null;
+        this._loadCompleted = 0;
+        this._loadTotal = 0;
+        this._step = MatchStep.Loading;
+        try
+        {
+            if (hit.Kind == MediaCatalogKind.Movie)
+            {
+                this._movie = await this._source.GetMovieAsync(hit.Key, this.GetLanguage(), cancellation.Token);
+                if (this.RenameMode)
+                {
+                    this.ConfirmRename();
+                    return;
+                }
+
+                this._titleTemplate = MediaCatalogChangeBuilder.MOVIE_TITLE_TEMPLATE;
+                this._previewFile = files[0];
+                this._step = MatchStep.Preview;
+                return;
+            }
+
+            Progress<MediaCatalogProgress> progress = new Progress<MediaCatalogProgress>(value =>
+            {
+                this._loadCompleted = value.Completed;
+                this._loadTotal = value.Total;
+                _ = this.InvokeAsync(this.StateHasChanged);
+            });
+            this._series = await this._source.GetSeriesAsync(hit.Key, this.GetLanguage(), progress, cancellation.Token);
+            this._rows = MediaCatalogEpisodeMatcher.BuildRows(files, this._series);
+            this._titleTemplate = MediaCatalogChangeBuilder.SERIES_TITLE_TEMPLATE;
+            this._step = MatchStep.Match;
+        }
+        catch (OperationCanceledException)
+        {
+            this._step = MatchStep.Search;
+        }
+        catch (MediaCatalogException ex)
+        {
+            this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.mediaCatalogMatch.loadFailed"), ex.Message, 8000);
+            this._step = MatchStep.Search;
+        }
+        finally
+        {
+            this._cancellation = null;
+            cancellation.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Annulla il caricamento in corso
+    /// </summary>
+    private void CancelLoading()
+    {
+        if (this._cancellation != null)
+            this._cancellation.Cancel();
+    }
+
+    /// <summary>
+    /// Lingua dei testi, quella di default se il campo è vuoto
+    /// </summary>
+    /// <returns>Codice ISO 639-2/T</returns>
+    private string GetLanguage()
+    {
+        return string.IsNullOrEmpty(this._language) ? this.SettingsService.Load().DefaultLanguage : this._language;
+    }
+
+    /// <summary>
+    /// Episodi come S01E01-E02 — Titolo — data
+    /// </summary>
+    /// <param name="episodes">Episodi consecutivi</param>
+    /// <returns>Testo</returns>
+    private static string FormatEpisodes(List<MediaCatalogEpisode> episodes)
+    {
+        MediaCatalogEpisode first = episodes[0];
+        MediaCatalogEpisode last = episodes[episodes.Count - 1];
+        string code = "S" + first.SeasonNumber.ToString("00") + "E" + first.EpisodeNumber.ToString("00") + (episodes.Count > 1 ? "-E" + last.EpisodeNumber.ToString("00") : "");
+        string title = string.Join(MediaCatalogPlaceholders.TITLE_SEPARATOR, episodes.Select(episode => episode.Title));
+        return code + " — " + title + (first.AiredDate.HasValue ? " — " + first.AiredDate.Value.ToString("yyyy-MM-dd") : "");
+    }
+
+    /// <summary>
+    /// Righe trascinabili quando hanno episodi; rilasciate su un'altra riga ne scambiano gli episodi
+    /// </summary>
+    /// <param name="args">Argomenti del rendering della riga</param>
+    private void RenderMatchRow(RowRenderEventArgs<MediaCatalogMatchRow> args)
+    {
+        int index = this._rows.IndexOf(args.Data);
+
+        if (args.Data.FilePath.Length == 0 || args.Data.Episodes.Count == 0)
+            args.Attributes["data-unpaired"] = "true";
+
+        args.Attributes["ondragover"] = "event.preventDefault()";
+        args.Attributes["ondrop"] = EventCallback.Factory.Create<DragEventArgs>(this, () =>
+        {
+            this.MoveEpisodes(this._dragIndex, index);
+            this._dragIndex = -1;
+        });
+        if (args.Data.Episodes.Count == 0)
+            return;
+
+        args.Attributes["draggable"] = "true";
+        args.Attributes["ondragstart"] = EventCallback.Factory.Create<DragEventArgs>(this, () => this._dragIndex = index);
+        args.Attributes["ondragend"] = EventCallback.Factory.Create<DragEventArgs>(this, () => this._dragIndex = -1);
+    }
+
+    /// <summary>
+    /// Scambia gli episodi di due righe
+    /// </summary>
+    /// <param name="from">Riga di partenza</param>
+    /// <param name="to">Riga di arrivo</param>
+    private void MoveEpisodes(int from, int to)
+    {
+        MediaCatalogEpisodeMatcher.SwapEpisodes(this._rows, from, to);
+    }
+
+    /// <summary>
+    /// File che ricevono dati: il file del film, oppure i file con almeno un episodio
+    /// </summary>
+    /// <returns>File nell'ordine delle righe</returns>
+    private List<string> GetWrittenFiles()
+    {
+        if (this._movie != null)
+            return new List<string> { this.GetSelectedFiles()[0] };
+
+        return this._rows.Where(row => row.FilePath.Length > 0 && row.Episodes.Count > 0).Select(row => row.FilePath).ToList();
+    }
+
+    /// <summary>
+    /// Passa all'anteprima sul primo file abbinato
+    /// </summary>
+    private void GoToPreview()
+    {
+        this._previewFile = this.GetWrittenFiles()[0];
+        this._step = MatchStep.Preview;
+    }
+
+    /// <summary>
+    /// Copertina del file: poster della stagione o della serie, oppure del film
+    /// </summary>
+    /// <param name="file">File</param>
+    /// <returns>Indirizzo del poster, vuoto se assente</returns>
+    private string GetCoverUrl(string file)
+    {
+        if (this._movie != null)
+            return this._movie.PosterUrl;
+
+        MediaCatalogMatchRow row = this._rows.FirstOrDefault(item => item.FilePath == file);
+        return row != null && row.Episodes.Count > 0 ? MediaCatalogChangeBuilder.GetCoverUrl(this._series, row.Episodes) : "";
+    }
+
+    /// <summary>
+    /// Modifiche di un file
+    /// </summary>
+    /// <param name="file">File</param>
+    /// <param name="coverSource">Copertina: indirizzo nell'anteprima, file scaricato nella scrittura</param>
+    /// <returns>Modifiche, vuota se il file non ha record o abbinamento</returns>
+    private List<MkvMetadataChange> BuildChanges(string file, string coverSource)
+    {
+        MkvMetadataRecord record = this.Orchestrator.GetRecords().FirstOrDefault(item => item.InputFile == file);
+        if (record == null || record.FileInfo == null)
+            return new List<MkvMetadataChange>();
+
+        if (this._movie != null)
+            return MediaCatalogChangeBuilder.BuildMovieChanges(record.FileInfo, this._source.Provider, this._movie, this._titleTemplate, coverSource);
+
+        MediaCatalogMatchRow row = this._rows.FirstOrDefault(item => item.FilePath == file);
+        if (row == null || row.Episodes.Count == 0)
+            return new List<MkvMetadataChange>();
+
+        return MediaCatalogChangeBuilder.BuildSeriesChanges(record.FileInfo, this._source.Provider, this._series, row.Episodes, this._titleTemplate, coverSource);
+    }
+
+    /// <summary>
+    /// Nome del dato modificato nell'anteprima
+    /// </summary>
+    /// <param name="change">Modifica</param>
+    /// <returns>Nome</returns>
+    private static string GetFieldLabel(MkvMetadataChange change)
+    {
+        MetadataFieldDefinition field;
+
+        if (change.OperationType == MkvMetadataOperationType.SetAttachment)
+            return MetadataPresetUiHelper.GetOperationTypeLabel(change.OperationType);
+
+        if (change.OperationType == MkvMetadataOperationType.SetField && MetadataFieldRegistry.TryGet(change.FieldKey, out field))
+            return field.Label;
+
+        return change.FieldKey;
+    }
+
+    /// <summary>
+    /// Scarica le copertine, una per poster, e passa le modifiche di tutti i file all'orchestratore
+    /// </summary>
+    private async Task ApplyAsync()
+    {
+        Dictionary<string, string> covers = new Dictionary<string, string>(StringComparer.Ordinal);
+        List<string> tempFiles = new List<string>();
+        List<MetadataDirectEdit> edits = new List<MetadataDirectEdit>();
+        bool skippedCover = false;
+
+        this._busy = true;
+        try
+        {
+            foreach (string file in this.GetWrittenFiles())
+            {
+                string url = this.GetCoverUrl(file);
+                string coverPath;
+
+                if (url.Length > 0 && !covers.TryGetValue(url, out coverPath))
+                {
+                    coverPath = await this.ImageDownloader.DownloadJpegAsync(url, CancellationToken.None);
+                    covers[url] = coverPath;
+                    if (coverPath.Length > 0)
+                        tempFiles.Add(coverPath);
+                    else
+                        skippedCover = true;
+                }
+
+                List<MkvMetadataChange> changes = this.BuildChanges(file, url.Length > 0 ? covers[url] : "");
+                if (changes.Count > 0)
+                    edits.Add(new MetadataDirectEdit(file, changes));
+            }
+        }
+        catch (MediaCatalogException ex)
+        {
+            foreach (string tempFile in tempFiles)
+                FileHelper.DeleteTempFile(tempFile);
+
+            this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.mediaCatalogMatch.applyFailed"), ex.Message, 8000);
+            this._busy = false;
+            return;
+        }
+
+        this._busy = false;
+        if (skippedCover)
+            this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.mediaCatalogMatch.coverNotJpeg"), "", 8000);
+
+        if (edits.Count == 0)
+        {
+            foreach (string tempFile in tempFiles)
+                FileHelper.DeleteTempFile(tempFile);
+
+            this.NotificationService.Notify(NotificationSeverity.Info, AppText.T("web.mediaCatalogMatch.noChanges"), "", 4000);
+            return;
+        }
+
+        if (!this.Orchestrator.ApplyDirectChanges(edits, tempFiles))
+        {
+            this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.mediaCatalogMatch.orchestratorBusy"), "", 6000);
+            return;
+        }
+
+        this.CloseDialog();
+    }
+
+    /// <summary>
+    /// Chiude la dialog della rinomina con i valori dei segnaposto dei file abbinati
+    /// </summary>
+    private void ConfirmRename()
+    {
+        MediaCatalogRenameMatch result;
+
+        if (this._movie != null)
+        {
+            result = new MediaCatalogRenameMatch(MediaCatalogKind.Movie, this._movie.Title + (this._movie.Year.HasValue ? " (" + this._movie.Year.Value.ToString() + ")" : ""));
+            result.Values[this.GetSelectedFiles()[0]] = MediaCatalogPlaceholders.FromMovie(this._movie);
+            this.CloseDialog(result);
+            return;
+        }
+
+        result = new MediaCatalogRenameMatch(MediaCatalogKind.Series, this._series.Title + (this._series.Year.HasValue ? " (" + this._series.Year.Value.ToString() + ")" : ""));
+        foreach (MediaCatalogMatchRow row in this._rows)
+        {
+            if (row.FilePath.Length > 0 && row.Episodes.Count > 0)
+                result.Values[row.FilePath] = MediaCatalogPlaceholders.FromEpisodes(this._series, row.Episodes);
+        }
+
+        this.CloseDialog(result);
+    }
+}

@@ -2244,6 +2244,11 @@ namespace RemuxForge.Web.Components.Pages
                 AsyncCallback = this.ShowMetadataAiWizardAsync,
                 ToolbarOrder = 25
             });
+            commands.Add(new UiCommandDefinition(AppText.T("web.metadata.catalog.toolbar"), "", "travel_explore", UiCommandPlacement.Toolbar, UiCommandMenuSection.Actions, busy || this._metadataRecords == null || this._metadataRecords.Count == 0, null)
+            {
+                AsyncCallback = this.ShowMediaCatalogMatchAsync,
+                ToolbarOrder = 26
+            });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.metadata.manualEdit"), "F4", "edit_note", allSurfaces, UiCommandMenuSection.Actions, busy, null)
             {
                 AsyncCallback = this.ShowMetadataManualEditAsync,
@@ -3000,6 +3005,22 @@ namespace RemuxForge.Web.Components.Pages
         {
             await this.OpenAppDialogAsync<MediaCatalogSettingsDialogComponent>(open => this._showMediaCatalogSettings = open, AppText.T("web.mediaCatalogSettings.title"), null,
                 AppDialogs.CreateOptions(AppDialogs.WIDTH_AI_SETTINGS, null, this._jsModule));
+        }
+
+        /// <summary>
+        /// Mostra l'abbinamento dei file Metadata a un titolo del catalogo
+        /// </summary>
+        private async Task ShowMediaCatalogMatchAsync()
+        {
+            Dictionary<string, object> parameters;
+
+            if (this._currentCardId != Options.MODE_METADATA || this.MetadataOrchestrator.IsBusy)
+                return;
+
+            parameters = new Dictionary<string, object>();
+            parameters.Add(nameof(MediaCatalogMatchDialogComponent.Files), this.MetadataOrchestrator.GetRecords().ConvertAll(record => record.InputFile));
+            await this.OpenAppDialogAsync<MediaCatalogMatchDialogComponent>(open => this._showMediaCatalogMatch = open, AppText.T("web.mediaCatalogMatch.title"), parameters,
+                AppDialogs.CreateOptions(AppDialogs.WIDTH_AI_WIZARD, null, this._jsModule));
         }
 
         /// <summary>
