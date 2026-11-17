@@ -57,9 +57,14 @@
 </div>
 
 <style>
+    /* Layout automatico: la colonna delle etichette prende la larghezza della più lunga nella lingua scelta */
+    .info-table table {
+        table-layout: auto;
+    }
     .info-table .info-label {
         font-weight: bold;
-        width: 14ch;
+        width: 1%;
+        white-space: nowrap;
     }
     .info-table a {
         color: var(--accent);
