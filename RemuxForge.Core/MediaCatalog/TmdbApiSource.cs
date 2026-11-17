@@ -160,22 +160,15 @@ namespace RemuxForge.Core.MediaCatalog
             }
             series.Seasons.Sort((a, b) => a.Number.CompareTo(b.Number));
 
-            List<MediaCatalogEpisode>[] seasonEpisodes = new List<MediaCatalogEpisode>[series.Seasons.Count];
-            int completed = 0;
             if (progress != null)
                 progress.Report(new MediaCatalogProgress(0, total));
 
-            await Parallel.ForEachAsync(Enumerable.Range(0, series.Seasons.Count), new ParallelOptions { MaxDegreeOfParallelism = EPISODE_PARALLELISM, CancellationToken = cancellationToken }, async (index, token) =>
+            // Una stagione per volta, per non caricare il servizio
+            foreach (MediaCatalogSeason season in series.Seasons)
             {
-                seasonEpisodes[index] = await this.ReadSeasonAsync(id, series.Seasons[index].Number, tmdbLanguage, token);
-                int done = Interlocked.Add(ref completed, seasonEpisodes[index].Count);
+                series.Episodes.AddRange(await this.ReadSeasonAsync(id, season.Number, tmdbLanguage, cancellationToken));
                 if (progress != null)
-                    progress.Report(new MediaCatalogProgress(done, Math.Max(done, total)));
-            });
-
-            foreach (List<MediaCatalogEpisode> episodes in seasonEpisodes)
-            {
-                series.Episodes.AddRange(episodes);
+                    progress.Report(new MediaCatalogProgress(series.Episodes.Count, Math.Max(series.Episodes.Count, total)));
             }
             series.Episodes.Sort((a, b) => a.SeasonNumber != b.SeasonNumber ? a.SeasonNumber.CompareTo(b.SeasonNumber) : a.EpisodeNumber.CompareTo(b.EpisodeNumber));
             return series;

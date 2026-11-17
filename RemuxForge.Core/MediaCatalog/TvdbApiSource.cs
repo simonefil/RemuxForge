@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 namespace RemuxForge.Core.MediaCatalog
 {
     /// <summary>
-    /// Fonte TheTVDB tramite API v4 ufficiale, con la chiave dell'utente e, per le chiavi «End-User Subscriptions», il suo PIN di abbonato
+    /// Fonte TheTVDB tramite API v4 ufficiale, con la chiave API dell'utente
     /// </summary>
     public class TvdbApiSource : MediaCatalogApiSourceBase
     {
@@ -53,10 +53,6 @@ namespace RemuxForge.Core.MediaCatalog
         /// </summary>
         private readonly Func<string> _apiKeyProvider;
 
-        /// <summary>
-        /// Legge il PIN corrente dalle impostazioni, vuoto per le chiavi che non lo richiedono
-        /// </summary>
-        private readonly Func<string> _pinProvider;
 
         /// <summary>
         /// Serializza login e lettura delle lingue
@@ -74,11 +70,6 @@ namespace RemuxForge.Core.MediaCatalog
         private string _tokenApiKey;
 
         /// <summary>
-        /// PIN con cui è stato ottenuto il token: se cambia nelle impostazioni si rifà il login
-        /// </summary>
-        private string _tokenPin;
-
-        /// <summary>
         /// Codici lingua accettati da TVDB, null finché non letti
         /// </summary>
         private HashSet<string> _languages;
@@ -91,15 +82,12 @@ namespace RemuxForge.Core.MediaCatalog
         /// Costruttore
         /// </summary>
         /// <param name="apiKeyProvider">Lettura della chiave API dell'utente dalle impostazioni</param>
-        /// <param name="pinProvider">Lettura del PIN dell'utente dalle impostazioni</param>
-        public TvdbApiSource(Func<string> apiKeyProvider, Func<string> pinProvider)
+        public TvdbApiSource(Func<string> apiKeyProvider)
         {
             this._apiKeyProvider = apiKeyProvider;
-            this._pinProvider = pinProvider;
             this._sessionLock = new SemaphoreSlim(1, 1);
             this._token = "";
             this._tokenApiKey = "";
-            this._tokenPin = "";
         }
 
         #endregion
@@ -217,20 +205,16 @@ namespace RemuxForge.Core.MediaCatalog
                 }
             }
 
-            MediaCatalogEpisode[] episodes = new MediaCatalogEpisode[baseEpisodes.Count];
-            int completed = 0;
             if (progress != null)
-                progress.Report(new MediaCatalogProgress(0, episodes.Length));
+                progress.Report(new MediaCatalogProgress(0, baseEpisodes.Count));
 
-            await Parallel.ForEachAsync(Enumerable.Range(0, baseEpisodes.Count), new ParallelOptions { MaxDegreeOfParallelism = EPISODE_PARALLELISM, CancellationToken = cancellationToken }, async (index, token) =>
+            // Un episodio per volta, per non caricare il servizio
+            foreach (JsonNode baseEpisode in baseEpisodes)
             {
-                episodes[index] = await this.ReadEpisodeAsync(baseEpisodes[index], absoluteNumbers, tvdbLanguage, token);
-                int done = Interlocked.Increment(ref completed);
+                series.Episodes.Add(await this.ReadEpisodeAsync(baseEpisode, absoluteNumbers, tvdbLanguage, cancellationToken));
                 if (progress != null)
-                    progress.Report(new MediaCatalogProgress(done, episodes.Length));
-            });
-
-            series.Episodes.AddRange(episodes);
+                    progress.Report(new MediaCatalogProgress(series.Episodes.Count, baseEpisodes.Count));
+            }
             series.Episodes.Sort((a, b) => a.SeasonNumber != b.SeasonNumber ? a.SeasonNumber.CompareTo(b.SeasonNumber) : a.EpisodeNumber.CompareTo(b.EpisodeNumber));
             return series;
         }
@@ -289,7 +273,7 @@ namespace RemuxForge.Core.MediaCatalog
         protected override bool CanRenewAuthorization { get { return true; } }
 
         /// <summary>
-        /// Mette il token della sessione sulla richiesta, facendo il login se manca, se è da rinnovare o se chiave o PIN sono cambiati
+        /// Mette il token della sessione sulla richiesta, facendo il login se manca, se è da rinnovare o se la chiave è cambiata
         /// </summary>
         /// <param name="request">Richiesta da autorizzare</param>
         /// <param name="renew">Vero dopo un 401</param>
@@ -297,7 +281,6 @@ namespace RemuxForge.Core.MediaCatalog
         protected override async Task AuthorizeAsync(HttpRequestMessage request, bool renew, CancellationToken cancellationToken)
         {
             string apiKey = (this._apiKeyProvider() ?? "").Trim();
-            string pin = (this._pinProvider() ?? "").Trim();
             if (apiKey.Length == 0)
                 throw new MediaCatalogException(MediaCatalogErrorKind.NotConfigured, AppText.F("mediaCatalog.error.notConfigured", this.DisplayName));
 
@@ -307,12 +290,10 @@ namespace RemuxForge.Core.MediaCatalog
             try
             {
                 // Un'altra richiesta può aver già rinnovato il token mentre questa aspettava
-                if (this._token.Length == 0 || this._tokenApiKey != apiKey || this._tokenPin != pin || (renew && this._token == staleToken))
+                if (this._token.Length == 0 || this._tokenApiKey != apiKey || (renew && this._token == staleToken))
                 {
                     JsonObject payload = new JsonObject();
                     payload["apikey"] = apiKey;
-                    if (pin.Length > 0)
-                        payload["pin"] = pin;
                     JsonNode root = await this.PostJsonAsync(API_BASE_URL + "/login", payload, cancellationToken);
                     string newToken = ReadString(root["data"]?["token"]);
                     if (newToken.Length == 0)
@@ -320,7 +301,6 @@ namespace RemuxForge.Core.MediaCatalog
 
                     this._token = newToken;
                     this._tokenApiKey = apiKey;
-                    this._tokenPin = pin;
                 }
 
                 token = this._token;

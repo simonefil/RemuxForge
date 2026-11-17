@@ -35,11 +35,6 @@ namespace RemuxForge.Core.MediaCatalog
         /// </summary>
         private static readonly TimeSpan MAX_RETRY_AFTER = TimeSpan.FromSeconds(30);
 
-        /// <summary>
-        /// Richieste per episodio in parallelo durante il caricamento di una serie
-        /// </summary>
-        protected const int EPISODE_PARALLELISM = 4;
-
         #endregion
 
         #region Variabili di classe
