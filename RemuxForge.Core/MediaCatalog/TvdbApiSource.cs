@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 namespace RemuxForge.Core.MediaCatalog
 {
     /// <summary>
-    /// Fonte TheTVDB tramite API v4 ufficiale: chiave di progetto dell'app e PIN dell'utente (modello «End-User Subscriptions»)
+    /// Fonte TheTVDB tramite API v4 ufficiale, con la chiave dell'utente e, per le chiavi «End-User Subscriptions», il suo PIN di abbonato
     /// </summary>
     public class TvdbApiSource : MediaCatalogApiSourceBase
     {
@@ -49,12 +49,12 @@ namespace RemuxForge.Core.MediaCatalog
         #region Variabili di classe
 
         /// <summary>
-        /// Chiave di progetto dell'app
+        /// Legge la chiave API corrente dalle impostazioni
         /// </summary>
-        private readonly string _projectApiKey;
+        private readonly Func<string> _apiKeyProvider;
 
         /// <summary>
-        /// Legge il PIN corrente dalle impostazioni
+        /// Legge il PIN corrente dalle impostazioni, vuoto per le chiavi che non lo richiedono
         /// </summary>
         private readonly Func<string> _pinProvider;
 
@@ -67,6 +67,11 @@ namespace RemuxForge.Core.MediaCatalog
         /// Token JWT della sessione, vuoto prima del login
         /// </summary>
         private string _token;
+
+        /// <summary>
+        /// Chiave con cui è stato ottenuto il token: se cambia nelle impostazioni si rifà il login
+        /// </summary>
+        private string _tokenApiKey;
 
         /// <summary>
         /// PIN con cui è stato ottenuto il token: se cambia nelle impostazioni si rifà il login
@@ -85,14 +90,15 @@ namespace RemuxForge.Core.MediaCatalog
         /// <summary>
         /// Costruttore
         /// </summary>
-        /// <param name="projectApiKey">Chiave di progetto dell'app</param>
+        /// <param name="apiKeyProvider">Lettura della chiave API dell'utente dalle impostazioni</param>
         /// <param name="pinProvider">Lettura del PIN dell'utente dalle impostazioni</param>
-        public TvdbApiSource(string projectApiKey, Func<string> pinProvider)
+        public TvdbApiSource(Func<string> apiKeyProvider, Func<string> pinProvider)
         {
-            this._projectApiKey = projectApiKey ?? "";
+            this._apiKeyProvider = apiKeyProvider;
             this._pinProvider = pinProvider;
             this._sessionLock = new SemaphoreSlim(1, 1);
             this._token = "";
+            this._tokenApiKey = "";
             this._tokenPin = "";
         }
 
@@ -283,15 +289,16 @@ namespace RemuxForge.Core.MediaCatalog
         protected override bool CanRenewAuthorization { get { return true; } }
 
         /// <summary>
-        /// Mette il token della sessione sulla richiesta, facendo il login se manca, se è da rinnovare o se il PIN è cambiato
+        /// Mette il token della sessione sulla richiesta, facendo il login se manca, se è da rinnovare o se chiave o PIN sono cambiati
         /// </summary>
         /// <param name="request">Richiesta da autorizzare</param>
         /// <param name="renew">Vero dopo un 401</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         protected override async Task AuthorizeAsync(HttpRequestMessage request, bool renew, CancellationToken cancellationToken)
         {
+            string apiKey = (this._apiKeyProvider() ?? "").Trim();
             string pin = (this._pinProvider() ?? "").Trim();
-            if (this._projectApiKey.Length == 0 || pin.Length == 0)
+            if (apiKey.Length == 0)
                 throw new MediaCatalogException(MediaCatalogErrorKind.NotConfigured, AppText.F("mediaCatalog.error.notConfigured", this.DisplayName));
 
             string staleToken = renew ? this._token : null;
@@ -300,17 +307,19 @@ namespace RemuxForge.Core.MediaCatalog
             try
             {
                 // Un'altra richiesta può aver già rinnovato il token mentre questa aspettava
-                if (this._token.Length == 0 || this._tokenPin != pin || (renew && this._token == staleToken))
+                if (this._token.Length == 0 || this._tokenApiKey != apiKey || this._tokenPin != pin || (renew && this._token == staleToken))
                 {
                     JsonObject payload = new JsonObject();
-                    payload["apikey"] = this._projectApiKey;
-                    payload["pin"] = pin;
+                    payload["apikey"] = apiKey;
+                    if (pin.Length > 0)
+                        payload["pin"] = pin;
                     JsonNode root = await this.PostJsonAsync(API_BASE_URL + "/login", payload, cancellationToken);
                     string newToken = ReadString(root["data"]?["token"]);
                     if (newToken.Length == 0)
                         throw this.CreateFormatError("login.token");
 
                     this._token = newToken;
+                    this._tokenApiKey = apiKey;
                     this._tokenPin = pin;
                 }
 
