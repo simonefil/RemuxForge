@@ -107,15 +107,15 @@
     private bool _disposed;
 
     /// <summary>
-    /// Accoda la frase nuova, la prima compare subito; la riga secondaria nuova sostituisce quella in attesa e compare quando
-    /// quella visibile ha avuto il suo tempo minimo
+    /// Accoda la frase nuova, la prima compare subito; durante una chiamata la riga secondaria nuova sostituisce quella in attesa
+    /// e compare quando quella visibile ha avuto il suo tempo minimo, fuori dalle chiamate compare subito
     /// </summary>
     protected override void OnParametersSet()
     {
         string detail = Detail ?? "";
         if (!string.Equals(detail, _pendingDetail ?? _shownDetail, StringComparison.Ordinal))
         {
-            if ((DateTime.UtcNow - _detailShownAt).TotalMilliseconds >= MIN_DETAIL_MS)
+            if (!StartedAt.HasValue || (DateTime.UtcNow - _detailShownAt).TotalMilliseconds >= MIN_DETAIL_MS)
             {
                 _shownDetail = detail;
                 _pendingDetail = null;

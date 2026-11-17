@@ -2074,7 +2074,8 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Fine di una chiamata: se era quella mostrata, l'attesa passa alla chiamata in corso con l'evento più recente
+        /// Fine di una chiamata: se era quella mostrata, l'attesa passa alla chiamata in corso con l'evento più recente; in ogni caso
+        /// la riga si aggiorna, perché il nome del file compare solo con più chiamate in corso
         /// </summary>
         /// <param name="request">Chiamata della traduzione</param>
         private void HandleCallFinished(TranslationModelRequest request)
@@ -2082,14 +2083,17 @@ namespace RemuxForge.Web.Services.Toolbox
             lock (this.StateLock)
             {
                 LiveCall call;
-                if (!this._liveCalls.Remove(request, out call) || !ReferenceEquals(this._liveLatest, call))
+                if (!this._liveCalls.Remove(request, out call))
                     return;
 
-                this._liveLatest = null;
-                foreach (LiveCall running in this._liveCalls.Values)
+                if (ReferenceEquals(this._liveLatest, call))
                 {
-                    if (this._liveLatest == null || running.UpdatedAt > this._liveLatest.UpdatedAt)
-                        this._liveLatest = running;
+                    this._liveLatest = null;
+                    foreach (LiveCall running in this._liveCalls.Values)
+                    {
+                        if (this._liveLatest == null || running.UpdatedAt > this._liveLatest.UpdatedAt)
+                            this._liveLatest = running;
+                    }
                 }
             }
 

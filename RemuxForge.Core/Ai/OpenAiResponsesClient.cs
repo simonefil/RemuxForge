@@ -223,7 +223,8 @@ namespace RemuxForge.Core.Ai
 
         /// <summary>
         /// Esegue un tentativo di trasporto di una richiesta Responses. Il riassunto del ragionamento serve solo all'avanzamento:
-        /// se il servizio lo rifiuta (organizzazione non verificata) la richiesta riparte subito senza, e non si chiede più
+        /// se il servizio lo rifiuta (organizzazione non verificata) o rifiuta qualcosa senza dire cosa, la richiesta riparte subito
+        /// senza, e per il resto della sessione non si chiede più
         /// </summary>
         /// <param name="request">Richiesta</param>
         /// <param name="cancellationToken">Token di annullamento</param>
@@ -301,8 +302,11 @@ namespace RemuxForge.Core.Ai
                         }
                     }
                 }
-                catch (AiServiceException ex) when (summary && ex.HttpStatus == 400 && string.Equals(ex.RejectedParameter, REASONING_SUMMARY_PARAMETER, StringComparison.OrdinalIgnoreCase))
+                catch (AiServiceException ex) when (summary && (ex.RejectedParameter.StartsWith(REASONING_SUMMARY_PARAMETER, StringComparison.OrdinalIgnoreCase) ||
+                    (ex.Kind == AiErrorKind.UnsupportedCapability && ex.RejectedParameter.Length == 0)))
                 {
+                    // Un rifiuto senza parametro può riguardare il riassunto: si riprova senza, e un rifiuto che resta segue la via solita
+                    // delle capacità
                     this._reasoningSummaryRejected = true;
                 }
                 catch (HttpRequestException ex)
