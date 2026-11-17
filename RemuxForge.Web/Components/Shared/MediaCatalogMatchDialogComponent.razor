@@ -13,7 +13,7 @@
         <div class="catalog-match-steps">
             @foreach (MatchStep step in GetVisibleSteps())
             {
-                <RadzenBadge IsPill="true" BadgeStyle="@(step == GetStepGroup() ? BadgeStyle.Primary : BadgeStyle.Light)" Text="@GetStepLabel(step)" />
+                <RadzenBadge IsPill="true" BadgeStyle="@(step == (_step == MatchStep.Loading ? MatchStep.Search : _step) ? BadgeStyle.Primary : BadgeStyle.Light)" Text="@GetStepLabel(step)" />
             }
         </div>
 
@@ -139,9 +139,9 @@
                             }
                             <span class="catalog-match-actions">
                                 <RadzenButton Icon="arrow_upward" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@(index == 0)"
-                                              title="@AppText.T("web.mediaCatalogMatch.moveUp")" aria-label="@AppText.T("web.mediaCatalogMatch.moveUp")" Click="@(() => MoveEpisodes(index, index - 1))" />
+                                              title="@AppText.T("web.mediaCatalogMatch.moveUp")" aria-label="@AppText.T("web.mediaCatalogMatch.moveUp")" Click="@(() => MediaCatalogEpisodeMatcher.SwapEpisodes(_rows, index, index - 1))" />
                                 <RadzenButton Icon="arrow_downward" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@(index == _rows.Count - 1)"
-                                              title="@AppText.T("web.mediaCatalogMatch.moveDown")" aria-label="@AppText.T("web.mediaCatalogMatch.moveDown")" Click="@(() => MoveEpisodes(index, index + 1))" />
+                                              title="@AppText.T("web.mediaCatalogMatch.moveDown")" aria-label="@AppText.T("web.mediaCatalogMatch.moveDown")" Click="@(() => MediaCatalogEpisodeMatcher.SwapEpisodes(_rows, index, index + 1))" />
                                 <RadzenButton Icon="vertical_align_top" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@(!MediaCatalogEpisodeMatcher.CanMergeWithPrevious(_rows, index))"
                                               title="@AppText.T("web.mediaCatalogMatch.merge")" aria-label="@AppText.T("web.mediaCatalogMatch.merge")" Click="@(() => MediaCatalogEpisodeMatcher.MergeWithPrevious(_rows, index))" />
                                 <RadzenButton Icon="call_split" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@(row.Episodes.Count < 2)"
@@ -304,6 +304,11 @@
     private string _language = "";
 
     /// <summary>
+    /// Catalogo dei risultati mostrati, che resta quello del caricamento anche se il dropdown cambia dopo la ricerca
+    /// </summary>
+    private MediaCatalogProvider _hitsProvider = MediaCatalogProvider.Tvdb;
+
+    /// <summary>
     /// Risultati della ricerca
     /// </summary>
     private List<MediaCatalogSearchHit> _hits = new List<MediaCatalogSearchHit>();
@@ -423,15 +428,6 @@
     }
 
     /// <summary>
-    /// Passo evidenziato in testa: il caricamento fa parte della ricerca
-    /// </summary>
-    /// <returns>Passo</returns>
-    private MatchStep GetStepGroup()
-    {
-        return this._step == MatchStep.Loading ? MatchStep.Search : this._step;
-    }
-
-    /// <summary>
     /// Etichetta numerata del passo
     /// </summary>
     /// <param name="step">Passo</param>
@@ -506,6 +502,7 @@
     {
         this._busy = true;
         this._hits = new List<MediaCatalogSearchHit>();
+        this._hitsProvider = this._provider;
         try
         {
             this._hits = await this.SourceProvider.GetSource(this._provider).SearchAsync(this._kind, this._query.Trim(), this._year, this.GetLanguage(), CancellationToken.None);
@@ -538,7 +535,7 @@
         }
 
         this._cancellation = cancellation;
-        this._source = this.SourceProvider.GetSource(this._provider);
+        this._source = this.SourceProvider.GetSource(this._hitsProvider);
         this._series = null;
         this._movie = null;
         this._loadCompleted = 0;
@@ -634,7 +631,7 @@
         args.Attributes["ondragover"] = "event.preventDefault()";
         args.Attributes["ondrop"] = EventCallback.Factory.Create<DragEventArgs>(this, () =>
         {
-            this.MoveEpisodes(this._dragIndex, index);
+            MediaCatalogEpisodeMatcher.SwapEpisodes(this._rows, this._dragIndex, index);
             this._dragIndex = -1;
         });
         if (args.Data.Episodes.Count == 0)
@@ -643,16 +640,6 @@
         args.Attributes["draggable"] = "true";
         args.Attributes["ondragstart"] = EventCallback.Factory.Create<DragEventArgs>(this, () => this._dragIndex = index);
         args.Attributes["ondragend"] = EventCallback.Factory.Create<DragEventArgs>(this, () => this._dragIndex = -1);
-    }
-
-    /// <summary>
-    /// Scambia gli episodi di due righe
-    /// </summary>
-    /// <param name="from">Riga di partenza</param>
-    /// <param name="to">Riga di arrivo</param>
-    private void MoveEpisodes(int from, int to)
-    {
-        MediaCatalogEpisodeMatcher.SwapEpisodes(this._rows, from, to);
     }
 
     /// <summary>
