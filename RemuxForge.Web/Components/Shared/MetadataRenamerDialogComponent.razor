@@ -138,6 +138,22 @@
                         &lt;Rand:min:max&gt;
                     </div>
                 }
+                else if (this._selectedMethodType == RenameMethodType.Catalog)
+                {
+                    <div class="renamer-param-row">
+                        <RadzenLabel Text="@AppText.T("web.rename.patternLabel")" Component="RenamerCatalogPattern" />
+                        <RadzenTextBox Name="RenamerCatalogPattern" @bind-Value="this._editingMethod.CatalogPattern" @bind-Value:after="this.RecalculatePreview" Immediate="true" />
+                    </div>
+                    <div class="renamer-param-row">
+                        <RadzenLabel Text="@AppText.T("web.rename.catalogMatchLabel")" />
+                        <span class="renamer-catalog-title" title="@this._editingMethod.CatalogTitle">@(this._editingMethod.CatalogValues.Count > 0 ? this._editingMethod.CatalogTitle : AppText.T("web.rename.catalogNotMatched"))</span>
+                        <RadzenButton Text="@AppText.T("web.rename.catalogMatch")" Icon="travel_explore" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@this.HandleCatalogMatchAsync" />
+                    </div>
+                    <div class="renamer-tag-help">
+                        @AppText.T("web.rename.tagsLabel") &lt;Series&gt; &lt;Season:2&gt; &lt;Episode:2&gt; &lt;Absolute:3&gt; &lt;Title&gt; &lt;Year&gt;
+                        &lt;Name&gt; &lt;Ext&gt; &lt;Folder&gt;
+                    </div>
+                }
                 else if (this._selectedMethodType == RenameMethodType.Trim)
                 {
                     <div class="renamer-param-row">
@@ -204,7 +220,7 @@
     /// </summary>
     private static readonly List<RenameMethodType> MethodTypes = new List<RenameMethodType>
     {
-        RenameMethodType.Replace, RenameMethodType.Add, RenameMethodType.Remove, RenameMethodType.NewCase, RenameMethodType.NewName, RenameMethodType.Trim
+        RenameMethodType.Replace, RenameMethodType.Add, RenameMethodType.Remove, RenameMethodType.NewCase, RenameMethodType.NewName, RenameMethodType.Trim, RenameMethodType.Catalog
     };
 
     /// <summary>
@@ -474,6 +490,10 @@
         {
             result = !string.IsNullOrEmpty(this._editingMethod.TrimCharacters);
         }
+        else if (this._selectedMethodType == RenameMethodType.Catalog)
+        {
+            result = this._editingMethod.CatalogValues.Count > 0 && !string.IsNullOrEmpty(this._editingMethod.CatalogPattern);
+        }
 
         return result;
     }
@@ -591,6 +611,29 @@
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Abbina i file a un titolo del catalogo; il pattern passa a quello di default del tipo abbinato se non è stato cambiato
+    /// </summary>
+    private async Task HandleCatalogMatchAsync()
+    {
+        Dictionary<string, object> parameters = new Dictionary<string, object>();
+        parameters.Add(nameof(MediaCatalogMatchDialogComponent.Files), this._entries.ConvertAll(entry => entry.FullPath));
+        parameters.Add(nameof(MediaCatalogMatchDialogComponent.RenameMode), true);
+
+        MediaCatalogRenameMatch match = await AppDialogs.OpenAsync<MediaCatalogMatchDialogComponent>(this.DialogService, AppText.T("web.mediaCatalogMatch.title"), parameters,
+            AppDialogs.CreateOptions(AppDialogs.WIDTH_AI_WIZARD, null, null), null) as MediaCatalogRenameMatch;
+        if (match == null)
+            return;
+
+        string pattern = this._editingMethod.CatalogPattern;
+        if (string.IsNullOrEmpty(pattern) || pattern == RenameMethod.CATALOG_SERIES_PATTERN || pattern == RenameMethod.CATALOG_MOVIE_PATTERN)
+            this._editingMethod.CatalogPattern = match.Kind == MediaCatalogKind.Movie ? RenameMethod.CATALOG_MOVIE_PATTERN : RenameMethod.CATALOG_SERIES_PATTERN;
+
+        this._editingMethod.CatalogTitle = match.Title;
+        this._editingMethod.CatalogValues = match.Values;
+        this.RecalculatePreview();
     }
 
     /// <summary>

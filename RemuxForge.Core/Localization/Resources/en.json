@@ -4207,5 +4207,9 @@
   "web.mediaCatalogMatch.applyFailed": "Writing not started",
   "web.mediaCatalogMatch.coverNotJpeg": "Cover is not a JPEG: not attached",
   "web.mediaCatalogMatch.noChanges": "No changes to write",
-  "web.mediaCatalogMatch.orchestratorBusy": "Another operation is running"
+  "web.mediaCatalogMatch.orchestratorBusy": "Another operation is running",
+  "web.rename.method.Catalog": "Catalog",
+  "web.rename.catalogMatchLabel": "Title",
+  "web.rename.catalogNotMatched": "Not matched",
+  "web.rename.catalogMatch": "Match…"
 }

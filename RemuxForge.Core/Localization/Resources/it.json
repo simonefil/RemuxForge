@@ -4207,5 +4207,9 @@
   "web.mediaCatalogMatch.applyFailed": "Scrittura non avviata",
   "web.mediaCatalogMatch.coverNotJpeg": "Copertina non in JPEG: non allegata",
   "web.mediaCatalogMatch.noChanges": "Nessuna modifica da scrivere",
-  "web.mediaCatalogMatch.orchestratorBusy": "Un'altra operazione è in corso"
+  "web.mediaCatalogMatch.orchestratorBusy": "Un'altra operazione è in corso",
+  "web.rename.method.Catalog": "Catalogo",
+  "web.rename.catalogMatchLabel": "Titolo",
+  "web.rename.catalogNotMatched": "Nessun abbinamento",
+  "web.rename.catalogMatch": "Abbina…"
 }
