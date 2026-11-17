@@ -4171,11 +4171,11 @@
   "web.mediaCatalogMatch.step.Preview": "Preview",
   "web.mediaCatalogMatch.selectAll": "Select all",
   "web.mediaCatalogMatch.file": "File",
-  "web.mediaCatalogMatch.catalog": "Source",
-  "web.mediaCatalogMatch.kind": "Type",
+  "web.mediaCatalogMatch.catalog": "Source:",
+  "web.mediaCatalogMatch.kind": "Type:",
   "web.mediaCatalogMatch.kindSeries": "TV series / anime",
   "web.mediaCatalogMatch.kindMovie": "Movie",
-  "web.mediaCatalogMatch.query": "Title",
+  "web.mediaCatalogMatch.query": "Title:",
   "web.mediaCatalogMatch.year": "Year",
   "web.mediaCatalogMatch.language": "Language",
   "web.mediaCatalogMatch.search": "Search",
@@ -4194,7 +4194,7 @@
   "web.mediaCatalogMatch.moveDown": "Move the episode to the file below",
   "web.mediaCatalogMatch.merge": "Merge with previous",
   "web.mediaCatalogMatch.split": "Split",
-  "web.mediaCatalogMatch.titleTemplate": "Title template",
+  "web.mediaCatalogMatch.titleTemplate": "Title template:",
   "web.mediaCatalogMatch.field": "Field",
   "web.mediaCatalogMatch.level": "Level",
   "web.mediaCatalogMatch.before": "Before",
@@ -4210,5 +4210,8 @@
   "web.rename.catalogMatchLabel": "Title:",
   "web.rename.catalogNotMatched": "Not matched",
   "web.rename.catalogMatch": "Match…",
-  "web.info.tmdbNotice": "This product uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB."
+  "web.info.tmdbNotice": "This product uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.",
+  "web.mediaCatalogMatch.yearLabel": "Year:",
+  "web.mediaCatalogMatch.fileLabel": "File:",
+  "web.mediaCatalogMatch.languageLabel": "Language:"
 }

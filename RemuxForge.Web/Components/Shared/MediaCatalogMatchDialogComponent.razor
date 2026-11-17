@@ -57,11 +57,11 @@
                     <RadzenTextBox Name="CatalogMatchQuery" @bind-Value="_query" Immediate="true" />
                 </div>
                 <div class="form-row">
-                    <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogMatch.year")" Component="CatalogMatchYear" />
+                    <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogMatch.yearLabel")" Component="CatalogMatchYear" />
                     <RadzenNumeric TValue="int?" Name="CatalogMatchYear" @bind-Value="_year" Min="1870" Max="2200" ShowUpDown="false" />
                 </div>
                 <div class="form-row">
-                    <span class="form-label">@AppText.T("web.mediaCatalogMatch.language")</span>
+                    <span class="form-label">@AppText.T("web.mediaCatalogMatch.languageLabel")</span>
                     <div class="form-field">
                         <LanguageChipsComponent Multiple="false" Label="@AppText.T("web.mediaCatalogMatch.language")" Value="@_language" ValueChanged="@(value => _language = value)" />
                     </div>
@@ -163,7 +163,7 @@
                     <RadzenTextBox Name="CatalogMatchTemplate" @bind-Value="_titleTemplate" Immediate="true" />
                 </div>
                 <div class="form-row">
-                    <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogMatch.file")" Component="CatalogMatchPreviewFile" />
+                    <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogMatch.fileLabel")" Component="CatalogMatchPreviewFile" />
                     <RadzenDropDown TValue="string" Name="CatalogMatchPreviewFile" Data="@GetWrittenFiles()" @bind-Value="_previewFile">
                         <Template Context="file">@System.IO.Path.GetFileName((string)file)</Template>
                         <ValueTemplate Context="file">@System.IO.Path.GetFileName((string)file)</ValueTemplate>

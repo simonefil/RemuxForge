@@ -4171,11 +4171,11 @@
   "web.mediaCatalogMatch.step.Preview": "Anteprima",
   "web.mediaCatalogMatch.selectAll": "Seleziona tutti",
   "web.mediaCatalogMatch.file": "File",
-  "web.mediaCatalogMatch.catalog": "Fonte",
-  "web.mediaCatalogMatch.kind": "Tipo",
+  "web.mediaCatalogMatch.catalog": "Fonte:",
+  "web.mediaCatalogMatch.kind": "Tipo:",
   "web.mediaCatalogMatch.kindSeries": "Serie TV / anime",
   "web.mediaCatalogMatch.kindMovie": "Film",
-  "web.mediaCatalogMatch.query": "Titolo",
+  "web.mediaCatalogMatch.query": "Titolo:",
   "web.mediaCatalogMatch.year": "Anno",
   "web.mediaCatalogMatch.language": "Lingua",
   "web.mediaCatalogMatch.search": "Cerca",
@@ -4194,7 +4194,7 @@
   "web.mediaCatalogMatch.moveDown": "Sposta l'episodio sul file sotto",
   "web.mediaCatalogMatch.merge": "Unisci al precedente",
   "web.mediaCatalogMatch.split": "Separa",
-  "web.mediaCatalogMatch.titleTemplate": "Modello titolo",
+  "web.mediaCatalogMatch.titleTemplate": "Modello titolo:",
   "web.mediaCatalogMatch.field": "Campo",
   "web.mediaCatalogMatch.level": "Livello",
   "web.mediaCatalogMatch.before": "Prima",
@@ -4210,5 +4210,8 @@
   "web.rename.catalogMatchLabel": "Titolo:",
   "web.rename.catalogNotMatched": "Nessun abbinamento",
   "web.rename.catalogMatch": "Abbina…",
-  "web.info.tmdbNotice": "Questo prodotto usa TMDB e le API di TMDB ma non è approvato, certificato né in altro modo autorizzato da TMDB."
+  "web.info.tmdbNotice": "Questo prodotto usa TMDB e le API di TMDB ma non è approvato, certificato né in altro modo autorizzato da TMDB.",
+  "web.mediaCatalogMatch.yearLabel": "Anno:",
+  "web.mediaCatalogMatch.fileLabel": "File:",
+  "web.mediaCatalogMatch.languageLabel": "Lingua:"
 }
