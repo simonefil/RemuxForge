@@ -4138,5 +4138,11 @@
   "web.splitMontage.mergeNext": "Unisci con il successivo",
   "web.splitMontage.mergeNextNeedsClips": "Disponibile quando questo file e il successivo contengono segmenti",
   "web.splitMontage.rangeMenu": "Azioni sul tratto segnato",
-  "web.splitMontage.removeMarkNeedsOverlap": "Disponibile quando il tratto copre un segmento del file selezionato"
+  "web.splitMontage.removeMarkNeedsOverlap": "Disponibile quando il tratto copre un segmento del file selezionato",
+  "mediaCatalog.error.notConfigured": "Credenziali {0} non inserite nelle impostazioni",
+  "mediaCatalog.error.unauthorized": "Credenziali {0} rifiutate",
+  "mediaCatalog.error.notFound": "Titolo non trovato su {0}",
+  "mediaCatalog.error.network": "Errore di rete verso {0}: {1}",
+  "mediaCatalog.error.service": "{0} ha risposto con il codice {1}",
+  "mediaCatalog.error.format": "Risposta di {0} non interpretabile: {1}"
 }

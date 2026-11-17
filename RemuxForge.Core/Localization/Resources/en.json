@@ -4138,5 +4138,11 @@
   "web.splitMontage.mergeNext": "Merge with next",
   "web.splitMontage.mergeNextNeedsClips": "Available when this file and the next one contain segments",
   "web.splitMontage.rangeMenu": "Marked range actions",
-  "web.splitMontage.removeMarkNeedsOverlap": "Available when the range covers a segment of the selected file"
+  "web.splitMontage.removeMarkNeedsOverlap": "Available when the range covers a segment of the selected file",
+  "mediaCatalog.error.notConfigured": "{0} credentials are missing from the settings",
+  "mediaCatalog.error.unauthorized": "{0} credentials rejected",
+  "mediaCatalog.error.notFound": "Title not found on {0}",
+  "mediaCatalog.error.network": "Network error contacting {0}: {1}",
+  "mediaCatalog.error.service": "{0} answered with status {1}",
+  "mediaCatalog.error.format": "Unreadable response from {0}: {1}"
 }
