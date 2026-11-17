@@ -1,0 +1,734 @@
+using HtmlAgilityPack;
+using RemuxForge.Core.Models;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace RemuxForge.Core.MediaCatalog
+{
+    /// <summary>
+    /// Fonte del sito pubblico TVDB per IMediaCatalogSource, senza API key
+    /// Richiede HtmlAgilityPack e un HttpClient condiviso, di proprietà del chiamante
+    /// </summary>
+    public class TvdbScraperSource : IMediaCatalogSource
+    {
+        #region Variabili di classe
+
+        /// <summary>
+        /// Client condiviso; i dati delle singole operazioni rimangono locali ai metodi
+        /// </summary>
+        private readonly HttpClient _httpClient;
+
+        #endregion
+
+        #region Costruttore
+
+        /// <summary>
+        /// Inizializza la fonte senza acquisire la proprietà del client HTTP
+        /// </summary>
+        /// <param name="httpClient">Client HTTP condiviso dall'applicazione</param>
+        public TvdbScraperSource(HttpClient httpClient)
+        {
+            this._httpClient = httpClient ?? throw new MediaCatalogException(MediaCatalogErrorKind.Format, "HttpClient non specificato", null);
+        }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Cerca fino a venti titoli nell'ordine di rilevanza del sito
+        /// </summary>
+        /// <param name="kind">Serie oppure film</param>
+        /// <param name="query">Titolo da cercare</param>
+        /// <param name="year">Anno richiesto, oppure null</param>
+        /// <param name="language">Codice ISO 639-2/T</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Risultati del contratto</returns>
+        public async Task<List<MediaCatalogSearchHit>> SearchAsync(MediaCatalogKind kind, string query, int? year, string language, CancellationToken cancellationToken)
+        {
+            try
+            {
+                List<MediaCatalogSearchHit> results;
+                string type;
+                string filters;
+                string body;
+                string json;
+
+                cancellationToken.ThrowIfCancellationRequested();
+                language = ValidateLanguage(language);
+                if (string.IsNullOrWhiteSpace(query))
+                    throw new FormatException("Titolo di ricerca vuoto");
+
+                type = kind switch
+                {
+                    MediaCatalogKind.Series => "series",
+                    MediaCatalogKind.Movie => "movie",
+                    _ => throw new FormatException("Tipo di ricerca non supportato")
+                };
+                filters = "type:" + type + " AND NOT is_official=0";
+                if (year.HasValue)
+                    filters += " AND year:" + year.Value.ToString(CultureInfo.InvariantCulture);
+
+                body = JsonSerializer.Serialize(new
+                {
+                    requests = new[]
+                    {
+                        new { indexName = "TVDB", @params = new { query, page = 0, hitsPerPage = 20, filters } }
+                    }
+                });
+                json = await this.RequestAsync(new Uri("https://api4.thetvdb.com/web/search/queries"), body, cancellationToken).ConfigureAwait(false);
+                using JsonDocument document = JsonDocument.Parse(json);
+                results = new List<MediaCatalogSearchHit>();
+
+                foreach (JsonElement hit in document.RootElement.GetProperty("results")[0].GetProperty("hits").EnumerateArray())
+                {
+                    MediaCatalogSearchHit item;
+                    string originalLanguage;
+                    string originalTitle;
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (JsonString(hit, "type") != type)
+                        continue;
+
+                    originalLanguage = JsonString(hit, "primary_language");
+                    originalTitle = JsonTranslation(hit, "translations", originalLanguage);
+                    if (string.IsNullOrEmpty(originalTitle))
+                        originalTitle = JsonString(hit, "name");
+
+                    item = new MediaCatalogSearchHit
+                    {
+                        Key = PageUrl(JsonString(hit, "url"), kind == MediaCatalogKind.Series ? "series" : "movies").AbsoluteUri,
+                        Id = ParseLong(JsonString(hit, "id")),
+                        Kind = kind,
+                        Title = SearchText(hit, "translations", language, originalLanguage, originalTitle),
+                        Overview = SearchText(hit, "overviews", language, originalLanguage, JsonString(hit, "overview")),
+                        Year = ParseInteger(JsonString(hit, "year")),
+                        PosterUrl = JsonString(hit, "poster")
+                    };
+                    item.OriginalTitle = originalTitle == item.Title ? string.Empty : originalTitle;
+                    if (string.IsNullOrEmpty(item.PosterUrl))
+                        item.PosterUrl = JsonString(hit, "image_url");
+
+                    if (string.IsNullOrEmpty(item.PosterUrl))
+                        item.PosterUrl = JsonString(hit, "image");
+
+                    if (year.HasValue && item.Year != year)
+                        continue;
+
+                    results.Add(item);
+                    if (results.Count == 20)
+                        break;
+                }
+
+                return results;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw CatalogError(ex);
+            }
+        }
+
+        /// <summary>
+        /// Carica tutte le stagioni ufficiali e gli episodi completi della serie
+        /// </summary>
+        /// <param name="key">URL pubblico restituito dalla ricerca</param>
+        /// <param name="language">Codice ISO 639-2/T</param>
+        /// <param name="progress">Avanzamento facoltativo in episodi</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Serie con stagioni ed episodi ordinati per numero</returns>
+        public async Task<MediaCatalogSeries> GetSeriesAsync(string key, string language, IProgress<MediaCatalogProgress> progress, CancellationToken cancellationToken)
+        {
+            try
+            {
+                Uri url;
+                HtmlNode root;
+                MediaCatalogSeries series;
+                string originalLanguage;
+                List<(int Season, int Number, string Key)> episodes;
+
+                cancellationToken.ThrowIfCancellationRequested();
+                language = ValidateLanguage(language);
+                url = PageUrl(key, "series");
+                root = await this.LoadPageAsync(url, cancellationToken).ConfigureAwait(false);
+                if (root.SelectSingleNode("//div[@id='seasons']") == null)
+                    throw new FormatException("Sezione stagioni TVDB non riconosciuta");
+
+                series = new MediaCatalogSeries
+                {
+                    Key = url.AbsoluteUri,
+                    Id = ParseLong(FieldText(root, "TheTVDB.com Series ID")),
+                    Year = ParseDate(FieldText(root, "First Aired"))?.Year,
+                    Genres = FieldValues(root, "Genres").Select(Text).ToList(),
+                    PosterUrl = Poster(root)
+                };
+                ReadText(root, language, out string title, out string originalTitle, out string overview);
+                series.Title = title;
+                series.OriginalTitle = originalTitle;
+                series.Overview = overview;
+                originalLanguage = OriginalLanguage(root);
+                episodes = new List<(int Season, int Number, string Key)>();
+
+                foreach (HtmlNode link in Nodes(root, "//div[@id='seasons-official']//a[contains(@href,'/seasons/official/')]"))
+                {
+                    Uri seasonUrl;
+                    Match number;
+                    HtmlNode season;
+
+                    seasonUrl = new Uri(url, link.GetAttributeValue("href", ""));
+                    number = Regex.Match(seasonUrl.AbsolutePath, @"/seasons/official/(\d+)/?$");
+                    if (!number.Success)
+                        continue;
+
+                    seasonUrl = PageUrl(seasonUrl.AbsoluteUri, "series", @"/seasons/official/\d+");
+                    season = await this.LoadPageAsync(seasonUrl, cancellationToken).ConfigureAwait(false);
+                    if (season.SelectSingleNode("//div[@id='episodes']") == null)
+                        throw new FormatException("Tabella episodi TVDB non riconosciuta");
+
+                    series.Seasons.Add(new MediaCatalogSeason { Number = int.Parse(number.Groups[1].Value, CultureInfo.InvariantCulture), PosterUrl = Poster(season) });
+                    foreach (HtmlNode row in Nodes(season, "//div[@id='episodes']//tr[td[2]/a[contains(@href,'/episodes/')]]"))
+                    {
+                        Match label;
+                        Uri episodeUrl;
+
+                        label = Regex.Match(Text(row.SelectSingleNode("./td[1]")), @"^S(\d+)E(\d+)$");
+                        if (!label.Success)
+                            throw new FormatException("Numerazione ufficiale TVDB non riconosciuta");
+
+                        episodeUrl = new Uri(url, row.SelectSingleNode("./td[2]/a").GetAttributeValue("href", ""));
+                        episodes.Add((int.Parse(label.Groups[1].Value, CultureInfo.InvariantCulture), int.Parse(label.Groups[2].Value, CultureInfo.InvariantCulture), episodeUrl.AbsoluteUri));
+                    }
+                }
+
+                progress?.Report(new MediaCatalogProgress(0, episodes.Count));
+                foreach ((int Season, int Number, string Key) episode in episodes.OrderBy(e => e.Season).ThenBy(e => e.Number))
+                {
+                    series.Episodes.Add(await this.LoadEpisodeAsync(episode.Key, episode.Season, episode.Number, language, originalLanguage, cancellationToken).ConfigureAwait(false));
+                    progress?.Report(new MediaCatalogProgress(series.Episodes.Count, episodes.Count));
+                }
+
+                series.Seasons = series.Seasons.OrderBy(s => s.Number).ToList();
+                return series;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw CatalogError(ex);
+            }
+        }
+
+        /// <summary>
+        /// Carica il film limitandosi ai dati del contratto
+        /// </summary>
+        /// <param name="key">URL pubblico restituito dalla ricerca</param>
+        /// <param name="language">Codice ISO 639-2/T</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Film con prima uscita, generi e persone nei crediti</returns>
+        public async Task<MediaCatalogMovie> GetMovieAsync(string key, string language, CancellationToken cancellationToken)
+        {
+            try
+            {
+                Uri url;
+                HtmlNode root;
+                MediaCatalogMovie movie;
+
+                cancellationToken.ThrowIfCancellationRequested();
+                language = ValidateLanguage(language);
+                url = PageUrl(key, "movies");
+                root = await this.LoadPageAsync(url, cancellationToken).ConfigureAwait(false);
+                if (root.SelectSingleNode("//div[@id='series_basic_info']") == null)
+                    throw new FormatException("Scheda film TVDB non riconosciuta");
+
+                movie = new MediaCatalogMovie
+                {
+                    Key = url.AbsoluteUri,
+                    Id = ParseLong(FieldText(root, "TheTVDB.com Movie ID")),
+                    Genres = FieldValues(root, "Genres").Select(Text).ToList(),
+                    PosterUrl = Poster(root),
+                    Directors = People(root, "director"),
+                    Writers = People(root, "writer"),
+                    Actors = People(root, "actor")
+                };
+                ReadText(root, language, out string title, out string originalTitle, out string overview);
+                movie.Title = title;
+                movie.OriginalTitle = originalTitle;
+                movie.Overview = overview;
+
+                foreach (HtmlNode release in FieldValues(root, "Released"))
+                {
+                    HtmlNode copy;
+                    DateTime? date;
+
+                    copy = release.CloneNode(true);
+                    foreach (HtmlNode country in Nodes(copy, ".//small").ToArray())
+                        country.Remove();
+
+                    date = ParseDate(Text(copy));
+                    if (date.HasValue && (!movie.ReleaseDate.HasValue || date < movie.ReleaseDate))
+                        movie.ReleaseDate = date;
+                }
+
+                movie.Year = movie.ReleaseDate?.Year;
+                return movie;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw CatalogError(ex);
+            }
+        }
+
+        #endregion
+
+        #region Metodi privati
+
+        /// <summary>
+        /// Carica testi, numerazioni e persone del singolo episodio ufficiale
+        /// </summary>
+        /// <param name="key">URL dell'episodio</param>
+        /// <param name="season">Numero stagione ufficiale</param>
+        /// <param name="number">Numero episodio ufficiale</param>
+        /// <param name="language">Lingua richiesta</param>
+        /// <param name="originalLanguage">Lingua originale della serie</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Episodio completo del contratto</returns>
+        private async Task<MediaCatalogEpisode> LoadEpisodeAsync(string key, int season, int number, string language, string originalLanguage, CancellationToken cancellationToken)
+        {
+            Uri url;
+            HtmlNode root;
+            MediaCatalogEpisode episode;
+
+            url = PageUrl(key, "series", @"/episodes/\d+");
+            root = await this.LoadPageAsync(url, cancellationToken).ConfigureAwait(false);
+            episode = new MediaCatalogEpisode
+            {
+                Id = ParseLong(url.Segments.Last()),
+                SeasonNumber = season,
+                EpisodeNumber = number,
+                AiredDate = ParseDate(FieldText(root, "Originally Aired")),
+                RuntimeMinutes = ParseInteger(FieldText(root, "Runtime")),
+                Directors = People(root, "director"),
+                Writers = People(root, "writer"),
+                Actors = People(root, "actor")
+            };
+            ReadText(root, language, out string title, out _, out string overview, originalLanguage);
+            episode.Title = title;
+            episode.Overview = overview;
+
+            foreach (HtmlNode crumbs in Nodes(root, "//div[contains(concat(' ',normalize-space(@class),' '),' crumbs ')][a[contains(@href,'/seasons/absolute/')]]"))
+            {
+                Match absolute;
+
+                absolute = Regex.Match(Text(crumbs), @"\bEpisode\s+(\d+)\b");
+                if (absolute.Success)
+                    episode.AbsoluteNumber = ParseInteger(absolute.Groups[1].Value);
+            }
+
+            return episode;
+        }
+
+        /// <summary>
+        /// Legge una pagina riconoscibile senza conservare stato condiviso
+        /// </summary>
+        /// <param name="url">URL già validato</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Radice del documento HTML</returns>
+        private async Task<HtmlNode> LoadPageAsync(Uri url, CancellationToken cancellationToken)
+        {
+            HtmlDocument document;
+
+            document = new HtmlDocument();
+            document.LoadHtml(await this.RequestAsync(url, null, cancellationToken).ConfigureAwait(false));
+            if (document.DocumentNode.SelectSingleNode("//h1") == null || document.DocumentNode.SelectSingleNode("//div[@id='general']") == null)
+                throw new FormatException("HTML TVDB non riconosciuto");
+
+            return document.DocumentNode;
+        }
+
+        /// <summary>
+        /// Esegue GET o POST con timeout e due nuovi tentativi per errori transitori
+        /// </summary>
+        /// <param name="url">URL della richiesta</param>
+        /// <param name="body">JSON POST, oppure null per GET</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Contenuto testuale della risposta</returns>
+        private async Task<string> RequestAsync(Uri url, string body, CancellationToken cancellationToken)
+        {
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(TimeSpan.FromSeconds(45));
+                try
+                {
+                    MediaCatalogErrorKind kind;
+
+                    using HttpRequestMessage request = new HttpRequestMessage(body == null ? HttpMethod.Get : HttpMethod.Post, url);
+                    if (body != null)
+                        request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+
+                    using HttpResponseMessage response = await this._httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
+                    if (response.IsSuccessStatusCode)
+                        return await response.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
+
+                    if (attempt < 2 && ((int)response.StatusCode == 429 || (int)response.StatusCode >= 500 || response.StatusCode == HttpStatusCode.RequestTimeout))
+                    {
+                        TimeSpan delay;
+
+                        delay = response.Headers.RetryAfter?.Delta ?? (response.Headers.RetryAfter?.Date - DateTimeOffset.UtcNow) ?? TimeSpan.FromSeconds(attempt + 1);
+                        if (delay >= TimeSpan.Zero && delay <= TimeSpan.FromSeconds(45))
+                        {
+                            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                            continue;
+                        }
+                    }
+
+                    kind = response.StatusCode switch
+                    {
+                        HttpStatusCode.NotFound => MediaCatalogErrorKind.NotFound,
+                        HttpStatusCode.Unauthorized => MediaCatalogErrorKind.Unauthorized,
+                        _ => (int)response.StatusCode >= 500 || (int)response.StatusCode == 429 || response.StatusCode == HttpStatusCode.RequestTimeout ?
+                            MediaCatalogErrorKind.Network : MediaCatalogErrorKind.Format
+                    };
+                    throw new MediaCatalogException(kind, "TVDB: HTTP " + (int)response.StatusCode, null);
+                }
+                catch (OperationCanceledException ex)
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                        throw;
+
+                    if (attempt == 2)
+                        throw new MediaCatalogException(MediaCatalogErrorKind.Network, "Timeout TVDB", ex);
+                }
+                catch (HttpRequestException)
+                {
+                    if (attempt == 2)
+                        throw;
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(attempt + 1), cancellationToken).ConfigureAwait(false);
+            }
+
+            throw new MediaCatalogException(MediaCatalogErrorKind.Network, "TVDB non raggiungibile", null);
+        }
+
+        /// <summary>
+        /// Seleziona ogni testo nella lingua richiesta, altrimenti inglese, altrimenti originale
+        /// </summary>
+        /// <param name="root">Radice della scheda</param>
+        /// <param name="language">Lingua richiesta</param>
+        /// <param name="title">Titolo selezionato</param>
+        /// <param name="originalTitle">Titolo originale, vuoto se coincide con quello selezionato</param>
+        /// <param name="overview">Overview selezionata</param>
+        /// <param name="originalLanguage">Lingua della serie per pagine episodio che non la dichiarano</param>
+        private static void ReadText(HtmlNode root, string language, out string title, out string originalTitle, out string overview, string originalLanguage = "")
+        {
+            if (string.IsNullOrEmpty(originalLanguage))
+                originalLanguage = OriginalLanguage(root);
+
+            title = string.Empty;
+            overview = string.Empty;
+            originalTitle = Text(root.SelectSingleNode("//h1"));
+            foreach (HtmlNode translation in Nodes(root, "//div[@data-language and @data-title]"))
+            {
+                if (translation.GetAttributeValue("data-language", "") == originalLanguage)
+                    originalTitle = WebUtility.HtmlDecode(translation.GetAttributeValue("data-title", originalTitle));
+            }
+
+            foreach (string code in new string[] { language, "eng", originalLanguage }.Distinct())
+            {
+                HtmlNode translation;
+
+                if (string.IsNullOrEmpty(code))
+                    continue;
+
+                translation = root.SelectSingleNode("//div[@data-language='" + code + "' and contains(concat(' ',normalize-space(@class),' '),' change_translation_text ')]");
+                if (translation == null)
+                    continue;
+
+                if (string.IsNullOrEmpty(title))
+                    title = WebUtility.HtmlDecode(translation.GetAttributeValue("data-title", ""));
+
+                if (string.IsNullOrEmpty(overview))
+                    overview = string.Join("\n\n", Nodes(translation, ".//p").Select(Text).Where(text => !string.IsNullOrEmpty(text)));
+            }
+
+            if (string.IsNullOrEmpty(title))
+                title = originalTitle;
+
+            if (title == originalTitle)
+                originalTitle = string.Empty;
+        }
+
+        /// <summary>
+        /// Ricava il codice della lingua originale dalle opzioni di traduzione della pagina
+        /// </summary>
+        /// <param name="root">Radice della scheda</param>
+        /// <returns>Codice TVDB oppure stringa vuota</returns>
+        private static string OriginalLanguage(HtmlNode root)
+        {
+            string label;
+
+            label = FieldText(root, "Original Language");
+            foreach (HtmlNode option in Nodes(root, "//span[@data-language and @title]"))
+            {
+                if (option.GetAttributeValue("title", "").Equals(label, StringComparison.OrdinalIgnoreCase))
+                    return option.GetAttributeValue("data-language", "");
+            }
+
+            return string.Empty;
+        }
+
+        /// <summary>
+        /// Applica alla ricerca lo stesso ordine di fallback dei testi delle schede
+        /// </summary>
+        /// <param name="hit">Risultato JSON</param>
+        /// <param name="field">Mappa di titoli o overview</param>
+        /// <param name="language">Lingua richiesta</param>
+        /// <param name="originalLanguage">Lingua originale</param>
+        /// <param name="fallback">Testo originale senza codice lingua</param>
+        /// <returns>Testo selezionato oppure stringa vuota</returns>
+        private static string SearchText(JsonElement hit, string field, string language, string originalLanguage, string fallback)
+        {
+            foreach (string code in new string[] { language, "eng", originalLanguage }.Distinct())
+            {
+                string value;
+
+                value = JsonTranslation(hit, field, code);
+                if (!string.IsNullOrWhiteSpace(value))
+                    return value;
+            }
+
+            return fallback;
+        }
+
+        /// <summary>
+        /// Legge una traduzione dal JSON della ricerca web
+        /// </summary>
+        /// <param name="hit">Risultato JSON</param>
+        /// <param name="field">Mappa da leggere</param>
+        /// <param name="language">Lingua desiderata</param>
+        /// <returns>Traduzione oppure stringa vuota</returns>
+        private static string JsonTranslation(JsonElement hit, string field, string language)
+        {
+            if (hit.TryGetProperty(field, out JsonElement values) && values.ValueKind == JsonValueKind.Object)
+            {
+                string value;
+
+                value = JsonString(values, language);
+                if (!string.IsNullOrWhiteSpace(value))
+                    return value;
+            }
+
+            if (field == "overviews" && hit.TryGetProperty("overview_translated", out JsonElement overviews) && overviews.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement entry in overviews.EnumerateArray())
+                {
+                    string value;
+
+                    value = entry.GetString() ?? string.Empty;
+                    if (value.StartsWith(language + ":", StringComparison.Ordinal))
+                        return value.Substring(language.Length + 1).Trim();
+                }
+            }
+
+            return string.Empty;
+        }
+
+        /// <summary>
+        /// Estrae solo nomi di registi, sceneggiatori o attori nell'ordine dei crediti
+        /// </summary>
+        /// <param name="root">Radice della pagina</param>
+        /// <param name="type">director, writer oppure actor</param>
+        /// <returns>Nomi senza duplicati nell'ordine della pagina</returns>
+        private static List<string> People(HtmlNode root, string type)
+        {
+            List<string> names;
+
+            names = new List<string>();
+            foreach (HtmlNode name in Nodes(root, "//div[@id='people-" + type + "']//h3 | //div[@id='people-" + type + "']//tr/td[1]/a"))
+            {
+                HtmlNode copy;
+                string value;
+
+                copy = name.CloneNode(true);
+                foreach (HtmlNode role in Nodes(copy, ".//small").ToArray())
+                    role.Remove();
+
+                value = Text(copy);
+                if (!string.IsNullOrEmpty(value) && !names.Contains(value, StringComparer.Ordinal))
+                    names.Add(value);
+            }
+
+            foreach (HtmlNode row in Nodes(root, "//div[@id='castcrew']/table//tr[td]"))
+            {
+                string credit;
+                string name;
+
+                credit = Text(row.SelectSingleNode("./td[2]")).ToLowerInvariant();
+                if (credit != type && !(type == "actor" && (credit == "guest star" || credit == "cast")))
+                    continue;
+
+                name = Text(row.SelectSingleNode("./td[1]/a"));
+                if (!string.IsNullOrEmpty(name) && !names.Contains(name, StringComparer.Ordinal))
+                    names.Add(name);
+            }
+
+            return names;
+        }
+
+        /// <summary>
+        /// Valida le chiavi URL della fonte e rimuove query e frammenti
+        /// </summary>
+        /// <param name="key">URL della risorsa</param>
+        /// <param name="section">series oppure movies</param>
+        /// <param name="suffix">Percorso interno aggiuntivo ammesso</param>
+        /// <returns>URL canonico della pagina</returns>
+        private static Uri PageUrl(string key, string section, string suffix = "")
+        {
+            if (!Uri.TryCreate(key, UriKind.Absolute, out Uri url) || url.Scheme != "https" || !url.IsDefaultPort || !string.IsNullOrEmpty(url.UserInfo) ||
+                (url.Host != "thetvdb.com" && url.Host != "www.thetvdb.com") || !Regex.IsMatch(url.AbsolutePath, "^/" + section + "/[^/]+" + suffix + "/?$"))
+                throw new FormatException("Chiave TVDB non valida");
+
+            return new Uri("https://thetvdb.com" + url.AbsolutePath.TrimEnd('/'));
+        }
+
+        /// <summary>
+        /// Valida il codice ISO 639-2/T usato dall'app e dal sito TVDB
+        /// </summary>
+        /// <param name="language">Lingua dell'applicazione</param>
+        /// <returns>Codice lingua normalizzato</returns>
+        private static string ValidateLanguage(string language)
+        {
+            if (language == null || !Regex.IsMatch(language, "^[a-zA-Z]{3}$"))
+                throw new FormatException("Codice lingua ISO 639-2/T non valido");
+
+            return language.ToLowerInvariant();
+        }
+
+        /// <summary>
+        /// Legge solo i valori General richiesti dal contratto
+        /// </summary>
+        /// <param name="root">Radice della pagina</param>
+        /// <param name="name">Nome del campo</param>
+        /// <returns>Valori nell'ordine della pagina oppure sequenza vuota</returns>
+        private static IEnumerable<HtmlNode> FieldValues(HtmlNode root, string name) => Nodes(root, "//div[@id='general']//li[strong[normalize-space(.)='" + name + "']]/span");
+
+        /// <summary>
+        /// Legge un campo testuale richiesto dal contratto
+        /// </summary>
+        /// <param name="root">Radice della pagina</param>
+        /// <param name="name">Nome del campo</param>
+        /// <returns>Primo valore oppure stringa vuota</returns>
+        private static string FieldText(HtmlNode root, string name) => Text(FieldValues(root, name).FirstOrDefault());
+
+        /// <summary>
+        /// Legge il poster principale senza estrarre altre immagini
+        /// </summary>
+        /// <param name="root">Radice della pagina</param>
+        /// <returns>URL del poster oppure stringa vuota</returns>
+        private static string Poster(HtmlNode root)
+        {
+            HtmlNode image;
+
+            image = root.SelectSingleNode("//img[contains(concat(' ',normalize-space(@class),' '),' img-mobile-centered ')]");
+            return WebUtility.HtmlDecode(image?.GetAttributeValue("data-src", image.GetAttributeValue("src", "")) ?? string.Empty);
+        }
+
+        /// <summary>
+        /// Converte date complete inglesi o ISO senza inventare giorni per date parziali
+        /// </summary>
+        /// <param name="text">Testo originale</param>
+        /// <returns>Data senza ora oppure null</returns>
+        private static DateTime? ParseDate(string text) => DateTime.TryParseExact(text, new string[] { "MMMM d, yyyy", "MMMM dd, yyyy", "yyyy-MM-dd" }, CultureInfo.GetCultureInfo("en-US"), DateTimeStyles.None, out DateTime date) ? date.Date : null;
+
+        /// <summary>
+        /// Legge un numero iniziale, anche seguito dall'unità di durata
+        /// </summary>
+        /// <param name="text">Testo originale</param>
+        /// <returns>Numero intero oppure null</returns>
+        private static int? ParseInteger(string text)
+        {
+            Match match;
+
+            match = Regex.Match(text, @"^\s*(\d+)(?:\s|$)");
+            return match.Success && int.TryParse(match.Groups[1].Value, out int number) ? number : null;
+        }
+
+        /// <summary>
+        /// Converte un identificatore numerico del catalogo
+        /// </summary>
+        /// <param name="text">Testo originale</param>
+        /// <returns>Identificatore oppure null</returns>
+        private static long? ParseLong(string text) => long.TryParse(text, out long number) ? number : null;
+
+        /// <summary>
+        /// Legge proprietà JSON testuali o numeriche senza restituire null
+        /// </summary>
+        /// <param name="element">Oggetto JSON</param>
+        /// <param name="name">Nome della proprietà</param>
+        /// <returns>Valore testuale oppure stringa vuota</returns>
+        private static string JsonString(JsonElement element, string name)
+        {
+            if (!element.TryGetProperty(name, out JsonElement value))
+                return string.Empty;
+
+            return value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.ValueKind == JsonValueKind.Number ? value.ToString() : string.Empty;
+        }
+
+        /// <summary>
+        /// Valuta XPath restituendo una sequenza vuota in assenza di nodi
+        /// </summary>
+        /// <param name="root">Nodo di partenza</param>
+        /// <param name="xpath">Espressione XPath</param>
+        /// <returns>Nodi selezionati</returns>
+        private static IEnumerable<HtmlNode> Nodes(HtmlNode root, string xpath) => root.SelectNodes(xpath)?.AsEnumerable() ?? Enumerable.Empty<HtmlNode>();
+
+        /// <summary>
+        /// Decodifica entità HTML e normalizza gli spazi
+        /// </summary>
+        /// <param name="node">Nodo da leggere, anche null</param>
+        /// <returns>Testo normalizzato oppure stringa vuota</returns>
+        private static string Text(HtmlNode node) => Regex.Replace(WebUtility.HtmlDecode(node?.InnerText ?? string.Empty), @"\s+", " ").Trim();
+
+        /// <summary>
+        /// Converte ogni errore non di cancellazione nell'eccezione prevista dal contratto
+        /// </summary>
+        /// <param name="exception">Errore originale</param>
+        /// <returns>Errore classificato della fonte</returns>
+        private static MediaCatalogException CatalogError(Exception exception)
+        {
+            return exception as MediaCatalogException ?? new MediaCatalogException(exception is HttpRequestException || exception is System.IO.IOException ?
+                MediaCatalogErrorKind.Network : MediaCatalogErrorKind.Format, "TVDB: " + exception.Message, exception);
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Catalogo servito dalla fonte
+        /// </summary>
+        public MediaCatalogProvider Provider => MediaCatalogProvider.Tvdb;
+
+        #endregion
+
+    }
+}
