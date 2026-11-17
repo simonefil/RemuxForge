@@ -3,6 +3,7 @@ using RemuxForge.Core.Analysis.Edit.Extraction;
 using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
+using RemuxForge.Core.MediaCatalog;
 using RemuxForge.Core.Media;
 using RemuxForge.Core.Toolbox.SubtitleTranslation;
 using RemuxForge.Core.Tools;
@@ -177,6 +178,8 @@ namespace RemuxForge.Web
             builder.Services.AddSingleton<AiOAuthFlow>();
             builder.Services.AddSingleton<OpenAiResponsesClient>();
             builder.Services.AddSingleton<AiAuthService>();
+            builder.Services.AddSingleton(new MediaCatalogSettingsService(AppSettingsService.Instance.ConfigFolder));
+            builder.Services.AddSingleton<MediaCatalogSourceProvider>();
 
             // Il provider registrato della traduzione, che non consuma, si attiva con lo scenario indicato solo in Development
             string recordedTranslationScenario = builder.Environment.IsDevelopment() ? Environment.GetEnvironmentVariable("REMUXFORGE_RECORDED_TRANSLATION") : "";

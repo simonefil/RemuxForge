@@ -1,9 +1,9 @@
+using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -88,51 +88,10 @@ namespace RemuxForge.Core.Ai
 
             Normalize(credentials);
             string json = JsonSerializer.Serialize(credentials, CreateSerializerOptions());
-            string tempFilePath = this._filePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
 
             lock (this._fileLock)
             {
-                try
-                {
-                    string folder = Path.GetDirectoryName(this._filePath);
-                    if (!string.IsNullOrEmpty(folder))
-                        Directory.CreateDirectory(folder);
-
-                    FileStreamOptions streamOptions = new FileStreamOptions();
-                    streamOptions.Mode = FileMode.CreateNew;
-                    streamOptions.Access = FileAccess.Write;
-                    streamOptions.Share = FileShare.None;
-
-                    // Il file contiene token e API key: su macOS e Linux nasce leggibile solo dal proprietario
-                    if (!OperatingSystem.IsWindows())
-                        streamOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-
-                    using (FileStream stream = new FileStream(tempFilePath, streamOptions))
-                    using (StreamWriter writer = new StreamWriter(stream, new UTF8Encoding(false)))
-                    {
-                        writer.Write(json);
-                        writer.Flush();
-                        stream.Flush(true);
-                    }
-
-                    File.Move(tempFilePath, this._filePath, true);
-                }
-                finally
-                {
-                    try
-                    {
-                        if (File.Exists(tempFilePath))
-                            File.Delete(tempFilePath);
-                    }
-                    catch (IOException)
-                    {
-                        // La scrittura ha già propagato l'errore principale; la pulizia resta best-effort
-                    }
-                    catch (UnauthorizedAccessException)
-                    {
-                        // La scrittura ha già propagato l'errore principale; la pulizia resta best-effort
-                    }
-                }
+                PrivateFileWriter.WriteAtomic(this._filePath, json);
             }
         }
 

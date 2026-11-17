@@ -195,6 +195,16 @@ namespace RemuxForge.Web.Components.Pages
         private bool _showAiSettings;
 
         /// <summary>
+        /// Flag: mostra dialog impostazioni dei cataloghi media
+        /// </summary>
+        private bool _showMediaCatalogSettings;
+
+        /// <summary>
+        /// Flag: mostra dialog di abbinamento al catalogo media
+        /// </summary>
+        private bool _showMediaCatalogMatch;
+
+        /// <summary>
         /// Flag: mostra wizard preset Metadata con AI
         /// </summary>
         private bool _showMetadataAiWizard;
@@ -304,6 +314,8 @@ namespace RemuxForge.Web.Components.Pages
             this._showMetadataRename = false;
             this._showToolPaths = false;
             this._showAiSettings = false;
+            this._showMediaCatalogSettings = false;
+            this._showMediaCatalogMatch = false;
             this._showMetadataAiWizard = false;
             this._showAudioSettings = false;
             this._showAdvancedSettings = false;
@@ -1240,7 +1252,7 @@ namespace RemuxForge.Web.Components.Pages
         /// </summary>
         private bool IsBlockingOverlayOpen()
         {
-            return this._showConfig || this._showSplitEditor || this._showMetadataPathBrowse || this._showMetadataPreset || this._showMetadataMappedInfo || this._showMetadataManualEdit || this._showMetadataRename || this._showToolPaths || this._showAiSettings || this._showMetadataAiWizard || this._showAudioSettings || this._showAdvancedSettings || this._showDelay || this._showEditMapEditor || this._showEncodingProfiles || this._showInfo || this._showLicenses || this._showMediaInfo || this._showSplitJoin;
+            return this._showConfig || this._showSplitEditor || this._showMetadataPathBrowse || this._showMetadataPreset || this._showMetadataMappedInfo || this._showMetadataManualEdit || this._showMetadataRename || this._showToolPaths || this._showAiSettings || this._showMediaCatalogSettings || this._showMediaCatalogMatch || this._showMetadataAiWizard || this._showAudioSettings || this._showAdvancedSettings || this._showDelay || this._showEditMapEditor || this._showEncodingProfiles || this._showInfo || this._showLicenses || this._showMediaInfo || this._showSplitJoin;
         }
 
         /// <summary>
@@ -2161,6 +2173,14 @@ namespace RemuxForge.Web.Components.Pages
                     UiCommandMenuSection.Settings,
                     busy,
                     null) { AsyncCallback = this.ShowAiSettingsAsync });
+                result.Add(new UiCommandDefinition(
+                    AppText.T("web.menu.mediaCatalog"),
+                    "",
+                    "",
+                    UiCommandPlacement.Menu,
+                    UiCommandMenuSection.Settings,
+                    busy,
+                    null) { AsyncCallback = this.ShowMediaCatalogSettingsAsync });
             }
 
             result.Add(new UiCommandDefinition(
@@ -2420,6 +2440,7 @@ namespace RemuxForge.Web.Components.Pages
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.toolPaths"), "", "", UiCommandPlacement.Menu, UiCommandMenuSection.Settings, busy, null) { AsyncCallback = this.ShowToolPathsAsync });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.ai"), "", "", UiCommandPlacement.Menu, UiCommandMenuSection.Settings, busy, null) { AsyncCallback = this.ShowAiSettingsAsync });
+            commands.Add(new UiCommandDefinition(AppText.T("web.menu.mediaCatalog"), "", "", UiCommandPlacement.Menu, UiCommandMenuSection.Settings, busy, null) { AsyncCallback = this.ShowMediaCatalogSettingsAsync });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.audio"), "", "", UiCommandPlacement.Menu, UiCommandMenuSection.Settings, busy, null) { AsyncCallback = this.ShowAudioSettingsAsync });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.advancedSettings"), "", "", UiCommandPlacement.Menu, UiCommandMenuSection.Settings, busy, null) { AsyncCallback = this.ShowAdvancedSettingsAsync });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.encodingProfiles"), "", "", UiCommandPlacement.Menu, UiCommandMenuSection.Settings, busy, null) { AsyncCallback = this.ShowEncodingProfilesAsync });
@@ -2970,6 +2991,15 @@ namespace RemuxForge.Web.Components.Pages
             await this.OpenAppDialogAsync<AiSettingsDialogComponent>(open => this._showAiSettings = open, AppText.T("web.aiSettings.title"), null,
                 AppDialogs.CreateOptions(AppDialogs.WIDTH_AI_SETTINGS, null, this._jsModule));
             this.RefreshAiConfigured();
+        }
+
+        /// <summary>
+        /// Mostra dialog impostazioni dei cataloghi media
+        /// </summary>
+        private async Task ShowMediaCatalogSettingsAsync()
+        {
+            await this.OpenAppDialogAsync<MediaCatalogSettingsDialogComponent>(open => this._showMediaCatalogSettings = open, AppText.T("web.mediaCatalogSettings.title"), null,
+                AppDialogs.CreateOptions(AppDialogs.WIDTH_AI_SETTINGS, null, this._jsModule));
         }
 
         /// <summary>

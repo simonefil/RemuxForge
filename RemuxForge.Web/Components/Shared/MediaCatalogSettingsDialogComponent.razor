@@ -1,0 +1,138 @@
+@inherits AppDialogContentBase
+@using RemuxForge.Core.MediaCatalog
+@inject MediaCatalogSettingsService SettingsService
+@inject NotificationService NotificationService
+
+<div class="rf-dialog" @ref="DialogContent">
+    <div class="rf-dialog-body">
+        <div class="form-row">
+            <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogSettings.tvdbMode")" Component="MediaCatalogTvdbMode" />
+            <RadzenDropDown TValue="TvdbAccessMode" Name="MediaCatalogTvdbMode" Data="@s_modes" Value="@_settings.TvdbMode" Change="@ChangeModeAsync" Style="max-width: 20ch;">
+                <Template Context="mode">@GetModeLabel((TvdbAccessMode)mode)</Template>
+                <ValueTemplate Context="mode">@GetModeLabel((TvdbAccessMode)mode)</ValueTemplate>
+            </RadzenDropDown>
+        </div>
+        <div class="form-row" style="margin-top: 0.5em;">
+            <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogSettings.tvdbApiKey")" Component="MediaCatalogTvdbApiKey" />
+            <RadzenPassword Name="MediaCatalogTvdbApiKey" AutoCompleteType="AutoCompleteType.Off" Style="max-width: 40ch;"
+                            Placeholder="@(_settings.TvdbApiKey.Length > 0 ? AppText.T("web.mediaCatalogSettings.credentialSaved") : "")"
+                            @bind-Value="_tvdbApiKeyInput" Immediate="true" />
+            @if (_settings.TvdbApiKey.Length > 0)
+            {
+                <RadzenButton Text="@AppText.T("web.mediaCatalogSettings.remove")" Icon="delete" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => _settings.TvdbApiKey = "")" />
+            }
+        </div>
+        <div class="form-row" style="margin-top: 0.5em;">
+            <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogSettings.tmdbCredential")" Component="MediaCatalogTmdbCredential" />
+            <RadzenPassword Name="MediaCatalogTmdbCredential" AutoCompleteType="AutoCompleteType.Off" Style="max-width: 40ch;"
+                            Placeholder="@(_settings.TmdbCredential.Length > 0 ? AppText.T("web.mediaCatalogSettings.credentialSaved") : "")"
+                            @bind-Value="_tmdbCredentialInput" Immediate="true" />
+            @if (_settings.TmdbCredential.Length > 0)
+            {
+                <RadzenButton Text="@AppText.T("web.mediaCatalogSettings.remove")" Icon="delete" Size="ButtonSize.Small" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => _settings.TmdbCredential = "")" />
+            }
+        </div>
+        <div class="form-row" style="margin-top: 0.5em;">
+            <span class="form-label">@AppText.T("web.mediaCatalogSettings.defaultLanguage")</span>
+            <div style="max-width: 40ch; flex: 1;">
+                <LanguageChipsComponent Multiple="false" Label="@AppText.T("web.mediaCatalogSettings.defaultLanguage")" Value="@_settings.DefaultLanguage" ValueChanged="@(value => _settings.DefaultLanguage = value)" />
+            </div>
+        </div>
+    </div>
+    <div class="rf-dialog-footer">
+        <RadzenButton Text="@AppText.T("web.mediaCatalogSettings.save")" Icon="save" Click="@Save" />
+        <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => CloseDialog())" />
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Modalità TheTVDB selezionabili
+    /// </summary>
+    private static readonly List<TvdbAccessMode> s_modes = new List<TvdbAccessMode> { TvdbAccessMode.Api, TvdbAccessMode.Site };
+
+    /// <summary>
+    /// Impostazioni in modifica
+    /// </summary>
+    private MediaCatalogSettings _settings = new MediaCatalogSettings();
+
+    /// <summary>
+    /// Chiave TheTVDB digitata, mai precompilata con quella salvata
+    /// </summary>
+    private string _tvdbApiKeyInput = "";
+
+    /// <summary>
+    /// Credenziale TMDB digitata, mai precompilata con quella salvata
+    /// </summary>
+    private string _tmdbCredentialInput = "";
+
+    /// <summary>
+    /// Legge le impostazioni correnti
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        this._settings = this.SettingsService.Load();
+    }
+
+    /// <summary>
+    /// Etichetta della modalità TheTVDB
+    /// </summary>
+    /// <param name="mode">Modalità</param>
+    /// <returns>Etichetta localizzata</returns>
+    private static string GetModeLabel(TvdbAccessMode mode)
+    {
+        return AppText.T(mode == TvdbAccessMode.Site ? "web.mediaCatalogSettings.modeSite" : "web.mediaCatalogSettings.modeApi");
+    }
+
+    /// <summary>
+    /// Cambia la modalità TheTVDB; il sito richiede di accettare l'avviso sui termini d'uso, altrimenti resta la modalità di prima
+    /// </summary>
+    /// <param name="value">Modalità scelta</param>
+    private async Task ChangeModeAsync(object value)
+    {
+        TvdbAccessMode mode = (TvdbAccessMode)value;
+        TvdbAccessMode previous = this._settings.TvdbMode;
+
+        if (mode == previous)
+            return;
+
+        if (mode == TvdbAccessMode.Site)
+        {
+            // Il dropdown mostra subito la scelta: si torna indietro finché l'avviso non è accettato
+            this._settings.TvdbMode = previous;
+            bool accepted = await AppDialogs.ConfirmAsync(this.DialogService, AppText.T("web.mediaCatalogSettings.scrapingTitle"), AppText.T("web.mediaCatalogSettings.scrapingText"),
+                AppText.T("web.mediaCatalogSettings.scrapingAccept"), AppText.T("web.common.cancel"));
+            if (!accepted)
+            {
+                this.StateHasChanged();
+                return;
+            }
+        }
+
+        this._settings.TvdbMode = mode;
+    }
+
+    /// <summary>
+    /// Salva le impostazioni e chiude il dialog
+    /// </summary>
+    private void Save()
+    {
+        if (!string.IsNullOrWhiteSpace(this._tvdbApiKeyInput))
+            this._settings.TvdbApiKey = this._tvdbApiKeyInput;
+        if (!string.IsNullOrWhiteSpace(this._tmdbCredentialInput))
+            this._settings.TmdbCredential = this._tmdbCredentialInput;
+
+        try
+        {
+            this.SettingsService.Save(this._settings);
+        }
+        catch (Exception ex) when (ex is System.IO.IOException || ex is UnauthorizedAccessException)
+        {
+            this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.mediaCatalogSettings.saveFailed"), ex.Message, 8000);
+            return;
+        }
+
+        this.NotificationService.Notify(NotificationSeverity.Success, AppText.T("web.mediaCatalogSettings.savedToast"), "", 4000);
+        this.CloseDialog();
+    }
+}
