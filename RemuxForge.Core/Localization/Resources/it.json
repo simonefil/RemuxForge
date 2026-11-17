@@ -4211,5 +4211,6 @@
   "web.rename.method.Catalog": "Catalogo",
   "web.rename.catalogMatchLabel": "Titolo",
   "web.rename.catalogNotMatched": "Nessun abbinamento",
-  "web.rename.catalogMatch": "Abbina…"
+  "web.rename.catalogMatch": "Abbina…",
+  "web.info.tmdbNotice": "Questo prodotto usa TMDB e le API di TMDB ma non è approvato, certificato né in altro modo autorizzato da TMDB."
 }
