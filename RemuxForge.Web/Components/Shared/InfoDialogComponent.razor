@@ -1,4 +1,5 @@
 @inherits AppDialogContentBase
+@inject ThemeService ThemeService
 
 <div class="rf-dialog" @ref="DialogContent">
     <div class="rf-dialog-body">
@@ -31,8 +32,8 @@
                 <RadzenTableRow>
                     <RadzenTableCell class="info-label">@AppText.T("web.info.catalogData")</RadzenTableCell>
                     <RadzenTableCell>
-                        <div>@AppText.T("web.info.tvdbAttribution") <a href="https://thetvdb.com" target="_blank">TheTVDB</a></div>
-                        <div class="info-tmdb"><img src="tmdb-logo.svg" alt="TMDB" class="info-tmdb-logo" />This product uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.</div>
+                        <div><img src="@(ThemeService.Theme == "dark" || (ThemeService.Theme ?? "").EndsWith("-dark", StringComparison.Ordinal) ? "tvdb-logo-dark.png" : "tvdb-logo.png")" alt="TheTVDB" class="info-catalog-logo" />@AppText.T("web.info.tvdbAttribution") <a href="https://thetvdb.com" target="_blank">TheTVDB</a></div>
+                        <div class="info-tmdb"><img src="tmdb-logo.svg" alt="TMDB" class="info-catalog-logo" />This product uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.</div>
                     </RadzenTableCell>
                 </RadzenTableRow>
                 <RadzenTableRow>
@@ -62,8 +63,8 @@
     .info-table .info-tmdb {
         margin-top: 0.25em;
     }
-    .info-table .info-tmdb-logo {
-        height: 0.75em;
+    .info-table .info-catalog-logo {
+        height: 1em;
         vertical-align: baseline;
         margin-right: 0.5ch;
     }
