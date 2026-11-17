@@ -58,20 +58,6 @@
 </div>
 
 @code {
-    #region Costanti
-
-    /// <summary>
-    /// Posizione della revisione, che segue la traduzione finché non si cambia
-    /// </summary>
-    private const int REVIEW = 3;
-
-    /// <summary>
-    /// Posizione della traduzione
-    /// </summary>
-    private const int TRANSLATION = 1;
-
-    #endregion
-
     #region Variabili statiche
 
     /// <summary>
@@ -132,10 +118,6 @@
     /// </summary>
     private int _parallelFiles = TranslationProjectOptions.DEFAULT_PARALLEL_FILES;
 
-    /// <summary>
-    /// True quando la revisione ha un modello suo e non segue più la traduzione
-    /// </summary>
-    private bool _reviewChosen;
 
     /// <summary>
     /// True mentre si leggono i modelli
@@ -170,17 +152,14 @@
         TranslationProject project = this.Orchestrator.Project;
         string[] models = new string[] { project.Models.Analysis, project.Models.Translation, project.Models.NewTerms, project.Models.Review };
         string[] efforts = new string[] { project.ReasoningEfforts.Analysis, project.ReasoningEfforts.Translation, project.ReasoningEfforts.NewTerms, project.ReasoningEfforts.Review };
-        this._reviewChosen = !string.IsNullOrEmpty(project.Models.Review);
         this._parallelFiles = project.Options.MaxParallelFiles;
 
         // Le tendine partono dai valori del progetto, vuote se il passo non ha ancora un modello
         for (int i = 0; i < s_phases.Length; i++)
         {
-            // La revisione senza modello suo mostra quello della traduzione
-            int source = i == REVIEW && !this._reviewChosen ? TRANSLATION : i;
-            AiModelInfo model = this._models.Find(m => m.Id == models[source]);
-            this._selectedModels[i] = string.IsNullOrEmpty(models[source]) ? null : models[source];
-            this._selectedEfforts[i] = model == null || model.SupportedReasoningLevels.Contains(efforts[source] ?? "") ? efforts[source] : model.DefaultReasoningLevel;
+            AiModelInfo model = this._models.Find(m => m.Id == models[i]);
+            this._selectedModels[i] = string.IsNullOrEmpty(models[i]) ? null : models[i];
+            this._selectedEfforts[i] = model == null || model.SupportedReasoningLevels.Contains(efforts[i] ?? "") ? efforts[i] : model.DefaultReasoningLevel;
         }
 
         this._loading = false;
@@ -204,16 +183,6 @@
         this._selectedModels[phase] = model.Id;
         if (!model.SupportedReasoningLevels.Contains(this._selectedEfforts[phase] ?? ""))
             this._selectedEfforts[phase] = model.DefaultReasoningLevel;
-
-        if (phase == REVIEW)
-        {
-            this._reviewChosen = true;
-        }
-        else if (phase == TRANSLATION && !this._reviewChosen)
-        {
-            this._selectedModels[REVIEW] = this._selectedModels[TRANSLATION];
-            this._selectedEfforts[REVIEW] = this._selectedEfforts[TRANSLATION];
-        }
     }
 
     /// <summary>
@@ -224,34 +193,26 @@
     private void ChangeEffort(int phase, string effort)
     {
         this._selectedEfforts[phase] = effort;
-        if (phase == REVIEW)
-        {
-            this._reviewChosen = true;
-        }
-        else if (phase == TRANSLATION && !this._reviewChosen)
-        {
-            this._selectedEfforts[REVIEW] = effort;
-        }
     }
 
     /// <summary>
-    /// Salva le scelte e i file in parallelo nel progetto; la revisione che segue la traduzione resta senza modello suo
+    /// Salva le scelte e i file in parallelo nel progetto
     /// </summary>
     private void Save()
     {
         TranslationPhaseModels models = new TranslationPhaseModels
         {
             Analysis = this._selectedModels[0] ?? "",
-            Translation = this._selectedModels[TRANSLATION] ?? "",
+            Translation = this._selectedModels[1] ?? "",
             NewTerms = this._selectedModels[2] ?? "",
-            Review = this._reviewChosen ? this._selectedModels[REVIEW] : null
+            Review = this._selectedModels[3] ?? ""
         };
         TranslationPhaseModels efforts = new TranslationPhaseModels
         {
             Analysis = this._selectedEfforts[0] ?? "",
-            Translation = this._selectedEfforts[TRANSLATION] ?? "",
+            Translation = this._selectedEfforts[1] ?? "",
             NewTerms = this._selectedEfforts[2] ?? "",
-            Review = this._reviewChosen ? this._selectedEfforts[REVIEW] : null
+            Review = this._selectedEfforts[3] ?? ""
         };
 
         this.Orchestrator.SetModels(models, efforts, this._parallelFiles);

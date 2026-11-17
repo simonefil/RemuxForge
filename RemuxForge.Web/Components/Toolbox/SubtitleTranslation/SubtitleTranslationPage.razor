@@ -1674,7 +1674,7 @@
     {
         TranslationJob job = this.Orchestrator.Job;
         TranslationPhaseModels models = job != null ? job.Models : this.Orchestrator.Project.Models;
-        string model = phase == TranslationJobPhase.Applying ? models.NewTerms : phase == TranslationJobPhase.Review ? models.ResolveReview() : models.Translation;
+        string model = phase == TranslationJobPhase.Applying ? models.NewTerms : phase == TranslationJobPhase.Review ? models.Review : models.Translation;
         if (string.IsNullOrEmpty(model))
         {
             string name = phase == TranslationJobPhase.Applying ? "newTerms" : phase == TranslationJobPhase.Review ? "review" : "translation";

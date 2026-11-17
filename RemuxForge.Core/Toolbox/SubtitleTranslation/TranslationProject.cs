@@ -330,20 +330,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Analysis = "";
             this.Translation = "";
             this.NewTerms = "";
-            this.Review = null;
-        }
-
-        #endregion
-
-        #region Metodi pubblici
-
-        /// <summary>
-        /// Valore della revisione: il suo, oppure quello della traduzione finché non si cambia
-        /// </summary>
-        /// <returns>Valore della revisione</returns>
-        public string ResolveReview()
-        {
-            return this.Review ?? this.Translation;
+            this.Review = "";
         }
 
         #endregion
@@ -366,7 +353,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public string NewTerms { get; set; }
 
         /// <summary>
-        /// Revisione AI; null segue Translation
+        /// Revisione AI
         /// </summary>
         public string Review { get; set; }
 

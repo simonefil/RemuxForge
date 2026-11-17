@@ -431,7 +431,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 this._store.Save(this._project);
             }
 
-            this.AppendLog(AppText.F(TEXT_PREFIX + ".modelsChanged", models.Analysis, models.Translation, models.NewTerms, models.ResolveReview(), parallelFiles));
+            this.AppendLog(AppText.F(TEXT_PREFIX + ".modelsChanged", models.Analysis, models.Translation, models.NewTerms, models.Review, parallelFiles));
             this.NotifyRecordsChanged();
         }
 
@@ -758,14 +758,14 @@ namespace RemuxForge.Web.Services.Toolbox
                         Analysis = this._project.Models.Analysis,
                         Translation = this._project.Models.Translation,
                         NewTerms = this._project.Models.NewTerms,
-                        Review = this._project.Models.ResolveReview()
+                        Review = this._project.Models.Review
                     };
                     job.ReasoningEfforts = new TranslationPhaseModels
                     {
                         Analysis = this._project.ReasoningEfforts.Analysis,
                         Translation = this._project.ReasoningEfforts.Translation,
                         NewTerms = this._project.ReasoningEfforts.NewTerms,
-                        Review = this._project.ReasoningEfforts.ResolveReview()
+                        Review = this._project.ReasoningEfforts.Review
                     };
                     job.Glossary = TranslationJsonFile.Parse<Glossary>(TranslationJsonFile.Serialize(this._project.Glossary), this._project.Id);
                     job.GlossaryRevisionAtStart = this._project.Glossary.Revision;
