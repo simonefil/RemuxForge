@@ -1134,6 +1134,11 @@ tr.metadata-diff-removed > td {
 
 /* Finestra stretta: ogni riga va in colonna, come i pannelli affiancati delle altre dialog; i testi vanno a capo invece di essere troncati */
 @media (max-width: 760px) {
+    /* L'etichetta va su una riga sua: niente stacco dai pulsanti, parte dal bordo come le altre */
+    .metadata-preview-file-label {
+        margin-left: 0;
+    }
+
     .catalog-match-stacked .rz-grid-table > thead {
         display: none;
     }
