@@ -14,6 +14,20 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// </summary>
     public abstract class TranslationModelProviderBase : ITranslationModelProvider
     {
+        #region Eventi
+
+        /// <summary>
+        /// Cambio di stato dello stream di una chiamata, dal thread che legge la risposta
+        /// </summary>
+        public event Action<TranslationModelRequest, AiStreamProgress> CallProgress;
+
+        /// <summary>
+        /// Chiamata conclusa, riuscita, fallita o fermata
+        /// </summary>
+        public event Action<TranslationModelRequest> CallFinished;
+
+        #endregion
+
         #region Costruttore
 
         /// <summary>
@@ -34,7 +48,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// Manda una chiamata con la politica di retry del job; un parametro rifiutato dall'accesso si toglie e la chiamata si ripete
-        /// una volta
+        /// una volta. Lo stream avvisa con CallProgress e la fine della chiamata con CallFinished
         /// </summary>
         /// <param name="request">Chiamata della traduzione</param>
         /// <param name="cancellationToken">Token di annullamento</param>
@@ -44,24 +58,35 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             if (request == null)
                 throw new ArgumentNullException(nameof(request));
 
+            Action<AiStreamProgress> progress = stream => this.CallProgress?.Invoke(request, stream);
             AiResponseRequest prepared = this.Capabilities.Prepare(request);
+            prepared.Progress = progress;
             try
             {
+                try
+                {
+                    return await this.SendWithRetryAsync(request, prepared, cancellationToken);
+                }
+                catch (AiServiceException ex)
+                {
+                    if (ex.Kind != AiErrorKind.UnsupportedCapability)
+                        throw;
+
+                    string capability = this.Capabilities.ResolveRejected(ex.RejectedParameter, prepared);
+                    if (string.IsNullOrEmpty(capability))
+                        throw;
+
+                    this.Capabilities.Disable(capability);
+                }
+
+                prepared = this.Capabilities.Prepare(request);
+                prepared.Progress = progress;
                 return await this.SendWithRetryAsync(request, prepared, cancellationToken);
             }
-            catch (AiServiceException ex)
+            finally
             {
-                if (ex.Kind != AiErrorKind.UnsupportedCapability)
-                    throw;
-
-                string capability = this.Capabilities.ResolveRejected(ex.RejectedParameter, prepared);
-                if (string.IsNullOrEmpty(capability))
-                    throw;
-
-                this.Capabilities.Disable(capability);
+                this.CallFinished?.Invoke(request);
             }
-
-            return await this.SendWithRetryAsync(request, this.Capabilities.Prepare(request), cancellationToken);
         }
 
         /// <summary>

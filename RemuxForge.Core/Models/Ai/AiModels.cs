@@ -1,3 +1,4 @@
+using RemuxForge.Core.Localization;
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Nodes;
@@ -368,7 +369,10 @@ namespace RemuxForge.Core.Models
         PresetAccepted,
 
         /// <summary>Il modello ha risposto senza inviare il preset</summary>
-        MissingSubmission
+        MissingSubmission,
+
+        /// <summary>Cambio di stato della risposta in streaming del giro</summary>
+        Streaming
     }
 
     /// <summary>
@@ -387,6 +391,7 @@ namespace RemuxForge.Core.Models
             this.Round = 0;
             this.Detail = "";
             this.Errors = new List<string>();
+            this.Stream = null;
         }
 
         #endregion
@@ -412,6 +417,11 @@ namespace RemuxForge.Core.Models
         /// Errori di validazione del preset rifiutato
         /// </summary>
         public List<string> Errors { get; set; }
+
+        /// <summary>
+        /// Stato della risposta in streaming, solo per Streaming
+        /// </summary>
+        public AiStreamProgress Stream { get; set; }
 
         #endregion
     }
@@ -547,6 +557,7 @@ namespace RemuxForge.Core.Models
             this.MaxOutputTokens = null;
             this.PromptCacheKey = "";
             this.ReasoningEffort = "";
+            this.Progress = null;
         }
 
         #endregion
@@ -602,6 +613,110 @@ namespace RemuxForge.Core.Models
         /// Livello di ragionamento (reasoning.effort)
         /// </summary>
         public string ReasoningEffort { get; set; }
+
+        /// <summary>
+        /// Avviso a ogni cambio di stato dello stream, dal thread che legge la risposta; null se non serve
+        /// </summary>
+        public Action<AiStreamProgress> Progress { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Stato di una risposta in streaming, ricavato dagli eventi della Responses API
+    /// </summary>
+    public enum AiStreamStage
+    {
+        /// <summary>Richiesta inviata, nessun evento ancora arrivato</summary>
+        Sent,
+
+        /// <summary>Richiesta in coda presso il servizio (response.queued)</summary>
+        Queued,
+
+        /// <summary>Risposta creata e in lavorazione (response.created, response.in_progress)</summary>
+        Started,
+
+        /// <summary>Il modello ragiona, senza riassunto disponibile</summary>
+        Reasoning,
+
+        /// <summary>Titolo del riassunto del ragionamento; il testo è il titolo</summary>
+        ReasoningSummary,
+
+        /// <summary>Ricerca web in corso; il testo è la query, vuoto finché il servizio non la dice</summary>
+        WebSearch,
+
+        /// <summary>Ricerca web conclusa; il testo è la query, anche vuoto</summary>
+        WebSearchDone,
+
+        /// <summary>Apertura di una pagina dai risultati; il testo è l'indirizzo</summary>
+        WebPage,
+
+        /// <summary>Ricerca di un testo in una pagina; il testo è quello cercato</summary>
+        WebFind,
+
+        /// <summary>Fonte citata nella risposta; il testo è titolo o indirizzo</summary>
+        Citation,
+
+        /// <summary>Il modello scrive la risposta</summary>
+        Writing,
+
+        /// <summary>Il modello compila una chiamata di funzione; il testo è il nome della funzione</summary>
+        ToolCall,
+
+        /// <summary>Il modello rifiuta la richiesta</summary>
+        Refusal
+    }
+
+    /// <summary>
+    /// Avanzamento di una risposta in streaming
+    /// </summary>
+    public class AiStreamProgress
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        /// <param name="stage">Stato della risposta</param>
+        /// <param name="text">Testo dello stato: query, titolo, indirizzo o nome di funzione; vuoto se non ne ha</param>
+        public AiStreamProgress(AiStreamStage stage, string text)
+        {
+            this.Stage = stage;
+            this.Text = text != null ? text : "";
+        }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Descrive lo stato nella lingua dell'interfaccia
+        /// </summary>
+        /// <returns>Testo per l'utente</returns>
+        public string Describe()
+        {
+            string key = "ai.stream." + char.ToLowerInvariant(this.Stage.ToString()[0]) + this.Stage.ToString().Substring(1);
+
+            // Le ricerche hanno una forma senza query, finché il servizio non la dice
+            if (this.Text.Length == 0 && (this.Stage == AiStreamStage.WebSearch || this.Stage == AiStreamStage.WebSearchDone))
+                return AppText.T(key + "NoQuery");
+
+            return AppText.F(key, this.Text);
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Stato della risposta
+        /// </summary>
+        public AiStreamStage Stage { get; private set; }
+
+        /// <summary>
+        /// Testo dello stato, vuoto se non ne ha
+        /// </summary>
+        public string Text { get; private set; }
 
         #endregion
     }

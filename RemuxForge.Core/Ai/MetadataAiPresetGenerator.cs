@@ -90,6 +90,8 @@ namespace RemuxForge.Core.Ai
                 request.Instructions = instructions;
                 request.Input = input;
                 request.Tools = toolDefinitions;
+                if (progress != null)
+                    request.Progress = stream => progress.Report(new AiPresetGenerationStep { Kind = AiPresetGenerationStepKind.Streaming, Round = round, Stream = stream });
 
                 AiResponseResult response = await this._client.CreateResponseAsync(request, AiRetryPolicy.None, cancellationToken);
                 if (response.Status == AiResponseStatus.Incomplete)

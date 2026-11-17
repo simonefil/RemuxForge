@@ -50,6 +50,16 @@ namespace RemuxForge.Core.Ai
         /// </summary>
         private const string API_KEY_DEFAULT_REASONING_LEVEL = "medium";
 
+        /// <summary>
+        /// Parametro del riassunto del ragionamento, come lo indica il servizio quando lo rifiuta
+        /// </summary>
+        private const string REASONING_SUMMARY_PARAMETER = "reasoning.summary";
+
+        /// <summary>
+        /// Riassunto del ragionamento chiesto: il dettaglio lo sceglie il modello
+        /// </summary>
+        private const string REASONING_SUMMARY_MODE = "auto";
+
         #endregion
 
         #region Variabili di classe
@@ -74,6 +84,11 @@ namespace RemuxForge.Core.Ai
         /// </summary>
         private readonly SemaphoreSlim _refreshLock;
 
+        /// <summary>
+        /// True dopo che il servizio ha rifiutato il riassunto del ragionamento: per il resto della sessione non si chiede più
+        /// </summary>
+        private volatile bool _reasoningSummaryRejected;
+
         #endregion
 
         #region Costruttore
@@ -90,6 +105,7 @@ namespace RemuxForge.Core.Ai
             this._httpClient = new HttpClient();
             this._httpClient.Timeout = TimeSpan.FromMinutes(10);
             this._refreshLock = new SemaphoreSlim(1, 1);
+            this._reasoningSummaryRejected = false;
         }
 
         #endregion
@@ -206,7 +222,8 @@ namespace RemuxForge.Core.Ai
         #region Metodi privati
 
         /// <summary>
-        /// Esegue un tentativo di trasporto di una richiesta Responses
+        /// Esegue un tentativo di trasporto di una richiesta Responses. Il riassunto del ragionamento serve solo all'avanzamento:
+        /// se il servizio lo rifiuta (organizzazione non verificata) la richiesta riparte subito senza, e non si chiede più
         /// </summary>
         /// <param name="request">Richiesta</param>
         /// <param name="cancellationToken">Token di annullamento</param>
@@ -215,11 +232,17 @@ namespace RemuxForge.Core.Ai
         {
             AiCredentials credentials = await this.GetAuthorizedCredentialsAsync(cancellationToken);
             bool apiKey = credentials.Mode == AiConnectionMode.ApiKey;
+            bool summary = !string.IsNullOrEmpty(request.ReasoningEffort) && !this._reasoningSummaryRejected;
             JsonObject body = new JsonObject();
 
             body["model"] = request.Model;
             if (!string.IsNullOrEmpty(request.ReasoningEffort))
-                body["reasoning"] = new JsonObject { ["effort"] = request.ReasoningEffort };
+            {
+                JsonObject reasoning = new JsonObject { ["effort"] = request.ReasoningEffort };
+                if (summary)
+                    reasoning["summary"] = REASONING_SUMMARY_MODE;
+                body["reasoning"] = reasoning;
+            }
             body["instructions"] = request.Instructions;
             body["input"] = request.Input.DeepClone();
             if (request.Tools != null && request.Tools.Count > 0)
@@ -248,6 +271,8 @@ namespace RemuxForge.Core.Ai
                 if (!string.IsNullOrEmpty(request.SessionId))
                     message.Headers.TryAddWithoutValidation("session_id", request.SessionId);
                 message.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
+                if (request.Progress != null)
+                    request.Progress(new AiStreamProgress(AiStreamStage.Sent, ""));
 
                 try
                 {
@@ -270,11 +295,15 @@ namespace RemuxForge.Core.Ai
                         using (Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken))
                         using (StreamReader reader = new StreamReader(stream, Encoding.UTF8))
                         {
-                            AiResponseResult result = await ReadStreamAsync(reader, credentials.Mode, cancellationToken);
+                            AiResponseResult result = await ReadStreamAsync(reader, credentials.Mode, request.Progress, cancellationToken);
                             result.HttpStatus = (int)response.StatusCode;
                             return result;
                         }
                     }
+                }
+                catch (AiServiceException ex) when (summary && ex.HttpStatus == 400 && string.Equals(ex.RejectedParameter, REASONING_SUMMARY_PARAMETER, StringComparison.OrdinalIgnoreCase))
+                {
+                    this._reasoningSummaryRejected = true;
                 }
                 catch (HttpRequestException ex)
                 {
@@ -285,6 +314,8 @@ namespace RemuxForge.Core.Ai
                     throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
                 }
             }
+
+            return await this.SendResponseRequestAsync(request, cancellationToken);
         }
 
         /// <summary>
@@ -335,16 +366,24 @@ namespace RemuxForge.Core.Ai
         }
 
         /// <summary>
-        /// Legge lo stream SSE della Responses API fino all'evento finale
+        /// Legge lo stream SSE della Responses API fino all'evento finale e avvisa dei cambi di stato: coda, ragionamento col titolo
+        /// del riassunto, ricerche web, fonti citate, scrittura della risposta o di una chiamata di funzione, rifiuto. I delta di
+        /// testo non avvisano: conta solo l'inizio di ogni item
         /// </summary>
         /// <param name="reader">Lettore dello stream</param>
         /// <param name="mode">Modalità di accesso, per la mappatura degli errori</param>
+        /// <param name="progress">Avviso dei cambi di stato, null se non serve</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Item di output, consumo ed esito</returns>
-        private static async Task<AiResponseResult> ReadStreamAsync(StreamReader reader, AiConnectionMode mode, CancellationToken cancellationToken)
+        private static async Task<AiResponseResult> ReadStreamAsync(StreamReader reader, AiConnectionMode mode, Action<AiStreamProgress> progress, CancellationToken cancellationToken)
         {
             List<JsonObject> doneItems = new List<JsonObject>();
             string createdCacheKey = "";
+            StringBuilder summary = new StringBuilder();
+            bool summaryReported = false;
+            bool refusalReported = false;
+            string searchItemId = "";
+            string searchQuery = "";
             string line;
 
             while ((line = await reader.ReadLineAsync(cancellationToken)) != null)
@@ -362,12 +401,107 @@ namespace RemuxForge.Core.Ai
                 if (type == "response.created")
                 {
                     createdCacheKey = AiOAuthFlow.GetString(streamEvent["response"] as JsonObject, "prompt_cache_key");
+                    Report(progress, AiStreamStage.Started, "");
+                }
+                else if (type == "response.queued")
+                {
+                    Report(progress, AiStreamStage.Queued, "");
+                }
+                else if (type == "response.in_progress")
+                {
+                    Report(progress, AiStreamStage.Started, "");
+                }
+                else if (type == "response.output_item.added")
+                {
+                    JsonObject item = streamEvent["item"] as JsonObject;
+                    string itemType = item != null ? AiOAuthFlow.GetString(item, "type") : "";
+                    if (itemType == "reasoning")
+                    {
+                        Report(progress, AiStreamStage.Reasoning, "");
+                    }
+                    else if (itemType == "web_search_call")
+                    {
+                        searchItemId = AiOAuthFlow.GetString(item, "id");
+                        searchQuery = GetSearchQuery(item);
+                        Report(progress, AiStreamStage.WebSearch, searchQuery);
+                    }
+                    else if (itemType == "message")
+                    {
+                        refusalReported = false;
+                        Report(progress, AiStreamStage.Writing, "");
+                    }
+                    else if (itemType == "function_call")
+                    {
+                        Report(progress, AiStreamStage.ToolCall, AiOAuthFlow.GetString(item, "name"));
+                    }
+                }
+                else if (type == "response.web_search_call.in_progress" || type == "response.web_search_call.searching")
+                {
+                    Report(progress, AiStreamStage.WebSearch, AiOAuthFlow.GetString(streamEvent, "item_id") == searchItemId ? searchQuery : "");
+                }
+                else if (type == "response.reasoning_summary_part.added")
+                {
+                    summary.Clear();
+                    summaryReported = false;
+                }
+                else if (type == "response.reasoning_summary_text.delta" || type == "response.reasoning_summary_text.done")
+                {
+                    if (summaryReported)
+                        continue;
+
+                    // Il riassunto apre di solito con un titolo in grassetto: si mostra appena il titolo è chiuso, altrimenti la prima
+                    // riga appena è completa, o tutto il testo a fine parte
+                    bool done = type == "response.reasoning_summary_text.done";
+                    if (done)
+                        summary.Clear().Append(AiOAuthFlow.GetString(streamEvent, "text"));
+                    else
+                        summary.Append(AiOAuthFlow.GetString(streamEvent, "delta"));
+
+                    string text = summary.ToString().TrimStart();
+                    int end = text.StartsWith("**", StringComparison.Ordinal) ? text.IndexOf("**", 2, StringComparison.Ordinal) : text.IndexOf('\n');
+                    string heading = end >= 0 ? text.Substring(0, end) : done ? text : "";
+                    heading = heading.Replace("**", "").Trim();
+                    if (heading.Length > 0)
+                    {
+                        summaryReported = true;
+                        Report(progress, AiStreamStage.ReasoningSummary, heading);
+                    }
+                }
+                else if (type == "response.output_text.annotation.added")
+                {
+                    JsonObject annotation = streamEvent["annotation"] as JsonObject;
+                    if (annotation != null && AiOAuthFlow.GetString(annotation, "type") == "url_citation")
+                    {
+                        string title = AiOAuthFlow.GetString(annotation, "title");
+                        Report(progress, AiStreamStage.Citation, string.IsNullOrEmpty(title) ? AiOAuthFlow.GetString(annotation, "url") : title);
+                    }
+                }
+                else if (type == "response.refusal.delta")
+                {
+                    if (!refusalReported)
+                    {
+                        refusalReported = true;
+                        Report(progress, AiStreamStage.Refusal, "");
+                    }
                 }
                 else if (type == "response.output_item.done")
                 {
                     JsonObject item = streamEvent["item"] as JsonObject;
                     if (item != null)
                         doneItems.Add((JsonObject)item.DeepClone());
+
+                    // L'azione della ricerca, con query o pagina, arriva completa solo nell'item finito
+                    if (item != null && AiOAuthFlow.GetString(item, "type") == "web_search_call")
+                    {
+                        JsonObject action = item["action"] as JsonObject;
+                        string actionType = action != null ? AiOAuthFlow.GetString(action, "type") : "";
+                        if (actionType == "open_page")
+                            Report(progress, AiStreamStage.WebPage, AiOAuthFlow.GetString(action, "url"));
+                        else if (actionType == "find_in_page")
+                            Report(progress, AiStreamStage.WebFind, AiOAuthFlow.GetString(action, "pattern"));
+                        else
+                            Report(progress, AiStreamStage.WebSearchDone, GetSearchQuery(item));
+                    }
                 }
                 else if (type == "response.completed" || type == "response.incomplete")
                 {
@@ -519,6 +653,46 @@ namespace RemuxForge.Core.Ai
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Avvisa di un cambio di stato dello stream
+        /// </summary>
+        /// <param name="progress">Destinatario, null se non serve</param>
+        /// <param name="stage">Stato</param>
+        /// <param name="text">Testo dello stato, vuoto se non ne ha</param>
+        private static void Report(Action<AiStreamProgress> progress, AiStreamStage stage, string text)
+        {
+            if (progress != null)
+                progress(new AiStreamProgress(stage, text));
+        }
+
+        /// <summary>
+        /// Legge la query di un item web_search_call: action.query, altrimenti le action.queries unite
+        /// </summary>
+        /// <param name="item">Item della ricerca</param>
+        /// <returns>Query, vuota se il servizio non la dice</returns>
+        private static string GetSearchQuery(JsonObject item)
+        {
+            JsonObject action = item["action"] as JsonObject;
+            if (action == null)
+                return "";
+
+            string query = AiOAuthFlow.GetString(action, "query");
+            JsonArray queries = action["queries"] as JsonArray;
+            if (!string.IsNullOrEmpty(query) || queries == null)
+                return query;
+
+            List<string> parts = new List<string>();
+            for (int i = 0; i < queries.Count; i++)
+            {
+                JsonValue value = queries[i] as JsonValue;
+                string part;
+                if (value != null && value.TryGetValue<string>(out part) && !string.IsNullOrEmpty(part))
+                    parts.Add(part);
+            }
+
+            return string.Join(" · ", parts);
         }
 
         /// <summary>

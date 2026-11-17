@@ -105,6 +105,16 @@ namespace RemuxForge.Web.Services.Toolbox
         private string _detail;
 
         /// <summary>
+        /// Chiamate al modello in corso, anche più di una coi file in parallelo
+        /// </summary>
+        private readonly Dictionary<TranslationModelRequest, LiveCall> _liveCalls;
+
+        /// <summary>
+        /// Chiamata in corso con l'evento più recente, null senza chiamate
+        /// </summary>
+        private LiveCall _liveLatest;
+
+        /// <summary>
         /// Ultima stima dell'analisi, valida finché il progetto non cambia
         /// </summary>
         private TranslationAnalysisEstimate _estimate;
@@ -170,6 +180,8 @@ namespace RemuxForge.Web.Services.Toolbox
             this._project = null;
             this._phrase = "";
             this._detail = "";
+            this._liveCalls = new Dictionary<TranslationModelRequest, LiveCall>();
+            this._liveLatest = null;
             this._estimate = null;
             this._estimateKey = "";
             this._translationEstimate = null;
@@ -1538,6 +1550,8 @@ namespace RemuxForge.Web.Services.Toolbox
 
                 CancellationToken cancellation = this.OperationCancellationToken;
                 provider = this._providerFactory.Create(analysis.WebSearchRejected ? new string[] { TranslationProviderCapabilities.WEB_SEARCH } : null);
+                provider.CallProgress += this.HandleCallProgress;
+                provider.CallFinished += this.HandleCallFinished;
                 webSearch = provider.Capabilities.WebSearch;
 
                 GlossaryBuilder builder = new GlossaryBuilder(project.SourceLanguage, project.TargetLanguage);
@@ -1717,6 +1731,8 @@ namespace RemuxForge.Web.Services.Toolbox
 
                 // Un solo provider per tutti i file e tutte le fasi: la pausa dei 429 vale per tutti
                 provider = this._providerFactory.Create(job.DisabledCapabilities);
+                provider.CallProgress += this.HandleCallProgress;
+                provider.CallFinished += this.HandleCallFinished;
                 while (stop == null)
                 {
                     if (phase == TranslationJobPhase.Translation)
@@ -2025,6 +2041,59 @@ namespace RemuxForge.Web.Services.Toolbox
             }
 
             return plan;
+        }
+
+        /// <summary>
+        /// Evento dello stream di una chiamata: la chiamata diventa quella mostrata nell'attesa, e la pagina si aggiorna solo se il
+        /// testo cambia
+        /// </summary>
+        /// <param name="request">Chiamata della traduzione</param>
+        /// <param name="stream">Stato dello stream</param>
+        private void HandleCallProgress(TranslationModelRequest request, AiStreamProgress stream)
+        {
+            string text = stream.Describe();
+            bool changed;
+            lock (this.StateLock)
+            {
+                LiveCall call;
+                if (!this._liveCalls.TryGetValue(request, out call))
+                {
+                    TranslationProjectFile file = this._project != null ? this._project.Files.Find(f => f.Id == request.FileId) : null;
+                    call = new LiveCall(file != null ? Path.GetFileName(file.Path) : "", request.Request.Model);
+                    this._liveCalls[request] = call;
+                }
+
+                changed = !ReferenceEquals(this._liveLatest, call) || !string.Equals(call.Text, text, StringComparison.Ordinal);
+                call.Text = text;
+                call.UpdatedAt = DateTime.UtcNow;
+                this._liveLatest = call;
+            }
+
+            if (changed)
+                this.NotifyProgressChanged();
+        }
+
+        /// <summary>
+        /// Fine di una chiamata: se era quella mostrata, l'attesa passa alla chiamata in corso con l'evento più recente
+        /// </summary>
+        /// <param name="request">Chiamata della traduzione</param>
+        private void HandleCallFinished(TranslationModelRequest request)
+        {
+            lock (this.StateLock)
+            {
+                LiveCall call;
+                if (!this._liveCalls.Remove(request, out call) || !ReferenceEquals(this._liveLatest, call))
+                    return;
+
+                this._liveLatest = null;
+                foreach (LiveCall running in this._liveCalls.Values)
+                {
+                    if (this._liveLatest == null || running.UpdatedAt > this._liveLatest.UpdatedAt)
+                        this._liveLatest = running;
+                }
+            }
+
+            this.NotifyProgressChanged();
         }
 
         /// <summary>
@@ -2450,7 +2519,8 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Riga secondaria dell'attesa durante l'analisi
+        /// Riga secondaria dell'attesa: con una chiamata in corso il suo ultimo evento e il modello, preceduti dal file quando le
+        /// chiamate in corso sono più di una
         /// </summary>
         public string Detail
         {
@@ -2458,7 +2528,25 @@ namespace RemuxForge.Web.Services.Toolbox
             {
                 lock (this.StateLock)
                 {
-                    return this._detail;
+                    if (this._liveLatest == null)
+                        return this._detail;
+
+                    string file = this._liveCalls.Count > 1 && this._liveLatest.FileName.Length > 0 ? this._liveLatest.FileName + ": " : "";
+                    return file + this._liveLatest.Text + " · " + this._liveLatest.Model;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Inizio della chiamata mostrata nell'attesa, in UTC; null senza chiamate in corso
+        /// </summary>
+        public DateTime? CallStartedAt
+        {
+            get
+            {
+                lock (this.StateLock)
+                {
+                    return this._liveLatest != null ? this._liveLatest.StartedAt : null;
                 }
             }
         }
@@ -2466,6 +2554,51 @@ namespace RemuxForge.Web.Services.Toolbox
         #endregion
 
         #region Classi annidate
+
+        /// <summary>
+        /// Chiamata al modello in corso, per la riga secondaria dell'attesa
+        /// </summary>
+        private sealed class LiveCall
+        {
+            /// <summary>
+            /// Costruttore
+            /// </summary>
+            /// <param name="fileName">Nome del file, vuoto per le chiamate su più file</param>
+            /// <param name="model">Modello</param>
+            public LiveCall(string fileName, string model)
+            {
+                this.FileName = fileName;
+                this.Model = model;
+                this.StartedAt = DateTime.UtcNow;
+                this.UpdatedAt = this.StartedAt;
+                this.Text = "";
+            }
+
+            /// <summary>
+            /// Nome del file, vuoto per le chiamate su più file
+            /// </summary>
+            public string FileName { get; }
+
+            /// <summary>
+            /// Modello
+            /// </summary>
+            public string Model { get; }
+
+            /// <summary>
+            /// Inizio della chiamata, in UTC
+            /// </summary>
+            public DateTime StartedAt { get; }
+
+            /// <summary>
+            /// Ultimo evento, in UTC
+            /// </summary>
+            public DateTime UpdatedAt { get; set; }
+
+            /// <summary>
+            /// Ultimo evento nella lingua dell'interfaccia
+            /// </summary>
+            public string Text { get; set; }
+        }
 
         /// <summary>
         /// Chiamate A1 di un'analisi: per ogni unità i file, il messaggio e le battute mandate

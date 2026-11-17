@@ -4213,5 +4213,20 @@
   "web.info.tmdbNotice": "This product uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.",
   "web.mediaCatalogMatch.yearLabel": "Year:",
   "web.mediaCatalogMatch.fileLabel": "File:",
-  "web.mediaCatalogMatch.languageLabel": "Language:"
+  "web.mediaCatalogMatch.languageLabel": "Language:",
+  "ai.stream.sent": "Request sent, waiting for the model",
+  "ai.stream.queued": "Queued at OpenAI",
+  "ai.stream.started": "The model has picked up the request",
+  "ai.stream.reasoning": "The model is reasoning",
+  "ai.stream.reasoningSummary": "Reasoning: {0}",
+  "ai.stream.webSearch": "Searching the web: “{0}”",
+  "ai.stream.webSearchNoQuery": "Searching the web",
+  "ai.stream.webSearchDone": "Searched the web: “{0}”",
+  "ai.stream.webSearchDoneNoQuery": "Web search completed",
+  "ai.stream.webPage": "Reading the page {0}",
+  "ai.stream.webFind": "Looking for “{0}” in the page",
+  "ai.stream.citation": "Citing source: {0}",
+  "ai.stream.writing": "Writing the answer",
+  "ai.stream.toolCall": "Writing the {0} call",
+  "ai.stream.refusal": "The model is refusing the request"
 }

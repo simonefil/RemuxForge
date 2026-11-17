@@ -601,7 +601,7 @@
             }
             else if (busy && job != null && job.Phase == TranslationJobPhase.Review)
             {
-                <div class="rf-translation-thinking"><AiThinkingComponent Phrase="@Orchestrator.Phrase" Detail="@Orchestrator.Detail" /></div>
+                <div class="rf-translation-thinking"><AiThinkingComponent Phrase="@Orchestrator.Phrase" Detail="@Orchestrator.Detail" StartedAt="@Orchestrator.CallStartedAt" /></div>
             }
             else if (job != null && job.Phase == TranslationJobPhase.Review)
             {
@@ -696,7 +696,7 @@
             bool glossaryLocked = Orchestrator.Job != null;
             @if (busy && !glossaryLocked)
             {
-                <div class="rf-translation-thinking"><AiThinkingComponent Phrase="@Orchestrator.Phrase" Detail="@Orchestrator.Detail" /></div>
+                <div class="rf-translation-thinking"><AiThinkingComponent Phrase="@Orchestrator.Phrase" Detail="@Orchestrator.Detail" StartedAt="@Orchestrator.CallStartedAt" /></div>
             }
             else if (project.Glossary != null && project.Analysis != null && project.Analysis.Status == TranslationAnalysisStatus.Completed)
             {

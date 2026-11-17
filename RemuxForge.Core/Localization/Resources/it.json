@@ -4213,5 +4213,20 @@
   "web.info.tmdbNotice": "Questo prodotto usa TMDB e le API di TMDB ma non è approvato, certificato né in altro modo autorizzato da TMDB.",
   "web.mediaCatalogMatch.yearLabel": "Anno:",
   "web.mediaCatalogMatch.fileLabel": "File:",
-  "web.mediaCatalogMatch.languageLabel": "Lingua:"
+  "web.mediaCatalogMatch.languageLabel": "Lingua:",
+  "ai.stream.sent": "Richiesta inviata, in attesa del modello",
+  "ai.stream.queued": "In coda presso OpenAI",
+  "ai.stream.started": "Il modello ha preso in carico la richiesta",
+  "ai.stream.reasoning": "Il modello ragiona",
+  "ai.stream.reasoningSummary": "Ragiona: {0}",
+  "ai.stream.webSearch": "Cerca sul web: «{0}»",
+  "ai.stream.webSearchNoQuery": "Cerca sul web",
+  "ai.stream.webSearchDone": "Ha cercato sul web: «{0}»",
+  "ai.stream.webSearchDoneNoQuery": "Ricerca web completata",
+  "ai.stream.webPage": "Legge la pagina {0}",
+  "ai.stream.webFind": "Cerca «{0}» nella pagina",
+  "ai.stream.citation": "Cita la fonte: {0}",
+  "ai.stream.writing": "Scrive la risposta",
+  "ai.stream.toolCall": "Scrive la chiamata {0}",
+  "ai.stream.refusal": "Il modello sta rifiutando la richiesta"
 }

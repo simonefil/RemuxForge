@@ -1,4 +1,5 @@
 using RemuxForge.Core.Models;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,6 +12,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// </summary>
     public interface ITranslationModelProvider
     {
+        /// <summary>
+        /// Cambio di stato dello stream di una chiamata, dal thread che legge la risposta
+        /// </summary>
+        event Action<TranslationModelRequest, AiStreamProgress> CallProgress;
+
+        /// <summary>
+        /// Chiamata conclusa, riuscita, fallita o fermata
+        /// </summary>
+        event Action<TranslationModelRequest> CallFinished;
+
         /// <summary>
         /// Manda una chiamata con la politica di retry del job; un parametro rifiutato dall'accesso si toglie e la chiamata si ripete
         /// una volta

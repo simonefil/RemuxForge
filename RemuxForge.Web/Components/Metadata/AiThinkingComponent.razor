@@ -1,4 +1,5 @@
 @implements IDisposable
+@using System.Globalization
 @using System.Threading.Tasks
 
 @* Attesa animata dell'AI: nucleo luminoso con anelli e orbite nei colori del tema Radzen, frase in corsivo sul passo in corso *@
@@ -15,9 +16,11 @@
     <div class="ai-thinking-text" role="status" aria-live="polite">
         @* La chiave ricrea l'elemento a ogni frase nuova, così l'animazione di ingresso riparte *@
         <div @key="_shownPhrase" class="ai-thinking-phrase">@_shownPhrase</div>
-        @if (!string.IsNullOrEmpty(Detail))
+        @if (!string.IsNullOrEmpty(_shownDetail))
         {
-            <div class="ai-thinking-detail">@Detail</div>
+            TimeSpan elapsed = StartedAt.HasValue && DateTime.UtcNow > StartedAt.Value ? DateTime.UtcNow - StartedAt.Value : TimeSpan.Zero;
+            @* Il tempo trascorso cambia ogni secondo: fuori dalla regione annunciata *@
+            <div class="ai-thinking-detail">@_shownDetail<span aria-hidden="true">@(StartedAt.HasValue ? " · " + (int)elapsed.TotalMinutes + ":" + elapsed.Seconds.ToString("00", CultureInfo.InvariantCulture) : "")</span></div>
         }
     </div>
 </div>
@@ -29,14 +32,29 @@
     private const int MIN_PHRASE_MS = 2500;
 
     /// <summary>
+    /// Tempo minimo di permanenza della riga secondaria: gli eventi dello stream possono cambiarla più volte al secondo
+    /// </summary>
+    private const int MIN_DETAIL_MS = 1500;
+
+    /// <summary>
+    /// Intervallo di aggiornamento del tempo trascorso
+    /// </summary>
+    private const int TICK_MS = 1000;
+
+    /// <summary>
     /// Frase su cosa sta facendo l'AI
     /// </summary>
     [Parameter] public string Phrase { get; set; } = "";
 
     /// <summary>
-    /// Riga secondaria, per esempio il contatore dei file letti
+    /// Riga secondaria, per esempio il contatore dei file letti o l'ultimo evento della chiamata in corso
     /// </summary>
     [Parameter] public string Detail { get; set; } = "";
+
+    /// <summary>
+    /// Inizio della chiamata in corso, in UTC: la riga secondaria mostra il tempo trascorso; null senza chiamata
+    /// </summary>
+    [Parameter] public DateTime? StartedAt { get; set; }
 
     /// <summary>
     /// Frase visibile
@@ -64,15 +82,54 @@
     private bool _advancing;
 
     /// <summary>
+    /// Riga secondaria visibile
+    /// </summary>
+    private string _shownDetail = "";
+
+    /// <summary>
+    /// Riga secondaria in attesa del tempo minimo di quella visibile, null se nessuna
+    /// </summary>
+    private string _pendingDetail;
+
+    /// <summary>
+    /// Istante in cui è comparsa la riga secondaria visibile
+    /// </summary>
+    private DateTime _detailShownAt = DateTime.MinValue;
+
+    /// <summary>
+    /// True mentre il ciclo del tempo trascorso è attivo
+    /// </summary>
+    private bool _ticking;
+
+    /// <summary>
     /// True dopo il dispose
     /// </summary>
     private bool _disposed;
 
     /// <summary>
-    /// Accoda la frase nuova; la prima compare subito
+    /// Accoda la frase nuova, la prima compare subito; la riga secondaria nuova sostituisce quella in attesa e compare quando
+    /// quella visibile ha avuto il suo tempo minimo
     /// </summary>
     protected override void OnParametersSet()
     {
+        string detail = Detail ?? "";
+        if (!string.Equals(detail, _pendingDetail ?? _shownDetail, StringComparison.Ordinal))
+        {
+            if ((DateTime.UtcNow - _detailShownAt).TotalMilliseconds >= MIN_DETAIL_MS)
+            {
+                _shownDetail = detail;
+                _pendingDetail = null;
+                _detailShownAt = DateTime.UtcNow;
+            }
+            else
+            {
+                _pendingDetail = detail;
+            }
+        }
+
+        if ((StartedAt.HasValue || _pendingDetail != null) && !_ticking)
+            _ = TickAsync();
+
         if (string.Equals(Phrase, _lastPhrase, StringComparison.Ordinal))
             return;
 
@@ -111,6 +168,35 @@
         finally
         {
             _advancing = false;
+        }
+    }
+
+    /// <summary>
+    /// Aggiorna ogni secondo il tempo trascorso e mostra la riga secondaria in attesa quando tocca a lei
+    /// </summary>
+    private async Task TickAsync()
+    {
+        _ticking = true;
+        try
+        {
+            while ((StartedAt.HasValue || _pendingDetail != null) && !_disposed)
+            {
+                await Task.Delay(TICK_MS);
+                if (_disposed)
+                    return;
+
+                if (_pendingDetail != null && (DateTime.UtcNow - _detailShownAt).TotalMilliseconds >= MIN_DETAIL_MS)
+                {
+                    _shownDetail = _pendingDetail;
+                    _pendingDetail = null;
+                    _detailShownAt = DateTime.UtcNow;
+                }
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        finally
+        {
+            _ticking = false;
         }
     }
 

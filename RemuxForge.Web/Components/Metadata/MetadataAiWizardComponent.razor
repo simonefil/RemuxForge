@@ -42,7 +42,7 @@
             {
                 @if (_generationRunning)
                 {
-                    <AiThinkingComponent Phrase="@_phrase" Detail="@AppText.T("web.metadata.ai.cancelHint")" />
+                    <AiThinkingComponent Phrase="@_phrase" Detail="@(_streamDetail.Length > 0 ? _streamDetail : AppText.T("web.metadata.ai.cancelHint"))" StartedAt="@_callStartedAt" />
                 }
                 else
                 {
@@ -238,6 +238,16 @@
     /// Frase mostrata durante la generazione, scelta in base all'ultimo passo del modello
     /// </summary>
     private string _phrase = "";
+
+    /// <summary>
+    /// Ultimo evento della chiamata in corso col modello, vuoto fra una chiamata e l'altra
+    /// </summary>
+    private string _streamDetail = "";
+
+    /// <summary>
+    /// Inizio della chiamata in corso, in UTC; null fra una chiamata e l'altra
+    /// </summary>
+    private DateTime? _callStartedAt;
 
     /// <summary>
     /// Annulla la generazione in corso
@@ -614,6 +624,8 @@
         AiCredentials credentials = this.LoadCredentials();
 
         this._phrase = AppText.T("web.metadata.ai.phraseThinking");
+        this._streamDetail = "";
+        this._callStartedAt = null;
         this._result = null;
         this._generationCancellation = cancellation;
         this._generationRunning = true;
@@ -724,12 +736,28 @@
     }
 
     /// <summary>
-    /// Traduce un passo del generatore in una riga di log
+    /// Traduce un passo del generatore in una riga di log; i cambi di stato dello stream aggiornano solo l'attesa
     /// </summary>
     /// <param name="step">Passo notificato</param>
     private void AppendStep(AiPresetGenerationStep step)
     {
+        // Lo stream aggiorna solo l'attesa, e la ridisegna solo se il testo cambia
+        if (step.Kind == AiPresetGenerationStepKind.Streaming)
+        {
+            string detail = step.Stream.Describe() + " · " + this._credentials.Model;
+            if (step.Stream.Stage == AiStreamStage.Sent)
+                this._callStartedAt = DateTime.UtcNow;
+            if (detail == this._streamDetail)
+                return;
+
+            this._streamDetail = detail;
+            _ = this.InvokeAsync(this.StateHasChanged);
+            return;
+        }
+
         List<string> lines = new List<string>();
+        this._streamDetail = "";
+        this._callStartedAt = null;
 
         if (step.Kind == AiPresetGenerationStepKind.RequestSent)
         {
