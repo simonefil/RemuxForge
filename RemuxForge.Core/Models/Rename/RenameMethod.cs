@@ -1,4 +1,6 @@
 using RemuxForge.Core.Localization;
+using System;
+using System.Collections.Generic;
 
 namespace RemuxForge.Core.Models
 {
@@ -7,6 +9,20 @@ namespace RemuxForge.Core.Models
     /// </summary>
     public class RenameMethod
     {
+        #region Costanti
+
+        /// <summary>
+        /// Pattern di default del metodo Catalogo per le serie
+        /// </summary>
+        public const string CATALOG_SERIES_PATTERN = "<Series> - S<Season:2>E<Episode:2> - <Title>.<Ext>";
+
+        /// <summary>
+        /// Pattern di default del metodo Catalogo per i film
+        /// </summary>
+        public const string CATALOG_MOVIE_PATTERN = "<Title> (<Year>).<Ext>";
+
+        #endregion
+
         #region Costruttore
 
         /// <summary>
@@ -35,6 +51,9 @@ namespace RemuxForge.Core.Models
             this.TrimCharacters = " ";
             this.TrimLocation = 2;
             this.TrimScope = 0;
+            this.CatalogPattern = CATALOG_SERIES_PATTERN;
+            this.CatalogTitle = "";
+            this.CatalogValues = new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
         }
 
         #endregion
@@ -146,6 +165,21 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public int TrimScope { get; set; }
 
+        /// <summary>
+        /// Pattern del metodo Catalogo con i segnaposto di catalogo e i tag di New Name
+        /// </summary>
+        public string CatalogPattern { get; set; }
+
+        /// <summary>
+        /// Titolo abbinato nel metodo Catalogo, per la descrizione
+        /// </summary>
+        public string CatalogTitle { get; set; }
+
+        /// <summary>
+        /// Valori dei segnaposto di catalogo per percorso completo del file abbinato
+        /// </summary>
+        public Dictionary<string, Dictionary<string, string>> CatalogValues { get; set; }
+
         #endregion
 
         #region Metodi pubblici
@@ -178,6 +212,11 @@ namespace RemuxForge.Core.Models
             copy.TrimCharacters = this.TrimCharacters;
             copy.TrimLocation = this.TrimLocation;
             copy.TrimScope = this.TrimScope;
+            copy.CatalogPattern = this.CatalogPattern;
+            copy.CatalogTitle = this.CatalogTitle;
+            foreach (KeyValuePair<string, Dictionary<string, string>> pair in this.CatalogValues)
+                copy.CatalogValues[pair.Key] = new Dictionary<string, string>(pair.Value, StringComparer.Ordinal);
+
             return copy;
         }
 
@@ -223,6 +262,10 @@ namespace RemuxForge.Core.Models
                 string[] locations = { AppText.T("web.rename.location.start"), AppText.T("web.rename.location.end"), AppText.T("web.rename.location.both") };
                 int locIndex = this.TrimLocation >= 0 && this.TrimLocation < locations.Length ? this.TrimLocation : 2;
                 result = AppText.F("rename.method.trimDisplay", locations[locIndex]);
+            }
+            else if (this.MethodType == RenameMethodType.Catalog)
+            {
+                result = AppText.F("rename.method.catalogDisplay", this.CatalogTitle);
             }
 
             return result;

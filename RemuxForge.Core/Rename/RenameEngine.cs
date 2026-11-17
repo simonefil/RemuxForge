@@ -1,4 +1,5 @@
 using RemuxForge.Core.Localization;
+using RemuxForge.Core.MediaCatalog;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
@@ -53,7 +54,7 @@ namespace RemuxForge.Core.Rename
                 {
                     for (int m = 0; m < methodStack.Count; m++)
                     {
-                        currentName = ApplyMethod(currentName, methodStack[m], i, entry.LastModified, parentFolder);
+                        currentName = ApplyMethod(currentName, methodStack[m], i, entry.LastModified, parentFolder, entry.FullPath);
                     }
                 }
 
@@ -80,8 +81,9 @@ namespace RemuxForge.Core.Rename
         /// <param name="fileIndex">Indice file</param>
         /// <param name="lastModified">Data modifica</param>
         /// <param name="parentFolder">Cartella padre</param>
+        /// <param name="fullPath">Percorso completo del file</param>
         /// <returns>Nome file modificato</returns>
-        public static string ApplyMethod(string fileName, RenameMethod method, int fileIndex, DateTime lastModified, string parentFolder)
+        public static string ApplyMethod(string fileName, RenameMethod method, int fileIndex, DateTime lastModified, string parentFolder, string fullPath)
         {
             string result = fileName;
 
@@ -111,6 +113,47 @@ namespace RemuxForge.Core.Rename
             else if (method.MethodType == RenameMethodType.Trim)
             {
                 result = ApplyTrim(fileName, method);
+            }
+            else if (method.MethodType == RenameMethodType.Catalog)
+            {
+                result = ApplyCatalog(fileName, method, fileIndex, lastModified, parentFolder, fullPath);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Compone un testo sostituendo ogni tag fra parentesi angolari con il valore del risolutore
+        /// </summary>
+        /// <param name="pattern">Pattern con tag</param>
+        /// <param name="resolveTag">Valore di un tag dato il suo contenuto senza parentesi</param>
+        /// <returns>Testo composto</returns>
+        public static string ExpandTags(string pattern, Func<string, string> resolveTag)
+        {
+            string result = "";
+            int pos = 0;
+
+            while (pos < pattern.Length)
+            {
+                int tagStart = pattern.IndexOf('<', pos);
+                if (tagStart < 0)
+                {
+                    result = result + pattern.Substring(pos);
+                    break;
+                }
+
+                if (tagStart > pos)
+                    result = result + pattern.Substring(pos, tagStart - pos);
+
+                int tagEnd = pattern.IndexOf('>', tagStart);
+                if (tagEnd < 0)
+                {
+                    result = result + pattern.Substring(tagStart);
+                    break;
+                }
+
+                result = result + resolveTag(pattern.Substring(tagStart + 1, tagEnd - tagStart - 1));
+                pos = tagEnd + 1;
             }
 
             return result;
@@ -388,36 +431,32 @@ namespace RemuxForge.Core.Rename
             if (string.IsNullOrEmpty(pattern))
                 return fileName;
 
-            string result = "";
-            int pos = 0;
+            return ExpandTags(pattern, tagContent => ResolveTag(tagContent, originalName, originalExt, fileIndex, lastModified, parentFolder));
+        }
 
-            while (pos < pattern.Length)
+        /// <summary>
+        /// Applica metodo Catalogo: compone il nome dei file abbinati con i segnaposto di catalogo e i tag di New Name; gli altri file restano invariati
+        /// </summary>
+        /// <param name="fileName">Nome file corrente</param>
+        /// <param name="method">Metodo rename</param>
+        /// <param name="fileIndex">Indice file</param>
+        /// <param name="lastModified">Data ultima modifica</param>
+        /// <param name="parentFolder">Cartella padre</param>
+        /// <param name="fullPath">Percorso completo del file</param>
+        /// <returns>Nome file modificato</returns>
+        private static string ApplyCatalog(string fileName, RenameMethod method, int fileIndex, DateTime lastModified, string parentFolder, string fullPath)
+        {
+            Dictionary<string, string> values;
+
+            if (string.IsNullOrEmpty(method.CatalogPattern) || fullPath == null || !method.CatalogValues.TryGetValue(fullPath, out values))
+                return fileName;
+
+            SplitFileName(fileName, out string originalName, out string originalExt);
+            return ExpandTags(method.CatalogPattern, tagContent =>
             {
-                int tagStart = pattern.IndexOf('<', pos);
-                if (tagStart < 0)
-                {
-                    result = result + pattern.Substring(pos);
-                    break;
-                }
-
-                if (tagStart > pos)
-                    result = result + pattern.Substring(pos, tagStart - pos);
-
-                int tagEnd = pattern.IndexOf('>', tagStart);
-                if (tagEnd < 0)
-                {
-                    result = result + pattern.Substring(tagStart);
-                    break;
-                }
-
-                string tagContent = pattern.Substring(tagStart + 1, tagEnd - tagStart - 1);
-                string tagValue = ResolveTag(tagContent, originalName, originalExt, fileIndex, lastModified, parentFolder);
-                result = result + tagValue;
-
-                pos = tagEnd + 1;
-            }
-
-            return result;
+                string value;
+                return MediaCatalogPlaceholders.TryResolve(tagContent, values, out value) ? value : ResolveTag(tagContent, originalName, originalExt, fileIndex, lastModified, parentFolder);
+            });
         }
 
         /// <summary>

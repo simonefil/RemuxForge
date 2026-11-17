@@ -180,6 +180,7 @@ namespace RemuxForge.Web
             builder.Services.AddSingleton<AiAuthService>();
             builder.Services.AddSingleton(new MediaCatalogSettingsService(AppSettingsService.Instance.ConfigFolder));
             builder.Services.AddSingleton<MediaCatalogSourceProvider>();
+            builder.Services.AddSingleton<MediaCatalogImageDownloader>();
 
             // Il provider registrato della traduzione, che non consuma, si attiva con lo scenario indicato solo in Development
             string recordedTranslationScenario = builder.Environment.IsDevelopment() ? Environment.GetEnvironmentVariable("REMUXFORGE_RECORDED_TRANSLATION") : "";

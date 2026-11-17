@@ -4162,5 +4162,10 @@
   "web.mediaCatalogSettings.scrapingText": "I termini d'uso di TheTVDB non permettono di leggere i dati dalle pagine del sito (scraping). Chi attiva questa modalità lo fa contro quei termini e se ne assume tutta la responsabilità.",
   "web.mediaCatalogSettings.scrapingAccept": "Accetto e proseguo",
   "web.info.catalogData": "Dati TV e film",
-  "web.info.tvdbAttribution": "Dati TV e film forniti da"
+  "web.info.tvdbAttribution": "Dati TV e film forniti da",
+  "metadata.catalog.ruleDescription": "Catalogo: {0}",
+  "mediaCatalog.error.coverDownload": "Copertina non scaricata: {0}",
+  "web.metadata.progress.catalog": "Scrittura dei dati del catalogo",
+  "web.metadata.catalog.fileWritten": "Dati del catalogo scritti: {0}",
+  "rename.method.catalogDisplay": "Catalogo: {0}"
 }
