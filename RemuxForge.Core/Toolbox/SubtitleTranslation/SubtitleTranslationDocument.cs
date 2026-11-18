@@ -76,6 +76,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private static readonly Regex s_clip = new Regex(@"\{[^}]*\\i?clip\s*\(", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         /// <summary>
+        /// Sintassi dei segni ⟦n testo⟧ del testo pulito
+        /// </summary>
+        private static readonly Regex s_markSyntax = new Regex("⟦[0-9]+ |⟧", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        /// <summary>
         /// Disegno in un blocco: \p con scala positiva
         /// </summary>
         private static readonly Regex s_drawing = new Regex(@"\{[^}]*\\p\s*0*[1-9]", RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -623,8 +628,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // leggibile, in una catena di tempi sovrapposti o contigui, che mostrano parti diverse della frase coi canali d'alpha.
                 // Una riga che si sovrappone nel tempo a un'altra della catena con più caratteri visibili ne mostra solo un pezzo
                 // (tendina, parola sola); senza pezzi la catena è una rivelazione in sequenza e resta com'è. Le altre righe si leggono
-                // con la frase intera visibile e l'aspetto del loro inizio, e sono copie della prima: una traduzione per tutte, e i
-                // pezzi se ne vanno quando la frase è tradotta. Il legame vale solo se ogni riga base si può mostrare per intero
+                // con la frase intera visibile e l'aspetto del loro inizio; la primaria è quella col testo pulito con più segni (la
+                // prima nel file a parità), le altre ne sono copie e ne prendono la traduzione senza i segni: una traduzione per tutte, e
+                // i pezzi se ne vanno quando la frase è tradotta. Il legame vale solo se ogni riga base si può mostrare per intero e il
+                // suo testo pulito è quello della primaria o quello senza segni
                 Dictionary<int, string> wholeShown = new Dictionary<int, string>();
                 Dictionary<int, int> copyOf = new Dictionary<int, int>();
                 Dictionary<int, int> basePositions = new Dictionary<int, int>();
@@ -654,16 +661,21 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             Dictionary<int, string> wholeLines = bases.ToDictionary(c => c, c => cleaner.ShowWholeLine(events[c].Raw, styleStates[events[c].Style]));
                             if (bases.Count == 0 || wholeLines.Values.Any(line => line == null))
                                 continue;
+                            Dictionary<int, string> cleanTexts = bases.ToDictionary(c => c, c => cleaner.Clean(wholeLines[c], "", legacy).CleanText);
+                            int primary = bases.OrderByDescending(c => cleanTexts[c].Count(m => m == SubtitleCueCleaner.MARK_OPEN)).ThenBy(c => c).First();
+                            string unmarked = s_markSyntax.Replace(cleanTexts[primary], "");
+                            if (!bases.TrueForAll(c => cleanTexts[c] == cleanTexts[primary] || cleanTexts[c] == unmarked))
+                                continue;
 
                             pieces.Sort();
-                            overlaysByUnder[bases[0]] = pieces;
+                            overlaysByUnder[primary] = pieces;
                             foreach (int c in pieces)
-                                underOf[c] = bases[0];
+                                underOf[c] = primary;
                             foreach (int c in bases)
                             {
                                 wholeShown[c] = wholeLines[c];
-                                if (c != bases[0])
-                                    copyOf[c] = bases[0];
+                                if (c != primary)
+                                    copyOf[c] = primary;
                             }
                         }
                     }
@@ -713,8 +725,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     {
                         shownTexts[rawCues.Count + 1] = whole;
                         basePositions[e] = rawCues.Count + 1;
-                        if (copyOf.TryGetValue(e, out int master))
-                            copyPositions[rawCues.Count + 1] = basePositions[master];
+                        foreach (KeyValuePair<int, int> copy in copyOf.Where(c => basePositions.ContainsKey(c.Key) && basePositions.ContainsKey(c.Value)))
+                            copyPositions[basePositions[copy.Key]] = basePositions[copy.Value];
                     }
 
                     // Righe tradotte di una sorgente: una Dialogue per layer delle lettere, coi campi della riga Comment, il layer,
@@ -906,42 +918,48 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
             }
 
-            // Id progressivi sulle traducibili e duplicati: le righe base di una frase rivelata a pezzi con lo stesso testo pulito
-            // della prima, e le righe su layer diversi con gli stessi tempi e lo stesso testo pulito
-            List<SubtitleCue> cues = new List<SubtitleCue>();
-            Dictionary<string, SubtitleCue> firstByContent = new Dictionary<string, SubtitleCue>(StringComparer.Ordinal);
+            // Id progressivi sulle traducibili e duplicati: le righe su layer diversi con gli stessi tempi e lo stesso testo pulito, e
+            // le righe base di una frase rivelata a pezzi, copie della primaria anche quando questa viene dopo nel file
+            int?[] ids = new int?[rawCues.Count];
+            int?[] duplicates = new int?[rawCues.Count];
+            Dictionary<string, int[]> firstByContent = new Dictionary<string, int[]>(StringComparer.Ordinal);
             int nextId = 1;
             for (int i = 0; i < rawCues.Count; i++)
             {
                 RawCue raw = rawCues[i];
-                SubtitleCleanResult cleaned = cleanedCues[i];
-                int? id = null;
-                int? duplicateOf = null;
-                string key = raw.StartMs.ToString(CultureInfo.InvariantCulture) + "|" + raw.EndMs.ToString(CultureInfo.InvariantCulture) + "|" + cleaned.CleanText;
-                if (string.IsNullOrEmpty(cleaned.ExclusionReason))
+                string key = raw.StartMs.ToString(CultureInfo.InvariantCulture) + "|" + raw.EndMs.ToString(CultureInfo.InvariantCulture) + "|" + cleanedCues[i].CleanText;
+                if (!string.IsNullOrEmpty(cleanedCues[i].ExclusionReason) || copyPositions.ContainsKey(i + 1))
+                    continue;
+                if (raw.Layer.HasValue && firstByContent.TryGetValue(key, out int[] original) && original[1] != raw.Layer.Value)
                 {
-                    if (copyPositions.TryGetValue(i + 1, out int masterPosition) && (cues[masterPosition - 1].Id ?? cues[masterPosition - 1].DuplicateOf).HasValue
-                        && cues[masterPosition - 1].CleanText == cleaned.CleanText)
-                    {
-                        duplicateOf = cues[masterPosition - 1].Id ?? cues[masterPosition - 1].DuplicateOf;
-                    }
-                    else if (raw.Layer.HasValue && firstByContent.TryGetValue(key, out SubtitleCue original) && original.Layer != raw.Layer)
-                    {
-                        duplicateOf = original.Id;
-                    }
-                    else
-                    {
-                        id = nextId++;
-                    }
+                    duplicates[i] = original[0];
                 }
+                else
+                {
+                    ids[i] = nextId++;
+                    if (raw.Layer.HasValue)
+                        firstByContent.TryAdd(key, new int[] { ids[i].Value, raw.Layer.Value });
+                }
+            }
+            foreach (KeyValuePair<int, int> copy in copyPositions)
+            {
+                if (string.IsNullOrEmpty(cleanedCues[copy.Key - 1].ExclusionReason))
+                    duplicates[copy.Key - 1] = ids[copy.Value - 1] ?? duplicates[copy.Value - 1];
+            }
+
+            List<SubtitleCue> cues = new List<SubtitleCue>();
+            for (int i = 0; i < rawCues.Count; i++)
+            {
+                RawCue raw = rawCues[i];
+                SubtitleCleanResult cleaned = cleanedCues[i];
+                int? id = ids[i];
+                int? duplicateOf = duplicates[i];
 
                 SubtitleCueKind kind = format == SubtitleTranslationFormat.Srt ? srtKinds[i] : raw.Kind;
                 if (!legacy && format == SubtitleTranslationFormat.Srt && cleaned.CleanText.IndexOfAny(s_songMarks) >= 0)
                     kind = SubtitleCueKind.Song;
                 SubtitleCue cue = new SubtitleCue(id, i + 1, raw.StartMs, raw.EndMs, cleaned.CleanText, cleaned.Recipe, raw.Style, kind, raw.Layer,
                     cleaned.ExclusionReason, duplicateOf, raw.TextStart, raw.TextLength);
-                if (id.HasValue && raw.Layer.HasValue)
-                    firstByContent.TryAdd(key, cue);
                 cues.Add(cue);
             }
 
@@ -971,6 +989,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                 // Un testo uguale al pulito del sorgente, a meno di spazi e a capo come la chiave delle tratte ripetute, lascia
                 // lettere, pezzi di parola ed evidenziazioni come sono in ogni file della tratta
+                // Una copia senza segni di una primaria che li ha ne prende la traduzione senza segni
+                if (translation != null && cue.DuplicateOf.HasValue && cue.CleanText.IndexOf(SubtitleCueCleaner.MARK_OPEN) < 0)
+                    translation = s_markSyntax.Replace(translation, "");
                 bool unchanged = SharedStretchDetector.Key(this.Format, translation ?? "") == SharedStretchDetector.Key(this.Format, cue.CleanText);
                 if (!this._letterEffects.TryGetValue(cue.Position, out LetterEffect letterEffect))
                 {
