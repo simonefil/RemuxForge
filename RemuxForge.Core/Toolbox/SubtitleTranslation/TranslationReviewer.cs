@@ -218,6 +218,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                     lines.Add("REWRITTEN: updated term \"" + term.Key.Source + "\" => \"" + term.Key.Target + "\"");
                             }
                         }
+                        if (translation.Signals.Contains(TranslationCueSignal.Echo))
+                            lines.Add("ECHO: the translation is identical to the source cue");
+                        if (translation.Signals.Contains(TranslationCueSignal.Slip))
+                            lines.Add("SLIP: another cue of the block with a different source has the same translation");
 
                         if (lines.Count > 0)
                             signals[translation.Id] = lines;
