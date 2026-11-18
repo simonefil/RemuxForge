@@ -4293,7 +4293,6 @@
   "web.toolbox.subtitleTranslation.styleKind.Dialogue": "Dialogo",
   "web.toolbox.subtitleTranslation.styleKind.Song": "Canzone",
   "web.toolbox.subtitleTranslation.styleKind.Sign": "Cartello",
-  "web.toolbox.subtitleTranslation.styleKind.Skip": "Non tradurre",
   "web.toolbox.subtitleTranslation.termExactCase": "Maiuscole esatte",
   "web.toolbox.subtitleTranslation.warning.slip": "Uguale a un'altra battuta",
   "web.toolbox.subtitleTranslation.reviewNotDone": "Revisione AI non riuscita",
@@ -4307,5 +4306,13 @@
   "web.toolbox.subtitleTranslation.reviewBlocked": "Revisione AI conclusa con file bloccati",
   "web.toolbox.subtitleTranslation.notifyTermsBlocked": "Applicazione dei termini con file bloccati",
   "web.toolbox.subtitleTranslation.notifyReviewBlocked": "Revisione AI con file bloccati",
-  "web.toolbox.subtitleTranslation.notifyBlockedAfterDetail": "Togli i file bloccati, o rimetti a posto i sorgenti e riapri il progetto"
+  "web.toolbox.subtitleTranslation.notifyBlockedAfterDetail": "Togli i file bloccati, o rimetti a posto i sorgenti e riapri il progetto",
+  "web.toolbox.subtitleTranslation.styleKind.NotSourceLanguage": "Altra lingua",
+  "web.toolbox.subtitleTranslation.calls.kind.A0": "Riconoscimento tipi",
+  "toolbox.subtitleTranslation.reason.UNIT_MISSING": "Tipo mancante",
+  "toolbox.subtitleTranslation.reason.UNIT_DUPLICATE": "Tipo consegnato più volte",
+  "web.toolbox.subtitleTranslation.classificationProgress": "Riconoscimento di dialoghi, canzoni e cartelli",
+  "web.toolbox.subtitleTranslation.classificationDone": "Tipi riconosciuti: {0} dialogo, {1} canzone, {2} cartelli, {3} altra lingua",
+  "web.toolbox.subtitleTranslation.classificationStopped": "Riconoscimento dei tipi fermato",
+  "web.toolbox.subtitleTranslation.classificationFailed": "Riconoscimento dei tipi fermato: {0}"
 }

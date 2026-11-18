@@ -375,7 +375,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             if (delivery != null)
             {
                 // Consegna dello scenario, anche non valida, per i giri di correzione e i conflitti fra file
-                toolName = request.Kind == TranslationCallKind.D1 ? "submit_diagnosis" : request.Kind == TranslationCallKind.A1 || request.Kind == TranslationCallKind.A2 ? GlossaryBuilder.SUBMIT_TOOL : "submit_translation";
+                toolName = request.Kind == TranslationCallKind.D1 ? "submit_diagnosis" : request.Kind == TranslationCallKind.A1 || request.Kind == TranslationCallKind.A2 ? GlossaryBuilder.SUBMIT_TOOL
+                    : request.Kind == TranslationCallKind.A0 ? SubtitleKindClassifier.SUBMIT_TOOL : "submit_translation";
                 arguments = delivery.Arguments != null ? delivery.Arguments.DeepClone().AsObject() : null;
             }
             else if (request.Kind == TranslationCallKind.A1 || request.Kind == TranslationCallKind.A2)
@@ -436,6 +437,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 arguments["terms"] = terms;
                 arguments["characters"] = characters;
                 arguments["addressing"] = addressing;
+            }
+            else if (request.Kind == TranslationCallKind.A0)
+            {
+                // Tipi sintetici: ogni unità del tool è dialogo
+                JsonArray units = new JsonArray();
+                JsonArray ids = prepared.Tools[0]["parameters"]["properties"]["units"]["items"]["properties"]["unit"]["enum"].AsArray();
+                foreach (JsonNode id in ids)
+                    units.Add(new JsonObject { ["unit"] = id.GetValue<string>(), ["kind"] = "dialogue" });
+                toolName = SubtitleKindClassifier.SUBMIT_TOOL;
+                arguments["units"] = units;
             }
             else if (request.Kind == TranslationCallKind.D1)
             {

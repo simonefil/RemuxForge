@@ -14,8 +14,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Campo Effect non vuoto, nei progetti senza tabella degli stili</summary>
         public const string EXCLUSION_EFFECT = "effect";
 
-        /// <summary>Stile scelto come da non tradurre</summary>
-        public const string EXCLUSION_STYLE = "style";
+        /// <summary>Stile o tratta SRT riconosciuti come testo che non è nella lingua d'origine</summary>
+        public const string EXCLUSION_NOT_SOURCE_LANGUAGE = "not-source-language";
 
         /// <summary>Drawing vettoriale</summary>
         public const string EXCLUSION_DRAWING = "drawing";
@@ -23,16 +23,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Karaoke, nei progetti senza tabella degli stili</summary>
         public const string EXCLUSION_KARAOKE = "karaoke";
 
-        /// <summary>Effetto a tempo a metà frase (scritta a comparsa)</summary>
+        /// <summary>Effetto a tempo a metà frase (scritta a comparsa), nei progetti senza tabella degli stili</summary>
         public const string EXCLUSION_TIMED_EFFECT = "timed-effect";
 
         /// <summary>Graffa aperta e mai chiusa</summary>
         public const string EXCLUSION_UNCLOSED_BRACE = "unclosed-brace";
 
-        /// <summary>Tratto formattato vuoto o di soli spazi</summary>
+        /// <summary>Tratto formattato vuoto o di soli spazi, nei progetti senza tabella degli stili</summary>
         public const string EXCLUSION_WHITESPACE_SPAN = "whitespace-span";
 
-        /// <summary>Blocco ASS in un SRT dopo l'inizio del testo</summary>
+        /// <summary>Blocco ASS in un SRT dopo l'inizio del testo, nei progetti senza tabella degli stili</summary>
         public const string EXCLUSION_SRT_INLINE_ASS_TAG = "srt-inline-ass-tag";
 
         /// <summary>Stesso carattere scritto crudo e come entità, o con due entità diverse</summary>
@@ -131,7 +131,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public string Style { get; }
 
         /// <summary>
-        /// Tipo della battuta: in ASS/SSA quello scelto per lo stile, in SRT canzone se il testo ha ♪ o ♫
+        /// Tipo della battuta: in ASS/SSA quello riconosciuto per lo stile, in SRT quello della tratta riconosciuta o canzone se il
+        /// testo ha ♪ o ♫
         /// </summary>
         public SubtitleCueKind Kind { get; }
 

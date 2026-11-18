@@ -40,7 +40,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     }
 
     /// <summary>
-    /// Tipo scelto per uno stile ASS/SSA nella tabella degli stili del progetto
+    /// Tipo riconosciuto di un'unità del progetto: uno stile ASS/SSA o una tratta SRT ripetuta fra i file
     /// </summary>
     public enum TranslationStyleKind
     {
@@ -53,8 +53,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Scritte sullo schermo</summary>
         Sign,
 
-        /// <summary>Righe lasciate come sono</summary>
-        Skip
+        /// <summary>Testo che non è nella lingua d'origine (romaji, kanji): mai tradotto, lasciato identico byte per byte</summary>
+        NotSourceLanguage
     }
 
     /// <summary>
@@ -91,6 +91,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Options = new TranslationProjectOptions();
             this.Files = new List<TranslationProjectFile>();
             this.Styles = null;
+            this.Stretches = null;
             this.NextFileNumber = 1;
             this.Glossary = null;
             this.ImportedGlossary = null;
@@ -165,10 +166,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public List<TranslationProjectFile> Files { get; set; }
 
         /// <summary>
-        /// Tipo scelto per ogni stile dei file ASS/SSA, bloccato con l'analisi come i file. Null nei progetti salvati prima della
-        /// tabella: le loro righe con Effect o karaoke restano escluse e tutte le battute sono dialogo
+        /// Stili dei file ASS/SSA col tipo riconosciuto, null finché il riconoscimento non c'è stato. Null nei progetti salvati prima
+        /// della tabella: le loro righe con Effect o karaoke restano escluse e tutte le battute sono dialogo
         /// </summary>
         public List<TranslationProjectStyle> Styles { get; set; }
+
+        /// <summary>
+        /// Tratte SRT ripetute fra i file col tipo riconosciuto; null finché i tipi del progetto non sono riconosciuti, vuota dopo
+        /// il riconoscimento se non ce ne sono
+        /// </summary>
+        public List<TranslationProjectStretch> Stretches { get; set; }
 
         /// <summary>
         /// Prossimo numero di fileId, mai riusato
@@ -284,7 +291,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     }
 
     /// <summary>
-    /// Stile ASS/SSA del progetto col tipo scelto
+    /// Stile ASS/SSA del progetto col tipo riconosciuto
     /// </summary>
     public class TranslationProjectStyle
     {
@@ -296,7 +303,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public TranslationProjectStyle()
         {
             this.Name = "";
-            this.Kind = TranslationStyleKind.Dialogue;
+            this.Kind = null;
         }
 
         #endregion
@@ -309,7 +316,41 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public string Name { get; set; }
 
         /// <summary>
-        /// Tipo scelto
+        /// Tipo riconosciuto, null prima del riconoscimento: le righe valgono come dialogo
+        /// </summary>
+        public TranslationStyleKind? Kind { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Tratta SRT ripetuta fra i file del progetto col tipo riconosciuto: le battute di un file che ne ripetono almeno tre righe
+    /// consecutive prendono il suo tipo
+    /// </summary>
+    public class TranslationProjectStretch
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public TranslationProjectStretch()
+        {
+            this.Lines = new List<string>();
+            this.Kind = TranslationStyleKind.Dialogue;
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Testi puliti delle battute della tratta, nell'ordine di tempo
+        /// </summary>
+        public List<string> Lines { get; set; }
+
+        /// <summary>
+        /// Tipo riconosciuto
         /// </summary>
         public TranslationStyleKind Kind { get; set; }
 
@@ -396,7 +437,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Proprietà
 
         /// <summary>
-        /// Analisi (A1, A2)
+        /// Analisi (A0, A1, A2)
         /// </summary>
         public string Analysis { get; set; }
 

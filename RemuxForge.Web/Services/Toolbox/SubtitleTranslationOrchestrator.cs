@@ -279,12 +279,13 @@ namespace RemuxForge.Web.Services.Toolbox
                 foreach (TranslationProjectFile file in project.Files)
                 {
                     this.Records.Add(new TranslationFileRecord(file));
-                    this.PrepareFile(file);
+                    this.PrepareFile(file, project.Analysis != null);
                 }
                 if (this.SyncStyles())
                     this._store.Save(project);
 
-                // Progetti e job di prima di «Maiuscole esatte»: le voci senza il valore lo prendono dalle battute sorgenti, una volta
+                // Progetti e job di prima di «Maiuscole esatte»: le voci senza il valore lo prendono dalle battute sorgenti, una volta,
+                // con i tipi riconosciuti
                 List<string> texts = new List<string>();
                 foreach (GlossaryEpisode episode in this.GetEpisodes())
                 {
@@ -294,7 +295,7 @@ namespace RemuxForge.Web.Services.Toolbox
                             texts.Add(cue.CleanText);
                     }
                 }
-                if (project.Glossary != null && TranslationValidator.FillExactCase(project.Glossary, new NewTermDecision[0], texts))
+                if (project.Glossary != null && this.KindsSettled && TranslationValidator.FillExactCase(project.Glossary, new NewTermDecision[0], texts))
                     this._store.Save(project);
                 if (job != null)
                 {
@@ -395,7 +396,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 if (regroup)
                 {
                     foreach (TranslationProjectFile file in this._project.Files)
-                        this.PrepareFile(file);
+                        this.PrepareFile(file, false);
                 }
 
                 this._store.Save(this._project);
@@ -435,7 +436,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     return;
 
                 record.File.Encoding = string.IsNullOrEmpty(encoding) ? SubtitleTranslationDocument.DEFAULT_ENCODING : encoding;
-                this.PrepareFile(record.File);
+                this.PrepareFile(record.File, false);
                 this.SyncStyles();
                 this._store.Save(this._project);
             }
@@ -445,36 +446,7 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Cambia il tipo di uno stile ASS/SSA fino all'analisi e riprepara i file che lo usano
-        /// </summary>
-        /// <param name="name">Nome dello stile</param>
-        /// <param name="kind">Tipo scelto</param>
-        public void SetStyleKind(string name, TranslationStyleKind kind)
-        {
-            lock (this.StateLock)
-            {
-                if (this._project == null || this.IsBusy || this._project.Analysis != null || this._project.Styles == null)
-                    return;
-
-                TranslationProjectStyle style = this._project.Styles.Find(s => s.Name == name);
-                if (style == null)
-                    return;
-
-                style.Kind = kind;
-                foreach (TranslationProjectFile file in this._project.Files)
-                {
-                    SubtitleTranslationDocument document;
-                    if (this._documents.TryGetValue(file.Id, out document) && document.Styles.Any(u => u.Name == name))
-                        this.PrepareFile(file);
-                }
-                this._store.Save(this._project);
-            }
-
-            this.NotifyRecordsChanged();
-        }
-
-        /// <summary>
-        /// Righe della tabella degli stili: ogni stile del progetto col tipo scelto, le righe e un esempio dai file letti
+        /// Righe della tabella degli stili: ogni stile del progetto col tipo riconosciuto, le righe e un esempio dai file letti
         /// </summary>
         /// <returns>Stili nell'ordine della prima riga, vuoto per un progetto salvato prima della tabella</returns>
         public List<TranslationStyleRow> GetStyleRows()
@@ -489,7 +461,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 foreach (TranslationProjectStyle style in this._project.Styles)
                 {
                     SubtitleStyleUsage usage = usages.Find(u => u.Name == style.Name) ?? new SubtitleStyleUsage(style.Name);
-                    rows.Add(new TranslationStyleRow { Name = style.Name, Kind = style.Kind, Lines = usage.Lines, Example = usage.Example });
+                    rows.Add(new TranslationStyleRow { Name = style.Name, Kind = style.Kind, Lines = usage.Texts.Count, Example = usage.Texts.Count > 0 ? usage.Texts[0] : "" });
                 }
             }
 
@@ -636,7 +608,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 next.TargetLanguage = this._project.TargetLanguage;
                 next.Revision = this._project.Glossary != null ? this._project.Glossary.Revision : 0;
                 next.Status = GlossaryStatus.Draft;
-                builder.SetEpisodes(next, this.GetEpisodes());
+                builder.SetEpisodes(next, this.GetEpisodes(), this.KindsSettled);
                 this._project.Glossary = next;
                 this._project.ImportedGlossary = new ImportedGlossaryInfo
                 {
@@ -675,7 +647,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     GlossaryBuilder builder = new GlossaryBuilder(this._project.SourceLanguage, this._project.TargetLanguage);
                     Glossary restored = this.RestoreAnalysisProposals(builder);
                     restored.Status = GlossaryStatus.Draft;
-                    builder.SetEpisodes(restored, this.GetEpisodes());
+                    builder.SetEpisodes(restored, this.GetEpisodes(), this.KindsSettled);
                     this._project.Glossary = restored;
                     this._project.Analysis.DiscardedForImport = new List<GlossaryDiscard>();
                 }
@@ -702,7 +674,7 @@ namespace RemuxForge.Web.Services.Toolbox
 
                 change(this._project.Glossary);
                 this._project.Glossary.Status = GlossaryStatus.Draft;
-                new GlossaryBuilder(this._project.SourceLanguage, this._project.TargetLanguage).SetEpisodes(this._project.Glossary, this.GetEpisodes());
+                new GlossaryBuilder(this._project.SourceLanguage, this._project.TargetLanguage).SetEpisodes(this._project.Glossary, this.GetEpisodes(), this.KindsSettled);
                 this._store.Save(this._project);
             }
 
@@ -767,8 +739,9 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Stima in token delle chiamate A1 che mancano, calcolata per caratteri come l'analisi le manderebbe, schema dei tool
-        /// compreso; un parziale fatto su ingressi cambiati manca. La A2 dipende dai conflitti e non entra nella stima
+        /// Stima in token della A0 se i tipi non sono ancora riconosciuti e delle chiamate A1 che mancano, calcolata per caratteri
+        /// come l'analisi le manderebbe, schema dei tool compreso; un parziale fatto su ingressi cambiati manca. La A2 dipende dai
+        /// conflitti e non entra nella stima, e le A1 si stimano sulle battute di prima del riconoscimento
         /// </summary>
         /// <returns>Stima, null senza file preparati o lingue, con la card occupata o con l'analisi conclusa</returns>
         public TranslationAnalysisEstimate EstimateAnalysis()
@@ -790,6 +763,16 @@ namespace RemuxForge.Web.Services.Toolbox
                 string tools = builder.CreateTools(webSearch).ToJsonString();
                 TranslationAnalysisEstimate estimate = new TranslationAnalysisEstimate();
                 estimate.Files = episodes.Count;
+                if (this._project.Stretches == null)
+                {
+                    SubtitleKindClassifier classifier = new SubtitleKindClassifier(this._project.SourceLanguage);
+                    SubtitleKindPlan kinds = classifier.Plan(this.GetDocuments(), this._project.Context);
+                    if (kinds.Message != null)
+                    {
+                        estimate.Calls++;
+                        estimate.InputTokens += GlossaryBuilder.EstimateTokens(classifier.Instructions + kinds.Tool.ToJsonString() + kinds.Message);
+                    }
+                }
                 for (int i = 0; i < plan.Units.Count; i++)
                 {
                     string fileId = plan.Units[i].Count == 1 ? plan.Units[i][0].FileId : TranslationSessionKey.NO_FILE;
@@ -868,46 +851,13 @@ namespace RemuxForge.Web.Services.Toolbox
 
                 if (this._job == null)
                 {
-                    TranslationJob job = this._jobStore.Create(this._project.Id);
-                    job.AccessMode = this.AccessMode;
-                    job.Models = new TranslationPhaseModels
+                    // Un progetto senza i tipi riconosciuti, salvato prima del riconoscimento, li riconosce prima del job
+                    if (this._project.Stretches == null)
                     {
-                        Analysis = this._project.Models.Analysis,
-                        Translation = this._project.Models.Translation,
-                        NewTerms = this._project.Models.NewTerms,
-                        Review = this._project.Models.Review
-                    };
-                    job.ReasoningEfforts = new TranslationPhaseModels
-                    {
-                        Analysis = this._project.ReasoningEfforts.Analysis,
-                        Translation = this._project.ReasoningEfforts.Translation,
-                        NewTerms = this._project.ReasoningEfforts.NewTerms,
-                        Review = this._project.ReasoningEfforts.Review
-                    };
-                    job.Glossary = TranslationJsonFile.Parse<Glossary>(TranslationJsonFile.Serialize(this._project.Glossary), this._project.Id);
-                    job.GlossaryRevisionAtStart = this._project.Glossary.Revision;
-                    job.ReviewMode = this._project.Options.ReviewMode;
-                    job.Status = TranslationJobStatus.Idle;
-                    List<KeyValuePair<string, SubtitleTranslationDocument>> documents = new List<KeyValuePair<string, SubtitleTranslationDocument>>();
-                    foreach (TranslationProjectFile file in this._project.Files)
-                        documents.Add(new KeyValuePair<string, SubtitleTranslationDocument>(file.Id, this._documents[file.Id]));
-                    job.SharedStretches = SharedStretchDetector.Detect(documents);
-                    foreach (TranslationProjectFile file in this._project.Files)
-                    {
-                        job.FileIds.Add(file.Id);
-                        this._jobFiles[file.Id] = TranslationRunner.CreateFileState(file, this._documents[file.Id], SharedStretch.MapFile(job.SharedStretches, file.Id).Keys);
+                        this.TryRunExclusive(() => this.ClassifyAndRunJobAsync().GetAwaiter().GetResult());
+                        return;
                     }
-
-                    // Prima la testata, che dice il progetto del job, poi gli stati dei file e infine il progetto: una chiusura brusca
-                    // lascia al più un job che il progetto non riporta, e la cancellazione del progetto lo trova dalla testata
-                    this._jobStore.Save(job);
-                    foreach (string fileId in job.FileIds)
-                        this._jobStore.SaveFile(job.Id, this._jobFiles[fileId]);
-
-                    this._job = job;
-                    this._project.ActiveJobId = job.Id;
-                    this._project.JobIds.Add(job.Id);
-                    this._store.Save(this._project);
+                    this.CreateJob();
                 }
                 else
                 {
@@ -945,7 +895,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     return;
 
                 TranslationProjectFile file = this._project.Files.Find(f => f.Id == fileId);
-                SubtitleTranslationDocument document = TranslationFilePreparer.Prepare(file, this._project.SourceLanguage, this._project.Styles, false);
+                SubtitleTranslationDocument document = TranslationFilePreparer.Prepare(file, this._project.SourceLanguage, this._project.Styles, this._project.Stretches, false);
                 if (document == null)
                 {
                     state.BlockedReason = file.RejectedReason;
@@ -1534,10 +1484,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     return this._translationEstimate;
 
                 // Tratte e stati dei file come li crea «Avvia traduzione», senza salvarli
-                List<KeyValuePair<string, SubtitleTranslationDocument>> documents = new List<KeyValuePair<string, SubtitleTranslationDocument>>();
-                foreach (TranslationProjectFile file in this._project.Files)
-                    documents.Add(new KeyValuePair<string, SubtitleTranslationDocument>(file.Id, this._documents[file.Id]));
-                List<SharedStretch> stretches = SharedStretchDetector.Detect(documents);
+                List<SharedStretch> stretches = SharedStretchDetector.Detect(this.GetDocuments());
                 List<TranslationRunFile> files = new List<TranslationRunFile>();
                 foreach (TranslationProjectFile file in this._project.Files)
                     files.Add(new TranslationRunFile(TranslationRunner.CreateFileState(file, this._documents[file.Id], SharedStretch.MapFile(stretches, file.Id).Keys), this._documents[file.Id],
@@ -1743,7 +1690,7 @@ namespace RemuxForge.Web.Services.Toolbox
             foreach (TranslationFileRecord record in this.Records)
             {
                 if (!this._documents.ContainsKey(record.File.Id))
-                    this.PrepareFile(record.File);
+                    this.PrepareFile(record.File, false);
             }
 
             this.SyncStyles();
@@ -1787,10 +1734,11 @@ namespace RemuxForge.Web.Services.Toolbox
             try
             {
                 List<GlossaryEpisode> episodes;
+                bool classify;
                 lock (this.StateLock)
                 {
                     project = this._project;
-                    episodes = this.GetEpisodes();
+                    classify = project.Stretches == null;
                     if (project.Analysis == null)
                         project.Analysis = new TranslationAnalysis();
                     analysis = project.Analysis;
@@ -1810,10 +1758,15 @@ namespace RemuxForge.Web.Services.Toolbox
                 provider.CallFinished += this.HandleCallFinished;
                 webSearch = provider.Capabilities.WebSearch;
 
+                // I tipi prima di tutto il resto: il glossario legge solo le battute da tradurre
+                if (classify)
+                    await this.ClassifyAsync(provider, cancellation);
+
                 GlossaryBuilder builder = new GlossaryBuilder(project.SourceLanguage, project.TargetLanguage);
                 AnalysisPlan plan;
                 lock (this.StateLock)
                 {
+                    episodes = this.GetEpisodes();
                     plan = this.PlanAnalysis(builder, episodes);
 
                     // Parziali fatti su ingressi che non ci sono più, come contesto o glossario caricato cambiati o il passaggio fra
@@ -1839,8 +1792,8 @@ namespace RemuxForge.Web.Services.Toolbox
                     this.ReportProgress(i, plan.Units.Count, fileName);
                     this.AppendLog(AppText.F(TEXT_PREFIX + ".analysisStarted", fileName));
 
-                    Glossary partial = await this.RunGlossaryCallsAsync(provider, builder, TranslationCallKind.A1, fileId, plan.Cues[i], builder.AnalysisInstructions, plan.Messages[i], true, null,
-                        cancellation);
+                    Glossary partial = (await this.RunDeliveryCallsAsync(provider, TranslationCallKind.A1, fileId, plan.Cues[i], builder.AnalysisInstructions, plan.Messages[i],
+                        builder.CreateTools(true), false, (response, input) => builder.ReadResponse(response, input, null), cancellation)).Glossary;
 
                     // La ricerca rifiutata resta spenta per il resto dell'analisi, anche alla ripresa
                     if (webSearch && !provider.Capabilities.WebSearch)
@@ -1881,8 +1834,8 @@ namespace RemuxForge.Web.Services.Toolbox
                     this.AppendLog(AppText.Count(TEXT_PREFIX + ".mergeStarted", conflicts));
 
                     string message = builder.CreateMergeMessage(project.Context, plan.Loaded, plan.Candidates, episodes, merge, partials);
-                    Glossary resolution = await this.RunGlossaryCallsAsync(provider, builder, TranslationCallKind.A2, TranslationSessionKey.NO_FILE, null, builder.MergeInstructions, message, false,
-                        merge, cancellation);
+                    Glossary resolution = (await this.RunDeliveryCallsAsync(provider, TranslationCallKind.A2, TranslationSessionKey.NO_FILE, null, builder.MergeInstructions, message,
+                        builder.CreateTools(false), false, (response, input) => builder.ReadResponse(response, input, merge), cancellation)).Glossary;
                     int outside;
                     merged = builder.ApplyResolution(merge, resolution, out outside);
                     if (outside > 0)
@@ -1895,7 +1848,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     Glossary glossary = builder.MergeWithImported(merged, project.Glossary, discarded);
                     glossary.SourceLanguage = project.SourceLanguage;
                     glossary.TargetLanguage = project.TargetLanguage;
-                    builder.SetEpisodes(glossary, episodes);
+                    builder.SetEpisodes(glossary, episodes, true);
                     project.Glossary = glossary;
                     analysis.DiscardedForImport = discarded;
                     analysis.Status = TranslationAnalysisStatus.Completed;
@@ -1951,6 +1904,143 @@ namespace RemuxForge.Web.Services.Toolbox
                 if (analysis != null)
                     this.OnAnalysisFinished?.Invoke(analysis);
             }
+        }
+
+        /// <summary>
+        /// Crea il job col glossario approvato congelato, i modelli, la modalità della revisione AI, le tratte fra i file e lo stato
+        /// di ogni file; chiamato sotto StateLock
+        /// </summary>
+        private void CreateJob()
+        {
+            TranslationJob job = this._jobStore.Create(this._project.Id);
+            job.AccessMode = this.AccessMode;
+            job.Models = new TranslationPhaseModels
+            {
+                Analysis = this._project.Models.Analysis,
+                Translation = this._project.Models.Translation,
+                NewTerms = this._project.Models.NewTerms,
+                Review = this._project.Models.Review
+            };
+            job.ReasoningEfforts = new TranslationPhaseModels
+            {
+                Analysis = this._project.ReasoningEfforts.Analysis,
+                Translation = this._project.ReasoningEfforts.Translation,
+                NewTerms = this._project.ReasoningEfforts.NewTerms,
+                Review = this._project.ReasoningEfforts.Review
+            };
+            job.Glossary = TranslationJsonFile.Parse<Glossary>(TranslationJsonFile.Serialize(this._project.Glossary), this._project.Id);
+            job.GlossaryRevisionAtStart = this._project.Glossary.Revision;
+            job.ReviewMode = this._project.Options.ReviewMode;
+            job.Status = TranslationJobStatus.Idle;
+            job.SharedStretches = SharedStretchDetector.Detect(this.GetDocuments());
+            foreach (TranslationProjectFile file in this._project.Files)
+            {
+                job.FileIds.Add(file.Id);
+                this._jobFiles[file.Id] = TranslationRunner.CreateFileState(file, this._documents[file.Id], SharedStretch.MapFile(job.SharedStretches, file.Id).Keys);
+            }
+
+            // Prima la testata, che dice il progetto del job, poi gli stati dei file e infine il progetto: una chiusura brusca
+            // lascia al più un job che il progetto non riporta, e la cancellazione del progetto lo trova dalla testata
+            this._jobStore.Save(job);
+            foreach (string fileId in job.FileIds)
+                this._jobStore.SaveFile(job.Id, this._jobFiles[fileId]);
+
+            this._job = job;
+            this._project.ActiveJobId = job.Id;
+            this._project.JobIds.Add(job.Id);
+            this._store.Save(this._project);
+        }
+
+        /// <summary>
+        /// Riconoscimento dei tipi e poi giro del job nuovo, nel thread dell'operazione, per un progetto salvato prima del
+        /// riconoscimento: senza tipi riconosciuti, o con un file che la nuova preparazione rifiuta, il job non nasce e la card si
+        /// libera. Nessuna eccezione ne esce
+        /// </summary>
+        /// <returns>Task del riconoscimento e del giro</returns>
+        private async Task ClassifyAndRunJobAsync()
+        {
+            bool created = false;
+            this.SetBusy(true, AppText.T(TEXT_PREFIX + ".classificationProgress"));
+            try
+            {
+                ITranslationModelProvider provider = this._providerFactory.Create(null);
+                provider.CallProgress += this.HandleCallProgress;
+                provider.CallFinished += this.HandleCallFinished;
+                await this.ClassifyAsync(provider, this.OperationCancellationToken);
+                lock (this.StateLock)
+                {
+                    if (this._documents.Count == this._project.Files.Count)
+                    {
+                        this.CreateJob();
+                        created = true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Le eccezioni che non sono dell'accesso restano errori del servizio: il worker non deve chiudere l'app
+                TranslationStop stop = TranslationStop.Create(ex, this.StopRequested || this.OperationCancellationToken.IsCancellationRequested);
+                this.AppendLog(stop.Reason == TranslationStopReason.Stop ? AppText.T(TEXT_PREFIX + ".classificationStopped") : AppText.F(TEXT_PREFIX + ".classificationFailed", stop.Message));
+            }
+
+            if (!created)
+            {
+                this.SetBusy(false, "");
+                this.NotifyRecordsChanged();
+                return;
+            }
+            await this.RunJobAsync();
+        }
+
+        /// <summary>
+        /// Riconoscimento dei tipi del progetto, primo passo dell'analisi e dell'avvio di un progetto che non li ha: sui file letti
+        /// senza tipi il codice decide le unità senza lettere nella scrittura del progetto e il modello dell'analisi le altre in una
+        /// chiamata A0; poi stili e tratte prendono i tipi, i file si ripreparano e il glossario prende le «Maiuscole esatte» che
+        /// mancano. Un progetto salvato prima della tabella degli stili la prende qui, e i suoi file lasciano la pulizia di allora
+        /// </summary>
+        /// <param name="provider">Provider del modello</param>
+        /// <param name="cancellation">Annullamento dell'operazione</param>
+        /// <returns>Task del riconoscimento</returns>
+        private async Task ClassifyAsync(ITranslationModelProvider provider, CancellationToken cancellation)
+        {
+            SubtitleKindClassifier classifier;
+            SubtitleKindPlan plan;
+            lock (this.StateLock)
+            {
+                if (this._project.Styles == null)
+                {
+                    this._project.Styles = new List<TranslationProjectStyle>();
+                    foreach (TranslationProjectFile file in this._project.Files)
+                        this.PrepareFile(file, false);
+                    this.SyncStyles();
+                }
+
+                classifier = new SubtitleKindClassifier(this._project.SourceLanguage);
+                plan = classifier.Plan(this.GetDocuments(), this._project.Context);
+                this._phrase = AppText.T(TEXT_PREFIX + ".classificationProgress");
+                this._detail = plan.Message != null ? this._project.Models.Analysis : "";
+            }
+            this.NotifyRecordsChanged();
+
+            if (plan.Message != null)
+            {
+                await this.RunDeliveryCallsAsync(provider, TranslationCallKind.A0, TranslationSessionKey.NO_FILE, null, classifier.Instructions, plan.Message,
+                    new JsonArray(plan.Tool.DeepClone()), true, (response, input) => classifier.ReadResponse(response, input, plan), cancellation);
+            }
+
+            lock (this.StateLock)
+            {
+                this._project.Stretches = plan.Apply(this._project.Styles);
+                foreach (TranslationProjectFile file in this._project.Files)
+                    this.PrepareFile(file, false);
+                if (this._project.Glossary != null)
+                    new GlossaryBuilder(this._project.SourceLanguage, this._project.TargetLanguage).SetEpisodes(this._project.Glossary, this.GetEpisodes(), true);
+                this._store.Save(this._project);
+            }
+
+            this.AppendLog(AppText.F(TEXT_PREFIX + ".classificationDone", plan.Units.FindAll(u => u.Kind == TranslationStyleKind.Dialogue).Count,
+                plan.Units.FindAll(u => u.Kind == TranslationStyleKind.Song).Count, plan.Units.FindAll(u => u.Kind == TranslationStyleKind.Sign).Count,
+                plan.Units.FindAll(u => u.Kind == TranslationStyleKind.NotSourceLanguage).Count));
         }
 
         /// <summary>
@@ -2254,7 +2344,7 @@ namespace RemuxForge.Web.Services.Toolbox
             {
                 TranslationJobFileState state = this._jobFiles[fileId];
                 TranslationProjectFile file = this._project.Files.Find(f => f.Id == fileId);
-                this.PrepareFile(file);
+                this.PrepareFile(file, true);
                 if (!this._documents.ContainsKey(fileId))
                 {
                     if (state.TranslationStatus == TranslationFileStatus.Blocked && state.BlockedReason == file.RejectedReason)
@@ -2454,22 +2544,23 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Sequenza di chiamate di A1 o A2: al massimo tre richieste con risposta, coi giri di correzione, e una riga di registro
-        /// per tentativo di trasporto
+        /// Sequenza di chiamate di A0, A1 o A2 col modello dell'analisi: al massimo tre richieste con risposta, coi giri di
+        /// correzione, e una riga di registro per tentativo di trasporto
         /// </summary>
+        /// <typeparam name="T">Esito della lettura di una risposta</typeparam>
         /// <param name="provider">Provider del modello</param>
-        /// <param name="builder">Richieste e validazione del glossario</param>
-        /// <param name="kind">A1 o A2</param>
+        /// <param name="kind">A0, A1 o A2</param>
         /// <param name="fileId">File della chiamata, TranslationSessionKey.NO_FILE su più file</param>
-        /// <param name="cues">Battute mandate, null per A2</param>
+        /// <param name="cues">Battute mandate, null se la chiamata non ne manda</param>
         /// <param name="instructions">Instructions della chiamata</param>
         /// <param name="message">Messaggio iniziale</param>
-        /// <param name="webSearch">True per offrire la ricerca web</param>
-        /// <param name="merge">Conflitti per A2, null per A1</param>
+        /// <param name="tools">Tool offerti</param>
+        /// <param name="forceTool">True per forzare il tool della consegna, l'ultimo dei tool</param>
+        /// <param name="read">Lettura di una risposta, che accoda all'ingresso gli item e gli esiti per il giro di correzione</param>
         /// <param name="cancellation">Annullamento dell'operazione</param>
-        /// <returns>Glossario consegnato</returns>
-        private async Task<Glossary> RunGlossaryCallsAsync(ITranslationModelProvider provider, GlossaryBuilder builder, TranslationCallKind kind, string fileId, int? cues, string instructions, string message,
-            bool webSearch, GlossaryMergeResult merge, CancellationToken cancellation)
+        /// <returns>Consegna valida</returns>
+        private async Task<T> RunDeliveryCallsAsync<T>(ITranslationModelProvider provider, TranslationCallKind kind, string fileId, int? cues, string instructions, string message,
+            JsonArray tools, bool forceTool, Func<AiResponseResult, JsonArray, T> read, CancellationToken cancellation) where T : TranslationDelivery
         {
             JsonArray input = new JsonArray(TranslationRequestBuilder.CreateUserMessage(message));
             List<string> errors = new List<string>();
@@ -2486,7 +2577,9 @@ namespace RemuxForge.Web.Services.Toolbox
                 request.Request.ReasoningEffort = this._project.ReasoningEfforts.Analysis ?? "";
                 request.Request.Instructions = instructions;
                 request.Request.Input = input;
-                request.Request.Tools = builder.CreateTools(webSearch);
+                request.Request.Tools = tools.DeepClone().AsArray();
+                if (forceTool)
+                    request.Request.ToolChoice = new JsonObject { ["type"] = "function", ["name"] = tools[tools.Count - 1]["name"].DeepClone() };
 
                 // I tentativi falliti si registrano subito; quello riuscito dopo la validazione, con l'esito della consegna
                 // Anche il tentativo interrotto da Stop ha la sua riga, senza tipo d'errore: il consumo è reale
@@ -2525,17 +2618,17 @@ namespace RemuxForge.Web.Services.Toolbox
                     throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.incomplete"));
                 }
 
-                GlossaryDelivery delivery = builder.ReadResponse(response, input, merge);
+                T delivery = read(response, input);
                 record.Usage = new TranslationCallUsage(response.Usage, delivery.WebSearchCalls);
-                record.Outcome = delivery.Glossary != null ? TranslationCallOutcome.Accepted : TranslationCallOutcome.PartiallyRejected;
-                if (delivery.Glossary == null)
+                record.Outcome = delivery.Errors.Count == 0 ? TranslationCallOutcome.Accepted : TranslationCallOutcome.PartiallyRejected;
+                if (delivery.Errors.Count > 0)
                     record.Rejections.Add(new TranslationCallRejection { Reasons = delivery.Errors });
                 this.RecordCall(record);
 
                 if (delivery.WebSearchCalls > 0)
                     this._project.Analysis.WebSearchUsed = true;
-                if (delivery.Glossary != null)
-                    return delivery.Glossary;
+                if (delivery.Errors.Count == 0)
+                    return delivery;
 
                 errors = delivery.Errors;
                 this.AppendLog(AppText.F(TEXT_PREFIX + ".deliveryRejected", AppText.T(TEXT_PREFIX + ".calls.kind." + kind), round,
@@ -2643,12 +2736,13 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Prepara un file del progetto e ne tiene il documento; con l'analisi partita il file tiene le impronte salvate
+        /// Prepara un file del progetto coi tipi riconosciuti e ne tiene il documento; un file bloccato tiene le impronte salvate
         /// </summary>
         /// <param name="file">File del progetto</param>
-        private void PrepareFile(TranslationProjectFile file)
+        /// <param name="locked">True con l'analisi partita e i tipi già riconosciuti</param>
+        private void PrepareFile(TranslationProjectFile file, bool locked)
         {
-            SubtitleTranslationDocument document = TranslationFilePreparer.Prepare(file, this._project.SourceLanguage, this._project.Styles, this._project.Analysis != null);
+            SubtitleTranslationDocument document = TranslationFilePreparer.Prepare(file, this._project.SourceLanguage, this._project.Styles, this._project.Stretches, locked);
             if (document != null)
             {
                 this._documents[file.Id] = document;
@@ -2660,39 +2754,27 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Allinea la tabella degli stili ai file letti finché l'analisi non è partita: uno stile nuovo entra col tipo proposto
-        /// dagli indizi di tutti i file, uno che non compare più esce solo con tutti i file letti, perché un file rifiutato per poco
-        /// non perda le scelte. I file con uno stile nuovo proposto come canzone, cartello o da non tradurre si ripreparano, perché
-        /// la prima lettura lo ha trattato come dialogo
+        /// Allinea la tabella degli stili ai file letti finché i tipi non sono riconosciuti: uno stile nuovo entra senza tipo, uno
+        /// che non compare più esce solo con tutti i file letti, perché un file rifiutato per poco non lo perda
         /// </summary>
         /// <returns>True se la tabella è cambiata</returns>
         private bool SyncStyles()
         {
-            if (this._project.Styles == null || this._project.Analysis != null)
+            if (this._project.Styles == null || this._project.Stretches != null)
                 return false;
 
             List<SubtitleStyleUsage> usages = this.GetStyleUsages();
-            HashSet<string> reread = new HashSet<string>(StringComparer.Ordinal);
             bool changed = false;
             foreach (SubtitleStyleUsage usage in usages)
             {
                 if (this._project.Styles.Exists(s => s.Name == usage.Name))
                     continue;
 
-                this._project.Styles.Add(new TranslationProjectStyle { Name = usage.Name, Kind = usage.SuggestedKind });
-                if (usage.SuggestedKind != TranslationStyleKind.Dialogue)
-                    reread.Add(usage.Name);
+                this._project.Styles.Add(new TranslationProjectStyle { Name = usage.Name });
                 changed = true;
             }
             if (this._documents.Count == this._project.Files.Count)
                 changed |= this._project.Styles.RemoveAll(s => !usages.Exists(u => u.Name == s.Name)) > 0;
-
-            foreach (TranslationProjectFile file in this._project.Files)
-            {
-                SubtitleTranslationDocument document;
-                if (this._documents.TryGetValue(file.Id, out document) && document.Styles.Any(u => reread.Contains(u.Name)))
-                    this.PrepareFile(file);
-            }
 
             return changed;
         }
@@ -2718,15 +2800,28 @@ namespace RemuxForge.Web.Services.Toolbox
                         total = new SubtitleStyleUsage(usage.Name);
                         usages.Add(total);
                     }
-                    total.Lines += usage.Lines;
-                    total.SongLines += usage.SongLines;
-                    total.SignLines += usage.SignLines;
-                    if (total.Example.Length == 0)
-                        total.Example = usage.Example;
+                    total.Texts.AddRange(usage.Texts);
                 }
             }
 
             return usages;
+        }
+
+        /// <summary>
+        /// Documenti dei file preparati, nell'ordine del progetto
+        /// </summary>
+        /// <returns>Identificativo e documento di ogni file valido</returns>
+        private List<KeyValuePair<string, SubtitleTranslationDocument>> GetDocuments()
+        {
+            List<KeyValuePair<string, SubtitleTranslationDocument>> documents = new List<KeyValuePair<string, SubtitleTranslationDocument>>();
+            foreach (TranslationProjectFile file in this._project.Files)
+            {
+                SubtitleTranslationDocument document;
+                if (this._documents.TryGetValue(file.Id, out document))
+                    documents.Add(new KeyValuePair<string, SubtitleTranslationDocument>(file.Id, document));
+            }
+
+            return documents;
         }
 
         /// <summary>
@@ -2770,6 +2865,18 @@ namespace RemuxForge.Web.Services.Toolbox
         protected override bool AcceptsListChanges
         {
             get { return this._project != null && this._project.Analysis == null; }
+        }
+
+        /// <summary>
+        /// True con i tipi del progetto stabiliti: riconosciuti, o mai riconosciuti in un progetto salvato prima della tabella degli
+        /// stili che li tiene come allora; chiamato sotto StateLock
+        /// </summary>
+        private bool KindsSettled
+        {
+            get
+            {
+                return this._project.Styles == null || this._project.Stretches != null;
+            }
         }
 
         /// <summary>
@@ -3387,9 +3494,9 @@ namespace RemuxForge.Web.Services.Toolbox
         public string Name { get; set; }
 
         /// <summary>
-        /// Tipo scelto
+        /// Tipo riconosciuto, null prima del riconoscimento
         /// </summary>
-        public TranslationStyleKind Kind { get; set; }
+        public TranslationStyleKind? Kind { get; set; }
 
         /// <summary>
         /// Righe dello stile nei file letti

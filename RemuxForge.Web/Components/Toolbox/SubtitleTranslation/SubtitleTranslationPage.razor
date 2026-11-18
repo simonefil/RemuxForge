@@ -266,14 +266,7 @@
                                 <Template Context="style"><CellText Text="@style.Example" /></Template>
                             </RadzenDataGridColumn>
                             <RadzenDataGridColumn TItem="TranslationStyleRow" Title="@AppText.T("web.toolbox.subtitleTranslation.styleKind")" Width="22%">
-                                <Template Context="style">
-                                    <RadzenDropDown TValue="TranslationStyleKind" class="rf-translation-cell-input" Data="@s_styleKinds" Value="@style.Kind" Disabled="@filesLocked"
-                                                    aria-label="@(AppText.T("web.toolbox.subtitleTranslation.styleKind") + " " + style.Name)"
-                                                    Change="@((object value) => Orchestrator.SetStyleKind(style.Name, (TranslationStyleKind)value))">
-                                        <Template Context="kind">@AppText.T("web.toolbox.subtitleTranslation.styleKind." + kind)</Template>
-                                        <ValueTemplate Context="kind">@AppText.T("web.toolbox.subtitleTranslation.styleKind." + kind)</ValueTemplate>
-                                    </RadzenDropDown>
-                                </Template>
+                                <Template Context="style"><CellText Text="@(style.Kind.HasValue ? AppText.T("web.toolbox.subtitleTranslation.styleKind." + style.Kind.Value) : "")" /></Template>
                             </RadzenDataGridColumn>
                         </Columns>
                     </RadzenDataGrid>
@@ -1006,11 +999,6 @@
     /// Tipi di termine nell'ordine della tendina
     /// </summary>
     private static readonly List<GlossaryTermKind> s_termKinds = new List<GlossaryTermKind>((GlossaryTermKind[])Enum.GetValues(typeof(GlossaryTermKind)));
-
-    /// <summary>
-    /// Tipi di uno stile nell'ordine della tendina
-    /// </summary>
-    private static readonly List<TranslationStyleKind> s_styleKinds = new List<TranslationStyleKind>((TranslationStyleKind[])Enum.GetValues(typeof(TranslationStyleKind)));
 
     /// <summary>
     /// Generi dei personaggi nell'ordine della tendina

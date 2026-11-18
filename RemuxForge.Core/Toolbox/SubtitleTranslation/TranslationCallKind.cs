@@ -5,6 +5,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// </summary>
     public enum TranslationCallKind
     {
+        /// <summary>Riconoscimento del tipo degli stili e delle tratte SRT</summary>
+        A0,
+
         /// <summary>Analisi dei file e proposta del glossario</summary>
         A1,
 
@@ -41,7 +44,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Restituisce il tipo della chiave di cache: ritentativo e blocco ridotto condividono la chiave del blocco
         /// </summary>
         /// <param name="kind">Tipo di chiamata</param>
-        /// <returns>A1, A2, B, C, D1 o D2</returns>
+        /// <returns>A0, A1, A2, B, C, D1 o D2</returns>
         public static string GetSessionKind(this TranslationCallKind kind)
         {
             if (kind == TranslationCallKind.BRetry || kind == TranslationCallKind.BReduced)

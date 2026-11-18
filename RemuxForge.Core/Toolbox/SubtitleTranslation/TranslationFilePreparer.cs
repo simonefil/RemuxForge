@@ -17,7 +17,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Versione della preparazione, da aumentare quando cambiano id, gruppi, tipi o testo pulito
         /// </summary>
-        public const int PREPARER_VERSION = 3;
+        public const int PREPARER_VERSION = 4;
 
         /// <summary>
         /// Rifiuto di un file che non c'è più
@@ -63,9 +63,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="file">File del progetto</param>
         /// <param name="sourceLanguage">Lingua d'origine, che decide i gruppi; vuota se non ancora scelta</param>
         /// <param name="styles">Tabella degli stili del progetto, null nei progetti salvati prima</param>
+        /// <param name="stretches">Tratte SRT riconosciute del progetto, null prima del riconoscimento</param>
         /// <param name="locked">True con l'analisi partita</param>
         /// <returns>Documento letto, null se il file è rifiutato</returns>
-        public static SubtitleTranslationDocument Prepare(TranslationProjectFile file, string sourceLanguage, IReadOnlyList<TranslationProjectStyle> styles, bool locked)
+        public static SubtitleTranslationDocument Prepare(TranslationProjectFile file, string sourceLanguage, IReadOnlyList<TranslationProjectStyle> styles,
+            IReadOnlyList<TranslationProjectStretch> stretches, bool locked)
         {
             byte[] bytes;
             file.RejectedReason = "";
@@ -106,7 +108,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 return null;
             }
 
-            SubtitleTranslationDocument document = SubtitleTranslationDocument.Read(bytes, file.Format, file.Encoding, styles);
+            SubtitleTranslationDocument document = SubtitleTranslationDocument.Read(bytes, file.Format, file.Encoding, styles, stretches);
             if (!string.IsNullOrEmpty(document.RejectionReason))
             {
                 file.RejectedReason = document.RejectionReason;

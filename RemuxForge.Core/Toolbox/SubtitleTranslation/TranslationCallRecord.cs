@@ -125,7 +125,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public int? Attempt { get; set; }
 
         /// <summary>
-        /// Giro di correzione di A1 e A2, da 1
+        /// Giro di correzione di A0, A1 e A2, da 1
         /// </summary>
         public int? Round { get; set; }
 

@@ -4293,7 +4293,6 @@
   "web.toolbox.subtitleTranslation.styleKind.Dialogue": "Dialogue",
   "web.toolbox.subtitleTranslation.styleKind.Song": "Song",
   "web.toolbox.subtitleTranslation.styleKind.Sign": "Sign",
-  "web.toolbox.subtitleTranslation.styleKind.Skip": "Don't translate",
   "web.toolbox.subtitleTranslation.termExactCase": "Exact case",
   "web.toolbox.subtitleTranslation.warning.slip": "Same as another cue",
   "web.toolbox.subtitleTranslation.reviewNotDone": "AI review failed",
@@ -4307,5 +4306,13 @@
   "web.toolbox.subtitleTranslation.reviewBlocked": "AI review completed with blocked files",
   "web.toolbox.subtitleTranslation.notifyTermsBlocked": "Term application with blocked files",
   "web.toolbox.subtitleTranslation.notifyReviewBlocked": "AI review with blocked files",
-  "web.toolbox.subtitleTranslation.notifyBlockedAfterDetail": "Remove the blocked files, or put the sources back and reopen the project"
+  "web.toolbox.subtitleTranslation.notifyBlockedAfterDetail": "Remove the blocked files, or put the sources back and reopen the project",
+  "web.toolbox.subtitleTranslation.styleKind.NotSourceLanguage": "Other language",
+  "web.toolbox.subtitleTranslation.calls.kind.A0": "Kind recognition",
+  "toolbox.subtitleTranslation.reason.UNIT_MISSING": "Missing kind",
+  "toolbox.subtitleTranslation.reason.UNIT_DUPLICATE": "Kind delivered more than once",
+  "web.toolbox.subtitleTranslation.classificationProgress": "Recognizing dialogue, songs and signs",
+  "web.toolbox.subtitleTranslation.classificationDone": "Kinds recognized: {0} dialogue, {1} song, {2} signs, {3} other language",
+  "web.toolbox.subtitleTranslation.classificationStopped": "Kind recognition stopped",
+  "web.toolbox.subtitleTranslation.classificationFailed": "Kind recognition stopped: {0}"
 }

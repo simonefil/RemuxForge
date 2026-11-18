@@ -208,7 +208,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         if (!activeStates.TryGetValue(file.Id, out state))
                             continue;
 
-                        SubtitleTranslationDocument document = SubtitleTranslationDocument.Read(File.ReadAllBytes(file.Path), file.Format, file.Encoding, project.Styles);
+                        SubtitleTranslationDocument document = SubtitleTranslationDocument.Read(File.ReadAllBytes(file.Path), file.Format, file.Encoding, project.Styles, project.Stretches);
                         Dictionary<int, string> translated = new Dictionary<int, string>();
                         foreach (TranslatedCueState translation in state.Translations)
                         {

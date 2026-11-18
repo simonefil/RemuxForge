@@ -204,20 +204,20 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
         }
 
-        #endregion
-
-        #region Metodi privati
-
         /// <summary>
         /// Chiave di confronto di una battuta: formato e testo pulito con gli spazi ridotti
         /// </summary>
         /// <param name="format">Formato del file</param>
         /// <param name="text">Testo pulito</param>
         /// <returns>Chiave</returns>
-        private static string Key(SubtitleTranslationFormat format, string text)
+        public static string Key(SubtitleTranslationFormat format, string text)
         {
             return ((int)format).ToString(CultureInfo.InvariantCulture) + " " + s_spaces.Replace(text, " ").Trim();
         }
+
+        #endregion
+
+        #region Metodi privati
 
         /// <summary>
         /// Chiave di tre battute consecutive

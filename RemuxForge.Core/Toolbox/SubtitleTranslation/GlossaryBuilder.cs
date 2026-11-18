@@ -25,7 +25,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public const string SUBMIT_TOOL = "submit_glossary";
 
         /// <summary>
-        /// Richieste con risposta al massimo per una sequenza di A1 o A2
+        /// Richieste con risposta al massimo per una sequenza di A0, A1 o A2
         /// </summary>
         public const int MAX_ROUNDS = 3;
 
@@ -829,11 +829,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// Ricalcola i file in cui compare ogni termine, con la parola intera senza articolo e senza distinguere maiuscole, e
-        /// precompila «Maiuscole esatte» delle voci che non l'hanno ancora
+        /// precompila «Maiuscole esatte» delle voci che non l'hanno ancora quando le battute hanno già i tipi riconosciuti
         /// </summary>
         /// <param name="glossary">Glossario da aggiornare</param>
         /// <param name="episodes">File del progetto</param>
-        public void SetEpisodes(Glossary glossary, IReadOnlyList<GlossaryEpisode> episodes)
+        /// <param name="exactCase">True per precompilare «Maiuscole esatte»: false finché il riconoscimento dei tipi deve ancora
+        /// togliere le righe che non sono nella lingua d'origine</param>
+        public void SetEpisodes(Glossary glossary, IReadOnlyList<GlossaryEpisode> episodes, bool exactCase)
         {
             List<KeyValuePair<string, string>> texts = new List<KeyValuePair<string, string>>();
             List<string> cueTexts = new List<string>();
@@ -849,7 +851,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
                 texts.Add(new KeyValuePair<string, string>(episode.FileId, text.ToString()));
             }
-            TranslationValidator.FillExactCase(glossary, new NewTermDecision[0], cueTexts);
+            if (exactCase)
+                TranslationValidator.FillExactCase(glossary, new NewTermDecision[0], cueTexts);
 
             foreach (GlossaryTerm term in glossary.Terms)
             {
@@ -1235,7 +1238,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="values">Valori</param>
         /// <returns>Elenco JSON</returns>
-        private static JsonArray CreateArray(IEnumerable<string> values)
+        internal static JsonArray CreateArray(IEnumerable<string> values)
         {
             JsonArray array = new JsonArray();
             foreach (string value in values)
@@ -1317,7 +1320,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// <summary>
     /// Esito della lettura di una risposta di A1 o A2
     /// </summary>
-    public class GlossaryDelivery
+    public class GlossaryDelivery : TranslationDelivery
     {
         #region Costruttore
 
@@ -1327,8 +1330,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public GlossaryDelivery()
         {
             this.Glossary = null;
-            this.Errors = new List<string>();
-            this.WebSearchCalls = 0;
         }
 
         #endregion
@@ -1339,16 +1340,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Glossario consegnato, null senza consegna valida
         /// </summary>
         public Glossary Glossary { get; set; }
-
-        /// <summary>
-        /// Errori della consegna respinta
-        /// </summary>
-        public List<string> Errors { get; set; }
-
-        /// <summary>
-        /// Item web_search_call ricevuti
-        /// </summary>
-        public int WebSearchCalls { get; set; }
 
         #endregion
     }
