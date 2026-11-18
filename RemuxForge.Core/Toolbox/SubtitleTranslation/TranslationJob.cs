@@ -1,6 +1,8 @@
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
@@ -153,7 +155,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Blocco rivisto</summary>
         Done,
 
-        /// <summary>Blocco non rivisto: diagnosi non valida anche al ritentativo, da rifare alla ripresa</summary>
+        /// <summary>
+        /// Blocco non rivisto dalla revisione AI: diagnosi non riuscita per una risposta del modello anche dopo i tentativi e i
+        /// dimezzamenti; le sue battute vanno all'utente col motivo e la fase prosegue
+        /// </summary>
         Failed
     }
 
@@ -628,6 +633,19 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
+        /// Codici del motivo più recente dello stato da rivedere, per la griglia e per la diagnosi: quello del servizio, una parola
+        /// sola, o quelli dell'ultimo rifiuto del validatore, di cui il motivo è la copia
+        /// </summary>
+        /// <returns>Codici distinti nell'ordine, vuoti senza motivo</returns>
+        public List<string> GetReasonCodes()
+        {
+            if (this.ToReviewReason != null && this.ToReviewReason.IndexOf(' ') < 0)
+                return new List<string> { this.ToReviewReason };
+
+            return TranslationValidationIssue.ReadCodes(this.Rejections.Count > 0 ? this.Rejections[this.Rejections.Count - 1].Reasons : new List<string>());
+        }
+
+        /// <summary>
         /// Copia indipendente dell'esito con un altro id, per le copie di una tratta condivisa
         /// </summary>
         /// <param name="id">Id della copia</param>
@@ -1026,6 +1044,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.FirstId = 0;
             this.LastId = 0;
             this.Status = TranslationReviewBlockStatus.Pending;
+            this.Parts = null;
+            this.FailureReason = null;
             this.Issues = new List<TranslationReviewIssue>();
             this.CallSeqs = new List<int>();
         }
@@ -1058,7 +1078,20 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Stato
         /// </summary>
+        [JsonConverter(typeof(TranslationReviewBlockStatusJsonConverter))]
         public TranslationReviewBlockStatus Status { get; set; }
+
+        /// <summary>
+        /// Parti della diagnosi ancora da fare dopo un dimezzamento, in ordine di tempo; null finché la diagnosi non si è divisa.
+        /// Le parti già diagnosticate hanno i loro problemi in Issues e la ripresa non le rifà
+        /// </summary>
+        public List<List<int>> Parts { get; set; }
+
+        /// <summary>
+        /// Motivo per cui il blocco non è rivisto dalla revisione AI, nel codice dei motivi delle battute da rivedere; null fuori
+        /// da quello stato e per i blocchi non rivisti salvati prima che il motivo si tenesse
+        /// </summary>
+        public string FailureReason { get; set; }
 
         /// <summary>
         /// Problemi della diagnosi tenuti, per la correzione anche dopo una ripresa
@@ -1104,6 +1137,47 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Testo corretto suggerito, vuoto se la diagnosi non lo dà
         /// </summary>
         public string Suggestion { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Stato della revisione AI di un blocco in JSON col nome del valore, come gli altri enum dei file della traduzione. In
+    /// lettura accetta anche DiagnosisFailed dei job e degli archivi salvati prima, che diventa il blocco non rivisto
+    /// </summary>
+    public sealed class TranslationReviewBlockStatusJsonConverter : JsonConverter<TranslationReviewBlockStatus>
+    {
+        #region Costanti
+
+        /// <summary>
+        /// Valore tolto: diagnosi non valida salvata, con la correzione delle sole battute da rivedere ancora da fare
+        /// </summary>
+        private const string LEGACY_DIAGNOSIS_FAILED = "DiagnosisFailed";
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <inheritdoc />
+        public override TranslationReviewBlockStatus Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            string name = reader.TokenType == JsonTokenType.String ? reader.GetString() : null;
+            if (string.Equals(name, LEGACY_DIAGNOSIS_FAILED, StringComparison.OrdinalIgnoreCase))
+                return TranslationReviewBlockStatus.Failed;
+
+            TranslationReviewBlockStatus status;
+            if (name == null || !Array.Exists(Enum.GetNames<TranslationReviewBlockStatus>(), n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase))
+                || !Enum.TryParse(name, true, out status))
+                throw new JsonException("Stato del blocco di revisione non valido: " + (name ?? reader.TokenType.ToString()));
+
+            return status;
+        }
+
+        /// <inheritdoc />
+        public override void Write(Utf8JsonWriter writer, TranslationReviewBlockStatus value, JsonSerializerOptions options)
+        {
+            writer.WriteStringValue(value.ToString());
+        }
 
         #endregion
     }

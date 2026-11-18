@@ -16,10 +16,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// <summary>
     /// Revisione AI di un job: per ogni blocco scelto una diagnosi D1 con un ritentativo, poi D2 sulle battute diagnosticate e
     /// su quelle da rivedere, coi gruppi interi. Una diagnosi troncata dal tetto dei token in uscita a entrambe le chiamate si
-    /// dimezza come una consegna. La diagnosi valida si salva e alla ripresa il blocco riparte da D2; una diagnosi non valida
-    /// anche al ritentativo lascia il blocco non rivisto e ferma la fase, e la ripresa la rifà. I blocchi di un file
-    /// vanno in sequenza. Una tratta condivisa si rivede una volta sola, in un blocco suo nel file della prima occorrenza, e le
-    /// correzioni passano a tutte le copie; i blocchi del piano saltano le battute delle tratte
+    /// dimezza come una consegna. Ogni parte diagnosticata si salva, e alla ripresa il blocco riparte dalle parti che restano o
+    /// da D2. Una parte che il modello non diagnostica anche dopo i tentativi e i dimezzamenti, come una risposta fermata dal
+    /// filtro dei contenuti o senza la chiamata della diagnosi, lascia il blocco non rivisto col motivo, e la fase prosegue;
+    /// solo un errore del servizio la ferma. I blocchi di un file vanno in sequenza. Una tratta condivisa si rivede una volta
+    /// sola, in un blocco suo nel file della prima occorrenza, e le correzioni passano a tutte le copie; i blocchi del piano
+    /// saltano le battute delle tratte
     /// </summary>
     public sealed class TranslationReviewer : TranslationPhaseRunner
     {
@@ -117,7 +119,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <inheritdoc />
         protected override bool HasWork(TranslationRunFile file)
         {
-            return file.State.ReviewBlocks.Exists(b => b.Status != TranslationReviewBlockStatus.Done);
+            return file.State.ReviewBlocks.Exists(b => b.Status == TranslationReviewBlockStatus.Pending || b.Status == TranslationReviewBlockStatus.Diagnosed);
         }
 
         /// <inheritdoc />
@@ -127,8 +129,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Rivede i blocchi da fare del file uno alla volta; ogni blocco si salva dopo D1 e dopo D2. Un blocco senza diagnosi
-        /// valida resta non rivisto e ferma il file con l'errore del servizio
+        /// Rivede i blocchi da fare del file uno alla volta; ogni blocco si salva dopo ogni parte di D1 e dopo D2. Un blocco senza
+        /// diagnosi valida resta non rivisto col motivo e il file passa al blocco seguente
         /// </summary>
         /// <param name="file">File del job</param>
         /// <param name="provider">Provider condiviso</param>
@@ -145,7 +147,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 int count;
                 lock (this._lock)
                 {
-                    block = state.ReviewBlocks.Find(b => b.Status != TranslationReviewBlockStatus.Done);
+                    block = state.ReviewBlocks.Find(b => b.Status == TranslationReviewBlockStatus.Pending || b.Status == TranslationReviewBlockStatus.Diagnosed);
                     number = state.ReviewBlocks.IndexOf(block) + 1;
                     count = state.ReviewBlocks.Count;
                 }
@@ -185,8 +187,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
                 else
                 {
-                    // D1 con un ritentativo, anche per un blocco rimasto non rivisto da un giro precedente; troncata a entrambe le
-                    // chiamate si dimezza fino alla battuta o al gruppo, e i problemi delle parti si sommano
+                    // D1 con un ritentativo per parte; troncata a entrambe le chiamate si dimezza fino alla battuta o al gruppo, e i
+                    // problemi delle parti si sommano
                     Dictionary<int, List<string>> signals = new Dictionary<int, List<string>>();
                     foreach (TranslatedCueState translation in translations.Values)
                     {
@@ -198,10 +200,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                 lines.Add("RETRIED: attempt " + rejection.Attempt.ToString(CultureInfo.InvariantCulture) + " rejected with " + string.Join(", ", TranslationValidationIssue.ReadCodes(rejection.Reasons)));
                         }
                         if (translation.Status == TranslatedCueStatus.ToReview)
-                        {
-                            List<string> codes = translation.Rejections.Count > 0 ? TranslationValidationIssue.ReadCodes(translation.Rejections[translation.Rejections.Count - 1].Reasons) : new List<string>();
-                            lines.Add("TO_REVIEW: " + (codes.Count > 0 ? string.Join(", ", codes) : translation.ToReviewReason ?? ""));
-                        }
+                            lines.Add("TO_REVIEW: " + string.Join(", ", translation.GetReasonCodes()));
                         foreach (GlossaryWarning warning in translation.GlossaryWarnings)
                             lines.Add("GLOSSARY: source has \"" + warning.Source + "\", translation lacks \"" + warning.Target + "\"");
                         foreach (CollectedNewTerm term in state.CollectedNewTerms)
@@ -225,17 +224,19 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             signals[translation.Id] = lines;
                     }
 
+                    // Parti da diagnosticare: il blocco intero, o quelle rimaste da un dimezzamento salvato
                     DeliveryWork diagnosis = new DeliveryWork(unit);
-                    List<List<int>> parts = new List<List<int>> { ids };
-                    List<TranslationReviewIssue> partsIssues = new List<TranslationReviewIssue>();
-                    bool diagnosed = true;
-                    while (parts.Count > 0)
+                    List<List<int>> parts;
+                    lock (this._lock)
+                        parts = block.Parts != null ? new List<List<int>>(block.Parts) : new List<List<int>> { ids };
+                    string failure = null;
+                    while (parts.Count > 0 && failure == null)
                     {
                         List<int> partIds = parts[0];
-                        parts.RemoveAt(0);
                         List<FrozenCue> partCues = partIds.ConvertAll(id => context.Frozen[id]);
                         List<TranslationReviewIssue> partIssues = null;
                         bool truncated = true;
+                        string reason = null;
                         for (int attempt = 0; attempt < DIAGNOSIS_ATTEMPTS && partIssues == null; attempt++)
                         {
                             TranslationModelRequest request = this.CreateRequest(TranslationCallKind.D1, state.FileId, this._job.Models.Review, this._job.ReasoningEfforts.Review,
@@ -252,15 +253,18 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                 record.IncompleteReason = response.IncompleteReason;
                                 record.Outcome = TranslationCallOutcome.PartiallyRejected;
                                 truncated &= response.IncompleteReason == INCOMPLETE_MAX_OUTPUT_TOKENS;
+                                reason = response.IncompleteReason == INCOMPLETE_CONTENT_FILTER ? REASON_CONTENT_FILTER : REASON_INCOMPLETE;
                             }
                             else
                             {
                                 truncated = false;
+                                bool called = false;
                                 JsonArray entries = null;
                                 foreach (JsonObject item in response.Items)
                                 {
                                     if (AiOAuthFlow.GetString(item, "type") != "function_call" || AiOAuthFlow.GetString(item, "name") != TranslationRequestBuilder.SUBMIT_DIAGNOSIS_TOOL)
                                         continue;
+                                    called = true;
                                     try
                                     {
                                         entries = (JsonNode.Parse(AiOAuthFlow.GetString(item, "arguments") ?? "") as JsonObject)?["issues"] as JsonArray;
@@ -274,8 +278,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                                 if (entries == null)
                                 {
+                                    reason = called ? TranslationValidator.ARGS_INVALID : TranslationValidator.NO_SUBMISSION;
                                     record.Outcome = TranslationCallOutcome.PartiallyRejected;
-                                    record.Rejections.Add(new TranslationCallRejection { Id = null, Reasons = new List<string> { TranslationValidator.ARGS_INVALID + ": no submit_diagnosis call with an issues array." } });
+                                    record.Rejections.Add(new TranslationCallRejection { Id = null, Reasons = new List<string> { called
+                                        ? TranslationValidator.ARGS_INVALID + ": submit_diagnosis arguments are not a JSON object with an issues array."
+                                        : TranslationValidator.NO_SUBMISSION + ": no submit_diagnosis call was received." } });
                                 }
                                 else
                                 {
@@ -303,47 +310,55 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             this.RecordCall(record, diagnosis);
                         }
 
-                        if (partIssues != null)
+                        // Troncata a entrambe le chiamate: le metà prendono il posto della parte. Senza metà il blocco non è rivisto
+                        parts.RemoveAt(0);
+                        if (partIssues == null)
                         {
-                            partsIssues.AddRange(partIssues);
-                            continue;
-                        }
-
-                        List<List<int>> halves = new List<List<int>>();
-                        if (truncated)
-                        {
-                            List<SubtitleCue> live = context.GetLiveCues(partIds);
-                            foreach (IReadOnlyList<SubtitleCue> half in new SubtitleBlockPlanner(live).SplitBlock(live))
+                            List<List<int>> halves = new List<List<int>>();
+                            if (truncated)
                             {
-                                List<int> halfIds = new List<int>();
-                                foreach (SubtitleCue cue in half)
-                                    halfIds.Add(cue.Id.Value);
-                                halves.Add(halfIds);
+                                List<SubtitleCue> live = context.GetLiveCues(partIds);
+                                foreach (IReadOnlyList<SubtitleCue> half in new SubtitleBlockPlanner(live).SplitBlock(live))
+                                {
+                                    List<int> halfIds = new List<int>();
+                                    foreach (SubtitleCue cue in half)
+                                        halfIds.Add(cue.Id.Value);
+                                    halves.Add(halfIds);
+                                }
+                            }
+                            if (halves.Count < 2)
+                            {
+                                failure = reason;
+                            }
+                            else
+                            {
+                                this.RaiseLog(AppText.F("toolbox.subtitleTranslation.run.retryReduced", file.FileName, halves[0].Count, halves[1].Count));
+                                parts.InsertRange(0, halves);
                             }
                         }
-                        if (halves.Count < 2)
+
+                        // Ogni parte si salva con le sue chiamate: uno Stop o un errore del servizio non la fanno ripagare
+                        lock (this._lock)
                         {
-                            diagnosed = false;
-                            break;
+                            if (partIssues != null)
+                                block.Issues.AddRange(partIssues);
+                            block.Parts = failure == null && parts.Count > 0 ? new List<List<int>>(parts) : null;
+                            block.FailureReason = failure;
+                            block.Status = failure != null ? TranslationReviewBlockStatus.Failed : parts.Count == 0 ? TranslationReviewBlockStatus.Diagnosed : TranslationReviewBlockStatus.Pending;
+                            block.CallSeqs.AddRange(diagnosis.CallSeqs);
+                            diagnosis.CallSeqs.Clear();
+                            this.SaveFile(state);
                         }
-
-                        this.RaiseLog(AppText.F("toolbox.subtitleTranslation.run.retryReduced", file.FileName, halves[0].Count, halves[1].Count));
-                        parts.InsertRange(0, halves);
                     }
-                    if (diagnosed)
-                        issues = partsIssues;
 
-                    // Diagnosi valida salvata: uno Stop durante D2 non la fa ripagare. Senza, il blocco resta non rivisto con le sue
-                    // chiamate e il file si ferma: la ripresa rifà D1
-                    lock (this._lock)
+                    if (failure != null)
                     {
-                        block.Issues = issues ?? new List<TranslationReviewIssue>();
-                        block.Status = issues != null ? TranslationReviewBlockStatus.Diagnosed : TranslationReviewBlockStatus.Failed;
-                        block.CallSeqs.AddRange(diagnosis.CallSeqs);
-                        this.SaveFile(state);
+                        this.RaiseLog(AppText.F("toolbox.subtitleTranslation.review.diagnosisFailed", file.FileName, number, count, AppText.T(TranslationValidationIssue.REASON_KEY_PREFIX + failure)));
+                        this.ReportProgress(file.FileName, number, count);
+                        this.RaiseChanged();
+                        continue;
                     }
-                    if (issues == null)
-                        throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.F("toolbox.subtitleTranslation.review.diagnosisFailed", file.FileName, number, count));
+                    issues = block.Issues;
                 }
 
                 // D2: diagnosticate e da rivedere, coi gruppi interi
@@ -437,7 +452,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi privati
 
         /// <summary>
-        /// Avvisa dell'avanzamento coi blocchi rivisti sul totale di tutti i file
+        /// Avvisa dell'avanzamento coi blocchi conclusi, rivisti o non rivisti, sul totale di tutti i file
         /// </summary>
         /// <param name="fileName">File in lavoro</param>
         /// <param name="number">Blocco del file</param>
@@ -451,7 +466,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 foreach (TranslationRunFile file in this._files)
                 {
                     total += file.State.ReviewBlocks.Count;
-                    done += file.State.ReviewBlocks.FindAll(b => b.Status == TranslationReviewBlockStatus.Done).Count;
+                    done += file.State.ReviewBlocks.FindAll(b => b.Status == TranslationReviewBlockStatus.Done || b.Status == TranslationReviewBlockStatus.Failed).Count;
                 }
             }
 

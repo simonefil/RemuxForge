@@ -46,7 +46,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Motivo di incompletezza del servizio per il filtro dei contenuti
         /// </summary>
-        private const string INCOMPLETE_CONTENT_FILTER = "content_filter";
+        protected const string INCOMPLETE_CONTENT_FILTER = "content_filter";
 
         #endregion
 

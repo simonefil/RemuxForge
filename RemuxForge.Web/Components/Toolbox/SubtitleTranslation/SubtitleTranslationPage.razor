@@ -599,14 +599,8 @@
                                 else
                                 {
                                     <div class="rf-translation-cue">
-                                        @if (row.ToReviewReason != null)
-                                        {
-                                            <span class="rf-translation-cell rf-translation-rejected">@row.ToReviewReason</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="rf-translation-cell">@MarkedText(row.Text ?? "")</span>
-                                        }
+                                        @* Il motivo sopra la traduzione: una battuta non rivista dalla revisione AI ha anche il testo *@
+                                        <span class="rf-translation-cell">@if (row.ToReviewReason != null) {<span class="rf-translation-rejected">@row.ToReviewReason</span>}@MarkedText(row.Text ?? "")</span>
                                         <RadzenButton Icon="edit" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@(busy || !Orchestrator.CanEditCues)"
                                                       title="@AppText.T("web.toolbox.subtitleTranslation.editEntry")" aria-label="@AppText.F("web.toolbox.subtitleTranslation.cueEdit", row.Id)"
                                                       Click="@(() => { _editingCue = row.Id; _cueDraft = row.Text ?? ""; })" />
@@ -1655,6 +1649,11 @@
             else if (result.Phase == TranslationJobPhase.Translation)
             {
                 this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyTranslated"), AppText.Count("web.toolbox.subtitleTranslation.filesCount", job.FileIds.Count));
+            }
+            else if (result.Phase == TranslationJobPhase.Review && result.NotReviewed > 0)
+            {
+                this.Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.notifyReviewedPartial"),
+                    AppText.Count("web.toolbox.subtitleTranslation.notReviewedCount", result.NotReviewed, AppText.Count("web.toolbox.subtitleTranslation.correctedCount", result.Corrected)));
             }
             else if (result.Phase == TranslationJobPhase.Review && result.ReviewBlocks > 0)
             {

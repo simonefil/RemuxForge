@@ -4233,7 +4233,7 @@
   "web.toolbox.subtitleTranslation.sharedStretchesStartedOne": "Prima {0} tratta ripetuta fra i file, tradotta una volta sola",
   "web.toolbox.subtitleTranslation.sharedStretchesStartedMany": "Prima {0} tratte ripetute fra i file, tradotte una volta sola",
   "toolbox.subtitleTranslation.run.blockSavedRejected": "[{0}] blocco {1}/{2}: {3} accettate, {4} respinte ({5})",
-  "toolbox.subtitleTranslation.review.diagnosisFailed": "Diagnosi della revisione AI non valida anche al secondo tentativo: blocco {1}/{2} di {0} non rivisto",
+  "toolbox.subtitleTranslation.review.diagnosisFailed": "[{0}] revisione AI, blocco {1}/{2} non rivisto: {3}",
   "toolbox.subtitleTranslation.reason.incomplete": "Risposta troncata",
   "toolbox.subtitleTranslation.reason.content_filter": "Fermata dal filtro dei contenuti",
   "toolbox.subtitleTranslation.reason.NO_SUBMISSION": "Nessuna consegna",
@@ -4295,5 +4295,12 @@
   "web.toolbox.subtitleTranslation.styleKind.Sign": "Cartello",
   "web.toolbox.subtitleTranslation.styleKind.Skip": "Non tradurre",
   "web.toolbox.subtitleTranslation.termExactCase": "Maiuscole esatte",
-  "web.toolbox.subtitleTranslation.warning.slip": "Uguale a un'altra battuta"
+  "web.toolbox.subtitleTranslation.warning.slip": "Uguale a un'altra battuta",
+  "web.toolbox.subtitleTranslation.reviewNotDone": "Revisione AI non riuscita",
+  "web.toolbox.subtitleTranslation.reviewNotDoneReason": "Revisione AI non riuscita: {0}",
+  "web.toolbox.subtitleTranslation.reviewCompletedPartialOne": "Revisione AI conclusa con {0} blocco non rivisto: {1}",
+  "web.toolbox.subtitleTranslation.reviewCompletedPartialMany": "Revisione AI conclusa con {0} blocchi non rivisti: {1}",
+  "web.toolbox.subtitleTranslation.notifyReviewedPartial": "Revisione AI conclusa in parte",
+  "web.toolbox.subtitleTranslation.notReviewedCountOne": "{0} blocco non rivisto · {1}",
+  "web.toolbox.subtitleTranslation.notReviewedCountMany": "{0} blocchi non rivisti · {1}"
 }

@@ -1121,6 +1121,30 @@ namespace RemuxForge.Web.Services.Toolbox
                 foreach (TranslatedCueState translation in state.Translations)
                     translations[translation.Id] = translation;
                 Dictionary<int, SharedStretch> shared = SharedStretch.MapFile(this._job.SharedStretches, fileId);
+
+                // Battute dei blocchi non rivisti dalla revisione AI col motivo: quelle del file fuori dalle tratte e, per una tratta,
+                // tutte le sue copie, perché il suo blocco sta nel file della prima occorrenza
+                Dictionary<int, string> notReviewed = new Dictionary<int, string>();
+                foreach (TranslationReviewBlock block in state.ReviewBlocks ?? new List<TranslationReviewBlock>())
+                {
+                    if (block.Status != TranslationReviewBlockStatus.Failed || block.SharedStretch.HasValue)
+                        continue;
+                    foreach (FrozenCue cue in state.GetSpan(block.FirstId, block.LastId))
+                    {
+                        if (!shared.ContainsKey(cue.Id))
+                            notReviewed[cue.Id] = block.FailureReason;
+                    }
+                }
+                foreach (KeyValuePair<int, SharedStretch> pair in shared)
+                {
+                    TranslationJobFileState master;
+                    if (!this._jobFiles.TryGetValue(pair.Value.Occurrences[0].FileId, out master) || master.ReviewBlocks == null)
+                        continue;
+                    TranslationReviewBlock block = master.ReviewBlocks.Find(b => b.SharedStretch == pair.Value.Index);
+                    if (block != null && block.Status == TranslationReviewBlockStatus.Failed)
+                        notReviewed[pair.Key] = block.FailureReason;
+                }
+
                 List<SubtitleCue> timed = new List<SubtitleCue>(document.Cues);
                 timed.Sort(SubtitleCue.CompareByTime);
                 foreach (SubtitleCue cue in timed)
@@ -1131,6 +1155,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     TranslatedCueState translation;
                     translations.TryGetValue(cue.Id.Value, out translation);
                     SharedStretch stretch;
+                    string failure;
                     TranslationReviewRow row = new TranslationReviewRow();
                     row.Id = cue.Id.Value;
                     row.StartMs = cue.StartMs;
@@ -1139,14 +1164,18 @@ namespace RemuxForge.Web.Services.Toolbox
                     row.Text = translation != null ? translation.Text : null;
                     row.ToReview = translation == null || translation.Status == TranslatedCueStatus.ToReview;
 
-                    // Motivo dello stato da rivedere in parole dell'utente: quello del servizio, una parola sola, o i codici dell'ultimo
-                    // rifiuto del validatore
+                    // Motivo dello stato da rivedere in parole dell'utente, il più recente: quello del servizio, una parola sola, o i
+                    // codici dell'ultimo rifiuto del validatore; poi la revisione AI non riuscita sul blocco della battuta
                     if (row.ToReview && translation != null)
                     {
-                        List<string> codes = translation.ToReviewReason != null && translation.ToReviewReason.IndexOf(' ') < 0
-                            ? new List<string> { translation.ToReviewReason }
-                            : TranslationValidationIssue.ReadCodes(translation.Rejections.Count > 0 ? translation.Rejections[translation.Rejections.Count - 1].Reasons : new List<string>());
+                        List<string> codes = translation.GetReasonCodes();
                         row.ToReviewReason = codes.Count > 0 ? string.Join(" · ", codes.ConvertAll(c => AppText.T(TranslationValidationIssue.REASON_KEY_PREFIX + c))) : null;
+                    }
+                    if (notReviewed.TryGetValue(cue.Id.Value, out failure))
+                    {
+                        string reason = failure != null ? AppText.F(TEXT_PREFIX + ".reviewNotDoneReason", AppText.T(TranslationValidationIssue.REASON_KEY_PREFIX + failure)) : AppText.T(TEXT_PREFIX + ".reviewNotDone");
+                        row.ToReview = true;
+                        row.ToReviewReason = row.ToReviewReason != null ? row.ToReviewReason + " · " + reason : reason;
                     }
                     row.Signals = translation != null ? new List<TranslationCueSignal>(translation.Signals) : new List<TranslationCueSignal>();
                     row.CorrectionBefore = translation != null && translation.AiCorrection != null ? translation.AiCorrection.Before : null;
@@ -2018,16 +2047,23 @@ namespace RemuxForge.Web.Services.Toolbox
                                 break;
                         }
 
+                        // La conclusione dice i blocchi che la revisione AI non ha potuto rivedere
                         int corrected = 0;
+                        int notReviewed = 0;
                         lock (this.StateLock)
                         {
                             foreach (TranslationRunFile file in files)
+                            {
                                 corrected += file.State.Translations.FindAll(t => t.Signals.Contains(TranslationCueSignal.CorrectedByAi)).Count;
+                                notReviewed += file.State.ReviewBlocks.FindAll(b => b.Status == TranslationReviewBlockStatus.Failed).Count;
+                            }
                             job.Phase = TranslationJobPhase.UserReview;
                             this._jobStore.Save(job);
                         }
-                        this.AppendLog(blocks > 0 ? AppText.Count(TEXT_PREFIX + ".reviewCompleted", corrected) : AppText.T(TEXT_PREFIX + ".reviewNothing"));
-                        this.OnPhaseFinished?.Invoke(new TranslationPhaseResult { Job = job, Phase = TranslationJobPhase.Review, ReviewBlocks = blocks, Corrected = corrected });
+                        this.AppendLog(blocks == 0 ? AppText.T(TEXT_PREFIX + ".reviewNothing") : notReviewed > 0
+                            ? AppText.Count(TEXT_PREFIX + ".reviewCompletedPartial", notReviewed, AppText.Count(TEXT_PREFIX + ".correctedCount", corrected))
+                            : AppText.Count(TEXT_PREFIX + ".reviewCompleted", corrected));
+                        this.OnPhaseFinished?.Invoke(new TranslationPhaseResult { Job = job, Phase = TranslationJobPhase.Review, ReviewBlocks = blocks, Corrected = corrected, NotReviewed = notReviewed });
                         break;
                     }
                 }
@@ -3117,6 +3153,11 @@ namespace RemuxForge.Web.Services.Toolbox
         public int Corrected { get; set; }
 
         /// <summary>
+        /// Blocchi che la revisione AI non ha potuto rivedere
+        /// </summary>
+        public int NotReviewed { get; set; }
+
+        /// <summary>
         /// Fermata del giro nella fase, null per la fase conclusa
         /// </summary>
         public TranslationStop Stop { get; set; }
@@ -3192,12 +3233,13 @@ namespace RemuxForge.Web.Services.Toolbox
         public string Text { get; set; }
 
         /// <summary>
-        /// True per una battuta da rivedere o senza traduzione
+        /// True per una battuta da rivedere, senza traduzione o in un blocco non rivisto dalla revisione AI
         /// </summary>
         public bool ToReview { get; set; }
 
         /// <summary>
-        /// Motivo dello stato da rivedere per l'utente, null fuori da quello stato o senza esito della traduzione
+        /// Motivo dello stato da rivedere per l'utente, revisione AI non riuscita compresa; null fuori da quello stato o senza
+        /// esito della traduzione
         /// </summary>
         public string ToReviewReason { get; set; }
 

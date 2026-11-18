@@ -4233,7 +4233,7 @@
   "web.toolbox.subtitleTranslation.sharedStretchesStartedOne": "First {0} stretch repeated across files, translated once",
   "web.toolbox.subtitleTranslation.sharedStretchesStartedMany": "First {0} stretches repeated across files, translated once",
   "toolbox.subtitleTranslation.run.blockSavedRejected": "[{0}] block {1}/{2}: {3} accepted, {4} rejected ({5})",
-  "toolbox.subtitleTranslation.review.diagnosisFailed": "AI review diagnosis invalid on the second attempt too: block {1}/{2} of {0} not reviewed",
+  "toolbox.subtitleTranslation.review.diagnosisFailed": "[{0}] AI review, block {1}/{2} not reviewed: {3}",
   "toolbox.subtitleTranslation.reason.incomplete": "Response cut short",
   "toolbox.subtitleTranslation.reason.content_filter": "Stopped by the content filter",
   "toolbox.subtitleTranslation.reason.NO_SUBMISSION": "Nothing delivered",
@@ -4295,5 +4295,12 @@
   "web.toolbox.subtitleTranslation.styleKind.Sign": "Sign",
   "web.toolbox.subtitleTranslation.styleKind.Skip": "Don't translate",
   "web.toolbox.subtitleTranslation.termExactCase": "Exact case",
-  "web.toolbox.subtitleTranslation.warning.slip": "Same as another cue"
+  "web.toolbox.subtitleTranslation.warning.slip": "Same as another cue",
+  "web.toolbox.subtitleTranslation.reviewNotDone": "AI review failed",
+  "web.toolbox.subtitleTranslation.reviewNotDoneReason": "AI review failed: {0}",
+  "web.toolbox.subtitleTranslation.reviewCompletedPartialOne": "AI review completed with {0} block not reviewed: {1}",
+  "web.toolbox.subtitleTranslation.reviewCompletedPartialMany": "AI review completed with {0} blocks not reviewed: {1}",
+  "web.toolbox.subtitleTranslation.notifyReviewedPartial": "AI review partly completed",
+  "web.toolbox.subtitleTranslation.notReviewedCountOne": "{0} block not reviewed · {1}",
+  "web.toolbox.subtitleTranslation.notReviewedCountMany": "{0} blocks not reviewed · {1}"
 }
