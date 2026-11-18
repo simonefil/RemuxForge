@@ -497,11 +497,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         sourceOf[g] = c;
                 }
 
-                // Pezzi di parola animati, solo con la tabella degli stili: righe della stessa combinazione di stile, attore ed
-                // effetto di una riga intera, finite entro il suo inizio, che risalgono senza buchi nel tempo dall'inizio della riga
-                // intera (fotogrammi e copie su altri layer). I testi distinti, nell'ordine in cui compaiono, uniti senza spazi danno
-                // la riga intera senza spazi, e almeno uno ha più di un carattere: fatti di soli caratteri singoli sono un effetto
-                // lettera per lettera. Il legame vale solo se riesce per intero
+                // Pezzi di parola animati, solo con la tabella degli stili: righe posizionate (\pos, \move o \org, come i fotogrammi
+                // di un'animazione) della stessa combinazione di stile, attore ed effetto di una riga intera, finite entro il suo
+                // inizio, che risalgono senza buchi nel tempo dall'inizio della riga intera (fotogrammi e copie su altri layer). Le
+                // battute di dialogo senza posizione non sono mai pezzi. I testi distinti, nell'ordine in cui compaiono, uniti senza
+                // spazi danno la riga intera senza spazi, e almeno uno ha più di un carattere: fatti di soli caratteri singoli sono un
+                // effetto lettera per lettera. Il legame vale solo se riesce per intero
                 int[] wholeOf = new int[events.Count];
                 Array.Fill(wholeOf, -1);
                 Dictionary<int, List<int>> piecesByWhole = new Dictionary<int, List<int>>();
@@ -524,7 +525,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         continue;
 
                     List<int> candidates = eventsByUnit[whole.Style + "\u0001" + whole.Actor + "\u0001" + whole.Effect].FindAll(p => p != w && wholeOf[p] < 0
-                        && !piecesByWhole.ContainsKey(p) && events[p].Line.StartMs < whole.Line.StartMs && events[p].Line.EndMs <= whole.Line.StartMs && spaceless[p].Length > 0 && spaceless[p] != spaceless[w]
+                        && !piecesByWhole.ContainsKey(p) && s_position.IsMatch(events[p].Raw) && events[p].Line.StartMs < whole.Line.StartMs && events[p].Line.EndMs <= whole.Line.StartMs && spaceless[p].Length > 0 && spaceless[p] != spaceless[w]
                         && spaceless[w].Contains(spaceless[p], StringComparison.Ordinal));
 
                     // Il tratto coperto parte dall'inizio della riga intera e si allarga all'indietro con ogni riga che lo tocca
