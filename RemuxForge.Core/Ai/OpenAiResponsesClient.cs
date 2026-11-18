@@ -2,6 +2,7 @@ using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -59,6 +60,11 @@ namespace RemuxForge.Core.Ai
         /// Riassunto del ragionamento chiesto: il dettaglio lo sceglie il modello
         /// </summary>
         private const string REASONING_SUMMARY_MODE = "auto";
+
+        /// <summary>
+        /// Passo in caratteri con cui si annuncia la quantità di risposta già scritta
+        /// </summary>
+        private const int WRITING_STEP_CHARS = 1000;
 
         #endregion
 
@@ -388,6 +394,7 @@ namespace RemuxForge.Core.Ai
             bool refusalReported = false;
             string searchItemId = "";
             string searchQuery = "";
+            int written = 0;
             string line;
 
             while ((line = await reader.ReadLineAsync(cancellationToken)) != null)
@@ -429,14 +436,11 @@ namespace RemuxForge.Core.Ai
                         searchQuery = GetSearchQuery(item);
                         Report(progress, AiStreamStage.WebSearch, searchQuery);
                     }
-                    else if (itemType == "message")
+                    else if (itemType == "message" || itemType == "function_call")
                     {
                         refusalReported = false;
+                        written = 0;
                         Report(progress, AiStreamStage.Writing, "");
-                    }
-                    else if (itemType == "function_call")
-                    {
-                        Report(progress, AiStreamStage.ToolCall, AiOAuthFlow.GetString(item, "name"));
                     }
                 }
                 else if (type == "response.web_search_call.in_progress" || type == "response.web_search_call.searching")
@@ -479,6 +483,14 @@ namespace RemuxForge.Core.Ai
                         string title = AiOAuthFlow.GetString(annotation, "title");
                         Report(progress, AiStreamStage.Citation, string.IsNullOrEmpty(title) ? AiOAuthFlow.GetString(annotation, "url") : title);
                     }
+                }
+                else if (type == "response.output_text.delta" || type == "response.function_call_arguments.delta")
+                {
+                    // La quantità scritta si annuncia a ogni migliaio di caratteri: abbastanza per vederla crescere senza ridisegnare a ogni pezzo
+                    int before = written / WRITING_STEP_CHARS;
+                    written += AiOAuthFlow.GetString(streamEvent, "delta").Length;
+                    if (written / WRITING_STEP_CHARS > before)
+                        Report(progress, AiStreamStage.Writing, (written / WRITING_STEP_CHARS * WRITING_STEP_CHARS).ToString("N0", CultureInfo.CurrentCulture));
                 }
                 else if (type == "response.refusal.delta")
                 {

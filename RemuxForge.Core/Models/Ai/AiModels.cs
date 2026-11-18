@@ -657,11 +657,8 @@ namespace RemuxForge.Core.Models
         /// <summary>Fonte citata nella risposta; il testo è titolo o indirizzo</summary>
         Citation,
 
-        /// <summary>Il modello scrive la risposta</summary>
+        /// <summary>Il modello scrive la risposta, testo o chiamata di funzione; il testo è la quantità già scritta</summary>
         Writing,
-
-        /// <summary>Il modello compila una chiamata di funzione; il testo è il nome della funzione</summary>
-        ToolCall,
 
         /// <summary>Il modello rifiuta la richiesta</summary>
         Refusal
@@ -700,6 +697,10 @@ namespace RemuxForge.Core.Models
             // Le ricerche hanno una forma senza query, finché il servizio non la dice
             if (this.Text.Length == 0 && (this.Stage == AiStreamStage.WebSearch || this.Stage == AiStreamStage.WebSearchDone))
                 return AppText.T(key + "NoQuery");
+
+            // La scrittura parte senza quantità, poi la dice man mano che cresce
+            if (this.Text.Length == 0 && this.Stage == AiStreamStage.Writing)
+                return AppText.T(key + "Start");
 
             return AppText.F(key, this.Text);
         }

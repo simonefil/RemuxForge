@@ -4222,7 +4222,7 @@
   "ai.stream.webPage": "Legge la pagina {0}",
   "ai.stream.webFind": "Cerca «{0}» nella pagina",
   "ai.stream.citation": "Cita la fonte: {0}",
-  "ai.stream.writing": "Scrive la risposta",
-  "ai.stream.toolCall": "Scrive la chiamata {0}",
+  "ai.stream.writingStart": "Scrive la risposta",
+  "ai.stream.writing": "Scrive la risposta · {0} caratteri",
   "ai.stream.refusal": "Il modello sta rifiutando la richiesta"
 }
