@@ -84,7 +84,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "- Cues marked [sign] are on-screen text: translate them short, as a sign or title in {target_language} would read.\n" +
             "\n" +
             "Editorial rules\n" +
-            "- Write natural, idiomatic {target_language} subtitles. Render the dramatic function of each line rather than its words: jokes, idioms, insults and threats keep their effect and their strength, with no softening or censorship.\n" +
+            "- Write natural, idiomatic {target_language} subtitles. Render the dramatic function of each line rather than its words: jokes, idioms, insults, threats, swearing and crude words keep their effect and their strength, and every swear word or crude word of the source gets an equally crude word in the translation rather than a neutral paraphrase, with no softening or censorship.\n" +
             "- Infer from the context and the glossary who speaks to whom, how many people are addressed, and the gender of speakers and addressees.\n" +
             "- {address_rule}\n" +
             "- Use the renderings of the glossary terms. Inflect a rendering only where {target_language} grammar requires it and the term is not marked invariable.\n" +
