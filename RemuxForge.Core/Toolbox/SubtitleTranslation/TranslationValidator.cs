@@ -55,6 +55,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Carattere che il formato interpreterebbe</summary>
         public const string RESERVED_CHAR = "RESERVED_CHAR";
 
+        /// <summary>Carattere invisibile di formato (spazio a larghezza zero e simili) che il sorgente non ha</summary>
+        public const string INVISIBLE_CHAR = "INVISIBLE_CHAR";
+
         /// <summary>Battuta valida di un gruppo con un'altra battuta respinta</summary>
         public const string GROUP_INCOMPLETE = "GROUP_INCOMPLETE";
 
@@ -709,6 +712,17 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 {
                     string value = c.ToString();
                     issues.Add(Issue(id, RESERVED_CHAR, IssueSeverity.Error, "\"" + value + "\" is markup in this subtitle format; write plain text.", "char", value));
+                }
+            }
+
+            // Caratteri invisibili di formato (spazio a larghezza zero, unione, BOM e simili) che il testo pulito del sorgente non ha
+            HashSet<char> invisible = new HashSet<char>();
+            foreach (char c in normalizedText)
+            {
+                if (char.GetUnicodeCategory(c) == UnicodeCategory.Format && cue.CleanText.IndexOf(c) < 0 && invisible.Add(c))
+                {
+                    string value = "U+" + ((int)c).ToString("X4", CultureInfo.InvariantCulture);
+                    issues.Add(Issue(id, INVISIBLE_CHAR, IssueSeverity.Error, value + " is an invisible character the source cue does not have; remove it.", "char", value));
                 }
             }
 
