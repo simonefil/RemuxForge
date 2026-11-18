@@ -189,10 +189,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         this.AddFile(zip, manifest, prefix + TranslationJobStore.CALLS_FILE, Path.Combine(jobFolder, TranslationJobStore.CALLS_FILE), TranslationArchiveRole.JobCalls);
                         foreach (TranslationProjectFile file in files)
                         {
-                            string statePath = Path.Combine(jobFolder, TranslationJobStore.FILES_FOLDER, file.Id + ".json");
-                            this.AddFile(zip, manifest, prefix + TranslationJobStore.FILES_FOLDER + "/" + file.Id + ".json", statePath, TranslationArchiveRole.JobFile);
-                            if (jobId == project.ActiveJobId && File.Exists(statePath))
-                                activeStates[file.Id] = this._jobs.LoadFile(jobId, file.Id);
+                            // L'export dei sottotitoli tradotti resta di questa macchina: un job importato non sovrascrive per percorso
+                            if (!File.Exists(Path.Combine(jobFolder, TranslationJobStore.FILES_FOLDER, file.Id + ".json")))
+                                continue;
+                            TranslationJobFileState state = this._jobs.LoadFile(jobId, file.Id);
+                            if (jobId == project.ActiveJobId)
+                                activeStates[file.Id] = state;
+                            state.ExportedPath = "";
+                            state.ExportedSha256 = "";
+                            this.AddEntry(zip, manifest, prefix + TranslationJobStore.FILES_FOLDER + "/" + file.Id + ".json", TranslationJsonFile.Serialize(state), TranslationArchiveRole.JobFile);
                         }
                     }
 
@@ -608,9 +613,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="role">Ruolo della voce</param>
         private void AddFile(ZipArchive zip, TranslationProjectArchiveManifest manifest, string path, string source, TranslationArchiveRole role)
         {
-            if (role == TranslationArchiveRole.JobFile && !File.Exists(source))
-                return;
-
             this.AddEntry(zip, manifest, path, File.Exists(source) ? File.ReadAllBytes(source) : new byte[0], role);
         }
 

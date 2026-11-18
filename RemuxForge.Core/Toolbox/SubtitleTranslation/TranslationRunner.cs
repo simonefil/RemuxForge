@@ -299,7 +299,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 int accepted = 0;
                 lock (this._lock)
                 {
-                    // Esiti con i segnali come per un blocco, nella tratta riga per riga e poi in ogni occorrenza dei file del giro
+                    // Esiti con i segnali come per un blocco, nella tratta riga per riga e poi in ogni occorrenza dei file del giro. I
+                    // termini nuovi di un giro della tratta interrotto da una chiusura brusca hanno chiamate che nessun blocco e nessuna
+                    // tratta salvati riportano: si tolgono prima di aggiungere quelli di questo giro
+                    HashSet<int> saved = new HashSet<int>();
+                    foreach (TranslationBlock block in file.State.Blocks)
+                        saved.UnionWith(block.CallSeqs);
+                    foreach (SharedStretch done in this._job.SharedStretches)
+                        saved.UnionWith(done.CallSeqs);
+                    file.State.CollectedNewTerms.RemoveAll(t => !saved.Contains(t.CallSeq));
                     file.State.CollectedNewTerms.AddRange(stretchWork.NewTerms);
                     HashSet<int> withTerms = new HashSet<int>();
                     foreach (CollectedNewTerm term in stretchWork.NewTerms)
@@ -323,14 +331,17 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     stretch.Status = TranslationBlockStatus.Done;
                     stretch.CallSeqs.AddRange(stretchWork.CallSeqs);
 
-                    // La tratta nel job prima delle copie: dopo una chiusura brusca il secondo giro le rimette
+                    // Prima il file della tratta coi termini nuovi, poi la tratta nel job, poi le copie negli altri file: dopo una
+                    // chiusura brusca la tratta non salvata si rifà coi suoi termini, e il secondo giro rimette le copie
+                    stretch.CopyInto(file.State);
+                    this._store.SaveFile(this._job.Id, file.State);
                     this._store.Save(this._job);
                     HashSet<string> occurring = new HashSet<string>();
                     foreach (SharedStretchOccurrence occurrence in stretch.Occurrences)
                         occurring.Add(occurrence.FileId);
                     foreach (TranslationRunFile other in this._files)
                     {
-                        if (!occurring.Contains(other.State.FileId))
+                        if (other == file || !occurring.Contains(other.State.FileId))
                             continue;
                         stretch.CopyInto(other.State);
                         this._store.SaveFile(this._job.Id, other.State);

@@ -429,8 +429,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public string Encoding { get; set; }
 
         /// <summary>
-        /// Sorgente numerato congelato: il prefisso resta uguale byte per byte in tutta la vita del job. In ordine di tempo, che dà
-        /// l'ordine di blocchi, contesto e revisione; i job salvati prima lo hanno in ordine di id
+        /// Sorgente numerato congelato: la parte del file nel prefisso non cambia per tutta la vita del job, mentre contesto della
+        /// serie e glossario possono cambiare e aprire un prefisso nuovo. In ordine di tempo, che dà l'ordine di blocchi, contesto e
+        /// revisione; i job salvati prima lo hanno in ordine di id
         /// </summary>
         public List<FrozenCue> Cues { get; set; }
 

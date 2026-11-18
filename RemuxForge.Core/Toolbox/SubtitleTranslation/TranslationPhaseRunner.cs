@@ -784,7 +784,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             public TranslationRunFile File { get; }
 
             /// <summary>
-            /// Messaggio di prefisso, uguale byte per byte in tutte le chiamate del file
+            /// Messaggio di prefisso, uguale byte per byte in tutte le chiamate del file nella fase: col contesto letto all'avvio
+            /// della fase e il glossario del job
             /// </summary>
             public string Prefix { get; }
 
