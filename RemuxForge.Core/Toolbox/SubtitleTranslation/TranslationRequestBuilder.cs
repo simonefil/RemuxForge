@@ -117,7 +117,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "- omission: content of the source lost, or content added;\n" +
             "- fluency: unidiomatic or ungrammatical {target_language};\n" +
             "- terminology: a rendering of the glossary terms missing or misused;\n" +
-            "- register: address form against the glossary, wrong gender or number of speakers or addressees, insults or threats weaker or more formal than the source;\n" +
+            "- register: address form against the glossary, wrong gender or number of speakers or addressees, insults, threats, swearing or crude language of the source rendered weaker, more formal, censored or dropped (a translation as strong as the source or stronger is not an issue);\n" +
             "- consistency: the same thing rendered differently within the block or against the glossary;\n" +
             "- split_sentence: a [gN] group badly redistributed over its cues;\n" +
             "- formatting: a ⟦n text⟧ span around the wrong words;\n" +
