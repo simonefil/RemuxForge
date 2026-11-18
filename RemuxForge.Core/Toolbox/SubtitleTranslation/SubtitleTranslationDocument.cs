@@ -379,7 +379,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         int nameColumn = AssSubtitleUtils.ResolveFieldIndex(styleFormat, "Name");
                         int[] layout = new int[3];
                         if (styleCount > 0 && styleFields.Length == styleCount && nameColumn >= 0)
-                            styleStates[styleFields[nameColumn].Trim()] = cleaner.ReadStyleState(styleFormat, styleFields);
+                            styleStates[styleFields[nameColumn].Trim()] = cleaner.ReadStyleState(styleFormat, styleFields, ssaStyles);
                         if (styleCount > 0 && styleFields.Length == styleCount && nameColumn >= 0
                             && Array.TrueForAll(new int[] { 0, 1, 2 }, k => columns[k] >= 0 && AssSubtitleUtils.TryParseInt(styleFields[columns[k]], out layout[k])))
                         {

@@ -1321,25 +1321,40 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Stato di uno stile ASS o SSA per canale, coi valori nella forma di <see cref="ReadLetterLook"/>: colori e alpha dei
         /// quattro colori, carattere, corpo, scale, spaziatura, angolo, bordo, ombra, codifica e interruttori; sfocature, rotazioni
-        /// fuori piano e inclinazioni a 0. I campi che mancano o non si leggono lasciano il canale senza valore
+        /// fuori piano e inclinazioni a 0. Uno stile SSA si legge come libass: BackColour colora bordo e ombra (TertiaryColour non
+        /// si usa), AlphaLevel è l'alpha dei primi tre colori e l'ombra ha alpha 80. I campi che mancano o non si leggono lasciano
+        /// il canale senza valore
         /// </summary>
         /// <param name="format">Campo Format della sezione degli stili</param>
         /// <param name="fields">Campi della riga Style</param>
+        /// <param name="ssa">True per uno stile di [V4 Styles]</param>
         /// <returns>Valore per canale</returns>
-        public Dictionary<string, string> ReadStyleState(string format, string[] fields)
+        public Dictionary<string, string> ReadStyleState(string format, string[] fields, bool ssa)
         {
             Dictionary<string, string> state = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 { "blur", "0" }, { "be", "0" }, { "frx", "0" }, { "fry", "0" }, { "fax", "0" }, { "fay", "0" }
             };
-            string[][] columns =
+            List<string[]> columns = new List<string[]>
             {
-                new[] { "PrimaryColour", "1c", "1a" }, new[] { "SecondaryColour", "2c", "2a" }, new[] { "OutlineColour", "3c", "3a" },
-                new[] { "TertiaryColour", "3c", "3a" }, new[] { "BackColour", "4c", "4a" }, new[] { "Fontname", "fn" }, new[] { "Fontsize", "fs" },
-                new[] { "ScaleX", "fscx" }, new[] { "ScaleY", "fscy" }, new[] { "Spacing", "fsp" }, new[] { "Angle", "frz" },
-                new[] { "Outline", "xbord", "ybord" }, new[] { "Shadow", "xshad", "yshad" }, new[] { "Encoding", "fe" }, new[] { "Bold", "b" },
-                new[] { "Italic", "i" }, new[] { "Underline", "u" }, new[] { "StrikeOut", "s" }
+                new string[] { "Fontname", "fn" }, new string[] { "Fontsize", "fs" }, new string[] { "ScaleX", "fscx" }, new string[] { "ScaleY", "fscy" },
+                new string[] { "Spacing", "fsp" }, new string[] { "Angle", "frz" }, new string[] { "Outline", "xbord", "ybord" },
+                new string[] { "Shadow", "xshad", "yshad" }, new string[] { "Encoding", "fe" }, new string[] { "Bold", "b" }, new string[] { "Italic", "i" },
+                new string[] { "Underline", "u" }, new string[] { "StrikeOut", "s" }
             };
+            if (ssa)
+            {
+                columns.AddRange(new string[][] { new string[] { "PrimaryColour", "1c" }, new string[] { "SecondaryColour", "2c" }, new string[] { "BackColour", "3c", "4c" } });
+                state["4a"] = "80";
+            }
+            else
+            {
+                columns.AddRange(new string[][]
+                {
+                    new string[] { "PrimaryColour", "1c", "1a" }, new string[] { "SecondaryColour", "2c", "2a" }, new string[] { "OutlineColour", "3c", "3a" },
+                    new string[] { "BackColour", "4c", "4a" }
+                });
+            }
             foreach (string[] column in columns)
             {
                 int index = AssSubtitleUtils.ResolveFieldIndex(format, column[0]);
@@ -1353,10 +1368,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (this.SwitchBit(column[c]) >= 0)
                         value = int.TryParse(field, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int flag) ? (flag != 0 ? "1" : "0") : null;
                     else if (value == null && uint.TryParse(field, NumberStyles.None, CultureInfo.InvariantCulture, out uint decimalColour))
-                        value = ChannelValue(column[c], "&H" + decimalColour.ToString("X8", CultureInfo.InvariantCulture));
+                        value = ChannelValue(column[c], "&H" + decimalColour.ToString("X6", CultureInfo.InvariantCulture));
                     if (value != null)
                         state[column[c]] = value;
                 }
+            }
+            int alphaLevel = ssa ? AssSubtitleUtils.ResolveFieldIndex(format, "AlphaLevel") : -1;
+            if (alphaLevel >= 0 && alphaLevel < fields.Length && int.TryParse(fields[alphaLevel].Trim(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int level))
+            {
+                foreach (string channel in new string[] { "1a", "2a", "3a" })
+                    state[channel] = Math.Clamp(level, 0, 255).ToString("X2", CultureInfo.InvariantCulture);
             }
             return state;
         }
@@ -1556,8 +1577,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// Valore di un canale da un argomento di tag o da un campo di stile, in una forma confrontabile: colore BBGGRR e alpha in
-        /// esadecimale maiuscolo (da &amp;H...&amp;, anche coi due byte di uno stile AABBGGRR), interruttore 0 o 1, carattere com'è,
-        /// numeri come double invariante
+        /// esadecimale maiuscolo (da &amp;H...&amp;; l'alpha di un colore di stile è il byte alto di AABBGGRR, 00 se il colore ha solo
+        /// BBGGRR), interruttore 0 o 1, carattere com'è, numeri come double invariante
         /// </summary>
         /// <param name="channel">Canale (1c, 1a, fn, b, bord...)</param>
         /// <param name="raw">Argomento o campo</param>
@@ -1573,8 +1594,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 if (!hex.StartsWith("H", StringComparison.OrdinalIgnoreCase)
                     || !uint.TryParse(hex.Substring(1), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out uint number))
                     return null;
+                int digits = hex.Length - 1;
                 return channel[1] == 'c' ? (number & 0xFFFFFF).ToString("X6", CultureInfo.InvariantCulture)
-                    : (hex.Length > 7 ? number >> 24 & 0xFF : number & 0xFF).ToString("X2", CultureInfo.InvariantCulture);
+                    : (digits <= 2 ? number : digits > 6 ? number >> 24 & 0xFF : 0).ToString("X2", CultureInfo.InvariantCulture);
             }
             if (channel.Length == 1)
                 return text == "0" || text == "1" ? text : null;
