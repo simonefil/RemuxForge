@@ -1391,6 +1391,46 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             return new SubtitleLetterLook(fixedTags.ToString(), letterAlignment, heights.Count == 1 ? heights.First() : null);
         }
 
+        /// <summary>
+        /// Toglie i tempi del karaoke (\k, \K, \kf, \ko) da un campo Text ASS; i blocchi rimasti vuoti se ne vanno
+        /// </summary>
+        /// <param name="text">Campo Text</param>
+        /// <returns>Campo Text senza tempi del karaoke</returns>
+        public string RemoveKaraokeTags(string text)
+        {
+            StringBuilder result = new StringBuilder();
+            int copied = 0;
+            int open = text.IndexOf('{');
+            while (open >= 0)
+            {
+                int close = text.IndexOf('}', open);
+                if (close < 0)
+                    break;
+                string block = text.Substring(open, close - open + 1);
+                int from = 0;
+                foreach (AssTag tag in ParseAssTags(block))
+                {
+                    int at = block.IndexOf(tag.Raw, from, StringComparison.Ordinal);
+                    if (s_assKaraokeTags.Contains(tag.Name))
+                    {
+                        block = block.Remove(at, tag.Raw.Length);
+                        from = at;
+                    }
+                    else
+                    {
+                        from = at + tag.Raw.Length;
+                    }
+                }
+                result.Append(text, copied, open - copied);
+                if (block != "{}")
+                    result.Append(block);
+                copied = close + 1;
+                open = text.IndexOf('{', copied);
+            }
+
+            return result.Append(text, copied, text.Length - copied).ToString();
+        }
+
         #endregion
 
         #region Metodi privati

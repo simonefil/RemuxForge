@@ -585,11 +585,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (piecesByWhole.TryGetValue(e, out List<int> pieceLines))
                         wordPieces[rawCues.Count + 1] = pieceLines.ConvertAll(p => lines[events[p].Line.LineIndex]);
 
-                    // Righe tradotte di una sorgente: una Dialogue per layer delle lettere, coi campi della riga Comment, il layer e
-                    // l'aspetto fisso delle lettere di quel layer; prendono il posto della prima lettera. La posizione viene dalle
-                    // lettere quando ne hanno una sola: la riga verticale del loro \an e la loro y, con la colonna dello stile e la x
-                    // sul suo bordo (margine sinistro, destro o centro), perché le lettere stanno sul bordo dello stile e una traduzione
-                    // di altra lunghezza deve partire da lì
+                    // Righe tradotte di una sorgente: una Dialogue per layer delle lettere, coi campi della riga Comment, il layer,
+                    // l'Effect della prima lettera e l'aspetto fisso delle lettere di quel layer, e il testo senza i tempi del karaoke;
+                    // prendono il posto della prima lettera. La posizione viene dalle lettere quando ne hanno una sola: la riga
+                    // verticale del loro \an e la loro y, con la colonna dello stile e la x sul suo bordo (margine sinistro, destro o
+                    // centro), perché le lettere stanno sul bordo dello stile e una traduzione di altra lunghezza deve partire da lì
                     if (generatedBySource.TryGetValue(e, out List<int> generatedLines))
                     {
                         List<int?> layers = new List<int?>();
@@ -618,6 +618,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             string[] fields = (string[])dialogue.Fields.Clone();
                             if (assEvent.LayerColumn >= 0 && letterLayer.HasValue)
                                 fields[assEvent.LayerColumn] = letterLayer.Value.ToString(CultureInfo.InvariantCulture);
+                            AssSubtitleDialogue letter = events[generatedLines.Find(g => events[g].Layer == letterLayer)].Line;
+                            if (dialogue.EffectColumn >= 0 && letter.EffectColumn >= 0)
+                                fields[dialogue.EffectColumn] = letter.Fields[letter.EffectColumn];
                             prefixes.Add("Dialogue: " + string.Join(",", fields, 0, fields.Length - 1) + "," + (tags.Length > 0 ? "{" + tags + "}" : ""));
                         }
                         letterEffects[rawCues.Count + 1] = new LetterEffect(prefixes, generatedLines.ConvertAll(g => lines[events[g].Line.LineIndex]));
@@ -836,7 +839,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 if (unchanged)
                     continue;
 
-                string recomposed = cleaner.Recompose(cue, translation);
+                string recomposed = cleaner.RemoveKaraokeTags(cleaner.Recompose(cue, translation));
                 edits.Add(new TextEdit(letterEffect.Lines[0].Start, letterEffect.Lines[0].Length,
                     string.Join(letterEffect.Lines[0].Terminator, letterEffect.Prefixes.ConvertAll(prefix => prefix + recomposed))));
                 for (int i = 1; i < letterEffect.Lines.Count; i++)
