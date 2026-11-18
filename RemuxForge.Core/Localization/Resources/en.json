@@ -4250,6 +4250,7 @@
   "toolbox.subtitleTranslation.reason.MARK_EXTRA": "Extra formatting mark",
   "toolbox.subtitleTranslation.reason.MARK_ORDER": "Formatting marks out of order",
   "toolbox.subtitleTranslation.reason.MARK_EMPTY": "Empty formatting mark",
+  "toolbox.subtitleTranslation.reason.LINE_BREAK_AMBIGUOUS": "\\N used as a line break, but the original has it as text",
   "toolbox.subtitleTranslation.reason.RESERVED_CHAR": "Subtitle format code in the text",
   "toolbox.subtitleTranslation.reason.INVISIBLE_CHAR": "Invisible character in the text",
   "toolbox.subtitleTranslation.reason.GROUP_INCOMPLETE": "Split sentence partly rejected",

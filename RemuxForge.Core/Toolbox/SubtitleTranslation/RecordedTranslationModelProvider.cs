@@ -264,12 +264,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 string content = message != null ? AiOAuthFlow.GetString(message, "content") : "";
                 inputText.Append(content);
 
-                // Battute sorgente: dopo SOURCE EPISODE fino alla riga vuota, con le righe di continuazione che iniziano col tab
+                // Battute sorgente: dopo SOURCE EPISODE fino alla riga vuota, una per riga con gli a capo scritti \N
                 string[] lines = content.Replace("\r\n", "\n").Split('\n');
                 bool inSource = false;
                 bool inUpdated = false;
                 int currentId = 0;
-                Dictionary<int, string> continued = null;
                 int continuedId = 0;
                 for (int j = 0; j < lines.Length; j++)
                 {
@@ -309,7 +308,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                     if (!inSource)
                     {
-                        // Coda di C e D: rese aggiornate, traduzioni attuali, suggerimenti e battute coi segnali, righe di continuazione col tab
+                        // Coda di C e D: rese aggiornate, traduzioni attuali, suggerimenti e battute coi segnali, con gli a capo scritti \N
                         Match match;
                         if (line == UPDATED_TERMS_HEADER)
                         {
@@ -325,30 +324,22 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         }
                         else if (line.StartsWith(SUGGESTION_HEADER, StringComparison.Ordinal) && continuedId > 0)
                         {
-                            suggestions[continuedId] = line.Substring(SUGGESTION_HEADER.Length);
-                            continued = suggestions;
-                        }
-                        else if (line.Length > 0 && line[0] == '\t' && continued != null)
-                        {
-                            continued[continuedId] = continued[continuedId] + "\n" + line.Substring(1);
+                            suggestions[continuedId] = line.Substring(SUGGESTION_HEADER.Length).Replace(TranslationRequestBuilder.LINE_BREAK_MARK, "\n");
                         }
                         else if ((match = s_translationRecord.Match(line)).Success)
                         {
                             continuedId = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
-                            currents[continuedId] = match.Groups[2].Value;
-                            continued = currents;
+                            currents[continuedId] = match.Groups[2].Value.Replace(TranslationRequestBuilder.LINE_BREAK_MARK, "\n");
                         }
                         else if ((match = s_issueLine.Match(line)).Success)
                         {
                             continuedId = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
-                            continued = null;
                         }
                         else
                         {
                             match = s_signalRecord.Match(line);
                             if (match.Success)
                                 signalled.Add(int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture));
-                            continued = null;
                         }
                         continue;
                     }
@@ -357,17 +348,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     {
                         inSource = false;
                     }
-                    else if (line[0] == '\t' && currentId > 0)
-                    {
-                        sources[currentId] = sources[currentId] + "\n" + line.Substring(1);
-                    }
                     else
                     {
                         int tab = line.IndexOf('\t');
                         string header = tab >= 0 ? line.Substring(0, tab) : line;
                         int space = header.IndexOf(' ');
                         if (int.TryParse(space >= 0 ? header.Substring(0, space) : header, NumberStyles.Integer, CultureInfo.InvariantCulture, out currentId))
-                            sources[currentId] = tab >= 0 ? line.Substring(tab + 1) : "";
+                            sources[currentId] = tab >= 0 ? line.Substring(tab + 1).Replace(TranslationRequestBuilder.LINE_BREAK_MARK, "\n") : "";
                     }
                 }
             }

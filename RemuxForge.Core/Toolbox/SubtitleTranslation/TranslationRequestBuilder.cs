@@ -19,13 +19,19 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Costanti
 
         /// <summary>
+        /// Segno degli a capo di una battuta nei record, che stanno su una riga sola: \N, l'a capo dell'ASS, che il testo pulito
+        /// non ha perché lo diventa a capo
+        /// </summary>
+        public const string LINE_BREAK_MARK = "\\N";
+
+        /// <summary>
         /// Blocco «Record format», identico in tutte le instructions che lo usano
         /// </summary>
         public const string RECORD_FORMAT = "Record format\n" +
-            "- A source cue is a record. Its header is \"<id>\", followed by \" [gN]\" for a split sentence and by \" [song]\" for song lyrics or \" [sign]\" for on-screen text such as signs and titles; a header without either is dialogue. Then a tab and the first line of the cue. Each further line of the same cue starts with a tab.\n" +
-            "- A translation record has the same header followed by \" =>\", then a tab and the translated text, with the same continuation lines. A header with nothing after \" =>\" means the cue has no accepted translation yet.\n" +
-            "- A signal record (review only) has the header \"<id> !\", then a tab and one signal per line.\n" +
-            "- In submit_translation, a line break inside a cue is \"\\n\" inside the JSON string.";
+            "- A source cue is a record on a single line. Its header is \"<id>\", followed by \" [gN]\" for a split sentence and by \" [song]\" for song lyrics or \" [sign]\" for on-screen text such as signs and titles; a header without either is dialogue. Then a tab and the whole text of the cue, where \"\\N\" marks a line break inside the cue. Each line of a source episode is a different cue.\n" +
+            "- A translation record has the same header followed by \" =>\", then a tab and the translated text, on one line with \"\\N\" for its line breaks. A header with nothing after \" =>\" means the cue has no accepted translation yet.\n" +
+            "- A signal record (review only) has the header \"<id> !\", then a tab and one signal per line, each further signal starting with a tab.\n" +
+            "- In submit_translation, a line break inside a cue is \"\\n\" inside the JSON string, never \"\\N\".";
 
         /// <summary>
         /// Tool di consegna della traduzione
@@ -230,7 +236,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi pubblici
 
         /// <summary>
-        /// Scrive una battuta nel formato a record: testata con id e gruppo, tab, prima riga; le righe seguenti cominciano col tab
+        /// Scrive una battuta nel formato a record: testata con id e gruppo, tab e testo su una riga, con gli a capo come \N
         /// </summary>
         /// <param name="cue">Battuta traducibile</param>
         /// <returns>Record della battuta</returns>
@@ -249,7 +255,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <returns>Record della battuta</returns>
         public static string FormatRecord(int id, int? group, SubtitleCueKind kind, string text)
         {
-            return FormatHeader(id, group, kind) + "\t" + text.Replace("\n", "\n\t");
+            return FormatHeader(id, group, kind) + "\t" + text.Replace("\n", LINE_BREAK_MARK);
         }
 
         /// <summary>
@@ -263,7 +269,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public static string FormatTranslationRecord(int id, int? group, SubtitleCueKind kind, string text)
         {
             string header = FormatHeader(id, group, kind) + " =>";
-            return text == null ? header : header + "\t" + text.Replace("\n", "\n\t");
+            return text == null ? header : header + "\t" + text.Replace("\n", LINE_BREAK_MARK);
         }
 
         /// <summary>
@@ -567,7 +573,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 message.Append('\n').Append(issue.Id.ToString(CultureInfo.InvariantCulture)).Append(" [").Append(issue.Category).Append('/').Append(issue.Severity).Append("] ").Append(issue.Explanation);
                 if (!string.IsNullOrEmpty(issue.Suggestion))
-                    message.Append("\n\tsuggestion: ").Append(issue.Suggestion.Replace("\n", "\n\t"));
+                    message.Append("\n\tsuggestion: ").Append(issue.Suggestion.Replace("\n", LINE_BREAK_MARK));
             }
 
             message.Append("\n\n");

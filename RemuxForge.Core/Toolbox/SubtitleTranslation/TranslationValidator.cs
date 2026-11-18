@@ -53,6 +53,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Segno senza testo</summary>
         public const string MARK_EMPTY = "MARK_EMPTY";
 
+        /// <summary>\N dei record copiato nella consegna di una battuta il cui sorgente ha già \N come testo</summary>
+        public const string LINE_BREAK_AMBIGUOUS = "LINE_BREAK_AMBIGUOUS";
+
         /// <summary>Carattere che il formato interpreterebbe</summary>
         public const string RESERVED_CHAR = "RESERVED_CHAR";
 
@@ -629,6 +632,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private string ValidateText(SubtitleCue cue, string text, List<TranslationValidationIssue> issues, bool delivered)
         {
             int id = cue.Id.Value;
+
+            // Il \N con cui i record scrivono gli a capo, copiato dal modello nella consegna, è un a capo quando il sorgente non
+            // ha \N come testo; altrimenti non si sa quale dei due sia
+            if (delivered && text.Contains(TranslationRequestBuilder.LINE_BREAK_MARK, StringComparison.Ordinal))
+            {
+                if (cue.CleanText.Contains(TranslationRequestBuilder.LINE_BREAK_MARK, StringComparison.Ordinal))
+                    issues.Add(Issue(id, LINE_BREAK_AMBIGUOUS, IssueSeverity.Error, "the source text of cue " + id + " contains \"\\N\" as text, so \"\\N\" cannot mark a line break; write line breaks as \"\\n\" in the JSON string."));
+                else
+                    text = text.Replace(TranslationRequestBuilder.LINE_BREAK_MARK, "\n");
+            }
 
             // Normalizzazione senza errore; il testo identico al sorgente resta com'è perché si ricomponga identico
             string normalizedText = text;

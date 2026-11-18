@@ -4250,6 +4250,7 @@
   "toolbox.subtitleTranslation.reason.MARK_EXTRA": "Segno di formattazione in più",
   "toolbox.subtitleTranslation.reason.MARK_ORDER": "Segni di formattazione fuori ordine",
   "toolbox.subtitleTranslation.reason.MARK_EMPTY": "Segno di formattazione vuoto",
+  "toolbox.subtitleTranslation.reason.LINE_BREAK_AMBIGUOUS": "\\N usato come a capo, ma l'originale lo ha come testo",
   "toolbox.subtitleTranslation.reason.RESERVED_CHAR": "Codice del formato nel testo",
   "toolbox.subtitleTranslation.reason.INVISIBLE_CHAR": "Carattere invisibile nel testo",
   "toolbox.subtitleTranslation.reason.GROUP_INCOMPLETE": "Frase spezzata respinta in parte",
