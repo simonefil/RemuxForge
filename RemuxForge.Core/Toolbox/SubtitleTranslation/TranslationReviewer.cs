@@ -362,7 +362,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                     foreach (int id in partIds)
                                     {
                                         TranslatedCueState translation;
-                                        if (!translations.TryGetValue(id, out translation))
+                                        if (!translations.TryGetValue(id, out translation) || translation.Signals.Contains(TranslationCueSignal.EditedByUser))
                                             continue;
                                         translation.NotReviewedReason = reason;
                                         if (block.SharedStretch.HasValue)
@@ -400,7 +400,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     issues = block.Issues;
                 }
 
-                // D2: diagnosticate e da rivedere, coi gruppi interi
+                // D2: diagnosticate e da rivedere, coi gruppi interi. Una battuta scritta dall'utente non si corregge: entra solo
+                // come contesto del suo gruppo e il suo esito si scarta
                 HashSet<int> wanted = new HashSet<int>();
                 foreach (TranslationReviewIssue issue in issues)
                     wanted.Add(issue.Id);
@@ -408,6 +409,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 {
                     if (translation.Status == TranslatedCueStatus.ToReview)
                         wanted.Add(translation.Id);
+                    if (translation.Signals.Contains(TranslationCueSignal.EditedByUser))
+                        wanted.Remove(translation.Id);
                 }
                 List<int> deliver = ExpandToGroups(state, wanted);
 
@@ -443,7 +446,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     {
                         TranslatedCueState translation;
                         if (result.Status != TranslatedCueStatus.Accepted || !translations.TryGetValue(result.Id, out translation)
-                            || string.Equals(result.Text, translation.Text, StringComparison.Ordinal))
+                            || string.Equals(result.Text, translation.Text, StringComparison.Ordinal) || translation.Signals.Contains(TranslationCueSignal.EditedByUser))
                             continue;
 
                         // Testo di prima e motivo per l'avviso della griglia

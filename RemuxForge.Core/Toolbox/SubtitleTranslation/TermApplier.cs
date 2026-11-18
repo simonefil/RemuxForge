@@ -141,7 +141,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (translation.Text != null)
                         current[translation.Id] = translation.Text;
                     SharedStretch stretch;
-                    if (translation.Status != TranslatedCueStatus.Accepted || translation.Text == null
+                    if (translation.Status != TranslatedCueStatus.Accepted || translation.Text == null || translation.Signals.Contains(TranslationCueSignal.EditedByUser)
                         || (context.Shared.TryGetValue(translation.Id, out stretch) && !stretch.IsMaster(state.FileId, translation.Id)))
                         continue;
 
@@ -258,8 +258,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                 foreach (KeyValuePair<int, KeyValuePair<string, List<GlossaryWarning>>> pair in texts)
                 {
+                    // Una battuta scritta dall'utente non si riscrive, anche se è entrata come contesto del suo gruppo
                     TranslatedCueState translation = state.Translations.Find(t => t.Id == pair.Key);
-                    if (translation == null || translation.Status != TranslatedCueStatus.Accepted)
+                    if (translation == null || translation.Status != TranslatedCueStatus.Accepted || translation.Signals.Contains(TranslationCueSignal.EditedByUser))
                         continue;
 
                     bool changed = !string.Equals(pair.Value.Key, translation.Text, StringComparison.Ordinal);
