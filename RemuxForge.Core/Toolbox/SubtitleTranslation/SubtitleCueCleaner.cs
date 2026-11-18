@@ -1700,19 +1700,20 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Campo Text ASS con tutta la frase visibile e l'aspetto del suo inizio: il blocco iniziale resta, gli altri se ne vanno.
-        /// Una riga che mostra già tutta la frase resta com'è
+        /// Campo Text ASS con tutta la frase visibile: il blocco iniziale resta, dagli altri se ne vanno le alpha e le \t che animano
+        /// solo alpha, i colori restano (un blocco rimasto vuoto se ne va). Una riga che mostra già tutta la frase resta com'è
         /// </summary>
         /// <param name="text">Campo Text</param>
         /// <param name="styleState">Stato dello stile della riga per canale (<see cref="ReadStyleState"/>), null se manca</param>
-        /// <returns>Campo Text con la frase intera, null se un altro blocco cambia altro che colori e alpha (anche nelle \t) o se
-        /// senza quei blocchi qualche carattere resta invisibile</returns>
+        /// <returns>Campo Text con la frase intera, null se un altro blocco cambia altro che colori e alpha, se una sua \t anima
+        /// insieme colori e alpha o se senza le alpha qualche carattere resta invisibile</returns>
         public string ShowWholeLine(string text, IReadOnlyDictionary<string, string> styleState)
         {
             Func<string, int> characters = line => Regex.Replace(line, @"\{[^}]*\}", "").Replace("\\N", " ").Replace("\\n", " ").Replace("\\h", " ").Count(c => !char.IsWhiteSpace(c));
             if (this.CountVisibleCharacters(text, styleState) == characters(text))
                 return text;
-            string[] colours = new string[] { "c", "1c", "2c", "3c", "4c", "alpha", "1a", "2a", "3a", "4a" };
+            string[] colours = new string[] { "c", "1c", "2c", "3c", "4c" };
+            string[] alphas = new string[] { "alpha", "1a", "2a", "3a", "4a" };
             StringBuilder shown = new StringBuilder();
             int copied = 0;
             int open = text.IndexOf('{');
@@ -1724,10 +1725,21 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 shown.Append(text, copied, open - copied);
                 string block = text.Substring(open, close - open + 1);
                 if (open == 0)
+                {
                     shown.Append(block);
-                else if (!ParseAssTags(block).TrueForAll(tag => colours.Contains(tag.Name)
-                    || (tag.Name == ASS_TRANSFORM && ParseAssTags(tag.Arg).TrueForAll(inner => colours.Contains(inner.Name)))))
-                    return null;
+                }
+                else
+                {
+                    // Restano i colori, anche animati; se ne vanno le alpha e le \t che animano solo alpha
+                    List<AssTag> tags = ParseAssTags(block);
+                    if (!tags.TrueForAll(tag => colours.Contains(tag.Name) || alphas.Contains(tag.Name) || (tag.Name == ASS_TRANSFORM
+                        && (ParseAssTags(tag.Arg).TrueForAll(inner => colours.Contains(inner.Name)) || ParseAssTags(tag.Arg).TrueForAll(inner => alphas.Contains(inner.Name))))))
+                        return null;
+                    string kept = string.Concat(tags.Where(tag => !alphas.Contains(tag.Name)
+                        && !(tag.Name == ASS_TRANSFORM && ParseAssTags(tag.Arg).TrueForAll(inner => alphas.Contains(inner.Name)))).Select(tag => tag.Raw));
+                    if (kept.Length > 0)
+                        shown.Append('{').Append(kept).Append('}');
+                }
                 copied = close + 1;
                 open = text.IndexOf('{', copied);
             }
