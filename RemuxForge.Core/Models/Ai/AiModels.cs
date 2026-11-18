@@ -348,6 +348,11 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public string RejectedParameter { get; private set; }
 
+        /// <summary>
+        /// Consumo di token riportato dalla risposta fallita, null se il servizio non lo dà
+        /// </summary>
+        public AiUsage Usage { get; set; }
+
         #endregion
     }
 

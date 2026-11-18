@@ -2240,6 +2240,7 @@ namespace RemuxForge.Web.Services.Toolbox
                         failed.HttpStatus = attempt.Error.HttpStatus;
                         failed.ErrorKind = attempt.Error.Kind;
                         failed.ServiceCode = string.IsNullOrEmpty(attempt.Error.ServiceCode) ? null : attempt.Error.ServiceCode;
+                        failed.Usage = attempt.Error.Usage != null ? new TranslationCallUsage(attempt.Error.Usage, 0) : null;
                     }
                     this.RecordCall(failed);
                 };

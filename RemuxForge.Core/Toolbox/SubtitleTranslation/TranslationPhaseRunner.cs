@@ -560,6 +560,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     failed.HttpStatus = transport.Error.HttpStatus;
                     failed.ErrorKind = transport.Error.Kind;
                     failed.ServiceCode = string.IsNullOrEmpty(transport.Error.ServiceCode) ? null : transport.Error.ServiceCode;
+                    failed.Usage = transport.Error.Usage != null ? new TranslationCallUsage(transport.Error.Usage, 0) : null;
                 }
                 this.RecordCall(failed, work);
             };

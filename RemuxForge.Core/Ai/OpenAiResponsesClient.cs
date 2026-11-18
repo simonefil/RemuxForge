@@ -523,8 +523,6 @@ namespace RemuxForge.Core.Ai
                 {
                     JsonObject responseObject = streamEvent["response"] as JsonObject;
                     JsonArray output = responseObject != null ? responseObject["output"] as JsonArray : null;
-                    JsonObject usage = responseObject != null ? responseObject["usage"] as JsonObject : null;
-                    JsonObject toolUsage = responseObject != null ? responseObject["tool_usage"] as JsonObject : null;
                     AiResponseResult result = new AiResponseResult();
 
                     // Con store:false l'output finale può arrivare vuoto: valgono gli item raccolti dallo stream
@@ -548,12 +546,7 @@ namespace RemuxForge.Core.Ai
                     result.PromptCacheKey = AiOAuthFlow.GetString(responseObject, "prompt_cache_key");
                     if (string.IsNullOrEmpty(result.PromptCacheKey))
                         result.PromptCacheKey = createdCacheKey;
-                    result.Usage.InputTokens = GetOptionalLong(usage, "input_tokens");
-                    result.Usage.CachedTokens = GetOptionalLong(usage != null ? usage["input_tokens_details"] as JsonObject : null, "cached_tokens");
-                    result.Usage.CacheWriteTokens = GetOptionalLong(usage != null ? usage["input_tokens_details"] as JsonObject : null, "cache_write_tokens");
-                    result.Usage.OutputTokens = GetOptionalLong(usage, "output_tokens");
-                    result.Usage.ReasoningTokens = GetOptionalLong(usage != null ? usage["output_tokens_details"] as JsonObject : null, "reasoning_tokens");
-                    result.Usage.WebSearchRequests = GetOptionalLong(toolUsage != null ? toolUsage["web_search"] as JsonObject : null, "num_requests");
+                    result.Usage = ReadUsage(responseObject);
 
                     if (type == "response.incomplete")
                     {
@@ -565,8 +558,12 @@ namespace RemuxForge.Core.Ai
                 }
                 else if (type == "response.failed")
                 {
+                    // Anche la risposta fallita può riportare il consumo: resta nell'errore per il registro delle chiamate
                     JsonObject responseObject = streamEvent["response"] as JsonObject;
-                    throw CreateError(mode, 0, responseObject != null ? responseObject["error"] as JsonObject : null, null);
+                    AiServiceException failed = CreateError(mode, 0, responseObject != null ? responseObject["error"] as JsonObject : null, null);
+                    if (responseObject != null && responseObject["usage"] is JsonObject)
+                        failed.Usage = ReadUsage(responseObject);
+                    throw failed;
                 }
                 else if (type == "error")
                 {
@@ -709,6 +706,25 @@ namespace RemuxForge.Core.Ai
             }
 
             return string.Join(" · ", parts);
+        }
+
+        /// <summary>
+        /// Legge il consumo di token dalla risposta finale dello stream
+        /// </summary>
+        /// <param name="responseObject">Oggetto response dell'evento, anche null</param>
+        /// <returns>Consumo, coi campi assenti a null</returns>
+        private static AiUsage ReadUsage(JsonObject responseObject)
+        {
+            JsonObject usage = responseObject != null ? responseObject["usage"] as JsonObject : null;
+            JsonObject toolUsage = responseObject != null ? responseObject["tool_usage"] as JsonObject : null;
+            AiUsage result = new AiUsage();
+            result.InputTokens = GetOptionalLong(usage, "input_tokens");
+            result.CachedTokens = GetOptionalLong(usage != null ? usage["input_tokens_details"] as JsonObject : null, "cached_tokens");
+            result.CacheWriteTokens = GetOptionalLong(usage != null ? usage["input_tokens_details"] as JsonObject : null, "cache_write_tokens");
+            result.OutputTokens = GetOptionalLong(usage, "output_tokens");
+            result.ReasoningTokens = GetOptionalLong(usage != null ? usage["output_tokens_details"] as JsonObject : null, "reasoning_tokens");
+            result.WebSearchRequests = GetOptionalLong(toolUsage != null ? toolUsage["web_search"] as JsonObject : null, "num_requests");
+            return result;
         }
 
         /// <summary>
