@@ -34,8 +34,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public const string REASON_INCOMPLETE = "incomplete";
 
         /// <summary>
-        /// Motivo dello stato da rivedere per una battuta, o un gruppo di frase spezzata, fermata dal filtro dei contenuti del servizio
-        /// anche da sola
+        /// Motivo dello stato da rivedere per le battute di una risposta fermata dal filtro dei contenuti del servizio
         /// </summary>
         public const string REASON_CONTENT_FILTER = "content_filter";
 
@@ -259,11 +258,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Consegne di un gruppo di id: la prima, poi fino a due ritentativi sulle sole respinte, coi gruppi interi. Una risposta
         /// troncata dal tetto dei token in uscita torna al chiamante se è la prima consegna con whole vero, che divide l'unità e
         /// rimpicciolisce i blocchi seguenti del file; altrimenti si dimezzano le battute in attesa. Una risposta incompleta per un
-        /// altro motivo non dipende dalla lunghezza: non si dimezza e non cambia i blocchi del file. Col filtro dei contenuti il
-        /// servizio non dice quale battuta l'ha fermata, quindi le battute in attesa si riconsegnano una volta sola, ognuna da sola o
-        /// col suo gruppo di frase spezzata: le altre si traducono, quella fermata di nuovo resta da rivedere col motivo del filtro.
-        /// Costa una chiamata per battuta, sul prefisso già in cache, solo dove il filtro scatta. Per un motivo che il servizio non
-        /// spiega le battute in attesa restano da rivedere
+        /// altro motivo non dipende dalla lunghezza: non si divide e non cambia i blocchi del file, e le battute in attesa restano da
+        /// rivedere col motivo, filtro dei contenuti o incompleta
         /// </summary>
         /// <param name="context">File con prefisso e validatore</param>
         /// <param name="work">Esiti dell'unità in memoria</param>
@@ -306,17 +302,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 if (response.Status == AiResponseStatus.Incomplete)
                 {
                     bool length = response.IncompleteReason == INCOMPLETE_MAX_OUTPUT_TOKENS;
-                    bool filtered = response.IncompleteReason == INCOMPLETE_CONTENT_FILTER;
                     record.ResponseStatus = TranslationCallResponseStatus.Incomplete;
                     record.IncompleteReason = response.IncompleteReason;
-                    record.Outcome = length ? TranslationCallOutcome.Reduced : TranslationCallOutcome.PartiallyRejected;
+                    record.Outcome = TranslationCallOutcome.Reduced;
                     record.Usage = new TranslationCallUsage(response.Usage, 0);
                     this.RecordCall(record, work);
                     if (length && first)
                         return true;
 
-                    // Troppo lunga: le accettate restano, le battute in attesa si dimezzano. Fermata dal filtro: una battuta o un gruppo
-                    // per consegna, che non si divide più
+                    // Troppo lunga: le accettate restano, le battute in attesa si dimezzano. Incompleta per altro: restano da rivedere
                     List<List<int>> parts = new List<List<int>>();
                     if (length)
                     {
@@ -329,29 +323,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             parts.Add(halfIds);
                         }
                     }
-                    else if (filtered)
-                    {
-                        foreach (int id in pending)
-                        {
-                            int? group = context.Frozen[id].Group;
-                            if (parts.Count > 0 && group.HasValue && context.Frozen[parts[parts.Count - 1][0]].Group == group)
-                                parts[parts.Count - 1].Add(id);
-                            else
-                                parts.Add(new List<int> { id });
-                        }
-                    }
 
                     if (parts.Count < 2)
                     {
                         foreach (int id in pending)
-                            work.MarkToReview(id, filtered ? REASON_CONTENT_FILTER : REASON_INCOMPLETE);
+                            work.MarkToReview(id, response.IncompleteReason == INCOMPLETE_CONTENT_FILTER ? REASON_CONTENT_FILTER : REASON_INCOMPLETE);
                         return false;
                     }
 
-                    if (length)
-                        this.RaiseLog(AppText.F("toolbox.subtitleTranslation.run.retryReduced", context.File.FileName, parts[0].Count, parts[1].Count));
-                    else
-                        this.RaiseLog(AppText.F("toolbox.subtitleTranslation.run.retryIsolated", context.File.FileName, pending.Count, parts.Count));
+                    this.RaiseLog(AppText.F("toolbox.subtitleTranslation.run.retryReduced", context.File.FileName, parts[0].Count, parts[1].Count));
                     foreach (List<int> part in parts)
                     {
                         // Ogni parte si porta gli errori delle sue battute e quelli senza id

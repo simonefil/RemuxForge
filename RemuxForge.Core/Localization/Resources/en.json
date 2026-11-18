@@ -1752,7 +1752,6 @@
   "toolbox.subtitleTranslation.run.blockReduced": "[{0}] block {1} reduced: truncated reply, split into {2} and {3} cues",
   "toolbox.subtitleTranslation.run.blockSaved": "[{0}] block {1}/{2}: {3} accepted",
   "toolbox.subtitleTranslation.run.retryReduced": "[{0}] retry reduced: truncated reply, split into {1} and {2} cues",
-  "toolbox.subtitleTranslation.run.retryIsolated": "[{0}] reply stopped by the content filter: {1} cues sent again one at a time in {2} requests",
   "toolbox.subtitleTranslation.run.retrySaved": "[{0}] retry {1}: {2} accepted, {3} rejected",
   "toolbox.subtitleTranslation.terms.fileApplied": "[{0}] new terms: {1} cues rewritten",
   "toolbox.subtitleTranslation.review.blockSaved": "[{0}] AI review, block {1}/{2}: {3} issues, {4} cues corrected",
