@@ -331,7 +331,7 @@
                         <RadzenDataGridColumn TItem="TranslationJobFileRow" Title="@AppText.T("web.toolbox.subtitleTranslation.newTerms")" Width="8%" TextAlign="TextAlign.Right">
                             <Template Context="row"><CellText Text="@row.NewTerms.ToString(CultureInfo.CurrentCulture)" /></Template>
                         </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="TranslationJobFileRow" Title="@AppText.T("web.toolbox.subtitleTranslation.tokens")" Width="15%" TextAlign="TextAlign.Right">
+                        <RadzenDataGridColumn TItem="TranslationJobFileRow" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.tokens")" Width="15%" TextAlign="TextAlign.Right">
                             <Template Context="row"><CellText Text="@(FormatTokens(row.InputTokens) + " / " + FormatTokens(row.CachedTokens) + " / " + FormatTokens(row.OutputTokens))" /></Template>
                         </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="TranslationJobFileRow" Width="5rem" TextAlign="TextAlign.Center">
