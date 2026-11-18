@@ -1499,9 +1499,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Tratti di testo che un campo Text ASS nasconde e poi rimostra com'erano: da un \alpha&amp;HFF&amp; al primo blocco
         /// successivo con tag d'alpha, che riporta ogni alpha (\alpha, \1a-\4a e le loro \t) allo stato che aveva prima del tratto.
-        /// Un tratto che una \t del blocco d'apertura riporta visibile, o il cui blocco di chiusura anima anche altro, non conta.
-        /// Il testo è letto come quello leggibile delle righe: senza blocchi, a capo e spazi fissi come spazi, senza spazi agli
-        /// estremi
+        /// Il tratto non conta se il blocco d'apertura, dopo il \alpha&amp;HFF&amp;, tocca ancora un'alpha (anche con una \t che lo
+        /// riporta visibile), se una \t del blocco di chiusura anima anche altro, o se la chiusura lascia un'alpha diversa: così,
+        /// tolti il tag d'apertura e quelli d'alpha della chiusura, il tratto si vede e il resto della riga resta com'era. Il testo
+        /// è letto come quello leggibile delle righe: senza blocchi, a capo e spazi fissi come spazi, senza spazi agli estremi
         /// </summary>
         /// <param name="text">Campo Text</param>
         /// <returns>Tratti nascosti non vuoti, nell'ordine</returns>
@@ -1512,11 +1513,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             Dictionary<string, List<string>> operations = alphaChannels.ToDictionary(channel => channel, channel => new List<string>(), StringComparer.Ordinal);
             Dictionary<string, List<string>> before = null;
             List<SubtitleHiddenSpan> spans = new List<SubtitleHiddenSpan>();
-            List<string> blocks = new List<string>();
             StringBuilder span = null;
-            string openBlock = null;
-            string openTag = null;
-            int openOccurrence = 0;
+            List<Range> spanTags = null;
             bool valid = false;
             int copied = 0;
             int open = text.IndexOf('{');
@@ -1529,9 +1527,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 string block = text.Substring(open, close - open + 1);
                 List<AssTag> tags = ParseAssTags(block);
                 bool closing = before != null && tags.Exists(tag => isAlpha(tag.Name) || (tag.Name == ASS_TRANSFORM && ParseAssTags(tag.Arg).Exists(inner => isAlpha(inner.Name))));
-                List<string> closeTags = new List<string>();
+                bool opening = false;
+                int tagEnd = 0;
                 foreach (AssTag tag in tags)
                 {
+                    int tagStart = block.IndexOf(tag.Raw, tagEnd, StringComparison.Ordinal);
+                    tagEnd = tagStart + tag.Raw.Length;
+
                     // Operazioni sui canali d'alpha dall'ultimo valore fisso: \alpha senza valore torna allo stile e le azzera
                     List<KeyValuePair<string, string>> changes = new List<KeyValuePair<string, string>>();
                     if (isAlpha(tag.Name))
@@ -1545,20 +1547,21 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         List<AssTag> innerTags = ParseAssTags(tag.Arg);
                         foreach (AssTag innerTag in innerTags.FindAll(innerTag => isAlpha(innerTag.Name)))
                             changes.Add(new KeyValuePair<string, string>(innerTag.Name, "t(" + times + ")=" + ChannelValue("1a", innerTag.Arg)));
-                        if (changes.Count > 0 && (closing ? changes.Count != innerTags.Count : before != null))
+                        if (closing && changes.Count > 0 && changes.Count != innerTags.Count)
                             valid = false;
                     }
                     if (changes.Count == 0)
                         continue;
+                    if (opening)
+                        valid = false;
                     if (closing)
-                        closeTags.Add(tag.Raw);
+                        spanTags.Add(new Range(open + tagStart, open + tagEnd));
                     if (before == null && tag.Name == "alpha" && ChannelValue("1a", tag.Arg) == "FF")
                     {
                         before = operations.ToDictionary(pair => pair.Key, pair => new List<string>(pair.Value), StringComparer.Ordinal);
-                        openBlock = block;
-                        openOccurrence = blocks.Count(other => other == block);
-                        openTag = tag.Raw;
+                        spanTags = new List<Range> { new Range(open + tagStart, open + tagEnd) };
                         valid = true;
+                        opening = true;
                         span = new StringBuilder();
                     }
                     foreach (KeyValuePair<string, string> change in changes)
@@ -1576,11 +1579,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 {
                     string hidden = span.ToString().Replace("\\N", " ").Replace("\\n", " ").Replace("\\h", " ").Trim();
                     if (valid && hidden.Length > 0 && Array.TrueForAll(alphaChannels, channel => operations[channel].SequenceEqual(before[channel])))
-                        spans.Add(new SubtitleHiddenSpan(hidden, openBlock, openOccurrence, openTag, block, blocks.Count(other => other == block), closeTags));
+                        spans.Add(new SubtitleHiddenSpan(hidden, spanTags));
                     before = null;
                     span = null;
                 }
-                blocks.Add(block);
                 copied = close + 1;
                 open = text.IndexOf('{', copied);
             }
@@ -1589,49 +1591,41 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Rende visibile un tratto nascosto in un campo Text ricomposto, che ha gli stessi blocchi del sorgente: toglie il tag
-        /// d'apertura e quelli di chiusura dai loro blocchi, e i blocchi rimasti vuoti
+        /// Rende visibili dei tratti nascosti di un campo Text ASS: toglie il loro tag d'apertura e i loro tag d'alpha della
+        /// chiusura, e i blocchi rimasti vuoti
         /// </summary>
-        /// <param name="text">Campo Text ricomposto</param>
-        /// <param name="span">Tratto letto dal sorgente</param>
-        /// <returns>Campo Text col tratto visibile, null se i suoi blocchi non ci sono</returns>
-        public string RevealHiddenSpan(string text, SubtitleHiddenSpan span)
+        /// <param name="text">Campo Text da cui i tratti sono stati letti</param>
+        /// <param name="spans">Tratti letti dal campo (<see cref="ReadHiddenSpans"/>)</param>
+        /// <returns>Campo Text coi tratti visibili</returns>
+        public string ShowHiddenSpans(string text, IReadOnlyList<SubtitleHiddenSpan> spans)
         {
-            List<int[]> blocks = new List<int[]>();
-            for (int open = text.IndexOf('{'); open >= 0 && text.IndexOf('}', open) >= 0; open = text.IndexOf('{', text.IndexOf('}', open)))
-                blocks.Add(new int[] { open, text.IndexOf('}', open) + 1 });
-            Func<string, int, int, int> find = (content, occurrence, from) =>
+            List<Range> removed = spans.SelectMany(span => span.Tags).OrderBy(range => range.Start.Value).ToList();
+            StringBuilder result = new StringBuilder();
+            int next = 0;
+            int copied = 0;
+            int open = text.IndexOf('{');
+            while (open >= 0)
             {
-                int seen = 0;
-                for (int b = 0; b < blocks.Count; b++)
+                int close = text.IndexOf('}', open);
+                if (close < 0)
+                    break;
+                result.Append(text, copied, open - copied);
+                StringBuilder block = new StringBuilder();
+                int from = open;
+                bool touched = false;
+                for (; next < removed.Count && removed[next].Start.Value < close; next++)
                 {
-                    if (text.Substring(blocks[b][0], blocks[b][1] - blocks[b][0]) == content && seen++ == occurrence)
-                        return b >= from ? b : -1;
+                    block.Append(text, from, removed[next].Start.Value - from);
+                    from = removed[next].End.Value;
+                    touched = true;
                 }
-                return -1;
-            };
-            int openIndex = find(span.OpenBlock, span.OpenOccurrence, 0);
-            int closeIndex = openIndex < 0 ? -1 : find(span.CloseBlock, span.CloseOccurrence, openIndex + 1);
-            if (closeIndex < 0)
-                return null;
-
-            StringBuilder result = new StringBuilder(text);
-            foreach (KeyValuePair<int, IReadOnlyList<string>> edit in new KeyValuePair<int, IReadOnlyList<string>>[]
-            {
-                new KeyValuePair<int, IReadOnlyList<string>>(closeIndex, span.CloseTags), new KeyValuePair<int, IReadOnlyList<string>>(openIndex, new string[] { span.OpenTag })
-            })
-            {
-                string block = text.Substring(blocks[edit.Key][0], blocks[edit.Key][1] - blocks[edit.Key][0]);
-                int from = 0;
-                foreach (string tag in edit.Value)
-                {
-                    int at = block.IndexOf(tag, from, StringComparison.Ordinal);
-                    block = block.Remove(at, tag.Length);
-                    from = at;
-                }
-                result.Remove(blocks[edit.Key][0], blocks[edit.Key][1] - blocks[edit.Key][0]).Insert(blocks[edit.Key][0], block == "{}" ? "" : block);
+                block.Append(text, from, close + 1 - from);
+                if (!touched || block.Length > 2)
+                    result.Append(block);
+                copied = close + 1;
+                open = text.IndexOf('{', copied);
             }
-            return result.ToString();
+            return result.Append(text, copied, text.Length - copied).ToString();
         }
 
         /// <summary>
@@ -1980,15 +1974,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     public sealed record SubtitleLetterLook(string Tags, int? Alignment, string PositionY);
 
     /// <summary>
-    /// Tratto nascosto di un campo Text ASS, coi blocchi che lo aprono e lo chiudono
+    /// Tratto nascosto di un campo Text ASS, coi tag che lo nascondono e lo rimostrano
     /// </summary>
     /// <param name="Text">Testo leggibile del tratto</param>
-    /// <param name="OpenBlock">Blocco d'apertura</param>
-    /// <param name="OpenOccurrence">Blocchi uguali a quello d'apertura che lo precedono</param>
-    /// <param name="OpenTag">Tag che nasconde</param>
-    /// <param name="CloseBlock">Blocco di chiusura</param>
-    /// <param name="CloseOccurrence">Blocchi uguali a quello di chiusura che lo precedono</param>
-    /// <param name="CloseTags">Tag d'alpha del blocco di chiusura, nell'ordine</param>
-    public sealed record SubtitleHiddenSpan(string Text, string OpenBlock, int OpenOccurrence, string OpenTag, string CloseBlock, int CloseOccurrence,
-        IReadOnlyList<string> CloseTags);
+    /// <param name="Tags">Tag d'apertura e tag d'alpha della chiusura, come intervalli del campo Text, nell'ordine</param>
+    public sealed record SubtitleHiddenSpan(string Text, IReadOnlyList<Range> Tags);
 }
