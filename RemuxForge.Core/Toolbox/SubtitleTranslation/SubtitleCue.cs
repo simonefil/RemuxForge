@@ -38,6 +38,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Stesso carattere scritto crudo e come entità, o con due entità diverse</summary>
         public const string EXCLUSION_MIXED_ENTITIES = "mixed-entities";
 
+        /// <summary>Riga disegnata da un effetto lettera per lettera, sostituita dalla sua riga sorgente tradotta</summary>
+        public const string EXCLUSION_LETTER_EFFECT = "letter-effect";
+
         #endregion
 
         #region Costruttore
