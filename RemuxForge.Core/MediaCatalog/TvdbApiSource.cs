@@ -168,14 +168,13 @@ namespace RemuxForge.Core.MediaCatalog
         }
 
         /// <summary>
-        /// Serie completa nell'ordine ufficiale, con testi e persone di ogni episodio
+        /// Serie con le stagioni dell'ordine ufficiale; TVDB non indica quanti episodi ha ogni stagione
         /// </summary>
         /// <param name="key">ID TVDB della serie</param>
         /// <param name="language">Codice ISO 639-2/T dei testi</param>
-        /// <param name="progress">Avanzamento in episodi, può essere null</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Serie</returns>
-        public override async Task<MediaCatalogSeries> GetSeriesAsync(string key, string language, IProgress<MediaCatalogProgress> progress, CancellationToken cancellationToken)
+        public override async Task<MediaCatalogSeries> GetSeriesAsync(string key, string language, CancellationToken cancellationToken)
         {
             string id = ParseKey(key);
             string tvdbLanguage = await this.ResolveLanguageAsync(language, cancellationToken);
@@ -212,8 +211,29 @@ namespace RemuxForge.Core.MediaCatalog
                 }
             }
             series.Seasons.Sort((a, b) => a.Number.CompareTo(b.Number));
+            return series;
+        }
 
-            List<JsonNode> baseEpisodes = await this.ReadEpisodeListAsync(id, SEASON_TYPE, cancellationToken);
+        /// <summary>
+        /// Episodi delle stagioni scelte nell'ordine ufficiale, con testi e persone di ogni episodio
+        /// </summary>
+        /// <param name="series">Serie letta da GetSeriesAsync</param>
+        /// <param name="seasonNumbers">Numeri delle stagioni scelte</param>
+        /// <param name="language">Codice ISO 639-2/T dei testi</param>
+        /// <param name="progress">Avanzamento in episodi, può essere null</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Episodi ordinati per stagione e numero</returns>
+        public override async Task<List<MediaCatalogEpisode>> GetEpisodesAsync(MediaCatalogSeries series, List<int> seasonNumbers, string language, IProgress<MediaCatalogProgress> progress, CancellationToken cancellationToken)
+        {
+            List<MediaCatalogEpisode> result = new List<MediaCatalogEpisode>();
+            string id = this.ParseKey(series.Key);
+            string tvdbLanguage = await this.ResolveLanguageAsync(language, cancellationToken);
+            List<JsonNode> baseEpisodes = new List<JsonNode>();
+            foreach (int seasonNumber in seasonNumbers)
+            {
+                baseEpisodes.AddRange(await this.ReadEpisodeListAsync(id, SEASON_TYPE, seasonNumber, cancellationToken));
+            }
+
             Dictionary<long, int> absoluteNumbers = null;
             foreach (JsonNode episode in baseEpisodes)
             {
@@ -231,12 +251,12 @@ namespace RemuxForge.Core.MediaCatalog
             // Un episodio per volta, per non caricare il servizio
             foreach (JsonNode baseEpisode in baseEpisodes)
             {
-                series.Episodes.Add(await this.ReadEpisodeAsync(baseEpisode, absoluteNumbers, tvdbLanguage, cancellationToken));
+                result.Add(await this.ReadEpisodeAsync(baseEpisode, absoluteNumbers, tvdbLanguage, cancellationToken));
                 if (progress != null)
-                    progress.Report(new MediaCatalogProgress(series.Episodes.Count, baseEpisodes.Count));
+                    progress.Report(new MediaCatalogProgress(result.Count, baseEpisodes.Count));
             }
-            series.Episodes.Sort((a, b) => a.SeasonNumber != b.SeasonNumber ? a.SeasonNumber.CompareTo(b.SeasonNumber) : a.EpisodeNumber.CompareTo(b.EpisodeNumber));
-            return series;
+            result.Sort((a, b) => a.SeasonNumber != b.SeasonNumber ? a.SeasonNumber.CompareTo(b.SeasonNumber) : a.EpisodeNumber.CompareTo(b.EpisodeNumber));
+            return result;
         }
 
         /// <summary>
@@ -368,21 +388,23 @@ namespace RemuxForge.Core.MediaCatalog
         }
 
         /// <summary>
-        /// Legge tutte le pagine dell'elenco episodi di un ordine
+        /// Legge tutte le pagine dell'elenco episodi di un ordine, di una stagione o di tutta la serie
         /// </summary>
         /// <param name="id">ID della serie</param>
         /// <param name="seasonType">Ordine: official, absolute...</param>
+        /// <param name="seasonNumber">Numero della stagione nell'ordine, null per tutta la serie</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Episodi base</returns>
-        private async Task<List<JsonNode>> ReadEpisodeListAsync(string id, string seasonType, CancellationToken cancellationToken)
+        private async Task<List<JsonNode>> ReadEpisodeListAsync(string id, string seasonType, int? seasonNumber, CancellationToken cancellationToken)
         {
             List<JsonNode> result = new List<JsonNode>();
+            string url = API_BASE_URL + "/series/" + id + "/episodes/" + seasonType + "?" + (seasonNumber.HasValue ? "season=" + seasonNumber.Value.ToString(CultureInfo.InvariantCulture) + "&" : "") + "page=";
             int page = 0;
 
             // La dimensione della pagina non è documentata: si legge finché una pagina arriva vuota
             while (true)
             {
-                JsonNode root = await this.GetJsonAsync(API_BASE_URL + "/series/" + id + "/episodes/" + seasonType + "?page=" + page.ToString(CultureInfo.InvariantCulture), cancellationToken);
+                JsonNode root = await this.GetJsonAsync(url + page.ToString(CultureInfo.InvariantCulture), cancellationToken);
                 JsonArray episodes = root["data"]?["episodes"] as JsonArray;
                 if (episodes == null || episodes.Count == 0)
                     return result;
@@ -406,7 +428,7 @@ namespace RemuxForge.Core.MediaCatalog
         private async Task<Dictionary<long, int>> ReadAbsoluteNumbersAsync(string id, CancellationToken cancellationToken)
         {
             Dictionary<long, int> result = new Dictionary<long, int>();
-            foreach (JsonNode episode in await this.ReadEpisodeListAsync(id, "absolute", cancellationToken))
+            foreach (JsonNode episode in await this.ReadEpisodeListAsync(id, "absolute", null, cancellationToken))
             {
                 int? number = ReadPositiveInt(episode["number"]);
                 if (number.HasValue)

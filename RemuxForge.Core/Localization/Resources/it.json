@@ -4223,5 +4223,15 @@
   "ai.stream.citation": "Cita la fonte: {0}",
   "ai.stream.writingStart": "Scrive la risposta",
   "ai.stream.writing": "Scrive la risposta · {0} caratteri",
-  "ai.stream.refusal": "Il modello sta rifiutando la richiesta"
+  "ai.stream.refusal": "Il modello sta rifiutando la richiesta",
+  "web.mediaCatalogMatch.step.Episodes": "Episodi",
+  "web.mediaCatalogMatch.seasons": "Stagioni:",
+  "web.mediaCatalogMatch.selectedSeasons": "stagioni scelte",
+  "web.mediaCatalogMatch.specials": "Speciali",
+  "web.mediaCatalogMatch.seasonNumber": "Stagione {0}",
+  "web.mediaCatalogMatch.seasonEpisodes": "{0} episodi",
+  "web.mediaCatalogMatch.loadEpisodes": "Carica episodi",
+  "toolbox.subtitleTranslation.run.stretchSaved": "[{0}] tratta ripetuta {1}/{2}, {3} battute copiate in {4} file: {5} accettate, {6} da rivedere",
+  "web.toolbox.subtitleTranslation.sharedStretchesStartedOne": "Prima {0} tratta ripetuta fra i file, tradotta una volta sola",
+  "web.toolbox.subtitleTranslation.sharedStretchesStartedMany": "Prima {0} tratte ripetute fra i file, tradotte una volta sola"
 }

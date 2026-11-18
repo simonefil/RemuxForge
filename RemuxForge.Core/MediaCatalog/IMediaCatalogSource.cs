@@ -34,14 +34,25 @@ namespace RemuxForge.Core.MediaCatalog
         Task<List<MediaCatalogSearchHit>> SearchAsync(MediaCatalogKind kind, string query, int? year, string language, CancellationToken cancellationToken);
 
         /// <summary>
-        /// Serie completa nell'ordine ufficiale, con ogni episodio già completo di testi, numeri e persone
+        /// Serie con l'elenco delle stagioni nell'ordine ufficiale, senza episodi
         /// </summary>
         /// <param name="key">Chiave del risultato di ricerca</param>
         /// <param name="language">Codice ISO 639-2/T dei testi</param>
-        /// <param name="progress">Avanzamento in episodi, può essere null</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Serie</returns>
-        Task<MediaCatalogSeries> GetSeriesAsync(string key, string language, IProgress<MediaCatalogProgress> progress, CancellationToken cancellationToken);
+        Task<MediaCatalogSeries> GetSeriesAsync(string key, string language, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Episodi delle stagioni scelte, completi di testi, numeri e persone, ordinati per stagione e numero.
+        /// La fonte che conosce il poster di una stagione solo dalla pagina della stagione lo completa qui sulla serie
+        /// </summary>
+        /// <param name="series">Serie letta da GetSeriesAsync</param>
+        /// <param name="seasonNumbers">Numeri delle stagioni scelte</param>
+        /// <param name="language">Codice ISO 639-2/T dei testi</param>
+        /// <param name="progress">Avanzamento in episodi, può essere null</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Episodi</returns>
+        Task<List<MediaCatalogEpisode>> GetEpisodesAsync(MediaCatalogSeries series, List<int> seasonNumbers, string language, IProgress<MediaCatalogProgress> progress, CancellationToken cancellationToken);
 
         /// <summary>
         /// Film completo

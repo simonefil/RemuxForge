@@ -117,14 +117,13 @@ namespace RemuxForge.Core.MediaCatalog
         }
 
         /// <summary>
-        /// Serie completa nell'ordine di messa in onda, con testi e persone di ogni episodio
+        /// Serie con le stagioni e il numero di episodi di ognuna
         /// </summary>
         /// <param name="key">ID TMDB della serie</param>
         /// <param name="language">Codice ISO 639-2/T dei testi</param>
-        /// <param name="progress">Avanzamento in episodi, può essere null</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Serie</returns>
-        public override async Task<MediaCatalogSeries> GetSeriesAsync(string key, string language, IProgress<MediaCatalogProgress> progress, CancellationToken cancellationToken)
+        public override async Task<MediaCatalogSeries> GetSeriesAsync(string key, string language, CancellationToken cancellationToken)
         {
             string id = this.ParseKey(key);
             string tmdbLanguage = ToTmdbLanguage(language);
@@ -141,7 +140,6 @@ namespace RemuxForge.Core.MediaCatalog
             series.PosterUrl = ToImageUrl(ReadString(data["poster_path"]));
             ReadGenres(data["genres"] as JsonArray, series.Genres);
 
-            int total = 0;
             HashSet<int> seasonNumbers = new HashSet<int>();
             if (data["seasons"] is JsonArray seasons)
             {
@@ -153,25 +151,43 @@ namespace RemuxForge.Core.MediaCatalog
 
                     MediaCatalogSeason item = new MediaCatalogSeason();
                     item.Number = (int)number.Value;
+                    item.EpisodeCount = (int?)ReadLong(season["episode_count"]);
                     item.PosterUrl = ToImageUrl(ReadString(season["poster_path"]));
                     series.Seasons.Add(item);
-                    total += (int)(ReadLong(season["episode_count"]) ?? 0);
                 }
             }
             series.Seasons.Sort((a, b) => a.Number.CompareTo(b.Number));
+            return series;
+        }
+
+        /// <summary>
+        /// Episodi delle stagioni scelte nell'ordine di messa in onda, con testi e persone di ogni episodio
+        /// </summary>
+        /// <param name="series">Serie letta da GetSeriesAsync</param>
+        /// <param name="seasonNumbers">Numeri delle stagioni scelte</param>
+        /// <param name="language">Codice ISO 639-2/T dei testi</param>
+        /// <param name="progress">Avanzamento in episodi, può essere null</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Episodi ordinati per stagione e numero</returns>
+        public override async Task<List<MediaCatalogEpisode>> GetEpisodesAsync(MediaCatalogSeries series, List<int> seasonNumbers, string language, IProgress<MediaCatalogProgress> progress, CancellationToken cancellationToken)
+        {
+            List<MediaCatalogEpisode> result = new List<MediaCatalogEpisode>();
+            string id = this.ParseKey(series.Key);
+            string tmdbLanguage = ToTmdbLanguage(language);
+            int total = series.Seasons.Where(season => seasonNumbers.Contains(season.Number)).Sum(season => season.EpisodeCount ?? 0);
 
             if (progress != null)
                 progress.Report(new MediaCatalogProgress(0, total));
 
             // Una stagione per volta, per non caricare il servizio
-            foreach (MediaCatalogSeason season in series.Seasons)
+            foreach (int seasonNumber in seasonNumbers)
             {
-                series.Episodes.AddRange(await this.ReadSeasonAsync(id, season.Number, tmdbLanguage, cancellationToken));
+                result.AddRange(await this.ReadSeasonAsync(id, seasonNumber, tmdbLanguage, cancellationToken));
                 if (progress != null)
-                    progress.Report(new MediaCatalogProgress(series.Episodes.Count, Math.Max(series.Episodes.Count, total)));
+                    progress.Report(new MediaCatalogProgress(result.Count, Math.Max(result.Count, total)));
             }
-            series.Episodes.Sort((a, b) => a.SeasonNumber != b.SeasonNumber ? a.SeasonNumber.CompareTo(b.SeasonNumber) : a.EpisodeNumber.CompareTo(b.EpisodeNumber));
-            return series;
+            result.Sort((a, b) => a.SeasonNumber != b.SeasonNumber ? a.SeasonNumber.CompareTo(b.SeasonNumber) : a.EpisodeNumber.CompareTo(b.EpisodeNumber));
+            return result;
         }
 
         /// <summary>

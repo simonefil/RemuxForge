@@ -4223,5 +4223,15 @@
   "ai.stream.citation": "Citing source: {0}",
   "ai.stream.writingStart": "Writing the answer",
   "ai.stream.writing": "Writing the answer · {0} characters",
-  "ai.stream.refusal": "The model is refusing the request"
+  "ai.stream.refusal": "The model is refusing the request",
+  "web.mediaCatalogMatch.step.Episodes": "Episodes",
+  "web.mediaCatalogMatch.seasons": "Seasons:",
+  "web.mediaCatalogMatch.selectedSeasons": "seasons selected",
+  "web.mediaCatalogMatch.specials": "Specials",
+  "web.mediaCatalogMatch.seasonNumber": "Season {0}",
+  "web.mediaCatalogMatch.seasonEpisodes": "{0} episodes",
+  "web.mediaCatalogMatch.loadEpisodes": "Load episodes",
+  "toolbox.subtitleTranslation.run.stretchSaved": "[{0}] repeated stretch {1}/{2}, {3} cues copied into {4} files: {5} accepted, {6} to review",
+  "web.toolbox.subtitleTranslation.sharedStretchesStartedOne": "First {0} stretch repeated across files, translated once",
+  "web.toolbox.subtitleTranslation.sharedStretchesStartedMany": "First {0} stretches repeated across files, translated once"
 }

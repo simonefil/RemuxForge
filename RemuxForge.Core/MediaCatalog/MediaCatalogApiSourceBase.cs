@@ -78,14 +78,24 @@ namespace RemuxForge.Core.MediaCatalog
         public abstract Task<List<MediaCatalogSearchHit>> SearchAsync(MediaCatalogKind kind, string query, int? year, string language, CancellationToken cancellationToken);
 
         /// <summary>
-        /// Serie completa nell'ordine ufficiale
+        /// Serie con l'elenco delle stagioni, senza episodi
         /// </summary>
         /// <param name="key">Chiave del risultato di ricerca</param>
         /// <param name="language">Codice ISO 639-2/T dei testi</param>
-        /// <param name="progress">Avanzamento in episodi, può essere null</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Serie</returns>
-        public abstract Task<MediaCatalogSeries> GetSeriesAsync(string key, string language, IProgress<MediaCatalogProgress> progress, CancellationToken cancellationToken);
+        public abstract Task<MediaCatalogSeries> GetSeriesAsync(string key, string language, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Episodi delle stagioni scelte
+        /// </summary>
+        /// <param name="series">Serie letta da GetSeriesAsync</param>
+        /// <param name="seasonNumbers">Numeri delle stagioni scelte</param>
+        /// <param name="language">Codice ISO 639-2/T dei testi</param>
+        /// <param name="progress">Avanzamento in episodi, può essere null</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Episodi ordinati per stagione e numero</returns>
+        public abstract Task<List<MediaCatalogEpisode>> GetEpisodesAsync(MediaCatalogSeries series, List<int> seasonNumbers, string language, IProgress<MediaCatalogProgress> progress, CancellationToken cancellationToken);
 
         /// <summary>
         /// Film completo

@@ -34,9 +34,9 @@ namespace RemuxForge.Core.MediaCatalog
         /// Sotto i file restano gli episodi liberi, gli speciali in fondo
         /// </summary>
         /// <param name="filePaths">File nell'ordine del percorso</param>
-        /// <param name="series">Serie del catalogo</param>
+        /// <param name="episodes">Episodi del catalogo fra cui abbinare, ordinati per stagione e numero</param>
         /// <returns>Righe dell'abbinamento</returns>
-        public static List<MediaCatalogMatchRow> BuildRows(List<string> filePaths, MediaCatalogSeries series)
+        public static List<MediaCatalogMatchRow> BuildRows(List<string> filePaths, List<MediaCatalogEpisode> episodes)
         {
             List<MediaCatalogMatchRow> rows = new List<MediaCatalogMatchRow>();
             HashSet<MediaCatalogEpisode> used = new HashSet<MediaCatalogEpisode>();
@@ -56,7 +56,7 @@ namespace RemuxForge.Core.MediaCatalog
                 }
 
                 int season = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
-                MediaCatalogEpisode episode = Find(series, season, int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture));
+                MediaCatalogEpisode episode = Find(episodes, season, int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture));
                 if (episode == null || used.Contains(episode))
                     continue;
 
@@ -67,7 +67,7 @@ namespace RemuxForge.Core.MediaCatalog
                 foreach (Match number in s_numberPattern.Matches(match.Groups[3].Value))
                 {
                     MediaCatalogEpisode last = row.Episodes[row.Episodes.Count - 1];
-                    MediaCatalogEpisode next = Find(series, season, last.EpisodeNumber + 1);
+                    MediaCatalogEpisode next = Find(episodes, season, last.EpisodeNumber + 1);
                     if (next == null || used.Contains(next) || int.Parse(number.Value, CultureInfo.InvariantCulture) != next.EpisodeNumber)
                         break;
 
@@ -79,19 +79,19 @@ namespace RemuxForge.Core.MediaCatalog
             // Gli speciali non si abbinano per posizione: solo con S00Eyy nel nome o a mano
             for (int i = 0; i < withoutNumbers.Count; i++)
             {
-                while (nextFree < series.Episodes.Count && (series.Episodes[nextFree].SeasonNumber == 0 || used.Contains(series.Episodes[nextFree])))
+                while (nextFree < episodes.Count && (episodes[nextFree].SeasonNumber == 0 || used.Contains(episodes[nextFree])))
                     nextFree++;
 
-                if (nextFree >= series.Episodes.Count)
+                if (nextFree >= episodes.Count)
                     break;
 
-                withoutNumbers[i].Episodes.Add(series.Episodes[nextFree]);
-                used.Add(series.Episodes[nextFree]);
+                withoutNumbers[i].Episodes.Add(episodes[nextFree]);
+                used.Add(episodes[nextFree]);
             }
 
             foreach (bool specials in new bool[] { false, true })
             {
-                foreach (MediaCatalogEpisode episode in series.Episodes)
+                foreach (MediaCatalogEpisode episode in episodes)
                 {
                     if ((episode.SeasonNumber == 0) == specials && !used.Contains(episode))
                         rows.Add(new MediaCatalogMatchRow("", new List<MediaCatalogEpisode> { episode }));
@@ -99,6 +99,24 @@ namespace RemuxForge.Core.MediaCatalog
             }
 
             return rows;
+        }
+
+        /// <summary>
+        /// Stagioni indicate da SxxEyy nel nome dei file
+        /// </summary>
+        /// <param name="filePaths">File</param>
+        /// <returns>Numeri delle stagioni</returns>
+        public static HashSet<int> GetSeasonNumbers(List<string> filePaths)
+        {
+            HashSet<int> result = new HashSet<int>();
+            foreach (string filePath in filePaths)
+            {
+                Match match = s_episodePattern.Match(Path.GetFileName(filePath));
+                if (match.Success)
+                    result.Add(int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture));
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -205,13 +223,13 @@ namespace RemuxForge.Core.MediaCatalog
         /// <summary>
         /// Episodio del catalogo per stagione e numero
         /// </summary>
-        /// <param name="series">Serie</param>
+        /// <param name="episodes">Episodi del catalogo</param>
         /// <param name="season">Stagione</param>
         /// <param name="number">Numero dell'episodio</param>
         /// <returns>Episodio, null se assente</returns>
-        private static MediaCatalogEpisode Find(MediaCatalogSeries series, int season, int number)
+        private static MediaCatalogEpisode Find(List<MediaCatalogEpisode> episodes, int season, int number)
         {
-            foreach (MediaCatalogEpisode episode in series.Episodes)
+            foreach (MediaCatalogEpisode episode in episodes)
             {
                 if (episode.SeasonNumber == season && episode.EpisodeNumber == number)
                     return episode;

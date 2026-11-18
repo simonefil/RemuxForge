@@ -12,7 +12,7 @@
         <div class="catalog-match-steps">
             @foreach (MatchStep step in GetVisibleSteps())
             {
-                <RadzenBadge IsPill="true" BadgeStyle="@(step == (_step == MatchStep.Loading ? MatchStep.Search : _step) ? BadgeStyle.Primary : BadgeStyle.Light)" Text="@GetStepLabel(step)" />
+                <RadzenBadge IsPill="true" BadgeStyle="@(step == (_step == MatchStep.Loading ? (_series != null ? MatchStep.Episodes : MatchStep.Search) : _step) ? BadgeStyle.Primary : BadgeStyle.Light)" Text="@GetStepLabel(step)" />
             }
         </div>
 
@@ -23,10 +23,10 @@
                 <Columns>
                     <RadzenDataGridColumn TItem="string" Width="3rem" Sortable="false">
                         <HeaderTemplate>
-                            <RadzenCheckBox TValue="bool" Value="@(_selectedFiles.Count == Files.Count && Files.Count > 0)" Change="@SelectAll" aria-label="@AppText.T("web.mediaCatalogMatch.selectAll")" />
+                            <RadzenCheckBox TValue="bool" Value="@(_selectedFiles.Count == Files.Count && Files.Count > 0)" Change="@(value => SelectAll(_selectedFiles, Files, value))" aria-label="@AppText.T("web.mediaCatalogMatch.selectAll")" />
                         </HeaderTemplate>
                         <Template Context="file">
-                            <RadzenCheckBox TValue="bool" Value="@_selectedFiles.Contains(file)" Change="@(value => ToggleFile(file, value))" aria-label="@System.IO.Path.GetFileName(file)" />
+                            <RadzenCheckBox TValue="bool" Value="@_selectedFiles.Contains(file)" Change="@(value => Toggle(_selectedFiles, file, value))" aria-label="@System.IO.Path.GetFileName(file)" />
                         </Template>
                     </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="string" Title="@AppText.T("web.mediaCatalogMatch.file")">
@@ -105,6 +105,39 @@
                     <span>@AppText.F("web.mediaCatalogMatch.loadingEpisodes", _loadCompleted, _loadTotal)</span>
                 }
             </div>
+        }
+        else if (_step == MatchStep.Episodes)
+        {
+            <div class="form-stack">
+                <div class="form-row">
+                    <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogMatch.seasons")" Component="CatalogMatchSeasons" />
+                    <RadzenDropDown TValue="IEnumerable<int>" Name="CatalogMatchSeasons" Data="@_seasonOptions" TextProperty="Value" ValueProperty="Key"
+                                    Multiple="true" AllowSelectAll="false" AllowClear="true" MaxSelectedLabels="3" SelectedItemsText="@AppText.T("web.mediaCatalogMatch.selectedSeasons")"
+                                    @bind-Value="_seasons" Change="@(() => { _episodes = new List<MediaCatalogEpisode>(); _selectedEpisodes.Clear(); })" />
+                </div>
+                <div class="form-row form-row-offset">
+                    <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.loadEpisodes")" Icon="download" Disabled="@(!_seasons.Any())" Click="@LoadEpisodesAsync" />
+                </div>
+            </div>
+            @if (_episodes.Count > 0)
+            {
+                <RadzenDataGrid TItem="MediaCatalogEpisode" Data="@_episodes" class="rf-data-grid catalog-match-grid" AllowPaging="false" AllowSorting="false" AllowColumnResize="false"
+                                Density="Density.Compact" GridLines="DataGridGridLines.Horizontal">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="MediaCatalogEpisode" Width="3rem" Sortable="false">
+                            <HeaderTemplate>
+                                <RadzenCheckBox TValue="bool" Value="@(_selectedEpisodes.Count == _episodes.Count)" Change="@(value => SelectAll(_selectedEpisodes, _episodes, value))" aria-label="@AppText.T("web.mediaCatalogMatch.selectAll")" />
+                            </HeaderTemplate>
+                            <Template Context="episode">
+                                <RadzenCheckBox TValue="bool" Value="@_selectedEpisodes.Contains(episode)" Change="@(value => Toggle(_selectedEpisodes, episode, value))" aria-label="@FormatEpisodes(new List<MediaCatalogEpisode> { episode })" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="MediaCatalogEpisode" Title="@AppText.T("web.mediaCatalogMatch.episode")">
+                            <Template Context="episode"><CellText Text="@FormatEpisodes(new List<MediaCatalogEpisode> { episode })" /></Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
         }
         else if (_step == MatchStep.Match)
         {
@@ -206,9 +239,14 @@
         {
             <RadzenButton Text="@AppText.T("web.common.cancel")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@CancelLoading" />
         }
-        else if (_step == MatchStep.Match)
+        else if (_step == MatchStep.Episodes)
         {
             <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.back")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => _step = MatchStep.Search)" />
+            <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.next")" Icon="arrow_forward" Disabled="@(_selectedEpisodes.Count == 0)" Click="@GoToMatch" />
+        }
+        else if (_step == MatchStep.Match)
+        {
+            <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.back")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => _step = MatchStep.Episodes)" />
             @if (RenameMode)
             {
                 <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.confirm")" Icon="check" Disabled="@(GetWrittenFiles().Count == 0)" Click="@ConfirmRename" />
@@ -237,6 +275,7 @@
         Files,
         Search,
         Loading,
+        Episodes,
         Match,
         Preview
     }
@@ -337,6 +376,26 @@
     private MediaCatalogSeries _series;
 
     /// <summary>
+    /// Stagioni della serie fra cui scegliere: numero ed etichetta con gli episodi dichiarati
+    /// </summary>
+    private List<KeyValuePair<int, string>> _seasonOptions = new List<KeyValuePair<int, string>>();
+
+    /// <summary>
+    /// Stagioni scelte
+    /// </summary>
+    private IEnumerable<int> _seasons = new List<int>();
+
+    /// <summary>
+    /// Episodi caricati delle stagioni scelte, ordinati per stagione e numero
+    /// </summary>
+    private List<MediaCatalogEpisode> _episodes = new List<MediaCatalogEpisode>();
+
+    /// <summary>
+    /// Episodi spuntati, gli unici che entrano nell'abbinamento
+    /// </summary>
+    private HashSet<MediaCatalogEpisode> _selectedEpisodes = new HashSet<MediaCatalogEpisode>();
+
+    /// <summary>
     /// Film caricato
     /// </summary>
     private MediaCatalogMovie _movie;
@@ -408,16 +467,19 @@
     }
 
     /// <summary>
-    /// Passi mostrati in testa: l'abbinamento solo per le serie, l'anteprima solo nel modo Metadata
+    /// Passi mostrati in testa: episodi e abbinamento solo per le serie, l'anteprima solo nel modo Metadata
     /// </summary>
     /// <returns>Passi</returns>
     private List<MatchStep> GetVisibleSteps()
     {
         List<MatchStep> steps = new List<MatchStep> { MatchStep.Files, MatchStep.Search };
-        bool movie = this._step == MatchStep.Match || this._step == MatchStep.Preview ? this._movie != null : this._kind == MediaCatalogKind.Movie;
+        bool movie = this._step == MatchStep.Episodes || this._step == MatchStep.Match || this._step == MatchStep.Preview ? this._movie != null : this._kind == MediaCatalogKind.Movie;
 
         if (!movie)
+        {
+            steps.Add(MatchStep.Episodes);
             steps.Add(MatchStep.Match);
+        }
         if (!this.RenameMode)
             steps.Add(MatchStep.Preview);
 
@@ -445,27 +507,30 @@
     }
 
     /// <summary>
-    /// Seleziona o deseleziona tutti i file
+    /// Spunta o toglie la spunta a tutte le righe di un elenco
     /// </summary>
-    /// <param name="value">True per selezionare</param>
-    private void SelectAll(bool value)
+    /// <param name="selection">Righe spuntate</param>
+    /// <param name="items">Righe dell'elenco</param>
+    /// <param name="value">True per spuntare</param>
+    private static void SelectAll<T>(HashSet<T> selection, IEnumerable<T> items, bool value)
     {
-        this._selectedFiles.Clear();
+        selection.Clear();
         if (value)
-            this._selectedFiles.UnionWith(this.Files);
+            selection.UnionWith(items);
     }
 
     /// <summary>
-    /// Seleziona o deseleziona un file
+    /// Spunta o toglie la spunta a una riga
     /// </summary>
-    /// <param name="file">File</param>
-    /// <param name="value">True per selezionare</param>
-    private void ToggleFile(string file, bool value)
+    /// <param name="selection">Righe spuntate</param>
+    /// <param name="item">Riga</param>
+    /// <param name="value">True per spuntare</param>
+    private static void Toggle<T>(HashSet<T> selection, T item, bool value)
     {
         if (value)
-            this._selectedFiles.Add(file);
+            selection.Add(item);
         else
-            this._selectedFiles.Remove(file);
+            selection.Remove(item);
     }
 
     /// <summary>
@@ -510,7 +575,7 @@
     }
 
     /// <summary>
-    /// Carica il titolo scelto: la serie passa all'abbinamento, il film all'anteprima o direttamente all'esito della rinomina
+    /// Carica il titolo scelto: la serie passa alla scelta di stagioni ed episodi, il film all'anteprima o direttamente all'esito della rinomina
     /// </summary>
     /// <param name="hit">Risultato scelto</param>
     private async Task SelectHitAsync(MediaCatalogSearchHit hit)
@@ -548,16 +613,16 @@
                 return;
             }
 
-            Progress<MediaCatalogProgress> progress = new Progress<MediaCatalogProgress>(value =>
-            {
-                this._loadCompleted = value.Completed;
-                this._loadTotal = value.Total;
-                _ = this.InvokeAsync(this.StateHasChanged);
-            });
-            this._series = await this._source.GetSeriesAsync(hit.Key, this.GetLanguage(), progress, cancellation.Token);
-            this._rows = MediaCatalogEpisodeMatcher.BuildRows(files, this._series);
+            this._series = await this._source.GetSeriesAsync(hit.Key, this.GetLanguage(), cancellation.Token);
+            HashSet<int> fileSeasons = MediaCatalogEpisodeMatcher.GetSeasonNumbers(files);
+            this._seasonOptions = this._series.Seasons.ConvertAll(season => new KeyValuePair<int, string>(season.Number,
+                (season.Number == 0 ? AppText.T("web.mediaCatalogMatch.specials") : AppText.F("web.mediaCatalogMatch.seasonNumber", season.Number))
+                + (season.EpisodeCount.HasValue ? " (" + AppText.F("web.mediaCatalogMatch.seasonEpisodes", season.EpisodeCount.Value) + ")" : "")));
+            this._seasons = this._series.Seasons.Select(season => season.Number).Where(fileSeasons.Contains).ToList();
+            this._episodes = new List<MediaCatalogEpisode>();
+            this._selectedEpisodes.Clear();
             this._titleTemplate = MediaCatalogChangeBuilder.SERIES_TITLE_TEMPLATE;
-            this._step = MatchStep.Match;
+            this._step = MatchStep.Episodes;
         }
         catch (OperationCanceledException)
         {
@@ -573,6 +638,52 @@
             this._cancellation = null;
             cancellation.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Carica gli episodi delle stagioni scelte, tutti spuntati; annullato o fallito torna alla scelta con gli episodi di prima
+    /// </summary>
+    private async Task LoadEpisodesAsync()
+    {
+        CancellationTokenSource cancellation = new CancellationTokenSource();
+        Progress<MediaCatalogProgress> progress = new Progress<MediaCatalogProgress>(value =>
+        {
+            this._loadCompleted = value.Completed;
+            this._loadTotal = value.Total;
+            _ = this.InvokeAsync(this.StateHasChanged);
+        });
+
+        this._cancellation = cancellation;
+        this._loadCompleted = 0;
+        this._loadTotal = 0;
+        this._step = MatchStep.Loading;
+        try
+        {
+            this._episodes = await this._source.GetEpisodesAsync(this._series, this._seasons.OrderBy(number => number).ToList(), this.GetLanguage(), progress, cancellation.Token);
+            this._selectedEpisodes = new HashSet<MediaCatalogEpisode>(this._episodes);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (MediaCatalogException ex)
+        {
+            this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.mediaCatalogMatch.loadFailed"), ex.Message, 8000);
+        }
+        finally
+        {
+            this._cancellation = null;
+            cancellation.Dispose();
+            this._step = MatchStep.Episodes;
+        }
+    }
+
+    /// <summary>
+    /// Passa all'abbinamento dei file con i soli episodi spuntati
+    /// </summary>
+    private void GoToMatch()
+    {
+        this._rows = MediaCatalogEpisodeMatcher.BuildRows(this.GetSelectedFiles(), this._episodes.Where(this._selectedEpisodes.Contains).ToList());
+        this._step = MatchStep.Match;
     }
 
     /// <summary>

@@ -115,7 +115,7 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
-    /// Serie con stagioni ed episodi nell'ordine ufficiale
+    /// Serie con l'elenco delle stagioni; gli episodi si leggono a parte, per le stagioni scelte
     /// </summary>
     public class MediaCatalogSeries
     {
@@ -133,7 +133,6 @@ namespace RemuxForge.Core.Models
             this.Genres = new List<string>();
             this.PosterUrl = "";
             this.Seasons = new List<MediaCatalogSeason>();
-            this.Episodes = new List<MediaCatalogEpisode>();
         }
 
         #endregion
@@ -185,11 +184,6 @@ namespace RemuxForge.Core.Models
         /// </summary>
         public List<MediaCatalogSeason> Seasons { get; set; }
 
-        /// <summary>
-        /// Tutti gli episodi in lista piatta, ordinati per stagione e numero
-        /// </summary>
-        public List<MediaCatalogEpisode> Episodes { get; set; }
-
         #endregion
     }
 
@@ -218,7 +212,12 @@ namespace RemuxForge.Core.Models
         public int Number { get; set; }
 
         /// <summary>
-        /// URL assoluto del poster della stagione, vuoto se assente
+        /// Episodi della stagione dichiarati dal catalogo, null se la fonte non li indica con l'elenco delle stagioni
+        /// </summary>
+        public int? EpisodeCount { get; set; }
+
+        /// <summary>
+        /// URL assoluto del poster della stagione, vuoto se assente; una fonte può conoscerlo solo dopo aver letto gli episodi della stagione
         /// </summary>
         public string PosterUrl { get; set; }
 
@@ -397,7 +396,7 @@ namespace RemuxForge.Core.Models
     }
 
     /// <summary>
-    /// Avanzamento del caricamento di una serie, in episodi
+    /// Avanzamento del caricamento degli episodi delle stagioni scelte
     /// </summary>
     public record MediaCatalogProgress(int Completed, int Total);
 
