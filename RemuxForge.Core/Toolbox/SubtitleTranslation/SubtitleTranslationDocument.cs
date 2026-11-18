@@ -888,7 +888,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// tradotta di un effetto lettera per lettera resta com'è e una riga Dialogue col testo tradotto per layer delle lettere
         /// prende il posto delle righe disegnate; i pezzi di parola animati prima di una riga intera tradotta se ne vanno, e così
         /// le evidenziazioni sovrapposte a una riga sotto tradotta, il cui tratto nascosto torna visibile. Una traduzione uguale al
-        /// testo pulito del sorgente lascia lettere, pezzi ed evidenziazioni come sono
+        /// testo pulito del sorgente, a meno degli spazi e degli a capo come nelle tratte ripetute, lascia lettere, pezzi ed
+        /// evidenziazioni come sono
         /// </summary>
         /// <param name="translatedText">Testo pulito tradotto per id, già validato</param>
         /// <returns>Byte del file, con lo stesso BOM e la stessa codifica del sorgente (UTF-8 per una codifica scelta)</returns>
@@ -902,9 +903,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 if (!source.HasValue || !translatedText.TryGetValue(source.Value, out string translation))
                     continue;
 
-                // Un testo uguale al pulito del sorgente rifà il campo Text originale: lettere, pezzi di parola ed evidenziazioni
-                // restano come sono
-                bool unchanged = (translation ?? "") == cue.CleanText;
+                // Un testo uguale al pulito del sorgente, a meno di spazi e a capo come la chiave delle tratte ripetute, lascia
+                // lettere, pezzi di parola ed evidenziazioni come sono in ogni file della tratta
+                bool unchanged = SharedStretchDetector.Key(this.Format, translation ?? "") == SharedStretchDetector.Key(this.Format, cue.CleanText);
                 if (!this._letterEffects.TryGetValue(cue.Position, out LetterEffect letterEffect))
                 {
                     // I tratti nascosti coperti dalle evidenziazioni tornano visibili; se i loro blocchi non si ritrovano nel testo
