@@ -131,7 +131,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Scrive l'archivio di un progetto col job attivo nella cartella scelta, senza sovrascrivere: il progetto tiene solo i file
         /// del job, i percorsi assoluti dei sorgenti diventano relativi all'archivio, i parziali si ricompongono dalle battute
-        /// accettate dei file non bloccati
+        /// accettate. Un sorgente mancante o cambiato dà l'eccezione col motivo: l'import vuole tutti i sorgenti del progetto
         /// </summary>
         /// <param name="project">Progetto salvato, col job attivo</param>
         /// <param name="folder">Cartella di destinazione</param>
@@ -200,7 +200,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     foreach (TranslationProjectFile file in files)
                     {
                         TranslationJobFileState state;
-                        if (!activeStates.TryGetValue(file.Id, out state) || state.TranslationStatus == TranslationFileStatus.Blocked)
+                        if (!activeStates.TryGetValue(file.Id, out state))
                             continue;
 
                         SubtitleTranslationDocument document = SubtitleTranslationDocument.Read(File.ReadAllBytes(file.Path), file.Format, file.Encoding);
@@ -247,7 +247,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Importa un archivio: i sorgenti nella cartella scelta, progetto e job nella configurazione. Un progetto con lo stesso
         /// identificativo si sostituisce solo con la conferma; un job con l'identificativo di un altro progetto prende un id nuovo;
-        /// un job rimasto in corso diventa fermato da una chiusura dell'app. Il progetto sostituito si cancella solo a import riuscito
+        /// un job rimasto in corso torna in uno stato da cui il giro prosegue. Il progetto sostituito si cancella solo a import riuscito
         /// </summary>
         /// <param name="zipPath">Archivio scelto</param>
         /// <param name="sourceFolder">Cartella dei sorgenti</param>
@@ -326,11 +326,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     File.WriteAllBytes(Path.Combine(jobTemp, TranslationJobStore.CALLS_FILE), inspection.Contents[prefix + TranslationJobStore.CALLS_FILE]);
 
                     job.Id = jobIds[job.Id];
-                    if (job.Status == TranslationJobStatus.Running)
-                    {
-                        job.Status = TranslationJobStatus.Paused;
-                        job.Pause = new TranslationStop { Reason = TranslationStopReason.Crash, At = DateTimeOffset.Now };
-                    }
+                    job.RecoverAfterCrash();
                     TranslationJsonFile.Write(Path.Combine(jobTemp, TranslationJobStore.JOB_FILE), job);
                 }
 

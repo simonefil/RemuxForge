@@ -2,6 +2,7 @@ using RemuxForge.Core.Localization;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.Json;
 
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
@@ -179,6 +180,36 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 if (Directory.Exists(folder))
                     Directory.Delete(folder, true);
+            }
+        }
+
+        /// <summary>
+        /// Cancella i job di un progetto letti dalle testate, compreso quello che il progetto non riporta perché una chiusura brusca
+        /// è arrivata fra il salvataggio del job e quello del progetto; una testata illeggibile lascia la sua cartella
+        /// </summary>
+        /// <param name="projectId">Identificativo del progetto</param>
+        public void DeleteOfProject(string projectId)
+        {
+            if (!Directory.Exists(this._root))
+                return;
+
+            foreach (string folder in Directory.GetDirectories(this._root))
+            {
+                string id = Path.GetFileName(folder);
+                TranslationJob job;
+                try
+                {
+                    job = this.Load(id);
+                }
+                catch (Exception ex)
+                {
+                    if (!(ex is IOException || ex is JsonException || ex is InvalidDataException || ex is UnauthorizedAccessException))
+                        throw;
+                    continue;
+                }
+
+                if (job.ProjectId == projectId)
+                    this.Delete(id);
             }
         }
 

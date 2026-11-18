@@ -335,13 +335,13 @@
                                 @if (row.Status == TranslationFileStatus.Blocked)
                                 {
                                     <span class="rf-translation-actions">
-                                        @if (row.BlockedReason == TranslationFilePreparer.REJECTION_SOURCE_CHANGED)
+                                        @if (row.BlockedReason == TranslationFilePreparer.REJECTION_SOURCE_CHANGED && job.Phase == TranslationJobPhase.Translation)
                                         {
                                             <RadzenButton Icon="restart_alt" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@busy"
                                                           title="@AppText.T("web.toolbox.subtitleTranslation.restartFile")" aria-label="@(AppText.T("web.toolbox.subtitleTranslation.restartFile") + " " + row.FileName)"
                                                           Click="@(() => RestartFileAsync(row))" />
                                         }
-                                        <RadzenButton Icon="remove_circle_outline" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Disabled="@busy"
+                                        <RadzenButton Icon="remove_circle_outline" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Disabled="@(busy || job.FileIds.Count < 2)"
                                                       title="@AppText.T("web.toolbox.subtitleTranslation.excludeFile")" aria-label="@(AppText.T("web.toolbox.subtitleTranslation.excludeFile") + " " + row.FileName)"
                                                       Click="@(() => { Orchestrator.ExcludeFile(row.FileId); _step = ProjectStep(); })" />
                                     </span>
@@ -1989,8 +1989,8 @@
     }
 
     /// <summary>
-    /// Passo da mostrare per il progetto aperto: col job il passo della sua fase, Esporta se già raggiunto dalla revisione
-    /// dell'utente; Glossario con l'analisi partita, altrimenti Progetto
+    /// Passo da mostrare per il progetto aperto: col job Traduzione se un file è bloccato, poi il passo della sua fase, Esporta
+    /// se già raggiunto dalla revisione dell'utente; Glossario con l'analisi partita, altrimenti Progetto
     /// </summary>
     /// <returns>Indice del passo</returns>
     private int ProjectStep()
@@ -2000,6 +2000,8 @@
             return 0;
 
         TranslationJob job = this.Orchestrator.Job;
+        if (job != null && this.Orchestrator.HasBlockedFiles)
+            return STEP_TRANSLATION;
         if (job != null && (job.Phase == TranslationJobPhase.NewTerms || job.Phase == TranslationJobPhase.Applying))
             return STEP_NEW_TERMS;
         if (job != null && job.Phase == TranslationJobPhase.Review)

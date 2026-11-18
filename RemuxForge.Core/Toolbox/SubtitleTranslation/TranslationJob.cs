@@ -197,6 +197,36 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         #endregion
 
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Riporta il job letto da disco, dopo una chiusura brusca, in uno stato da cui il giro prosegue: nei termini nuovi e nella
+        /// revisione dell'utente il giro aspetta l'utente e non ha lavoro in corso, quindi torna fermo; nelle altre fasi un giro
+        /// rimasto in corso diventa fermato da una chiusura dell'app
+        /// </summary>
+        /// <returns>True se lo stato è cambiato e il job va salvato</returns>
+        public bool RecoverAfterCrash()
+        {
+            if (this.Phase == TranslationJobPhase.NewTerms || this.Phase == TranslationJobPhase.UserReview)
+            {
+                if (this.Status == TranslationJobStatus.Idle)
+                    return false;
+
+                this.Status = TranslationJobStatus.Idle;
+                this.Pause = null;
+                return true;
+            }
+
+            if (this.Status != TranslationJobStatus.Running)
+                return false;
+
+            this.Status = TranslationJobStatus.Paused;
+            this.Pause = new TranslationStop { Reason = TranslationStopReason.Crash, At = DateTimeOffset.Now };
+            return true;
+        }
+
+        #endregion
+
         #region Proprietà
 
         /// <summary>

@@ -194,12 +194,23 @@ namespace RemuxForge.Web.Services.Toolbox
         #region Metodi pubblici
 
         /// <summary>
-        /// Elenca i progetti salvati, dal più recente
+        /// Elenca i progetti salvati, dal più recente; un'analisi rimasta in corso da una chiusura dell'app diventa fermata, tranne
+        /// quella del progetto aperto, che vive in memoria
         /// </summary>
         /// <returns>Progetti</returns>
         public List<TranslationProject> ListProjects()
         {
-            return this._store.List();
+            List<TranslationProject> projects = this._store.List();
+            lock (this.StateLock)
+            {
+                foreach (TranslationProject project in projects)
+                {
+                    if (this._project == null || this._project.Id != project.Id)
+                        this.StopStaleAnalysis(project);
+                }
+            }
+
+            return projects;
         }
 
         /// <summary>
@@ -248,13 +259,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 if (this.IsBusy)
                     return;
 
-                if (project.Analysis != null && project.Analysis.Status == TranslationAnalysisStatus.Running)
-                {
-                    project.Analysis.Status = TranslationAnalysisStatus.Stopped;
-                    project.Analysis.Stop = new TranslationStop { Reason = TranslationStopReason.Crash };
-                    this._store.Save(project);
-                }
-
+                this.StopStaleAnalysis(project);
                 this.Records.Clear();
                 this._documents.Clear();
                 this._calls.Clear();
@@ -324,6 +329,7 @@ namespace RemuxForge.Web.Services.Toolbox
 
                 foreach (string jobId in project.JobIds)
                     this._jobStore.Delete(jobId);
+                this._jobStore.DeleteOfProject(project.Id);
                 this._store.Delete(project.Id);
             }
 
@@ -719,8 +725,9 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Testata del job attivo di un progetto; un job rimasto in corso da una chiusura dell'app diventa fermato, tranne quello
-        /// che la card sta traducendo. Un job illeggibile o di una versione più recente dà l'eccezione col motivo
+        /// Testata del job attivo di un progetto; un job lasciato da una chiusura dell'app torna in uno stato da cui il giro
+        /// prosegue, tranne quello che la card sta traducendo. Un job illeggibile o di una versione più recente dà l'eccezione col
+        /// motivo
         /// </summary>
         /// <param name="project">Progetto</param>
         /// <returns>Job, null senza job</returns>
@@ -738,12 +745,8 @@ namespace RemuxForge.Web.Services.Toolbox
             TranslationJob job = this._jobStore.Load(project.ActiveJobId);
             lock (this.StateLock)
             {
-                if (!this.IsBusy && job.Status == TranslationJobStatus.Running)
-                {
-                    job.Status = TranslationJobStatus.Paused;
-                    job.Pause = new TranslationStop { Reason = TranslationStopReason.Crash, At = DateTimeOffset.Now };
+                if (!this.IsBusy && job.RecoverAfterCrash())
                     this._jobStore.Save(job);
-                }
             }
 
             return job;
@@ -808,12 +811,15 @@ namespace RemuxForge.Web.Services.Toolbox
                     job.SharedStretches = SharedStretchDetector.Detect(documents);
                     foreach (TranslationProjectFile file in this._project.Files)
                     {
-                        TranslationJobFileState state = TranslationRunner.CreateFileState(file, this._documents[file.Id], SharedStretch.MapFile(job.SharedStretches, file.Id).Keys);
                         job.FileIds.Add(file.Id);
-                        this._jobFiles[file.Id] = state;
-                        this._jobStore.SaveFile(job.Id, state);
+                        this._jobFiles[file.Id] = TranslationRunner.CreateFileState(file, this._documents[file.Id], SharedStretch.MapFile(job.SharedStretches, file.Id).Keys);
                     }
+
+                    // Prima la testata, che dice il progetto del job, poi gli stati dei file e infine il progetto: una chiusura brusca
+                    // lascia al più un job che il progetto non riporta, e la cancellazione del progetto lo trova dalla testata
                     this._jobStore.Save(job);
+                    foreach (string fileId in job.FileIds)
+                        this._jobStore.SaveFile(job.Id, this._jobFiles[fileId]);
 
                     this._job = job;
                     this._project.ActiveJobId = job.Id;
@@ -840,7 +846,9 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Ricomincia da capo un file bloccato dal sorgente cambiato: scarta il suo stato, lo riprepara e ricalcola l'hash
+        /// Ricomincia da capo un file bloccato dal sorgente cambiato, finché il giro è nella traduzione: scarta il suo stato, lo
+        /// riprepara e ricalcola l'hash. Il job si salva prima dello stato: dopo una chiusura brusca fra i due il file resta bloccato
+        /// e si ricomincia di nuovo
         /// </summary>
         /// <param name="fileId">File del job</param>
         public void RestartFile(string fileId)
@@ -849,7 +857,7 @@ namespace RemuxForge.Web.Services.Toolbox
             lock (this.StateLock)
             {
                 TranslationJobFileState state;
-                if (this._project == null || this._job == null || this.IsBusy || !this._jobFiles.TryGetValue(fileId, out state) ||
+                if (this._project == null || this._job == null || this.IsBusy || this._job.Phase != TranslationJobPhase.Translation || !this._jobFiles.TryGetValue(fileId, out state) ||
                     state.TranslationStatus != TranslationFileStatus.Blocked || state.BlockedReason != TranslationFilePreparer.REJECTION_SOURCE_CHANGED)
                     return;
 
@@ -873,8 +881,8 @@ namespace RemuxForge.Web.Services.Toolbox
                         stretch.CopyInto(state);
                 }
                 this._jobFiles[fileId] = state;
-                this._jobStore.SaveFile(this._job.Id, state);
                 this._jobStore.Save(this._job);
+                this._jobStore.SaveFile(this._job.Id, state);
                 this._store.Save(this._project);
                 name = Path.GetFileName(file.Path);
             }
@@ -884,8 +892,9 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Toglie dal job un file bloccato; con tutti gli altri file conclusi la traduzione è finita e il giro prosegue: si ferma
-        /// sui termini nuovi da decidere o, senza termini, riparte con la revisione AI
+        /// Toglie dal job un file bloccato, mai l'ultimo; con tutti gli altri file conclusi la traduzione è finita e il giro
+        /// prosegue: si ferma sui termini nuovi da decidere o, senza termini, riparte con la revisione AI. Il job si salva senza il
+        /// file prima che il suo stato si cancelli: una chiusura brusca lascia al più uno stato che nessuno legge
         /// </summary>
         /// <param name="fileId">File del job</param>
         public void ExcludeFile(string fileId)
@@ -895,23 +904,23 @@ namespace RemuxForge.Web.Services.Toolbox
             lock (this.StateLock)
             {
                 TranslationJobFileState state;
-                if (this._project == null || this._job == null || this.IsBusy || !this._jobFiles.TryGetValue(fileId, out state) ||
+                if (this._project == null || this._job == null || this.IsBusy || this._job.FileIds.Count < 2 || !this._jobFiles.TryGetValue(fileId, out state) ||
                     state.TranslationStatus != TranslationFileStatus.Blocked)
                     return;
 
                 this._job.FileIds.Remove(fileId);
                 this._jobFiles.Remove(fileId);
-                this._jobStore.DeleteFile(this._job.Id, fileId);
                 SharedStretchDetector.Detach(this._job.SharedStretches, fileId);
                 if (this._job.Phase == TranslationJobPhase.Translation && this._job.FileIds.TrueForAll(id => this._jobFiles[id].TranslationStatus == TranslationFileStatus.Completed))
                 {
                     this.FinishTranslation();
                     this._job.Status = TranslationJobStatus.Idle;
                     this._job.Pause = null;
-                    this._store.Save(this._project);
                     review = this._job.Phase == TranslationJobPhase.Review;
                 }
                 this._jobStore.Save(this._job);
+                this._store.Save(this._project);
+                this._jobStore.DeleteFile(this._job.Id, fileId);
                 name = Path.GetFileName(this._project.Files.Find(f => f.Id == fileId).Path);
             }
 
@@ -1069,8 +1078,8 @@ namespace RemuxForge.Web.Services.Toolbox
 
         /// <summary>
         /// Salva la modifica a mano di una battuta: stesso validatore delle consegne, avvisi del glossario ricalcolati, segnale
-        /// «Modificata a mano» e versione più uno; un testo con errori non si salva. In una tratta condivisa la modifica va in tutte
-        /// le copie
+        /// «Modificata a mano» al posto della correzione della revisione AI; un testo con errori non si salva. In una tratta
+        /// condivisa la modifica va in tutte le copie
         /// </summary>
         /// <param name="fileId">File del job</param>
         /// <param name="id">Battuta</param>
@@ -1117,6 +1126,10 @@ namespace RemuxForge.Web.Services.Toolbox
                 translation.SetText(result.Text, result.GetGlossaryWarnings());
                 if (!translation.Signals.Contains(TranslationCueSignal.EditedByUser))
                     translation.Signals.Add(TranslationCueSignal.EditedByUser);
+
+                // Il testo è dell'utente: la correzione della revisione AI non lo descrive più, e la tratta la perde in tutte le copie
+                translation.AiCorrection = null;
+                translation.Signals.Remove(TranslationCueSignal.CorrectedByAi);
                 SharedStretch stretch;
                 if (SharedStretch.MapFile(this._job.SharedStretches, fileId).TryGetValue(id, out stretch))
                 {
@@ -1255,15 +1268,35 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// True se il progetto si può esportare: fermato da riprendere o nella revisione dell'utente, con la card libera
+        /// True se il progetto si può esportare: fermato da riprendere o nella revisione dell'utente, con la card libera e senza
+        /// file bloccati, perché l'archivio porta tutti i sorgenti. Gli stati dei file vengono dal job aperto o dal disco; uno stato
+        /// illeggibile non si esporta
         /// </summary>
         /// <param name="project">Progetto aperto o dell'elenco</param>
         /// <param name="job">Job attivo del progetto</param>
         /// <returns>True se «Esporta progetto» è attivo</returns>
         public bool CanExportProject(TranslationProject project, TranslationJob job)
         {
-            return project != null && job != null && !this.IsBusy &&
-                ((job.Status == TranslationJobStatus.Paused) || (job.Phase == TranslationJobPhase.UserReview && job.Status == TranslationJobStatus.Idle));
+            if (project == null || job == null || this.IsBusy ||
+                !((job.Status == TranslationJobStatus.Paused) || (job.Phase == TranslationJobPhase.UserReview && job.Status == TranslationJobStatus.Idle)))
+                return false;
+
+            lock (this.StateLock)
+            {
+                if (this._job != null && this._job.Id == job.Id)
+                    return !this.HasBlockedFiles;
+            }
+
+            try
+            {
+                return !job.FileIds.Exists(id => this._jobStore.LoadFile(job.Id, id).TranslationStatus == TranslationFileStatus.Blocked);
+            }
+            catch (Exception ex)
+            {
+                if (!(ex is InvalidDataException || ex is IOException || ex is UnauthorizedAccessException))
+                    throw;
+                return false;
+            }
         }
 
         /// <summary>
@@ -1927,9 +1960,12 @@ namespace RemuxForge.Web.Services.Toolbox
                     {
                         if (provider != null)
                             job.DisabledCapabilities = provider.Capabilities.DisabledCapabilities;
-                        job.Status = stop != null ? TranslationJobStatus.Paused : TranslationJobStatus.Idle;
-                        job.Pause = stop;
+                        // Nei termini nuovi e nella revisione dell'utente il giro aspetta l'utente: un errore dopo il passaggio di fase
+                        // non lascia il job fermato
                         phase = job.Phase;
+                        bool waiting = phase == TranslationJobPhase.NewTerms || phase == TranslationJobPhase.UserReview;
+                        job.Status = stop != null && !waiting ? TranslationJobStatus.Paused : TranslationJobStatus.Idle;
+                        job.Pause = waiting ? null : stop;
                         this._phrase = "";
                         this._detail = "";
 
@@ -2025,17 +2061,15 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Rilegge i sorgenti dei file da tradurre del job: un file mancante o cambiato diventa bloccato col motivo, uno che torna
-        /// con l'hash del job riparte; chiamato sotto StateLock
+        /// Rilegge i sorgenti di tutti i file del job, conclusi compresi: un file mancante o cambiato diventa bloccato col motivo,
+        /// in ogni fase, e il giro non va oltre finché resta; uno che torna con l'hash del job riparte nella traduzione, o torna
+        /// concluso dopo la traduzione; chiamato sotto StateLock
         /// </summary>
         private void CheckJobSources()
         {
             foreach (string fileId in this._job.FileIds)
             {
                 TranslationJobFileState state = this._jobFiles[fileId];
-                if (state.TranslationStatus == TranslationFileStatus.Completed)
-                    continue;
-
                 TranslationProjectFile file = this._project.Files.Find(f => f.Id == fileId);
                 this.PrepareFile(file);
                 if (!this._documents.ContainsKey(fileId))
@@ -2047,7 +2081,8 @@ namespace RemuxForge.Web.Services.Toolbox
                 }
                 else if (state.TranslationStatus == TranslationFileStatus.Blocked)
                 {
-                    state.TranslationStatus = state.Blocks.Exists(b => b.Status == TranslationBlockStatus.Done) ? TranslationFileStatus.InProgress : TranslationFileStatus.Pending;
+                    state.TranslationStatus = this._job.Phase != TranslationJobPhase.Translation ? TranslationFileStatus.Completed
+                        : state.Blocks.Exists(b => b.Status == TranslationBlockStatus.Done) ? TranslationFileStatus.InProgress : TranslationFileStatus.Pending;
                     state.BlockedReason = "";
                 }
                 else
@@ -2057,6 +2092,20 @@ namespace RemuxForge.Web.Services.Toolbox
 
                 this._jobStore.SaveFile(this._job.Id, state);
             }
+        }
+
+        /// <summary>
+        /// Ferma e salva un'analisi rimasta in corso da una chiusura dell'app; chiamato sotto StateLock, mai sul progetto aperto
+        /// </summary>
+        /// <param name="project">Progetto letto da disco</param>
+        private void StopStaleAnalysis(TranslationProject project)
+        {
+            if (project.Analysis == null || project.Analysis.Status != TranslationAnalysisStatus.Running)
+                return;
+
+            project.Analysis.Status = TranslationAnalysisStatus.Stopped;
+            project.Analysis.Stop = new TranslationStop { Reason = TranslationStopReason.Crash };
+            this._store.Save(project);
         }
 
         /// <summary>
@@ -2548,7 +2597,7 @@ namespace RemuxForge.Web.Services.Toolbox
 
         /// <summary>
         /// True se il giro può partire o riprendere: glossario approvato e file preparati; col job, la traduzione con file non
-        /// conclusi, anche bloccati, l'applicazione dei termini o la revisione AI senza lavoro in corso
+        /// conclusi, anche bloccati, l'applicazione dei termini o la revisione AI senza lavoro in corso né file bloccati
         /// </summary>
         public bool CanStartJob
         {
@@ -2563,7 +2612,7 @@ namespace RemuxForge.Web.Services.Toolbox
                         return this._documents.Count == this._project.Files.Count && this._project.Files.Count > 0;
 
                     if (this._job.Phase == TranslationJobPhase.Applying || this._job.Phase == TranslationJobPhase.Review)
-                        return this._job.Status != TranslationJobStatus.Running;
+                        return this._job.Status != TranslationJobStatus.Running && !this.HasBlockedFiles;
 
                     return this._job.Phase == TranslationJobPhase.Translation && this._job.FileIds.Exists(id => this._jobFiles[id].TranslationStatus != TranslationFileStatus.Completed);
                 }
@@ -2571,7 +2620,8 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// True se «Conferma e prosegui» è attivo: giro fermo sui termini nuovi, ogni termine aggiunto con una resa
+        /// True se «Conferma e prosegui» è attivo: giro fermo sui termini nuovi senza file bloccati, ogni termine aggiunto con una
+        /// resa
         /// </summary>
         public bool CanConfirmNewTerms
         {
@@ -2579,8 +2629,23 @@ namespace RemuxForge.Web.Services.Toolbox
             {
                 lock (this.StateLock)
                 {
-                    return this._job != null && !this.IsBusy && this._job.Phase == TranslationJobPhase.NewTerms && this._job.Status == TranslationJobStatus.Idle &&
+                    return this._job != null && !this.IsBusy && this._job.Phase == TranslationJobPhase.NewTerms && this._job.Status == TranslationJobStatus.Idle && !this.HasBlockedFiles &&
                         !this._job.NewTerms.Exists(t => t.Decision == NewTermDecisionKind.Add && string.IsNullOrWhiteSpace(t.ChosenTarget));
+                }
+            }
+        }
+
+        /// <summary>
+        /// True se un file del job è bloccato dal sorgente mancante o cambiato: dopo la traduzione il giro aspetta che l'utente lo
+        /// ricominci o lo tolga
+        /// </summary>
+        public bool HasBlockedFiles
+        {
+            get
+            {
+                lock (this.StateLock)
+                {
+                    return this._job != null && this._job.FileIds.Exists(id => this._jobFiles[id].TranslationStatus == TranslationFileStatus.Blocked);
                 }
             }
         }
