@@ -2067,6 +2067,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 call.Text = text;
                 call.UpdatedAt = DateTime.UtcNow;
                 this._liveLatest = call;
+                this.ProgressState.CurrentStatus = this.DescribeLiveCall();
             }
 
             if (changed)
@@ -2095,9 +2096,22 @@ namespace RemuxForge.Web.Services.Toolbox
                             this._liveLatest = running;
                     }
                 }
+
+                this.ProgressState.CurrentStatus = this._liveLatest != null ? this.DescribeLiveCall() : this.ProgressState.Operation;
             }
 
             this.NotifyProgressChanged();
+        }
+
+        /// <summary>
+        /// Testo della chiamata mostrata: evento dello stream e modello, col nome del file quando le chiamate in corso sono più di
+        /// una; chiamato sotto StateLock
+        /// </summary>
+        /// <returns>Testo per l'attesa e per la barra del file</returns>
+        private string DescribeLiveCall()
+        {
+            string file = this._liveCalls.Count > 1 && this._liveLatest.FileName.Length > 0 ? this._liveLatest.FileName + ": " : "";
+            return file + this._liveLatest.Text + " · " + this._liveLatest.Model;
         }
 
         /// <summary>
@@ -2532,11 +2546,7 @@ namespace RemuxForge.Web.Services.Toolbox
             {
                 lock (this.StateLock)
                 {
-                    if (this._liveLatest == null)
-                        return this._detail;
-
-                    string file = this._liveCalls.Count > 1 && this._liveLatest.FileName.Length > 0 ? this._liveLatest.FileName + ": " : "";
-                    return file + this._liveLatest.Text + " · " + this._liveLatest.Model;
+                    return this._liveLatest == null ? this._detail : this.DescribeLiveCall();
                 }
             }
         }
