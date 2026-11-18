@@ -438,13 +438,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         ///   parola non si vede e i nomi non si flettono.
         /// - Forma fissa: la resa esatta. Il confine di parola vale sui lati che finiscono con una lettera o una cifra, così
         ///   «-kun» si trova in «Light-kun».
-        /// - Resa che si flette: in ogni lingua la flessione cambia soprattutto la fine della parola e a volte un diacritico
-        ///   (Titano/Titani, titán/titanes, Haus/Häuser, Москва/Москвы). Senza tabelle per lingua, ogni parola di almeno cinque
-        ///   lettere vale come tema: la parola senza le ultime due lettere (una se ne ha cinque), seguita da al più tre lettere
-        ///   oltre a quelle tolte, senza contare i diacritici. Le parole più corte sono articoli, preposizioni o forme
-        ///   irregolari (del/dei, Dio/Dei): accanto a una parola lunga che àncora la resa valgono come una parola qualsiasi; in
-        ///   una resa di sole parole corte restano esatte, perché un tema di due o tre lettere troverebbe di tutto. Fra le parole
-        ///   vale qualsiasi separatore (dell'Anima/delle Anime) e la punteggiatura in testa e in coda alla resa non conta
+        /// - Resa che si flette: la corrispondenza «50% prefix» di memoQ e Phrase. Ogni parola della resa trova una parola
+        ///   intera della traduzione che comincia con la sua prima metà, arrotondata per eccesso, senza contare maiuscole e
+        ///   diacritici: «Titano» trova «Titani», «titán» trova «titanes», «Haus» trova «Häuser». Fra le parole vale qualsiasi
+        ///   separatore (dell'Anima/delle Anime) e la punteggiatura in testa e in coda alla resa non conta
         /// </summary>
         /// <param name="word">Resa senza articolo</param>
         /// <param name="invariable">True per una resa in forma fissa</param>
@@ -456,15 +453,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             if (s_unspacedScript.IsMatch(decomposed))
                 return new Regex(Regex.Escape(decomposed), options);
 
-            // Parole della resa senza diacritici; una di almeno cinque lettere àncora la resa
+            // Parole della resa senza diacritici
             List<string> words = new List<string>();
-            bool anchored = false;
             foreach (Match match in s_renderingWord.Matches(decomposed))
-            {
-                string bare = Regex.Replace(match.Value, @"\p{M}", "");
-                words.Add(bare);
-                anchored |= bare.Length >= 5;
-            }
+                words.Add(Regex.Replace(match.Value, @"\p{M}", ""));
 
             if (invariable || words.Count == 0)
             {
@@ -478,18 +470,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 if (w > 0)
                     pattern.Append(@"[^\p{L}\p{M}\p{N}]+");
-                string bare = words[w];
-                if (anchored && bare.Length < 5)
-                {
-                    pattern.Append(@"[\p{L}\p{M}\p{N}]+");
-                    continue;
-                }
-
-                int cut = bare.Length < 5 ? 0 : Math.Min(2, bare.Length - 4);
-                foreach (char letter in bare.Substring(0, bare.Length - cut))
+                foreach (char letter in words[w].Substring(0, (words[w].Length + 1) / 2))
                     pattern.Append(Regex.Escape(letter.ToString())).Append(@"\p{M}*");
-                if (cut > 0)
-                    pattern.Append(@"(?:[\p{L}\p{N}]\p{M}*){0,").Append((cut + 3).ToString(CultureInfo.InvariantCulture)).Append('}');
+                pattern.Append(@"[\p{L}\p{M}\p{N}]*");
             }
             pattern.Append(@"(?![\p{L}\p{M}\p{N}])");
 
