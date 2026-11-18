@@ -981,6 +981,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         {
             SubtitleCueCleaner cleaner = new SubtitleCueCleaner(this.Format);
             List<TextEdit> edits = new List<TextEdit>();
+            Dictionary<int, string> sourceTexts = this._cues.Where(c => c.Id.HasValue).ToDictionary(c => c.Id.Value, c => c.CleanText);
             foreach (SubtitleCue cue in this._cues)
             {
                 int? source = cue.Id ?? cue.DuplicateOf;
@@ -988,11 +989,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     continue;
 
                 // Un testo uguale al pulito del sorgente, a meno di spazi e a capo come la chiave delle tratte ripetute, lascia
-                // lettere, pezzi di parola ed evidenziazioni come sono in ogni file della tratta
-                // Una copia senza segni di una primaria che li ha ne prende la traduzione senza segni
+                // lettere, pezzi di parola ed evidenziazioni come sono in ogni file della tratta; per una copia si decide sulla battuta
+                // di cui è copia, così tutte le righe di una frase restano o cambiano insieme. Una copia senza segni di una battuta che
+                // li ha ne prende la traduzione senza segni
+                bool unchanged = SharedStretchDetector.Key(this.Format, translation ?? "") == SharedStretchDetector.Key(this.Format, sourceTexts[source.Value]);
                 if (translation != null && cue.DuplicateOf.HasValue && cue.CleanText.IndexOf(SubtitleCueCleaner.MARK_OPEN) < 0)
                     translation = s_markSyntax.Replace(translation, "");
-                bool unchanged = SharedStretchDetector.Key(this.Format, translation ?? "") == SharedStretchDetector.Key(this.Format, cue.CleanText);
                 if (!this._letterEffects.TryGetValue(cue.Position, out LetterEffect letterEffect))
                 {
                     // Una riga sotto letta coi tratti già visibili resta com'è se invariata, e tradotta si scrive coi tratti visibili
