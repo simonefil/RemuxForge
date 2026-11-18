@@ -1637,6 +1637,105 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
+        /// Caratteri visibili di un campo Text ASS: quelli non di spazio che a un istante della riga si vedono, col riempimento
+        /// (\1a), col bordo (\3a, se il bordo può essere largo più di 0) o con l'ombra (\4a, se l'ombra può essere diversa da 0).
+        /// Ogni canale prende il suo ultimo valore fisso (quello dello stile all'inizio, dopo \r e dopo un tag senza valore) e gli
+        /// arrivi delle \t che lo animano dopo
+        /// </summary>
+        /// <param name="text">Campo Text</param>
+        /// <param name="styleState">Stato dello stile della riga per canale (<see cref="ReadStyleState"/>), null se manca</param>
+        /// <returns>Numero dei caratteri visibili</returns>
+        public int CountVisibleCharacters(string text, IReadOnlyDictionary<string, string> styleState)
+        {
+            string[] channels = new string[] { "1a", "3a", "4a", "xbord", "ybord", "xshad", "yshad" };
+            Func<string, string> styleValue = channel => styleState?.GetValueOrDefault(channel) ?? (channel[1] == 'a' ? "00" : "0");
+            Dictionary<string, List<string>> values = channels.ToDictionary(channel => channel, channel => new List<string> { styleValue(channel) }, StringComparer.Ordinal);
+            Func<string, bool> sized = channel => values[channel].Exists(value => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double size) && size != 0);
+            Func<string, bool> shown = channel => values[channel].Exists(value => value != "FF");
+            int visible = 0;
+            int copied = 0;
+            int open = text.IndexOf('{');
+            while (true)
+            {
+                int close = open >= 0 ? text.IndexOf('}', open) : -1;
+                string piece = text.Substring(copied, (close >= 0 ? open : text.Length) - copied).Replace("\\N", " ").Replace("\\n", " ").Replace("\\h", " ");
+                if (shown("1a") || ((sized("xbord") || sized("ybord")) && shown("3a")) || ((sized("xshad") || sized("yshad")) && shown("4a")))
+                    visible += piece.Count(c => !char.IsWhiteSpace(c));
+                if (close < 0)
+                    break;
+                foreach (AssTag tag in ParseAssTags(text.Substring(open, close - open + 1)))
+                {
+                    if (tag.Name == "r")
+                    {
+                        foreach (string channel in channels)
+                            values[channel] = new List<string> { styleValue(channel) };
+                    }
+                    else if (tag.Name == ASS_TRANSFORM)
+                    {
+                        foreach (AssTag inner in ParseAssTags(tag.Arg))
+                        {
+                            if (!s_assStateChannels.TryGetValue(inner.Name, out string[] innerChannels))
+                                continue;
+                            foreach (string channel in innerChannels.Where(values.ContainsKey))
+                            {
+                                if (ChannelValue(channel, inner.Arg) is string target)
+                                    values[channel].Add(target);
+                            }
+                        }
+                    }
+                    else if (s_assStateChannels.TryGetValue(tag.Name, out string[] tagChannels))
+                    {
+                        foreach (string channel in tagChannels.Where(values.ContainsKey))
+                        {
+                            string value = tag.Arg.Trim().Length == 0 ? styleValue(channel) : ChannelValue(channel, tag.Arg);
+                            if (value != null)
+                                values[channel] = new List<string> { value };
+                        }
+                    }
+                }
+                copied = close + 1;
+                open = text.IndexOf('{', copied);
+            }
+            return visible;
+        }
+
+        /// <summary>
+        /// Campo Text ASS con tutta la frase visibile e l'aspetto del suo inizio: il blocco iniziale resta, gli altri se ne vanno.
+        /// Una riga che mostra già tutta la frase resta com'è
+        /// </summary>
+        /// <param name="text">Campo Text</param>
+        /// <param name="styleState">Stato dello stile della riga per canale (<see cref="ReadStyleState"/>), null se manca</param>
+        /// <returns>Campo Text con la frase intera, null se un altro blocco cambia altro che colori e alpha (anche nelle \t) o se
+        /// senza quei blocchi qualche carattere resta invisibile</returns>
+        public string ShowWholeLine(string text, IReadOnlyDictionary<string, string> styleState)
+        {
+            Func<string, int> characters = line => Regex.Replace(line, @"\{[^}]*\}", "").Replace("\\N", " ").Replace("\\n", " ").Replace("\\h", " ").Count(c => !char.IsWhiteSpace(c));
+            if (this.CountVisibleCharacters(text, styleState) == characters(text))
+                return text;
+            string[] colours = new string[] { "c", "1c", "2c", "3c", "4c", "alpha", "1a", "2a", "3a", "4a" };
+            StringBuilder shown = new StringBuilder();
+            int copied = 0;
+            int open = text.IndexOf('{');
+            while (open >= 0)
+            {
+                int close = text.IndexOf('}', open);
+                if (close < 0)
+                    break;
+                shown.Append(text, copied, open - copied);
+                string block = text.Substring(open, close - open + 1);
+                if (open == 0)
+                    shown.Append(block);
+                else if (!ParseAssTags(block).TrueForAll(tag => colours.Contains(tag.Name)
+                    || (tag.Name == ASS_TRANSFORM && ParseAssTags(tag.Arg).TrueForAll(inner => colours.Contains(inner.Name)))))
+                    return null;
+                copied = close + 1;
+                open = text.IndexOf('{', copied);
+            }
+            string whole = shown.Append(text, copied, text.Length - copied).ToString();
+            return this.CountVisibleCharacters(whole, styleState) == characters(whole) ? whole : null;
+        }
+
+        /// <summary>
         /// Rende visibili dei tratti nascosti di un campo Text ASS: toglie il loro tag d'apertura e i loro tag d'alpha della
         /// chiusura, e i blocchi rimasti vuoti
         /// </summary>

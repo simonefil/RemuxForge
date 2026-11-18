@@ -283,6 +283,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             Dictionary<int, LetterEffect> letterEffects = new Dictionary<int, LetterEffect>();
             Dictionary<int, List<SourceLine>> attachedLines = new Dictionary<int, List<SourceLine>>();
             Dictionary<int, string> shownTexts = new Dictionary<int, string>();
+            Dictionary<int, int> copyPositions = new Dictionary<int, int>();
             List<SubtitleStyleUsage> usages = new List<SubtitleStyleUsage>();
             List<List<long[]>> intervals = new List<List<long[]>>();
             Dictionary<string, List<long[]>> shown = new Dictionary<string, List<long[]>>(StringComparer.Ordinal);
@@ -618,6 +619,56 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         underOf[o] = u;
                 }
 
+                // Frasi rivelate a pezzi, solo con la tabella degli stili: righe libere della stessa unità con lo stesso testo
+                // leggibile, in una catena di tempi sovrapposti o contigui, che mostrano parti diverse della frase coi canali d'alpha.
+                // Una riga che si sovrappone nel tempo a un'altra della catena con più caratteri visibili ne mostra solo un pezzo
+                // (tendina, parola sola); senza pezzi la catena è una rivelazione in sequenza e resta com'è. Le altre righe si leggono
+                // con la frase intera visibile e l'aspetto del loro inizio, e sono copie della prima: una traduzione per tutte, e i
+                // pezzi se ne vanno quando la frase è tradotta. Il legame vale solo se ogni riga base si può mostrare per intero
+                Dictionary<int, string> wholeShown = new Dictionary<int, string>();
+                Dictionary<int, int> copyOf = new Dictionary<int, int>();
+                Dictionary<int, int> basePositions = new Dictionary<int, int>();
+                foreach (List<int> unitEvents in legacy ? new List<List<int>>() : eventsByUnit.Values.ToList())
+                {
+                    List<int> free = unitEvents.FindAll(f => wholeOf[f] < 0 && underOf[f] < 0 && !piecesByWhole.ContainsKey(f) && !overlaysByUnder.ContainsKey(f)
+                        && !coveredByUnder.ContainsKey(f) && events[f].Readable.Trim().Length > 0 && styleStates.ContainsKey(events[f].Style));
+                    foreach (IGrouping<string, int> sameText in free.GroupBy(f => events[f].Readable, StringComparer.Ordinal))
+                    {
+                        List<int> ordered = sameText.OrderBy(f => events[f].Line.StartMs).ThenBy(f => f).ToList();
+                        int first = 0;
+                        while (first < ordered.Count)
+                        {
+                            long chainEnd = events[ordered[first]].Line.EndMs;
+                            int next = first + 1;
+                            while (next < ordered.Count && events[ordered[next]].Line.StartMs <= chainEnd)
+                                chainEnd = Math.Max(chainEnd, events[ordered[next++]].Line.EndMs);
+                            List<int> chain = ordered.GetRange(first, next - first);
+                            first = next;
+
+                            Dictionary<int, int> visible = chain.ToDictionary(c => c, c => cleaner.CountVisibleCharacters(events[c].Raw, styleStates[events[c].Style]));
+                            List<int> pieces = chain.FindAll(c => chain.Exists(o => o != c && visible[o] > visible[c]
+                                && events[c].Line.StartMs < events[o].Line.EndMs && events[c].Line.EndMs > events[o].Line.StartMs));
+                            if (pieces.Count == 0)
+                                continue;
+                            List<int> bases = chain.Except(pieces).OrderBy(c => c).ToList();
+                            Dictionary<int, string> wholeLines = bases.ToDictionary(c => c, c => cleaner.ShowWholeLine(events[c].Raw, styleStates[events[c].Style]));
+                            if (bases.Count == 0 || wholeLines.Values.Any(line => line == null))
+                                continue;
+
+                            pieces.Sort();
+                            overlaysByUnder[bases[0]] = pieces;
+                            foreach (int c in pieces)
+                                underOf[c] = bases[0];
+                            foreach (int c in bases)
+                            {
+                                wholeShown[c] = wholeLines[c];
+                                if (c != bases[0])
+                                    copyOf[c] = bases[0];
+                            }
+                        }
+                    }
+                }
+
                 for (int e = 0; e < events.Count; e++)
                 {
                     AssEvent assEvent = events[e];
@@ -658,6 +709,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         attachedLines[rawCues.Count + 1] = attached.ConvertAll(a => lines[events[a].Line.LineIndex]);
                     if (coveredByUnder.TryGetValue(e, out List<SubtitleHiddenSpan> covered))
                         shownTexts[rawCues.Count + 1] = cleaner.ShowHiddenSpans(raw, covered);
+                    if (wholeShown.TryGetValue(e, out string whole))
+                    {
+                        shownTexts[rawCues.Count + 1] = whole;
+                        basePositions[e] = rawCues.Count + 1;
+                        if (copyOf.TryGetValue(e, out int master))
+                            copyPositions[rawCues.Count + 1] = basePositions[master];
+                    }
 
                     // Righe tradotte di una sorgente: una Dialogue per layer delle lettere, coi campi della riga Comment, il layer,
                     // l'Effect della prima lettera e l'aspetto fisso delle lettere di quel layer, e il testo senza i tempi del karaoke;
@@ -848,7 +906,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
             }
 
-            // Id progressivi sulle traducibili e duplicati su layer diversi: stessi tempi e testo pulito, layer diverso
+            // Id progressivi sulle traducibili e duplicati: le righe base di una frase rivelata a pezzi con lo stesso testo pulito
+            // della prima, e le righe su layer diversi con gli stessi tempi e lo stesso testo pulito
             List<SubtitleCue> cues = new List<SubtitleCue>();
             Dictionary<string, SubtitleCue> firstByContent = new Dictionary<string, SubtitleCue>(StringComparer.Ordinal);
             int nextId = 1;
@@ -861,7 +920,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 string key = raw.StartMs.ToString(CultureInfo.InvariantCulture) + "|" + raw.EndMs.ToString(CultureInfo.InvariantCulture) + "|" + cleaned.CleanText;
                 if (string.IsNullOrEmpty(cleaned.ExclusionReason))
                 {
-                    if (raw.Layer.HasValue && firstByContent.TryGetValue(key, out SubtitleCue original) && original.Layer != raw.Layer)
+                    if (copyPositions.TryGetValue(i + 1, out int masterPosition) && cues[masterPosition - 1].Id.HasValue && cues[masterPosition - 1].CleanText == cleaned.CleanText)
+                    {
+                        duplicateOf = cues[masterPosition - 1].Id;
+                    }
+                    else if (raw.Layer.HasValue && firstByContent.TryGetValue(key, out SubtitleCue original) && original.Layer != raw.Layer)
                     {
                         duplicateOf = original.Id;
                     }
