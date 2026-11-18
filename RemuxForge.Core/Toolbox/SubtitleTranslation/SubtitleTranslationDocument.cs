@@ -353,7 +353,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     string actor = actorColumn >= 0 ? dialogue.Fields[actorColumn].Trim() : "";
                     string raw = text.Substring(position, lineEnd - position);
 
-                    // Indizi del tipo della combinazione sulle righe con testo leggibile, qualunque sia il tipo; i disegni restano fuori
+                    // Indizi del tipo della combinazione sulle righe con testo leggibile, qualunque sia il tipo; i disegni restano fuori,
+                    // e le righe di un solo carattere, frammenti di un effetto, restano fuori dagli indizi
                     SubtitleStyleUsage usage = usages.Find(u => u.Is(style, actor, effect));
                     if (usage == null)
                     {
@@ -362,10 +363,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         intervals.Add(new List<KeyValuePair<long, long>>());
                     }
                     string readable = s_assBlock.Replace(raw, "").Replace("\\N", " ").Replace("\\n", " ").Replace("\\h", " ").Trim();
+                    bool fragment = new StringInfo(readable).LengthInTextElements == 1;
                     if (!s_drawing.IsMatch(raw) && readable.Length > 0)
                     {
                         usage.Texts.Add(readable);
                         usage.Positions.Add(rawCues.Count + 1);
+                    }
+                    if (!s_drawing.IsMatch(raw) && readable.Length > 0 && !fragment)
+                    {
                         intervals[usages.IndexOf(usage)].Add(new KeyValuePair<long, long>(dialogue.StartMs, dialogue.EndMs));
                         if (s_karaoke.IsMatch(raw) || s_karaokeEffect.IsMatch(effect))
                             usage.KaraokeLines++;
@@ -373,11 +378,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             usage.PositionLines++;
                     }
 
-                    // Senza tabella l'Effect esclude e tutto è dialogo; con la tabella esclude solo il testo da non tradurre
+                    // Senza tabella l'Effect esclude e tutto è dialogo; con la tabella esclude solo il testo da non tradurre: la
+                    // combinazione da non tradurre e la riga di un solo carattere, qualunque sia la sua combinazione
                     TranslationStyleKind? styleKind;
                     kinds.TryGetValue(style + "\u0001" + actor + "\u0001" + effect, out styleKind);
                     string exclusion = legacy && !string.IsNullOrEmpty(effect) ? SubtitleCue.EXCLUSION_EFFECT : "";
-                    if (styleKind == TranslationStyleKind.NotTranslatable)
+                    if (styleKind == TranslationStyleKind.NotTranslatable || (!legacy && fragment))
                         exclusion = SubtitleCue.EXCLUSION_NOT_TRANSLATABLE;
                     SubtitleCueKind kind = styleKind == TranslationStyleKind.Song ? SubtitleCueKind.Song : styleKind == TranslationStyleKind.Sign ? SubtitleCueKind.Sign : SubtitleCueKind.Dialogue;
                     rawCues.Add(new RawCue(dialogue.StartMs, dialogue.EndMs, position, lineEnd - position, style, layer, kind, exclusion, ""));
@@ -424,9 +430,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             List<SubtitleCleanResult> cleanedCues = new List<SubtitleCleanResult>();
             foreach (RawCue raw in rawCues)
             {
-                cleanedCues.Add(!string.IsNullOrEmpty(raw.ExclusionReason)
+                SubtitleCleanResult cleaned = !string.IsNullOrEmpty(raw.ExclusionReason)
                     ? new SubtitleCleanResult("", null, raw.ExclusionReason)
-                    : cleaner.Clean(text.Substring(raw.TextStart, raw.TextLength), raw.FallbackLineBreak, legacy));
+                    : cleaner.Clean(text.Substring(raw.TextStart, raw.TextLength), raw.FallbackLineBreak, legacy);
+
+                // Riga SRT di un solo carattere: da non tradurre, come quella ASS
+                if (!legacy && string.IsNullOrEmpty(cleaned.ExclusionReason) && new StringInfo(cleaned.CleanText).LengthInTextElements == 1)
+                    cleaned = new SubtitleCleanResult("", null, SubtitleCue.EXCLUSION_NOT_TRANSLATABLE);
+                cleanedCues.Add(cleaned);
             }
 
             // Tipi SRT dalle tratte riconosciute: ogni corsa di almeno tre battute consecutive in ordine di tempo uguali a righe

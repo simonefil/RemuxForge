@@ -12,8 +12,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// <summary>
     /// Riconoscimento del tipo delle unità di un progetto: ogni combinazione di stile, attore ed effetto delle righe ASS/SSA e, nei
     /// file SRT, ogni tratta ripetuta fra i file. Il file tradotto è quello sorgente con tradotto solo il testo nella lingua
-    /// d'origine. Il codice decide da solo le unità che non sono testo da tradurre: quella con ogni riga di un solo carattere
-    /// (lettere animate una per riga) e quella con lettere ma nessuna nella scrittura dominante del progetto. Le altre vanno al
+    /// d'origine. Le righe di un solo carattere (lettere animate una per riga) restano fuori da ogni unità, e il codice decide
+    /// da solo le unità che non sono testo da tradurre: quella senza altre righe e quella con lettere ma nessuna nella scrittura
+    /// dominante del progetto. Le altre vanno al
     /// modello in una chiamata sola, con gli indizi misurati e righe d'esempio, e il tool della consegna ammette solo le unità
     /// chieste; una tratta SRT riceve un tipo per ogni suo tratto
     /// </summary>
@@ -51,7 +52,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "\n" +
             "Evidence for each style unit\n" +
             "- style, actor, effect: the fields shared by the lines of the unit.\n" +
-            "- lines, distinct_lines: lines with readable text, and how many of them differ.\n" +
+            "- lines, distinct_lines: lines with readable text longer than one character, and how many of them differ.\n" +
             "- length: shortest, median and longest line, in characters.\n" +
             "- karaoke_share: share of the lines with karaoke timing or a karaoke effect.\n" +
             "- positioned_share: share of the lines with an explicit position on screen.\n" +
@@ -158,8 +159,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     unit.OverlappingLines += usage.OverlappingLines;
                     unit.MaxConcurrent = Math.Max(unit.MaxConcurrent, usage.MaxConcurrent);
                     unit.Files++;
+                    // Le righe di un solo carattere restano fuori dall'unità: il documento le lascia già come sono
                     for (int i = 0; i < usage.Texts.Count; i++)
                     {
+                        if (new StringInfo(usage.Texts[i]).LengthInTextElements == 1)
+                            continue;
                         unit.Texts.Add(usage.Texts[i]);
                         unit.Lines.Add(new KeyValuePair<string, int>(file.Key, usage.Positions[i]));
                         SubtitleCue cue;
@@ -269,7 +273,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
                 lengths.Sort();
 
-                if (lengths[lengths.Count - 1] == 1 || (scripts[i].Count > 0 && !scripts[i].ContainsKey(dominant)))
+                if (unit.Texts.Count == 0 || (scripts[i].Count > 0 && !scripts[i].ContainsKey(dominant)))
                 {
                     unit.Kind = TranslationStyleKind.NotTranslatable;
                     foreach (KeyValuePair<string, int> line in unit.Lines)

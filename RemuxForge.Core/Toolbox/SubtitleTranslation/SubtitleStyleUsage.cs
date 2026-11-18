@@ -76,22 +76,22 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public List<int> Positions { get; }
 
         /// <summary>
-        /// Righe con tag karaoke (\k, \K, \kf, \ko) o con Effect kara, fx, template o code
+        /// Righe di più di un carattere con tag karaoke (\k, \K, \kf, \ko) o con Effect kara, fx, template o code
         /// </summary>
         public int KaraokeLines { get; set; }
 
         /// <summary>
-        /// Righe con \pos, \move o \org
+        /// Righe di più di un carattere con \pos, \move o \org
         /// </summary>
         public int PositionLines { get; set; }
 
         /// <summary>
-        /// Righe che si sovrappongono nel tempo a un'altra riga della stessa combinazione nello stesso file
+        /// Righe di più di un carattere che si sovrappongono nel tempo a un'altra di più di un carattere della stessa combinazione nello stesso file
         /// </summary>
         public int OverlappingLines { get; set; }
 
         /// <summary>
-        /// Massimo di righe della combinazione sullo schermo nello stesso istante, in un file
+        /// Massimo di righe di più di un carattere della combinazione sullo schermo nello stesso istante, in un file
         /// </summary>
         public int MaxConcurrent { get; set; }
 
