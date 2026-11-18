@@ -113,7 +113,7 @@
                     <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogMatch.seasons")" Component="CatalogMatchSeasons" />
                     <RadzenDropDown TValue="IEnumerable<int>" Name="CatalogMatchSeasons" Data="@_seasonOptions" TextProperty="Value" ValueProperty="Key"
                                     Multiple="true" AllowSelectAll="false" AllowClear="true" MaxSelectedLabels="3" SelectedItemsText="@AppText.T("web.mediaCatalogMatch.selectedSeasons")"
-                                    @bind-Value="_seasons" Change="@(() => { _episodes = new List<MediaCatalogEpisode>(); _selectedEpisodes.Clear(); })" />
+                                    Value="@_seasons" Change="@((object value) => { _seasons = ((IEnumerable<int>)value)?.ToList() ?? new List<int>(); _episodes = new List<MediaCatalogEpisode>(); _selectedEpisodes.Clear(); })" />
                 </div>
                 <div class="form-row form-row-offset">
                     <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.loadEpisodes")" Icon="download" Disabled="@(!_seasons.Any())" Click="@LoadEpisodesAsync" />
