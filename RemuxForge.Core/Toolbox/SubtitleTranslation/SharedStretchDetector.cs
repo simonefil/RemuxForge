@@ -300,28 +300,44 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Aggiunge alla tratta le corse libere di almeno tre battute uguali a righe consecutive, da qualunque riga comincino
+        /// Aggiunge alla tratta le corse libere di almeno tre battute uguali a righe consecutive, da qualunque riga comincino: la
+        /// più lunga per prima, così una sigla accorciata con un ritornello ripetuto si allinea dove copre più righe
         /// </summary>
         /// <param name="stretch">Tratta</param>
         /// <param name="lines">Chiavi delle righe della tratta</param>
         /// <param name="index">Posizioni delle terne dei file</param>
         private static void AddOccurrences(SharedStretch stretch, string[] lines, Dictionary<string, List<KeyValuePair<FileKeys, int>>> index)
         {
-            for (int j = 0; j + MIN_CUES <= lines.Length; j++)
+            while (true)
             {
-                List<KeyValuePair<FileKeys, int>> hits;
-                if (!index.TryGetValue(Gram(lines, j), out hits))
-                    continue;
-
-                foreach (KeyValuePair<FileKeys, int> hit in hits)
+                FileKeys best = null;
+                int bestFirst = 0;
+                int bestLast = 0;
+                int bestOffset = 0;
+                for (int j = 0; j + MIN_CUES <= lines.Length; j++)
                 {
-                    int length = Common(lines, j, lines.Length, hit.Key, hit.Value);
-                    int first = hit.Value;
-                    int last = first + length;
-                    Trim(hit.Key, ref first, ref last);
-                    if (last - first >= MIN_CUES)
-                        Claim(stretch, hit.Key, first, last, j + first - hit.Value);
+                    List<KeyValuePair<FileKeys, int>> hits;
+                    if (!index.TryGetValue(Gram(lines, j), out hits))
+                        continue;
+
+                    foreach (KeyValuePair<FileKeys, int> hit in hits)
+                    {
+                        int first = hit.Value;
+                        int last = first + Common(lines, j, lines.Length, hit.Key, hit.Value);
+                        Trim(hit.Key, ref first, ref last);
+                        if (last - first > bestLast - bestFirst)
+                        {
+                            best = hit.Key;
+                            bestFirst = first;
+                            bestLast = last;
+                            bestOffset = j + first - hit.Value;
+                        }
+                    }
                 }
+
+                if (bestLast - bestFirst < MIN_CUES)
+                    return;
+                Claim(stretch, best, bestFirst, bestLast, bestOffset);
             }
         }
 
