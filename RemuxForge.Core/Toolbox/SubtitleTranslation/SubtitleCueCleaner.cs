@@ -1460,6 +1460,42 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
+        /// Tratti di testo che un campo Text ASS nasconde: da un \alpha&amp;HFF&amp; al tag \alpha successivo. Il testo è letto come
+        /// quello leggibile delle righe: senza blocchi, a capo e spazi fissi come spazi, senza spazi agli estremi
+        /// </summary>
+        /// <param name="text">Campo Text</param>
+        /// <returns>Tratti nascosti non vuoti, nell'ordine</returns>
+        public List<string> ReadHiddenSpans(string text)
+        {
+            List<StringBuilder> spans = new List<StringBuilder>();
+            StringBuilder span = null;
+            int copied = 0;
+            int open = text.IndexOf('{');
+            while (true)
+            {
+                int end = open < 0 ? text.Length : open;
+                span?.Append(text, copied, end - copied);
+                if (open < 0)
+                    break;
+                int close = text.IndexOf('}', open);
+                if (close < 0)
+                    break;
+                foreach (AssTag tag in ParseAssTags(text.Substring(open, close - open + 1)))
+                {
+                    if (tag.Name != "alpha")
+                        continue;
+                    span = ChannelValue("1a", tag.Arg) == "FF" ? new StringBuilder() : null;
+                    if (span != null)
+                        spans.Add(span);
+                }
+                copied = close + 1;
+                open = text.IndexOf('{', copied);
+            }
+
+            return spans.ConvertAll(hidden => hidden.ToString().Replace("\\N", " ").Replace("\\n", " ").Replace("\\h", " ").Trim()).FindAll(hidden => hidden.Length > 0);
+        }
+
+        /// <summary>
         /// Toglie i tempi del karaoke (\k, \K, \kf, \ko) da un campo Text ASS; i blocchi rimasti vuoti se ne vanno
         /// </summary>
         /// <param name="text">Campo Text</param>

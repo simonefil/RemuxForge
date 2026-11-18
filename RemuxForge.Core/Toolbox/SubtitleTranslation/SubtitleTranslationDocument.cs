@@ -115,9 +115,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private readonly Dictionary<int, LetterEffect> _letterEffects;
 
         /// <summary>
-        /// Pezzi di parola animati prima di una riga intera, per posizione della riga intera
+        /// Righe che se ne vanno con la traduzione di una battuta, per posizione della battuta: i pezzi di parola animati prima
+        /// della riga intera e le evidenziazioni sovrapposte alla riga sotto
         /// </summary>
-        private readonly Dictionary<int, List<SourceLine>> _wordPieces;
+        private readonly Dictionary<int, List<SourceLine>> _attachedLines;
 
         #endregion
 
@@ -133,12 +134,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="cues">Battute nell'ordine del file</param>
         /// <param name="styles">Stili delle righe ASS/SSA</param>
         /// <param name="letterEffects">Righe sorgente degli effetti lettera per lettera per posizione della battuta</param>
-        /// <param name="wordPieces">Righe dei pezzi di parola animati per posizione della riga intera</param>
+        /// <param name="attachedLines">Righe dei pezzi di parola e delle evidenziazioni sovrapposte per posizione della battuta</param>
         /// <param name="untimedBlockCount">Blocchi SRT senza riga dei tempi valida</param>
         /// <param name="rejectionReason">Motivo del rifiuto, vuoto per un file valido</param>
         private SubtitleTranslationDocument(SubtitleTranslationFormat format, string text, byte[] preamble, Encoding outputEncoding,
             List<SubtitleCue> cues, List<SubtitleStyleUsage> styles, Dictionary<int, LetterEffect> letterEffects,
-            Dictionary<int, List<SourceLine>> wordPieces, int untimedBlockCount, string rejectionReason)
+            Dictionary<int, List<SourceLine>> attachedLines, int untimedBlockCount, string rejectionReason)
         {
             this.Format = format;
             this._text = text;
@@ -147,7 +148,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this._cues = cues;
             this._styles = styles;
             this._letterEffects = letterEffects;
-            this._wordPieces = wordPieces;
+            this._attachedLines = attachedLines;
             this.UntimedBlockCount = untimedBlockCount;
             this.RejectionReason = rejectionReason;
         }
@@ -263,7 +264,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             SubtitleCueCleaner cleaner = new SubtitleCueCleaner(format);
             List<RawCue> rawCues = new List<RawCue>();
             Dictionary<int, LetterEffect> letterEffects = new Dictionary<int, LetterEffect>();
-            Dictionary<int, List<SourceLine>> wordPieces = new Dictionary<int, List<SourceLine>>();
+            Dictionary<int, List<SourceLine>> attachedLines = new Dictionary<int, List<SourceLine>>();
             List<SubtitleStyleUsage> usages = new List<SubtitleStyleUsage>();
             List<List<long[]>> intervals = new List<List<long[]>>();
             Dictionary<string, List<long[]>> shown = new Dictionary<string, List<long[]>>(StringComparer.Ordinal);
@@ -566,6 +567,31 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         wholeOf[p] = w;
                 }
 
+                // Evidenziazioni sovrapposte, solo con la tabella degli stili: righe della stessa unità di una riga sotto, sovrapposte
+                // nel tempo, il cui testo è un tratto che la riga sotto nasconde (\alpha&HFF&): lo ridisegnano sopra di essa, in un altro
+                // colore (Uzaki ep3: «sai» su «The Asai Family», «Look Out» sul titolo, rivelate da \clip). Ognuna va con la prima riga
+                // sotto nell'ordine del file
+                int[] underOf = new int[events.Count];
+                Array.Fill(underOf, -1);
+                Dictionary<int, List<int>> overlaysByUnder = new Dictionary<int, List<int>>();
+                for (int u = 0; u < events.Count && !legacy; u++)
+                {
+                    AssEvent under = events[u];
+                    if (under.Comment || under.Drawing || sourceOf[u] >= 0 || wholeOf[u] >= 0 || underOf[u] >= 0)
+                        continue;
+                    List<string> hidden = cleaner.ReadHiddenSpans(under.Raw);
+                    if (hidden.Count == 0)
+                        continue;
+                    List<int> overlays = eventsByUnit[under.Style + "\u0001" + under.Actor + "\u0001" + under.Effect].FindAll(o => o != u && underOf[o] < 0
+                        && wholeOf[o] < 0 && !overlaysByUnder.ContainsKey(o) && !piecesByWhole.ContainsKey(o) && events[o].Line.StartMs < under.Line.EndMs
+                        && events[o].Line.EndMs > under.Line.StartMs && hidden.Contains(events[o].Readable));
+                    if (overlays.Count == 0)
+                        continue;
+                    overlaysByUnder[u] = overlays;
+                    foreach (int o in overlays)
+                        underOf[o] = u;
+                }
+
                 for (int e = 0; e < events.Count; e++)
                 {
                     AssEvent assEvent = events[e];
@@ -594,8 +620,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             SubtitleCue.EXCLUSION_WORD_PIECE, ""));
                         continue;
                     }
-                    if (piecesByWhole.TryGetValue(e, out List<int> pieceLines))
-                        wordPieces[rawCues.Count + 1] = pieceLines.ConvertAll(p => lines[events[p].Line.LineIndex]);
+                    // Le evidenziazioni sovrapposte restano fuori anche dagli indizi e se ne vanno quando la riga sotto è tradotta
+                    if (underOf[e] >= 0)
+                    {
+                        rawCues.Add(new RawCue(dialogue.StartMs, dialogue.EndMs, assEvent.TextStart, assEvent.TextLength, style, assEvent.Layer, SubtitleCueKind.Dialogue,
+                            SubtitleCue.EXCLUSION_OVERLAY, ""));
+                        continue;
+                    }
+                    List<int> attached = piecesByWhole.GetValueOrDefault(e, new List<int>()).Concat(overlaysByUnder.GetValueOrDefault(e, new List<int>())).ToList();
+                    if (attached.Count > 0)
+                        attachedLines[rawCues.Count + 1] = attached.ConvertAll(a => lines[events[a].Line.LineIndex]);
 
                     // Righe tradotte di una sorgente: una Dialogue per layer delle lettere, coi campi della riga Comment, il layer,
                     // l'Effect della prima lettera e l'aspetto fisso delle lettere di quel layer, e il testo senza i tempi del karaoke;
@@ -729,7 +763,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
 
             if (rawCues.Count == 0)
-                return new SubtitleTranslationDocument(format, text, preamble, outputEncoding, empty, usages, letterEffects, wordPieces, untimed, REJECTION_NO_CUES);
+                return new SubtitleTranslationDocument(format, text, preamble, outputEncoding, empty, usages, letterEffects, attachedLines, untimed, REJECTION_NO_CUES);
 
             // Pulizia
             List<SubtitleCleanResult> cleanedCues = new List<SubtitleCleanResult>();
@@ -818,7 +852,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 cues.Add(cue);
             }
 
-            return new SubtitleTranslationDocument(format, text, preamble, outputEncoding, cues, usages, letterEffects, wordPieces, untimed, "");
+            return new SubtitleTranslationDocument(format, text, preamble, outputEncoding, cues, usages, letterEffects, attachedLines, untimed, "");
         }
 
         /// <summary>
@@ -839,14 +873,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 if (!source.HasValue || !translatedText.TryGetValue(source.Value, out string translation))
                     continue;
 
-                // Un testo uguale al pulito del sorgente rifà il campo Text originale: lettere e pezzi di parola restano come sono
+                // Un testo uguale al pulito del sorgente rifà il campo Text originale: lettere, pezzi di parola ed evidenziazioni
+                // restano come sono
                 bool unchanged = (translation ?? "") == cue.CleanText;
                 if (!this._letterEffects.TryGetValue(cue.Position, out LetterEffect letterEffect))
                 {
                     edits.Add(new TextEdit(cue.TextStart, cue.TextLength, cleaner.Recompose(cue, translation)));
                     if (!unchanged)
-                        foreach (SourceLine piece in this._wordPieces.GetValueOrDefault(cue.Position, new List<SourceLine>()))
-                            edits.Add(new TextEdit(piece.Start, piece.Length + piece.Terminator.Length, ""));
+                        foreach (SourceLine attached in this._attachedLines.GetValueOrDefault(cue.Position, new List<SourceLine>()))
+                            edits.Add(new TextEdit(attached.Start, attached.Length + attached.Terminator.Length, ""));
                     continue;
                 }
                 if (unchanged)

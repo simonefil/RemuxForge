@@ -44,6 +44,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Pezzo di parola animato prima di una riga intera, tolto quando la riga intera è tradotta</summary>
         public const string EXCLUSION_WORD_PIECE = "word-piece";
 
+        /// <summary>Evidenziazione sovrapposta che ridisegna un tratto nascosto di un'altra riga, tolta quando quella è tradotta</summary>
+        public const string EXCLUSION_OVERLAY = "overlay";
+
         #endregion
 
         #region Costruttore
