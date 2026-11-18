@@ -144,7 +144,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             foreach (TranslationRunFile file in files)
             {
                 TranslationJobFileState state = file.State;
-                string prefix = TranslationRequestBuilder.CreateTranslationPrefix(context, glossary, file.FileName, state.Cues);
+                HashSet<int> copies = SharedStretch.MovingSignCopies(stretches, state.FileId);
+                string prefix = TranslationRequestBuilder.CreateTranslationPrefix(context, glossary, file.FileName, state.Cues.FindAll(c => !copies.Contains(c.Id)));
                 int prefixTokens = GlossaryBuilder.EstimateTokens(instructions + tools + prefix);
                 int diagnosisTokens = GlossaryBuilder.EstimateTokens(diagnosis + prefix);
                 int correctionTokens = GlossaryBuilder.EstimateTokens(correction + prefix);

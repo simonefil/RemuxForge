@@ -54,6 +54,28 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
+        /// Copie dei cartelli in movimento di un file: le battute delle occorrenze dopo la prima, ridisegni dello stesso cartello che
+        /// il sorgente numerato del prefisso non ripete
+        /// </summary>
+        /// <param name="stretches">Tratte del job</param>
+        /// <param name="fileId">File del job</param>
+        /// <returns>Id delle copie, vuoto senza cartelli in movimento nel file</returns>
+        public static HashSet<int> MovingSignCopies(IEnumerable<SharedStretch> stretches, string fileId)
+        {
+            HashSet<int> copies = new HashSet<int>();
+            foreach (SharedStretch stretch in stretches)
+            {
+                for (int o = 1; o < stretch.Occurrences.Count && stretch.MovingSigns; o++)
+                {
+                    if (stretch.Occurrences[o].FileId == fileId)
+                        copies.UnionWith(stretch.Occurrences[o].Ids);
+                }
+            }
+
+            return copies;
+        }
+
+        /// <summary>
         /// True se la battuta sta nella prima occorrenza, quella che si traduce e si rivede; le altre ne sono copie
         /// </summary>
         /// <param name="fileId">File della battuta</param>

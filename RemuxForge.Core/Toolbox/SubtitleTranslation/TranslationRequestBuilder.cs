@@ -451,14 +451,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Messaggio di prefisso: contesto della serie, glossario del job e sorgente numerato intero, uguale byte per byte fra le
+        /// Messaggio di prefisso: contesto della serie, glossario del job e sorgente numerato del file, uguale byte per byte fra le
         /// chiamate di un file con lo stesso contesto e lo stesso glossario. Prima ciò che vale per tutto il progetto, poi ciò che
         /// vale per il file: il contesto modificato apre semplicemente un prefisso nuovo
         /// </summary>
         /// <param name="context">Campo serie/contesto del progetto, vuoto se l'utente non l'ha scritto</param>
         /// <param name="glossary">Glossario del job: congelato in traduzione, aggiornato dai termini nuovi dopo</param>
         /// <param name="fileName">Nome del file sorgente</param>
-        /// <param name="cues">Battute congelate del file</param>
+        /// <param name="cues">Battute congelate del file, senza le copie dei cartelli in movimento</param>
         /// <returns>Testo del primo messaggio</returns>
         public static string CreateTranslationPrefix(string context, Glossary glossary, string fileName, IReadOnlyList<FrozenCue> cues)
         {

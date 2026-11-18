@@ -239,12 +239,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         protected FileContext CreateContext(TranslationRunFile file)
         {
             Dictionary<int, SharedStretch> shared;
+            HashSet<int> copies;
             lock (this._lock)
             {
                 shared = SharedStretch.MapFile(this._job.SharedStretches, file.State.FileId);
+                copies = SharedStretch.MovingSignCopies(this._job.SharedStretches, file.State.FileId);
             }
 
-            return new FileContext(file, TranslationRequestBuilder.CreateTranslationPrefix(this._context, this._job.Glossary, file.State.SourceFileName, file.State.Cues),
+            // Il sorgente numerato del prefisso conta una volta ogni cartello in movimento: i suoi ridisegni sono copie
+            return new FileContext(file, TranslationRequestBuilder.CreateTranslationPrefix(this._context, this._job.Glossary, file.State.SourceFileName,
+                file.State.Cues.FindAll(c => !copies.Contains(c.Id))),
                 new TranslationValidator(file.Document.Format, this._job.Glossary), shared);
         }
 
