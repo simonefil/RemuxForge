@@ -22,7 +22,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Blocco «Record format», identico in tutte le instructions che lo usano
         /// </summary>
         public const string RECORD_FORMAT = "Record format\n" +
-            "- A source cue is a record. Its header is \"<id>\" or \"<id> [gN]\", then a tab and the first line of the cue. Each further line of the same cue starts with a tab.\n" +
+            "- A source cue is a record. Its header is \"<id>\", followed by \" [gN]\" for a split sentence and by \" [song]\" for song lyrics or \" [sign]\" for on-screen text such as signs and titles; a header without either is dialogue. Then a tab and the first line of the cue. Each further line of the same cue starts with a tab.\n" +
             "- A translation record has the same header followed by \" =>\", then a tab and the translated text, with the same continuation lines. A header with nothing after \" =>\" means the cue has no accepted translation yet.\n" +
             "- A signal record (review only) has the header \"<id> !\", then a tab and one signal per line.\n" +
             "- In submit_translation, a line break inside a cue is \"\\n\" inside the JSON string.";
@@ -78,6 +78,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "\n" +
             "Split sentences\n" +
             "- Cues marked [gN] form one sentence split across consecutive cues (group N). Translate the whole group as one sentence in natural {target_language}, then redistribute it over the same ids in order: every cue gets a non-empty, contiguous part of the sentence, roughly proportional to the source cue, broken at natural points. Words may move between cues of the same group; meaning stays inside the group.\n" +
+            "\n" +
+            "Songs and signs\n" +
+            "- Cues marked [song] are lyrics: translate them as lyrics in {target_language}, keeping the meaning and the line breaks of each source cue.\n" +
+            "- Cues marked [sign] are on-screen text: translate them short, as a sign or title in {target_language} would read.\n" +
             "\n" +
             "Editorial rules\n" +
             "- Write natural, idiomatic {target_language} subtitles. Render the dramatic function of each line rather than its words: jokes, idioms, insults and threats keep their effect and their strength, with no softening or censorship.\n" +
@@ -232,7 +236,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <returns>Record della battuta</returns>
         public static string FormatRecord(SubtitleCue cue)
         {
-            return FormatRecord(cue.Id.Value, cue.Group, cue.CleanText);
+            return FormatRecord(cue.Id.Value, cue.Group, cue.Kind, cue.CleanText);
         }
 
         /// <summary>
@@ -240,11 +244,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="id">Id della battuta</param>
         /// <param name="group">Gruppo di frase spezzata, null fuori dai gruppi</param>
+        /// <param name="kind">Tipo della battuta</param>
         /// <param name="text">Testo pulito</param>
         /// <returns>Record della battuta</returns>
-        public static string FormatRecord(int id, int? group, string text)
+        public static string FormatRecord(int id, int? group, SubtitleCueKind kind, string text)
         {
-            return FormatHeader(id, group) + "\t" + text.Replace("\n", "\n\t");
+            return FormatHeader(id, group, kind) + "\t" + text.Replace("\n", "\n\t");
         }
 
         /// <summary>
@@ -252,11 +257,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="id">Id della battuta</param>
         /// <param name="group">Gruppo di frase spezzata, null fuori dai gruppi</param>
+        /// <param name="kind">Tipo della battuta</param>
         /// <param name="text">Traduzione, null per una battuta senza traduzione accettata</param>
         /// <returns>Record di traduzione</returns>
-        public static string FormatTranslationRecord(int id, int? group, string text)
+        public static string FormatTranslationRecord(int id, int? group, SubtitleCueKind kind, string text)
         {
-            string header = FormatHeader(id, group) + " =>";
+            string header = FormatHeader(id, group, kind) + " =>";
             return text == null ? header : header + "\t" + text.Replace("\n", "\n\t");
         }
 
@@ -465,7 +471,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             message.Append(ToModelJson(builder.ToToolJson(glossary, true)));
             message.Append("\n\nSOURCE EPISODE: ").Append(fileName).Append(" (").Append(cues.Count.ToString(CultureInfo.InvariantCulture)).Append(" cues)");
             foreach (FrozenCue cue in cues)
-                message.Append('\n').Append(FormatRecord(cue.Id, cue.Group, cue.Text));
+                message.Append('\n').Append(FormatRecord(cue.Id, cue.Group, cue.Kind, cue.Text));
 
             return message.ToString();
         }
@@ -485,8 +491,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 message.Append("ACCEPTED TRANSLATIONS BEFORE THIS RANGE (latest ").Append(TAIL_PAIRS.ToString(CultureInfo.InvariantCulture)).Append("):");
                 foreach (KeyValuePair<FrozenCue, string> pair in accepted)
                 {
-                    message.Append('\n').Append(FormatRecord(pair.Key.Id, pair.Key.Group, pair.Key.Text));
-                    message.Append('\n').Append(FormatTranslationRecord(pair.Key.Id, pair.Key.Group, pair.Value));
+                    message.Append('\n').Append(FormatRecord(pair.Key.Id, pair.Key.Group, pair.Key.Kind, pair.Key.Text));
+                    message.Append('\n').Append(FormatTranslationRecord(pair.Key.Id, pair.Key.Group, pair.Key.Kind, pair.Value));
                 }
 
                 message.Append("\n\n");
@@ -535,8 +541,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 string text;
                 current.TryGetValue(cue.Id, out text);
-                message.Append('\n').Append(FormatRecord(cue.Id, cue.Group, cue.Text));
-                message.Append('\n').Append(FormatTranslationRecord(cue.Id, cue.Group, text));
+                message.Append('\n').Append(FormatRecord(cue.Id, cue.Group, cue.Kind, cue.Text));
+                message.Append('\n').Append(FormatTranslationRecord(cue.Id, cue.Group, cue.Kind, text));
                 List<string> cueSignals;
                 if (signals.TryGetValue(cue.Id, out cueSignals) && cueSignals.Count > 0)
                     message.Append('\n').Append(FormatSignalRecord(cue.Id, cueSignals));
@@ -663,8 +669,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 string text;
                 current.TryGetValue(cue.Id, out text);
-                message.Append('\n').Append(FormatRecord(cue.Id, cue.Group, cue.Text));
-                message.Append('\n').Append(FormatTranslationRecord(cue.Id, cue.Group, text));
+                message.Append('\n').Append(FormatRecord(cue.Id, cue.Group, cue.Kind, cue.Text));
+                message.Append('\n').Append(FormatTranslationRecord(cue.Id, cue.Group, cue.Kind, text));
             }
         }
 
@@ -680,16 +686,22 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Testata di un record: id e, nei gruppi, [gN]
+        /// Testata di un record: id, nei gruppi [gN], per canzoni e cartelli [song] o [sign]; il dialogo non ha segno, così i
+        /// record dei job salvati prima dei tipi restano uguali
         /// </summary>
         /// <param name="id">Id della battuta</param>
         /// <param name="group">Gruppo di frase spezzata, null fuori dai gruppi</param>
+        /// <param name="kind">Tipo della battuta</param>
         /// <returns>Testata</returns>
-        private static string FormatHeader(int id, int? group)
+        private static string FormatHeader(int id, int? group, SubtitleCueKind kind)
         {
             string header = id.ToString(CultureInfo.InvariantCulture);
             if (group.HasValue)
                 header += " [g" + group.Value.ToString(CultureInfo.InvariantCulture) + "]";
+            if (kind == SubtitleCueKind.Song)
+                header += " [song]";
+            else if (kind == SubtitleCueKind.Sign)
+                header += " [sign]";
 
             return header;
         }

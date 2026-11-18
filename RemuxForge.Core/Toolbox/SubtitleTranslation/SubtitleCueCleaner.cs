@@ -132,8 +132,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="text">Campo Text originale; in SRT le righe con i loro terminatori</param>
         /// <param name="fallbackLineBreak">A capo SRT per la traduzione di una battuta su una riga: il terminatore della riga dei tempi</param>
+        /// <param name="excludeKaraoke">True se una riga col karaoke resta esclusa: nei progetti senza tabella degli stili. Altrimenti
+        /// i tag karaoke restano nella ricetta come gli altri tag, fuori dal testo pulito</param>
         /// <returns>Testo pulito con la ricetta, oppure il motivo di esclusione</returns>
-        public SubtitleCleanResult Clean(string text, string fallbackLineBreak)
+        public SubtitleCleanResult Clean(string text, string fallbackLineBreak, bool excludeKaraoke)
         {
             string source = text ?? "";
             bool isSrt = this._format == SubtitleTranslationFormat.Srt;
@@ -347,7 +349,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         return new SubtitleCleanResult("", null, SubtitleCue.EXCLUSION_DRAWING);
                 }
             }
-            for (int i = 0; i < items.Count; i++)
+            for (int i = 0; excludeKaraoke && i < items.Count; i++)
             {
                 if (items[i].AssTags == null)
                     continue;

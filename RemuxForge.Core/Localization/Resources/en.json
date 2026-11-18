@@ -4285,5 +4285,13 @@
   "web.toolbox.subtitleTranslation.warning.newTerm": "New term",
   "web.toolbox.subtitleTranslation.warning.rewrittenByTerms": "Rewritten with terms",
   "web.toolbox.subtitleTranslation.sharedStretch": "Stretch repeated across files ({0}): same translation in every copy, an edit changes them all",
-  "web.toolbox.subtitleTranslation.stretchOfFile": "Repeated stretch {0} of {1} · {2}"
+  "web.toolbox.subtitleTranslation.stretchOfFile": "Repeated stretch {0} of {1} · {2}",
+  "web.toolbox.subtitleTranslation.style": "Style",
+  "web.toolbox.subtitleTranslation.styleLines": "Lines",
+  "web.toolbox.subtitleTranslation.styleExample": "Example",
+  "web.toolbox.subtitleTranslation.styleKind": "Kind",
+  "web.toolbox.subtitleTranslation.styleKind.Dialogue": "Dialogue",
+  "web.toolbox.subtitleTranslation.styleKind.Song": "Song",
+  "web.toolbox.subtitleTranslation.styleKind.Sign": "Sign",
+  "web.toolbox.subtitleTranslation.styleKind.Skip": "Don't translate"
 }

@@ -4285,5 +4285,13 @@
   "web.toolbox.subtitleTranslation.warning.newTerm": "Termine nuovo",
   "web.toolbox.subtitleTranslation.warning.rewrittenByTerms": "Riscritta coi termini",
   "web.toolbox.subtitleTranslation.sharedStretch": "Tratta ripetuta fra i file ({0}): stessa traduzione in tutte le copie, una modifica le cambia tutte",
-  "web.toolbox.subtitleTranslation.stretchOfFile": "Tratta ripetuta {0} di {1} · {2}"
+  "web.toolbox.subtitleTranslation.stretchOfFile": "Tratta ripetuta {0} di {1} · {2}",
+  "web.toolbox.subtitleTranslation.style": "Stile",
+  "web.toolbox.subtitleTranslation.styleLines": "Righe",
+  "web.toolbox.subtitleTranslation.styleExample": "Esempio",
+  "web.toolbox.subtitleTranslation.styleKind": "Tipo",
+  "web.toolbox.subtitleTranslation.styleKind.Dialogue": "Dialogo",
+  "web.toolbox.subtitleTranslation.styleKind.Song": "Canzone",
+  "web.toolbox.subtitleTranslation.styleKind.Sign": "Cartello",
+  "web.toolbox.subtitleTranslation.styleKind.Skip": "Non tradurre"
 }

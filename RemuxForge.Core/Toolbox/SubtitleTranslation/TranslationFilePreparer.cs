@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -14,9 +15,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Costanti
 
         /// <summary>
-        /// Versione della preparazione, da aumentare quando cambiano id, gruppi o testo pulito
+        /// Versione della preparazione, da aumentare quando cambiano id, gruppi, tipi o testo pulito
         /// </summary>
-        public const int PREPARER_VERSION = 2;
+        public const int PREPARER_VERSION = 3;
 
         /// <summary>
         /// Rifiuto di un file che non c'è più
@@ -61,9 +62,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="file">File del progetto</param>
         /// <param name="sourceLanguage">Lingua d'origine, che decide i gruppi; vuota se non ancora scelta</param>
+        /// <param name="styles">Tabella degli stili del progetto, null nei progetti salvati prima</param>
         /// <param name="locked">True con l'analisi partita</param>
         /// <returns>Documento letto, null se il file è rifiutato</returns>
-        public static SubtitleTranslationDocument Prepare(TranslationProjectFile file, string sourceLanguage, bool locked)
+        public static SubtitleTranslationDocument Prepare(TranslationProjectFile file, string sourceLanguage, IReadOnlyList<TranslationProjectStyle> styles, bool locked)
         {
             byte[] bytes;
             file.RejectedReason = "";
@@ -104,7 +106,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 return null;
             }
 
-            SubtitleTranslationDocument document = SubtitleTranslationDocument.Read(bytes, file.Format, file.Encoding);
+            SubtitleTranslationDocument document = SubtitleTranslationDocument.Read(bytes, file.Format, file.Encoding, styles);
             if (!string.IsNullOrEmpty(document.RejectionReason))
             {
                 file.RejectedReason = document.RejectionReason;

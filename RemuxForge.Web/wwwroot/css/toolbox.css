@@ -454,6 +454,12 @@
     width: 100%;
 }
 
+/* Tabella degli stili sotto i file: alta quanto le sue righe */
+.rf-tool-page .rf-translation-styles {
+    flex: 0 0 auto;
+    margin-top: var(--rz-gap);
+}
+
 .rf-translation-file,
 .rf-translation-cell {
     overflow-wrap: anywhere;

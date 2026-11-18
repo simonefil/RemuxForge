@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -235,7 +236,8 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Apre un progetto salvato e ne prepara i file; un'analisi rimasta in corso da una chiusura dell'app diventa fermata, e
+        /// Apre un progetto salvato e ne prepara i file, con la tabella degli stili allineata ai file prima dell'analisi; un'analisi
+        /// rimasta in corso da una chiusura dell'app diventa fermata, e
         /// un file bloccato dall'analisi che è cambiato sul disco resta rifiutato col motivo. Col job si leggono gli stati dei file e
         /// il registro, e un file da tradurre col sorgente mancante o cambiato diventa bloccato
         /// </summary>
@@ -270,11 +272,17 @@ namespace RemuxForge.Web.Services.Toolbox
                 foreach (KeyValuePair<string, TranslationJobFileState> state in jobFiles)
                     this._jobFiles[state.Key] = state.Value;
                 this._jobCalls.AddRange(jobCalls);
+
+                // Un progetto salvato prima della tabella degli stili la prende finché l'analisi non è partita
+                if (project.Analysis == null && project.Styles == null)
+                    project.Styles = new List<TranslationProjectStyle>();
                 foreach (TranslationProjectFile file in project.Files)
                 {
                     this.Records.Add(new TranslationFileRecord(file));
                     this.PrepareFile(file);
                 }
+                if (this.SyncStyles())
+                    this._store.Save(project);
                 if (job != null)
                 {
                     // Una chiusura brusca fra il salvataggio dell'ultimo file e quello del job lascia in pausa un job già concluso
@@ -406,11 +414,64 @@ namespace RemuxForge.Web.Services.Toolbox
 
                 record.File.Encoding = string.IsNullOrEmpty(encoding) ? SubtitleTranslationDocument.DEFAULT_ENCODING : encoding;
                 this.PrepareFile(record.File);
+                this.SyncStyles();
                 this._store.Save(this._project);
             }
 
             this.AppendLog(AppText.F(TEXT_PREFIX + ".encodingChanged", Path.GetFileName(record.InputPath), record.File.Encoding));
             this.NotifyRecordsChanged();
+        }
+
+        /// <summary>
+        /// Cambia il tipo di uno stile ASS/SSA fino all'analisi e riprepara i file che lo usano
+        /// </summary>
+        /// <param name="name">Nome dello stile</param>
+        /// <param name="kind">Tipo scelto</param>
+        public void SetStyleKind(string name, TranslationStyleKind kind)
+        {
+            lock (this.StateLock)
+            {
+                if (this._project == null || this.IsBusy || this._project.Analysis != null || this._project.Styles == null)
+                    return;
+
+                TranslationProjectStyle style = this._project.Styles.Find(s => s.Name == name);
+                if (style == null)
+                    return;
+
+                style.Kind = kind;
+                foreach (TranslationProjectFile file in this._project.Files)
+                {
+                    SubtitleTranslationDocument document;
+                    if (this._documents.TryGetValue(file.Id, out document) && document.Styles.Any(u => u.Name == name))
+                        this.PrepareFile(file);
+                }
+                this._store.Save(this._project);
+            }
+
+            this.NotifyRecordsChanged();
+        }
+
+        /// <summary>
+        /// Righe della tabella degli stili: ogni stile del progetto col tipo scelto, le righe e un esempio dai file letti
+        /// </summary>
+        /// <returns>Stili nell'ordine della prima riga, vuoto per un progetto salvato prima della tabella</returns>
+        public List<TranslationStyleRow> GetStyleRows()
+        {
+            List<TranslationStyleRow> rows = new List<TranslationStyleRow>();
+            lock (this.StateLock)
+            {
+                if (this._project == null || this._project.Styles == null)
+                    return rows;
+
+                List<SubtitleStyleUsage> usages = this.GetStyleUsages();
+                foreach (TranslationProjectStyle style in this._project.Styles)
+                {
+                    SubtitleStyleUsage usage = usages.Find(u => u.Name == style.Name) ?? new SubtitleStyleUsage(style.Name);
+                    rows.Add(new TranslationStyleRow { Name = style.Name, Kind = style.Kind, Lines = usage.Lines, Example = usage.Example });
+                }
+            }
+
+            return rows;
         }
 
         /// <summary>
@@ -862,7 +923,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     return;
 
                 TranslationProjectFile file = this._project.Files.Find(f => f.Id == fileId);
-                SubtitleTranslationDocument document = TranslationFilePreparer.Prepare(file, this._project.SourceLanguage, false);
+                SubtitleTranslationDocument document = TranslationFilePreparer.Prepare(file, this._project.SourceLanguage, this._project.Styles, false);
                 if (document == null)
                 {
                     state.BlockedReason = file.RejectedReason;
@@ -1587,7 +1648,8 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Prepara i file senza documento, quelli appena aggiunti e quelli rifiutati prima, e salva il progetto
+        /// Prepara i file senza documento, quelli appena aggiunti e quelli rifiutati prima, allinea la tabella degli stili e salva
+        /// il progetto
         /// </summary>
         protected override void OnFilesAdded()
         {
@@ -1597,11 +1659,12 @@ namespace RemuxForge.Web.Services.Toolbox
                     this.PrepareFile(record.File);
             }
 
+            this.SyncStyles();
             this._store.Save(this._project);
         }
 
         /// <summary>
-        /// Allinea i file del progetto alle righe rimaste e salva
+        /// Allinea i file del progetto alle righe rimaste, e la tabella degli stili ai file, e salva
         /// </summary>
         protected override void OnRecordsRemoved()
         {
@@ -1612,6 +1675,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     this._documents.Remove(id);
             }
 
+            this.SyncStyles();
             this._store.Save(this._project);
         }
 
@@ -2465,7 +2529,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <param name="file">File del progetto</param>
         private void PrepareFile(TranslationProjectFile file)
         {
-            SubtitleTranslationDocument document = TranslationFilePreparer.Prepare(file, this._project.SourceLanguage, this._project.Analysis != null);
+            SubtitleTranslationDocument document = TranslationFilePreparer.Prepare(file, this._project.SourceLanguage, this._project.Styles, this._project.Analysis != null);
             if (document != null)
             {
                 this._documents[file.Id] = document;
@@ -2474,6 +2538,76 @@ namespace RemuxForge.Web.Services.Toolbox
             {
                 this._documents.Remove(file.Id);
             }
+        }
+
+        /// <summary>
+        /// Allinea la tabella degli stili ai file letti finché l'analisi non è partita: uno stile nuovo entra col tipo proposto
+        /// dagli indizi di tutti i file, uno che non compare più esce solo con tutti i file letti, perché un file rifiutato per poco
+        /// non perda le scelte. I file con uno stile nuovo proposto come canzone, cartello o da non tradurre si ripreparano, perché
+        /// la prima lettura lo ha trattato come dialogo
+        /// </summary>
+        /// <returns>True se la tabella è cambiata</returns>
+        private bool SyncStyles()
+        {
+            if (this._project.Styles == null || this._project.Analysis != null)
+                return false;
+
+            List<SubtitleStyleUsage> usages = this.GetStyleUsages();
+            HashSet<string> reread = new HashSet<string>(StringComparer.Ordinal);
+            bool changed = false;
+            foreach (SubtitleStyleUsage usage in usages)
+            {
+                if (this._project.Styles.Exists(s => s.Name == usage.Name))
+                    continue;
+
+                this._project.Styles.Add(new TranslationProjectStyle { Name = usage.Name, Kind = usage.SuggestedKind });
+                if (usage.SuggestedKind != TranslationStyleKind.Dialogue)
+                    reread.Add(usage.Name);
+                changed = true;
+            }
+            if (this._documents.Count == this._project.Files.Count)
+                changed |= this._project.Styles.RemoveAll(s => !usages.Exists(u => u.Name == s.Name)) > 0;
+
+            foreach (TranslationProjectFile file in this._project.Files)
+            {
+                SubtitleTranslationDocument document;
+                if (this._documents.TryGetValue(file.Id, out document) && document.Styles.Any(u => reread.Contains(u.Name)))
+                    this.PrepareFile(file);
+            }
+
+            return changed;
+        }
+
+        /// <summary>
+        /// Uso di ogni stile sommato sui file letti, nell'ordine dei file e della prima riga
+        /// </summary>
+        /// <returns>Stili coi totali</returns>
+        private List<SubtitleStyleUsage> GetStyleUsages()
+        {
+            List<SubtitleStyleUsage> usages = new List<SubtitleStyleUsage>();
+            foreach (TranslationProjectFile file in this._project.Files)
+            {
+                SubtitleTranslationDocument document;
+                if (!this._documents.TryGetValue(file.Id, out document))
+                    continue;
+
+                foreach (SubtitleStyleUsage usage in document.Styles)
+                {
+                    SubtitleStyleUsage total = usages.Find(u => u.Name == usage.Name);
+                    if (total == null)
+                    {
+                        total = new SubtitleStyleUsage(usage.Name);
+                        usages.Add(total);
+                    }
+                    total.Lines += usage.Lines;
+                    total.SongLines += usage.SongLines;
+                    total.SignLines += usage.SignLines;
+                    if (total.Example.Length == 0)
+                        total.Example = usage.Example;
+                }
+            }
+
+            return usages;
         }
 
         /// <summary>
@@ -3111,6 +3245,36 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Motivo per cui il file non si scrive, vuoto se nessuno
         /// </summary>
         public string Error { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Riga della tabella degli stili del passo Progetto
+    /// </summary>
+    public sealed class TranslationStyleRow
+    {
+        #region Proprietà
+
+        /// <summary>
+        /// Nome dello stile
+        /// </summary>
+        public string Name { get; set; }
+
+        /// <summary>
+        /// Tipo scelto
+        /// </summary>
+        public TranslationStyleKind Kind { get; set; }
+
+        /// <summary>
+        /// Righe dello stile nei file letti
+        /// </summary>
+        public int Lines { get; set; }
+
+        /// <summary>
+        /// Testo di una riga dello stile, vuoto se nessuna ha testo
+        /// </summary>
+        public string Example { get; set; }
 
         #endregion
     }

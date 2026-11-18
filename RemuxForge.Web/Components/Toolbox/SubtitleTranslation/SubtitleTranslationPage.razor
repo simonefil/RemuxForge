@@ -242,6 +242,42 @@
                         </RadzenDataGridColumn>
                     </Columns>
                 </RadzenDataGrid>
+
+                List<TranslationStyleRow> styleRows = Orchestrator.GetStyleRows();
+                @if (styleRows.Count > 0)
+                {
+                    <RadzenDataGrid TItem="TranslationStyleRow"
+                                    Data="@styleRows"
+                                    class="rf-data-grid rf-tool-grid rf-translation-styles"
+                                    AllowAlternatingRows="false"
+                                    AllowColumnResize="false"
+                                    AllowPaging="false"
+                                    AllowSorting="false"
+                                    Density="Density.Compact"
+                                    GridLines="DataGridGridLines.Horizontal">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="TranslationStyleRow" Title="@AppText.T("web.toolbox.subtitleTranslation.style")" Width="22%">
+                                <Template Context="style"><span class="rf-translation-cell">@style.Name</span></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationStyleRow" Title="@AppText.T("web.toolbox.subtitleTranslation.styleLines")" Width="9%" TextAlign="TextAlign.Right">
+                                <Template Context="style"><CellText Text="@style.Lines.ToString(CultureInfo.CurrentCulture)" /></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationStyleRow" Title="@AppText.T("web.toolbox.subtitleTranslation.styleExample")" Width="47%">
+                                <Template Context="style"><CellText Text="@style.Example" /></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationStyleRow" Title="@AppText.T("web.toolbox.subtitleTranslation.styleKind")" Width="22%">
+                                <Template Context="style">
+                                    <RadzenDropDown TValue="TranslationStyleKind" class="rf-translation-cell-input" Data="@s_styleKinds" Value="@style.Kind" Disabled="@filesLocked"
+                                                    aria-label="@(AppText.T("web.toolbox.subtitleTranslation.styleKind") + " " + style.Name)"
+                                                    Change="@((object value) => Orchestrator.SetStyleKind(style.Name, (TranslationStyleKind)value))">
+                                        <Template Context="kind">@AppText.T("web.toolbox.subtitleTranslation.styleKind." + kind)</Template>
+                                        <ValueTemplate Context="kind">@AppText.T("web.toolbox.subtitleTranslation.styleKind." + kind)</ValueTemplate>
+                                    </RadzenDropDown>
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+                }
             }
         }
         else if (_step == STEP_TRANSLATION)
@@ -960,6 +996,11 @@
     /// Tipi di termine nell'ordine della tendina
     /// </summary>
     private static readonly List<GlossaryTermKind> s_termKinds = new List<GlossaryTermKind>((GlossaryTermKind[])Enum.GetValues(typeof(GlossaryTermKind)));
+
+    /// <summary>
+    /// Tipi di uno stile nell'ordine della tendina
+    /// </summary>
+    private static readonly List<TranslationStyleKind> s_styleKinds = new List<TranslationStyleKind>((TranslationStyleKind[])Enum.GetValues(typeof(TranslationStyleKind)));
 
     /// <summary>
     /// Generi dei personaggi nell'ordine della tendina

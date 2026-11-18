@@ -112,11 +112,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Crea un progetto nuovo, non ancora salvato
         /// </summary>
-        /// <returns>Progetto con identificativo e date</returns>
+        /// <returns>Progetto con identificativo, date e tabella degli stili vuota</returns>
         public TranslationProject Create()
         {
             TranslationProject project = new TranslationProject();
             project.Id = Guid.NewGuid().ToString("N");
+            project.Styles = new List<TranslationProjectStyle>();
             return project;
         }
 

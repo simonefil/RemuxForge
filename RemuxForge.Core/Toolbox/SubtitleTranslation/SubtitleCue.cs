@@ -11,13 +11,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Battuta senza testo, o con soli tag</summary>
         public const string EXCLUSION_EMPTY = "empty";
 
-        /// <summary>Campo Effect non vuoto</summary>
+        /// <summary>Campo Effect non vuoto, nei progetti senza tabella degli stili</summary>
         public const string EXCLUSION_EFFECT = "effect";
+
+        /// <summary>Stile scelto come da non tradurre</summary>
+        public const string EXCLUSION_STYLE = "style";
 
         /// <summary>Drawing vettoriale</summary>
         public const string EXCLUSION_DRAWING = "drawing";
 
-        /// <summary>Karaoke</summary>
+        /// <summary>Karaoke, nei progetti senza tabella degli stili</summary>
         public const string EXCLUSION_KARAOKE = "karaoke";
 
         /// <summary>Effetto a tempo a metà frase (scritta a comparsa)</summary>
@@ -128,7 +131,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public string Style { get; }
 
         /// <summary>
-        /// Tipo della battuta letto dal file
+        /// Tipo della battuta: in ASS/SSA quello scelto per lo stile, in SRT canzone se il testo ha ♪ o ♫
         /// </summary>
         public SubtitleCueKind Kind { get; }
 

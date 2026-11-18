@@ -40,6 +40,24 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     }
 
     /// <summary>
+    /// Tipo scelto per uno stile ASS/SSA nella tabella degli stili del progetto
+    /// </summary>
+    public enum TranslationStyleKind
+    {
+        /// <summary>Battute parlate</summary>
+        Dialogue,
+
+        /// <summary>Testi di canzoni</summary>
+        Song,
+
+        /// <summary>Scritte sullo schermo</summary>
+        Sign,
+
+        /// <summary>Righe lasciate come sono</summary>
+        Skip
+    }
+
+    /// <summary>
     /// Progetto di traduzione: file sorgente, lingue, contesto, modelli e glossario del suo unico giro
     /// </summary>
     public class TranslationProject
@@ -72,6 +90,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.ReasoningEfforts = new TranslationPhaseModels();
             this.Options = new TranslationProjectOptions();
             this.Files = new List<TranslationProjectFile>();
+            this.Styles = null;
             this.NextFileNumber = 1;
             this.Glossary = null;
             this.ImportedGlossary = null;
@@ -144,6 +163,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// File sorgente nell'ordine di aggiunta
         /// </summary>
         public List<TranslationProjectFile> Files { get; set; }
+
+        /// <summary>
+        /// Tipo scelto per ogni stile dei file ASS/SSA, bloccato con l'analisi come i file. Null nei progetti salvati prima della
+        /// tabella: le loro righe con Effect o karaoke restano escluse e tutte le battute sono dialogo
+        /// </summary>
+        public List<TranslationProjectStyle> Styles { get; set; }
 
         /// <summary>
         /// Prossimo numero di fileId, mai riusato
@@ -254,6 +279,39 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Aggiunta al progetto
         /// </summary>
         public DateTimeOffset AddedAt { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Stile ASS/SSA del progetto col tipo scelto
+    /// </summary>
+    public class TranslationProjectStyle
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public TranslationProjectStyle()
+        {
+            this.Name = "";
+            this.Kind = TranslationStyleKind.Dialogue;
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Nome dello stile, come nel campo Style delle righe
+        /// </summary>
+        public string Name { get; set; }
+
+        /// <summary>
+        /// Tipo scelto
+        /// </summary>
+        public TranslationStyleKind Kind { get; set; }
 
         #endregion
     }

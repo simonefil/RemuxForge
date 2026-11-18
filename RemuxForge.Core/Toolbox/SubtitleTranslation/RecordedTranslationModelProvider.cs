@@ -75,9 +75,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Variabili statiche
 
         /// <summary>
-        /// Record della traduzione attuale: id, gruppo facoltativo, freccia e testo
+        /// Record della traduzione attuale: id, gruppo e tipo facoltativi, freccia e testo
         /// </summary>
-        private static readonly Regex s_translationRecord = new Regex(@"^(\d+)(?: \[g\d+\])? =>\t(.*)$", RegexOptions.CultureInvariant);
+        private static readonly Regex s_translationRecord = new Regex(@"^(\d+)(?: \[g\d+\])?(?: \[(?:song|sign)\])? =>\t(.*)$", RegexOptions.CultureInvariant);
 
         /// <summary>
         /// Record dei segnali di una battuta nella coda di D1
