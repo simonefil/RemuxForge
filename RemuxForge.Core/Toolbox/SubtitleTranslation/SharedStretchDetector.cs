@@ -135,8 +135,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// Toglie dalle tratte le occorrenze di un file escluso o ricominciato. Senza la prima occorrenza la tratta prende come
-        /// prima la più lunga rimasta e si restringe alle sue righe; le battute delle altre occorrenze che restano fuori, in una
-        /// tratta non ancora tradotta, diventano tratte di un solo file perché nessun blocco del loro file le copre
+        /// prima la più lunga rimasta e si restringe alle sue righe; le battute delle altre occorrenze che restano fuori diventano
+        /// tratte di un solo file perché nessun blocco del loro file le copre: da tradurre, o tradotte con le righe della tratta,
+        /// che arrivano come copie anche al file che era bloccato quando la tratta si è salvata
         /// </summary>
         /// <param name="stretches">Tratte del job</param>
         /// <param name="fileId">File del job</param>
@@ -174,19 +175,20 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     // Battute prima di start e dopo end: le prime head e quelle da tail in poi
                     int head = Math.Min(Math.Max(0, start - occurrence.Offset), occurrence.Ids.Count);
                     int tail = Math.Max(head, Math.Min(occurrence.Ids.Count, end - occurrence.Offset));
-                    if (stretch.Status == TranslationBlockStatus.Pending)
+                    foreach (KeyValuePair<int, int> part in new KeyValuePair<int, int>[] { new KeyValuePair<int, int>(0, head), new KeyValuePair<int, int>(tail, occurrence.Ids.Count - tail) })
                     {
-                        foreach (KeyValuePair<int, int> part in new KeyValuePair<int, int>[] { new KeyValuePair<int, int>(0, head), new KeyValuePair<int, int>(tail, occurrence.Ids.Count - tail) })
-                        {
-                            if (part.Value == 0)
-                                continue;
-                            SharedStretch solo = new SharedStretch();
-                            solo.Index = ++next;
-                            solo.Format = stretch.Format;
-                            solo.Lines = stretch.Lines.GetRange(occurrence.Offset + part.Key, part.Value);
-                            solo.Occurrences.Add(new SharedStretchOccurrence { FileId = occurrence.FileId, Offset = 0, Ids = occurrence.Ids.GetRange(part.Key, part.Value) });
-                            stretches.Add(solo);
-                        }
+                        if (part.Value == 0)
+                            continue;
+                        SharedStretch solo = new SharedStretch();
+                        solo.Index = ++next;
+                        solo.Format = stretch.Format;
+                        solo.Status = stretch.Status;
+                        solo.CallSeqs.AddRange(stretch.CallSeqs);
+                        solo.Lines = stretch.Lines.GetRange(occurrence.Offset + part.Key, part.Value);
+                        for (int i = 0; i < part.Value && stretch.Translations.Count > 0; i++)
+                            solo.Translations.Add(stretch.Translations[occurrence.Offset + part.Key + i].Clone(i));
+                        solo.Occurrences.Add(new SharedStretchOccurrence { FileId = occurrence.FileId, Offset = 0, Ids = occurrence.Ids.GetRange(part.Key, part.Value) });
+                        stretches.Add(solo);
                     }
 
                     occurrence.Ids = occurrence.Ids.GetRange(head, tail - head);
