@@ -1144,7 +1144,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     TranslationExportRow row = new TranslationExportRow();
                     row.FileId = fileId;
                     row.FileName = Path.GetFileName(file.Path);
-                    row.OutputPath = TranslationExporter.GetOutputPath(file.Path, this._project.TargetLanguage, folder);
+                    row.OutputPath = TranslationExporter.GetOutputPath(file.Path, this._project.SourceLanguage, this._project.TargetLanguage, folder);
                     row.Translated = state.Translations.FindAll(t => t.Text != null).Count;
                     row.Untranslated = state.Cues.Count - row.Translated;
                     row.Error = this._documents.ContainsKey(fileId) ? "" : AppText.T(TEXT_PREFIX + ".fileRejected." + file.RejectedReason);
@@ -1156,8 +1156,9 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Scrive i sottotitoli tradotti con la barra Uscita, con la card occupata: un nome occupato prende il suffisso, un file
-        /// non scritto tiene il motivo nella sua riga e gli altri proseguono. Il progetto resta nella revisione dell'utente
+        /// Scrive i sottotitoli tradotti con la barra Uscita, con la card occupata: il file dell'export precedente, non cambiato, si
+        /// sovrascrive, un altro nome occupato prende il suffisso prima della lingua; un file non scritto tiene il motivo nella sua
+        /// riga e gli altri proseguono. Il progetto resta nella revisione dell'utente
         /// </summary>
         /// <returns>Righe coi percorsi scritti o il motivo, null se l'export non può partire</returns>
         public List<TranslationExportRow> ExportSubtitles()
@@ -1165,11 +1166,13 @@ namespace RemuxForge.Web.Services.Toolbox
             List<TranslationExportRow> rows;
             List<TranslationRunFile> files = new List<TranslationRunFile>();
             List<string> inputs = new List<string>();
+            string jobId;
             lock (this.StateLock)
             {
                 if (!this.CanEditCues || !string.IsNullOrEmpty(this.OutputFolderError))
                     return null;
 
+                jobId = this._job.Id;
                 rows = this.GetExportRows();
                 foreach (TranslationProjectFile file in this._project.Files)
                     inputs.Add(file.Path);
@@ -1192,10 +1195,17 @@ namespace RemuxForge.Web.Services.Toolbox
                         continue;
                     try
                     {
-                        rows[i].OutputPath = TranslationExporter.Export(files[i], rows[i].OutputPath, allocator);
+                        List<string> warnings = new List<string>();
+                        rows[i].OutputPath = TranslationExporter.Export(files[i], rows[i].OutputPath, allocator, warnings);
+                        lock (this.StateLock)
+                        {
+                            this._jobStore.SaveFile(jobId, files[i].State);
+                        }
                         rows[i].Written = true;
                         written++;
                         this.AppendLog(AppText.F(TEXT_PREFIX + ".subtitleExported", rows[i].FileName, rows[i].OutputPath));
+                        foreach (string warning in warnings)
+                            this.AppendLog(warning);
                     }
                     catch (Exception ex)
                     {

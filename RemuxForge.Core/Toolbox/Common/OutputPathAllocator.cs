@@ -7,7 +7,8 @@ namespace RemuxForge.Core.Toolbox.Common
 {
     /// <summary>
     /// Prenota i percorsi finali dei file prodotti da un lotto: un percorso occupato sul disco, già prenotato o uguale a un input
-    /// del lotto riceve un suffisso numerico prima dell'estensione, a partire da 2 (film.eng.srt, film.eng.2.srt)
+    /// del lotto riceve un suffisso numerico a partire da 2, prima dell'estensione (film.mkv, film.2.mkv) oppure, per i nomi che
+    /// finiscono con la lingua, prima della lingua, che resta l'ultima parola del nome (film.eng.srt, film.2.eng.srt)
     /// </summary>
     public sealed class OutputPathAllocator
     {
@@ -38,26 +39,33 @@ namespace RemuxForge.Core.Toolbox.Common
 
         /// <summary>
         /// Prenota il primo percorso libero a partire da quello voluto; il file accoppiato (il .sub di un .idx) riceve lo stesso suffisso
-        /// e deve essere libero anche lui
+        /// e deve essere libero anche lui. Il file sostituibile, che il chiamante ha riconosciuto come suo, conta libero sul disco e si
+        /// sovrascrive; resta occupato se è un input o è già prenotato dal lotto
         /// </summary>
         /// <param name="desiredPath">Percorso voluto</param>
+        /// <param name="endsWithLanguage">True se l'ultima parola del nome è la lingua: il suffisso va prima di lei</param>
+        /// <param name="replaceablePath">File esistente che il chiamante può sovrascrivere, null se nessuno</param>
         /// <returns>Percorso prenotato, quello voluto oppure con il suffisso</returns>
-        public string Reserve(string desiredPath)
+        public string Reserve(string desiredPath, bool endsWithLanguage = false, string replaceablePath = null)
         {
             string fullPath = Path.GetFullPath(desiredPath);
             string folder = Path.GetDirectoryName(fullPath);
             string name = Path.GetFileNameWithoutExtension(fullPath);
             string extension = Path.GetExtension(fullPath);
+            int languageDot = endsWithLanguage ? name.LastIndexOf('.') : -1;
+            string head = languageDot > 0 ? name.Substring(0, languageDot) : name;
+            string language = name.Substring(head.Length);
+            PathIdentity replaceable = replaceablePath != null ? new PathIdentity(replaceablePath) : null;
             string candidate = fullPath;
             string companion = FileHelper.GetCompanionPath(candidate);
 
-            // Occupato = presente sul disco (file o cartella) oppure già preso dal lotto, per il principale e per l'accoppiato
+            // Occupato = presente sul disco (file o cartella, salvo il sostituibile) oppure già preso dal lotto, per il principale e per l'accoppiato
             for (int suffix = 2;
-                File.Exists(candidate) || Directory.Exists(candidate) || this._taken.Contains(new PathIdentity(candidate)) ||
+                (File.Exists(candidate) && !new PathIdentity(candidate).Equals(replaceable)) || Directory.Exists(candidate) || this._taken.Contains(new PathIdentity(candidate)) ||
                 (companion.Length > 0 && (File.Exists(companion) || Directory.Exists(companion) || this._taken.Contains(new PathIdentity(companion))));
                 suffix++)
             {
-                candidate = Path.Combine(folder, name + "." + suffix + extension);
+                candidate = Path.Combine(folder, head + "." + suffix + language + extension);
                 companion = FileHelper.GetCompanionPath(candidate);
             }
 

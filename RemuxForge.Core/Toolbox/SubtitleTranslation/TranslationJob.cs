@@ -333,6 +333,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.CollectedNewTerms = new List<CollectedNewTerm>();
             this.TermApplication = null;
             this.ReviewBlocks = null;
+            this.ExportedPath = "";
+            this.ExportedSha256 = "";
         }
 
         #endregion
@@ -423,6 +425,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Blocchi scelti per la revisione AI, null prima della revisione
         /// </summary>
         public List<TranslationReviewBlock> ReviewBlocks { get; set; }
+
+        /// <summary>
+        /// Percorso dell'ultimo export del file, vuoto prima del primo
+        /// </summary>
+        public string ExportedPath { get; set; }
+
+        /// <summary>
+        /// SHA-256 del contenuto scritto dall'ultimo export: un file con un altro contenuto è stato cambiato fuori dal job e non si sovrascrive
+        /// </summary>
+        public string ExportedSha256 { get; set; }
 
         #endregion
     }
