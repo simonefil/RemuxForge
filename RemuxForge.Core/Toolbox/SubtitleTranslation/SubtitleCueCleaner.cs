@@ -255,60 +255,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                         string raw = source.Substring(position, close - position + 1);
                         CleanItem blockItem = new CleanItem(CleanItemKind.Tag, raw, '\0');
-                        blockItem.AssTags = new List<AssTag>();
-                        int tagStart = raw.IndexOf('\\');
-
-                        // Ogni tag va da una \ alla successiva; gli argomenti fra parentesi possono contenere altre \ (\t)
-                        while (tagStart >= 0 && tagStart < raw.Length - 1)
-                        {
-                            int nameStart = tagStart + 1;
-                            string name = "";
-                            for (int n = 0; n < s_assTagNames.Length; n++)
-                            {
-                                if (string.CompareOrdinal(raw, nameStart, s_assTagNames[n], 0, s_assTagNames[n].Length) == 0)
-                                {
-                                    name = s_assTagNames[n];
-                                    break;
-                                }
-                            }
-                            if (string.IsNullOrEmpty(name))
-                            {
-                                int letters = nameStart;
-                                while (letters < raw.Length - 1 && char.IsLetter(raw[letters]))
-                                    letters++;
-                                name = raw.Substring(nameStart, letters - nameStart);
-                            }
-
-                            int argStart = nameStart + name.Length;
-                            int argEnd = argStart;
-                            if (argEnd < raw.Length - 1 && raw[argEnd] == '(')
-                            {
-                                int depth = 0;
-                                while (argEnd < raw.Length - 1)
-                                {
-                                    if (raw[argEnd] == '(')
-                                    {
-                                        depth++;
-                                    }
-                                    else if (raw[argEnd] == ')')
-                                    {
-                                        depth--;
-                                    }
-                                    argEnd++;
-                                    if (depth == 0)
-                                        break;
-                                }
-                            }
-                            else
-                            {
-                                while (argEnd < raw.Length - 1 && raw[argEnd] != '\\')
-                                    argEnd++;
-                            }
-
-                            blockItem.AssTags.Add(new AssTag(name, raw.Substring(argStart, argEnd - argStart), raw.Substring(tagStart, argEnd - tagStart)));
-                            tagStart = raw.IndexOf('\\', argEnd);
-                        }
-
+                        blockItem.AssTags = ParseAssTags(raw);
                         items.Add(blockItem);
                         position = close + 1;
                         continue;
@@ -1370,6 +1317,80 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             return output.Append(recipe.Suffix).ToString();
         }
 
+        /// <summary>
+        /// Aspetto e posizione comuni alle righe di un layer di un effetto disegnato lettera per lettera. Aspetto: i tag di stato
+        /// e gli interruttori che ogni riga porta identici e soli sul loro canale, tranne quelli di un canale che una \t delle righe
+        /// anima, il cui valore è il punto di partenza dell'animazione. Posizione: l'allineamento \an di tutte le righe e la y
+        /// delle righe ferme (\pos), se ognuno è uno solo
+        /// </summary>
+        /// <param name="texts">Campi Text delle righe</param>
+        /// <returns>Aspetto e posizione ricavati</returns>
+        public SubtitleLetterLook ReadLetterLook(IReadOnlyList<string> texts)
+        {
+            List<List<AssTag>> tagsByText = new List<List<AssTag>>();
+            HashSet<string> animated = new HashSet<string>(StringComparer.Ordinal);
+            foreach (string text in texts)
+            {
+                List<AssTag> tags = new List<AssTag>();
+                int open = text.IndexOf('{');
+                while (open >= 0)
+                {
+                    int close = text.IndexOf('}', open);
+                    if (close < 0)
+                        break;
+                    tags.AddRange(ParseAssTags(text.Substring(open, close - open + 1)));
+                    open = text.IndexOf('{', close);
+                }
+                foreach (AssTag tag in tags)
+                {
+                    if (tag.Name != ASS_TRANSFORM)
+                        continue;
+                    foreach (AssTag inner in ParseAssTags(tag.Arg))
+                    {
+                        if (s_assStateChannels.TryGetValue(inner.Name, out string[] innerChannels))
+                            animated.UnionWith(innerChannels);
+                    }
+                }
+                tagsByText.Add(tags);
+            }
+            if (tagsByText.Count == 0)
+                return new SubtitleLetterLook("", null, null);
+
+            // Due tag toccano lo stesso stato se hanno un canale in comune o sono lo stesso interruttore
+            Func<AssTag, AssTag, bool> sameState = (a, b) => this.SwitchBit(a.Name) >= 0
+                ? this.SwitchBit(a.Name) == this.SwitchBit(b.Name)
+                : s_assStateChannels.TryGetValue(b.Name, out string[] other) && Array.Exists(s_assStateChannels[a.Name], other.Contains);
+            StringBuilder fixedTags = new StringBuilder();
+            HashSet<string> written = new HashSet<string>(StringComparer.Ordinal);
+            foreach (AssTag tag in tagsByText[0])
+            {
+                bool state = s_assStateChannels.TryGetValue(tag.Name, out string[] channels);
+                if ((!state && this.SwitchBit(tag.Name) < 0) || (state && Array.Exists(channels, animated.Contains)) || written.Contains(tag.Raw))
+                    continue;
+                if (tagsByText.TrueForAll(tags => tags.Exists(other => other.Raw == tag.Raw) && tags.TrueForAll(other => other.Raw == tag.Raw || !sameState(tag, other))))
+                {
+                    fixedTags.Append(tag.Raw);
+                    written.Add(tag.Raw);
+                }
+            }
+
+            HashSet<string> alignments = new HashSet<string>(StringComparer.Ordinal);
+            HashSet<string> heights = new HashSet<string>(StringComparer.Ordinal);
+            foreach (List<AssTag> tags in tagsByText)
+            {
+                AssTag alignment = tags.FindLast(tag => tag.Name == "an");
+                alignments.Add(alignment == null ? "" : alignment.Arg.Trim());
+                AssTag position = tags.FindLast(tag => tag.Name == "pos");
+                string[] coordinates = position == null ? null : position.Arg.Trim().TrimStart('(').TrimEnd(')').Split(',');
+                if (coordinates != null && coordinates.Length == 2)
+                    heights.Add(coordinates[1].Trim());
+            }
+            int? letterAlignment = null;
+            if (alignments.Count == 1 && int.TryParse(alignments.First(), NumberStyles.None, CultureInfo.InvariantCulture, out int value) && value >= 1 && value <= 9)
+                letterAlignment = value;
+            return new SubtitleLetterLook(fixedTags.ToString(), letterAlignment, heights.Count == 1 ? heights.First() : null);
+        }
+
         #endregion
 
         #region Metodi privati
@@ -1387,6 +1408,70 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             for (int i = from; i <= to; i++)
                 result.Append(items[i].Raw);
             return result.ToString();
+        }
+
+        /// <summary>
+        /// Tag di un blocco ASS: ognuno va da una \ alla successiva, e gli argomenti fra parentesi possono contenere altre \ (\t).
+        /// L'ultimo carattere chiude il blocco: la } di un blocco o la ) dell'argomento di un \t
+        /// </summary>
+        /// <param name="raw">Blocco con i suoi delimitatori</param>
+        /// <returns>Tag nell'ordine del blocco</returns>
+        private static List<AssTag> ParseAssTags(string raw)
+        {
+            List<AssTag> tags = new List<AssTag>();
+            int tagStart = raw.IndexOf('\\');
+
+            while (tagStart >= 0 && tagStart < raw.Length - 1)
+            {
+                int nameStart = tagStart + 1;
+                string name = "";
+                for (int n = 0; n < s_assTagNames.Length; n++)
+                {
+                    if (string.CompareOrdinal(raw, nameStart, s_assTagNames[n], 0, s_assTagNames[n].Length) == 0)
+                    {
+                        name = s_assTagNames[n];
+                        break;
+                    }
+                }
+                if (string.IsNullOrEmpty(name))
+                {
+                    int letters = nameStart;
+                    while (letters < raw.Length - 1 && char.IsLetter(raw[letters]))
+                        letters++;
+                    name = raw.Substring(nameStart, letters - nameStart);
+                }
+
+                int argStart = nameStart + name.Length;
+                int argEnd = argStart;
+                if (argEnd < raw.Length - 1 && raw[argEnd] == '(')
+                {
+                    int depth = 0;
+                    while (argEnd < raw.Length - 1)
+                    {
+                        if (raw[argEnd] == '(')
+                        {
+                            depth++;
+                        }
+                        else if (raw[argEnd] == ')')
+                        {
+                            depth--;
+                        }
+                        argEnd++;
+                        if (depth == 0)
+                            break;
+                    }
+                }
+                else
+                {
+                    while (argEnd < raw.Length - 1 && raw[argEnd] != '\\')
+                        argEnd++;
+                }
+
+                tags.Add(new AssTag(name, raw.Substring(argStart, argEnd - argStart), raw.Substring(tagStart, argEnd - tagStart)));
+                tagStart = raw.IndexOf('\\', argEnd);
+            }
+
+            return tags;
         }
 
         /// <summary>
@@ -1574,4 +1659,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// <param name="Recipe">Ricetta di ricomposizione, null per una battuta esclusa</param>
     /// <param name="ExclusionReason">Motivo per cui la battuta resta al codice, vuoto se si traduce</param>
     public sealed record SubtitleCleanResult(string CleanText, CueRecipe Recipe, string ExclusionReason);
+
+    /// <summary>
+    /// Aspetto e posizione comuni alle righe di un layer di un effetto disegnato lettera per lettera
+    /// </summary>
+    /// <param name="Tags">Tag dell'aspetto nell'ordine della prima riga, vuoto se nessuno</param>
+    /// <param name="Alignment">Allineamento \an di tutte le righe, null se manca o cambia</param>
+    /// <param name="PositionY">y delle righe ferme, null se manca o cambia</param>
+    public sealed record SubtitleLetterLook(string Tags, int? Alignment, string PositionY);
 }

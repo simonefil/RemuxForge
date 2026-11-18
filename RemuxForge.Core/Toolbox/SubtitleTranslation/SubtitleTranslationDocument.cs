@@ -251,6 +251,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             foreach (TranslationProjectStyle style in styles ?? new List<TranslationProjectStyle>())
                 kinds[style.Name + "\u0001" + style.Actor + "\u0001" + style.Effect] = style.Kind;
 
+            SubtitleCueCleaner cleaner = new SubtitleCueCleaner(format);
             List<RawCue> rawCues = new List<RawCue>();
             Dictionary<int, LetterEffect> letterEffects = new Dictionary<int, LetterEffect>();
             List<SubtitleStyleUsage> usages = new List<SubtitleStyleUsage>();
@@ -318,9 +319,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             else
             {
                 List<AssSubtitleDialogue> dialogues;
+                AssSubtitleDocument assDocument;
                 try
                 {
-                    dialogues = AssSubtitleDocument.Parse(text).ReadDialogues();
+                    assDocument = AssSubtitleDocument.Parse(text);
+                    dialogues = assDocument.ReadDialogues();
                 }
                 catch (InvalidDataException)
                 {
@@ -328,21 +331,41 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
 
                 // Format di [Events] in vigore su ogni riga, letto come ReadDialogues, per Style e Layer; le righe Comment valide con
-                // lo stesso Format sono le sorgenti possibili di un effetto disegnato lettera per lettera
+                // lo stesso Format sono le sorgenti possibili di un effetto disegnato lettera per lettera. Degli stili [V4+ Styles]
+                // servono allineamento e margini orizzontali, per la posizione della riga che prende il posto delle lettere
                 string[] formatByLine = new string[lines.Count];
                 List<KeyValuePair<AssSubtitleDialogue, bool>> lineEvents = dialogues.ConvertAll(d => new KeyValuePair<AssSubtitleDialogue, bool>(d, false));
+                Dictionary<string, int[]> styleLayouts = new Dictionary<string, int[]>(StringComparer.Ordinal);
                 bool inEvents = false;
+                bool inStyles = false;
                 string eventFormat = null;
+                string styleFormat = null;
                 for (int l = 0; l < lines.Count; l++)
                 {
                     string trimmed = text.Substring(lines[l].Start, lines[l].Length).Replace("\0", "").Trim();
                     if (trimmed.StartsWith("[", StringComparison.Ordinal))
                     {
                         inEvents = trimmed.Equals("[Events]", StringComparison.OrdinalIgnoreCase);
+                        inStyles = trimmed.Equals("[V4+ Styles]", StringComparison.OrdinalIgnoreCase);
                         eventFormat = null;
+                        styleFormat = null;
                     }
                     if (inEvents && trimmed.StartsWith("Format:", StringComparison.OrdinalIgnoreCase))
                         eventFormat = trimmed.Substring(7);
+                    if (inStyles && trimmed.StartsWith("Format:", StringComparison.OrdinalIgnoreCase))
+                        styleFormat = trimmed.Substring(7);
+                    if (inStyles && trimmed.StartsWith("Style:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        int styleCount = AssSubtitleUtils.CountFields(styleFormat);
+                        string[] styleFields = AssSubtitleUtils.SplitFields(trimmed.Substring("Style:".Length).TrimStart(), styleCount);
+                        int[] columns = new int[] { AssSubtitleUtils.ResolveFieldIndex(styleFormat, "Alignment"), AssSubtitleUtils.ResolveFieldIndex(styleFormat, "MarginL"),
+                            AssSubtitleUtils.ResolveFieldIndex(styleFormat, "MarginR") };
+                        int nameColumn = AssSubtitleUtils.ResolveFieldIndex(styleFormat, "Name");
+                        int[] layout = new int[3];
+                        if (styleCount > 0 && styleFields.Length == styleCount && nameColumn >= 0
+                            && Array.TrueForAll(new int[] { 0, 1, 2 }, k => columns[k] >= 0 && AssSubtitleUtils.TryParseInt(styleFields[columns[k]], out layout[k])))
+                            styleLayouts[styleFields[nameColumn].Trim()] = layout;
+                    }
                     formatByLine[l] = eventFormat;
                     if (!inEvents || !trimmed.StartsWith("Comment:", StringComparison.OrdinalIgnoreCase))
                         continue;
@@ -485,18 +508,42 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         continue;
                     }
 
-                    // Riga tradotta di una sorgente: Dialogue coi campi della riga Comment e il layer più alto delle righe disegnate,
-                    // così resta sopra o sotto le altre righe come le lettere che sostituisce; prende il posto della prima
+                    // Righe tradotte di una sorgente: una Dialogue per layer delle lettere, coi campi della riga Comment, il layer e
+                    // l'aspetto fisso delle lettere di quel layer; prendono il posto della prima lettera. La posizione viene dalle
+                    // lettere quando ne hanno una sola: la riga verticale del loro \an e la loro y, con la colonna dello stile e la x
+                    // sul suo bordo (margine sinistro, destro o centro), perché le lettere stanno sul bordo dello stile e una traduzione
+                    // di altra lunghezza deve partire da lì
                     if (generatedBySource.TryGetValue(e, out List<int> generatedLines))
                     {
-                        string[] fields = (string[])dialogue.Fields.Clone();
-                        int? top = null;
+                        List<int?> layers = new List<int?>();
                         foreach (int g in generatedLines)
-                            top = events[g].Layer.HasValue && (!top.HasValue || events[g].Layer.Value > top.Value) ? events[g].Layer : top;
-                        if (assEvent.LayerColumn >= 0 && top.HasValue)
-                            fields[assEvent.LayerColumn] = top.Value.ToString(CultureInfo.InvariantCulture);
-                        letterEffects[rawCues.Count + 1] = new LetterEffect("Dialogue: " + string.Join(",", fields, 0, fields.Length - 1) + ",",
-                            generatedLines.ConvertAll(g => lines[events[g].Line.LineIndex]));
+                        {
+                            if (!layers.Contains(events[g].Layer))
+                                layers.Add(events[g].Layer);
+                        }
+                        int marginLColumn = AssSubtitleUtils.ResolveFieldIndex(formatByLine[dialogue.LineIndex], "MarginL");
+                        int marginRColumn = AssSubtitleUtils.ResolveFieldIndex(formatByLine[dialogue.LineIndex], "MarginR");
+                        List<string> prefixes = new List<string>();
+                        foreach (int? letterLayer in layers)
+                        {
+                            SubtitleLetterLook look = cleaner.ReadLetterLook(generatedLines.FindAll(g => events[g].Layer == letterLayer).ConvertAll(g => events[g].Raw));
+                            string tags = look.Tags;
+                            if (look.Alignment.HasValue && look.PositionY != null && styleLayouts.TryGetValue(style, out int[] layout) && layout[0] >= 1 && layout[0] <= 9
+                                && assDocument.TryGetScriptInfoInt("PlayResX", out int playResX))
+                            {
+                                int marginL = marginLColumn >= 0 && AssSubtitleUtils.TryParseInt(dialogue.Fields[marginLColumn], out int lineMarginL) && lineMarginL != 0 ? lineMarginL : layout[1];
+                                int marginR = marginRColumn >= 0 && AssSubtitleUtils.TryParseInt(dialogue.Fields[marginRColumn], out int lineMarginR) && lineMarginR != 0 ? lineMarginR : layout[2];
+                                int column = (layout[0] - 1) % 3;
+                                double x = column == 0 ? marginL : column == 2 ? playResX - marginR : (marginL + playResX - marginR) / 2.0;
+                                tags = "\\an" + ((look.Alignment.Value - 1) / 3 * 3 + column + 1).ToString(CultureInfo.InvariantCulture)
+                                    + "\\pos(" + x.ToString(CultureInfo.InvariantCulture) + "," + look.PositionY + ")" + tags;
+                            }
+                            string[] fields = (string[])dialogue.Fields.Clone();
+                            if (assEvent.LayerColumn >= 0 && letterLayer.HasValue)
+                                fields[assEvent.LayerColumn] = letterLayer.Value.ToString(CultureInfo.InvariantCulture);
+                            prefixes.Add("Dialogue: " + string.Join(",", fields, 0, fields.Length - 1) + "," + (tags.Length > 0 ? "{" + tags + "}" : ""));
+                        }
+                        letterEffects[rawCues.Count + 1] = new LetterEffect(prefixes, generatedLines.ConvertAll(g => lines[events[g].Line.LineIndex]));
                     }
 
                     // Indizi del tipo della combinazione sulle righe con testo leggibile, qualunque sia il tipo; i disegni restano fuori,
@@ -592,7 +639,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 return new SubtitleTranslationDocument(format, text, preamble, outputEncoding, empty, usages, letterEffects, untimed, REJECTION_NO_CUES);
 
             // Pulizia
-            SubtitleCueCleaner cleaner = new SubtitleCueCleaner(format);
             List<SubtitleCleanResult> cleanedCues = new List<SubtitleCleanResult>();
             foreach (RawCue raw in rawCues)
             {
@@ -684,8 +730,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// Scrive il file sostituendo i soli campi Text delle battute tradotte e delle loro copie su altri layer; la riga sorgente
-        /// tradotta di un effetto lettera per lettera resta com'è e una riga Dialogue col testo tradotto prende il posto delle righe
-        /// disegnate
+        /// tradotta di un effetto lettera per lettera resta com'è e una riga Dialogue col testo tradotto per layer delle lettere
+        /// prende il posto delle righe disegnate
         /// </summary>
         /// <param name="translatedText">Testo pulito tradotto per id, già validato</param>
         /// <returns>Byte del file, con lo stesso BOM e la stessa codifica del sorgente (UTF-8 per una codifica scelta)</returns>
@@ -704,7 +750,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     edits.Add(new TextEdit(cue.TextStart, cue.TextLength, cleaner.Recompose(cue, translation)));
                     continue;
                 }
-                edits.Add(new TextEdit(letterEffect.Lines[0].Start, letterEffect.Lines[0].Length, letterEffect.Prefix + cleaner.Recompose(cue, translation)));
+                string recomposed = cleaner.Recompose(cue, translation);
+                edits.Add(new TextEdit(letterEffect.Lines[0].Start, letterEffect.Lines[0].Length,
+                    string.Join(letterEffect.Lines[0].Terminator, letterEffect.Prefixes.ConvertAll(prefix => prefix + recomposed))));
                 for (int i = 1; i < letterEffect.Lines.Count; i++)
                     edits.Add(new TextEdit(letterEffect.Lines[i].Start, letterEffect.Lines[i].Length + letterEffect.Lines[i].Terminator.Length, ""));
             }
@@ -812,9 +860,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Riga sorgente di un effetto lettera per lettera
         /// </summary>
-        /// <param name="Prefix">Inizio della riga Dialogue tradotta fino al campo Text</param>
-        /// <param name="Lines">Righe fisiche disegnate dall'effetto nell'ordine del file; la prima lascia il posto alla riga tradotta</param>
-        private sealed record LetterEffect(string Prefix, List<SourceLine> Lines);
+        /// <param name="Prefixes">Inizio delle righe Dialogue tradotte, una per layer, fino al testo tradotto</param>
+        /// <param name="Lines">Righe fisiche disegnate dall'effetto nell'ordine del file; la prima lascia il posto alle righe tradotte</param>
+        private sealed record LetterEffect(List<string> Prefixes, List<SourceLine> Lines);
 
         /// <summary>
         /// Sostituzione di un tratto del testo decodificato
