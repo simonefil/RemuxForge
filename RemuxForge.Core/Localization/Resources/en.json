@@ -4253,6 +4253,7 @@
   "toolbox.subtitleTranslation.reason.RESERVED_CHAR": "Subtitle format code in the text",
   "toolbox.subtitleTranslation.reason.INVISIBLE_CHAR": "Invisible character in the text",
   "toolbox.subtitleTranslation.reason.GROUP_INCOMPLETE": "Split sentence partly rejected",
+  "toolbox.subtitleTranslation.reason.DELIVERY_SHIFTED": "Translations shifted between cues",
   "toolbox.subtitleTranslation.reason.GLOSSARY_FIELD_MISSING": "Missing value in the glossary",
   "toolbox.subtitleTranslation.reason.GLOSSARY_TYPE": "Wrong value type in the glossary",
   "toolbox.subtitleTranslation.reason.GLOSSARY_EMPTY": "Empty cell in the glossary",

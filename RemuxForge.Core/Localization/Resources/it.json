@@ -4253,6 +4253,7 @@
   "toolbox.subtitleTranslation.reason.RESERVED_CHAR": "Codice del formato nel testo",
   "toolbox.subtitleTranslation.reason.INVISIBLE_CHAR": "Carattere invisibile nel testo",
   "toolbox.subtitleTranslation.reason.GROUP_INCOMPLETE": "Frase spezzata respinta in parte",
+  "toolbox.subtitleTranslation.reason.DELIVERY_SHIFTED": "Traduzioni slittate di battuta",
   "toolbox.subtitleTranslation.reason.GLOSSARY_FIELD_MISSING": "Valore mancante nel glossario",
   "toolbox.subtitleTranslation.reason.GLOSSARY_TYPE": "Valore di tipo sbagliato nel glossario",
   "toolbox.subtitleTranslation.reason.GLOSSARY_EMPTY": "Cella vuota nel glossario",

@@ -62,6 +62,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Battuta valida di un gruppo con un'altra battuta respinta</summary>
         public const string GROUP_INCOMPLETE = "GROUP_INCOMPLETE";
 
+        /// <summary>Consegna slittata: un segno passato da una battuta a quella accanto, tutta la consegna respinta</summary>
+        public const string DELIVERY_SHIFTED = "DELIVERY_SHIFTED";
+
         /// <summary>Resa del glossario assente nella traduzione</summary>
         public const string GLOSSARY_MISSING = "GLOSSARY_MISSING";
 
@@ -206,6 +209,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             string deliveryMessage = "no " + SUBMIT_TOOL + " call was received.";
             List<TranslationValidationIssue> entryIssues = new List<TranslationValidationIssue>();
             Dictionary<int, List<string>> delivered = new Dictionary<int, List<string>>();
+            List<int> deliveryOrder = new List<int>();
             if (submissions != null && submissions.Count > 0)
             {
                 deliveryCode = ARGS_INVALID;
@@ -247,6 +251,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                 {
                                     texts = new List<string>();
                                     delivered[id] = texts;
+                                    deliveryOrder.Add(id);
                                 }
                                 texts.Add(textElement.GetString());
                             }
@@ -286,6 +291,36 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     text = this.ValidateText(byId[id], texts[0], cueIssues, true);
                 }
                 results[id] = new CueValidationResult(id, text, cueIssues);
+            }
+
+            // Slittamento: un segno che manca su una battuta e compare in più su quella accanto nella consegna è passato dall'una
+            // all'altra, quindi le traduzioni sono scalate di posizione e anche quelle senza segni sono sugli id sbagliati. Si
+            // respinge tutta la consegna, così il ritentativo non ha in coda i testi slittati
+            string shift = null;
+            for (int i = 0; i + 1 < deliveryOrder.Count && shift == null; i++)
+            {
+                foreach (TranslationValidationIssue missing in issues[deliveryOrder[i]].Concat(issues[deliveryOrder[i + 1]]))
+                {
+                    if (missing.Code != MARK_MISSING)
+                        continue;
+                    int other = missing.Id.Value == deliveryOrder[i] ? deliveryOrder[i + 1] : deliveryOrder[i];
+                    if (issues[other].Exists(extra => extra.Code == MARK_EXTRA && extra.Args["n"] == missing.Args["n"]))
+                    {
+                        shift = "span ⟦" + missing.Args["n"] + "⟧ of cue " + missing.Id.Value + " was delivered in cue " + other
+                            + ": the translations are shifted to neighbouring ids, so the whole delivery is rejected. Give each id the translation of its own source cue; "
+                            + "the tab-indented lines under an id are more lines of that same cue.";
+                        break;
+                    }
+                }
+            }
+            if (shift != null)
+            {
+                entryIssues.Add(Issue(null, DELIVERY_SHIFTED, IssueSeverity.Error, shift));
+                foreach (int id in requested)
+                {
+                    if (!results[id].HasErrors)
+                        issues[id].Add(Issue(id, DELIVERY_SHIFTED, IssueSeverity.Error, "rejected with the shifted delivery; deliver it again."));
+                }
             }
 
             // Gruppi: una battuta respinta per un errore suo rimanda tutto il gruppo, e il messaggio cita lei
