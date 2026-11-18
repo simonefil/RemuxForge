@@ -1410,8 +1410,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Aspetto e posizione comuni alle righe di un layer di un effetto disegnato lettera per lettera. Aspetto: lo stato a
         /// riposo delle lettere ferme (\pos), o di tutte se nessuna è ferma: i tag di stato e gli interruttori della riga con i
         /// valori finali delle \t d'arrivo, tenuti quando ogni riga ha lo stesso valore e diverso dallo stile. Una \t è d'arrivo
-        /// se parte da 0 o se porta un'alpha da invisibile (FF) a visibile, come una comparsa ritardata; le altre sono l'uscita. Posizione: l'allineamento \an di tutte le righe e la y delle
-        /// righe ferme, se ognuno è uno solo
+        /// se parte da 0 o se porta un'alpha da invisibile (FF) a visibile, come una comparsa ritardata: nell'ordine della riga,
+        /// ogni \t d'arrivo lascia le sue alpha alle \t successive; le altre \t sono l'uscita. Posizione: l'allineamento \an di
+        /// tutte le righe e la y delle righe ferme, se ognuno è uno solo
         /// </summary>
         /// <param name="texts">Campi Text delle righe</param>
         /// <param name="styleState">Stato dello stile delle righe per canale (<see cref="ReadStyleState"/>)</param>
@@ -1447,12 +1448,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     continue;
                 List<AssTag> sequence = tags.FindAll(tag => tag.Name != ASS_TRANSFORM);
                 Dictionary<string, string> alphas = new Dictionary<string, string>(StringComparer.Ordinal);
-                foreach (AssTag tag in sequence)
+                Action<AssTag> trackAlpha = tag =>
                 {
                     if (s_assStateChannels.TryGetValue(tag.Name, out string[] tagChannels))
                         foreach (string channel in Array.FindAll(tagChannels, channel => channel.Length == 2 && channel[1] == 'a'))
                             alphas[channel] = ChannelValue(channel, tag.Arg);
-                }
+                };
+                sequence.ForEach(trackAlpha);
                 foreach (AssTag tag in tags.FindAll(tag => tag.Name == ASS_TRANSFORM))
                 {
                     string inner = tag.Arg.Trim().TrimStart('(');
@@ -1461,8 +1463,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     bool fromStart = times.Length < 2 || (double.TryParse(times[0].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double from) && from == 0);
                     bool reveals = innerTags.Exists(innerTag => s_assStateChannels.TryGetValue(innerTag.Name, out string[] innerChannels)
                         && Array.Exists(innerChannels, channel => alphas.GetValueOrDefault(channel) == "FF" && ChannelValue(channel, innerTag.Arg) is string target && target != "FF"));
-                    if (fromStart || reveals)
-                        sequence.AddRange(innerTags);
+                    if (!fromStart && !reveals)
+                        continue;
+                    sequence.AddRange(innerTags);
+                    innerTags.ForEach(trackAlpha);
                 }
                 List<AssTag> state = new List<AssTag>();
                 foreach (AssTag tag in sequence)
