@@ -653,7 +653,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // cui tutti cadono nella stessa fetta di un centesimo (tolte le doppie di un'altra che va), quando tutte danno lo
                 // stesso fotogramma arrotondato (23,976 e 24 non si separano su poche righe); 0 se non si ricava
                 long? dummyFrame = null;
-                foreach (string line in legacy ? new List<string>() : assDocument.Lines)
+                foreach (string line in assDocument.Lines)
                 {
                     Match dummy = s_dummyVideo.Match(line);
                     if (dummy.Success && double.TryParse(dummy.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double dummyRate) && dummyRate > 0)
