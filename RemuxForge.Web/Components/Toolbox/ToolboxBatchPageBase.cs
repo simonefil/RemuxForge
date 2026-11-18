@@ -45,7 +45,7 @@ namespace RemuxForge.Web.Components.Toolbox
         /// <inheritdoc />
         public override IReadOnlyList<UiCommandDefinition> BuildUiCommands(bool busy)
         {
-            UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar | UiCommandPlacement.Status;
+            UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar;
 
             return new List<UiCommandDefinition>
             {
@@ -53,20 +53,16 @@ namespace RemuxForge.Web.Components.Toolbox
                 {
                     AsyncCallback = this.AddFilesAsync,
                     ToolbarLabel = AppText.T(this.AddFilesKey),
-                    StatusLabel = AppText.T(this.AddFilesKey),
-                    ToolbarOrder = 10,
-                    StatusOrder = 10
+                    ToolbarOrder = 10
                 },
                 new UiCommandDefinition(AppText.T(this.Orchestrator.TextPrefix + ".start"), "F10", "play_arrow", allSurfaces, UiCommandMenuSection.Actions, busy || !this.Orchestrator.CanStart, this.Orchestrator.Start)
                 {
-                    ToolbarOrder = 20,
-                    StatusOrder = 20
+                    ToolbarOrder = 20
                 },
                 new UiCommandDefinition(AppText.T("web.toolbox.list.clear"), "Ctrl+L", "clear_all", allSurfaces, UiCommandMenuSection.File, busy || this.IsListEmpty, this.Orchestrator.Clear)
                 {
                     SecondaryToolbar = true,
-                    ToolbarOrder = 15,
-                    StatusOrder = 100
+                    ToolbarOrder = 15
                 }
             };
         }

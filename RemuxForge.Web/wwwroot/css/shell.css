@@ -26,7 +26,7 @@
     display: grid;
     /* La colonna segue la larghezza dello stage, non quella del contenuto: header e griglie si adattano al riquadro */
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     min-width: 0;
     min-height: 0;
     overflow: hidden;
@@ -355,53 +355,6 @@
     grid-column: 2;
     grid-row: 1;
     text-align: right;
-}
-
-.status-bar {
-    display: flex;
-    min-height: 2rem;
-    align-items: center;
-    gap: calc(var(--rz-gap) * 0.25);
-    padding: 0 var(--rz-gap);
-    /* Nessuno scorrimento: le etichette dei comandi si accorciano con l'ellissi e il testo intero resta nel tooltip */
-    overflow: hidden;
-    border-top: var(--rz-footer-border);
-    background: var(--rz-footer-background-color);
-    color: var(--rz-footer-color);
-}
-
-.cmd-key {
-    display: inline-flex;
-    min-width: 0;
-    flex: 0 1 auto;
-    min-height: 1.75rem;
-    align-items: center;
-    gap: calc(var(--rz-gap) * 0.25);
-    padding: 0 calc(var(--rz-gap) * 0.5);
-    border-radius: var(--rz-menu-item-border-radius);
-    color: var(--rz-text-color);
-    cursor: pointer;
-    white-space: nowrap;
-    border: 0;
-    background: transparent;
-    box-shadow: none;
-}
-
-.cmd-key:hover {
-    background: var(--rz-menu-item-hover-background-color);
-    color: var(--rz-menu-item-hover-color);
-}
-
-.cmd-key-text {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.key-label {
-    color: var(--rz-text-secondary-color);
-    font-size: var(--rz-text-caption-font-size);
-    font-weight: var(--rz-text-caption-font-weight);
 }
 
 .rf-menu-bar {

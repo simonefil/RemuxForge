@@ -13,7 +13,6 @@ namespace RemuxForge.Web.Services
         None = 0,
         Menu = 1,
         Toolbar = 2,
-        Status = 4,
         ContextMenu = 8
     }
 
@@ -43,7 +42,6 @@ namespace RemuxForge.Web.Services
         {
             this.Label = "";
             this.ToolbarLabel = "";
-            this.StatusLabel = "";
             this.Shortcut = "";
             this.Icon = "";
             this.Callback = null;
@@ -105,15 +103,6 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
-        /// Restituisce l'etichetta per la status bar
-        /// </summary>
-        /// <returns>Etichetta specifica o principale</returns>
-        public string GetStatusLabel()
-        {
-            return string.IsNullOrEmpty(this.StatusLabel) ? this.Label : this.StatusLabel;
-        }
-
-        /// <summary>
         /// Verifica se il tasto premuto appartiene soltanto a comandi disabilitati
         /// </summary>
         /// <param name="commands">Comandi della modalità corrente</param>
@@ -156,11 +145,6 @@ namespace RemuxForge.Web.Services
         public string ToolbarLabel { get; set; }
 
         /// <summary>
-        /// Etichetta alternativa per status bar
-        /// </summary>
-        public string StatusLabel { get; set; }
-
-        /// <summary>
         /// Scorciatoia visualizzata
         /// </summary>
         public string Shortcut { get; set; }
@@ -174,11 +158,6 @@ namespace RemuxForge.Web.Services
         /// Ordine nella toolbar
         /// </summary>
         public int ToolbarOrder { get; set; }
-
-        /// <summary>
-        /// Ordine nella status bar
-        /// </summary>
-        public int StatusOrder { get; set; }
 
         /// <summary>
         /// Destinazioni di rendering

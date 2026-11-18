@@ -172,10 +172,6 @@ ToolboxCard currentCard = ToolboxCatalog.Find(_currentCardId);
 
     @* Avanzamento *@
     <ProgressPanelComponent Progress="@ToolboxCatalog.GetOrchestrator(currentCard).Progress" ItemLabelKey="@currentCard.ProgressItemKey" />
-
-    @* Barra di Stato *@
-    <StatusBarComponent Commands="@BuildUiCommands()"
-                        OnCommand="ExecuteUiCommandAsync" />
     </section>
     }
 </div>

@@ -280,13 +280,11 @@
 
         // Accanto ad Aggiungi video, con la sua scorciatoia: le tracce sono il secondo elenco della card
         commands.Insert(1, new UiCommandDefinition(AppText.T("web.toolbox.addTracks.addTracksMenu"), "F6", "playlist_add",
-            UiCommandPlacement.Menu | UiCommandPlacement.Toolbar | UiCommandPlacement.Status, UiCommandMenuSection.File, busy, null)
+            UiCommandPlacement.Menu | UiCommandPlacement.Toolbar, UiCommandMenuSection.File, busy, null)
         {
             AsyncCallback = this.AddTrackFilesAsync,
             ToolbarLabel = AppText.T("web.toolbox.addTracks.addTracks"),
-            StatusLabel = AppText.T("web.toolbox.addTracks.addTracks"),
-            ToolbarOrder = 11,
-            StatusOrder = 11
+            ToolbarOrder = 11
         });
 
         return commands;

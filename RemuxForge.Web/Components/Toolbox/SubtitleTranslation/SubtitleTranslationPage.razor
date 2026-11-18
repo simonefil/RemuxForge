@@ -1172,7 +1172,7 @@
     /// <inheritdoc />
     public override IReadOnlyList<UiCommandDefinition> BuildUiCommands(bool busy)
     {
-        UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar | UiCommandPlacement.Status;
+        UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar;
         TranslationProject project = this.Orchestrator.Project;
         List<UiCommandDefinition> commands = new List<UiCommandDefinition>();
 
@@ -1182,14 +1182,12 @@
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.newProject"), "F5", "add", allSurfaces, UiCommandMenuSection.File, busy,
                 () => { this._step = 0; this.Orchestrator.NewProject(); })
             {
-                ToolbarOrder = 10,
-                StatusOrder = 10
+                ToolbarOrder = 10
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.openProject"), "", "folder_open", allSurfaces, UiCommandMenuSection.File, busy || selected == null,
                 () => this.OpenProject(selected))
             {
-                ToolbarOrder = 11,
-                StatusOrder = 11
+                ToolbarOrder = 11
             });
             TranslationJob selectedJob = selected != null && this._jobs.TryGetValue(selected.Id, out TranslationJob found) ? found : null;
             bool analysisStopped = selected != null && selected.Analysis != null && selected.Analysis.Status == TranslationAnalysisStatus.Stopped;
@@ -1198,31 +1196,27 @@
                 busy || (!analysisStopped && !jobStopped), null)
             {
                 Callback = () => this.Resume(selected),
-                ToolbarOrder = 12,
-                StatusOrder = 12
+                ToolbarOrder = 12
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.importProject"), "", "unarchive", allSurfaces, UiCommandMenuSection.File, busy, null)
             {
                 AsyncCallback = this.ImportProjectAsync,
                 SecondaryToolbar = true,
-                ToolbarOrder = 13,
-                StatusOrder = 13
+                ToolbarOrder = 13
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.exportProject"), "", "archive", allSurfaces, UiCommandMenuSection.File,
                 busy || !this.Orchestrator.CanExportProject(selected, selectedJob), null)
             {
                 AsyncCallback = () => this.ExportProjectAsync(selected),
                 SecondaryToolbar = true,
-                ToolbarOrder = 14,
-                StatusOrder = 14
+                ToolbarOrder = 14
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.deleteProject"), "", "delete", allSurfaces, UiCommandMenuSection.File, busy || selected == null, null)
             {
                 AsyncCallback = () => this.DeleteProjectAsync(selected),
                 SecondaryToolbar = true,
                 DangerToolbar = true,
-                ToolbarOrder = 15,
-                StatusOrder = 100
+                ToolbarOrder = 15
             });
             return commands;
         }
@@ -1231,8 +1225,7 @@
             () => { this.CancelEditing(); this.Orchestrator.CloseProject(); this.ReloadProjects(); })
         {
             SecondaryToolbar = true,
-            ToolbarOrder = 18,
-            StatusOrder = 101
+            ToolbarOrder = 18
         });
 
         bool stopped = project.Analysis != null && project.Analysis.Status == TranslationAnalysisStatus.Stopped;
@@ -1241,41 +1234,35 @@
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.list.addFiles"), "F5", "add", allSurfaces, UiCommandMenuSection.File, busy || this.Orchestrator.FilesLocked, null)
             {
                 AsyncCallback = this.AddFilesAsync,
-                ToolbarOrder = 10,
-                StatusOrder = 10
+                ToolbarOrder = 10
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.importGlossary"), "", "upload_file", allSurfaces, UiCommandMenuSection.File, busy || !this.Orchestrator.CanImportGlossary, null)
             {
                 AsyncCallback = this.ImportGlossaryAsync,
-                ToolbarOrder = 11,
-                StatusOrder = 11
+                ToolbarOrder = 11
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.exportGlossary"), "", "download", allSurfaces, UiCommandMenuSection.File, busy || project.Glossary == null, null)
             {
                 AsyncCallback = this.ExportGlossaryAsync,
                 SecondaryToolbar = true,
-                ToolbarOrder = 15,
-                StatusOrder = 15
+                ToolbarOrder = 15
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.models"), "", "tune", allSurfaces, UiCommandMenuSection.Actions, busy, null)
             {
                 AsyncCallback = this.OpenModelsAsync,
                 SecondaryToolbar = true,
-                ToolbarOrder = 16,
-                StatusOrder = 16
+                ToolbarOrder = 16
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.list.clear"), "Ctrl+L", "clear_all", allSurfaces, UiCommandMenuSection.File, busy || this.Orchestrator.FilesLocked || this.Orchestrator.GetRecords().Count == 0, this.Orchestrator.Clear)
             {
                 SecondaryToolbar = true,
-                ToolbarOrder = 17,
-                StatusOrder = 17
+                ToolbarOrder = 17
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.next"), "", "arrow_forward", allSurfaces, UiCommandMenuSection.Actions,
                 busy || project.ReachedStep < TranslationProjectStep.Glossary,
                 () => { this._step = STEP_GLOSSARY; this.OnStateChanged.InvokeAsync(); })
             {
-                ToolbarOrder = 13,
-                StatusOrder = 13
+                ToolbarOrder = 13
             });
         }
         else if (this._step == STEP_GLOSSARY)
@@ -1288,22 +1275,19 @@
                     this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyApproved"), AppText.F("web.toolbox.subtitleTranslation.revision", this.Orchestrator.Project.Glossary.Revision));
                 })
             {
-                ToolbarOrder = 10,
-                StatusOrder = 10
+                ToolbarOrder = 10
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.exportGlossary"), "", "download", allSurfaces, UiCommandMenuSection.File,
                 busy || project.Glossary == null, null)
             {
                 AsyncCallback = this.ExportGlossaryAsync,
-                ToolbarOrder = 11,
-                StatusOrder = 11
+                ToolbarOrder = 11
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.next"), "", "arrow_forward", allSurfaces, UiCommandMenuSection.Actions,
                 busy || project.ReachedStep < TranslationProjectStep.Translation,
                 () => { this.CancelEditing(); this._step = STEP_TRANSLATION; this.OnStateChanged.InvokeAsync(); })
             {
-                ToolbarOrder = 13,
-                StatusOrder = 13
+                ToolbarOrder = 13
             });
         }
         else
@@ -1320,8 +1304,7 @@
                     busy || !this.Orchestrator.CanStartJob, null)
                 {
                     Callback = this.StartJob,
-                    ToolbarOrder = 10,
-                    StatusOrder = 10
+                    ToolbarOrder = 10
                 });
             }
 
@@ -1331,8 +1314,7 @@
                     busy || !this.Orchestrator.CanConfirmNewTerms, null)
                 {
                     Callback = this.ConfirmNewTerms,
-                    ToolbarOrder = 10,
-                    StatusOrder = 10
+                    ToolbarOrder = 10
                 });
             }
 
@@ -1342,8 +1324,7 @@
                     busy || !this.Orchestrator.CanEditCues,
                     () => { this.CancelCueEditing(); this.Orchestrator.AdvanceToExport(); this._step = STEP_EXPORT; this.OnStateChanged.InvokeAsync(); })
                 {
-                    ToolbarOrder = 13,
-                    StatusOrder = 13
+                    ToolbarOrder = 13
                 });
             }
 
@@ -1353,16 +1334,14 @@
                     busy || !this.Orchestrator.CanEditCues || !string.IsNullOrEmpty(this.Orchestrator.OutputFolderError), null)
                 {
                     AsyncCallback = this.ExportSubtitlesAsync,
-                    ToolbarOrder = 10,
-                    StatusOrder = 10
+                    ToolbarOrder = 10
                 });
                 commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.exportGlossary"), "", "download", allSurfaces, UiCommandMenuSection.File,
                     busy || project.Glossary == null, null)
                 {
                     AsyncCallback = this.ExportGlossaryAsync,
                     SecondaryToolbar = true,
-                    ToolbarOrder = 12,
-                    StatusOrder = 12
+                    ToolbarOrder = 12
                 });
             }
 
@@ -1371,8 +1350,7 @@
             {
                 AsyncCallback = () => this.ExportProjectAsync(project),
                 SecondaryToolbar = this._step == STEP_EXPORT,
-                ToolbarOrder = 11,
-                StatusOrder = 11
+                ToolbarOrder = 11
             });
         }
 
@@ -1386,8 +1364,7 @@
                 allSurfaces, UiCommandMenuSection.Actions, busy || !this.Orchestrator.CanStart, null)
             {
                 Callback = this.Analyze,
-                ToolbarOrder = 12,
-                StatusOrder = 12
+                ToolbarOrder = 12
             });
         }
 

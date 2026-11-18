@@ -2143,17 +2143,15 @@ namespace RemuxForge.Web.Components.Pages
                 AppText.T("web.menu.stop"),
                 "F12",
                 "stop_circle",
-                UiCommandPlacement.Menu | UiCommandPlacement.Toolbar | UiCommandPlacement.Status,
+                UiCommandPlacement.Menu | UiCommandPlacement.Toolbar,
                 UiCommandMenuSection.Actions,
                 !busy,
                 this.DoStop)
             {
                 ToolbarLabel = AppText.T("web.status.stop"),
-                StatusLabel = AppText.T("web.status.stop"),
                 SecondaryToolbar = true,
                 DangerToolbar = true,
-                ToolbarOrder = 20,
-                StatusOrder = 90
+                ToolbarOrder = 20
             });
             if (this._currentCardId != Options.MODE_REMUX)
             {
@@ -2223,21 +2221,17 @@ namespace RemuxForge.Web.Components.Pages
         /// <param name="busy">Stato operativo globale</param>
         private void AddMetadataUiCommands(List<UiCommandDefinition> commands, bool busy)
         {
-            UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar | UiCommandPlacement.Status;
+            UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar;
 
-            commands.Add(new UiCommandDefinition(AppText.T("web.menu.metadata.clear"), "Ctrl+L", "", UiCommandPlacement.Menu | UiCommandPlacement.Status, UiCommandMenuSection.File, busy, null)
+            commands.Add(new UiCommandDefinition(AppText.T("web.menu.metadata.clear"), "Ctrl+L", "", UiCommandPlacement.Menu, UiCommandMenuSection.File, busy, null)
             {
-                AsyncCallback = this.DoClearAsync,
-                StatusLabel = AppText.T("web.status.metadata.clear"),
-                StatusOrder = 100
+                AsyncCallback = this.DoClearAsync
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.metadata.loadPreset"), "F3", "rule", allSurfaces, UiCommandMenuSection.File, busy, null)
             {
                 AsyncCallback = this.ShowMetadataPresetAsync,
                 ToolbarLabel = AppText.T("web.status.metadata.preset"),
-                StatusLabel = AppText.T("web.status.metadata.preset"),
-                ToolbarOrder = 20,
-                StatusOrder = 20
+                ToolbarOrder = 20
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.metadata.ai.toolbar"), "", "auto_awesome", UiCommandPlacement.Toolbar, UiCommandMenuSection.Actions, busy || this._metadataRecords == null || this._metadataRecords.Count == 0 || !this._aiConfigured, null)
             {
@@ -2253,43 +2247,31 @@ namespace RemuxForge.Web.Components.Pages
             {
                 AsyncCallback = this.ShowMetadataManualEditAsync,
                 ToolbarLabel = AppText.T("web.status.metadata.manualEdit"),
-                StatusLabel = AppText.T("web.status.metadata.manualEdit"),
-                ToolbarOrder = 40,
-                StatusOrder = 30
+                ToolbarOrder = 40
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.metadata.scanInput"), "F5", "folder_open", allSurfaces, UiCommandMenuSection.Actions, busy, null)
             {
                 AsyncCallback = this.DoScanAsync,
                 ToolbarLabel = AppText.T("web.status.scan"),
-                StatusLabel = AppText.T("web.status.scan"),
-                ToolbarOrder = 10,
-                StatusOrder = 40
+                ToolbarOrder = 10
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.metadata.analyze"), "F6", "manage_search", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoAnalyzeAll)
             {
                 ToolbarLabel = AppText.T("web.status.metadata.analyze"),
-                StatusLabel = AppText.T("web.status.metadata.analyze"),
-                ToolbarOrder = 30,
-                StatusOrder = 50
+                ToolbarOrder = 30
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.metadata.applySelected"), "F9", "publish", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoMergeSelected)
             {
-                StatusLabel = AppText.T("web.status.metadata.apply"),
-                ToolbarOrder = 60,
-                StatusOrder = 60
+                ToolbarOrder = 60
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.metadata.applyAll"), "F10", "done_all", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoMergeAll)
             {
-                StatusLabel = AppText.T("web.status.all"),
-                ToolbarOrder = 70,
-                StatusOrder = 70
+                ToolbarOrder = 70
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.metadata.advancedRename"), "F11", "drive_file_rename_outline", allSurfaces, UiCommandMenuSection.Actions, busy, null)
             {
                 ToolbarLabel = AppText.T("web.status.metadata.rename"),
-                StatusLabel = AppText.T("web.status.metadata.rename"),
                 ToolbarOrder = 50,
-                StatusOrder = 80,
                 AsyncCallback = this.ShowMetadataRenameAsync
             });
         }
@@ -2301,72 +2283,54 @@ namespace RemuxForge.Web.Components.Pages
         /// <param name="busy">Stato operativo globale</param>
         private void AddSplitUiCommands(List<UiCommandDefinition> commands, bool busy)
         {
-            UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar | UiCommandPlacement.Status;
+            UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar;
             // Scansione, analisi e taglio partono da una sorgente configurata
             bool unconfigured = !this.SplitOrchestrator.HasSource;
 
             commands.Add(new UiCommandDefinition(AppText.T("web.remux.clear"), "", "clear_all", allSurfaces, UiCommandMenuSection.File, this.SplitOrchestrator.IsBusy || this._splitResetInProgress, null)
             {
                 AsyncCallback = this.DoClearAsync,
-                ToolbarLabel = AppText.T("web.remux.clear"), StatusLabel = AppText.T("web.remux.clear"),
-                SecondaryToolbar = true, ToolbarOrder = 15, StatusOrder = 100
+                ToolbarLabel = AppText.T("web.remux.clear"),
+                SecondaryToolbar = true, ToolbarOrder = 15
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.configSplit"), "F2", "settings", allSurfaces, UiCommandMenuSection.File, busy, this.ShowConfig)
             {
                 ToolbarLabel = AppText.T("web.status.config"),
-                StatusLabel = AppText.T("web.status.config"),
                 SecondaryToolbar = true,
-                ToolbarOrder = 10,
-                StatusOrder = 10
+                ToolbarOrder = 10
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.scanInput"), "F5", "folder_open", allSurfaces, UiCommandMenuSection.Actions, busy || unconfigured, null)
             {
                 AsyncCallback = this.DoScanAsync,
                 ToolbarLabel = AppText.T("web.status.scan"),
-                StatusLabel = AppText.T("web.status.scan"),
-                ToolbarOrder = 10,
-                StatusOrder = 20
+                ToolbarOrder = 10
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.split.analyzeSelected"), "F6", "manage_search", allSurfaces, UiCommandMenuSection.Actions, busy || unconfigured, this.DoAnalyzeSplitSelected)
             {
                 ToolbarLabel = AppText.T("web.status.split.analyzeSelected"),
-                StatusLabel = AppText.T("web.status.split.analyzeSelected"),
-                ToolbarOrder = 15,
-                StatusOrder = 22
+                ToolbarOrder = 15
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.split.analyzeAll"), "F7", "checklist", allSurfaces, UiCommandMenuSection.Actions, busy || unconfigured, this.DoAnalyzeSplitAll)
             {
                 ToolbarLabel = AppText.T("web.status.split.analyzeAll"),
-                StatusLabel = AppText.T("web.status.split.analyzeAll"),
-                ToolbarOrder = 17,
-                StatusOrder = 24
+                ToolbarOrder = 17
             });
-            commands.Add(new UiCommandDefinition(AppText.T("web.context.split.skip"), "F8", "block", UiCommandPlacement.Menu | UiCommandPlacement.Status, UiCommandMenuSection.Actions, busy || unconfigured, this.ToggleSplitSkip)
-            {
-                StatusLabel = AppText.T("web.status.skip"),
-                StatusOrder = 25
-            });
+            commands.Add(new UiCommandDefinition(AppText.T("web.context.split.skip"), "F8", "block", UiCommandPlacement.Menu, UiCommandMenuSection.Actions, busy || unconfigured, this.ToggleSplitSkip));
             // Editor di taglio sul file selezionato
             commands.Add(new UiCommandDefinition(AppText.T("web.split.openEditor"), "F4", "edit", allSurfaces, UiCommandMenuSection.Actions, busy || unconfigured || this._splitResetInProgress || this._selectedSplitRecord == null, () => this.OpenSplitEditor())
             {
                 ToolbarLabel = AppText.T("web.status.split.openEditor"),
-                StatusLabel = AppText.T("web.status.split.openEditor"),
-                ToolbarOrder = 18,
-                StatusOrder = 15
+                ToolbarOrder = 18
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.split.splitSelected"), "F9", "content_cut", allSurfaces, UiCommandMenuSection.Actions, busy || unconfigured || this._splitReviewStage != null, () => this.DoSplitSelected(false))
             {
                 ToolbarLabel = AppText.T("web.status.split.splitSelected"),
-                StatusLabel = AppText.T("web.status.split.splitSelected"),
-                ToolbarOrder = 19,
-                StatusOrder = 26
+                ToolbarOrder = 19
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.splitAll"), "F10", "call_split", allSurfaces, UiCommandMenuSection.Actions, busy || unconfigured || this._splitReviewStage != null, this.DoMergeAll)
             {
                 ToolbarLabel = AppText.T("web.status.splitAll"),
-                StatusLabel = AppText.T("web.status.splitAll"),
-                ToolbarOrder = 20,
-                StatusOrder = 30
+                ToolbarOrder = 20
             });
             // Comando distinto dalle modalità di taglio (C10, C11)
             commands.Add(new UiCommandDefinition(AppText.T("web.splitJoin.menu"), "", "merge", UiCommandPlacement.Menu | UiCommandPlacement.Toolbar, UiCommandMenuSection.Actions, busy || this._splitReviewStage != null, null)
@@ -2385,63 +2349,49 @@ namespace RemuxForge.Web.Components.Pages
         /// <param name="busy">Stato operativo globale</param>
         private void AddRemuxUiCommands(List<UiCommandDefinition> commands, bool busy)
         {
-            UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar | UiCommandPlacement.Status;
+            UiCommandPlacement allSurfaces = UiCommandPlacement.Menu | UiCommandPlacement.Toolbar;
 
             commands.Add(new UiCommandDefinition(AppText.T("web.remux.clear"), "", "clear_all", allSurfaces, UiCommandMenuSection.File, this.Orchestrator.IsBusy, null)
             {
                 AsyncCallback = this.DoClearAsync,
-                ToolbarLabel = AppText.T("web.remux.clear"), StatusLabel = AppText.T("web.remux.clear"),
-                SecondaryToolbar = true, ToolbarOrder = 15, StatusOrder = 100
+                ToolbarLabel = AppText.T("web.remux.clear"),
+                SecondaryToolbar = true, ToolbarOrder = 15
             });
 
             commands.Add(new UiCommandDefinition(AppText.T("web.remux.configure"), "F2", "settings", allSurfaces, UiCommandMenuSection.File, busy, this.ShowConfig)
             {
                 ToolbarLabel = AppText.T("web.remux.configure"),
-                StatusLabel = AppText.T("web.status.config"),
                 SecondaryToolbar = true,
-                ToolbarOrder = 10,
-                StatusOrder = 10
+                ToolbarOrder = 10
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.scanFile"), "F5", "folder_open", allSurfaces, UiCommandMenuSection.Actions, busy, null)
             {
                 AsyncCallback = this.DoScanAsync,
                 ToolbarLabel = AppText.T("web.status.scan"),
-                StatusLabel = AppText.T("web.status.scan"),
-                ToolbarOrder = 10,
-                StatusOrder = 20
+                ToolbarOrder = 10
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.analyzeSelected"), "F6", "manage_search", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoAnalyzeSelected)
             {
                 ToolbarLabel = AppText.T("web.status.analyze"),
-                StatusLabel = AppText.T("web.status.analyze"),
-                ToolbarOrder = 20,
-                StatusOrder = 30
+                ToolbarOrder = 20
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.analyzeAll"), "F7", "travel_explore", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoAnalyzeAll)
             {
-                StatusLabel = AppText.T("web.status.all"),
-                ToolbarOrder = 30,
-                StatusOrder = 40
+                ToolbarOrder = 30
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.skipUnskip"), "F8", "skip_next", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoToggleSkip)
             {
                 ToolbarLabel = AppText.T("web.status.skip"),
-                StatusLabel = AppText.T("web.status.skip"),
-                ToolbarOrder = 40,
-                StatusOrder = 50
+                ToolbarOrder = 40
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.processSelected"), "F9", "merge_type", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoMergeSelected)
             {
                 ToolbarLabel = AppText.T("web.status.process"),
-                StatusLabel = AppText.T("web.status.process"),
-                ToolbarOrder = 50,
-                StatusOrder = 60
+                ToolbarOrder = 50
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.processAll"), "F10", "done_all", allSurfaces, UiCommandMenuSection.Actions, busy, this.DoMergeAll)
             {
-                StatusLabel = AppText.T("web.status.all"),
-                ToolbarOrder = 60,
-                StatusOrder = 70
+                ToolbarOrder = 60
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.toolPaths"), "", "", UiCommandPlacement.Menu, UiCommandMenuSection.Settings, busy, null) { AsyncCallback = this.ShowToolPathsAsync });
             commands.Add(new UiCommandDefinition(AppText.T("web.menu.ai"), "", "", UiCommandPlacement.Menu, UiCommandMenuSection.Settings, busy, null) { AsyncCallback = this.ShowAiSettingsAsync });
