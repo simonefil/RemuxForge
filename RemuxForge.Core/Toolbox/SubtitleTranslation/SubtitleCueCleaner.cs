@@ -613,6 +613,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     {
                         items[index].GroupEnd = groupEnd;
                         segment.Items.Add(index);
+
+                        // Un tag di formattazione che per il calcolo non cambia lo stato può cambiarlo rispetto allo stile, che il
+                        // codice non legge: il blocco resta al suo posto fra le parole, come in una battuta posizionale
+                        for (int t = index; t <= groupEnd && !legacy && !isSrt; t++)
+                        {
+                            foreach (AssTag tag in items[t].AssTags ?? new List<AssTag>())
+                                segmented |= this.SwitchBit(tag.Name) >= 0 || tag.Name == ASS_STYLE_CHANNEL || tag.Name == ASS_TRANSFORM || s_assStateChannels.ContainsKey(tag.Name);
+                        }
                     }
                     else
                     {
@@ -1021,11 +1029,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             string value = text ?? "";
             bool unchanged = value == cue.CleanText;
 
-            // Battuta posizionale tradotta. Il sorgente è diviso dai suoi blocchi in pezzi; ogni confine sta alla stessa frazione dei
-            // caratteri nel testo tradotto, arrotondata alla metà per eccesso. I caratteri sono grafemi e un a capo conta come uno.
-            // Se il testo tradotto ha almeno tanti caratteri quanti pezzi, ogni pezzo ne riceve almeno uno: i confini si spostano in
-            // avanti e poi indietro quanto basta. Altrimenti i pezzi in fondo restano vuoti, coi loro blocchi uno dopo l'altro. I
-            // blocchi escono tutti, nell'ordine e coi valori originali: le durate del karaoke e la loro somma non cambiano
+            // Battuta posizionale tradotta. Il sorgente è diviso dai suoi blocchi in pezzi. I caratteri sono grafemi; spazi e a capo
+            // sono spazi. Un confine che nel sorgente tocca uno spazio va sul bordo dello stesso lato di uno spazio del testo tradotto,
+            // il più vicino alla stessa frazione dei caratteri, in avanti rispetto al confine precedente: un pezzo di soli spazi
+            // prende uno spazio intero del testo tradotto, un pezzo con testo prende testo. Senza uno spazio adatto il confine resta
+            // su quello precedente e il pezzo resta vuoto. I confini dentro le parole stanno alla stessa frazione fra i confini sugli
+            // spazi che li racchiudono, arrotondata alla metà per eccesso; se c'è posto ogni pezzo riceve almeno un carattere, coi
+            // confini spostati in avanti e poi indietro quanto basta. I blocchi escono tutti, nell'ordine e coi valori originali: le
+            // durate del karaoke e la loro somma non cambiano
             if (recipe.Segmented && !unchanged)
             {
                 int[] sourceStarts = StringInfo.ParseCombiningCharacters(cue.CleanText);
@@ -1049,14 +1060,77 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                 int sourceLength = sourceStarts.Length;
                 int targetLength = elements.Count;
+                bool[] sourceSpace = new bool[sourceLength];
+                for (int g = 0; g < sourceLength; g++)
+                {
+                    int end = g + 1 < sourceLength ? sourceStarts[g + 1] : cue.CleanText.Length;
+                    sourceSpace[g] = string.IsNullOrWhiteSpace(cue.CleanText.Substring(sourceStarts[g], end - sourceStarts[g]));
+                }
+                bool[] targetSpace = new bool[targetLength];
+                for (int g = 0; g < targetLength; g++)
+                    targetSpace[g] = string.IsNullOrWhiteSpace(elements[g]);
+
+                // Confini sugli spazi, in ordine
                 int[] targetCuts = new int[sourceCuts.Count];
+                bool[] onSpace = new bool[sourceCuts.Count];
+                int previousCut = -1;
                 for (int k = 0; k < sourceCuts.Count; k++)
-                    targetCuts[k] = (int)((2L * sourceCuts[k] * targetLength + sourceLength) / (2L * sourceLength));
-                bool everyPiece = targetLength >= sourceCuts.Count + 1;
-                for (int k = 0; k < targetCuts.Length; k++)
-                    targetCuts[k] = Math.Min(Math.Max(targetCuts[k], (k > 0 ? targetCuts[k - 1] : 0) + (everyPiece ? 1 : 0)), targetLength);
-                for (int k = targetCuts.Length - 1; k >= 0 && everyPiece; k--)
-                    targetCuts[k] = Math.Min(targetCuts[k], (k < targetCuts.Length - 1 ? targetCuts[k + 1] : targetLength) - 1);
+                {
+                    int cut = sourceCuts[k];
+                    bool spaceAfter = cut < sourceLength && sourceSpace[cut];
+                    bool spaceBefore = cut > 0 && sourceSpace[cut - 1];
+                    if (!spaceAfter && !spaceBefore)
+                        continue;
+
+                    onSpace[k] = true;
+                    int from = previousCut >= 0 ? targetCuts[previousCut] : 0;
+                    bool sourceText = false;
+                    for (int g = previousCut >= 0 ? sourceCuts[previousCut] : 0; g < cut && !sourceText; g++)
+                        sourceText = !sourceSpace[g];
+                    int wanted = (int)((2L * cut * targetLength + sourceLength) / (2L * sourceLength));
+                    int chosen = -1;
+                    bool targetText = false;
+                    for (int t = from; t <= targetLength; t++)
+                    {
+                        if (t > from && !targetSpace[t - 1])
+                            targetText = true;
+                        bool edge = spaceAfter
+                            ? t < targetLength && targetSpace[t] && (t == 0 || !targetSpace[t - 1])
+                            : t > 0 && targetSpace[t - 1] && (t == targetLength || !targetSpace[t]);
+                        if (edge && targetText == sourceText && (chosen < 0 || Math.Abs(t - wanted) < Math.Abs(chosen - wanted)))
+                            chosen = t;
+                    }
+                    if (chosen < 0)
+                        chosen = from;
+                    targetCuts[k] = chosen;
+                    previousCut = k;
+                }
+
+                // Confini dentro le parole, fra i confini sugli spazi che li racchiudono
+                for (int k = 0; k < sourceCuts.Count;)
+                {
+                    if (onSpace[k])
+                    {
+                        k++;
+                        continue;
+                    }
+
+                    int last = k;
+                    while (last + 1 < sourceCuts.Count && !onSpace[last + 1])
+                        last++;
+                    int sourceFrom = k > 0 ? sourceCuts[k - 1] : 0;
+                    int targetFrom = k > 0 ? targetCuts[k - 1] : 0;
+                    int sourceTo = last + 1 < sourceCuts.Count ? sourceCuts[last + 1] : sourceLength;
+                    int targetTo = last + 1 < sourceCuts.Count ? targetCuts[last + 1] : targetLength;
+                    for (int c = k; c <= last; c++)
+                        targetCuts[c] = targetFrom + (int)((2L * (sourceCuts[c] - sourceFrom) * (targetTo - targetFrom) + (sourceTo - sourceFrom)) / (2L * (sourceTo - sourceFrom)));
+                    bool everyPiece = targetTo - targetFrom >= last - k + 2;
+                    for (int c = k; c <= last; c++)
+                        targetCuts[c] = Math.Min(Math.Max(targetCuts[c], (c > k ? targetCuts[c - 1] : targetFrom) + (everyPiece ? 1 : 0)), targetTo);
+                    for (int c = last; c >= k && everyPiece; c--)
+                        targetCuts[c] = Math.Min(targetCuts[c], (c < last ? targetCuts[c + 1] : targetTo) - 1);
+                    k = last + 1;
+                }
 
                 StringBuilder distributed = new StringBuilder(recipe.Prefix);
                 int nextBlock = 0;
