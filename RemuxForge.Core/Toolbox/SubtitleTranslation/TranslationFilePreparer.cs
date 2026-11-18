@@ -17,7 +17,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Versione della preparazione, da aumentare quando cambiano id, gruppi, tipi o testo pulito
         /// </summary>
-        public const int PREPARER_VERSION = 17;
+        public const int PREPARER_VERSION = 18;
 
         /// <summary>
         /// Rifiuto di un file che non c'è più

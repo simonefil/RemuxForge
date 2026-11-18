@@ -47,11 +47,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public const long LETTER_EFFECT_TOLERANCE_MS = 1210;
 
         /// <summary>
-        /// Tempo in millisecondi in cui un pezzo di una frase rivelata a pezzi può stare a schermo senza una riga base: un fotogramma
-        /// a 23,976 fps nei centesimi dell'ASS (4 o 5); il massimo misurato è 40 ms, la tendina che parte un fotogramma prima della
-        /// dissolvenza
+        /// Frequenze video comuni con un fotogramma che non è un multiplo dei centesimi dell'ASS (25 e 50 fps non si riconoscono dai
+        /// tempi): i tempi agganciati ai fotogrammi lo rivelano
         /// </summary>
-        public const long REVEAL_PIECE_ALONE_MS = 50;
+        private static readonly double[] s_frameRates = new double[] { 24000.0 / 1001, 24, 30000.0 / 1001, 30, 48000.0 / 1001, 48, 60000.0 / 1001, 60 };
 
         #endregion
 
@@ -639,12 +638,35 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // prima nel file a parità), le altre ne sono copie e ne prendono la traduzione senza i segni: una traduzione per tutte, e
                 // i pezzi se ne vanno quando la frase è tradotta. Il legame vale solo se ogni riga base si può mostrare per intero, il
                 // suo testo pulito è quello della primaria o quello senza segni, due basi dello stesso layer non stanno a schermo insieme e le
-                // basi coprono i tempi dei pezzi
+                // basi coprono i tempi dei pezzi a meno di un fotogramma
                 Dictionary<int, string> wholeShown = new Dictionary<int, string>();
                 Dictionary<int, int> copyOf = new Dictionary<int, int>();
                 Dictionary<int, int> basePositions = new Dictionary<int, int>();
+                // Durata del fotogramma: dal video finto di Aegisub (Video File: ?dummy:fps:...) se c'è, se no dai tempi dell'unità,
+                // agganciati ai fotogrammi quando tutti cadono nella stessa fetta di un centesimo del fotogramma di una sola frequenza
+                // (tolte le doppie di un'altra che va); null se non si ricava
+                double? dummyFrame = null;
+                foreach (string line in assDocument.Lines)
+                {
+                    Match dummy = Regex.Match(line, @"^Video File:\s*\?dummy:([0-9.]+):", RegexOptions.CultureInvariant);
+                    if (dummy.Success && double.TryParse(dummy.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double dummyRate) && dummyRate > 0)
+                        dummyFrame = 1000 / dummyRate;
+                }
                 foreach (List<int> unitEvents in eventsByUnit.Values)
                 {
+                    List<long> unitTimes = unitEvents.SelectMany(u => new long[] { events[u].Line.StartMs, events[u].Line.EndMs }).Distinct().ToList();
+                    List<double> fitting = s_frameRates.Where(rate =>
+                    {
+                        List<double> residues = unitTimes.ConvertAll(time => time % (1000 / rate));
+                        residues.Sort();
+                        double widestGap = residues.Count == 0 ? 0 : residues[0] + 1000 / rate - residues[residues.Count - 1];
+                        for (int r = 1; r < residues.Count; r++)
+                            widestGap = Math.Max(widestGap, residues[r] - residues[r - 1]);
+                        return residues.Count > 0 && 1000 / rate - widestGap <= 10;
+                    }).ToList();
+                    fitting.RemoveAll(rate => fitting.Exists(other => Math.Abs(rate / other - 2) < 1e-9));
+                    double? frame = dummyFrame ?? (fitting.Count == 1 ? 1000 / fitting[0] : null);
+
                     List<int> free = unitEvents.FindAll(f => wholeOf[f] < 0 && underOf[f] < 0 && !piecesByWhole.ContainsKey(f) && !overlaysByUnder.ContainsKey(f)
                         && !coveredByUnder.ContainsKey(f) && events[f].Readable.Trim().Length > 0 && styleStates.ContainsKey(events[f].Style));
                     foreach (IGrouping<string, int> sameText in free.GroupBy(f => events[f].Readable, StringComparer.Ordinal))
@@ -670,7 +692,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             if (bases.Count == 0 || wholeLines.Values.Any(line => line == null) || bases.Exists(b => bases.Exists(o => o != b && events[o].Layer == events[b].Layer && overlap(b, o))))
                                 continue;
 
-                            // Le basi coprono i tempi dei pezzi, a meno di un fotogramma: tolti i pezzi la frase non manca
+                            // Le basi coprono i tempi dei pezzi, a meno di un fotogramma (di nulla se la durata non si ricava): tolti i
+                            // pezzi la frase non manca
                             bool covered = pieces.TrueForAll(p =>
                             {
                                 long alone = 0;
@@ -685,7 +708,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                     }
                                     reached = further;
                                 }
-                                return alone <= REVEAL_PIECE_ALONE_MS;
+                                return alone <= (frame ?? 0);
                             });
                             if (!covered)
                                 continue;
