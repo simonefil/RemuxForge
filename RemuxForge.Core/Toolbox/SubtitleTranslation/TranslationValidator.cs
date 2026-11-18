@@ -2,6 +2,7 @@ using RemuxForge.Core.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -95,6 +96,19 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Sintassi dei segni ben formati
         /// </summary>
         private static readonly Regex s_markSyntax = new Regex("⟦[0-9]+ |⟧", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        /// <summary>
+        /// Controlli invisibili di a capo e di legatura: spazio a larghezza zero, ZWNJ, ZWJ, word joiner, ZWNBSP
+        /// </summary>
+        private static readonly HashSet<char> s_lineControls = new HashSet<char> { '\u200B', '\u200C', '\u200D', '\u2060', '\uFEFF' };
+
+        /// <summary>
+        /// Controlli invisibili di direzione: LRM, RLM, ALM, incorporamenti, sostituzioni e isolamenti bidi
+        /// </summary>
+        private static readonly HashSet<char> s_directionControls = new HashSet<char>
+        {
+            '\u200E', '\u200F', '\u061C', '\u202A', '\u202B', '\u202C', '\u202D', '\u202E', '\u2066', '\u2067', '\u2068', '\u2069'
+        };
 
         /// <summary>
         /// Apertura di un segno in fondo a una riga
@@ -269,7 +283,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
                 else
                 {
-                    text = this.ValidateText(byId[id], texts[0], cueIssues);
+                    text = this.ValidateText(byId[id], texts[0], cueIssues, true);
                 }
                 results[id] = new CueValidationResult(id, text, cueIssues);
             }
@@ -334,7 +348,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public CueValidationResult ValidateEdit(SubtitleCue cue, string text)
         {
             List<TranslationValidationIssue> cueIssues = new List<TranslationValidationIssue>();
-            string normalizedText = this.ValidateText(cue, text ?? "", cueIssues);
+            string normalizedText = this.ValidateText(cue, text ?? "", cueIssues, false);
             CueValidationResult result = new CueValidationResult(cue.Id.Value, normalizedText, cueIssues);
             if (!result.HasErrors)
             {
@@ -571,7 +585,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="text">Testo consegnato</param>
         /// <param name="issues">Esiti della battuta, a cui si aggiungono gli errori</param>
         /// <returns>Testo normalizzato</returns>
-        private string ValidateText(SubtitleCue cue, string text, List<TranslationValidationIssue> issues)
+        /// <param name="delivered">Testo consegnato dal modello; il testo scritto dall'utente non si controlla sui caratteri invisibili</param>
+        private string ValidateText(SubtitleCue cue, string text, List<TranslationValidationIssue> issues, bool delivered)
         {
             int id = cue.Id.Value;
 
@@ -715,14 +730,37 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
             }
 
-            // Caratteri invisibili di formato (spazio a larghezza zero, unione, BOM e simili) che il testo pulito del sorgente non ha
-            HashSet<char> invisible = new HashSet<char>();
-            foreach (char c in normalizedText)
+            // Caratteri invisibili spuri nella consegna del modello, che il sorgente e le rese del glossario non hanno (Unicode
+            // Standard, capitolo 23.2 Layout Controls). Lo spazio a larghezza zero, il word joiner e lo ZWNBSP segnano o bloccano un
+            // a capo nelle scritture senza spazi fra le parole (thai, khmer, birmano, giapponese); ZWJ e ZWNJ governano la legatura
+            // e le forme delle lettere nelle scritture corsive e indiane: spuri solo fra due lettere latine, greche o cirilliche (anche
+            // al di là di altri caratteri invisibili). I segni di direzione e i controlli bidi ordinano il testo bidirezionale: spuri
+            // solo in un testo senza caratteri da destra a sinistra. I segni arabi che il formato include ma si vedono non contano
+            if (delivered)
             {
-                if (char.GetUnicodeCategory(c) == UnicodeCategory.Format && cue.CleanText.IndexOf(c) < 0 && invisible.Add(c))
+                HashSet<char> spurious = new HashSet<char>();
+                Func<char, bool> spacedLetter = letter => char.IsLetter(letter) && (letter < '\u0530' || (letter >= '\u1E00' && letter < '\u2000'));
+                bool rightToLeft = normalizedText.Any(c => (c >= '\u0590' && c <= '\u08FF') || (c >= '\uFB1D' && c <= '\uFDFF') || (c >= '\uFE70' && c <= '\uFEFE'));
+                for (int i = 0; i < normalizedText.Length; i++)
                 {
-                    string value = "U+" + ((int)c).ToString("X4", CultureInfo.InvariantCulture);
-                    issues.Add(Issue(id, INVISIBLE_CHAR, IssueSeverity.Error, value + " is an invisible character the source cue does not have; remove it.", "char", value));
+                    char c = normalizedText[i];
+                    if (cue.CleanText.IndexOf(c) >= 0 || this._terms.Exists(term => term.Target.IndexOf(c) >= 0) || spurious.Contains(c))
+                        continue;
+                    bool joining = s_lineControls.Contains(c);
+                    if (!joining && !s_directionControls.Contains(c))
+                        continue;
+                    int before = i - 1;
+                    while (before >= 0 && s_lineControls.Contains(normalizedText[before]))
+                        before--;
+                    int after = i + 1;
+                    while (after < normalizedText.Length && s_lineControls.Contains(normalizedText[after]))
+                        after++;
+                    if (joining ? before >= 0 && after < normalizedText.Length && spacedLetter(normalizedText[before]) && spacedLetter(normalizedText[after]) : !rightToLeft)
+                    {
+                        spurious.Add(c);
+                        string value = "U+" + ((int)c).ToString("X4", CultureInfo.InvariantCulture);
+                        issues.Add(Issue(id, INVISIBLE_CHAR, IssueSeverity.Error, value + " is an invisible character the source cue does not have; remove it.", "char", value));
+                    }
                 }
             }
 
