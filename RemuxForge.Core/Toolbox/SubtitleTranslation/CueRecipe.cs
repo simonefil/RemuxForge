@@ -15,11 +15,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// <param name="LineBreakToken">A capo per il testo tradotto</param>
     /// <param name="HardSpaceOffsets">Posizioni nel testo pulito degli spazi unificatori che erano \h</param>
     /// <param name="Entities">Carattere e forma di entità del sorgente (solo SRT)</param>
-    /// <param name="Detached">Blocchi a metà frase che non cambiano la formattazione (commenti, tag di riga)</param>
+    /// <param name="Detached">Blocchi a metà frase che non cambiano la formattazione (commenti, tag di riga); in una battuta posizionale
+    /// tutti i blocchi a metà frase</param>
     /// <param name="TabOffsets">Posizioni nel testo pulito dei tab del sorgente, resi come spazi</param>
+    /// <param name="Segmented">Battuta posizionale: niente segni, e i blocchi staccati si ridistribuiscono sul testo tradotto</param>
     public sealed record CueRecipe(string Prefix, string Suffix, LineWrap LineWrap, string PrefixLinePart, IReadOnlyList<MarkRecipe> Marks,
         IReadOnlyList<string> LineBreaks, string LineBreakToken, IReadOnlyList<int> HardSpaceOffsets, IReadOnlyDictionary<char, string> Entities,
-        IReadOnlyList<DetachedBlock> Detached, IReadOnlyList<int> TabOffsets);
+        IReadOnlyList<DetachedBlock> Detached, IReadOnlyList<int> TabOffsets, bool Segmented);
 
     /// <summary>
     /// Coppia di tag che avvolge ogni riga della battuta: Close e Open si scrivono attorno a ogni a capo del testo tradotto
@@ -44,7 +46,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
     /// <summary>
     /// Blocco a metà frase che non cambia la formattazione: resta al suo posto se il testo non cambia, va prima del suffisso
-    /// nel testo tradotto perché non si vede
+    /// nel testo tradotto perché non si vede. In una battuta posizionale il blocco va alla stessa frazione del testo tradotto
     /// </summary>
     /// <param name="CleanOffset">Posizione nel testo pulito</param>
     /// <param name="Raw">Blocco originale</param>

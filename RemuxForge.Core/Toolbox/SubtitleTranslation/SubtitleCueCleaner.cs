@@ -10,7 +10,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// <summary>
     /// Pulizia del campo Text di una battuta per il modello e ricomposizione nel formato d'origine. Il modello vede solo il testo
     /// leggibile, gli a capo come \n e i tratti formattati a metà frase come ⟦n testo⟧; tag di riga, effetti, entità e caratteri
-    /// riservati restano nella ricetta. Ricomporre il testo pulito non tradotto restituisce il campo Text originale
+    /// riservati restano nella ricetta. Ricomporre il testo pulito non tradotto restituisce il campo Text originale.
+    /// I blocchi a metà frase sono di due specie. Un blocco su un confine di parola che cambia la formattazione, o che anima il
+    /// testo seguente con \t, è semantico: diventa un segno e il modello lo mette attorno alle parole tradotte. Un blocco dentro
+    /// una parola (sfumature e animazioni lettera per lettera), un karaoke o un tratto formattato di soli spazi sono posizionali:
+    /// la battuta va al modello senza segni e l'harness ridistribuisce il testo tradotto sui pezzi del sorgente in proporzione ai
+    /// caratteri, con tutti i blocchi originali al loro posto nella sequenza (durate del karaoke e loro somma comprese)
     /// </summary>
     public class SubtitleCueCleaner
     {
@@ -50,6 +55,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Canale dello stile scelto con \rNome
         /// </summary>
         private const string ASS_STYLE_CHANNEL = "r";
+
+        /// <summary>
+        /// Tag ASS che anima il testo seguente fino a fine riga o a \r
+        /// </summary>
+        private const string ASS_TRANSFORM = "t";
+
+        /// <summary>
+        /// Prefisso del canale di stato di un \t: uno per tag, perché un'animazione non si annulla e non si sostituisce
+        /// </summary>
+        private const string TRANSFORM_CHANNEL = "t#";
 
         #endregion
 
@@ -132,10 +147,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="text">Campo Text originale; in SRT le righe con i loro terminatori</param>
         /// <param name="fallbackLineBreak">A capo SRT per la traduzione di una battuta su una riga: il terminatore della riga dei tempi</param>
-        /// <param name="excludeKaraoke">True se una riga col karaoke resta esclusa: nei progetti senza tabella degli stili. Altrimenti
-        /// i tag karaoke restano nella ricetta come gli altri tag, fuori dal testo pulito</param>
+        /// <param name="legacy">True nei progetti senza tabella degli stili, che restano come quando sono stati tradotti: karaoke,
+        /// animazioni a metà frase, blocchi ASS a metà di un SRT e tratti di soli spazi escludono la riga, e i blocchi dentro le
+        /// parole fanno segni</param>
         /// <returns>Testo pulito con la ricetta, oppure il motivo di esclusione</returns>
-        public SubtitleCleanResult Clean(string text, string fallbackLineBreak, bool excludeKaraoke)
+        public SubtitleCleanResult Clean(string text, string fallbackLineBreak, bool legacy)
         {
             string source = text ?? "";
             bool isSrt = this._format == SubtitleTranslationFormat.Srt;
@@ -349,7 +365,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         return new SubtitleCleanResult("", null, SubtitleCue.EXCLUSION_DRAWING);
                 }
             }
-            for (int i = 0; excludeKaraoke && i < items.Count; i++)
+            for (int i = 0; legacy && i < items.Count; i++)
             {
                 if (items[i].AssTags == null)
                     continue;
@@ -361,7 +377,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
             if (first < 0)
                 return new SubtitleCleanResult("", null, SubtitleCue.EXCLUSION_EMPTY);
-            for (int i = first + 1; i < last; i++)
+            for (int i = first + 1; legacy && i < last; i++)
             {
                 if (items[i].AssTags == null)
                     continue;
@@ -371,13 +387,46 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         return new SubtitleCleanResult("", null, SubtitleCue.EXCLUSION_TIMED_EFFECT);
                 }
             }
-            for (int i = first + 1; i < items.Count; i++)
+            for (int i = first + 1; legacy && i < items.Count; i++)
             {
                 if (items[i].IsSrtAssBlock)
                     return new SubtitleCleanResult("", null, SubtitleCue.EXCLUSION_SRT_INLINE_ASS_TAG);
             }
             if (mixedEntities)
                 return new SubtitleCleanResult("", null, SubtitleCue.EXCLUSION_MIXED_ENTITIES);
+
+            // Battuta posizionale: un blocco a metà frase col karaoke, dentro una parola o, in SRT, un blocco ASS
+            bool segmented = false;
+            for (int i = first + 1; !legacy && i < last; i++)
+            {
+                if (items[i].Kind != CleanItemKind.Tag)
+                    continue;
+                int before = i - 1;
+                while (items[before].Kind == CleanItemKind.Tag)
+                    before--;
+                int after = i + 1;
+                while (items[after].Kind == CleanItemKind.Tag)
+                    after++;
+                segmented |= items[i].IsSrtAssBlock || (items[i].AssTags != null && items[i].AssTags.Exists(tag => s_assKaraokeTags.Contains(tag.Name)))
+                    || (items[before].Kind == CleanItemKind.Char && items[after].Kind == CleanItemKind.Char && char.IsLetterOrDigit(items[before].Clean)
+                    && char.IsLetterOrDigit(items[after].Clean));
+            }
+
+            // A capo della traduzione: in SRT il primo terminatore interno, in ASS/SSA \N, o \n se la battuta usa solo quello
+            string lineBreakToken = isSrt ? fallbackLineBreak ?? "\n" : ASS_HARD_BREAK;
+            bool hardBreak = false;
+            bool softBreak = false;
+            foreach (CleanItem item in items)
+            {
+                if (item.Kind != CleanItemKind.Break)
+                    continue;
+                if (isSrt && !hardBreak && !softBreak)
+                    lineBreakToken = item.Raw;
+                hardBreak |= item.Raw == ASS_HARD_BREAK;
+                softBreak |= item.Raw != ASS_HARD_BREAK;
+            }
+            if (!isSrt && softBreak && !hardBreak)
+                lineBreakToken = ASS_SOFT_BREAK;
 
             // Stato della formattazione dopo ogni gettone. SRT: pila dei tag aperti. ASS: interruttori \i \b \u \s e canali di
             // stato (\c, \fs, \rNome…) che restano attraverso i blocchi; la chiave tiene solo i canali diversi dal valore attivo
@@ -429,6 +478,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             channels.Clear();
                             if (!string.IsNullOrEmpty(tag.Arg.Trim()))
                                 channels[ASS_STYLE_CHANNEL] = new AssChannel(tag, tagOrder);
+                        }
+                        else if (!legacy && tag.Name == ASS_TRANSFORM)
+                        {
+                            channels[TRANSFORM_CHANNEL + tagOrder.ToString(CultureInfo.InvariantCulture)] = new AssChannel(tag, tagOrder);
                         }
                         else if (s_assStateChannels.TryGetValue(tag.Name, out string[] tagChannels))
                         {
@@ -577,8 +630,47 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 bool visible = false;
                 foreach (int itemIndex in piece.Items)
                     visible |= items[itemIndex].Kind == CleanItemKind.Char && !char.IsWhiteSpace(items[itemIndex].Clean);
-                if (piece.StateKey != baseKey && !visible)
+                if (piece.StateKey != baseKey && !visible && legacy)
                     return new SubtitleCleanResult("", null, SubtitleCue.EXCLUSION_WHITESPACE_SPAN);
+                segmented |= piece.StateKey != baseKey && !visible;
+            }
+
+            // Battuta posizionale: prefisso fino al primo carattere visibile, suffisso dopo l'ultimo, e ogni blocco in mezzo
+            // staccato alla sua posizione nel testo pulito, che non ha segni
+            if (segmented)
+            {
+                StringBuilder plain = new StringBuilder();
+                List<string> plainBreaks = new List<string>();
+                List<int> plainHardSpaces = new List<int>();
+                List<int> plainTabs = new List<int>();
+                List<DetachedBlock> positional = new List<DetachedBlock>();
+                for (int i = first; i <= last; i++)
+                {
+                    CleanItem item = items[i];
+                    if (item.Kind == CleanItemKind.Tag)
+                    {
+                        positional.Add(new DetachedBlock(plain.Length, item.Raw));
+                        continue;
+                    }
+                    if (item.Kind == CleanItemKind.Break)
+                    {
+                        plainBreaks.Add(item.Raw);
+                        plain.Append('\n');
+                        continue;
+                    }
+                    if (item.Raw == "\t")
+                    {
+                        plainTabs.Add(plain.Length);
+                    }
+                    else if (item.Raw == ASS_HARD_SPACE)
+                    {
+                        plainHardSpaces.Add(plain.Length);
+                    }
+                    plain.Append(item.Clean);
+                }
+
+                return new SubtitleCleanResult(plain.ToString(), new CueRecipe(this.ConcatRaw(items, 0, first - 1), this.ConcatRaw(items, last + 1, items.Count - 1), null, "",
+                    new List<MarkRecipe>(), plainBreaks, lineBreakToken, plainHardSpaces, entities, positional, plainTabs, true), "");
             }
 
             // Prefisso, suffisso e aperture e chiusure dei segni
@@ -684,12 +776,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             if (!covered.Exists(needed.Contains))
                                 continue;
                             target.Append(value.Tag.Raw);
-                            foreach (string channel in s_assStateChannels[value.Tag.Name])
-                                needed.Add(channel);
+                            needed.UnionWith(value.Tag.Name == ASS_TRANSFORM ? covered : s_assStateChannels[value.Tag.Name]);
                         }
+
+                        // Un'animazione non si annulla: nessun tag la riporta allo stile
                         foreach (string channel in new SortedSet<string>(needed, StringComparer.Ordinal))
                         {
-                            if (!state.ContainsKey(channel))
+                            if (!state.ContainsKey(channel) && !channel.StartsWith(TRANSFORM_CHANNEL, StringComparison.Ordinal))
                                 target.Append('\\').Append(channel);
                         }
                     }
@@ -708,8 +801,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             assClose.Append(items[items[first].SwitchOnBy[bit]].AssTags.FindLast(tag => this.SwitchBit(tag.Name) == bit).Raw);
                     }
                 }
-                string fullAssOpen = "{" + assOpen + "}";
-                string fullAssClose = "{" + assClose + "}";
+                string fullAssOpen = assOpen.Length > 0 ? "{" + assOpen + "}" : "";
+                string fullAssClose = assClose.Length > 0 ? "{" + assClose + "}" : "";
 
                 string originalOpen;
                 string open;
@@ -911,24 +1004,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
             }
 
-            // A capo della traduzione: in SRT il primo terminatore interno, in ASS/SSA \N, o \n se la battuta usa solo quello
-            string lineBreakToken = isSrt ? fallbackLineBreak ?? "\n" : ASS_HARD_BREAK;
-            bool hardBreak = false;
-            bool softBreak = false;
-            foreach (CleanItem item in items)
-            {
-                if (item.Kind != CleanItemKind.Break)
-                    continue;
-                if (isSrt && !hardBreak && !softBreak)
-                    lineBreakToken = item.Raw;
-                hardBreak |= item.Raw == ASS_HARD_BREAK;
-                softBreak |= item.Raw != ASS_HARD_BREAK;
-            }
-            if (!isSrt && softBreak && !hardBreak)
-                lineBreakToken = ASS_SOFT_BREAK;
-
             return new SubtitleCleanResult(clean.ToString(), new CueRecipe(prefix, suffix, lineWrap, prefixLinePart, marks, lineBreaks,
-                lineBreakToken, hardSpaces, entities, detached, tabs), "");
+                lineBreakToken, hardSpaces, entities, detached, tabs, false), "");
         }
 
         /// <summary>
@@ -943,6 +1020,79 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             CueRecipe recipe = cue.Recipe;
             string value = text ?? "";
             bool unchanged = value == cue.CleanText;
+
+            // Battuta posizionale tradotta. Il sorgente è diviso dai suoi blocchi in pezzi; ogni confine sta alla stessa frazione dei
+            // caratteri nel testo tradotto, arrotondata alla metà per eccesso. I caratteri sono grafemi e un a capo conta come uno.
+            // Se il testo tradotto ha almeno tanti caratteri quanti pezzi, ogni pezzo ne riceve almeno uno: i confini si spostano in
+            // avanti e poi indietro quanto basta. Altrimenti i pezzi in fondo restano vuoti, coi loro blocchi uno dopo l'altro. I
+            // blocchi escono tutti, nell'ordine e coi valori originali: le durate del karaoke e la loro somma non cambiano
+            if (recipe.Segmented && !unchanged)
+            {
+                int[] sourceStarts = StringInfo.ParseCombiningCharacters(cue.CleanText);
+                List<string> elements = new List<string>();
+                TextElementEnumerator enumerator = StringInfo.GetTextElementEnumerator(value);
+                while (enumerator.MoveNext())
+                    elements.Add(enumerator.GetTextElement());
+
+                // Confini distinti del sorgente in grafemi, e per ogni blocco il suo confine
+                List<int> sourceCuts = new List<int>();
+                int[] blockCut = new int[recipe.Detached.Count];
+                for (int b = 0; b < recipe.Detached.Count; b++)
+                {
+                    int cut = 0;
+                    while (cut < sourceStarts.Length && sourceStarts[cut] < recipe.Detached[b].CleanOffset)
+                        cut++;
+                    if (sourceCuts.Count == 0 || sourceCuts[sourceCuts.Count - 1] != cut)
+                        sourceCuts.Add(cut);
+                    blockCut[b] = sourceCuts.Count - 1;
+                }
+
+                int sourceLength = sourceStarts.Length;
+                int targetLength = elements.Count;
+                int[] targetCuts = new int[sourceCuts.Count];
+                for (int k = 0; k < sourceCuts.Count; k++)
+                    targetCuts[k] = (int)((2L * sourceCuts[k] * targetLength + sourceLength) / (2L * sourceLength));
+                bool everyPiece = targetLength >= sourceCuts.Count + 1;
+                for (int k = 0; k < targetCuts.Length; k++)
+                    targetCuts[k] = Math.Min(Math.Max(targetCuts[k], (k > 0 ? targetCuts[k - 1] : 0) + (everyPiece ? 1 : 0)), targetLength);
+                for (int k = targetCuts.Length - 1; k >= 0 && everyPiece; k--)
+                    targetCuts[k] = Math.Min(targetCuts[k], (k < targetCuts.Length - 1 ? targetCuts[k + 1] : targetLength) - 1);
+
+                StringBuilder distributed = new StringBuilder(recipe.Prefix);
+                int nextBlock = 0;
+                for (int e = 0; e <= elements.Count; e++)
+                {
+                    while (nextBlock < recipe.Detached.Count && targetCuts[blockCut[nextBlock]] <= e)
+                        distributed.Append(recipe.Detached[nextBlock++].Raw);
+                    if (e == elements.Count)
+                        break;
+
+                    string element = elements[e];
+                    if (element == "\n" || element == "\r" || element == "\r\n")
+                    {
+                        distributed.Append(recipe.LineBreakToken);
+                        continue;
+                    }
+                    foreach (char current in element)
+                    {
+                        if (current == HARD_SPACE && recipe.HardSpaceOffsets.Count > 0)
+                        {
+                            distributed.Append(ASS_HARD_SPACE);
+                        }
+                        else if (recipe.Entities.TryGetValue(current, out string entity))
+                        {
+                            distributed.Append(entity);
+                        }
+                        else
+                        {
+                            distributed.Append(current);
+                        }
+                    }
+                }
+
+                return distributed.Append(recipe.Suffix).ToString();
+            }
+
             List<RecomposePiece> pieces = new List<RecomposePiece>();
             StringBuilder run = new StringBuilder();
             int runStart = 0;

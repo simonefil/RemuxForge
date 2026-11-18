@@ -94,6 +94,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private static readonly Regex s_markSyntax = new Regex("⟦[0-9]+ |⟧", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         /// <summary>
+        /// Apertura di un segno in fondo a una riga
+        /// </summary>
+        private static readonly Regex s_markOpenAtEnd = new Regex("⟦[0-9]+$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        /// <summary>
         /// Sintassi dei segni anche malformati, per giudicare se restano parole
         /// </summary>
         private static readonly Regex s_anyMarkSyntax = new Regex("⟦[0-9]* ?|⟧", RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -596,7 +601,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         allowedEmpty--;
                     }
                     pendingEmpty = 0;
-                    lines.Add(trimmed);
+
+                    // Un segno aperto in fondo alla riga, che il sorgente ha quando il tratto comincia con l'a capo, tiene il suo spazio
+                    lines.Add(s_markOpenAtEnd.IsMatch(trimmed) ? trimmed + " " : trimmed);
                 }
                 normalizedText = string.Join("\n", lines).Normalize(NormalizationForm.FormC);
             }
