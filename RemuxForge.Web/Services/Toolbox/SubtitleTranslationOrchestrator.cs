@@ -425,25 +425,41 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Salva modelli e livelli di ragionamento dei passi e i file tradotti in parallelo
+        /// Salva modelli e livelli di ragionamento dei passi e i file tradotti in parallelo. Col job i modelli e i livelli di
+        /// traduzione, termini nuovi e revisione restano quelli congelati nel job e non cambiano; l'analisi e i file in parallelo sì.
+        /// Il log riporta i modelli solo quando uno cambia, con quelli che il giro usa davvero
         /// </summary>
         /// <param name="models">Modello per passo</param>
         /// <param name="efforts">Livello per passo</param>
         /// <param name="parallelFiles">File in parallelo, da TranslationProjectOptions.MIN_PARALLEL_FILES a MAX_PARALLEL_FILES</param>
         public void SetModels(TranslationPhaseModels models, TranslationPhaseModels efforts, int parallelFiles)
         {
+            TranslationPhaseModels used;
+            bool changed;
             lock (this.StateLock)
             {
                 if (this._project == null || this.IsBusy || parallelFiles < TranslationProjectOptions.MIN_PARALLEL_FILES || parallelFiles > TranslationProjectOptions.MAX_PARALLEL_FILES)
                     return;
 
+                if (this._job != null)
+                {
+                    TranslationPhaseModels current = this._project.Models;
+                    TranslationPhaseModels currentEfforts = this._project.ReasoningEfforts;
+                    models = new TranslationPhaseModels { Analysis = models.Analysis, Translation = current.Translation, NewTerms = current.NewTerms, Review = current.Review };
+                    efforts = new TranslationPhaseModels { Analysis = efforts.Analysis, Translation = currentEfforts.Translation, NewTerms = currentEfforts.NewTerms, Review = currentEfforts.Review };
+                }
+
+                changed = JsonSerializer.Serialize(models) != JsonSerializer.Serialize(this._project.Models) || JsonSerializer.Serialize(efforts) != JsonSerializer.Serialize(this._project.ReasoningEfforts);
+                used = this._job == null ? models
+                    : new TranslationPhaseModels { Analysis = models.Analysis, Translation = this._job.Models.Translation, NewTerms = this._job.Models.NewTerms, Review = this._job.Models.Review };
                 this._project.Models = models;
                 this._project.ReasoningEfforts = efforts;
                 this._project.Options.MaxParallelFiles = parallelFiles;
                 this._store.Save(this._project);
             }
 
-            this.AppendLog(AppText.F(TEXT_PREFIX + ".modelsChanged", models.Analysis, models.Translation, models.NewTerms, models.Review, parallelFiles));
+            if (changed)
+                this.AppendLog(AppText.F(TEXT_PREFIX + ".modelsChanged", used.Analysis, used.Translation, used.NewTerms, used.Review));
             this.NotifyRecordsChanged();
         }
 
