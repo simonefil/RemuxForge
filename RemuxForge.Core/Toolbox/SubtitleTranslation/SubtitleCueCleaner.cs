@@ -1529,23 +1529,27 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Tratti di testo che un campo Text ASS nasconde e poi rimostra com'erano: da un \alpha&amp;HFF&amp; al primo blocco
         /// successivo con tag d'alpha, che riporta ogni canale d'alpha allo stato che aveva prima del tratto. Lo stato di un canale
-        /// è il suo ultimo valore fisso (quello dello stile all'inizio e dopo un \alpha o \1a-\4a senza valore) con le \t che lo
-        /// animano dopo, coi tempi letti come libass. Il tratto non conta se il blocco d'apertura, dopo il \alpha&amp;HFF&amp;, tocca
-        /// ancora un'alpha (anche con una \t che lo riporta visibile), se una \t del blocco di chiusura anima anche altro, o se la
-        /// chiusura lascia uno stato diverso: così, tolti il tag d'apertura e quelli d'alpha della chiusura, il tratto si vede e il
-        /// resto della riga resta com'era. Il testo è letto come quello leggibile delle righe: senza blocchi, a capo e spazi fissi
-        /// come spazi, senza spazi agli estremi
+        /// è il suo ultimo valore fisso (quello dello stile della riga all'inizio e dopo un \alpha o \1a-\4a senza valore, quello
+        /// dello stile nominato dopo un \r, o della riga se il nome manca o non esiste, come libass) con le \t che lo animano dopo,
+        /// coi tempi letti come libass. Il tratto non conta se il blocco d'apertura, dopo il \alpha&amp;HFF&amp;, tocca ancora
+        /// un'alpha (anche con una \t che lo riporta visibile), se una \t del blocco di chiusura anima anche altro, se un \r cade
+        /// dopo l'apertura e fino alla chiusura compresa (riporta tutto allo stile, non solo l'alpha), o se la chiusura lascia uno
+        /// stato diverso: così, tolti il tag d'apertura e quelli d'alpha della chiusura, il tratto si vede e il resto della riga resta
+        /// com'era. Il testo è letto come quello leggibile delle righe: senza blocchi, a capo e spazi fissi come spazi, senza spazi
+        /// agli estremi
         /// </summary>
         /// <param name="text">Campo Text</param>
-        /// <param name="styleState">Stato dello stile della riga per canale (<see cref="ReadStyleState"/>), null se manca</param>
+        /// <param name="style">Stile della riga</param>
+        /// <param name="styleStates">Stato per canale di ogni stile del file (<see cref="ReadStyleState"/>)</param>
         /// <returns>Tratti nascosti non vuoti, nell'ordine</returns>
-        public List<SubtitleHiddenSpan> ReadHiddenSpans(string text, IReadOnlyDictionary<string, string> styleState)
+        public List<SubtitleHiddenSpan> ReadHiddenSpans(string text, string style, IReadOnlyDictionary<string, Dictionary<string, string>> styleStates)
         {
             string[] alphaChannels = new string[] { "1a", "2a", "3a", "4a" };
             Func<string, bool> isAlpha = name => name == "alpha" || Array.IndexOf(alphaChannels, name) >= 0;
 
             // Un canale senza valore di stile vale «stile», uguale solo a sé stesso
-            Func<string, string> styleValue = channel => "=" + (styleState?.GetValueOrDefault(channel) ?? "style");
+            Dictionary<string, string> current = styleStates.GetValueOrDefault(style);
+            Func<string, string> styleValue = channel => "=" + (current?.GetValueOrDefault(channel) ?? "style");
             Dictionary<string, List<string>> operations = alphaChannels.ToDictionary(channel => channel, channel => new List<string> { styleValue(channel) },
                 StringComparer.Ordinal);
             Dictionary<string, List<string>> before = null;
@@ -1570,6 +1574,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 {
                     int tagStart = block.IndexOf(tag.Raw, tagEnd, StringComparison.Ordinal);
                     tagEnd = tagStart + tag.Raw.Length;
+                    if (tag.Name == "r")
+                    {
+                        if (before != null)
+                            valid = false;
+                        current = styleStates.GetValueOrDefault(tag.Arg.Trim()) ?? styleStates.GetValueOrDefault(style);
+                        foreach (string channel in alphaChannels)
+                            operations[channel] = new List<string> { styleValue(channel) };
+                        continue;
+                    }
 
                     // Operazioni sui canali d'alpha dall'ultimo valore fisso; null per \alpha o \1a-\4a senza valore, che torna allo
                     // stile. I tempi di una \t come libass: con tre argomenti inizio, fine e accelerazione, con due inizio e fine, con
