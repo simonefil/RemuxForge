@@ -46,15 +46,20 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         public const long LETTER_EFFECT_TOLERANCE_MS = 1210;
 
+        #endregion
+
+        #region Variabili statiche
+
         /// <summary>
         /// Frequenze video comuni con un fotogramma che non è un multiplo dei centesimi dell'ASS (25 e 50 fps non si riconoscono dai
         /// tempi): i tempi agganciati ai fotogrammi lo rivelano
         /// </summary>
         private static readonly double[] s_frameRates = new double[] { 24000.0 / 1001, 24, 30000.0 / 1001, 30, 48000.0 / 1001, 48, 60000.0 / 1001, 60 };
 
-        #endregion
-
-        #region Variabili statiche
+        /// <summary>
+        /// Video finto di Aegisub con la sua frequenza (Video File: ?dummy:fps:...)
+        /// </summary>
+        private static readonly Regex s_dummyVideo = new Regex(@"^Video File:\s*\?dummy:([0-9.]+):", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         /// <summary>
         /// Blocco di tag ASS
@@ -642,15 +647,17 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 Dictionary<int, string> wholeShown = new Dictionary<int, string>();
                 Dictionary<int, int> copyOf = new Dictionary<int, int>();
                 Dictionary<int, int> basePositions = new Dictionary<int, int>();
-                // Durata del fotogramma: dal video finto di Aegisub (Video File: ?dummy:fps:...) se c'è, se no dai tempi dell'unità,
-                // agganciati ai fotogrammi quando tutti cadono nella stessa fetta di un centesimo del fotogramma di una sola frequenza
-                // (tolte le doppie di un'altra che va); null se non si ricava
-                double? dummyFrame = null;
-                foreach (string line in assDocument.Lines)
+                // Un fotogramma come si scrive nei tempi dell'ASS: la sua durata arrotondata per eccesso ai 10 ms, perché agganciato ai
+                // fotogrammi un intervallo di un fotogramma si scrive coi centesimi a cavallo (a 23,976 fps 40 o 50 ms). La frequenza
+                // viene dal video finto di Aegisub se c'è; se no dai tempi dell'unità, agganciati ai fotogrammi delle frequenze per
+                // cui tutti cadono nella stessa fetta di un centesimo (tolte le doppie di un'altra che va), quando tutte danno lo
+                // stesso fotogramma arrotondato (23,976 e 24 non si separano su poche righe); 0 se non si ricava
+                long? dummyFrame = null;
+                foreach (string line in legacy ? new List<string>() : assDocument.Lines)
                 {
-                    Match dummy = Regex.Match(line, @"^Video File:\s*\?dummy:([0-9.]+):", RegexOptions.CultureInvariant);
+                    Match dummy = s_dummyVideo.Match(line);
                     if (dummy.Success && double.TryParse(dummy.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double dummyRate) && dummyRate > 0)
-                        dummyFrame = 1000 / dummyRate;
+                        dummyFrame = (long)Math.Ceiling(100 / dummyRate) * 10;
                 }
                 foreach (List<int> unitEvents in eventsByUnit.Values)
                 {
@@ -665,7 +672,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         return residues.Count > 0 && 1000 / rate - widestGap <= 10;
                     }).ToList();
                     fitting.RemoveAll(rate => fitting.Exists(other => Math.Abs(rate / other - 2) < 1e-9));
-                    double? frame = dummyFrame ?? (fitting.Count == 1 ? 1000 / fitting[0] : null);
+                    List<long> frames = fitting.ConvertAll(rate => (long)Math.Ceiling(100 / rate) * 10).Distinct().ToList();
+                    long frame = dummyFrame ?? (frames.Count == 1 ? frames[0] : 0);
 
                     List<int> free = unitEvents.FindAll(f => wholeOf[f] < 0 && underOf[f] < 0 && !piecesByWhole.ContainsKey(f) && !overlaysByUnder.ContainsKey(f)
                         && !coveredByUnder.ContainsKey(f) && events[f].Readable.Trim().Length > 0 && styleStates.ContainsKey(events[f].Style));
@@ -692,7 +700,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             if (bases.Count == 0 || wholeLines.Values.Any(line => line == null) || bases.Exists(b => bases.Exists(o => o != b && events[o].Layer == events[b].Layer && overlap(b, o))))
                                 continue;
 
-                            // Le basi coprono i tempi dei pezzi, a meno di un fotogramma (di nulla se la durata non si ricava): tolti i
+                            // Le basi coprono i tempi dei pezzi, a meno di un fotogramma (di nulla se non si ricava): tolti i
                             // pezzi la frase non manca
                             bool covered = pieces.TrueForAll(p =>
                             {
@@ -708,7 +716,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                     }
                                     reached = further;
                                 }
-                                return alone <= (frame ?? 0);
+                                return alone <= frame;
                             });
                             if (!covered)
                                 continue;
