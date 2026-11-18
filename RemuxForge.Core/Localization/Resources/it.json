@@ -1752,6 +1752,7 @@
   "toolbox.subtitleTranslation.run.blockReduced": "[{0}] blocco {1} ridotto: risposta troncata, diviso in {2} e {3} battute",
   "toolbox.subtitleTranslation.run.blockSaved": "[{0}] blocco {1}/{2}: {3} accettate, {4} respinte ({5})",
   "toolbox.subtitleTranslation.run.retryReduced": "[{0}] ritentativo ridotto: risposta troncata, diviso in {1} e {2} battute",
+  "toolbox.subtitleTranslation.run.retryIsolated": "[{0}] risposta fermata dal filtro dei contenuti: {1} battute riconsegnate una per volta in {2} richieste",
   "toolbox.subtitleTranslation.run.retrySaved": "[{0}] ritentativo {1}: {2} accettate, {3} respinte",
   "toolbox.subtitleTranslation.terms.fileApplied": "[{0}] termini nuovi: {1} battute riscritte",
   "toolbox.subtitleTranslation.review.blockSaved": "[{0}] revisione AI, blocco {1}/{2}: {3} problemi, {4} battute corrette",

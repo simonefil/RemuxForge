@@ -240,9 +240,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Nel primo giro traduce una alla volta le tratte di cui il file ha la prima occorrenza: ognuna in una consegna sola, con
         /// prefisso e validatore del file, che si dimezza da sé dopo una risposta troncata; a tratta finita la traduzione si copia
         /// in tutte le occorrenze. Nel secondo giro rimette le copie delle tratte tradotte e traduce i blocchi da fare del file uno
-        /// alla volta. Ogni blocco si salva intero; dopo una risposta troncata si divide in due metà, obiettivo e tetto del file si
-        /// dimezzano e i blocchi che restano si ripianificano. Senza blocchi da fare il file si chiude anche dopo uno Stop o una
-        /// fermata, se nessuna sua tratta resta da tradurre
+        /// alla volta. Ogni blocco si salva intero; dopo una risposta troncata dal tetto dei token in uscita si divide in due metà,
+        /// obiettivo e tetto del file si dimezzano e i blocchi che restano si ripianificano. Il filtro dei contenuti e gli altri
+        /// motivi d'incompletezza restano dentro il blocco e non toccano il piano del file. Senza blocchi da fare il file si chiude
+        /// anche dopo uno Stop o una fermata, se nessuna sua tratta resta da tradurre
         /// </summary>
         /// <param name="file">File del job</param>
         /// <param name="provider">Provider condiviso</param>
