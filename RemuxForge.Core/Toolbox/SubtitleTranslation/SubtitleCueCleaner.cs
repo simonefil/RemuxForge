@@ -1385,8 +1385,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Aspetto e posizione comuni alle righe di un layer di un effetto disegnato lettera per lettera. Aspetto: lo stato a
         /// riposo delle lettere ferme (\pos), o di tutte se nessuna è ferma: i tag di stato e gli interruttori della riga con i
-        /// valori finali delle \t che partono da 0 (l'arrivo nello stato fermo; le \t che partono dopo sono l'uscita), tenuti
-        /// quando ogni riga ha lo stesso valore e diverso dallo stile. Posizione: l'allineamento \an di tutte le righe e la y delle
+        /// valori finali delle \t d'arrivo, tenuti quando ogni riga ha lo stesso valore e diverso dallo stile. Una \t è d'arrivo
+        /// se parte da 0 o se porta un'alpha da invisibile (FF) a visibile, come una comparsa ritardata; le altre sono l'uscita. Posizione: l'allineamento \an di tutte le righe e la y delle
         /// righe ferme, se ognuno è uno solo
         /// </summary>
         /// <param name="texts">Campi Text delle righe</param>
@@ -1412,38 +1412,54 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             if (tagsByText.Count == 0)
                 return new SubtitleLetterLook("", null, null);
 
-            // Stato a riposo di ogni riga ferma: ogni tag prende il posto di quelli dello stesso stato (un canale in comune o lo
-            // stesso interruttore), coi tag delle \t che partono da 0 (senza tempi partono da 0) dopo quelli della riga
+            // Stato a riposo di ogni riga ferma: i tag della riga e poi quelli delle \t d'arrivo (senza tempi una \t parte da 0);
+            // ogni tag prende il posto di quelli dello stesso stato, e di un tag con più canali (\alpha, \bord, \shad) toccato in
+            // parte restano i canali non toccati, ognuno col suo tag
             List<List<AssTag>> resting = new List<List<AssTag>>();
             bool anyStill = tagsByText.Exists(tags => tags.Exists(tag => tag.Name == "pos"));
             foreach (List<AssTag> tags in tagsByText)
             {
                 if (anyStill && !tags.Exists(tag => tag.Name == "pos"))
                     continue;
-                List<AssTag> state = new List<AssTag>();
-                List<AssTag> arriving = new List<AssTag>();
-                foreach (AssTag tag in tags)
+                List<AssTag> sequence = tags.FindAll(tag => tag.Name != ASS_TRANSFORM);
+                Dictionary<string, string> alphas = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (AssTag tag in sequence)
                 {
-                    if (tag.Name != ASS_TRANSFORM)
-                    {
-                        state.Add(tag);
-                        continue;
-                    }
+                    if (s_assStateChannels.TryGetValue(tag.Name, out string[] tagChannels))
+                        foreach (string channel in Array.FindAll(tagChannels, channel => channel.Length == 2 && channel[1] == 'a'))
+                            alphas[channel] = ChannelValue(channel, tag.Arg);
+                }
+                foreach (AssTag tag in tags.FindAll(tag => tag.Name == ASS_TRANSFORM))
+                {
                     string inner = tag.Arg.Trim().TrimStart('(');
                     string[] times = inner.Substring(0, Math.Max(0, inner.IndexOf('\\'))).Split(',', StringSplitOptions.RemoveEmptyEntries);
-                    if (times.Length < 2 || (double.TryParse(times[0].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double from) && from == 0))
-                        arriving.AddRange(ParseAssTags(tag.Arg));
+                    List<AssTag> innerTags = ParseAssTags(tag.Arg);
+                    bool fromStart = times.Length < 2 || (double.TryParse(times[0].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double from) && from == 0);
+                    bool reveals = innerTags.Exists(innerTag => s_assStateChannels.TryGetValue(innerTag.Name, out string[] innerChannels)
+                        && Array.Exists(innerChannels, channel => alphas.GetValueOrDefault(channel) == "FF" && ChannelValue(channel, innerTag.Arg) is string target && target != "FF"));
+                    if (fromStart || reveals)
+                        sequence.AddRange(innerTags);
                 }
-                foreach (AssTag tag in state.Concat(arriving).ToList())
+                List<AssTag> state = new List<AssTag>();
+                foreach (AssTag tag in sequence)
                 {
                     bool isState = s_assStateChannels.TryGetValue(tag.Name, out string[] channels);
-                    if (!isState && this.SwitchBit(tag.Name) < 0)
-                        continue;
-                    state.RemoveAll(other => other != tag && (isState
-                        ? s_assStateChannels.TryGetValue(other.Name, out string[] otherChannels) && Array.Exists(channels, otherChannels.Contains)
-                        : this.SwitchBit(other.Name) == this.SwitchBit(tag.Name)));
-                    if (!state.Contains(tag))
-                        state.Add(tag);
+                    for (int o = state.Count - 1; o >= 0 && (isState || this.SwitchBit(tag.Name) >= 0); o--)
+                    {
+                        AssTag other = state[o];
+                        if (!isState)
+                        {
+                            if (this.SwitchBit(other.Name) == this.SwitchBit(tag.Name))
+                                state.RemoveAt(o);
+                            continue;
+                        }
+                        if (!s_assStateChannels.TryGetValue(other.Name, out string[] otherChannels) || !Array.Exists(channels, otherChannels.Contains))
+                            continue;
+                        state.RemoveAt(o);
+                        state.InsertRange(o, Array.FindAll(otherChannels, channel => !channels.Contains(channel))
+                            .Select(channel => new AssTag(channel, other.Arg, "\\" + channel + other.Arg)));
+                    }
+                    state.Add(tag);
                 }
                 resting.Add(state);
             }
@@ -1455,7 +1471,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 bool isState = s_assStateChannels.TryGetValue(tag.Name, out string[] channels);
                 if ((!isState && this.SwitchBit(tag.Name) < 0) || written.Contains(tag.Raw) || !resting.TrueForAll(state => state.Exists(other => other.Raw == tag.Raw)))
                     continue;
-                string[] tagChannels = isState ? channels : new[] { tag.Name };
+                string[] tagChannels = isState ? channels : new string[] { tag.Name };
                 if (Array.TrueForAll(tagChannels, channel => styleState != null && styleState.TryGetValue(channel, out string styleValue)
                     && styleValue == ChannelValue(channel, tag.Arg)))
                     continue;
