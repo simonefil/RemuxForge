@@ -467,7 +467,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Richiesta di una chiamata: prefisso del file e coda in messaggi nuovi, perché un nodo JSON appartiene a un solo array
+        /// Richiesta di una chiamata: prefisso del file e coda in messaggi nuovi, perché un nodo JSON appartiene a un solo array, e
+        /// tool_choice sul tool della fase, uguale in tutte le richieste della sessione
         /// </summary>
         /// <param name="kind">Tipo di chiamata</param>
         /// <param name="fileId">File</param>
@@ -489,6 +490,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             request.Request.Instructions = instructions;
             request.Request.Input = new JsonArray(TranslationRequestBuilder.CreateUserMessage(prefix), TranslationRequestBuilder.CreateUserMessage(tail));
             request.Request.Tools = tools;
+
+            // Ogni fase offre un tool solo e lo forza: una risposta in testo libero non consegna nulla e si ripagherebbe intera
+            request.Request.ToolChoice = new JsonObject { ["type"] = "function", ["name"] = tools[0]["name"].DeepClone() };
             return request;
         }
 
