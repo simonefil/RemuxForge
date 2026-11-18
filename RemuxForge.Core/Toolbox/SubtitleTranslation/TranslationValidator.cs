@@ -584,8 +584,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="cue">Battuta sorgente</param>
         /// <param name="text">Testo consegnato</param>
         /// <param name="issues">Esiti della battuta, a cui si aggiungono gli errori</param>
+        /// <param name="delivered">Vero per il testo consegnato dal modello; falso per quello scritto dall'utente o ricomposto dal codice
+        /// (sostituzione dei termini), che non si controlla sui caratteri invisibili</param>
         /// <returns>Testo normalizzato</returns>
-        /// <param name="delivered">Testo consegnato dal modello; il testo scritto dall'utente non si controlla sui caratteri invisibili</param>
         private string ValidateText(SubtitleCue cue, string text, List<TranslationValidationIssue> issues, bool delivered)
         {
             int id = cue.Id.Value;
@@ -626,7 +627,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 normalizedText = string.Join("\n", lines).Normalize(NormalizationForm.FormC);
             }
 
-            if (string.IsNullOrEmpty(s_anyMarkSyntax.Replace(normalizedText, "").Trim()))
+            // Vuoto anche quando restano solo spazi e caratteri invisibili di formato
+            if (!s_anyMarkSyntax.Replace(normalizedText, "").Any(c => !char.IsWhiteSpace(c) && char.GetUnicodeCategory(c) != UnicodeCategory.Format))
                 issues.Add(Issue(id, TEXT_EMPTY, IssueSeverity.Error, "cue " + id + " has no text."));
 
             // Segni: una forma sbagliata salta gli altri controlli dei segni
@@ -666,7 +668,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         malformed = normalizedText.Substring(from, i - from + 1);
                         continue;
                     }
-                    if (string.IsNullOrEmpty(normalizedText.Substring(contentStart, i - contentStart).Trim()))
+                    if (!normalizedText.Substring(contentStart, i - contentStart).Any(c => !char.IsWhiteSpace(c) && char.GetUnicodeCategory(c) != UnicodeCategory.Format))
                         empty.Add(openNumber);
                     found.Add(openNumber);
                     open = -1;
@@ -730,36 +732,49 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
             }
 
-            // Caratteri invisibili spuri nella consegna del modello, che il sorgente e le rese del glossario non hanno (Unicode
-            // Standard, capitolo 23.2 Layout Controls). Lo spazio a larghezza zero, il word joiner e lo ZWNBSP segnano o bloccano un
-            // a capo nelle scritture senza spazi fra le parole (thai, khmer, birmano, giapponese); ZWJ e ZWNJ governano la legatura
-            // e le forme delle lettere nelle scritture corsive e indiane: spuri solo fra due lettere latine, greche o cirilliche (anche
-            // al di là di altri caratteri invisibili). I segni di direzione e i controlli bidi ordinano il testo bidirezionale: spuri
-            // solo in un testo senza caratteri da destra a sinistra. I segni arabi che il formato include ma si vedono non contano
+            // Caratteri invisibili spuri nella consegna del modello, che il sorgente e le rese dei termini del glossario presenti nella
+            // battuta non hanno (Unicode Standard, capitolo 23.2 Layout Controls). In un testo le cui lettere sono tutte latine, greche
+            // o cirilliche nessun carattere di formato serve: ognuno è spurio, dovunque stia. Nelle altre scritture lo spazio a
+            // larghezza zero, il word joiner e lo ZWNBSP segnano o bloccano un a capo dove le parole non hanno spazi (thai, khmer,
+            // birmano, giapponese), ZWJ e ZWNJ governano legature e forme delle lettere nelle scritture corsive e indiane: spuri solo
+            // fra due lettere latine, greche o cirilliche (anche al di là di altri invisibili); i segni di direzione e i controlli bidi
+            // ordinano il testo bidirezionale: spuri solo senza caratteri da destra a sinistra; gli altri, come i segni arabi che si
+            // vedono, non contano
             if (delivered)
             {
                 HashSet<char> spurious = new HashSet<char>();
                 Func<char, bool> spacedLetter = letter => char.IsLetter(letter) && (letter < '\u0530' || (letter >= '\u1E00' && letter < '\u2000'));
+                bool spacedOnly = normalizedText.Any(char.IsLetter) && normalizedText.Where(char.IsLetter).All(spacedLetter);
                 bool rightToLeft = normalizedText.Any(c => (c >= '\u0590' && c <= '\u08FF') || (c >= '\uFB1D' && c <= '\uFDFF') || (c >= '\uFE70' && c <= '\uFEFE'));
+                List<string> renderings = this._terms.FindAll(term => term.SourcePattern.IsMatch(cue.CleanText)).ConvertAll(term => term.Target);
                 for (int i = 0; i < normalizedText.Length; i++)
                 {
                     char c = normalizedText[i];
-                    if (cue.CleanText.IndexOf(c) >= 0 || this._terms.Exists(term => term.Target.IndexOf(c) >= 0) || spurious.Contains(c))
+                    if (char.GetUnicodeCategory(c) != UnicodeCategory.Format || cue.CleanText.IndexOf(c) >= 0 || renderings.Exists(target => target.IndexOf(c) >= 0)
+                        || spurious.Contains(c))
                         continue;
                     bool joining = s_lineControls.Contains(c);
-                    if (!joining && !s_directionControls.Contains(c))
-                        continue;
                     int before = i - 1;
                     while (before >= 0 && s_lineControls.Contains(normalizedText[before]))
                         before--;
                     int after = i + 1;
                     while (after < normalizedText.Length && s_lineControls.Contains(normalizedText[after]))
                         after++;
-                    if (joining ? before >= 0 && after < normalizedText.Length && spacedLetter(normalizedText[before]) && spacedLetter(normalizedText[after]) : !rightToLeft)
+                    string value = "U+" + ((int)c).ToString("X4", CultureInfo.InvariantCulture);
+                    if (spacedOnly)
                     {
                         spurious.Add(c);
-                        string value = "U+" + ((int)c).ToString("X4", CultureInfo.InvariantCulture);
                         issues.Add(Issue(id, INVISIBLE_CHAR, IssueSeverity.Error, value + " is an invisible character the source cue does not have; remove it.", "char", value));
+                    }
+                    else if (joining && before >= 0 && after < normalizedText.Length && spacedLetter(normalizedText[before]) && spacedLetter(normalizedText[after]))
+                    {
+                        spurious.Add(c);
+                        issues.Add(Issue(id, INVISIBLE_CHAR, IssueSeverity.Error, value + " is an invisible character the source cue does not have between two Latin, Greek or Cyrillic letters; remove it from between those letters.", "char", value));
+                    }
+                    else if (s_directionControls.Contains(c) && !rightToLeft)
+                    {
+                        spurious.Add(c);
+                        issues.Add(Issue(id, INVISIBLE_CHAR, IssueSeverity.Error, value + " is a direction mark the source cue does not have, in a text without right-to-left letters; remove it.", "char", value));
                     }
                 }
             }
