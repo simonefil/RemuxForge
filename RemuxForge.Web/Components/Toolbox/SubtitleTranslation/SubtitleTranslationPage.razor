@@ -703,11 +703,11 @@
                 Glossary glossary = project.Glossary;
                 string[] forms = TranslationRequestBuilder.GetAddressForms(project.TargetLanguage);
 
-                <RadzenTabs class="rf-tool-tabs rf-translation-tabs" RenderMode="TabRenderMode.Client" SelectedIndex="@_tab" Change="@((int index) => { CancelEditing(); _tab = index; })">
+                <RadzenTabs class="rf-tool-tabs rf-translation-tabs" RenderMode="TabRenderMode.Client" SelectedIndex="@_tab" Change="@((int index) => { _pending = null; _tab = index; })">
                     <Tabs>
                         <RadzenTabsItem Text="@AppText.F("web.toolbox.subtitleTranslation.termsTab", glossary.Terms.Count)">
                             <RadzenDataGrid TItem="GlossaryTerm"
-                                            Data="@WithDraft(glossary.Terms)"
+                                            Data="@WithPending(glossary.Terms)"
                                             class="rf-data-grid rf-tool-grid rf-translation-glossary"
                                             AllowAlternatingRows="false"
                                             AllowColumnResize="false"
@@ -718,38 +718,22 @@
                                 <Columns>
                                     <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.termSource")" Width="20%">
                                         <Template Context="term">
-                                            @if (IsEditing(term))
+                                            @TextCell(term, term.Source, term.Origin == GlossaryOrigin.User, AppText.T("web.toolbox.subtitleTranslation.termSource"), (t, value) => t.Source = value)
+                                            @if (term.Origin == GlossaryOrigin.Import)
                                             {
-                                                <RadzenTextBox class="rf-translation-cell-input" @bind-Value="@_termDraft.Source" aria-label="@AppText.T("web.toolbox.subtitleTranslation.termSource")" />
-                                            }
-                                            else
-                                            {
-                                                <span class="rf-translation-cell">@term.Source</span>
-                                                @if (term.Origin == GlossaryOrigin.Import)
-                                                {
-                                                    <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Base" class="rf-translation-origin" Text="@AppText.T("web.toolbox.subtitleTranslation.originImport")" />
-                                                }
+                                                <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Base" class="rf-translation-origin" Text="@AppText.T("web.toolbox.subtitleTranslation.originImport")" />
                                             }
                                         </Template>
                                     </RadzenDataGridColumn>
                                     <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.termTarget")" Width="20%">
-                                        <Template Context="term">
-                                            @if (IsEditing(term))
-                                            {
-                                                <RadzenTextBox class="rf-translation-cell-input" @bind-Value="@_termDraft.Target" aria-label="@AppText.T("web.toolbox.subtitleTranslation.termTarget")" />
-                                            }
-                                            else
-                                            {
-                                                <span class="rf-translation-cell">@term.Target</span>
-                                            }
-                                        </Template>
+                                        <Template Context="term">@TextCell(term, term.Target, true, AppText.T("web.toolbox.subtitleTranslation.termTarget"), (t, value) => t.Target = value)</Template>
                                     </RadzenDataGridColumn>
                                     <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.termKind")" Width="13%">
                                         <Template Context="term">
-                                            @if (IsEditing(term))
+                                            @if (term.Origin == GlossaryOrigin.User)
                                             {
-                                                <RadzenDropDown TValue="GlossaryTermKind" class="rf-translation-cell-input" Data="@s_termKinds" @bind-Value="@_termDraft.Kind"
-                                                                aria-label="@AppText.T("web.toolbox.subtitleTranslation.termKind")">
+                                                <RadzenDropDown TValue="GlossaryTermKind" class="rf-translation-cell-input" Data="@s_termKinds" Value="@term.Kind" Disabled="@(busy || glossaryLocked)"
+                                                                aria-label="@AppText.T("web.toolbox.subtitleTranslation.termKind")" Change="@((object value) => ChangeEntry(term, t => t.Kind = (GlossaryTermKind)value))">
                                                     <Template Context="kind">@AppText.T("web.toolbox.subtitleTranslation.kind." + kind)</Template>
                                                     <ValueTemplate Context="kind">@AppText.T("web.toolbox.subtitleTranslation.kind." + kind)</ValueTemplate>
                                                 </RadzenDropDown>
@@ -762,9 +746,10 @@
                                     </RadzenDataGridColumn>
                                     <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.termInvariable")" Width="9%" TextAlign="TextAlign.Center">
                                         <Template Context="term">
-                                            @if (IsEditing(term))
+                                            @if (term.Origin == GlossaryOrigin.User)
                                             {
-                                                <RadzenCheckBox TValue="bool" @bind-Value="@_termDraft.Invariable" aria-label="@AppText.T("web.toolbox.subtitleTranslation.termInvariable")" />
+                                                <RadzenCheckBox TValue="bool" Value="@term.Invariable" Disabled="@(busy || glossaryLocked)" aria-label="@AppText.T("web.toolbox.subtitleTranslation.termInvariable")"
+                                                                Change="@((bool value) => ChangeEntry(term, t => t.Invariable = value))" />
                                             }
                                             else if (term.Invariable)
                                             {
@@ -776,29 +761,20 @@
                                         <Template Context="term"><CellText Text="@term.Episodes.Count.ToString(CultureInfo.CurrentCulture)" /></Template>
                                     </RadzenDataGridColumn>
                                     <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.note")" Width="22%">
-                                        <Template Context="term">
-                                            @if (IsEditing(term))
-                                            {
-                                                <RadzenTextBox class="rf-translation-cell-input" @bind-Value="@_termDraft.Note" aria-label="@AppText.T("web.toolbox.subtitleTranslation.note")" />
-                                            }
-                                            else
-                                            {
-                                                <span class="rf-translation-cell">@term.Note</span>
-                                            }
-                                        </Template>
+                                        <Template Context="term">@TextCell(term, term.Note, term.Origin == GlossaryOrigin.User, AppText.T("web.toolbox.subtitleTranslation.note"), (t, value) => t.Note = value)</Template>
                                     </RadzenDataGridColumn>
-                                    <RadzenDataGridColumn TItem="GlossaryTerm" Width="6rem" TextAlign="TextAlign.Center">
-                                        <Template Context="term">@RowActions(term, term.Source)</Template>
+                                    <RadzenDataGridColumn TItem="GlossaryTerm" Width="4rem" TextAlign="TextAlign.Center">
+                                        <Template Context="term">@DeleteCell(term, term.Source)</Template>
                                     </RadzenDataGridColumn>
                                 </Columns>
                             </RadzenDataGrid>
-                            <RadzenButton class="rf-translation-add" Text="@AppText.T("web.toolbox.subtitleTranslation.addTerm")" Icon="add" Size="ButtonSize.Small" Variant="Variant.Text"
-                                          Disabled="@(_editing != null || glossaryLocked)" Click="@(() => StartEditing(new GlossaryTerm { Origin = GlossaryOrigin.User }, true))" />
+                            <RadzenButton class="rf-translation-add" Text="@AppText.T("web.toolbox.subtitleTranslation.addTerm")" Icon="add" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base"
+                                          Disabled="@(_pending != null || busy || glossaryLocked)" Click="@(() => _pending = new GlossaryTerm { Origin = GlossaryOrigin.User })" />
                         </RadzenTabsItem>
 
                         <RadzenTabsItem Text="@AppText.F("web.toolbox.subtitleTranslation.charactersTab", glossary.Characters.Count)">
                             <RadzenDataGrid TItem="GlossaryCharacter"
-                                            Data="@WithDraft(glossary.Characters)"
+                                            Data="@WithPending(glossary.Characters)"
                                             class="rf-data-grid rf-tool-grid rf-translation-glossary"
                                             AllowAlternatingRows="false"
                                             AllowColumnResize="false"
@@ -809,67 +785,35 @@
                                 <Columns>
                                     <RadzenDataGridColumn TItem="GlossaryCharacter" Title="@AppText.T("web.toolbox.subtitleTranslation.characterName")" Width="22%">
                                         <Template Context="character">
-                                            @if (IsEditing(character))
+                                            @TextCell(character, character.Name, character.Origin == GlossaryOrigin.User, AppText.T("web.toolbox.subtitleTranslation.characterName"), (c, value) => c.Name = value)
+                                            @if (character.Origin == GlossaryOrigin.Import)
                                             {
-                                                <RadzenTextBox class="rf-translation-cell-input" @bind-Value="@_characterDraft.Name" aria-label="@AppText.T("web.toolbox.subtitleTranslation.characterName")" />
-                                            }
-                                            else
-                                            {
-                                                <span class="rf-translation-cell">@character.Name</span>
-                                                @if (character.Origin == GlossaryOrigin.Import)
-                                                {
-                                                    <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Base" class="rf-translation-origin" Text="@AppText.T("web.toolbox.subtitleTranslation.originImport")" />
-                                                }
+                                                <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Base" class="rf-translation-origin" Text="@AppText.T("web.toolbox.subtitleTranslation.originImport")" />
                                             }
                                         </Template>
                                     </RadzenDataGridColumn>
                                     <RadzenDataGridColumn TItem="GlossaryCharacter" Title="@AppText.T("web.toolbox.subtitleTranslation.characterGender")" Width="13%">
                                         <Template Context="character">
-                                            @if (IsEditing(character))
-                                            {
-                                                <RadzenDropDown TValue="CharacterGender" class="rf-translation-cell-input" Data="@s_genders" @bind-Value="@_characterDraft.Gender"
-                                                                aria-label="@AppText.T("web.toolbox.subtitleTranslation.characterGender")">
-                                                    <Template Context="gender">@AppText.T("web.toolbox.subtitleTranslation.gender." + gender)</Template>
-                                                    <ValueTemplate Context="gender">@AppText.T("web.toolbox.subtitleTranslation.gender." + gender)</ValueTemplate>
-                                                </RadzenDropDown>
-                                            }
-                                            else
-                                            {
-                                                <CellText Text="@AppText.T("web.toolbox.subtitleTranslation.gender." + character.Gender)" />
-                                            }
+                                            <RadzenDropDown TValue="CharacterGender" class="rf-translation-cell-input" Data="@s_genders" Value="@character.Gender" Disabled="@(busy || glossaryLocked)"
+                                                            aria-label="@AppText.T("web.toolbox.subtitleTranslation.characterGender")" Change="@((object value) => ChangeEntry(character, c => c.Gender = (CharacterGender)value))">
+                                                <Template Context="gender">@AppText.T("web.toolbox.subtitleTranslation.gender." + gender)</Template>
+                                                <ValueTemplate Context="gender">@AppText.T("web.toolbox.subtitleTranslation.gender." + gender)</ValueTemplate>
+                                            </RadzenDropDown>
                                         </Template>
                                     </RadzenDataGridColumn>
                                     <RadzenDataGridColumn TItem="GlossaryCharacter" Title="@AppText.T("web.toolbox.subtitleTranslation.characterRole")" Width="28%">
-                                        <Template Context="character">
-                                            @if (IsEditing(character))
-                                            {
-                                                <RadzenTextBox class="rf-translation-cell-input" @bind-Value="@_characterDraft.Role" aria-label="@AppText.T("web.toolbox.subtitleTranslation.characterRole")" />
-                                            }
-                                            else
-                                            {
-                                                <span class="rf-translation-cell">@character.Role</span>
-                                            }
-                                        </Template>
+                                        <Template Context="character">@TextCell(character, character.Role, character.Origin == GlossaryOrigin.User, AppText.T("web.toolbox.subtitleTranslation.characterRole"), (c, value) => c.Role = value)</Template>
                                     </RadzenDataGridColumn>
                                     <RadzenDataGridColumn TItem="GlossaryCharacter" Title="@AppText.T("web.toolbox.subtitleTranslation.characterRelationships")" Width="28%">
-                                        <Template Context="character">
-                                            @if (IsEditing(character))
-                                            {
-                                                <RadzenTextBox class="rf-translation-cell-input" @bind-Value="@_characterDraft.Relationships" aria-label="@AppText.T("web.toolbox.subtitleTranslation.characterRelationships")" />
-                                            }
-                                            else
-                                            {
-                                                <span class="rf-translation-cell">@character.Relationships</span>
-                                            }
-                                        </Template>
+                                        <Template Context="character">@TextCell(character, character.Relationships, character.Origin == GlossaryOrigin.User, AppText.T("web.toolbox.subtitleTranslation.characterRelationships"), (c, value) => c.Relationships = value)</Template>
                                     </RadzenDataGridColumn>
-                                    <RadzenDataGridColumn TItem="GlossaryCharacter" Width="6rem" TextAlign="TextAlign.Center">
-                                        <Template Context="character">@RowActions(character, character.Name)</Template>
+                                    <RadzenDataGridColumn TItem="GlossaryCharacter" Width="4rem" TextAlign="TextAlign.Center">
+                                        <Template Context="character">@DeleteCell(character, character.Name)</Template>
                                     </RadzenDataGridColumn>
                                 </Columns>
                             </RadzenDataGrid>
-                            <RadzenButton class="rf-translation-add" Text="@AppText.T("web.toolbox.subtitleTranslation.addCharacter")" Icon="add" Size="ButtonSize.Small" Variant="Variant.Text"
-                                          Disabled="@(_editing != null || glossaryLocked)" Click="@(() => StartEditing(new GlossaryCharacter { Origin = GlossaryOrigin.User, Gender = CharacterGender.Unknown }, true))" />
+                            <RadzenButton class="rf-translation-add" Text="@AppText.T("web.toolbox.subtitleTranslation.addCharacter")" Icon="add" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base"
+                                          Disabled="@(_pending != null || busy || glossaryLocked)" Click="@(() => _pending = new GlossaryCharacter { Origin = GlossaryOrigin.User, Gender = CharacterGender.Unknown })" />
                         </RadzenTabsItem>
 
                         <RadzenTabsItem Text="@AppText.T("web.toolbox.subtitleTranslation.registerTab")">
@@ -890,7 +834,7 @@
                             @if (forms != null && forms.Length > 0)
                             {
                                 <RadzenDataGrid TItem="GlossaryAddressing"
-                                                Data="@WithDraft(glossary.Addressing)"
+                                                Data="@WithPending(glossary.Addressing)"
                                                 class="rf-data-grid rf-tool-grid rf-translation-glossary"
                                                 AllowAlternatingRows="false"
                                                 AllowColumnResize="false"
@@ -900,60 +844,27 @@
                                                 GridLines="DataGridGridLines.Horizontal">
                                     <Columns>
                                         <RadzenDataGridColumn TItem="GlossaryAddressing" Title="@AppText.T("web.toolbox.subtitleTranslation.speaker")" Width="26%">
-                                            <Template Context="pair">
-                                                @if (IsEditing(pair))
-                                                {
-                                                    <RadzenTextBox class="rf-translation-cell-input" @bind-Value="@_addressingDraft.Speaker" aria-label="@AppText.T("web.toolbox.subtitleTranslation.speaker")" />
-                                                }
-                                                else
-                                                {
-                                                    <span class="rf-translation-cell">@pair.Speaker</span>
-                                                }
-                                            </Template>
+                                            <Template Context="pair">@TextCell(pair, pair.Speaker, pair.Origin == GlossaryOrigin.User, AppText.T("web.toolbox.subtitleTranslation.speaker"), (a, value) => a.Speaker = value)</Template>
                                         </RadzenDataGridColumn>
                                         <RadzenDataGridColumn TItem="GlossaryAddressing" Title="@AppText.T("web.toolbox.subtitleTranslation.addressee")" Width="26%">
-                                            <Template Context="pair">
-                                                @if (IsEditing(pair))
-                                                {
-                                                    <RadzenTextBox class="rf-translation-cell-input" @bind-Value="@_addressingDraft.Addressee" aria-label="@AppText.T("web.toolbox.subtitleTranslation.addressee")" />
-                                                }
-                                                else
-                                                {
-                                                    <span class="rf-translation-cell">@pair.Addressee</span>
-                                                }
-                                            </Template>
+                                            <Template Context="pair">@TextCell(pair, pair.Addressee, pair.Origin == GlossaryOrigin.User, AppText.T("web.toolbox.subtitleTranslation.addressee"), (a, value) => a.Addressee = value)</Template>
                                         </RadzenDataGridColumn>
                                         <RadzenDataGridColumn TItem="GlossaryAddressing" Title="@AppText.T("web.toolbox.subtitleTranslation.form")" Width="14%">
                                             <Template Context="pair">
-                                                @if (IsEditing(pair))
-                                                {
-                                                    <RadzenDropDown TValue="string" class="rf-translation-cell-input" Data="@forms" @bind-Value="@_addressingDraft.Form" aria-label="@AppText.T("web.toolbox.subtitleTranslation.form")" />
-                                                }
-                                                else
-                                                {
-                                                    <CellText Text="@pair.Form" />
-                                                }
+                                                <RadzenDropDown TValue="string" class="rf-translation-cell-input" Data="@forms" Value="@pair.Form" Disabled="@(busy || glossaryLocked)"
+                                                                aria-label="@AppText.T("web.toolbox.subtitleTranslation.form")" Change="@((object value) => ChangeEntry(pair, a => a.Form = (string)value))" />
                                             </Template>
                                         </RadzenDataGridColumn>
                                         <RadzenDataGridColumn TItem="GlossaryAddressing" Title="@AppText.T("web.toolbox.subtitleTranslation.note")" Width="26%">
-                                            <Template Context="pair">
-                                                @if (IsEditing(pair))
-                                                {
-                                                    <RadzenTextBox class="rf-translation-cell-input" @bind-Value="@_addressingDraft.Note" aria-label="@AppText.T("web.toolbox.subtitleTranslation.note")" />
-                                                }
-                                                else
-                                                {
-                                                    <span class="rf-translation-cell">@pair.Note</span>
-                                                }
-                                            </Template>
+                                            <Template Context="pair">@TextCell(pair, pair.Note, pair.Origin == GlossaryOrigin.User, AppText.T("web.toolbox.subtitleTranslation.note"), (a, value) => a.Note = value)</Template>
                                         </RadzenDataGridColumn>
-                                        <RadzenDataGridColumn TItem="GlossaryAddressing" Width="6rem" TextAlign="TextAlign.Center">
-                                            <Template Context="pair">@RowActions(pair, pair.Speaker + " → " + pair.Addressee)</Template>
+                                        <RadzenDataGridColumn TItem="GlossaryAddressing" Width="4rem" TextAlign="TextAlign.Center">
+                                            <Template Context="pair">@DeleteCell(pair, pair.Speaker + " → " + pair.Addressee)</Template>
                                         </RadzenDataGridColumn>
                                     </Columns>
                                 </RadzenDataGrid>
-                                <RadzenButton class="rf-translation-add" Text="@AppText.T("web.toolbox.subtitleTranslation.addAddressing")" Icon="add" Size="ButtonSize.Small" Variant="Variant.Text"
-                                              Disabled="@(_editing != null || glossaryLocked)" Click="@(() => StartEditing(new GlossaryAddressing { Origin = GlossaryOrigin.User, Form = forms[0] }, true))" />
+                                <RadzenButton class="rf-translation-add" Text="@AppText.T("web.toolbox.subtitleTranslation.addAddressing")" Icon="add" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base"
+                                              Disabled="@(_pending != null || busy || glossaryLocked)" Click="@(() => _pending = new GlossaryAddressing { Origin = GlossaryOrigin.User, Form = forms[0] })" />
                             }
                         </RadzenTabsItem>
                     </Tabs>
@@ -1096,29 +1007,9 @@
     private int _tab;
 
     /// <summary>
-    /// Voce del glossario in modifica, quella della lista o una nuova; null se nessuna
+    /// Voce aggiunta a mano che non è ancora nel glossario perché incompleta; null se nessuna
     /// </summary>
-    private object _editing;
-
-    /// <summary>
-    /// True se la voce in modifica è nuova e non è ancora nel glossario
-    /// </summary>
-    private bool _adding;
-
-    /// <summary>
-    /// Copia del termine in modifica
-    /// </summary>
-    private GlossaryTerm _termDraft = new GlossaryTerm();
-
-    /// <summary>
-    /// Copia del personaggio in modifica
-    /// </summary>
-    private GlossaryCharacter _characterDraft = new GlossaryCharacter();
-
-    /// <summary>
-    /// Copia della coppia di registro in modifica
-    /// </summary>
-    private GlossaryAddressing _addressingDraft = new GlossaryAddressing();
+    private object _pending;
 
     /// <summary>
     /// Capacità dichiarate dall'accesso, accese o spente
@@ -1222,7 +1113,7 @@
         }
 
         commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.projectsList"), "", "list", allSurfaces, UiCommandMenuSection.File, busy,
-            () => { this.CancelEditing(); this.Orchestrator.CloseProject(); this.ReloadProjects(); })
+            () => { this._pending = null; this.Orchestrator.CloseProject(); this.ReloadProjects(); })
         {
             SecondaryToolbar = true,
             ToolbarOrder = 18
@@ -1270,7 +1161,7 @@
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.approve"), "", "check", allSurfaces, UiCommandMenuSection.Actions, busy || !this.Orchestrator.CanApprove,
                 () =>
                 {
-                    this.CancelEditing();
+                    this._pending = null;
                     this.Orchestrator.ApproveGlossary();
                     this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyApproved"), AppText.F("web.toolbox.subtitleTranslation.revision", this.Orchestrator.Project.Glossary.Revision));
                 })
@@ -1285,7 +1176,7 @@
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.next"), "", "arrow_forward", allSurfaces, UiCommandMenuSection.Actions,
                 busy || project.ReachedStep < TranslationProjectStep.Translation,
-                () => { this.CancelEditing(); this._step = STEP_TRANSLATION; this.OnStateChanged.InvokeAsync(); })
+                () => { this._pending = null; this._step = STEP_TRANSLATION; this.OnStateChanged.InvokeAsync(); })
             {
                 ToolbarOrder = 13
             });
@@ -1502,7 +1393,7 @@
         }
 
         this._step = this.ProjectStep();
-        this.CancelEditing();
+        this._pending = null;
         return true;
     }
 
@@ -1609,7 +1500,7 @@
             return;
         }
 
-        this.CancelEditing();
+        this._pending = null;
         this._step = STEP_GLOSSARY;
         this.Orchestrator.Start();
     }
@@ -1897,163 +1788,114 @@
     }
 
     /// <summary>
-    /// Voci di una scheda con, in fondo, quella nuova in modifica
+    /// Voci di una scheda con, in fondo, quella aggiunta a mano non ancora nel glossario
     /// </summary>
     /// <typeparam name="T">Tipo della voce</typeparam>
     /// <param name="entries">Voci del glossario</param>
     /// <returns>Righe della griglia</returns>
-    private List<T> WithDraft<T>(List<T> entries)
+    private List<T> WithPending<T>(List<T> entries)
     {
         List<T> rows = new List<T>(entries);
-        if (this._adding && this._editing is T draft)
-            rows.Add(draft);
+        if (this._pending is T pending)
+            rows.Add(pending);
         return rows;
     }
 
     /// <summary>
-    /// True se la riga è quella in modifica
+    /// Applica la modifica di una cella a una voce: i campi chiave non vuoti e non già presenti in un'altra voce. La voce
+    /// aggiunta a mano entra nel glossario quando la modifica la completa; fino ad allora tiene i valori scritti
     /// </summary>
+    /// <typeparam name="T">Tipo della voce</typeparam>
     /// <param name="entry">Voce della riga</param>
-    /// <returns>True in modifica</returns>
-    private bool IsEditing(object entry)
-    {
-        return ReferenceEquals(entry, this._editing);
-    }
-
-    /// <summary>
-    /// Mette una voce in modifica su una copia
-    /// </summary>
-    /// <param name="entry">Voce della lista o nuova</param>
-    /// <param name="adding">True se la voce è nuova</param>
-    private void StartEditing(object entry, bool adding)
-    {
-        this._editing = entry;
-        this._adding = adding;
-        if (entry is GlossaryTerm term)
-        {
-            this._termDraft = new GlossaryTerm { Source = term.Source, Target = term.Target, Kind = term.Kind, Invariable = term.Invariable, Note = term.Note, Origin = term.Origin };
-        }
-        else if (entry is GlossaryCharacter character)
-        {
-            this._characterDraft = new GlossaryCharacter { Name = character.Name, Gender = character.Gender, Role = character.Role, Relationships = character.Relationships, Origin = character.Origin };
-        }
-        else if (entry is GlossaryAddressing pair)
-        {
-            this._addressingDraft = new GlossaryAddressing { Speaker = pair.Speaker, Addressee = pair.Addressee, Form = pair.Form, Note = pair.Note, Origin = pair.Origin };
-        }
-    }
-
-    /// <summary>
-    /// Lascia la modifica senza salvare
-    /// </summary>
-    private void CancelEditing()
-    {
-        this._editing = null;
-        this._adding = false;
-    }
-
-    /// <summary>
-    /// Salva la voce in modifica: i campi chiave non vuoti e non già presenti in un'altra voce
-    /// </summary>
-    private void SaveEditing()
+    /// <param name="change">Modifica della cella</param>
+    private void ChangeEntry<T>(T entry, Action<T> change) where T : class
     {
         TranslationProject project = this.Orchestrator.Project;
         Glossary glossary = project.Glossary;
         GlossaryBuilder builder = new GlossaryBuilder(project.SourceLanguage, project.TargetLanguage);
+        bool adding = ReferenceEquals(entry, this._pending);
+        bool incomplete = false;
         string error = "";
+        Action<Glossary> add = null;
 
-        if (this._editing is GlossaryTerm term)
+        // La modifica si prova su una copia dei campi chiave: la voce cambia solo se resta valida
+        object candidate = entry switch
         {
-            string key = builder.TermKey(this._termDraft.Source ?? "");
-            if (string.IsNullOrWhiteSpace(this._termDraft.Source) || string.IsNullOrWhiteSpace(this._termDraft.Target))
+            GlossaryTerm t => new GlossaryTerm { Source = t.Source, Target = t.Target },
+            GlossaryCharacter c => new GlossaryCharacter { Name = c.Name },
+            GlossaryAddressing a => new GlossaryAddressing { Speaker = a.Speaker, Addressee = a.Addressee },
+            _ => null
+        };
+        change((T)candidate);
+
+        if (candidate is GlossaryTerm term)
+        {
+            incomplete = string.IsNullOrWhiteSpace(term.Source) || string.IsNullOrWhiteSpace(term.Target);
+            if (incomplete)
             {
                 error = AppText.T("web.toolbox.subtitleTranslation.editTermEmpty");
             }
-            else if (glossary.Terms.Exists(t => !ReferenceEquals(t, term) && builder.TermKey(t.Source) == key))
+            else if (glossary.Terms.Exists(t => !ReferenceEquals(t, entry) && builder.TermKey(t.Source) == builder.TermKey(term.Source)))
             {
-                error = AppText.F("web.toolbox.subtitleTranslation.editDuplicate", this._termDraft.Source.Trim());
+                error = AppText.F("web.toolbox.subtitleTranslation.editDuplicate", term.Source);
             }
-
-            if (string.IsNullOrEmpty(error))
-            {
-                this.Orchestrator.ChangeGlossary(g =>
-                {
-                    term.Source = this._termDraft.Source.Trim();
-                    term.Target = this._termDraft.Target.Trim();
-                    term.Kind = this._termDraft.Kind;
-                    term.Invariable = this._termDraft.Invariable;
-                    term.Note = (this._termDraft.Note ?? "").Trim();
-                    if (this._adding)
-                        g.Terms.Add(term);
-                });
-            }
+            add = g => g.Terms.Add(entry as GlossaryTerm);
         }
-        else if (this._editing is GlossaryCharacter character)
+        else if (candidate is GlossaryCharacter character)
         {
-            string key = GlossaryBuilder.CharacterKey(this._characterDraft.Name ?? "");
-            if (string.IsNullOrWhiteSpace(this._characterDraft.Name))
+            incomplete = string.IsNullOrWhiteSpace(character.Name);
+            if (incomplete)
             {
                 error = AppText.T("web.toolbox.subtitleTranslation.editCharacterEmpty");
             }
-            else if (glossary.Characters.Exists(c => !ReferenceEquals(c, character) && GlossaryBuilder.CharacterKey(c.Name) == key))
+            else if (glossary.Characters.Exists(c => !ReferenceEquals(c, entry) && GlossaryBuilder.CharacterKey(c.Name) == GlossaryBuilder.CharacterKey(character.Name)))
             {
-                error = AppText.F("web.toolbox.subtitleTranslation.editDuplicate", this._characterDraft.Name.Trim());
+                error = AppText.F("web.toolbox.subtitleTranslation.editDuplicate", character.Name);
             }
-
-            if (string.IsNullOrEmpty(error))
-            {
-                this.Orchestrator.ChangeGlossary(g =>
-                {
-                    character.Name = this._characterDraft.Name.Trim();
-                    character.Gender = this._characterDraft.Gender;
-                    character.Role = (this._characterDraft.Role ?? "").Trim();
-                    character.Relationships = (this._characterDraft.Relationships ?? "").Trim();
-                    if (this._adding)
-                        g.Characters.Add(character);
-                });
-            }
+            add = g => g.Characters.Add(entry as GlossaryCharacter);
         }
-        else if (this._editing is GlossaryAddressing pair)
+        else if (candidate is GlossaryAddressing pair)
         {
-            string key = GlossaryBuilder.AddressingKey(this._addressingDraft.Speaker ?? "", this._addressingDraft.Addressee ?? "");
-            if (string.IsNullOrWhiteSpace(this._addressingDraft.Speaker) || string.IsNullOrWhiteSpace(this._addressingDraft.Addressee))
+            incomplete = string.IsNullOrWhiteSpace(pair.Speaker) || string.IsNullOrWhiteSpace(pair.Addressee);
+            if (incomplete)
             {
                 error = AppText.T("web.toolbox.subtitleTranslation.editAddressingEmpty");
             }
-            else if (glossary.Addressing.Exists(a => !ReferenceEquals(a, pair) && GlossaryBuilder.AddressingKey(a.Speaker, a.Addressee) == key))
+            else if (glossary.Addressing.Exists(a => !ReferenceEquals(a, entry) && GlossaryBuilder.AddressingKey(a.Speaker, a.Addressee) == GlossaryBuilder.AddressingKey(pair.Speaker, pair.Addressee)))
             {
-                error = AppText.F("web.toolbox.subtitleTranslation.editDuplicate", this._addressingDraft.Speaker.Trim() + " → " + this._addressingDraft.Addressee.Trim());
+                error = AppText.F("web.toolbox.subtitleTranslation.editDuplicate", pair.Speaker + " → " + pair.Addressee);
             }
-
-            if (string.IsNullOrEmpty(error))
-            {
-                this.Orchestrator.ChangeGlossary(g =>
-                {
-                    pair.Speaker = this._addressingDraft.Speaker.Trim();
-                    pair.Addressee = this._addressingDraft.Addressee.Trim();
-                    pair.Form = this._addressingDraft.Form;
-                    pair.Note = (this._addressingDraft.Note ?? "").Trim();
-                    if (this._adding)
-                        g.Addressing.Add(pair);
-                });
-            }
+            add = g => g.Addressing.Add(entry as GlossaryAddressing);
         }
+
+        // La voce aggiunta a mano non è nel glossario: tiene i valori anche se incompleta
+        if (adding)
+            change(entry);
 
         if (!string.IsNullOrEmpty(error))
         {
-            this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyEditInvalid"), error);
+            if (!adding || !incomplete)
+                this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyEditInvalid"), error);
             return;
         }
 
-        this.CancelEditing();
+        this.Orchestrator.ChangeGlossary(adding ? add : g => change(entry));
+        if (adding)
+            this._pending = null;
     }
 
     /// <summary>
-    /// Toglie una voce dal glossario
+    /// Toglie una voce dal glossario, o lascia quella aggiunta a mano non ancora nel glossario
     /// </summary>
     /// <param name="entry">Voce della riga</param>
     private void DeleteEntry(object entry)
     {
+        if (ReferenceEquals(entry, this._pending))
+        {
+            this._pending = null;
+            return;
+        }
+
         this.Orchestrator.ChangeGlossary(g =>
         {
             if (entry is GlossaryTerm term)
@@ -2072,30 +1914,37 @@
     }
 
     /// <summary>
-    /// Pulsanti di una riga del glossario: modifica e cancella, oppure salva e annulla sulla riga in modifica
+    /// Cella di testo di una voce del glossario: campo che salva al cambio, o testo se la colonna non si modifica sulla riga
     /// </summary>
+    /// <typeparam name="T">Tipo della voce</typeparam>
     /// <param name="entry">Voce della riga</param>
-    /// <param name="name">Nome della voce per le etichette accessibili</param>
+    /// <param name="value">Valore della cella</param>
+    /// <param name="editable">True se la colonna si modifica sulla riga</param>
+    /// <param name="label">Titolo della colonna per l'etichetta accessibile</param>
+    /// <param name="assign">Scrittura del valore nella voce</param>
     /// <returns>Frammento della cella</returns>
-    private RenderFragment RowActions(object entry, string name) =>
-        @<span class="rf-translation-actions">
-            @if (IsEditing(entry))
+    private RenderFragment TextCell<T>(T entry, string value, bool editable, string label, Action<T, string> assign) where T : class =>
+        @<text>
+            @if (editable)
             {
-                <RadzenButton Icon="check" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Success"
-                              title="@AppText.T("web.toolbox.subtitleTranslation.editSave")" aria-label="@AppText.T("web.toolbox.subtitleTranslation.editSave")" Click="@SaveEditing" />
-                <RadzenButton Icon="close" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base"
-                              title="@AppText.T("web.common.cancel")" aria-label="@AppText.T("web.common.cancel")" Click="@CancelEditing" />
+                <RadzenTextBox class="rf-translation-cell-input" Value="@value" Disabled="@(Orchestrator.IsBusy || Orchestrator.Job != null)" aria-label="@label"
+                               Change="@((string text) => ChangeEntry(entry, e => assign(e, (text ?? "").Trim())))" />
             }
             else
             {
-                <RadzenButton Icon="edit" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@(_editing != null || Orchestrator.IsBusy || Orchestrator.Job != null)"
-                              title="@AppText.T("web.toolbox.subtitleTranslation.editEntry")" aria-label="@(AppText.T("web.toolbox.subtitleTranslation.editEntry") + " " + name)"
-                              Click="@(() => StartEditing(entry, false))" />
-                <RadzenButton Icon="delete" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Disabled="@(_editing != null || Orchestrator.IsBusy || Orchestrator.Job != null)"
-                              title="@AppText.T("web.common.delete")" aria-label="@(AppText.T("web.common.delete") + " " + name)"
-                              Click="@(() => DeleteEntry(entry))" />
+                <span class="rf-translation-cell">@value</span>
             }
-        </span>;
+        </text>;
+
+    /// <summary>
+    /// Cella con il pulsante che toglie una voce del glossario
+    /// </summary>
+    /// <param name="entry">Voce della riga</param>
+    /// <param name="name">Nome della voce per l'etichetta accessibile</param>
+    /// <returns>Frammento della cella</returns>
+    private RenderFragment DeleteCell(object entry, string name) =>
+        @<RadzenButton Icon="delete" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Disabled="@(Orchestrator.IsBusy || Orchestrator.Job != null)"
+                       title="@AppText.T("web.common.delete")" aria-label="@(AppText.T("web.common.delete") + " " + name)" Click="@(() => DeleteEntry(entry))" />;
 
     /// <summary>
     /// Rilegge i progetti salvati e i loro job; un job illeggibile lascia il progetto nell'elenco senza job, e l'apertura ne dà il motivo

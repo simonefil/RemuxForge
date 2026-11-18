@@ -2011,7 +2011,7 @@
   "web.toolbox.subtitleTranslation.termSource": "Original",
   "web.toolbox.subtitleTranslation.termTarget": "Rendering",
   "web.toolbox.subtitleTranslation.termKind": "Type",
-  "web.toolbox.subtitleTranslation.termInvariable": "Invariable",
+  "web.toolbox.subtitleTranslation.termInvariable": "Fixed form",
   "web.toolbox.subtitleTranslation.note": "Note",
   "web.toolbox.subtitleTranslation.originImport": "loaded",
   "web.toolbox.subtitleTranslation.kind.Name": "Name",

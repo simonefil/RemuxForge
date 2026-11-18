@@ -492,7 +492,7 @@
 
 .rf-translation .rf-translation-add {
     align-self: flex-start;
-    margin: calc(var(--rz-gap) * 0.5) var(--rz-gap);
+    margin: var(--rz-gap);
 }
 
 .rf-translation-texts {
