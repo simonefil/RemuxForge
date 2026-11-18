@@ -176,11 +176,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
                 }
 
+                // Una riapplicazione, dopo che il file ha ricevuto una tratta da un file tolto, tiene gli esiti di prima: le battute
+                // già riscritte non sono più coinvolte, quelle non riuscite si riprovano
                 if (state.TermApplication == null)
                     state.TermApplication = new TermApplicationState();
-                state.TermApplication.TargetIds = targets;
-                state.TermApplication.RewrittenIds = new List<int>();
-                state.TermApplication.FailedIds = new List<int>();
+                state.TermApplication.TargetIds = state.TermApplication.TargetIds.Union(targets).ToList();
+                state.TermApplication.FailedIds.RemoveAll(id => targets.Contains(id));
             }
             this.RaiseChanged();
 
@@ -268,7 +269,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                     if (!translation.Signals.Contains(TranslationCueSignal.RewrittenByTerms))
                         translation.Signals.Add(TranslationCueSignal.RewrittenByTerms);
-                    state.TermApplication.RewrittenIds.Add(pair.Key);
+                    if (!state.TermApplication.RewrittenIds.Contains(pair.Key))
+                        state.TermApplication.RewrittenIds.Add(pair.Key);
                 }
 
                 // Battute delle tratte toccate: uguali in tutte le copie
@@ -287,8 +289,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                 state.TermApplication.RewrittenIds.Sort();
                 state.TermApplication.FailedIds.Sort();
-                state.TermApplication.CallSeqs = new List<int>(work.CallSeqs);
-                state.TermApplication.Status = targets.Count > 0 ? TermApplicationStatus.Done : TermApplicationStatus.Skipped;
+                state.TermApplication.CallSeqs.AddRange(work.CallSeqs);
+                state.TermApplication.Status = state.TermApplication.TargetIds.Count > 0 ? TermApplicationStatus.Done : TermApplicationStatus.Skipped;
                 rewritten = state.TermApplication.RewrittenIds.Count;
                 this.SaveFile(state);
             }

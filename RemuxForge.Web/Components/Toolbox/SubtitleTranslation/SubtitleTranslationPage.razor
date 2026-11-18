@@ -1646,6 +1646,11 @@
             {
                 this.Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.notifyBlocked"), AppText.T("web.toolbox.subtitleTranslation.notifyBlockedDetail"));
             }
+            else if (job.Phase == result.Phase)
+            {
+                // Fase non passata oltre senza fermata: file bloccati, che dopo la traduzione non si ricominciano
+                this.Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.notify" + name + "Blocked"), AppText.T("web.toolbox.subtitleTranslation.notifyBlockedAfterDetail"));
+            }
             else if (result.Phase == TranslationJobPhase.Translation)
             {
                 this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyTranslated"), AppText.Count("web.toolbox.subtitleTranslation.filesCount", job.FileIds.Count));

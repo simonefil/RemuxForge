@@ -976,8 +976,9 @@ namespace RemuxForge.Web.Services.Toolbox
 
         /// <summary>
         /// Toglie dal job un file bloccato, mai l'ultimo; con tutti gli altri file conclusi la traduzione è finita e il giro
-        /// prosegue: si ferma sui termini nuovi da decidere o, senza termini, riparte con la revisione AI. Il job si salva senza il
-        /// file prima che il suo stato si cancelli: una chiusura brusca lascia al più uno stato che nessuno legge
+        /// prosegue: si ferma sui termini nuovi da decidere o, senza termini, riparte con la revisione AI. Le tratte di cui il file
+        /// aveva la prima occorrenza passano agli altri file con la revisione e l'applicazione dei termini che restano da fare. Il
+        /// job si salva senza il file prima che il suo stato si cancelli: una chiusura brusca lascia al più uno stato che nessuno legge
         /// </summary>
         /// <param name="fileId">File del job</param>
         public void ExcludeFile(string fileId)
@@ -993,7 +994,42 @@ namespace RemuxForge.Web.Services.Toolbox
 
                 this._job.FileIds.Remove(fileId);
                 this._jobFiles.Remove(fileId);
+                Dictionary<int, string> masters = new Dictionary<int, string>();
+                foreach (SharedStretch stretch in this._job.SharedStretches)
+                    masters[stretch.Index] = stretch.Occurrences[0].FileId;
                 SharedStretchDetector.Detach(this._job.SharedStretches, fileId);
+
+                // Una tratta con un'altra prima occorrenza, promossa o nata dal taglio, va a un file che l'aveva solo in copia. Il
+                // file prende il blocco di revisione concluso del file tolto; un blocco da fare lo sceglie la revisione AI. Se il
+                // file tolto non aveva applicato i termini nuovi, il file che riceve la tratta li riapplica. Gli stati dei file si
+                // salvano prima del job
+                foreach (SharedStretch stretch in this._job.SharedStretches)
+                {
+                    string before;
+                    TranslationJobFileState master = this._jobFiles[stretch.Occurrences[0].FileId];
+                    if (masters.TryGetValue(stretch.Index, out before) && before == master.FileId)
+                        continue;
+
+                    TranslationReviewBlock previous = state.ReviewBlocks != null ? state.ReviewBlocks.Find(b => b.SharedStretch == stretch.Index) : null;
+                    if (master.ReviewBlocks != null && previous != null && (previous.Status == TranslationReviewBlockStatus.Done || previous.Status == TranslationReviewBlockStatus.Failed)
+                        && !master.ReviewBlocks.Exists(b => b.SharedStretch == stretch.Index))
+                    {
+                        List<int> lines = stretch.Occurrences[0].Ids;
+                        master.ReviewBlocks.Add(new TranslationReviewBlock
+                        {
+                            SharedStretch = stretch.Index,
+                            FirstId = lines[0],
+                            LastId = lines[lines.Count - 1],
+                            Status = previous.Status,
+                            FailureReason = previous.FailureReason,
+                            CallSeqs = new List<int>(previous.CallSeqs)
+                        });
+                    }
+                    if (this._job.Phase == TranslationJobPhase.Applying && (state.TermApplication == null || state.TermApplication.Status == TermApplicationStatus.Pending)
+                        && master.TermApplication != null && master.TermApplication.Status != TermApplicationStatus.Pending)
+                        master.TermApplication.Status = TermApplicationStatus.Pending;
+                    this._jobStore.SaveFile(this._job.Id, master);
+                }
                 if (this._job.Phase == TranslationJobPhase.Translation && this._job.FileIds.TrueForAll(id => this._jobFiles[id].TranslationStatus == TranslationFileStatus.Completed))
                 {
                     this.FinishTranslation();
@@ -2012,13 +2048,25 @@ namespace RemuxForge.Web.Services.Toolbox
                         if (stop != null)
                             break;
 
+                        // Come nella traduzione la fase è finita solo con tutti i file del job: un file bloccato alla ripresa non si salta
                         int rewritten = 0;
+                        bool applied;
                         lock (this.StateLock)
                         {
-                            foreach (TranslationRunFile file in files)
-                                rewritten += file.State.TermApplication.RewrittenIds.Count;
-                            job.Phase = TranslationJobPhase.Review;
-                            this._jobStore.Save(job);
+                            applied = job.FileIds.TrueForAll(id => this._jobFiles[id].TermApplication != null && this._jobFiles[id].TermApplication.Status != TermApplicationStatus.Pending);
+                            if (applied)
+                            {
+                                foreach (TranslationRunFile file in files)
+                                    rewritten += file.State.TermApplication.RewrittenIds.Count;
+                                job.Phase = TranslationJobPhase.Review;
+                                this._jobStore.Save(job);
+                            }
+                        }
+                        if (!applied)
+                        {
+                            this.AppendLog(AppText.T(TEXT_PREFIX + ".termsBlocked"));
+                            this.OnPhaseFinished?.Invoke(new TranslationPhaseResult { Job = job, Phase = TranslationJobPhase.Applying });
+                            break;
                         }
                         this.AppendLog(AppText.Count(TEXT_PREFIX + ".termsApplied", rewritten));
                         this.OnPhaseFinished?.Invoke(new TranslationPhaseResult { Job = job, Phase = TranslationJobPhase.Applying });
@@ -2026,7 +2074,8 @@ namespace RemuxForge.Web.Services.Toolbox
                     }
                     else
                     {
-                        // Blocchi scelti una volta e salvati: alla ripresa la scelta non cambia
+                        // Blocchi scelti una volta e salvati: alla ripresa la scelta non cambia, salvo i blocchi delle tratte passate a un
+                        // altro file
                         TranslationReviewer reviewer = new TranslationReviewer(this._jobStore, job, files, this._jobCalls, this.StateLock, context);
                         lock (this.StateLock)
                         {
@@ -2047,18 +2096,30 @@ namespace RemuxForge.Web.Services.Toolbox
                                 break;
                         }
 
-                        // La conclusione dice i blocchi che la revisione AI non ha potuto rivedere
+                        // Fase finita solo con tutti i file del job; la conclusione dice i blocchi che la revisione AI non ha potuto rivedere
                         int corrected = 0;
                         int notReviewed = 0;
+                        bool reviewed;
                         lock (this.StateLock)
                         {
-                            foreach (TranslationRunFile file in files)
+                            reviewed = job.FileIds.TrueForAll(id => this._jobFiles[id].ReviewBlocks != null
+                                && !this._jobFiles[id].ReviewBlocks.Exists(b => b.Status == TranslationReviewBlockStatus.Pending || b.Status == TranslationReviewBlockStatus.Diagnosed));
+                            if (reviewed)
                             {
-                                corrected += file.State.Translations.FindAll(t => t.Signals.Contains(TranslationCueSignal.CorrectedByAi)).Count;
-                                notReviewed += file.State.ReviewBlocks.FindAll(b => b.Status == TranslationReviewBlockStatus.Failed).Count;
+                                foreach (TranslationRunFile file in files)
+                                {
+                                    corrected += file.State.Translations.FindAll(t => t.Signals.Contains(TranslationCueSignal.CorrectedByAi)).Count;
+                                    notReviewed += file.State.ReviewBlocks.FindAll(b => b.Status == TranslationReviewBlockStatus.Failed).Count;
+                                }
+                                job.Phase = TranslationJobPhase.UserReview;
+                                this._jobStore.Save(job);
                             }
-                            job.Phase = TranslationJobPhase.UserReview;
-                            this._jobStore.Save(job);
+                        }
+                        if (!reviewed)
+                        {
+                            this.AppendLog(AppText.T(TEXT_PREFIX + ".reviewBlocked"));
+                            this.OnPhaseFinished?.Invoke(new TranslationPhaseResult { Job = job, Phase = TranslationJobPhase.Review });
+                            break;
                         }
                         this.AppendLog(blocks == 0 ? AppText.T(TEXT_PREFIX + ".reviewNothing") : notReviewed > 0
                             ? AppText.Count(TEXT_PREFIX + ".reviewCompletedPartial", notReviewed, AppText.Count(TEXT_PREFIX + ".correctedCount", corrected))

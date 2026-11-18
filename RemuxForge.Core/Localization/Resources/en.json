@@ -4302,5 +4302,10 @@
   "web.toolbox.subtitleTranslation.reviewCompletedPartialMany": "AI review completed with {0} blocks not reviewed: {1}",
   "web.toolbox.subtitleTranslation.notifyReviewedPartial": "AI review partly completed",
   "web.toolbox.subtitleTranslation.notReviewedCountOne": "{0} block not reviewed · {1}",
-  "web.toolbox.subtitleTranslation.notReviewedCountMany": "{0} blocks not reviewed · {1}"
+  "web.toolbox.subtitleTranslation.notReviewedCountMany": "{0} blocks not reviewed · {1}",
+  "web.toolbox.subtitleTranslation.termsBlocked": "Term application completed with blocked files",
+  "web.toolbox.subtitleTranslation.reviewBlocked": "AI review completed with blocked files",
+  "web.toolbox.subtitleTranslation.notifyTermsBlocked": "Term application with blocked files",
+  "web.toolbox.subtitleTranslation.notifyReviewBlocked": "AI review with blocked files",
+  "web.toolbox.subtitleTranslation.notifyBlockedAfterDetail": "Remove the blocked files, or put the sources back and reopen the project"
 }

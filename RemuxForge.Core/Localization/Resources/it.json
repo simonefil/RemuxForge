@@ -4302,5 +4302,10 @@
   "web.toolbox.subtitleTranslation.reviewCompletedPartialMany": "Revisione AI conclusa con {0} blocchi non rivisti: {1}",
   "web.toolbox.subtitleTranslation.notifyReviewedPartial": "Revisione AI conclusa in parte",
   "web.toolbox.subtitleTranslation.notReviewedCountOne": "{0} blocco non rivisto · {1}",
-  "web.toolbox.subtitleTranslation.notReviewedCountMany": "{0} blocchi non rivisti · {1}"
+  "web.toolbox.subtitleTranslation.notReviewedCountMany": "{0} blocchi non rivisti · {1}",
+  "web.toolbox.subtitleTranslation.termsBlocked": "Applicazione dei termini conclusa con file bloccati",
+  "web.toolbox.subtitleTranslation.reviewBlocked": "Revisione AI conclusa con file bloccati",
+  "web.toolbox.subtitleTranslation.notifyTermsBlocked": "Applicazione dei termini con file bloccati",
+  "web.toolbox.subtitleTranslation.notifyReviewBlocked": "Revisione AI con file bloccati",
+  "web.toolbox.subtitleTranslation.notifyBlockedAfterDetail": "Togli i file bloccati, o rimetti a posto i sorgenti e riapri il progetto"
 }

@@ -56,7 +56,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Costruttore
 
         /// <summary>
-        /// Costruttore: sceglie i blocchi dei file che non li hanno ancora, nella modalità del job
+        /// Costruttore: sceglie i blocchi dei file che non li hanno ancora, nella modalità del job, e quelli delle tratte passate a
+        /// un file dopo la scelta
         /// </summary>
         /// <param name="store">Job su disco</param>
         /// <param name="job">Testata del job, col glossario corrente</param>
@@ -82,29 +83,32 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 foreach (TranslationRunFile file in files)
                 {
-                    TranslationJobFileState state = file.State;
-                    if (state.ReviewBlocks != null)
-                        continue;
-
                     // Blocchi del piano finale, dimezzamenti compresi, senza le battute delle tratte; poi un blocco per ogni tratta di
                     // cui il file ha la prima occorrenza. Nella mirata solo quelli con almeno una battuta segnalata
+                    TranslationJobFileState state = file.State;
                     Dictionary<int, SharedStretch> shared = SharedStretch.MapFile(job.SharedStretches, state.FileId);
                     Predicate<TranslatedCueState> signalled = t => t.Status == TranslatedCueStatus.ToReview || t.Signals.Contains(TranslationCueSignal.Retried)
                         || t.Signals.Contains(TranslationCueSignal.Glossary) || t.Signals.Contains(TranslationCueSignal.NewTerm) || t.Signals.Contains(TranslationCueSignal.RewrittenByTerms)
                         || t.Signals.Contains(TranslationCueSignal.Slip);
-                    state.ReviewBlocks = new List<TranslationReviewBlock>();
-                    foreach (TranslationBlock block in state.Blocks)
+                    if (state.ReviewBlocks == null)
                     {
-                        if (block.Status == TranslationBlockStatus.Split)
-                            continue;
-                        HashSet<int> span = new HashSet<int>(state.GetSpan(block.FirstId, block.LastId).ConvertAll(c => c.Id));
-                        if (job.ReviewMode == TranslationReviewMode.Full || state.Translations.Exists(t => span.Contains(t.Id) && !shared.ContainsKey(t.Id) && signalled(t)))
-                            state.ReviewBlocks.Add(new TranslationReviewBlock { BlockIndex = block.Index, FirstId = block.FirstId, LastId = block.LastId });
+                        state.ReviewBlocks = new List<TranslationReviewBlock>();
+                        foreach (TranslationBlock block in state.Blocks)
+                        {
+                            if (block.Status == TranslationBlockStatus.Split)
+                                continue;
+                            HashSet<int> span = new HashSet<int>(state.GetSpan(block.FirstId, block.LastId).ConvertAll(c => c.Id));
+                            if (job.ReviewMode == TranslationReviewMode.Full || state.Translations.Exists(t => span.Contains(t.Id) && !shared.ContainsKey(t.Id) && signalled(t)))
+                                state.ReviewBlocks.Add(new TranslationReviewBlock { BlockIndex = block.Index, FirstId = block.FirstId, LastId = block.LastId });
+                        }
                     }
+
+                    // Anche nei file coi blocchi già scelti: una tratta passa a un altro file quando quello della prima occorrenza
+                    // viene tolto, e il file che la riceve non ha ancora il suo blocco
                     foreach (SharedStretch stretch in job.SharedStretches)
                     {
                         List<int> lines = stretch.Occurrences[0].Ids;
-                        if (stretch.Occurrences[0].FileId == state.FileId
+                        if (stretch.Occurrences[0].FileId == state.FileId && !state.ReviewBlocks.Exists(b => b.SharedStretch == stretch.Index)
                             && (job.ReviewMode == TranslationReviewMode.Full || state.Translations.Exists(t => lines.Contains(t.Id) && signalled(t))))
                             state.ReviewBlocks.Add(new TranslationReviewBlock { SharedStretch = stretch.Index, FirstId = lines[0], LastId = lines[lines.Count - 1] });
                     }
