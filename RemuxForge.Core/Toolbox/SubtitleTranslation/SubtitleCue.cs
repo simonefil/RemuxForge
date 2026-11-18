@@ -49,13 +49,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="cleanText">Testo pulito, vuoto per una battuta esclusa</param>
         /// <param name="recipe">Ricetta di ricomposizione, null per una battuta esclusa</param>
         /// <param name="style">Stile ASS/SSA, vuoto in SRT</param>
+        /// <param name="kind">Tipo della battuta</param>
         /// <param name="layer">Layer ASS, null in SRT e SSA</param>
         /// <param name="exclusionReason">Motivo per cui la battuta resta al codice, vuoto se si traduce</param>
         /// <param name="duplicateOf">Id della battuta di cui questa è la copia su un altro layer</param>
         /// <param name="textStart">Inizio del campo Text nel testo decodificato</param>
         /// <param name="textLength">Lunghezza del campo Text nel testo decodificato</param>
-        public SubtitleCue(int? id, int position, long startMs, long endMs, string cleanText, CueRecipe recipe, string style, int? layer,
-            string exclusionReason, int? duplicateOf, int textStart, int textLength)
+        public SubtitleCue(int? id, int position, long startMs, long endMs, string cleanText, CueRecipe recipe, string style, SubtitleCueKind kind,
+            int? layer, string exclusionReason, int? duplicateOf, int textStart, int textLength)
         {
             this.Id = id;
             this.Position = position;
@@ -64,11 +65,27 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.CleanText = cleanText ?? "";
             this.Recipe = recipe;
             this.Style = style ?? "";
+            this.Kind = kind;
             this.Layer = layer;
             this.ExclusionReason = exclusionReason ?? "";
             this.DuplicateOf = duplicateOf;
             this.TextStart = textStart;
             this.TextLength = textLength;
+        }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Confronto in ordine di tempo: inizio, poi ordine nel file a pari inizio
+        /// </summary>
+        /// <param name="a">Prima battuta</param>
+        /// <param name="b">Seconda battuta</param>
+        /// <returns>Negativo se a viene prima di b</returns>
+        public static int CompareByTime(SubtitleCue a, SubtitleCue b)
+        {
+            return a.StartMs != b.StartMs ? a.StartMs.CompareTo(b.StartMs) : a.Position.CompareTo(b.Position);
         }
 
         #endregion
@@ -109,6 +126,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Stile ASS/SSA, vuoto in SRT
         /// </summary>
         public string Style { get; }
+
+        /// <summary>
+        /// Tipo della battuta letto dal file
+        /// </summary>
+        public SubtitleCueKind Kind { get; }
 
         /// <summary>
         /// Layer ASS, null in SRT e SSA

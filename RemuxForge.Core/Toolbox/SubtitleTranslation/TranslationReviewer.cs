@@ -93,7 +93,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     {
                         if (block.Status == TranslationBlockStatus.Split)
                             continue;
-                        if (job.ReviewMode == TranslationReviewMode.Full || state.Translations.Exists(t => t.Id >= block.FirstId && t.Id <= block.LastId && !shared.ContainsKey(t.Id) && signalled(t)))
+                        HashSet<int> span = new HashSet<int>(state.GetSpan(block.FirstId, block.LastId).ConvertAll(c => c.Id));
+                        if (job.ReviewMode == TranslationReviewMode.Full || state.Translations.Exists(t => span.Contains(t.Id) && !shared.ContainsKey(t.Id) && signalled(t)))
                             state.ReviewBlocks.Add(new TranslationReviewBlock { BlockIndex = block.Index, FirstId = block.FirstId, LastId = block.LastId });
                     }
                     foreach (SharedStretch stretch in job.SharedStretches)
@@ -154,9 +155,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 cancellation.ThrowIfCancellationRequested();
                 this.ReportProgress(file.FileName, number, count);
 
-                // Un blocco del piano salta le battute delle tratte, quello di una tratta ha solo le sue
+                // Un blocco del piano salta le battute delle tratte, quello di una tratta ha solo quelle della sua prima occorrenza
                 int? unit = block.SharedStretch.HasValue ? null : block.BlockIndex;
-                List<FrozenCue> cues = state.Cues.FindAll(c => c.Id >= block.FirstId && c.Id <= block.LastId && (block.SharedStretch.HasValue || !context.Shared.ContainsKey(c.Id)));
+                List<FrozenCue> cues = block.SharedStretch.HasValue
+                    ? state.Cues.FindAll(c => context.Shared.TryGetValue(c.Id, out SharedStretch stretch) && stretch.Index == block.SharedStretch && stretch.IsMaster(state.FileId, c.Id))
+                    : state.GetSpan(block.FirstId, block.LastId).FindAll(c => !context.Shared.ContainsKey(c.Id));
                 List<int> ids = cues.ConvertAll(c => c.Id);
                 HashSet<int> inBlock = new HashSet<int>(ids);
                 Dictionary<int, string> current = new Dictionary<int, string>();

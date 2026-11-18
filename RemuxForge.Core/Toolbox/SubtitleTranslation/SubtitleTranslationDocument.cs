@@ -323,7 +323,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
                 }
 
-                SubtitleCue cue = new SubtitleCue(id, i + 1, raw.StartMs, raw.EndMs, cleaned.CleanText, cleaned.Recipe, raw.Style, raw.Layer,
+                // Tipo della battuta: dialogo finché canzoni e cartelli non hanno una regola di riconoscimento
+                SubtitleCue cue = new SubtitleCue(id, i + 1, raw.StartMs, raw.EndMs, cleaned.CleanText, cleaned.Recipe, raw.Style, SubtitleCueKind.Dialogue, raw.Layer,
                     cleaned.ExclusionReason, duplicateOf, raw.TextStart, raw.TextLength);
                 if (id.HasValue && raw.Layer.HasValue)
                     firstByContent.TryAdd(key, cue);

@@ -3,9 +3,9 @@ using System.Collections.Generic;
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
-    /// Tratta di battute ripetuta in più file del job, come sigle e riassunti: si traduce una volta sola nel file della prima
-    /// occorrenza e la traduzione si copia identica in tutte le occorrenze. La tratta tiene la traduzione di ogni riga; i file ne
-    /// tengono le copie, e ogni modifica a una copia passa alla tratta e alle altre copie
+    /// Tratta di battute ripetuta in più file del job, come sigle e riassunti, o dei cartelli in movimento di un file: si traduce
+    /// una volta sola nel file della prima occorrenza e la traduzione si copia identica in tutte le occorrenze. La tratta tiene la
+    /// traduzione di ogni riga; i file ne tengono le copie, e ogni modifica a una copia passa alla tratta e alle altre copie
     /// </summary>
     public class SharedStretch
     {
@@ -176,7 +176,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
     /// <summary>
     /// Occorrenza di una tratta in un file: battute consecutive che coprono un tratto delle righe, la tratta intera o una sua parte
-    /// come una sigla accorciata
+    /// come una sigla accorciata. Nella tratta dei cartelli in movimento la prima occorrenza ha la prima battuta di ogni cartello,
+    /// le altre una battuta sola
     /// </summary>
     public class SharedStretchOccurrence
     {

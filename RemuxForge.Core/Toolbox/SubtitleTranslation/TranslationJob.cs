@@ -336,6 +336,23 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         #endregion
 
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Battute congelate da una a un'altra nell'ordine di Cues, estremi compresi: l'ordine di tempo nei job nuovi, quello di id
+        /// nei job salvati prima, dove il tratto coincide con l'intervallo di id
+        /// </summary>
+        /// <param name="firstId">Prima battuta</param>
+        /// <param name="lastId">Ultima battuta</param>
+        /// <returns>Battute del tratto</returns>
+        public List<FrozenCue> GetSpan(int firstId, int lastId)
+        {
+            int first = this.Cues.FindIndex(c => c.Id == firstId);
+            return this.Cues.GetRange(first, this.Cues.FindIndex(c => c.Id == lastId) - first + 1);
+        }
+
+        #endregion
+
         #region Proprietà
 
         /// <summary>
@@ -374,7 +391,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public string Encoding { get; set; }
 
         /// <summary>
-        /// Sorgente numerato congelato: il prefisso resta uguale byte per byte in tutta la vita del job
+        /// Sorgente numerato congelato: il prefisso resta uguale byte per byte in tutta la vita del job. In ordine di tempo, che dà
+        /// l'ordine di blocchi, contesto e revisione; i job salvati prima lo hanno in ordine di id
         /// </summary>
         public List<FrozenCue> Cues { get; set; }
 
@@ -458,6 +476,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         public string Text { get; set; }
 
+        /// <summary>
+        /// Dialogo, canzone o cartello; dialogo nei job salvati prima dei tipi
+        /// </summary>
+        public SubtitleCueKind Kind { get; set; }
+
         #endregion
     }
 
@@ -492,12 +515,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public int Index { get; set; }
 
         /// <summary>
-        /// Primo id
+        /// Prima battuta nell'ordine delle battute congelate
         /// </summary>
         public int FirstId { get; set; }
 
         /// <summary>
-        /// Ultimo id
+        /// Ultima battuta nell'ordine delle battute congelate
         /// </summary>
         public int LastId { get; set; }
 
@@ -981,12 +1004,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public int? SharedStretch { get; set; }
 
         /// <summary>
-        /// Primo id del blocco
+        /// Prima battuta del blocco nell'ordine delle battute congelate
         /// </summary>
         public int FirstId { get; set; }
 
         /// <summary>
-        /// Ultimo id del blocco
+        /// Ultima battuta del blocco nell'ordine delle battute congelate
         /// </summary>
         public int LastId { get; set; }
 

@@ -6,9 +6,10 @@ using System.Text.RegularExpressions;
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
-    /// Trova le tratte ripetute fra i file del job: almeno tre battute consecutive col testo pulito identico, a meno degli spazi,
-    /// in almeno due file dello stesso formato; i tempi non contano. Ogni battuta sta al più in una tratta e una tratta non taglia
-    /// mai una frase spezzata
+    /// Trova le tratte ripetute fra i file del job: almeno tre battute consecutive in ordine di tempo col testo pulito identico, a
+    /// meno degli spazi, in almeno due file dello stesso formato; i tempi non contano. Poi, in ogni file, la tratta dei cartelli in
+    /// movimento: un cartello ridisegnato a ogni fotogramma si traduce una volta e si copia. Ogni battuta sta al più in una tratta
+    /// e una tratta non taglia mai una frase spezzata
     /// </summary>
     public static class SharedStretchDetector
     {
@@ -18,6 +19,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Battute consecutive minime di un'occorrenza
         /// </summary>
         public const int MIN_CUES = 3;
+
+        /// <summary>
+        /// Durata massima di un fotogramma di un cartello in movimento, anche disegnato ogni due fotogrammi
+        /// </summary>
+        public const long MAX_SIGN_FRAME_MS = 100;
 
         #endregion
 
@@ -35,7 +41,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Trova le tratte dei file: scorrendo i file in ordine, la prima battuta libera che continua per almeno tre battute in un
         /// altro file apre una tratta lunga quanto la corsa comune più lunga; poi ogni corsa libera di almeno tre battute uguali a
-        /// righe consecutive della tratta ne diventa un'occorrenza, anche se ne copre solo una parte
+        /// righe consecutive della tratta ne diventa un'occorrenza, anche se ne copre solo una parte. Alla fine ogni file aggiunge
+        /// la tratta dei suoi cartelli in movimento
         /// </summary>
         /// <param name="files">Identificativo e documento preparato di ogni file, nell'ordine del progetto</param>
         /// <returns>Tratte numerate da 1, con la prima occorrenza intera</returns>
@@ -101,11 +108,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
             }
 
+            foreach (FileKeys file in keyed)
+                AddMovingSigns(stretches, file);
             return stretches;
         }
 
         /// <summary>
-        /// Aggiunge alle tratte le occorrenze di un file ripreparato, che non ne ha
+        /// Aggiunge alle tratte le occorrenze di un file ripreparato, che non ne ha, e la tratta dei suoi cartelli in movimento
         /// </summary>
         /// <param name="stretches">Tratte del job</param>
         /// <param name="fileId">File del job</param>
@@ -121,6 +130,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     lines[i] = Key(stretch.Format, stretch.Lines[i]);
                 AddOccurrences(stretch, lines, index);
             }
+            AddMovingSigns(stretches, file);
         }
 
         /// <summary>
@@ -341,6 +351,59 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
         }
 
+        /// <summary>
+        /// Aggiunge la tratta dei cartelli in movimento di un file, se ne ha. Un cartello in movimento sono almeno due battute libere
+        /// fuori dai gruppi, lunghe al più MAX_SIGN_FRAME_MS, con lo stesso stile e lo stesso testo: lo stesso cartello ridisegnato a
+        /// ogni fotogramma con tag diversi. La prima battuta in ordine di tempo di ogni cartello è una riga della prima occorrenza, tradotta una volta
+        /// sola in una consegna per tutti i cartelli del file; ogni altra battuta è un'occorrenza di quella riga
+        /// </summary>
+        /// <param name="stretches">Tratte del job</param>
+        /// <param name="file">File con le battute già prese dalle tratte fra i file</param>
+        private static void AddMovingSigns(List<SharedStretch> stretches, FileKeys file)
+        {
+            List<string> order = new List<string>();
+            Dictionary<string, List<int>> frames = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+            for (int i = 0; i < file.Cues.Count; i++)
+            {
+                SubtitleCue cue = file.Cues[i];
+                if (file.Assigned[i] || cue.Group.HasValue || cue.EndMs - cue.StartMs > MAX_SIGN_FRAME_MS)
+                    continue;
+                string sign = cue.Style + "\n" + file.Keys[i];
+                if (!frames.ContainsKey(sign))
+                {
+                    order.Add(sign);
+                    frames[sign] = new List<int>();
+                }
+                frames[sign].Add(i);
+            }
+
+            order.RemoveAll(sign => frames[sign].Count < 2);
+            if (order.Count == 0)
+                return;
+
+            SharedStretch stretch = new SharedStretch();
+            foreach (SharedStretch existing in stretches)
+                stretch.Index = Math.Max(stretch.Index, existing.Index);
+            stretch.Index++;
+            stretch.Format = file.Format;
+            SharedStretchOccurrence master = new SharedStretchOccurrence { FileId = file.FileId, Offset = 0 };
+            stretch.Occurrences.Add(master);
+            foreach (string sign in order)
+            {
+                List<int> positions = frames[sign];
+                int line = stretch.Lines.Count;
+                stretch.Lines.Add(file.Cues[positions[0]].CleanText);
+                master.Ids.Add(file.Cues[positions[0]].Id.Value);
+                foreach (int position in positions)
+                {
+                    file.Assigned[position] = true;
+                    if (position != positions[0])
+                        stretch.Occurrences.Add(new SharedStretchOccurrence { FileId = file.FileId, Offset = line, Ids = new List<int> { file.Cues[position].Id.Value } });
+                }
+            }
+            stretches.Add(stretch);
+        }
+
         #endregion
 
         #region Classi annidate
@@ -367,6 +430,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (cue.Id.HasValue)
                         this.Cues.Add(cue);
                 }
+                this.Cues.Sort(SubtitleCue.CompareByTime);
                 this.Keys = new string[this.Cues.Count];
                 for (int i = 0; i < this.Keys.Length; i++)
                     this.Keys[i] = Key(this.Format, this.Cues[i].CleanText);
@@ -388,7 +452,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             public SubtitleTranslationFormat Format { get; }
 
             /// <summary>
-            /// Battute traducibili in ordine di id
+            /// Battute traducibili in ordine di tempo, quello dei gruppi e dei blocchi
             /// </summary>
             public List<SubtitleCue> Cues { get; }
 

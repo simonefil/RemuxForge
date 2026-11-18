@@ -76,8 +76,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi pubblici
 
         /// <summary>
-        /// Stato iniziale di un file del job: nome e sorgente numerato congelati e piano dei blocchi con obiettivo e tetto di partenza
-        /// sulle battute fuori dalle tratte condivise
+        /// Stato iniziale di un file del job: nome e sorgente numerato congelati in ordine di tempo, col tipo di ogni battuta, e piano
+        /// dei blocchi con obiettivo e tetto di partenza sulle battute fuori dalle tratte condivise
         /// </summary>
         /// <param name="file">File del progetto, con le impronte della preparazione</param>
         /// <param name="document">Documento preparato del file</param>
@@ -92,12 +92,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             state.NumberedSourceSha256 = file.Preparation.NumberedSourceSha256;
             state.PreparerVersion = file.Preparation.PreparerVersion;
             state.Encoding = file.Encoding;
+            List<SubtitleCue> timed = new List<SubtitleCue>(document.Cues);
+            timed.Sort(SubtitleCue.CompareByTime);
             List<SubtitleCue> own = new List<SubtitleCue>();
-            foreach (SubtitleCue cue in document.Cues)
+            foreach (SubtitleCue cue in timed)
             {
                 if (!cue.Id.HasValue)
                     continue;
-                state.Cues.Add(new FrozenCue { Id = cue.Id.Value, Group = cue.Group, Text = cue.CleanText });
+                state.Cues.Add(new FrozenCue { Id = cue.Id.Value, Group = cue.Group, Text = cue.CleanText, Kind = cue.Kind });
                 if (!shared.Contains(cue.Id.Value))
                     own.Add(cue);
             }
@@ -350,9 +352,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 TranslationJobFileState state = file.State;
                 DeliveryWork work = new DeliveryWork(block.Index);
                 List<int> ids = new List<int>();
-                foreach (FrozenCue cue in state.Cues)
+                foreach (FrozenCue cue in state.GetSpan(block.FirstId, block.LastId))
                 {
-                    if (cue.Id >= block.FirstId && cue.Id <= block.LastId && !context.Shared.ContainsKey(cue.Id))
+                    if (!context.Shared.ContainsKey(cue.Id))
                         ids.Add(cue.Id);
                 }
 
@@ -392,12 +394,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                         // I blocchi dopo le metà non sono ancora tradotti: si rifanno coi valori nuovi
                         state.Blocks.RemoveRange(position + 3, state.Blocks.Count - position - 3);
-                        List<SubtitleCue> remaining = new List<SubtitleCue>();
-                        foreach (SubtitleCue cue in file.Document.Cues)
+                        List<int> after = new List<int>();
+                        int last = state.Cues.FindIndex(c => c.Id == second.LastId);
+                        foreach (FrozenCue cue in state.Cues.GetRange(last + 1, state.Cues.Count - last - 1))
                         {
-                            if (cue.Id.HasValue && cue.Id.Value > second.LastId && !context.Shared.ContainsKey(cue.Id.Value))
-                                remaining.Add(cue);
+                            if (!context.Shared.ContainsKey(cue.Id))
+                                after.Add(cue.Id);
                         }
+                        List<SubtitleCue> remaining = context.GetLiveCues(after);
 
                         next += 2;
                         foreach (IReadOnlyList<SubtitleCue> planned in new SubtitleBlockPlanner(remaining).PlanBlocks(state.TargetBlockSize, state.BlockCap))
@@ -481,8 +485,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi privati
 
         /// <summary>
-        /// Piano delle consegne di un blocco o di una tratta del file: la coda porta le coppie accettate prima del primo id da
-        /// consegnare, dallo stato salvato, copie delle tratte comprese, e dall'unità in corso
+        /// Piano delle consegne di un blocco o di una tratta del file: la coda porta le coppie accettate che vengono prima della
+        /// prima battuta da consegnare nell'ordine delle battute congelate, dallo stato salvato, copie delle tratte comprese, e
+        /// dall'unità in corso. Le copie di una tratta del file stesso, come i fotogrammi di un cartello in movimento, restano fuori
         /// </summary>
         /// <param name="context">File con prefisso e battute</param>
         /// <param name="work">Esiti dell'unità in memoria</param>
@@ -510,25 +515,27 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 CollectNewTerms = true,
                 Tail = (requested, rejected) =>
                 {
-                    int firstId = requested[0].Id;
-                    SortedDictionary<int, string> accepted = new SortedDictionary<int, string>();
+                    Dictionary<int, string> accepted = new Dictionary<int, string>();
                     lock (this._lock)
                     {
                         foreach (TranslatedCueState translation in state.Translations)
                         {
-                            if (translation.Status == TranslatedCueStatus.Accepted && translation.Text != null && translation.Id < firstId)
+                            if (translation.Status == TranslatedCueStatus.Accepted && translation.Text != null)
                                 accepted[translation.Id] = translation.Text;
                         }
                     }
                     foreach (KeyValuePair<int, string> pair in work.Accepted)
-                    {
-                        if (pair.Key < firstId)
-                            accepted[pair.Key] = pair.Value;
-                    }
+                        accepted[pair.Key] = pair.Value;
 
                     List<KeyValuePair<FrozenCue, string>> pairs = new List<KeyValuePair<FrozenCue, string>>();
-                    foreach (KeyValuePair<int, string> pair in accepted)
-                        pairs.Add(new KeyValuePair<FrozenCue, string>(context.Frozen[pair.Key], pair.Value));
+                    foreach (FrozenCue cue in state.Cues.GetRange(0, state.Cues.FindIndex(c => c.Id == requested[0].Id)))
+                    {
+                        string text;
+                        SharedStretch stretch;
+                        if (accepted.TryGetValue(cue.Id, out text) && !(context.Shared.TryGetValue(cue.Id, out stretch)
+                            && stretch.Occurrences[0].FileId == state.FileId && !stretch.IsMaster(state.FileId, cue.Id)))
+                            pairs.Add(new KeyValuePair<FrozenCue, string>(cue, text));
+                    }
                     if (pairs.Count > TranslationRequestBuilder.TAIL_PAIRS)
                         pairs.RemoveRange(0, pairs.Count - TranslationRequestBuilder.TAIL_PAIRS);
 
@@ -603,13 +610,23 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Costruttore
         /// </summary>
         /// <param name="state">Stato del file nel job</param>
-        /// <param name="document">Documento preparato, con l'hash del job</param>
+        /// <param name="document">Documento preparato, con l'hash del job; prende i gruppi congelati nel job</param>
         /// <param name="fileName">Nome del file sorgente</param>
         public TranslationRunFile(TranslationJobFileState state, SubtitleTranslationDocument document, string fileName)
         {
             this.State = state;
             this.Document = document;
             this.FileName = fileName;
+
+            // Validatore e pianificatore vedono i gruppi del job, anche se le regole dei gruppi sono cambiate dopo la sua creazione
+            Dictionary<int, int?> groups = new Dictionary<int, int?>();
+            foreach (FrozenCue cue in state.Cues)
+                groups[cue.Id] = cue.Group;
+            foreach (SubtitleCue cue in document.Cues)
+            {
+                if (cue.Id.HasValue)
+                    cue.Group = groups.GetValueOrDefault(cue.Id.Value);
+            }
         }
 
         #endregion

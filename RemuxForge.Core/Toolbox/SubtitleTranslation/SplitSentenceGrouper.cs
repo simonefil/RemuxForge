@@ -6,8 +6,9 @@ using System.Text.RegularExpressions;
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
-    /// Riconosce le frasi spezzate: battute consecutive che continuano la stessa frase viaggiano insieme nello stesso blocco e il
-    /// modello le traduce come una frase sola, ridistribuita sulle stesse battute
+    /// Riconosce le frasi spezzate: battute consecutive in ordine di tempo che continuano la stessa frase viaggiano insieme nello
+    /// stesso blocco e il modello le traduce come una frase sola, ridistribuita sulle stesse battute. Si uniscono solo battute dello
+    /// stesso stile e dello stesso tipo, e mai i cartelli; nelle scritture senza maiuscole l'iniziale minuscola non conta
     /// </summary>
     public class SplitSentenceGrouper
     {
@@ -40,7 +41,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Punteggiatura che chiude una frase in fondo al testo
         /// </summary>
-        private static readonly Regex s_terminalEnd = new Regex(@"([.!?:…\])]|[.!?][""'”’)\]]|--|—|♪)$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex s_terminalEnd = new Regex(@"([.!?:…\])。！？」』؟]|[.!?][""'”’)\]]|--|—|♪)$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         /// <summary>
         /// Puntini di continuazione in fondo al testo
@@ -82,7 +83,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi pubblici
 
         /// <summary>
-        /// Assegna il gruppo alle battute traducibili che formano una frase spezzata, numerando i gruppi da 1 in ordine di id
+        /// Assegna il gruppo alle battute traducibili che formano una frase spezzata, numerando i gruppi da 1 in ordine di tempo
         /// </summary>
         /// <param name="cues">Battute del file; si scorrono le sole traducibili</param>
         /// <param name="sourceLanguage">Lingua d'origine</param>
@@ -99,6 +100,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     translatable.Add(cue);
                 }
             }
+            translatable.Sort(SubtitleCue.CompareByTime);
 
             // Testo su cui si giudica: senza la sintassi dei segni, a capo come spazi, spazi ripetuti ridotti; righe per il cambio
             // d'interlocutore
@@ -122,11 +124,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 SubtitleCue b = translatable[i + 1];
                 long pause = b.StartMs - a.EndMs;
                 string next = plain[i + 1];
-                bool lowerStart = !string.IsNullOrEmpty(next) && (char.IsLower(next[0]) || (char.IsLetter(next[0]) && !char.IsUpper(next[0])));
+                bool lowerStart = !string.IsNullOrEmpty(next) && char.IsLower(next, 0);
 
-                // Senza maiuscole (giapponese, cinese, arabo) o con i nomi comuni maiuscoli (tedesco) l'iniziale non decide
+                // Le scritture senza maiuscole (giapponese, cinese, arabo, ebraico) non hanno iniziali minuscole e si uniscono solo
+                // coi puntini; coi nomi comuni maiuscoli (tedesco) l'iniziale non decide
                 continues[i] = pause <= MAX_GROUP_PAUSE_MS && pause >= -MAX_GROUP_OVERLAP_MS
                     && string.Equals(a.Style, b.Style, StringComparison.Ordinal)
+                    && a.Kind == b.Kind && a.Kind != SubtitleCueKind.Sign
                     && !string.IsNullOrEmpty(plain[i]) && !string.IsNullOrEmpty(next)
                     && !s_dashStart.IsMatch(next)
                     && !s_speakerLabel.IsMatch(next)

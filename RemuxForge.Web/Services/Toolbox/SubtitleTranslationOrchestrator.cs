@@ -995,7 +995,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Righe della griglia della revisione di un file: tempi, originale, traduzione, stato e avvisi di ogni battuta da tradurre
         /// </summary>
         /// <param name="fileId">File del job</param>
-        /// <returns>Righe in ordine di id, vuote senza job o senza il documento del file</returns>
+        /// <returns>Righe in ordine di tempo, vuote senza job o senza il documento del file</returns>
         public List<TranslationReviewRow> GetReviewRows(string fileId)
         {
             List<TranslationReviewRow> rows = new List<TranslationReviewRow>();
@@ -1010,7 +1010,9 @@ namespace RemuxForge.Web.Services.Toolbox
                 foreach (TranslatedCueState translation in state.Translations)
                     translations[translation.Id] = translation;
                 Dictionary<int, SharedStretch> shared = SharedStretch.MapFile(this._job.SharedStretches, fileId);
-                foreach (SubtitleCue cue in document.Cues)
+                List<SubtitleCue> timed = new List<SubtitleCue>(document.Cues);
+                timed.Sort(SubtitleCue.CompareByTime);
+                foreach (SubtitleCue cue in timed)
                 {
                     if (!cue.Id.HasValue)
                         continue;
