@@ -487,6 +487,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private DeliveryPlan CreatePlan(FileContext context, DeliveryWork work)
         {
             TranslationJobFileState state = context.File.State;
+
+            // Tratte di cui il file ha la prima occorrenza e blocchi ancora da fare, questa unità compresa: stessa sessione B
+            int units;
+            lock (this._lock)
+            {
+                units = state.Blocks.FindAll(b => b.Status == TranslationBlockStatus.Pending).Count
+                    + this._job.SharedStretches.FindAll(s => s.Status == TranslationBlockStatus.Pending && s.Occurrences[0].FileId == state.FileId).Count;
+            }
+
             return new DeliveryPlan
             {
                 RetryKind = TranslationCallKind.BRetry,
@@ -494,6 +503,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 Model = this._job.Models.Translation,
                 ReasoningEffort = this._job.ReasoningEfforts.Translation,
                 Instructions = this._instructions,
+                PrefixReused = units > 1,
                 CollectNewTerms = true,
                 Tail = (requested, rejected) =>
                 {

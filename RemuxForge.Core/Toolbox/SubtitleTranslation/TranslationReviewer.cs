@@ -212,6 +212,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     DeliveryWork diagnosis = new DeliveryWork(unit);
                     TranslationModelRequest request = this.CreateRequest(TranslationCallKind.D1, state.FileId, this._job.Models.Review, this._job.ReasoningEfforts.Review,
                         this._diagnosisInstructions, context.Prefix, TranslationRequestBuilder.CreateDiagnosisTail(cues, current, signals), TranslationRequestBuilder.CreateDiagnosisTools());
+                    lock (this._lock)
+                        request.PrefixReused = state.ReviewBlocks.FindAll(b => b.Status == TranslationReviewBlockStatus.Pending).Count > 1;
                     KeyValuePair<AiResponseResult, TranslationCallRecord> sent = await this.SendAsync(request, state.FileId, diagnosis, ids, null, provider, cancellation);
                     AiResponseResult response = sent.Key;
                     TranslationCallRecord record = sent.Value;

@@ -194,6 +194,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 Model = this._job.Models.NewTerms,
                 ReasoningEffort = this._job.ReasoningEfforts.NewTerms,
                 Instructions = this._instructions,
+                PrefixReused = ids.Count > MAX_REWRITE_CUES,
                 CollectNewTerms = false,
                 Tail = (requested, rejected) => TranslationRequestBuilder.CreateRewriteTail(this._updated, requested, current, rejected)
             };

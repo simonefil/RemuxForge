@@ -293,6 +293,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                 TranslationModelRequest request = this.CreateRequest(currentKind, context.File.State.FileId, plan.Model, plan.ReasoningEffort, plan.Instructions, context.Prefix,
                     plan.Tail(requestedCues, rejectedLines), TranslationRequestBuilder.CreateTranslationTools());
+                request.PrefixReused = plan.PrefixReused;
                 int? requestAttempt = currentAttempt > 0 && currentKind == plan.RetryKind ? currentAttempt : null;
 
                 foreach (int id in pending)
@@ -864,6 +865,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             /// Coda per le battute richieste e le righe degli scarti della consegna precedente
             /// </summary>
             public Func<IReadOnlyList<FrozenCue>, IReadOnlyList<string>, string> Tail { get; init; }
+
+            /// <summary>
+            /// True se il piano prevede altre unità della stessa sessione dopo questa
+            /// </summary>
+            public bool PrefixReused { get; init; }
 
             /// <summary>
             /// True se la fase raccoglie i termini nuovi consegnati
