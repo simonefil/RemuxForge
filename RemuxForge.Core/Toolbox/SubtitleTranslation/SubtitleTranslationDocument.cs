@@ -553,7 +553,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         if (!texts.Contains(spaceless[p]))
                             texts.Add(spaceless[p]);
                     }
-                    if (chain.Count == 0 || string.Concat(texts) != spaceless[w] || texts.TrueForAll(text => new StringInfo(text).LengthInTextElements == 1))
+                    if (chain.Count == 0 || string.Concat(texts) != spaceless[w] || texts.TrueForAll(pieceText => new StringInfo(pieceText).LengthInTextElements == 1))
                         continue;
 
                     chain.Sort();

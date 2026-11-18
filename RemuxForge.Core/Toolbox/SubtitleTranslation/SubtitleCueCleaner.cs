@@ -1356,10 +1356,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             if (tagsByText.Count == 0)
                 return new SubtitleLetterLook("", null, null);
 
-            // Due tag toccano lo stesso stato se hanno un canale in comune o sono lo stesso interruttore
-            Func<AssTag, AssTag, bool> sameState = (a, b) => this.SwitchBit(a.Name) >= 0
-                ? this.SwitchBit(a.Name) == this.SwitchBit(b.Name)
-                : s_assStateChannels.TryGetValue(b.Name, out string[] other) && Array.Exists(s_assStateChannels[a.Name], other.Contains);
             StringBuilder fixedTags = new StringBuilder();
             HashSet<string> written = new HashSet<string>(StringComparer.Ordinal);
             foreach (AssTag tag in tagsByText[0])
@@ -1367,7 +1363,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 bool state = s_assStateChannels.TryGetValue(tag.Name, out string[] channels);
                 if ((!state && this.SwitchBit(tag.Name) < 0) || (state && Array.Exists(channels, animated.Contains)) || written.Contains(tag.Raw))
                     continue;
-                if (tagsByText.TrueForAll(tags => tags.Exists(other => other.Raw == tag.Raw) && tags.TrueForAll(other => other.Raw == tag.Raw || !sameState(tag, other))))
+                // Un altro tag tocca lo stesso stato se ha un canale in comune o è lo stesso interruttore
+                if (tagsByText.TrueForAll(tags => tags.Exists(other => other.Raw == tag.Raw) && tags.TrueForAll(other => other.Raw == tag.Raw
+                    || (state ? !(s_assStateChannels.TryGetValue(other.Name, out string[] otherChannels) && Array.Exists(channels, otherChannels.Contains))
+                        : this.SwitchBit(tag.Name) != this.SwitchBit(other.Name)))))
                 {
                     fixedTags.Append(tag.Raw);
                     written.Add(tag.Raw);
