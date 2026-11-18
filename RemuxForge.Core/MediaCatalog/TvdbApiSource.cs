@@ -215,48 +215,98 @@ namespace RemuxForge.Core.MediaCatalog
         }
 
         /// <summary>
-        /// Episodi delle stagioni scelte nell'ordine ufficiale, con testi e persone di ogni episodio
+        /// Episodi delle stagioni scelte nell'ordine ufficiale, con numeri, date e testi dagli elenchi: lingua chiesta, poi inglese, poi originale
         /// </summary>
         /// <param name="series">Serie letta da GetSeriesAsync</param>
         /// <param name="seasonNumbers">Numeri delle stagioni scelte</param>
         /// <param name="language">Codice ISO 639-2/T dei testi</param>
-        /// <param name="progress">Avanzamento in episodi, può essere null</param>
         /// <param name="cancellationToken">Token di annullamento</param>
-        /// <returns>Episodi ordinati per stagione e numero</returns>
-        public override async Task<List<MediaCatalogEpisode>> GetEpisodesAsync(MediaCatalogSeries series, List<int> seasonNumbers, string language, IProgress<MediaCatalogProgress> progress, CancellationToken cancellationToken)
+        /// <returns>Episodi ordinati per stagione e numero, senza persone</returns>
+        public override async Task<List<MediaCatalogEpisode>> GetEpisodesAsync(MediaCatalogSeries series, List<int> seasonNumbers, string language, CancellationToken cancellationToken)
         {
             List<MediaCatalogEpisode> result = new List<MediaCatalogEpisode>();
             string id = this.ParseKey(series.Key);
             string tvdbLanguage = await this.ResolveLanguageAsync(language, cancellationToken);
-            List<JsonNode> baseEpisodes = new List<JsonNode>();
-            foreach (int seasonNumber in seasonNumbers)
+            string listUrl = API_BASE_URL + "/series/" + id + "/episodes/" + SEASON_TYPE;
+
+            // L'elenco in una lingua copre sempre tutta la serie: il filtro per stagione vale solo sull'elenco senza lingua
+            foreach (JsonNode item in await this.ReadEpisodeListAsync(listUrl + "/" + tvdbLanguage + "?", cancellationToken))
             {
-                baseEpisodes.AddRange(await this.ReadEpisodeListAsync(id, SEASON_TYPE, seasonNumber, cancellationToken));
+                MediaCatalogEpisode episode = new MediaCatalogEpisode();
+                episode.Id = ReadLong(item["id"]);
+                episode.SeasonNumber = (int)(ReadLong(item["seasonNumber"]) ?? 0);
+                episode.EpisodeNumber = (int)(ReadLong(item["number"]) ?? 0);
+                episode.AbsoluteNumber = ReadPositiveInt(item["absoluteNumber"]);
+                episode.Title = ReadString(item["name"]);
+                episode.Overview = ReadString(item["overview"]);
+                episode.AiredDate = ReadDate(item["aired"]);
+                episode.RuntimeMinutes = ReadPositiveInt(item["runtime"]);
+                if (seasonNumbers.Contains(episode.SeasonNumber))
+                    result.Add(episode);
             }
 
-            Dictionary<long, int> absoluteNumbers = null;
-            foreach (JsonNode episode in baseEpisodes)
+            // Dove la lingua chiesta non ha il testo, l'inglese; dove manca anche quello, l'elenco delle stagioni nella lingua originale
+            if (tvdbLanguage != FALLBACK_LANGUAGE && result.Exists(episode => episode.Title.Length == 0 || episode.Overview.Length == 0))
+                FillMissingTexts(result, await this.ReadEpisodeListAsync(listUrl + "/" + FALLBACK_LANGUAGE + "?", cancellationToken));
+
+            foreach (int seasonNumber in seasonNumbers)
             {
-                if (!ReadPositiveInt(episode["absoluteNumber"]).HasValue)
+                if (result.Exists(episode => episode.SeasonNumber == seasonNumber && (episode.Title.Length == 0 || episode.Overview.Length == 0)))
+                    FillMissingTexts(result, await this.ReadEpisodeListAsync(listUrl + "?season=" + seasonNumber.ToString(CultureInfo.InvariantCulture) + "&", cancellationToken));
+            }
+
+            result.Sort((a, b) => a.SeasonNumber != b.SeasonNumber ? a.SeasonNumber.CompareTo(b.SeasonNumber) : a.EpisodeNumber.CompareTo(b.EpisodeNumber));
+            return result;
+        }
+
+        /// <summary>
+        /// Completa sul posto le persone di ogni episodio dall'episodio extended, una richiesta per episodio,
+        /// e il numero assoluto dall'ordine assoluto quando un episodio regolare non lo porta
+        /// </summary>
+        /// <param name="series">Serie letta da GetSeriesAsync</param>
+        /// <param name="episodes">Episodi da completare</param>
+        /// <param name="language">Ignorato: i testi arrivano già dagli elenchi</param>
+        /// <param name="progress">Avanzamento in episodi, può essere null</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        public override async Task CompleteEpisodesAsync(MediaCatalogSeries series, List<MediaCatalogEpisode> episodes, string language, IProgress<MediaCatalogProgress> progress, CancellationToken cancellationToken)
+        {
+            string id = this.ParseKey(series.Key);
+            int completed = 0;
+
+            // L'ordine assoluto non comprende gli speciali, che nell'ordine ufficiale hanno assoluto 0: si legge solo per un episodio regolare senza numero
+            if (episodes.Exists(episode => episode.SeasonNumber > 0 && !episode.AbsoluteNumber.HasValue))
+            {
+                Dictionary<long, int> absoluteNumbers = new Dictionary<long, int>();
+                foreach (JsonNode item in await this.ReadEpisodeListAsync(API_BASE_URL + "/series/" + id + "/episodes/absolute?", cancellationToken))
                 {
-                    // Nell'ordine ufficiale il numero assoluto può mancare: si prende dall'ordine assoluto, dove number è l'assoluto
-                    absoluteNumbers = await this.ReadAbsoluteNumbersAsync(id, cancellationToken);
-                    break;
+                    int? number = ReadPositiveInt(item["number"]);
+                    if (number.HasValue)
+                        absoluteNumbers[ReadLong(item["id"]).Value] = number.Value;
+                }
+
+                foreach (MediaCatalogEpisode episode in episodes)
+                {
+                    int absolute;
+                    if (!episode.AbsoluteNumber.HasValue && absoluteNumbers.TryGetValue(episode.Id.Value, out absolute))
+                        episode.AbsoluteNumber = absolute;
                 }
             }
 
             if (progress != null)
-                progress.Report(new MediaCatalogProgress(0, baseEpisodes.Count));
+                progress.Report(new MediaCatalogProgress(0, episodes.Count));
 
             // Un episodio per volta, per non caricare il servizio
-            foreach (JsonNode baseEpisode in baseEpisodes)
+            foreach (MediaCatalogEpisode episode in episodes)
             {
-                result.Add(await this.ReadEpisodeAsync(baseEpisode, absoluteNumbers, tvdbLanguage, cancellationToken));
+                JsonNode root = await this.GetJsonAsync(API_BASE_URL + "/episodes/" + episode.Id.Value.ToString(CultureInfo.InvariantCulture) + "/extended", cancellationToken);
+                episode.Directors = new List<string>();
+                episode.Writers = new List<string>();
+                episode.Actors = new List<string>();
+                ReadPeople(root["data"]?["characters"] as JsonArray, episode.Directors, episode.Writers, episode.Actors);
+                completed++;
                 if (progress != null)
-                    progress.Report(new MediaCatalogProgress(result.Count, baseEpisodes.Count));
+                    progress.Report(new MediaCatalogProgress(completed, episodes.Count));
             }
-            result.Sort((a, b) => a.SeasonNumber != b.SeasonNumber ? a.SeasonNumber.CompareTo(b.SeasonNumber) : a.EpisodeNumber.CompareTo(b.EpisodeNumber));
-            return result;
         }
 
         /// <summary>
@@ -388,23 +438,19 @@ namespace RemuxForge.Core.MediaCatalog
         }
 
         /// <summary>
-        /// Legge tutte le pagine dell'elenco episodi di un ordine, di una stagione o di tutta la serie
+        /// Legge tutte le pagine di un elenco episodi, fino alla pagina che non ne indica una successiva
         /// </summary>
-        /// <param name="id">ID della serie</param>
-        /// <param name="seasonType">Ordine: official, absolute...</param>
-        /// <param name="seasonNumber">Numero della stagione nell'ordine, null per tutta la serie</param>
+        /// <param name="url">Indirizzo dell'elenco che termina con «?» o «&», a cui si aggiunge il numero di pagina</param>
         /// <param name="cancellationToken">Token di annullamento</param>
-        /// <returns>Episodi base</returns>
-        private async Task<List<JsonNode>> ReadEpisodeListAsync(string id, string seasonType, int? seasonNumber, CancellationToken cancellationToken)
+        /// <returns>Episodi base con ID</returns>
+        private async Task<List<JsonNode>> ReadEpisodeListAsync(string url, CancellationToken cancellationToken)
         {
             List<JsonNode> result = new List<JsonNode>();
-            string url = API_BASE_URL + "/series/" + id + "/episodes/" + seasonType + "?" + (seasonNumber.HasValue ? "season=" + seasonNumber.Value.ToString(CultureInfo.InvariantCulture) + "&" : "") + "page=";
             int page = 0;
 
-            // La dimensione della pagina non è documentata: si legge finché una pagina arriva vuota
             while (true)
             {
-                JsonNode root = await this.GetJsonAsync(url + page.ToString(CultureInfo.InvariantCulture), cancellationToken);
+                JsonNode root = await this.GetJsonAsync(url + "page=" + page.ToString(CultureInfo.InvariantCulture), cancellationToken);
                 JsonArray episodes = root["data"]?["episodes"] as JsonArray;
                 if (episodes == null || episodes.Count == 0)
                     return result;
@@ -415,62 +461,32 @@ namespace RemuxForge.Core.MediaCatalog
                         result.Add(episode);
                 }
 
+                if (ReadString(root["links"]?["next"]).Length == 0)
+                    return result;
+
                 page++;
             }
         }
 
         /// <summary>
-        /// Numeri assoluti per ID episodio dall'ordine assoluto
+        /// Completa titoli e sinossi vuoti con quelli di un altro elenco, per ID episodio
         /// </summary>
-        /// <param name="id">ID della serie</param>
-        /// <param name="cancellationToken">Token di annullamento</param>
-        /// <returns>Numero assoluto per ID episodio</returns>
-        private async Task<Dictionary<long, int>> ReadAbsoluteNumbersAsync(string id, CancellationToken cancellationToken)
+        /// <param name="episodes">Episodi da completare</param>
+        /// <param name="list">Elenco episodi base</param>
+        private static void FillMissingTexts(List<MediaCatalogEpisode> episodes, List<JsonNode> list)
         {
-            Dictionary<long, int> result = new Dictionary<long, int>();
-            foreach (JsonNode episode in await this.ReadEpisodeListAsync(id, "absolute", null, cancellationToken))
+            foreach (JsonNode item in list)
             {
-                int? number = ReadPositiveInt(episode["number"]);
-                if (number.HasValue)
-                    result[ReadLong(episode["id"]).Value] = number.Value;
+                long? id = ReadLong(item["id"]);
+                MediaCatalogEpisode episode = episodes.Find(e => e.Id == id);
+                if (episode == null)
+                    continue;
+
+                if (episode.Title.Length == 0)
+                    episode.Title = ReadString(item["name"]);
+                if (episode.Overview.Length == 0)
+                    episode.Overview = ReadString(item["overview"]);
             }
-
-            return result;
-        }
-
-        /// <summary>
-        /// Completa un episodio con testi nella lingua chiesta e persone dall'episodio extended
-        /// </summary>
-        /// <param name="baseEpisode">Episodio dell'elenco ufficiale</param>
-        /// <param name="absoluteNumbers">Numeri assoluti dall'ordine assoluto, null se l'elenco ufficiale li ha tutti</param>
-        /// <param name="tvdbLanguage">Codice lingua TVDB</param>
-        /// <param name="cancellationToken">Token di annullamento</param>
-        /// <returns>Episodio</returns>
-        private async Task<MediaCatalogEpisode> ReadEpisodeAsync(JsonNode baseEpisode, Dictionary<long, int> absoluteNumbers, string tvdbLanguage, CancellationToken cancellationToken)
-        {
-            MediaCatalogEpisode episode = new MediaCatalogEpisode();
-            long id = ReadLong(baseEpisode["id"]).Value;
-            int absolute;
-            episode.Id = id;
-            episode.SeasonNumber = (int)(ReadLong(baseEpisode["seasonNumber"]) ?? 0);
-            episode.EpisodeNumber = (int)(ReadLong(baseEpisode["number"]) ?? 0);
-            episode.AbsoluteNumber = ReadPositiveInt(baseEpisode["absoluteNumber"]);
-            if (!episode.AbsoluteNumber.HasValue && absoluteNumbers != null && absoluteNumbers.TryGetValue(id, out absolute))
-                episode.AbsoluteNumber = absolute;
-
-            episode.AiredDate = ReadDate(baseEpisode["aired"]);
-            episode.RuntimeMinutes = ReadPositiveInt(baseEpisode["runtime"]);
-
-            // L'extended porta in una sola richiesta le traduzioni e le persone dell'episodio
-            JsonNode root = await this.GetJsonAsync(API_BASE_URL + "/episodes/" + id.ToString(CultureInfo.InvariantCulture) + "/extended?meta=translations", cancellationToken);
-            JsonNode data = root["data"];
-            JsonObject translations = data != null ? data["translations"] as JsonObject : null;
-            episode.Title = PickTranslation(translations, "nameTranslations", "name", tvdbLanguage, ReadString(baseEpisode["name"]));
-            episode.Overview = PickTranslation(translations, "overviewTranslations", "overview", tvdbLanguage, ReadString(baseEpisode["overview"]));
-            if (data != null)
-                ReadPeople(data["characters"] as JsonArray, episode.Directors, episode.Writers, episode.Actors);
-
-            return episode;
         }
 
         /// <summary>

@@ -200,30 +200,25 @@ namespace RemuxForge.Core.MediaCatalog
         }
 
         /// <summary>
-        /// Carica le pagine delle stagioni scelte, ne completa il poster sulla serie e carica gli episodi completi
+        /// Carica le pagine delle stagioni scelte, ne completa il poster sulla serie e ne legge gli episodi:
+        /// il sito mostra i titoli nella lingua originale, testi tradotti e persone arrivano con CompleteEpisodesAsync
         /// </summary>
         /// <param name="series">Serie letta da GetSeriesAsync</param>
         /// <param name="seasonNumbers">Numeri delle stagioni scelte</param>
         /// <param name="language">Codice ISO 639-2/T</param>
-        /// <param name="progress">Avanzamento facoltativo in episodi</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Episodi ordinati per stagione e numero</returns>
-        public async Task<List<MediaCatalogEpisode>> GetEpisodesAsync(MediaCatalogSeries series, List<int> seasonNumbers, string language, IProgress<MediaCatalogProgress> progress, CancellationToken cancellationToken)
+        public async Task<List<MediaCatalogEpisode>> GetEpisodesAsync(MediaCatalogSeries series, List<int> seasonNumbers, string language, CancellationToken cancellationToken)
         {
             try
             {
                 Uri url;
-                string originalLanguage;
-                List<(int Season, int Number, string Key)> episodes;
                 List<MediaCatalogEpisode> result;
 
                 cancellationToken.ThrowIfCancellationRequested();
-                language = ValidateLanguage(language);
+                ValidateLanguage(language);
                 url = PageUrl(series.Key, "series");
-
-                // Le pagine degli episodi non dichiarano la lingua originale: la dichiara solo la scheda della serie
-                originalLanguage = OriginalLanguage(await this.LoadPageAsync(url, cancellationToken).ConfigureAwait(false));
-                episodes = new List<(int Season, int Number, string Key)>();
+                result = new List<MediaCatalogEpisode>();
 
                 foreach (int seasonNumber in seasonNumbers)
                 {
@@ -236,29 +231,89 @@ namespace RemuxForge.Core.MediaCatalog
                     foreach (MediaCatalogSeason item in series.Seasons.Where(s => s.Number == seasonNumber))
                         item.PosterUrl = Poster(season);
 
+                    // Riga della tabella: SxxEyy, titolo, prima messa in onda con l'emittente, durata
                     foreach (HtmlNode row in Nodes(season, "//div[@id='episodes']//tr[td[2]/a[contains(@href,'/episodes/')]]"))
                     {
                         Match label;
-                        Uri episodeUrl;
 
                         label = Regex.Match(Text(row.SelectSingleNode("./td[1]")), @"^S(\d+)E(\d+)$");
                         if (!label.Success)
                             throw new FormatException("Numerazione ufficiale TVDB non riconosciuta");
 
-                        episodeUrl = new Uri(url, row.SelectSingleNode("./td[2]/a").GetAttributeValue("href", ""));
-                        episodes.Add((int.Parse(label.Groups[1].Value, CultureInfo.InvariantCulture), int.Parse(label.Groups[2].Value, CultureInfo.InvariantCulture), episodeUrl.AbsoluteUri));
+                        result.Add(new MediaCatalogEpisode
+                        {
+                            Id = ParseLong(PageUrl(new Uri(url, row.SelectSingleNode("./td[2]/a").GetAttributeValue("href", "")).AbsoluteUri, "series", @"/episodes/\d+").Segments.Last()),
+                            SeasonNumber = int.Parse(label.Groups[1].Value, CultureInfo.InvariantCulture),
+                            EpisodeNumber = int.Parse(label.Groups[2].Value, CultureInfo.InvariantCulture),
+                            Title = Text(row.SelectSingleNode("./td[2]/a")),
+                            AiredDate = ParseDate(Text(row.SelectSingleNode("./td[3]/div[1]"))),
+                            RuntimeMinutes = ParseInteger(Text(row.SelectSingleNode("./td[4]")))
+                        });
                     }
                 }
 
-                result = new List<MediaCatalogEpisode>();
-                progress?.Report(new MediaCatalogProgress(0, episodes.Count));
-                foreach ((int Season, int Number, string Key) episode in episodes.OrderBy(e => e.Season).ThenBy(e => e.Number))
-                {
-                    result.Add(await this.LoadEpisodeAsync(episode.Key, episode.Season, episode.Number, language, originalLanguage, cancellationToken).ConfigureAwait(false));
-                    progress?.Report(new MediaCatalogProgress(result.Count, episodes.Count));
-                }
+                return result.OrderBy(e => e.SeasonNumber).ThenBy(e => e.EpisodeNumber).ToList();
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                throw CatalogError(ex);
+            }
+        }
 
-                return result;
+        /// <summary>
+        /// Completa sul posto testi, data, durata, numero assoluto e persone di ogni episodio dalla sua pagina, una per volta
+        /// </summary>
+        /// <param name="series">Serie letta da GetSeriesAsync</param>
+        /// <param name="episodes">Episodi letti da GetEpisodesAsync</param>
+        /// <param name="language">Codice ISO 639-2/T</param>
+        /// <param name="progress">Avanzamento facoltativo in episodi</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        public async Task CompleteEpisodesAsync(MediaCatalogSeries series, List<MediaCatalogEpisode> episodes, string language, IProgress<MediaCatalogProgress> progress, CancellationToken cancellationToken)
+        {
+            try
+            {
+                Uri url;
+                string originalLanguage;
+                int completed;
+
+                cancellationToken.ThrowIfCancellationRequested();
+                language = ValidateLanguage(language);
+                url = PageUrl(series.Key, "series");
+
+                // Le pagine degli episodi non dichiarano la lingua originale: la dichiara solo la scheda della serie
+                originalLanguage = OriginalLanguage(await this.LoadPageAsync(url, cancellationToken).ConfigureAwait(false));
+                completed = 0;
+                progress?.Report(new MediaCatalogProgress(0, episodes.Count));
+                foreach (MediaCatalogEpisode episode in episodes)
+                {
+                    HtmlNode root;
+
+                    root = await this.LoadPageAsync(new Uri(url.AbsoluteUri + "/episodes/" + episode.Id.Value.ToString(CultureInfo.InvariantCulture)), cancellationToken).ConfigureAwait(false);
+                    episode.AiredDate = ParseDate(FieldText(root, "Originally Aired"));
+                    episode.RuntimeMinutes = ParseInteger(FieldText(root, "Runtime"));
+                    episode.Directors = People(root, "director");
+                    episode.Writers = People(root, "writer");
+                    episode.Actors = People(root, "actor");
+                    ReadText(root, language, out string title, out _, out string overview, originalLanguage);
+                    episode.Title = title;
+                    episode.Overview = overview;
+
+                    foreach (HtmlNode crumbs in Nodes(root, "//div[contains(concat(' ',normalize-space(@class),' '),' crumbs ')][a[contains(@href,'/seasons/absolute/')]]"))
+                    {
+                        Match absolute;
+
+                        absolute = Regex.Match(Text(crumbs), @"\bEpisode\s+(\d+)\b");
+                        if (absolute.Success)
+                            episode.AbsoluteNumber = ParseInteger(absolute.Groups[1].Value);
+                    }
+
+                    completed++;
+                    progress?.Report(new MediaCatalogProgress(completed, episodes.Count));
+                }
             }
             catch (OperationCanceledException)
             {
@@ -337,51 +392,6 @@ namespace RemuxForge.Core.MediaCatalog
         #endregion
 
         #region Metodi privati
-
-        /// <summary>
-        /// Carica testi, numerazioni e persone del singolo episodio ufficiale
-        /// </summary>
-        /// <param name="key">URL dell'episodio</param>
-        /// <param name="season">Numero stagione ufficiale</param>
-        /// <param name="number">Numero episodio ufficiale</param>
-        /// <param name="language">Lingua richiesta</param>
-        /// <param name="originalLanguage">Lingua originale della serie</param>
-        /// <param name="cancellationToken">Token di annullamento</param>
-        /// <returns>Episodio completo del contratto</returns>
-        private async Task<MediaCatalogEpisode> LoadEpisodeAsync(string key, int season, int number, string language, string originalLanguage, CancellationToken cancellationToken)
-        {
-            Uri url;
-            HtmlNode root;
-            MediaCatalogEpisode episode;
-
-            url = PageUrl(key, "series", @"/episodes/\d+");
-            root = await this.LoadPageAsync(url, cancellationToken).ConfigureAwait(false);
-            episode = new MediaCatalogEpisode
-            {
-                Id = ParseLong(url.Segments.Last()),
-                SeasonNumber = season,
-                EpisodeNumber = number,
-                AiredDate = ParseDate(FieldText(root, "Originally Aired")),
-                RuntimeMinutes = ParseInteger(FieldText(root, "Runtime")),
-                Directors = People(root, "director"),
-                Writers = People(root, "writer"),
-                Actors = People(root, "actor")
-            };
-            ReadText(root, language, out string title, out _, out string overview, originalLanguage);
-            episode.Title = title;
-            episode.Overview = overview;
-
-            foreach (HtmlNode crumbs in Nodes(root, "//div[contains(concat(' ',normalize-space(@class),' '),' crumbs ')][a[contains(@href,'/seasons/absolute/')]]"))
-            {
-                Match absolute;
-
-                absolute = Regex.Match(Text(crumbs), @"\bEpisode\s+(\d+)\b");
-                if (absolute.Success)
-                    episode.AbsoluteNumber = ParseInteger(absolute.Groups[1].Value);
-            }
-
-            return episode;
-        }
 
         /// <summary>
         /// Legge una pagina riconoscibile senza conservare stato condiviso

@@ -242,7 +242,7 @@
         else if (_step == MatchStep.Episodes)
         {
             <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.back")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => _step = MatchStep.Search)" />
-            <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.next")" Icon="arrow_forward" Disabled="@(_selectedEpisodes.Count == 0)" Click="@GoToMatch" />
+            <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.next")" Icon="arrow_forward" Disabled="@(_selectedEpisodes.Count == 0)" Click="@GoToMatchAsync" />
         }
         else if (_step == MatchStep.Match)
         {
@@ -394,6 +394,11 @@
     /// Episodi spuntati, gli unici che entrano nell'abbinamento
     /// </summary>
     private HashSet<MediaCatalogEpisode> _selectedEpisodes = new HashSet<MediaCatalogEpisode>();
+
+    /// <summary>
+    /// Episodi già completati di testi e persone, che tornando all'abbinamento non si richiedono
+    /// </summary>
+    private HashSet<MediaCatalogEpisode> _completedEpisodes = new HashSet<MediaCatalogEpisode>();
 
     /// <summary>
     /// Film caricato
@@ -641,9 +646,43 @@
     }
 
     /// <summary>
-    /// Carica gli episodi delle stagioni scelte, tutti spuntati; annullato o fallito torna alla scelta con gli episodi di prima
+    /// Carica l'elenco degli episodi delle stagioni scelte, tutti spuntati
     /// </summary>
     private async Task LoadEpisodesAsync()
+    {
+        await this.RunEpisodeLoadAsync(async (progress, cancellationToken) =>
+        {
+            this._episodes = await this._source.GetEpisodesAsync(this._series, this._seasons.OrderBy(number => number).ToList(), this.GetLanguage(), cancellationToken);
+            this._selectedEpisodes = new HashSet<MediaCatalogEpisode>(this._episodes);
+            this._completedEpisodes = new HashSet<MediaCatalogEpisode>();
+        });
+    }
+
+    /// <summary>
+    /// Completa gli episodi spuntati non ancora completati e passa all'abbinamento dei file con i soli episodi spuntati
+    /// </summary>
+    private async Task GoToMatchAsync()
+    {
+        List<MediaCatalogEpisode> episodes = this._episodes.Where(this._selectedEpisodes.Contains).ToList();
+        List<MediaCatalogEpisode> pending = episodes.Where(episode => !this._completedEpisodes.Contains(episode)).ToList();
+
+        if (pending.Count > 0 && !await this.RunEpisodeLoadAsync(async (progress, cancellationToken) =>
+            {
+                await this._source.CompleteEpisodesAsync(this._series, pending, this.GetLanguage(), progress, cancellationToken);
+                this._completedEpisodes.UnionWith(pending);
+            }))
+            return;
+
+        this._rows = MediaCatalogEpisodeMatcher.BuildRows(this.GetSelectedFiles(), episodes);
+        this._step = MatchStep.Match;
+    }
+
+    /// <summary>
+    /// Esegue un caricamento degli episodi nel passo di attesa, con avanzamento e Annulla; alla fine si torna agli episodi
+    /// </summary>
+    /// <param name="load">Caricamento, con avanzamento e token di annullamento</param>
+    /// <returns>True se il caricamento è finito senza annullamento né errore</returns>
+    private async Task<bool> RunEpisodeLoadAsync(Func<IProgress<MediaCatalogProgress>, CancellationToken, Task> load)
     {
         CancellationTokenSource cancellation = new CancellationTokenSource();
         Progress<MediaCatalogProgress> progress = new Progress<MediaCatalogProgress>(value =>
@@ -659,15 +698,17 @@
         this._step = MatchStep.Loading;
         try
         {
-            this._episodes = await this._source.GetEpisodesAsync(this._series, this._seasons.OrderBy(number => number).ToList(), this.GetLanguage(), progress, cancellation.Token);
-            this._selectedEpisodes = new HashSet<MediaCatalogEpisode>(this._episodes);
+            await load(progress, cancellation.Token);
+            return true;
         }
         catch (OperationCanceledException)
         {
+            return false;
         }
         catch (MediaCatalogException ex)
         {
             this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.mediaCatalogMatch.loadFailed"), ex.Message, 8000);
+            return false;
         }
         finally
         {
@@ -675,15 +716,6 @@
             cancellation.Dispose();
             this._step = MatchStep.Episodes;
         }
-    }
-
-    /// <summary>
-    /// Passa all'abbinamento dei file con i soli episodi spuntati
-    /// </summary>
-    private void GoToMatch()
-    {
-        this._rows = MediaCatalogEpisodeMatcher.BuildRows(this.GetSelectedFiles(), this._episodes.Where(this._selectedEpisodes.Contains).ToList());
-        this._step = MatchStep.Match;
     }
 
     /// <summary>

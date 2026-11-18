@@ -161,33 +161,39 @@ namespace RemuxForge.Core.MediaCatalog
         }
 
         /// <summary>
-        /// Episodi delle stagioni scelte nell'ordine di messa in onda, con testi e persone di ogni episodio
+        /// Episodi delle stagioni scelte nell'ordine di messa in onda, già completi di testi e persone: una richiesta per stagione
         /// </summary>
         /// <param name="series">Serie letta da GetSeriesAsync</param>
         /// <param name="seasonNumbers">Numeri delle stagioni scelte</param>
         /// <param name="language">Codice ISO 639-2/T dei testi</param>
-        /// <param name="progress">Avanzamento in episodi, può essere null</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Episodi ordinati per stagione e numero</returns>
-        public override async Task<List<MediaCatalogEpisode>> GetEpisodesAsync(MediaCatalogSeries series, List<int> seasonNumbers, string language, IProgress<MediaCatalogProgress> progress, CancellationToken cancellationToken)
+        public override async Task<List<MediaCatalogEpisode>> GetEpisodesAsync(MediaCatalogSeries series, List<int> seasonNumbers, string language, CancellationToken cancellationToken)
         {
             List<MediaCatalogEpisode> result = new List<MediaCatalogEpisode>();
             string id = this.ParseKey(series.Key);
             string tmdbLanguage = ToTmdbLanguage(language);
-            int total = series.Seasons.Where(season => seasonNumbers.Contains(season.Number)).Sum(season => season.EpisodeCount ?? 0);
-
-            if (progress != null)
-                progress.Report(new MediaCatalogProgress(0, total));
 
             // Una stagione per volta, per non caricare il servizio
             foreach (int seasonNumber in seasonNumbers)
             {
                 result.AddRange(await this.ReadSeasonAsync(id, seasonNumber, tmdbLanguage, cancellationToken));
-                if (progress != null)
-                    progress.Report(new MediaCatalogProgress(result.Count, Math.Max(result.Count, total)));
             }
             result.Sort((a, b) => a.SeasonNumber != b.SeasonNumber ? a.SeasonNumber.CompareTo(b.SeasonNumber) : a.EpisodeNumber.CompareTo(b.EpisodeNumber));
             return result;
+        }
+
+        /// <summary>
+        /// Nulla da completare: la stagione porta già tutti i dati degli episodi
+        /// </summary>
+        /// <param name="series">Serie letta da GetSeriesAsync</param>
+        /// <param name="episodes">Episodi letti da GetEpisodesAsync</param>
+        /// <param name="language">Codice ISO 639-2/T dei testi</param>
+        /// <param name="progress">Avanzamento in episodi, può essere null</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        public override Task CompleteEpisodesAsync(MediaCatalogSeries series, List<MediaCatalogEpisode> episodes, string language, IProgress<MediaCatalogProgress> progress, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
         }
 
         /// <summary>

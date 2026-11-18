@@ -43,16 +43,25 @@ namespace RemuxForge.Core.MediaCatalog
         Task<MediaCatalogSeries> GetSeriesAsync(string key, string language, CancellationToken cancellationToken);
 
         /// <summary>
-        /// Episodi delle stagioni scelte, completi di testi, numeri e persone, ordinati per stagione e numero.
+        /// Episodi delle stagioni scelte, ordinati per stagione e numero, con quanto gli elenchi delle stagioni portano: numeri e titolo sempre, il resto se c'è.
         /// La fonte che conosce il poster di una stagione solo dalla pagina della stagione lo completa qui sulla serie
         /// </summary>
         /// <param name="series">Serie letta da GetSeriesAsync</param>
         /// <param name="seasonNumbers">Numeri delle stagioni scelte</param>
         /// <param name="language">Codice ISO 639-2/T dei testi</param>
-        /// <param name="progress">Avanzamento in episodi, può essere null</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Episodi</returns>
-        Task<List<MediaCatalogEpisode>> GetEpisodesAsync(MediaCatalogSeries series, List<int> seasonNumbers, string language, IProgress<MediaCatalogProgress> progress, CancellationToken cancellationToken);
+        Task<List<MediaCatalogEpisode>> GetEpisodesAsync(MediaCatalogSeries series, List<int> seasonNumbers, string language, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Completa sul posto testi, numeri e persone degli episodi da scrivere, con le richieste per episodio che la fonte richiede; ripeterla sugli stessi episodi è innocuo
+        /// </summary>
+        /// <param name="series">Serie letta da GetSeriesAsync</param>
+        /// <param name="episodes">Episodi letti da GetEpisodesAsync</param>
+        /// <param name="language">Codice ISO 639-2/T dei testi</param>
+        /// <param name="progress">Avanzamento in episodi, può essere null</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        Task CompleteEpisodesAsync(MediaCatalogSeries series, List<MediaCatalogEpisode> episodes, string language, IProgress<MediaCatalogProgress> progress, CancellationToken cancellationToken);
 
         /// <summary>
         /// Film completo
