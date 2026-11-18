@@ -1522,19 +1522,26 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// Tratti di testo che un campo Text ASS nasconde e poi rimostra com'erano: da un \alpha&amp;HFF&amp; al primo blocco
-        /// successivo con tag d'alpha, che riporta ogni alpha (\alpha, \1a-\4a e le loro \t) allo stato che aveva prima del tratto.
-        /// Il tratto non conta se il blocco d'apertura, dopo il \alpha&amp;HFF&amp;, tocca ancora un'alpha (anche con una \t che lo
-        /// riporta visibile), se una \t del blocco di chiusura anima anche altro, o se la chiusura lascia un'alpha diversa: così,
-        /// tolti il tag d'apertura e quelli d'alpha della chiusura, il tratto si vede e il resto della riga resta com'era. Il testo
-        /// è letto come quello leggibile delle righe: senza blocchi, a capo e spazi fissi come spazi, senza spazi agli estremi
+        /// successivo con tag d'alpha, che riporta ogni canale d'alpha allo stato che aveva prima del tratto. Lo stato di un canale
+        /// è il suo ultimo valore fisso (quello dello stile all'inizio e dopo un \alpha o \1a-\4a senza valore) con le \t che lo
+        /// animano dopo, coi tempi letti come libass. Il tratto non conta se il blocco d'apertura, dopo il \alpha&amp;HFF&amp;, tocca
+        /// ancora un'alpha (anche con una \t che lo riporta visibile), se una \t del blocco di chiusura anima anche altro, o se la
+        /// chiusura lascia uno stato diverso: così, tolti il tag d'apertura e quelli d'alpha della chiusura, il tratto si vede e il
+        /// resto della riga resta com'era. Il testo è letto come quello leggibile delle righe: senza blocchi, a capo e spazi fissi
+        /// come spazi, senza spazi agli estremi
         /// </summary>
         /// <param name="text">Campo Text</param>
+        /// <param name="styleState">Stato dello stile della riga per canale (<see cref="ReadStyleState"/>), null se manca</param>
         /// <returns>Tratti nascosti non vuoti, nell'ordine</returns>
-        public List<SubtitleHiddenSpan> ReadHiddenSpans(string text)
+        public List<SubtitleHiddenSpan> ReadHiddenSpans(string text, IReadOnlyDictionary<string, string> styleState)
         {
             string[] alphaChannels = new string[] { "1a", "2a", "3a", "4a" };
             Func<string, bool> isAlpha = name => name == "alpha" || Array.IndexOf(alphaChannels, name) >= 0;
-            Dictionary<string, List<string>> operations = alphaChannels.ToDictionary(channel => channel, channel => new List<string>(), StringComparer.Ordinal);
+
+            // Un canale senza valore di stile vale «stile», uguale solo a sé stesso
+            Func<string, string> styleValue = channel => "=" + (styleState?.GetValueOrDefault(channel) ?? "style");
+            Dictionary<string, List<string>> operations = alphaChannels.ToDictionary(channel => channel, channel => new List<string> { styleValue(channel) },
+                StringComparer.Ordinal);
             Dictionary<string, List<string>> before = null;
             List<SubtitleHiddenSpan> spans = new List<SubtitleHiddenSpan>();
             StringBuilder span = null;
@@ -1558,7 +1565,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     int tagStart = block.IndexOf(tag.Raw, tagEnd, StringComparison.Ordinal);
                     tagEnd = tagStart + tag.Raw.Length;
 
-                    // Operazioni sui canali d'alpha dall'ultimo valore fisso: \alpha senza valore torna allo stile e le azzera
+                    // Operazioni sui canali d'alpha dall'ultimo valore fisso; null per \alpha o \1a-\4a senza valore, che torna allo
+                    // stile. I tempi di una \t come libass: con tre argomenti inizio, fine e accelerazione, con due inizio e fine, con
+                    // uno l'accelerazione; inizio e fine interi troncati, 0 se mancano, e la fine 0 è la fine della riga
                     List<KeyValuePair<string, string>> changes = new List<KeyValuePair<string, string>>();
                     if (isAlpha(tag.Name))
                     {
@@ -1567,7 +1576,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     else if (tag.Name == ASS_TRANSFORM)
                     {
                         string inner = tag.Arg.Trim().TrimStart('(');
-                        string times = inner.Substring(0, Math.Max(0, inner.IndexOf('\\')));
+                        string[] arguments = inner.Substring(0, Math.Max(0, inner.IndexOf('\\'))).Split(',');
+                        double[] numbers = Array.ConvertAll(arguments, argument => double.TryParse(argument.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture,
+                            out double number) ? number : 0);
+                        int count = arguments.Length - 1;
+                        long from = count == 2 || count == 3 ? (long)Math.Truncate(numbers[0]) : 0;
+                        long to = count == 2 || count == 3 ? (long)Math.Truncate(numbers[1]) : 0;
+                        double acceleration = count == 3 ? numbers[2] : count == 1 ? numbers[0] : 1;
+                        string times = from.ToString(CultureInfo.InvariantCulture) + "," + (to == 0 ? "end" : to.ToString(CultureInfo.InvariantCulture)) + ","
+                            + acceleration.ToString("R", CultureInfo.InvariantCulture);
                         List<AssTag> innerTags = ParseAssTags(tag.Arg);
                         foreach (AssTag innerTag in innerTags.FindAll(innerTag => isAlpha(innerTag.Name)))
                             changes.Add(new KeyValuePair<string, string>(innerTag.Name, "t(" + times + ")=" + ChannelValue("1a", innerTag.Arg)));
@@ -1594,8 +1611,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         {
                             if (change.Value == null || change.Value.StartsWith("=", StringComparison.Ordinal))
                                 operations[channel].Clear();
-                            if (change.Value != null)
-                                operations[channel].Add(change.Value);
+                            operations[channel].Add(change.Value ?? styleValue(channel));
                         }
                     }
                 }

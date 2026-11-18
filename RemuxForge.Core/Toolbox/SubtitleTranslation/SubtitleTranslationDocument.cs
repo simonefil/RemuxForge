@@ -600,7 +600,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     AssEvent under = events[u];
                     if (under.Comment || under.Drawing || sourceOf[u] >= 0 || wholeOf[u] >= 0 || underOf[u] >= 0)
                         continue;
-                    List<SubtitleHiddenSpan> hidden = cleaner.ReadHiddenSpans(under.Raw).FindAll(span => span.Text != under.Readable);
+                    List<SubtitleHiddenSpan> hidden = cleaner.ReadHiddenSpans(under.Raw, styleStates.GetValueOrDefault(under.Style)).FindAll(span => span.Text != under.Readable);
                     if (hidden.Count == 0)
                         continue;
                     List<int> overlays = eventsByUnit[under.Style + "\u0001" + under.Actor + "\u0001" + under.Effect].FindAll(o => o != u && wholeOf[o] < 0
