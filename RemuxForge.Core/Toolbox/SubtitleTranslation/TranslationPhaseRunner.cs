@@ -62,6 +62,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private readonly List<TranslationCallRecord> _calls;
 
         /// <summary>
+        /// Campo serie/contesto del progetto, in testa al prefisso di ogni file
+        /// </summary>
+        private readonly string _context;
+
+        /// <summary>
         /// Prima fermata di un file per limite d'uso o errore: gli altri file non avviano unità nuove
         /// </summary>
         private TranslationStop _pause;
@@ -97,13 +102,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="files">File del job, nell'ordine del progetto</param>
         /// <param name="calls">Registro delle chiamate del job</param>
         /// <param name="stateLock">Lock dello stato condiviso</param>
-        protected TranslationPhaseRunner(TranslationJobStore store, TranslationJob job, List<TranslationRunFile> files, List<TranslationCallRecord> calls, object stateLock)
+        /// <param name="context">Campo serie/contesto del progetto, letto all'avvio della fase</param>
+        protected TranslationPhaseRunner(TranslationJobStore store, TranslationJob job, List<TranslationRunFile> files, List<TranslationCallRecord> calls, object stateLock, string context)
         {
             this._store = store;
             this._job = job;
             this._files = files;
             this._calls = calls;
             this._lock = stateLock;
+            this._context = context;
             this._pause = null;
         }
 
@@ -208,8 +215,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         protected abstract Task ProcessFileAsync(TranslationRunFile file, ITranslationModelProvider provider, CancellationToken cancellation);
 
         /// <summary>
-        /// Contesto di un file per le chiamate: prefisso col glossario del job, validatore coi suoi termini e battute delle tratte
-        /// condivise
+        /// Contesto di un file per le chiamate: prefisso col contesto del progetto e il glossario del job, validatore coi suoi
+        /// termini e battute delle tratte condivise
         /// </summary>
         /// <param name="file">File del job</param>
         /// <returns>Contesto del file</returns>
@@ -221,7 +228,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 shared = SharedStretch.MapFile(this._job.SharedStretches, file.State.FileId);
             }
 
-            return new FileContext(file, TranslationRequestBuilder.CreateTranslationPrefix(this._job.Glossary, file.State.SourceFileName, file.State.Cues),
+            return new FileContext(file, TranslationRequestBuilder.CreateTranslationPrefix(this._context, this._job.Glossary, file.State.SourceFileName, file.State.Cues),
                 new TranslationValidator(file.Document.Format, this._job.Glossary.SourceLanguage, this._job.Glossary.TargetLanguage, this._job.Glossary.Terms), shared);
         }
 

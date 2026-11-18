@@ -1325,7 +1325,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 foreach (TranslationProjectFile file in this._project.Files)
                     files.Add(new KeyValuePair<string, IReadOnlyList<SubtitleCue>>(Path.GetFileName(file.Path), this._documents[file.Id].Cues));
 
-                this._translationEstimate = TranslationRunner.Estimate(this._project.Glossary, files, access == AiConnectionMode.ChatGptAccount, this._project.Options.ReviewMode);
+                this._translationEstimate = TranslationRunner.Estimate(this._project.Glossary, this._project.Context, files, access == AiConnectionMode.ChatGptAccount, this._project.Options.ReviewMode);
                 this._translationEstimateKey = key;
                 return this._translationEstimate;
             }
@@ -1745,6 +1745,7 @@ namespace RemuxForge.Web.Services.Toolbox
             {
                 List<TranslationRunFile> files = new List<TranslationRunFile>();
                 int parallel;
+                string context;
                 lock (this.StateLock)
                 {
                     job = this._job;
@@ -1753,6 +1754,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     job.Pause = null;
                     job.AccessMode = this.AccessMode;
                     parallel = this._project.Options.MaxParallelFiles;
+                    context = this._project.Context;
                     foreach (string fileId in job.FileIds)
                     {
                         TranslationJobFileState state = this._jobFiles[fileId];
@@ -1780,7 +1782,7 @@ namespace RemuxForge.Web.Services.Toolbox
                         }
                         if (stretches > 0)
                             this.AppendLog(AppText.Count(TEXT_PREFIX + ".sharedStretchesStarted", stretches));
-                        TranslationRunner runner = new TranslationRunner(this._jobStore, job, files, this._jobCalls, this.StateLock);
+                        TranslationRunner runner = new TranslationRunner(this._jobStore, job, files, this._jobCalls, this.StateLock, context);
                         this.AttachRunner(runner, TEXT_PREFIX + ".jobProgress", TEXT_PREFIX + ".blockOfFile", null);
                         stop = await runner.RunAsync(provider, parallel, this.OperationCancellationToken);
                         if (stop != null)
@@ -1815,7 +1817,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     else if (phase == TranslationJobPhase.Applying)
                     {
                         this.AppendLog(AppText.T(TEXT_PREFIX + ".termsStarted"));
-                        TermApplier applier = new TermApplier(this._jobStore, job, files, this._jobCalls, this.StateLock);
+                        TermApplier applier = new TermApplier(this._jobStore, job, files, this._jobCalls, this.StateLock, context);
                         this.AttachRunner(applier, TEXT_PREFIX + ".termsProgress", TEXT_PREFIX + ".callOfFile", null);
                         stop = await applier.RunAsync(provider, parallel, this.OperationCancellationToken);
                         if (stop != null)
@@ -1836,7 +1838,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     else
                     {
                         // Blocchi scelti una volta e salvati: alla ripresa la scelta non cambia
-                        TranslationReviewer reviewer = new TranslationReviewer(this._jobStore, job, files, this._jobCalls, this.StateLock);
+                        TranslationReviewer reviewer = new TranslationReviewer(this._jobStore, job, files, this._jobCalls, this.StateLock, context);
                         lock (this.StateLock)
                         {
                             if (this._project.ReachedStep < TranslationProjectStep.Review)

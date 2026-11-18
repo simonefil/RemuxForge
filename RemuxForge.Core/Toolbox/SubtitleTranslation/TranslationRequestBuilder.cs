@@ -56,7 +56,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Instructions di B, B′ e B″: un solo testo, perché il ritentativo trovi la cache del prefisso
         /// </summary>
         private const string TRANSLATION_INSTRUCTIONS = "You are a professional subtitle translator from {source_language} to {target_language}.\n" +
-            "The first message gives the approved glossary and the full source episode. The last message shows the latest accepted translations and names the cue ids to translate now.\n" +
+            "The first message gives the user's context for the series when there is one, the approved glossary and the full source episode. The last message shows the latest accepted translations and names the cue ids to translate now.\n" +
             "This is not a chat: nobody reads plain text. Deliver only by calling submit_translation once, with one entry per requested id in ascending order.\n" +
             "When the last message lists rejected ids with error codes, deliver only the requested ids, fixing every listed error.\n" +
             "Report in new_terms every name or recurring term that is not among the glossary terms and that you had to render or keep, with the rendering you used and its kind. Set invariable to true for names that never inflect and must appear verbatim. Leave new_terms empty when there are none.\n" +
@@ -92,7 +92,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Instructions di C: riscrittura delle battute coinvolte dai termini nuovi approvati
         /// </summary>
         private const string REWRITE_INSTRUCTIONS = "You apply updated glossary terms to {target_language} subtitles already translated from {source_language}.\n" +
-            "The first message gives the updated glossary and the full source episode. The last message lists the updated renderings and, for every cue to rewrite, its source and its current translation.\n" +
+            "The first message gives the user's context for the series when there is one, the updated glossary and the full source episode. The last message lists the updated renderings and, for every cue to rewrite, its source and its current translation.\n" +
             "This is not a chat: nobody reads plain text. Deliver only by calling submit_translation once, with one entry per requested id in ascending order, and new_terms empty.\n" +
             "For each cue change only what the updated renderings require: the term itself and the words that agree with it. Keep everything else as it is.\n" +
             "When the last message lists rejected ids with error codes, deliver only the requested ids, fixing every listed error.\n" +
@@ -105,7 +105,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Instructions di D1: diagnosi di un blocco tradotto
         /// </summary>
         private const string DIAGNOSIS_INSTRUCTIONS = "You review {target_language} subtitles translated from {source_language}, cue by cue, with the source beside them.\n" +
-            "The first message gives the approved glossary and the full source episode. The last message gives one block: for every cue its source record, its current translation record and, when the code noticed something, a signal record.\n" +
+            "The first message gives the user's context for the series when there is one, the approved glossary and the full source episode. The last message gives one block: for every cue its source record, its current translation record and, when the code noticed something, a signal record.\n" +
             "This is not a chat: nobody reads plain text. Deliver only by calling submit_diagnosis once. Deliver an empty issues list when the block needs no change.\n" +
             "\n" +
             "Report real problems only, with these categories:\n" +
@@ -128,7 +128,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Instructions di D2: correzione delle battute diagnosticate e traduzione delle «da rivedere»
         /// </summary>
         private const string CORRECTION_INSTRUCTIONS = "You correct {target_language} subtitles translated from {source_language}, using a list of diagnosed issues and the source.\n" +
-            "The first message gives the approved glossary and the full source episode. The last message lists the diagnosed issues, then every cue to deliver with its source and its current translation.\n" +
+            "The first message gives the user's context for the series when there is one, the approved glossary and the full source episode. The last message lists the diagnosed issues, then every cue to deliver with its source and its current translation.\n" +
             "This is not a chat: nobody reads plain text. Deliver only by calling submit_translation once, with one entry per requested id in ascending order, and new_terms empty.\n" +
             "Fix every listed issue and keep the rest of each cue as it is. Translate from scratch every cue with no accepted translation. A listed cue with no issue of its own belongs to a [gN] group: deliver it unchanged unless fixing the group requires a change.\n" +
             "When the last message lists rejected ids with error codes, deliver only the requested ids, fixing every listed error.\n" +
@@ -445,17 +445,23 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Messaggio di prefisso: glossario del job e sorgente numerato intero, uguale byte per byte fra le chiamate di un file con
-        /// lo stesso glossario
+        /// Messaggio di prefisso: contesto della serie, glossario del job e sorgente numerato intero, uguale byte per byte fra le
+        /// chiamate di un file con lo stesso contesto e lo stesso glossario. Prima ciò che vale per tutto il progetto, poi ciò che
+        /// vale per il file: il contesto modificato apre semplicemente un prefisso nuovo
         /// </summary>
+        /// <param name="context">Campo serie/contesto del progetto, vuoto se l'utente non l'ha scritto</param>
         /// <param name="glossary">Glossario del job: congelato in traduzione, aggiornato dai termini nuovi dopo</param>
         /// <param name="fileName">Nome del file sorgente</param>
         /// <param name="cues">Battute congelate del file</param>
         /// <returns>Testo del primo messaggio</returns>
-        public static string CreateTranslationPrefix(Glossary glossary, string fileName, IReadOnlyList<FrozenCue> cues)
+        public static string CreateTranslationPrefix(string context, Glossary glossary, string fileName, IReadOnlyList<FrozenCue> cues)
         {
             GlossaryBuilder builder = new GlossaryBuilder(glossary.SourceLanguage, glossary.TargetLanguage);
-            StringBuilder message = new StringBuilder("GLOSSARY (approved):\n");
+            StringBuilder message = new StringBuilder();
+            string trimmed = (context ?? "").Trim();
+            if (trimmed.Length > 0)
+                message.Append("SERIES CONTEXT (from the user):\n").Append(trimmed).Append("\n\n");
+            message.Append("GLOSSARY (approved):\n");
             message.Append(ToModelJson(builder.ToToolJson(glossary, true)));
             message.Append("\n\nSOURCE EPISODE: ").Append(fileName).Append(" (").Append(cues.Count.ToString(CultureInfo.InvariantCulture)).Append(" cues)");
             foreach (FrozenCue cue in cues)

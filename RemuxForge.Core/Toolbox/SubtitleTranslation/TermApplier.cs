@@ -57,8 +57,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="files">File del job, nell'ordine del progetto</param>
         /// <param name="calls">Registro delle chiamate del job</param>
         /// <param name="stateLock">Lock dello stato condiviso</param>
-        public TermApplier(TranslationJobStore store, TranslationJob job, List<TranslationRunFile> files, List<TranslationCallRecord> calls, object stateLock)
-            : base(store, job, files, calls, stateLock)
+        /// <param name="context">Campo serie/contesto del progetto, letto all'avvio della fase</param>
+        public TermApplier(TranslationJobStore store, TranslationJob job, List<TranslationRunFile> files, List<TranslationCallRecord> calls, object stateLock, string context)
+            : base(store, job, files, calls, stateLock, context)
         {
             string source = LanguageValidator.NormalizeToIso6392(job.Glossary.SourceLanguage);
             string target = LanguageValidator.NormalizeToIso6392(job.Glossary.TargetLanguage);

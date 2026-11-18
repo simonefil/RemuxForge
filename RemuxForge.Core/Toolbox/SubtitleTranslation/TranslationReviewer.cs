@@ -50,8 +50,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="files">File del job, nell'ordine del progetto</param>
         /// <param name="calls">Registro delle chiamate del job</param>
         /// <param name="stateLock">Lock dello stato condiviso</param>
-        public TranslationReviewer(TranslationJobStore store, TranslationJob job, List<TranslationRunFile> files, List<TranslationCallRecord> calls, object stateLock)
-            : base(store, job, files, calls, stateLock)
+        /// <param name="context">Campo serie/contesto del progetto, letto all'avvio della fase</param>
+        public TranslationReviewer(TranslationJobStore store, TranslationJob job, List<TranslationRunFile> files, List<TranslationCallRecord> calls, object stateLock, string context)
+            : base(store, job, files, calls, stateLock, context)
         {
             this._diagnosisInstructions = TranslationRequestBuilder.CreateDiagnosisInstructions(job.Glossary.SourceLanguage, job.Glossary.TargetLanguage);
             this._correctionInstructions = TranslationRequestBuilder.CreateCorrectionInstructions(job.Glossary.SourceLanguage, job.Glossary.TargetLanguage);

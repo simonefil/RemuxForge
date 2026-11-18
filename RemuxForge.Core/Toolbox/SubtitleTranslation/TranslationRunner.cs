@@ -63,8 +63,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="files">File del job da tradurre, nell'ordine del progetto</param>
         /// <param name="calls">Registro delle chiamate del job</param>
         /// <param name="stateLock">Lock dello stato condiviso</param>
-        public TranslationRunner(TranslationJobStore store, TranslationJob job, List<TranslationRunFile> files, List<TranslationCallRecord> calls, object stateLock)
-            : base(store, job, files, calls, stateLock)
+        /// <param name="context">Campo serie/contesto del progetto, letto all'avvio della fase</param>
+        public TranslationRunner(TranslationJobStore store, TranslationJob job, List<TranslationRunFile> files, List<TranslationCallRecord> calls, object stateLock, string context)
+            : base(store, job, files, calls, stateLock, context)
         {
             this._instructions = TranslationRequestBuilder.CreateTranslationInstructions(job.Glossary.SourceLanguage, job.Glossary.TargetLanguage);
             this._stretches = false;
@@ -113,11 +114,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// allo stesso modo, con una D1 e una D2 su tutte le battute di ogni blocco
         /// </summary>
         /// <param name="glossary">Glossario approvato</param>
+        /// <param name="context">Campo serie/contesto del progetto</param>
         /// <param name="files">Nome e battute preparate di ogni file</param>
         /// <param name="cache">True se l'accesso misura la cache del prefisso</param>
         /// <param name="reviewMode">Modalità della revisione AI</param>
         /// <returns>Stima della traduzione e della revisione</returns>
-        public static TranslationEstimate Estimate(Glossary glossary, IReadOnlyList<KeyValuePair<string, IReadOnlyList<SubtitleCue>>> files, bool cache, TranslationReviewMode reviewMode)
+        public static TranslationEstimate Estimate(Glossary glossary, string context, IReadOnlyList<KeyValuePair<string, IReadOnlyList<SubtitleCue>>> files, bool cache, TranslationReviewMode reviewMode)
         {
             TranslationEstimate estimate = new TranslationEstimate();
             string instructions = TranslationRequestBuilder.CreateTranslationInstructions(glossary.SourceLanguage, glossary.TargetLanguage);
@@ -139,7 +141,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         cues.Add(new FrozenCue { Id = cue.Id.Value, Group = cue.Group, Text = cue.CleanText });
                 }
 
-                string prefix = TranslationRequestBuilder.CreateTranslationPrefix(glossary, file.Key, cues);
+                string prefix = TranslationRequestBuilder.CreateTranslationPrefix(context, glossary, file.Key, cues);
                 int prefixTokens = GlossaryBuilder.EstimateTokens(instructions + tools + prefix);
                 int diagnosisTokens = GlossaryBuilder.EstimateTokens(diagnosis + prefix);
                 int correctionTokens = GlossaryBuilder.EstimateTokens(correction + prefix);
