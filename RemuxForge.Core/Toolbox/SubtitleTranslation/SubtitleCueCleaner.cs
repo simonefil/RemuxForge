@@ -1385,12 +1385,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 for (int c = 1; c < column.Length; c++)
                 {
                     // Gli interruttori dello stile sono -1 o 1 se accesi; un colore è AABBGGRR
-                    string value = ChannelValue(column[c], field);
+                    string value;
                     if (this.SwitchBit(column[c]) >= 0)
                         value = int.TryParse(field, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int flag) ? (flag != 0 ? "1" : "0") : null;
                     else if (column[0].EndsWith("Colour", StringComparison.Ordinal))
                         value = column[c][1] == 'c' ? (readInteger(field) & 0xFFFFFF).ToString("X6", CultureInfo.InvariantCulture)
                             : (readInteger(field) >> 24).ToString("X2", CultureInfo.InvariantCulture);
+                    else
+                        value = ChannelValue(column[c], field);
                     if (value != null)
                         state[column[c]] = value;
                 }
