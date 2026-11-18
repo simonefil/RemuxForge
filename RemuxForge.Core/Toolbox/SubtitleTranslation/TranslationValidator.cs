@@ -184,7 +184,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="requestedIds">Id richiesti in ordine di tempo, l'ordine dell'esito e dei ritentativi</param>
         /// <param name="cues">Battute che contengono gli id richiesti, con gruppi e ricette</param>
         /// <param name="submissions">Argomenti delle chiamate submit_translation della risposta, nell'ordine; si usa la prima leggibile</param>
-        /// <returns>Esito per ogni id richiesto e problemi degli elementi scartati</returns>
+        /// <returns>Esito per ogni id richiesto e problemi senza id: elementi scartati e consegna slittata</returns>
         public TranslationValidationResult Validate(IReadOnlyList<int> requestedIds, IReadOnlyList<SubtitleCue> cues, IReadOnlyList<string> submissions)
         {
             Dictionary<int, SubtitleCue> byId = new Dictionary<int, SubtitleCue>();
@@ -295,10 +295,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
             // Slittamento: un segno che manca su una battuta e compare in più su quella accanto nella consegna è passato dall'una
             // all'altra, quindi le traduzioni sono scalate di posizione e anche quelle senza segni sono sugli id sbagliati. Si
-            // respinge tutta la consegna, così il ritentativo non ha in coda i testi slittati
+            // respinge tutta la consegna, così il ritentativo non ha in coda i testi slittati. Dentro una frase spezzata un segno
+            // che passa da una parte all'altra è l'ordine delle parole della lingua d'arrivo: lo respinge già il gruppo
             string shift = null;
             for (int i = 0; i + 1 < deliveryOrder.Count && shift == null; i++)
             {
+                int? group = byId[deliveryOrder[i]].Group;
+                if (group.HasValue && byId[deliveryOrder[i + 1]].Group == group)
+                    continue;
                 foreach (TranslationValidationIssue missing in issues[deliveryOrder[i]].Concat(issues[deliveryOrder[i + 1]]))
                 {
                     if (missing.Code != MARK_MISSING)
@@ -781,7 +785,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 Func<char, bool> spacedLetter = letter => char.IsLetter(letter) && (letter < '\u0530' || (letter >= '\u1E00' && letter < '\u2000'));
                 bool spacedOnly = normalizedText.Any(char.IsLetter) && normalizedText.Where(char.IsLetter).All(spacedLetter);
                 bool rightToLeft = normalizedText.Any(c => (c >= '\u0590' && c <= '\u08FF') || (c >= '\uFB1D' && c <= '\uFDFF') || (c >= '\uFE70' && c <= '\uFEFE'));
-                List<string> renderings = this._terms.FindAll(term => term.SourcePattern.IsMatch(cue.CleanText)).ConvertAll(term => term.Target);
+                List<string> renderings = this._terms.FindAll(term => term.SourcePattern.IsMatch(GlossaryPlain(cue.CleanText))).ConvertAll(term => term.Target);
                 for (int i = 0; i < normalizedText.Length; i++)
                 {
                     char c = normalizedText[i];
