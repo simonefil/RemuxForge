@@ -20,11 +20,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         public const int MIN_CUES = 3;
 
-        /// <summary>
-        /// Durata massima di un fotogramma di un cartello in movimento, anche disegnato ogni due fotogrammi
-        /// </summary>
-        public const long MAX_SIGN_FRAME_MS = 100;
-
         #endregion
 
         #region Variabili statiche
@@ -357,29 +352,49 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Aggiunge la tratta dei cartelli in movimento di un file, se ne ha. Un cartello in movimento sono almeno due battute libere
-        /// fuori dai gruppi, lunghe al più MAX_SIGN_FRAME_MS, con lo stesso stile e lo stesso testo: lo stesso cartello ridisegnato a
-        /// ogni fotogramma con tag diversi. La prima battuta in ordine di tempo di ogni cartello è una riga della prima occorrenza, tradotta una volta
-        /// sola in una consegna per tutti i cartelli del file; ogni altra battuta è un'occorrenza di quella riga
+        /// Aggiunge la tratta dei cartelli in movimento di un file, se ne ha. Un cartello in movimento è una catena di battute libere
+        /// fuori dai gruppi con lo stesso stile e lo stesso testo, ognuna che comincia esattamente dove finisce un'altra della
+        /// catena: lo stesso cartello ridisegnato a ogni fotogramma con tag diversi, anche mentre un altro cartello si muove. Tutte
+        /// le battute in catena di uno stesso cartello fanno una riga: la prima in ordine di tempo sta nella prima occorrenza,
+        /// tradotta una volta sola in una consegna per tutti i cartelli del file; ogni altra battuta è un'occorrenza di quella riga
         /// </summary>
         /// <param name="stretches">Tratte del job</param>
         /// <param name="file">File con le battute già prese dalle tratte fra i file</param>
         private static void AddMovingSigns(List<SharedStretch> stretches, FileKeys file)
         {
             List<string> order = new List<string>();
-            Dictionary<string, List<int>> frames = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+            Dictionary<string, List<int>> candidates = new Dictionary<string, List<int>>(StringComparer.Ordinal);
             for (int i = 0; i < file.Cues.Count; i++)
             {
                 SubtitleCue cue = file.Cues[i];
-                if (file.Assigned[i] || cue.Group.HasValue || cue.EndMs - cue.StartMs > MAX_SIGN_FRAME_MS)
+                if (file.Assigned[i] || cue.Group.HasValue)
                     continue;
                 string sign = cue.Style + "\n" + file.Keys[i];
-                if (!frames.ContainsKey(sign))
+                if (!candidates.ContainsKey(sign))
                 {
                     order.Add(sign);
-                    frames[sign] = new List<int>();
+                    candidates[sign] = new List<int>();
                 }
-                frames[sign].Add(i);
+                candidates[sign].Add(i);
+            }
+
+            // In catena: una battuta che comincia dove ne finisce un'altra dello stesso cartello, e ogni battuta che finisce dove
+            // un'altra riparte
+            Dictionary<string, List<int>> frames = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+            foreach (string sign in order)
+            {
+                List<int> positions = candidates[sign];
+                Dictionary<long, int> ends = new Dictionary<long, int>();
+                foreach (int position in positions)
+                    ends[file.Cues[position].EndMs] = ends.GetValueOrDefault(file.Cues[position].EndMs) + 1;
+                HashSet<long> links = new HashSet<long>();
+                foreach (int position in positions)
+                {
+                    SubtitleCue cue = file.Cues[position];
+                    if (ends.GetValueOrDefault(cue.StartMs) - (cue.EndMs == cue.StartMs ? 1 : 0) > 0)
+                        links.Add(cue.StartMs);
+                }
+                frames[sign] = positions.FindAll(p => links.Contains(file.Cues[p].StartMs) || links.Contains(file.Cues[p].EndMs));
             }
 
             order.RemoveAll(sign => frames[sign].Count < 2);
