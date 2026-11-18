@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -677,8 +678,8 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Stima in token delle chiamate A1 che mancano, calcolata per caratteri come l'analisi le manderebbe; la A2 dipende dai
-        /// conflitti e non entra nella stima
+        /// Stima in token delle chiamate A1 che mancano, calcolata per caratteri come l'analisi le manderebbe, schema dei tool
+        /// compreso; un parziale fatto su ingressi cambiati manca. La A2 dipende dai conflitti e non entra nella stima
         /// </summary>
         /// <returns>Stima, null senza file preparati o lingue, con la card occupata o con l'analisi conclusa</returns>
         public TranslationAnalysisEstimate EstimateAnalysis()
@@ -696,17 +697,19 @@ namespace RemuxForge.Web.Services.Toolbox
                 GlossaryBuilder builder = new GlossaryBuilder(this._project.SourceLanguage, this._project.TargetLanguage);
                 List<GlossaryEpisode> episodes = this.GetEpisodes();
                 AnalysisPlan plan = this.PlanAnalysis(builder, episodes);
+                bool webSearch = this.GetCapabilities().WebSearch && (this._project.Analysis == null || !this._project.Analysis.WebSearchRejected);
+                string tools = builder.CreateTools(webSearch).ToJsonString();
                 TranslationAnalysisEstimate estimate = new TranslationAnalysisEstimate();
                 estimate.Files = episodes.Count;
                 for (int i = 0; i < plan.Units.Count; i++)
                 {
                     string fileId = plan.Units[i].Count == 1 ? plan.Units[i][0].FileId : TranslationSessionKey.NO_FILE;
-                    if (this._project.Analysis != null && this._project.Analysis.Partials.Exists(p => p.FileId == fileId))
+                    if (this._project.Analysis != null && this._project.Analysis.Partials.Exists(p => p.FileId == fileId && p.InputSha256 == plan.Fingerprints[i]))
                         continue;
 
                     estimate.Calls++;
                     estimate.Cues += plan.Cues[i];
-                    estimate.InputTokens += GlossaryBuilder.EstimateTokens(builder.AnalysisInstructions + plan.Messages[i]);
+                    estimate.InputTokens += GlossaryBuilder.EstimateTokens(builder.AnalysisInstructions + tools + plan.Messages[i]);
                 }
 
                 this._estimate = estimate;
@@ -1622,6 +1625,11 @@ namespace RemuxForge.Web.Services.Toolbox
                 lock (this.StateLock)
                 {
                     plan = this.PlanAnalysis(builder, episodes);
+
+                    // Parziali fatti su ingressi che non ci sono più, come contesto o glossario caricato cambiati o il passaggio fra
+                    // chiamata unica e una per file: si scartano e la ripresa li rifà
+                    analysis.Partials.RemoveAll(p => !plan.Units.Exists(u =>
+                        (u.Count == 1 ? u[0].FileId : TranslationSessionKey.NO_FILE) == p.FileId && plan.Fingerprints[plan.Units.IndexOf(u)] == p.InputSha256));
                 }
 
                 for (int i = 0; i < plan.Units.Count; i++)
@@ -1653,7 +1661,7 @@ namespace RemuxForge.Web.Services.Toolbox
 
                     lock (this.StateLock)
                     {
-                        analysis.Partials.Add(new GlossaryPartial { FileId = fileId, Glossary = partial });
+                        analysis.Partials.Add(new GlossaryPartial { FileId = fileId, Glossary = partial, InputSha256 = plan.Fingerprints[i] });
                         this._store.Save(project);
                     }
                     this.AppendLog(AppText.F(TEXT_PREFIX + ".partialDelivered", fileName, partial.Terms.Count, partial.Characters.Count));
@@ -2056,7 +2064,7 @@ namespace RemuxForge.Web.Services.Toolbox
 
         /// <summary>
         /// Chiamate A1 dell'analisi: una sola con tutti i file quando l'ingresso stimato sta sotto la soglia, altrimenti una per
-        /// file, coi candidati ricorrenti e il glossario caricato; chiamato sotto StateLock
+        /// file, coi candidati ricorrenti e il glossario caricato, e l'impronta degli ingressi di ognuna; chiamato sotto StateLock
         /// </summary>
         /// <param name="builder">Richieste del glossario</param>
         /// <param name="episodes">File preparati del progetto</param>
@@ -2097,6 +2105,9 @@ namespace RemuxForge.Web.Services.Toolbox
                     plan.Messages.Add(builder.CreateAnalysisMessage(project.Context, plan.Loaded, plan.Candidates, episodes, unit));
                 }
             }
+
+            foreach (string message in plan.Messages)
+                plan.Fingerprints.Add(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(builder.AnalysisInstructions + "\n" + message))).ToLowerInvariant());
 
             foreach (List<GlossaryEpisode> unit in plan.Units)
             {
@@ -2703,6 +2714,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 this.Loaded = null;
                 this.Units = new List<List<GlossaryEpisode>>();
                 this.Messages = new List<string>();
+                this.Fingerprints = new List<string>();
                 this.Cues = new List<int>();
             }
 
@@ -2725,6 +2737,11 @@ namespace RemuxForge.Web.Services.Toolbox
             /// Messaggio di ogni A1
             /// </summary>
             public List<string> Messages { get; }
+
+            /// <summary>
+            /// SHA-256 di instructions e messaggio di ogni A1: un parziale vale solo se è stato fatto sugli stessi ingressi
+            /// </summary>
+            public List<string> Fingerprints { get; }
 
             /// <summary>
             /// Battute mandate da ogni A1
