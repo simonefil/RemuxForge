@@ -1,4 +1,5 @@
 using RemuxForge.Core.Localization;
+using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -23,12 +24,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public const int MIN_BLOCK_SIZE = 18;
 
         /// <summary>
-        /// Parte dell'ingresso servita dalla cache nella stima, dal terzo blocco di un file in poi
+        /// Parte dell'ingresso servita dalla cache nella stima, nelle richieste che la trovano
         /// </summary>
         private const double ESTIMATE_CACHED_SHARE = 0.8;
 
         /// <summary>
-        /// Blocchi di un file prima che la stima conti la cache
+        /// Blocchi di un file prima che la stima conti la cache con la API key, che non prepara la parte fissa
         /// </summary>
         private const int ESTIMATE_UNCACHED_BLOCKS = 2;
 
@@ -114,16 +115,22 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Stima della traduzione per caratteri, come il giro la farebbe: gli stati dei file preparati come all'avvio, con le battute
         /// delle tratte condivise fuori dai blocchi, e ogni tratta contata una volta sola nel file della prima occorrenza. Ogni
         /// consegna manda il prefisso intero, la coda con le battute prima di quelle chieste e argomenti lunghi quanto il sorgente.
-        /// La revisione completa si stima con una D1 e una D2 su ogni blocco e su ogni tratta
+        /// La revisione completa si stima con una D1 e una D2 su ogni blocco e su ogni tratta. La cache segue il provider: con
+        /// l'account ChatGPT una sessione di più richieste paga una volta la parte fissa senza coda e poi la trova in cache dalla
+        /// prima richiesta, D2 dalla seconda perché prepara la parte fissa solo lì; una sessione di una richiesta non la trova. Con
+        /// la API key la cache vale dal terzo blocco del file
         /// </summary>
         /// <param name="glossary">Glossario approvato</param>
         /// <param name="context">Campo serie/contesto del progetto</param>
         /// <param name="files">Stati iniziali dei file del job, coi documenti e i nomi</param>
         /// <param name="stretches">Tratte condivise del job</param>
         /// <param name="reviewMode">Modalità della revisione AI</param>
+        /// <param name="accessMode">Accesso del giro, che decide se il provider prepara la parte fissa in cache</param>
         /// <returns>Stima della traduzione e della revisione</returns>
-        public static TranslationEstimate Estimate(Glossary glossary, string context, IReadOnlyList<TranslationRunFile> files, IReadOnlyList<SharedStretch> stretches, TranslationReviewMode reviewMode)
+        public static TranslationEstimate Estimate(Glossary glossary, string context, IReadOnlyList<TranslationRunFile> files, IReadOnlyList<SharedStretch> stretches, TranslationReviewMode reviewMode,
+            AiConnectionMode accessMode)
         {
+            bool primed = accessMode == AiConnectionMode.ChatGptAccount;
             TranslationEstimate estimate = new TranslationEstimate();
             string instructions = TranslationRequestBuilder.CreateTranslationInstructions(glossary.SourceLanguage, glossary.TargetLanguage);
             string tools = TranslationRequestBuilder.CreateTranslationTools().ToJsonString();
@@ -153,6 +160,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         units.Add(state.Cues.FindAll(c => stretch.Occurrences[0].Ids.Contains(c.Id)));
                 }
 
+                // Sessioni B e D1 di più richieste: la parte fissa senza coda prima della prima, D2 prima della seconda
+                bool warm = primed && units.Count > 1;
+                if (warm)
+                {
+                    estimate.InputTokens += prefixTokens;
+                    reviewInput += diagnosisTokens + correctionTokens;
+                }
+
                 for (int u = 0; u < units.Count; u++)
                 {
                     // Coppie della coda: le battute prima della consegna con una traduzione lunga quanto il sorgente
@@ -176,17 +191,20 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     estimate.Blocks++;
                     estimate.InputTokens += unitTokens;
                     estimate.OutputTokens += outputTokens;
-                    if (u >= ESTIMATE_UNCACHED_BLOCKS)
+                    bool cached = warm || (!primed && u >= ESTIMATE_UNCACHED_BLOCKS);
+                    if (cached)
                         estimate.CachedTokens += (long)(unitTokens * ESTIMATE_CACHED_SHARE);
 
                     // Revisione completa, al massimo: D1 sulla consegna con le traduzioni e un suggerimento per battuta, D2 su tutte le sue
-                    // battute; la cache come per la traduzione, con D1 e D2 su chiavi separate
-                    int reviewTokens = diagnosisTokens + GlossaryBuilder.EstimateTokens(TranslationRequestBuilder.CreateDiagnosisTail(requested, translated, new Dictionary<int, List<string>>()))
-                        + correctionTokens + GlossaryBuilder.EstimateTokens(TranslationRequestBuilder.CreateCorrectionTail(new TranslationReviewIssue[0], requested, translated, new string[0]));
-                    reviewInput += reviewTokens;
+                    // battute, su chiavi separate
+                    int diagnosisUnit = diagnosisTokens + GlossaryBuilder.EstimateTokens(TranslationRequestBuilder.CreateDiagnosisTail(requested, translated, new Dictionary<int, List<string>>()));
+                    int correctionUnit = correctionTokens + GlossaryBuilder.EstimateTokens(TranslationRequestBuilder.CreateCorrectionTail(new TranslationReviewIssue[0], requested, translated, new string[0]));
+                    reviewInput += diagnosisUnit + correctionUnit;
                     reviewOutput += 2 * outputTokens;
-                    if (u >= ESTIMATE_UNCACHED_BLOCKS)
-                        reviewCached += (long)(reviewTokens * ESTIMATE_CACHED_SHARE);
+                    if (cached)
+                        reviewCached += (long)(diagnosisUnit * ESTIMATE_CACHED_SHARE);
+                    if (primed ? warm && u >= 1 : cached)
+                        reviewCached += (long)(correctionUnit * ESTIMATE_CACHED_SHARE);
                 }
             }
 
