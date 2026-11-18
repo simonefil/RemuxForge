@@ -807,7 +807,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Scrive il file sostituendo i soli campi Text delle battute tradotte e delle loro copie su altri layer; la riga sorgente
         /// tradotta di un effetto lettera per lettera resta com'è e una riga Dialogue col testo tradotto per layer delle lettere
-        /// prende il posto delle righe disegnate; i pezzi di parola animati prima di una riga intera tradotta se ne vanno
+        /// prende il posto delle righe disegnate; i pezzi di parola animati prima di una riga intera tradotta se ne vanno. Una
+        /// traduzione uguale al testo pulito del sorgente lascia il file com'era
         /// </summary>
         /// <param name="translatedText">Testo pulito tradotto per id, già validato</param>
         /// <returns>Byte del file, con lo stesso BOM e la stessa codifica del sorgente (UTF-8 per una codifica scelta)</returns>
@@ -821,13 +822,19 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 if (!source.HasValue || !translatedText.TryGetValue(source.Value, out string translation))
                     continue;
 
+                // Un testo uguale al pulito del sorgente rifà il campo Text originale: lettere e pezzi di parola restano come sono
+                bool unchanged = (translation ?? "") == cue.CleanText;
                 if (!this._letterEffects.TryGetValue(cue.Position, out LetterEffect letterEffect))
                 {
                     edits.Add(new TextEdit(cue.TextStart, cue.TextLength, cleaner.Recompose(cue, translation)));
-                    foreach (SourceLine piece in this._wordPieces.GetValueOrDefault(cue.Position, new List<SourceLine>()))
-                        edits.Add(new TextEdit(piece.Start, piece.Length + piece.Terminator.Length, ""));
+                    if (!unchanged)
+                        foreach (SourceLine piece in this._wordPieces.GetValueOrDefault(cue.Position, new List<SourceLine>()))
+                            edits.Add(new TextEdit(piece.Start, piece.Length + piece.Terminator.Length, ""));
                     continue;
                 }
+                if (unchanged)
+                    continue;
+
                 string recomposed = cleaner.Recompose(cue, translation);
                 edits.Add(new TextEdit(letterEffect.Lines[0].Start, letterEffect.Lines[0].Length,
                     string.Join(letterEffect.Lines[0].Terminator, letterEffect.Prefixes.ConvertAll(prefix => prefix + recomposed))));
