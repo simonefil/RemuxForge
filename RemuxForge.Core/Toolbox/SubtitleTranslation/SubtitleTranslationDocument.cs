@@ -341,13 +341,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
 
                 // Format di [Events] in vigore su ogni riga, letto come ReadDialogues, per Style e Layer; le righe Comment valide con
-                // lo stesso Format sono le sorgenti possibili di un effetto disegnato lettera per lettera. Degli stili [V4+ Styles]
-                // servono allineamento e margini orizzontali, per la posizione della riga che prende il posto delle lettere
+                // lo stesso Format sono le sorgenti possibili di un effetto disegnato lettera per lettera. Degli stili ([V4+ Styles], o
+                // [V4 Styles] di un SSA) servono allineamento e margini orizzontali, per la posizione della riga che prende il posto
+                // delle lettere; l'allineamento SSA (1-3 in basso, +4 in alto, +8 al centro) passa alla numerazione ASS
                 string[] formatByLine = new string[lines.Count];
                 List<KeyValuePair<AssSubtitleDialogue, bool>> lineEvents = dialogues.ConvertAll(d => new KeyValuePair<AssSubtitleDialogue, bool>(d, false));
                 Dictionary<string, int[]> styleLayouts = new Dictionary<string, int[]>(StringComparer.Ordinal);
                 bool inEvents = false;
                 bool inStyles = false;
+                bool ssaStyles = false;
                 string eventFormat = null;
                 string styleFormat = null;
                 for (int l = 0; l < lines.Count; l++)
@@ -356,7 +358,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (trimmed.StartsWith("[", StringComparison.Ordinal))
                     {
                         inEvents = trimmed.Equals("[Events]", StringComparison.OrdinalIgnoreCase);
-                        inStyles = trimmed.Equals("[V4+ Styles]", StringComparison.OrdinalIgnoreCase);
+                        ssaStyles = trimmed.Equals("[V4 Styles]", StringComparison.OrdinalIgnoreCase);
+                        inStyles = ssaStyles || trimmed.Equals("[V4+ Styles]", StringComparison.OrdinalIgnoreCase);
                         eventFormat = null;
                         styleFormat = null;
                     }
@@ -374,7 +377,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         int[] layout = new int[3];
                         if (styleCount > 0 && styleFields.Length == styleCount && nameColumn >= 0
                             && Array.TrueForAll(new int[] { 0, 1, 2 }, k => columns[k] >= 0 && AssSubtitleUtils.TryParseInt(styleFields[columns[k]], out layout[k])))
+                        {
+                            if (ssaStyles)
+                                layout[0] = layout[0] >= 1 && layout[0] <= 3 ? layout[0] : layout[0] >= 5 && layout[0] <= 7 ? layout[0] + 2
+                                    : layout[0] >= 9 && layout[0] <= 11 ? layout[0] - 5 : 0;
                             styleLayouts[styleFields[nameColumn].Trim()] = layout;
+                        }
                     }
                     formatByLine[l] = eventFormat;
                     if (!inEvents || !trimmed.StartsWith("Comment:", StringComparison.OrdinalIgnoreCase))
