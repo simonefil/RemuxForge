@@ -476,6 +476,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
             // Le lingue senza forme di cortesia non hanno addressing nello schema: se arriva lo stesso si ignora
             JsonArray addressing = this._addressForms != null ? ReadArray(root, "addressing", errors) : null;
+            Dictionary<string, string> seenAddressing = new Dictionary<string, string>(StringComparer.Ordinal);
             for (int i = 0; addressing != null && i < addressing.Count; i++)
             {
                 string path = "addressing[" + i.ToString(CultureInfo.InvariantCulture) + "]";
@@ -490,6 +491,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 pair.Form = this._addressForms[form];
                 pair.Note = ReadString(item, "note", path + ".note", false, false, errors);
                 pair.Origin = GlossaryOrigin.Analysis;
+                AddDuplicateCheck(seenAddressing, AddressingKey(pair.Speaker, pair.Addressee), path + ".speaker", errors);
                 glossary.Addressing.Add(pair);
             }
 
@@ -725,13 +727,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Fonde la consegna dell'analisi col glossario corrente: le voci caricate restano intatte e una proposta sulla stessa voce
-        /// si scarta intera; restano anche le voci dell'utente. Un testo del glossario corrente vince su quello proposto, che si
+        /// Fonde la consegna dell'analisi col glossario corrente: le voci caricate e quelle dell'utente restano intatte e una
+        /// proposta sulla stessa voce si scarta intera, così nessuna voce compare due volte. Un testo del glossario corrente vince su quello proposto, che si
         /// scarta allo stesso modo
         /// </summary>
         /// <param name="delivered">Voci dell'analisi</param>
         /// <param name="current">Glossario corrente del progetto, null senza</param>
-        /// <param name="discarded">Proposte scartate perché già nel glossario caricato</param>
+        /// <param name="discarded">Proposte scartate perché la voce è già nel glossario</param>
         /// <returns>Glossario in bozza</returns>
         public Glossary MergeWithImported(Glossary delivered, Glossary current, List<GlossaryDiscard> discarded)
         {
@@ -747,8 +749,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (term.Origin == GlossaryOrigin.Analysis)
                         continue;
                     result.Terms.Add(term);
-                    if (term.Origin == GlossaryOrigin.Import)
-                        termKeys.Add(this.TermKey(term.Source));
+                    termKeys.Add(this.TermKey(term.Source));
                 }
 
                 foreach (GlossaryCharacter character in current.Characters)
@@ -756,8 +757,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (character.Origin == GlossaryOrigin.Analysis)
                         continue;
                     result.Characters.Add(character);
-                    if (character.Origin == GlossaryOrigin.Import)
-                        characterKeys.Add(CharacterKey(character.Name));
+                    characterKeys.Add(CharacterKey(character.Name));
                 }
 
                 foreach (GlossaryAddressing pair in current.Addressing)
@@ -765,8 +765,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (pair.Origin == GlossaryOrigin.Analysis)
                         continue;
                     result.Addressing.Add(pair);
-                    if (pair.Origin == GlossaryOrigin.Import)
-                        addressingKeys.Add(AddressingKey(pair.Speaker, pair.Addressee));
+                    addressingKeys.Add(AddressingKey(pair.Speaker, pair.Addressee));
                 }
             }
 

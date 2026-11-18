@@ -5,8 +5,8 @@ using System.Collections.Generic;
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
-    /// Termini nuovi del job: le segnalazioni di tutti i file consolidate per termine, senza quelli già nel glossario, e la voce
-    /// del glossario di un termine aggiunto
+    /// Termini nuovi del job: le segnalazioni di tutti i file consolidate per termine, senza i termini e i personaggi già nel
+    /// glossario, e la voce del glossario di un termine aggiunto
     /// </summary>
     public static class NewTermCollector
     {
@@ -25,6 +25,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             HashSet<string> known = new HashSet<string>(StringComparer.Ordinal);
             foreach (GlossaryTerm term in glossary.Terms)
                 known.Add(TranslationValidator.StripArticle(term.Source, language).ToLowerInvariant());
+            foreach (GlossaryCharacter character in glossary.Characters)
+                known.Add(TranslationValidator.StripArticle(character.Name, language).ToLowerInvariant());
 
             List<NewTermDecision> decisions = new List<NewTermDecision>();
             Dictionary<string, NewTermDecision> byKey = new Dictionary<string, NewTermDecision>(StringComparer.Ordinal);

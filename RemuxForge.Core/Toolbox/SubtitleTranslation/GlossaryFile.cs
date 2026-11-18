@@ -281,6 +281,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                 // Le lingue senza forme di cortesia non hanno forme da leggere
                 IXLWorksheet addressing = sheets[ADDRESSING_SHEET];
+                Dictionary<string, string> seenAddressing = new Dictionary<string, string>(StringComparer.Ordinal);
                 for (int row = 2; forms != null && row <= (addressing.LastRowUsed()?.RowNumber() ?? 1); row++)
                 {
                     if (IsEmptyRow(addressing, row, 4))
@@ -300,6 +301,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         return result.Fail("GLOSSARY_FIELD_MISSING", CellPath(addressing, row, 3), "");
                     if (Array.IndexOf(forms, pair.Form) < 0)
                         return result.Fail("GLOSSARY_ENUM", CellPath(addressing, row, 3), pair.Form);
+
+                    string key = GlossaryBuilder.AddressingKey(pair.Speaker, pair.Addressee);
+                    if (seenAddressing.ContainsKey(key))
+                        return result.Fail("GLOSSARY_DUPLICATE", CellPath(addressing, row, 1), seenAddressing[key]);
+                    seenAddressing[key] = CellPath(addressing, row, 1);
                     glossary.Addressing.Add(pair);
                 }
 
