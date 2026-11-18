@@ -97,7 +97,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private readonly List<SubtitleCue> _cues;
 
         /// <summary>
-        /// Stili delle righe ASS/SSA nell'ordine della prima riga, vuoto in SRT
+        /// Combinazioni di stile, attore ed effetto delle righe ASS/SSA nell'ordine della prima riga, vuoto in SRT
         /// </summary>
         private readonly List<SubtitleStyleUsage> _styles;
 
@@ -135,10 +135,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// Legge un sottotitolo dai byte del file. Un file che non si può tradurre torna con RejectionReason e nessuna battuta.
-        /// Con la tabella degli stili una riga ASS/SSA prende il tipo riconosciuto del suo stile e si esclude solo se non è nella
-        /// lingua d'origine; uno stile senza tipo vale come dialogo. Una battuta SRT prende il tipo della tratta riconosciuta di cui
-        /// ripete almeno tre righe consecutive; fuori da una tratta che non è nella lingua d'origine, una battuta SRT con ♪ o ♫ è
-        /// una canzone
+        /// Con la tabella degli stili una riga ASS/SSA prende il tipo riconosciuto della sua combinazione di stile, attore ed effetto
+        /// e si esclude solo se è testo da non tradurre; una combinazione senza tipo vale come dialogo. Una battuta SRT prende il
+        /// tipo della sua riga nella tratta riconosciuta di cui ripete almeno tre righe consecutive; fuori dalle righe da non
+        /// tradurre, una battuta SRT con ♪ o ♫ è una canzone
         /// </summary>
         /// <param name="bytes">Byte del file</param>
         /// <param name="format">Formato del file</param>
@@ -234,10 +234,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             bool legacy = styles == null;
             Dictionary<string, TranslationStyleKind?> kinds = new Dictionary<string, TranslationStyleKind?>(StringComparer.Ordinal);
             foreach (TranslationProjectStyle style in styles ?? new List<TranslationProjectStyle>())
-                kinds[style.Name] = style.Kind;
+                kinds[style.Name + "\u0001" + style.Actor + "\u0001" + style.Effect] = style.Kind;
 
             List<RawCue> rawCues = new List<RawCue>();
             List<SubtitleStyleUsage> usages = new List<SubtitleStyleUsage>();
+            List<List<KeyValuePair<long, long>>> intervals = new List<List<KeyValuePair<long, long>>>();
             int untimed = 0;
             if (format == SubtitleTranslationFormat.Srt)
             {
@@ -341,38 +342,77 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     string lineFormat = formatByLine[dialogue.LineIndex];
                     int styleColumn = AssSubtitleUtils.ResolveFieldIndex(lineFormat, "Style");
                     int layerColumn = AssSubtitleUtils.ResolveFieldIndex(lineFormat, "Layer");
+                    int actorColumn = AssSubtitleUtils.ResolveFieldIndex(lineFormat, "Name");
+                    if (actorColumn < 0)
+                        actorColumn = AssSubtitleUtils.ResolveFieldIndex(lineFormat, "Actor");
                     int? layer = null;
                     if (layerColumn >= 0 && AssSubtitleUtils.TryParseInt(dialogue.Fields[layerColumn], out int layerValue))
                         layer = layerValue;
                     string effect = dialogue.EffectColumn >= 0 ? dialogue.Fields[dialogue.EffectColumn].Trim() : "";
                     string style = styleColumn >= 0 ? dialogue.Fields[styleColumn].Trim() : "";
+                    string actor = actorColumn >= 0 ? dialogue.Fields[actorColumn].Trim() : "";
                     string raw = text.Substring(position, lineEnd - position);
 
-                    // Indizi del tipo dello stile sulle righe con testo leggibile, qualunque sia il tipo; i disegni restano fuori
-                    SubtitleStyleUsage usage = usages.Find(u => u.Name == style);
+                    // Indizi del tipo della combinazione sulle righe con testo leggibile, qualunque sia il tipo; i disegni restano fuori
+                    SubtitleStyleUsage usage = usages.Find(u => u.Is(style, actor, effect));
                     if (usage == null)
                     {
-                        usage = new SubtitleStyleUsage(style);
+                        usage = new SubtitleStyleUsage(style, actor, effect);
                         usages.Add(usage);
+                        intervals.Add(new List<KeyValuePair<long, long>>());
                     }
                     string readable = s_assBlock.Replace(raw, "").Replace("\\N", " ").Replace("\\n", " ").Replace("\\h", " ").Trim();
                     if (!s_drawing.IsMatch(raw) && readable.Length > 0)
                     {
                         usage.Texts.Add(readable);
+                        usage.Positions.Add(rawCues.Count + 1);
+                        intervals[usages.IndexOf(usage)].Add(new KeyValuePair<long, long>(dialogue.StartMs, dialogue.EndMs));
                         if (s_karaoke.IsMatch(raw) || s_karaokeEffect.IsMatch(effect))
                             usage.KaraokeLines++;
                         if (s_position.IsMatch(raw))
                             usage.PositionLines++;
                     }
 
-                    // Senza tabella l'Effect esclude e tutto è dialogo; con la tabella esclude solo il testo che non è nella lingua d'origine
+                    // Senza tabella l'Effect esclude e tutto è dialogo; con la tabella esclude solo il testo da non tradurre
                     TranslationStyleKind? styleKind;
-                    kinds.TryGetValue(style, out styleKind);
+                    kinds.TryGetValue(style + "\u0001" + actor + "\u0001" + effect, out styleKind);
                     string exclusion = legacy && !string.IsNullOrEmpty(effect) ? SubtitleCue.EXCLUSION_EFFECT : "";
-                    if (styleKind == TranslationStyleKind.NotSourceLanguage)
-                        exclusion = SubtitleCue.EXCLUSION_NOT_SOURCE_LANGUAGE;
+                    if (styleKind == TranslationStyleKind.NotTranslatable)
+                        exclusion = SubtitleCue.EXCLUSION_NOT_TRANSLATABLE;
                     SubtitleCueKind kind = styleKind == TranslationStyleKind.Song ? SubtitleCueKind.Song : styleKind == TranslationStyleKind.Sign ? SubtitleCueKind.Sign : SubtitleCueKind.Dialogue;
                     rawCues.Add(new RawCue(dialogue.StartMs, dialogue.EndMs, position, lineEnd - position, style, layer, kind, exclusion, ""));
+                }
+
+                // Righe di ogni combinazione sovrapposte nel tempo: una riga si sovrappone se comincia prima che finisca una riga
+                // cominciata prima, o se la seguente comincia prima che lei finisca; il massimo sullo schermo conta le fini prima
+                // degli inizi allo stesso istante
+                for (int u = 0; u < usages.Count; u++)
+                {
+                    List<KeyValuePair<long, long>> times = intervals[u];
+                    times.Sort((a, b) => a.Key != b.Key ? a.Key.CompareTo(b.Key) : a.Value.CompareTo(b.Value));
+                    long reach = long.MinValue;
+                    for (int t = 0; t < times.Count; t++)
+                    {
+                        if (times[t].Key < reach || (t + 1 < times.Count && times[t + 1].Key < times[t].Value))
+                            usages[u].OverlappingLines++;
+                        reach = Math.Max(reach, times[t].Value);
+                    }
+
+                    List<KeyValuePair<long, int>> steps = new List<KeyValuePair<long, int>>();
+                    foreach (KeyValuePair<long, long> time in times)
+                    {
+                        steps.Add(new KeyValuePair<long, int>(time.Key, 1));
+                        steps.Add(new KeyValuePair<long, int>(time.Value, -1));
+                    }
+                    steps.Sort((a, b) => a.Key != b.Key ? a.Key.CompareTo(b.Key) : a.Value.CompareTo(b.Value));
+                    int concurrent = 0;
+                    foreach (KeyValuePair<long, int> step in steps)
+                    {
+                        concurrent += step.Value;
+                        usages[u].MaxConcurrent = Math.Max(usages[u].MaxConcurrent, concurrent);
+                    }
+                    if (times.Count > 0)
+                        usages[u].MaxConcurrent = Math.Max(usages[u].MaxConcurrent, 1);
                 }
             }
 
@@ -390,7 +430,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
 
             // Tipi SRT dalle tratte riconosciute: ogni corsa di almeno tre battute consecutive in ordine di tempo uguali a righe
-            // consecutive di una tratta prende il tipo della tratta, e una tratta che non è nella lingua d'origine le esclude
+            // consecutive di una tratta prende il tipo di ogni sua riga, e una riga da non tradurre esclude la sua battuta
             SubtitleCueKind[] srtKinds = new SubtitleCueKind[rawCues.Count];
             if (format == SubtitleTranslationFormat.Srt && stretches != null)
             {
@@ -418,10 +458,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                 continue;
                             for (int r = p; r < p + run; r++)
                             {
+                                TranslationStyleKind lineKind = stretch.Kinds[q + r - p];
                                 claimed[r] = true;
-                                srtKinds[timed[r]] = stretch.Kind == TranslationStyleKind.Song ? SubtitleCueKind.Song : stretch.Kind == TranslationStyleKind.Sign ? SubtitleCueKind.Sign : SubtitleCueKind.Dialogue;
-                                if (stretch.Kind == TranslationStyleKind.NotSourceLanguage)
-                                    cleanedCues[timed[r]] = new SubtitleCleanResult("", null, SubtitleCue.EXCLUSION_NOT_SOURCE_LANGUAGE);
+                                srtKinds[timed[r]] = lineKind == TranslationStyleKind.Song ? SubtitleCueKind.Song : lineKind == TranslationStyleKind.Sign ? SubtitleCueKind.Sign : SubtitleCueKind.Dialogue;
+                                if (lineKind == TranslationStyleKind.NotTranslatable)
+                                    cleanedCues[timed[r]] = new SubtitleCleanResult("", null, SubtitleCue.EXCLUSION_NOT_TRANSLATABLE);
                             }
                         }
                     }
@@ -512,7 +553,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Stili delle righe ASS/SSA nell'ordine della prima riga, con gli indizi del tipo; vuoto in SRT
+        /// Combinazioni di stile, attore ed effetto delle righe ASS/SSA nell'ordine della prima riga, con gli indizi del tipo; vuoto
+        /// in SRT
         /// </summary>
         public IReadOnlyList<SubtitleStyleUsage> Styles
         {
@@ -551,7 +593,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="Style">Stile ASS/SSA</param>
         /// <param name="Layer">Layer ASS</param>
         /// <param name="Kind">Tipo dello stile ASS/SSA, dialogo in SRT</param>
-        /// <param name="ExclusionReason">Esclusione decisa dalla riga (Effect, stile non nella lingua d'origine, battuta SRT senza testo)</param>
+        /// <param name="ExclusionReason">Esclusione decisa dalla riga (Effect, testo da non tradurre, battuta SRT senza testo)</param>
         /// <param name="FallbackLineBreak">Terminatore della riga dei tempi SRT</param>
         private sealed record RawCue(long StartMs, long EndMs, int TextStart, int TextLength, string Style, int? Layer, SubtitleCueKind Kind,
             string ExclusionReason, string FallbackLineBreak);

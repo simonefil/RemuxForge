@@ -256,16 +256,22 @@
                                     Density="Density.Compact"
                                     GridLines="DataGridGridLines.Horizontal">
                         <Columns>
-                            <RadzenDataGridColumn TItem="TranslationStyleRow" Title="@AppText.T("web.toolbox.subtitleTranslation.style")" Width="22%">
+                            <RadzenDataGridColumn TItem="TranslationStyleRow" Title="@AppText.T("web.toolbox.subtitleTranslation.style")" Width="16%">
                                 <Template Context="style"><span class="rf-translation-cell">@style.Name</span></Template>
                             </RadzenDataGridColumn>
-                            <RadzenDataGridColumn TItem="TranslationStyleRow" Title="@AppText.T("web.toolbox.subtitleTranslation.styleLines")" Width="9%" TextAlign="TextAlign.Right">
+                            <RadzenDataGridColumn TItem="TranslationStyleRow" Title="@AppText.T("web.toolbox.subtitleTranslation.styleActor")" Width="12%">
+                                <Template Context="style"><CellText Text="@style.Actor" /></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationStyleRow" Title="@AppText.T("web.toolbox.subtitleTranslation.styleEffect")" Width="10%">
+                                <Template Context="style"><CellText Text="@style.Effect" /></Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn TItem="TranslationStyleRow" Title="@AppText.T("web.toolbox.subtitleTranslation.styleLines")" Width="8%" TextAlign="TextAlign.Right">
                                 <Template Context="style"><CellText Text="@style.Lines.ToString(CultureInfo.CurrentCulture)" /></Template>
                             </RadzenDataGridColumn>
-                            <RadzenDataGridColumn TItem="TranslationStyleRow" Title="@AppText.T("web.toolbox.subtitleTranslation.styleExample")" Width="47%">
+                            <RadzenDataGridColumn TItem="TranslationStyleRow" Title="@AppText.T("web.toolbox.subtitleTranslation.styleExample")" Width="36%">
                                 <Template Context="style"><CellText Text="@style.Example" /></Template>
                             </RadzenDataGridColumn>
-                            <RadzenDataGridColumn TItem="TranslationStyleRow" Title="@AppText.T("web.toolbox.subtitleTranslation.styleKind")" Width="22%">
+                            <RadzenDataGridColumn TItem="TranslationStyleRow" Title="@AppText.T("web.toolbox.subtitleTranslation.styleKind")" Width="18%">
                                 <Template Context="style"><CellText Text="@(style.Kind.HasValue ? AppText.T("web.toolbox.subtitleTranslation.styleKind." + style.Kind.Value) : "")" /></Template>
                             </RadzenDataGridColumn>
                         </Columns>

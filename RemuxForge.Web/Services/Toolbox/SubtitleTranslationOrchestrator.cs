@@ -446,9 +446,10 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Righe della tabella degli stili: ogni stile del progetto col tipo riconosciuto, le righe e un esempio dai file letti
+        /// Righe della tabella degli stili: ogni combinazione di stile, attore ed effetto del progetto col tipo riconosciuto, le
+        /// righe e un esempio dai file letti
         /// </summary>
-        /// <returns>Stili nell'ordine della prima riga, vuoto per un progetto salvato prima della tabella</returns>
+        /// <returns>Combinazioni nell'ordine della prima riga, vuoto per un progetto salvato prima della tabella</returns>
         public List<TranslationStyleRow> GetStyleRows()
         {
             List<TranslationStyleRow> rows = new List<TranslationStyleRow>();
@@ -460,8 +461,16 @@ namespace RemuxForge.Web.Services.Toolbox
                 List<SubtitleStyleUsage> usages = this.GetStyleUsages();
                 foreach (TranslationProjectStyle style in this._project.Styles)
                 {
-                    SubtitleStyleUsage usage = usages.Find(u => u.Name == style.Name) ?? new SubtitleStyleUsage(style.Name);
-                    rows.Add(new TranslationStyleRow { Name = style.Name, Kind = style.Kind, Lines = usage.Texts.Count, Example = usage.Texts.Count > 0 ? usage.Texts[0] : "" });
+                    SubtitleStyleUsage usage = usages.Find(u => u.Is(style.Name, style.Actor, style.Effect)) ?? new SubtitleStyleUsage(style.Name, style.Actor, style.Effect);
+                    rows.Add(new TranslationStyleRow
+                    {
+                        Name = style.Name,
+                        Actor = style.Actor,
+                        Effect = style.Effect,
+                        Kind = style.Kind,
+                        Lines = usage.Texts.Count,
+                        Example = usage.Texts.Count > 0 ? usage.Texts[0] : ""
+                    });
                 }
             }
 
@@ -741,7 +750,8 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <summary>
         /// Stima in token della A0 se i tipi non sono ancora riconosciuti e delle chiamate A1 che mancano, calcolata per caratteri
         /// come l'analisi le manderebbe, schema dei tool compreso; un parziale fatto su ingressi cambiati manca. La A2 dipende dai
-        /// conflitti e non entra nella stima, e le A1 si stimano sulle battute di prima del riconoscimento
+        /// conflitti e non entra nella stima. Prima della A0 le A1 sono stimate per eccesso: mancano solo le battute che il codice
+        /// decide da non tradurre; dopo la A0 la stima si rifà sui tipi riconosciuti e l'analisi la riporta nel log
         /// </summary>
         /// <returns>Stima, null senza file preparati o lingue, con la card occupata o con l'analisi conclusa</returns>
         public TranslationAnalysisEstimate EstimateAnalysis()
@@ -756,13 +766,11 @@ namespace RemuxForge.Web.Services.Toolbox
                 if (this._estimate != null && this._estimateKey == key)
                     return this._estimate;
 
+                // Senza tipi riconosciuti le A1 si stimano senza le battute che il codice decide da non tradurre: quelle che il modello
+                // della A0 toglierà ci sono ancora, e la stima è per eccesso finché la A0 non c'è stata
                 GlossaryBuilder builder = new GlossaryBuilder(this._project.SourceLanguage, this._project.TargetLanguage);
-                List<GlossaryEpisode> episodes = this.GetEpisodes();
-                AnalysisPlan plan = this.PlanAnalysis(builder, episodes);
-                bool webSearch = this.GetCapabilities().WebSearch && (this._project.Analysis == null || !this._project.Analysis.WebSearchRejected);
-                string tools = builder.CreateTools(webSearch).ToJsonString();
                 TranslationAnalysisEstimate estimate = new TranslationAnalysisEstimate();
-                estimate.Files = episodes.Count;
+                List<GlossaryEpisode> episodes = this.GetEpisodes();
                 if (this._project.Stretches == null)
                 {
                     SubtitleKindClassifier classifier = new SubtitleKindClassifier(this._project.SourceLanguage);
@@ -772,7 +780,17 @@ namespace RemuxForge.Web.Services.Toolbox
                         estimate.Calls++;
                         estimate.InputTokens += GlossaryBuilder.EstimateTokens(classifier.Instructions + kinds.Tool.ToJsonString() + kinds.Message);
                     }
+                    for (int i = 0; i < episodes.Count; i++)
+                    {
+                        string fileId = episodes[i].FileId;
+                        List<SubtitleCue> kept = new List<SubtitleCue>(episodes[i].Cues).FindAll(c => !kinds.CodeExcluded.Contains(fileId + "|" + c.Position.ToString(CultureInfo.InvariantCulture)));
+                        episodes[i] = new GlossaryEpisode(fileId, episodes[i].Label, episodes[i].FileName, kept);
+                    }
                 }
+                AnalysisPlan plan = this.PlanAnalysis(builder, episodes);
+                bool webSearch = this.GetCapabilities().WebSearch && (this._project.Analysis == null || !this._project.Analysis.WebSearchRejected);
+                string tools = builder.CreateTools(webSearch).ToJsonString();
+                estimate.Files = episodes.Count;
                 for (int i = 0; i < plan.Units.Count; i++)
                 {
                     string fileId = plan.Units[i].Count == 1 ? plan.Units[i][0].FileId : TranslationSessionKey.NO_FILE;
@@ -1757,6 +1775,16 @@ namespace RemuxForge.Web.Services.Toolbox
                         (u.Count == 1 ? u[0].FileId : TranslationSessionKey.NO_FILE) == p.FileId && plan.Fingerprints[plan.Units.IndexOf(u)] == p.InputSha256));
                 }
 
+                // Stima delle A1 rifatta sui tipi appena riconosciuti, che tolgono le battute da non tradurre
+                if (classify)
+                {
+                    string tools = builder.CreateTools(webSearch).ToJsonString();
+                    long tokens = 0;
+                    for (int i = 0; i < plan.Units.Count; i++)
+                        tokens += GlossaryBuilder.EstimateTokens(builder.AnalysisInstructions + tools + plan.Messages[i]);
+                    this.AppendLog(AppText.F(TEXT_PREFIX + ".analysisEstimateAfterKinds", plan.Units.Count, tokens.ToString("N0", CultureInfo.CurrentCulture)));
+                }
+
                 for (int i = 0; i < plan.Units.Count; i++)
                 {
                     List<GlossaryEpisode> unit = plan.Units[i];
@@ -2020,9 +2048,15 @@ namespace RemuxForge.Web.Services.Toolbox
                 this._store.Save(this._project);
             }
 
-            this.AppendLog(AppText.F(TEXT_PREFIX + ".classificationDone", plan.Units.FindAll(u => u.Kind == TranslationStyleKind.Dialogue).Count,
-                plan.Units.FindAll(u => u.Kind == TranslationStyleKind.Song).Count, plan.Units.FindAll(u => u.Kind == TranslationStyleKind.Sign).Count,
-                plan.Units.FindAll(u => u.Kind == TranslationStyleKind.NotSourceLanguage).Count));
+            // Unità per tipo: una tratta con tratti di tipo diverso conta per ognuno dei suoi tipi
+            int[] counts = new int[Enum.GetValues<TranslationStyleKind>().Length];
+            foreach (SubtitleKindUnit unit in plan.Units)
+            {
+                foreach (TranslationStyleKind kind in new HashSet<TranslationStyleKind>(unit.LineKinds ?? new List<TranslationStyleKind> { unit.Kind.Value }))
+                    counts[(int)kind]++;
+            }
+            this.AppendLog(AppText.F(TEXT_PREFIX + ".classificationDone", counts[(int)TranslationStyleKind.Dialogue], counts[(int)TranslationStyleKind.Song],
+                counts[(int)TranslationStyleKind.Sign], counts[(int)TranslationStyleKind.NotTranslatable]));
         }
 
         /// <summary>
@@ -2736,8 +2770,8 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Allinea la tabella degli stili ai file letti finché i tipi non sono riconosciuti: uno stile nuovo entra senza tipo, uno
-        /// che non compare più esce solo con tutti i file letti, perché un file rifiutato per poco non lo perda
+        /// Allinea la tabella degli stili ai file letti finché i tipi non sono riconosciuti: una combinazione nuova entra senza tipo,
+        /// una che non compare più esce solo con tutti i file letti, perché un file rifiutato per poco non la perda
         /// </summary>
         /// <returns>True se la tabella è cambiata</returns>
         private bool SyncStyles()
@@ -2749,22 +2783,22 @@ namespace RemuxForge.Web.Services.Toolbox
             bool changed = false;
             foreach (SubtitleStyleUsage usage in usages)
             {
-                if (this._project.Styles.Exists(s => s.Name == usage.Name))
+                if (this._project.Styles.Exists(s => usage.Is(s.Name, s.Actor, s.Effect)))
                     continue;
 
-                this._project.Styles.Add(new TranslationProjectStyle { Name = usage.Name });
+                this._project.Styles.Add(new TranslationProjectStyle { Name = usage.Name, Actor = usage.Actor, Effect = usage.Effect });
                 changed = true;
             }
             if (this._documents.Count == this._project.Files.Count)
-                changed |= this._project.Styles.RemoveAll(s => !usages.Exists(u => u.Name == s.Name)) > 0;
+                changed |= this._project.Styles.RemoveAll(s => !usages.Exists(u => u.Is(s.Name, s.Actor, s.Effect))) > 0;
 
             return changed;
         }
 
         /// <summary>
-        /// Uso di ogni stile sommato sui file letti, nell'ordine dei file e della prima riga
+        /// Uso di ogni combinazione di stile, attore ed effetto sommato sui file letti, nell'ordine dei file e della prima riga
         /// </summary>
-        /// <returns>Stili coi totali</returns>
+        /// <returns>Combinazioni coi totali</returns>
         private List<SubtitleStyleUsage> GetStyleUsages()
         {
             List<SubtitleStyleUsage> usages = new List<SubtitleStyleUsage>();
@@ -2776,10 +2810,10 @@ namespace RemuxForge.Web.Services.Toolbox
 
                 foreach (SubtitleStyleUsage usage in document.Styles)
                 {
-                    SubtitleStyleUsage total = usages.Find(u => u.Name == usage.Name);
+                    SubtitleStyleUsage total = usages.Find(u => u.Is(usage.Name, usage.Actor, usage.Effect));
                     if (total == null)
                     {
-                        total = new SubtitleStyleUsage(usage.Name);
+                        total = new SubtitleStyleUsage(usage.Name, usage.Actor, usage.Effect);
                         usages.Add(total);
                     }
                     total.Texts.AddRange(usage.Texts);
@@ -3476,17 +3510,27 @@ namespace RemuxForge.Web.Services.Toolbox
         public string Name { get; set; }
 
         /// <summary>
+        /// Attore delle righe
+        /// </summary>
+        public string Actor { get; set; }
+
+        /// <summary>
+        /// Effetto delle righe
+        /// </summary>
+        public string Effect { get; set; }
+
+        /// <summary>
         /// Tipo riconosciuto, null prima del riconoscimento
         /// </summary>
         public TranslationStyleKind? Kind { get; set; }
 
         /// <summary>
-        /// Righe dello stile nei file letti
+        /// Righe della combinazione nei file letti
         /// </summary>
         public int Lines { get; set; }
 
         /// <summary>
-        /// Testo di una riga dello stile, vuoto se nessuna ha testo
+        /// Testo di una riga della combinazione, vuoto se nessuna ha testo
         /// </summary>
         public string Example { get; set; }
 

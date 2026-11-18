@@ -14,8 +14,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Campo Effect non vuoto, nei progetti senza tabella degli stili</summary>
         public const string EXCLUSION_EFFECT = "effect";
 
-        /// <summary>Stile o tratta SRT riconosciuti come testo che non è nella lingua d'origine</summary>
-        public const string EXCLUSION_NOT_SOURCE_LANGUAGE = "not-source-language";
+        /// <summary>Riga ASS/SSA o tratto di tratta SRT riconosciuti come testo da non tradurre</summary>
+        public const string EXCLUSION_NOT_TRANSLATABLE = "not-translatable";
 
         /// <summary>Drawing vettoriale</summary>
         public const string EXCLUSION_DRAWING = "drawing";

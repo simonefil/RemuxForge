@@ -4306,12 +4306,16 @@
   "web.toolbox.subtitleTranslation.notifyTermsBlocked": "Term application with blocked files",
   "web.toolbox.subtitleTranslation.notifyReviewBlocked": "AI review with blocked files",
   "web.toolbox.subtitleTranslation.notifyBlockedAfterDetail": "Remove the blocked files, or put the sources back and reopen the project",
-  "web.toolbox.subtitleTranslation.styleKind.NotSourceLanguage": "Other language",
   "web.toolbox.subtitleTranslation.calls.kind.A0": "Kind recognition",
   "toolbox.subtitleTranslation.reason.UNIT_MISSING": "Missing kind",
   "toolbox.subtitleTranslation.reason.UNIT_DUPLICATE": "Kind delivered more than once",
   "web.toolbox.subtitleTranslation.classificationProgress": "Recognizing dialogue, songs and signs",
-  "web.toolbox.subtitleTranslation.classificationDone": "Kinds recognized: {0} dialogue, {1} song, {2} signs, {3} other language",
+  "web.toolbox.subtitleTranslation.classificationDone": "Kinds recognized: {0} dialogue, {1} song, {2} signs, {3} not to translate",
   "web.toolbox.subtitleTranslation.classificationStopped": "Kind recognition stopped",
-  "web.toolbox.subtitleTranslation.classificationFailed": "Kind recognition stopped: {0}"
+  "web.toolbox.subtitleTranslation.classificationFailed": "Kind recognition stopped: {0}",
+  "web.toolbox.subtitleTranslation.styleActor": "Actor",
+  "web.toolbox.subtitleTranslation.styleEffect": "Effect",
+  "web.toolbox.subtitleTranslation.styleKind.NotTranslatable": "Not to translate",
+  "web.toolbox.subtitleTranslation.analysisEstimateAfterKinds": "Analysis after kind recognition: {0} calls, about {1} input tokens",
+  "toolbox.subtitleTranslation.reason.SEGMENTS_INVALID": "Invalid stretch segments"
 }

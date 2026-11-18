@@ -440,13 +440,23 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
             else if (request.Kind == TranslationCallKind.A0)
             {
-                // Tipi sintetici: ogni unità del tool è dialogo
-                JsonArray units = new JsonArray();
-                JsonArray ids = prepared.Tools[0]["parameters"]["properties"]["units"]["items"]["properties"]["unit"]["enum"].AsArray();
-                foreach (JsonNode id in ids)
-                    units.Add(new JsonObject { ["unit"] = id.GetValue<string>(), ["kind"] = "dialogue" });
+                // Tipi sintetici: ogni combinazione del tool è dialogo, ogni tratta un tratto solo di dialogo
+                JsonObject properties = prepared.Tools[0]["parameters"]["properties"].AsObject();
+                if (properties["styles"] != null)
+                {
+                    JsonArray styles = new JsonArray();
+                    foreach (JsonNode id in properties["styles"]["items"]["properties"]["unit"]["enum"].AsArray())
+                        styles.Add(new JsonObject { ["unit"] = id.GetValue<string>(), ["kind"] = "dialogue" });
+                    arguments["styles"] = styles;
+                }
+                if (properties["stretches"] != null)
+                {
+                    JsonArray stretches = new JsonArray();
+                    foreach (JsonNode id in properties["stretches"]["items"]["properties"]["unit"]["enum"].AsArray())
+                        stretches.Add(new JsonObject { ["unit"] = id.GetValue<string>(), ["segments"] = new JsonArray(new JsonObject { ["first_line"] = 1, ["kind"] = "dialogue" }) });
+                    arguments["stretches"] = stretches;
+                }
                 toolName = SubtitleKindClassifier.SUBMIT_TOOL;
-                arguments["units"] = units;
             }
             else if (request.Kind == TranslationCallKind.D1)
             {

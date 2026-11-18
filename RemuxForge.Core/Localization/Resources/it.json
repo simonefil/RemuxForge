@@ -4306,12 +4306,16 @@
   "web.toolbox.subtitleTranslation.notifyTermsBlocked": "Applicazione dei termini con file bloccati",
   "web.toolbox.subtitleTranslation.notifyReviewBlocked": "Revisione AI con file bloccati",
   "web.toolbox.subtitleTranslation.notifyBlockedAfterDetail": "Togli i file bloccati, o rimetti a posto i sorgenti e riapri il progetto",
-  "web.toolbox.subtitleTranslation.styleKind.NotSourceLanguage": "Altra lingua",
   "web.toolbox.subtitleTranslation.calls.kind.A0": "Riconoscimento tipi",
   "toolbox.subtitleTranslation.reason.UNIT_MISSING": "Tipo mancante",
   "toolbox.subtitleTranslation.reason.UNIT_DUPLICATE": "Tipo consegnato più volte",
   "web.toolbox.subtitleTranslation.classificationProgress": "Riconoscimento di dialoghi, canzoni e cartelli",
-  "web.toolbox.subtitleTranslation.classificationDone": "Tipi riconosciuti: {0} dialogo, {1} canzone, {2} cartelli, {3} altra lingua",
+  "web.toolbox.subtitleTranslation.classificationDone": "Tipi riconosciuti: {0} dialogo, {1} canzone, {2} cartelli, {3} da non tradurre",
   "web.toolbox.subtitleTranslation.classificationStopped": "Riconoscimento dei tipi fermato",
-  "web.toolbox.subtitleTranslation.classificationFailed": "Riconoscimento dei tipi fermato: {0}"
+  "web.toolbox.subtitleTranslation.classificationFailed": "Riconoscimento dei tipi fermato: {0}",
+  "web.toolbox.subtitleTranslation.styleActor": "Attore",
+  "web.toolbox.subtitleTranslation.styleEffect": "Effetto",
+  "web.toolbox.subtitleTranslation.styleKind.NotTranslatable": "Da non tradurre",
+  "web.toolbox.subtitleTranslation.analysisEstimateAfterKinds": "Analisi dopo il riconoscimento dei tipi: {0} chiamate, circa {1} token in ingresso",
+  "toolbox.subtitleTranslation.reason.SEGMENTS_INVALID": "Tratti della tratta non validi"
 }

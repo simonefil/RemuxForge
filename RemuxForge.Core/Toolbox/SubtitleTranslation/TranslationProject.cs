@@ -40,7 +40,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     }
 
     /// <summary>
-    /// Tipo riconosciuto di un'unità del progetto: uno stile ASS/SSA o una tratta SRT ripetuta fra i file
+    /// Tipo riconosciuto di un'unità del progetto: una combinazione di stile, attore ed effetto delle righe ASS/SSA, o un tratto
+    /// di una tratta SRT ripetuta fra i file. Il file tradotto è quello sorgente con tradotto solo il testo nella lingua d'origine
     /// </summary>
     public enum TranslationStyleKind
     {
@@ -53,8 +54,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Scritte sullo schermo</summary>
         Sign,
 
-        /// <summary>Testo che non è nella lingua d'origine (romaji, kanji): mai tradotto, lasciato identico byte per byte</summary>
-        NotSourceLanguage
+        /// <summary>Testo da non tradurre: un'altra lingua (romaji, kanji) o i frammenti di un effetto (lettere o sillabe animate una
+        /// per riga); lasciato identico byte per byte</summary>
+        NotTranslatable
     }
 
     /// <summary>
@@ -166,8 +168,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public List<TranslationProjectFile> Files { get; set; }
 
         /// <summary>
-        /// Stili dei file ASS/SSA col tipo riconosciuto, null finché il riconoscimento non c'è stato. Null nei progetti salvati prima
-        /// della tabella: le loro righe con Effect o karaoke restano escluse e tutte le battute sono dialogo
+        /// Combinazioni di stile, attore ed effetto delle righe ASS/SSA col tipo riconosciuto, senza tipo prima del riconoscimento.
+        /// Null nei progetti salvati prima della tabella: le loro righe con Effect o karaoke restano escluse e tutte le battute sono
+        /// dialogo
         /// </summary>
         public List<TranslationProjectStyle> Styles { get; set; }
 
@@ -291,7 +294,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     }
 
     /// <summary>
-    /// Stile ASS/SSA del progetto col tipo riconosciuto
+    /// Combinazione di stile, attore ed effetto delle righe ASS/SSA del progetto col tipo riconosciuto
     /// </summary>
     public class TranslationProjectStyle
     {
@@ -303,6 +306,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public TranslationProjectStyle()
         {
             this.Name = "";
+            this.Actor = "";
+            this.Effect = "";
             this.Kind = null;
         }
 
@@ -316,6 +321,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public string Name { get; set; }
 
         /// <summary>
+        /// Campo Name (attore) delle righe, senza spazi ai bordi
+        /// </summary>
+        public string Actor { get; set; }
+
+        /// <summary>
+        /// Campo Effect delle righe, senza spazi ai bordi
+        /// </summary>
+        public string Effect { get; set; }
+
+        /// <summary>
         /// Tipo riconosciuto, null prima del riconoscimento: le righe valgono come dialogo
         /// </summary>
         public TranslationStyleKind? Kind { get; set; }
@@ -324,8 +339,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     }
 
     /// <summary>
-    /// Tratta SRT ripetuta fra i file del progetto col tipo riconosciuto: le battute di un file che ne ripetono almeno tre righe
-    /// consecutive prendono il suo tipo
+    /// Tratta SRT ripetuta fra i file del progetto col tipo riconosciuto di ogni riga: le battute di un file che ne ripetono
+    /// almeno tre righe consecutive prendono il tipo della loro riga
     /// </summary>
     public class TranslationProjectStretch
     {
@@ -337,7 +352,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public TranslationProjectStretch()
         {
             this.Lines = new List<string>();
-            this.Kind = TranslationStyleKind.Dialogue;
+            this.Kinds = new List<TranslationStyleKind>();
         }
 
         #endregion
@@ -350,9 +365,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public List<string> Lines { get; set; }
 
         /// <summary>
-        /// Tipo riconosciuto
+        /// Tipo riconosciuto di ogni riga, nell'ordine di Lines: un riassunto seguito dalla sigla ha due tratti di tipo diverso
         /// </summary>
-        public TranslationStyleKind Kind { get; set; }
+        public List<TranslationStyleKind> Kinds { get; set; }
 
         #endregion
     }
