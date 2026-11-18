@@ -74,6 +74,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         protected readonly object _lock;
 
         /// <summary>
+        /// Espressioni dei termini del glossario nel sorgente, coi nomi propri riconosciuti sulle battute del job
+        /// </summary>
+        protected readonly Dictionary<string, Regex> _sourcePatterns;
+
+        /// <summary>
         /// Registro delle chiamate del job, condiviso con la pagina
         /// </summary>
         private readonly List<TranslationCallRecord> _calls;
@@ -127,6 +132,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this._files = files;
             this._calls = calls;
             this._lock = stateLock;
+            this._sourcePatterns = TranslationValidator.SourcePatterns(job.Glossary, files.ConvertAll(f => f.State));
             this._context = context;
             this._pause = null;
         }
@@ -246,7 +252,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
 
             return new FileContext(file, TranslationRequestBuilder.CreateTranslationPrefix(this._context, this._job.Glossary, file.State.SourceFileName, file.State.Cues),
-                new TranslationValidator(file.Document.Format, this._job.Glossary.SourceLanguage, this._job.Glossary.TargetLanguage, this._job.Glossary.Terms), shared);
+                new TranslationValidator(file.Document.Format, this._job.Glossary, this._sourcePatterns), shared);
         }
 
         /// <summary>

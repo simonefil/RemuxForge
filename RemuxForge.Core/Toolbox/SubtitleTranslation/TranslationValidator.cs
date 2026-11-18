@@ -132,22 +132,21 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Costruttore
         /// </summary>
         /// <param name="format">Formato del file</param>
-        /// <param name="sourceLanguage">Lingua d'origine</param>
-        /// <param name="targetLanguage">Lingua d'arrivo</param>
-        /// <param name="glossary">Termini del glossario in uso</param>
-        public TranslationValidator(SubtitleTranslationFormat format, string sourceLanguage, string targetLanguage, IReadOnlyList<GlossaryTerm> glossary)
+        /// <param name="glossary">Glossario in uso</param>
+        /// <param name="sourcePatterns">Espressioni dei termini nel sorgente, da SourcePatterns sul job</param>
+        public TranslationValidator(SubtitleTranslationFormat format, Glossary glossary, Dictionary<string, Regex> sourcePatterns)
         {
             this._format = format;
             this._terms = new List<TermPatterns>();
-            string source = LanguageValidator.NormalizeToIso6392(sourceLanguage);
-            string target = LanguageValidator.NormalizeToIso6392(targetLanguage);
-            foreach (GlossaryTerm term in glossary)
+            string source = LanguageValidator.NormalizeToIso6392(glossary.SourceLanguage);
+            string target = LanguageValidator.NormalizeToIso6392(glossary.TargetLanguage);
+            foreach (GlossaryTerm term in glossary.Terms)
             {
                 string sourceWord = StripArticle(term.Source, source);
                 string targetWord = StripArticle(term.Target, target);
                 if (string.IsNullOrEmpty(sourceWord) || string.IsNullOrEmpty(targetWord))
                     continue;
-                this._terms.Add(new TermPatterns(term.Source, term.Target, WordPattern(sourceWord), RenderingPattern(targetWord, term.Invariable)));
+                this._terms.Add(new TermPatterns(term.Source, term.Target, sourcePatterns[term.Source], RenderingPattern(targetWord, term.Invariable)));
             }
         }
 
@@ -369,21 +368,65 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Espressione che trova un termine del sorgente a parola intera. Un termine con almeno una maiuscola è un nome proprio o
-        /// un termine che la serie scrive così, e si cerca con le maiuscole esatte: «Light» non trova «turn on the light», «Will»
-        /// non trova «I will». Un termine tutto minuscolo si cerca senza distinguere le maiuscole, così lo trova anche a inizio
-        /// frase. Nelle scritture senza maiuscole le due regole coincidono. Resta preso il nome che è anche una parola comune
-        /// quando questa apre la frase («Light the fire»): distinguerli vorrebbe un vocabolario della lingua
+        /// Espressione che trova una parola intera senza distinguere maiuscole
         /// </summary>
-        /// <param name="word">Termine senza articolo</param>
+        /// <param name="word">Parola</param>
         /// <returns>Espressione</returns>
         internal static Regex WordPattern(string word)
         {
-            RegexOptions options = string.Equals(word, word.ToLowerInvariant(), StringComparison.Ordinal)
-                ? RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
-                : RegexOptions.CultureInvariant;
+            return new Regex(@"(?<![\p{L}\p{M}\p{N}])" + Regex.Escape(word) + @"(?![\p{L}\p{M}\p{N}])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        }
 
-            return new Regex(@"(?<![\p{L}\p{M}\p{N}])" + Regex.Escape(word) + @"(?![\p{L}\p{M}\p{N}])", options);
+        /// <summary>
+        /// Espressioni con cui cercare nel sorgente i termini del glossario, una volta per job. Che un termine sia un nome
+        /// proprio lo dicono le battute sorgenti del job, non le maiuscole del glossario né il tipo della voce: l'analisi scrive
+        /// spesso con l'iniziale maiuscola anche i nomi comuni («Teacher», «Karma»).
+        /// - Il termine scritto con le sue maiuscole in mezzo alla frase è un nome proprio e si cerca con le maiuscole esatte:
+        ///   «Light» in Death Note si trova come nome, e «turn on the light» o «I will» non lo sono. Se la serie usa la stessa
+        ///   parola anche minuscola, quella è la parola comune e resta fuori.
+        /// - Altrimenti il termine si cerca senza distinguere le maiuscole: scritto minuscolo in mezzo alla frase è un nome
+        ///   comune, e senza nessuna occorrenza in mezzo alla frase non c'è prova; un termine mancato lo trova la revisione.
+        /// - L'inizio della battuta, di una riga o di una frase (dopo . ! ? …) non prova nulla, perché lì la maiuscola la vuole
+        ///   la frase; restano presi i nomi propri che sono anche parole comuni quando queste aprono la frase («Light the fire»)
+        /// </summary>
+        /// <param name="glossary">Glossario del job</param>
+        /// <param name="files">File del job con le battute sorgenti</param>
+        /// <returns>Espressione per termine del sorgente come nel glossario, senza i termini fatti del solo articolo</returns>
+        public static Dictionary<string, Regex> SourcePatterns(Glossary glossary, IEnumerable<TranslationJobFileState> files)
+        {
+            const string sentenceBreaks = ".!?…\n";
+            string language = LanguageValidator.NormalizeToIso6392(glossary.SourceLanguage);
+            List<string> texts = new List<string>();
+            foreach (TranslationJobFileState file in files)
+            {
+                foreach (FrozenCue cue in file.Cues)
+                    texts.Add(s_markSyntax.Replace(cue.Text, "").Replace('’', '\''));
+            }
+
+            Dictionary<string, Regex> patterns = new Dictionary<string, Regex>(StringComparer.Ordinal);
+            foreach (GlossaryTerm term in glossary.Terms)
+            {
+                string word = StripArticle(term.Source, language);
+                if (string.IsNullOrEmpty(word) || patterns.ContainsKey(term.Source))
+                    continue;
+
+                // Nome proprio: il termine con le sue maiuscole, preceduto da una parola senza un fine frase in mezzo
+                Regex pattern = WordPattern(word);
+                bool properNoun = false;
+                for (int t = 0; t < texts.Count && !properNoun && !string.Equals(word, word.ToLowerInvariant(), StringComparison.Ordinal); t++)
+                {
+                    foreach (Match match in pattern.Matches(texts[t]))
+                    {
+                        int before = match.Index - 1;
+                        while (before >= 0 && !char.IsLetterOrDigit(texts[t][before]) && sentenceBreaks.IndexOf(texts[t][before]) < 0)
+                            before--;
+                        properNoun |= before >= 0 && sentenceBreaks.IndexOf(texts[t][before]) < 0 && string.Equals(match.Value, word, StringComparison.Ordinal);
+                    }
+                }
+                patterns[term.Source] = properNoun ? new Regex(pattern.ToString(), RegexOptions.CultureInvariant) : pattern;
+            }
+
+            return patterns;
         }
 
         /// <summary>

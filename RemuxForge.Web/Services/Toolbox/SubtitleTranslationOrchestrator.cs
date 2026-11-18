@@ -1061,7 +1061,8 @@ namespace RemuxForge.Web.Services.Toolbox
                     if (candidate.Id == id)
                         cue = candidate;
                 }
-                CueValidationResult result = new TranslationValidator(document.Format, this._job.Glossary.SourceLanguage, this._job.Glossary.TargetLanguage, this._job.Glossary.Terms).ValidateEdit(cue, text);
+                CueValidationResult result = new TranslationValidator(document.Format, this._job.Glossary,
+                    TranslationValidator.SourcePatterns(this._job.Glossary, this._jobFiles.Values)).ValidateEdit(cue, text);
                 if (result.HasErrors)
                 {
                     List<string> errors = new List<string>();

@@ -96,7 +96,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         RegexOptions.CultureInvariant);
                 }
 
-                this._added.Add(new AddedTerm(term, TranslationValidator.WordPattern(sourceWord), targetPattern, usage));
+                this._added.Add(new AddedTerm(term, this._sourcePatterns[term.Source], targetPattern, usage));
                 this._updated.Add(new KeyValuePair<string, string>(term.Source, term.Target));
             }
             this._instructions = TranslationRequestBuilder.CreateRewriteInstructions(job.Glossary.SourceLanguage, job.Glossary.TargetLanguage);
