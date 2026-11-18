@@ -4293,5 +4293,6 @@
   "web.toolbox.subtitleTranslation.styleKind.Dialogue": "Dialogo",
   "web.toolbox.subtitleTranslation.styleKind.Song": "Canzone",
   "web.toolbox.subtitleTranslation.styleKind.Sign": "Cartello",
-  "web.toolbox.subtitleTranslation.styleKind.Skip": "Non tradurre"
+  "web.toolbox.subtitleTranslation.styleKind.Skip": "Non tradurre",
+  "web.toolbox.subtitleTranslation.termExactCase": "Maiuscole esatte"
 }

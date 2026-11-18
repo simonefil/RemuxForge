@@ -4293,5 +4293,6 @@
   "web.toolbox.subtitleTranslation.styleKind.Dialogue": "Dialogue",
   "web.toolbox.subtitleTranslation.styleKind.Song": "Song",
   "web.toolbox.subtitleTranslation.styleKind.Sign": "Sign",
-  "web.toolbox.subtitleTranslation.styleKind.Skip": "Don't translate"
+  "web.toolbox.subtitleTranslation.styleKind.Skip": "Don't translate",
+  "web.toolbox.subtitleTranslation.termExactCase": "Exact case"
 }

@@ -867,6 +867,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.ChosenTarget = "";
             this.Kind = GlossaryTermKind.Term;
             this.Invariable = false;
+            this.ExactCase = null;
             this.Decision = NewTermDecisionKind.Add;
         }
 
@@ -898,6 +899,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Nome che non si flette: la correzione delle battute la fa il codice. Parte vero solo se tutte le segnalazioni lo dicono
         /// </summary>
         public bool Invariable { get; set; }
+
+        /// <summary>
+        /// True se il termine si cerca nel sorgente con le sue maiuscole esatte; precompilato dalle battute sorgenti, null finché
+        /// non lo è
+        /// </summary>
+        public bool? ExactCase { get; set; }
 
         /// <summary>
         /// Aggiungi o Ignora

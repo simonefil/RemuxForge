@@ -283,8 +283,30 @@ namespace RemuxForge.Web.Services.Toolbox
                 }
                 if (this.SyncStyles())
                     this._store.Save(project);
+
+                // Progetti e job di prima di «Maiuscole esatte»: le voci senza il valore lo prendono dalle battute sorgenti, una volta
+                List<string> texts = new List<string>();
+                foreach (GlossaryEpisode episode in this.GetEpisodes())
+                {
+                    foreach (SubtitleCue cue in episode.Cues)
+                    {
+                        if (cue.Id.HasValue)
+                            texts.Add(cue.CleanText);
+                    }
+                }
+                if (project.Glossary != null && TranslationValidator.FillExactCase(project.Glossary, new NewTermDecision[0], texts))
+                    this._store.Save(project);
                 if (job != null)
                 {
+                    List<string> frozen = new List<string>();
+                    foreach (TranslationJobFileState state in jobFiles.Values)
+                    {
+                        foreach (FrozenCue cue in state.Cues)
+                            frozen.Add(cue.Text);
+                    }
+                    if (TranslationValidator.FillExactCase(job.Glossary, job.NewTerms, frozen))
+                        this._jobStore.Save(job);
+
                     // Una chiusura brusca fra il salvataggio dell'ultimo file e quello del job lascia in pausa un job già concluso
                     if (job.Phase == TranslationJobPhase.Translation && job.Status == TranslationJobStatus.Paused &&
                         job.FileIds.TrueForAll(fileId => this._jobFiles[fileId].TranslationStatus == TranslationFileStatus.Completed))
@@ -1161,8 +1183,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     if (candidate.Id == id)
                         cue = candidate;
                 }
-                CueValidationResult result = new TranslationValidator(document.Format, this._job.Glossary,
-                    TranslationValidator.SourcePatterns(this._job.Glossary, this._jobFiles.Values)).ValidateEdit(cue, text);
+                CueValidationResult result = new TranslationValidator(document.Format, this._job.Glossary).ValidateEdit(cue, text);
                 if (result.HasErrors)
                 {
                     List<string> errors = new List<string>();

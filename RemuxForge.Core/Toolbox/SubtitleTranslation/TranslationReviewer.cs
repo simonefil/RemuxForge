@@ -73,7 +73,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 string word = TranslationValidator.StripArticle(term.Source, language);
                 if (term.Origin == GlossaryOrigin.NewTerm && !string.IsNullOrEmpty(word))
-                    this._updated.Add(new KeyValuePair<GlossaryTerm, Regex>(term, TranslationValidator.WordPattern(word)));
+                    this._updated.Add(new KeyValuePair<GlossaryTerm, Regex>(term, TranslationValidator.WordPattern(word, term.ExactCase == true)));
             }
 
             lock (stateLock)

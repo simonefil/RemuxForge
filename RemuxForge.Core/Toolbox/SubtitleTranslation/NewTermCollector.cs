@@ -14,7 +14,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// Consolida le segnalazioni dei file: una per chiamata, raggruppate per termine senza maiuscole né articolo iniziale. La
-        /// resa proposta è la più segnalata, a pari conteggio la prima comparsa
+        /// resa proposta è la più segnalata, a pari conteggio la prima comparsa; «Maiuscole esatte» è precompilato dalle battute
+        /// sorgenti dei file
         /// </summary>
         /// <param name="glossary">Glossario del job</param>
         /// <param name="files">Stati dei file, nell'ordine del job</param>
@@ -70,12 +71,20 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 decision.ChosenTarget = proposed.Target;
             }
 
+            List<string> texts = new List<string>();
+            foreach (TranslationJobFileState file in files)
+            {
+                foreach (FrozenCue cue in file.Cues)
+                    texts.Add(cue.Text);
+            }
+            TranslationValidator.FillExactCase(glossary, decisions, texts);
+
             return decisions;
         }
 
         /// <summary>
-        /// Voce del glossario di un termine aggiunto: resa scelta, tipo, invariabile, episodi delle segnalazioni e prima nota del
-        /// modello
+        /// Voce del glossario di un termine aggiunto: resa scelta, tipo, invariabile, maiuscole esatte, episodi delle segnalazioni
+        /// e prima nota del modello
         /// </summary>
         /// <param name="decision">Termine deciso con «Aggiungi»</param>
         /// <param name="glossary">Glossario del job, per la lingua d'origine</param>
@@ -88,6 +97,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             term.Target = decision.ChosenTarget.Trim();
             term.Kind = decision.Kind;
             term.Invariable = decision.Invariable;
+            term.ExactCase = decision.ExactCase;
             term.Origin = GlossaryOrigin.NewTerm;
             foreach (NewTermRendering rendering in decision.Renderings)
             {

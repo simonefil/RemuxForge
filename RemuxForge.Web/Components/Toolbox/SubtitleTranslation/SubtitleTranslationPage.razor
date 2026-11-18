@@ -454,10 +454,10 @@
                                 Density="Density.Compact"
                                 GridLines="DataGridGridLines.Horizontal">
                     <Columns>
-                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termSource")" Width="17%">
+                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termSource")" Width="15%">
                             <Template Context="term"><span class="rf-translation-cell">@term.Source</span></Template>
                         </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termRenderings")" Width="21%">
+                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termRenderings")" Width="18%">
                             <Template Context="term">
                                 <span class="rf-translation-renderings">
                                     @foreach (NewTermRendering rendering in term.Renderings)
@@ -467,7 +467,7 @@
                                 </span>
                             </Template>
                         </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.episodes")" Width="8%" TextAlign="TextAlign.Right">
+                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.episodes")" Width="7%" TextAlign="TextAlign.Right">
                             <Template Context="term">
                                 @{
                                     HashSet<string> episodes = new HashSet<string>(StringComparer.Ordinal);
@@ -477,14 +477,14 @@
                                 <CellText Text="@episodes.Count.ToString(CultureInfo.CurrentCulture)" />
                             </Template>
                         </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termChosen")" Width="18%">
+                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termChosen")" Width="16%">
                             <Template Context="term">
                                 <RadzenTextBox class="@("rf-translation-cell-input" + (term.Decision == NewTermDecisionKind.Add && string.IsNullOrWhiteSpace(term.ChosenTarget) ? " rf-tool-input-invalid" : ""))"
                                                Value="@term.ChosenTarget" Disabled="@(!deciding)" aria-label="@(AppText.T("web.toolbox.subtitleTranslation.termChosen") + " " + term.Source)"
                                                Change="@((string value) => Orchestrator.ChangeNewTerm(term, t => t.ChosenTarget = (value ?? "").Trim()))" />
                             </Template>
                         </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termKind")" Width="12%">
+                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termKind")" Width="11%">
                             <Template Context="term">
                                 <RadzenDropDown TValue="GlossaryTermKind" class="rf-translation-cell-input" Data="@s_termKinds" Value="@term.Kind" Disabled="@(!deciding)"
                                                 aria-label="@(AppText.T("web.toolbox.subtitleTranslation.termKind") + " " + term.Source)"
@@ -498,6 +498,12 @@
                             <Template Context="term">
                                 <RadzenCheckBox TValue="bool" Value="@term.Invariable" Disabled="@(!deciding)" aria-label="@(AppText.T("web.toolbox.subtitleTranslation.termInvariable") + " " + term.Source)"
                                                 Change="@((bool value) => Orchestrator.ChangeNewTerm(term, t => t.Invariable = value))" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termExactCase")" Width="9%" TextAlign="TextAlign.Center">
+                            <Template Context="term">
+                                <RadzenCheckBox TValue="bool" Value="@(term.ExactCase == true)" Disabled="@(!deciding)" aria-label="@(AppText.T("web.toolbox.subtitleTranslation.termExactCase") + " " + term.Source)"
+                                                Change="@((bool value) => Orchestrator.ChangeNewTerm(term, t => t.ExactCase = value))" />
                             </Template>
                         </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="NewTermDecision" Width="15%">
@@ -765,7 +771,7 @@
                                             Density="Density.Compact"
                                             GridLines="DataGridGridLines.Horizontal">
                                 <Columns>
-                                    <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.termSource")" Width="20%">
+                                    <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.termSource")" Width="18%">
                                         <Template Context="term">
                                             @TextCell(term, term.Source, term.Origin == GlossaryOrigin.User, AppText.T("web.toolbox.subtitleTranslation.termSource"), (t, value) => t.Source = value)
                                             @if (term.Origin == GlossaryOrigin.Import)
@@ -774,10 +780,10 @@
                                             }
                                         </Template>
                                     </RadzenDataGridColumn>
-                                    <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.termTarget")" Width="20%">
+                                    <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.termTarget")" Width="18%">
                                         <Template Context="term">@TextCell(term, term.Target, true, AppText.T("web.toolbox.subtitleTranslation.termTarget"), (t, value) => t.Target = value)</Template>
                                     </RadzenDataGridColumn>
-                                    <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.termKind")" Width="13%">
+                                    <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.termKind")" Width="12%">
                                         <Template Context="term">
                                             @if (term.Origin == GlossaryOrigin.User)
                                             {
@@ -806,10 +812,16 @@
                                             }
                                         </Template>
                                     </RadzenDataGridColumn>
-                                    <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.episodes")" Width="9%" TextAlign="TextAlign.Right">
+                                    <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.termExactCase")" Width="9%" TextAlign="TextAlign.Center">
+                                        <Template Context="term">
+                                            <RadzenCheckBox TValue="bool" Value="@(term.ExactCase == true)" Disabled="@(busy || glossaryLocked)" aria-label="@AppText.T("web.toolbox.subtitleTranslation.termExactCase")"
+                                                            Change="@((bool value) => ChangeEntry(term, t => t.ExactCase = value))" />
+                                        </Template>
+                                    </RadzenDataGridColumn>
+                                    <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.episodes")" Width="7%" TextAlign="TextAlign.Right">
                                         <Template Context="term"><CellText Text="@term.Episodes.Count.ToString(CultureInfo.CurrentCulture)" /></Template>
                                     </RadzenDataGridColumn>
-                                    <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.note")" Width="22%">
+                                    <RadzenDataGridColumn TItem="GlossaryTerm" Title="@AppText.T("web.toolbox.subtitleTranslation.note")" Width="20%">
                                         <Template Context="term">@TextCell(term, term.Note, term.Origin == GlossaryOrigin.User, AppText.T("web.toolbox.subtitleTranslation.note"), (t, value) => t.Note = value)</Template>
                                     </RadzenDataGridColumn>
                                     <RadzenDataGridColumn TItem="GlossaryTerm" Width="4rem" TextAlign="TextAlign.Center">

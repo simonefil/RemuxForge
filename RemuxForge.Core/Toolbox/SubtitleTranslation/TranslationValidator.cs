@@ -133,8 +133,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="format">Formato del file</param>
         /// <param name="glossary">Glossario in uso</param>
-        /// <param name="sourcePatterns">Espressioni dei termini nel sorgente, da SourcePatterns sul job</param>
-        public TranslationValidator(SubtitleTranslationFormat format, Glossary glossary, Dictionary<string, Regex> sourcePatterns)
+        public TranslationValidator(SubtitleTranslationFormat format, Glossary glossary)
         {
             this._format = format;
             this._terms = new List<TermPatterns>();
@@ -146,7 +145,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 string targetWord = StripArticle(term.Target, target);
                 if (string.IsNullOrEmpty(sourceWord) || string.IsNullOrEmpty(targetWord))
                     continue;
-                this._terms.Add(new TermPatterns(term.Source, term.Target, sourcePatterns[term.Source], RenderingPattern(targetWord, term.Invariable)));
+                this._terms.Add(new TermPatterns(term.Source, term.Target, WordPattern(sourceWord, term.ExactCase == true), RenderingPattern(targetWord, term.Invariable)));
             }
         }
 
@@ -368,65 +367,92 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Espressione che trova una parola intera senza distinguere maiuscole
+        /// Espressione che trova una parola intera
         /// </summary>
         /// <param name="word">Parola</param>
+        /// <param name="exactCase">True per le maiuscole esatte, false per non distinguerle</param>
         /// <returns>Espressione</returns>
-        internal static Regex WordPattern(string word)
+        internal static Regex WordPattern(string word, bool exactCase)
         {
-            return new Regex(@"(?<![\p{L}\p{M}\p{N}])" + Regex.Escape(word) + @"(?![\p{L}\p{M}\p{N}])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            return new Regex(@"(?<![\p{L}\p{M}\p{N}])" + Regex.Escape(word) + @"(?![\p{L}\p{M}\p{N}])",
+                exactCase ? RegexOptions.CultureInvariant : RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         }
 
         /// <summary>
-        /// Espressioni con cui cercare nel sorgente i termini del glossario, una volta per job. Che un termine sia un nome
-        /// proprio lo dicono le battute sorgenti del job, non le maiuscole del glossario né il tipo della voce: l'analisi scrive
-        /// spesso con l'iniziale maiuscola anche i nomi comuni («Teacher», «Karma»).
-        /// - Il termine scritto con le sue maiuscole in mezzo alla frase è un nome proprio e si cerca con le maiuscole esatte:
-        ///   «Light» in Death Note si trova come nome, e «turn on the light» o «I will» non lo sono. Se la serie usa la stessa
-        ///   parola anche minuscola, quella è la parola comune e resta fuori.
-        /// - Altrimenti il termine si cerca senza distinguere le maiuscole: scritto minuscolo in mezzo alla frase è un nome
-        ///   comune, e senza nessuna occorrenza in mezzo alla frase non c'è prova; un termine mancato lo trova la revisione.
+        /// Precompila «Maiuscole esatte» delle voci che non l'hanno ancora, termini del glossario e termini nuovi da decidere; una
+        /// voce che l'ha già resta com'è, così la scelta dell'utente non si perde. Che un termine sia un nome proprio lo dicono
+        /// le battute sorgenti, non le maiuscole del glossario: l'analisi scrive spesso con l'iniziale maiuscola anche i nomi
+        /// comuni («Teacher», «Karma»).
+        /// - Voce di tipo Titolo: maiuscole esatte, perché vale solo l'uso come titolo o vocativo, maiuscolo a metà frase («Yes,
+        ///   Teacher», «Teacher Onizuka»); «a teacher» non è il titolo.
+        /// - Termine scritto con le sue maiuscole in mezzo alla frase: è un nome proprio e ha le maiuscole esatte. «Light» in
+        ///   Death Note si trova come nome, e «turn on the light» o «I will» non lo sono; se la serie usa la stessa parola anche
+        ///   minuscola, quella è la parola comune e resta fuori.
+        /// - Altrimenti maiuscole libere: scritto minuscolo in mezzo alla frase è un nome comune, e senza nessuna occorrenza in
+        ///   mezzo alla frase non c'è prova; un termine mancato lo trova la revisione.
         /// - L'inizio della battuta, di una riga o di una frase (dopo . ! ? …) non prova nulla, perché lì la maiuscola la vuole
         ///   la frase; restano presi i nomi propri che sono anche parole comuni quando queste aprono la frase («Light the fire»)
         /// </summary>
-        /// <param name="glossary">Glossario del job</param>
-        /// <param name="files">File del job con le battute sorgenti</param>
-        /// <returns>Espressione per termine del sorgente come nel glossario, senza i termini fatti del solo articolo</returns>
-        public static Dictionary<string, Regex> SourcePatterns(Glossary glossary, IEnumerable<TranslationJobFileState> files)
+        /// <param name="glossary">Glossario, per la lingua d'origine e i termini</param>
+        /// <param name="decisions">Termini nuovi da decidere, vuoto se nessuno</param>
+        /// <param name="sourceTexts">Testi puliti delle battute sorgenti</param>
+        /// <returns>True se almeno una voce ha preso il valore</returns>
+        public static bool FillExactCase(Glossary glossary, IEnumerable<NewTermDecision> decisions, IEnumerable<string> sourceTexts)
         {
             const string sentenceBreaks = ".!?…\n";
             string language = LanguageValidator.NormalizeToIso6392(glossary.SourceLanguage);
-            List<string> texts = new List<string>();
-            foreach (TranslationJobFileState file in files)
-            {
-                foreach (FrozenCue cue in file.Cues)
-                    texts.Add(s_markSyntax.Replace(cue.Text, "").Replace('’', '\''));
-            }
+            List<string> texts = null;
+            bool filled = false;
 
-            Dictionary<string, Regex> patterns = new Dictionary<string, Regex>(StringComparer.Ordinal);
-            foreach (GlossaryTerm term in glossary.Terms)
+            // Regola delle maiuscole su un termine; i testi si preparano alla prima voce da precompilare
+            Func<string, GlossaryTermKind, bool> exactCase = (source, kind) =>
             {
-                string word = StripArticle(term.Source, language);
-                if (string.IsNullOrEmpty(word) || patterns.ContainsKey(term.Source))
-                    continue;
+                if (kind == GlossaryTermKind.Title)
+                    return true;
+                string word = StripArticle(source, language);
+                if (string.IsNullOrEmpty(word) || string.Equals(word, word.ToLowerInvariant(), StringComparison.Ordinal))
+                    return false;
 
-                // Nome proprio: il termine con le sue maiuscole, preceduto da una parola senza un fine frase in mezzo
-                Regex pattern = WordPattern(word);
-                bool properNoun = false;
-                for (int t = 0; t < texts.Count && !properNoun && !string.Equals(word, word.ToLowerInvariant(), StringComparison.Ordinal); t++)
+                if (texts == null)
                 {
-                    foreach (Match match in pattern.Matches(texts[t]))
+                    texts = new List<string>();
+                    foreach (string text in sourceTexts)
+                        texts.Add(s_markSyntax.Replace(text, "").Replace('’', '\''));
+                }
+
+                // Il termine con le sue maiuscole, preceduto da una parola senza un fine frase in mezzo
+                Regex pattern = WordPattern(word, true);
+                foreach (string text in texts)
+                {
+                    foreach (Match match in pattern.Matches(text))
                     {
                         int before = match.Index - 1;
-                        while (before >= 0 && !char.IsLetterOrDigit(texts[t][before]) && sentenceBreaks.IndexOf(texts[t][before]) < 0)
+                        while (before >= 0 && !char.IsLetterOrDigit(text[before]) && sentenceBreaks.IndexOf(text[before]) < 0)
                             before--;
-                        properNoun |= before >= 0 && sentenceBreaks.IndexOf(texts[t][before]) < 0 && string.Equals(match.Value, word, StringComparison.Ordinal);
+                        if (before >= 0 && sentenceBreaks.IndexOf(text[before]) < 0)
+                            return true;
                     }
                 }
-                patterns[term.Source] = properNoun ? new Regex(pattern.ToString(), RegexOptions.CultureInvariant) : pattern;
+
+                return false;
+            };
+
+            foreach (GlossaryTerm term in glossary.Terms)
+            {
+                if (term.ExactCase.HasValue)
+                    continue;
+                term.ExactCase = exactCase(term.Source, term.Kind);
+                filled = true;
+            }
+            foreach (NewTermDecision decision in decisions)
+            {
+                if (decision.ExactCase.HasValue)
+                    continue;
+                decision.ExactCase = exactCase(decision.Source, decision.Kind);
+                filled = true;
             }
 
-            return patterns;
+            return filled;
         }
 
         /// <summary>
@@ -734,7 +760,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="Source">Termine del sorgente come nel glossario</param>
         /// <param name="Target">Resa come nel glossario</param>
-        /// <param name="SourcePattern">Termine senza articolo, a parola intera</param>
+        /// <param name="SourcePattern">Termine senza articolo, a parola intera, con le maiuscole esatte se la voce le chiede</param>
         /// <param name="TargetPattern">Resa senza articolo, flessa se non è in forma fissa, sul testo NFD</param>
         private sealed record TermPatterns(string Source, string Target, Regex SourcePattern, Regex TargetPattern);
 

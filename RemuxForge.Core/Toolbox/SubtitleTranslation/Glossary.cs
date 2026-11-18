@@ -178,6 +178,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Target = "";
             this.Kind = GlossaryTermKind.Term;
             this.Invariable = false;
+            this.ExactCase = null;
             this.Note = "";
             this.Origin = GlossaryOrigin.User;
             this.Episodes = new List<string>();
@@ -206,6 +207,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// True per un nome proprio che non si flette
         /// </summary>
         public bool Invariable { get; set; }
+
+        /// <summary>
+        /// True se il termine si cerca nel sorgente con le sue maiuscole esatte; null finché non è precompilato dalle battute
+        /// sorgenti, poi lo decide l'utente
+        /// </summary>
+        public bool? ExactCase { get; set; }
 
         /// <summary>
         /// Nota per il traduttore, vuota se nessuna

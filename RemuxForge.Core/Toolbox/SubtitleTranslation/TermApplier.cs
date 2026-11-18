@@ -96,7 +96,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         RegexOptions.CultureInvariant);
                 }
 
-                this._added.Add(new AddedTerm(term, this._sourcePatterns[term.Source], targetPattern, usage));
+                this._added.Add(new AddedTerm(term, TranslationValidator.WordPattern(sourceWord, term.ExactCase == true), targetPattern, usage));
                 this._updated.Add(new KeyValuePair<string, string>(term.Source, term.Target));
             }
             this._instructions = TranslationRequestBuilder.CreateRewriteInstructions(job.Glossary.SourceLanguage, job.Glossary.TargetLanguage);
@@ -327,7 +327,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Termine aggiunto con le espressioni del validatore e le rese segnalate dal modello
         /// </summary>
         /// <param name="Term">Voce del glossario</param>
-        /// <param name="SourcePattern">Termine senza articolo, a parola intera</param>
+        /// <param name="SourcePattern">Termine senza articolo, a parola intera, con le maiuscole esatte se la voce le chiede</param>
         /// <param name="TargetPattern">Resa senza articolo, flessa se non è in forma fissa, sul testo NFD</param>
         /// <param name="Usage">Resa scelta e rese segnalate diverse, la più lunga prima e a maiuscole esatte; null senza rese diverse</param>
         private sealed record AddedTerm(GlossaryTerm Term, Regex SourcePattern, Regex TargetPattern, Regex Usage);

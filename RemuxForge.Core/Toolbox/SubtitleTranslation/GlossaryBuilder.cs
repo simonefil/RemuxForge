@@ -827,23 +827,28 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Ricalcola i file in cui compare ogni termine, con la parola intera senza articolo e senza distinguere maiuscole
+        /// Ricalcola i file in cui compare ogni termine, con la parola intera senza articolo e senza distinguere maiuscole, e
+        /// precompila «Maiuscole esatte» delle voci che non l'hanno ancora
         /// </summary>
         /// <param name="glossary">Glossario da aggiornare</param>
         /// <param name="episodes">File del progetto</param>
         public void SetEpisodes(Glossary glossary, IReadOnlyList<GlossaryEpisode> episodes)
         {
             List<KeyValuePair<string, string>> texts = new List<KeyValuePair<string, string>>();
+            List<string> cueTexts = new List<string>();
             foreach (GlossaryEpisode episode in episodes)
             {
                 StringBuilder text = new StringBuilder();
                 foreach (SubtitleCue cue in episode.Cues)
                 {
-                    if (cue.Id.HasValue)
-                        text.Append(TranslationValidator.GlossaryPlain(cue.CleanText)).Append('\n');
+                    if (!cue.Id.HasValue)
+                        continue;
+                    text.Append(TranslationValidator.GlossaryPlain(cue.CleanText)).Append('\n');
+                    cueTexts.Add(cue.CleanText);
                 }
                 texts.Add(new KeyValuePair<string, string>(episode.FileId, text.ToString()));
             }
+            TranslationValidator.FillExactCase(glossary, new NewTermDecision[0], cueTexts);
 
             foreach (GlossaryTerm term in glossary.Terms)
             {
@@ -852,7 +857,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 if (string.IsNullOrEmpty(word))
                     continue;
 
-                Regex pattern = TranslationValidator.WordPattern(word);
+                Regex pattern = TranslationValidator.WordPattern(word, false);
                 foreach (KeyValuePair<string, string> text in texts)
                 {
                     if (pattern.IsMatch(text.Value))

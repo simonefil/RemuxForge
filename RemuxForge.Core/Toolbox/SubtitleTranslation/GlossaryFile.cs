@@ -20,9 +20,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public const string FORMAT = "remuxforge.glossary";
 
         /// <summary>
-        /// Versione del formato scritta e la più alta letta
+        /// Versione del formato scritta e la più alta letta; la 1 non ha la colonna Maiuscole esatte
         /// </summary>
-        public const int VERSION = 1;
+        public const int VERSION = 2;
 
         /// <summary>
         /// File non leggibile come glossario
@@ -55,12 +55,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private const string SERIES_SHEET = "Serie";
 
         /// <summary>
-        /// Valore di Invariabile per vero
+        /// Valore di Forma fissa e Maiuscole esatte per vero
         /// </summary>
         private const string YES = "sì";
 
         /// <summary>
-        /// Valore di Invariabile per falso
+        /// Valore di Forma fissa e Maiuscole esatte per falso
         /// </summary>
         private const string NO = "no";
 
@@ -73,11 +73,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         private static readonly Dictionary<string, string[]> s_headers = new Dictionary<string, string[]>(StringComparer.Ordinal)
         {
-            { TERMS_SHEET, new string[] { "Originale", "Resa", "Tipo", "Invariabile", "Nota" } },
+            { TERMS_SHEET, new string[] { "Originale", "Resa", "Tipo", "Forma fissa", "Maiuscole esatte", "Nota" } },
             { CHARACTERS_SHEET, new string[] { "Nome", "Genere", "Ruolo", "Rapporti" } },
             { ADDRESSING_SHEET, new string[] { "Chi parla", "A chi", "Forma", "Nota" } },
             { SERIES_SHEET, new string[] { "Campo", "Valore" } }
         };
+
+        /// <summary>
+        /// Intestazione del foglio dei termini nei file della versione 1
+        /// </summary>
+        private static readonly string[] s_termsHeaderV1 = new string[] { "Originale", "Resa", "Tipo", "Invariabile", "Nota" };
 
         /// <summary>
         /// Righe del foglio Serie, nell'ordine di scrittura
@@ -101,7 +106,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 for (int i = 0; i < glossary.Terms.Count; i++)
                 {
                     GlossaryTerm term = glossary.Terms[i];
-                    WriteRow(terms, i + 2, term.Source, term.Target, term.Kind.ToString(), term.Invariable ? YES : NO, term.Note);
+                    WriteRow(terms, i + 2, term.Source, term.Target, term.Kind.ToString(), term.Invariable ? YES : NO, term.ExactCase == true ? YES : NO, term.Note);
                 }
 
                 IXLWorksheet characters = AddSheet(workbook, CHARACTERS_SHEET);
@@ -157,15 +162,23 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
             using (workbook)
             {
+                // Il foglio dei termini della versione 1 non ha Maiuscole esatte: le voci la prendono dalle battute sorgenti
                 Dictionary<string, IXLWorksheet> sheets = new Dictionary<string, IXLWorksheet>(StringComparer.Ordinal);
+                bool legacy = false;
                 foreach (KeyValuePair<string, string[]> header in s_headers)
                 {
                     IXLWorksheet sheet;
                     if (!workbook.Worksheets.TryGetWorksheet(header.Key, out sheet))
                         return result.Fail(FILE_INVALID, header.Key, "");
-                    for (int column = 0; column < header.Value.Length; column++)
+                    string[] expected = header.Value;
+                    if (header.Key == TERMS_SHEET && ReadCell(sheet, 1, 4) == s_termsHeaderV1[3])
                     {
-                        if (ReadCell(sheet, 1, column + 1) != header.Value[column])
+                        expected = s_termsHeaderV1;
+                        legacy = true;
+                    }
+                    for (int column = 0; column < expected.Length; column++)
+                    {
+                        if (ReadCell(sheet, 1, column + 1) != expected[column])
                             return result.Fail(FILE_INVALID, CellPath(sheet, 1, column + 1), "");
                     }
                     sheets[header.Key] = sheet;
@@ -214,15 +227,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 GlossaryBuilder builder = new GlossaryBuilder(sourceLanguage, targetLanguage);
                 IXLWorksheet terms = sheets[TERMS_SHEET];
                 Dictionary<string, string> seenTerms = new Dictionary<string, string>(StringComparer.Ordinal);
+                int noteColumn = legacy ? 5 : 6;
                 for (int row = 2; row <= (terms.LastRowUsed()?.RowNumber() ?? 1); row++)
                 {
-                    if (IsEmptyRow(terms, row, 5))
+                    if (IsEmptyRow(terms, row, noteColumn))
                         continue;
 
                     GlossaryTerm term = new GlossaryTerm();
                     term.Source = ReadCell(terms, row, 1);
                     term.Target = ReadCell(terms, row, 2);
-                    term.Note = ReadCell(terms, row, 5);
+                    term.Note = ReadCell(terms, row, noteColumn);
                     term.Origin = GlossaryOrigin.Import;
                     if (string.IsNullOrEmpty(term.Source))
                         return result.Fail("GLOSSARY_EMPTY", CellPath(terms, row, 1), "");
@@ -242,6 +256,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (invariable != YES && invariable != NO)
                         return result.Fail("GLOSSARY_ENUM", CellPath(terms, row, 4), invariable);
                     term.Invariable = invariable == YES;
+
+                    if (!legacy)
+                    {
+                        string exactCase = ReadCell(terms, row, 5);
+                        if (string.IsNullOrEmpty(exactCase))
+                            return result.Fail("GLOSSARY_FIELD_MISSING", CellPath(terms, row, 5), "");
+                        if (exactCase != YES && exactCase != NO)
+                            return result.Fail("GLOSSARY_ENUM", CellPath(terms, row, 5), exactCase);
+                        term.ExactCase = exactCase == YES;
+                    }
 
                     string key = builder.TermKey(term.Source);
                     if (seenTerms.ContainsKey(key))
