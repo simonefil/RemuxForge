@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -113,6 +114,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         private readonly Dictionary<int, LetterEffect> _letterEffects;
 
+        /// <summary>
+        /// Pezzi di parola animati prima di una riga intera, per posizione della riga intera
+        /// </summary>
+        private readonly Dictionary<int, List<SourceLine>> _wordPieces;
+
         #endregion
 
         #region Costruttore
@@ -127,10 +133,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="cues">Battute nell'ordine del file</param>
         /// <param name="styles">Stili delle righe ASS/SSA</param>
         /// <param name="letterEffects">Righe sorgente degli effetti lettera per lettera per posizione della battuta</param>
+        /// <param name="wordPieces">Righe dei pezzi di parola animati per posizione della riga intera</param>
         /// <param name="untimedBlockCount">Blocchi SRT senza riga dei tempi valida</param>
         /// <param name="rejectionReason">Motivo del rifiuto, vuoto per un file valido</param>
         private SubtitleTranslationDocument(SubtitleTranslationFormat format, string text, byte[] preamble, Encoding outputEncoding,
-            List<SubtitleCue> cues, List<SubtitleStyleUsage> styles, Dictionary<int, LetterEffect> letterEffects, int untimedBlockCount, string rejectionReason)
+            List<SubtitleCue> cues, List<SubtitleStyleUsage> styles, Dictionary<int, LetterEffect> letterEffects,
+            Dictionary<int, List<SourceLine>> wordPieces, int untimedBlockCount, string rejectionReason)
         {
             this.Format = format;
             this._text = text;
@@ -139,6 +147,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this._cues = cues;
             this._styles = styles;
             this._letterEffects = letterEffects;
+            this._wordPieces = wordPieces;
             this.UntimedBlockCount = untimedBlockCount;
             this.RejectionReason = rejectionReason;
         }
@@ -186,7 +195,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
             else if (Array.IndexOf(data, (byte)0) >= 0)
             {
-                return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), 0, REJECTION_UTF16_WITHOUT_BOM);
+                return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), new Dictionary<int, List<SourceLine>>(), 0, REJECTION_UTF16_WITHOUT_BOM);
             }
             else
             {
@@ -199,7 +208,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 catch (DecoderFallbackException)
                 {
                     if (string.IsNullOrEmpty(encoding) || string.Equals(encoding, DEFAULT_ENCODING, StringComparison.OrdinalIgnoreCase))
-                        return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), 0, REJECTION_ENCODING_REQUIRED);
+                        return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), new Dictionary<int, List<SourceLine>>(), 0, REJECTION_ENCODING_REQUIRED);
 
                     // Le codifiche di Aggiungi tracce che il runtime non ha di suo stanno nel provider delle code page
                     try
@@ -208,7 +217,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
                     catch (ArgumentException)
                     {
-                        return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), 0, REJECTION_ENCODING_UNKNOWN);
+                        return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), new Dictionary<int, List<SourceLine>>(), 0, REJECTION_ENCODING_UNKNOWN);
                     }
                 }
             }
@@ -220,7 +229,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             for (int i = 0; same && i < encoded.Length; i++)
                 same = encoded[i] == data[offset + i];
             if (!same)
-                return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), 0, REJECTION_ROUNDTRIP_MISMATCH);
+                return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), new Dictionary<int, List<SourceLine>>(), 0, REJECTION_ROUNDTRIP_MISMATCH);
 
             byte[] preamble = new byte[offset];
             Array.Copy(data, preamble, offset);
@@ -254,6 +263,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             SubtitleCueCleaner cleaner = new SubtitleCueCleaner(format);
             List<RawCue> rawCues = new List<RawCue>();
             Dictionary<int, LetterEffect> letterEffects = new Dictionary<int, LetterEffect>();
+            Dictionary<int, List<SourceLine>> wordPieces = new Dictionary<int, List<SourceLine>>();
             List<SubtitleStyleUsage> usages = new List<SubtitleStyleUsage>();
             List<List<long[]>> intervals = new List<List<long[]>>();
             Dictionary<string, List<long[]>> shown = new Dictionary<string, List<long[]>>(StringComparer.Ordinal);
@@ -327,7 +337,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
                 catch (InvalidDataException)
                 {
-                    return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), 0, REJECTION_ASS_INVALID_DIALOGUE);
+                    return new SubtitleTranslationDocument(format, "", new byte[0], null, empty, new List<SubtitleStyleUsage>(), new Dictionary<int, LetterEffect>(), new Dictionary<int, List<SourceLine>>(), 0, REJECTION_ASS_INVALID_DIALOGUE);
                 }
 
                 // Format di [Events] in vigore su ogni riga, letto come ReadDialogues, per Style e Layer; le righe Comment valide con
@@ -487,6 +497,62 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         sourceOf[g] = c;
                 }
 
+                // Pezzi di parola animati, solo con la tabella degli stili: righe della stessa combinazione di stile, attore ed
+                // effetto di una riga intera, finite entro il suo inizio, che risalgono senza buchi nel tempo dall'inizio della riga
+                // intera (fotogrammi e copie su altri layer). I testi distinti, nell'ordine in cui compaiono, uniti senza spazi danno
+                // la riga intera senza spazi, e almeno uno ha più di un carattere: fatti di soli caratteri singoli sono un effetto
+                // lettera per lettera. Il legame vale solo se riesce per intero
+                int[] wholeOf = new int[events.Count];
+                Array.Fill(wholeOf, -1);
+                Dictionary<int, List<int>> piecesByWhole = new Dictionary<int, List<int>>();
+                string[] spaceless = events.ConvertAll(assEvent => string.Concat(assEvent.Readable.Where(c => !char.IsWhiteSpace(c)))).ToArray();
+                Dictionary<string, List<int>> eventsByUnit = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+                for (int u = 0; u < events.Count && !legacy; u++)
+                {
+                    string unit = events[u].Style + "\u0001" + events[u].Actor + "\u0001" + events[u].Effect;
+                    if (!events[u].Comment && !events[u].Drawing && sourceOf[u] < 0)
+                    {
+                        if (!eventsByUnit.ContainsKey(unit))
+                            eventsByUnit[unit] = new List<int>();
+                        eventsByUnit[unit].Add(u);
+                    }
+                }
+                for (int w = 0; w < events.Count && !legacy; w++)
+                {
+                    AssEvent whole = events[w];
+                    if (whole.Comment || whole.Drawing || sourceOf[w] >= 0 || wholeOf[w] >= 0 || new StringInfo(spaceless[w]).LengthInTextElements < 2)
+                        continue;
+
+                    List<int> candidates = eventsByUnit[whole.Style + "\u0001" + whole.Actor + "\u0001" + whole.Effect].FindAll(p => p != w && wholeOf[p] < 0
+                        && !piecesByWhole.ContainsKey(p) && events[p].Line.StartMs < whole.Line.StartMs && events[p].Line.EndMs <= whole.Line.StartMs && spaceless[p].Length > 0 && spaceless[p] != spaceless[w]
+                        && spaceless[w].Contains(spaceless[p], StringComparison.Ordinal));
+
+                    // Il tratto coperto parte dall'inizio della riga intera e si allarga all'indietro con ogni riga che lo tocca
+                    List<int> chain = new List<int>();
+                    long edge = whole.Line.StartMs;
+                    List<int> reaching = candidates.FindAll(p => events[p].Line.EndMs >= edge);
+                    while (reaching.Count > 0)
+                    {
+                        chain.AddRange(reaching);
+                        edge = Math.Min(edge, reaching.Min(p => events[p].Line.StartMs));
+                        reaching = candidates.FindAll(p => !chain.Contains(p) && events[p].Line.EndMs >= edge);
+                    }
+                    chain.Sort((a, b) => events[a].Line.StartMs != events[b].Line.StartMs ? events[a].Line.StartMs.CompareTo(events[b].Line.StartMs) : a.CompareTo(b));
+                    List<string> texts = new List<string>();
+                    foreach (int p in chain)
+                    {
+                        if (!texts.Contains(spaceless[p]))
+                            texts.Add(spaceless[p]);
+                    }
+                    if (chain.Count == 0 || string.Concat(texts) != spaceless[w] || texts.TrueForAll(text => new StringInfo(text).LengthInTextElements == 1))
+                        continue;
+
+                    chain.Sort();
+                    piecesByWhole[w] = chain;
+                    foreach (int p in chain)
+                        wholeOf[p] = w;
+                }
+
                 for (int e = 0; e < events.Count; e++)
                 {
                     AssEvent assEvent = events[e];
@@ -507,6 +573,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             SubtitleCue.EXCLUSION_LETTER_EFFECT, ""));
                         continue;
                     }
+
+                    // I pezzi di parola restano fuori anche dagli indizi e se ne vanno quando la riga intera è tradotta
+                    if (wholeOf[e] >= 0)
+                    {
+                        rawCues.Add(new RawCue(dialogue.StartMs, dialogue.EndMs, assEvent.TextStart, assEvent.TextLength, style, assEvent.Layer, SubtitleCueKind.Dialogue,
+                            SubtitleCue.EXCLUSION_WORD_PIECE, ""));
+                        continue;
+                    }
+                    if (piecesByWhole.TryGetValue(e, out List<int> pieceLines))
+                        wordPieces[rawCues.Count + 1] = pieceLines.ConvertAll(p => lines[events[p].Line.LineIndex]);
 
                     // Righe tradotte di una sorgente: una Dialogue per layer delle lettere, coi campi della riga Comment, il layer e
                     // l'aspetto fisso delle lettere di quel layer; prendono il posto della prima lettera. La posizione viene dalle
@@ -636,7 +712,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
 
             if (rawCues.Count == 0)
-                return new SubtitleTranslationDocument(format, text, preamble, outputEncoding, empty, usages, letterEffects, untimed, REJECTION_NO_CUES);
+                return new SubtitleTranslationDocument(format, text, preamble, outputEncoding, empty, usages, letterEffects, wordPieces, untimed, REJECTION_NO_CUES);
 
             // Pulizia
             List<SubtitleCleanResult> cleanedCues = new List<SubtitleCleanResult>();
@@ -725,13 +801,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 cues.Add(cue);
             }
 
-            return new SubtitleTranslationDocument(format, text, preamble, outputEncoding, cues, usages, letterEffects, untimed, "");
+            return new SubtitleTranslationDocument(format, text, preamble, outputEncoding, cues, usages, letterEffects, wordPieces, untimed, "");
         }
 
         /// <summary>
         /// Scrive il file sostituendo i soli campi Text delle battute tradotte e delle loro copie su altri layer; la riga sorgente
         /// tradotta di un effetto lettera per lettera resta com'è e una riga Dialogue col testo tradotto per layer delle lettere
-        /// prende il posto delle righe disegnate
+        /// prende il posto delle righe disegnate; i pezzi di parola animati prima di una riga intera tradotta se ne vanno
         /// </summary>
         /// <param name="translatedText">Testo pulito tradotto per id, già validato</param>
         /// <returns>Byte del file, con lo stesso BOM e la stessa codifica del sorgente (UTF-8 per una codifica scelta)</returns>
@@ -748,6 +824,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 if (!this._letterEffects.TryGetValue(cue.Position, out LetterEffect letterEffect))
                 {
                     edits.Add(new TextEdit(cue.TextStart, cue.TextLength, cleaner.Recompose(cue, translation)));
+                    foreach (SourceLine piece in this._wordPieces.GetValueOrDefault(cue.Position, new List<SourceLine>()))
+                        edits.Add(new TextEdit(piece.Start, piece.Length + piece.Terminator.Length, ""));
                     continue;
                 }
                 string recomposed = cleaner.Recompose(cue, translation);

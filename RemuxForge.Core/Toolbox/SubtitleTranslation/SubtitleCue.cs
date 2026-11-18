@@ -41,6 +41,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Riga disegnata da un effetto lettera per lettera, sostituita dalla sua riga sorgente tradotta</summary>
         public const string EXCLUSION_LETTER_EFFECT = "letter-effect";
 
+        /// <summary>Pezzo di parola animato prima di una riga intera, tolto quando la riga intera è tradotta</summary>
+        public const string EXCLUSION_WORD_PIECE = "word-piece";
+
         #endregion
 
         #region Costruttore
