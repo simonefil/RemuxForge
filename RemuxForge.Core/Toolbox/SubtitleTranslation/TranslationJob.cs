@@ -192,7 +192,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Status = TranslationJobStatus.Running;
             this.Pause = null;
             this.DisabledCapabilities = new List<string>();
-            this.ReviewMode = TranslationReviewMode.Targeted;
             this.NewTerms = new List<NewTermDecision>();
             this.SharedStretches = new List<SharedStretch>();
         }
