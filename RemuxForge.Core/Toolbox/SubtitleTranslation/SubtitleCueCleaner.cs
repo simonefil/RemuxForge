@@ -1321,9 +1321,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Stato di uno stile ASS o SSA per canale, coi valori nella forma di <see cref="ReadLetterLook"/>: colori e alpha dei
         /// quattro colori, carattere, corpo, scale, spaziatura, angolo, bordo, ombra, codifica e interruttori; sfocature, rotazioni
-        /// fuori piano e inclinazioni a 0. Uno stile SSA si legge come libass: BackColour colora bordo e ombra (TertiaryColour non
-        /// si usa), AlphaLevel è l'alpha dei primi tre colori e l'ombra ha alpha 80. I campi che mancano o non si leggono lasciano
-        /// il canale senza valore
+        /// fuori piano e inclinazioni a 0. I colori si leggono come libass: esadecimali dopo &amp;H o 0x, altrimenti decimali, con
+        /// l'alpha nel byte alto di AABBGGRR. Uno stile SSA si legge come libass: BackColour colora bordo e ombra (TertiaryColour non
+        /// si usa), AlphaLevel (00 se manca) è l'alpha dei primi tre colori e l'ombra ha alpha 80. Gli altri campi che mancano o non
+        /// si leggono lasciano il canale senza valore
         /// </summary>
         /// <param name="format">Campo Format della sezione degli stili</param>
         /// <param name="fields">Campi della riga Style</param>
@@ -1345,7 +1346,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             if (ssa)
             {
                 columns.AddRange(new string[][] { new string[] { "PrimaryColour", "1c" }, new string[] { "SecondaryColour", "2c" }, new string[] { "BackColour", "3c", "4c" } });
-                state["4a"] = "80";
             }
             else
             {
@@ -1355,6 +1355,27 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     new string[] { "BackColour", "4c", "4a" }
                 });
             }
+            // Intero di un campo di stile come parse_int_header di libass: esadecimale dopo &H o 0x, altrimenti decimale, con spazi
+            // e segno davanti, ridotto modulo 2^32; senza cifre vale 0
+            Func<string, uint> readInteger = field =>
+            {
+                bool hex = field.StartsWith("&H", StringComparison.OrdinalIgnoreCase) || field.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
+                string digits = (hex ? field.Substring(2) : field).TrimStart();
+                bool negative = digits.StartsWith("-", StringComparison.Ordinal);
+                if (negative || digits.StartsWith("+", StringComparison.Ordinal))
+                    digits = digits.Substring(1);
+                if (hex && digits.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+                    digits = digits.Substring(2);
+                uint number = 0;
+                foreach (char digit in digits)
+                {
+                    int value = Uri.IsHexDigit(digit) ? Convert.ToInt32(digit.ToString(), 16) : 99;
+                    if (value >= (hex ? 16 : 10))
+                        break;
+                    number = unchecked(number * (hex ? 16u : 10u) + (uint)value);
+                }
+                return negative ? unchecked(0u - number) : number;
+            };
             foreach (string[] column in columns)
             {
                 int index = AssSubtitleUtils.ResolveFieldIndex(format, column[0]);
@@ -1363,21 +1384,24 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 string field = fields[index].Trim();
                 for (int c = 1; c < column.Length; c++)
                 {
-                    // Gli interruttori dello stile sono -1 o 1 se accesi; i colori SSA sono decimali
+                    // Gli interruttori dello stile sono -1 o 1 se accesi; un colore è AABBGGRR
                     string value = ChannelValue(column[c], field);
                     if (this.SwitchBit(column[c]) >= 0)
                         value = int.TryParse(field, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int flag) ? (flag != 0 ? "1" : "0") : null;
-                    else if (value == null && uint.TryParse(field, NumberStyles.None, CultureInfo.InvariantCulture, out uint decimalColour))
-                        value = ChannelValue(column[c], "&H" + decimalColour.ToString("X6", CultureInfo.InvariantCulture));
+                    else if (column[0].EndsWith("Colour", StringComparison.Ordinal))
+                        value = column[c][1] == 'c' ? (readInteger(field) & 0xFFFFFF).ToString("X6", CultureInfo.InvariantCulture)
+                            : (readInteger(field) >> 24).ToString("X2", CultureInfo.InvariantCulture);
                     if (value != null)
                         state[column[c]] = value;
                 }
             }
-            int alphaLevel = ssa ? AssSubtitleUtils.ResolveFieldIndex(format, "AlphaLevel") : -1;
-            if (alphaLevel >= 0 && alphaLevel < fields.Length && int.TryParse(fields[alphaLevel].Trim(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int level))
+            if (ssa)
             {
+                int alphaLevel = AssSubtitleUtils.ResolveFieldIndex(format, "AlphaLevel");
+                int level = alphaLevel >= 0 && alphaLevel < fields.Length ? unchecked((int)readInteger(fields[alphaLevel].Trim())) : 0;
                 foreach (string channel in new string[] { "1a", "2a", "3a" })
                     state[channel] = Math.Clamp(level, 0, 255).ToString("X2", CultureInfo.InvariantCulture);
+                state["4a"] = "80";
             }
             return state;
         }
@@ -1688,9 +1712,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Valore di un canale da un argomento di tag o da un campo di stile, in una forma confrontabile: colore BBGGRR e alpha in
-        /// esadecimale maiuscolo (da &amp;H...&amp;; l'alpha di un colore di stile è il byte alto di AABBGGRR, 00 se il colore ha solo
-        /// BBGGRR), interruttore 0 o 1, carattere com'è, numeri come double invariante
+        /// Valore di un canale da un argomento di tag o da un campo di stile che non sia un colore, in una forma confrontabile:
+        /// colore BBGGRR e alpha in esadecimale maiuscolo, letti come libass (salta &amp; e H, poi un intero esadecimale con spazi,
+        /// segno e 0x davanti, saturato a 32 bit con segno, 0 senza cifre; l'alpha è il byte basso), interruttore 0 o 1, carattere
+        /// com'è, numeri come double invariante
         /// </summary>
         /// <param name="channel">Canale (1c, 1a, fn, b, bord...)</param>
         /// <param name="raw">Argomento o campo</param>
@@ -1702,13 +1727,23 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 return text;
             if (channel.Length == 2 && char.IsDigit(channel[0]))
             {
-                string hex = text.Trim('&');
-                if (!hex.StartsWith("H", StringComparison.OrdinalIgnoreCase)
-                    || !uint.TryParse(hex.Substring(1), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out uint number))
+                if (text.Length == 0)
                     return null;
-                int digits = hex.Length - 1;
-                return channel[1] == 'c' ? (number & 0xFFFFFF).ToString("X6", CultureInfo.InvariantCulture)
-                    : (digits <= 2 ? number : digits > 6 ? number >> 24 & 0xFF : 0).ToString("X2", CultureInfo.InvariantCulture);
+                int at = 0;
+                while (at < text.Length && (text[at] == '&' || text[at] == 'H'))
+                    at++;
+                while (at < text.Length && char.IsWhiteSpace(text[at]))
+                    at++;
+                bool negative = at < text.Length && text[at] == '-';
+                if (at < text.Length && (text[at] == '-' || text[at] == '+'))
+                    at++;
+                if (at + 2 < text.Length && text[at] == '0' && (text[at + 1] == 'x' || text[at + 1] == 'X') && Uri.IsHexDigit(text[at + 2]))
+                    at += 2;
+                long number = 0;
+                for (; at < text.Length && Uri.IsHexDigit(text[at]); at++)
+                    number = Math.Min(number * 16 + Convert.ToInt32(text[at].ToString(), 16), (long)int.MaxValue + 1);
+                long integer = Math.Clamp(negative ? -number : number, int.MinValue, int.MaxValue);
+                return channel[1] == 'c' ? (integer & 0xFFFFFF).ToString("X6", CultureInfo.InvariantCulture) : (integer & 0xFF).ToString("X2", CultureInfo.InvariantCulture);
             }
             if (channel.Length == 1)
                 return text == "0" || text == "1" ? text : null;
