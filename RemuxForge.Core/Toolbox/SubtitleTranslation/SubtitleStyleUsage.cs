@@ -28,6 +28,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.MaxConcurrent = 0;
             this.Texts = new List<string>();
             this.Positions = new List<int>();
+            this.Continued = new List<bool>();
         }
 
         #endregion
@@ -76,22 +77,28 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public List<int> Positions { get; }
 
         /// <summary>
-        /// Righe di più di un carattere con tag karaoke (\k, \K, \kf, \ko) o con Effect kara, fx, template o code
+        /// True per ogni testo che continua una riga già contata, nell'ordine di Texts: stesso testo negli stessi tempi o
+        /// dall'istante in cui la riga contata finisce
+        /// </summary>
+        public List<bool> Continued { get; }
+
+        /// <summary>
+        /// Righe contate di più di un carattere con tag karaoke (\k, \K, \kf, \ko) o con Effect kara, fx, template o code
         /// </summary>
         public int KaraokeLines { get; set; }
 
         /// <summary>
-        /// Righe di più di un carattere con \pos, \move o \org
+        /// Righe contate di più di un carattere con \pos, \move o \org
         /// </summary>
         public int PositionLines { get; set; }
 
         /// <summary>
-        /// Righe di più di un carattere che si sovrappongono nel tempo a un'altra di più di un carattere della stessa combinazione nello stesso file
+        /// Righe contate di più di un carattere che si sovrappongono nel tempo a un'altra di più di un carattere della stessa combinazione nello stesso file
         /// </summary>
         public int OverlappingLines { get; set; }
 
         /// <summary>
-        /// Massimo di righe di più di un carattere della combinazione sullo schermo nello stesso istante, in un file
+        /// Massimo di righe contate di più di un carattere della combinazione sullo schermo nello stesso istante, in un file
         /// </summary>
         public int MaxConcurrent { get; set; }
 

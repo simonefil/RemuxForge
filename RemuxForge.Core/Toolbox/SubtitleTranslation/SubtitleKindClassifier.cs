@@ -52,11 +52,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "\n" +
             "Evidence for each style unit\n" +
             "- style, actor, effect: the fields shared by the lines of the unit.\n" +
-            "- lines, distinct_lines: lines with readable text longer than one character, and how many of them differ.\n" +
+            "- lines, distinct_lines: lines with readable text longer than one character, and how many of them differ. A line repeating the text of another at the same times or from the instant it ends, like a layered copy or a frame of an animation, is counted once.\n" +
             "- length: shortest, median and longest line, in characters.\n" +
             "- karaoke_share: share of the lines with karaoke timing or a karaoke effect.\n" +
             "- positioned_share: share of the lines with an explicit position on screen.\n" +
-            "- overlapping_share: share of the lines shown at the same time as another line of the unit; max_on_screen: most lines of the unit shown at the same instant. Layered copies of one line overlap a few times; letters or syllables animated one per line overlap many times.\n" +
+            "- overlapping_share: share of the lines shown at the same time as another line of the unit; max_on_screen: most lines of the unit shown at the same instant. Letters or syllables animated one per line overlap many times.\n" +
             "- repeated_share: share of the lines inside stretches repeated across episode files, like an opening or a recap.\n" +
             "- files: episode files where the unit appears, out of the project files.\n" +
             "- samples: distinct lines of the unit, spread across its files.\n" +
@@ -164,6 +164,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     {
                         if (new StringInfo(usage.Texts[i]).LengthInTextElements == 1)
                             continue;
+                        if (usage.Continued[i])
+                            unit.Continued.Add(unit.Texts.Count);
                         unit.Texts.Add(usage.Texts[i]);
                         unit.Lines.Add(new KeyValuePair<string, int>(file.Key, usage.Positions[i]));
                         SubtitleCue cue;
@@ -254,14 +256,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 SubtitleKindUnit unit = plan.Units[i];
                 unit.Id = "u" + (i + 1).ToString(CultureInfo.InvariantCulture);
 
-                // Lunghezze in caratteri visibili e righe diverse, nell'ordine dei file
+                // Lunghezze in caratteri visibili delle righe contate e righe diverse, nell'ordine dei file
                 List<int> lengths = new List<int>();
                 HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
                 List<List<string>> distinct = new List<List<string>>();
                 string lastFile = null;
                 for (int t = 0; t < unit.Texts.Count; t++)
                 {
-                    lengths.Add(new StringInfo(unit.Texts[t]).LengthInTextElements);
+                    if (!unit.Continued.Contains(t))
+                        lengths.Add(new StringInfo(unit.Texts[t]).LengthInTextElements);
                     string fileId = t < unit.Lines.Count ? unit.Lines[t].Key : "";
                     if (fileId != lastFile || distinct.Count == 0)
                     {
@@ -319,12 +322,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     ["style"] = unit.Style,
                     ["actor"] = unit.Actor,
                     ["effect"] = unit.Effect,
-                    ["lines"] = unit.Texts.Count,
+                    ["lines"] = lengths.Count,
                     ["distinct_lines"] = seen.Count,
                     ["length"] = new JsonObject { ["min"] = lengths[0], ["median"] = lengths[lengths.Count / 2], ["max"] = lengths[lengths.Count - 1] },
-                    ["karaoke_share"] = Math.Round((double)unit.KaraokeLines / unit.Texts.Count, 2),
-                    ["positioned_share"] = Math.Round((double)unit.PositionLines / unit.Texts.Count, 2),
-                    ["overlapping_share"] = Math.Round((double)unit.OverlappingLines / unit.Texts.Count, 2),
+                    ["karaoke_share"] = Math.Round((double)unit.KaraokeLines / lengths.Count, 2),
+                    ["positioned_share"] = Math.Round((double)unit.PositionLines / lengths.Count, 2),
+                    ["overlapping_share"] = Math.Round((double)unit.OverlappingLines / lengths.Count, 2),
                     ["max_on_screen"] = unit.MaxConcurrent,
                     ["repeated_share"] = unit.TranslatableLines > 0 ? Math.Round((double)unit.RepeatedLines / unit.TranslatableLines, 2) : 0,
                     ["files"] = unit.Files.ToString(CultureInfo.InvariantCulture) + "/" + files.Count.ToString(CultureInfo.InvariantCulture),
@@ -695,6 +698,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Effect = effect;
             this.IsStretch = isStretch;
             this.Texts = new List<string>();
+            this.Continued = new HashSet<int>();
             this.Lines = new List<KeyValuePair<string, int>>();
             this.Kind = null;
             this.LineKinds = null;
@@ -733,6 +737,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Testi leggibili delle righe: della combinazione nell'ordine dei file, della tratta nell'ordine di tempo
         /// </summary>
         public List<string> Texts { get; }
+
+        /// <summary>
+        /// Indici in Texts delle righe che continuano una riga già contata, fuori dal conto e dalle lunghezze degli indizi
+        /// </summary>
+        public HashSet<int> Continued { get; }
 
         /// <summary>
         /// File e posizione delle battute dell'unità: della combinazione nell'ordine di Texts, della tratta in ogni occorrenza

@@ -254,7 +254,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             List<RawCue> rawCues = new List<RawCue>();
             Dictionary<int, LetterEffect> letterEffects = new Dictionary<int, LetterEffect>();
             List<SubtitleStyleUsage> usages = new List<SubtitleStyleUsage>();
-            List<List<KeyValuePair<long, long>>> intervals = new List<List<KeyValuePair<long, long>>>();
+            List<List<long[]>> intervals = new List<List<long[]>>();
+            Dictionary<string, List<long[]>> shown = new Dictionary<string, List<long[]>>(StringComparer.Ordinal);
             int untimed = 0;
             if (format == SubtitleTranslationFormat.Srt)
             {
@@ -505,17 +506,38 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     {
                         usage = new SubtitleStyleUsage(style, actor, effect);
                         usages.Add(usage);
-                        intervals.Add(new List<KeyValuePair<long, long>>());
+                        intervals.Add(new List<long[]>());
                     }
                     bool fragment = new StringInfo(readable).LengthInTextElements == 1;
+
+                    // Una riga continua una riga già contata se ne ripete il testo leggibile negli stessi tempi (copie su altri layer,
+                    // pezzi ritagliati) o dall'istante in cui finisce (fotogrammi di un'animazione, dissolvenze): la riga contata si
+                    // allunga fino alla sua fine e gli indizi la contano una volta
+                    bool continued = false;
                     if (!assEvent.Drawing && readable.Length > 0)
                     {
+                        string shownKey = usages.IndexOf(usage).ToString(CultureInfo.InvariantCulture) + "\u0001" + readable;
+                        if (!shown.ContainsKey(shownKey))
+                            shown[shownKey] = new List<long[]>();
+                        long[] counted = shown[shownKey].Find(t => (t[0] == dialogue.StartMs && t[1] == dialogue.EndMs) || t[1] == dialogue.StartMs);
+                        continued = counted != null;
+                        if (continued)
+                        {
+                            counted[1] = Math.Max(counted[1], dialogue.EndMs);
+                        }
+                        else
+                        {
+                            counted = new long[] { dialogue.StartMs, dialogue.EndMs };
+                            shown[shownKey].Add(counted);
+                            if (!fragment)
+                                intervals[usages.IndexOf(usage)].Add(counted);
+                        }
                         usage.Texts.Add(readable);
                         usage.Positions.Add(rawCues.Count + 1);
+                        usage.Continued.Add(continued);
                     }
-                    if (!assEvent.Drawing && readable.Length > 0 && !fragment)
+                    if (!assEvent.Drawing && readable.Length > 0 && !fragment && !continued)
                     {
-                        intervals[usages.IndexOf(usage)].Add(new KeyValuePair<long, long>(dialogue.StartMs, dialogue.EndMs));
                         if (s_karaoke.IsMatch(raw) || s_karaokeEffect.IsMatch(effect))
                             usage.KaraokeLines++;
                         if (s_position.IsMatch(raw))
@@ -538,21 +560,21 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // degli inizi allo stesso istante
                 for (int u = 0; u < usages.Count; u++)
                 {
-                    List<KeyValuePair<long, long>> times = intervals[u];
-                    times.Sort((a, b) => a.Key != b.Key ? a.Key.CompareTo(b.Key) : a.Value.CompareTo(b.Value));
+                    List<long[]> times = intervals[u];
+                    times.Sort((a, b) => a[0] != b[0] ? a[0].CompareTo(b[0]) : a[1].CompareTo(b[1]));
                     long reach = long.MinValue;
                     for (int t = 0; t < times.Count; t++)
                     {
-                        if (times[t].Key < reach || (t + 1 < times.Count && times[t + 1].Key < times[t].Value))
+                        if (times[t][0] < reach || (t + 1 < times.Count && times[t + 1][0] < times[t][1]))
                             usages[u].OverlappingLines++;
-                        reach = Math.Max(reach, times[t].Value);
+                        reach = Math.Max(reach, times[t][1]);
                     }
 
                     List<KeyValuePair<long, int>> steps = new List<KeyValuePair<long, int>>();
-                    foreach (KeyValuePair<long, long> time in times)
+                    foreach (long[] time in times)
                     {
-                        steps.Add(new KeyValuePair<long, int>(time.Key, 1));
-                        steps.Add(new KeyValuePair<long, int>(time.Value, -1));
+                        steps.Add(new KeyValuePair<long, int>(time[0], 1));
+                        steps.Add(new KeyValuePair<long, int>(time[1], -1));
                     }
                     steps.Sort((a, b) => a.Key != b.Key ? a.Key.CompareTo(b.Key) : a.Value.CompareTo(b.Value));
                     int concurrent = 0;
