@@ -144,21 +144,21 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Definizione del tool submit_diagnosis
         /// </summary>
-        private const string SUBMIT_DIAGNOSIS_JSON = "{\"type\":\"function\",\"name\":\"submit_diagnosis\"," +
+        private const string SUBMIT_DIAGNOSIS_JSON = "{\"type\":\"function\",\"name\":\"submit_diagnosis\",\"strict\":true," +
             "\"description\":\"Report the problems found in the translation of the block. Empty list if there are none.\"," +
             "\"parameters\":{\"type\":\"object\",\"properties\":{" +
             "\"issues\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"integer\"}," +
             "\"category\":{\"type\":\"string\",\"enum\":[\"accuracy\",\"omission\",\"fluency\",\"terminology\",\"register\",\"consistency\",\"split_sentence\",\"formatting\",\"untranslated\"]}," +
             "\"severity\":{\"type\":\"string\",\"enum\":[\"minor\",\"major\",\"critical\"]}," +
             "\"explanation\":{\"type\":\"string\",\"description\":\"Short explanation for the user.\"}," +
-            "\"suggestion\":{\"type\":\"string\",\"description\":\"Full corrected text of the cue, with line breaks as \\\\n and its ⟦n text⟧ spans.\"}}," +
-            "\"required\":[\"id\",\"category\",\"severity\",\"explanation\"],\"additionalProperties\":false}}}," +
+            "\"suggestion\":{\"type\":[\"string\",\"null\"],\"description\":\"Full corrected text of the cue, with line breaks as \\\\n and its ⟦n text⟧ spans; null if you have none.\"}}," +
+            "\"required\":[\"id\",\"category\",\"severity\",\"explanation\",\"suggestion\"],\"additionalProperties\":false}}}," +
             "\"required\":[\"issues\"],\"additionalProperties\":false}}";
 
         /// <summary>
         /// Definizione del tool submit_translation
         /// </summary>
-        private const string SUBMIT_TRANSLATION_JSON = "{\"type\":\"function\",\"name\":\"submit_translation\"," +
+        private const string SUBMIT_TRANSLATION_JSON = "{\"type\":\"function\",\"name\":\"submit_translation\",\"strict\":true," +
             "\"description\":\"Deliver the translation of the requested cue ids: one entry per requested id, in ascending order. The code validates every cue and asks again only for the rejected ones.\"," +
             "\"parameters\":{\"type\":\"object\",\"properties\":{" +
             "\"translations\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"integer\"}," +
@@ -167,8 +167,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "\"new_terms\":{\"type\":\"array\",\"description\":\"Names or recurring terms NOT among the glossary terms that you had to render, with the rendering you used.\"," +
             "\"items\":{\"type\":\"object\",\"properties\":{\"source\":{\"type\":\"string\"},\"target\":{\"type\":\"string\"}," +
             "\"kind\":{\"type\":\"string\",\"enum\":[\"name\",\"place\",\"organization\",\"title\",\"term\",\"catchphrase\"]}," +
-            "\"invariable\":{\"type\":\"boolean\",\"description\":\"True for proper names that never inflect and must appear verbatim.\"},\"note\":{\"type\":\"string\"}}," +
-            "\"required\":[\"source\",\"target\",\"kind\",\"invariable\"],\"additionalProperties\":false}}}," +
+            "\"invariable\":{\"type\":\"boolean\",\"description\":\"True for proper names that never inflect and must appear verbatim.\"},\"note\":{\"type\":[\"string\",\"null\"]}}," +
+            "\"required\":[\"source\",\"target\",\"kind\",\"invariable\",\"note\"],\"additionalProperties\":false}}}," +
             "\"required\":[\"translations\",\"new_terms\"],\"additionalProperties\":false}}";
 
         #endregion

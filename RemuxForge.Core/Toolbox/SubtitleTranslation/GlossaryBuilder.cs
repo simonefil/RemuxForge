@@ -172,9 +172,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             ["target"] = new JsonObject { ["type"] = "string", ["description"] = "Rendering in the target language, without a leading article; identical to source if it stays untranslated." },
                             ["kind"] = new JsonObject { ["type"] = "string", ["enum"] = CreateArray(s_termKinds) },
                             ["invariable"] = new JsonObject { ["type"] = "boolean", ["description"] = "True for proper names that never inflect and must appear verbatim." },
-                            ["note"] = new JsonObject { ["type"] = "string", ["description"] = "Usage hints, inflection, alternatives considered." }
+                            ["note"] = new JsonObject { ["type"] = CreateArray(new string[] { "string", "null" }), ["description"] = "Usage hints, inflection, alternatives considered; null if none." }
                         },
-                        ["required"] = CreateArray(new string[] { "source", "target", "kind", "invariable" }),
+                        ["required"] = CreateArray(new string[] { "source", "target", "kind", "invariable", "note" }),
                         ["additionalProperties"] = false
                     }
                 },
@@ -215,9 +215,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             ["speaker"] = new JsonObject { ["type"] = "string" },
                             ["addressee"] = new JsonObject { ["type"] = "string" },
                             ["form"] = form,
-                            ["note"] = new JsonObject { ["type"] = "string" }
+                            ["note"] = new JsonObject { ["type"] = CreateArray(new string[] { "string", "null" }) }
                         },
-                        ["required"] = CreateArray(new string[] { "speaker", "addressee", "form" }),
+                        ["required"] = CreateArray(new string[] { "speaker", "addressee", "form", "note" }),
                         ["additionalProperties"] = false
                     }
                 };
@@ -229,6 +229,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 ["type"] = "function",
                 ["name"] = SUBMIT_TOOL,
                 ["description"] = TOOL_DESCRIPTION,
+                ["strict"] = true,
                 ["parameters"] = new JsonObject
                 {
                     ["type"] = "object",
