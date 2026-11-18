@@ -343,10 +343,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // Format di [Events] in vigore su ogni riga, letto come ReadDialogues, per Style e Layer; le righe Comment valide con
                 // lo stesso Format sono le sorgenti possibili di un effetto disegnato lettera per lettera. Degli stili ([V4+ Styles], o
                 // [V4 Styles] di un SSA) servono allineamento e margini orizzontali, per la posizione della riga che prende il posto
-                // delle lettere; l'allineamento SSA (1-3 in basso, +4 in alto, +8 al centro) passa alla numerazione ASS
+                // delle lettere, e lo stato per canale, per l'aspetto; l'allineamento SSA (1-3 in basso, +4 in alto, +8 al centro)
+                // passa alla numerazione ASS
                 string[] formatByLine = new string[lines.Count];
                 List<KeyValuePair<AssSubtitleDialogue, bool>> lineEvents = dialogues.ConvertAll(d => new KeyValuePair<AssSubtitleDialogue, bool>(d, false));
                 Dictionary<string, int[]> styleLayouts = new Dictionary<string, int[]>(StringComparer.Ordinal);
+                Dictionary<string, Dictionary<string, string>> styleStates = new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
                 bool inEvents = false;
                 bool inStyles = false;
                 bool ssaStyles = false;
@@ -375,6 +377,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             AssSubtitleUtils.ResolveFieldIndex(styleFormat, "MarginR") };
                         int nameColumn = AssSubtitleUtils.ResolveFieldIndex(styleFormat, "Name");
                         int[] layout = new int[3];
+                        if (styleCount > 0 && styleFields.Length == styleCount && nameColumn >= 0)
+                            styleStates[styleFields[nameColumn].Trim()] = cleaner.ReadStyleState(styleFormat, styleFields);
                         if (styleCount > 0 && styleFields.Length == styleCount && nameColumn >= 0
                             && Array.TrueForAll(new int[] { 0, 1, 2 }, k => columns[k] >= 0 && AssSubtitleUtils.TryParseInt(styleFields[columns[k]], out layout[k])))
                         {
@@ -611,7 +615,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         List<string> prefixes = new List<string>();
                         foreach (int? letterLayer in layers)
                         {
-                            SubtitleLetterLook look = cleaner.ReadLetterLook(generatedLines.FindAll(g => events[g].Layer == letterLayer).ConvertAll(g => events[g].Raw));
+                            SubtitleLetterLook look = cleaner.ReadLetterLook(generatedLines.FindAll(g => events[g].Layer == letterLayer).ConvertAll(g => events[g].Raw),
+                                styleStates.GetValueOrDefault(style));
                             string tags = look.Tags;
                             if (look.Alignment.HasValue && look.PositionY != null && styleLayouts.TryGetValue(style, out int[] layout) && layout[0] >= 1 && layout[0] <= 9
                                 && assDocument.TryGetScriptInfoInt("PlayResX", out int playResX))

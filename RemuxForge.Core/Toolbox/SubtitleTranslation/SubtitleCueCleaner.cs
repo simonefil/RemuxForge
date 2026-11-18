@@ -1,3 +1,4 @@
+using RemuxForge.Core.Subtitles;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -1318,17 +1319,61 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Aspetto e posizione comuni alle righe di un layer di un effetto disegnato lettera per lettera. Aspetto: i tag di stato
-        /// e gli interruttori che ogni riga porta identici e soli sul loro canale, tranne quelli di un canale che una \t delle righe
-        /// anima, il cui valore è il punto di partenza dell'animazione. Posizione: l'allineamento \an di tutte le righe e la y
-        /// delle righe ferme (\pos), se ognuno è uno solo
+        /// Stato di uno stile ASS o SSA per canale, coi valori nella forma di <see cref="ReadLetterLook"/>: colori e alpha dei
+        /// quattro colori, carattere, corpo, scale, spaziatura, angolo, bordo, ombra, codifica e interruttori; sfocature, rotazioni
+        /// fuori piano e inclinazioni a 0. I campi che mancano o non si leggono lasciano il canale senza valore
+        /// </summary>
+        /// <param name="format">Campo Format della sezione degli stili</param>
+        /// <param name="fields">Campi della riga Style</param>
+        /// <returns>Valore per canale</returns>
+        public Dictionary<string, string> ReadStyleState(string format, string[] fields)
+        {
+            Dictionary<string, string> state = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                { "blur", "0" }, { "be", "0" }, { "frx", "0" }, { "fry", "0" }, { "fax", "0" }, { "fay", "0" }
+            };
+            string[][] columns =
+            {
+                new[] { "PrimaryColour", "1c", "1a" }, new[] { "SecondaryColour", "2c", "2a" }, new[] { "OutlineColour", "3c", "3a" },
+                new[] { "TertiaryColour", "3c", "3a" }, new[] { "BackColour", "4c", "4a" }, new[] { "Fontname", "fn" }, new[] { "Fontsize", "fs" },
+                new[] { "ScaleX", "fscx" }, new[] { "ScaleY", "fscy" }, new[] { "Spacing", "fsp" }, new[] { "Angle", "frz" },
+                new[] { "Outline", "xbord", "ybord" }, new[] { "Shadow", "xshad", "yshad" }, new[] { "Encoding", "fe" }, new[] { "Bold", "b" },
+                new[] { "Italic", "i" }, new[] { "Underline", "u" }, new[] { "StrikeOut", "s" }
+            };
+            foreach (string[] column in columns)
+            {
+                int index = AssSubtitleUtils.ResolveFieldIndex(format, column[0]);
+                if (index < 0 || index >= fields.Length)
+                    continue;
+                string field = fields[index].Trim();
+                for (int c = 1; c < column.Length; c++)
+                {
+                    // Gli interruttori dello stile sono -1 o 1 se accesi; i colori SSA sono decimali
+                    string value = ChannelValue(column[c], field);
+                    if (this.SwitchBit(column[c]) >= 0)
+                        value = int.TryParse(field, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int flag) ? (flag != 0 ? "1" : "0") : null;
+                    else if (value == null && uint.TryParse(field, NumberStyles.None, CultureInfo.InvariantCulture, out uint decimalColour))
+                        value = ChannelValue(column[c], "&H" + decimalColour.ToString("X8", CultureInfo.InvariantCulture));
+                    if (value != null)
+                        state[column[c]] = value;
+                }
+            }
+            return state;
+        }
+
+        /// <summary>
+        /// Aspetto e posizione comuni alle righe di un layer di un effetto disegnato lettera per lettera. Aspetto: lo stato a
+        /// riposo delle lettere ferme (\pos), o di tutte se nessuna è ferma: i tag di stato e gli interruttori della riga con i
+        /// valori finali delle \t che partono da 0 (l'arrivo nello stato fermo; le \t che partono dopo sono l'uscita), tenuti
+        /// quando ogni riga ha lo stesso valore e diverso dallo stile. Posizione: l'allineamento \an di tutte le righe e la y delle
+        /// righe ferme, se ognuno è uno solo
         /// </summary>
         /// <param name="texts">Campi Text delle righe</param>
+        /// <param name="styleState">Stato dello stile delle righe per canale (<see cref="ReadStyleState"/>)</param>
         /// <returns>Aspetto e posizione ricavati</returns>
-        public SubtitleLetterLook ReadLetterLook(IReadOnlyList<string> texts)
+        public SubtitleLetterLook ReadLetterLook(IReadOnlyList<string> texts, IReadOnlyDictionary<string, string> styleState)
         {
             List<List<AssTag>> tagsByText = new List<List<AssTag>>();
-            HashSet<string> animated = new HashSet<string>(StringComparer.Ordinal);
             foreach (string text in texts)
             {
                 List<AssTag> tags = new List<AssTag>();
@@ -1341,36 +1386,60 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     tags.AddRange(ParseAssTags(text.Substring(open, close - open + 1)));
                     open = text.IndexOf('{', close);
                 }
-                foreach (AssTag tag in tags)
-                {
-                    if (tag.Name != ASS_TRANSFORM)
-                        continue;
-                    foreach (AssTag inner in ParseAssTags(tag.Arg))
-                    {
-                        if (s_assStateChannels.TryGetValue(inner.Name, out string[] innerChannels))
-                            animated.UnionWith(innerChannels);
-                    }
-                }
                 tagsByText.Add(tags);
             }
             if (tagsByText.Count == 0)
                 return new SubtitleLetterLook("", null, null);
 
+            // Stato a riposo di ogni riga ferma: ogni tag prende il posto di quelli dello stesso stato (un canale in comune o lo
+            // stesso interruttore), coi tag delle \t che partono da 0 (senza tempi partono da 0) dopo quelli della riga
+            List<List<AssTag>> resting = new List<List<AssTag>>();
+            bool anyStill = tagsByText.Exists(tags => tags.Exists(tag => tag.Name == "pos"));
+            foreach (List<AssTag> tags in tagsByText)
+            {
+                if (anyStill && !tags.Exists(tag => tag.Name == "pos"))
+                    continue;
+                List<AssTag> state = new List<AssTag>();
+                List<AssTag> arriving = new List<AssTag>();
+                foreach (AssTag tag in tags)
+                {
+                    if (tag.Name != ASS_TRANSFORM)
+                    {
+                        state.Add(tag);
+                        continue;
+                    }
+                    string inner = tag.Arg.Trim().TrimStart('(');
+                    string[] times = inner.Substring(0, Math.Max(0, inner.IndexOf('\\'))).Split(',', StringSplitOptions.RemoveEmptyEntries);
+                    if (times.Length < 2 || (double.TryParse(times[0].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double from) && from == 0))
+                        arriving.AddRange(ParseAssTags(tag.Arg));
+                }
+                foreach (AssTag tag in state.Concat(arriving).ToList())
+                {
+                    bool isState = s_assStateChannels.TryGetValue(tag.Name, out string[] channels);
+                    if (!isState && this.SwitchBit(tag.Name) < 0)
+                        continue;
+                    state.RemoveAll(other => other != tag && (isState
+                        ? s_assStateChannels.TryGetValue(other.Name, out string[] otherChannels) && Array.Exists(channels, otherChannels.Contains)
+                        : this.SwitchBit(other.Name) == this.SwitchBit(tag.Name)));
+                    if (!state.Contains(tag))
+                        state.Add(tag);
+                }
+                resting.Add(state);
+            }
+
             StringBuilder fixedTags = new StringBuilder();
             HashSet<string> written = new HashSet<string>(StringComparer.Ordinal);
-            foreach (AssTag tag in tagsByText[0])
+            foreach (AssTag tag in resting[0])
             {
-                bool state = s_assStateChannels.TryGetValue(tag.Name, out string[] channels);
-                if ((!state && this.SwitchBit(tag.Name) < 0) || (state && Array.Exists(channels, animated.Contains)) || written.Contains(tag.Raw))
+                bool isState = s_assStateChannels.TryGetValue(tag.Name, out string[] channels);
+                if ((!isState && this.SwitchBit(tag.Name) < 0) || written.Contains(tag.Raw) || !resting.TrueForAll(state => state.Exists(other => other.Raw == tag.Raw)))
                     continue;
-                // Un altro tag tocca lo stesso stato se ha un canale in comune o è lo stesso interruttore
-                if (tagsByText.TrueForAll(tags => tags.Exists(other => other.Raw == tag.Raw) && tags.TrueForAll(other => other.Raw == tag.Raw
-                    || (state ? !(s_assStateChannels.TryGetValue(other.Name, out string[] otherChannels) && Array.Exists(channels, otherChannels.Contains))
-                        : this.SwitchBit(tag.Name) != this.SwitchBit(other.Name)))))
-                {
-                    fixedTags.Append(tag.Raw);
-                    written.Add(tag.Raw);
-                }
+                string[] tagChannels = isState ? channels : new[] { tag.Name };
+                if (Array.TrueForAll(tagChannels, channel => styleState != null && styleState.TryGetValue(channel, out string styleValue)
+                    && styleValue == ChannelValue(channel, tag.Arg)))
+                    continue;
+                fixedTags.Append(tag.Raw);
+                written.Add(tag.Raw);
             }
 
             HashSet<string> alignments = new HashSet<string>(StringComparer.Ordinal);
@@ -1447,6 +1516,33 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             for (int i = from; i <= to; i++)
                 result.Append(items[i].Raw);
             return result.ToString();
+        }
+
+        /// <summary>
+        /// Valore di un canale da un argomento di tag o da un campo di stile, in una forma confrontabile: colore BBGGRR e alpha in
+        /// esadecimale maiuscolo (da &amp;H...&amp;, anche coi due byte di uno stile AABBGGRR), interruttore 0 o 1, carattere com'è,
+        /// numeri come double invariante
+        /// </summary>
+        /// <param name="channel">Canale (1c, 1a, fn, b, bord...)</param>
+        /// <param name="raw">Argomento o campo</param>
+        /// <returns>Valore, null se non si legge</returns>
+        private static string ChannelValue(string channel, string raw)
+        {
+            string text = raw.Trim().TrimStart('(').TrimEnd(')').Trim();
+            if (channel == "fn")
+                return text;
+            if (channel.Length == 2 && char.IsDigit(channel[0]))
+            {
+                string hex = text.Trim('&');
+                if (!hex.StartsWith("H", StringComparison.OrdinalIgnoreCase)
+                    || !uint.TryParse(hex.Substring(1), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out uint number))
+                    return null;
+                return channel[1] == 'c' ? (number & 0xFFFFFF).ToString("X6", CultureInfo.InvariantCulture)
+                    : (hex.Length > 7 ? number >> 24 & 0xFF : number & 0xFF).ToString("X2", CultureInfo.InvariantCulture);
+            }
+            if (channel.Length == 1)
+                return text == "0" || text == "1" ? text : null;
+            return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double value) ? value.ToString("R", CultureInfo.InvariantCulture) : null;
         }
 
         /// <summary>
