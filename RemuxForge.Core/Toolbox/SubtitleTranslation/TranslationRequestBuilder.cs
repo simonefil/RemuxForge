@@ -72,7 +72,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "\n" +
             "Cues\n" +
             "- Deliver exactly one text for every requested id. Never merge, split, skip or add cues.\n" +
-            "- Line breaks are part of the cue text. Keep the number of lines of the source cue and break each line at a natural point in {target_language}. In a cue with two speakers each speaker keeps its own line and its leading dash.\n" +
+            "- Line breaks are part of the cue text. Break lines at natural points in {target_language}. In a cue with two speakers each speaker keeps its own line and its leading dash.\n" +
             "- A formatted span appears as ⟦n text⟧, numbered from 1 within each cue. Return every span of the source cue exactly once, with the same number and in the same order, around the {target_language} words that correspond to the formatted words. Spans never nest and stay in their own cue.\n" +
             "- Write plain text: no markup, no tags, no braces, no angle brackets, no notes or explanations.\n" +
             "\n" +
