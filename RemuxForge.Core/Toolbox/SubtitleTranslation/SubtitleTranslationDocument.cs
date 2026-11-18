@@ -46,6 +46,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         public const long LETTER_EFFECT_TOLERANCE_MS = 1210;
 
+        /// <summary>
+        /// Tempo in millisecondi in cui un pezzo di una frase rivelata a pezzi può stare a schermo senza una riga base: un fotogramma
+        /// a 23,976 fps nei centesimi dell'ASS (4 o 5); il massimo misurato è 40 ms, la tendina che parte un fotogramma prima della
+        /// dissolvenza
+        /// </summary>
+        public const long REVEAL_PIECE_ALONE_MS = 50;
+
         #endregion
 
         #region Variabili statiche
@@ -630,8 +637,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // (tendina, parola sola); senza pezzi la catena è una rivelazione in sequenza e resta com'è. Le altre righe si leggono
                 // con la frase intera visibile e l'aspetto del loro inizio; la primaria è quella col testo pulito con più segni (la
                 // prima nel file a parità), le altre ne sono copie e ne prendono la traduzione senza i segni: una traduzione per tutte, e
-                // i pezzi se ne vanno quando la frase è tradotta. Il legame vale solo se ogni riga base si può mostrare per intero e il
-                // suo testo pulito è quello della primaria o quello senza segni
+                // i pezzi se ne vanno quando la frase è tradotta. Il legame vale solo se ogni riga base si può mostrare per intero, il
+                // suo testo pulito è quello della primaria o quello senza segni, due basi dello stesso layer non stanno a schermo insieme e le
+                // basi coprono i tempi dei pezzi
                 Dictionary<int, string> wholeShown = new Dictionary<int, string>();
                 Dictionary<int, int> copyOf = new Dictionary<int, int>();
                 Dictionary<int, int> basePositions = new Dictionary<int, int>();
@@ -652,15 +660,36 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             List<int> chain = ordered.GetRange(first, next - first);
                             first = next;
 
-                            Dictionary<int, int> visible = chain.ToDictionary(c => c, c => cleaner.CountVisibleCharacters(events[c].Raw, styleStates[events[c].Style]));
-                            List<int> pieces = chain.FindAll(c => chain.Exists(o => o != c && visible[o] > visible[c]
-                                && events[c].Line.StartMs < events[o].Line.EndMs && events[c].Line.EndMs > events[o].Line.StartMs));
+                            Dictionary<int, List<bool>> visible = chain.ToDictionary(c => c, c => cleaner.ReadVisibleCharacters(events[c].Raw, events[c].Style, styleStates));
+                            Func<int, int, bool> overlap = (a, b) => events[a].Line.StartMs < events[b].Line.EndMs && events[a].Line.EndMs > events[b].Line.StartMs;
+                            List<int> pieces = chain.FindAll(c => chain.Exists(o => o != c && overlap(c, o) && visible[o].Count(seen => seen) > visible[c].Count(seen => seen)));
                             if (pieces.Count == 0)
                                 continue;
                             List<int> bases = chain.Except(pieces).OrderBy(c => c).ToList();
-                            Dictionary<int, string> wholeLines = bases.ToDictionary(c => c, c => cleaner.ShowWholeLine(events[c].Raw, styleStates[events[c].Style]));
-                            if (bases.Count == 0 || wholeLines.Values.Any(line => line == null))
+                            Dictionary<int, string> wholeLines = bases.ToDictionary(c => c, c => cleaner.ShowWholeLine(events[c].Raw, events[c].Style, styleStates));
+                            if (bases.Count == 0 || wholeLines.Values.Any(line => line == null) || bases.Exists(b => bases.Exists(o => o != b && events[o].Layer == events[b].Layer && overlap(b, o))))
                                 continue;
+
+                            // Le basi coprono i tempi dei pezzi, a meno di un fotogramma: tolti i pezzi la frase non manca
+                            bool covered = pieces.TrueForAll(p =>
+                            {
+                                long alone = 0;
+                                long reached = events[p].Line.StartMs;
+                                while (reached < events[p].Line.EndMs)
+                                {
+                                    long further = bases.Where(b => events[b].Line.StartMs <= reached && events[b].Line.EndMs > reached).Select(b => events[b].Line.EndMs).DefaultIfEmpty(reached).Max();
+                                    if (further == reached)
+                                    {
+                                        further = Math.Min(events[p].Line.EndMs, bases.Where(b => events[b].Line.StartMs > reached).Select(b => events[b].Line.StartMs).DefaultIfEmpty(events[p].Line.EndMs).Min());
+                                        alone += further - reached;
+                                    }
+                                    reached = further;
+                                }
+                                return alone <= REVEAL_PIECE_ALONE_MS;
+                            });
+                            if (!covered)
+                                continue;
+
                             Dictionary<int, string> cleanTexts = bases.ToDictionary(c => c, c => cleaner.Clean(wholeLines[c], "", legacy).CleanText);
                             int primary = bases.OrderByDescending(c => cleanTexts[c].Count(m => m == SubtitleCueCleaner.MARK_OPEN)).ThenBy(c => c).First();
                             string unmarked = s_markSyntax.Replace(cleanTexts[primary], "");

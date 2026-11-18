@@ -1637,36 +1637,39 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Caratteri visibili di un campo Text ASS: quelli non di spazio che a un istante della riga si vedono, col riempimento
-        /// (\1a), col bordo (\3a, se il bordo può essere largo più di 0) o con l'ombra (\4a, se l'ombra può essere diversa da 0).
-        /// Ogni canale prende il suo ultimo valore fisso (quello dello stile all'inizio, dopo \r e dopo un tag senza valore) e gli
-        /// arrivi delle \t che lo animano dopo
+        /// Visibilità dei caratteri non di spazio di un campo Text ASS, nell'ordine: visibile se a un istante della riga si vede col
+        /// riempimento (\1a), col bordo (\3a, se il bordo può essere largo più di 0) o con l'ombra (\4a, se l'ombra può essere
+        /// diversa da 0). Ogni canale prende il suo ultimo valore fisso (quello dello stile della riga all'inizio e dopo un tag senza
+        /// valore, quello dello stile nominato dopo \r, o della riga se il nome manca o non esiste) e gli arrivi delle \t successive
         /// </summary>
         /// <param name="text">Campo Text</param>
-        /// <param name="styleState">Stato dello stile della riga per canale (<see cref="ReadStyleState"/>), null se manca</param>
-        /// <returns>Numero dei caratteri visibili</returns>
-        public int CountVisibleCharacters(string text, IReadOnlyDictionary<string, string> styleState)
+        /// <param name="style">Stile della riga</param>
+        /// <param name="styleStates">Stato per canale di ogni stile del file (<see cref="ReadStyleState"/>)</param>
+        /// <returns>Un valore per carattere non di spazio, vero se visibile</returns>
+        public List<bool> ReadVisibleCharacters(string text, string style, IReadOnlyDictionary<string, Dictionary<string, string>> styleStates)
         {
             string[] channels = new string[] { "1a", "3a", "4a", "xbord", "ybord", "xshad", "yshad" };
-            Func<string, string> styleValue = channel => styleState?.GetValueOrDefault(channel) ?? (channel[1] == 'a' ? "00" : "0");
+            Dictionary<string, string> current = styleStates.GetValueOrDefault(style);
+            Func<string, string> styleValue = channel => current?.GetValueOrDefault(channel) ?? (channel[1] == 'a' ? "00" : "0");
             Dictionary<string, List<string>> values = channels.ToDictionary(channel => channel, channel => new List<string> { styleValue(channel) }, StringComparer.Ordinal);
             Func<string, bool> sized = channel => values[channel].Exists(value => double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double size) && size != 0);
             Func<string, bool> shown = channel => values[channel].Exists(value => value != "FF");
-            int visible = 0;
+            List<bool> visible = new List<bool>();
             int copied = 0;
             int open = text.IndexOf('{');
             while (true)
             {
                 int close = open >= 0 ? text.IndexOf('}', open) : -1;
                 string piece = text.Substring(copied, (close >= 0 ? open : text.Length) - copied).Replace("\\N", " ").Replace("\\n", " ").Replace("\\h", " ");
-                if (shown("1a") || ((sized("xbord") || sized("ybord")) && shown("3a")) || ((sized("xshad") || sized("yshad")) && shown("4a")))
-                    visible += piece.Count(c => !char.IsWhiteSpace(c));
+                bool seen = shown("1a") || ((sized("xbord") || sized("ybord")) && shown("3a")) || ((sized("xshad") || sized("yshad")) && shown("4a"));
+                visible.AddRange(piece.Where(c => !char.IsWhiteSpace(c)).Select(c => seen));
                 if (close < 0)
                     break;
                 foreach (AssTag tag in ParseAssTags(text.Substring(open, close - open + 1)))
                 {
                     if (tag.Name == "r")
                     {
+                        current = styleStates.GetValueOrDefault(tag.Arg.Trim()) ?? styleStates.GetValueOrDefault(style);
                         foreach (string channel in channels)
                             values[channel] = new List<string> { styleValue(channel) };
                     }
@@ -1704,13 +1707,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// solo alpha, i colori restano (un blocco rimasto vuoto se ne va). Una riga che mostra già tutta la frase resta com'è
         /// </summary>
         /// <param name="text">Campo Text</param>
-        /// <param name="styleState">Stato dello stile della riga per canale (<see cref="ReadStyleState"/>), null se manca</param>
+        /// <param name="style">Stile della riga</param>
+        /// <param name="styleStates">Stato per canale di ogni stile del file (<see cref="ReadStyleState"/>)</param>
         /// <returns>Campo Text con la frase intera, null se un altro blocco cambia altro che colori e alpha, se una sua \t anima
         /// insieme colori e alpha o se senza le alpha qualche carattere resta invisibile</returns>
-        public string ShowWholeLine(string text, IReadOnlyDictionary<string, string> styleState)
+        public string ShowWholeLine(string text, string style, IReadOnlyDictionary<string, Dictionary<string, string>> styleStates)
         {
-            Func<string, int> characters = line => Regex.Replace(line, @"\{[^}]*\}", "").Replace("\\N", " ").Replace("\\n", " ").Replace("\\h", " ").Count(c => !char.IsWhiteSpace(c));
-            if (this.CountVisibleCharacters(text, styleState) == characters(text))
+            if (this.ReadVisibleCharacters(text, style, styleStates).TrueForAll(seen => seen))
                 return text;
             string[] colours = new string[] { "c", "1c", "2c", "3c", "4c" };
             string[] alphas = new string[] { "alpha", "1a", "2a", "3a", "4a" };
@@ -1744,7 +1747,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 open = text.IndexOf('{', copied);
             }
             string whole = shown.Append(text, copied, text.Length - copied).ToString();
-            return this.CountVisibleCharacters(whole, styleState) == characters(whole) ? whole : null;
+            return this.ReadVisibleCharacters(whole, style, styleStates).TrueForAll(seen => seen) ? whole : null;
         }
 
         /// <summary>
