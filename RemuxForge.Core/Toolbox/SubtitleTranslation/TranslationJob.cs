@@ -152,14 +152,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Diagnosi salvata, correzione da fare</summary>
         Diagnosed,
 
-        /// <summary>Blocco rivisto</summary>
-        Done,
-
-        /// <summary>
-        /// Blocco non rivisto dalla revisione AI: diagnosi non riuscita per una risposta del modello anche dopo i tentativi e i
-        /// dimezzamenti; le sue battute vanno all'utente col motivo e la fase prosegue
-        /// </summary>
-        Failed
+        /// <summary>Blocco rivisto; le battute di una parte senza diagnosi valida hanno il motivo nel loro esito</summary>
+        Done
     }
 
     /// <summary>
@@ -608,6 +602,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Signals = new List<TranslationCueSignal>();
             this.AcceptedCallSeq = null;
             this.AiCorrection = null;
+            this.NotReviewedReason = null;
         }
 
         #endregion
@@ -666,6 +661,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             clone.Signals.AddRange(this.Signals);
             clone.AcceptedCallSeq = this.AcceptedCallSeq;
             clone.AiCorrection = this.AiCorrection != null ? new CueAiCorrection { Before = this.AiCorrection.Before, Explanation = this.AiCorrection.Explanation } : null;
+            clone.NotReviewedReason = this.NotReviewedReason;
             return clone;
         }
 
@@ -722,6 +718,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Testo di prima e motivo della correzione della revisione AI, null se la revisione non l'ha cambiata
         /// </summary>
         public CueAiCorrection AiCorrection { get; set; }
+
+        /// <summary>
+        /// Motivo per cui la revisione AI non ha diagnosticato la battuta, nel codice dei motivi delle battute da rivedere: una
+        /// parte del suo blocco senza diagnosi valida anche dopo i tentativi e i dimezzamenti. Null per una battuta diagnosticata o
+        /// fuori dalla revisione; la modifica a mano lo toglie
+        /// </summary>
+        public string NotReviewedReason { get; set; }
 
         #endregion
     }
@@ -1046,7 +1049,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.LastId = 0;
             this.Status = TranslationReviewBlockStatus.Pending;
             this.Parts = null;
-            this.FailureReason = null;
             this.Issues = new List<TranslationReviewIssue>();
             this.CallSeqs = new List<int>();
         }
@@ -1087,12 +1089,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Le parti già diagnosticate hanno i loro problemi in Issues e la ripresa non le rifà
         /// </summary>
         public List<List<int>> Parts { get; set; }
-
-        /// <summary>
-        /// Motivo per cui il blocco non è rivisto dalla revisione AI, nel codice dei motivi delle battute da rivedere; null fuori
-        /// da quello stato e per i blocchi non rivisti salvati prima che il motivo si tenesse
-        /// </summary>
-        public string FailureReason { get; set; }
 
         /// <summary>
         /// Problemi della diagnosi tenuti, per la correzione anche dopo una ripresa
@@ -1144,7 +1140,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
     /// <summary>
     /// Stato della revisione AI di un blocco in JSON col nome del valore, come gli altri enum dei file della traduzione. In
-    /// lettura accetta anche DiagnosisFailed dei job e degli archivi salvati prima, che diventa il blocco non rivisto
+    /// lettura accetta anche DiagnosisFailed e Failed dei job e degli archivi salvati prima, i blocchi non rivisti di allora, che
+    /// diventano blocchi conclusi: il motivo stava nel blocco e non arriva alle battute
     /// </summary>
     public sealed class TranslationReviewBlockStatusJsonConverter : JsonConverter<TranslationReviewBlockStatus>
     {
@@ -1155,6 +1152,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         private const string LEGACY_DIAGNOSIS_FAILED = "DiagnosisFailed";
 
+        /// <summary>
+        /// Valore tolto: blocco non rivisto, col motivo nel blocco
+        /// </summary>
+        private const string LEGACY_FAILED = "Failed";
+
         #endregion
 
         #region Metodi pubblici
@@ -1163,8 +1165,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public override TranslationReviewBlockStatus Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             string name = reader.TokenType == JsonTokenType.String ? reader.GetString() : null;
-            if (string.Equals(name, LEGACY_DIAGNOSIS_FAILED, StringComparison.OrdinalIgnoreCase))
-                return TranslationReviewBlockStatus.Failed;
+            if (string.Equals(name, LEGACY_DIAGNOSIS_FAILED, StringComparison.OrdinalIgnoreCase) || string.Equals(name, LEGACY_FAILED, StringComparison.OrdinalIgnoreCase))
+                return TranslationReviewBlockStatus.Done;
 
             TranslationReviewBlockStatus status;
             if (name == null || !Array.Exists(Enum.GetNames<TranslationReviewBlockStatus>(), n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase))
