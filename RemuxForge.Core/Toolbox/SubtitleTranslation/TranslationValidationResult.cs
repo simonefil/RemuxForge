@@ -5,12 +5,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// <summary>
     /// Esito della validazione di una consegna
     /// </summary>
-    /// <param name="Cues">Esito di ogni battuta richiesta, in ordine di id; gli errori di consegna stanno su ogni battuta</param>
+    /// <param name="Cues">Esito di ogni battuta richiesta, nell'ordine della richiesta; gli errori di consegna stanno su ogni battuta</param>
     /// <param name="Issues">Problemi degli elementi scartati, senza id</param>
     public sealed record TranslationValidationResult(IReadOnlyList<CueValidationResult> Cues, IReadOnlyList<TranslationValidationIssue> Issues)
     {
         /// <summary>
-        /// Righe degli errori per il ritentativo del modello: prima gli elementi scartati, poi le battute in ordine di id; nessuna
+        /// Righe degli errori per il ritentativo del modello: prima gli elementi scartati, poi le battute nell'ordine della richiesta; nessuna
         /// riga se tutte le battute sono valide
         /// </summary>
         /// <returns>Righe per il modello</returns>

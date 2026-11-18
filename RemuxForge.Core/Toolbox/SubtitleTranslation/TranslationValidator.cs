@@ -156,7 +156,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Valida una consegna di submit_translation sulle battute richieste
         /// </summary>
-        /// <param name="requestedIds">Id richiesti</param>
+        /// <param name="requestedIds">Id richiesti in ordine di tempo, l'ordine dell'esito e dei ritentativi</param>
         /// <param name="cues">Battute che contengono gli id richiesti, con gruppi e ricette</param>
         /// <param name="submissions">Argomenti delle chiamate submit_translation della risposta, nell'ordine; si usa la prima leggibile</param>
         /// <returns>Esito per ogni id richiesto e problemi degli elementi scartati</returns>
@@ -169,7 +169,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     byId[cue.Id.Value] = cue;
             }
             List<int> requested = new List<int>(requestedIds);
-            requested.Sort();
             HashSet<int> requestedSet = new HashSet<int>(requested);
             foreach (int id in requested)
             {

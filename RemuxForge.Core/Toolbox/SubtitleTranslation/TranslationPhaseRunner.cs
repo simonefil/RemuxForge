@@ -617,7 +617,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="state">Stato del file</param>
         /// <param name="ids">Id di partenza</param>
-        /// <returns>Id coi gruppi interi, in ordine crescente</returns>
+        /// <returns>Id coi gruppi interi, nell'ordine di tempo delle battute congelate</returns>
         protected static List<int> ExpandToGroups(TranslationJobFileState state, IEnumerable<int> ids)
         {
             HashSet<int> wanted = new HashSet<int>(ids);
