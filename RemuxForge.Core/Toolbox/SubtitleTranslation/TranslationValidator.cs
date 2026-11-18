@@ -98,6 +98,18 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         private static readonly Regex s_anyMarkSyntax = new Regex("⟦[0-9]* ?|⟧", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        /// <summary>
+        /// Caratteri delle scritture che non separano le parole con spazi (ideogrammi, kana, thai, lao, khmer, birmano, tibetano)
+        /// </summary>
+        private static readonly Regex s_unspacedScript = new Regex(@"[\p{IsCJKUnifiedIdeographs}\p{IsCJKUnifiedIdeographsExtensionA}\p{IsCJKCompatibilityIdeographs}"
+            + @"\p{IsHiragana}\p{IsKatakana}\p{IsKatakanaPhoneticExtensions}\p{IsThai}\p{IsLao}\p{IsKhmer}\p{IsMyanmar}\p{IsTibetan}]",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        /// <summary>
+        /// Parola di una resa: lettere, segni diacritici e cifre a partire da una lettera o una cifra
+        /// </summary>
+        private static readonly Regex s_renderingWord = new Regex(@"[\p{L}\p{N}][\p{L}\p{M}\p{N}]*", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         #endregion
 
         #region Variabili di classe
@@ -110,7 +122,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Termini del glossario pronti per il confronto
         /// </summary>
-        private readonly List<GlossaryTerm> _terms;
+        private readonly List<TermPatterns> _terms;
 
         #endregion
 
@@ -122,20 +134,20 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="format">Formato del file</param>
         /// <param name="sourceLanguage">Lingua d'origine</param>
         /// <param name="targetLanguage">Lingua d'arrivo</param>
-        /// <param name="glossary">Termini del glossario in uso: termine del sorgente e resa</param>
-        public TranslationValidator(SubtitleTranslationFormat format, string sourceLanguage, string targetLanguage, IReadOnlyList<KeyValuePair<string, string>> glossary)
+        /// <param name="glossary">Termini del glossario in uso</param>
+        public TranslationValidator(SubtitleTranslationFormat format, string sourceLanguage, string targetLanguage, IReadOnlyList<GlossaryTerm> glossary)
         {
             this._format = format;
-            this._terms = new List<GlossaryTerm>();
+            this._terms = new List<TermPatterns>();
             string source = LanguageValidator.NormalizeToIso6392(sourceLanguage);
             string target = LanguageValidator.NormalizeToIso6392(targetLanguage);
-            foreach (KeyValuePair<string, string> term in glossary)
+            foreach (GlossaryTerm term in glossary)
             {
-                string sourceWord = StripArticle(term.Key, source);
-                string targetWord = StripArticle(term.Value, target);
+                string sourceWord = StripArticle(term.Source, source);
+                string targetWord = StripArticle(term.Target, target);
                 if (string.IsNullOrEmpty(sourceWord) || string.IsNullOrEmpty(targetWord))
                     continue;
-                this._terms.Add(new GlossaryTerm(term.Key, term.Value, WordPattern(sourceWord), WordPattern(targetWord)));
+                this._terms.Add(new TermPatterns(term.Source, term.Target, WordPattern(sourceWord), RenderingPattern(targetWord, term.Invariable)));
             }
         }
 
@@ -357,13 +369,88 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Espressione che trova una parola intera senza distinguere maiuscole
+        /// Espressione che trova un termine del sorgente a parola intera. Un termine con almeno una maiuscola è un nome proprio o
+        /// un termine che la serie scrive così, e si cerca con le maiuscole esatte: «Light» non trova «turn on the light», «Will»
+        /// non trova «I will». Un termine tutto minuscolo si cerca senza distinguere le maiuscole, così lo trova anche a inizio
+        /// frase. Nelle scritture senza maiuscole le due regole coincidono. Resta preso il nome che è anche una parola comune
+        /// quando questa apre la frase («Light the fire»): distinguerli vorrebbe un vocabolario della lingua
         /// </summary>
-        /// <param name="word">Parola</param>
+        /// <param name="word">Termine senza articolo</param>
         /// <returns>Espressione</returns>
         internal static Regex WordPattern(string word)
         {
-            return new Regex(@"(?<![\p{L}\p{M}\p{N}])" + Regex.Escape(word) + @"(?![\p{L}\p{M}\p{N}])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            RegexOptions options = string.Equals(word, word.ToLowerInvariant(), StringComparison.Ordinal)
+                ? RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
+                : RegexOptions.CultureInvariant;
+
+            return new Regex(@"(?<![\p{L}\p{M}\p{N}])" + Regex.Escape(word) + @"(?![\p{L}\p{M}\p{N}])", options);
+        }
+
+        /// <summary>
+        /// Espressione che trova la resa di un termine nella traduzione, da usare sul testo in forma NFD. Nel dubbio la resa
+        /// conta come presente: una resa mancata la trova la revisione, mentre una resa presente data per assente manda la
+        /// battuta a una riscrittura a pagamento che può guastarla. Le maiuscole non contano mai, perché la resa a inizio
+        /// frase la prende.
+        /// - Scritture senza spazi (ideogrammi, kana, thai...): la resa si cerca contenuta nel testo, perché lì il confine di
+        ///   parola non si vede e i nomi non si flettono.
+        /// - Forma fissa: la resa esatta. Il confine di parola vale sui lati che finiscono con una lettera o una cifra, così
+        ///   «-kun» si trova in «Light-kun».
+        /// - Resa che si flette: in ogni lingua la flessione cambia soprattutto la fine della parola e a volte un diacritico
+        ///   (Titano/Titani, titán/titanes, Haus/Häuser, Москва/Москвы). Senza tabelle per lingua, ogni parola di almeno cinque
+        ///   lettere vale come tema: la parola senza le ultime due lettere (una se ne ha cinque), seguita da al più tre lettere
+        ///   oltre a quelle tolte, senza contare i diacritici. Le parole più corte sono articoli, preposizioni o forme
+        ///   irregolari (del/dei, Dio/Dei): accanto a una parola lunga che àncora la resa valgono come una parola qualsiasi; in
+        ///   una resa di sole parole corte restano esatte, perché un tema di due o tre lettere troverebbe di tutto. Fra le parole
+        ///   vale qualsiasi separatore (dell'Anima/delle Anime) e la punteggiatura in testa e in coda alla resa non conta
+        /// </summary>
+        /// <param name="word">Resa senza articolo</param>
+        /// <param name="invariable">True per una resa in forma fissa</param>
+        /// <returns>Espressione</returns>
+        internal static Regex RenderingPattern(string word, bool invariable)
+        {
+            RegexOptions options = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
+            string decomposed = word.Normalize(NormalizationForm.FormD);
+            if (s_unspacedScript.IsMatch(decomposed))
+                return new Regex(Regex.Escape(decomposed), options);
+
+            // Parole della resa senza diacritici; una di almeno cinque lettere àncora la resa
+            List<string> words = new List<string>();
+            bool anchored = false;
+            foreach (Match match in s_renderingWord.Matches(decomposed))
+            {
+                string bare = Regex.Replace(match.Value, @"\p{M}", "");
+                words.Add(bare);
+                anchored |= bare.Length >= 5;
+            }
+
+            if (invariable || words.Count == 0)
+            {
+                string composed = word.Normalize(NormalizationForm.FormC);
+                return new Regex((char.IsLetterOrDigit(composed[0]) ? @"(?<![\p{L}\p{M}\p{N}])" : "") + Regex.Escape(decomposed)
+                    + (char.IsLetterOrDigit(composed[composed.Length - 1]) ? @"(?![\p{L}\p{M}\p{N}])" : ""), options);
+            }
+
+            StringBuilder pattern = new StringBuilder(@"(?<![\p{L}\p{M}\p{N}])");
+            for (int w = 0; w < words.Count; w++)
+            {
+                if (w > 0)
+                    pattern.Append(@"[^\p{L}\p{M}\p{N}]+");
+                string bare = words[w];
+                if (anchored && bare.Length < 5)
+                {
+                    pattern.Append(@"[\p{L}\p{M}\p{N}]+");
+                    continue;
+                }
+
+                int cut = bare.Length < 5 ? 0 : Math.Min(2, bare.Length - 4);
+                foreach (char letter in bare.Substring(0, bare.Length - cut))
+                    pattern.Append(Regex.Escape(letter.ToString())).Append(@"\p{M}*");
+                if (cut > 0)
+                    pattern.Append(@"(?:[\p{L}\p{N}]\p{M}*){0,").Append((cut + 3).ToString(CultureInfo.InvariantCulture)).Append('}');
+            }
+            pattern.Append(@"(?![\p{L}\p{M}\p{N}])");
+
+            return new Regex(pattern.ToString(), options);
         }
 
         /// <summary>
@@ -551,9 +638,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 translation.Append(GlossaryPlain(texts[i])).Append(' ');
             }
             string joinedSource = source.ToString();
-            string joinedTranslation = translation.ToString();
+            string joinedTranslation = translation.ToString().Normalize(NormalizationForm.FormD);
 
-            foreach (GlossaryTerm term in this._terms)
+            foreach (TermPatterns term in this._terms)
             {
                 if (!term.SourcePattern.IsMatch(joinedSource) || term.TargetPattern.IsMatch(joinedTranslation))
                     continue;
@@ -622,8 +709,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="Source">Termine del sorgente come nel glossario</param>
         /// <param name="Target">Resa come nel glossario</param>
         /// <param name="SourcePattern">Termine senza articolo, a parola intera</param>
-        /// <param name="TargetPattern">Resa senza articolo, a parola intera</param>
-        private sealed record GlossaryTerm(string Source, string Target, Regex SourcePattern, Regex TargetPattern);
+        /// <param name="TargetPattern">Resa senza articolo, flessa se non è in forma fissa, sul testo NFD</param>
+        private sealed record TermPatterns(string Source, string Target, Regex SourcePattern, Regex TargetPattern);
 
         #endregion
     }

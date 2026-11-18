@@ -62,11 +62,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private readonly List<TranslationCallRecord> _calls;
 
         /// <summary>
-        /// Termini del glossario del job per il validatore
-        /// </summary>
-        private readonly List<KeyValuePair<string, string>> _terms;
-
-        /// <summary>
         /// Prima fermata di un file per limite d'uso o errore: gli altri file non avviano unità nuove
         /// </summary>
         private TranslationStop _pause;
@@ -109,9 +104,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this._files = files;
             this._calls = calls;
             this._lock = stateLock;
-            this._terms = new List<KeyValuePair<string, string>>();
-            foreach (GlossaryTerm term in job.Glossary.Terms)
-                this._terms.Add(new KeyValuePair<string, string>(term.Source, term.Target));
             this._pause = null;
         }
 
@@ -230,7 +222,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
 
             return new FileContext(file, TranslationRequestBuilder.CreateTranslationPrefix(this._job.Glossary, file.State.SourceFileName, file.State.Cues),
-                new TranslationValidator(file.Document.Format, this._job.Glossary.SourceLanguage, this._job.Glossary.TargetLanguage, this._terms), shared);
+                new TranslationValidator(file.Document.Format, this._job.Glossary.SourceLanguage, this._job.Glossary.TargetLanguage, this._job.Glossary.Terms), shared);
         }
 
         /// <summary>

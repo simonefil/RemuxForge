@@ -1061,10 +1061,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     if (candidate.Id == id)
                         cue = candidate;
                 }
-                List<KeyValuePair<string, string>> terms = new List<KeyValuePair<string, string>>();
-                foreach (GlossaryTerm term in this._job.Glossary.Terms)
-                    terms.Add(new KeyValuePair<string, string>(term.Source, term.Target));
-                CueValidationResult result = new TranslationValidator(document.Format, this._job.Glossary.SourceLanguage, this._job.Glossary.TargetLanguage, terms).ValidateEdit(cue, text);
+                CueValidationResult result = new TranslationValidator(document.Format, this._job.Glossary.SourceLanguage, this._job.Glossary.TargetLanguage, this._job.Glossary.Terms).ValidateEdit(cue, text);
                 if (result.HasErrors)
                 {
                     List<string> errors = new List<string>();

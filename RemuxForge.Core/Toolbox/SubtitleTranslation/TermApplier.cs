@@ -3,6 +3,7 @@ using RemuxForge.Core.Localization;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -74,12 +75,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     continue;
 
                 // Resa scelta e rese segnalate diverse, a parola intera con le maiuscole esatte e mai sul numero di un segno; la più
-                // lunga prima, così una resa contenuta in un'altra non si trova dentro di lei
+                // lunga prima, così una resa contenuta in un'altra non si trova dentro di lei. Per una resa che si flette, una resa
+                // segnalata che è una sua forma flessa o con la maiuscola d'inizio frase non è diversa
+                Regex targetPattern = TranslationValidator.RenderingPattern(targetWord, term.Invariable);
                 List<string> usages = new List<string>();
                 foreach (NewTermRendering rendering in decision.Renderings)
                 {
                     string used = rendering.Target.Trim();
-                    if (!string.IsNullOrEmpty(used) &&!string.Equals(used, term.Target, StringComparison.Ordinal) && !usages.Contains(used))
+                    if (!string.IsNullOrEmpty(used) && !string.Equals(used, term.Target, StringComparison.Ordinal) && !usages.Contains(used)
+                        && (term.Invariable || !targetPattern.IsMatch(used.Normalize(NormalizationForm.FormD))))
                         usages.Add(used);
                 }
                 Regex usage = null;
@@ -91,7 +95,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         RegexOptions.CultureInvariant);
                 }
 
-                this._added.Add(new AddedTerm(term, TranslationValidator.WordPattern(sourceWord), TranslationValidator.WordPattern(targetWord), usage));
+                this._added.Add(new AddedTerm(term, TranslationValidator.WordPattern(sourceWord), targetPattern, usage));
                 this._updated.Add(new KeyValuePair<string, string>(term.Source, term.Target));
             }
             this._instructions = TranslationRequestBuilder.CreateRewriteInstructions(job.Glossary.SourceLanguage, job.Glossary.TargetLanguage);
@@ -142,7 +146,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                     // Coinvolta col termine nel sorgente e senza la resa scelta, o con una resa segnalata diversa
                     string source = TranslationValidator.GlossaryPlain(context.Frozen[translation.Id].Text);
-                    string plain = TranslationValidator.GlossaryPlain(translation.Text);
+                    string plain = TranslationValidator.GlossaryPlain(translation.Text).Normalize(NormalizationForm.FormD);
                     List<AddedTerm> involved = this._added.FindAll(t => t.SourcePattern.IsMatch(source) && (!t.TargetPattern.IsMatch(plain)
                         || (t.Usage != null && t.Usage.Matches(translation.Text).Any(m => !string.Equals(m.Value, t.Term.Target, StringComparison.Ordinal)))));
                     if (involved.Count == 0)
@@ -322,7 +326,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="Term">Voce del glossario</param>
         /// <param name="SourcePattern">Termine senza articolo, a parola intera</param>
-        /// <param name="TargetPattern">Resa senza articolo, a parola intera</param>
+        /// <param name="TargetPattern">Resa senza articolo, flessa se non è in forma fissa, sul testo NFD</param>
         /// <param name="Usage">Resa scelta e rese segnalate diverse, la più lunga prima e a maiuscole esatte; null senza rese diverse</param>
         private sealed record AddedTerm(GlossaryTerm Term, Regex SourcePattern, Regex TargetPattern, Regex Usage);
 
