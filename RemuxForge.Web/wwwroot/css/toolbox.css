@@ -565,11 +565,15 @@
     gap: 0.25rem 0.75rem;
 }
 
-/* Revisione: griglia virtualizzata ad altezza fissa, segni evidenziati, modifica nella cella */
+/* Revisione: griglia intera come le altre del passo, segni evidenziati, modifica nella cella */
 .rf-translation .rf-translation-review {
     flex: 0 0 auto;
-    height: 60vh;
-    min-height: 16rem;
+}
+
+.rf-translation-shared {
+    margin-inline-end: 0.25rem;
+    font-size: 1rem;
+    vertical-align: middle;
 }
 
 .rf-translation-review-file {

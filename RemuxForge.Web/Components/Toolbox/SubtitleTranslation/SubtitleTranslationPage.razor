@@ -523,13 +523,19 @@
                                 AllowColumnResize="false"
                                 AllowPaging="false"
                                 AllowSorting="false"
-                                AllowVirtualization="true"
                                 Density="Density.Compact"
                                 GridLines="DataGridGridLines.Horizontal"
                                 EmptyText="@AppText.T("web.toolbox.subtitleTranslation.reviewEmpty")">
                     <Columns>
-                        <RadzenDataGridColumn TItem="TranslationReviewRow" Title="#" Width="4rem" TextAlign="TextAlign.Right">
-                            <Template Context="row"><CellText Text="@row.Id.ToString(CultureInfo.CurrentCulture)" /></Template>
+                        <RadzenDataGridColumn TItem="TranslationReviewRow" Title="#" Width="5rem" TextAlign="TextAlign.Right">
+                            <Template Context="row">
+                                @if (row.SharedStretch.HasValue)
+                                {
+                                    <RadzenIcon Icon="repeat" IconStyle="IconStyle.Info" class="rf-translation-shared"
+                                                title="@AppText.F("web.toolbox.subtitleTranslation.sharedStretch", row.SharedStretch.Value)" aria-label="@AppText.F("web.toolbox.subtitleTranslation.sharedStretch", row.SharedStretch.Value)" />
+                                }
+                                <CellText Text="@row.Id.ToString(CultureInfo.CurrentCulture)" />
+                            </Template>
                         </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="TranslationReviewRow" Title="@AppText.T("web.toolbox.subtitleTranslation.times")" Width="8rem">
                             <Template Context="row"><span class="rf-translation-times">@FormatTime(row.StartMs)<br />@FormatTime(row.EndMs)</span></Template>
@@ -555,7 +561,14 @@
                                 else
                                 {
                                     <div class="rf-translation-cue">
-                                        <span class="rf-translation-cell">@MarkedText(row.Text ?? "")</span>
+                                        @if (row.ToReviewReason != null)
+                                        {
+                                            <span class="rf-translation-cell rf-translation-rejected">@row.ToReviewReason</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="rf-translation-cell">@MarkedText(row.Text ?? "")</span>
+                                        }
                                         <RadzenButton Icon="edit" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Base" Disabled="@(busy || !Orchestrator.CanEditCues)"
                                                       title="@AppText.T("web.toolbox.subtitleTranslation.editEntry")" aria-label="@AppText.F("web.toolbox.subtitleTranslation.cueEdit", row.Id)"
                                                       Click="@(() => { _editingCue = row.Id; _cueDraft = row.Text ?? ""; })" />
@@ -566,10 +579,6 @@
                         <RadzenDataGridColumn TItem="TranslationReviewRow" Title="@AppText.T("web.toolbox.subtitleTranslation.warnings")" Width="16%">
                             <Template Context="row">
                                 <span class="rf-translation-warnings">
-                                    @if (row.Group.HasValue)
-                                    {
-                                        <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Base" Text="@AppText.T("web.toolbox.subtitleTranslation.warning.group")" />
-                                    }
                                     @if (row.ToReview)
                                     {
                                         <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Danger" Text="@AppText.T("web.toolbox.subtitleTranslation.warning.toReview")" />
@@ -581,6 +590,14 @@
                                     @if (row.Signals.Contains(TranslationCueSignal.Retried))
                                     {
                                         <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Info" Text="@AppText.T("web.toolbox.subtitleTranslation.warning.retried")" />
+                                    }
+                                    @if (row.Signals.Contains(TranslationCueSignal.NewTerm))
+                                    {
+                                        <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Info" Text="@AppText.T("web.toolbox.subtitleTranslation.warning.newTerm")" />
+                                    }
+                                    @if (row.Signals.Contains(TranslationCueSignal.RewrittenByTerms))
+                                    {
+                                        <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Secondary" Text="@AppText.T("web.toolbox.subtitleTranslation.warning.rewrittenByTerms")" />
                                     }
                                     @if (row.Signals.Contains(TranslationCueSignal.CorrectedByAi))
                                     {
@@ -2021,13 +2038,15 @@
     }
 
     /// <summary>
-    /// True se la battuta è da controllare: da rivedere, col glossario non rispettato, ritentata, corretta dall'AI o modificata a mano
+    /// True se la battuta è da controllare: da rivedere, col glossario non rispettato, ritentata, con un termine nuovo, riscritta coi
+    /// termini nuovi, corretta dall'AI o modificata a mano
     /// </summary>
     /// <param name="row">Riga della revisione</param>
     /// <returns>True per il filtro «Da controllare»</returns>
     private static bool NeedsCheck(TranslationReviewRow row)
     {
         return row.ToReview || row.Signals.Contains(TranslationCueSignal.Glossary) || row.Signals.Contains(TranslationCueSignal.Retried) ||
+            row.Signals.Contains(TranslationCueSignal.NewTerm) || row.Signals.Contains(TranslationCueSignal.RewrittenByTerms) ||
             row.Signals.Contains(TranslationCueSignal.CorrectedByAi) || row.Signals.Contains(TranslationCueSignal.EditedByUser);
     }
 

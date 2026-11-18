@@ -147,13 +147,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Diagnosi salvata, correzione da fare</summary>
         Diagnosed,
 
-        /// <summary>Diagnosi non valida salvata, correzione delle sole da rivedere da fare</summary>
-        DiagnosisFailed,
-
         /// <summary>Blocco rivisto</summary>
         Done,
 
-        /// <summary>Blocco rivisto senza una diagnosi valida</summary>
+        /// <summary>Blocco non rivisto: diagnosi non valida anche al ritentativo, da rifare alla ripresa</summary>
         Failed
     }
 

@@ -1023,9 +1023,18 @@ namespace RemuxForge.Web.Services.Toolbox
                     row.StartMs = cue.StartMs;
                     row.EndMs = cue.EndMs;
                     row.Source = cue.CleanText;
-                    row.Group = cue.Group;
                     row.Text = translation != null ? translation.Text : null;
                     row.ToReview = translation == null || translation.Status == TranslatedCueStatus.ToReview;
+
+                    // Motivo dello stato da rivedere in parole dell'utente: quello del servizio, una parola sola, o i codici dell'ultimo
+                    // rifiuto del validatore
+                    if (row.ToReview && translation != null)
+                    {
+                        List<string> codes = translation.ToReviewReason != null && translation.ToReviewReason.IndexOf(' ') < 0
+                            ? new List<string> { translation.ToReviewReason }
+                            : TranslationValidationIssue.ReadCodes(translation.Rejections.Count > 0 ? translation.Rejections[translation.Rejections.Count - 1].Reasons : new List<string>());
+                        row.ToReviewReason = codes.Count > 0 ? string.Join(" · ", codes.ConvertAll(c => AppText.T(TranslationValidationIssue.REASON_KEY_PREFIX + c))) : null;
+                    }
                     row.Signals = translation != null ? new List<TranslationCueSignal>(translation.Signals) : new List<TranslationCueSignal>();
                     row.CorrectionBefore = translation != null && translation.AiCorrection != null ? translation.AiCorrection.Before : null;
                     row.CorrectionReason = translation != null && translation.AiCorrection != null ? translation.AiCorrection.Explanation : null;
@@ -2260,10 +2269,12 @@ namespace RemuxForge.Web.Services.Toolbox
                     return delivery.Glossary;
 
                 errors = delivery.Errors;
-                this.AppendLog(AppText.F(TEXT_PREFIX + ".deliveryRejected", kind.ToString(), round, string.Join(" ", errors)));
+                this.AppendLog(AppText.F(TEXT_PREFIX + ".deliveryRejected", AppText.T(TEXT_PREFIX + ".calls.kind." + kind), round,
+                    string.Join(", ", TranslationValidationIssue.ReadCodes(errors).ConvertAll(c => AppText.T(TranslationValidationIssue.REASON_KEY_PREFIX + c)))));
             }
 
-            throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.F(TEXT_PREFIX + ".deliveryInvalid", GlossaryBuilder.MAX_ROUNDS, string.Join(" ", errors)));
+            throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.F(TEXT_PREFIX + ".deliveryInvalid", GlossaryBuilder.MAX_ROUNDS,
+                string.Join(", ", TranslationValidationIssue.ReadCodes(errors).ConvertAll(c => AppText.T(TranslationValidationIssue.REASON_KEY_PREFIX + c)))));
         }
 
         /// <summary>
@@ -2913,11 +2924,6 @@ namespace RemuxForge.Web.Services.Toolbox
         public string Source { get; set; }
 
         /// <summary>
-        /// Frase spezzata della battuta, null se nessuna
-        /// </summary>
-        public int? Group { get; set; }
-
-        /// <summary>
         /// Traduzione, null senza testo tradotto
         /// </summary>
         public string Text { get; set; }
@@ -2926,6 +2932,11 @@ namespace RemuxForge.Web.Services.Toolbox
         /// True per una battuta da rivedere o senza traduzione
         /// </summary>
         public bool ToReview { get; set; }
+
+        /// <summary>
+        /// Motivo dello stato da rivedere per l'utente, null fuori da quello stato o senza esito della traduzione
+        /// </summary>
+        public string ToReviewReason { get; set; }
 
         /// <summary>
         /// Segnali della battuta

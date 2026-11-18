@@ -14,13 +14,23 @@ using System.Threading.Tasks;
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
-    /// Revisione AI di un job: per ogni blocco scelto una diagnosi D1 senza ritentativi, poi D2 sulle battute diagnosticate e
-    /// su quelle da rivedere, coi gruppi interi. La diagnosi si salva, anche quella non valida, e alla ripresa il blocco riparte
-    /// da D2; i blocchi di un file vanno in sequenza. Una tratta condivisa si rivede una volta sola, in un blocco suo nel file
-    /// della prima occorrenza, e le correzioni passano a tutte le copie; i blocchi del piano saltano le battute delle tratte
+    /// Revisione AI di un job: per ogni blocco scelto una diagnosi D1 con un ritentativo, poi D2 sulle battute diagnosticate e
+    /// su quelle da rivedere, coi gruppi interi. La diagnosi valida si salva e alla ripresa il blocco riparte da D2; una diagnosi
+    /// non valida anche al ritentativo lascia il blocco non rivisto e ferma la fase, e la ripresa la rifà. I blocchi di un file
+    /// vanno in sequenza. Una tratta condivisa si rivede una volta sola, in un blocco suo nel file della prima occorrenza, e le
+    /// correzioni passano a tutte le copie; i blocchi del piano saltano le battute delle tratte
     /// </summary>
     public sealed class TranslationReviewer : TranslationPhaseRunner
     {
+        #region Costanti
+
+        /// <summary>
+        /// Chiamate D1 di un blocco prima di lasciarlo non rivisto
+        /// </summary>
+        private const int DIAGNOSIS_ATTEMPTS = 2;
+
+        #endregion
+
         #region Variabili di classe
 
         /// <summary>
@@ -104,8 +114,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <inheritdoc />
         protected override bool HasWork(TranslationRunFile file)
         {
-            return file.State.ReviewBlocks.Exists(b => b.Status == TranslationReviewBlockStatus.Pending || b.Status == TranslationReviewBlockStatus.Diagnosed
-                || b.Status == TranslationReviewBlockStatus.DiagnosisFailed);
+            return file.State.ReviewBlocks.Exists(b => b.Status != TranslationReviewBlockStatus.Done);
         }
 
         /// <inheritdoc />
@@ -115,7 +124,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Rivede i blocchi da fare del file uno alla volta; ogni blocco si salva dopo D1 e dopo D2
+        /// Rivede i blocchi da fare del file uno alla volta; ogni blocco si salva dopo D1 e dopo D2. Un blocco senza diagnosi
+        /// valida resta non rivisto e ferma il file con l'errore del servizio
         /// </summary>
         /// <param name="file">File del job</param>
         /// <param name="provider">Provider condiviso</param>
@@ -132,8 +142,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 int count;
                 lock (this._lock)
                 {
-                    block = state.ReviewBlocks.Find(b => b.Status == TranslationReviewBlockStatus.Pending || b.Status == TranslationReviewBlockStatus.Diagnosed
-                        || b.Status == TranslationReviewBlockStatus.DiagnosisFailed);
+                    block = state.ReviewBlocks.Find(b => b.Status != TranslationReviewBlockStatus.Done);
                     number = state.ReviewBlocks.IndexOf(block) + 1;
                     count = state.ReviewBlocks.Count;
                 }
@@ -164,15 +173,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
                 }
 
-                List<TranslationReviewIssue> issues;
-                bool failed = block.Status == TranslationReviewBlockStatus.DiagnosisFailed;
-                if (block.Status != TranslationReviewBlockStatus.Pending)
+                List<TranslationReviewIssue> issues = null;
+                if (block.Status == TranslationReviewBlockStatus.Diagnosed)
                 {
                     issues = block.Issues;
                 }
                 else
                 {
-                    // D1: una chiamata sola; senza una consegna valida il blocco passa alla correzione delle sole da rivedere
+                    // D1 con un ritentativo, anche per un blocco rimasto non rivisto da un giro precedente
                     Dictionary<int, List<string>> signals = new Dictionary<int, List<string>>();
                     foreach (TranslatedCueState translation in translations.Values)
                     {
@@ -181,11 +189,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         foreach (CueRejection rejection in translation.Rejections)
                         {
                             if (translation.Status == TranslatedCueStatus.Accepted)
-                                lines.Add("RETRIED: attempt " + rejection.Attempt.ToString(CultureInfo.InvariantCulture) + " rejected with " + string.Join(", ", ReadCodes(rejection.Reasons)));
+                                lines.Add("RETRIED: attempt " + rejection.Attempt.ToString(CultureInfo.InvariantCulture) + " rejected with " + string.Join(", ", TranslationValidationIssue.ReadCodes(rejection.Reasons)));
                         }
                         if (translation.Status == TranslatedCueStatus.ToReview)
                         {
-                            List<string> codes = translation.Rejections.Count > 0 ? ReadCodes(translation.Rejections[translation.Rejections.Count - 1].Reasons) : new List<string>();
+                            List<string> codes = translation.Rejections.Count > 0 ? TranslationValidationIssue.ReadCodes(translation.Rejections[translation.Rejections.Count - 1].Reasons) : new List<string>();
                             lines.Add("TO_REVIEW: " + (codes.Count > 0 ? string.Join(", ", codes) : translation.ToReviewReason ?? ""));
                         }
                         foreach (GlossaryWarning warning in translation.GlossaryWarnings)
@@ -210,81 +218,82 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
 
                     DeliveryWork diagnosis = new DeliveryWork(unit);
-                    TranslationModelRequest request = this.CreateRequest(TranslationCallKind.D1, state.FileId, this._job.Models.Review, this._job.ReasoningEfforts.Review,
-                        this._diagnosisInstructions, context.Prefix, TranslationRequestBuilder.CreateDiagnosisTail(cues, current, signals), TranslationRequestBuilder.CreateDiagnosisTools());
-                    lock (this._lock)
-                        request.PrefixReused = state.ReviewBlocks.FindAll(b => b.Status == TranslationReviewBlockStatus.Pending).Count > 1;
-                    KeyValuePair<AiResponseResult, TranslationCallRecord> sent = await this.SendAsync(request, state.FileId, diagnosis, ids, null, provider, cancellation);
-                    AiResponseResult response = sent.Key;
-                    TranslationCallRecord record = sent.Value;
-                    record.Usage = new TranslationCallUsage(response.Usage, 0);
-                    issues = new List<TranslationReviewIssue>();
-                    string invalid = null;
-                    if (response.Status == AiResponseStatus.Incomplete)
+                    for (int attempt = 0; attempt < DIAGNOSIS_ATTEMPTS && issues == null; attempt++)
                     {
-                        record.ResponseStatus = TranslationCallResponseStatus.Incomplete;
-                        record.IncompleteReason = response.IncompleteReason;
-                        record.Outcome = TranslationCallOutcome.PartiallyRejected;
-                        failed = true;
-                    }
-                    else
-                    {
-                        JsonArray entries = null;
-                        foreach (JsonObject item in response.Items)
+                        TranslationModelRequest request = this.CreateRequest(TranslationCallKind.D1, state.FileId, this._job.Models.Review, this._job.ReasoningEfforts.Review,
+                            this._diagnosisInstructions, context.Prefix, TranslationRequestBuilder.CreateDiagnosisTail(cues, current, signals), TranslationRequestBuilder.CreateDiagnosisTools());
+                        lock (this._lock)
+                            request.PrefixReused = state.ReviewBlocks.FindAll(b => b.Status == TranslationReviewBlockStatus.Pending).Count > 1;
+                        KeyValuePair<AiResponseResult, TranslationCallRecord> sent = await this.SendAsync(request, state.FileId, diagnosis, ids, attempt > 0 ? attempt : null, provider, cancellation);
+                        AiResponseResult response = sent.Key;
+                        TranslationCallRecord record = sent.Value;
+                        record.Usage = new TranslationCallUsage(response.Usage, 0);
+                        if (response.Status == AiResponseStatus.Incomplete)
                         {
-                            if (AiOAuthFlow.GetString(item, "type") != "function_call" || AiOAuthFlow.GetString(item, "name") != TranslationRequestBuilder.SUBMIT_DIAGNOSIS_TOOL)
-                                continue;
-                            try
-                            {
-                                entries = (JsonNode.Parse(AiOAuthFlow.GetString(item, "arguments") ?? "") as JsonObject)?["issues"] as JsonArray;
-                            }
-                            catch (JsonException)
-                            {
-                                entries = null;
-                            }
-                            break;
-                        }
-
-                        if (entries == null)
-                        {
-                            invalid = "ARGS_INVALID: no submit_diagnosis call with an issues array.";
+                            record.ResponseStatus = TranslationCallResponseStatus.Incomplete;
+                            record.IncompleteReason = response.IncompleteReason;
+                            record.Outcome = TranslationCallOutcome.PartiallyRejected;
                         }
                         else
                         {
-                            // Problemi fuori dal blocco, fuori enum o senza spiegazione si scartano
-                            foreach (JsonNode node in entries)
+                            JsonArray entries = null;
+                            foreach (JsonObject item in response.Items)
                             {
-                                JsonObject entry = node as JsonObject;
-                                int id;
-                                if (entry == null || !(entry["id"] is JsonValue idValue) || !idValue.TryGetValue(out id) || !ids.Contains(id))
+                                if (AiOAuthFlow.GetString(item, "type") != "function_call" || AiOAuthFlow.GetString(item, "name") != TranslationRequestBuilder.SUBMIT_DIAGNOSIS_TOOL)
                                     continue;
-                                string category = AiOAuthFlow.GetString(entry, "category");
-                                string severity = AiOAuthFlow.GetString(entry, "severity");
-                                string explanation = (AiOAuthFlow.GetString(entry, "explanation") ?? "").Trim();
-                                if (!((IList<string>)TranslationRequestBuilder.DIAGNOSIS_CATEGORIES).Contains(category) || !((IList<string>)TranslationRequestBuilder.DIAGNOSIS_SEVERITIES).Contains(severity)
-                                    || string.IsNullOrEmpty(explanation))
-                                    continue;
-                                string suggestion = AiOAuthFlow.GetString(entry, "suggestion");
-                                issues.Add(new TranslationReviewIssue { Id = id, Category = category, Severity = severity, Explanation = explanation, Suggestion = string.IsNullOrEmpty(suggestion) ? null : suggestion });
+                                try
+                                {
+                                    entries = (JsonNode.Parse(AiOAuthFlow.GetString(item, "arguments") ?? "") as JsonObject)?["issues"] as JsonArray;
+                                }
+                                catch (JsonException)
+                                {
+                                    entries = null;
+                                }
+                                break;
+                            }
+
+                            if (entries == null)
+                            {
+                                record.Outcome = TranslationCallOutcome.PartiallyRejected;
+                                record.Rejections.Add(new TranslationCallRejection { Id = null, Reasons = new List<string> { TranslationValidator.ARGS_INVALID + ": no submit_diagnosis call with an issues array." } });
+                            }
+                            else
+                            {
+                                // Problemi fuori dal blocco, fuori enum o senza spiegazione si scartano
+                                issues = new List<TranslationReviewIssue>();
+                                foreach (JsonNode node in entries)
+                                {
+                                    JsonObject entry = node as JsonObject;
+                                    int id;
+                                    if (entry == null || !(entry["id"] is JsonValue idValue) || !idValue.TryGetValue(out id) || !ids.Contains(id))
+                                        continue;
+                                    string category = AiOAuthFlow.GetString(entry, "category");
+                                    string severity = AiOAuthFlow.GetString(entry, "severity");
+                                    string explanation = (AiOAuthFlow.GetString(entry, "explanation") ?? "").Trim();
+                                    if (!((IList<string>)TranslationRequestBuilder.DIAGNOSIS_CATEGORIES).Contains(category) || !((IList<string>)TranslationRequestBuilder.DIAGNOSIS_SEVERITIES).Contains(severity)
+                                        || string.IsNullOrEmpty(explanation))
+                                        continue;
+                                    string suggestion = AiOAuthFlow.GetString(entry, "suggestion");
+                                    issues.Add(new TranslationReviewIssue { Id = id, Category = category, Severity = severity, Explanation = explanation, Suggestion = string.IsNullOrEmpty(suggestion) ? null : suggestion });
+                                }
+                                record.Outcome = TranslationCallOutcome.Accepted;
+                                record.Issues = issues.Count;
                             }
                         }
-
-                        failed = invalid != null;
-                        record.Outcome = failed ? TranslationCallOutcome.PartiallyRejected : TranslationCallOutcome.Accepted;
-                        record.Issues = failed ? null : issues.Count;
-                        if (failed)
-                            record.Rejections.Add(new TranslationCallRejection { Id = null, Reasons = new List<string> { invalid } });
+                        this.RecordCall(record, diagnosis);
                     }
-                    this.RecordCall(record, diagnosis);
 
-                    // Diagnosi salvata anche non valida: uno Stop durante D2 non la fa ripagare
+                    // Diagnosi valida salvata: uno Stop durante D2 non la fa ripagare. Senza, il blocco resta non rivisto con le sue
+                    // chiamate e il file si ferma: la ripresa rifà D1
                     lock (this._lock)
                     {
-                        block.Issues = issues;
-                        block.Status = failed ? TranslationReviewBlockStatus.DiagnosisFailed : TranslationReviewBlockStatus.Diagnosed;
+                        block.Issues = issues ?? new List<TranslationReviewIssue>();
+                        block.Status = issues != null ? TranslationReviewBlockStatus.Diagnosed : TranslationReviewBlockStatus.Failed;
                         block.CallSeqs.AddRange(diagnosis.CallSeqs);
                         this.SaveFile(state);
                     }
+                    if (issues == null)
+                        throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.F("toolbox.subtitleTranslation.review.diagnosisFailed", file.FileName, number, count));
                 }
 
                 // D2: diagnosticate e da rivedere, coi gruppi interi
@@ -346,7 +355,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             touched.UnionWith(context.Shared[result.Id].Spread(state, result.Id, this._files.ConvertAll(f => f.State)));
                     }
 
-                    block.Status = failed ? TranslationReviewBlockStatus.Failed : TranslationReviewBlockStatus.Done;
+                    block.Status = TranslationReviewBlockStatus.Done;
                     block.CallSeqs.AddRange(correction.CallSeqs);
                     foreach (TranslationJobFileState other in touched)
                     {
@@ -392,31 +401,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 foreach (TranslationRunFile file in this._files)
                 {
                     total += file.State.ReviewBlocks.Count;
-                    done += file.State.ReviewBlocks.FindAll(b => b.Status == TranslationReviewBlockStatus.Done || b.Status == TranslationReviewBlockStatus.Failed).Count;
+                    done += file.State.ReviewBlocks.FindAll(b => b.Status == TranslationReviewBlockStatus.Done).Count;
                 }
             }
 
             this.RaiseProgress(done, total, fileName, number, count);
-        }
-
-        /// <summary>
-        /// Codici degli errori dalle righe del validatore «id CODICE: messaggio»
-        /// </summary>
-        /// <param name="reasons">Righe di un rifiuto</param>
-        /// <returns>Codici distinti nell'ordine</returns>
-        private static List<string> ReadCodes(List<string> reasons)
-        {
-            List<string> codes = new List<string>();
-            foreach (string reason in reasons)
-            {
-                int space = reason.IndexOf(' ');
-                int colon = reason.IndexOf(':');
-                string code = colon < 0 ? reason : space >= 0 && space < colon ? reason.Substring(space + 1, colon - space - 1) : reason.Substring(0, colon);
-                if (!codes.Contains(code))
-                    codes.Add(code);
-            }
-
-            return codes;
         }
 
         #endregion

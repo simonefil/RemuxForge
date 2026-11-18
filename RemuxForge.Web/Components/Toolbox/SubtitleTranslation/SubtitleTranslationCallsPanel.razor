@@ -1,7 +1,8 @@
 @using RemuxForge.Core.Toolbox.SubtitleTranslation
 @using System.Globalization
 
-@* Registro delle chiamate del progetto: una riga per tentativo, con il dettaglio di rifiuti ed errori nella riga aperta *@
+@* Registro delle chiamate del progetto: una riga per tentativo, con il dettaglio di rifiuti ed errori nella riga aperta in parole
+   dell'utente; del servizio restano, etichettati, il codice dell'errore e il motivo d'interruzione che l'app non conosce *@
 <RadzenPanel class="rf-translation-calls" AllowCollapse="true" Collapsed="@_collapsed" Expand="@(() => _collapsed = false)" Collapse="@(() => _collapsed = true)"
              Text="@AppText.F("web.toolbox.subtitleTranslation.calls.title", Calls.Count)">
     <ChildContent>
@@ -21,18 +22,22 @@
                 <div class="rf-translation-calls-detail">
                     @if (call.ErrorKind.HasValue)
                     {
-                        <div>@(call.ErrorKind.Value.ToString() + (string.IsNullOrEmpty(call.ServiceCode) ? "" : " · " + call.ServiceCode))</div>
+                        <div>@AppText.T("web.toolbox.subtitleTranslation.calls.errorKind." + call.ErrorKind.Value)</div>
+                        @if (!string.IsNullOrEmpty(call.ServiceCode))
+                        {
+                            <div>@AppText.F("web.toolbox.subtitleTranslation.calls.serviceCode", call.ServiceCode)</div>
+                        }
                     }
                     @if (!string.IsNullOrEmpty(call.IncompleteReason))
                     {
-                        <div>@call.IncompleteReason</div>
+                        string incompleteKey = "web.toolbox.subtitleTranslation.calls.incomplete." + call.IncompleteReason;
+                        string incomplete = AppText.T(incompleteKey);
+                        <div>@(incomplete == "[" + incompleteKey + "]" ? AppText.F("web.toolbox.subtitleTranslation.calls.incompleteOther", call.IncompleteReason) : incomplete)</div>
                     }
                     @foreach (TranslationCallRejection rejection in call.Rejections)
                     {
-                        @foreach (string reason in rejection.Reasons)
-                        {
-                            <div>@(rejection.Id.HasValue ? rejection.Id.Value.ToString(CultureInfo.CurrentCulture) + " — " + reason : reason)</div>
-                        }
+                        string reasons = string.Join(", ", TranslationValidationIssue.ReadCodes(rejection.Reasons).ConvertAll(c => AppText.T(TranslationValidationIssue.REASON_KEY_PREFIX + c)));
+                        <div>@(rejection.Id.HasValue ? AppText.F("web.toolbox.subtitleTranslation.calls.rejectedCue", rejection.Id.Value.ToString(CultureInfo.CurrentCulture), reasons) : reasons)</div>
                     }
                 </div>
             </Template>
@@ -40,8 +45,8 @@
                 <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.time")" Width="6rem">
                     <Template Context="call"><CellText Text="@call.StartedAt.ToLocalTime().ToString("T", CultureInfo.CurrentCulture)" /></Template>
                 </RadzenDataGridColumn>
-                <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.kind")" Width="5rem">
-                    <Template Context="call"><CellText Text="@(call.Kind.ToString() + (call.Round.HasValue && call.Round.Value > 1 ? " · " + call.Round.Value.ToString(CultureInfo.CurrentCulture)
+                <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.kind")" Width="10rem">
+                    <Template Context="call"><CellText Text="@(AppText.T("web.toolbox.subtitleTranslation.calls.kind." + call.Kind) + (call.Round.HasValue && call.Round.Value > 1 ? " · " + call.Round.Value.ToString(CultureInfo.CurrentCulture)
                         : call.Attempt.HasValue && call.Attempt.Value > 0 ? " · " + call.Attempt.Value.ToString(CultureInfo.CurrentCulture) : ""))" /></Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="TranslationCallRecord" Title="@AppText.T("web.dashboard.file")" Width="20%">

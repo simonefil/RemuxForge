@@ -449,8 +449,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
                 else
                 {
-                    this.RaiseLog(AppText.F("toolbox.subtitleTranslation.run.blockSaved", file.FileName, number, count, work.FirstAccepted, work.FirstRejected,
-                        work.FirstReasons.Count > 0 ? string.Join(", ", work.FirstReasons) : "-"));
+                    List<string> reasons = new List<string>();
+                    foreach (string code in work.FirstReasons)
+                        reasons.Add(AppText.T(TranslationValidationIssue.REASON_KEY_PREFIX + code));
+                    this.RaiseLog(AppText.F(work.FirstRejected > 0 ? "toolbox.subtitleTranslation.run.blockSavedRejected" : "toolbox.subtitleTranslation.run.blockSaved",
+                        file.FileName, number, count, work.FirstAccepted, work.FirstRejected, string.Join(", ", reasons)));
                 }
 
                 this.ReportProgress(file.FileName, number, count);
