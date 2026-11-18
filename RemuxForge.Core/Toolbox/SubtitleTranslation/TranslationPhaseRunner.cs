@@ -126,7 +126,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="maxParallel">File in parallelo</param>
         /// <param name="cancellation">Annullamento di Stop</param>
         /// <returns>Fermata, null se nessun file si è fermato</returns>
-        public async Task<TranslationStop> RunAsync(ITranslationModelProvider provider, int maxParallel, CancellationToken cancellation)
+        public virtual async Task<TranslationStop> RunAsync(ITranslationModelProvider provider, int maxParallel, CancellationToken cancellation)
         {
             Queue<TranslationRunFile> queue = new Queue<TranslationRunFile>();
             foreach (TranslationRunFile file in this._files)
@@ -216,14 +216,21 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         protected abstract Task ProcessFileAsync(TranslationRunFile file, ITranslationModelProvider provider, CancellationToken cancellation);
 
         /// <summary>
-        /// Contesto di un file per le chiamate: prefisso col glossario del job e validatore coi suoi termini
+        /// Contesto di un file per le chiamate: prefisso col glossario del job, validatore coi suoi termini e battute delle tratte
+        /// condivise
         /// </summary>
         /// <param name="file">File del job</param>
         /// <returns>Contesto del file</returns>
         protected FileContext CreateContext(TranslationRunFile file)
         {
+            Dictionary<int, SharedStretch> shared;
+            lock (this._lock)
+            {
+                shared = SharedStretch.MapFile(this._job.SharedStretches, file.State.FileId);
+            }
+
             return new FileContext(file, TranslationRequestBuilder.CreateTranslationPrefix(this._job.Glossary, file.State.SourceFileName, file.State.Cues),
-                new TranslationValidator(file.Document.Format, this._job.Glossary.SourceLanguage, this._job.Glossary.TargetLanguage, this._terms));
+                new TranslationValidator(file.Document.Format, this._job.Glossary.SourceLanguage, this._job.Glossary.TargetLanguage, this._terms), shared);
         }
 
         /// <summary>
@@ -351,7 +358,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         if (Enum.TryParse(AiOAuthFlow.GetString(entry, "kind"), true, out termKind) && Enum.IsDefined(termKind))
                             term.Kind = termKind;
                         term.Invariable = entry["invariable"] is JsonValue invariable && invariable.GetValueKind() == JsonValueKind.True;
-                        term.BlockIndex = work.BlockIndex.Value;
+                        term.BlockIndex = work.BlockIndex ?? 0;
                         string word = TranslationValidator.StripArticle(term.Source, LanguageValidator.NormalizeToIso6392(this._job.Glossary.SourceLanguage));
                         if (!string.IsNullOrEmpty(word))
                         {
@@ -690,11 +697,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             /// <param name="file">File del job</param>
             /// <param name="prefix">Messaggio di prefisso</param>
             /// <param name="validator">Validatore del file</param>
-            public FileContext(TranslationRunFile file, string prefix, TranslationValidator validator)
+            /// <param name="shared">Tratta condivisa per id delle battute del file che ne fanno parte</param>
+            public FileContext(TranslationRunFile file, string prefix, TranslationValidator validator, Dictionary<int, SharedStretch> shared)
             {
                 this.File = file;
                 this.Prefix = prefix;
                 this.Validator = validator;
+                this.Shared = shared;
                 this.Frozen = new Dictionary<int, FrozenCue>();
                 foreach (FrozenCue cue in file.State.Cues)
                     this.Frozen[cue.Id] = cue;
@@ -756,6 +765,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             /// Battute congelate per id
             /// </summary>
             public Dictionary<int, FrozenCue> Frozen { get; }
+
+            /// <summary>
+            /// Tratta condivisa per id delle battute del file che ne fanno parte
+            /// </summary>
+            public Dictionary<int, SharedStretch> Shared { get; }
 
             #endregion
         }

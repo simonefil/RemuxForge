@@ -783,9 +783,13 @@ namespace RemuxForge.Web.Services.Toolbox
                     job.GlossaryRevisionAtStart = this._project.Glossary.Revision;
                     job.ReviewMode = this._project.Options.ReviewMode;
                     job.Status = TranslationJobStatus.Idle;
+                    List<KeyValuePair<string, SubtitleTranslationDocument>> documents = new List<KeyValuePair<string, SubtitleTranslationDocument>>();
+                    foreach (TranslationProjectFile file in this._project.Files)
+                        documents.Add(new KeyValuePair<string, SubtitleTranslationDocument>(file.Id, this._documents[file.Id]));
+                    job.SharedStretches = SharedStretchDetector.Detect(documents);
                     foreach (TranslationProjectFile file in this._project.Files)
                     {
-                        TranslationJobFileState state = TranslationRunner.CreateFileState(file, this._documents[file.Id]);
+                        TranslationJobFileState state = TranslationRunner.CreateFileState(file, this._documents[file.Id], SharedStretch.MapFile(job.SharedStretches, file.Id).Keys);
                         job.FileIds.Add(file.Id);
                         this._jobFiles[file.Id] = state;
                         this._jobStore.SaveFile(job.Id, state);
@@ -839,8 +843,16 @@ namespace RemuxForge.Web.Services.Toolbox
                     return;
                 }
 
+                // Le tratte perdono le occorrenze del file vecchio e cercano quelle del nuovo, che prende le copie già tradotte
                 this._documents[fileId] = document;
-                state = TranslationRunner.CreateFileState(file, document);
+                SharedStretchDetector.Detach(this._job.SharedStretches, fileId);
+                SharedStretchDetector.Attach(this._job.SharedStretches, fileId, document);
+                state = TranslationRunner.CreateFileState(file, document, SharedStretch.MapFile(this._job.SharedStretches, fileId).Keys);
+                foreach (SharedStretch stretch in this._job.SharedStretches)
+                {
+                    if (stretch.Status == TranslationBlockStatus.Done)
+                        stretch.CopyInto(state);
+                }
                 this._jobFiles[fileId] = state;
                 this._jobStore.SaveFile(this._job.Id, state);
                 this._jobStore.Save(this._job);
@@ -871,6 +883,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 this._job.FileIds.Remove(fileId);
                 this._jobFiles.Remove(fileId);
                 this._jobStore.DeleteFile(this._job.Id, fileId);
+                SharedStretchDetector.Detach(this._job.SharedStretches, fileId);
                 if (this._job.Phase == TranslationJobPhase.Translation && this._job.FileIds.TrueForAll(id => this._jobFiles[id].TranslationStatus == TranslationFileStatus.Completed))
                 {
                     this.FinishTranslation();
@@ -996,6 +1009,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 Dictionary<int, TranslatedCueState> translations = new Dictionary<int, TranslatedCueState>();
                 foreach (TranslatedCueState translation in state.Translations)
                     translations[translation.Id] = translation;
+                Dictionary<int, SharedStretch> shared = SharedStretch.MapFile(this._job.SharedStretches, fileId);
                 foreach (SubtitleCue cue in document.Cues)
                 {
                     if (!cue.Id.HasValue)
@@ -1003,6 +1017,7 @@ namespace RemuxForge.Web.Services.Toolbox
 
                     TranslatedCueState translation;
                     translations.TryGetValue(cue.Id.Value, out translation);
+                    SharedStretch stretch;
                     TranslationReviewRow row = new TranslationReviewRow();
                     row.Id = cue.Id.Value;
                     row.StartMs = cue.StartMs;
@@ -1014,6 +1029,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     row.Signals = translation != null ? new List<TranslationCueSignal>(translation.Signals) : new List<TranslationCueSignal>();
                     row.CorrectionBefore = translation != null && translation.AiCorrection != null ? translation.AiCorrection.Before : null;
                     row.CorrectionReason = translation != null && translation.AiCorrection != null ? translation.AiCorrection.Explanation : null;
+                    row.SharedStretch = shared.TryGetValue(cue.Id.Value, out stretch) ? stretch.Index : null;
                     rows.Add(row);
                 }
             }
@@ -1023,7 +1039,8 @@ namespace RemuxForge.Web.Services.Toolbox
 
         /// <summary>
         /// Salva la modifica a mano di una battuta: stesso validatore delle consegne, avvisi del glossario ricalcolati, segnale
-        /// «Modificata a mano» e versione più uno; un testo con errori non si salva
+        /// «Modificata a mano» e versione più uno; un testo con errori non si salva. In una tratta condivisa la modifica va in tutte
+        /// le copie
         /// </summary>
         /// <param name="fileId">File del job</param>
         /// <param name="id">Battuta</param>
@@ -1072,6 +1089,15 @@ namespace RemuxForge.Web.Services.Toolbox
                 translation.SetText(result.Text, result.GetGlossaryWarnings());
                 if (!translation.Signals.Contains(TranslationCueSignal.EditedByUser))
                     translation.Signals.Add(TranslationCueSignal.EditedByUser);
+                SharedStretch stretch;
+                if (SharedStretch.MapFile(this._job.SharedStretches, fileId).TryGetValue(id, out stretch))
+                {
+                    foreach (TranslationJobFileState other in stretch.Spread(state, id, this._jobFiles.Values))
+                    {
+                        if (other != state)
+                            this._jobStore.SaveFile(this._job.Id, other);
+                    }
+                }
                 this._jobStore.SaveFile(this._job.Id, state);
                 this._jobStore.Save(this._job);
             }
@@ -1395,6 +1421,8 @@ namespace RemuxForge.Web.Services.Toolbox
 
                 Dictionary<string, int> lastSaved = new Dictionary<string, int>(StringComparer.Ordinal);
                 HashSet<int> saved = new HashSet<int>();
+                foreach (SharedStretch stretch in this._job.SharedStretches)
+                    saved.UnionWith(stretch.CallSeqs);
                 foreach (TranslationJobFileState state in this._jobFiles.Values)
                 {
                     List<int> seqs = new List<int>();
@@ -1738,6 +1766,13 @@ namespace RemuxForge.Web.Services.Toolbox
                     if (phase == TranslationJobPhase.Translation)
                     {
                         this.AppendLog(AppText.Count(TEXT_PREFIX + ".translationStarted", files.FindAll(f => f.State.TranslationStatus != TranslationFileStatus.Completed).Count, parallel));
+                        int stretches;
+                        lock (this.StateLock)
+                        {
+                            stretches = job.SharedStretches.FindAll(s => s.Status == TranslationBlockStatus.Pending).Count;
+                        }
+                        if (stretches > 0)
+                            this.AppendLog(AppText.Count(TEXT_PREFIX + ".sharedStretchesStarted", stretches));
                         TranslationRunner runner = new TranslationRunner(this._jobStore, job, files, this._jobCalls, this.StateLock);
                         this.AttachRunner(runner, TEXT_PREFIX + ".jobProgress", TEXT_PREFIX + ".blockOfFile", null);
                         stop = await runner.RunAsync(provider, parallel, this.OperationCancellationToken);
@@ -2896,6 +2931,12 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Motivo della correzione della revisione AI, null se nessuno
         /// </summary>
         public string CorrectionReason { get; set; }
+
+        /// <summary>
+        /// Numero della tratta ripetuta fra i file a cui la battuta appartiene, null fuori dalle tratte: la traduzione è la stessa in
+        /// tutte le occorrenze e una modifica le cambia tutte
+        /// </summary>
+        public int? SharedStretch { get; set; }
 
         #endregion
     }

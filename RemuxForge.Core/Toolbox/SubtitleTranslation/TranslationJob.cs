@@ -195,6 +195,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.DisabledCapabilities = new List<string>();
             this.ReviewMode = TranslationReviewMode.Targeted;
             this.NewTerms = new List<NewTermDecision>();
+            this.SharedStretches = new List<SharedStretch>();
         }
 
         #endregion
@@ -285,6 +286,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Termini nuovi raccolti a fine traduzione, con la decisione dell'utente
         /// </summary>
         public List<NewTermDecision> NewTerms { get; set; }
+
+        /// <summary>
+        /// Tratte ripetute fra i file, tradotte una volta sola; vuoto nei job creati prima delle tratte
+        /// </summary>
+        public List<SharedStretch> SharedStretches { get; set; }
 
         #endregion
     }
@@ -554,6 +560,29 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 this.Signals.Add(TranslationCueSignal.Glossary);
         }
 
+        /// <summary>
+        /// Copia indipendente dell'esito con un altro id, per le copie di una tratta condivisa
+        /// </summary>
+        /// <param name="id">Id della copia</param>
+        /// <returns>Esito copiato</returns>
+        public TranslatedCueState Clone(int id)
+        {
+            TranslatedCueState clone = new TranslatedCueState();
+            clone.Id = id;
+            clone.Status = this.Status;
+            clone.Text = this.Text;
+            clone.Attempts = this.Attempts;
+            foreach (CueRejection rejection in this.Rejections)
+                clone.Rejections.Add(new CueRejection { CallSeq = rejection.CallSeq, Attempt = rejection.Attempt, Reasons = new List<string>(rejection.Reasons) });
+            clone.ToReviewReason = this.ToReviewReason;
+            foreach (GlossaryWarning warning in this.GlossaryWarnings)
+                clone.GlossaryWarnings.Add(new GlossaryWarning { Source = warning.Source, Target = warning.Target });
+            clone.Signals.AddRange(this.Signals);
+            clone.AcceptedCallSeq = this.AcceptedCallSeq;
+            clone.AiCorrection = this.AiCorrection != null ? new CueAiCorrection { Before = this.AiCorrection.Before, Explanation = this.AiCorrection.Explanation } : null;
+            return clone;
+        }
+
         #endregion
 
         #region Proprietà
@@ -747,7 +776,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public int CallSeq { get; set; }
 
         /// <summary>
-        /// Blocco della chiamata
+        /// Blocco della chiamata, 0 per una tratta condivisa
         /// </summary>
         public int BlockIndex { get; set; }
 
@@ -919,6 +948,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public TranslationReviewBlock()
         {
             this.BlockIndex = 0;
+            this.SharedStretch = null;
             this.FirstId = 0;
             this.LastId = 0;
             this.Status = TranslationReviewBlockStatus.Pending;
@@ -934,6 +964,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Blocco del piano
         /// </summary>
         public int BlockIndex { get; set; }
+
+        /// <summary>
+        /// Tratta condivisa rivista dal blocco, sulle sole battute della sua prima occorrenza; null per un blocco del piano, che
+        /// salta le battute delle tratte
+        /// </summary>
+        public int? SharedStretch { get; set; }
 
         /// <summary>
         /// Primo id del blocco

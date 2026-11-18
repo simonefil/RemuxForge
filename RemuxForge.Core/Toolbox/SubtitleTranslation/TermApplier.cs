@@ -12,8 +12,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// <summary>
     /// Applicazione dei termini aggiunti al passo dei termini nuovi: per file, le battute accettate col termine nel sorgente e
     /// senza la resa nella traduzione o con una resa segnalata diversa. Il codice sostituisce le rese segnalate dei nomi
-    /// invariabili; il resto va a C, coi gruppi interi e al più 80 battute a chiamata. Il file è l'unità che si salva: la
-    /// fermata di un altro file lo lascia finire, uno Stop lo rifà
+    /// invariabili; il resto va a C, coi gruppi interi e al più 80 battute a chiamata. Le copie di una tratta condivisa si
+    /// lasciano alla prima occorrenza, che le riscrive tutte. Il file è l'unità che si salva: la fermata di un altro file lo
+    /// lascia finire, uno Stop lo rifà
     /// </summary>
     public sealed class TermApplier : TranslationPhaseRunner
     {
@@ -134,7 +135,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 {
                     if (translation.Text != null)
                         current[translation.Id] = translation.Text;
-                    if (translation.Status != TranslatedCueStatus.Accepted || translation.Text == null)
+                    SharedStretch stretch;
+                    if (translation.Status != TranslatedCueStatus.Accepted || translation.Text == null
+                        || (context.Shared.TryGetValue(translation.Id, out stretch) && !stretch.IsMaster(state.FileId, translation.Id)))
                         continue;
 
                     // Coinvolta col termine nel sorgente e senza la resa scelta, o con una resa segnalata diversa
@@ -260,6 +263,20 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (!translation.Signals.Contains(TranslationCueSignal.RewrittenByTerms))
                         translation.Signals.Add(TranslationCueSignal.RewrittenByTerms);
                     state.TermApplication.RewrittenIds.Add(pair.Key);
+                }
+
+                // Battute delle tratte toccate: uguali in tutte le copie
+                HashSet<TranslationJobFileState> touched = new HashSet<TranslationJobFileState>();
+                foreach (int id in texts.Keys)
+                {
+                    SharedStretch stretch;
+                    if (context.Shared.TryGetValue(id, out stretch))
+                        touched.UnionWith(stretch.Spread(state, id, this._files.ConvertAll(f => f.State)));
+                }
+                foreach (TranslationJobFileState other in touched)
+                {
+                    if (other != state)
+                        this._store.SaveFile(this._job.Id, other);
                 }
 
                 state.TermApplication.RewrittenIds.Sort();

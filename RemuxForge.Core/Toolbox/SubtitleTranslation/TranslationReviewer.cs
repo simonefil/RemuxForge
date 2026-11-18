@@ -16,7 +16,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// <summary>
     /// Revisione AI di un job: per ogni blocco scelto una diagnosi D1 senza ritentativi, poi D2 sulle battute diagnosticate e
     /// su quelle da rivedere, coi gruppi interi. La diagnosi si salva, anche quella non valida, e alla ripresa il blocco riparte
-    /// da D2; i blocchi di un file vanno in sequenza
+    /// da D2; i blocchi di un file vanno in sequenza. Una tratta condivisa si rivede una volta sola, in un blocco suo nel file
+    /// della prima occorrenza, e le correzioni passano a tutte le copie; i blocchi del piano saltano le battute delle tratte
     /// </summary>
     public sealed class TranslationReviewer : TranslationPhaseRunner
     {
@@ -71,17 +72,25 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (state.ReviewBlocks != null)
                         continue;
 
-                    // Blocchi del piano finale, dimezzamenti compresi; nella mirata solo quelli con almeno una battuta segnalata
+                    // Blocchi del piano finale, dimezzamenti compresi, senza le battute delle tratte; poi un blocco per ogni tratta di
+                    // cui il file ha la prima occorrenza. Nella mirata solo quelli con almeno una battuta segnalata
+                    Dictionary<int, SharedStretch> shared = SharedStretch.MapFile(job.SharedStretches, state.FileId);
+                    Predicate<TranslatedCueState> signalled = t => t.Status == TranslatedCueStatus.ToReview || t.Signals.Contains(TranslationCueSignal.Retried)
+                        || t.Signals.Contains(TranslationCueSignal.Glossary) || t.Signals.Contains(TranslationCueSignal.NewTerm) || t.Signals.Contains(TranslationCueSignal.RewrittenByTerms);
                     state.ReviewBlocks = new List<TranslationReviewBlock>();
                     foreach (TranslationBlock block in state.Blocks)
                     {
                         if (block.Status == TranslationBlockStatus.Split)
                             continue;
-                        bool signalled = state.Translations.Exists(t => t.Id >= block.FirstId && t.Id <= block.LastId && (t.Status == TranslatedCueStatus.ToReview
-                            || t.Signals.Contains(TranslationCueSignal.Retried) || t.Signals.Contains(TranslationCueSignal.Glossary)
-                            || t.Signals.Contains(TranslationCueSignal.NewTerm) || t.Signals.Contains(TranslationCueSignal.RewrittenByTerms)));
-                        if (job.ReviewMode == TranslationReviewMode.Full || signalled)
+                        if (job.ReviewMode == TranslationReviewMode.Full || state.Translations.Exists(t => t.Id >= block.FirstId && t.Id <= block.LastId && !shared.ContainsKey(t.Id) && signalled(t)))
                             state.ReviewBlocks.Add(new TranslationReviewBlock { BlockIndex = block.Index, FirstId = block.FirstId, LastId = block.LastId });
+                    }
+                    foreach (SharedStretch stretch in job.SharedStretches)
+                    {
+                        List<int> lines = stretch.Occurrences[0].Ids;
+                        if (stretch.Occurrences[0].FileId == state.FileId
+                            && (job.ReviewMode == TranslationReviewMode.Full || state.Translations.Exists(t => lines.Contains(t.Id) && signalled(t))))
+                            state.ReviewBlocks.Add(new TranslationReviewBlock { SharedStretch = stretch.Index, FirstId = lines[0], LastId = lines[lines.Count - 1] });
                     }
                 }
             }
@@ -134,15 +143,19 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                 cancellation.ThrowIfCancellationRequested();
                 this.ReportProgress(file.FileName, number, count);
-                List<FrozenCue> cues = state.Cues.FindAll(c => c.Id >= block.FirstId && c.Id <= block.LastId);
+
+                // Un blocco del piano salta le battute delle tratte, quello di una tratta ha solo le sue
+                int? unit = block.SharedStretch.HasValue ? null : block.BlockIndex;
+                List<FrozenCue> cues = state.Cues.FindAll(c => c.Id >= block.FirstId && c.Id <= block.LastId && (block.SharedStretch.HasValue || !context.Shared.ContainsKey(c.Id)));
                 List<int> ids = cues.ConvertAll(c => c.Id);
+                HashSet<int> inBlock = new HashSet<int>(ids);
                 Dictionary<int, string> current = new Dictionary<int, string>();
                 Dictionary<int, TranslatedCueState> translations = new Dictionary<int, TranslatedCueState>();
                 lock (this._lock)
                 {
                     foreach (TranslatedCueState translation in state.Translations)
                     {
-                        if (translation.Id < block.FirstId || translation.Id > block.LastId)
+                        if (!inBlock.Contains(translation.Id))
                             continue;
                         translations[translation.Id] = translation;
                         if (translation.Text != null)
@@ -195,7 +208,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             signals[translation.Id] = lines;
                     }
 
-                    DeliveryWork diagnosis = new DeliveryWork(block.BlockIndex);
+                    DeliveryWork diagnosis = new DeliveryWork(unit);
                     TranslationModelRequest request = this.CreateRequest(TranslationCallKind.D1, state.FileId, this._job.Models.Review, this._job.ReasoningEfforts.Review,
                         this._diagnosisInstructions, context.Prefix, TranslationRequestBuilder.CreateDiagnosisTail(cues, current, signals), TranslationRequestBuilder.CreateDiagnosisTools());
                     KeyValuePair<AiResponseResult, TranslationCallRecord> sent = await this.SendAsync(request, state.FileId, diagnosis, ids, null, provider, cancellation);
@@ -283,7 +296,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 List<int> deliver = ExpandToGroups(state, wanted);
 
                 int corrected = 0;
-                DeliveryWork correction = new DeliveryWork(block.BlockIndex);
+                DeliveryWork correction = new DeliveryWork(unit);
                 if (deliver.Count > 0)
                 {
                     DeliveryPlan plan = new DeliveryPlan
@@ -309,6 +322,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                 lock (this._lock)
                 {
+                    HashSet<TranslationJobFileState> touched = new HashSet<TranslationJobFileState>();
                     foreach (TranslatedCueState result in correction.Results.Values)
                     {
                         TranslatedCueState translation;
@@ -323,10 +337,19 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         if (!translation.Signals.Contains(TranslationCueSignal.CorrectedByAi))
                             translation.Signals.Add(TranslationCueSignal.CorrectedByAi);
                         corrected++;
+
+                        // Correzione di una tratta: uguale in tutte le copie
+                        if (block.SharedStretch.HasValue)
+                            touched.UnionWith(context.Shared[result.Id].Spread(state, result.Id, this._files.ConvertAll(f => f.State)));
                     }
 
                     block.Status = failed ? TranslationReviewBlockStatus.Failed : TranslationReviewBlockStatus.Done;
                     block.CallSeqs.AddRange(correction.CallSeqs);
+                    foreach (TranslationJobFileState other in touched)
+                    {
+                        if (other != state)
+                            this._store.SaveFile(this._job.Id, other);
+                    }
                     this.SaveFile(state);
                 }
 
