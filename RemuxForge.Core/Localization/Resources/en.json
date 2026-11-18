@@ -1846,7 +1846,6 @@
   "web.toolbox.subtitleTranslation.blocksCountOne": "{0} block",
   "web.toolbox.subtitleTranslation.blocksCountMany": "{0} blocks",
   "web.toolbox.subtitleTranslation.estimateUncached": "({0} uncached)",
-  "web.toolbox.subtitleTranslation.estimateCacheUnavailable": "(cache not available)",
   "web.toolbox.subtitleTranslation.estimateOutput": "~{0} output tokens",
   "web.toolbox.subtitleTranslation.estimateReview": "review ~{0} input tokens",
   "web.toolbox.subtitleTranslation.estimateReviewTargeted": "review: depends on the issues found",
@@ -4285,5 +4284,6 @@
   "web.toolbox.subtitleTranslation.calls.rejectedCue": "Cue {0}: {1}",
   "web.toolbox.subtitleTranslation.warning.newTerm": "New term",
   "web.toolbox.subtitleTranslation.warning.rewrittenByTerms": "Rewritten with terms",
-  "web.toolbox.subtitleTranslation.sharedStretch": "Stretch repeated across files ({0}): same translation in every copy, an edit changes them all"
+  "web.toolbox.subtitleTranslation.sharedStretch": "Stretch repeated across files ({0}): same translation in every copy, an edit changes them all",
+  "web.toolbox.subtitleTranslation.stretchOfFile": "Repeated stretch {0} of {1} · {2}"
 }

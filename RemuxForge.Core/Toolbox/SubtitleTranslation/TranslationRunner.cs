@@ -111,55 +111,57 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Stima della traduzione per caratteri, come le chiamate B la manderebbero: il prefisso intero a ogni blocco, la coda
-        /// con le coppie prima del blocco e gli argomenti consegnati lunghi quanto il sorgente. La revisione completa si stima
-        /// allo stesso modo, con una D1 e una D2 su tutte le battute di ogni blocco
+        /// Stima della traduzione per caratteri, come il giro la farebbe: gli stati dei file preparati come all'avvio, con le battute
+        /// delle tratte condivise fuori dai blocchi, e ogni tratta contata una volta sola nel file della prima occorrenza. Ogni
+        /// consegna manda il prefisso intero, la coda con le battute prima di quelle chieste e argomenti lunghi quanto il sorgente.
+        /// La revisione completa si stima con una D1 e una D2 su ogni blocco e su ogni tratta
         /// </summary>
         /// <param name="glossary">Glossario approvato</param>
         /// <param name="context">Campo serie/contesto del progetto</param>
-        /// <param name="files">Nome e battute preparate di ogni file</param>
-        /// <param name="cache">True se l'accesso misura la cache del prefisso</param>
+        /// <param name="files">Stati iniziali dei file del job, coi documenti e i nomi</param>
+        /// <param name="stretches">Tratte condivise del job</param>
         /// <param name="reviewMode">Modalità della revisione AI</param>
         /// <returns>Stima della traduzione e della revisione</returns>
-        public static TranslationEstimate Estimate(Glossary glossary, string context, IReadOnlyList<KeyValuePair<string, IReadOnlyList<SubtitleCue>>> files, bool cache, TranslationReviewMode reviewMode)
+        public static TranslationEstimate Estimate(Glossary glossary, string context, IReadOnlyList<TranslationRunFile> files, IReadOnlyList<SharedStretch> stretches, TranslationReviewMode reviewMode)
         {
             TranslationEstimate estimate = new TranslationEstimate();
             string instructions = TranslationRequestBuilder.CreateTranslationInstructions(glossary.SourceLanguage, glossary.TargetLanguage);
             string tools = TranslationRequestBuilder.CreateTranslationTools().ToJsonString();
             string diagnosis = TranslationRequestBuilder.CreateDiagnosisInstructions(glossary.SourceLanguage, glossary.TargetLanguage) + TranslationRequestBuilder.CreateDiagnosisTools().ToJsonString();
             string correction = TranslationRequestBuilder.CreateCorrectionInstructions(glossary.SourceLanguage, glossary.TargetLanguage) + tools;
-            long cached = 0;
             long reviewInput = 0;
             long reviewCached = 0;
             long reviewOutput = 0;
             estimate.Files = files.Count;
 
-            foreach (KeyValuePair<string, IReadOnlyList<SubtitleCue>> file in files)
+            foreach (TranslationRunFile file in files)
             {
-                List<FrozenCue> cues = new List<FrozenCue>();
-                foreach (SubtitleCue cue in file.Value)
-                {
-                    if (cue.Id.HasValue)
-                        cues.Add(new FrozenCue { Id = cue.Id.Value, Group = cue.Group, Text = cue.CleanText });
-                }
-
-                string prefix = TranslationRequestBuilder.CreateTranslationPrefix(context, glossary, file.Key, cues);
+                TranslationJobFileState state = file.State;
+                string prefix = TranslationRequestBuilder.CreateTranslationPrefix(context, glossary, file.FileName, state.Cues);
                 int prefixTokens = GlossaryBuilder.EstimateTokens(instructions + tools + prefix);
                 int diagnosisTokens = GlossaryBuilder.EstimateTokens(diagnosis + prefix);
                 int correctionTokens = GlossaryBuilder.EstimateTokens(correction + prefix);
-                IReadOnlyList<IReadOnlyList<SubtitleCue>> blocks = new SubtitleBlockPlanner(file.Value).PlanBlocks(SubtitleBlockPlanner.DEFAULT_TARGET, SubtitleBlockPlanner.DEFAULT_CAP);
-                estimate.Cues += cues.Count;
-                estimate.Blocks += blocks.Count;
 
-                int start = 0;
-                for (int b = 0; b < blocks.Count; b++)
+                // Consegne del file: i blocchi senza le battute delle tratte, poi le tratte di cui il file ha la prima occorrenza
+                Dictionary<int, SharedStretch> shared = SharedStretch.MapFile(stretches, state.FileId);
+                List<List<FrozenCue>> units = new List<List<FrozenCue>>();
+                foreach (TranslationBlock block in state.Blocks)
+                    units.Add(state.GetSpan(block.FirstId, block.LastId).FindAll(c => !shared.ContainsKey(c.Id)));
+                foreach (SharedStretch stretch in stretches)
                 {
-                    // Coppie della coda: le battute prima del blocco con una traduzione lunga quanto il sorgente
+                    if (stretch.Occurrences[0].FileId == state.FileId)
+                        units.Add(state.Cues.FindAll(c => stretch.Occurrences[0].Ids.Contains(c.Id)));
+                }
+
+                for (int u = 0; u < units.Count; u++)
+                {
+                    // Coppie della coda: le battute prima della consegna con una traduzione lunga quanto il sorgente
+                    List<FrozenCue> requested = units[u];
+                    int start = state.Cues.FindIndex(c => c.Id == requested[0].Id);
                     List<KeyValuePair<FrozenCue, string>> pairs = new List<KeyValuePair<FrozenCue, string>>();
                     for (int i = Math.Max(0, start - TranslationRequestBuilder.TAIL_PAIRS); i < start; i++)
-                        pairs.Add(new KeyValuePair<FrozenCue, string>(cues[i], cues[i].Text));
-                    List<FrozenCue> requested = cues.GetRange(start, blocks[b].Count);
-                    int blockTokens = prefixTokens + GlossaryBuilder.EstimateTokens(TranslationRequestBuilder.CreateTranslationTail(pairs, requested, new string[0]));
+                        pairs.Add(new KeyValuePair<FrozenCue, string>(state.Cues[i], state.Cues[i].Text));
+                    int unitTokens = prefixTokens + GlossaryBuilder.EstimateTokens(TranslationRequestBuilder.CreateTranslationTail(pairs, requested, new string[0]));
 
                     int outputChars = 0;
                     Dictionary<int, string> translated = new Dictionary<int, string>();
@@ -170,27 +172,27 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
                     int outputTokens = (outputChars + GlossaryBuilder.CHARS_PER_TOKEN - 1) / GlossaryBuilder.CHARS_PER_TOKEN;
 
-                    estimate.InputTokens += blockTokens;
+                    estimate.Cues += requested.Count;
+                    estimate.Blocks++;
+                    estimate.InputTokens += unitTokens;
                     estimate.OutputTokens += outputTokens;
-                    if (b >= ESTIMATE_UNCACHED_BLOCKS)
-                        cached += (long)(blockTokens * ESTIMATE_CACHED_SHARE);
+                    if (u >= ESTIMATE_UNCACHED_BLOCKS)
+                        estimate.CachedTokens += (long)(unitTokens * ESTIMATE_CACHED_SHARE);
 
-                    // Revisione completa, al massimo: D1 sul blocco con le traduzioni e un suggerimento per battuta, D2 su tutte le
-                    // battute del blocco; la cache come per la traduzione, con D1 e D2 su chiavi separate
+                    // Revisione completa, al massimo: D1 sulla consegna con le traduzioni e un suggerimento per battuta, D2 su tutte le sue
+                    // battute; la cache come per la traduzione, con D1 e D2 su chiavi separate
                     int reviewTokens = diagnosisTokens + GlossaryBuilder.EstimateTokens(TranslationRequestBuilder.CreateDiagnosisTail(requested, translated, new Dictionary<int, List<string>>()))
                         + correctionTokens + GlossaryBuilder.EstimateTokens(TranslationRequestBuilder.CreateCorrectionTail(new TranslationReviewIssue[0], requested, translated, new string[0]));
                     reviewInput += reviewTokens;
                     reviewOutput += 2 * outputTokens;
-                    if (b >= ESTIMATE_UNCACHED_BLOCKS)
+                    if (u >= ESTIMATE_UNCACHED_BLOCKS)
                         reviewCached += (long)(reviewTokens * ESTIMATE_CACHED_SHARE);
-                    start += blocks[b].Count;
                 }
             }
 
-            estimate.CachedTokens = cache ? cached : null;
             bool full = reviewMode == TranslationReviewMode.Full;
             estimate.ReviewInputTokens = full ? reviewInput : null;
-            estimate.ReviewCachedTokens = full && cache ? reviewCached : null;
+            estimate.ReviewCachedTokens = full ? reviewCached : null;
             estimate.ReviewOutputTokens = full ? reviewOutput : null;
             return estimate;
         }
@@ -597,6 +599,18 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// True nel primo giro, quello delle tratte condivise: l'avanzamento conta tratte, non blocchi
+        /// </summary>
+        public bool SharedStretchPass
+        {
+            get { return this._stretches; }
+        }
+
+        #endregion
     }
 
     /// <summary>
@@ -664,12 +678,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public int Files { get; set; }
 
         /// <summary>
-        /// Battute da tradurre
+        /// Battute da tradurre, quelle delle tratte condivise una volta sola
         /// </summary>
         public int Cues { get; set; }
 
         /// <summary>
-        /// Blocchi del piano
+        /// Consegne del piano: blocchi e tratte condivise
         /// </summary>
         public int Blocks { get; set; }
 
@@ -679,9 +693,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public long InputTokens { get; set; }
 
         /// <summary>
-        /// Token in ingresso serviti dalla cache, null se l'accesso non la misura
+        /// Token in ingresso serviti dalla cache
         /// </summary>
-        public long? CachedTokens { get; set; }
+        public long CachedTokens { get; set; }
 
         /// <summary>
         /// Token in uscita
@@ -694,7 +708,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public long? ReviewInputTokens { get; set; }
 
         /// <summary>
-        /// Token in ingresso della revisione AI completa serviti dalla cache, null per la mirata o se l'accesso non la misura
+        /// Token in ingresso della revisione AI completa serviti dalla cache, null per la mirata
         /// </summary>
         public long? ReviewCachedTokens { get; set; }
 

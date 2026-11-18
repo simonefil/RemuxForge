@@ -1336,7 +1336,8 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Stima della traduzione prima di «Avvia traduzione», per caratteri come le chiamate B la manderebbero
+        /// Stima della traduzione prima di «Avvia traduzione», per caratteri come le chiamate B la manderebbero, con le tratte
+        /// condivise contate una volta sola; la cache vale con entrambi gli accessi, che mandano la stessa chiave
         /// </summary>
         /// <returns>Stima, null col job già creato, senza glossario approvato o con file non preparati</returns>
         public TranslationEstimate EstimateTranslation()
@@ -1347,16 +1348,21 @@ namespace RemuxForge.Web.Services.Toolbox
                     this._documents.Count != this._project.Files.Count)
                     return null;
 
-                AiConnectionMode access = this.AccessMode;
-                string key = this._project.Id + "|" + this._project.UpdatedAt.UtcTicks.ToString(CultureInfo.InvariantCulture) + "|" + access.ToString();
+                string key = this._project.Id + "|" + this._project.UpdatedAt.UtcTicks.ToString(CultureInfo.InvariantCulture);
                 if (this._translationEstimate != null && this._translationEstimateKey == key)
                     return this._translationEstimate;
 
-                List<KeyValuePair<string, IReadOnlyList<SubtitleCue>>> files = new List<KeyValuePair<string, IReadOnlyList<SubtitleCue>>>();
+                // Tratte e stati dei file come li crea «Avvia traduzione», senza salvarli
+                List<KeyValuePair<string, SubtitleTranslationDocument>> documents = new List<KeyValuePair<string, SubtitleTranslationDocument>>();
                 foreach (TranslationProjectFile file in this._project.Files)
-                    files.Add(new KeyValuePair<string, IReadOnlyList<SubtitleCue>>(Path.GetFileName(file.Path), this._documents[file.Id].Cues));
+                    documents.Add(new KeyValuePair<string, SubtitleTranslationDocument>(file.Id, this._documents[file.Id]));
+                List<SharedStretch> stretches = SharedStretchDetector.Detect(documents);
+                List<TranslationRunFile> files = new List<TranslationRunFile>();
+                foreach (TranslationProjectFile file in this._project.Files)
+                    files.Add(new TranslationRunFile(TranslationRunner.CreateFileState(file, this._documents[file.Id], SharedStretch.MapFile(stretches, file.Id).Keys), this._documents[file.Id],
+                        Path.GetFileName(file.Path)));
 
-                this._translationEstimate = TranslationRunner.Estimate(this._project.Glossary, this._project.Context, files, access == AiConnectionMode.ChatGptAccount, this._project.Options.ReviewMode);
+                this._translationEstimate = TranslationRunner.Estimate(this._project.Glossary, this._project.Context, files, stretches, this._project.Options.ReviewMode);
                 this._translationEstimateKey = key;
                 return this._translationEstimate;
             }
@@ -1963,7 +1969,7 @@ namespace RemuxForge.Web.Services.Toolbox
 
         /// <summary>
         /// Lega una fase al log, alla pagina e alle barre: l'operazione della fase, la Globale con le unità fatte, la File con l'unità
-        /// del file; la revisione mostra anche blocco e modello nell'attesa
+        /// del file, o la tratta ripetuta nel primo giro della traduzione; la revisione mostra anche blocco e modello nell'attesa
         /// </summary>
         /// <param name="runner">Fase del giro</param>
         /// <param name="operationKey">Chiave del testo dell'operazione della fase</param>
@@ -1987,7 +1993,8 @@ namespace RemuxForge.Web.Services.Toolbox
                     this.ProgressState.CurrentIndex = done;
                     this.ProgressState.GlobalPercent = total > 0 ? done * 100 / total : 0;
                     this.ProgressState.GlobalIndeterminate = false;
-                    this.ProgressState.CurrentEpisode = AppText.F(unitKey, number, count, fileName);
+                    TranslationRunner translation = runner as TranslationRunner;
+                    this.ProgressState.CurrentEpisode = AppText.F(translation != null && translation.SharedStretchPass ? TEXT_PREFIX + ".stretchOfFile" : unitKey, number, count, fileName);
                     this.ProgressState.CurrentPercent = count > 0 ? (number - 1) * 100 / count : 0;
                     this.ProgressState.CurrentIndeterminate = false;
                     if (model != null)

@@ -1846,7 +1846,6 @@
   "web.toolbox.subtitleTranslation.blocksCountOne": "{0} blocco",
   "web.toolbox.subtitleTranslation.blocksCountMany": "{0} blocchi",
   "web.toolbox.subtitleTranslation.estimateUncached": "({0} fuori cache)",
-  "web.toolbox.subtitleTranslation.estimateCacheUnavailable": "(cache non disponibile)",
   "web.toolbox.subtitleTranslation.estimateOutput": "~{0} token in uscita",
   "web.toolbox.subtitleTranslation.estimateReview": "revisione ~{0} token in ingresso",
   "web.toolbox.subtitleTranslation.estimateReviewTargeted": "revisione: dipende dai problemi trovati",
@@ -4285,5 +4284,6 @@
   "web.toolbox.subtitleTranslation.calls.rejectedCue": "Battuta {0}: {1}",
   "web.toolbox.subtitleTranslation.warning.newTerm": "Termine nuovo",
   "web.toolbox.subtitleTranslation.warning.rewrittenByTerms": "Riscritta coi termini",
-  "web.toolbox.subtitleTranslation.sharedStretch": "Tratta ripetuta fra i file ({0}): stessa traduzione in tutte le copie, una modifica le cambia tutte"
+  "web.toolbox.subtitleTranslation.sharedStretch": "Tratta ripetuta fra i file ({0}): stessa traduzione in tutte le copie, una modifica le cambia tutte",
+  "web.toolbox.subtitleTranslation.stretchOfFile": "Tratta ripetuta {0} di {1} · {2}"
 }

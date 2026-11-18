@@ -260,15 +260,11 @@
                                 · @AppText.Count("web.toolbox.subtitleTranslation.cuesCount", translationEstimate.Cues, translationEstimate.Cues.ToString("N0", CultureInfo.CurrentCulture))
                                 · @AppText.Count("web.toolbox.subtitleTranslation.blocksCount", translationEstimate.Blocks)
                                 · @AppText.F("web.toolbox.subtitleTranslation.estimateInput", translationEstimate.InputTokens.ToString("N0", CultureInfo.CurrentCulture))
-                                @(translationEstimate.CachedTokens.HasValue
-                                    ? AppText.F("web.toolbox.subtitleTranslation.estimateUncached", (translationEstimate.InputTokens - translationEstimate.CachedTokens.Value).ToString("N0", CultureInfo.CurrentCulture))
-                                    : AppText.T("web.toolbox.subtitleTranslation.estimateCacheUnavailable"))
+                                @AppText.F("web.toolbox.subtitleTranslation.estimateUncached", (translationEstimate.InputTokens - translationEstimate.CachedTokens).ToString("N0", CultureInfo.CurrentCulture))
                                 · @AppText.F("web.toolbox.subtitleTranslation.estimateOutput", translationEstimate.OutputTokens.ToString("N0", CultureInfo.CurrentCulture))
                                 · @(translationEstimate.ReviewInputTokens.HasValue
                                     ? AppText.F("web.toolbox.subtitleTranslation.estimateReview", translationEstimate.ReviewInputTokens.Value.ToString("N0", CultureInfo.CurrentCulture)) + " "
-                                        + (translationEstimate.ReviewCachedTokens.HasValue
-                                            ? AppText.F("web.toolbox.subtitleTranslation.estimateUncached", (translationEstimate.ReviewInputTokens.Value - translationEstimate.ReviewCachedTokens.Value).ToString("N0", CultureInfo.CurrentCulture))
-                                            : AppText.T("web.toolbox.subtitleTranslation.estimateCacheUnavailable"))
+                                        + AppText.F("web.toolbox.subtitleTranslation.estimateUncached", (translationEstimate.ReviewInputTokens.Value - translationEstimate.ReviewCachedTokens.Value).ToString("N0", CultureInfo.CurrentCulture))
                                         + ", " + AppText.F("web.toolbox.subtitleTranslation.estimateOutput", translationEstimate.ReviewOutputTokens.Value.ToString("N0", CultureInfo.CurrentCulture))
                                     : AppText.T("web.toolbox.subtitleTranslation.estimateReviewTargeted"))
                             </span>
