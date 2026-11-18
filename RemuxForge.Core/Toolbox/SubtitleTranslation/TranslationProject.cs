@@ -505,7 +505,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         public TranslationProjectOptions()
         {
-            this.ReviewMode = TranslationReviewMode.Targeted;
+            this.ReviewMode = TranslationReviewMode.Full;
             this.MaxParallelFiles = DEFAULT_PARALLEL_FILES;
         }
 
@@ -519,7 +519,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public int MaxParallelFiles { get; set; }
 
         /// <summary>
-        /// Modalità della revisione AI
+        /// Modalità della revisione AI, completa nei progetti nuovi; i progetti salvati tengono la loro
         /// </summary>
         public TranslationReviewMode ReviewMode { get; set; }
 
