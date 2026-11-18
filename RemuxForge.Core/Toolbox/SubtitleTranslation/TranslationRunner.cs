@@ -286,7 +286,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     HashSet<int> withTerms = new HashSet<int>();
                     foreach (CollectedNewTerm term in stretchWork.NewTerms)
                         withTerms.UnionWith(term.CueIds);
-                    context.Validator.AddEchoAndSlipSignals(stretchWork.Results.Values, context.Frozen);
+                    TranslationValidator.AddSlipSignals(stretchWork.Results.Values, context.Frozen);
 
                     stretch.Translations = new List<TranslatedCueState>();
                     foreach (int id in lines)
@@ -427,7 +427,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         HashSet<int> withTerms = new HashSet<int>();
                         foreach (CollectedNewTerm term in state.CollectedNewTerms)
                             withTerms.UnionWith(term.CueIds);
-                        context.Validator.AddEchoAndSlipSignals(work.Results.Values, context.Frozen);
+                        TranslationValidator.AddSlipSignals(work.Results.Values, context.Frozen);
 
                         foreach (TranslatedCueState translation in work.Results.Values)
                         {

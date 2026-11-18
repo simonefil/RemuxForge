@@ -124,11 +124,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         private readonly List<TermPatterns> _terms;
 
-        /// <summary>
-        /// True se lingua d'origine e d'arrivo sono diverse, e una traduzione uguale al sorgente è un'eco
-        /// </summary>
-        private readonly bool _echoPossible;
-
         #endregion
 
         #region Costruttore
@@ -144,7 +139,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this._terms = new List<TermPatterns>();
             string source = LanguageValidator.NormalizeToIso6392(glossary.SourceLanguage);
             string target = LanguageValidator.NormalizeToIso6392(glossary.TargetLanguage);
-            this._echoPossible = source != target;
             foreach (GlossaryTerm term in glossary.Terms)
             {
                 string sourceWord = StripArticle(term.Source, source);
@@ -346,16 +340,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Segnala le battute accettate di un blocco o di una tratta con i due guasti dei modelli che Subtitle Edit e rockbenben
-        /// controllano dopo bug reali. Sono avvisi verso la revisione, mai rifiuti; testi confrontati a parità di spazi e
-        /// maiuscole.
-        /// - Eco: traduzione uguale al sorgente, con lingue d'origine e d'arrivo diverse.
-        /// - Slittamento: la stessa traduzione su due o più battute dell'unità con sorgenti diversi.
-        /// Le copie di una tratta condivisa non entrano: sono uguali per costruzione
+        /// Segnala lo slittamento, uno dei guasti dei modelli che Subtitle Edit e rockbenben controllano dopo bug reali: la stessa
+        /// traduzione su due o più battute accettate dell'unità con sorgenti diversi, confrontati a parità di spazi e maiuscole.
+        /// È un avviso verso la revisione, mai un rifiuto. Le copie di una tratta condivisa non entrano: sono uguali per
+        /// costruzione
         /// </summary>
-        /// <param name="translations">Esiti dell'unità</param>
+        /// <param name="translations">Esiti del blocco o della tratta</param>
         /// <param name="sources">Battute sorgenti del file per id</param>
-        public void AddEchoAndSlipSignals(IEnumerable<TranslatedCueState> translations, IReadOnlyDictionary<int, FrozenCue> sources)
+        public static void AddSlipSignals(IEnumerable<TranslatedCueState> translations, IReadOnlyDictionary<int, FrozenCue> sources)
         {
             Dictionary<string, List<KeyValuePair<TranslatedCueState, string>>> byText = new Dictionary<string, List<KeyValuePair<TranslatedCueState, string>>>(StringComparer.Ordinal);
             foreach (TranslatedCueState translation in translations)
@@ -364,17 +356,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     continue;
 
                 string text = Regex.Replace(translation.Text, @"\s+", " ").Trim().ToLowerInvariant();
-                string source = Regex.Replace(sources[translation.Id].Text, @"\s+", " ").Trim().ToLowerInvariant();
-                if (this._echoPossible && text == source && !translation.Signals.Contains(TranslationCueSignal.Echo))
-                    translation.Signals.Add(TranslationCueSignal.Echo);
-
                 List<KeyValuePair<TranslatedCueState, string>> same;
                 if (!byText.TryGetValue(text, out same))
                 {
                     same = new List<KeyValuePair<TranslatedCueState, string>>();
                     byText[text] = same;
                 }
-                same.Add(new KeyValuePair<TranslatedCueState, string>(translation, source));
+                same.Add(new KeyValuePair<TranslatedCueState, string>(translation, Regex.Replace(sources[translation.Id].Text, @"\s+", " ").Trim().ToLowerInvariant()));
             }
 
             foreach (List<KeyValuePair<TranslatedCueState, string>> same in byText.Values)
