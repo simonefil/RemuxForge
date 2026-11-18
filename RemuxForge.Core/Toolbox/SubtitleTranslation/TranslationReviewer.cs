@@ -88,7 +88,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     // cui il file ha la prima occorrenza. Nella mirata solo quelli con almeno una battuta segnalata
                     Dictionary<int, SharedStretch> shared = SharedStretch.MapFile(job.SharedStretches, state.FileId);
                     Predicate<TranslatedCueState> signalled = t => t.Status == TranslatedCueStatus.ToReview || t.Signals.Contains(TranslationCueSignal.Retried)
-                        || t.Signals.Contains(TranslationCueSignal.Glossary) || t.Signals.Contains(TranslationCueSignal.NewTerm) || t.Signals.Contains(TranslationCueSignal.RewrittenByTerms);
+                        || t.Signals.Contains(TranslationCueSignal.Glossary) || t.Signals.Contains(TranslationCueSignal.NewTerm) || t.Signals.Contains(TranslationCueSignal.RewrittenByTerms)
+                        || t.Signals.Contains(TranslationCueSignal.Echo) || t.Signals.Contains(TranslationCueSignal.Slip);
                     state.ReviewBlocks = new List<TranslationReviewBlock>();
                     foreach (TranslationBlock block in state.Blocks)
                     {

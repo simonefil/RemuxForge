@@ -106,7 +106,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         CorrectedByAi,
 
         /// <summary>Testo scritto dall'utente</summary>
-        EditedByUser
+        EditedByUser,
+
+        /// <summary>Traduzione uguale al sorgente con lingue diverse</summary>
+        Echo,
+
+        /// <summary>Stessa traduzione di un'altra battuta del blocco con un sorgente diverso</summary>
+        Slip
     }
 
     /// <summary>
@@ -607,12 +613,17 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// Mette un testo nuovo validato: avvisi del glossario dal validatore, segnale Glossario messo o tolto; una battuta da
-        /// rivedere diventa accettata
+        /// rivedere diventa accettata. Un testo cambiato toglie eco e slittamento, che riguardavano il testo di prima
         /// </summary>
         /// <param name="text">Testo validato</param>
         /// <param name="warnings">Avvisi del glossario del validatore sul testo</param>
         public void SetText(string text, List<GlossaryWarning> warnings)
         {
+            if (!string.Equals(text, this.Text, StringComparison.Ordinal))
+            {
+                this.Signals.Remove(TranslationCueSignal.Echo);
+                this.Signals.Remove(TranslationCueSignal.Slip);
+            }
             this.Text = text;
             this.Status = TranslatedCueStatus.Accepted;
             this.ToReviewReason = null;
