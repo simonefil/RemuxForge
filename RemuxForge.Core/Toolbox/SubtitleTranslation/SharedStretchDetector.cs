@@ -114,7 +114,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Aggiunge alle tratte le occorrenze di un file ripreparato, che non ne ha, e la tratta dei suoi cartelli in movimento
+        /// Aggiunge alle tratte fra i file le occorrenze di un file ripreparato, che non ne ha, e la tratta dei suoi cartelli in
+        /// movimento; le tratte dei cartelli in movimento degli altri file restano fuori, perché le loro righe non sono consecutive
         /// </summary>
         /// <param name="stretches">Tratte del job</param>
         /// <param name="fileId">File del job</param>
@@ -125,6 +126,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             Dictionary<string, List<KeyValuePair<FileKeys, int>>> index = CreateIndex(new List<FileKeys> { file });
             foreach (SharedStretch stretch in stretches)
             {
+                if (stretch.MovingSigns)
+                    continue;
                 string[] lines = new string[stretch.Lines.Count];
                 for (int i = 0; i < lines.Length; i++)
                     lines[i] = Key(stretch.Format, stretch.Lines[i]);
@@ -388,6 +391,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 stretch.Index = Math.Max(stretch.Index, existing.Index);
             stretch.Index++;
             stretch.Format = file.Format;
+            stretch.MovingSigns = true;
             SharedStretchOccurrence master = new SharedStretchOccurrence { FileId = file.FileId, Offset = 0 };
             stretch.Occurrences.Add(master);
             foreach (string sign in order)

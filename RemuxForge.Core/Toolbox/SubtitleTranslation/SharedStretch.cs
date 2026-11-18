@@ -18,6 +18,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         {
             this.Index = 0;
             this.Format = SubtitleTranslationFormat.Srt;
+            this.MovingSigns = false;
             this.Lines = new List<string>();
             this.Status = TranslationBlockStatus.Pending;
             this.CallSeqs = new List<int>();
@@ -145,6 +146,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Formato dei file della tratta: si confrontano solo file dello stesso formato, che il validatore giudica uguale
         /// </summary>
         public SubtitleTranslationFormat Format { get; set; }
+
+        /// <summary>
+        /// True per la tratta dei cartelli in movimento di un file: righe distinte e non consecutive, che non si cercano negli altri
+        /// file
+        /// </summary>
+        public bool MovingSigns { get; set; }
 
         /// <summary>
         /// Testo pulito di ogni riga, come nella prima occorrenza
