@@ -44,7 +44,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Pezzo di parola animato prima di una riga intera, tolto quando la riga intera è tradotta</summary>
         public const string EXCLUSION_WORD_PIECE = "word-piece";
 
-        /// <summary>Evidenziazione sovrapposta che ridisegna un tratto nascosto di un'altra riga, tolta quando quella è tradotta</summary>
+        /// <summary>Evidenziazione sovrapposta che ridisegna un tratto nascosto di un'altra riga, o pezzo di una frase rivelata a pezzi
+        /// (tendina, parola sola), tolto quando quella riga o quella frase è tradotta</summary>
         public const string EXCLUSION_OVERLAY = "overlay";
 
         #endregion
@@ -64,7 +65,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="kind">Tipo della battuta</param>
         /// <param name="layer">Layer ASS, null in SRT e SSA</param>
         /// <param name="exclusionReason">Motivo per cui la battuta resta al codice, vuoto se si traduce</param>
-        /// <param name="duplicateOf">Id della battuta di cui questa è la copia su un altro layer</param>
+        /// <param name="duplicateOf">Id della battuta di cui questa è la copia: su un altro layer, o un'altra riga della stessa frase rivelata a pezzi</param>
         /// <param name="textStart">Inizio del campo Text nel testo decodificato</param>
         /// <param name="textLength">Lunghezza del campo Text nel testo decodificato</param>
         public SubtitleCue(int? id, int position, long startMs, long endMs, string cleanText, CueRecipe recipe, string style, SubtitleCueKind kind,
@@ -161,7 +162,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public string ExclusionReason { get; }
 
         /// <summary>
-        /// Id della battuta di cui questa è la copia su un altro layer: ne prende la traduzione con la propria ricetta
+        /// Id della battuta di cui questa è la copia, su un altro layer o come altra riga della stessa frase rivelata a pezzi: ne
+        /// prende la traduzione con la propria ricetta
         /// </summary>
         public int? DuplicateOf { get; }
 

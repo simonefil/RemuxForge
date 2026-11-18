@@ -628,7 +628,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 Dictionary<int, string> wholeShown = new Dictionary<int, string>();
                 Dictionary<int, int> copyOf = new Dictionary<int, int>();
                 Dictionary<int, int> basePositions = new Dictionary<int, int>();
-                foreach (List<int> unitEvents in legacy ? new List<List<int>>() : eventsByUnit.Values.ToList())
+                foreach (List<int> unitEvents in eventsByUnit.Values)
                 {
                     List<int> free = unitEvents.FindAll(f => wholeOf[f] < 0 && underOf[f] < 0 && !piecesByWhole.ContainsKey(f) && !overlaysByUnder.ContainsKey(f)
                         && !coveredByUnder.ContainsKey(f) && events[f].Readable.Trim().Length > 0 && styleStates.ContainsKey(events[f].Style));
@@ -920,9 +920,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 string key = raw.StartMs.ToString(CultureInfo.InvariantCulture) + "|" + raw.EndMs.ToString(CultureInfo.InvariantCulture) + "|" + cleaned.CleanText;
                 if (string.IsNullOrEmpty(cleaned.ExclusionReason))
                 {
-                    if (copyPositions.TryGetValue(i + 1, out int masterPosition) && cues[masterPosition - 1].Id.HasValue && cues[masterPosition - 1].CleanText == cleaned.CleanText)
+                    if (copyPositions.TryGetValue(i + 1, out int masterPosition) && (cues[masterPosition - 1].Id ?? cues[masterPosition - 1].DuplicateOf).HasValue
+                        && cues[masterPosition - 1].CleanText == cleaned.CleanText)
                     {
-                        duplicateOf = cues[masterPosition - 1].Id;
+                        duplicateOf = cues[masterPosition - 1].Id ?? cues[masterPosition - 1].DuplicateOf;
                     }
                     else if (raw.Layer.HasValue && firstByContent.TryGetValue(key, out SubtitleCue original) && original.Layer != raw.Layer)
                     {
@@ -948,11 +949,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Scrive il file sostituendo i soli campi Text delle battute tradotte e delle loro copie su altri layer; la riga sorgente
-        /// tradotta di un effetto lettera per lettera resta com'è e una riga Dialogue col testo tradotto per layer delle lettere
-        /// prende il posto delle righe disegnate; i pezzi di parola animati prima di una riga intera tradotta se ne vanno, e così
-        /// le evidenziazioni sovrapposte a una riga sotto tradotta, scritta coi tratti che coprivano visibili. Una traduzione uguale al
-        /// testo pulito del sorgente, a meno degli spazi e degli a capo come nelle tratte ripetute, lascia lettere, pezzi ed
+        /// Scrive il file sostituendo i soli campi Text delle battute tradotte e delle loro copie (su altri layer, o altre righe di una
+        /// frase rivelata a pezzi); la riga sorgente tradotta di un effetto lettera per lettera resta com'è e una riga Dialogue col
+        /// testo tradotto per layer delle lettere prende il posto delle righe disegnate; i pezzi di parola animati prima di una riga
+        /// intera tradotta se ne vanno, e così le evidenziazioni sovrapposte a una riga sotto tradotta, scritta coi tratti che
+        /// coprivano visibili, e i pezzi di una frase rivelata a pezzi tradotta, scritta con la frase intera visibile. Una traduzione
+        /// uguale al testo pulito del sorgente, a meno degli spazi e degli a capo come nelle tratte ripetute, lascia lettere, pezzi ed
         /// evidenziazioni come sono
         /// </summary>
         /// <param name="translatedText">Testo pulito tradotto per id, già validato</param>
