@@ -15,8 +15,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
     /// Revisione AI di un job: per ogni blocco scelto una diagnosi D1 con un ritentativo, poi D2 sulle battute diagnosticate e
-    /// su quelle da rivedere, coi gruppi interi. La diagnosi valida si salva e alla ripresa il blocco riparte da D2; una diagnosi
-    /// non valida anche al ritentativo lascia il blocco non rivisto e ferma la fase, e la ripresa la rifà. I blocchi di un file
+    /// su quelle da rivedere, coi gruppi interi. Una diagnosi troncata dal tetto dei token in uscita a entrambe le chiamate si
+    /// dimezza come una consegna. La diagnosi valida si salva e alla ripresa il blocco riparte da D2; una diagnosi non valida
+    /// anche al ritentativo lascia il blocco non rivisto e ferma la fase, e la ripresa la rifà. I blocchi di un file
     /// vanno in sequenza. Una tratta condivisa si rivede una volta sola, in un blocco suo nel file della prima occorrenza, e le
     /// correzioni passano a tutte le copie; i blocchi del piano saltano le battute delle tratte
     /// </summary>
@@ -25,7 +26,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Costanti
 
         /// <summary>
-        /// Chiamate D1 di un blocco prima di lasciarlo non rivisto
+        /// Chiamate D1 di un blocco o di una sua metà prima di dimezzarlo o lasciarlo non rivisto
         /// </summary>
         private const int DIAGNOSIS_ATTEMPTS = 2;
 
@@ -183,7 +184,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
                 else
                 {
-                    // D1 con un ritentativo, anche per un blocco rimasto non rivisto da un giro precedente
+                    // D1 con un ritentativo, anche per un blocco rimasto non rivisto da un giro precedente; troncata a entrambe le
+                    // chiamate si dimezza fino alla battuta o al gruppo, e i problemi delle parti si sommano
                     Dictionary<int, List<string>> signals = new Dictionary<int, List<string>>();
                     foreach (TranslatedCueState translation in translations.Values)
                     {
@@ -221,70 +223,112 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
 
                     DeliveryWork diagnosis = new DeliveryWork(unit);
-                    for (int attempt = 0; attempt < DIAGNOSIS_ATTEMPTS && issues == null; attempt++)
+                    List<List<int>> parts = new List<List<int>> { ids };
+                    List<TranslationReviewIssue> partsIssues = new List<TranslationReviewIssue>();
+                    bool diagnosed = true;
+                    while (parts.Count > 0)
                     {
-                        TranslationModelRequest request = this.CreateRequest(TranslationCallKind.D1, state.FileId, this._job.Models.Review, this._job.ReasoningEfforts.Review,
-                            this._diagnosisInstructions, context.Prefix, TranslationRequestBuilder.CreateDiagnosisTail(cues, current, signals), TranslationRequestBuilder.CreateDiagnosisTools());
-                        lock (this._lock)
-                            request.PrefixReused = state.ReviewBlocks.FindAll(b => b.Status == TranslationReviewBlockStatus.Pending).Count > 1;
-                        KeyValuePair<AiResponseResult, TranslationCallRecord> sent = await this.SendAsync(request, state.FileId, diagnosis, ids, attempt > 0 ? attempt : null, provider, cancellation);
-                        AiResponseResult response = sent.Key;
-                        TranslationCallRecord record = sent.Value;
-                        record.Usage = new TranslationCallUsage(response.Usage, 0);
-                        if (response.Status == AiResponseStatus.Incomplete)
+                        List<int> partIds = parts[0];
+                        parts.RemoveAt(0);
+                        List<FrozenCue> partCues = partIds.ConvertAll(id => context.Frozen[id]);
+                        List<TranslationReviewIssue> partIssues = null;
+                        bool truncated = true;
+                        for (int attempt = 0; attempt < DIAGNOSIS_ATTEMPTS && partIssues == null; attempt++)
                         {
-                            record.ResponseStatus = TranslationCallResponseStatus.Incomplete;
-                            record.IncompleteReason = response.IncompleteReason;
-                            record.Outcome = TranslationCallOutcome.PartiallyRejected;
-                        }
-                        else
-                        {
-                            JsonArray entries = null;
-                            foreach (JsonObject item in response.Items)
+                            TranslationModelRequest request = this.CreateRequest(TranslationCallKind.D1, state.FileId, this._job.Models.Review, this._job.ReasoningEfforts.Review,
+                                this._diagnosisInstructions, context.Prefix, TranslationRequestBuilder.CreateDiagnosisTail(partCues, current, signals), TranslationRequestBuilder.CreateDiagnosisTools());
+                            lock (this._lock)
+                                request.PrefixReused = state.ReviewBlocks.FindAll(b => b.Status == TranslationReviewBlockStatus.Pending).Count > 1;
+                            KeyValuePair<AiResponseResult, TranslationCallRecord> sent = await this.SendAsync(request, state.FileId, diagnosis, partIds, attempt > 0 ? attempt : null, provider, cancellation);
+                            AiResponseResult response = sent.Key;
+                            TranslationCallRecord record = sent.Value;
+                            record.Usage = new TranslationCallUsage(response.Usage, 0);
+                            if (response.Status == AiResponseStatus.Incomplete)
                             {
-                                if (AiOAuthFlow.GetString(item, "type") != "function_call" || AiOAuthFlow.GetString(item, "name") != TranslationRequestBuilder.SUBMIT_DIAGNOSIS_TOOL)
-                                    continue;
-                                try
-                                {
-                                    entries = (JsonNode.Parse(AiOAuthFlow.GetString(item, "arguments") ?? "") as JsonObject)?["issues"] as JsonArray;
-                                }
-                                catch (JsonException)
-                                {
-                                    entries = null;
-                                }
-                                break;
-                            }
-
-                            if (entries == null)
-                            {
+                                record.ResponseStatus = TranslationCallResponseStatus.Incomplete;
+                                record.IncompleteReason = response.IncompleteReason;
                                 record.Outcome = TranslationCallOutcome.PartiallyRejected;
-                                record.Rejections.Add(new TranslationCallRejection { Id = null, Reasons = new List<string> { TranslationValidator.ARGS_INVALID + ": no submit_diagnosis call with an issues array." } });
+                                truncated &= response.IncompleteReason == INCOMPLETE_MAX_OUTPUT_TOKENS;
                             }
                             else
                             {
-                                // Problemi fuori dal blocco, fuori enum o senza spiegazione si scartano
-                                issues = new List<TranslationReviewIssue>();
-                                foreach (JsonNode node in entries)
+                                truncated = false;
+                                JsonArray entries = null;
+                                foreach (JsonObject item in response.Items)
                                 {
-                                    JsonObject entry = node as JsonObject;
-                                    int id;
-                                    if (entry == null || !(entry["id"] is JsonValue idValue) || !idValue.TryGetValue(out id) || !ids.Contains(id))
+                                    if (AiOAuthFlow.GetString(item, "type") != "function_call" || AiOAuthFlow.GetString(item, "name") != TranslationRequestBuilder.SUBMIT_DIAGNOSIS_TOOL)
                                         continue;
-                                    string category = AiOAuthFlow.GetString(entry, "category");
-                                    string severity = AiOAuthFlow.GetString(entry, "severity");
-                                    string explanation = (AiOAuthFlow.GetString(entry, "explanation") ?? "").Trim();
-                                    if (!((IList<string>)TranslationRequestBuilder.DIAGNOSIS_CATEGORIES).Contains(category) || !((IList<string>)TranslationRequestBuilder.DIAGNOSIS_SEVERITIES).Contains(severity)
-                                        || string.IsNullOrEmpty(explanation))
-                                        continue;
-                                    string suggestion = AiOAuthFlow.GetString(entry, "suggestion");
-                                    issues.Add(new TranslationReviewIssue { Id = id, Category = category, Severity = severity, Explanation = explanation, Suggestion = string.IsNullOrEmpty(suggestion) ? null : suggestion });
+                                    try
+                                    {
+                                        entries = (JsonNode.Parse(AiOAuthFlow.GetString(item, "arguments") ?? "") as JsonObject)?["issues"] as JsonArray;
+                                    }
+                                    catch (JsonException)
+                                    {
+                                        entries = null;
+                                    }
+                                    break;
                                 }
-                                record.Outcome = TranslationCallOutcome.Accepted;
-                                record.Issues = issues.Count;
+
+                                if (entries == null)
+                                {
+                                    record.Outcome = TranslationCallOutcome.PartiallyRejected;
+                                    record.Rejections.Add(new TranslationCallRejection { Id = null, Reasons = new List<string> { TranslationValidator.ARGS_INVALID + ": no submit_diagnosis call with an issues array." } });
+                                }
+                                else
+                                {
+                                    // Problemi fuori dal blocco, fuori enum o senza spiegazione si scartano
+                                    partIssues = new List<TranslationReviewIssue>();
+                                    foreach (JsonNode node in entries)
+                                    {
+                                        JsonObject entry = node as JsonObject;
+                                        int id;
+                                        if (entry == null || !(entry["id"] is JsonValue idValue) || !idValue.TryGetValue(out id) || !partIds.Contains(id))
+                                            continue;
+                                        string category = AiOAuthFlow.GetString(entry, "category");
+                                        string severity = AiOAuthFlow.GetString(entry, "severity");
+                                        string explanation = (AiOAuthFlow.GetString(entry, "explanation") ?? "").Trim();
+                                        if (!((IList<string>)TranslationRequestBuilder.DIAGNOSIS_CATEGORIES).Contains(category) || !((IList<string>)TranslationRequestBuilder.DIAGNOSIS_SEVERITIES).Contains(severity)
+                                            || string.IsNullOrEmpty(explanation))
+                                            continue;
+                                        string suggestion = AiOAuthFlow.GetString(entry, "suggestion");
+                                        partIssues.Add(new TranslationReviewIssue { Id = id, Category = category, Severity = severity, Explanation = explanation, Suggestion = string.IsNullOrEmpty(suggestion) ? null : suggestion });
+                                    }
+                                    record.Outcome = TranslationCallOutcome.Accepted;
+                                    record.Issues = partIssues.Count;
+                                }
+                            }
+                            this.RecordCall(record, diagnosis);
+                        }
+
+                        if (partIssues != null)
+                        {
+                            partsIssues.AddRange(partIssues);
+                            continue;
+                        }
+
+                        List<List<int>> halves = new List<List<int>>();
+                        if (truncated)
+                        {
+                            List<SubtitleCue> live = context.GetLiveCues(partIds);
+                            foreach (IReadOnlyList<SubtitleCue> half in new SubtitleBlockPlanner(live).SplitBlock(live))
+                            {
+                                List<int> halfIds = new List<int>();
+                                foreach (SubtitleCue cue in half)
+                                    halfIds.Add(cue.Id.Value);
+                                halves.Add(halfIds);
                             }
                         }
-                        this.RecordCall(record, diagnosis);
+                        if (halves.Count < 2)
+                        {
+                            diagnosed = false;
+                            break;
+                        }
+
+                        this.RaiseLog(AppText.F("toolbox.subtitleTranslation.run.retryReduced", file.FileName, halves[0].Count, halves[1].Count));
+                        parts.InsertRange(0, halves);
                     }
+                    if (diagnosed)
+                        issues = partsIssues;
 
                     // Diagnosi valida salvata: uno Stop durante D2 non la fa ripagare. Senza, il blocco resta non rivisto con le sue
                     // chiamate e il file si ferma: la ripresa rifà D1

@@ -41,7 +41,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Motivo di incompletezza del servizio per il tetto dei token in uscita: l'unico che si risolve con consegne più piccole
         /// </summary>
-        private const string INCOMPLETE_MAX_OUTPUT_TOKENS = "max_output_tokens";
+        protected const string INCOMPLETE_MAX_OUTPUT_TOKENS = "max_output_tokens";
 
         /// <summary>
         /// Motivo di incompletezza del servizio per il filtro dei contenuti
