@@ -98,6 +98,31 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
+        /// Versione del formato di un file salvato, letta prima del contenuto: un file di una versione precedente può avere valori
+        /// che il formato di oggi non legge più
+        /// </summary>
+        /// <param name="bytes">Byte UTF-8 del file</param>
+        /// <returns>Valore di schemaVersion, 0 se il file non è un oggetto JSON con la versione</returns>
+        public static int ReadSchemaVersion(byte[] bytes)
+        {
+            try
+            {
+                using (JsonDocument document = JsonDocument.Parse(bytes))
+                {
+                    JsonElement version;
+                    if (document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("schemaVersion", out version) && version.ValueKind == JsonValueKind.Number)
+                        return version.GetInt32();
+                }
+            }
+            catch (JsonException)
+            {
+                // Contenuto guasto: lo segnala la lettura vera
+            }
+
+            return 0;
+        }
+
+        /// <summary>
         /// Legge un contenuto JSON da byte, per i file dell'archivio; un contenuto guasto dà InvalidDataException
         /// </summary>
         /// <typeparam name="T">Tipo del contenuto</typeparam>

@@ -630,10 +630,6 @@
                                     {
                                         <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Secondary" Text="@AppText.T("web.toolbox.subtitleTranslation.warning.rewrittenByTerms")" />
                                     }
-                                    @if (row.Signals.Contains(TranslationCueSignal.Slip))
-                                    {
-                                        <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Warning" Text="@AppText.T("web.toolbox.subtitleTranslation.warning.slip")" />
-                                    }
                                     @if (row.Signals.Contains(TranslationCueSignal.CorrectedByAi))
                                     {
                                         <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Secondary" Text="@AppText.T("web.toolbox.subtitleTranslation.warning.correctedByAi")"
@@ -2092,7 +2088,7 @@
 
     /// <summary>
     /// True se la battuta è da controllare: da rivedere, col glossario non rispettato, ritentata, con un termine nuovo, riscritta coi
-    /// termini nuovi, uguale a un'altra battuta, corretta dall'AI o modificata a mano
+    /// termini nuovi, corretta dall'AI o modificata a mano
     /// </summary>
     /// <param name="row">Riga della revisione</param>
     /// <returns>True per il filtro «Da controllare»</returns>
@@ -2100,7 +2096,6 @@
     {
         return row.ToReview || row.Signals.Contains(TranslationCueSignal.Glossary) || row.Signals.Contains(TranslationCueSignal.Retried) ||
             row.Signals.Contains(TranslationCueSignal.NewTerm) || row.Signals.Contains(TranslationCueSignal.RewrittenByTerms) ||
-            row.Signals.Contains(TranslationCueSignal.Slip) ||
             row.Signals.Contains(TranslationCueSignal.CorrectedByAi) || row.Signals.Contains(TranslationCueSignal.EditedByUser);
     }
 

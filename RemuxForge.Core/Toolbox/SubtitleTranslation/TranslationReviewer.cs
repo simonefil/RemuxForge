@@ -241,8 +241,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                     lines.Add("REWRITTEN: updated term \"" + term.Key.Source + "\" => \"" + term.Key.Target + "\"");
                             }
                         }
-                        if (translation.Signals.Contains(TranslationCueSignal.Slip))
-                            lines.Add("SLIP: another cue of the block with a different source has the same translation");
 
                         if (lines.Count > 0)
                             signals[translation.Id] = lines;
@@ -495,14 +493,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// True per una battuta che la revisione mirata guarda: da rivedere, ritentata, coi termini del glossario mancanti, con
-        /// un termine nuovo, riscritta dai termini o slittata
+        /// un termine nuovo o riscritta dai termini
         /// </summary>
         /// <param name="translation">Esito della battuta</param>
         /// <returns>True se segnalata</returns>
         private static bool IsSignalled(TranslatedCueState translation)
         {
             return translation.Status == TranslatedCueStatus.ToReview || translation.Signals.Contains(TranslationCueSignal.Retried) || translation.Signals.Contains(TranslationCueSignal.Glossary)
-                || translation.Signals.Contains(TranslationCueSignal.NewTerm) || translation.Signals.Contains(TranslationCueSignal.RewrittenByTerms) || translation.Signals.Contains(TranslationCueSignal.Slip);
+                || translation.Signals.Contains(TranslationCueSignal.NewTerm) || translation.Signals.Contains(TranslationCueSignal.RewrittenByTerms);
         }
 
         /// <summary>

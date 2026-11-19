@@ -488,6 +488,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 manifest.FileSchemaVersions.JobFile > TranslationJobFileState.SCHEMA_VERSION || manifest.FileSchemaVersions.Calls > TranslationCallRecord.SCHEMA_VERSION ||
                 manifest.FileSchemaVersions.Glossary > TranslationArchiveSchemaVersions.GLOSSARY_SCHEMA_VERSION)
                 throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.archive.tooNew", Path.GetFileName(zipPath)));
+            if (manifest.JobIds.Count > 0 && (manifest.FileSchemaVersions.Job < TranslationJob.SCHEMA_VERSION || manifest.FileSchemaVersions.JobFile < TranslationJobFileState.SCHEMA_VERSION))
+                throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.archive.outdated", Path.GetFileName(zipPath)));
 
             // Hash e dimensione di ogni voce: la dimensione dichiarata dalla voce prima di aprirla, quella letta entro il manifest
             Dictionary<string, byte[]> contents = new Dictionary<string, byte[]>(StringComparer.Ordinal);

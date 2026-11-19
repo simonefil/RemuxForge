@@ -6,7 +6,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// Esito della validazione di una consegna
     /// </summary>
     /// <param name="Cues">Esito di ogni battuta richiesta, nell'ordine della richiesta; gli errori di consegna stanno su ogni battuta</param>
-    /// <param name="Issues">Problemi senza id: elementi scartati e consegna slittata</param>
+    /// <param name="Issues">Problemi senza id degli elementi scartati</param>
     public sealed record TranslationValidationResult(IReadOnlyList<CueValidationResult> Cues, IReadOnlyList<TranslationValidationIssue> Issues)
     {
         /// <summary>

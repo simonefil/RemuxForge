@@ -91,7 +91,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Legge la testata di un job; un file guasto o di una versione più recente dà InvalidDataException
+        /// Legge la testata di un job; un file guasto, di una versione più recente o di una precedente che non si apre più dà
+        /// InvalidDataException
         /// </summary>
         /// <param name="id">Identificativo del job</param>
         /// <returns>Testata letta</returns>
@@ -102,11 +103,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
             lock (this._lock)
             {
+                CheckSchemaVersion(path, TranslationJob.SCHEMA_VERSION);
                 job = TranslationJsonFile.Read<TranslationJob>(path, AppText.F("toolbox.subtitleTranslation.jobUnreadable", path));
             }
-
-            if (job.SchemaVersion > TranslationJob.SCHEMA_VERSION)
-                throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.jobTooNew", path));
 
             return job;
         }
@@ -128,7 +127,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Legge lo stato di un file del job; un file guasto o di una versione più recente dà InvalidDataException
+        /// Legge lo stato di un file del job; un file guasto, di una versione più recente o di una precedente che non si apre più dà
+        /// InvalidDataException
         /// </summary>
         /// <param name="jobId">Identificativo del job</param>
         /// <param name="fileId">File del progetto</param>
@@ -136,11 +136,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public TranslationJobFileState LoadFile(string jobId, string fileId)
         {
             string path = Path.Combine(this.GetFolder(jobId), FILES_FOLDER, fileId + ".json");
-            TranslationJobFileState file = TranslationJsonFile.Read<TranslationJobFileState>(path, AppText.F("toolbox.subtitleTranslation.jobUnreadable", path));
-            if (file.SchemaVersion > TranslationJobFileState.SCHEMA_VERSION)
-                throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.jobTooNew", path));
-
-            return file;
+            CheckSchemaVersion(path, TranslationJobFileState.SCHEMA_VERSION);
+            return TranslationJsonFile.Read<TranslationJobFileState>(path, AppText.F("toolbox.subtitleTranslation.jobUnreadable", path));
         }
 
         /// <summary>
@@ -247,6 +244,25 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public string GetFolder(string id)
         {
             return Path.Combine(this._root, id);
+        }
+
+        #endregion
+
+        #region Metodi privati
+
+        /// <summary>
+        /// Rifiuta un file del job di un'altra versione prima di leggerlo: uno di una versione precedente può avere valori che il
+        /// formato di oggi non legge più, e si rifiuta col motivo invece che come file guasto
+        /// </summary>
+        /// <param name="path">File del job</param>
+        /// <param name="current">Versione del formato di oggi</param>
+        private static void CheckSchemaVersion(string path, int current)
+        {
+            int version = File.Exists(path) ? TranslationJsonFile.ReadSchemaVersion(File.ReadAllBytes(path)) : 0;
+            if (version > current)
+                throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.jobTooNew", path));
+            if (version > 0 && version < current)
+                throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.jobOutdated", path));
         }
 
         #endregion

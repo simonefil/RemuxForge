@@ -108,10 +108,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         CorrectedByAi,
 
         /// <summary>Testo scritto dall'utente</summary>
-        EditedByUser,
-
-        /// <summary>Stessa traduzione di un'altra battuta del blocco con un sorgente diverso</summary>
-        Slip
+        EditedByUser
     }
 
     /// <summary>
@@ -166,7 +163,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Versione del formato di job.json
         /// </summary>
-        public const int SCHEMA_VERSION = 1;
+        public const int SCHEMA_VERSION = 2;
 
         #endregion
 
@@ -333,7 +330,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Versione del formato del file di stato
         /// </summary>
-        public const int SCHEMA_VERSION = 1;
+        public const int SCHEMA_VERSION = 2;
 
         #endregion
 
@@ -598,6 +595,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Rejections = new List<CueRejection>();
             this.ToReviewReason = null;
             this.GlossaryWarnings = new List<GlossaryWarning>();
+            this.Repairs = new List<string>();
             this.Signals = new List<TranslationCueSignal>();
             this.AcceptedCallSeq = null;
             this.AiCorrection = null;
@@ -610,14 +608,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// Mette un testo nuovo validato: avvisi del glossario dal validatore, segnale Glossario messo o tolto; una battuta da
-        /// rivedere diventa accettata. Un testo cambiato toglie lo slittamento, che riguardava il testo di prima
+        /// rivedere diventa accettata. Un testo cambiato toglie le riparazioni del codice, che riguardavano il testo di prima
         /// </summary>
         /// <param name="text">Testo validato</param>
         /// <param name="warnings">Avvisi del glossario del validatore sul testo</param>
         public void SetText(string text, List<GlossaryWarning> warnings)
         {
             if (!string.Equals(text, this.Text, StringComparison.Ordinal))
-                this.Signals.Remove(TranslationCueSignal.Slip);
+                this.Repairs = new List<string>();
             this.Text = text;
             this.Status = TranslatedCueStatus.Accepted;
             this.ToReviewReason = null;
@@ -657,6 +655,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             clone.ToReviewReason = this.ToReviewReason;
             foreach (GlossaryWarning warning in this.GlossaryWarnings)
                 clone.GlossaryWarnings.Add(new GlossaryWarning { Source = warning.Source, Target = warning.Target });
+            clone.Repairs.AddRange(this.Repairs);
             clone.Signals.AddRange(this.Signals);
             clone.AcceptedCallSeq = this.AcceptedCallSeq;
             clone.AiCorrection = this.AiCorrection != null ? new CueAiCorrection { Before = this.AiCorrection.Before, Explanation = this.AiCorrection.Explanation } : null;
@@ -702,6 +701,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Termini del glossario non rispettati
         /// </summary>
         public List<GlossaryWarning> GlossaryWarnings { get; set; }
+
+        /// <summary>
+        /// Riparazioni del codice sul testo accettato, nelle righe del validatore: formattazione tolta, caratteri riservati e
+        /// invisibili tolti
+        /// </summary>
+        public List<string> Repairs { get; set; }
 
         /// <summary>
         /// Avvisi cumulativi

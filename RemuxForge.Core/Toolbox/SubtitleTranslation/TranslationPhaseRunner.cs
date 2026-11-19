@@ -5,6 +5,7 @@ using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -253,11 +254,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Consegne di un gruppo di id: la prima, poi fino a due ritentativi sulle sole respinte, coi gruppi interi. Una risposta
-        /// troncata dal tetto dei token in uscita torna al chiamante se è la prima consegna con whole vero, che divide l'unità e
-        /// rimpicciolisce i blocchi seguenti del file; altrimenti si dimezzano le battute in attesa. Una risposta incompleta per un
-        /// altro motivo non dipende dalla lunghezza: non si divide e non cambia i blocchi del file, e le battute in attesa restano da
-        /// rivedere col motivo, filtro dei contenuti o incompleta
+        /// Consegne di un gruppo di id: la prima, poi i ritentativi sulle sole respinte, coi gruppi interi. Una battuta con meno a
+        /// capo del sorgente segna di solito una consegna slittata: si tengono le battute prima di lei e si richiede da lei alla fine;
+        /// se la stessa battuta ci ricade, si chiede da sola e le battute dopo diventano una consegna a sé. Una battuta respinta per
+        /// altro ha fino a due ritentativi, poi si chiede da sola; segni, caratteri riservati e consegne doppie dopo il primo
+        /// ritentativo si riparano. Una battuta da sola si accetta con gli a capo che ha, e resta da rivedere solo se non ha testo.
+        /// Una risposta troncata dal tetto dei token in uscita torna al chiamante se è la prima consegna con whole vero, che divide
+        /// l'unità e rimpicciolisce i blocchi seguenti del file; altrimenti si dimezzano le battute in attesa. Una risposta incompleta
+        /// per un altro motivo non dipende dalla lunghezza: non si divide e non cambia i blocchi del file, e le battute in attesa
+        /// restano da rivedere col motivo, filtro dei contenuti o incompleta
         /// </summary>
         /// <param name="context">File con prefisso e validatore</param>
         /// <param name="work">Esiti dell'unità in memoria</param>
@@ -277,6 +282,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             TranslationCallKind currentKind = kind;
             int currentAttempt = attempt;
             bool first = whole;
+            HashSet<int> restarted = new HashSet<int>();
+            List<KeyValuePair<List<int>, IReadOnlyList<string>>> apart = new List<KeyValuePair<List<int>, IReadOnlyList<string>>>();
 
             while (true)
             {
@@ -326,24 +333,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     {
                         foreach (int id in pending)
                             work.MarkToReview(id, response.IncompleteReason == INCOMPLETE_CONTENT_FILTER ? REASON_CONTENT_FILTER : REASON_INCOMPLETE);
-                        return false;
+                        break;
                     }
 
                     this.RaiseLog(AppText.F("toolbox.subtitleTranslation.run.retryReduced", context.File.FileName, parts[0].Count, parts[1].Count));
                     foreach (List<int> part in parts)
                     {
-                        // Ogni parte si porta gli errori delle sue battute e quelli senza id
-                        List<string> partLines = new List<string>();
-                        foreach (string line in rejectedLines)
-                        {
-                            int space = line.IndexOf(' ');
-                            int id;
-                            if (space < 0 || !int.TryParse(line.Substring(0, space), NumberStyles.None, CultureInfo.InvariantCulture, out id) || part.Contains(id))
-                                partLines.Add(line);
-                        }
-                        await this.DeliverAsync(context, work, plan, part, plan.ReducedKind, currentAttempt, partLines, false, provider, cancellation);
+                        await this.DeliverAsync(context, work, plan, part, plan.ReducedKind, currentAttempt, LinesOf(rejectedLines, part), false, provider, cancellation);
                     }
-                    return false;
+                    break;
                 }
 
                 List<string> submissions = new List<string>();
@@ -353,7 +351,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         submissions.Add(AiOAuthFlow.GetString(item, "arguments"));
                 }
 
-                TranslationValidationResult result = context.Validator.Validate(pending, context.GetLiveCues(pending), submissions);
+                // Segni, caratteri riservati e consegne doppie si riparano sulle battute che hanno già avuto un ritentativo
+                TranslationValidationResult result = context.Validator.Validate(pending, context.GetLiveCues(pending), submissions,
+                    pending.FindAll(id => work.Get(id).Rejections.Count > 0));
                 List<CollectedNewTerm> terms = new List<CollectedNewTerm>();
 
                 // Termini nuovi della prima consegna leggibile, con le battute richieste il cui sorgente contiene il termine
@@ -407,11 +407,19 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     break;
                 }
 
+                // Prima battuta con meno a capo del sorgente nell'ordine crescente di id, quello in cui il modello consegna: le battute
+                // dopo di lei, slittate, si richiedono senza giudicarle
+                int cut = result.Cues.Where(cue => cue.Issues.Any(issue => issue.Code == TranslationValidator.LINE_BREAK_MISSING)).Select(cue => cue.Id)
+                    .DefaultIfEmpty(int.MaxValue).Min();
+                List<CueValidationResult> judged = result.Cues.Where(cue => cue.Id <= cut).ToList();
+                List<int> shifted = pending.FindAll(id => id > cut);
+                IReadOnlyList<string> modelLines = result.ToModelLines();
+
                 List<int> rejected = new List<int>();
                 SortedSet<string> reasons = new SortedSet<string>(StringComparer.Ordinal);
                 record.Usage = new TranslationCallUsage(response.Usage, 0);
                 record.NewTerms = plan.CollectNewTerms ? terms.Count : null;
-                foreach (CueValidationResult cue in result.Cues)
+                foreach (CueValidationResult cue in judged)
                 {
                     if (!cue.HasErrors)
                         continue;
@@ -427,19 +435,19 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
                     record.Rejections.Add(new TranslationCallRejection { Id = cue.Id, Reasons = lines });
                 }
-                record.Accepted = result.Cues.Count - rejected.Count;
+                record.Accepted = judged.Count - rejected.Count;
                 record.Rejected = rejected.Count;
                 if (plan.Current != null)
                 {
                     record.Corrected = 0;
-                    foreach (CueValidationResult cue in result.Cues)
+                    foreach (CueValidationResult cue in judged)
                     {
                         string before;
                         if (!cue.HasErrors && !(plan.Current.TryGetValue(cue.Id, out before) && string.Equals(before, cue.Text, StringComparison.Ordinal)))
                             record.Corrected++;
                     }
                 }
-                record.Outcome = rejected.Count == 0 ? TranslationCallOutcome.Accepted : TranslationCallOutcome.PartiallyRejected;
+                record.Outcome = rejected.Count == 0 && shifted.Count == 0 ? TranslationCallOutcome.Accepted : TranslationCallOutcome.PartiallyRejected;
                 int callSeq = this.RecordCall(record, work);
 
                 foreach (CollectedNewTerm term in terms)
@@ -448,23 +456,50 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     work.NewTerms.Add(term);
                 }
 
-                foreach (CueValidationResult cue in result.Cues)
+                List<int> retry = new List<int>();
+                foreach (CueValidationResult cue in judged)
                 {
                     TranslatedCueState state = work.Get(cue.Id);
                     if (cue.HasErrors)
                     {
                         state.Rejections.Add(new CueRejection { CallSeq = callSeq, Attempt = currentAttempt + 1, Reasons = record.Rejections.Find(r => r.Id == cue.Id).Reasons });
+                        bool lineBreak = cue.Issues.Any(issue => issue.Code == TranslationValidator.LINE_BREAK_MISSING);
+                        if (lineBreak && !restarted.Add(cue.Id))
+                        {
+                            // Ricaduta sulla stessa battuta: lei da sola, le battute dopo come consegna a sé
+                            apart.Add(new KeyValuePair<List<int>, IReadOnlyList<string>>(new List<int> { cue.Id }, LinesOf(modelLines, new List<int> { cue.Id })));
+                            if (shifted.Count > 0)
+                                apart.Add(new KeyValuePair<List<int>, IReadOnlyList<string>>(shifted, LinesOf(modelLines, shifted)));
+                            shifted = new List<int>();
+                        }
+                        else if (lineBreak || state.Rejections.Count <= MAX_RETRIES)
+                        {
+                            retry.Add(cue.Id);
+                        }
+                        else if (pending.Count > 1)
+                        {
+                            apart.Add(new KeyValuePair<List<int>, IReadOnlyList<string>>(new List<int> { cue.Id }, LinesOf(modelLines, new List<int> { cue.Id })));
+                        }
+                        else
+                        {
+                            // Nessun testo inventato: una battuta da sola che anche dopo i ritentativi non ha un testo valido resta
+                            // senza testo nuovo coi suoi ultimi errori
+                            work.MarkToReview(cue.Id, string.Join(" ", record.Rejections.Find(r => r.Id == cue.Id).Reasons));
+                        }
                         continue;
                     }
 
-                    // Testo validato accettato, con gli avvisi del glossario
+                    // Testo validato accettato, con gli avvisi del glossario e le riparazioni del codice
                     state.Status = TranslatedCueStatus.Accepted;
                     state.Text = cue.Text;
                     state.ToReviewReason = null;
                     state.AcceptedCallSeq = callSeq;
                     state.GlossaryWarnings = cue.GetGlossaryWarnings();
+                    state.Repairs = cue.Issues.Where(issue => issue.Severity == IssueSeverity.Warning && issue.Code != TranslationValidator.GLOSSARY_MISSING)
+                        .Select(issue => issue.ToModelLine()).ToList();
                     work.Accepted[cue.Id] = cue.Text;
                 }
+                retry.AddRange(shifted);
 
                 if (currentKind == plan.RetryKind && currentAttempt > 0)
                 {
@@ -478,23 +513,21 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     work.FirstReasons.UnionWith(reasons);
                 }
 
-                if (rejected.Count == 0)
-                    return false;
+                if (retry.Count == 0)
+                    break;
 
                 currentAttempt++;
-                if (currentAttempt > MAX_RETRIES)
-                {
-                    // Nessun testo inventato: le battute respinte dopo i ritentativi restano senza testo nuovo coi loro ultimi errori
-                    foreach (int id in rejected)
-                        work.MarkToReview(id, string.Join(" ", record.Rejections.Find(r => r.Id == id).Reasons));
-                    return false;
-                }
-
-                pending = rejected;
-                rejectedLines = result.ToModelLines();
+                pending = pending.FindAll(id => retry.Contains(id));
+                rejectedLines = LinesOf(modelLines, retry);
                 currentKind = plan.RetryKind;
                 first = false;
             }
+
+            // Consegne a sé, dopo le battute rimaste nel gruppo, ciascuna con gli errori delle sue battute
+            foreach (KeyValuePair<List<int>, IReadOnlyList<string>> part in apart)
+                await this.DeliverAsync(context, work, plan, part.Key, plan.RetryKind, currentAttempt + 1, part.Value, false, provider, cancellation);
+
+            return false;
         }
 
         /// <summary>
@@ -658,6 +691,26 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #endregion
 
         #region Metodi privati
+
+        /// <summary>
+        /// Righe degli errori che riguardano le battute date: quelle senza id e quelle con l'id di una delle battute
+        /// </summary>
+        /// <param name="lines">Righe per il modello «id CODICE: messaggio» o «CODICE: messaggio»</param>
+        /// <param name="ids">Battute</param>
+        /// <returns>Righe nell'ordine</returns>
+        private static List<string> LinesOf(IReadOnlyList<string> lines, List<int> ids)
+        {
+            List<string> kept = new List<string>();
+            foreach (string line in lines)
+            {
+                int space = line.IndexOf(' ');
+                int id;
+                if (space < 0 || !int.TryParse(line.Substring(0, space), NumberStyles.None, CultureInfo.InvariantCulture, out id) || ids.Contains(id))
+                    kept.Add(line);
+            }
+
+            return kept;
+        }
 
         /// <summary>
         /// Riga del registro di un tentativo di trasporto

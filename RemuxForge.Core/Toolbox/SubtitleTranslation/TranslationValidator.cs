@@ -11,7 +11,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
     /// Validazione deterministica delle traduzioni consegnate dal modello e delle modifiche dell'utente: forma della consegna,
-    /// id, testo, segni dei tratti formattati, caratteri riservati del formato, gruppi di frase spezzata e termini del glossario
+    /// id, testo, a capo, segni dei tratti formattati, caratteri riservati del formato, gruppi di frase spezzata e termini del
+    /// glossario; i caratteri invisibili spuri e, a richiesta, segni e caratteri riservati sbagliati li ripara il codice
     /// </summary>
     public class TranslationValidator
     {
@@ -53,20 +54,17 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Segno senza testo</summary>
         public const string MARK_EMPTY = "MARK_EMPTY";
 
-        /// <summary>\N dei record copiato nella consegna di una battuta il cui sorgente ha già \N come testo</summary>
-        public const string LINE_BREAK_AMBIGUOUS = "LINE_BREAK_AMBIGUOUS";
+        /// <summary>Meno a capo del sorgente in una battuta consegnata insieme ad altre</summary>
+        public const string LINE_BREAK_MISSING = "LINE_BREAK_MISSING";
 
         /// <summary>Carattere che il formato interpreterebbe</summary>
         public const string RESERVED_CHAR = "RESERVED_CHAR";
 
-        /// <summary>Carattere invisibile di formato (spazio a larghezza zero e simili) che il sorgente non ha</summary>
+        /// <summary>Carattere invisibile di formato (spazio a larghezza zero e simili) che il sorgente non ha, tolto dal codice</summary>
         public const string INVISIBLE_CHAR = "INVISIBLE_CHAR";
 
         /// <summary>Battuta valida di un gruppo con un'altra battuta respinta</summary>
         public const string GROUP_INCOMPLETE = "GROUP_INCOMPLETE";
-
-        /// <summary>Consegna slittata: un segno passato da una battuta a quella accanto, tutta la consegna respinta</summary>
-        public const string DELIVERY_SHIFTED = "DELIVERY_SHIFTED";
 
         /// <summary>Resa del glossario assente nella traduzione</summary>
         public const string GLOSSARY_MISSING = "GLOSSARY_MISSING";
@@ -187,8 +185,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="requestedIds">Id richiesti in ordine di tempo, l'ordine dell'esito e dei ritentativi</param>
         /// <param name="cues">Battute che contengono gli id richiesti, con gruppi e ricette</param>
         /// <param name="submissions">Argomenti delle chiamate submit_translation della risposta, nell'ordine; si usa la prima leggibile</param>
-        /// <returns>Esito per ogni id richiesto e problemi senza id: elementi scartati e consegna slittata</returns>
-        public TranslationValidationResult Validate(IReadOnlyList<int> requestedIds, IReadOnlyList<SubtitleCue> cues, IReadOnlyList<string> submissions)
+        /// <param name="repairIds">Id che hanno già avuto il loro ritentativo: segni, caratteri riservati e consegne doppie si riparano
+        /// invece di respingerli. Senza la forma dei segni, o coi segni fuori ordine, resta il testo senza formattazione; altrimenti si
+        /// tolgono i segni in più e quelli vuoti, e un segno mancante resta senza la sua formattazione. Di una consegna doppia vale la
+        /// prima. Le riparazioni restano come avvisi</param>
+        /// <returns>Esito per ogni id richiesto e problemi senza id degli elementi scartati</returns>
+        public TranslationValidationResult Validate(IReadOnlyList<int> requestedIds, IReadOnlyList<SubtitleCue> cues, IReadOnlyList<string> submissions,
+            IReadOnlyCollection<int> repairIds)
         {
             Dictionary<int, SubtitleCue> byId = new Dictionary<int, SubtitleCue>();
             foreach (SubtitleCue cue in cues)
@@ -285,49 +288,30 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 {
                     cueIssues.Add(Issue(id, ID_MISSING, IssueSeverity.Error, "cue " + id + " is missing from the delivery."));
                 }
-                else if (texts.Count > 1)
+                else if (texts.Count > 1 && !repairIds.Contains(id))
                 {
                     cueIssues.Add(Issue(id, ID_DUPLICATE, IssueSeverity.Error, "cue " + id + " was delivered " + texts.Count + " times; deliver it once."));
                 }
                 else
                 {
-                    text = this.ValidateText(byId[id], texts[0], cueIssues, true);
-                }
-                results[id] = new CueValidationResult(id, text, cueIssues);
-            }
+                    // Nella riparazione di una battuta consegnata più volte vale la prima consegna
+                    if (texts.Count > 1)
+                        cueIssues.Add(Issue(id, ID_DUPLICATE, IssueSeverity.Warning, "cue " + id + " was delivered " + texts.Count + " times; the first one was kept."));
+                    text = this.ValidateText(byId[id], texts[0], cueIssues, true, repairIds.Contains(id));
 
-            // Slittamento: un segno che manca su una battuta e compare in più su quella accanto nella consegna è passato dall'una
-            // all'altra, quindi le traduzioni sono scalate di posizione e anche quelle senza segni sono sugli id sbagliati. Si
-            // respinge tutta la consegna, così il ritentativo non ha in coda i testi slittati. Dentro una frase spezzata un segno
-            // che passa da una parte all'altra è l'ordine delle parole della lingua d'arrivo: lo respinge già il gruppo
-            string shift = null;
-            for (int i = 0; i + 1 < deliveryOrder.Count && shift == null; i++)
-            {
-                int? group = byId[deliveryOrder[i]].Group;
-                if (group.HasValue && byId[deliveryOrder[i + 1]].Group == group)
-                    continue;
-                foreach (TranslationValidationIssue missing in issues[deliveryOrder[i]].Concat(issues[deliveryOrder[i + 1]]))
-                {
-                    if (missing.Code != MARK_MISSING)
-                        continue;
-                    int other = missing.Id.Value == deliveryOrder[i] ? deliveryOrder[i + 1] : deliveryOrder[i];
-                    if (issues[other].Exists(extra => extra.Code == MARK_EXTRA && extra.Args["n"] == missing.Args["n"]))
+                    // A capo: una battuta con meno righe del sorgente è di solito la prima riga di una battuta consegnata da sola,
+                    // con le traduzioni dopo slittate sugli id sbagliati. Da sola una battuta non ha vicine su cui slittare
+                    int sourceBreaks = byId[id].CleanText.Count(c => c == '\n');
+                    int breaks = text.Count(c => c == '\n');
+                    if (requested.Count > 1 && breaks < sourceBreaks && !cueIssues.Exists(issue => issue.Code == TEXT_EMPTY))
                     {
-                        shift = "span ⟦" + missing.Args["n"] + "⟧ of cue " + missing.Id.Value + " was delivered in cue " + other
-                            + ": the translations are shifted to neighbouring ids, so the whole delivery is rejected. Give each id the translation of its own source cue; "
-                            + "the tab-indented lines under an id are more lines of that same cue.";
-                        break;
+                        cueIssues.Add(Issue(id, LINE_BREAK_MISSING, IssueSeverity.Error, "the source of cue " + id + " has " + sourceBreaks + " line break(s), the translation " + breaks
+                            + ". A cue keeps at least the line breaks of its source; one with fewer is usually the first line of the cue delivered alone, with the next translations shifted onto the wrong ids, "
+                            + "so this cue and every cue after it are requested again.",
+                            "expected", sourceBreaks.ToString(CultureInfo.InvariantCulture), "found", breaks.ToString(CultureInfo.InvariantCulture)));
                     }
                 }
-            }
-            if (shift != null)
-            {
-                entryIssues.Add(Issue(null, DELIVERY_SHIFTED, IssueSeverity.Error, shift));
-                foreach (int id in requested)
-                {
-                    if (!results[id].HasErrors)
-                        issues[id].Add(Issue(id, DELIVERY_SHIFTED, IssueSeverity.Error, "rejected with the shifted delivery; deliver it again."));
-                }
+                results[id] = new CueValidationResult(id, text, cueIssues);
             }
 
             // Gruppi: una battuta respinta per un errore suo rimanda tutto il gruppo, e il messaggio cita lei
@@ -390,7 +374,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public CueValidationResult ValidateEdit(SubtitleCue cue, string text)
         {
             List<TranslationValidationIssue> cueIssues = new List<TranslationValidationIssue>();
-            string normalizedText = this.ValidateText(cue, text ?? "", cueIssues, false);
+            string normalizedText = this.ValidateText(cue, text ?? "", cueIssues, false, false);
             CueValidationResult result = new CueValidationResult(cue.Id.Value, normalizedText, cueIssues);
             if (!result.HasErrors)
             {
@@ -400,44 +384,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
 
             return result;
-        }
-
-        /// <summary>
-        /// Segnala lo slittamento, uno dei guasti dei modelli che Subtitle Edit e rockbenben controllano dopo bug reali: la stessa
-        /// traduzione su due o più battute accettate dell'unità con sorgenti diversi, confrontati a parità di spazi e maiuscole.
-        /// È un avviso verso la revisione, mai un rifiuto. Le copie di una tratta condivisa non entrano: sono uguali per
-        /// costruzione
-        /// </summary>
-        /// <param name="translations">Esiti del blocco o della tratta</param>
-        /// <param name="sources">Battute sorgenti del file per id</param>
-        public static void AddSlipSignals(IEnumerable<TranslatedCueState> translations, IReadOnlyDictionary<int, FrozenCue> sources)
-        {
-            Dictionary<string, List<KeyValuePair<TranslatedCueState, string>>> byText = new Dictionary<string, List<KeyValuePair<TranslatedCueState, string>>>(StringComparer.Ordinal);
-            foreach (TranslatedCueState translation in translations)
-            {
-                if (translation.Status != TranslatedCueStatus.Accepted || translation.Text == null)
-                    continue;
-
-                string text = Regex.Replace(translation.Text, @"\s+", " ").Trim().ToLowerInvariant();
-                List<KeyValuePair<TranslatedCueState, string>> same;
-                if (!byText.TryGetValue(text, out same))
-                {
-                    same = new List<KeyValuePair<TranslatedCueState, string>>();
-                    byText[text] = same;
-                }
-                same.Add(new KeyValuePair<TranslatedCueState, string>(translation, Regex.Replace(sources[translation.Id].Text, @"\s+", " ").Trim().ToLowerInvariant()));
-            }
-
-            foreach (List<KeyValuePair<TranslatedCueState, string>> same in byText.Values)
-            {
-                if (!same.Exists(s => s.Value != same[0].Value))
-                    continue;
-                foreach (KeyValuePair<TranslatedCueState, string> pair in same)
-                {
-                    if (!pair.Key.Signals.Contains(TranslationCueSignal.Slip))
-                        pair.Key.Signals.Add(TranslationCueSignal.Slip);
-                }
-            }
         }
 
         #endregion
@@ -621,26 +567,74 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi privati
 
         /// <summary>
-        /// Normalizza il testo consegnato e ne controlla testo, segni e caratteri riservati
+        /// Normalizza il testo consegnato e ne controlla testo, segni e caratteri riservati; nel testo del modello toglie i caratteri
+        /// invisibili spuri e, nella riparazione, i segni sbagliati e i caratteri riservati, con un avviso per ognuno
         /// </summary>
         /// <param name="cue">Battuta sorgente</param>
         /// <param name="text">Testo consegnato</param>
-        /// <param name="issues">Esiti della battuta, a cui si aggiungono gli errori</param>
-        /// <param name="delivered">Vero per il testo consegnato dal modello; falso per quello scritto dall'utente o ricomposto dal codice
-        /// (sostituzione dei termini), che non si controlla sui caratteri invisibili</param>
-        /// <returns>Testo normalizzato</returns>
-        private string ValidateText(SubtitleCue cue, string text, List<TranslationValidationIssue> issues, bool delivered)
+        /// <param name="issues">Esiti della battuta, a cui si aggiungono errori e avvisi</param>
+        /// <param name="delivered">Vero per il testo consegnato dal modello, dove \N e \n scritti sono a capo; falso per quello
+        /// scritto dall'utente o ricomposto dal codice (sostituzione dei termini), che non si controlla sui caratteri invisibili</param>
+        /// <param name="repair">Vero per riparare segni, caratteri riservati e consegne doppie invece di respingerli</param>
+        /// <returns>Testo normalizzato, riparato dove serve</returns>
+        private string ValidateText(SubtitleCue cue, string text, List<TranslationValidationIssue> issues, bool delivered, bool repair)
         {
             int id = cue.Id.Value;
+            IssueSeverity markSeverity = repair ? IssueSeverity.Warning : IssueSeverity.Error;
 
-            // Il \N con cui i record scrivono gli a capo, copiato dal modello nella consegna, è un a capo quando il sorgente non
-            // ha \N come testo; altrimenti non si sa quale dei due sia
-            if (delivered && text.Contains(TranslationRequestBuilder.LINE_BREAK_MARK, StringComparison.Ordinal))
+            // Il modello scrive gli a capo come \N, come nei record, come a capo veri o come \n scritto, il ritorno a capo dell'ASS:
+            // valgono tutti, e la barra rovesciata è comunque riservata nel testo dei formati
+            if (delivered)
+                text = text.Replace(TranslationRequestBuilder.LINE_BREAK_MARK, "\n").Replace("\\n", "\n");
+
+            // Caratteri invisibili spuri nella consegna del modello, che il sorgente e le rese dei termini del glossario presenti nella
+            // battuta non hanno (Unicode Standard, capitolo 23.2 Layout Controls): si tolgono. In un testo le cui lettere sono tutte
+            // latine, greche o cirilliche nessun carattere di formato serve: ognuno è spurio, dovunque stia. Nelle altre scritture lo
+            // spazio a larghezza zero, il word joiner e lo ZWNBSP segnano o bloccano un a capo dove le parole non hanno spazi (thai,
+            // khmer, birmano, giapponese), ZWJ e ZWNJ governano legature e forme delle lettere nelle scritture corsive e indiane:
+            // spuri solo fra due lettere latine, greche o cirilliche (anche al di là di altri invisibili); i segni di direzione e i
+            // controlli bidi ordinano il testo bidirezionale: spuri solo senza caratteri da destra a sinistra; gli altri, come i segni
+            // arabi che si vedono, non contano
+            if (delivered)
             {
-                if (cue.CleanText.Contains(TranslationRequestBuilder.LINE_BREAK_MARK, StringComparison.Ordinal))
-                    issues.Add(Issue(id, LINE_BREAK_AMBIGUOUS, IssueSeverity.Error, "the source text of cue " + id + " contains \"\\N\" as text, so \"\\N\" cannot mark a line break; write line breaks as \"\\n\" in the JSON string."));
-                else
-                    text = text.Replace(TranslationRequestBuilder.LINE_BREAK_MARK, "\n");
+                HashSet<char> reported = new HashSet<char>();
+                StringBuilder visible = new StringBuilder();
+                Func<char, bool> spacedLetter = letter => char.IsLetter(letter) && (letter < '\u0530' || (letter >= '\u1E00' && letter < '\u2000'));
+                bool spacedOnly = text.Any(char.IsLetter) && text.Where(char.IsLetter).All(spacedLetter);
+                bool rightToLeft = text.Any(c => (c >= '\u0590' && c <= '\u08FF') || (c >= '\uFB1D' && c <= '\uFDFF') || (c >= '\uFE70' && c <= '\uFEFE'));
+                List<string> renderings = this._terms.FindAll(term => term.SourcePattern.IsMatch(GlossaryPlain(cue.CleanText))).ConvertAll(term => term.Target);
+                for (int i = 0; i < text.Length; i++)
+                {
+                    char c = text[i];
+                    if (char.GetUnicodeCategory(c) != UnicodeCategory.Format || cue.CleanText.IndexOf(c) >= 0 || renderings.Exists(target => target.IndexOf(c) >= 0))
+                    {
+                        visible.Append(c);
+                        continue;
+                    }
+                    int before = i - 1;
+                    while (before >= 0 && s_lineControls.Contains(text[before]))
+                        before--;
+                    int after = i + 1;
+                    while (after < text.Length && s_lineControls.Contains(text[after]))
+                        after++;
+                    string value = "U+" + ((int)c).ToString("X4", CultureInfo.InvariantCulture);
+                    string reason = null;
+                    if (spacedOnly)
+                        reason = value + " is an invisible character the source cue does not have; it was removed.";
+                    else if (s_lineControls.Contains(c) && before >= 0 && after < text.Length && spacedLetter(text[before]) && spacedLetter(text[after]))
+                        reason = value + " is an invisible character the source cue does not have between two Latin, Greek or Cyrillic letters; it was removed from between those letters.";
+                    else if (s_directionControls.Contains(c) && !rightToLeft)
+                        reason = value + " is a direction mark the source cue does not have, in a text without right-to-left letters; it was removed.";
+
+                    if (reason == null)
+                    {
+                        visible.Append(c);
+                        continue;
+                    }
+                    if (reported.Add(c))
+                        issues.Add(Issue(id, INVISIBLE_CHAR, IssueSeverity.Warning, reason, "char", value));
+                }
+                text = visible.ToString();
             }
 
             // Normalizzazione senza errore; il testo identico al sorgente resta com'è perché si ricomponga identico
@@ -679,11 +673,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 normalizedText = string.Join("\n", lines).Normalize(NormalizationForm.FormC);
             }
 
-            // Vuoto anche quando restano solo spazi e caratteri invisibili di formato
-            if (!s_anyMarkSyntax.Replace(normalizedText, "").Any(c => !char.IsWhiteSpace(c) && char.GetUnicodeCategory(c) != UnicodeCategory.Format))
-                issues.Add(Issue(id, TEXT_EMPTY, IssueSeverity.Error, "cue " + id + " has no text."));
-
             // Segni: una forma sbagliata salta gli altri controlli dei segni
+            List<int> expected = new List<int>();
+            foreach (MarkRecipe mark in cue.Recipe.Marks)
+                expected.Add(mark.Number);
             List<int> found = new List<int>();
             List<int> empty = new List<int>();
             string malformed = null;
@@ -729,15 +722,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             if (malformed == null && open >= 0)
                 malformed = normalizedText.Substring(open);
 
+            bool unordered = false;
+            int markIssues = issues.Count;
             if (malformed != null)
             {
-                issues.Add(Issue(id, MARK_MALFORMED, IssueSeverity.Error, "\"" + malformed + "\" is not a span of the form ⟦n text⟧."));
+                issues.Add(Issue(id, MARK_MALFORMED, markSeverity, "\"" + malformed + "\" is not a span of the form ⟦n text⟧."));
             }
             else
             {
-                List<int> expected = new List<int>();
-                foreach (MarkRecipe mark in cue.Recipe.Marks)
-                    expected.Add(mark.Number);
                 string expectedList = SpanList(expected);
                 bool complete = true;
                 foreach (int number in expected)
@@ -745,7 +737,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (!found.Contains(number))
                     {
                         complete = false;
-                        issues.Add(Issue(id, MARK_MISSING, IssueSeverity.Error, "span ⟦" + number + "⟧ is missing; the source cue has spans " + expectedList + ".",
+                        issues.Add(Issue(id, MARK_MISSING, markSeverity, "span ⟦" + number + "⟧ is missing; the source cue has spans " + expectedList + ".",
                             "n", number.ToString(CultureInfo.InvariantCulture)));
                     }
                 }
@@ -755,7 +747,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (!expected.Contains(number) || !seen.Add(number))
                     {
                         complete = false;
-                        issues.Add(Issue(id, MARK_EXTRA, IssueSeverity.Error,
+                        issues.Add(Issue(id, MARK_EXTRA, markSeverity,
                             "span ⟦" + number + "⟧ is not in the source cue (or appears twice); the source cue has spans " + expectedList + ".",
                             "n", number.ToString(CultureInfo.InvariantCulture)));
                     }
@@ -763,73 +755,82 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 string foundList = SpanList(found);
                 if (complete && foundList != expectedList)
                 {
-                    issues.Add(Issue(id, MARK_ORDER, IssueSeverity.Error, "spans appear as " + foundList + "; the source order is " + expectedList + ".",
+                    unordered = true;
+                    issues.Add(Issue(id, MARK_ORDER, markSeverity, "spans appear as " + foundList + "; the source order is " + expectedList + ".",
                         "expected", expectedList, "found", foundList));
                 }
                 foreach (int number in empty)
                 {
-                    issues.Add(Issue(id, MARK_EMPTY, IssueSeverity.Error, "span ⟦" + number + "⟧ is empty; put the translated words inside it.",
+                    issues.Add(Issue(id, MARK_EMPTY, markSeverity, "span ⟦" + number + "⟧ is empty; put the translated words inside it.",
                         "n", number.ToString(CultureInfo.InvariantCulture)));
                 }
             }
 
-            // Caratteri riservati che il testo pulito del sorgente non ha
+            // Riparazione dei segni: senza la loro forma o fuori ordine resta il testo senza formattazione; altrimenti restano la prima
+            // occorrenza non vuota di ogni segno del sorgente e il testo degli altri, e un segno mancante resta senza formattazione
+            if (repair && issues.Count > markIssues)
+            {
+                StringBuilder repaired = new StringBuilder();
+                HashSet<int> kept = new HashSet<int>();
+                for (int i = 0; i < normalizedText.Length; i++)
+                {
+                    if (malformed != null || unordered || normalizedText[i] != SubtitleCueCleaner.MARK_OPEN)
+                    {
+                        repaired.Append(normalizedText[i]);
+                        continue;
+                    }
+                    int digits = i + 1;
+                    while (normalizedText[digits] != ' ')
+                        digits++;
+                    int close = normalizedText.IndexOf(SubtitleCueCleaner.MARK_CLOSE, digits);
+                    string content = normalizedText.Substring(digits + 1, close - digits - 1);
+                    int number = int.Parse(normalizedText.Substring(i + 1, digits - i - 1), NumberStyles.None, CultureInfo.InvariantCulture);
+                    if (expected.Contains(number) && !empty.Contains(number) && kept.Add(number))
+                        repaired.Append(normalizedText, i, close - i + 1);
+                    else
+                        repaired.Append(content);
+                    i = close;
+                }
+                normalizedText = malformed != null || unordered ? s_anyMarkSyntax.Replace(repaired.ToString(), "") : repaired.ToString();
+            }
+
+            // Caratteri riservati che il testo pulito del sorgente non ha; la riparazione toglie i blocchi di tag interi, come
+            // {\i1} o <i>, e poi i caratteri rimasti
             string reserved = this._format == SubtitleTranslationFormat.Srt ? "{}\\<>" : "{}\\";
+            List<string> spurious = new List<string>();
             foreach (char c in reserved)
             {
                 if (normalizedText.IndexOf(c) >= 0 && cue.CleanText.IndexOf(c) < 0)
                 {
                     string value = c.ToString();
-                    issues.Add(Issue(id, RESERVED_CHAR, IssueSeverity.Error, "\"" + value + "\" is markup in this subtitle format; write plain text.", "char", value));
+                    spurious.Add(value);
+                    issues.Add(Issue(id, RESERVED_CHAR, markSeverity, "\"" + value + "\" is markup in this subtitle format; write plain text.", "char", value));
                 }
+            }
+            if (repair && spurious.Count > 0)
+            {
+                if (spurious.Contains("{") && spurious.Contains("}"))
+                    normalizedText = Regex.Replace(normalizedText, @"\{[^{}]*\}", "");
+                if (spurious.Contains("<") && spurious.Contains(">"))
+                    normalizedText = Regex.Replace(normalizedText, @"<[^<>]*>", "");
+                foreach (string value in spurious)
+                    normalizedText = normalizedText.Replace(value, "");
             }
 
-            // Caratteri invisibili spuri nella consegna del modello, che il sorgente e le rese dei termini del glossario presenti nella
-            // battuta non hanno (Unicode Standard, capitolo 23.2 Layout Controls). In un testo le cui lettere sono tutte latine, greche
-            // o cirilliche nessun carattere di formato serve: ognuno è spurio, dovunque stia. Nelle altre scritture lo spazio a
-            // larghezza zero, il word joiner e lo ZWNBSP segnano o bloccano un a capo dove le parole non hanno spazi (thai, khmer,
-            // birmano, giapponese), ZWJ e ZWNJ governano legature e forme delle lettere nelle scritture corsive e indiane: spuri solo
-            // fra due lettere latine, greche o cirilliche (anche al di là di altri invisibili); i segni di direzione e i controlli bidi
-            // ordinano il testo bidirezionale: spuri solo senza caratteri da destra a sinistra; gli altri, come i segni arabi che si
-            // vedono, non contano
-            if (delivered)
+            // Dopo una riparazione restano gli spazi del testo tolto: righe senza spazi doppi né ai bordi, salvo lo spazio di un segno
+            // aperto in fondo alla riga
+            if (repair)
             {
-                HashSet<char> spurious = new HashSet<char>();
-                Func<char, bool> spacedLetter = letter => char.IsLetter(letter) && (letter < '\u0530' || (letter >= '\u1E00' && letter < '\u2000'));
-                bool spacedOnly = normalizedText.Any(char.IsLetter) && normalizedText.Where(char.IsLetter).All(spacedLetter);
-                bool rightToLeft = normalizedText.Any(c => (c >= '\u0590' && c <= '\u08FF') || (c >= '\uFB1D' && c <= '\uFDFF') || (c >= '\uFE70' && c <= '\uFEFE'));
-                List<string> renderings = this._terms.FindAll(term => term.SourcePattern.IsMatch(GlossaryPlain(cue.CleanText))).ConvertAll(term => term.Target);
-                for (int i = 0; i < normalizedText.Length; i++)
+                normalizedText = string.Join("\n", normalizedText.Split('\n').Select(line =>
                 {
-                    char c = normalizedText[i];
-                    if (char.GetUnicodeCategory(c) != UnicodeCategory.Format || cue.CleanText.IndexOf(c) >= 0 || renderings.Exists(target => target.IndexOf(c) >= 0)
-                        || spurious.Contains(c))
-                        continue;
-                    bool joining = s_lineControls.Contains(c);
-                    int before = i - 1;
-                    while (before >= 0 && s_lineControls.Contains(normalizedText[before]))
-                        before--;
-                    int after = i + 1;
-                    while (after < normalizedText.Length && s_lineControls.Contains(normalizedText[after]))
-                        after++;
-                    string value = "U+" + ((int)c).ToString("X4", CultureInfo.InvariantCulture);
-                    if (spacedOnly)
-                    {
-                        spurious.Add(c);
-                        issues.Add(Issue(id, INVISIBLE_CHAR, IssueSeverity.Error, value + " is an invisible character the source cue does not have; remove it.", "char", value));
-                    }
-                    else if (joining && before >= 0 && after < normalizedText.Length && spacedLetter(normalizedText[before]) && spacedLetter(normalizedText[after]))
-                    {
-                        spurious.Add(c);
-                        issues.Add(Issue(id, INVISIBLE_CHAR, IssueSeverity.Error, value + " is an invisible character the source cue does not have between two Latin, Greek or Cyrillic letters; remove it from between those letters.", "char", value));
-                    }
-                    else if (s_directionControls.Contains(c) && !rightToLeft)
-                    {
-                        spurious.Add(c);
-                        issues.Add(Issue(id, INVISIBLE_CHAR, IssueSeverity.Error, value + " is a direction mark the source cue does not have, in a text without right-to-left letters; remove it.", "char", value));
-                    }
-                }
+                    string trimmed = Regex.Replace(line, " {2,}", " ").Trim();
+                    return s_markOpenAtEnd.IsMatch(trimmed) ? trimmed + " " : trimmed;
+                }));
             }
+
+            // Vuoto anche quando restano solo spazi e caratteri invisibili di formato
+            if (!s_anyMarkSyntax.Replace(normalizedText, "").Any(c => !char.IsWhiteSpace(c) && char.GetUnicodeCategory(c) != UnicodeCategory.Format))
+                issues.Add(Issue(id, TEXT_EMPTY, IssueSeverity.Error, "cue " + id + " has no text."));
 
             return normalizedText;
         }

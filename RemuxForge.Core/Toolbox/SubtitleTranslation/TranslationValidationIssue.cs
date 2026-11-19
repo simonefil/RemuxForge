@@ -7,7 +7,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// Esito della validazione di una consegna: codice, messaggio inglese per il modello e chiave del messaggio della UI con i
     /// suoi valori
     /// </summary>
-    /// <param name="Id">Battuta, null per i problemi degli elementi scartati e della consegna slittata</param>
+    /// <param name="Id">Battuta, null per i problemi degli elementi scartati</param>
     /// <param name="Code">Codice dell'esito</param>
     /// <param name="Severity">Gravità</param>
     /// <param name="ModelMessage">Messaggio per il modello</param>
@@ -28,7 +28,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi pubblici
 
         /// <summary>
-        /// Riga per il modello: «id CODICE: messaggio», senza id per i problemi degli elementi scartati e della consegna slittata
+        /// Riga per il modello: «id CODICE: messaggio», senza id per i problemi degli elementi scartati
         /// </summary>
         /// <returns>Riga per il modello</returns>
         public string ToModelLine()
