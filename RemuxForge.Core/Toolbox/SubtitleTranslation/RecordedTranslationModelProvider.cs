@@ -440,7 +440,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         string current;
                         string source;
                         string text = currents.TryGetValue(id, out current) ? current : SYNTHETIC_PREFIX + (sources.TryGetValue(id, out source) ? source : "#" + id.ToString(CultureInfo.InvariantCulture));
-                        issues.Add(new JsonObject { ["id"] = id, ["category"] = "accuracy", ["severity"] = "minor", ["explanation"] = SYNTHETIC_PREFIX + "issue " + id.ToString(CultureInfo.InvariantCulture), ["suggestion"] = text + SYNTHETIC_CORRECTION });
+                        issues.Add(new JsonObject { ["id"] = id, ["category"] = "accuracy", ["severity"] = "minor", ["source_says"] = sources.TryGetValue(id, out source) ? source : "#" + id.ToString(CultureInfo.InvariantCulture),
+                            ["translation_says"] = text, ["speaker"] = null, ["explanation"] = SYNTHETIC_PREFIX + "issue " + id.ToString(CultureInfo.InvariantCulture), ["suggestion"] = text + SYNTHETIC_CORRECTION });
                     }
                 }
 

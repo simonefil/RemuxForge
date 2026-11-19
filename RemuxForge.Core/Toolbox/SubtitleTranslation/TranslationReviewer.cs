@@ -12,8 +12,8 @@ using System.Threading.Tasks;
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
-    /// Revisione AI di un job: per ogni blocco scelto una diagnosi D1 con un ritentativo, poi D2 sulle battute diagnosticate e
-    /// su quelle da rivedere. Una diagnosi troncata dal tetto dei token in uscita a entrambe le chiamate si
+    /// Revisione AI di un job: per ogni blocco scelto una diagnosi D1 con un ritentativo, poi D2 sulle battute con
+    /// problemi di senso e su quelle da rivedere. Una diagnosi troncata dal tetto dei token in uscita a entrambe le chiamate si
     /// dimezza come una consegna. Ogni parte diagnosticata si salva, e alla ripresa il blocco riparte dalle parti che restano o
     /// da D2. Una parte che il modello non diagnostica anche dopo i tentativi e i dimezzamenti, come una risposta fermata dal
     /// filtro dei contenuti o senza la chiamata della diagnosi, lascia non riviste col motivo le sue battute, in tutte le copie
@@ -207,7 +207,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         if (translation.Status == TranslatedCueStatus.ToReview)
                             lines.Add("TO_REVIEW: " + string.Join(", ", translation.GetReasonCodes()));
                         foreach (GlossaryWarning warning in translation.GlossaryWarnings)
-                            lines.Add("GLOSSARY: source has \"" + warning.Source + "\", translation lacks \"" + warning.Target + "\"");
+                        {
+                            // Con la nota del termine, che può restringere dove la resa vale
+                            GlossaryTerm term = this._job.Glossary.Terms.Find(t => t.Source == warning.Source && t.Target == warning.Target);
+                            string note = term != null && !string.IsNullOrWhiteSpace(term.Note) ? " (note: " + term.Note.Trim().Replace('\n', ' ') + ")" : "";
+                            lines.Add("GLOSSARY: source has \"" + warning.Source + "\", translation lacks \"" + warning.Target + "\"" + note);
+                        }
 
                         if (lines.Count > 0)
                             signals[translation.Id] = lines;
@@ -276,7 +281,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                 }
                                 else
                                 {
-                                    // Problemi fuori dal blocco, fuori enum o senza spiegazione si scartano
+                                    // Problemi fuori dal blocco, fuori enum, senza spiegazione o senza cosa dicono sorgente e traduzione si scartano
                                     partIssues = new List<TranslationReviewIssue>();
                                     foreach (JsonNode node in entries)
                                     {
@@ -287,11 +292,18 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                         string category = AiOAuthFlow.GetString(entry, "category");
                                         string severity = AiOAuthFlow.GetString(entry, "severity");
                                         string explanation = (AiOAuthFlow.GetString(entry, "explanation") ?? "").Trim();
+                                        string sourceSays = (AiOAuthFlow.GetString(entry, "source_says") ?? "").Trim();
+                                        string translationSays = (AiOAuthFlow.GetString(entry, "translation_says") ?? "").Trim();
                                         if (!((IList<string>)TranslationRequestBuilder.DIAGNOSIS_CATEGORIES).Contains(category) || !((IList<string>)TranslationRequestBuilder.DIAGNOSIS_SEVERITIES).Contains(severity)
-                                            || string.IsNullOrEmpty(explanation))
+                                            || string.IsNullOrEmpty(explanation) || string.IsNullOrEmpty(sourceSays) || string.IsNullOrEmpty(translationSays))
                                             continue;
+                                        string speaker = (AiOAuthFlow.GetString(entry, "speaker") ?? "").Trim();
                                         string suggestion = AiOAuthFlow.GetString(entry, "suggestion");
-                                        partIssues.Add(new TranslationReviewIssue { Id = id, Category = category, Severity = severity, Explanation = explanation, Suggestion = string.IsNullOrEmpty(suggestion) ? null : suggestion });
+                                        partIssues.Add(new TranslationReviewIssue
+                                        {
+                                            Id = id, Category = category, Severity = severity, SourceSays = sourceSays, TranslationSays = translationSays,
+                                            Speaker = speaker.Length > 0 ? speaker : null, Explanation = explanation, Suggestion = string.IsNullOrEmpty(suggestion) ? null : suggestion
+                                        });
                                     }
                                     record.Outcome = TranslationCallOutcome.Accepted;
                                     record.Issues = partIssues.Count;
@@ -365,9 +377,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     issues = block.Issues;
                 }
 
-                // D2: diagnosticate e da rivedere, nell'ordine di tempo. Una battuta scritta dall'utente non si corregge
+                // D2: battute con problemi di senso e da rivedere, nell'ordine di tempo. Il genere solo col parlante indicato; gli
+                // altri problemi restano nella diagnosi del blocco. Una battuta scritta dall'utente non si corregge
+                List<TranslationReviewIssue> applied = issues.FindAll(i => ((IList<string>)TranslationRequestBuilder.MEANING_CATEGORIES).Contains(i.Category)
+                    && (i.Category != TranslationRequestBuilder.GENDER_NUMBER_CATEGORY || i.Speaker != null));
                 HashSet<int> wanted = new HashSet<int>();
-                foreach (TranslationReviewIssue issue in issues)
+                foreach (TranslationReviewIssue issue in applied)
                     wanted.Add(issue.Id);
                 foreach (TranslatedCueState translation in translations.Values)
                 {
@@ -395,7 +410,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             HashSet<int> requestedIds = new HashSet<int>();
                             foreach (FrozenCue cue in requested)
                                 requestedIds.Add(cue.Id);
-                            List<TranslationReviewIssue> shown = issues.FindAll(i => requestedIds.Contains(i.Id));
+                            List<TranslationReviewIssue> shown = applied.FindAll(i => requestedIds.Contains(i.Id));
                             return TranslationRequestBuilder.CreateCorrectionTail(shown, requested, current, rejected);
                         }
                     };
@@ -413,7 +428,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             continue;
 
                         // Testo di prima e motivo per l'avviso della griglia
-                        List<string> reasons = issues.FindAll(i => i.Id == result.Id).ConvertAll(i => i.Explanation);
+                        List<string> reasons = applied.FindAll(i => i.Id == result.Id).ConvertAll(i => i.Explanation);
                         translation.AiCorrection = new CueAiCorrection { Before = translation.Text, Explanation = reasons.Count > 0 ? string.Join("\n", reasons) : null };
                         translation.SetText(result.Text, result.GlossaryWarnings);
                         if (!translation.Signals.Contains(TranslationCueSignal.CorrectedByAi))

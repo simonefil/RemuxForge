@@ -852,6 +852,21 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public string Severity { get; set; }
 
         /// <summary>
+        /// Cosa dice il sorgente sul punto segnalato
+        /// </summary>
+        public string SourceSays { get; set; }
+
+        /// <summary>
+        /// Cosa dice la traduzione sul punto segnalato
+        /// </summary>
+        public string TranslationSays { get; set; }
+
+        /// <summary>
+        /// Chi parla e a chi, secondo la diagnosi; null se la segnalazione non lo indica
+        /// </summary>
+        public string Speaker { get; set; }
+
+        /// <summary>
         /// Spiegazione per l'utente
         /// </summary>
         public string Explanation { get; set; }

@@ -44,6 +44,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public const string SUBMIT_DIAGNOSIS_TOOL = "submit_diagnosis";
 
         /// <summary>
+        /// Categoria della diagnosi per genere e numero di chi parla o di chi ascolta: si corregge solo col parlante indicato
+        /// </summary>
+        public const string GENDER_NUMBER_CATEGORY = "gender_number";
+
+        /// <summary>
         /// Coppie accettate mostrate nella coda prima dell'intervallo richiesto
         /// </summary>
         public const int TAIL_PAIRS = 15;
@@ -104,19 +109,25 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "The first message gives the user's context for the series when there is one, the approved glossary and the full source episode. The last message gives one block: for every cue its source record, its current translation record and, when the code noticed something, a signal record.\n" +
             "This is not a chat: nobody reads plain text. Deliver only by calling submit_diagnosis once. Deliver an empty issues list when the block needs no change.\n" +
             "\n" +
-            "Report real problems only, with these categories:\n" +
-            "- accuracy: meaning changed, mistranslation, false friend, literal calque, a set phrase rendered with the wrong sense;\n" +
+            "Report real problems only, with these categories.\n" +
+            "Meaning:\n" +
+            "- accuracy: meaning changed, mistranslation, false friend, a set phrase rendered with the wrong sense;\n" +
             "- omission: content of the source lost, or content added;\n" +
-            "- fluency: unidiomatic or ungrammatical {target_language};\n" +
+            "- untranslated: {source_language} text left by mistake, apart from names and terms the glossary keeps;\n" +
+            "- gender_number: wrong gender or number of a speaker or addressee;\n" +
+            "- address_form: address form against the glossary;\n" +
             "- terminology: a rendering of the glossary terms missing or misused;\n" +
-            "- register: address form against the glossary, wrong gender or number of speakers or addressees, insults, threats, swearing or crude language of the source rendered weaker, more formal, censored or dropped (a translation as strong as the source or stronger is not an issue);\n" +
+            "- weakened_swearing: insults, threats, swearing or crude language of the source rendered weaker, more formal, censored or dropped (a translation as strong as the source or stronger is not an issue).\n" +
+            "Style:\n" +
+            "- fluency: unidiomatic or ungrammatical {target_language}, literal calque;\n" +
+            "- register: tone or formality that does not fit the speaker, apart from address forms and swearing;\n" +
             "- consistency: the same thing rendered differently within the block or against the glossary;\n" +
             "- split_sentence: a sentence continuing over several cues badly distributed over them;\n" +
-            "- formatting: a ⟦n text⟧ span around the wrong words;\n" +
-            "- untranslated: {source_language} text left by mistake, apart from names and terms the glossary keeps.\n" +
+            "- formatting: a ⟦n text⟧ span around the wrong words.\n" +
             "\n" +
             "Signals point to cues worth checking. A signalled cue can be correct, and a correct cue stays as it is: report an issue only when a change makes the subtitle better. A cue with no accepted translation needs no issue: the correction step translates it.\n" +
-            "For each issue give the cue id, the category, the severity (minor, major, critical), a short explanation in {notes_language} and, when you can, a suggestion with the full corrected text of the cue.\n" +
+            "For each issue give the cue id, the category, the severity (minor, major, critical), what the source says and what the translation says on that point, a short explanation in {notes_language} and, when you can, a suggestion with the full corrected text of the cue. When the source and the translation say the same thing, the issue is not in a meaning category.\n" +
+            "A correction that sets or changes the gender or number of a person is a gender_number issue, whatever else it fixes: name in speaker who speaks the cue and to whom, as the context shows it. Leave speaker null in the other issues.\n" +
             "\n" +
             "{record_format}";
 
@@ -140,11 +151,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "\"description\":\"Report the problems found in the translation of the block. Empty list if there are none.\"," +
             "\"parameters\":{\"type\":\"object\",\"properties\":{" +
             "\"issues\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"integer\"}," +
-            "\"category\":{\"type\":\"string\",\"enum\":[\"accuracy\",\"omission\",\"fluency\",\"terminology\",\"register\",\"consistency\",\"split_sentence\",\"formatting\",\"untranslated\"]}," +
+            "\"category\":{\"type\":\"string\",\"enum\":[\"accuracy\",\"omission\",\"untranslated\",\"gender_number\",\"address_form\",\"terminology\",\"weakened_swearing\",\"fluency\",\"register\",\"consistency\",\"split_sentence\",\"formatting\"]}," +
             "\"severity\":{\"type\":\"string\",\"enum\":[\"minor\",\"major\",\"critical\"]}," +
+            "\"source_says\":{\"type\":\"string\",\"description\":\"What the source cue says on this point.\"}," +
+            "\"translation_says\":{\"type\":\"string\",\"description\":\"What the current translation says on this point.\"}," +
+            "\"speaker\":{\"type\":[\"string\",\"null\"],\"description\":\"Who speaks the cue and to whom, as the context shows it; required for gender_number, null otherwise.\"}," +
             "\"explanation\":{\"type\":\"string\",\"description\":\"Short explanation for the user.\"}," +
             "\"suggestion\":{\"type\":[\"string\",\"null\"],\"description\":\"Full corrected text of the cue, with line breaks as \\\\n and its ⟦n text⟧ spans; null if you have none.\"}}," +
-            "\"required\":[\"id\",\"category\",\"severity\",\"explanation\",\"suggestion\"],\"additionalProperties\":false}}}," +
+            "\"required\":[\"id\",\"category\",\"severity\",\"source_says\",\"translation_says\",\"speaker\",\"explanation\",\"suggestion\"],\"additionalProperties\":false}}}," +
             "\"required\":[\"issues\"],\"additionalProperties\":false}}";
 
         /// <summary>
@@ -165,7 +179,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Categorie ammesse di un problema della diagnosi
         /// </summary>
-        public static readonly IReadOnlyList<string> DIAGNOSIS_CATEGORIES = new string[] { "accuracy", "omission", "fluency", "terminology", "register", "consistency", "split_sentence", "formatting", "untranslated" };
+        public static readonly IReadOnlyList<string> DIAGNOSIS_CATEGORIES = new string[] { "accuracy", "omission", "untranslated", GENDER_NUMBER_CATEGORY, "address_form", "terminology", "weakened_swearing",
+            "fluency", "register", "consistency", "split_sentence", "formatting" };
+
+        /// <summary>
+        /// Categorie di senso: le sole che la correzione porta nel file; le altre restano nella diagnosi del blocco
+        /// </summary>
+        public static readonly IReadOnlyList<string> MEANING_CATEGORIES = new string[] { "accuracy", "omission", "untranslated", GENDER_NUMBER_CATEGORY, "address_form", "terminology", "weakened_swearing" };
 
         /// <summary>
         /// Gravità ammesse di un problema della diagnosi
