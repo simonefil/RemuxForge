@@ -2069,6 +2069,8 @@
   "web.toolbox.subtitleTranslation.glossaryImported": "Glossario caricato: {0}, {1} termini, {2} personaggi",
   "web.toolbox.subtitleTranslation.glossaryRemoved": "Glossario caricato tolto",
   "web.toolbox.subtitleTranslation.glossaryApproved": "Glossario approvato, revisione {0}",
+  "web.toolbox.subtitleTranslation.glossaryReopenedOne": "Glossario cambiato: {0} battuta tradotta torna da tradurre",
+  "web.toolbox.subtitleTranslation.glossaryReopenedMany": "Glossario cambiato: {0} battute tradotte tornano da tradurre",
   "web.toolbox.subtitleTranslation.glossaryExported": "Glossario esportato: {0}",
   "web.toolbox.subtitleTranslation.analysisProgress": "Analisi del glossario",
   "web.toolbox.subtitleTranslation.analysisPreparing": "Preparo i file…",

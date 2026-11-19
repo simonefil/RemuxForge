@@ -2069,6 +2069,8 @@
   "web.toolbox.subtitleTranslation.glossaryImported": "Glossary loaded: {0}, {1} terms, {2} characters",
   "web.toolbox.subtitleTranslation.glossaryRemoved": "Loaded glossary removed",
   "web.toolbox.subtitleTranslation.glossaryApproved": "Glossary approved, revision {0}",
+  "web.toolbox.subtitleTranslation.glossaryReopenedOne": "Glossary changed: {0} translated cue goes back to translation",
+  "web.toolbox.subtitleTranslation.glossaryReopenedMany": "Glossary changed: {0} translated cues go back to translation",
   "web.toolbox.subtitleTranslation.glossaryExported": "Glossary exported: {0}",
   "web.toolbox.subtitleTranslation.analysisProgress": "Glossary analysis",
   "web.toolbox.subtitleTranslation.analysisPreparing": "Preparing the files…",

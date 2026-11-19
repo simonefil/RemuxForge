@@ -159,22 +159,32 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public TranslationValidator(SubtitleTranslationFormat format, Glossary glossary)
         {
             this._format = format;
-            this._terms = new List<TermPatterns>();
-            string source = LanguageValidator.NormalizeToIso6392(glossary.SourceLanguage);
-            string target = LanguageValidator.NormalizeToIso6392(glossary.TargetLanguage);
-            foreach (GlossaryTerm term in glossary.Terms)
-            {
-                string sourceWord = StripArticle(term.Source, source);
-                string targetWord = StripArticle(term.Target, target);
-                if (string.IsNullOrEmpty(sourceWord) || string.IsNullOrEmpty(targetWord))
-                    continue;
-                this._terms.Add(new TermPatterns(term.Source, term.Target, WordPattern(sourceWord, term.ExactCase == true), RenderingPattern(targetWord, term.Invariable)));
-            }
+            this._terms = CreateTermPatterns(glossary);
         }
 
         #endregion
 
         #region Metodi pubblici
+
+        /// <summary>
+        /// Testi che contengono nel sorgente almeno un termine del glossario, trovato come negli avvisi del glossario
+        /// </summary>
+        /// <param name="glossary">Glossario dei termini cercati</param>
+        /// <param name="texts">Testi puliti delle battute sorgenti</param>
+        /// <returns>Indici dei testi col termine</returns>
+        public static List<int> FindTermTexts(Glossary glossary, IReadOnlyList<string> texts)
+        {
+            List<TermPatterns> terms = CreateTermPatterns(glossary);
+            List<int> found = new List<int>();
+            for (int i = 0; i < texts.Count; i++)
+            {
+                string source = GlossaryPlain(texts[i]);
+                if (terms.Exists(term => term.SourcePattern.IsMatch(source)))
+                    found.Add(i);
+            }
+
+            return found;
+        }
 
         /// <summary>
         /// Valida una consegna di submit_translation sulle battute richieste
@@ -506,6 +516,28 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #endregion
 
         #region Metodi privati
+
+        /// <summary>
+        /// Termini del glossario pronti per il confronto, senza quelli che senza articolo restano vuoti nel sorgente o nella resa
+        /// </summary>
+        /// <param name="glossary">Glossario</param>
+        /// <returns>Termini con le espressioni</returns>
+        private static List<TermPatterns> CreateTermPatterns(Glossary glossary)
+        {
+            List<TermPatterns> terms = new List<TermPatterns>();
+            string source = LanguageValidator.NormalizeToIso6392(glossary.SourceLanguage);
+            string target = LanguageValidator.NormalizeToIso6392(glossary.TargetLanguage);
+            foreach (GlossaryTerm term in glossary.Terms)
+            {
+                string sourceWord = StripArticle(term.Source, source);
+                string targetWord = StripArticle(term.Target, target);
+                if (string.IsNullOrEmpty(sourceWord) || string.IsNullOrEmpty(targetWord))
+                    continue;
+                terms.Add(new TermPatterns(term.Source, term.Target, WordPattern(sourceWord, term.ExactCase == true), RenderingPattern(targetWord, term.Invariable)));
+            }
+
+            return terms;
+        }
 
         /// <summary>
         /// Normalizza il testo consegnato e ne controlla testo, segni e caratteri riservati; nel testo del modello toglie i caratteri

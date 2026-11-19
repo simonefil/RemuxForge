@@ -217,6 +217,77 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
+        /// Rimette da fare, nella traduzione fermata, le battute già tradotte il cui sorgente contiene un termine cambiato fra il
+        /// glossario del job e quello approvato di nuovo: aggiunto, tolto, o con resa o nota diversa. Le battute perdono l'esito e
+        /// il loro blocco o la loro tratta torna da fare: il giro richiede solo le battute senza esito, tratte e blocchi riaperti
+        /// prima di quelli che restano, e il resto non cambia. Un file concluso torna in corso; il glossario del job non si tocca
+        /// </summary>
+        /// <param name="job">Job nella traduzione, col glossario approvato prima</param>
+        /// <param name="states">Stati dei file del job</param>
+        /// <param name="glossary">Glossario approvato di nuovo</param>
+        /// <returns>Battute rimesse da fare, una volta per riga delle tratte</returns>
+        public static int Reopen(TranslationJob job, IEnumerable<TranslationJobFileState> states, Glossary glossary)
+        {
+            GlossaryBuilder builder = new GlossaryBuilder(glossary.SourceLanguage, glossary.TargetLanguage);
+            Glossary changed = new Glossary { SourceLanguage = glossary.SourceLanguage, TargetLanguage = glossary.TargetLanguage };
+
+            // Voci tolte o cambiate nella versione di prima, aggiunte o cambiate in quella nuova: si cercano tutte e due
+            foreach (GlossaryTerm term in job.Glossary.Terms)
+            {
+                GlossaryTerm after = glossary.Terms.Find(t => builder.TermKey(t.Source) == builder.TermKey(term.Source));
+                if (after == null || after.Target != term.Target || after.Note != term.Note)
+                    changed.Terms.Add(term);
+            }
+            foreach (GlossaryTerm term in glossary.Terms)
+            {
+                GlossaryTerm before = job.Glossary.Terms.Find(t => builder.TermKey(t.Source) == builder.TermKey(term.Source));
+                if (before == null || before.Target != term.Target || before.Note != term.Note)
+                    changed.Terms.Add(term);
+            }
+
+            int reopened = 0;
+            List<TranslationJobFileState> files = new List<TranslationJobFileState>(states);
+            foreach (SharedStretch stretch in job.SharedStretches)
+            {
+                if (stretch.Status != TranslationBlockStatus.Done)
+                    continue;
+                List<int> lines = TranslationValidator.FindTermTexts(changed, stretch.Lines);
+                if (lines.Count == 0)
+                    continue;
+
+                SharedStretchOccurrence master = stretch.Occurrences[0];
+                TranslationJobFileState owner = files.Find(f => f.FileId == master.FileId);
+                stretch.Status = TranslationBlockStatus.Pending;
+                foreach (int line in lines)
+                    owner.Translations.RemoveAll(t => t.Id == master.Ids[line - master.Offset]);
+                reopened += lines.Count;
+                foreach (TranslationJobFileState state in files)
+                {
+                    if (state.TranslationStatus == TranslationFileStatus.Completed && stretch.Occurrences.Exists(o => o.FileId == state.FileId))
+                        state.TranslationStatus = TranslationFileStatus.InProgress;
+                }
+            }
+
+            foreach (TranslationJobFileState state in files)
+            {
+                Dictionary<int, SharedStretch> shared = SharedStretch.MapFile(job.SharedStretches, state.FileId);
+                foreach (int index in TranslationValidator.FindTermTexts(changed, state.Cues.ConvertAll(c => c.Text)))
+                {
+                    int id = state.Cues[index].Id;
+                    if (shared.ContainsKey(id) || state.Translations.RemoveAll(t => t.Id == id) == 0)
+                        continue;
+
+                    state.Blocks.Find(b => b.Status == TranslationBlockStatus.Done && state.GetSpan(b.FirstId, b.LastId).Exists(c => c.Id == id)).Status = TranslationBlockStatus.Pending;
+                    if (state.TranslationStatus == TranslationFileStatus.Completed)
+                        state.TranslationStatus = TranslationFileStatus.InProgress;
+                    reopened++;
+                }
+            }
+
+            return reopened;
+        }
+
+        /// <summary>
         /// Traduce prima le tratte condivise da fare, poi, senza fermate, i blocchi dei file: le copie delle tratte ci sono già
         /// quando un file chiede la coda delle traduzioni accettate
         /// </summary>
@@ -263,7 +334,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Nel primo giro traduce una alla volta le tratte di cui il file ha la prima occorrenza: ognuna in una consegna sola, con
         /// prefisso e validatore del file, che si dimezza da sé dopo una risposta troncata; a tratta finita la traduzione si copia
         /// in tutte le occorrenze. Nel secondo giro rimette le copie delle tratte tradotte e traduce i blocchi da fare del file uno
-        /// alla volta. Ogni blocco si salva intero; dopo una risposta troncata dal tetto dei token in uscita si divide in due metà,
+        /// alla volta. Una tratta o un blocco riaperti dal glossario cambiato richiedono solo le battute senza esito. Ogni blocco si
+        /// salva intero; dopo una risposta troncata dal tetto dei token in uscita si divide in due metà,
         /// obiettivo e tetto del file si dimezzano e i blocchi che restano si ripianificano; gli altri motivi d'incompletezza lasciano
         /// le battute da rivedere e non toccano il piano del file. Senza blocchi da fare il file si chiude
         /// anche dopo uno Stop o una fermata, se nessuna sua tratta resta da tradurre
@@ -293,17 +365,29 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 cancellation.ThrowIfCancellationRequested();
                 this.ReportProgress(file.FileName, number, count);
                 DeliveryWork stretchWork = new DeliveryWork(null);
-                List<int> lines = new List<int>(stretch.Occurrences[0].Ids);
+                List<int> lines;
+                lock (this._lock)
+                {
+                    lines = stretch.Occurrences[0].Ids.FindAll(id => !file.State.Translations.Exists(t => t.Id == id));
+                }
                 await this.DeliverAsync(context, stretchWork, this.CreatePlan(context, stretchWork), lines, TranslationCallKind.B, 0, new string[0], false, provider, cancellation);
 
                 int files;
                 int accepted = 0;
                 lock (this._lock)
                 {
-                    // Esiti con i segnali come per un blocco, nella tratta riga per riga e poi in ogni occorrenza dei file del giro
+                    // Esiti con i segnali come per un blocco, nella tratta riga per riga e poi in ogni occorrenza dei file del giro; le
+                    // righe non richieste di una tratta riaperta tengono il loro esito
+                    List<TranslatedCueState> previous = stretch.Translations;
                     stretch.Translations = new List<TranslatedCueState>();
-                    foreach (int id in lines)
+                    foreach (int id in stretch.Occurrences[0].Ids)
                     {
+                        if (!lines.Contains(id))
+                        {
+                            stretch.Translations.Add(previous[stretch.Translations.Count]);
+                            continue;
+                        }
+
                         TranslatedCueState translation = stretchWork.Get(id);
                         if (translation.Rejections.Count > 0)
                             translation.Signals.Add(TranslationCueSignal.Retried);
@@ -369,16 +453,22 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 TranslationJobFileState state = file.State;
                 DeliveryWork work = new DeliveryWork(block.Index);
                 List<int> ids = new List<int>();
-                foreach (FrozenCue cue in state.GetSpan(block.FirstId, block.LastId))
-                {
-                    if (!context.Shared.ContainsKey(cue.Id))
-                        ids.Add(cue.Id);
-                }
-
                 int number;
                 int count;
+                bool whole = true;
                 lock (this._lock)
                 {
+                    // Un blocco riaperto richiede solo le battute senza esito, e non si divide dal chiamante: i blocchi dopo sono già tradotti
+                    foreach (FrozenCue cue in state.GetSpan(block.FirstId, block.LastId))
+                    {
+                        if (context.Shared.ContainsKey(cue.Id))
+                            continue;
+                        if (state.Translations.Exists(t => t.Id == cue.Id))
+                            whole = false;
+                        else
+                            ids.Add(cue.Id);
+                    }
+
                     List<TranslationBlock> planned = state.Blocks.FindAll(b => b.Status != TranslationBlockStatus.Split);
                     number = planned.IndexOf(block) + 1;
                     count = planned.Count;
@@ -386,7 +476,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 this.ReportProgress(file.FileName, number, count);
 
                 TranslationCallKind kind = block.SplitFrom.HasValue ? TranslationCallKind.BReduced : TranslationCallKind.B;
-                bool incomplete = await this.DeliverAsync(context, work, this.CreatePlan(context, work), ids, kind, 0, new string[0], true, provider, cancellation);
+                bool incomplete = await this.DeliverAsync(context, work, this.CreatePlan(context, work), ids, kind, 0, new string[0], whole, provider, cancellation);
                 List<SubtitleCue> live = context.GetLiveCues(ids);
                 IReadOnlyList<IReadOnlyList<SubtitleCue>> halves = incomplete ? new SubtitleBlockPlanner(live).SplitBlock(live) : null;
 

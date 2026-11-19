@@ -348,7 +348,7 @@
                                                           title="@AppText.T("web.toolbox.subtitleTranslation.restartFile")" aria-label="@(AppText.T("web.toolbox.subtitleTranslation.restartFile") + " " + row.FileName)"
                                                           Click="@(() => RestartFileAsync(row))" />
                                         }
-                                        <RadzenButton Icon="remove_circle_outline" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Disabled="@(busy || job.FileIds.Count < 2)"
+                                        <RadzenButton Icon="remove_circle_outline" Size="ButtonSize.ExtraSmall" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Disabled="@(busy || job.FileIds.Count < 2 || project.Glossary.Status != GlossaryStatus.Approved)"
                                                       title="@AppText.T("web.toolbox.subtitleTranslation.excludeFile")" aria-label="@(AppText.T("web.toolbox.subtitleTranslation.excludeFile") + " " + row.FileName)"
                                                       Click="@(() => { Orchestrator.ExcludeFile(row.FileId); _step = ProjectStep(); })" />
                                     </span>
@@ -572,7 +572,7 @@
         }
         else
         {
-            bool glossaryLocked = Orchestrator.Job != null;
+            bool glossaryLocked = Orchestrator.GlossaryLocked;
             @if (busy && !glossaryLocked)
             {
                 <div class="rf-translation-thinking"><AiThinkingComponent Phrase="@Orchestrator.Phrase" Detail="@Orchestrator.Detail" StartedAt="@Orchestrator.CallStartedAt" /></div>
@@ -1838,7 +1838,7 @@
         @<text>
             @if (editable)
             {
-                <RadzenTextBox class="rf-translation-cell-input" Value="@value" Disabled="@(Orchestrator.IsBusy || Orchestrator.Job != null)" aria-label="@label"
+                <RadzenTextBox class="rf-translation-cell-input" Value="@value" Disabled="@(Orchestrator.IsBusy || Orchestrator.GlossaryLocked)" aria-label="@label"
                                Change="@((string text) => ChangeEntry(entry, e => assign(e, (text ?? "").Trim())))" />
             }
             else
@@ -1854,7 +1854,7 @@
     /// <param name="name">Nome della voce per l'etichetta accessibile</param>
     /// <returns>Frammento della cella</returns>
     private RenderFragment DeleteCell(object entry, string name) =>
-        @<RadzenButton Icon="delete" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Disabled="@(Orchestrator.IsBusy || Orchestrator.Job != null)"
+        @<RadzenButton Icon="delete" Size="ButtonSize.Small" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Disabled="@(Orchestrator.IsBusy || Orchestrator.GlossaryLocked)"
                        title="@AppText.T("web.common.delete")" aria-label="@(AppText.T("web.common.delete") + " " + name)" Click="@(() => DeleteEntry(entry))" />;
 
     /// <summary>
@@ -1887,8 +1887,9 @@
     }
 
     /// <summary>
-    /// Passo da mostrare per il progetto aperto: col job Traduzione se un file è bloccato, poi il passo della sua fase, Esporta
-    /// se già raggiunto dalla revisione dell'utente; Glossario con l'analisi partita, altrimenti Progetto
+    /// Passo da mostrare per il progetto aperto: col job Glossario se il glossario cambiato nella pausa della traduzione è da
+    /// approvare, Traduzione se un file è bloccato, poi il passo della sua fase, Esporta se già raggiunto dalla revisione
+    /// dell'utente; Glossario con l'analisi partita, altrimenti Progetto
     /// </summary>
     /// <returns>Indice del passo</returns>
     private int ProjectStep()
@@ -1898,6 +1899,8 @@
             return 0;
 
         TranslationJob job = this.Orchestrator.Job;
+        if (job != null && job.Phase == TranslationJobPhase.Translation && project.Glossary.Status == GlossaryStatus.Draft)
+            return STEP_GLOSSARY;
         if (job != null && this.Orchestrator.HasBlockedFiles)
             return STEP_TRANSLATION;
         if (job != null && job.Phase == TranslationJobPhase.Review)

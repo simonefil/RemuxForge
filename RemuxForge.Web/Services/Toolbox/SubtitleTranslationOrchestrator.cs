@@ -661,14 +661,14 @@ namespace RemuxForge.Web.Services.Toolbox
 
         /// <summary>
         /// Salva le modifiche fatte al glossario dalla pagina; un glossario approvato torna in bozza. Dopo l'avvio del giro il
-        /// glossario resta com'è
+        /// glossario resta com'è, salvo nella pausa della traduzione
         /// </summary>
         /// <param name="change">Modifica, eseguita sotto il lock dello stato</param>
         public void ChangeGlossary(Action<Glossary> change)
         {
             lock (this.StateLock)
             {
-                if (this._project == null || this._project.Glossary == null || this.IsBusy || this._job != null)
+                if (this._project == null || this._project.Glossary == null || this.IsBusy || this.GlossaryLocked)
                     return;
 
                 change(this._project.Glossary);
@@ -682,11 +682,14 @@ namespace RemuxForge.Web.Services.Toolbox
 
         /// <summary>
         /// Approva il glossario, abilita il passo Traduzione e avvia il giro. Un glossario già approvato senza job, rimasto da una
-        /// chiusura dell'app o da un avvio non riuscito, avvia solo il giro
+        /// chiusura dell'app o da un avvio non riuscito, avvia solo il giro. Nella pausa della traduzione il glossario cambiato
+        /// passa al job, le battute tradotte coi termini cambiati tornano da fare e il giro riprende. Gli stati dei file si salvano
+        /// prima del job e il progetto per ultimo: dopo una chiusura brusca il glossario resta da approvare e l'approvazione si rifà
         /// </summary>
         public void ApproveGlossary()
         {
             bool approved = false;
+            int? reopened = null;
             lock (this.StateLock)
             {
                 if (!this.CanApprove)
@@ -700,6 +703,14 @@ namespace RemuxForge.Web.Services.Toolbox
                     glossary.ApprovedAt = DateTimeOffset.Now;
                     if (this._project.ReachedStep < TranslationProjectStep.Translation)
                         this._project.ReachedStep = TranslationProjectStep.Translation;
+                    if (this._job != null)
+                    {
+                        reopened = TranslationRunner.Reopen(this._job, this._jobFiles.Values, glossary);
+                        this._job.Glossary = TranslationJsonFile.Parse<Glossary>(TranslationJsonFile.Serialize(glossary), this._project.Id);
+                        foreach (string fileId in this._job.FileIds)
+                            this._jobStore.SaveFile(this._job.Id, this._jobFiles[fileId]);
+                        this._jobStore.Save(this._job);
+                    }
                     this._store.Save(this._project);
                     approved = true;
                 }
@@ -708,6 +719,8 @@ namespace RemuxForge.Web.Services.Toolbox
             if (approved)
             {
                 this.AppendLog(AppText.F(TEXT_PREFIX + ".glossaryApproved", this._project.Glossary.Revision));
+                if (reopened.HasValue)
+                    this.AppendLog(AppText.Count(TEXT_PREFIX + ".glossaryReopened", reopened.Value));
                 this.NotifyRecordsChanged();
             }
             this.StartJob();
@@ -957,7 +970,7 @@ namespace RemuxForge.Web.Services.Toolbox
             {
                 TranslationJobFileState state;
                 if (this._project == null || this._job == null || this.IsBusy || this._job.FileIds.Count < 2 || !this._jobFiles.TryGetValue(fileId, out state) ||
-                    state.TranslationStatus != TranslationFileStatus.Blocked)
+                    state.TranslationStatus != TranslationFileStatus.Blocked || this._project.Glossary.Status != GlossaryStatus.Approved)
                     return;
 
                 this._job.FileIds.Remove(fileId);
@@ -2775,7 +2788,7 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// True se il glossario si può caricare o togliere: fino all'approvazione, con le lingue scelte
+        /// True se il glossario si può caricare o togliere: fino all'approvazione e prima del giro, con le lingue scelte
         /// </summary>
         public bool CanImportGlossary
         {
@@ -2783,7 +2796,7 @@ namespace RemuxForge.Web.Services.Toolbox
             {
                 lock (this.StateLock)
                 {
-                    return this._project != null && !string.IsNullOrEmpty(this._project.SourceLanguage) && !string.IsNullOrEmpty(this._project.TargetLanguage) &&
+                    return this._project != null && this._job == null && !string.IsNullOrEmpty(this._project.SourceLanguage) && !string.IsNullOrEmpty(this._project.TargetLanguage) &&
                         (this._project.Glossary == null || this._project.Glossary.Status != GlossaryStatus.Approved) &&
                         (this._project.Analysis == null || this._project.Analysis.Status != TranslationAnalysisStatus.Running);
                 }
@@ -2791,8 +2804,8 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// True se il glossario proposto si può approvare, o quello approvato avviare, finché il giro non c'è: nessun termine con
-        /// originale o resa vuota
+        /// True se il glossario proposto si può approvare, o quello approvato avviare, finché il giro non c'è, o se quello cambiato
+        /// nella pausa della traduzione si può approvare di nuovo: nessun termine con originale o resa vuota
         /// </summary>
         public bool CanApprove
         {
@@ -2801,8 +2814,22 @@ namespace RemuxForge.Web.Services.Toolbox
                 lock (this.StateLock)
                 {
                     return this._project != null && !this.IsBusy && this._project.Analysis != null && this._project.Analysis.Status == TranslationAnalysisStatus.Completed &&
-                        this._project.Glossary != null && this._job == null &&
+                        this._project.Glossary != null && !this.GlossaryLocked && (this._job == null || this._project.Glossary.Status == GlossaryStatus.Draft) &&
                         !this._project.Glossary.Terms.Exists(t => string.IsNullOrWhiteSpace(t.Source) || string.IsNullOrWhiteSpace(t.Target));
+                }
+            }
+        }
+
+        /// <summary>
+        /// True se il glossario non si modifica: col giro avviato, salvo nella pausa della traduzione
+        /// </summary>
+        public bool GlossaryLocked
+        {
+            get
+            {
+                lock (this.StateLock)
+                {
+                    return this._job != null && !(this._job.Phase == TranslationJobPhase.Translation && this._job.Status == TranslationJobStatus.Paused);
                 }
             }
         }
