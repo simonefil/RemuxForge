@@ -471,7 +471,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // mostrato, comincia dove l'altra finisce); le copie di una riga intera (stesso testo, stessa riga a schermo, tempi che
                 // si toccano) entrano nel suo gruppo. Il gruppo vale se ha una riga che contiene i tratti visibili di tutte, una riga che
                 // ne mostra solo una parte, due righe con testi mostrati diversi a schermo insieme (una serie di righe una dopo l'altra
-                // è una rivelazione) e, nell'insieme delle righe, tutti i caratteri della frase. La frase è la riga più lunga fra
+                // è una rivelazione, salvo i pezzi di parola che in sequenza compongono la riga che segue) e, nell'insieme delle righe, tutti i caratteri della frase. La frase è la riga più lunga fra
                 // quelle che contengono tutti i tratti, una Dialogue prima di un Comment; la riga principale è la Dialogue con la frase,
                 // la più lunga nel tempo e poi sul layer più basso, o il Comment
                 int screenWidth = assDocument.TryGetScriptInfoInt("PlayResX", out int scriptWidth) ? scriptWidth : 0;
@@ -640,6 +640,32 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         }
                     }
 
+                    // Pezzi di parola in sequenza (fotogrammi di una parola che si compone): i pezzi senza un'altra riga intera che,
+                    // uno dopo l'altro senza buchi nel tempo, arrivano all'inizio di una riga della combinazione e coi testi distinti
+                    // nell'ordine, non tutti di un carattere, ne danno il testo senza spazi vanno con quella riga, anche se non sono mai a
+                    // schermo insieme
+                    HashSet<int> composed = new HashSet<int>();
+                    foreach (int whole in unitLines.Where(w => !owner.ContainsKey(w) && spaceless[w].Length > 1))
+                    {
+                        Func<int, bool> free = p => p != whole && (!owner.TryGetValue(p, out int current) || current == whole) && events[p].Line.StartMs < events[whole].Line.StartMs
+                            && events[p].Line.EndMs <= events[whole].Line.StartMs && spaceless[p] != spaceless[whole];
+                        List<int> chain = new List<int>();
+                        long edge = events[whole].Line.StartMs;
+                        List<int> reaching = pieces.FindAll(p => free(p) && events[p].Line.EndMs >= edge);
+                        while (reaching.Count > 0)
+                        {
+                            chain.AddRange(reaching);
+                            edge = Math.Min(edge, reaching.Min(p => events[p].Line.StartMs));
+                            reaching = pieces.FindAll(p => !chain.Contains(p) && free(p) && events[p].Line.EndMs >= edge);
+                        }
+                        List<string> texts = chain.OrderBy(p => events[p].Line.StartMs).ThenBy(p => p).Select(p => spaceless[p]).Distinct(StringComparer.Ordinal).ToList();
+                        if (chain.Count == 0 || string.Concat(texts) != spaceless[whole] || texts.TrueForAll(text => new StringInfo(text).LengthInTextElements == 1))
+                            continue;
+                        foreach (int p in chain)
+                            owner[p] = whole;
+                        composed.Add(whole);
+                    }
+
                     // Gruppi: i pezzi con la loro riga intera, e le copie della riga intera
                     Dictionary<int, int> parent = new Dictionary<int, int>();
                     Func<int, int> find = n =>
@@ -663,7 +689,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         List<int> phraseLines = members.FindAll(w => members.TrueForAll(m => contains(fragmentsOf[m], spaceless[w])));
                         List<int> drawn = members.FindAll(m => !events[m].Comment);
                         if (phraseLines.Count == 0 || !drawn.Exists(m => shownOf[m] != spaceless[phraseLines[0]])
-                            || !drawn.Exists(a => drawn.Exists(b => shared(a, b) > 0 && shownOf[a] != shownOf[b])) || members.Exists(ambiguous.Contains))
+                            || (!members.Exists(composed.Contains) && !drawn.Exists(a => drawn.Exists(b => shared(a, b) > 0 && shownOf[a] != shownOf[b])))
+                            || members.Exists(ambiguous.Contains))
                             continue;
 
                         // Tutti i caratteri della frase mostrati, contando una volta le righe con lo stesso testo mostrato nello stesso punto
