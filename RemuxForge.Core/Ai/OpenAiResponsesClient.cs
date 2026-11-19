@@ -66,6 +66,13 @@ namespace RemuxForge.Core.Ai
         /// </summary>
         private const int WRITING_STEP_CHARS = 1000;
 
+        /// <summary>
+        /// Attesa massima fra due righe dello stream. Durante il ragionamento il servizio tace fino al riassunto, che è facoltativo:
+        /// il limite copre il ragionamento più lungo con margine ampio (nei registri al più 968 token di ragionamento e 260 s per la
+        /// chiamata intera più lunga) ed è la stessa attesa concessa agli header
+        /// </summary>
+        private static readonly TimeSpan STREAM_IDLE_TIMEOUT = TimeSpan.FromMinutes(10);
+
         #endregion
 
         #region Variabili di classe
@@ -395,10 +402,25 @@ namespace RemuxForge.Core.Ai
             string searchItemId = "";
             string searchQuery = "";
             int written = 0;
-            string line;
 
-            while ((line = await reader.ReadLineAsync(cancellationToken)) != null)
+            // HttpClient.Timeout copre solo l'attesa degli header: uno stream fermo senza chiudersi diventa un errore di rete come
+            // una connessione caduta, e ogni riga ricevuta riapre l'attesa
+            using CancellationTokenSource idle = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            while (true)
             {
+                string line;
+                idle.CancelAfter(STREAM_IDLE_TIMEOUT);
+                try
+                {
+                    line = await reader.ReadLineAsync(idle.Token);
+                }
+                catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+                {
+                    throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
+                }
+                if (line == null)
+                    break;
+
                 if (!line.StartsWith("data:", StringComparison.Ordinal))
                     continue;
 
