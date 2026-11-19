@@ -77,7 +77,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "{translation_rules}";
 
         /// <summary>
-        /// Blocco «Translation rules», lo stesso in tutte le chiamate che traducono o correggono
+        /// Blocco «Translation rules», lo stesso in tutte le chiamate che traducono
         /// </summary>
         private const string TRANSLATION_RULES = "Translation rules\n" +
             "\n" +
@@ -125,24 +125,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "- split_sentence: a sentence continuing over several cues badly distributed over them;\n" +
             "- formatting: a ⟦n text⟧ span around the wrong words.\n" +
             "\n" +
-            "Signals point to cues worth checking. A signalled cue can be correct, and a correct cue stays as it is: report an issue only when a change makes the subtitle better. A cue with no accepted translation needs no issue: the correction step translates it.\n" +
-            "For each issue give the cue id, the category, the severity (minor, major, critical), what the source says and what the translation says on that point, a short explanation in {notes_language} and, when you can, a suggestion with the full corrected text of the cue. When the source and the translation say the same thing, the issue is not in a meaning category.\n" +
+            "Signals point to cues worth checking. A signalled cue can be correct, and a correct cue stays as it is: report an issue only when a change makes the subtitle better. A cue with no accepted translation needs no issue: it is translated again.\n" +
+            "For each issue give the cue id, the category, the severity (minor, major, critical), what the source says and what the translation says on that point, a short explanation in {notes_language} and a suggestion: the full corrected text of the cue with every issue of that cue fixed, which replaces the translation as it is. A meaning issue always has a suggestion. When the source and the translation say the same thing, the issue is not in a meaning category.\n" +
             "A correction that sets or changes the gender or number of a person is a gender_number issue, whatever else it fixes: name in speaker who speaks the cue and to whom, as the context shows it. Leave speaker null in the other issues.\n" +
             "\n" +
             "{record_format}";
-
-        /// <summary>
-        /// Instructions di D2: correzione delle battute diagnosticate e traduzione delle «da rivedere»
-        /// </summary>
-        private const string CORRECTION_INSTRUCTIONS = "You correct {target_language} subtitles translated from {source_language}, using a list of diagnosed issues and the source.\n" +
-            "The first message gives the user's context for the series when there is one, the approved glossary and the full source episode. The last message lists the diagnosed issues, then every cue to deliver with its source and its current translation.\n" +
-            "This is not a chat: nobody reads plain text. Deliver only by calling submit_translation once, with one entry per requested id in ascending order.\n" +
-            "Fix every listed issue and keep the rest of each cue as it is. Translate from scratch every cue with no accepted translation.\n" +
-            "When the last message lists rejected ids with error codes, deliver only the requested ids, fixing every listed error.\n" +
-            "\n" +
-            "{record_format}\n" +
-            "\n" +
-            "{translation_rules}";
 
         /// <summary>
         /// Definizione del tool submit_diagnosis
@@ -157,7 +144,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "\"translation_says\":{\"type\":\"string\",\"description\":\"What the current translation says on this point.\"}," +
             "\"speaker\":{\"type\":[\"string\",\"null\"],\"description\":\"Who speaks the cue and to whom, as the context shows it; required for gender_number, null otherwise.\"}," +
             "\"explanation\":{\"type\":\"string\",\"description\":\"Short explanation for the user.\"}," +
-            "\"suggestion\":{\"type\":[\"string\",\"null\"],\"description\":\"Full corrected text of the cue, with line breaks as \\\\N and its ⟦n text⟧ spans; null if you have none.\"}}," +
+            "\"suggestion\":{\"type\":[\"string\",\"null\"],\"description\":\"Full corrected text of the cue with every issue of the cue fixed, with line breaks as \\\\N and its ⟦n text⟧ spans; required for the meaning categories, null if you have none for the others.\"}}," +
             "\"required\":[\"id\",\"category\",\"severity\",\"source_says\",\"translation_says\",\"speaker\",\"explanation\",\"suggestion\"],\"additionalProperties\":false}}}," +
             "\"required\":[\"issues\"],\"additionalProperties\":false}}";
 
@@ -183,7 +170,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "fluency", "register", "consistency", "split_sentence", "formatting" };
 
         /// <summary>
-        /// Categorie di senso: le sole che la correzione porta nel file; le altre restano nella diagnosi del blocco
+        /// Categorie di senso: le sole il cui suggerimento entra nel file; le altre restano nella diagnosi del blocco
         /// </summary>
         public static readonly IReadOnlyList<string> MEANING_CATEGORIES = new string[] { "accuracy", "omission", "untranslated", GENDER_NUMBER_CATEGORY, "address_form", "terminology", "weakened_swearing" };
 
@@ -402,17 +389,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Instructions di D2 coi segnaposto risolti
-        /// </summary>
-        /// <param name="sourceLanguage">Lingua d'origine ISO 639-2</param>
-        /// <param name="targetLanguage">Lingua d'arrivo ISO 639-2</param>
-        /// <returns>Testo delle instructions</returns>
-        public static string CreateCorrectionInstructions(string sourceLanguage, string targetLanguage)
-        {
-            return FillInstructions(CORRECTION_INSTRUCTIONS, sourceLanguage, targetLanguage);
-        }
-
-        /// <summary>
         /// Tool offerto da D1
         /// </summary>
         /// <returns>Array nuovo con submit_diagnosis</returns>
@@ -433,7 +409,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Tool offerti da B, B′, B″ e D2, sempre nello stesso ordine
+        /// Tool offerti da B, B′ e B″, sempre nello stesso ordine
         /// </summary>
         /// <returns>Array nuovo con submit_translation</returns>
         public static JsonArray CreateTranslationTools()
@@ -521,32 +497,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Coda di D2: problemi diagnosticati, id da consegnare e battute con la traduzione attuale; nel ritentativo gli scarti
-        /// </summary>
-        /// <param name="issues">Problemi della diagnosi sulle battute richieste</param>
-        /// <param name="requested">Battute da consegnare, in ordine di id</param>
-        /// <param name="current">Traduzione attuale per id, null per una battuta senza testo accettato</param>
-        /// <param name="rejected">Righe del validatore della consegna precedente, vuote alla prima consegna</param>
-        /// <returns>Testo dell'ultimo messaggio</returns>
-        public static string CreateCorrectionTail(IReadOnlyList<TranslationReviewIssue> issues, IReadOnlyList<FrozenCue> requested, IReadOnlyDictionary<int, string> current,
-            IReadOnlyList<string> rejected)
-        {
-            StringBuilder message = new StringBuilder("DIAGNOSED ISSUES:");
-            foreach (TranslationReviewIssue issue in issues)
-            {
-                message.Append('\n').Append(issue.Id.ToString(CultureInfo.InvariantCulture)).Append(" [").Append(issue.Category).Append('/').Append(issue.Severity).Append("] ").Append(issue.Explanation);
-                if (!string.IsNullOrEmpty(issue.Suggestion))
-                    message.Append("\n\tsuggestion: ").Append(issue.Suggestion.Replace("\n", LINE_BREAK_MARK));
-            }
-
-            message.Append("\n\n");
-            AppendRequested(message, "DELIVER", requested);
-            AppendCurrent(message, requested, current);
-            AppendRejected(message, rejected);
-            return message.ToString();
-        }
-
-        /// <summary>
         /// Serializza un nodo JSON per il testo dei messaggi al modello
         /// </summary>
         /// <param name="node">Nodo da scrivere</param>
@@ -592,7 +542,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Aggiunge la riga degli id richiesti col loro numero
         /// </summary>
         /// <param name="message">Coda in costruzione</param>
-        /// <param name="verb">TRANSLATE, REVIEW o DELIVER</param>
+        /// <param name="verb">TRANSLATE o REVIEW</param>
         /// <param name="requested">Battute richieste, in ordine di id</param>
         private static void AppendRequested(StringBuilder message, string verb, IReadOnlyList<FrozenCue> requested)
         {
@@ -601,24 +551,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 ids.Add(cue.Id);
 
             message.Append(verb).Append(" cue ids ").Append(FormatRanges(ids)).Append(" (").Append(ids.Count.ToString(CultureInfo.InvariantCulture)).Append(" cues).");
-        }
-
-        /// <summary>
-        /// Aggiunge la sezione delle traduzioni attuali: per ogni battuta il record sorgente e quello di traduzione
-        /// </summary>
-        /// <param name="message">Coda in costruzione</param>
-        /// <param name="requested">Battute richieste, in ordine di id</param>
-        /// <param name="current">Traduzione attuale per id, null o assente per una battuta senza testo accettato</param>
-        private static void AppendCurrent(StringBuilder message, IReadOnlyList<FrozenCue> requested, IReadOnlyDictionary<int, string> current)
-        {
-            message.Append("\n\nCURRENT TRANSLATIONS:");
-            foreach (FrozenCue cue in requested)
-            {
-                string text;
-                current.TryGetValue(cue.Id, out text);
-                message.Append('\n').Append(FormatRecord(cue.Id, cue.Kind, cue.Text));
-                message.Append('\n').Append(FormatTranslationRecord(cue.Id, cue.Kind, text));
-            }
         }
 
         /// <summary>

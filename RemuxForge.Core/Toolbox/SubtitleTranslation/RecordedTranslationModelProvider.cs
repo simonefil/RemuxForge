@@ -43,7 +43,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Righe della coda che elencano gli id richiesti
         /// </summary>
-        private static readonly string[] REQUESTED_IDS_HEADERS = new string[] { "TRANSLATE cue ids ", "DELIVER cue ids ", "REVIEW cue ids " };
+        private static readonly string[] REQUESTED_IDS_HEADERS = new string[] { "TRANSLATE cue ids ", "REVIEW cue ids " };
 
         /// <summary>
         /// Riga del prefisso che introduce le battute sorgente
@@ -60,11 +60,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         private const string CONFLICTS_HEADER = "CONFLICTS (variants proposed by the episodes):\n";
 
-        /// <summary>
-        /// Riga del suggerimento di un problema nella coda di D2
-        /// </summary>
-        private const string SUGGESTION_HEADER = "\tsuggestion: ";
-
         #endregion
 
         #region Variabili statiche
@@ -78,11 +73,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Record dei segnali di una battuta nella coda di D1
         /// </summary>
         private static readonly Regex s_signalRecord = new Regex(@"^(\d+) !\t", RegexOptions.CultureInvariant);
-
-        /// <summary>
-        /// Riga di un problema diagnosticato nella coda di D2
-        /// </summary>
-        private static readonly Regex s_issueLine = new Regex(@"^(\d+) \[[a-z_]+/[a-z]+\] ", RegexOptions.CultureInvariant);
 
         #endregion
 
@@ -241,12 +231,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
             }
 
-            // Consegna sintetica: traduzione col prefisso fisso davanti al testo sorgente, correzione col suggerimento, diagnosi
-            // vuota o glossario dai candidati
+            // Consegna sintetica: traduzione col prefisso fisso davanti al testo sorgente, diagnosi vuota o glossario dai candidati
             StringBuilder inputText = new StringBuilder(prepared.Instructions);
             Dictionary<int, string> sources = new Dictionary<int, string>();
             Dictionary<int, string> currents = new Dictionary<int, string>();
-            Dictionary<int, string> suggestions = new Dictionary<int, string>();
             List<int> signalled = new List<int>();
             List<int> requestedIds = new List<int>();
             JsonObject arguments = new JsonObject();
@@ -262,7 +250,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 string[] lines = content.Replace("\r\n", "\n").Split('\n');
                 bool inSource = false;
                 int currentId = 0;
-                int continuedId = 0;
                 for (int j = 0; j < lines.Length; j++)
                 {
                     string line = lines[j];
@@ -301,20 +288,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                     if (!inSource)
                     {
-                        // Coda di D: traduzioni attuali, suggerimenti e battute coi segnali, con gli a capo scritti \N
+                        // Coda di D1: traduzioni attuali e battute coi segnali, con gli a capo scritti \N
                         Match match;
-                        if (line.StartsWith(SUGGESTION_HEADER, StringComparison.Ordinal) && continuedId > 0)
+                        if ((match = s_translationRecord.Match(line)).Success)
                         {
-                            suggestions[continuedId] = line.Substring(SUGGESTION_HEADER.Length).Replace(TranslationRequestBuilder.LINE_BREAK_MARK, "\n");
-                        }
-                        else if ((match = s_translationRecord.Match(line)).Success)
-                        {
-                            continuedId = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
-                            currents[continuedId] = match.Groups[2].Value.Replace(TranslationRequestBuilder.LINE_BREAK_MARK, "\n");
-                        }
-                        else if ((match = s_issueLine.Match(line)).Success)
-                        {
-                            continuedId = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+                            currents[int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture)] = match.Groups[2].Value.Replace(TranslationRequestBuilder.LINE_BREAK_MARK, "\n");
                         }
                         else
                         {
@@ -458,13 +436,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (fault != null && fault.Kind == RecordedTranslationFaultKind.WrongCues && requestedIds.Count > 1 && i == requestedIds.Count - 1)
                         continue;
 
-                    string current;
-                    string suggestion;
                     string text = sources.TryGetValue(id, out source) ? SYNTHETIC_PREFIX + source : SYNTHETIC_PREFIX + "#" + id.ToString(CultureInfo.InvariantCulture);
-                    if (request.Kind == TranslationCallKind.D2)
-                    {
-                        text = suggestions.TryGetValue(id, out suggestion) ? suggestion : currents.TryGetValue(id, out current) ? current : text;
-                    }
                     translations.Add(new JsonObject { ["id"] = id, ["text"] = fault != null && fault.Kind == RecordedTranslationFaultKind.WrongCues && i == 0 ? "" : text });
                 }
 

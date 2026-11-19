@@ -24,10 +24,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         BReduced,
 
         /// <summary>Diagnosi della revisione</summary>
-        D1,
-
-        /// <summary>Correzione della revisione</summary>
-        D2
+        D1
     }
 
     /// <summary>
@@ -41,7 +38,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Restituisce il tipo della chiave di cache: ritentativo e blocco ridotto condividono la chiave del blocco
         /// </summary>
         /// <param name="kind">Tipo di chiamata</param>
-        /// <returns>A0, A1, A2, B, D1 o D2</returns>
+        /// <returns>A0, A1, A2, B o D1</returns>
         public static string GetSessionKind(this TranslationCallKind kind)
         {
             if (kind == TranslationCallKind.BRetry || kind == TranslationCallKind.BReduced)

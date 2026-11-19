@@ -70,7 +70,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Rejected = null;
             this.Rejections = new List<TranslationCallRejection>();
             this.Issues = null;
-            this.Corrected = null;
             this.Usage = null;
         }
 
@@ -212,11 +211,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Problemi della diagnosi tenuti, null fuori dalle diagnosi riuscite
         /// </summary>
         public int? Issues { get; set; }
-
-        /// <summary>
-        /// Battute accettate col testo cambiato, null fuori dalle correzioni
-        /// </summary>
-        public int? Corrected { get; set; }
 
         /// <summary>
         /// Consumo, null se la chiamata non ha avuto risposta

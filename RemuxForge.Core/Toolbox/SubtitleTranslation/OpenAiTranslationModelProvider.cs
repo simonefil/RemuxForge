@@ -12,9 +12,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// richiesta, all'ultimo confine di 128 token prima della fine del prompt: con una coda lunga il punto cade nella coda e la
     /// richiesta dopo, che ha una coda diversa, non lo trova. Prima della prima richiesta di una sessione che il runner dichiara
     /// riletta parte quindi una volta la stessa richiesta senza la coda, che lascia il punto dentro la parte fissa: anche il
-    /// primo blocco la trova in cache. Una sessione che il runner non dichiara riletta, come le correzioni D2 il cui numero
-    /// dipende dalla diagnosi o un blocco solo coi suoi ritentativi, prepara la parte fissa alla sua seconda richiesta; una
-    /// sessione di una richiesta sola non la prepara mai. Il runner sa quante richieste avrà la sessione, il provider sa come
+    /// primo blocco la trova in cache. Una sessione che il runner non dichiara riletta, come un blocco solo coi suoi
+    /// ritentativi, prepara la parte fissa alla sua seconda richiesta; una sessione di una richiesta sola non la prepara mai. Il runner sa quante richieste avrà la sessione, il provider sa come
     /// funziona la cache del servizio: la decisione sta divisa così, e un altro provider ignora il segnale del runner.
     /// La richiesta senza coda ha model, reasoning, tool, tool_choice e instructions della vera, che fanno parte del prefisso in
     /// cache; con tool_choice forzato il modello consegna subito una chiamata vuota. Il suo consumo si somma alla prima risposta

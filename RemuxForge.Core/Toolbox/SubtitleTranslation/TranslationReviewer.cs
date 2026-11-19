@@ -12,12 +12,13 @@ using System.Threading.Tasks;
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
-    /// Revisione AI di un job: per ogni blocco scelto una diagnosi D1 con un ritentativo, poi D2 sulle battute con
-    /// problemi di senso e su quelle da rivedere. Una diagnosi troncata dal tetto dei token in uscita a entrambe le chiamate si
-    /// dimezza come una consegna. Ogni parte diagnosticata si salva, e alla ripresa il blocco riparte dalle parti che restano o
-    /// da D2. Una parte che il modello non diagnostica anche dopo i tentativi e i dimezzamenti, come una risposta fermata dal
-    /// filtro dei contenuti o senza la chiamata della diagnosi, lascia non riviste col motivo le sue battute, in tutte le copie
-    /// per una tratta; le altre parti del blocco e D2 vanno avanti, e solo un errore del servizio ferma la fase. I blocchi di un file vanno in sequenza. Una tratta condivisa si rivede una volta
+    /// Revisione AI di un job: per ogni blocco scelto una diagnosi D1 con un ritentativo, poi il codice mette nel file il testo
+    /// corretto delle segnalazioni di senso e ritraduce da sole le battute da rivedere. Una diagnosi troncata dal tetto dei token
+    /// in uscita a entrambe le chiamate si dimezza come una consegna. Ogni parte diagnosticata si salva, e alla ripresa il blocco
+    /// riparte dalle parti che restano o dalle correzioni. Una parte che il modello non diagnostica anche dopo i tentativi e i
+    /// dimezzamenti, come una risposta fermata dal filtro dei contenuti o senza la chiamata della diagnosi, lascia non riviste col
+    /// motivo le sue battute, in tutte le copie per una tratta; le altre parti del blocco e le correzioni vanno avanti, e solo un
+    /// errore del servizio ferma la fase. I blocchi di un file vanno in sequenza. Una tratta condivisa si rivede una volta
     /// sola, in un blocco suo nel file della prima occorrenza, e le correzioni passano a tutte le copie; i blocchi del piano
     /// saltano le battute delle tratte
     /// </summary>
@@ -39,11 +40,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         private readonly string _diagnosisInstructions;
 
-        /// <summary>
-        /// Instructions di D2
-        /// </summary>
-        private readonly string _correctionInstructions;
-
         #endregion
 
         #region Costruttore
@@ -62,7 +58,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             : base(store, job, files, calls, stateLock, context)
         {
             this._diagnosisInstructions = TranslationRequestBuilder.CreateDiagnosisInstructions(job.Glossary.SourceLanguage, job.Glossary.TargetLanguage);
-            this._correctionInstructions = TranslationRequestBuilder.CreateCorrectionInstructions(job.Glossary.SourceLanguage, job.Glossary.TargetLanguage);
 
             lock (stateLock)
             {
@@ -134,8 +129,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Rivede i blocchi da fare del file uno alla volta; ogni blocco si salva dopo ogni parte di D1 e dopo D2. Una parte senza
-        /// diagnosi valida lascia le sue battute non riviste col motivo, e il resto del blocco va avanti fino alla correzione
+        /// Rivede i blocchi da fare del file uno alla volta; ogni blocco si salva dopo ogni parte di D1 e dopo le correzioni. Una
+        /// parte senza diagnosi valida lascia le sue battute non riviste col motivo, e il resto del blocco va avanti fino alle
+        /// correzioni
         /// </summary>
         /// <param name="file">File del job</param>
         /// <param name="provider">Provider condiviso</param>
@@ -377,71 +373,82 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     issues = block.Issues;
                 }
 
-                // D2: battute con problemi di senso e da rivedere, nell'ordine di tempo. Il genere solo col parlante indicato; gli
-                // altri problemi restano nella diagnosi del blocco. Una battuta scritta dall'utente non si corregge
+                // Testo corretto delle segnalazioni di senso, il genere solo col parlante indicato: per ogni battuta quello dell'ultima
+                // segnalazione che lo dà, validato come una consegna e senza riparazioni. Un testo respinto lascia la battuta com'è, e
+                // la segnalazione resta nella diagnosi del blocco. Una battuta scritta dall'utente non si corregge; una da rivedere,
+                // senza testo, si ritraduce da sola con un ritentativo della traduzione
                 List<TranslationReviewIssue> applied = issues.FindAll(i => ((IList<string>)TranslationRequestBuilder.MEANING_CATEGORIES).Contains(i.Category)
                     && (i.Category != TranslationRequestBuilder.GENDER_NUMBER_CATEGORY || i.Speaker != null));
-                HashSet<int> wanted = new HashSet<int>();
-                foreach (TranslationReviewIssue issue in applied)
-                    wanted.Add(issue.Id);
-                foreach (TranslatedCueState translation in translations.Values)
+                Dictionary<int, string> suggestions = new Dictionary<int, string>();
+                List<int> retranslate = new List<int>();
+                lock (this._lock)
                 {
-                    if (translation.Status == TranslatedCueStatus.ToReview)
-                        wanted.Add(translation.Id);
-                    if (translation.Signals.Contains(TranslationCueSignal.EditedByUser))
-                        wanted.Remove(translation.Id);
+                    foreach (TranslationReviewIssue issue in applied)
+                    {
+                        if (issue.Suggestion != null && current.ContainsKey(issue.Id) && !translations[issue.Id].Signals.Contains(TranslationCueSignal.EditedByUser))
+                            suggestions[issue.Id] = issue.Suggestion;
+                    }
+                    foreach (TranslatedCueState translation in translations.Values)
+                    {
+                        if (translation.Status == TranslatedCueStatus.ToReview && !translation.Signals.Contains(TranslationCueSignal.EditedByUser))
+                            retranslate.Add(translation.Id);
+                    }
                 }
-                List<int> deliver = state.Cues.FindAll(c => wanted.Contains(c.Id)).ConvertAll(c => c.Id);
+
+                Dictionary<int, KeyValuePair<string, List<GlossaryWarning>>> corrections = new Dictionary<int, KeyValuePair<string, List<GlossaryWarning>>>();
+                List<int> suggested = state.Cues.FindAll(c => suggestions.ContainsKey(c.Id)).ConvertAll(c => c.Id);
+                if (suggested.Count > 0)
+                {
+                    JsonArray entries = new JsonArray();
+                    foreach (int id in suggested)
+                        entries.Add(new JsonObject { ["id"] = id, ["text"] = suggestions[id] });
+                    TranslationValidationResult validation = context.Validator.Validate(suggested, context.GetLiveCues(suggested),
+                        new List<string> { new JsonObject { ["translations"] = entries }.ToJsonString() }, new int[0]);
+                    foreach (CueValidationResult cue in validation.Cues)
+                    {
+                        if (!cue.HasErrors)
+                            corrections[cue.Id] = new KeyValuePair<string, List<GlossaryWarning>>(cue.Text, cue.GetGlossaryWarnings());
+                    }
+                }
+
+                DeliveryWork retry = new DeliveryWork(unit);
+                foreach (int id in state.Cues.FindAll(c => retranslate.Contains(c.Id)).ConvertAll(c => c.Id))
+                {
+                    List<CueRejection> rejections = translations[id].Rejections;
+                    await this.DeliverAsync(context, retry, this.CreateTranslationPlan(context, retry), new List<int> { id }, TranslationCallKind.BRetry, 1,
+                        rejections.Count > 0 ? rejections[rejections.Count - 1].Reasons : new List<string>(), false, provider, cancellation);
+                }
+                foreach (TranslatedCueState result in retry.Results.Values)
+                {
+                    if (result.Status == TranslatedCueStatus.Accepted)
+                        corrections[result.Id] = new KeyValuePair<string, List<GlossaryWarning>>(result.Text, result.GlossaryWarnings);
+                }
 
                 int corrected = 0;
-                DeliveryWork correction = new DeliveryWork(unit);
-                if (deliver.Count > 0)
-                {
-                    DeliveryPlan plan = new DeliveryPlan
-                    {
-                        RetryKind = TranslationCallKind.D2,
-                        ReducedKind = TranslationCallKind.D2,
-                        Model = this._job.Models.Review,
-                        ReasoningEffort = this._job.ReasoningEfforts.Review,
-                        Instructions = this._correctionInstructions,
-                        Current = current,
-                        Tail = (requested, rejected) =>
-                        {
-                            HashSet<int> requestedIds = new HashSet<int>();
-                            foreach (FrozenCue cue in requested)
-                                requestedIds.Add(cue.Id);
-                            List<TranslationReviewIssue> shown = applied.FindAll(i => requestedIds.Contains(i.Id));
-                            return TranslationRequestBuilder.CreateCorrectionTail(shown, requested, current, rejected);
-                        }
-                    };
-                    await this.DeliverAsync(context, correction, plan, deliver, TranslationCallKind.D2, 0, new string[0], false, provider, cancellation);
-                }
-
                 lock (this._lock)
                 {
                     HashSet<TranslationJobFileState> touched = new HashSet<TranslationJobFileState>();
-                    foreach (TranslatedCueState result in correction.Results.Values)
+                    foreach (KeyValuePair<int, KeyValuePair<string, List<GlossaryWarning>>> correction in corrections)
                     {
-                        TranslatedCueState translation;
-                        if (result.Status != TranslatedCueStatus.Accepted || !translations.TryGetValue(result.Id, out translation)
-                            || string.Equals(result.Text, translation.Text, StringComparison.Ordinal))
+                        TranslatedCueState translation = translations[correction.Key];
+                        if (string.Equals(correction.Value.Key, translation.Text, StringComparison.Ordinal))
                             continue;
 
                         // Testo di prima e motivo per l'avviso della griglia
-                        List<string> reasons = applied.FindAll(i => i.Id == result.Id).ConvertAll(i => i.Explanation);
+                        List<string> reasons = applied.FindAll(i => i.Id == correction.Key).ConvertAll(i => i.Explanation);
                         translation.AiCorrection = new CueAiCorrection { Before = translation.Text, Explanation = reasons.Count > 0 ? string.Join("\n", reasons) : null };
-                        translation.SetText(result.Text, result.GlossaryWarnings);
+                        translation.SetText(correction.Value.Key, correction.Value.Value);
                         if (!translation.Signals.Contains(TranslationCueSignal.CorrectedByAi))
                             translation.Signals.Add(TranslationCueSignal.CorrectedByAi);
                         corrected++;
 
                         // Correzione di una tratta: uguale in tutte le copie
                         if (block.SharedStretch.HasValue)
-                            touched.UnionWith(context.Shared[result.Id].Spread(state, result.Id, this._files.ConvertAll(f => f.State)));
+                            touched.UnionWith(context.Shared[correction.Key].Spread(state, correction.Key, this._files.ConvertAll(f => f.State)));
                     }
 
                     block.Status = TranslationReviewBlockStatus.Done;
-                    block.CallSeqs.AddRange(correction.CallSeqs);
+                    block.CallSeqs.AddRange(retry.CallSeqs);
                     foreach (TranslationJobFileState other in touched)
                     {
                         if (other != state)

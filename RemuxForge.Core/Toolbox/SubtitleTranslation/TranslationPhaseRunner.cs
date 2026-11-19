@@ -81,6 +81,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private readonly string _context;
 
         /// <summary>
+        /// Instructions di B, B′ e B″, uguali per tutto il job
+        /// </summary>
+        private readonly string _translationInstructions;
+
+        /// <summary>
         /// Prima fermata di un file per limite d'uso o errore: gli altri file non avviano unità nuove
         /// </summary>
         private TranslationStop _pause;
@@ -125,6 +130,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this._calls = calls;
             this._lock = stateLock;
             this._context = context;
+            this._translationInstructions = TranslationRequestBuilder.CreateTranslationInstructions(job.Glossary.SourceLanguage, job.Glossary.TargetLanguage);
             this._pause = null;
         }
 
@@ -381,16 +387,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
                 record.Accepted = judged.Count - rejected.Count;
                 record.Rejected = rejected.Count;
-                if (plan.Current != null)
-                {
-                    record.Corrected = 0;
-                    foreach (CueValidationResult cue in judged)
-                    {
-                        string before;
-                        if (!cue.HasErrors && !(plan.Current.TryGetValue(cue.Id, out before) && string.Equals(before, cue.Text, StringComparison.Ordinal)))
-                            record.Corrected++;
-                    }
-                }
                 record.Outcome = rejected.Count == 0 && shifted.Count == 0 ? TranslationCallOutcome.Accepted : TranslationCallOutcome.PartiallyRejected;
                 int callSeq = this.RecordCall(record, work);
 
@@ -466,6 +462,66 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 await this.DeliverAsync(context, work, plan, part.Key, plan.RetryKind, currentAttempt + 1, part.Value, false, provider, cancellation);
 
             return false;
+        }
+
+        /// <summary>
+        /// Piano delle consegne di traduzione di un blocco, di una tratta del file o di una battuta da rivedere: la coda porta le
+        /// coppie accettate che vengono prima della prima battuta da consegnare nell'ordine delle battute congelate, dallo stato
+        /// salvato, copie delle tratte comprese, e dall'unità in corso. Le copie di una tratta del file stesso, come i fotogrammi di
+        /// un cartello in movimento, restano fuori
+        /// </summary>
+        /// <param name="context">File con prefisso e battute</param>
+        /// <param name="work">Esiti dell'unità in memoria</param>
+        /// <returns>Piano delle consegne</returns>
+        protected DeliveryPlan CreateTranslationPlan(FileContext context, DeliveryWork work)
+        {
+            TranslationJobFileState state = context.File.State;
+
+            // Tratte di cui il file ha la prima occorrenza e blocchi ancora da fare, questa unità compresa: stessa sessione B
+            int units;
+            lock (this._lock)
+            {
+                units = state.Blocks.FindAll(b => b.Status == TranslationBlockStatus.Pending).Count
+                    + this._job.SharedStretches.FindAll(s => s.Status == TranslationBlockStatus.Pending && s.Occurrences[0].FileId == state.FileId).Count;
+            }
+
+            return new DeliveryPlan
+            {
+                RetryKind = TranslationCallKind.BRetry,
+                ReducedKind = TranslationCallKind.BReduced,
+                Model = this._job.Models.Translation,
+                ReasoningEffort = this._job.ReasoningEfforts.Translation,
+                Instructions = this._translationInstructions,
+                PrefixReused = units > 1,
+                Tail = (requested, rejected) =>
+                {
+                    Dictionary<int, string> accepted = new Dictionary<int, string>();
+                    lock (this._lock)
+                    {
+                        foreach (TranslatedCueState translation in state.Translations)
+                        {
+                            if (translation.Status == TranslatedCueStatus.Accepted && translation.Text != null)
+                                accepted[translation.Id] = translation.Text;
+                        }
+                    }
+                    foreach (KeyValuePair<int, string> pair in work.Accepted)
+                        accepted[pair.Key] = pair.Value;
+
+                    List<KeyValuePair<FrozenCue, string>> pairs = new List<KeyValuePair<FrozenCue, string>>();
+                    foreach (FrozenCue cue in state.Cues.GetRange(0, state.Cues.FindIndex(c => c.Id == requested[0].Id)))
+                    {
+                        string text;
+                        SharedStretch stretch;
+                        if (accepted.TryGetValue(cue.Id, out text) && !(context.Shared.TryGetValue(cue.Id, out stretch)
+                            && stretch.Occurrences[0].FileId == state.FileId && !stretch.IsMaster(state.FileId, cue.Id)))
+                            pairs.Add(new KeyValuePair<FrozenCue, string>(cue, text));
+                    }
+                    if (pairs.Count > TranslationRequestBuilder.TAIL_PAIRS)
+                        pairs.RemoveRange(0, pairs.Count - TranslationRequestBuilder.TAIL_PAIRS);
+
+                    return TranslationRequestBuilder.CreateTranslationTail(pairs, requested, rejected);
+                }
+            };
         }
 
         /// <summary>
@@ -815,11 +871,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             /// True se il piano prevede altre unità della stessa sessione dopo questa
             /// </summary>
             public bool PrefixReused { get; init; }
-
-            /// <summary>
-            /// Testi attuali per contare nella riga del registro le battute accettate col testo cambiato, null se la fase non le conta
-            /// </summary>
-            public IReadOnlyDictionary<int, string> Current { get; init; }
         }
 
         /// <summary>

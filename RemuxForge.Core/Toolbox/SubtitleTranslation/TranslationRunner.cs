@@ -43,11 +43,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Variabili di classe
 
         /// <summary>
-        /// Instructions di B, B′ e B″, uguali per tutto il job
-        /// </summary>
-        private readonly string _instructions;
-
-        /// <summary>
         /// True nel primo giro, quello delle tratte condivise
         /// </summary>
         private bool _stretches;
@@ -68,7 +63,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public TranslationRunner(TranslationJobStore store, TranslationJob job, List<TranslationRunFile> files, List<TranslationCallRecord> calls, object stateLock, string context)
             : base(store, job, files, calls, stateLock, context)
         {
-            this._instructions = TranslationRequestBuilder.CreateTranslationInstructions(job.Glossary.SourceLanguage, job.Glossary.TargetLanguage);
             this._stretches = false;
         }
 
@@ -115,10 +109,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Stima della traduzione per caratteri, come il giro la farebbe: gli stati dei file preparati come all'avvio, con le battute
         /// delle tratte condivise fuori dai blocchi, e ogni tratta contata una volta sola nel file della prima occorrenza. Ogni
         /// consegna manda il prefisso intero, la coda con le battute prima di quelle chieste e argomenti lunghi quanto il sorgente.
-        /// La revisione completa si stima con una D1 e una D2 su ogni blocco e su ogni tratta. La cache segue il provider: con
-        /// l'account ChatGPT una sessione di più richieste paga una volta la parte fissa senza coda e poi la trova in cache dalla
-        /// prima richiesta, D2 dalla seconda perché prepara la parte fissa solo lì; una sessione di una richiesta non la trova. Con
-        /// la API key la cache vale dal terzo blocco del file
+        /// La revisione completa si stima con una D1 su ogni blocco e su ogni tratta. La cache segue il provider: con l'account
+        /// ChatGPT una sessione di più richieste paga una volta la parte fissa senza coda e poi la trova in cache dalla prima
+        /// richiesta; una sessione di una richiesta non la trova. Con la API key la cache vale dal terzo blocco del file
         /// </summary>
         /// <param name="glossary">Glossario approvato</param>
         /// <param name="context">Campo serie/contesto del progetto</param>
@@ -135,7 +128,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             string instructions = TranslationRequestBuilder.CreateTranslationInstructions(glossary.SourceLanguage, glossary.TargetLanguage);
             string tools = TranslationRequestBuilder.CreateTranslationTools().ToJsonString();
             string diagnosis = TranslationRequestBuilder.CreateDiagnosisInstructions(glossary.SourceLanguage, glossary.TargetLanguage) + TranslationRequestBuilder.CreateDiagnosisTools().ToJsonString();
-            string correction = TranslationRequestBuilder.CreateCorrectionInstructions(glossary.SourceLanguage, glossary.TargetLanguage) + tools;
             long reviewInput = 0;
             long reviewCached = 0;
             long reviewOutput = 0;
@@ -148,7 +140,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 string prefix = TranslationRequestBuilder.CreateTranslationPrefix(context, glossary, file.FileName, state.Cues.FindAll(c => !copies.Contains(c.Id)));
                 int prefixTokens = GlossaryBuilder.EstimateTokens(instructions + tools + prefix);
                 int diagnosisTokens = GlossaryBuilder.EstimateTokens(diagnosis + prefix);
-                int correctionTokens = GlossaryBuilder.EstimateTokens(correction + prefix);
 
                 // Consegne del file: i blocchi senza le battute delle tratte, poi le tratte di cui il file ha la prima occorrenza
                 Dictionary<int, SharedStretch> shared = SharedStretch.MapFile(stretches, state.FileId);
@@ -161,12 +152,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         units.Add(state.Cues.FindAll(c => stretch.Occurrences[0].Ids.Contains(c.Id)));
                 }
 
-                // Sessioni B e D1 di più richieste: la parte fissa senza coda prima della prima, D2 prima della seconda
+                // Sessioni B e D1 di più richieste: la parte fissa senza coda prima della prima
                 bool warm = primed && units.Count > 1;
                 if (warm)
                 {
                     estimate.InputTokens += prefixTokens;
-                    reviewInput += diagnosisTokens + correctionTokens;
+                    reviewInput += diagnosisTokens;
                 }
 
                 for (int u = 0; u < units.Count; u++)
@@ -196,16 +187,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (cached)
                         estimate.CachedTokens += (long)(unitTokens * ESTIMATE_CACHED_SHARE);
 
-                    // Revisione completa, al massimo: D1 sulla consegna con le traduzioni e un suggerimento per battuta, D2 su tutte le sue
-                    // battute, su chiavi separate
+                    // Revisione completa, al massimo: D1 sulla consegna con le traduzioni e un suggerimento per battuta
                     int diagnosisUnit = diagnosisTokens + GlossaryBuilder.EstimateTokens(TranslationRequestBuilder.CreateDiagnosisTail(requested, translated, new Dictionary<int, List<string>>()));
-                    int correctionUnit = correctionTokens + GlossaryBuilder.EstimateTokens(TranslationRequestBuilder.CreateCorrectionTail(new TranslationReviewIssue[0], requested, translated, new string[0]));
-                    reviewInput += diagnosisUnit + correctionUnit;
-                    reviewOutput += 2 * outputTokens;
+                    reviewInput += diagnosisUnit;
+                    reviewOutput += outputTokens;
                     if (cached)
                         reviewCached += (long)(diagnosisUnit * ESTIMATE_CACHED_SHARE);
-                    if (primed ? warm && u >= 1 : cached)
-                        reviewCached += (long)(correctionUnit * ESTIMATE_CACHED_SHARE);
                 }
             }
 
@@ -370,7 +357,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 {
                     lines = stretch.Occurrences[0].Ids.FindAll(id => !file.State.Translations.Exists(t => t.Id == id));
                 }
-                await this.DeliverAsync(context, stretchWork, this.CreatePlan(context, stretchWork), lines, TranslationCallKind.B, 0, new string[0], false, provider, cancellation);
+                await this.DeliverAsync(context, stretchWork, this.CreateTranslationPlan(context, stretchWork), lines, TranslationCallKind.B, 0, new string[0], false, provider, cancellation);
 
                 int files;
                 int accepted = 0;
@@ -476,7 +463,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 this.ReportProgress(file.FileName, number, count);
 
                 TranslationCallKind kind = block.SplitFrom.HasValue ? TranslationCallKind.BReduced : TranslationCallKind.B;
-                bool incomplete = await this.DeliverAsync(context, work, this.CreatePlan(context, work), ids, kind, 0, new string[0], whole, provider, cancellation);
+                bool incomplete = await this.DeliverAsync(context, work, this.CreateTranslationPlan(context, work), ids, kind, 0, new string[0], whole, provider, cancellation);
                 List<SubtitleCue> live = context.GetLiveCues(ids);
                 IReadOnlyList<IReadOnlyList<SubtitleCue>> halves = incomplete ? new SubtitleBlockPlanner(live).SplitBlock(live) : null;
 
@@ -580,65 +567,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #endregion
 
         #region Metodi privati
-
-        /// <summary>
-        /// Piano delle consegne di un blocco o di una tratta del file: la coda porta le coppie accettate che vengono prima della
-        /// prima battuta da consegnare nell'ordine delle battute congelate, dallo stato salvato, copie delle tratte comprese, e
-        /// dall'unità in corso. Le copie di una tratta del file stesso, come i fotogrammi di un cartello in movimento, restano fuori
-        /// </summary>
-        /// <param name="context">File con prefisso e battute</param>
-        /// <param name="work">Esiti dell'unità in memoria</param>
-        /// <returns>Piano delle consegne</returns>
-        private DeliveryPlan CreatePlan(FileContext context, DeliveryWork work)
-        {
-            TranslationJobFileState state = context.File.State;
-
-            // Tratte di cui il file ha la prima occorrenza e blocchi ancora da fare, questa unità compresa: stessa sessione B
-            int units;
-            lock (this._lock)
-            {
-                units = state.Blocks.FindAll(b => b.Status == TranslationBlockStatus.Pending).Count
-                    + this._job.SharedStretches.FindAll(s => s.Status == TranslationBlockStatus.Pending && s.Occurrences[0].FileId == state.FileId).Count;
-            }
-
-            return new DeliveryPlan
-            {
-                RetryKind = TranslationCallKind.BRetry,
-                ReducedKind = TranslationCallKind.BReduced,
-                Model = this._job.Models.Translation,
-                ReasoningEffort = this._job.ReasoningEfforts.Translation,
-                Instructions = this._instructions,
-                PrefixReused = units > 1,
-                Tail = (requested, rejected) =>
-                {
-                    Dictionary<int, string> accepted = new Dictionary<int, string>();
-                    lock (this._lock)
-                    {
-                        foreach (TranslatedCueState translation in state.Translations)
-                        {
-                            if (translation.Status == TranslatedCueStatus.Accepted && translation.Text != null)
-                                accepted[translation.Id] = translation.Text;
-                        }
-                    }
-                    foreach (KeyValuePair<int, string> pair in work.Accepted)
-                        accepted[pair.Key] = pair.Value;
-
-                    List<KeyValuePair<FrozenCue, string>> pairs = new List<KeyValuePair<FrozenCue, string>>();
-                    foreach (FrozenCue cue in state.Cues.GetRange(0, state.Cues.FindIndex(c => c.Id == requested[0].Id)))
-                    {
-                        string text;
-                        SharedStretch stretch;
-                        if (accepted.TryGetValue(cue.Id, out text) && !(context.Shared.TryGetValue(cue.Id, out stretch)
-                            && stretch.Occurrences[0].FileId == state.FileId && !stretch.IsMaster(state.FileId, cue.Id)))
-                            pairs.Add(new KeyValuePair<FrozenCue, string>(cue, text));
-                    }
-                    if (pairs.Count > TranslationRequestBuilder.TAIL_PAIRS)
-                        pairs.RemoveRange(0, pairs.Count - TranslationRequestBuilder.TAIL_PAIRS);
-
-                    return TranslationRequestBuilder.CreateTranslationTail(pairs, requested, rejected);
-                }
-            };
-        }
 
         /// <summary>
         /// Avvisa dell'avanzamento coi blocchi fatti e totali di tutti i file e con le tratte condivise
