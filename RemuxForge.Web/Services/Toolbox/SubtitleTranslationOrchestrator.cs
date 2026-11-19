@@ -1106,7 +1106,13 @@ namespace RemuxForge.Web.Services.Toolbox
                     if (candidate.Id == id)
                         cue = candidate;
                 }
-                CueValidationResult result = new TranslationValidator(document.Format, this._job.Glossary).ValidateEdit(cue, text);
+                Dictionary<int, string> accepted = new Dictionary<int, string>();
+                foreach (TranslatedCueState other in state.Translations)
+                {
+                    if (other.Text != null)
+                        accepted[other.Id] = other.Text;
+                }
+                CueValidationResult result = new TranslationValidator(document.Format, this._job.Glossary, state.Cues).ValidateEdit(cue, text, accepted);
                 if (result.HasErrors)
                 {
                     List<string> errors = new List<string>();

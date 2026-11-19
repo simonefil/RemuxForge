@@ -147,6 +147,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         private readonly List<TermPatterns> _terms;
 
+        /// <summary>
+        /// Battuta precedente in ordine di tempo per id, dove la frase può cominciare
+        /// </summary>
+        private readonly Dictionary<int, int> _previous;
+
+        /// <summary>
+        /// Battuta successiva in ordine di tempo per id, dove la frase può continuare
+        /// </summary>
+        private readonly Dictionary<int, int> _next;
+
         #endregion
 
         #region Costruttore
@@ -156,10 +166,18 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="format">Formato del file</param>
         /// <param name="glossary">Glossario in uso</param>
-        public TranslationValidator(SubtitleTranslationFormat format, Glossary glossary)
+        /// <param name="cues">Battute traducibili del file in ordine di tempo: la resa di un termine si cerca anche nelle vicine</param>
+        public TranslationValidator(SubtitleTranslationFormat format, Glossary glossary, IReadOnlyList<FrozenCue> cues)
         {
             this._format = format;
             this._terms = new List<TermPatterns>();
+            this._previous = new Dictionary<int, int>();
+            this._next = new Dictionary<int, int>();
+            for (int i = 1; i < cues.Count; i++)
+            {
+                this._previous[cues[i].Id] = cues[i - 1].Id;
+                this._next[cues[i - 1].Id] = cues[i].Id;
+            }
             string source = LanguageValidator.NormalizeToIso6392(glossary.SourceLanguage);
             string target = LanguageValidator.NormalizeToIso6392(glossary.TargetLanguage);
             foreach (GlossaryTerm term in glossary.Terms)
@@ -186,9 +204,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// invece di respingerli. Senza la forma dei segni, o coi segni fuori ordine, resta il testo senza formattazione; altrimenti si
         /// tolgono i segni in più e quelli vuoti, e un segno mancante resta senza la sua formattazione. Di una consegna doppia vale la
         /// prima. Le riparazioni restano come avvisi</param>
+        /// <param name="accepted">Traduzioni già accettate per id, per il glossario sulle vicine che non sono nella consegna</param>
         /// <returns>Esito per ogni id richiesto e problemi senza id degli elementi scartati</returns>
         public TranslationValidationResult Validate(IReadOnlyList<int> requestedIds, IReadOnlyList<SubtitleCue> cues, IReadOnlyList<string> submissions,
-            IReadOnlyCollection<int> repairIds)
+            IReadOnlyCollection<int> repairIds, IReadOnlyDictionary<int, string> accepted)
         {
             Dictionary<int, SubtitleCue> byId = new Dictionary<int, SubtitleCue>();
             foreach (SubtitleCue cue in cues)
@@ -309,11 +328,21 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 results[id] = new CueValidationResult(id, text, cueIssues);
             }
 
-            // Glossario sulle battute valide
+            // Glossario sulle battute valide: la resa può stare nella vicina, consegnata ora senza errori o già accettata
+            string Neighbor(Dictionary<int, int> neighbors, int id)
+            {
+                int neighbor;
+                string text;
+                if (!neighbors.TryGetValue(id, out neighbor))
+                    return null;
+                if (results.ContainsKey(neighbor) && !results[neighbor].HasErrors)
+                    return results[neighbor].Text;
+                return accepted.TryGetValue(neighbor, out text) ? text : null;
+            }
             foreach (int id in requested)
             {
                 if (!results[id].HasErrors)
-                    this.AddGlossaryWarnings(byId[id], results[id].Text, issues[id]);
+                    this.AddGlossaryWarnings(byId[id], Neighbor(this._previous, id) + " " + results[id].Text + " " + Neighbor(this._next, id), issues[id]);
             }
 
             List<CueValidationResult> ordered = new List<CueValidationResult>();
@@ -328,14 +357,26 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="cue">Battuta modificata</param>
         /// <param name="text">Testo scritto dall'utente</param>
+        /// <param name="accepted">Traduzioni del file per id: la resa di un termine si cerca anche nelle vicine</param>
         /// <returns>Esito della battuta; con un errore la modifica non si salva</returns>
-        public CueValidationResult ValidateEdit(SubtitleCue cue, string text)
+        public CueValidationResult ValidateEdit(SubtitleCue cue, string text, IReadOnlyDictionary<int, string> accepted)
         {
             List<TranslationValidationIssue> cueIssues = new List<TranslationValidationIssue>();
             string normalizedText = this.ValidateText(cue, text ?? "", cueIssues, false, false);
             CueValidationResult result = new CueValidationResult(cue.Id.Value, normalizedText, cueIssues);
             if (!result.HasErrors)
-                this.AddGlossaryWarnings(cue, normalizedText, cueIssues);
+            {
+                // La resa può stare nella traduzione di una vicina
+                int previous;
+                int next;
+                string previousText = null;
+                string nextText = null;
+                if (this._previous.TryGetValue(cue.Id.Value, out previous))
+                    accepted.TryGetValue(previous, out previousText);
+                if (this._next.TryGetValue(cue.Id.Value, out next))
+                    accepted.TryGetValue(next, out nextText);
+                this.AddGlossaryWarnings(cue, previousText + " " + normalizedText + " " + nextText, cueIssues);
+            }
 
             return result;
         }
@@ -777,10 +818,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Aggiunge gli avvisi del glossario a una battuta: un termine del sorgente senza la sua resa nella traduzione
+        /// Aggiunge gli avvisi del glossario a una battuta: un termine del sorgente senza la sua resa nella traduzione della battuta
+        /// né in quelle delle vicine, perché una frase che continua può renderlo nella battuta accanto
         /// </summary>
         /// <param name="cue">Battuta sorgente</param>
-        /// <param name="text">Testo normalizzato della traduzione</param>
+        /// <param name="text">Traduzioni normalizzate della precedente, della battuta e della successiva, separate da uno spazio</param>
         /// <param name="issues">Esiti della battuta</param>
         private void AddGlossaryWarnings(SubtitleCue cue, string text, List<TranslationValidationIssue> issues)
         {
