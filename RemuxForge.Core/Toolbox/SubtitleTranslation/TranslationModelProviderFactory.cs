@@ -74,5 +74,18 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// True se i provider creati possono chiamare il modello: quello reale vuole le credenziali dell'accesso configurato, come
+        /// il client le chiede a ogni chiamata; quello registrato non le chiede
+        /// </summary>
+        public bool IsAccessConfigured
+        {
+            get { return !string.IsNullOrEmpty(this._recordedScenarioPath) || AiCredentialService.IsConfigured(this._credentialService.Load()); }
+        }
+
+        #endregion
     }
 }

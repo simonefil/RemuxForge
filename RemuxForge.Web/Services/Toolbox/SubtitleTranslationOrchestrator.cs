@@ -2889,6 +2889,14 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
+        /// True se il giro può chiamare il modello con l'accesso configurato
+        /// </summary>
+        public bool IsAccessConfigured
+        {
+            get { return this._providerFactory.IsAccessConfigured; }
+        }
+
+        /// <summary>
         /// File delle credenziali dell'accesso
         /// </summary>
         public string CredentialsPath

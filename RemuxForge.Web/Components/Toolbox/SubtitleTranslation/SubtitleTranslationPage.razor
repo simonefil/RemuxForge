@@ -1065,9 +1065,14 @@
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.approve"), "", "check", allSurfaces, UiCommandMenuSection.Actions, busy || !this.Orchestrator.CanApprove,
                 () =>
                 {
-                    // Senza il modello della traduzione il glossario non si approva: l'approvazione avvia il giro
+                    // Senza il modello della traduzione o le credenziali dell'accesso il glossario non si approva: l'approvazione avvia il giro
                     if (!this.CheckModel(TranslationJobPhase.Translation))
                         return;
+                    if (!this.Orchestrator.IsAccessConfigured)
+                    {
+                        this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyTranslationFailed"), AppText.T("ai.error.notConfigured"));
+                        return;
+                    }
 
                     this._pending = null;
                     this._step = STEP_TRANSLATION;
@@ -1111,14 +1116,7 @@
                 commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.approve"), "", "check", allSurfaces, UiCommandMenuSection.Actions,
                     busy || !this.Orchestrator.CanEditCues, null)
                 {
-                    AsyncCallback = () =>
-                    {
-                        // L'approvazione apre il passo Esporta e scrive i sottotitoli
-                        this.CancelCueEditing();
-                        this.Orchestrator.ApproveReview();
-                        this._step = STEP_EXPORT;
-                        return this.ExportSubtitlesAsync();
-                    },
+                    AsyncCallback = () => this.ExportSubtitlesAsync(true),
                     ToolbarOrder = 13
                 });
             }
@@ -1126,9 +1124,9 @@
             if (this._step == STEP_EXPORT)
             {
                 commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.exportSubtitles"), "F10", "save", allSurfaces, UiCommandMenuSection.Actions,
-                    busy || !this.Orchestrator.CanEditCues || !string.IsNullOrEmpty(this.Orchestrator.OutputFolderError), null)
+                    busy || !this.Orchestrator.CanEditCues, null)
                 {
-                    AsyncCallback = this.ExportSubtitlesAsync,
+                    AsyncCallback = () => this.ExportSubtitlesAsync(false),
                     ToolbarOrder = 10
                 });
                 commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.exportGlossary"), "", "download", allSurfaces, UiCommandMenuSection.File,
@@ -1530,7 +1528,8 @@
     /// <summary>
     /// Scrive i sottotitoli tradotti; con battute senza traduzione chiede prima la conferma
     /// </summary>
-    private async Task ExportSubtitlesAsync()
+    /// <param name="approve">True per l'approvazione della revisione dell'utente, che dopo la conferma apre il passo Esporta</param>
+    private async Task ExportSubtitlesAsync(bool approve)
     {
         int untranslated = 0;
         foreach (TranslationExportRow row in this.Orchestrator.GetExportRows())
@@ -1544,9 +1543,21 @@
                 return;
         }
 
+        if (approve)
+        {
+            this.CancelCueEditing();
+            this.Orchestrator.ApproveReview();
+            this._step = STEP_EXPORT;
+        }
+
         List<TranslationExportRow> rows = await Task.Run(() => this.Orchestrator.ExportSubtitles());
         if (rows == null)
+        {
+            string folderError = this.Orchestrator.OutputFolderError;
+            if (!string.IsNullOrEmpty(folderError))
+                this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifySubtitlesNotExported"), folderError);
             return;
+        }
 
         this._exported = rows;
         int failed = rows.FindAll(r => !r.Written).Count;
