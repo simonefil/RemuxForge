@@ -189,6 +189,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Status = TranslationJobStatus.Running;
             this.Pause = null;
             this.DisabledCapabilities = new List<string>();
+            this.ReviewMode = TranslationReviewMode.Full;
             this.NewTerms = new List<NewTermDecision>();
             this.SharedStretches = new List<SharedStretch>();
         }
@@ -303,7 +304,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public List<string> DisabledCapabilities { get; set; }
 
         /// <summary>
-        /// Modalità della revisione AI del progetto all'avvio
+        /// Modalità della revisione AI del progetto all'avvio, completa se il file non la porta
         /// </summary>
         public TranslationReviewMode ReviewMode { get; set; }
 
