@@ -641,11 +641,8 @@ namespace RemuxForge.Core.Models
         /// <summary>Risposta creata e in lavorazione (response.created, response.in_progress)</summary>
         Started,
 
-        /// <summary>Il modello ragiona, senza riassunto disponibile</summary>
+        /// <summary>Il modello ragiona</summary>
         Reasoning,
-
-        /// <summary>Titolo del riassunto del ragionamento; il testo è il titolo</summary>
-        ReasoningSummary,
 
         /// <summary>Ricerca web in corso; il testo è la query, vuoto finché il servizio non la dice</summary>
         WebSearch,

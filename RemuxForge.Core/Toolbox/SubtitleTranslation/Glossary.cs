@@ -35,7 +35,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Termine ricorrente</summary>
         Term,
 
-        /// <summary>Tormentone o frase fatta</summary>
+        /// <summary>Frase ricorrente o frase fatta</summary>
         Catchphrase
     }
 

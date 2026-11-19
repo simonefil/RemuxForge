@@ -117,16 +117,6 @@ namespace RemuxForge.Web.Services.Toolbox
         private LiveCall _liveLatest;
 
         /// <summary>
-        /// Ultima stima dell'analisi, valida finché il progetto non cambia
-        /// </summary>
-        private TranslationAnalysisEstimate _estimate;
-
-        /// <summary>
-        /// Stato del progetto a cui si riferisce la stima
-        /// </summary>
-        private string _estimateKey;
-
-        /// <summary>
         /// Ultima stima della traduzione, valida finché il progetto non cambia
         /// </summary>
         private TranslationEstimate _translationEstimate;
@@ -184,8 +174,6 @@ namespace RemuxForge.Web.Services.Toolbox
             this._detail = "";
             this._liveCalls = new Dictionary<TranslationModelRequest, LiveCall>();
             this._liveLatest = null;
-            this._estimate = null;
-            this._estimateKey = "";
             this._translationEstimate = null;
             this._translationEstimateKey = "";
         }
@@ -295,16 +283,7 @@ namespace RemuxForge.Web.Services.Toolbox
 
                 // Progetti e job di prima di «Maiuscole esatte»: le voci senza il valore lo prendono dalle battute sorgenti, una volta,
                 // con i tipi riconosciuti
-                List<string> texts = new List<string>();
-                foreach (GlossaryEpisode episode in this.GetEpisodes())
-                {
-                    foreach (SubtitleCue cue in episode.Cues)
-                    {
-                        if (cue.Id.HasValue)
-                            texts.Add(cue.CleanText);
-                    }
-                }
-                if (project.Glossary != null && this.KindsSettled && TranslationValidator.FillExactCase(project.Glossary, texts))
+                if (project.Glossary != null && this.KindsSettled && TranslationValidator.FillExactCase(project.Glossary, this.GetSourceTexts()))
                     this._store.Save(project);
                 if (job != null)
                 {
@@ -448,53 +427,12 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Righe della tabella degli stili: ogni combinazione di stile, attore ed effetto del progetto col tipo riconosciuto, le
-        /// righe e un esempio dai file letti
-        /// </summary>
-        /// <returns>Combinazioni nell'ordine della prima riga</returns>
-        public List<TranslationStyleRow> GetStyleRows()
-        {
-            List<TranslationStyleRow> rows = new List<TranslationStyleRow>();
-            lock (this.StateLock)
-            {
-                if (this._project == null)
-                    return rows;
-
-                List<SubtitleStyleUsage> usages = this.GetStyleUsages();
-                foreach (TranslationProjectStyle style in this._project.Styles)
-                {
-                    SubtitleStyleUsage usage = usages.Find(u => u.Is(style.Name, style.Actor, style.Effect)) ?? new SubtitleStyleUsage(style.Name, style.Actor, style.Effect);
-                    rows.Add(new TranslationStyleRow
-                    {
-                        Name = style.Name,
-                        Actor = style.Actor,
-                        Effect = style.Effect,
-                        Kind = style.Kind,
-                        Lines = usage.Texts.Count,
-                        Example = usage.Texts.Count > 0 ? usage.Texts[0] : ""
-                    });
-                }
-            }
-
-            return rows;
-        }
-
-        /// <summary>
         /// Elenca i modelli dell'accesso
         /// </summary>
         /// <returns>Modelli con i livelli di ragionamento</returns>
         public Task<List<AiModelInfo>> ListModelsAsync()
         {
             return this._providerFactory.Create(null).ListModelsAsync(CancellationToken.None);
-        }
-
-        /// <summary>
-        /// Capacità dell'accesso attivo, per il passo Progetto
-        /// </summary>
-        /// <returns>Capacità del provider</returns>
-        public TranslationProviderCapabilities GetCapabilities()
-        {
-            return this._providerFactory.Create(null).Capabilities;
         }
 
         /// <summary>
@@ -672,8 +610,9 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Salva le modifiche fatte al glossario dalla pagina; un glossario approvato torna in bozza. Dopo l'avvio del giro il
-        /// glossario resta com'è, salvo nella pausa della traduzione
+        /// Salva le modifiche fatte al glossario dalla pagina; un glossario approvato torna in bozza e le voci rimaste senza le
+        /// maiuscole esatte le prendono dalle battute. Dopo l'avvio del giro il glossario resta com'è, salvo nella pausa della
+        /// traduzione
         /// </summary>
         /// <param name="change">Modifica, eseguita sotto il lock dello stato</param>
         public void ChangeGlossary(Action<Glossary> change)
@@ -686,6 +625,8 @@ namespace RemuxForge.Web.Services.Toolbox
                 change(this._project.Glossary);
                 this._project.Glossary.Status = GlossaryStatus.Draft;
                 new GlossaryBuilder(this._project.SourceLanguage, this._project.TargetLanguage).SetEpisodes(this._project.Glossary, this.GetEpisodes(), this.KindsSettled);
+                if (this.KindsSettled)
+                    TranslationValidator.FillExactCase(this._project.Glossary, this.GetSourceTexts());
                 this._store.Save(this._project);
             }
 
@@ -770,67 +711,6 @@ namespace RemuxForge.Web.Services.Toolbox
 
             this.AppendLog(AppText.F(TEXT_PREFIX + ".glossaryExported", path));
             return path;
-        }
-
-        /// <summary>
-        /// Stima in token della A0 se i tipi non sono ancora riconosciuti e delle chiamate A1 che mancano, calcolata per caratteri
-        /// come l'analisi le manderebbe, schema dei tool compreso; un parziale fatto su ingressi cambiati manca. La A2 dipende dai
-        /// conflitti e non entra nella stima. Prima della A0 le A1 sono stimate per eccesso: mancano solo le battute che il codice
-        /// decide da non tradurre; dopo la A0 la stima si rifà sui tipi riconosciuti e l'analisi la riporta nel log
-        /// </summary>
-        /// <returns>Stima, null senza file preparati o lingue, con la card occupata o con l'analisi conclusa</returns>
-        public TranslationAnalysisEstimate EstimateAnalysis()
-        {
-            lock (this.StateLock)
-            {
-                if (this._project == null || this.IsBusy || string.IsNullOrEmpty(this._project.SourceLanguage) || string.IsNullOrEmpty(this._project.TargetLanguage) ||
-                    this._documents.Count == 0 || (this._project.Analysis != null && this._project.Analysis.Status == TranslationAnalysisStatus.Completed))
-                    return null;
-
-                string key = this._project.Id + "|" + this._project.UpdatedAt.UtcTicks.ToString(CultureInfo.InvariantCulture) + "|" + this._documents.Count.ToString(CultureInfo.InvariantCulture);
-                if (this._estimate != null && this._estimateKey == key)
-                    return this._estimate;
-
-                // Senza tipi riconosciuti le A1 si stimano senza le battute che il codice decide da non tradurre: quelle che il modello
-                // della A0 toglierà ci sono ancora, e la stima è per eccesso finché la A0 non c'è stata
-                GlossaryBuilder builder = new GlossaryBuilder(this._project.SourceLanguage, this._project.TargetLanguage);
-                TranslationAnalysisEstimate estimate = new TranslationAnalysisEstimate();
-                List<GlossaryEpisode> episodes = this.GetEpisodes();
-                if (this._project.Stretches == null)
-                {
-                    SubtitleKindClassifier classifier = new SubtitleKindClassifier(this._project.SourceLanguage);
-                    SubtitleKindPlan kinds = classifier.Plan(this.GetDocuments(), this._project.Context);
-                    if (kinds.Message != null)
-                    {
-                        estimate.Calls++;
-                        estimate.InputTokens += GlossaryBuilder.EstimateTokens(classifier.Instructions + kinds.Tool.ToJsonString() + kinds.Message);
-                    }
-                    for (int i = 0; i < episodes.Count; i++)
-                    {
-                        string fileId = episodes[i].FileId;
-                        List<SubtitleCue> kept = new List<SubtitleCue>(episodes[i].Cues).FindAll(c => !kinds.CodeExcluded.Contains(fileId + "|" + c.Position.ToString(CultureInfo.InvariantCulture)));
-                        episodes[i] = new GlossaryEpisode(fileId, episodes[i].Label, episodes[i].FileName, kept);
-                    }
-                }
-                AnalysisPlan plan = this.PlanAnalysis(builder, episodes);
-                bool webSearch = this.GetCapabilities().WebSearch && (this._project.Analysis == null || !this._project.Analysis.WebSearchRejected);
-                string tools = builder.CreateTools(webSearch).ToJsonString();
-                estimate.Files = episodes.Count;
-                for (int i = 0; i < plan.Units.Count; i++)
-                {
-                    string fileId = plan.Units[i].Count == 1 ? plan.Units[i][0].FileId : TranslationSessionKey.NO_FILE;
-                    if (this._project.Analysis != null && this._project.Analysis.Partials.Exists(p => p.FileId == fileId && p.InputSha256 == plan.Fingerprints[i]))
-                        continue;
-
-                    estimate.Calls++;
-                    estimate.Cues += plan.Cues[i];
-                    estimate.InputTokens += GlossaryBuilder.EstimateTokens(builder.AnalysisInstructions + tools + plan.Messages[i]);
-                }
-
-                this._estimate = estimate;
-                this._estimateKey = key;
-                return estimate;
-            }
         }
 
         /// <summary>
@@ -2741,6 +2621,25 @@ namespace RemuxForge.Web.Services.Toolbox
             return episodes;
         }
 
+        /// <summary>
+        /// Testi puliti delle battute traducibili dei file del progetto, per le maiuscole esatte del glossario
+        /// </summary>
+        /// <returns>Testi in ordine di file e di id</returns>
+        private List<string> GetSourceTexts()
+        {
+            List<string> texts = new List<string>();
+            foreach (GlossaryEpisode episode in this.GetEpisodes())
+            {
+                foreach (SubtitleCue cue in episode.Cues)
+                {
+                    if (cue.Id.HasValue)
+                        texts.Add(cue.CleanText);
+                }
+            }
+
+            return texts;
+        }
+
         #endregion
 
         #region Proprietà
@@ -2939,14 +2838,6 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// File delle credenziali dell'accesso
-        /// </summary>
-        public string CredentialsPath
-        {
-            get { return Path.Combine(AppSettingsService.Instance.ConfigFolder, AiCredentialService.FILE_NAME); }
-        }
-
-        /// <summary>
         /// Frase dell'attesa durante l'analisi
         /// </summary>
         public string Phrase
@@ -3086,36 +2977,6 @@ namespace RemuxForge.Web.Services.Toolbox
             /// </summary>
             public List<int> Cues { get; }
         }
-
-        #endregion
-    }
-
-    /// <summary>
-    /// Stima dell'analisi prima di «Analizza»: chiamate A1 che mancano e token in ingresso stimati per caratteri
-    /// </summary>
-    public sealed class TranslationAnalysisEstimate
-    {
-        #region Proprietà
-
-        /// <summary>
-        /// File preparati del progetto
-        /// </summary>
-        public int Files { get; set; }
-
-        /// <summary>
-        /// Battute mandate dalle chiamate che mancano
-        /// </summary>
-        public int Cues { get; set; }
-
-        /// <summary>
-        /// Chiamate A1 che mancano
-        /// </summary>
-        public int Calls { get; set; }
-
-        /// <summary>
-        /// Token in ingresso stimati
-        /// </summary>
-        public long InputTokens { get; set; }
 
         #endregion
     }
@@ -3343,46 +3204,6 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Motivo per cui il file non si scrive, vuoto se nessuno
         /// </summary>
         public string Error { get; set; }
-
-        #endregion
-    }
-
-    /// <summary>
-    /// Riga della tabella degli stili del passo Progetto
-    /// </summary>
-    public sealed class TranslationStyleRow
-    {
-        #region Proprietà
-
-        /// <summary>
-        /// Nome dello stile
-        /// </summary>
-        public string Name { get; set; }
-
-        /// <summary>
-        /// Attore delle righe
-        /// </summary>
-        public string Actor { get; set; }
-
-        /// <summary>
-        /// Effetto delle righe
-        /// </summary>
-        public string Effect { get; set; }
-
-        /// <summary>
-        /// Tipo riconosciuto, null prima del riconoscimento
-        /// </summary>
-        public TranslationStyleKind? Kind { get; set; }
-
-        /// <summary>
-        /// Righe della combinazione nei file letti
-        /// </summary>
-        public int Lines { get; set; }
-
-        /// <summary>
-        /// Testo di una riga della combinazione, vuoto se nessuna ha testo
-        /// </summary>
-        public string Example { get; set; }
 
         #endregion
     }

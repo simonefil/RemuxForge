@@ -52,24 +52,14 @@ namespace RemuxForge.Core.Ai
         private const string API_KEY_DEFAULT_REASONING_LEVEL = "medium";
 
         /// <summary>
-        /// Parametro del riassunto del ragionamento, come lo indica il servizio quando lo rifiuta
-        /// </summary>
-        private const string REASONING_SUMMARY_PARAMETER = "reasoning.summary";
-
-        /// <summary>
-        /// Riassunto del ragionamento chiesto: il dettaglio lo sceglie il modello
-        /// </summary>
-        private const string REASONING_SUMMARY_MODE = "auto";
-
-        /// <summary>
         /// Passo in caratteri con cui si annuncia la quantità di risposta già scritta
         /// </summary>
         private const int WRITING_STEP_CHARS = 1000;
 
         /// <summary>
-        /// Attesa massima fra due righe dello stream. Durante il ragionamento il servizio tace fino al riassunto, che è facoltativo:
-        /// il limite copre il ragionamento più lungo con margine ampio (nei registri al più 968 token di ragionamento e 260 s per la
-        /// chiamata intera più lunga) ed è la stessa attesa concessa agli header
+        /// Attesa massima fra due righe dello stream. Durante il ragionamento il servizio tace: il limite copre il ragionamento più
+        /// lungo con margine ampio (nei registri al più 968 token di ragionamento e 260 s per la chiamata intera più lunga) ed è la
+        /// stessa attesa concessa agli header
         /// </summary>
         private static readonly TimeSpan STREAM_IDLE_TIMEOUT = TimeSpan.FromMinutes(10);
 
@@ -97,11 +87,6 @@ namespace RemuxForge.Core.Ai
         /// </summary>
         private readonly SemaphoreSlim _refreshLock;
 
-        /// <summary>
-        /// True dopo che il servizio ha rifiutato il riassunto del ragionamento: per il resto della sessione non si chiede più
-        /// </summary>
-        private volatile bool _reasoningSummaryRejected;
-
         #endregion
 
         #region Costruttore
@@ -118,7 +103,6 @@ namespace RemuxForge.Core.Ai
             this._httpClient = new HttpClient();
             this._httpClient.Timeout = TimeSpan.FromMinutes(10);
             this._refreshLock = new SemaphoreSlim(1, 1);
-            this._reasoningSummaryRejected = false;
         }
 
         #endregion
@@ -235,9 +219,7 @@ namespace RemuxForge.Core.Ai
         #region Metodi privati
 
         /// <summary>
-        /// Esegue un tentativo di trasporto di una richiesta Responses. Il riassunto del ragionamento serve solo all'avanzamento:
-        /// se il servizio lo rifiuta (organizzazione non verificata) o rifiuta qualcosa senza dire cosa, la richiesta riparte subito
-        /// senza, e per il resto della sessione non si chiede più
+        /// Esegue un tentativo di trasporto di una richiesta Responses
         /// </summary>
         /// <param name="request">Richiesta</param>
         /// <param name="cancellationToken">Token di annullamento</param>
@@ -246,17 +228,11 @@ namespace RemuxForge.Core.Ai
         {
             AiCredentials credentials = await this.GetAuthorizedCredentialsAsync(cancellationToken);
             bool apiKey = credentials.Mode == AiConnectionMode.ApiKey;
-            bool summary = !string.IsNullOrEmpty(request.ReasoningEffort) && !this._reasoningSummaryRejected;
             JsonObject body = new JsonObject();
 
             body["model"] = request.Model;
             if (!string.IsNullOrEmpty(request.ReasoningEffort))
-            {
-                JsonObject reasoning = new JsonObject { ["effort"] = request.ReasoningEffort };
-                if (summary)
-                    reasoning["summary"] = REASONING_SUMMARY_MODE;
-                body["reasoning"] = reasoning;
-            }
+                body["reasoning"] = new JsonObject { ["effort"] = request.ReasoningEffort };
             body["instructions"] = request.Instructions;
             body["input"] = request.Input.DeepClone();
             if (request.Tools != null && request.Tools.Count > 0)
@@ -315,13 +291,6 @@ namespace RemuxForge.Core.Ai
                         }
                     }
                 }
-                catch (AiServiceException ex) when (summary && (ex.RejectedParameter.StartsWith(REASONING_SUMMARY_PARAMETER, StringComparison.OrdinalIgnoreCase) ||
-                    (ex.Kind == AiErrorKind.UnsupportedCapability && ex.RejectedParameter.Length == 0)))
-                {
-                    // Un rifiuto senza parametro può riguardare il riassunto: si riprova senza, e un rifiuto che resta segue la via solita
-                    // delle capacità
-                    this._reasoningSummaryRejected = true;
-                }
                 catch (HttpRequestException ex)
                 {
                     throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
@@ -331,8 +300,6 @@ namespace RemuxForge.Core.Ai
                     throw new AiServiceException(AiErrorKind.Network, AppText.F("ai.error.network", ex.Message), ex);
                 }
             }
-
-            return await this.SendResponseRequestAsync(request, cancellationToken);
         }
 
         /// <summary>
@@ -383,9 +350,9 @@ namespace RemuxForge.Core.Ai
         }
 
         /// <summary>
-        /// Legge lo stream SSE della Responses API fino all'evento finale e avvisa dei cambi di stato: coda, ragionamento col titolo
-        /// del riassunto, ricerche web, fonti citate, scrittura della risposta o di una chiamata di funzione, rifiuto. I delta di
-        /// testo non avvisano: conta solo l'inizio di ogni item
+        /// Legge lo stream SSE della Responses API fino all'evento finale e avvisa dei cambi di stato: coda, ragionamento, ricerche
+        /// web, fonti citate, scrittura della risposta o di una chiamata di funzione, rifiuto. I delta di testo non avvisano: conta
+        /// solo l'inizio di ogni item
         /// </summary>
         /// <param name="reader">Lettore dello stream</param>
         /// <param name="mode">Modalità di accesso, per la mappatura degli errori</param>
@@ -396,8 +363,6 @@ namespace RemuxForge.Core.Ai
         {
             List<JsonObject> doneItems = new List<JsonObject>();
             string createdCacheKey = "";
-            StringBuilder summary = new StringBuilder();
-            bool summaryReported = false;
             bool refusalReported = false;
             string searchItemId = "";
             string searchQuery = "";
@@ -468,34 +433,6 @@ namespace RemuxForge.Core.Ai
                 else if (type == "response.web_search_call.in_progress" || type == "response.web_search_call.searching")
                 {
                     Report(progress, AiStreamStage.WebSearch, AiOAuthFlow.GetString(streamEvent, "item_id") == searchItemId ? searchQuery : "");
-                }
-                else if (type == "response.reasoning_summary_part.added")
-                {
-                    summary.Clear();
-                    summaryReported = false;
-                }
-                else if (type == "response.reasoning_summary_text.delta" || type == "response.reasoning_summary_text.done")
-                {
-                    if (summaryReported)
-                        continue;
-
-                    // Il riassunto apre di solito con un titolo in grassetto: si mostra appena il titolo è chiuso, altrimenti la prima
-                    // riga appena è completa, o tutto il testo a fine parte
-                    bool done = type == "response.reasoning_summary_text.done";
-                    if (done)
-                        summary.Clear().Append(AiOAuthFlow.GetString(streamEvent, "text"));
-                    else
-                        summary.Append(AiOAuthFlow.GetString(streamEvent, "delta"));
-
-                    string text = summary.ToString().TrimStart();
-                    int end = text.StartsWith("**", StringComparison.Ordinal) ? text.IndexOf("**", 2, StringComparison.Ordinal) : text.IndexOf('\n');
-                    string heading = end >= 0 ? text.Substring(0, end) : done ? text : "";
-                    heading = heading.Replace("**", "").Trim();
-                    if (heading.Length > 0)
-                    {
-                        summaryReported = true;
-                        Report(progress, AiStreamStage.ReasoningSummary, heading);
-                    }
                 }
                 else if (type == "response.output_text.annotation.added")
                 {

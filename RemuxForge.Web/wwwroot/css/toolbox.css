@@ -403,6 +403,15 @@
     padding: calc(var(--rz-gap) * 0.5) var(--rz-gap) 0;
 }
 
+/* Contenuto del passo: occupa lo spazio fra i passi e il registro delle chiamate e scorre da sé, così il registro resta in fondo */
+.rf-translation .rf-translation-body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow: auto;
+}
+
 .rf-translation-name {
     width: 20rem;
 }
@@ -423,17 +432,10 @@
     resize: vertical;
 }
 
-/* Accesso e stima nel passo Progetto: etichetta e valori vicini, le capacità vanno a capo */
-.rf-translation .rf-translation-access,
+/* Stima nel passo Glossario: etichetta e valori vicini */
 .rf-translation .rf-translation-estimate {
     gap: calc(var(--rz-gap) * 0.25) calc(var(--rz-gap) * 0.75);
     min-height: 2rem;
-}
-
-.rf-translation-capabilities {
-    display: flex;
-    flex-wrap: wrap;
-    gap: calc(var(--rz-gap) * 0.25);
 }
 
 .rf-translation-loaded {
@@ -452,12 +454,6 @@
 
 .rf-translation-encoding {
     width: 100%;
-}
-
-/* Tabella degli stili sotto i file: alta quanto le sue righe */
-.rf-tool-page .rf-translation-styles {
-    flex: 0 0 auto;
-    margin-top: var(--rz-gap);
 }
 
 .rf-translation-file,

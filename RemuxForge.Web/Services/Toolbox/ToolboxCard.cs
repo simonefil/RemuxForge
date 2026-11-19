@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace RemuxForge.Web.Services.Toolbox
 {
@@ -19,7 +20,8 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <param name="orchestratorType">Tipo dell'orchestratore registrato nel DI</param>
         /// <param name="pageType">Pagina del tool, derivata da ToolboxPageBase; null per le modalità, che usano il workspace della dashboard</param>
         /// <param name="progressItemKey">Chiave dell'etichetta della barra dell'elemento in corso (episodio, file)</param>
-        public ToolboxCard(string id, string titleKey, string descriptionKey, string icon, Type orchestratorType, Type pageType, string progressItemKey)
+        /// <param name="tagKeys">Chiavi delle etichette fisse della card (AI, beta)</param>
+        public ToolboxCard(string id, string titleKey, string descriptionKey, string icon, Type orchestratorType, Type pageType, string progressItemKey, params string[] tagKeys)
         {
             this.Id = id;
             this.TitleKey = titleKey;
@@ -28,6 +30,7 @@ namespace RemuxForge.Web.Services.Toolbox
             this.OrchestratorType = orchestratorType;
             this.PageType = pageType;
             this.ProgressItemKey = progressItemKey;
+            this.TagKeys = tagKeys;
         }
 
         #endregion
@@ -68,6 +71,11 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Chiave dell'etichetta della barra dell'elemento in corso
         /// </summary>
         public string ProgressItemKey { get; }
+
+        /// <summary>
+        /// Chiavi delle etichette fisse, nell'ordine in cui compaiono
+        /// </summary>
+        public IReadOnlyList<string> TagKeys { get; }
 
         #endregion
     }

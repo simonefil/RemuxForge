@@ -279,8 +279,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 if (unit.Texts.Count == 0 || (scripts[i].Count > 0 && !scripts[i].ContainsKey(dominant)))
                 {
                     unit.Kind = TranslationStyleKind.NotTranslatable;
-                    foreach (KeyValuePair<string, int> line in unit.Lines)
-                        plan.CodeExcluded.Add(line.Key + "|" + line.Value.ToString(CultureInfo.InvariantCulture));
                     continue;
                 }
 
@@ -602,7 +600,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Units = new List<SubtitleKindUnit>();
             this.AskedIds = new List<string>();
             this.AskedStretchIds = new List<string>();
-            this.CodeExcluded = new HashSet<string>(StringComparer.Ordinal);
             this.Message = null;
             this.Tool = null;
         }
@@ -656,11 +653,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Tratte SRT fra le unità chieste, che ricevono un tipo per tratto
         /// </summary>
         public List<string> AskedStretchIds { get; }
-
-        /// <summary>
-        /// Battute delle unità che il codice ha deciso da non tradurre, come identificativo del file e posizione separati da «|»
-        /// </summary>
-        public HashSet<string> CodeExcluded { get; }
 
         /// <summary>
         /// Messaggio per il modello, null se il codice ha deciso tutto

@@ -1,13 +1,14 @@
 @using RemuxForge.Core.Toolbox.SubtitleTranslation
 @using System.Globalization
+@using System.Linq
 
 @* Registro delle chiamate del progetto: una riga per tentativo, con il dettaglio di rifiuti ed errori nella riga aperta in parole
    dell'utente; del servizio restano, etichettati, il codice dell'errore e il motivo d'interruzione che l'app non conosce *@
 <RadzenPanel class="rf-translation-calls" AllowCollapse="true" Collapsed="@_collapsed" Expand="@(() => _collapsed = false)" Collapse="@(() => _collapsed = true)"
-             Text="@AppText.F("web.toolbox.subtitleTranslation.calls.title", Calls.Count)">
+             Text="@AppText.F("web.toolbox.subtitleTranslation.calls.title", _rows.Count)">
     <ChildContent>
         <RadzenDataGrid TItem="TranslationCallRecord"
-                        Data="@Calls"
+                        Data="@_rows"
                         class="rf-data-grid rf-tool-grid rf-translation-calls-grid"
                         AllowAlternatingRows="false"
                         AllowColumnResize="false"
@@ -66,10 +67,10 @@
                     <Template Context="call">
                         @* Un errore senza tipo è il tentativo interrotto da Stop; la diagnosi conta i problemi *@
                         <RadzenBadge IsPill="true"
-                                     BadgeStyle="@(Discarded.Contains(call.CallSeq) ? BadgeStyle.Base : call.Issues.HasValue && call.Issues.Value > 0 ? BadgeStyle.Warning
+                                     BadgeStyle="@(_discarded.Contains(call) ? BadgeStyle.Base : call.Issues.HasValue && call.Issues.Value > 0 ? BadgeStyle.Warning
                                          : call.Outcome == TranslationCallOutcome.Accepted ? BadgeStyle.Success : call.Outcome == TranslationCallOutcome.Error && call.ErrorKind.HasValue ? BadgeStyle.Danger
                                          : call.Outcome == TranslationCallOutcome.Error ? BadgeStyle.Base : BadgeStyle.Warning)"
-                                     Text="@(Discarded.Contains(call.CallSeq) ? AppText.T("web.toolbox.subtitleTranslation.calls.discarded")
+                                     Text="@(_discarded.Contains(call) ? AppText.T("web.toolbox.subtitleTranslation.calls.discarded")
                                          : call.Issues.HasValue ? AppText.Count("web.toolbox.subtitleTranslation.calls.issues", call.Issues.Value)
                                          : call.Kind == TranslationCallKind.D1 && call.Outcome == TranslationCallOutcome.PartiallyRejected ? AppText.T("web.toolbox.subtitleTranslation.calls.diagnosisInvalid")
                                          : call.Outcome == TranslationCallOutcome.Accepted ? AppText.T("web.toolbox.subtitleTranslation.calls.accepted")
@@ -96,9 +97,14 @@
     #region Parametri
 
     /// <summary>
-    /// Chiamate del progetto in ordine di registro
+    /// Chiamate dell'analisi del progetto in ordine di registro
     /// </summary>
     [Parameter] public List<TranslationCallRecord> Calls { get; set; } = new List<TranslationCallRecord>();
+
+    /// <summary>
+    /// Chiamate del job attivo in ordine di registro
+    /// </summary>
+    [Parameter] public List<TranslationCallRecord> JobCalls { get; set; } = new List<TranslationCallRecord>();
 
     /// <summary>
     /// Nome del file per identificativo del progetto
@@ -106,7 +112,7 @@
     [Parameter] public Dictionary<string, string> FileNames { get; set; } = new Dictionary<string, string>();
 
     /// <summary>
-    /// Chiamate di blocchi scartati, mostrate come «scartata»
+    /// Numeri delle chiamate del job di blocchi scartati, mostrate come «scartata»
     /// </summary>
     [Parameter] public HashSet<int> Discarded { get; set; } = new HashSet<int>();
 
@@ -118,6 +124,27 @@
     /// True col pannello chiuso, com'è all'apertura
     /// </summary>
     private bool _collapsed = true;
+
+    /// <summary>
+    /// Chiamate dell'analisi e del job in ordine di inizio
+    /// </summary>
+    private List<TranslationCallRecord> _rows = new List<TranslationCallRecord>();
+
+    /// <summary>
+    /// Chiamate del job scartate, per istanza: i numeri dei due registri si ripetono
+    /// </summary>
+    private HashSet<TranslationCallRecord> _discarded = new HashSet<TranslationCallRecord>();
+
+    #endregion
+
+    #region Metodi protected
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        this._rows = this.Calls.Concat(this.JobCalls).OrderBy(c => c.StartedAt).ToList();
+        this._discarded = new HashSet<TranslationCallRecord>(this.JobCalls.Where(c => this.Discarded.Contains(c.CallSeq)), ReferenceEqualityComparer.Instance);
+    }
 
     #endregion
 

@@ -28,6 +28,10 @@
                             {
                                 <RadzenBadge BadgeStyle="BadgeStyle.Primary" IsPill="true" Text="@AppText.T("web.toolbox.home.lastUsed")" />
                             }
+                            @foreach (string tagKey in card.TagKeys)
+                            {
+                                <RadzenBadge BadgeStyle="BadgeStyle.Primary" Variant="Variant.Outlined" IsPill="true" Text="@AppText.T(tagKey)" />
+                            }
                         </div>
                     </div>
                     <RadzenText TextStyle="TextStyle.H6" TagName="TagName.H2" class="rf-toolbox-card-title">@AppText.T(card.TitleKey)</RadzenText>
