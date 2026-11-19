@@ -50,7 +50,7 @@
                         <Template Context="item">
                             @if (_jobs.TryGetValue(item.Id, out TranslationJob itemJob))
                             {
-                                <RadzenBadge IsPill="true" BadgeStyle="@(itemJob.Status == TranslationJobStatus.Paused ? BadgeStyle.Warning : itemJob.Phase == TranslationJobPhase.NewTerms || itemJob.Phase == TranslationJobPhase.UserReview ? BadgeStyle.Success : BadgeStyle.Info)" Text="@JobStateText(itemJob)" />
+                                <RadzenBadge IsPill="true" BadgeStyle="@(itemJob.Status == TranslationJobStatus.Paused ? BadgeStyle.Warning : itemJob.Phase == TranslationJobPhase.UserReview ? BadgeStyle.Success : BadgeStyle.Info)" Text="@JobStateText(itemJob)" />
                             }
                             else if (item.Analysis != null && item.Analysis.Status != TranslationAnalysisStatus.Completed)
                             {
@@ -92,7 +92,6 @@
                 <RadzenStepsItem Text="@AppText.T("web.toolbox.subtitleTranslation.steps.project")" />
                 <RadzenStepsItem Text="@AppText.T("web.toolbox.subtitleTranslation.steps.glossary")" Disabled="@(project.ReachedStep < TranslationProjectStep.Glossary)" />
                 <RadzenStepsItem Text="@AppText.T("web.toolbox.subtitleTranslation.steps.translation")" Disabled="@(project.ReachedStep < TranslationProjectStep.Translation)" />
-                <RadzenStepsItem Text="@AppText.T("web.toolbox.subtitleTranslation.steps.newTerms")" Disabled="@(project.ReachedStep < TranslationProjectStep.NewTerms)" />
                 <RadzenStepsItem Text="@AppText.T("web.toolbox.subtitleTranslation.steps.review")" Disabled="@(project.ReachedStep < TranslationProjectStep.Review)" />
                 <RadzenStepsItem Text="@AppText.T("web.toolbox.subtitleTranslation.steps.export")" Disabled="@(project.ReachedStep < TranslationProjectStep.Export)" />
             </Steps>
@@ -360,9 +359,6 @@
                         <RadzenDataGridColumn TItem="TranslationJobFileRow" Title="@AppText.T("web.toolbox.subtitleTranslation.toReview")" Width="8%" TextAlign="TextAlign.Right">
                             <Template Context="row"><CellText Text="@row.ToReview.ToString(CultureInfo.CurrentCulture)" /></Template>
                         </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="TranslationJobFileRow" Title="@AppText.T("web.toolbox.subtitleTranslation.newTerms")" Width="8%" TextAlign="TextAlign.Right">
-                            <Template Context="row"><CellText Text="@row.NewTerms.ToString(CultureInfo.CurrentCulture)" /></Template>
-                        </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="TranslationJobFileRow" Title="@AppText.T("web.toolbox.subtitleTranslation.calls.tokens")" Width="15%" TextAlign="TextAlign.Right">
                             <Template Context="row"><CellText Text="@(FormatTokens(row.InputTokens) + " / " + FormatTokens(row.CachedTokens) + " / " + FormatTokens(row.OutputTokens))" /></Template>
                         </RadzenDataGridColumn>
@@ -382,139 +378,6 @@
                                                       Click="@(() => { Orchestrator.ExcludeFile(row.FileId); _step = ProjectStep(); })" />
                                     </span>
                                 }
-                            </Template>
-                        </RadzenDataGridColumn>
-                    </Columns>
-                </RadzenDataGrid>
-            }
-
-            <SubtitleTranslationCallsPanel Calls="@Orchestrator.GetJobCalls()" FileNames="@fileNames" Discarded="@Orchestrator.GetDiscardedCalls()" />
-        }
-        else if (_step == STEP_NEW_TERMS)
-        {
-            TranslationJob job = Orchestrator.Job;
-            List<TermApplicationRow> applicationRows = Orchestrator.GetTermApplicationRows();
-            @if (job == null || job.NewTerms.Count == 0)
-            {
-                <RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.5rem" class="rf-tool-empty">
-                    <RadzenText TextStyle="TextStyle.H6" TagName="TagName.H3">@AppText.T("web.toolbox.subtitleTranslation.newTermsEmpty")</RadzenText>
-                </RadzenStack>
-            }
-            else if (job.Phase == TranslationJobPhase.Applying || applicationRows.Exists(r => r.Status != TermApplicationStatus.Pending))
-            {
-                <RadzenDataGrid TItem="TermApplicationRow"
-                                Data="@applicationRows"
-                                class="rf-data-grid rf-tool-grid rf-translation-job"
-                                AllowAlternatingRows="false"
-                                AllowColumnResize="false"
-                                AllowPaging="false"
-                                AllowSorting="false"
-                                Density="Density.Compact"
-                                GridLines="DataGridGridLines.Horizontal">
-                    <Columns>
-                        <RadzenDataGridColumn TItem="TermApplicationRow" Title="@AppText.T("web.dashboard.file")" Width="46%">
-                            <Template Context="row"><span class="rf-translation-file" title="@row.FileName">@row.FileName</span></Template>
-                        </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="TermApplicationRow" Title="@AppText.T("web.toolbox.subtitleTranslation.status")" Width="18%">
-                            <Template Context="row">
-                                @{
-                                    bool waiting = row.Status == TermApplicationStatus.Pending;
-                                    bool running = waiting && job.Status == TranslationJobStatus.Running;
-                                }
-                                <RadzenBadge IsPill="true" BadgeStyle="@(running ? BadgeStyle.Info : waiting && job.Status == TranslationJobStatus.Paused ? BadgeStyle.Warning : waiting ? BadgeStyle.Base : BadgeStyle.Success)"
-                                             Text="@(running ? AppText.T("web.toolbox.subtitleTranslation.fileState.InProgress") : waiting && job.Status == TranslationJobStatus.Paused ? JobStateText(job)
-                                                 : waiting ? AppText.T("web.toolbox.subtitleTranslation.fileState.Pending") : AppText.T("web.toolbox.subtitleTranslation.fileState.Completed"))" />
-                            </Template>
-                        </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="TermApplicationRow" Title="@AppText.T("web.toolbox.subtitleTranslation.termsInvolved")" Width="18%" TextAlign="TextAlign.Right">
-                            <Template Context="row"><CellText Text="@(row.Targets.HasValue ? row.Targets.Value.ToString(CultureInfo.CurrentCulture) : "—")" /></Template>
-                        </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="TermApplicationRow" Title="@AppText.T("web.toolbox.subtitleTranslation.termsRewritten")" Width="18%" TextAlign="TextAlign.Right">
-                            <Template Context="row">
-                                <CellText Text="@(row.Rewritten.HasValue ? row.Rewritten.Value.ToString(CultureInfo.CurrentCulture) : "—")" />
-                                @if (row.Failed > 0)
-                                {
-                                    <span class="rf-translation-rejected">@AppText.Count("web.toolbox.subtitleTranslation.termsFailed", row.Failed)</span>
-                                }
-                            </Template>
-                        </RadzenDataGridColumn>
-                    </Columns>
-                </RadzenDataGrid>
-            }
-            else
-            {
-                bool deciding = !busy && job.Phase == TranslationJobPhase.NewTerms;
-                <RadzenDataGrid TItem="NewTermDecision"
-                                Data="@job.NewTerms"
-                                class="rf-data-grid rf-tool-grid rf-translation-terms"
-                                AllowAlternatingRows="false"
-                                AllowColumnResize="false"
-                                AllowPaging="false"
-                                AllowSorting="false"
-                                Density="Density.Compact"
-                                GridLines="DataGridGridLines.Horizontal">
-                    <Columns>
-                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termSource")" Width="15%">
-                            <Template Context="term"><span class="rf-translation-cell">@term.Source</span></Template>
-                        </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termRenderings")" Width="18%">
-                            <Template Context="term">
-                                <span class="rf-translation-renderings">
-                                    @foreach (NewTermRendering rendering in term.Renderings)
-                                    {
-                                        <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Base" Text="@AppText.F("web.toolbox.subtitleTranslation.renderingCount", rendering.Target, rendering.Count)" />
-                                    }
-                                </span>
-                            </Template>
-                        </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.episodes")" Width="7%" TextAlign="TextAlign.Right">
-                            <Template Context="term">
-                                @{
-                                    HashSet<string> episodes = new HashSet<string>(StringComparer.Ordinal);
-                                    foreach (NewTermRendering rendering in term.Renderings)
-                                        episodes.UnionWith(rendering.FileIds);
-                                }
-                                <CellText Text="@episodes.Count.ToString(CultureInfo.CurrentCulture)" />
-                            </Template>
-                        </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termChosen")" Width="16%">
-                            <Template Context="term">
-                                <RadzenTextBox class="@("rf-translation-cell-input" + (term.Decision == NewTermDecisionKind.Add && string.IsNullOrWhiteSpace(term.ChosenTarget) ? " rf-tool-input-invalid" : ""))"
-                                               Value="@term.ChosenTarget" Disabled="@(!deciding)" aria-label="@(AppText.T("web.toolbox.subtitleTranslation.termChosen") + " " + term.Source)"
-                                               Change="@((string value) => Orchestrator.ChangeNewTerm(term, t => t.ChosenTarget = (value ?? "").Trim()))" />
-                            </Template>
-                        </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termKind")" Width="11%">
-                            <Template Context="term">
-                                <RadzenDropDown TValue="GlossaryTermKind" class="rf-translation-cell-input" Data="@s_termKinds" Value="@term.Kind" Disabled="@(!deciding)"
-                                                aria-label="@(AppText.T("web.toolbox.subtitleTranslation.termKind") + " " + term.Source)"
-                                                Change="@((object value) => Orchestrator.ChangeNewTerm(term, t => t.Kind = (GlossaryTermKind)value))">
-                                    <Template Context="kind">@AppText.T("web.toolbox.subtitleTranslation.kind." + kind)</Template>
-                                    <ValueTemplate Context="kind">@AppText.T("web.toolbox.subtitleTranslation.kind." + kind)</ValueTemplate>
-                                </RadzenDropDown>
-                            </Template>
-                        </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termInvariable")" Width="9%" TextAlign="TextAlign.Center">
-                            <Template Context="term">
-                                <RadzenCheckBox TValue="bool" Value="@term.Invariable" Disabled="@(!deciding)" aria-label="@(AppText.T("web.toolbox.subtitleTranslation.termInvariable") + " " + term.Source)"
-                                                Change="@((bool value) => Orchestrator.ChangeNewTerm(term, t => t.Invariable = value))" />
-                            </Template>
-                        </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="NewTermDecision" Title="@AppText.T("web.toolbox.subtitleTranslation.termExactCase")" Width="9%" TextAlign="TextAlign.Center">
-                            <Template Context="term">
-                                <RadzenCheckBox TValue="bool" Value="@(term.ExactCase == true)" Disabled="@(!deciding)" aria-label="@(AppText.T("web.toolbox.subtitleTranslation.termExactCase") + " " + term.Source)"
-                                                Change="@((bool value) => Orchestrator.ChangeNewTerm(term, t => t.ExactCase = value))" />
-                            </Template>
-                        </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="NewTermDecision" Width="15%">
-                            <Template Context="term">
-                                <RadzenRadioButtonList TValue="NewTermDecisionKind" Value="@term.Decision" Disabled="@(!deciding)" Orientation="Orientation.Horizontal" class="rf-translation-decision"
-                                                       aria-label="@term.Source" Change="@((NewTermDecisionKind value) => Orchestrator.ChangeNewTerm(term, t => t.Decision = value))">
-                                    <Items>
-                                        <RadzenRadioButtonListItem Text="@AppText.T("web.toolbox.subtitleTranslation.termAdd")" Value="@NewTermDecisionKind.Add" />
-                                        <RadzenRadioButtonListItem Text="@AppText.T("web.toolbox.subtitleTranslation.termIgnore")" Value="@NewTermDecisionKind.Ignore" />
-                                    </Items>
-                                </RadzenRadioButtonList>
                             </Template>
                         </RadzenDataGridColumn>
                     </Columns>
@@ -622,14 +485,6 @@
                                     @if (row.Signals.Contains(TranslationCueSignal.Retried))
                                     {
                                         <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Info" Text="@AppText.T("web.toolbox.subtitleTranslation.warning.retried")" />
-                                    }
-                                    @if (row.Signals.Contains(TranslationCueSignal.NewTerm))
-                                    {
-                                        <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Info" Text="@AppText.T("web.toolbox.subtitleTranslation.warning.newTerm")" />
-                                    }
-                                    @if (row.Signals.Contains(TranslationCueSignal.RewrittenByTerms))
-                                    {
-                                        <RadzenBadge IsPill="true" BadgeStyle="BadgeStyle.Secondary" Text="@AppText.T("web.toolbox.subtitleTranslation.warning.rewrittenByTerms")" />
                                     }
                                     @if (row.Signals.Contains(TranslationCueSignal.CorrectedByAi))
                                     {
@@ -945,19 +800,14 @@
     private const int STEP_TRANSLATION = 2;
 
     /// <summary>
-    /// Passo Termini nuovi
-    /// </summary>
-    private const int STEP_NEW_TERMS = 3;
-
-    /// <summary>
     /// Passo Revisione
     /// </summary>
-    private const int STEP_REVIEW = 4;
+    private const int STEP_REVIEW = 3;
 
     /// <summary>
     /// Passo Esporta
     /// </summary>
-    private const int STEP_EXPORT = 5;
+    private const int STEP_EXPORT = 4;
 
     /// <summary>
     /// Filtro della revisione: tutte le battute
@@ -1241,25 +1091,15 @@
             // Avvia traduzione senza job; dopo una fermata Riprova per un errore, Riprendi per Stop, chiusura o limite d'uso, sul
             // passo della fase fermata
             TranslationJob job = this.Orchestrator.Job;
-            TranslationJobPhase stepPhase = this._step == STEP_TRANSLATION ? TranslationJobPhase.Translation : this._step == STEP_NEW_TERMS ? TranslationJobPhase.Applying : TranslationJobPhase.Review;
+            TranslationJobPhase stepPhase = this._step == STEP_TRANSLATION ? TranslationJobPhase.Translation : TranslationJobPhase.Review;
             bool failed = job != null && job.Pause != null && (job.Pause.Reason == TranslationStopReason.AccessError || job.Pause.Reason == TranslationStopReason.ServiceError);
-            if (this._step != STEP_EXPORT && (job == null ? this._step == STEP_TRANSLATION : job.Phase == stepPhase && (stepPhase != TranslationJobPhase.Applying || job.Status == TranslationJobStatus.Paused)))
+            if (this._step != STEP_EXPORT && (job == null ? this._step == STEP_TRANSLATION : job.Phase == stepPhase))
             {
                 string label = job == null ? "web.toolbox.subtitleTranslation.startTranslation" : failed ? "web.toolbox.subtitleTranslation.retry" : "web.toolbox.subtitleTranslation.resume";
                 commands.Add(new UiCommandDefinition(AppText.T(label), "F10", job == null ? "translate" : failed ? "refresh" : "play_arrow", allSurfaces, UiCommandMenuSection.Actions,
                     busy || !this.Orchestrator.CanStartJob, null)
                 {
                     Callback = this.StartJob,
-                    ToolbarOrder = 10
-                });
-            }
-
-            if (this._step == STEP_NEW_TERMS && (job == null || job.Phase == TranslationJobPhase.NewTerms))
-            {
-                commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.confirmTerms"), "F10", "check", allSurfaces, UiCommandMenuSection.Actions,
-                    busy || !this.Orchestrator.CanConfirmNewTerms, null)
-                {
-                    Callback = this.ConfirmNewTerms,
                     ToolbarOrder = 10
                 });
             }
@@ -1570,37 +1410,23 @@
         if (!this.CheckModel(phase))
             return;
 
-        this._step = phase == TranslationJobPhase.Applying ? STEP_NEW_TERMS : phase == TranslationJobPhase.Review ? STEP_REVIEW : STEP_TRANSLATION;
+        this._step = phase == TranslationJobPhase.Review ? STEP_REVIEW : STEP_TRANSLATION;
         this.Orchestrator.StartJob();
-    }
-
-    /// <summary>
-    /// Conferma i termini nuovi e prosegue il giro: applicazione coi termini aggiunti, altrimenti la revisione AI
-    /// </summary>
-    private void ConfirmNewTerms()
-    {
-        TranslationJob job = this.Orchestrator.Job;
-        bool adding = job.NewTerms.Exists(t => t.Decision == NewTermDecisionKind.Add);
-        if (!this.CheckModel(adding ? TranslationJobPhase.Applying : TranslationJobPhase.Review))
-            return;
-
-        this._step = adding ? STEP_NEW_TERMS : STEP_REVIEW;
-        this.Orchestrator.ConfirmNewTerms();
     }
 
     /// <summary>
     /// Controlla il modello della fase che parte
     /// </summary>
-    /// <param name="phase">Fase che parte: traduzione, applicazione dei termini o revisione AI</param>
+    /// <param name="phase">Fase che parte: traduzione o revisione AI</param>
     /// <returns>True se la fase può partire</returns>
     private bool CheckModel(TranslationJobPhase phase)
     {
         TranslationJob job = this.Orchestrator.Job;
         TranslationPhaseModels models = job != null ? job.Models : this.Orchestrator.Project.Models;
-        string model = phase == TranslationJobPhase.Applying ? models.NewTerms : phase == TranslationJobPhase.Review ? models.Review : models.Translation;
+        string model = phase == TranslationJobPhase.Review ? models.Review : models.Translation;
         if (string.IsNullOrEmpty(model))
         {
-            string name = phase == TranslationJobPhase.Applying ? "newTerms" : phase == TranslationJobPhase.Review ? "review" : "translation";
+            string name = phase == TranslationJobPhase.Review ? "review" : "translation";
             this.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyModelMissing"),
                 AppText.F("web.toolbox.subtitleTranslation.modelMissing", AppText.T("web.toolbox.subtitleTranslation.models.phase." + name)));
             return false;
@@ -1620,7 +1446,7 @@
         {
             TranslationJob job = result.Job;
             TranslationStop stop = result.Stop;
-            string name = result.Phase == TranslationJobPhase.Applying ? "Terms" : result.Phase == TranslationJobPhase.Review ? "Review" : "Translation";
+            string name = result.Phase == TranslationJobPhase.Review ? "Review" : "Translation";
             if (stop != null && stop.Reason == TranslationStopReason.Stop)
             {
                 this.Notify(NotificationSeverity.Warning, AppText.T("web.toolbox.subtitleTranslation.notify" + name + "Stopped"), AppText.T("web.toolbox.subtitleTranslation.notifyJobResumable"));
@@ -2028,7 +1854,7 @@
                     continue;
 
                 this._jobs[project.Id] = job;
-                if (job.Status == TranslationJobStatus.Paused && (job.Phase == TranslationJobPhase.Applying || job.Phase == TranslationJobPhase.Review ||
+                if (job.Status == TranslationJobStatus.Paused && (job.Phase == TranslationJobPhase.Review ||
                     (job.Phase == TranslationJobPhase.Translation && this.Orchestrator.HasFilesToTranslate(job))))
                     this._jobsToResume.Add(project.Id);
             }
@@ -2054,8 +1880,6 @@
         TranslationJob job = this.Orchestrator.Job;
         if (job != null && this.Orchestrator.HasBlockedFiles)
             return STEP_TRANSLATION;
-        if (job != null && (job.Phase == TranslationJobPhase.NewTerms || job.Phase == TranslationJobPhase.Applying))
-            return STEP_NEW_TERMS;
         if (job != null && job.Phase == TranslationJobPhase.Review)
             return STEP_REVIEW;
         if (job != null && job.Phase == TranslationJobPhase.UserReview)
@@ -2067,19 +1891,18 @@
     }
 
     /// <summary>
-    /// Stato mostrato di un job: in traduzione, nei termini, in revisione AI, in pausa, interrotto, tradotto, da rivedere
+    /// Stato mostrato di un job: in traduzione, in revisione AI, in pausa, interrotto, tradotto, da rivedere
     /// </summary>
     /// <param name="job">Job</param>
     /// <returns>Testo del badge</returns>
     private static string JobStateText(TranslationJob job)
     {
         if (job.Status == TranslationJobStatus.Running)
-            return AppText.T(job.Phase == TranslationJobPhase.Applying ? "web.toolbox.subtitleTranslation.jobState.applying"
-                : job.Phase == TranslationJobPhase.Review ? "web.toolbox.subtitleTranslation.jobState.reviewing" : "web.toolbox.subtitleTranslation.jobState.running");
+            return AppText.T(job.Phase == TranslationJobPhase.Review ? "web.toolbox.subtitleTranslation.jobState.reviewing" : "web.toolbox.subtitleTranslation.jobState.running");
         if (job.Status == TranslationJobStatus.Paused)
             return AppText.T(job.Pause != null && (job.Pause.Reason == TranslationStopReason.Stop || job.Pause.Reason == TranslationStopReason.Crash)
                 ? "web.toolbox.subtitleTranslation.jobState.interrupted" : "web.toolbox.subtitleTranslation.jobState.paused");
-        if (job.Phase == TranslationJobPhase.NewTerms || job.Phase == TranslationJobPhase.Review)
+        if (job.Phase == TranslationJobPhase.Review)
             return AppText.T("web.toolbox.subtitleTranslation.jobState.translated");
         if (job.Phase == TranslationJobPhase.UserReview)
             return AppText.T("web.toolbox.subtitleTranslation.jobState.userReview");
@@ -2088,15 +1911,14 @@
     }
 
     /// <summary>
-    /// True se la battuta è da controllare: da rivedere, col glossario non rispettato, ritentata, con un termine nuovo, riscritta coi
-    /// termini nuovi, corretta dall'AI o modificata a mano
+    /// True se la battuta è da controllare: da rivedere, col glossario non rispettato, ritentata, corretta dall'AI o modificata a
+    /// mano
     /// </summary>
     /// <param name="row">Riga della revisione</param>
     /// <returns>True per il filtro «Da controllare»</returns>
     private static bool NeedsCheck(TranslationReviewRow row)
     {
         return row.ToReview || row.Signals.Contains(TranslationCueSignal.Glossary) || row.Signals.Contains(TranslationCueSignal.Retried) ||
-            row.Signals.Contains(TranslationCueSignal.NewTerm) || row.Signals.Contains(TranslationCueSignal.RewrittenByTerms) ||
             row.Signals.Contains(TranslationCueSignal.CorrectedByAi) || row.Signals.Contains(TranslationCueSignal.EditedByUser);
     }
 

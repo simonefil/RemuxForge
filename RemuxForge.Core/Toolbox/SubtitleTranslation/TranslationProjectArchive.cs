@@ -567,7 +567,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.archive.tooNew", Path.GetFileName(zipPath)));
                     TranslationProjectFile projectFile = state.FileId != null ? project.Files.Find(f => f.Id == state.FileId) : null;
                     if (projectFile == null || state.SourceSha256 != projectFile.SourceSha256 || file.Path != prefix + TranslationJobStore.FILES_FOLDER + "/" + state.FileId + ".json" ||
-                        state.Cues == null || state.Blocks == null || state.Translations == null || state.CollectedNewTerms == null)
+                        state.Cues == null || state.Blocks == null || state.Translations == null)
                         throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.archive.jobMismatch", jobId));
                 }
                 inspection.Jobs.Add(job);

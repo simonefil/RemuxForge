@@ -292,7 +292,7 @@ namespace RemuxForge.Web.Services.Toolbox
                             texts.Add(cue.CleanText);
                     }
                 }
-                if (project.Glossary != null && this.KindsSettled && TranslationValidator.FillExactCase(project.Glossary, new NewTermDecision[0], texts))
+                if (project.Glossary != null && this.KindsSettled && TranslationValidator.FillExactCase(project.Glossary, texts))
                     this._store.Save(project);
                 if (job != null)
                 {
@@ -302,7 +302,7 @@ namespace RemuxForge.Web.Services.Toolbox
                         foreach (FrozenCue cue in state.Cues)
                             frozen.Add(cue.Text);
                     }
-                    if (TranslationValidator.FillExactCase(job.Glossary, job.NewTerms, frozen))
+                    if (TranslationValidator.FillExactCase(job.Glossary, frozen))
                         this._jobStore.Save(job);
 
                     // Una chiusura brusca fra il salvataggio dell'ultimo file e quello del job lascia in pausa un job già concluso
@@ -494,7 +494,7 @@ namespace RemuxForge.Web.Services.Toolbox
 
         /// <summary>
         /// Salva modelli e livelli di ragionamento dei passi e i file tradotti in parallelo. Col job i modelli e i livelli di
-        /// traduzione, termini nuovi e revisione restano quelli congelati nel job e non cambiano; l'analisi e i file in parallelo sì.
+        /// traduzione e revisione restano quelli congelati nel job e non cambiano; l'analisi e i file in parallelo sì.
         /// Il log riporta i modelli solo quando uno cambia, con quelli che il giro usa davvero
         /// </summary>
         /// <param name="models">Modello per passo</param>
@@ -513,13 +513,13 @@ namespace RemuxForge.Web.Services.Toolbox
                 {
                     TranslationPhaseModels current = this._project.Models;
                     TranslationPhaseModels currentEfforts = this._project.ReasoningEfforts;
-                    models = new TranslationPhaseModels { Analysis = models.Analysis, Translation = current.Translation, NewTerms = current.NewTerms, Review = current.Review };
-                    efforts = new TranslationPhaseModels { Analysis = efforts.Analysis, Translation = currentEfforts.Translation, NewTerms = currentEfforts.NewTerms, Review = currentEfforts.Review };
+                    models = new TranslationPhaseModels { Analysis = models.Analysis, Translation = current.Translation, Review = current.Review };
+                    efforts = new TranslationPhaseModels { Analysis = efforts.Analysis, Translation = currentEfforts.Translation, Review = currentEfforts.Review };
                 }
 
                 changed = JsonSerializer.Serialize(models) != JsonSerializer.Serialize(this._project.Models) || JsonSerializer.Serialize(efforts) != JsonSerializer.Serialize(this._project.ReasoningEfforts);
                 used = this._job == null ? models
-                    : new TranslationPhaseModels { Analysis = models.Analysis, Translation = this._job.Models.Translation, NewTerms = this._job.Models.NewTerms, Review = this._job.Models.Review };
+                    : new TranslationPhaseModels { Analysis = models.Analysis, Translation = this._job.Models.Translation, Review = this._job.Models.Review };
                 this._project.Models = models;
                 this._project.ReasoningEfforts = efforts;
                 this._project.Options.MaxParallelFiles = parallelFiles;
@@ -527,7 +527,7 @@ namespace RemuxForge.Web.Services.Toolbox
             }
 
             if (changed)
-                this.AppendLog(AppText.F(TEXT_PREFIX + ".modelsChanged", used.Analysis, used.Translation, used.NewTerms, used.Review));
+                this.AppendLog(AppText.F(TEXT_PREFIX + ".modelsChanged", used.Analysis, used.Translation, used.Review));
             this.NotifyRecordsChanged();
         }
 
@@ -853,7 +853,7 @@ namespace RemuxForge.Web.Services.Toolbox
 
         /// <summary>
         /// Avvia il giro col glossario approvato congelato nel job e la modalità della revisione AI, o lo riprende nella fase in
-        /// cui si è fermato: traduzione dal primo blocco da fare, applicazione dai file non conclusi, revisione dai blocchi da rivedere.
+        /// cui si è fermato: traduzione dal primo blocco da fare, revisione dai blocchi da rivedere.
         /// La ripresa ricontrolla i sorgenti, e una traduzione coi soli file bloccati non parte
         /// </summary>
         public void StartJob()
@@ -941,9 +941,9 @@ namespace RemuxForge.Web.Services.Toolbox
 
         /// <summary>
         /// Toglie dal job un file bloccato, mai l'ultimo; con tutti gli altri file conclusi la traduzione è finita e il giro
-        /// prosegue: si ferma sui termini nuovi da decidere o, senza termini, riparte con la revisione AI. Le tratte di cui il file
-        /// aveva la prima occorrenza passano agli altri file con la revisione e l'applicazione dei termini che restano da fare. Il
-        /// job si salva senza il file prima che il suo stato si cancelli: una chiusura brusca lascia al più uno stato che nessuno legge
+        /// riparte con la revisione AI. Le tratte di cui il file aveva la prima occorrenza passano agli altri file con la revisione
+        /// che resta da fare. Il job si salva senza il file prima che il suo stato si cancelli: una chiusura brusca lascia al più
+        /// uno stato che nessuno legge
         /// </summary>
         /// <param name="fileId">File del job</param>
         public void ExcludeFile(string fileId)
@@ -966,8 +966,7 @@ namespace RemuxForge.Web.Services.Toolbox
 
                 // Una tratta con un'altra prima occorrenza, promossa o nata dal taglio, va a un file che l'aveva solo in copia. Il
                 // file prende il blocco di revisione concluso del file tolto; un blocco da fare lo sceglie la revisione AI, anche a
-                // revisione AI finita, e allora il giro torna alla revisione AI. Se il file tolto non aveva applicato i termini nuovi,
-                // il file che riceve la tratta li riapplica. Gli stati dei file si salvano prima del job
+                // revisione AI finita, e allora il giro torna alla revisione AI. Gli stati dei file si salvano prima del job
                 foreach (SharedStretch stretch in this._job.SharedStretches)
                 {
                     string before;
@@ -994,9 +993,6 @@ namespace RemuxForge.Web.Services.Toolbox
                         this._job.Phase = TranslationJobPhase.Review;
                         review = true;
                     }
-                    if (this._job.Phase == TranslationJobPhase.Applying && (state.TermApplication == null || state.TermApplication.Status == TermApplicationStatus.Pending)
-                        && master.TermApplication != null && master.TermApplication.Status != TermApplicationStatus.Pending)
-                        master.TermApplication.Status = TermApplicationStatus.Pending;
                     this._jobStore.SaveFile(this._job.Id, master);
                 }
                 if (this._job.Phase == TranslationJobPhase.Translation && this._job.FileIds.TrueForAll(id => this._jobFiles[id].TranslationStatus == TranslationFileStatus.Completed))
@@ -1004,7 +1000,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     this.FinishTranslation();
                     this._job.Status = TranslationJobStatus.Idle;
                     this._job.Pause = null;
-                    review = this._job.Phase == TranslationJobPhase.Review;
+                    review = true;
                 }
                 this._jobStore.Save(this._job);
                 this._store.Save(this._project);
@@ -1016,95 +1012,6 @@ namespace RemuxForge.Web.Services.Toolbox
             this.NotifyRecordsChanged();
             if (review)
                 this.StartJob();
-        }
-
-        /// <summary>
-        /// Salva la decisione su un termine nuovo fatta dalla pagina, finché il giro aspetta i termini
-        /// </summary>
-        /// <param name="term">Termine del job</param>
-        /// <param name="change">Modifica, eseguita sotto il lock dello stato</param>
-        public void ChangeNewTerm(NewTermDecision term, Action<NewTermDecision> change)
-        {
-            lock (this.StateLock)
-            {
-                if (this._job == null || this.IsBusy || this._job.Phase != TranslationJobPhase.NewTerms || !this._job.NewTerms.Contains(term))
-                    return;
-
-                change(term);
-                this._jobStore.Save(this._job);
-            }
-
-            this.NotifyRecordsChanged();
-        }
-
-        /// <summary>
-        /// Aggiunge i termini su «Aggiungi» al glossario del job e a quello del progetto, con una revisione in più, e riprende il
-        /// giro: applicazione dei termini, o la revisione AI se sono tutti ignorati. Il progetto si salva prima del job: dopo una
-        /// chiusura brusca fra i due la conferma si ripete e il termine già nel progetto prende la decisione ripetuta
-        /// </summary>
-        public void ConfirmNewTerms()
-        {
-            int added = 0;
-            lock (this.StateLock)
-            {
-                if (!this.CanConfirmNewTerms)
-                    return;
-
-                List<TranslationJobFileState> states = new List<TranslationJobFileState>();
-                foreach (string fileId in this._job.FileIds)
-                    states.Add(this._jobFiles[fileId]);
-                foreach (NewTermDecision decision in this._job.NewTerms)
-                {
-                    if (decision.Decision != NewTermDecisionKind.Add)
-                        continue;
-                    this._job.Glossary.Terms.Add(NewTermCollector.CreateTerm(decision, this._job.Glossary, states));
-                    this._project.Glossary.Terms.RemoveAll(t => t.Origin == GlossaryOrigin.NewTerm && string.Equals(t.Source, decision.Source, StringComparison.Ordinal));
-                    this._project.Glossary.Terms.Add(NewTermCollector.CreateTerm(decision, this._job.Glossary, states));
-                    added++;
-                }
-
-                if (added > 0)
-                {
-                    this._job.Glossary.Revision++;
-                    this._project.Glossary.Revision++;
-                }
-                this._job.Phase = added > 0 ? TranslationJobPhase.Applying : TranslationJobPhase.Review;
-                if (this._job.Phase == TranslationJobPhase.Review && this._project.ReachedStep < TranslationProjectStep.Review)
-                    this._project.ReachedStep = TranslationProjectStep.Review;
-                this._store.Save(this._project);
-                this._jobStore.Save(this._job);
-            }
-
-            this.AppendLog(AppText.Count(TEXT_PREFIX + ".newTermsConfirmed", added));
-            this.StartJob();
-        }
-
-        /// <summary>
-        /// Righe della griglia dell'applicazione dei termini: battute coinvolte e riscritte per file
-        /// </summary>
-        /// <returns>Righe nell'ordine del job, vuote senza job</returns>
-        public List<TermApplicationRow> GetTermApplicationRows()
-        {
-            List<TermApplicationRow> rows = new List<TermApplicationRow>();
-            lock (this.StateLock)
-            {
-                if (this._project == null || this._job == null)
-                    return rows;
-
-                foreach (string fileId in this._job.FileIds)
-                {
-                    TermApplicationState application = this._jobFiles[fileId].TermApplication;
-                    TermApplicationRow row = new TermApplicationRow();
-                    row.FileName = Path.GetFileName(this._project.Files.Find(f => f.Id == fileId).Path);
-                    row.Status = application != null ? application.Status : TermApplicationStatus.Pending;
-                    row.Targets = application != null && application.Status != TermApplicationStatus.Pending ? application.TargetIds.Count : null;
-                    row.Rewritten = application != null && application.Status != TermApplicationStatus.Pending ? application.RewrittenIds.Count : null;
-                    row.Failed = application != null && application.Status != TermApplicationStatus.Pending ? application.FailedIds.Count : 0;
-                    rows.Add(row);
-                }
-            }
-
-            return rows;
         }
 
         /// <summary>
@@ -1523,10 +1430,6 @@ namespace RemuxForge.Web.Services.Toolbox
                             row.BlocksDone++;
                     }
 
-                    HashSet<string> terms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    foreach (CollectedNewTerm term in state.CollectedNewTerms)
-                        terms.Add(term.Source);
-                    row.NewTerms = terms.Count;
                     foreach (TranslatedCueState translation in state.Translations)
                     {
                         if (translation.Status == TranslatedCueStatus.Accepted)
@@ -1575,7 +1478,7 @@ namespace RemuxForge.Web.Services.Toolbox
 
         /// <summary>
         /// Chiamate del giro scartate da Stop, limite d'uso o chiusura: quelle che nessuna unità salvata riporta, cioè un blocco
-        /// tradotto o diviso, l'applicazione dei termini di un file, la diagnosi o la correzione di un blocco della revisione.
+        /// tradotto o diviso, la diagnosi o la correzione di un blocco della revisione.
         /// Durante il giro contano solo quelle prima dell'ultima chiamata salvata del file, perché l'unità in corso non è ancora
         /// salvata
         /// </summary>
@@ -1600,8 +1503,6 @@ namespace RemuxForge.Web.Services.Toolbox
                         if (block.Status != TranslationBlockStatus.Pending)
                             seqs.AddRange(block.CallSeqs);
                     }
-                    if (state.TermApplication != null && state.TermApplication.Status != TermApplicationStatus.Pending)
-                        seqs.AddRange(state.TermApplication.CallSeqs);
                     foreach (TranslationReviewBlock block in state.ReviewBlocks ?? new List<TranslationReviewBlock>())
                         seqs.AddRange(block.CallSeqs);
 
@@ -1925,14 +1826,12 @@ namespace RemuxForge.Web.Services.Toolbox
             {
                 Analysis = this._project.Models.Analysis,
                 Translation = this._project.Models.Translation,
-                NewTerms = this._project.Models.NewTerms,
                 Review = this._project.Models.Review
             };
             job.ReasoningEfforts = new TranslationPhaseModels
             {
                 Analysis = this._project.ReasoningEfforts.Analysis,
                 Translation = this._project.ReasoningEfforts.Translation,
-                NewTerms = this._project.ReasoningEfforts.NewTerms,
                 Review = this._project.ReasoningEfforts.Review
             };
             job.Glossary = TranslationJsonFile.Parse<Glossary>(TranslationJsonFile.Serialize(this._project.Glossary), this._project.Id);
@@ -2049,9 +1948,9 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Giro del job, nel thread dell'operazione: dalla fase in cui si trova, traduzione, applicazione dei termini e revisione
-        /// AI si susseguono; si ferma ai termini nuovi da decidere, alla revisione dell'utente o a una fermata, con lo stato del job
-        /// e il motivo. Nessuna eccezione ne esce, e la card si libera sempre
+        /// Giro del job, nel thread dell'operazione: dalla fase in cui si trova, traduzione e revisione AI si susseguono; si ferma
+        /// alla revisione dell'utente o a una fermata, con lo stato del job e il motivo. Nessuna eccezione ne esce, e la card si
+        /// libera sempre
         /// </summary>
         /// <returns>Task del giro</returns>
         private async Task RunJobAsync()
@@ -2128,44 +2027,7 @@ namespace RemuxForge.Web.Services.Toolbox
                             break;
                         }
                         this.AppendLog(AppText.T(TEXT_PREFIX + ".translationCompleted"));
-                        if (job.NewTerms.Count > 0)
-                            this.AppendLog(AppText.Count(TEXT_PREFIX + ".newTermsWaiting", job.NewTerms.Count));
                         this.OnPhaseFinished?.Invoke(new TranslationPhaseResult { Job = job, Phase = TranslationJobPhase.Translation });
-                        phase = job.Phase;
-                        if (phase == TranslationJobPhase.NewTerms)
-                            break;
-                    }
-                    else if (phase == TranslationJobPhase.Applying)
-                    {
-                        this.AppendLog(AppText.T(TEXT_PREFIX + ".termsStarted"));
-                        TermApplier applier = new TermApplier(this._jobStore, job, files, this._jobCalls, this.StateLock, context);
-                        this.AttachRunner(applier, TEXT_PREFIX + ".termsProgress", TEXT_PREFIX + ".callOfFile", null);
-                        stop = await applier.RunAsync(provider, parallel, this.OperationCancellationToken);
-                        if (stop != null)
-                            break;
-
-                        // Come nella traduzione la fase è finita solo con tutti i file del job: un file bloccato alla ripresa non si salta
-                        int rewritten = 0;
-                        bool applied;
-                        lock (this.StateLock)
-                        {
-                            applied = job.FileIds.TrueForAll(id => this._jobFiles[id].TermApplication != null && this._jobFiles[id].TermApplication.Status != TermApplicationStatus.Pending);
-                            if (applied)
-                            {
-                                foreach (TranslationRunFile file in files)
-                                    rewritten += file.State.TermApplication.RewrittenIds.Count;
-                                job.Phase = TranslationJobPhase.Review;
-                                this._jobStore.Save(job);
-                            }
-                        }
-                        if (!applied)
-                        {
-                            this.AppendLog(AppText.T(TEXT_PREFIX + ".termsBlocked"));
-                            this.OnPhaseFinished?.Invoke(new TranslationPhaseResult { Job = job, Phase = TranslationJobPhase.Applying });
-                            break;
-                        }
-                        this.AppendLog(AppText.Count(TEXT_PREFIX + ".termsApplied", rewritten));
-                        this.OnPhaseFinished?.Invoke(new TranslationPhaseResult { Job = job, Phase = TranslationJobPhase.Applying });
                         phase = job.Phase;
                     }
                     else
@@ -2238,10 +2100,10 @@ namespace RemuxForge.Web.Services.Toolbox
                     {
                         if (provider != null)
                             job.DisabledCapabilities = provider.Capabilities.DisabledCapabilities;
-                        // Nei termini nuovi e nella revisione dell'utente il giro aspetta l'utente: un errore dopo il passaggio di fase
-                        // non lascia il job fermato
+                        // Nella revisione dell'utente il giro aspetta l'utente: un errore dopo il passaggio di fase non lascia il job
+                        // fermato
                         phase = job.Phase;
-                        bool waiting = phase == TranslationJobPhase.NewTerms || phase == TranslationJobPhase.UserReview;
+                        bool waiting = phase == TranslationJobPhase.UserReview;
                         job.Status = stop != null && !waiting ? TranslationJobStatus.Paused : TranslationJobStatus.Idle;
                         job.Pause = waiting ? null : stop;
                         this._phrase = "";
@@ -2269,7 +2131,7 @@ namespace RemuxForge.Web.Services.Toolbox
 
                     if (stop != null)
                     {
-                        string name = phase == TranslationJobPhase.Applying ? "terms" : phase == TranslationJobPhase.Review ? "review" : "translation";
+                        string name = phase == TranslationJobPhase.Review ? "review" : "translation";
                         this.AppendLog(stop.Reason == TranslationStopReason.Stop ? AppText.T(TEXT_PREFIX + "." + name + "Stopped") : AppText.F(TEXT_PREFIX + "." + name + "Paused", stop.Message));
                     }
                 }
@@ -2322,20 +2184,14 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Chiude la traduzione conclusa: raccoglie i termini nuovi di tutti i file; con termini il giro aspetta l'utente, senza
-        /// passa alla revisione AI, e il passo raggiunto segue la fase; chiamato sotto StateLock
+        /// Chiude la traduzione conclusa: il giro passa alla revisione AI, e il passo raggiunto segue la fase; chiamato sotto
+        /// StateLock
         /// </summary>
         private void FinishTranslation()
         {
-            List<TranslationJobFileState> states = new List<TranslationJobFileState>();
-            foreach (string fileId in this._job.FileIds)
-                states.Add(this._jobFiles[fileId]);
-
-            this._job.NewTerms = NewTermCollector.Collect(this._job.Glossary, states);
-            this._job.Phase = this._job.NewTerms.Count > 0 ? TranslationJobPhase.NewTerms : TranslationJobPhase.Review;
-            TranslationProjectStep reached = this._job.Phase == TranslationJobPhase.NewTerms ? TranslationProjectStep.NewTerms : TranslationProjectStep.Review;
-            if (this._project.ReachedStep < reached)
-                this._project.ReachedStep = reached;
+            this._job.Phase = TranslationJobPhase.Review;
+            if (this._project.ReachedStep < TranslationProjectStep.Review)
+                this._project.ReachedStep = TranslationProjectStep.Review;
         }
 
         /// <summary>
@@ -2961,7 +2817,7 @@ namespace RemuxForge.Web.Services.Toolbox
 
         /// <summary>
         /// True se il giro può partire o riprendere: glossario approvato e file preparati; col job, la traduzione con file non
-        /// conclusi, anche bloccati, l'applicazione dei termini o la revisione AI senza lavoro in corso né file bloccati
+        /// conclusi, anche bloccati, o la revisione AI senza lavoro in corso né file bloccati
         /// </summary>
         public bool CanStartJob
         {
@@ -2975,26 +2831,10 @@ namespace RemuxForge.Web.Services.Toolbox
                     if (this._job == null)
                         return this._documents.Count == this._project.Files.Count && this._project.Files.Count > 0;
 
-                    if (this._job.Phase == TranslationJobPhase.Applying || this._job.Phase == TranslationJobPhase.Review)
+                    if (this._job.Phase == TranslationJobPhase.Review)
                         return this._job.Status != TranslationJobStatus.Running && !this.HasBlockedFiles;
 
                     return this._job.Phase == TranslationJobPhase.Translation && this._job.FileIds.Exists(id => this._jobFiles[id].TranslationStatus != TranslationFileStatus.Completed);
-                }
-            }
-        }
-
-        /// <summary>
-        /// True se «Conferma e prosegui» è attivo: giro fermo sui termini nuovi senza file bloccati, ogni termine aggiunto con una
-        /// resa
-        /// </summary>
-        public bool CanConfirmNewTerms
-        {
-            get
-            {
-                lock (this.StateLock)
-                {
-                    return this._job != null && !this.IsBusy && this._job.Phase == TranslationJobPhase.NewTerms && this._job.Status == TranslationJobStatus.Idle && !this.HasBlockedFiles &&
-                        !this._job.NewTerms.Exists(t => t.Decision == NewTermDecisionKind.Add && string.IsNullOrWhiteSpace(t.ChosenTarget));
                 }
             }
         }
@@ -3276,11 +3116,6 @@ namespace RemuxForge.Web.Services.Toolbox
         public int ToReview { get; set; }
 
         /// <summary>
-        /// Termini nuovi distinti segnalati
-        /// </summary>
-        public int NewTerms { get; set; }
-
-        /// <summary>
         /// Token in ingresso reali, null se il registro non li ha
         /// </summary>
         public long? InputTokens { get; set; }
@@ -3334,41 +3169,6 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Fermata del giro nella fase, null per la fase conclusa
         /// </summary>
         public TranslationStop Stop { get; set; }
-
-        #endregion
-    }
-
-    /// <summary>
-    /// Riga della griglia dell'applicazione dei termini: un file del job
-    /// </summary>
-    public sealed class TermApplicationRow
-    {
-        #region Proprietà
-
-        /// <summary>
-        /// Nome del file sorgente
-        /// </summary>
-        public string FileName { get; set; }
-
-        /// <summary>
-        /// Stato dell'applicazione
-        /// </summary>
-        public TermApplicationStatus Status { get; set; }
-
-        /// <summary>
-        /// Battute coinvolte, null prima che il file sia concluso
-        /// </summary>
-        public int? Targets { get; set; }
-
-        /// <summary>
-        /// Battute riscritte, null prima che il file sia concluso
-        /// </summary>
-        public int? Rewritten { get; set; }
-
-        /// <summary>
-        /// Riscritture non riuscite, col testo di prima
-        /// </summary>
-        public int Failed { get; set; }
 
         #endregion
     }

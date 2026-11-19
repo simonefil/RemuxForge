@@ -424,10 +424,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Precompila «Maiuscole esatte» delle voci che non l'hanno ancora, termini del glossario e termini nuovi da decidere; una
-        /// voce che l'ha già resta com'è, così la scelta dell'utente non si perde. Che un termine sia un nome proprio lo dicono
-        /// le battute sorgenti, non le maiuscole del glossario: l'analisi scrive spesso con l'iniziale maiuscola anche i nomi
-        /// comuni («Teacher», «Karma»).
+        /// Precompila «Maiuscole esatte» dei termini del glossario che non l'hanno ancora; una voce che l'ha già resta com'è, così
+        /// la scelta dell'utente non si perde. Che un termine sia un nome proprio lo dicono le battute sorgenti, non le maiuscole
+        /// del glossario: l'analisi scrive spesso con l'iniziale maiuscola anche i nomi comuni («Teacher», «Karma»).
         /// - Voce di tipo Titolo: maiuscole esatte, perché vale solo l'uso come titolo o vocativo, maiuscolo a metà frase («Yes,
         ///   Teacher», «Teacher Onizuka»); «a teacher» non è il titolo.
         /// - Termine scritto con le sue maiuscole in mezzo alla frase: è un nome proprio e ha le maiuscole esatte. «Light» in
@@ -439,25 +438,31 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         ///   la frase; restano presi i nomi propri che sono anche parole comuni quando queste aprono la frase («Light the fire»)
         /// </summary>
         /// <param name="glossary">Glossario, per la lingua d'origine e i termini</param>
-        /// <param name="decisions">Termini nuovi da decidere, vuoto se nessuno</param>
         /// <param name="sourceTexts">Testi puliti delle battute sorgenti</param>
         /// <returns>True se almeno una voce ha preso il valore</returns>
-        public static bool FillExactCase(Glossary glossary, IEnumerable<NewTermDecision> decisions, IEnumerable<string> sourceTexts)
+        public static bool FillExactCase(Glossary glossary, IEnumerable<string> sourceTexts)
         {
             const string sentenceBreaks = ".!?…\n";
             string language = LanguageValidator.NormalizeToIso6392(glossary.SourceLanguage);
             List<string> texts = null;
             bool filled = false;
-
-            // Regola delle maiuscole su un termine; i testi si preparano alla prima voce da precompilare
-            Func<string, GlossaryTermKind, bool> exactCase = (source, kind) =>
+            foreach (GlossaryTerm term in glossary.Terms)
             {
-                if (kind == GlossaryTermKind.Title)
-                    return true;
-                string word = StripArticle(source, language);
-                if (string.IsNullOrEmpty(word) || string.Equals(word, word.ToLowerInvariant(), StringComparison.Ordinal))
-                    return false;
+                if (term.ExactCase.HasValue)
+                    continue;
 
+                filled = true;
+                term.ExactCase = false;
+                string word = StripArticle(term.Source, language);
+                if (term.Kind == GlossaryTermKind.Title)
+                {
+                    term.ExactCase = true;
+                    continue;
+                }
+                if (string.IsNullOrEmpty(word) || string.Equals(word, word.ToLowerInvariant(), StringComparison.Ordinal))
+                    continue;
+
+                // I testi si preparano alla prima voce da precompilare
                 if (texts == null)
                 {
                     texts = new List<string>();
@@ -475,26 +480,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         while (before >= 0 && !char.IsLetterOrDigit(text[before]) && sentenceBreaks.IndexOf(text[before]) < 0)
                             before--;
                         if (before >= 0 && sentenceBreaks.IndexOf(text[before]) < 0)
-                            return true;
+                            term.ExactCase = true;
                     }
                 }
-
-                return false;
-            };
-
-            foreach (GlossaryTerm term in glossary.Terms)
-            {
-                if (term.ExactCase.HasValue)
-                    continue;
-                term.ExactCase = exactCase(term.Source, term.Kind);
-                filled = true;
-            }
-            foreach (NewTermDecision decision in decisions)
-            {
-                if (decision.ExactCase.HasValue)
-                    continue;
-                decision.ExactCase = exactCase(decision.Source, decision.Kind);
-                filled = true;
             }
 
             return filled;
@@ -502,9 +490,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// Espressione che trova la resa di un termine nella traduzione, da usare sul testo in forma NFD. Nel dubbio la resa
-        /// conta come presente: una resa mancata la trova la revisione, mentre una resa presente data per assente manda la
-        /// battuta a una riscrittura a pagamento che può guastarla. Le maiuscole non contano mai, perché la resa a inizio
-        /// frase la prende.
+        /// conta come presente: una resa mancata la trova la revisione, mentre una resa presente data per assente segnala la
+        /// battuta a torto. Le maiuscole non contano mai, perché la resa a inizio frase la prende.
         /// - Scritture senza spazi (ideogrammi, kana, thai...): la resa si cerca contenuta nel testo, perché lì il confine di
         ///   parola non si vede e i nomi non si flettono.
         /// - Forma fissa: la resa esatta. Il confine di parola vale sui lati che finiscono con una lettera o una cifra, così

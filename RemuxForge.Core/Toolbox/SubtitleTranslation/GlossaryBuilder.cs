@@ -852,7 +852,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 texts.Add(new KeyValuePair<string, string>(episode.FileId, text.ToString()));
             }
             if (exactCase)
-                TranslationValidator.FillExactCase(glossary, new NewTermDecision[0], cueTexts);
+                TranslationValidator.FillExactCase(glossary, cueTexts);
 
             foreach (GlossaryTerm term in glossary.Terms)
             {

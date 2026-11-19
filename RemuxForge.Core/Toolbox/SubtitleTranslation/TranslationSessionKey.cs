@@ -32,7 +32,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="projectId">Identificativo del progetto</param>
         /// <param name="fileId">Identificativo del file, NO_FILE per le chiamate su più file</param>
         /// <param name="model">Modello</param>
-        /// <param name="kind">Tipo della chiave (A0, A1, A2, B, C, D1, D2)</param>
+        /// <param name="kind">Tipo della chiave (A0, A1, A2, B, D1, D2)</param>
         /// <returns>UUID in minuscolo con i trattini</returns>
         public static string Create(string projectId, string fileId, string model, string kind)
         {

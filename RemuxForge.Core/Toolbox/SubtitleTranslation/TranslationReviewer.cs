@@ -1,5 +1,4 @@
 using RemuxForge.Core.Ai;
-using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
@@ -7,7 +6,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -46,11 +44,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         private readonly string _correctionInstructions;
 
-        /// <summary>
-        /// Termini aggiunti al passo dei termini nuovi, con l'espressione del termine per il segnale della riscrittura
-        /// </summary>
-        private readonly List<KeyValuePair<GlossaryTerm, Regex>> _updated;
-
         #endregion
 
         #region Costruttore
@@ -70,14 +63,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         {
             this._diagnosisInstructions = TranslationRequestBuilder.CreateDiagnosisInstructions(job.Glossary.SourceLanguage, job.Glossary.TargetLanguage);
             this._correctionInstructions = TranslationRequestBuilder.CreateCorrectionInstructions(job.Glossary.SourceLanguage, job.Glossary.TargetLanguage);
-            this._updated = new List<KeyValuePair<GlossaryTerm, Regex>>();
-            string language = LanguageValidator.NormalizeToIso6392(job.Glossary.SourceLanguage);
-            foreach (GlossaryTerm term in job.Glossary.Terms)
-            {
-                string word = TranslationValidator.StripArticle(term.Source, language);
-                if (term.Origin == GlossaryOrigin.NewTerm && !string.IsNullOrEmpty(word))
-                    this._updated.Add(new KeyValuePair<GlossaryTerm, Regex>(term, TranslationValidator.WordPattern(word, term.ExactCase == true)));
-            }
 
             lock (stateLock)
             {
@@ -223,20 +208,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             lines.Add("TO_REVIEW: " + string.Join(", ", translation.GetReasonCodes()));
                         foreach (GlossaryWarning warning in translation.GlossaryWarnings)
                             lines.Add("GLOSSARY: source has \"" + warning.Source + "\", translation lacks \"" + warning.Target + "\"");
-                        foreach (CollectedNewTerm term in state.CollectedNewTerms)
-                        {
-                            if (term.CueIds.Contains(translation.Id))
-                                lines.Add("NEW_TERM: \"" + term.Source + "\" rendered as \"" + term.Target + "\"");
-                        }
-                        if (translation.Signals.Contains(TranslationCueSignal.RewrittenByTerms))
-                        {
-                            string source = TranslationValidator.GlossaryPlain(context.Frozen[translation.Id].Text);
-                            foreach (KeyValuePair<GlossaryTerm, Regex> term in this._updated)
-                            {
-                                if (term.Value.IsMatch(source))
-                                    lines.Add("REWRITTEN: updated term \"" + term.Key.Source + "\" => \"" + term.Key.Target + "\"");
-                            }
-                        }
 
                         if (lines.Count > 0)
                             signals[translation.Id] = lines;
@@ -419,7 +390,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         Model = this._job.Models.Review,
                         ReasoningEffort = this._job.ReasoningEfforts.Review,
                         Instructions = this._correctionInstructions,
-                        CollectNewTerms = false,
                         Current = current,
                         Tail = (requested, rejected) =>
                         {

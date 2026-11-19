@@ -69,7 +69,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Accepted = null;
             this.Rejected = null;
             this.Rejections = new List<TranslationCallRejection>();
-            this.NewTerms = null;
             this.Issues = null;
             this.Corrected = null;
             this.Usage = null;
@@ -208,11 +207,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Motivi dei rifiuti della validazione, la riga espandibile del pannello Chiamate
         /// </summary>
         public List<TranslationCallRejection> Rejections { get; set; }
-
-        /// <summary>
-        /// Termini nuovi segnalati
-        /// </summary>
-        public int? NewTerms { get; set; }
 
         /// <summary>
         /// Problemi della diagnosi tenuti, null fuori dalle diagnosi riuscite

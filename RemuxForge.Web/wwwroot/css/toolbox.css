@@ -554,24 +554,6 @@
     overflow-wrap: anywhere;
 }
 
-/* Termini nuovi: rese usate a capo, scelta su una riga */
-.rf-translation-renderings {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-}
-
-.rf-translation-renderings .rz-badge {
-    white-space: normal;
-    overflow-wrap: anywhere;
-    text-transform: none;
-}
-
-.rf-translation-decision {
-    flex-wrap: wrap;
-    gap: 0.25rem 0.75rem;
-}
-
 /* Revisione: griglia intera come le altre del passo, segni evidenziati, modifica nella cella */
 .rf-translation .rf-translation-review {
     flex: 0 0 auto;

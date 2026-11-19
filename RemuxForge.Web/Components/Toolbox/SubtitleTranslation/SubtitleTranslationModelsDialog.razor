@@ -61,19 +61,19 @@
     #region Variabili statiche
 
     /// <summary>
-    /// Passi con un modello, nell'ordine del dialog: analisi, traduzione, termini nuovi, revisione
+    /// Passi con un modello, nell'ordine del dialog: analisi, traduzione, revisione
     /// </summary>
-    private static readonly string[] s_phases = new string[] { "analysis", "translation", "newTerms", "review" };
+    private static readonly string[] s_phases = new string[] { "analysis", "translation", "review" };
 
     /// <summary>
     /// Difficoltà di ciascun passo, nell'ordine di s_phases
     /// </summary>
-    private static readonly string[] s_difficulties = new string[] { "high", "medium", "low", "high" };
+    private static readonly string[] s_difficulties = new string[] { "high", "medium", "high" };
 
     /// <summary>
     /// Colore del badge di ciascun passo, nell'ordine di s_phases
     /// </summary>
-    private static readonly BadgeStyle[] s_difficultyStyles = new BadgeStyle[] { BadgeStyle.Danger, BadgeStyle.Warning, BadgeStyle.Success, BadgeStyle.Danger };
+    private static readonly BadgeStyle[] s_difficultyStyles = new BadgeStyle[] { BadgeStyle.Danger, BadgeStyle.Warning, BadgeStyle.Danger };
 
     #endregion
 
@@ -96,32 +96,32 @@
     /// <summary>
     /// Modello scelto per passo
     /// </summary>
-    private string[] _selectedModels = new string[4];
+    private string[] _selectedModels = new string[3];
 
     /// <summary>
     /// Livello scelto per passo
     /// </summary>
-    private string[] _selectedEfforts = new string[4];
+    private string[] _selectedEfforts = new string[3];
 
     /// <summary>
     /// Modelli offerti per passo: quelli dell'accesso, o solo quello congelato nel job
     /// </summary>
-    private List<AiModelInfo>[] _phaseModels = new List<AiModelInfo>[4];
+    private List<AiModelInfo>[] _phaseModels = new List<AiModelInfo>[3];
 
     /// <summary>
     /// True per i passi del giro col job già creato: modello e livello restano quelli del job
     /// </summary>
-    private bool[] _locked = new bool[4];
+    private bool[] _locked = new bool[3];
 
     /// <summary>
     /// Pulsanti delle informazioni per passo, ancore dei popup
     /// </summary>
-    private RadzenButton[] _infoButtons = new RadzenButton[4];
+    private RadzenButton[] _infoButtons = new RadzenButton[3];
 
     /// <summary>
     /// Popup delle informazioni per passo
     /// </summary>
-    private RadzenPopup[] _infoPopups = new RadzenPopup[4];
+    private RadzenPopup[] _infoPopups = new RadzenPopup[3];
 
     /// <summary>
     /// File tradotti in parallelo
@@ -164,8 +164,8 @@
         TranslationJob job = this.Orchestrator.Job;
         TranslationPhaseModels phaseModels = job != null ? job.Models : project.Models;
         TranslationPhaseModels phaseEfforts = job != null ? job.ReasoningEfforts : project.ReasoningEfforts;
-        string[] models = new string[] { project.Models.Analysis, phaseModels.Translation, phaseModels.NewTerms, phaseModels.Review };
-        string[] efforts = new string[] { project.ReasoningEfforts.Analysis, phaseEfforts.Translation, phaseEfforts.NewTerms, phaseEfforts.Review };
+        string[] models = new string[] { project.Models.Analysis, phaseModels.Translation, phaseModels.Review };
+        string[] efforts = new string[] { project.ReasoningEfforts.Analysis, phaseEfforts.Translation, phaseEfforts.Review };
         this._parallelFiles = project.Options.MaxParallelFiles;
 
         // Le tendine partono dai valori del progetto, vuote se il passo non ha ancora un modello
@@ -228,15 +228,13 @@
         {
             Analysis = this._selectedModels[0] ?? "",
             Translation = this._selectedModels[1] ?? "",
-            NewTerms = this._selectedModels[2] ?? "",
-            Review = this._selectedModels[3] ?? ""
+            Review = this._selectedModels[2] ?? ""
         };
         TranslationPhaseModels efforts = new TranslationPhaseModels
         {
             Analysis = this._selectedEfforts[0] ?? "",
             Translation = this._selectedEfforts[1] ?? "",
-            NewTerms = this._selectedEfforts[2] ?? "",
-            Review = this._selectedEfforts[3] ?? ""
+            Review = this._selectedEfforts[2] ?? ""
         };
 
         this.Orchestrator.SetModels(models, efforts, this._parallelFiles);

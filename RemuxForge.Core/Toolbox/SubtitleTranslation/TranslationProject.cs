@@ -17,9 +17,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Traduzione</summary>
         Translation,
 
-        /// <summary>Termini nuovi</summary>
-        NewTerms,
-
         /// <summary>Revisione</summary>
         Review,
 
@@ -69,7 +66,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Versione del formato di project.json
         /// </summary>
-        public const int SCHEMA_VERSION = 2;
+        public const int SCHEMA_VERSION = 3;
 
         #endregion
 
@@ -441,7 +438,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         {
             this.Analysis = "";
             this.Translation = "";
-            this.NewTerms = "";
             this.Review = "";
         }
 
@@ -458,11 +454,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Traduzione dei blocchi
         /// </summary>
         public string Translation { get; set; }
-
-        /// <summary>
-        /// Applicazione dei termini nuovi
-        /// </summary>
-        public string NewTerms { get; set; }
 
         /// <summary>
         /// Revisione AI

@@ -69,10 +69,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         User,
 
         /// <summary>Caricata con Importa glossario</summary>
-        Import,
-
-        /// <summary>Termine nuovo approvato dopo la traduzione</summary>
-        NewTerm
+        Import
     }
 
     /// <summary>

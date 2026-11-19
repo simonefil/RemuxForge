@@ -300,20 +300,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 int accepted = 0;
                 lock (this._lock)
                 {
-                    // Esiti con i segnali come per un blocco, nella tratta riga per riga e poi in ogni occorrenza dei file del giro. I
-                    // termini nuovi di un giro della tratta interrotto da una chiusura brusca hanno chiamate che nessun blocco e nessuna
-                    // tratta salvati riportano: si tolgono prima di aggiungere quelli di questo giro
-                    HashSet<int> saved = new HashSet<int>();
-                    foreach (TranslationBlock block in file.State.Blocks)
-                        saved.UnionWith(block.CallSeqs);
-                    foreach (SharedStretch done in this._job.SharedStretches)
-                        saved.UnionWith(done.CallSeqs);
-                    file.State.CollectedNewTerms.RemoveAll(t => !saved.Contains(t.CallSeq));
-                    file.State.CollectedNewTerms.AddRange(stretchWork.NewTerms);
-                    HashSet<int> withTerms = new HashSet<int>();
-                    foreach (CollectedNewTerm term in stretchWork.NewTerms)
-                        withTerms.UnionWith(term.CueIds);
-
+                    // Esiti con i segnali come per un blocco, nella tratta riga per riga e poi in ogni occorrenza dei file del giro
                     stretch.Translations = new List<TranslatedCueState>();
                     foreach (int id in lines)
                     {
@@ -322,8 +309,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             translation.Signals.Add(TranslationCueSignal.Retried);
                         if (translation.GlossaryWarnings.Count > 0)
                             translation.Signals.Add(TranslationCueSignal.Glossary);
-                        if (withTerms.Contains(id))
-                            translation.Signals.Add(TranslationCueSignal.NewTerm);
                         if (translation.Status == TranslatedCueStatus.Accepted)
                             accepted++;
                         stretch.Translations.Add(translation.Clone(stretch.Translations.Count));
@@ -331,8 +316,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     stretch.Status = TranslationBlockStatus.Done;
                     stretch.CallSeqs.AddRange(stretchWork.CallSeqs);
 
-                    // Prima il file della tratta coi termini nuovi, poi la tratta nel job, poi le copie negli altri file: dopo una
-                    // chiusura brusca la tratta non salvata si rifà coi suoi termini, e il secondo giro rimette le copie
+                    // Prima il file della tratta, poi la tratta nel job, poi le copie negli altri file: dopo una chiusura brusca la tratta
+                    // non salvata si rifà, e il secondo giro rimette le copie
                     stretch.CopyInto(file.State);
                     this._store.SaveFile(this._job.Id, file.State);
                     this._store.Save(this._job);
@@ -452,11 +437,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         }
 
                         // Esiti del blocco nello stato del file
-                        state.CollectedNewTerms.AddRange(work.NewTerms);
-                        HashSet<int> withTerms = new HashSet<int>();
-                        foreach (CollectedNewTerm term in state.CollectedNewTerms)
-                            withTerms.UnionWith(term.CueIds);
-
                         foreach (TranslatedCueState translation in work.Results.Values)
                         {
                             state.Translations.RemoveAll(t => t.Id == translation.Id);
@@ -467,11 +447,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             state.Translations.Add(translation);
                         }
 
-                        foreach (TranslatedCueState translation in state.Translations)
-                        {
-                            if (withTerms.Contains(translation.Id) && !translation.Signals.Contains(TranslationCueSignal.NewTerm))
-                                translation.Signals.Add(TranslationCueSignal.NewTerm);
-                        }
                         state.Translations.Sort((a, b) => a.Id.CompareTo(b.Id));
                         block.Status = TranslationBlockStatus.Done;
                     }
@@ -544,7 +519,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 ReasoningEffort = this._job.ReasoningEfforts.Translation,
                 Instructions = this._instructions,
                 PrefixReused = units > 1,
-                CollectNewTerms = true,
                 Tail = (requested, rejected) =>
                 {
                     Dictionary<int, string> accepted = new Dictionary<int, string>();

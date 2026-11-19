@@ -1,14 +1,11 @@
 using RemuxForge.Core.Ai;
-using RemuxForge.Core.Configuration;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -354,58 +351,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // Segni, caratteri riservati e consegne doppie si riparano sulle battute che hanno già avuto un ritentativo
                 TranslationValidationResult result = context.Validator.Validate(pending, context.GetLiveCues(pending), submissions,
                     pending.FindAll(id => work.Get(id).Rejections.Count > 0));
-                List<CollectedNewTerm> terms = new List<CollectedNewTerm>();
-
-                // Termini nuovi della prima consegna leggibile, con le battute richieste il cui sorgente contiene il termine
-                foreach (string submission in plan.CollectNewTerms ? submissions : new List<string>())
-                {
-                    JsonObject arguments;
-                    try
-                    {
-                        arguments = JsonNode.Parse(submission ?? "") as JsonObject;
-                    }
-                    catch (JsonException)
-                    {
-                        continue;
-                    }
-
-                    if (arguments == null || !(arguments["translations"] is JsonArray))
-                        continue;
-
-                    JsonArray entries = arguments["new_terms"] as JsonArray;
-                    for (int i = 0; entries != null && i < entries.Count; i++)
-                    {
-                        JsonObject entry = entries[i] as JsonObject;
-                        string source = entry != null ? AiOAuthFlow.GetString(entry, "source") : "";
-                        string target = entry != null ? AiOAuthFlow.GetString(entry, "target") : "";
-                        if (string.IsNullOrWhiteSpace(source) || string.IsNullOrWhiteSpace(target))
-                            continue;
-
-                        CollectedNewTerm term = new CollectedNewTerm();
-                        term.Source = source.Trim();
-                        term.Target = target.Trim();
-                        term.Note = AiOAuthFlow.GetString(entry, "note") ?? "";
-                        GlossaryTermKind termKind;
-                        if (Enum.TryParse(AiOAuthFlow.GetString(entry, "kind"), true, out termKind) && Enum.IsDefined(termKind))
-                            term.Kind = termKind;
-                        term.Invariable = entry["invariable"] is JsonValue invariable && invariable.GetValueKind() == JsonValueKind.True;
-                        term.BlockIndex = work.BlockIndex ?? 0;
-                        string word = TranslationValidator.StripArticle(term.Source, LanguageValidator.NormalizeToIso6392(this._job.Glossary.SourceLanguage));
-                        if (!string.IsNullOrEmpty(word))
-                        {
-                            Regex pattern = TranslationValidator.WordPattern(word, false);
-                            foreach (int id in pending)
-                            {
-                                if (pattern.IsMatch(TranslationValidator.GlossaryPlain(context.Frozen[id].Text)))
-                                    term.CueIds.Add(id);
-                            }
-                        }
-                        terms.Add(term);
-                    }
-
-                    // Come il validatore, vale la prima consegna con l'array delle traduzioni
-                    break;
-                }
 
                 // Prima battuta con meno a capo del sorgente nell'ordine crescente di id, quello in cui il modello consegna: le battute
                 // dopo di lei, slittate, si richiedono senza giudicarle
@@ -418,7 +363,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 List<int> rejected = new List<int>();
                 SortedSet<string> reasons = new SortedSet<string>(StringComparer.Ordinal);
                 record.Usage = new TranslationCallUsage(response.Usage, 0);
-                record.NewTerms = plan.CollectNewTerms ? terms.Count : null;
                 foreach (CueValidationResult cue in judged)
                 {
                     if (!cue.HasErrors)
@@ -449,12 +393,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
                 record.Outcome = rejected.Count == 0 && shifted.Count == 0 ? TranslationCallOutcome.Accepted : TranslationCallOutcome.PartiallyRejected;
                 int callSeq = this.RecordCall(record, work);
-
-                foreach (CollectedNewTerm term in terms)
-                {
-                    term.CallSeq = callSeq;
-                    work.NewTerms.Add(term);
-                }
 
                 List<int> retry = new List<int>();
                 foreach (CueValidationResult cue in judged)
@@ -905,11 +843,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             public bool PrefixReused { get; init; }
 
             /// <summary>
-            /// True se la fase raccoglie i termini nuovi consegnati
-            /// </summary>
-            public bool CollectNewTerms { get; init; }
-
-            /// <summary>
             /// Testi attuali per contare nella riga del registro le battute accettate col testo cambiato, null se la fase non le conta
             /// </summary>
             public IReadOnlyDictionary<int, string> Current { get; init; }
@@ -931,7 +864,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 this.BlockIndex = blockIndex;
                 this.Results = new SortedDictionary<int, TranslatedCueState>();
                 this.Accepted = new SortedDictionary<int, string>();
-                this.NewTerms = new List<CollectedNewTerm>();
                 this.CallSeqs = new List<int>();
                 this.FirstReasons = new SortedSet<string>(StringComparer.Ordinal);
             }
@@ -991,11 +923,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             /// Testi accettati nell'unità, per le coppie della coda dei ritentativi
             /// </summary>
             public SortedDictionary<int, string> Accepted { get; }
-
-            /// <summary>
-            /// Termini nuovi segnalati nell'unità
-            /// </summary>
-            public List<CollectedNewTerm> NewTerms { get; }
 
             /// <summary>
             /// Chiamate dell'unità

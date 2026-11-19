@@ -43,7 +43,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Righe della coda che elencano gli id richiesti
         /// </summary>
-        private static readonly string[] REQUESTED_IDS_HEADERS = new string[] { "TRANSLATE cue ids ", "REWRITE cue ids ", "DELIVER cue ids ", "REVIEW cue ids " };
+        private static readonly string[] REQUESTED_IDS_HEADERS = new string[] { "TRANSLATE cue ids ", "DELIVER cue ids ", "REVIEW cue ids " };
 
         /// <summary>
         /// Riga del prefisso che introduce le battute sorgente
@@ -59,11 +59,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Sezione dei conflitti nel messaggio di A2
         /// </summary>
         private const string CONFLICTS_HEADER = "CONFLICTS (variants proposed by the episodes):\n";
-
-        /// <summary>
-        /// Riga che apre le rese aggiornate nella coda di C
-        /// </summary>
-        private const string UPDATED_TERMS_HEADER = "UPDATED TERMS (apply these renderings):";
 
         /// <summary>
         /// Riga del suggerimento di un problema nella coda di D2
@@ -246,13 +241,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
             }
 
-            // Consegna sintetica: traduzione col prefisso fisso davanti al testo sorgente, riscrittura con le rese aggiornate,
-            // correzione col suggerimento, diagnosi vuota o glossario dai candidati
+            // Consegna sintetica: traduzione col prefisso fisso davanti al testo sorgente, correzione col suggerimento, diagnosi
+            // vuota o glossario dai candidati
             StringBuilder inputText = new StringBuilder(prepared.Instructions);
             Dictionary<int, string> sources = new Dictionary<int, string>();
             Dictionary<int, string> currents = new Dictionary<int, string>();
             Dictionary<int, string> suggestions = new Dictionary<int, string>();
-            List<KeyValuePair<string, string>> updated = new List<KeyValuePair<string, string>>();
             List<int> signalled = new List<int>();
             List<int> requestedIds = new List<int>();
             JsonObject arguments = new JsonObject();
@@ -267,7 +261,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // Battute sorgente: dopo SOURCE EPISODE fino alla riga vuota, una per riga con gli a capo scritti \N
                 string[] lines = content.Replace("\r\n", "\n").Split('\n');
                 bool inSource = false;
-                bool inUpdated = false;
                 int currentId = 0;
                 int continuedId = 0;
                 for (int j = 0; j < lines.Length; j++)
@@ -308,21 +301,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                     if (!inSource)
                     {
-                        // Coda di C e D: rese aggiornate, traduzioni attuali, suggerimenti e battute coi segnali, con gli a capo scritti \N
+                        // Coda di D: traduzioni attuali, suggerimenti e battute coi segnali, con gli a capo scritti \N
                         Match match;
-                        if (line == UPDATED_TERMS_HEADER)
-                        {
-                            inUpdated = true;
-                        }
-                        else if (inUpdated)
-                        {
-                            int arrow = line.IndexOf(" => ", StringComparison.Ordinal);
-                            if (arrow > 0)
-                                updated.Add(new KeyValuePair<string, string>(line.Substring(0, arrow), line.Substring(arrow + 4)));
-                            else
-                                inUpdated = false;
-                        }
-                        else if (line.StartsWith(SUGGESTION_HEADER, StringComparison.Ordinal) && continuedId > 0)
+                        if (line.StartsWith(SUGGESTION_HEADER, StringComparison.Ordinal) && continuedId > 0)
                         {
                             suggestions[continuedId] = line.Substring(SUGGESTION_HEADER.Length).Replace(TranslationRequestBuilder.LINE_BREAK_MARK, "\n");
                         }
@@ -479,27 +460,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     string current;
                     string suggestion;
                     string text = sources.TryGetValue(id, out source) ? SYNTHETIC_PREFIX + source : SYNTHETIC_PREFIX + "#" + id.ToString(CultureInfo.InvariantCulture);
-                    if (request.Kind == TranslationCallKind.C)
-                    {
-                        // Riscrittura: la traduzione attuale con le rese aggiornate al posto dei termini
-                        text = currents.TryGetValue(id, out current) ? current : text;
-                        foreach (KeyValuePair<string, string> term in updated)
-                            text = text.Replace(term.Key, term.Value, StringComparison.Ordinal);
-                    }
-                    else if (request.Kind == TranslationCallKind.D2)
+                    if (request.Kind == TranslationCallKind.D2)
                     {
                         text = suggestions.TryGetValue(id, out suggestion) ? suggestion : currents.TryGetValue(id, out current) ? current : text;
                     }
                     translations.Add(new JsonObject { ["id"] = id, ["text"] = fault != null && fault.Kind == RecordedTranslationFaultKind.WrongCues && i == 0 ? "" : text });
                 }
 
-                JsonArray newTerms = new JsonArray();
-                if (fault != null && fault.Kind == RecordedTranslationFaultKind.NewTerm)
-                    newTerms.Add(new JsonObject { ["source"] = fault.Term, ["target"] = string.IsNullOrEmpty(fault.Rendering) ? SYNTHETIC_PREFIX + fault.Term : fault.Rendering, ["kind"] = "name", ["invariable"] = true });
-
                 toolName = "submit_translation";
                 arguments["translations"] = translations;
-                arguments["new_terms"] = newTerms;
             }
 
             // La ricerca web offerta lascia un item web_search_call, come nelle risposte vere

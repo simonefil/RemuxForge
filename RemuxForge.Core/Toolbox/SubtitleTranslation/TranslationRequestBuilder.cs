@@ -65,14 +65,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "The first message gives the user's context for the series when there is one, the approved glossary and the full source episode. The last message shows the latest accepted translations and names the cue ids to translate now.\n" +
             "This is not a chat: nobody reads plain text. Deliver only by calling submit_translation once, with one entry per requested id in ascending order.\n" +
             "When the last message lists rejected ids with error codes, deliver only the requested ids, fixing every listed error.\n" +
-            "Report in new_terms every name or recurring term that is not among the glossary terms and that you had to render or keep, with the rendering you used and its kind. Set invariable to true for names that never inflect and must appear verbatim. Leave new_terms empty when there are none.\n" +
             "\n" +
             "{record_format}\n" +
             "\n" +
             "{translation_rules}";
 
         /// <summary>
-        /// Blocco «Translation rules», lo stesso in tutte le chiamate che traducono o riscrivono
+        /// Blocco «Translation rules», lo stesso in tutte le chiamate che traducono o correggono
         /// </summary>
         private const string TRANSLATION_RULES = "Translation rules\n" +
             "\n" +
@@ -97,19 +96,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "- Keep honorifics and name suffixes that appear in the source unless the glossary gives a rendering for them.\n" +
             "- Keep dialogue dashes and continuation ellipses where the source has them.\n" +
             "- Keep the subtitle concise: say what the line says, with no padding.";
-
-        /// <summary>
-        /// Instructions di C: riscrittura delle battute coinvolte dai termini nuovi approvati
-        /// </summary>
-        private const string REWRITE_INSTRUCTIONS = "You apply updated glossary terms to {target_language} subtitles already translated from {source_language}.\n" +
-            "The first message gives the user's context for the series when there is one, the updated glossary and the full source episode. The last message lists the updated renderings and, for every cue to rewrite, its source and its current translation.\n" +
-            "This is not a chat: nobody reads plain text. Deliver only by calling submit_translation once, with one entry per requested id in ascending order, and new_terms empty.\n" +
-            "For each cue change only what the updated renderings require: the term itself and the words that agree with it. Keep everything else as it is.\n" +
-            "When the last message lists rejected ids with error codes, deliver only the requested ids, fixing every listed error.\n" +
-            "\n" +
-            "{record_format}\n" +
-            "\n" +
-            "{translation_rules}";
 
         /// <summary>
         /// Instructions di D1: diagnosi di un blocco tradotto
@@ -139,7 +125,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         private const string CORRECTION_INSTRUCTIONS = "You correct {target_language} subtitles translated from {source_language}, using a list of diagnosed issues and the source.\n" +
             "The first message gives the user's context for the series when there is one, the approved glossary and the full source episode. The last message lists the diagnosed issues, then every cue to deliver with its source and its current translation.\n" +
-            "This is not a chat: nobody reads plain text. Deliver only by calling submit_translation once, with one entry per requested id in ascending order, and new_terms empty.\n" +
+            "This is not a chat: nobody reads plain text. Deliver only by calling submit_translation once, with one entry per requested id in ascending order.\n" +
             "Fix every listed issue and keep the rest of each cue as it is. Translate from scratch every cue with no accepted translation. A listed cue with no issue of its own belongs to a [gN] group: deliver it unchanged unless fixing the group requires a change.\n" +
             "When the last message lists rejected ids with error codes, deliver only the requested ids, fixing every listed error.\n" +
             "\n" +
@@ -169,13 +155,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "\"parameters\":{\"type\":\"object\",\"properties\":{" +
             "\"translations\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"integer\"}," +
             "\"text\":{\"type\":\"string\",\"description\":\"Translated cue text. Line breaks as \\\\n; every ⟦n text⟧ span of the source cue exactly once, in order.\"}}," +
-            "\"required\":[\"id\",\"text\"],\"additionalProperties\":false}}," +
-            "\"new_terms\":{\"type\":\"array\",\"description\":\"Names or recurring terms NOT among the glossary terms that you had to render, with the rendering you used.\"," +
-            "\"items\":{\"type\":\"object\",\"properties\":{\"source\":{\"type\":\"string\"},\"target\":{\"type\":\"string\"}," +
-            "\"kind\":{\"type\":\"string\",\"enum\":[\"name\",\"place\",\"organization\",\"title\",\"term\",\"catchphrase\"]}," +
-            "\"invariable\":{\"type\":\"boolean\",\"description\":\"True for proper names that never inflect and must appear verbatim.\"},\"note\":{\"type\":[\"string\",\"null\"]}}," +
-            "\"required\":[\"source\",\"target\",\"kind\",\"invariable\",\"note\"],\"additionalProperties\":false}}}," +
-            "\"required\":[\"translations\",\"new_terms\"],\"additionalProperties\":false}}";
+            "\"required\":[\"id\",\"text\"],\"additionalProperties\":false}}}," +
+            "\"required\":[\"translations\"],\"additionalProperties\":false}}";
 
         #endregion
 
@@ -395,17 +376,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Instructions di C coi segnaposto risolti
-        /// </summary>
-        /// <param name="sourceLanguage">Lingua d'origine ISO 639-2</param>
-        /// <param name="targetLanguage">Lingua d'arrivo ISO 639-2</param>
-        /// <returns>Testo delle instructions</returns>
-        public static string CreateRewriteInstructions(string sourceLanguage, string targetLanguage)
-        {
-            return FillInstructions(REWRITE_INSTRUCTIONS, sourceLanguage, targetLanguage);
-        }
-
-        /// <summary>
         /// Instructions di D1 coi segnaposto risolti, con le spiegazioni nella lingua dell'interfaccia
         /// </summary>
         /// <param name="sourceLanguage">Lingua d'origine ISO 639-2</param>
@@ -448,7 +418,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Tool offerti da B, B′, B″, C e D2, sempre nello stesso ordine
+        /// Tool offerti da B, B′, B″ e D2, sempre nello stesso ordine
         /// </summary>
         /// <returns>Array nuovo con submit_translation</returns>
         public static JsonArray CreateTranslationTools()
@@ -462,7 +432,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// vale per il file: il contesto modificato apre semplicemente un prefisso nuovo
         /// </summary>
         /// <param name="context">Campo serie/contesto del progetto, vuoto se l'utente non l'ha scritto</param>
-        /// <param name="glossary">Glossario del job: congelato in traduzione, aggiornato dai termini nuovi dopo</param>
+        /// <param name="glossary">Glossario del job, congelato all'avvio</param>
         /// <param name="fileName">Nome del file sorgente</param>
         /// <param name="cues">Battute congelate del file, senza le copie dei cartelli in movimento</param>
         /// <returns>Testo del primo messaggio</returns>
@@ -505,28 +475,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             }
 
             AppendRequested(message, "TRANSLATE", requested);
-            AppendRejected(message, rejected);
-            return message.ToString();
-        }
-
-        /// <summary>
-        /// Coda di C: rese aggiornate, id da riscrivere coi gruppi e battute con la traduzione attuale; nel ritentativo gli scarti
-        /// </summary>
-        /// <param name="terms">Termini approvati al passo dei termini nuovi, originale e resa</param>
-        /// <param name="requested">Battute da riscrivere, in ordine di id</param>
-        /// <param name="current">Traduzione attuale per id</param>
-        /// <param name="rejected">Righe del validatore della consegna precedente, vuote alla prima consegna</param>
-        /// <returns>Testo dell'ultimo messaggio</returns>
-        public static string CreateRewriteTail(IReadOnlyList<KeyValuePair<string, string>> terms, IReadOnlyList<FrozenCue> requested, IReadOnlyDictionary<int, string> current,
-            IReadOnlyList<string> rejected)
-        {
-            StringBuilder message = new StringBuilder("UPDATED TERMS (apply these renderings):");
-            foreach (KeyValuePair<string, string> term in terms)
-                message.Append('\n').Append(term.Key).Append(" => ").Append(term.Value);
-
-            message.Append("\n\n");
-            AppendRequested(message, "REWRITE", requested);
-            AppendCurrent(message, requested, current);
             AppendRejected(message, rejected);
             return message.ToString();
         }
@@ -629,7 +577,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Aggiunge la riga degli id richiesti col loro numero e, se ce ne sono, quella dei gruppi di frase spezzata
         /// </summary>
         /// <param name="message">Coda in costruzione</param>
-        /// <param name="verb">TRANSLATE, REWRITE, REVIEW o DELIVER</param>
+        /// <param name="verb">TRANSLATE, REVIEW o DELIVER</param>
         /// <param name="requested">Battute richieste, in ordine di id</param>
         private static void AppendRequested(StringBuilder message, string verb, IReadOnlyList<FrozenCue> requested)
         {

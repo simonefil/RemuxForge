@@ -23,9 +23,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Consegna con la prima battuta vuota e l'ultima mancante</summary>
         WrongCues,
 
-        /// <summary>Consegna valida che segnala un termine nuovo</summary>
-        NewTerm,
-
         /// <summary>Diagnosi con un problema per battuta segnalata, o sulla prima del blocco, e il suggerimento</summary>
         Issues
     }
@@ -48,8 +45,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Occurrence = 1;
             this.RetryAfterSeconds = 0;
             this.Parameter = "";
-            this.Term = "";
-            this.Rendering = "";
         }
 
         #endregion
@@ -85,16 +80,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Parametro rifiutato (error.param), vuoto per lasciarlo dedurre al provider
         /// </summary>
         public string Parameter { get; set; }
-
-        /// <summary>
-        /// Termine nuovo segnalato con NewTerm
-        /// </summary>
-        public string Term { get; set; }
-
-        /// <summary>
-        /// Resa del termine nuovo segnalato con NewTerm, vuota per il prefisso sintetico davanti al termine
-        /// </summary>
-        public string Rendering { get; set; }
 
         #endregion
     }

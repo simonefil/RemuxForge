@@ -14,12 +14,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Traduzione a blocchi</summary>
         Translation,
 
-        /// <summary>Termini nuovi da decidere</summary>
-        NewTerms,
-
-        /// <summary>Applicazione dei termini nuovi</summary>
-        Applying,
-
         /// <summary>Revisione AI</summary>
         Review,
 
@@ -98,44 +92,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Resa del glossario assente dalla traduzione</summary>
         Glossary,
 
-        /// <summary>Il sorgente contiene un termine nuovo segnalato dal modello</summary>
-        NewTerm,
-
-        /// <summary>Testo cambiato dall'applicazione dei termini nuovi</summary>
-        RewrittenByTerms,
-
         /// <summary>Testo cambiato dalla revisione AI</summary>
         CorrectedByAi,
 
         /// <summary>Testo scritto dall'utente</summary>
         EditedByUser
-    }
-
-    /// <summary>
-    /// Decisione dell'utente su un termine nuovo
-    /// </summary>
-    public enum NewTermDecisionKind
-    {
-        /// <summary>Entra nel glossario</summary>
-        Add,
-
-        /// <summary>Resta fuori dal glossario</summary>
-        Ignore
-    }
-
-    /// <summary>
-    /// Applicazione dei termini nuovi a un file
-    /// </summary>
-    public enum TermApplicationStatus
-    {
-        /// <summary>Da fare</summary>
-        Pending,
-
-        /// <summary>Riscritture salvate</summary>
-        Done,
-
-        /// <summary>Nessuna battuta coinvolta</summary>
-        Skipped
     }
 
     /// <summary>
@@ -163,7 +124,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Versione del formato di job.json
         /// </summary>
-        public const int SCHEMA_VERSION = 2;
+        public const int SCHEMA_VERSION = 3;
 
         #endregion
 
@@ -190,7 +151,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.Pause = null;
             this.DisabledCapabilities = new List<string>();
             this.ReviewMode = TranslationReviewMode.Full;
-            this.NewTerms = new List<NewTermDecision>();
             this.SharedStretches = new List<SharedStretch>();
         }
 
@@ -199,14 +159,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi pubblici
 
         /// <summary>
-        /// Riporta il job letto da disco, dopo una chiusura brusca, in uno stato da cui il giro prosegue: nei termini nuovi e nella
-        /// revisione dell'utente il giro aspetta l'utente e non ha lavoro in corso, quindi torna fermo; nelle altre fasi un giro
-        /// rimasto in corso diventa fermato da una chiusura dell'app
+        /// Riporta il job letto da disco, dopo una chiusura brusca, in uno stato da cui il giro prosegue: nella revisione
+        /// dell'utente il giro aspetta l'utente e non ha lavoro in corso, quindi torna fermo; nelle altre fasi un giro rimasto in
+        /// corso diventa fermato da una chiusura dell'app
         /// </summary>
         /// <returns>True se lo stato è cambiato e il job va salvato</returns>
         public bool RecoverAfterCrash()
         {
-            if (this.Phase == TranslationJobPhase.NewTerms || this.Phase == TranslationJobPhase.UserReview)
+            if (this.Phase == TranslationJobPhase.UserReview)
             {
                 if (this.Status == TranslationJobStatus.Idle)
                     return false;
@@ -309,11 +269,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public TranslationReviewMode ReviewMode { get; set; }
 
         /// <summary>
-        /// Termini nuovi raccolti a fine traduzione, con la decisione dell'utente
-        /// </summary>
-        public List<NewTermDecision> NewTerms { get; set; }
-
-        /// <summary>
         /// Tratte ripetute fra i file, tradotte una volta sola; vuoto nei job creati prima delle tratte
         /// </summary>
         public List<SharedStretch> SharedStretches { get; set; }
@@ -331,7 +286,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Versione del formato del file di stato
         /// </summary>
-        public const int SCHEMA_VERSION = 2;
+        public const int SCHEMA_VERSION = 3;
 
         #endregion
 
@@ -356,8 +311,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.TranslationStatus = TranslationFileStatus.Pending;
             this.BlockedReason = "";
             this.Translations = new List<TranslatedCueState>();
-            this.CollectedNewTerms = new List<CollectedNewTerm>();
-            this.TermApplication = null;
             this.ReviewBlocks = null;
             this.ExportedPath = "";
             this.ExportedSha256 = "";
@@ -455,16 +408,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Battute con almeno un esito
         /// </summary>
         public List<TranslatedCueState> Translations { get; set; }
-
-        /// <summary>
-        /// Termini nuovi segnalati dal modello
-        /// </summary>
-        public List<CollectedNewTerm> CollectedNewTerms { get; set; }
-
-        /// <summary>
-        /// Applicazione dei termini nuovi, null prima della fase
-        /// </summary>
-        public TermApplicationState TermApplication { get; set; }
 
         /// <summary>
         /// Blocchi scelti per la revisione AI, null prima della revisione
@@ -809,229 +752,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Resa del glossario
         /// </summary>
         public string Target { get; set; }
-
-        #endregion
-    }
-
-    /// <summary>
-    /// Termine nuovo segnalato dal modello con la resa usata
-    /// </summary>
-    public class CollectedNewTerm
-    {
-        #region Costruttore
-
-        /// <summary>
-        /// Costruttore
-        /// </summary>
-        public CollectedNewTerm()
-        {
-            this.Source = "";
-            this.Target = "";
-            this.Note = "";
-            this.Kind = GlossaryTermKind.Term;
-            this.Invariable = false;
-            this.CallSeq = 0;
-            this.BlockIndex = 0;
-            this.CueIds = new List<int>();
-        }
-
-        #endregion
-
-        #region Proprietà
-
-        /// <summary>
-        /// Termine segnalato
-        /// </summary>
-        public string Source { get; set; }
-
-        /// <summary>
-        /// Resa usata
-        /// </summary>
-        public string Target { get; set; }
-
-        /// <summary>
-        /// Nota del modello
-        /// </summary>
-        public string Note { get; set; }
-
-        /// <summary>
-        /// Tipo dichiarato dal modello
-        /// </summary>
-        public GlossaryTermKind Kind { get; set; }
-
-        /// <summary>
-        /// Nome che non si flette, secondo il modello
-        /// </summary>
-        public bool Invariable { get; set; }
-
-        /// <summary>
-        /// Chiamata che l'ha segnalato
-        /// </summary>
-        public int CallSeq { get; set; }
-
-        /// <summary>
-        /// Blocco della chiamata, 0 per una tratta condivisa
-        /// </summary>
-        public int BlockIndex { get; set; }
-
-        /// <summary>
-        /// Battute dell'intervallo il cui sorgente contiene il termine
-        /// </summary>
-        public List<int> CueIds { get; set; }
-
-        #endregion
-    }
-
-    /// <summary>
-    /// Termine nuovo raccolto da tutti i file, con le rese usate e la decisione dell'utente
-    /// </summary>
-    public class NewTermDecision
-    {
-        #region Costruttore
-
-        /// <summary>
-        /// Costruttore
-        /// </summary>
-        public NewTermDecision()
-        {
-            this.Source = "";
-            this.Renderings = new List<NewTermRendering>();
-            this.ChosenTarget = "";
-            this.Kind = GlossaryTermKind.Term;
-            this.Invariable = false;
-            this.ExactCase = null;
-            this.Decision = NewTermDecisionKind.Add;
-        }
-
-        #endregion
-
-        #region Proprietà
-
-        /// <summary>
-        /// Termine, come alla prima segnalazione
-        /// </summary>
-        public string Source { get; set; }
-
-        /// <summary>
-        /// Rese usate, nell'ordine della prima comparsa
-        /// </summary>
-        public List<NewTermRendering> Renderings { get; set; }
-
-        /// <summary>
-        /// Resa scelta; parte dalla più usata
-        /// </summary>
-        public string ChosenTarget { get; set; }
-
-        /// <summary>
-        /// Tipo del termine nel glossario; parte da quello della prima segnalazione
-        /// </summary>
-        public GlossaryTermKind Kind { get; set; }
-
-        /// <summary>
-        /// Nome che non si flette: la correzione delle battute la fa il codice. Parte vero solo se tutte le segnalazioni lo dicono
-        /// </summary>
-        public bool Invariable { get; set; }
-
-        /// <summary>
-        /// True se il termine si cerca nel sorgente con le sue maiuscole esatte; precompilato dalle battute sorgenti, null finché
-        /// non lo è
-        /// </summary>
-        public bool? ExactCase { get; set; }
-
-        /// <summary>
-        /// Aggiungi o Ignora
-        /// </summary>
-        public NewTermDecisionKind Decision { get; set; }
-
-        #endregion
-    }
-
-    /// <summary>
-    /// Resa usata dal modello per un termine nuovo
-    /// </summary>
-    public class NewTermRendering
-    {
-        #region Costruttore
-
-        /// <summary>
-        /// Costruttore
-        /// </summary>
-        public NewTermRendering()
-        {
-            this.Target = "";
-            this.Count = 0;
-            this.FileIds = new List<string>();
-        }
-
-        #endregion
-
-        #region Proprietà
-
-        /// <summary>
-        /// Resa
-        /// </summary>
-        public string Target { get; set; }
-
-        /// <summary>
-        /// Segnalazioni del modello con questa resa
-        /// </summary>
-        public int Count { get; set; }
-
-        /// <summary>
-        /// File delle segnalazioni
-        /// </summary>
-        public List<string> FileIds { get; set; }
-
-        #endregion
-    }
-
-    /// <summary>
-    /// Applicazione dei termini nuovi a un file del job
-    /// </summary>
-    public class TermApplicationState
-    {
-        #region Costruttore
-
-        /// <summary>
-        /// Costruttore
-        /// </summary>
-        public TermApplicationState()
-        {
-            this.Status = TermApplicationStatus.Pending;
-            this.TargetIds = new List<int>();
-            this.RewrittenIds = new List<int>();
-            this.FailedIds = new List<int>();
-            this.CallSeqs = new List<int>();
-        }
-
-        #endregion
-
-        #region Proprietà
-
-        /// <summary>
-        /// Stato
-        /// </summary>
-        public TermApplicationStatus Status { get; set; }
-
-        /// <summary>
-        /// Battute coinvolte
-        /// </summary>
-        public List<int> TargetIds { get; set; }
-
-        /// <summary>
-        /// Battute riscritte
-        /// </summary>
-        public List<int> RewrittenIds { get; set; }
-
-        /// <summary>
-        /// Battute la cui riscrittura non è riuscita: tengono il testo di prima
-        /// </summary>
-        public List<int> FailedIds { get; set; }
-
-        /// <summary>
-        /// Chiamate C del file salvate con le riscritture
-        /// </summary>
-        public List<int> CallSeqs { get; set; }
 
         #endregion
     }
