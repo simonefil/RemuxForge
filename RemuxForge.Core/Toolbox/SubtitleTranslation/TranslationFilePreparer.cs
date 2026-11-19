@@ -7,17 +7,17 @@ using System.Text;
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
-    /// Preparazione di un file del progetto: lettura con la codifica scelta, battute traducibili, gruppi delle frasi spezzate e
-    /// impronte del sorgente; senza chiamate al modello
+    /// Preparazione di un file del progetto: lettura con la codifica scelta, battute traducibili e impronte del sorgente; senza
+    /// chiamate al modello
     /// </summary>
     public static class TranslationFilePreparer
     {
         #region Costanti
 
         /// <summary>
-        /// Versione della preparazione, da aumentare quando cambiano id, gruppi, tipi o testo pulito
+        /// Versione della preparazione, da aumentare quando cambiano id, tipi, testo pulito o record del sorgente numerato
         /// </summary>
-        public const int PREPARER_VERSION = 20;
+        public const int PREPARER_VERSION = 21;
 
         /// <summary>
         /// Rifiuto di un file che non c'è più
@@ -61,12 +61,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// tiene le impronte salvate: se i byte sono cambiati si rifiuta, altrimenti si rilegge senza toccarle
         /// </summary>
         /// <param name="file">File del progetto</param>
-        /// <param name="sourceLanguage">Lingua d'origine, che decide i gruppi; vuota se non ancora scelta</param>
         /// <param name="styles">Tabella degli stili del progetto, null nei progetti salvati prima</param>
         /// <param name="stretches">Tratte SRT riconosciute del progetto, null prima del riconoscimento</param>
         /// <param name="locked">True con l'analisi partita</param>
         /// <returns>Documento letto, null se il file è rifiutato</returns>
-        public static SubtitleTranslationDocument Prepare(TranslationProjectFile file, string sourceLanguage, IReadOnlyList<TranslationProjectStyle> styles,
+        public static SubtitleTranslationDocument Prepare(TranslationProjectFile file, IReadOnlyList<TranslationProjectStyle> styles,
             IReadOnlyList<TranslationProjectStretch> stretches, bool locked)
         {
             byte[] bytes;
@@ -115,8 +114,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 return null;
             }
 
-            // I gruppi stanno nelle battute del documento: si rifanno anche sul file bloccato, che tiene la preparazione salvata
-            int groups = new SplitSentenceGrouper().Group(document.Cues, sourceLanguage ?? "");
             if (locked)
                 return document;
 
@@ -124,7 +121,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             file.SourceSha256 = sha256;
 
             TranslationFilePreparation preparation = new TranslationFilePreparation();
-            preparation.GroupCount = groups;
             foreach (SubtitleCue cue in document.Cues)
             {
                 if (cue.Id.HasValue)

@@ -13,7 +13,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
     /// Revisione AI di un job: per ogni blocco scelto una diagnosi D1 con un ritentativo, poi D2 sulle battute diagnosticate e
-    /// su quelle da rivedere, coi gruppi interi. Una diagnosi troncata dal tetto dei token in uscita a entrambe le chiamate si
+    /// su quelle da rivedere. Una diagnosi troncata dal tetto dei token in uscita a entrambe le chiamate si
     /// dimezza come una consegna. Ogni parte diagnosticata si salva, e alla ripresa il blocco riparte dalle parti che restano o
     /// da D2. Una parte che il modello non diagnostica anche dopo i tentativi e i dimezzamenti, come una risposta fermata dal
     /// filtro dei contenuti o senza la chiamata della diagnosi, lascia non riviste col motivo le sue battute, in tutte le copie
@@ -192,7 +192,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
                 else
                 {
-                    // D1 con un ritentativo per parte; troncata a entrambe le chiamate si dimezza fino alla battuta o al gruppo, e i
+                    // D1 con un ritentativo per parte; troncata a entrambe le chiamate si dimezza fino alla battuta, e i
                     // problemi delle parti si sommano
                     Dictionary<int, List<string>> signals = new Dictionary<int, List<string>>();
                     foreach (TranslatedCueState translation in translations.Values)
@@ -365,8 +365,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     issues = block.Issues;
                 }
 
-                // D2: diagnosticate e da rivedere, coi gruppi interi. Una battuta scritta dall'utente non si corregge: entra solo
-                // come contesto del suo gruppo e il suo esito si scarta
+                // D2: diagnosticate e da rivedere, nell'ordine di tempo. Una battuta scritta dall'utente non si corregge
                 HashSet<int> wanted = new HashSet<int>();
                 foreach (TranslationReviewIssue issue in issues)
                     wanted.Add(issue.Id);
@@ -377,7 +376,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (translation.Signals.Contains(TranslationCueSignal.EditedByUser))
                         wanted.Remove(translation.Id);
                 }
-                List<int> deliver = ExpandToGroups(state, wanted);
+                List<int> deliver = state.Cues.FindAll(c => wanted.Contains(c.Id)).ConvertAll(c => c.Id);
 
                 int corrected = 0;
                 DeliveryWork correction = new DeliveryWork(unit);

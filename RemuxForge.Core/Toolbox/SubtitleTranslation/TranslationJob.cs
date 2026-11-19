@@ -440,11 +440,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public int Id { get; set; }
 
         /// <summary>
-        /// Gruppo di frase spezzata, null fuori dai gruppi
-        /// </summary>
-        public int? Group { get; set; }
-
-        /// <summary>
         /// Testo pulito coi segni ⟦⟧
         /// </summary>
         public string Text { get; set; }

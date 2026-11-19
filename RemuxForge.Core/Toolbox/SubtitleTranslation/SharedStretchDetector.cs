@@ -9,7 +9,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// Trova le tratte ripetute fra i file del job: almeno tre battute consecutive in ordine di tempo col testo pulito identico, a
     /// meno degli spazi, in almeno due file dello stesso formato; i tempi non contano. Poi, in ogni file, la tratta dei cartelli in
     /// movimento: un cartello ridisegnato a ogni fotogramma si traduce una volta e si copia. Ogni battuta sta al più in una tratta
-    /// e una tratta non taglia mai una frase spezzata
     /// </summary>
     public static class SharedStretchDetector
     {
@@ -68,25 +67,22 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             length = Math.Max(length, Common(file.Keys, p, free, hit.Key, hit.Value));
                     }
 
-                    int first = p;
-                    int last = p + length;
-                    Trim(file, ref first, ref last);
-                    if (last - first < MIN_CUES)
+                    if (length < MIN_CUES)
                         continue;
 
                     SharedStretch stretch = new SharedStretch();
                     stretch.Index = stretches.Count + 1;
                     stretch.Format = file.Format;
-                    string[] lines = new string[last - first];
-                    for (int i = first; i < last; i++)
+                    string[] lines = new string[length];
+                    for (int i = p; i < p + length; i++)
                     {
                         stretch.Lines.Add(file.Cues[i].CleanText);
-                        lines[i - first] = file.Keys[i];
+                        lines[i - p] = file.Keys[i];
                     }
-                    Claim(stretch, file, first, last, 0);
+                    Claim(stretch, file, p, p + length, 0);
                     AddOccurrences(stretch, lines, index);
 
-                    // Le occorrenze di un solo file, dopo i tagli sulle frasi spezzate, non fanno una tratta
+                    // Le occorrenze di un solo file non fanno una tratta
                     if (stretch.Occurrences.TrueForAll(o => o.FileId == file.FileId))
                     {
                         foreach (SharedStretchOccurrence occurrence in stretch.Occurrences)
@@ -99,7 +95,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
 
                     stretches.Add(stretch);
-                    p = last - 1;
+                    p += length - 1;
                 }
             }
 
@@ -275,20 +271,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Restringe una corsa di battute perché non tagli una frase spezzata del file, né all'inizio né alla fine
-        /// </summary>
-        /// <param name="file">File della corsa</param>
-        /// <param name="first">Prima battuta</param>
-        /// <param name="last">Battuta dopo l'ultima</param>
-        private static void Trim(FileKeys file, ref int first, ref int last)
-        {
-            while (first < last && first > 0 && file.Cues[first].Group.HasValue && file.Cues[first].Group == file.Cues[first - 1].Group)
-                first++;
-            while (last > first && last < file.Cues.Count && file.Cues[last].Group.HasValue && file.Cues[last].Group == file.Cues[last - 1].Group)
-                last--;
-        }
-
-        /// <summary>
         /// Aggiunge alla tratta un'occorrenza e ne segna le battute come prese
         /// </summary>
         /// <param name="stretch">Tratta</param>
@@ -334,7 +316,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     {
                         int first = hit.Value;
                         int last = first + Common(lines, j, lines.Length, hit.Key, hit.Value);
-                        Trim(hit.Key, ref first, ref last);
                         if (last - first > bestLast - bestFirst)
                         {
                             best = hit.Key;
@@ -353,10 +334,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// Aggiunge la tratta dei cartelli in movimento di un file, se ne ha. Un cartello in movimento è una catena di battute libere
-        /// fuori dai gruppi con lo stesso stile e lo stesso testo, ognuna che comincia esattamente dove finisce un'altra della
-        /// catena: lo stesso cartello ridisegnato a ogni fotogramma con tag diversi, anche mentre un altro cartello si muove. Tutte
-        /// le battute in catena di uno stesso cartello fanno una riga: la prima in ordine di tempo sta nella prima occorrenza,
-        /// tradotta una volta sola in una consegna per tutti i cartelli del file; ogni altra battuta è un'occorrenza di quella riga
+        /// con lo stesso stile e lo stesso testo, ognuna che comincia esattamente dove finisce un'altra della catena: lo stesso
+        /// cartello ridisegnato a ogni fotogramma con tag diversi, anche mentre un altro cartello si muove. Tutte le battute in catena
+        /// di uno stesso cartello fanno una riga: la prima in ordine di tempo sta nella prima occorrenza, tradotta una volta sola in
+        /// una consegna per tutti i cartelli del file; ogni altra battuta è un'occorrenza di quella riga
         /// </summary>
         /// <param name="stretches">Tratte del job</param>
         /// <param name="file">File con le battute già prese dalle tratte fra i file</param>
@@ -367,7 +348,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             for (int i = 0; i < file.Cues.Count; i++)
             {
                 SubtitleCue cue = file.Cues[i];
-                if (file.Assigned[i] || cue.Group.HasValue)
+                if (file.Assigned[i])
                     continue;
                 string sign = cue.Style + "\n" + file.Keys[i];
                 if (!candidates.ContainsKey(sign))
@@ -473,7 +454,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             public SubtitleTranslationFormat Format { get; }
 
             /// <summary>
-            /// Battute traducibili in ordine di tempo, quello dei gruppi e dei blocchi
+            /// Battute traducibili in ordine di tempo, quello dei blocchi
             /// </summary>
             public List<SubtitleCue> Cues { get; }
 

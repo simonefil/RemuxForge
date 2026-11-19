@@ -4,8 +4,7 @@ using System.Collections.Generic;
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
-    /// Divide le battute traducibili di un file nei blocchi che il modello traduce in una chiamata: tagli sulle pause più lunghe,
-    /// mai dentro un gruppo di frase spezzata
+    /// Divide le battute traducibili di un file nei blocchi che il modello traduce in una chiamata: tagli sulle pause più lunghe
     /// </summary>
     public class SubtitleBlockPlanner
     {
@@ -57,7 +56,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Costruttore
         /// </summary>
-        /// <param name="cues">Battute del file con i gruppi già assegnati; si tengono le sole traducibili</param>
+        /// <param name="cues">Battute del file; si tengono le sole traducibili</param>
         public SubtitleBlockPlanner(IReadOnlyList<SubtitleCue> cues)
         {
             this._cues = new List<SubtitleCue>();
@@ -73,7 +72,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi pubblici
 
         /// <summary>
-        /// Divide le battute in blocchi: ogni blocco si chiude sul taglio ammesso con la pausa più lunga fra il minimo e il tetto,
+        /// Divide le battute in blocchi: ogni blocco si chiude sul taglio con la pausa più lunga fra il minimo e il tetto,
         /// a pari pausa sul più vicino all'obiettivo; le ultime battute fino al tetto vanno tutte nell'ultimo blocco
         /// </summary>
         /// <param name="target">Battute per blocco cercate</param>
@@ -99,8 +98,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 int last = Math.Min(start + cap, this._cues.Count - 1);
                 for (int j = start + minimum; j <= last; j++)
                 {
-                    if (!CutAllowed(this._cues[j - 1], this._cues[j]))
-                        continue;
                     long pause = Math.Min(Pause(this._cues[j - 1], this._cues[j]), MAX_SCORED_PAUSE_MS);
                     int distance = Math.Abs(j - start - target);
                     if (best < 0 || pause > bestPause || (pause == bestPause && distance < bestDistance))
@@ -111,20 +108,19 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
                 }
 
-                int end = best >= 0 ? best : Math.Min(start + cap, this._cues.Count);
-                blocks.Add(this._cues.GetRange(start, end - start));
-                start = end;
+                blocks.Add(this._cues.GetRange(start, best - start));
+                start = best;
             }
 
             return blocks;
         }
 
         /// <summary>
-        /// Divide in due un blocco tornato incompleto: taglio ammesso più vicino al centro a fasce di mezzo sesto per lato, nella
+        /// Divide in due un blocco tornato incompleto: taglio più vicino al centro a fasce di mezzo sesto per lato, nella
         /// fascia la pausa più lunga, così un confine di scena vicino alla metà vince
         /// </summary>
         /// <param name="block">Blocco da dividere</param>
-        /// <returns>Due blocchi, o il blocco stesso se non ha tagli ammessi</returns>
+        /// <returns>Due blocchi, o il blocco stesso se ha una battuta sola</returns>
         public IReadOnlyList<IReadOnlyList<SubtitleCue>> SplitBlock(IReadOnlyList<SubtitleCue> block)
         {
             int mid = block.Count / 2;
@@ -134,8 +130,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             long bestPause = 0;
             for (int j = 1; j < block.Count; j++)
             {
-                if (!CutAllowed(block[j - 1], block[j]))
-                    continue;
                 int band = 2 * Math.Abs(j - mid) / bucket;
                 long pause = Pause(block[j - 1], block[j]);
                 if (best < 0 || band < bestBand || (band == bestBand && pause > bestPause))
@@ -184,17 +178,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private static long Pause(SubtitleCue previous, SubtitleCue next)
         {
             return Math.Max(0, next.StartMs - previous.EndMs);
-        }
-
-        /// <summary>
-        /// Indica se fra due battute consecutive si può tagliare: non dentro un gruppo
-        /// </summary>
-        /// <param name="previous">Battuta precedente</param>
-        /// <param name="next">Battuta seguente</param>
-        /// <returns>True se il taglio è ammesso</returns>
-        private static bool CutAllowed(SubtitleCue previous, SubtitleCue next)
-        {
-            return !previous.Group.HasValue || previous.Group != next.Group;
         }
 
         #endregion

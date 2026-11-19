@@ -28,7 +28,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Blocco «Record format», identico in tutte le instructions che lo usano
         /// </summary>
         public const string RECORD_FORMAT = "Record format\n" +
-            "- A source cue is a record on a single line. Its header is \"<id>\", followed by \" [gN]\" for a split sentence and by \" [song]\" for song lyrics or \" [sign]\" for on-screen text such as signs and titles; a header without either is dialogue. Then a tab and the whole text of the cue, where \"\\N\" marks a line break inside the cue. Each line of a source episode is a different cue.\n" +
+            "- A source cue is a record on a single line. Its header is \"<id>\", followed by \" [song]\" for song lyrics or \" [sign]\" for on-screen text such as signs and titles; a header without either is dialogue. Then a tab and the whole text of the cue, where \"\\N\" marks a line break inside the cue. Each line of a source episode is a different cue.\n" +
             "- A translation record has the same header followed by \" =>\", then a tab and the translated text, on one line with \"\\N\" for its line breaks. A header with nothing after \" =>\" means the cue has no accepted translation yet.\n" +
             "- A signal record (review only) has the header \"<id> !\", then a tab and one signal per line, each further signal starting with a tab.\n" +
             "- In submit_translation, a line break inside a cue is \"\\n\" inside the JSON string, never \"\\N\".";
@@ -82,7 +82,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "- Write plain text: no markup, no tags, no braces, no angle brackets, no notes or explanations.\n" +
             "\n" +
             "Split sentences\n" +
-            "- Cues marked [gN] form one sentence split across consecutive cues (group N). Translate the whole group as one sentence in natural {target_language}, then redistribute it over the same ids in order: every cue gets a non-empty, contiguous part of the sentence, roughly proportional to the source cue, broken at natural points. Words may move between cues of the same group; meaning stays inside the group.\n" +
+            "- A sentence can continue into the next cue: translate it as a whole and distribute it over the same cues, in order.\n" +
             "\n" +
             "Songs and signs\n" +
             "- Cues marked [song] are lyrics: translate them as lyrics in {target_language}, keeping the meaning and the line breaks of each source cue.\n" +
@@ -111,7 +111,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "- terminology: a rendering of the glossary terms missing or misused;\n" +
             "- register: address form against the glossary, wrong gender or number of speakers or addressees, insults, threats, swearing or crude language of the source rendered weaker, more formal, censored or dropped (a translation as strong as the source or stronger is not an issue);\n" +
             "- consistency: the same thing rendered differently within the block or against the glossary;\n" +
-            "- split_sentence: a [gN] group badly redistributed over its cues;\n" +
+            "- split_sentence: a sentence continuing over several cues badly distributed over them;\n" +
             "- formatting: a ⟦n text⟧ span around the wrong words;\n" +
             "- untranslated: {source_language} text left by mistake, apart from names and terms the glossary keeps.\n" +
             "\n" +
@@ -126,7 +126,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private const string CORRECTION_INSTRUCTIONS = "You correct {target_language} subtitles translated from {source_language}, using a list of diagnosed issues and the source.\n" +
             "The first message gives the user's context for the series when there is one, the approved glossary and the full source episode. The last message lists the diagnosed issues, then every cue to deliver with its source and its current translation.\n" +
             "This is not a chat: nobody reads plain text. Deliver only by calling submit_translation once, with one entry per requested id in ascending order.\n" +
-            "Fix every listed issue and keep the rest of each cue as it is. Translate from scratch every cue with no accepted translation. A listed cue with no issue of its own belongs to a [gN] group: deliver it unchanged unless fixing the group requires a change.\n" +
+            "Fix every listed issue and keep the rest of each cue as it is. Translate from scratch every cue with no accepted translation.\n" +
             "When the last message lists rejected ids with error codes, deliver only the requested ids, fixing every listed error.\n" +
             "\n" +
             "{record_format}\n" +
@@ -217,39 +217,37 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi pubblici
 
         /// <summary>
-        /// Scrive una battuta nel formato a record: testata con id e gruppo, tab e testo su una riga, con gli a capo come \N
+        /// Scrive una battuta nel formato a record: testata con id e tipo, tab e testo su una riga, con gli a capo come \N
         /// </summary>
         /// <param name="cue">Battuta traducibile</param>
         /// <returns>Record della battuta</returns>
         public static string FormatRecord(SubtitleCue cue)
         {
-            return FormatRecord(cue.Id.Value, cue.Group, cue.Kind, cue.CleanText);
+            return FormatRecord(cue.Id.Value, cue.Kind, cue.CleanText);
         }
 
         /// <summary>
         /// Scrive una battuta congelata nel formato a record
         /// </summary>
         /// <param name="id">Id della battuta</param>
-        /// <param name="group">Gruppo di frase spezzata, null fuori dai gruppi</param>
         /// <param name="kind">Tipo della battuta</param>
         /// <param name="text">Testo pulito</param>
         /// <returns>Record della battuta</returns>
-        public static string FormatRecord(int id, int? group, SubtitleCueKind kind, string text)
+        public static string FormatRecord(int id, SubtitleCueKind kind, string text)
         {
-            return FormatHeader(id, group, kind) + "\t" + text.Replace("\n", LINE_BREAK_MARK);
+            return FormatHeader(id, kind) + "\t" + text.Replace("\n", LINE_BREAK_MARK);
         }
 
         /// <summary>
         /// Scrive un record di traduzione: testata seguita da « =>», poi tab e testo; senza testo resta la sola testata
         /// </summary>
         /// <param name="id">Id della battuta</param>
-        /// <param name="group">Gruppo di frase spezzata, null fuori dai gruppi</param>
         /// <param name="kind">Tipo della battuta</param>
         /// <param name="text">Traduzione, null per una battuta senza traduzione accettata</param>
         /// <returns>Record di traduzione</returns>
-        public static string FormatTranslationRecord(int id, int? group, SubtitleCueKind kind, string text)
+        public static string FormatTranslationRecord(int id, SubtitleCueKind kind, string text)
         {
-            string header = FormatHeader(id, group, kind) + " =>";
+            string header = FormatHeader(id, kind) + " =>";
             return text == null ? header : header + "\t" + text.Replace("\n", LINE_BREAK_MARK);
         }
 
@@ -447,13 +445,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             message.Append(ToModelJson(builder.ToToolJson(glossary, true)));
             message.Append("\n\nSOURCE EPISODE: ").Append(fileName).Append(" (").Append(cues.Count.ToString(CultureInfo.InvariantCulture)).Append(" cues)");
             foreach (FrozenCue cue in cues)
-                message.Append('\n').Append(FormatRecord(cue.Id, cue.Group, cue.Kind, cue.Text));
+                message.Append('\n').Append(FormatRecord(cue.Id, cue.Kind, cue.Text));
 
             return message.ToString();
         }
 
         /// <summary>
-        /// Coda di B, B′ e B″: coppie accettate prima dell'intervallo, id richiesti coi gruppi e, per il ritentativo, gli scarti
+        /// Coda di B, B′ e B″: coppie accettate prima dell'intervallo, id richiesti e, per il ritentativo, gli scarti
         /// </summary>
         /// <param name="accepted">Ultime battute accettate prima del primo id richiesto, con la traduzione</param>
         /// <param name="requested">Battute richieste, in ordine di id</param>
@@ -467,8 +465,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 message.Append("ACCEPTED TRANSLATIONS BEFORE THIS RANGE (latest ").Append(TAIL_PAIRS.ToString(CultureInfo.InvariantCulture)).Append("):");
                 foreach (KeyValuePair<FrozenCue, string> pair in accepted)
                 {
-                    message.Append('\n').Append(FormatRecord(pair.Key.Id, pair.Key.Group, pair.Key.Kind, pair.Key.Text));
-                    message.Append('\n').Append(FormatTranslationRecord(pair.Key.Id, pair.Key.Group, pair.Key.Kind, pair.Value));
+                    message.Append('\n').Append(FormatRecord(pair.Key.Id, pair.Key.Kind, pair.Key.Text));
+                    message.Append('\n').Append(FormatTranslationRecord(pair.Key.Id, pair.Key.Kind, pair.Value));
                 }
 
                 message.Append("\n\n");
@@ -480,7 +478,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Coda di D1: id del blocco coi gruppi e, per ogni battuta, sorgente, traduzione attuale e segnali
+        /// Coda di D1: id del blocco e, per ogni battuta, sorgente, traduzione attuale e segnali
         /// </summary>
         /// <param name="cues">Battute del blocco, in ordine di id</param>
         /// <param name="current">Traduzione attuale per id, null per una battuta senza testo accettato</param>
@@ -495,8 +493,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 string text;
                 current.TryGetValue(cue.Id, out text);
-                message.Append('\n').Append(FormatRecord(cue.Id, cue.Group, cue.Kind, cue.Text));
-                message.Append('\n').Append(FormatTranslationRecord(cue.Id, cue.Group, cue.Kind, text));
+                message.Append('\n').Append(FormatRecord(cue.Id, cue.Kind, cue.Text));
+                message.Append('\n').Append(FormatTranslationRecord(cue.Id, cue.Kind, text));
                 List<string> cueSignals;
                 if (signals.TryGetValue(cue.Id, out cueSignals) && cueSignals.Count > 0)
                     message.Append('\n').Append(FormatSignalRecord(cue.Id, cueSignals));
@@ -506,7 +504,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Coda di D2: problemi diagnosticati, id da consegnare coi gruppi e battute con la traduzione attuale; nel ritentativo gli scarti
+        /// Coda di D2: problemi diagnosticati, id da consegnare e battute con la traduzione attuale; nel ritentativo gli scarti
         /// </summary>
         /// <param name="issues">Problemi della diagnosi sulle battute richieste</param>
         /// <param name="requested">Battute da consegnare, in ordine di id</param>
@@ -574,7 +572,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Aggiunge la riga degli id richiesti col loro numero e, se ce ne sono, quella dei gruppi di frase spezzata
+        /// Aggiunge la riga degli id richiesti col loro numero
         /// </summary>
         /// <param name="message">Coda in costruzione</param>
         /// <param name="verb">TRANSLATE, REVIEW o DELIVER</param>
@@ -582,32 +580,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private static void AppendRequested(StringBuilder message, string verb, IReadOnlyList<FrozenCue> requested)
         {
             List<int> ids = new List<int>();
-            List<int> groups = new List<int>();
             foreach (FrozenCue cue in requested)
-            {
                 ids.Add(cue.Id);
-                if (cue.Group.HasValue && !groups.Contains(cue.Group.Value))
-                    groups.Add(cue.Group.Value);
-            }
 
             message.Append(verb).Append(" cue ids ").Append(FormatRanges(ids)).Append(" (").Append(ids.Count.ToString(CultureInfo.InvariantCulture)).Append(" cues).");
-            if (groups.Count > 0)
-            {
-                List<string> parts = new List<string>();
-                foreach (int group in groups)
-                {
-                    List<string> members = new List<string>();
-                    foreach (FrozenCue cue in requested)
-                    {
-                        if (cue.Group == group)
-                            members.Add(cue.Id.ToString(CultureInfo.InvariantCulture));
-                    }
-
-                    parts.Add("g" + group.ToString(CultureInfo.InvariantCulture) + " = " + string.Join(",", members));
-                }
-
-                message.Append("\nSplit-sentence groups in this range: ").Append(string.Join("; ", parts));
-            }
         }
 
         /// <summary>
@@ -623,8 +599,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 string text;
                 current.TryGetValue(cue.Id, out text);
-                message.Append('\n').Append(FormatRecord(cue.Id, cue.Group, cue.Kind, cue.Text));
-                message.Append('\n').Append(FormatTranslationRecord(cue.Id, cue.Group, cue.Kind, text));
+                message.Append('\n').Append(FormatRecord(cue.Id, cue.Kind, cue.Text));
+                message.Append('\n').Append(FormatTranslationRecord(cue.Id, cue.Kind, text));
             }
         }
 
@@ -640,18 +616,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Testata di un record: id, nei gruppi [gN], per canzoni e cartelli [song] o [sign]; il dialogo non ha segno, così i
-        /// record dei job salvati prima dei tipi restano uguali
+        /// Testata di un record: id e, per canzoni e cartelli, [song] o [sign]; il dialogo non ha segno, così i record dei job
+        /// salvati prima dei tipi restano uguali
         /// </summary>
         /// <param name="id">Id della battuta</param>
-        /// <param name="group">Gruppo di frase spezzata, null fuori dai gruppi</param>
         /// <param name="kind">Tipo della battuta</param>
         /// <returns>Testata</returns>
-        private static string FormatHeader(int id, int? group, SubtitleCueKind kind)
+        private static string FormatHeader(int id, SubtitleCueKind kind)
         {
             string header = id.ToString(CultureInfo.InvariantCulture);
-            if (group.HasValue)
-                header += " [g" + group.Value.ToString(CultureInfo.InvariantCulture) + "]";
             if (kind == SubtitleCueKind.Song)
                 header += " [song]";
             else if (kind == SubtitleCueKind.Sign)

@@ -137,11 +137,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public int? Layer { get; }
 
         /// <summary>
-        /// Gruppo di frase spezzata, null fuori dai gruppi
-        /// </summary>
-        public int? Group { get; internal set; }
-
-        /// <summary>
         /// Motivo per cui la battuta resta al codice, vuoto se si traduce
         /// </summary>
         public string ExclusionReason { get; }

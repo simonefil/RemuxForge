@@ -203,7 +203,7 @@
                                 Density="Density.Compact"
                                 GridLines="DataGridGridLines.Horizontal">
                     <Columns>
-                        <RadzenDataGridColumn TItem="TranslationFileRecord" Title="@AppText.T("web.dashboard.file")" Width="34%">
+                        <RadzenDataGridColumn TItem="TranslationFileRecord" Title="@AppText.T("web.dashboard.file")" Width="43%">
                             <Template Context="file">
                                 <span class="rf-translation-file" title="@file.InputPath">@System.IO.Path.GetFileName(file.InputPath)</span>
                                 @if (!string.IsNullOrEmpty(file.File.RejectedReason))
@@ -228,9 +228,6 @@
                         </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="TranslationFileRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.excluded")" Width="9%" TextAlign="TextAlign.Right">
                             <Template Context="file"><CellText Text="@(string.IsNullOrEmpty(file.File.RejectedReason) ? file.File.Preparation.ExcludedCount.ToString(CultureInfo.CurrentCulture) : "—")" /></Template>
-                        </RadzenDataGridColumn>
-                        <RadzenDataGridColumn TItem="TranslationFileRecord" Title="@AppText.T("web.toolbox.subtitleTranslation.groups")" Width="9%" TextAlign="TextAlign.Right">
-                            <Template Context="file"><CellText Text="@(string.IsNullOrEmpty(file.File.RejectedReason) ? file.File.Preparation.GroupCount.ToString(CultureInfo.CurrentCulture) : "—")" /></Template>
                         </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="TranslationFileRecord" Width="4rem" TextAlign="TextAlign.Center">
                             <Template Context="file">

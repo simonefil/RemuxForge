@@ -367,7 +367,7 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Cambia nome, lingue e contesto del progetto; le lingue si bloccano con l'analisi, e la lingua d'origine rifà i gruppi
+        /// Cambia nome, lingue e contesto del progetto; le lingue si bloccano con l'analisi
         /// </summary>
         /// <param name="name">Nome</param>
         /// <param name="sourceLanguage">Lingua d'origine ISO 639-2</param>
@@ -381,19 +381,12 @@ namespace RemuxForge.Web.Services.Toolbox
                     return;
 
                 bool locked = this._project.Analysis != null || this._project.Glossary != null;
-                bool regroup = !locked && !string.Equals(this._project.SourceLanguage, sourceLanguage ?? "", StringComparison.Ordinal);
                 this._project.Name = (name ?? "").Trim();
                 this._project.Context = context ?? "";
                 if (!locked)
                 {
                     this._project.SourceLanguage = sourceLanguage ?? "";
                     this._project.TargetLanguage = targetLanguage ?? "";
-                }
-
-                if (regroup)
-                {
-                    foreach (TranslationProjectFile file in this._project.Files)
-                        this.PrepareFile(file, false);
                 }
 
                 this._store.Save(this._project);
@@ -910,7 +903,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     return;
 
                 TranslationProjectFile file = this._project.Files.Find(f => f.Id == fileId);
-                SubtitleTranslationDocument document = TranslationFilePreparer.Prepare(file, this._project.SourceLanguage, this._project.Styles, this._project.Stretches, false);
+                SubtitleTranslationDocument document = TranslationFilePreparer.Prepare(file, this._project.Styles, this._project.Stretches, false);
                 if (document == null)
                 {
                     state.BlockedReason = file.RejectedReason;
@@ -2603,7 +2596,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <param name="locked">True con l'analisi partita e i tipi già riconosciuti</param>
         private void PrepareFile(TranslationProjectFile file, bool locked)
         {
-            SubtitleTranslationDocument document = TranslationFilePreparer.Prepare(file, this._project.SourceLanguage, this._project.Styles, this._project.Stretches, locked);
+            SubtitleTranslationDocument document = TranslationFilePreparer.Prepare(file, this._project.Styles, this._project.Stretches, locked);
             if (document != null)
             {
                 this._documents[file.Id] = document;

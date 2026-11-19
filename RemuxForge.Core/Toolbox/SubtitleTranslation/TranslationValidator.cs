@@ -11,8 +11,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
     /// Validazione deterministica delle traduzioni consegnate dal modello e delle modifiche dell'utente: forma della consegna,
-    /// id, testo, a capo, segni dei tratti formattati, caratteri riservati del formato, gruppi di frase spezzata e termini del
-    /// glossario; i caratteri invisibili spuri e, a richiesta, segni e caratteri riservati sbagliati li ripara il codice
+    /// id, testo, a capo, segni dei tratti formattati, caratteri riservati del formato e termini del glossario; i caratteri
+    /// invisibili spuri e, a richiesta, segni e caratteri riservati sbagliati li ripara il codice
     /// </summary>
     public class TranslationValidator
     {
@@ -62,9 +62,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>Carattere invisibile di formato (spazio a larghezza zero e simili) che il sorgente non ha, tolto dal codice</summary>
         public const string INVISIBLE_CHAR = "INVISIBLE_CHAR";
-
-        /// <summary>Battuta valida di un gruppo con un'altra battuta respinta</summary>
-        public const string GROUP_INCOMPLETE = "GROUP_INCOMPLETE";
 
         /// <summary>Resa del glossario assente nella traduzione</summary>
         public const string GLOSSARY_MISSING = "GLOSSARY_MISSING";
@@ -183,7 +180,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Valida una consegna di submit_translation sulle battute richieste
         /// </summary>
         /// <param name="requestedIds">Id richiesti in ordine di tempo, l'ordine dell'esito e dei ritentativi</param>
-        /// <param name="cues">Battute che contengono gli id richiesti, con gruppi e ricette</param>
+        /// <param name="cues">Battute che contengono gli id richiesti, con le ricette</param>
         /// <param name="submissions">Argomenti delle chiamate submit_translation della risposta, nell'ordine; si usa la prima leggibile</param>
         /// <param name="repairIds">Id che hanno già avuto il loro ritentativo: segni, caratteri riservati e consegne doppie si riparano
         /// invece di respingerli. Senza la forma dei segni, o coi segni fuori ordine, resta il testo senza formattazione; altrimenti si
@@ -269,7 +266,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
             }
 
-            // Battute: id, testo, segni, caratteri riservati; l'esito tiene la lista a cui si aggiungono gruppo e glossario
+            // Battute: id, testo, segni, caratteri riservati; l'esito tiene la lista a cui si aggiunge il glossario
             Dictionary<int, List<TranslationValidationIssue>> issues = new Dictionary<int, List<TranslationValidationIssue>>();
             Dictionary<int, CueValidationResult> results = new Dictionary<int, CueValidationResult>();
             foreach (int id in requested)
@@ -312,48 +309,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 results[id] = new CueValidationResult(id, text, cueIssues);
             }
 
-            // Gruppi: una battuta respinta per un errore suo rimanda tutto il gruppo, e il messaggio cita lei
-            HashSet<int> rejected = new HashSet<int>();
+            // Glossario sulle battute valide
             foreach (int id in requested)
             {
-                if (results[id].HasErrors)
-                    rejected.Add(id);
-            }
-            foreach (int id in requested)
-            {
-                SubtitleCue cue = byId[id];
-                if (!cue.Group.HasValue || rejected.Contains(id))
-                    continue;
-                foreach (int other in requested)
-                {
-                    if (other != id && byId[other].Group == cue.Group && rejected.Contains(other))
-                    {
-                        issues[id].Add(Issue(id, GROUP_INCOMPLETE, IssueSeverity.Error,
-                            "cue " + other + " of group g" + cue.Group.Value + " was rejected; deliver the whole group again.",
-                            "group", cue.Group.Value.ToString(CultureInfo.InvariantCulture)));
-                        break;
-                    }
-                }
-            }
-
-            // Glossario sulle battute valide: un gruppo si confronta intero
-            HashSet<int> checkedIds = new HashSet<int>();
-            foreach (int id in requested)
-            {
-                if (checkedIds.Contains(id) || results[id].HasErrors)
-                    continue;
-                List<SubtitleCue> scope = new List<SubtitleCue>();
-                List<string> scopeTexts = new List<string>();
-                foreach (int member in requested)
-                {
-                    if (member == id || (byId[id].Group.HasValue && byId[member].Group == byId[id].Group))
-                    {
-                        scope.Add(byId[member]);
-                        scopeTexts.Add(results[member].Text);
-                        checkedIds.Add(member);
-                    }
-                }
-                this.AddGlossaryWarnings(scope, scopeTexts, issues);
+                if (!results[id].HasErrors)
+                    this.AddGlossaryWarnings(byId[id], results[id].Text, issues[id]);
             }
 
             List<CueValidationResult> ordered = new List<CueValidationResult>();
@@ -364,7 +324,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Valida il testo scritto dall'utente per una battuta: stessi controlli della consegna, senza quelli sugli id e sul gruppo
+        /// Valida il testo scritto dall'utente per una battuta: stessi controlli della consegna, senza quelli sugli id
         /// </summary>
         /// <param name="cue">Battuta modificata</param>
         /// <param name="text">Testo scritto dall'utente</param>
@@ -375,11 +335,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             string normalizedText = this.ValidateText(cue, text ?? "", cueIssues, false, false);
             CueValidationResult result = new CueValidationResult(cue.Id.Value, normalizedText, cueIssues);
             if (!result.HasErrors)
-            {
-                Dictionary<int, List<TranslationValidationIssue>> issues = new Dictionary<int, List<TranslationValidationIssue>>();
-                issues[cue.Id.Value] = cueIssues;
-                this.AddGlossaryWarnings(new List<SubtitleCue> { cue }, new List<string> { normalizedText }, issues);
-            }
+                this.AddGlossaryWarnings(cue, normalizedText, cueIssues);
 
             return result;
         }
@@ -821,41 +777,20 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Aggiunge gli avvisi del glossario a un gruppo o a una battuta sola: il termine si cerca nel sorgente unito, la resa nella
-        /// traduzione unita, e l'avviso va sulle battute il cui sorgente contiene il termine, sulla prima se il termine le scavalca
+        /// Aggiunge gli avvisi del glossario a una battuta: un termine del sorgente senza la sua resa nella traduzione
         /// </summary>
-        /// <param name="scope">Battute confrontate insieme, in ordine di id</param>
-        /// <param name="texts">Testi normalizzati delle battute</param>
-        /// <param name="issues">Esiti per id</param>
-        private void AddGlossaryWarnings(List<SubtitleCue> scope, List<string> texts, Dictionary<int, List<TranslationValidationIssue>> issues)
+        /// <param name="cue">Battuta sorgente</param>
+        /// <param name="text">Testo normalizzato della traduzione</param>
+        /// <param name="issues">Esiti della battuta</param>
+        private void AddGlossaryWarnings(SubtitleCue cue, string text, List<TranslationValidationIssue> issues)
         {
-            StringBuilder source = new StringBuilder();
-            StringBuilder translation = new StringBuilder();
-            string[] sources = new string[scope.Count];
-            for (int i = 0; i < scope.Count; i++)
-            {
-                sources[i] = GlossaryPlain(scope[i].CleanText);
-                source.Append(sources[i]).Append(' ');
-                translation.Append(GlossaryPlain(texts[i])).Append(' ');
-            }
-            string joinedSource = source.ToString();
-            string joinedTranslation = translation.ToString().Normalize(NormalizationForm.FormD);
-
+            string source = GlossaryPlain(cue.CleanText);
+            string translation = GlossaryPlain(text).Normalize(NormalizationForm.FormD);
             foreach (TermPatterns term in this._terms)
             {
-                if (!term.SourcePattern.IsMatch(joinedSource) || term.TargetPattern.IsMatch(joinedTranslation))
-                    continue;
-                List<int> holders = new List<int>();
-                for (int i = 0; i < scope.Count; i++)
+                if (term.SourcePattern.IsMatch(source) && !term.TargetPattern.IsMatch(translation))
                 {
-                    if (term.SourcePattern.IsMatch(sources[i]))
-                        holders.Add(scope[i].Id.Value);
-                }
-                if (holders.Count == 0)
-                    holders.Add(scope[0].Id.Value);
-                foreach (int id in holders)
-                {
-                    issues[id].Add(Issue(id, GLOSSARY_MISSING, IssueSeverity.Warning,
+                    issues.Add(Issue(cue.Id.Value, GLOSSARY_MISSING, IssueSeverity.Warning,
                         "source has \"" + term.Source + "\", translation lacks \"" + term.Target + "\"", "source", term.Source, "target", term.Target));
                 }
             }

@@ -251,7 +251,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Consegne di un gruppo di id: la prima, poi i ritentativi sulle sole respinte, coi gruppi interi. Una battuta con meno a
+        /// Consegne di un gruppo di id: la prima, poi i ritentativi sulle sole respinte. Una battuta con meno a
         /// capo del sorgente segna di solito una consegna slittata: si tengono le battute prima di lei e si richiede da lei alla fine;
         /// se la stessa battuta ci ricade, si chiede da sola e le battute dopo diventano una consegna a sé. Una battuta respinta per
         /// altro ha fino a due ritentativi, poi si chiede da sola; segni, caratteri riservati e consegne doppie dopo il primo
@@ -585,32 +585,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         protected void RaiseChanged()
         {
             this.Changed?.Invoke();
-        }
-
-        /// <summary>
-        /// Allarga gli id ai gruppi di frase spezzata interi, in ordine
-        /// </summary>
-        /// <param name="state">Stato del file</param>
-        /// <param name="ids">Id di partenza</param>
-        /// <returns>Id coi gruppi interi, nell'ordine di tempo delle battute congelate</returns>
-        protected static List<int> ExpandToGroups(TranslationJobFileState state, IEnumerable<int> ids)
-        {
-            HashSet<int> wanted = new HashSet<int>(ids);
-            HashSet<int> groups = new HashSet<int>();
-            foreach (FrozenCue cue in state.Cues)
-            {
-                if (wanted.Contains(cue.Id) && cue.Group.HasValue)
-                    groups.Add(cue.Group.Value);
-            }
-
-            List<int> expanded = new List<int>();
-            foreach (FrozenCue cue in state.Cues)
-            {
-                if (wanted.Contains(cue.Id) || (cue.Group.HasValue && groups.Contains(cue.Group.Value)))
-                    expanded.Add(cue.Id);
-            }
-
-            return expanded;
         }
 
         /// <summary>

@@ -100,7 +100,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 if (!cue.Id.HasValue)
                     continue;
-                state.Cues.Add(new FrozenCue { Id = cue.Id.Value, Group = cue.Group, Text = cue.CleanText, Kind = cue.Kind });
+                state.Cues.Add(new FrozenCue { Id = cue.Id.Value, Text = cue.CleanText, Kind = cue.Kind });
                 if (!shared.Contains(cue.Id.Value))
                     own.Add(cue);
             }
@@ -429,7 +429,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     }
                     else
                     {
-                        // Una battuta o un solo gruppo troncati non si dividono più: restano da rivedere senza testo
+                        // Una battuta sola troncata non si divide più: resta da rivedere senza testo
                         if (incomplete)
                         {
                             foreach (int id in ids)
@@ -628,23 +628,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Costruttore
         /// </summary>
         /// <param name="state">Stato del file nel job</param>
-        /// <param name="document">Documento preparato, con l'hash del job; prende i gruppi congelati nel job</param>
+        /// <param name="document">Documento preparato, con l'hash del job</param>
         /// <param name="fileName">Nome del file sorgente</param>
         public TranslationRunFile(TranslationJobFileState state, SubtitleTranslationDocument document, string fileName)
         {
             this.State = state;
             this.Document = document;
             this.FileName = fileName;
-
-            // Validatore e pianificatore vedono i gruppi del job, anche se le regole dei gruppi sono cambiate dopo la sua creazione
-            Dictionary<int, int?> groups = new Dictionary<int, int?>();
-            foreach (FrozenCue cue in state.Cues)
-                groups[cue.Id] = cue.Group;
-            foreach (SubtitleCue cue in document.Cues)
-            {
-                if (cue.Id.HasValue)
-                    cue.Group = groups.GetValueOrDefault(cue.Id.Value);
-            }
         }
 
         #endregion

@@ -381,7 +381,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         {
             this.CueCount = 0;
             this.ExcludedCount = 0;
-            this.GroupCount = 0;
             this.NumberedSourceSha256 = "";
             this.PreparerVersion = 0;
             this.PreparedAt = DateTimeOffset.Now;
@@ -400,11 +399,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Battute lasciate al codice
         /// </summary>
         public int ExcludedCount { get; set; }
-
-        /// <summary>
-        /// Gruppi di frase spezzata
-        /// </summary>
-        public int GroupCount { get; set; }
 
         /// <summary>
         /// SHA-256 del sorgente numerato in UTF-8
