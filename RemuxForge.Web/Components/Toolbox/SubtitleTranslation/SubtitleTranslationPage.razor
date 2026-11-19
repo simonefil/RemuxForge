@@ -1914,7 +1914,7 @@
     }
 
     /// <summary>
-    /// Stato mostrato di un job: in traduzione, in revisione AI, in pausa, interrotto, tradotto, da rivedere
+    /// Stato mostrato di un job: in traduzione, in revisione AI, in pausa, interrotto, tradotto, da rivedere, esportato
     /// </summary>
     /// <param name="job">Job</param>
     /// <returns>Testo del badge</returns>
@@ -1928,7 +1928,7 @@
         if (job.Phase == TranslationJobPhase.Review)
             return AppText.T("web.toolbox.subtitleTranslation.jobState.translated");
         if (job.Phase == TranslationJobPhase.UserReview)
-            return AppText.T("web.toolbox.subtitleTranslation.jobState.userReview");
+            return AppText.T(job.Exported ? "web.toolbox.subtitleTranslation.jobState.exported" : "web.toolbox.subtitleTranslation.jobState.userReview");
 
         return AppText.T("web.toolbox.subtitleTranslation.steps.translation");
     }

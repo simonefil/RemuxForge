@@ -1008,6 +1008,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     if (this._job.Phase == TranslationJobPhase.UserReview && master.ReviewBlocks != null && TranslationReviewer.AddStretchBlocks(this._job, master))
                     {
                         this._job.Phase = TranslationJobPhase.Review;
+                        this._job.Exported = false;
                         if (this._project.ReachedStep > TranslationProjectStep.Review)
                             this._project.ReachedStep = TranslationProjectStep.Review;
                         review = true;
@@ -1098,7 +1099,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <summary>
         /// Salva la modifica a mano di una battuta: stesso validatore delle consegne, avvisi del glossario ricalcolati, segnale
         /// «Modificata a mano» al posto della correzione della revisione AI; un testo con errori non si salva. In una tratta
-        /// condivisa la modifica va in tutte le copie
+        /// condivisa la modifica va in tutte le copie. Il lavoro esportato torna da rivedere finché non si esporta di nuovo
         /// </summary>
         /// <param name="fileId">File del job</param>
         /// <param name="id">Battuta</param>
@@ -1144,6 +1145,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 translation.SetText(result.Text, result.GetGlossaryWarnings());
                 if (!translation.Signals.Contains(TranslationCueSignal.EditedByUser))
                     translation.Signals.Add(TranslationCueSignal.EditedByUser);
+                this._job.Exported = false;
 
                 // Il testo è dell'utente: la correzione e la revisione AI non riuscita non lo descrivono più, e la tratta le perde in
                 // tutte le copie
@@ -1219,7 +1221,8 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <summary>
         /// Scrive i sottotitoli tradotti con la barra Uscita, con la card occupata: il file dell'export precedente, non cambiato, si
         /// sovrascrive, un altro nome occupato prende il suffisso prima della lingua; un file non scritto tiene il motivo nella sua
-        /// riga e gli altri proseguono. Le battute restano modificabili, e un nuovo export riscrive i file
+        /// riga e gli altri proseguono. Con tutti i file scritti il lavoro è esportato. Le battute restano modificabili, e un nuovo
+        /// export riscrive i file
         /// </summary>
         /// <returns>Righe coi percorsi scritti o il motivo, null se l'export non può partire</returns>
         public List<TranslationExportRow> ExportSubtitles()
@@ -1277,6 +1280,12 @@ namespace RemuxForge.Web.Services.Toolbox
                     }
                 }
 
+                // Esportato solo con tutti i file scritti
+                lock (this.StateLock)
+                {
+                    this._job.Exported = written == rows.Count;
+                    this._jobStore.Save(this._job);
+                }
                 this.AppendLog(AppText.Count(TEXT_PREFIX + ".subtitlesExported", written));
                 return rows;
             }

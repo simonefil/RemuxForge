@@ -1845,6 +1845,7 @@
   "web.toolbox.subtitleTranslation.jobState.translated": "Translated",
   "web.toolbox.subtitleTranslation.jobState.reviewing": "AI review",
   "web.toolbox.subtitleTranslation.jobState.userReview": "To review",
+  "web.toolbox.subtitleTranslation.jobState.exported": "Exported",
   "web.toolbox.subtitleTranslation.fileState.Pending": "Waiting",
   "web.toolbox.subtitleTranslation.fileState.InProgress": "In progress",
   "web.toolbox.subtitleTranslation.fileState.Completed": "Completed",

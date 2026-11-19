@@ -152,6 +152,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.DisabledCapabilities = new List<string>();
             this.ReviewMode = TranslationReviewMode.Full;
             this.SharedStretches = new List<SharedStretch>();
+            this.Exported = false;
         }
 
         #endregion
@@ -272,6 +273,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Tratte ripetute fra i file, tradotte una volta sola; vuoto nei job creati prima delle tratte
         /// </summary>
         public List<SharedStretch> SharedStretches { get; set; }
+
+        /// <summary>
+        /// True dopo un export che ha scritto tutti i file, finché una battuta non cambia; falso se il file non lo porta
+        /// </summary>
+        public bool Exported { get; set; }
 
         #endregion
     }
