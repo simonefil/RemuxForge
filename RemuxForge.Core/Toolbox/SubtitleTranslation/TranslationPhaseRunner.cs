@@ -247,7 +247,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             // Il sorgente numerato del prefisso conta una volta ogni cartello in movimento: i suoi ridisegni sono copie
             return new FileContext(file, TranslationRequestBuilder.CreateTranslationPrefix(this._context, this._job.Glossary, file.State.SourceFileName,
                 file.State.Cues.FindAll(c => !copies.Contains(c.Id))),
-                new TranslationValidator(file.Document.Format, this._job.Glossary, file.State.Cues), shared);
+                new TranslationValidator(file.Document.Format, this._job.Glossary), shared);
         }
 
         /// <summary>
@@ -348,22 +348,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         submissions.Add(AiOAuthFlow.GetString(item, "arguments"));
                 }
 
-                // Traduzioni già accettate del file, per il glossario sulle vicine fuori dalla consegna: quelle dell'unità sono le più nuove
-                Dictionary<int, string> accepted = new Dictionary<int, string>();
-                lock (this._lock)
-                {
-                    foreach (TranslatedCueState translation in context.File.State.Translations)
-                    {
-                        if (translation.Text != null)
-                            accepted[translation.Id] = translation.Text;
-                    }
-                }
-                foreach (KeyValuePair<int, string> pair in work.Accepted)
-                    accepted[pair.Key] = pair.Value;
-
                 // Segni, caratteri riservati e consegne doppie si riparano sulle battute che hanno già avuto un ritentativo
                 TranslationValidationResult result = context.Validator.Validate(pending, context.GetLiveCues(pending), submissions,
-                    pending.FindAll(id => work.Get(id).Rejections.Count > 0), accepted);
+                    pending.FindAll(id => work.Get(id).Rejections.Count > 0));
 
                 // Prima battuta con meno a capo del sorgente nell'ordine crescente di id, quello in cui il modello consegna: le battute
                 // dopo di lei, slittate, si richiedono senza giudicarle
