@@ -92,7 +92,7 @@ namespace RemuxForge.Web.Services.Toolbox
         private TranslationProject _project;
 
         /// <summary>
-        /// Job attivo del progetto aperto, null prima di «Avvia traduzione»
+        /// Job attivo del progetto aperto, null prima dell'avvio del giro
         /// </summary>
         private TranslationJob _job;
 
@@ -396,7 +396,7 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Cambia la modalità della revisione AI, fino a «Avvia traduzione»
+        /// Cambia la modalità della revisione AI, fino all'avvio del giro
         /// </summary>
         /// <param name="mode">Nessuna o completa</param>
         public void SetReviewMode(TranslationReviewMode mode)
@@ -660,7 +660,7 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Salva le modifiche fatte al glossario dalla pagina; un glossario approvato torna in bozza. Dopo «Avvia traduzione» il
+        /// Salva le modifiche fatte al glossario dalla pagina; un glossario approvato torna in bozza. Dopo l'avvio del giro il
         /// glossario resta com'è
         /// </summary>
         /// <param name="change">Modifica, eseguita sotto il lock dello stato</param>
@@ -681,26 +681,36 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Approva il glossario e abilita il passo Traduzione
+        /// Approva il glossario, abilita il passo Traduzione e avvia il giro. Un glossario già approvato senza job, rimasto da una
+        /// chiusura dell'app o da un avvio non riuscito, avvia solo il giro
         /// </summary>
         public void ApproveGlossary()
         {
+            bool approved = false;
             lock (this.StateLock)
             {
                 if (!this.CanApprove)
                     return;
 
                 Glossary glossary = this._project.Glossary;
-                glossary.Status = GlossaryStatus.Approved;
-                glossary.Revision++;
-                glossary.ApprovedAt = DateTimeOffset.Now;
-                if (this._project.ReachedStep < TranslationProjectStep.Translation)
-                    this._project.ReachedStep = TranslationProjectStep.Translation;
-                this._store.Save(this._project);
+                if (glossary.Status == GlossaryStatus.Draft)
+                {
+                    glossary.Status = GlossaryStatus.Approved;
+                    glossary.Revision++;
+                    glossary.ApprovedAt = DateTimeOffset.Now;
+                    if (this._project.ReachedStep < TranslationProjectStep.Translation)
+                        this._project.ReachedStep = TranslationProjectStep.Translation;
+                    this._store.Save(this._project);
+                    approved = true;
+                }
             }
 
-            this.AppendLog(AppText.F(TEXT_PREFIX + ".glossaryApproved", this._project.Glossary.Revision));
-            this.NotifyRecordsChanged();
+            if (approved)
+            {
+                this.AppendLog(AppText.F(TEXT_PREFIX + ".glossaryApproved", this._project.Glossary.Revision));
+                this.NotifyRecordsChanged();
+            }
+            this.StartJob();
         }
 
         /// <summary>
@@ -959,7 +969,8 @@ namespace RemuxForge.Web.Services.Toolbox
 
                 // Una tratta con un'altra prima occorrenza, promossa o nata dal taglio, va a un file che l'aveva solo in copia. Il
                 // file prende il blocco di revisione concluso del file tolto; un blocco da fare lo sceglie la revisione AI, anche a
-                // revisione AI finita, e allora il giro torna alla revisione AI. Gli stati dei file si salvano prima del job
+                // revisione AI finita, e allora il giro torna alla revisione AI e la revisione dell'utente va approvata di nuovo. Gli
+                // stati dei file si salvano prima del job
                 foreach (SharedStretch stretch in this._job.SharedStretches)
                 {
                     string before;
@@ -984,6 +995,8 @@ namespace RemuxForge.Web.Services.Toolbox
                     if (this._job.Phase == TranslationJobPhase.UserReview && master.ReviewBlocks != null && TranslationReviewer.AddStretchBlocks(this._job, master))
                     {
                         this._job.Phase = TranslationJobPhase.Review;
+                        if (this._project.ReachedStep > TranslationProjectStep.Review)
+                            this._project.ReachedStep = TranslationProjectStep.Review;
                         review = true;
                     }
                     this._jobStore.SaveFile(this._job.Id, master);
@@ -1142,9 +1155,9 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Apre il passo Esporta dalla revisione dell'utente
+        /// Approva la revisione dell'utente: il progetto raggiunge il passo Esporta
         /// </summary>
-        public void AdvanceToExport()
+        public void ApproveReview()
         {
             lock (this.StateLock)
             {
@@ -1193,7 +1206,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <summary>
         /// Scrive i sottotitoli tradotti con la barra Uscita, con la card occupata: il file dell'export precedente, non cambiato, si
         /// sovrascrive, un altro nome occupato prende il suffisso prima della lingua; un file non scritto tiene il motivo nella sua
-        /// riga e gli altri proseguono. Il progetto resta nella revisione dell'utente
+        /// riga e gli altri proseguono. Le battute restano modificabili, e un nuovo export riscrive i file
         /// </summary>
         /// <returns>Righe coi percorsi scritti o il motivo, null se l'export non può partire</returns>
         public List<TranslationExportRow> ExportSubtitles()
@@ -1363,16 +1376,15 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Stima della traduzione prima di «Avvia traduzione», per caratteri come le chiamate B la manderebbero, con le tratte
-        /// condivise contate una volta sola e la cache come la usa l'accesso configurato
+        /// Stima della traduzione prima dell'approvazione del glossario, che avvia il giro, per caratteri come le chiamate B la
+        /// manderebbero, con le tratte condivise contate una volta sola e la cache come la usa l'accesso configurato
         /// </summary>
-        /// <returns>Stima, null col job già creato, senza glossario approvato o con file non preparati</returns>
+        /// <returns>Stima, null col job già creato, senza glossario o con file non preparati</returns>
         public TranslationEstimate EstimateTranslation()
         {
             lock (this.StateLock)
             {
-                if (this._project == null || this._job != null || this._project.Glossary == null || this._project.Glossary.Status != GlossaryStatus.Approved ||
-                    this._documents.Count != this._project.Files.Count)
+                if (this._project == null || this._job != null || this._project.Glossary == null || this._documents.Count != this._project.Files.Count)
                     return null;
 
                 AiConnectionMode accessMode = this.AccessMode;
@@ -1380,7 +1392,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 if (this._translationEstimate != null && this._translationEstimateKey == key)
                     return this._translationEstimate;
 
-                // Tratte e stati dei file come li crea «Avvia traduzione», senza salvarli
+                // Tratte e stati dei file come li crea l'avvio del giro, senza salvarli
                 List<SharedStretch> stretches = SharedStretchDetector.Detect(this.GetDocuments());
                 List<TranslationRunFile> files = new List<TranslationRunFile>();
                 foreach (TranslationProjectFile file in this._project.Files)
@@ -2779,7 +2791,8 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// True se il glossario proposto si può approvare: nessun termine con originale o resa vuota
+        /// True se il glossario proposto si può approvare, o quello approvato avviare, finché il giro non c'è: nessun termine con
+        /// originale o resa vuota
         /// </summary>
         public bool CanApprove
         {
@@ -2788,14 +2801,14 @@ namespace RemuxForge.Web.Services.Toolbox
                 lock (this.StateLock)
                 {
                     return this._project != null && !this.IsBusy && this._project.Analysis != null && this._project.Analysis.Status == TranslationAnalysisStatus.Completed &&
-                        this._project.Glossary != null && this._project.Glossary.Status == GlossaryStatus.Draft &&
+                        this._project.Glossary != null && this._job == null &&
                         !this._project.Glossary.Terms.Exists(t => string.IsNullOrWhiteSpace(t.Source) || string.IsNullOrWhiteSpace(t.Target));
                 }
             }
         }
 
         /// <summary>
-        /// Job attivo del progetto aperto, null prima di «Avvia traduzione»
+        /// Job attivo del progetto aperto, null prima dell'avvio del giro
         /// </summary>
         public TranslationJob Job
         {

@@ -201,7 +201,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public TranslationProjectStep ReachedStep { get; set; }
 
         /// <summary>
-        /// Job attivo del progetto, null prima di «Avvia traduzione»
+        /// Job attivo del progetto, null prima dell'avvio del giro
         /// </summary>
         public string ActiveJobId { get; set; }
 

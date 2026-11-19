@@ -278,37 +278,15 @@
         else if (_step == STEP_TRANSLATION)
         {
             TranslationJob job = Orchestrator.Job;
-            @if (job == null)
+            @if (job == null && busy)
             {
-                TranslationEstimate translationEstimate = Orchestrator.EstimateTranslation();
-                @if (translationEstimate != null)
-                {
-                    <div class="rf-tool-options">
-                        <div class="rf-tool-options-row rf-translation-estimate">
-                            <span class="rf-tool-label">@AppText.T("web.toolbox.subtitleTranslation.estimate")</span>
-                            <span>
-                                @AppText.Count("web.toolbox.subtitleTranslation.filesCount", translationEstimate.Files)
-                                · @AppText.Count("web.toolbox.subtitleTranslation.cuesCount", translationEstimate.Cues, translationEstimate.Cues.ToString("N0", CultureInfo.CurrentCulture))
-                                · @AppText.Count("web.toolbox.subtitleTranslation.blocksCount", translationEstimate.Blocks)
-                                · @AppText.F("web.toolbox.subtitleTranslation.estimateInput", translationEstimate.InputTokens.ToString("N0", CultureInfo.CurrentCulture))
-                                @AppText.F("web.toolbox.subtitleTranslation.estimateUncached", (translationEstimate.InputTokens - translationEstimate.CachedTokens).ToString("N0", CultureInfo.CurrentCulture))
-                                · @AppText.F("web.toolbox.subtitleTranslation.estimateOutput", translationEstimate.OutputTokens.ToString("N0", CultureInfo.CurrentCulture))
-                                @if (translationEstimate.ReviewInputTokens.HasValue)
-                                {
-                                    @(" · " + AppText.F("web.toolbox.subtitleTranslation.estimateReview", translationEstimate.ReviewInputTokens.Value.ToString("N0", CultureInfo.CurrentCulture)) + " "
-                                        + AppText.F("web.toolbox.subtitleTranslation.estimateUncached", (translationEstimate.ReviewInputTokens.Value - translationEstimate.ReviewCachedTokens.Value).ToString("N0", CultureInfo.CurrentCulture))
-                                        + ", " + AppText.F("web.toolbox.subtitleTranslation.estimateOutput", translationEstimate.ReviewOutputTokens.Value.ToString("N0", CultureInfo.CurrentCulture)))
-                                }
-                            </span>
-                        </div>
-                    </div>
-                }
-                else
-                {
-                    <RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.5rem" class="rf-tool-empty">
-                        <RadzenText TextStyle="TextStyle.H6" TagName="TagName.H3">@AppText.T("web.toolbox.subtitleTranslation.translationEmpty")</RadzenText>
-                    </RadzenStack>
-                }
+                <div class="rf-translation-thinking"><AiThinkingComponent Phrase="@Orchestrator.Phrase" Detail="@Orchestrator.Detail" StartedAt="@Orchestrator.CallStartedAt" /></div>
+            }
+            else if (job == null)
+            {
+                <RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.5rem" class="rf-tool-empty">
+                    <RadzenText TextStyle="TextStyle.H6" TagName="TagName.H3">@AppText.T("web.toolbox.subtitleTranslation.translationEmpty")</RadzenText>
+                </RadzenStack>
             }
             else
             {
@@ -603,6 +581,30 @@
             {
                 Glossary glossary = project.Glossary;
                 string[] forms = TranslationRequestBuilder.GetAddressForms(project.TargetLanguage);
+                TranslationEstimate translationEstimate = glossaryLocked ? null : Orchestrator.EstimateTranslation();
+
+                @if (translationEstimate != null)
+                {
+                    <div class="rf-tool-options">
+                        <div class="rf-tool-options-row rf-translation-estimate">
+                            <span class="rf-tool-label">@AppText.T("web.toolbox.subtitleTranslation.estimate")</span>
+                            <span>
+                                @AppText.Count("web.toolbox.subtitleTranslation.filesCount", translationEstimate.Files)
+                                · @AppText.Count("web.toolbox.subtitleTranslation.cuesCount", translationEstimate.Cues, translationEstimate.Cues.ToString("N0", CultureInfo.CurrentCulture))
+                                · @AppText.Count("web.toolbox.subtitleTranslation.blocksCount", translationEstimate.Blocks)
+                                · @AppText.F("web.toolbox.subtitleTranslation.estimateInput", translationEstimate.InputTokens.ToString("N0", CultureInfo.CurrentCulture))
+                                @AppText.F("web.toolbox.subtitleTranslation.estimateUncached", (translationEstimate.InputTokens - translationEstimate.CachedTokens).ToString("N0", CultureInfo.CurrentCulture))
+                                · @AppText.F("web.toolbox.subtitleTranslation.estimateOutput", translationEstimate.OutputTokens.ToString("N0", CultureInfo.CurrentCulture))
+                                @if (translationEstimate.ReviewInputTokens.HasValue)
+                                {
+                                    @(" · " + AppText.F("web.toolbox.subtitleTranslation.estimateReview", translationEstimate.ReviewInputTokens.Value.ToString("N0", CultureInfo.CurrentCulture)) + " "
+                                        + AppText.F("web.toolbox.subtitleTranslation.estimateUncached", (translationEstimate.ReviewInputTokens.Value - translationEstimate.ReviewCachedTokens.Value).ToString("N0", CultureInfo.CurrentCulture))
+                                        + ", " + AppText.F("web.toolbox.subtitleTranslation.estimateOutput", translationEstimate.ReviewOutputTokens.Value.ToString("N0", CultureInfo.CurrentCulture)))
+                                }
+                            </span>
+                        </div>
+                    </div>
+                }
 
                 <RadzenTabs class="rf-tool-tabs rf-translation-tabs" RenderMode="TabRenderMode.Client" SelectedIndex="@_tab" Change="@((int index) => { _pending = null; _tab = index; })">
                     <Tabs>
@@ -1063,7 +1065,12 @@
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.approve"), "", "check", allSurfaces, UiCommandMenuSection.Actions, busy || !this.Orchestrator.CanApprove,
                 () =>
                 {
+                    // Senza il modello della traduzione il glossario non si approva: l'approvazione avvia il giro
+                    if (!this.CheckModel(TranslationJobPhase.Translation))
+                        return;
+
                     this._pending = null;
+                    this._step = STEP_TRANSLATION;
                     this.Orchestrator.ApproveGlossary();
                     this.Notify(NotificationSeverity.Success, AppText.T("web.toolbox.subtitleTranslation.notifyApproved"), AppText.F("web.toolbox.subtitleTranslation.revision", this.Orchestrator.Project.Glossary.Revision));
                 })
@@ -1085,28 +1092,33 @@
         }
         else
         {
-            // Avvia traduzione senza job; dopo una fermata Riprova per un errore, Riprendi per Stop, chiusura o limite d'uso, sul
-            // passo della fase fermata
+            // Dopo una fermata Riprova per un errore, Riprendi per Stop, chiusura o limite d'uso, sul passo della fase fermata
             TranslationJob job = this.Orchestrator.Job;
             TranslationJobPhase stepPhase = this._step == STEP_TRANSLATION ? TranslationJobPhase.Translation : TranslationJobPhase.Review;
             bool failed = job != null && job.Pause != null && (job.Pause.Reason == TranslationStopReason.AccessError || job.Pause.Reason == TranslationStopReason.ServiceError);
-            if (this._step != STEP_EXPORT && (job == null ? this._step == STEP_TRANSLATION : job.Phase == stepPhase))
+            if (this._step != STEP_EXPORT && job != null && job.Phase == stepPhase)
             {
-                string label = job == null ? "web.toolbox.subtitleTranslation.startTranslation" : failed ? "web.toolbox.subtitleTranslation.retry" : "web.toolbox.subtitleTranslation.resume";
-                commands.Add(new UiCommandDefinition(AppText.T(label), "F10", job == null ? "translate" : failed ? "refresh" : "play_arrow", allSurfaces, UiCommandMenuSection.Actions,
-                    busy || !this.Orchestrator.CanStartJob, null)
+                commands.Add(new UiCommandDefinition(AppText.T(failed ? "web.toolbox.subtitleTranslation.retry" : "web.toolbox.subtitleTranslation.resume"), "F10", failed ? "refresh" : "play_arrow",
+                    allSurfaces, UiCommandMenuSection.Actions, busy || !this.Orchestrator.CanStartJob, null)
                 {
                     Callback = this.StartJob,
                     ToolbarOrder = 10
                 });
             }
 
-            if (this._step == STEP_REVIEW && job != null && job.Phase == TranslationJobPhase.UserReview)
+            if (this._step == STEP_REVIEW && job != null && job.Phase == TranslationJobPhase.UserReview && project.ReachedStep < TranslationProjectStep.Export)
             {
-                commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.next"), "", "arrow_forward", allSurfaces, UiCommandMenuSection.Actions,
-                    busy || !this.Orchestrator.CanEditCues,
-                    () => { this.CancelCueEditing(); this.Orchestrator.AdvanceToExport(); this._step = STEP_EXPORT; this.OnStateChanged.InvokeAsync(); })
+                commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.approve"), "", "check", allSurfaces, UiCommandMenuSection.Actions,
+                    busy || !this.Orchestrator.CanEditCues, null)
                 {
+                    AsyncCallback = () =>
+                    {
+                        // L'approvazione apre il passo Esporta e scrive i sottotitoli
+                        this.CancelCueEditing();
+                        this.Orchestrator.ApproveReview();
+                        this._step = STEP_EXPORT;
+                        return this.ExportSubtitlesAsync();
+                    },
                     ToolbarOrder = 13
                 });
             }

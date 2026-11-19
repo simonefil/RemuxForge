@@ -660,7 +660,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     }
 
     /// <summary>
-    /// Stima della traduzione prima di «Avvia traduzione», in token per caratteri
+    /// Stima della traduzione prima dell'approvazione del glossario, che avvia il giro, in token per caratteri
     /// </summary>
     public sealed class TranslationEstimate
     {

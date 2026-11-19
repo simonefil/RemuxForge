@@ -1767,7 +1767,6 @@
   "toolbox.subtitleTranslation.archive.hashMismatch": "Impronta diversa dal manifest: {0}",
   "toolbox.subtitleTranslation.archive.sourceInvalid": "Sorgente del file {0} mancante o diverso dal progetto",
   "toolbox.subtitleTranslation.archive.jobMismatch": "Job {0} incoerente col progetto",
-  "web.toolbox.subtitleTranslation.startTranslation": "Avvia traduzione",
   "web.toolbox.subtitleTranslation.importProject": "Importa progetto",
   "web.toolbox.subtitleTranslation.exportProject": "Esporta progetto",
   "web.toolbox.subtitleTranslation.importReplaceTitle": "Sostituisci progetto",
