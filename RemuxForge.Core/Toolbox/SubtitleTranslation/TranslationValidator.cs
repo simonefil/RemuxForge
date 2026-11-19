@@ -21,13 +21,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Nessuna chiamata submit_translation nella risposta</summary>
         public const string NO_SUBMISSION = "NO_SUBMISSION";
 
-        /// <summary>Argomenti non JSON, non oggetto o senza l'array translations</summary>
+        /// <summary>Argomenti non JSON, non oggetto o senza gli array translations e signs</summary>
         public const string ARGS_INVALID = "ARGS_INVALID";
 
-        /// <summary>Elemento di translations senza id intero o senza testo</summary>
+        /// <summary>Elemento di translations o signs senza id intero o senza testo</summary>
         public const string ENTRY_INVALID = "ENTRY_INVALID";
 
-        /// <summary>Id non richiesto</summary>
+        /// <summary>Id non richiesto nell'elenco che lo porta: un cartello in translations, un dialogo o una canzone in signs, o un id fuori dalla richiesta</summary>
         public const string ID_OUT_OF_RANGE = "ID_OUT_OF_RANGE";
 
         /// <summary>Id richiesto assente dalla consegna</summary>
@@ -54,7 +54,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Segno senza testo</summary>
         public const string MARK_EMPTY = "MARK_EMPTY";
 
-        /// <summary>Meno a capo del sorgente in una battuta consegnata insieme ad altre</summary>
+        /// <summary>Meno a capo del sorgente in un cartello consegnato insieme ad altri cartelli</summary>
         public const string LINE_BREAK_MISSING = "LINE_BREAK_MISSING";
 
         /// <summary>Carattere che il formato interpreterebbe</summary>
@@ -75,6 +75,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Nome del tool di consegna
         /// </summary>
         private const string SUBMIT_TOOL = "submit_translation";
+
+        /// <summary>
+        /// Elenco della consegna con dialoghi e canzoni
+        /// </summary>
+        private const string CUES_LIST = "translations";
+
+        /// <summary>
+        /// Elenco della consegna con i cartelli
+        /// </summary>
+        private const string SIGNS_LIST = "signs";
 
         #endregion
 
@@ -191,7 +201,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="requestedIds">Id richiesti in ordine di tempo, l'ordine dell'esito e dei ritentativi</param>
         /// <param name="cues">Battute che contengono gli id richiesti, con le ricette</param>
-        /// <param name="submissions">Argomenti delle chiamate submit_translation della risposta, nell'ordine; si usa la prima leggibile</param>
+        /// <param name="submissions">Argomenti delle chiamate submit_translation della risposta, nell'ordine; si usa la prima leggibile. Dialoghi
+        /// e canzoni stanno in translations, i cartelli in signs: una voce nell'elenco sbagliato si scarta e la sua battuta resta mancante</param>
         /// <param name="repairIds">Id che hanno già avuto il loro ritentativo: segni, caratteri riservati e consegne doppie si riparano
         /// invece di respingerli. Senza la forma dei segni, o coi segni fuori ordine, resta il testo senza formattazione; altrimenti si
         /// tolgono i segni in più e quelli vuoti, e un segno mancante resta senza la sua formattazione. Di una consegna doppia vale la
@@ -207,17 +218,21 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     byId[cue.Id.Value] = cue;
             }
             List<int> requested = new List<int>(requestedIds);
-            HashSet<int> requestedSet = new HashSet<int>(requested);
             foreach (int id in requested)
             {
                 if (!byId.ContainsKey(id))
                     throw new ArgumentException("La battuta richiesta " + id + " non è fra le battute date", nameof(requestedIds));
             }
 
-            // Intervalli degli id richiesti nella forma 1-60,62
-            string ranges = TranslationRequestBuilder.FormatRanges(requested);
+            // Id richiesti di ciascun elenco, coi loro intervalli nella forma 1-60,62
+            List<int> requestedSigns = requested.FindAll(id => byId[id].Kind == SubtitleCueKind.Sign);
+            Dictionary<string, HashSet<int>> requestedSets = new Dictionary<string, HashSet<int>>(StringComparer.Ordinal)
+            {
+                { CUES_LIST, new HashSet<int>(requested.FindAll(id => byId[id].Kind != SubtitleCueKind.Sign)) },
+                { SIGNS_LIST, new HashSet<int>(requestedSigns) }
+            };
 
-            // Consegna: la prima chiamata con un oggetto JSON e l'array translations
+            // Consegna: la prima chiamata con un oggetto JSON e i due array
             string deliveryCode = NO_SUBMISSION;
             string deliveryMessage = "no " + SUBMIT_TOOL + " call was received.";
             List<TranslationValidationIssue> entryIssues = new List<TranslationValidationIssue>();
@@ -225,7 +240,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             if (submissions != null && submissions.Count > 0)
             {
                 deliveryCode = ARGS_INVALID;
-                deliveryMessage = "arguments are not a JSON object with a translations array.";
+                deliveryMessage = "arguments are not a JSON object with a " + CUES_LIST + " array and a " + SIGNS_LIST + " array.";
             }
             for (int s = 0; submissions != null && s < submissions.Count && !string.IsNullOrEmpty(deliveryCode); s++)
             {
@@ -234,39 +249,45 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     using (JsonDocument document = JsonDocument.Parse(submissions[s] ?? ""))
                     {
                         JsonElement translations;
-                        if (document.RootElement.ValueKind != JsonValueKind.Object || !document.RootElement.TryGetProperty("translations", out translations)
-                            || translations.ValueKind != JsonValueKind.Array)
+                        JsonElement signs;
+                        if (document.RootElement.ValueKind != JsonValueKind.Object || !document.RootElement.TryGetProperty(CUES_LIST, out translations)
+                            || translations.ValueKind != JsonValueKind.Array || !document.RootElement.TryGetProperty(SIGNS_LIST, out signs) || signs.ValueKind != JsonValueKind.Array)
                             continue;
 
                         deliveryCode = "";
-                        int index = 0;
-                        foreach (JsonElement entry in translations.EnumerateArray())
+                        foreach (KeyValuePair<string, JsonElement> list in new KeyValuePair<string, JsonElement>[] { new KeyValuePair<string, JsonElement>(CUES_LIST, translations), new KeyValuePair<string, JsonElement>(SIGNS_LIST, signs) })
                         {
-                            JsonElement idElement;
-                            JsonElement textElement;
-                            int id;
-                            if (entry.ValueKind != JsonValueKind.Object || !entry.TryGetProperty("id", out idElement) || idElement.ValueKind != JsonValueKind.Number
-                                || !idElement.TryGetInt32(out id) || !entry.TryGetProperty("text", out textElement) || textElement.ValueKind != JsonValueKind.String)
+                            HashSet<int> listIds = requestedSets[list.Key];
+                            int index = 0;
+                            foreach (JsonElement entry in list.Value.EnumerateArray())
                             {
-                                entryIssues.Add(Issue(null, ENTRY_INVALID, IssueSeverity.Error,
-                                    "translations[" + index + "] has no integer id or no string text.", "index", index.ToString(CultureInfo.InvariantCulture)));
-                            }
-                            else if (!requestedSet.Contains(id))
-                            {
-                                entryIssues.Add(Issue(null, ID_OUT_OF_RANGE, IssueSeverity.Error,
-                                    "cue " + id + " was not requested; requested ids: " + ranges + ".", "id", id.ToString(CultureInfo.InvariantCulture)));
-                            }
-                            else
-                            {
-                                List<string> texts;
-                                if (!delivered.TryGetValue(id, out texts))
+                                JsonElement idElement;
+                                JsonElement textElement;
+                                int id;
+                                if (entry.ValueKind != JsonValueKind.Object || !entry.TryGetProperty("id", out idElement) || idElement.ValueKind != JsonValueKind.Number
+                                    || !idElement.TryGetInt32(out id) || !entry.TryGetProperty("text", out textElement) || textElement.ValueKind != JsonValueKind.String)
                                 {
-                                    texts = new List<string>();
-                                    delivered[id] = texts;
+                                    entryIssues.Add(Issue(null, ENTRY_INVALID, IssueSeverity.Error,
+                                        list.Key + "[" + index + "] has no integer id or no string text.", "index", index.ToString(CultureInfo.InvariantCulture)));
                                 }
-                                texts.Add(textElement.GetString());
+                                else if (!listIds.Contains(id))
+                                {
+                                    entryIssues.Add(Issue(null, ID_OUT_OF_RANGE, IssueSeverity.Error,
+                                        "cue " + id + " was not requested in " + list.Key + "; requested ids there: " + (listIds.Count > 0 ? TranslationRequestBuilder.FormatRanges(listIds.ToList()) : "none") + ".",
+                                        "id", id.ToString(CultureInfo.InvariantCulture)));
+                                }
+                                else
+                                {
+                                    List<string> texts;
+                                    if (!delivered.TryGetValue(id, out texts))
+                                    {
+                                        texts = new List<string>();
+                                        delivered[id] = texts;
+                                    }
+                                    texts.Add(textElement.GetString());
+                                }
+                                index++;
                             }
-                            index++;
                         }
                     }
                 }
@@ -304,15 +325,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         cueIssues.Add(Issue(id, ID_DUPLICATE, IssueSeverity.Warning, "cue " + id + " was delivered " + texts.Count + " times; the first one was kept."));
                     text = this.ValidateText(byId[id], texts[0], cueIssues, true, repairIds.Contains(id));
 
-                    // A capo: una battuta con meno righe del sorgente è di solito la prima riga di una battuta consegnata da sola,
-                    // con le traduzioni dopo slittate sugli id sbagliati. Da sola una battuta non ha vicine su cui slittare
+                    // A capo, solo sui cartelli: dialoghi e canzoni vanno a capo da soli nel sottotitolo. Un cartello con meno righe del
+                    // sorgente è di solito la prima riga di un cartello consegnata da sola, coi cartelli dopo slittati sugli id sbagliati.
+                    // Da solo un cartello non ha vicini su cui slittare
                     int sourceBreaks = byId[id].CleanText.Count(c => c == '\n');
                     int breaks = text.Count(c => c == '\n');
-                    if (requested.Count > 1 && breaks < sourceBreaks && !cueIssues.Exists(issue => issue.Code == TEXT_EMPTY))
+                    if (byId[id].Kind == SubtitleCueKind.Sign && requestedSigns.Count > 1 && breaks < sourceBreaks && !cueIssues.Exists(issue => issue.Code == TEXT_EMPTY))
                     {
-                        cueIssues.Add(Issue(id, LINE_BREAK_MISSING, IssueSeverity.Error, "the source of cue " + id + " has " + sourceBreaks + " line break(s), the translation " + breaks
-                            + ". A cue keeps at least the line breaks of its source; one with fewer is usually the first line of the cue delivered alone, with the next translations shifted onto the wrong ids, "
-                            + "so this cue and every cue after it are requested again.",
+                        cueIssues.Add(Issue(id, LINE_BREAK_MISSING, IssueSeverity.Error, "the source of [sign] cue " + id + " has " + sourceBreaks + " line break(s), the translation " + breaks
+                            + ". A [sign] cue keeps at least the line breaks of its source; one with fewer is usually the first line of the cue delivered alone, with the next [sign] translations shifted onto the wrong ids, "
+                            + "so this cue and every [sign] cue after it are requested again.",
                             "expected", sourceBreaks.ToString(CultureInfo.InvariantCulture), "found", breaks.ToString(CultureInfo.InvariantCulture)));
                     }
                 }

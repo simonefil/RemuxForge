@@ -69,7 +69,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         private const string TRANSLATION_INSTRUCTIONS = "You are a professional subtitle translator from {source_language} to {target_language}.\n" +
             "The first message gives the user's context for the series when there is one, the approved glossary and the full source episode. The last message shows the latest accepted translations and names the cue ids to translate now.\n" +
-            "This is not a chat: nobody reads plain text. Deliver only by calling submit_translation once, with one entry per requested id in ascending order.\n" +
+            "This is not a chat: nobody reads plain text. Deliver only by calling submit_translation once, with one entry per requested id in ascending order, in the list the last message names for it.\n" +
             "When the last message lists rejected ids with error codes, deliver only the requested ids, fixing every listed error.\n" +
             "\n" +
             "{record_format}\n" +
@@ -149,15 +149,22 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "\"required\":[\"issues\"],\"additionalProperties\":false}}";
 
         /// <summary>
-        /// Definizione del tool submit_translation
+        /// Voce consegnata di una battuta, uguale nei due elenchi di submit_translation
+        /// </summary>
+        private const string TRANSLATION_ENTRY_JSON = "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"integer\"}," +
+            "\"text\":{\"type\":\"string\",\"description\":\"Translated cue text. Line breaks as \\\\N; every ⟦n text⟧ span of the source cue exactly once, in order.\"}}," +
+            "\"required\":[\"id\",\"text\"],\"additionalProperties\":false}";
+
+        /// <summary>
+        /// Definizione del tool submit_translation: dialoghi e canzoni in translations, cartelli in signs. Una frase che continua sulla
+        /// battuta dopo resta nel suo elenco e non può finire su un cartello che sta in mezzo nell'ordine di lettura
         /// </summary>
         private const string SUBMIT_TRANSLATION_JSON = "{\"type\":\"function\",\"name\":\"submit_translation\",\"strict\":true," +
-            "\"description\":\"Deliver the translation of the requested cue ids: one entry per requested id, in ascending order. The code validates every cue and asks again only for the rejected ones.\"," +
+            "\"description\":\"Deliver the translation of the requested cue ids: one entry per requested id, in ascending order, the dialogue and song cues in translations and the [sign] cues in signs. The code validates every cue and asks again only for the rejected ones.\"," +
             "\"parameters\":{\"type\":\"object\",\"properties\":{" +
-            "\"translations\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"integer\"}," +
-            "\"text\":{\"type\":\"string\",\"description\":\"Translated cue text. Line breaks as \\\\N; every ⟦n text⟧ span of the source cue exactly once, in order.\"}}," +
-            "\"required\":[\"id\",\"text\"],\"additionalProperties\":false}}}," +
-            "\"required\":[\"translations\"],\"additionalProperties\":false}}";
+            "\"translations\":{\"type\":\"array\",\"description\":\"The requested dialogue and song cues; never a [sign] cue.\",\"items\":" + TRANSLATION_ENTRY_JSON + "}," +
+            "\"signs\":{\"type\":\"array\",\"description\":\"The requested [sign] cues; empty when none is requested.\",\"items\":" + TRANSLATION_ENTRY_JSON + "}}," +
+            "\"required\":[\"translations\",\"signs\"],\"additionalProperties\":false}}";
 
         #endregion
 
@@ -444,7 +451,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Coda di B, B′ e B″: coppie accettate prima dell'intervallo, id richiesti e, per il ritentativo, gli scarti
+        /// Coda di B, B′ e B″: coppie accettate prima dell'intervallo, id richiesti e, per il ritentativo, gli scarti. Coppie e id
+        /// richiesti stanno in due elenchi, come nella consegna: dialoghi e canzoni contigui nell'ordine di lettura, poi i cartelli
         /// </summary>
         /// <param name="accepted">Ultime battute accettate prima del primo id richiesto, con la traduzione</param>
         /// <param name="requested">Battute richieste, in ordine di id</param>
@@ -455,17 +463,32 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             StringBuilder message = new StringBuilder();
             if (accepted.Count > 0)
             {
-                message.Append("ACCEPTED TRANSLATIONS BEFORE THIS RANGE (latest ").Append(TAIL_PAIRS.ToString(CultureInfo.InvariantCulture)).Append("):");
-                foreach (KeyValuePair<FrozenCue, string> pair in accepted)
+                message.Append("ACCEPTED TRANSLATIONS BEFORE THIS RANGE (latest ").Append(TAIL_PAIRS.ToString(CultureInfo.InvariantCulture)).Append(")");
+                foreach (bool signs in new bool[] { false, true })
                 {
-                    message.Append('\n').Append(FormatRecord(pair.Key.Id, pair.Key.Kind, pair.Key.Text));
-                    message.Append('\n').Append(FormatTranslationRecord(pair.Key.Id, pair.Key.Kind, pair.Value));
+                    List<KeyValuePair<FrozenCue, string>> pairs = accepted.Where(pair => (pair.Key.Kind == SubtitleCueKind.Sign) == signs).ToList();
+                    if (pairs.Count == 0)
+                        continue;
+
+                    message.Append('\n').Append(signs ? "[sign] cues:" : "Dialogue and song cues:");
+                    foreach (KeyValuePair<FrozenCue, string> pair in pairs)
+                    {
+                        message.Append('\n').Append(FormatRecord(pair.Key.Id, pair.Key.Kind, pair.Key.Text));
+                        message.Append('\n').Append(FormatTranslationRecord(pair.Key.Id, pair.Key.Kind, pair.Value));
+                    }
                 }
 
                 message.Append("\n\n");
             }
 
-            AppendRequested(message, "TRANSLATE", requested);
+            List<FrozenCue> requestedSigns = requested.Where(cue => cue.Kind == SubtitleCueKind.Sign).ToList();
+            List<FrozenCue> requestedCues = requested.Where(cue => cue.Kind != SubtitleCueKind.Sign).ToList();
+            if (requestedCues.Count > 0)
+                AppendRequested(message, "TRANSLATE", requestedCues).Append(" into translations.");
+            if (requestedCues.Count > 0 && requestedSigns.Count > 0)
+                message.Append('\n');
+            if (requestedSigns.Count > 0)
+                AppendRequested(message, "TRANSLATE [sign]", requestedSigns).Append(" into signs.");
             AppendRejected(message, rejected);
             return message.ToString();
         }
@@ -480,8 +503,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public static string CreateDiagnosisTail(IReadOnlyList<FrozenCue> cues, IReadOnlyDictionary<int, string> current, IReadOnlyDictionary<int, List<string>> signals)
         {
             StringBuilder message = new StringBuilder();
-            AppendRequested(message, "REVIEW", cues);
-            message.Append('\n');
+            AppendRequested(message, "REVIEW", cues).Append(".\n");
             foreach (FrozenCue cue in cues)
             {
                 string text;
@@ -542,15 +564,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Aggiunge la riga degli id richiesti col loro numero
         /// </summary>
         /// <param name="message">Coda in costruzione</param>
-        /// <param name="verb">TRANSLATE o REVIEW</param>
+        /// <param name="verb">TRANSLATE, TRANSLATE [sign] o REVIEW</param>
         /// <param name="requested">Battute richieste, in ordine di id</param>
-        private static void AppendRequested(StringBuilder message, string verb, IReadOnlyList<FrozenCue> requested)
+        /// <returns>La coda, per chiudere la riga</returns>
+        private static StringBuilder AppendRequested(StringBuilder message, string verb, IReadOnlyList<FrozenCue> requested)
         {
             List<int> ids = new List<int>();
             foreach (FrozenCue cue in requested)
                 ids.Add(cue.Id);
 
-            message.Append(verb).Append(" cue ids ").Append(FormatRanges(ids)).Append(" (").Append(ids.Count.ToString(CultureInfo.InvariantCulture)).Append(" cues).");
+            return message.Append(verb).Append(" cue ids ").Append(FormatRanges(ids)).Append(" (").Append(ids.Count.ToString(CultureInfo.InvariantCulture)).Append(" cues)");
         }
 
         /// <summary>

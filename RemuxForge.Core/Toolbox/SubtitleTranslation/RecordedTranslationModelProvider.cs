@@ -41,9 +41,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public const string SYNTHETIC_CORRECTION = " (rev)";
 
         /// <summary>
-        /// Righe della coda che elencano gli id richiesti
+        /// Riga della coda della traduzione che elenca i cartelli richiesti, consegnati nell'elenco signs
         /// </summary>
-        private static readonly string[] REQUESTED_IDS_HEADERS = new string[] { "TRANSLATE cue ids ", "REVIEW cue ids " };
+        private const string REQUESTED_SIGNS_HEADER = "TRANSLATE [sign] cue ids ";
+
+        /// <summary>
+        /// Righe della coda che elencano gli id richiesti; la traduzione elenca a parte i cartelli
+        /// </summary>
+        private static readonly string[] REQUESTED_IDS_HEADERS = new string[] { "TRANSLATE cue ids ", REQUESTED_SIGNS_HEADER, "REVIEW cue ids " };
 
         /// <summary>
         /// Riga del prefisso che introduce le battute sorgente
@@ -237,6 +242,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             Dictionary<int, string> currents = new Dictionary<int, string>();
             List<int> signalled = new List<int>();
             List<int> requestedIds = new List<int>();
+            HashSet<int> requestedSigns = new HashSet<int>();
             JsonObject arguments = new JsonObject();
             string toolName;
 
@@ -267,7 +273,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             string ranges = line.Substring(REQUESTED_IDS_HEADERS[h].Length);
                             int end = ranges.IndexOf(' ');
                             string[] parts = (end >= 0 ? ranges.Substring(0, end) : ranges).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                            requestedIds = new List<int>();
+                            List<int> ids = new List<int>();
                             for (int p = 0; p < parts.Length; p++)
                             {
                                 int dash = parts[p].IndexOf('-');
@@ -275,14 +281,20 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                 int last;
                                 if (dash < 0 && int.TryParse(parts[p], NumberStyles.Integer, CultureInfo.InvariantCulture, out first))
                                 {
-                                    requestedIds.Add(first);
+                                    ids.Add(first);
                                 }
                                 else if (dash > 0 && int.TryParse(parts[p].Substring(0, dash), NumberStyles.Integer, CultureInfo.InvariantCulture, out first) && int.TryParse(parts[p].Substring(dash + 1), NumberStyles.Integer, CultureInfo.InvariantCulture, out last))
                                 {
                                     for (int id = first; id <= last; id++)
-                                        requestedIds.Add(id);
+                                        ids.Add(id);
                                 }
                             }
+
+                            // Gli id delle due righe della traduzione si uniscono in ordine crescente, quello della consegna
+                            requestedIds.AddRange(ids);
+                            requestedIds.Sort();
+                            if (REQUESTED_IDS_HEADERS[h] == REQUESTED_SIGNS_HEADER)
+                                requestedSigns.UnionWith(ids);
                         }
                     }
 
@@ -429,6 +441,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             else
             {
                 JsonArray translations = new JsonArray();
+                JsonArray signs = new JsonArray();
                 for (int i = 0; i < requestedIds.Count; i++)
                 {
                     int id = requestedIds[i];
@@ -437,11 +450,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         continue;
 
                     string text = sources.TryGetValue(id, out source) ? SYNTHETIC_PREFIX + source : SYNTHETIC_PREFIX + "#" + id.ToString(CultureInfo.InvariantCulture);
-                    translations.Add(new JsonObject { ["id"] = id, ["text"] = fault != null && fault.Kind == RecordedTranslationFaultKind.WrongCues && i == 0 ? "" : text });
+                    (requestedSigns.Contains(id) ? signs : translations).Add(new JsonObject { ["id"] = id, ["text"] = fault != null && fault.Kind == RecordedTranslationFaultKind.WrongCues && i == 0 ? "" : text });
                 }
 
                 toolName = "submit_translation";
                 arguments["translations"] = translations;
+                arguments["signs"] = signs;
             }
 
             // La ricerca web offerta lascia un item web_search_call, come nelle risposte vere

@@ -257,11 +257,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Consegne di un gruppo di id: la prima, poi i ritentativi sulle sole respinte. Una battuta con meno a
-        /// capo del sorgente segna di solito una consegna slittata: si tengono le battute prima di lei e si richiede da lei alla fine;
-        /// se la stessa battuta ci ricade, si chiede da sola e le battute dopo diventano una consegna a sé. Una battuta respinta per
-        /// altro ha fino a due ritentativi, poi si chiede da sola; segni, caratteri riservati e consegne doppie dopo il primo
-        /// ritentativo si riparano. Una battuta da sola si accetta con gli a capo che ha, e resta da rivedere solo se non ha testo.
+        /// Consegne di un gruppo di id: la prima, poi i ritentativi sulle sole respinte. Un cartello con meno a capo del sorgente
+        /// segna di solito una consegna slittata nell'elenco dei cartelli: si tengono i cartelli prima di lui e si richiedono da lui
+        /// alla fine, mentre dialoghi e canzoni, nell'altro elenco, si giudicano; se lo stesso cartello ci ricade, si chiede da solo
+        /// e i cartelli dopo diventano una consegna a sé. Una battuta respinta per altro ha fino a due ritentativi, poi si chiede da
+        /// sola; segni, caratteri riservati e consegne doppie dopo il primo ritentativo si riparano. Un cartello solo fra quelli
+        /// chiesti si accetta con gli a capo che ha, e resta da rivedere solo se non ha testo.
         /// Una risposta troncata dal tetto dei token in uscita torna al chiamante se è la prima consegna con whole vero, che divide
         /// l'unità e rimpicciolisce i blocchi seguenti del file; altrimenti si dimezzano le battute in attesa. Una risposta incompleta
         /// per un altro motivo non dipende dalla lunghezza: non si divide e non cambia i blocchi del file, e le battute in attesa
@@ -358,12 +359,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 TranslationValidationResult result = context.Validator.Validate(pending, context.GetLiveCues(pending), submissions,
                     pending.FindAll(id => work.Get(id).Rejections.Count > 0));
 
-                // Prima battuta con meno a capo del sorgente nell'ordine crescente di id, quello in cui il modello consegna: le battute
-                // dopo di lei, slittate, si richiedono senza giudicarle
+                // Primo cartello con meno a capo del sorgente nell'ordine crescente di id, quello in cui il modello consegna: i cartelli
+                // dopo di lui, slittati nel loro elenco, si richiedono senza giudicarli
                 int cut = result.Cues.Where(cue => cue.Issues.Any(issue => issue.Code == TranslationValidator.LINE_BREAK_MISSING)).Select(cue => cue.Id)
                     .DefaultIfEmpty(int.MaxValue).Min();
-                List<CueValidationResult> judged = result.Cues.Where(cue => cue.Id <= cut).ToList();
-                List<int> shifted = pending.FindAll(id => id > cut);
+                List<int> shifted = pending.FindAll(id => id > cut && context.GetLiveCue(id).Kind == SubtitleCueKind.Sign);
+                List<CueValidationResult> judged = result.Cues.Where(cue => !shifted.Contains(cue.Id)).ToList();
                 IReadOnlyList<string> modelLines = result.ToModelLines();
 
                 List<int> rejected = new List<int>();
@@ -400,7 +401,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         bool lineBreak = cue.Issues.Any(issue => issue.Code == TranslationValidator.LINE_BREAK_MISSING);
                         if (lineBreak && !restarted.Add(cue.Id))
                         {
-                            // Ricaduta sulla stessa battuta: lei da sola, le battute dopo come consegna a sé
+                            // Ricaduta sullo stesso cartello: lui da solo, i cartelli dopo come consegna a sé
                             apart.Add(new KeyValuePair<List<int>, IReadOnlyList<string>>(new List<int> { cue.Id }, LinesOf(modelLines, new List<int> { cue.Id })));
                             if (shifted.Count > 0)
                                 apart.Add(new KeyValuePair<List<int>, IReadOnlyList<string>>(shifted, LinesOf(modelLines, shifted)));

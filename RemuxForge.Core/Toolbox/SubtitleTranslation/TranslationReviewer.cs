@@ -399,11 +399,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 List<int> suggested = state.Cues.FindAll(c => suggestions.ContainsKey(c.Id)).ConvertAll(c => c.Id);
                 if (suggested.Count > 0)
                 {
+                    // Cartelli in signs, dialoghi e canzoni in translations, come nella consegna del modello
                     JsonArray entries = new JsonArray();
+                    JsonArray signs = new JsonArray();
                     foreach (int id in suggested)
-                        entries.Add(new JsonObject { ["id"] = id, ["text"] = suggestions[id] });
+                        (context.GetLiveCue(id).Kind == SubtitleCueKind.Sign ? signs : entries).Add(new JsonObject { ["id"] = id, ["text"] = suggestions[id] });
                     TranslationValidationResult validation = context.Validator.Validate(suggested, context.GetLiveCues(suggested),
-                        new List<string> { new JsonObject { ["translations"] = entries }.ToJsonString() }, new int[0]);
+                        new List<string> { new JsonObject { ["translations"] = entries, ["signs"] = signs }.ToJsonString() }, new int[0]);
                     foreach (CueValidationResult cue in validation.Cues)
                     {
                         if (!cue.HasErrors)
