@@ -409,7 +409,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     {
                         TranslatedCueState translation;
                         if (result.Status != TranslatedCueStatus.Accepted || !translations.TryGetValue(result.Id, out translation)
-                            || string.Equals(result.Text, translation.Text, StringComparison.Ordinal) || translation.Signals.Contains(TranslationCueSignal.EditedByUser))
+                            || string.Equals(result.Text, translation.Text, StringComparison.Ordinal))
                             continue;
 
                         // Testo di prima e motivo per l'avviso della griglia
