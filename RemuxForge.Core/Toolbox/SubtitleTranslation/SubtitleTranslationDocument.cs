@@ -986,13 +986,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
             }
 
-            // Id progressivi sulle traducibili e duplicati: le righe su layer diversi con gli stessi tempi e lo stesso testo pulito, e
-            // le righe base di una frase rivelata a pezzi, copie della primaria anche quando questa viene dopo nel file
+            // Id progressivi sulle traducibili nell'ordine di lettura (inizio, a pari inizio ordine nel file) e duplicati: le righe su
+            // layer diversi con gli stessi tempi e lo stesso testo pulito, e le righe base di una frase rivelata a pezzi, copie della
+            // primaria anche quando questa viene dopo nel file
             int?[] ids = new int?[rawCues.Count];
             int?[] duplicates = new int?[rawCues.Count];
             Dictionary<string, int[]> firstByContent = new Dictionary<string, int[]>(StringComparer.Ordinal);
+            List<int> reading = Enumerable.Range(0, rawCues.Count).ToList();
+            reading.Sort((a, b) => rawCues[a].StartMs != rawCues[b].StartMs ? rawCues[a].StartMs.CompareTo(rawCues[b].StartMs) : a.CompareTo(b));
             int nextId = 1;
-            for (int i = 0; i < rawCues.Count; i++)
+            foreach (int i in reading)
             {
                 RawCue raw = rawCues[i];
                 string key = raw.StartMs.ToString(CultureInfo.InvariantCulture) + "|" + raw.EndMs.ToString(CultureInfo.InvariantCulture) + "|" + cleanedCues[i].CleanText;

@@ -85,7 +85,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Proprietà
 
         /// <summary>
-        /// Id progressivo da 1 sulle sole battute traducibili, null per le escluse e per le copie
+        /// Id progressivo da 1 sulle sole battute traducibili nell'ordine di lettura (inizio, a pari inizio ordine nel file), null per
+        /// le escluse e per le copie
         /// </summary>
         public int? Id { get; }
 

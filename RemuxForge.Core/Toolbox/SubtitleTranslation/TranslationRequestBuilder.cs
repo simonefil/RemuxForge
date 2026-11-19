@@ -3,6 +3,7 @@ using RemuxForge.Core.Localization;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -19,8 +20,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Costanti
 
         /// <summary>
-        /// Segno degli a capo di una battuta nei record, che stanno su una riga sola: \N, l'a capo dell'ASS, che il testo pulito
-        /// non ha perché lo diventa a capo
+        /// Segno degli a capo di una battuta nei record, che stanno su una riga sola, e nel testo consegnato: \N, l'a capo dell'ASS,
+        /// che il testo pulito non ha perché lo diventa a capo
         /// </summary>
         public const string LINE_BREAK_MARK = "\\N";
 
@@ -31,7 +32,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "- A source cue is a record on a single line. Its header is \"<id>\", followed by \" [song]\" for song lyrics or \" [sign]\" for on-screen text such as signs and titles; a header without either is dialogue. Then a tab and the whole text of the cue, where \"\\N\" marks a line break inside the cue. Each line of a source episode is a different cue.\n" +
             "- A translation record has the same header followed by \" =>\", then a tab and the translated text, on one line with \"\\N\" for its line breaks. A header with nothing after \" =>\" means the cue has no accepted translation yet.\n" +
             "- A signal record (review only) has the header \"<id> !\", then a tab and one signal per line, each further signal starting with a tab.\n" +
-            "- In submit_translation, a line break inside a cue is \"\\n\" inside the JSON string, never \"\\N\".";
+            "- A delivered text marks its line breaks with \"\\N\" too, as the records do (\"\\\\N\" inside the JSON string).";
 
         /// <summary>
         /// Tool di consegna della traduzione
@@ -99,8 +100,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "- {address_rule}\n" +
             "- Use the renderings of the glossary terms. Inflect a rendering only where {target_language} grammar requires it and the term is not marked invariable.\n" +
             "- Keep honorifics and name suffixes that appear in the source unless the glossary gives a rendering for them.\n" +
-            "- Keep dialogue dashes and continuation ellipses where the source has them.\n" +
-            "- Keep the subtitle concise: say what the line says, with no padding.";
+            "- Keep dialogue dashes and continuation ellipses where the source has them.";
 
         /// <summary>
         /// Instructions di D1: diagnosi di un blocco tradotto
@@ -157,7 +157,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "\"translation_says\":{\"type\":\"string\",\"description\":\"What the current translation says on this point.\"}," +
             "\"speaker\":{\"type\":[\"string\",\"null\"],\"description\":\"Who speaks the cue and to whom, as the context shows it; required for gender_number, null otherwise.\"}," +
             "\"explanation\":{\"type\":\"string\",\"description\":\"Short explanation for the user.\"}," +
-            "\"suggestion\":{\"type\":[\"string\",\"null\"],\"description\":\"Full corrected text of the cue, with line breaks as \\\\n and its ⟦n text⟧ spans; null if you have none.\"}}," +
+            "\"suggestion\":{\"type\":[\"string\",\"null\"],\"description\":\"Full corrected text of the cue, with line breaks as \\\\N and its ⟦n text⟧ spans; null if you have none.\"}}," +
             "\"required\":[\"id\",\"category\",\"severity\",\"source_says\",\"translation_says\",\"speaker\",\"explanation\",\"suggestion\"],\"additionalProperties\":false}}}," +
             "\"required\":[\"issues\"],\"additionalProperties\":false}}";
 
@@ -168,7 +168,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             "\"description\":\"Deliver the translation of the requested cue ids: one entry per requested id, in ascending order. The code validates every cue and asks again only for the rejected ones.\"," +
             "\"parameters\":{\"type\":\"object\",\"properties\":{" +
             "\"translations\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"integer\"}," +
-            "\"text\":{\"type\":\"string\",\"description\":\"Translated cue text. Line breaks as \\\\n; every ⟦n text⟧ span of the source cue exactly once, in order.\"}}," +
+            "\"text\":{\"type\":\"string\",\"description\":\"Translated cue text. Line breaks as \\\\N; every ⟦n text⟧ span of the source cue exactly once, in order.\"}}," +
             "\"required\":[\"id\",\"text\"],\"additionalProperties\":false}}}," +
             "\"required\":[\"translations\"],\"additionalProperties\":false}}";
 
@@ -297,18 +297,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Scrive il sorgente numerato: i record di tutte le battute traducibili, in ordine di id
+        /// Scrive il sorgente numerato: i record di tutte le battute traducibili, in ordine di id, che è l'ordine di lettura
         /// </summary>
         /// <param name="cues">Battute del file, escluse e copie comprese</param>
-        /// <returns>Sorgente numerato, una riga o più per battuta</returns>
+        /// <returns>Sorgente numerato, un record per battuta</returns>
         public static string FormatSource(IReadOnlyList<SubtitleCue> cues)
         {
             StringBuilder source = new StringBuilder();
-            foreach (SubtitleCue cue in cues)
+            foreach (SubtitleCue cue in cues.Where(c => c.Id.HasValue).OrderBy(c => c.Id.Value))
             {
-                if (!cue.Id.HasValue)
-                    continue;
-
                 if (source.Length > 0)
                     source.Append('\n');
                 source.Append(FormatRecord(cue));

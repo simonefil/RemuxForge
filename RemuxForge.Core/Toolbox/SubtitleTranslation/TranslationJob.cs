@@ -124,7 +124,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Versione del formato di job.json
         /// </summary>
-        public const int SCHEMA_VERSION = 3;
+        public const int SCHEMA_VERSION = 4;
 
         #endregion
 
@@ -292,7 +292,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Versione del formato del file di stato
         /// </summary>
-        public const int SCHEMA_VERSION = 3;
+        public const int SCHEMA_VERSION = 4;
 
         #endregion
 
