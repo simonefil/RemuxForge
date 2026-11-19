@@ -1,6 +1,7 @@
 @using RemuxForge.Core.Toolbox.SubtitleTranslation
 @using RemuxForge.Web.Services.Toolbox
 @inherits AppDialogContentBase
+@inject NotificationService NotificationService
 
 @* Modelli e livelli di ragionamento per passo *@
 <div class="rf-dialog rf-translation-models" @ref="DialogContent">
@@ -168,12 +169,19 @@
         string[] efforts = new string[] { project.ReasoningEfforts.Analysis, phaseEfforts.Translation, phaseEfforts.Review };
         this._parallelFiles = project.Options.MaxParallelFiles;
 
-        // Le tendine partono dai valori del progetto, vuote se il passo non ha ancora un modello
+        // Le tendine partono dai valori del progetto, vuote se il passo non ha ancora un modello o se l'accesso non offre il suo
         for (int i = 0; i < s_phases.Length; i++)
         {
             AiModelInfo model = this._models.Find(m => m.Id == models[i]);
             this._locked[i] = job != null && i > 0;
             this._phaseModels[i] = this._models;
+            if (!this._locked[i] && this._models.Count > 0 && model == null && !string.IsNullOrEmpty(models[i]))
+            {
+                this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyModelMissing"),
+                    AppText.F("web.toolbox.subtitleTranslation.modelMissing", AppText.T("web.toolbox.subtitleTranslation.models.phase." + s_phases[i])), 8000);
+                models[i] = "";
+                efforts[i] = "";
+            }
             this._selectedModels[i] = string.IsNullOrEmpty(models[i]) ? null : models[i];
             this._selectedEfforts[i] = model == null || model.SupportedReasoningLevels.Contains(efforts[i] ?? "") ? efforts[i] : model.DefaultReasoningLevel;
             if (this._locked[i])
