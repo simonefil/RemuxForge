@@ -462,15 +462,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // Frasi animate, solo con la tabella degli stili. Una combinazione di stile, attore ed effetto alla volta; un pezzo è una
                 // riga Dialogue animata o posizionata che mostra almeno un carattere, e la sua riga intera è un'altra riga della
                 // combinazione, o una riga Comment dello stesso stile e attore che non sia un modello del templater, che si sovrappone
-                // o si tocca nel tempo col pezzo (un Comment coi tempi allargati della tolleranza delle lettere), sta sulla stessa riga a
-                // schermo (per un Comment non si guarda) e ha un testo senza spazi più lungo dei caratteri mostrati dal pezzo, che
-                // contiene i suoi tratti visibili nell'ordine. Il pezzo va con la
+                // o si tocca nel tempo col pezzo, sta sulla stessa riga a schermo (per un Comment non si guarda) e ha un testo senza
+                // spazi più lungo dei caratteri mostrati dal pezzo, che contiene i suoi tratti visibili nell'ordine. Il pezzo va con la
                 // riga intera con più tempo in comune, poi con quella che comincia più vicino, poi con la prima nel file; a parità fra
                 // testi diversi va con quella i cui pezzi già assegnati stanno sulla sua riga a schermo, e se non è una sola i gruppi
                 // coinvolti non si formano. Un pezzo senza riga intera segue la scritta di cui è la continuazione (stesso testo
-                // mostrato, comincia dove l'altra finisce); le copie di una riga intera (stesso testo, stessa riga a schermo, tempi che
-                // si toccano) entrano nel suo gruppo. Il gruppo vale se ha una riga che contiene i tratti visibili di tutte, una riga che
-                // ne mostra solo una parte, due righe con testi mostrati diversi a schermo insieme (una serie di righe una dopo l'altra
+                // mostrato, comincia dove l'altra finisce), se no la riga Comment più vicina nel tempo entro la tolleranza delle
+                // lettere; le copie di una riga intera (stesso testo, stessa riga a schermo, tempi che si toccano) entrano nel suo
+                // gruppo. Il gruppo vale se ha una riga che contiene i tratti visibili di tutte, una riga che ne mostra solo una parte,
+                // due righe con testi mostrati diversi a schermo insieme (una serie di righe una dopo l'altra
                 // è una rivelazione, salvo i pezzi di parola che in sequenza compongono la riga che segue) e, nell'insieme delle righe,
                 // tutti i caratteri della frase. La frase è la riga più lunga fra quelle che contengono tutti i tratti, una Dialogue prima
                 // di un Comment; la riga principale è la Dialogue con la frase, la più lunga nel tempo e poi sul layer più basso, o il
@@ -579,9 +579,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     List<KeyValuePair<int, List<int>>> tied = new List<KeyValuePair<int, List<int>>>();
                     foreach (int piece in pieces)
                     {
-                        List<int> wholes = candidates.FindAll(w => w != piece && (events[w].Comment
-                            ? events[piece].Line.StartMs <= events[w].Line.EndMs + LETTER_EFFECT_TOLERANCE_MS && events[w].Line.StartMs - LETTER_EFFECT_TOLERANCE_MS <= events[piece].Line.EndMs
-                            : touch(piece, w)) && spaceless[w].Length > shownOf[piece].Length
+                        List<int> wholes = candidates.FindAll(w => w != piece && touch(piece, w) && spaceless[w].Length > shownOf[piece].Length
                             && contains(fragmentsOf[piece], spaceless[w]) && (events[w].Comment || sameRow(piece, w)))
                             .OrderByDescending(w => shared(piece, w)).ThenBy(w => Math.Abs(events[w].Line.StartMs - events[piece].Line.StartMs)).ThenBy(w => w).ToList();
                         if (wholes.Count == 0)
@@ -641,15 +639,26 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         }
                     }
 
-                    // Pezzi di parola in sequenza (fotogrammi di una parola che si compone): i pezzi senza un'altra riga intera che,
-                    // uno dopo l'altro senza buchi nel tempo, arrivano all'inizio di una riga della combinazione e coi testi distinti
-                    // nell'ordine, non tutti di un carattere, ne danno il testo senza spazi vanno con quella riga, anche se non sono mai a
-                    // schermo insieme
+                    // Ingressi e uscite staccati dalla riga Comment, senza riga intera né continuazione: la riga Comment più vicina nel
+                    // tempo entro la tolleranza delle lettere
+                    foreach (int piece in pieces.Where(p => !owner.ContainsKey(p)))
+                    {
+                        Func<int, long> gap = w => Math.Max(0, Math.Max(events[w].Line.StartMs - events[piece].Line.EndMs, events[piece].Line.StartMs - events[w].Line.EndMs));
+                        int source = candidates.Where(w => events[w].Comment && gap(w) <= LETTER_EFFECT_TOLERANCE_MS && spaceless[w].Length > shownOf[piece].Length
+                            && contains(fragmentsOf[piece], spaceless[w])).OrderBy(gap).ThenBy(w => w).DefaultIfEmpty(-1).First();
+                        if (source >= 0)
+                            owner[piece] = source;
+                    }
+
+                    // Pezzi di parola in sequenza (fotogrammi di una parola che si compone): i pezzi posizionati senza un'altra riga
+                    // intera che, uno dopo l'altro senza buchi nel tempo, arrivano all'inizio di una riga della combinazione e coi testi
+                    // distinti nell'ordine, non tutti di un carattere, ne danno il testo senza spazi vanno con quella riga, anche se non
+                    // sono mai a schermo insieme
                     HashSet<int> composed = new HashSet<int>();
                     foreach (int whole in unitLines.Where(w => !owner.ContainsKey(w) && spaceless[w].Length > 1))
                     {
-                        Func<int, bool> free = p => p != whole && (!owner.TryGetValue(p, out int current) || current == whole) && events[p].Line.StartMs < events[whole].Line.StartMs
-                            && events[p].Line.EndMs <= events[whole].Line.StartMs && spaceless[p] != spaceless[whole];
+                        Func<int, bool> free = p => p != whole && (!owner.TryGetValue(p, out int current) || current == whole) && s_position.IsMatch(events[p].Raw)
+                            && events[p].Line.StartMs < events[whole].Line.StartMs && events[p].Line.EndMs <= events[whole].Line.StartMs && spaceless[p] != spaceless[whole];
                         List<int> chain = new List<int>();
                         long edge = events[whole].Line.StartMs;
                         List<int> reaching = pieces.FindAll(p => free(p) && events[p].Line.EndMs >= edge);
