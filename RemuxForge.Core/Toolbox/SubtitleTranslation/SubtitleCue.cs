@@ -23,15 +23,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Stesso carattere scritto crudo e come entità, o con due entità diverse</summary>
         public const string EXCLUSION_MIXED_ENTITIES = "mixed-entities";
 
-        /// <summary>Riga disegnata da un effetto lettera per lettera, sostituita dalla sua riga sorgente tradotta</summary>
-        public const string EXCLUSION_LETTER_EFFECT = "letter-effect";
-
-        /// <summary>Pezzo di parola animato prima di una riga intera, tolto quando la riga intera è tradotta</summary>
-        public const string EXCLUSION_WORD_PIECE = "word-piece";
-
-        /// <summary>Evidenziazione sovrapposta che ridisegna un tratto nascosto di un'altra riga, o pezzo di una frase rivelata a pezzi
-        /// (tendina, parola sola), tolto quando quella riga o quella frase è tradotta</summary>
-        public const string EXCLUSION_OVERLAY = "overlay";
+        /// <summary>Riga di una frase animata (lettere, pezzi, fotogrammi, evidenziazioni) che mostra solo una parte della sua riga intera:
+        /// se ne va quando la frase è tradotta, e al posto delle righe disegnate da una riga Comment va la riga Comment tradotta</summary>
+        public const string EXCLUSION_ANIMATED_PIECE = "animated-piece";
 
         #endregion
 
@@ -50,7 +44,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="kind">Tipo della battuta</param>
         /// <param name="layer">Layer ASS, null in SRT e SSA</param>
         /// <param name="exclusionReason">Motivo per cui la battuta resta al codice, vuoto se si traduce</param>
-        /// <param name="duplicateOf">Id della battuta di cui questa è la copia: su un altro layer, o un'altra riga della stessa frase rivelata a pezzi</param>
+        /// <param name="duplicateOf">Id della battuta di cui questa è la copia: su un altro layer, o un'altra riga intera della stessa frase rivelata a pezzi</param>
         /// <param name="textStart">Inizio del campo Text nel testo decodificato</param>
         /// <param name="textLength">Lunghezza del campo Text nel testo decodificato</param>
         public SubtitleCue(int? id, int position, long startMs, long endMs, string cleanText, CueRecipe recipe, string style, SubtitleCueKind kind,

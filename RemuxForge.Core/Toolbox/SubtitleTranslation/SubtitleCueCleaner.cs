@@ -1379,7 +1379,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// valori finali delle \t d'arrivo, tenuti quando ogni riga ha lo stesso valore e diverso dallo stile. Una \t è d'arrivo
         /// se parte da 0 o se porta un'alpha da invisibile (FF) a visibile, come una comparsa ritardata: nell'ordine della riga,
         /// ogni \t d'arrivo lascia le sue alpha alle \t successive; le altre \t sono l'uscita. Posizione: l'allineamento \an di
-        /// tutte le righe e la y delle righe ferme, se ognuno è uno solo
+        /// tutte le righe e la y delle righe ferme, se ognuno è uno solo; e se alpha, bordo e ombra a riposo sono gli stessi su tutte
         /// </summary>
         /// <param name="texts">Campi Text delle righe</param>
         /// <param name="styleState">Stato dello stile delle righe per canale (<see cref="ReadStyleState"/>)</param>
@@ -1402,7 +1402,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 tagsByText.Add(tags);
             }
             if (tagsByText.Count == 0)
-                return new SubtitleLetterLook("", null, null);
+                return new SubtitleLetterLook("", null, null, true);
 
             // Stato a riposo di ogni riga ferma: i tag della riga e poi quelli delle \t d'arrivo (senza tempi una \t parte da 0);
             // ogni tag prende il posto di quelli dello stesso stato, e di un tag con più canali (\alpha, \bord, \shad) toccato in
@@ -1485,133 +1485,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 if (coordinates != null && coordinates.Length == 2)
                     heights.Add(coordinates[1].Trim());
             }
+            // Canali della visibilità (alpha, bordo e ombra): lo stesso valore a riposo su tutte le righe
+            bool visibilityShared = Array.TrueForAll(new string[] { "1a", "3a", "4a", "xbord", "ybord", "xshad", "yshad" }, channel => resting
+                .Select(state => state.FindLast(tag => s_assStateChannels.TryGetValue(tag.Name, out string[] channels) && channels.Contains(channel)) is AssTag last
+                    ? ChannelValue(channel, last.Arg) : null)
+                .Distinct().Count() == 1);
             int? letterAlignment = null;
             if (alignments.Count == 1 && int.TryParse(alignments.First(), NumberStyles.None, CultureInfo.InvariantCulture, out int value) && value >= 1 && value <= 9)
                 letterAlignment = value;
-            return new SubtitleLetterLook(fixedTags.ToString(), letterAlignment, heights.Count == 1 ? heights.First() : null);
-        }
-
-        /// <summary>
-        /// Tratti di testo che un campo Text ASS nasconde e poi rimostra com'erano: da un \alpha&amp;HFF&amp; al primo blocco
-        /// successivo con tag d'alpha, che riporta ogni canale d'alpha allo stato che aveva prima del tratto. Lo stato di un canale
-        /// è il suo ultimo valore fisso (quello dello stile della riga all'inizio e dopo un \alpha o \1a-\4a senza valore, quello
-        /// dello stile nominato dopo un \r, o della riga se il nome manca o non esiste, come libass) con le \t che lo animano dopo,
-        /// coi tempi letti come libass. Il tratto non conta se il blocco d'apertura, dopo il \alpha&amp;HFF&amp;, tocca ancora
-        /// un'alpha (anche con una \t che lo riporta visibile), se una \t del blocco di chiusura anima anche altro, se un \r cade
-        /// dopo l'apertura e fino alla chiusura compresa (riporta tutto allo stile, non solo l'alpha), o se la chiusura lascia uno
-        /// stato diverso: così, tolti il tag d'apertura e quelli d'alpha della chiusura, il tratto si vede e il resto della riga resta
-        /// com'era. Il testo è letto come quello leggibile delle righe: senza blocchi, a capo e spazi fissi come spazi, senza spazi
-        /// agli estremi
-        /// </summary>
-        /// <param name="text">Campo Text</param>
-        /// <param name="style">Stile della riga</param>
-        /// <param name="styleStates">Stato per canale di ogni stile del file (<see cref="ReadStyleState"/>)</param>
-        /// <returns>Tratti nascosti non vuoti, nell'ordine</returns>
-        public List<SubtitleHiddenSpan> ReadHiddenSpans(string text, string style, IReadOnlyDictionary<string, Dictionary<string, string>> styleStates)
-        {
-            string[] alphaChannels = new string[] { "1a", "2a", "3a", "4a" };
-            Func<string, bool> isAlpha = name => name == "alpha" || Array.IndexOf(alphaChannels, name) >= 0;
-
-            // Un canale senza valore di stile vale «stile», uguale solo a sé stesso
-            Dictionary<string, string> current = styleStates.GetValueOrDefault(style);
-            Func<string, string> styleValue = channel => "=" + (current?.GetValueOrDefault(channel) ?? "style");
-            Dictionary<string, List<string>> operations = alphaChannels.ToDictionary(channel => channel, channel => new List<string> { styleValue(channel) },
-                StringComparer.Ordinal);
-            Dictionary<string, List<string>> before = null;
-            List<SubtitleHiddenSpan> spans = new List<SubtitleHiddenSpan>();
-            StringBuilder span = null;
-            List<Range> spanTags = null;
-            bool valid = false;
-            int copied = 0;
-            int open = text.IndexOf('{');
-            while (open >= 0)
-            {
-                int close = text.IndexOf('}', open);
-                if (close < 0)
-                    break;
-                span?.Append(text, copied, open - copied);
-                string block = text.Substring(open, close - open + 1);
-                List<AssTag> tags = ParseAssTags(block);
-                bool closing = before != null && tags.Exists(tag => isAlpha(tag.Name) || (tag.Name == ASS_TRANSFORM && ParseAssTags(tag.Arg).Exists(inner => isAlpha(inner.Name))));
-                bool opening = false;
-                int tagEnd = 0;
-                foreach (AssTag tag in tags)
-                {
-                    int tagStart = block.IndexOf(tag.Raw, tagEnd, StringComparison.Ordinal);
-                    tagEnd = tagStart + tag.Raw.Length;
-                    if (tag.Name == "r")
-                    {
-                        if (before != null)
-                            valid = false;
-                        current = styleStates.GetValueOrDefault(tag.Arg.Trim()) ?? styleStates.GetValueOrDefault(style);
-                        foreach (string channel in alphaChannels)
-                            operations[channel] = new List<string> { styleValue(channel) };
-                        continue;
-                    }
-
-                    // Operazioni sui canali d'alpha dall'ultimo valore fisso; null per \alpha o \1a-\4a senza valore, che torna allo
-                    // stile. I tempi di una \t come libass: con tre argomenti inizio, fine e accelerazione, con due inizio e fine, con
-                    // uno l'accelerazione; inizio e fine interi troncati, 0 se mancano, e la fine 0 è la fine della riga
-                    List<KeyValuePair<string, string>> changes = new List<KeyValuePair<string, string>>();
-                    if (isAlpha(tag.Name))
-                    {
-                        changes.Add(new KeyValuePair<string, string>(tag.Name, tag.Arg.Trim().Length == 0 ? null : "=" + ChannelValue("1a", tag.Arg)));
-                    }
-                    else if (tag.Name == ASS_TRANSFORM)
-                    {
-                        string inner = tag.Arg.Trim().TrimStart('(');
-                        string[] arguments = inner.Substring(0, Math.Max(0, inner.IndexOf('\\'))).Split(',');
-                        double[] numbers = Array.ConvertAll(arguments, argument => double.TryParse(argument.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture,
-                            out double number) ? number : 0);
-                        int count = arguments.Length - 1;
-                        long from = count == 2 || count == 3 ? (long)Math.Truncate(numbers[0]) : 0;
-                        long to = count == 2 || count == 3 ? (long)Math.Truncate(numbers[1]) : 0;
-                        double acceleration = count == 3 ? numbers[2] : count == 1 ? numbers[0] : 1;
-                        string times = from.ToString(CultureInfo.InvariantCulture) + "," + (to == 0 ? "end" : to.ToString(CultureInfo.InvariantCulture)) + ","
-                            + acceleration.ToString("R", CultureInfo.InvariantCulture);
-                        List<AssTag> innerTags = ParseAssTags(tag.Arg);
-                        foreach (AssTag innerTag in innerTags.FindAll(innerTag => isAlpha(innerTag.Name)))
-                            changes.Add(new KeyValuePair<string, string>(innerTag.Name, "t(" + times + ")=" + ChannelValue("1a", innerTag.Arg)));
-                        if (closing && changes.Count > 0 && changes.Count != innerTags.Count)
-                            valid = false;
-                    }
-                    if (changes.Count == 0)
-                        continue;
-                    if (opening)
-                        valid = false;
-                    if (closing)
-                        spanTags.Add(new Range(open + tagStart, open + tagEnd));
-                    if (before == null && tag.Name == "alpha" && ChannelValue("1a", tag.Arg) == "FF")
-                    {
-                        before = operations.ToDictionary(pair => pair.Key, pair => new List<string>(pair.Value), StringComparer.Ordinal);
-                        spanTags = new List<Range> { new Range(open + tagStart, open + tagEnd) };
-                        valid = true;
-                        opening = true;
-                        span = new StringBuilder();
-                    }
-                    foreach (KeyValuePair<string, string> change in changes)
-                    {
-                        foreach (string channel in change.Key == "alpha" ? alphaChannels : new string[] { change.Key })
-                        {
-                            if (change.Value == null || change.Value.StartsWith("=", StringComparison.Ordinal))
-                                operations[channel].Clear();
-                            operations[channel].Add(change.Value ?? styleValue(channel));
-                        }
-                    }
-                }
-                if (closing)
-                {
-                    string hidden = span.ToString().Replace("\\N", " ").Replace("\\n", " ").Replace("\\h", " ").Trim();
-                    if (valid && hidden.Length > 0 && Array.TrueForAll(alphaChannels, channel => operations[channel].SequenceEqual(before[channel])))
-                        spans.Add(new SubtitleHiddenSpan(hidden, spanTags));
-                    before = null;
-                    span = null;
-                }
-                copied = close + 1;
-                open = text.IndexOf('{', copied);
-            }
-
-            return spans;
+            return new SubtitleLetterLook(fixedTags.ToString(), letterAlignment, heights.Count == 1 ? heights.First() : null, visibilityShared);
         }
 
         /// <summary>
@@ -1682,12 +1564,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// Campo Text ASS con tutta la frase visibile: il blocco iniziale resta, dagli altri se ne vanno le alpha e le \t che animano
-        /// solo alpha, i colori restano (un blocco rimasto vuoto se ne va). Una riga che mostra già tutta la frase resta com'è
+        /// solo alpha, i colori e i \r restano (un blocco rimasto vuoto se ne va). Una riga che mostra già tutta la frase resta com'è
         /// </summary>
         /// <param name="text">Campo Text</param>
         /// <param name="style">Stile della riga</param>
         /// <param name="styleStates">Stato per canale di ogni stile del file (<see cref="ReadStyleState"/>)</param>
-        /// <returns>Campo Text con la frase intera, null se un altro blocco cambia altro che colori e alpha, se una sua \t anima
+        /// <returns>Campo Text con la frase intera, null se un altro blocco cambia altro che colori, alpha e stile (\r), se una sua \t anima
         /// insieme colori e alpha o se senza le alpha qualche carattere resta invisibile</returns>
         public string ShowWholeLine(string text, string style, IReadOnlyDictionary<string, Dictionary<string, string>> styleStates)
         {
@@ -1711,9 +1593,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 }
                 else
                 {
-                    // Restano i colori, anche animati; se ne vanno le alpha e le \t che animano solo alpha
+                    // Restano i colori, anche animati, e i \r; se ne vanno le alpha e le \t che animano solo alpha
                     List<AssTag> tags = ParseAssTags(block);
-                    if (!tags.TrueForAll(tag => colours.Contains(tag.Name) || alphas.Contains(tag.Name) || (tag.Name == ASS_TRANSFORM
+                    if (!tags.TrueForAll(tag => colours.Contains(tag.Name) || alphas.Contains(tag.Name) || tag.Name == ASS_STYLE_CHANNEL || (tag.Name == ASS_TRANSFORM
                         && (ParseAssTags(tag.Arg).TrueForAll(inner => colours.Contains(inner.Name)) || ParseAssTags(tag.Arg).TrueForAll(inner => alphas.Contains(inner.Name))))))
                         return null;
                     string kept = string.Concat(tags.Where(tag => !alphas.Contains(tag.Name)
@@ -1729,41 +1611,76 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Rende visibili dei tratti nascosti di un campo Text ASS: toglie il loro tag d'apertura e i loro tag d'alpha della
-        /// chiusura, e i blocchi rimasti vuoti
+        /// Riquadri stimati di un campo Text ASS a schermo, uno per punto d'ancoraggio: il primo \pos, i due estremi del primo \move o,
+        /// senza, il punto dato da allineamento e margini (quelli della riga se diversi da 0, altrimenti quelli dello stile).
+        /// L'allineamento viene dal primo \an o \a, il corpo dal primo \fs e la scala verticale dal primo \fscy, altrimenti dallo stile;
+        /// l'altezza è il corpo in scala per il numero di righe. I tag dentro una \t non contano
         /// </summary>
-        /// <param name="text">Campo Text da cui i tratti sono stati letti</param>
-        /// <param name="spans">Tratti letti dal campo (<see cref="ReadHiddenSpans"/>)</param>
-        /// <returns>Campo Text coi tratti visibili</returns>
-        public string ShowHiddenSpans(string text, IReadOnlyList<SubtitleHiddenSpan> spans)
+        /// <param name="text">Campo Text</param>
+        /// <param name="styleState">Stato dello stile della riga per canale (<see cref="ReadStyleState"/>)</param>
+        /// <param name="layout">Allineamento ASS e margini sinistro, destro e verticale dello stile</param>
+        /// <param name="margins">Margini sinistro, destro e verticale della riga, 0 per quelli dello stile</param>
+        /// <param name="playResX">Larghezza dello schermo dello script</param>
+        /// <param name="playResY">Altezza dello schermo dello script</param>
+        /// <returns>Per ogni punto d'ancoraggio x e y del punto, alto e basso del riquadro</returns>
+        public List<double[]> ReadScreenBoxes(string text, IReadOnlyDictionary<string, string> styleState, int[] layout, int[] margins, int playResX, int playResY)
         {
-            List<Range> removed = spans.SelectMany(span => span.Tags).OrderBy(range => range.Start.Value).ToList();
-            StringBuilder result = new StringBuilder();
-            int next = 0;
+            int? alignment = null;
+            double? size = null;
+            double? scaleY = null;
+            List<double[]> points = new List<double[]>();
+            int rows = 1;
             int copied = 0;
             int open = text.IndexOf('{');
-            while (open >= 0)
+            while (true)
             {
-                int close = text.IndexOf('}', open);
+                int close = open >= 0 ? text.IndexOf('}', open) : -1;
+                string piece = text.Substring(copied, (close >= 0 ? open : text.Length) - copied);
+                rows += piece.Split("\\N").Length + piece.Split("\\n").Length - 2;
                 if (close < 0)
                     break;
-                result.Append(text, copied, open - copied);
-                StringBuilder block = new StringBuilder();
-                int from = open;
-                bool touched = false;
-                for (; next < removed.Count && removed[next].Start.Value < close; next++)
+                foreach (AssTag tag in ParseAssTags(text.Substring(open, close - open + 1)))
                 {
-                    block.Append(text, from, removed[next].Start.Value - from);
-                    from = removed[next].End.Value;
-                    touched = true;
+                    string argument = tag.Arg.Trim();
+                    if (argument.Length == 0)
+                        continue;
+                    double[] numbers = Array.ConvertAll(argument.TrimStart('(').TrimEnd(')').Split(','),
+                        number => double.TryParse(number.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double value) ? value : 0);
+                    if (tag.Name == "an" && alignment == null)
+                        alignment = (int)numbers[0];
+                    else if (tag.Name == "a" && alignment == null)
+                        alignment = (int)numbers[0] switch { 1 => 1, 3 => 3, 5 => 7, 6 => 8, 7 => 9, 9 => 4, 10 => 5, 11 => 6, _ => 2 };
+                    else if (tag.Name == "fs" && size == null)
+                        size = numbers[0];
+                    else if (tag.Name == "fscy" && scaleY == null)
+                        scaleY = numbers[0];
+                    else if (points.Count == 0 && ((tag.Name == "pos" && numbers.Length >= 2) || (tag.Name == "move" && numbers.Length >= 4)))
+                        points.AddRange(tag.Name == "pos" ? new double[][] { new double[] { numbers[0], numbers[1] } }
+                            : new double[][] { new double[] { numbers[0], numbers[1] }, new double[] { numbers[2], numbers[3] } });
                 }
-                block.Append(text, from, close + 1 - from);
-                if (!touched || block.Length > 2)
-                    result.Append(block);
                 copied = close + 1;
                 open = text.IndexOf('{', copied);
             }
-            return result.Append(text, copied, text.Length - copied).ToString();
+
+            Func<string, double, double> styleNumber = (channel, fallback) => styleState != null && styleState.TryGetValue(channel, out string value)
+                && double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) ? number : fallback;
+            int anchor = alignment >= 1 && alignment <= 9 ? alignment.Value : layout[0] >= 1 && layout[0] <= 9 ? layout[0] : 2;
+            int column = (anchor - 1) % 3;
+            int row = (anchor - 1) / 3;
+            double height = rows * (size ?? styleNumber("fs", 20)) * (scaleY ?? styleNumber("fscy", 100)) / 100;
+            if (points.Count == 0)
+            {
+                int left = margins[0] != 0 ? margins[0] : layout[1];
+                int right = margins[1] != 0 ? margins[1] : layout[2];
+                int vertical = margins[2] != 0 ? margins[2] : layout[3];
+                points.Add(new double[] { column == 0 ? left : column == 2 ? playResX - right : (playResX + left - right) / 2.0,
+                    row == 0 ? playResY - vertical : row == 2 ? vertical : playResY / 2.0 });
+            }
+            return points.ConvertAll(point =>
+            {
+                double top = row == 0 ? point[1] - height : row == 2 ? point[1] : point[1] - height / 2;
+                return new double[] { point[0], point[1], top, top + height };
+            });
         }
 
         /// <summary>
@@ -2120,12 +2037,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// <param name="Tags">Tag dell'aspetto nell'ordine della prima riga, vuoto se nessuno</param>
     /// <param name="Alignment">Allineamento \an di tutte le righe, null se manca o cambia</param>
     /// <param name="PositionY">y delle righe ferme, null se manca o cambia</param>
-    public sealed record SubtitleLetterLook(string Tags, int? Alignment, string PositionY);
-
-    /// <summary>
-    /// Tratto nascosto di un campo Text ASS, coi tag che lo nascondono e lo rimostrano
-    /// </summary>
-    /// <param name="Text">Testo leggibile del tratto</param>
-    /// <param name="Tags">Tag d'apertura e tag d'alpha della chiusura, come intervalli del campo Text, nell'ordine</param>
-    public sealed record SubtitleHiddenSpan(string Text, IReadOnlyList<Range> Tags);
+    /// <param name="VisibilityShared">Vero se alpha, bordo e ombra a riposo sono gli stessi su tutte le righe considerate</param>
+    public sealed record SubtitleLetterLook(string Tags, int? Alignment, string PositionY, bool VisibilityShared);
 }

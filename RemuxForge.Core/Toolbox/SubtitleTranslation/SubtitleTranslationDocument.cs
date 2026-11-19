@@ -11,9 +11,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
     /// <summary>
     /// Sottotitolo SRT, ASS o SSA da tradurre. Tiene il testo decodificato del file e, per ogni battuta, l'intervallo del campo
-    /// Text: la scrittura sostituisce solo i campi Text delle battute tradotte, e le righe disegnate da un effetto lettera per
-    /// lettera la cui riga sorgente è tradotta, quindi senza traduzioni il file esce identico byte per byte (BOM, terminatori,
-    /// indici, righe non riconosciute)
+    /// Text: la scrittura sostituisce solo i campi Text delle battute tradotte e le righe delle frasi animate la cui riga intera è
+    /// tradotta, quindi senza traduzioni il file esce identico byte per byte (BOM, terminatori, indici, righe non riconosciute)
     /// </summary>
     public class SubtitleTranslationDocument
     {
@@ -40,26 +39,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Codifica predefinita, come in Aggiungi tracce</summary>
         public const string DEFAULT_ENCODING = "UTF-8";
 
-        /// <summary>
-        /// Margine in millisecondi attorno ai tempi della riga sorgente entro cui stanno le righe di un effetto lettera per lettera:
-        /// il massimo misurato sugli ingressi e le uscite animati delle release
-        /// </summary>
-        public const long LETTER_EFFECT_TOLERANCE_MS = 1210;
-
         #endregion
 
         #region Variabili statiche
-
-        /// <summary>
-        /// Frequenze video comuni con un fotogramma che non è un multiplo dei centesimi dell'ASS (25 e 50 fps non si riconoscono dai
-        /// tempi): i tempi agganciati ai fotogrammi lo rivelano
-        /// </summary>
-        private static readonly double[] s_frameRates = new double[] { 24000.0 / 1001, 24, 30000.0 / 1001, 30, 48000.0 / 1001, 48, 60000.0 / 1001, 60 };
-
-        /// <summary>
-        /// Video finto di Aegisub con la sua frequenza (Video File: ?dummy:fps:...)
-        /// </summary>
-        private static readonly Regex s_dummyVideo = new Regex(@"^Video File:\s*\?dummy:([0-9.]+):", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         /// <summary>
         /// Blocco di tag ASS
@@ -82,9 +64,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private static readonly Regex s_position = new Regex(@"\{[^}]*\\(?:pos|move|org)\s*\(", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         /// <summary>
-        /// Ritaglio di una riga: \clip o \iclip
+        /// Animazione o posizione in un blocco: \pos, \move, \org, \t, \fad, \fade, \clip, \iclip e i tempi del karaoke
         /// </summary>
-        private static readonly Regex s_clip = new Regex(@"\{[^}]*\\i?clip\s*\(", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex s_animation = new Regex(@"\{[^}]*\\(?:pos|move|org|t|fad|i?clip|k|K)", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         /// <summary>
         /// Sintassi dei segni ⟦n testo⟧ del testo pulito
@@ -131,18 +113,18 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         private readonly List<SubtitleStyleUsage> _styles;
 
         /// <summary>
-        /// Righe sorgente degli effetti lettera per lettera per posizione della battuta, con le righe disegnate che sostituiscono
+        /// Righe Comment delle frasi animate per posizione della battuta, con le righe disegnate che sostituiscono
         /// </summary>
         private readonly Dictionary<int, LetterEffect> _letterEffects;
 
         /// <summary>
-        /// Righe che se ne vanno con la traduzione di una battuta, per posizione della battuta: i pezzi di parola animati prima
-        /// della riga intera e le evidenziazioni sovrapposte alla riga sotto
+        /// Righe che se ne vanno con la traduzione di una battuta, per posizione della battuta: i pezzi della frase animata di cui
+        /// la battuta è la riga intera
         /// </summary>
         private readonly Dictionary<int, List<SourceLine>> _attachedLines;
 
         /// <summary>
-        /// Posizioni delle righe sotto lette coi tratti coperti dalle evidenziazioni già visibili
+        /// Posizioni delle righe intere lette con la frase già visibile
         /// </summary>
         private readonly HashSet<int> _shownLines;
 
@@ -159,9 +141,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <param name="outputEncoding">Codifica della scrittura</param>
         /// <param name="cues">Battute nell'ordine del file</param>
         /// <param name="styles">Stili delle righe ASS/SSA</param>
-        /// <param name="letterEffects">Righe sorgente degli effetti lettera per lettera per posizione della battuta</param>
-        /// <param name="attachedLines">Righe dei pezzi di parola e delle evidenziazioni sovrapposte per posizione della battuta</param>
-        /// <param name="shownLines">Posizioni delle righe sotto lette coi tratti coperti dalle evidenziazioni visibili</param>
+        /// <param name="letterEffects">Righe Comment delle frasi animate per posizione della battuta</param>
+        /// <param name="attachedLines">Righe dei pezzi delle frasi animate per posizione della riga intera</param>
+        /// <param name="shownLines">Posizioni delle righe intere lette con la frase visibile</param>
         /// <param name="untimedBlockCount">Blocchi SRT senza riga dei tempi valida</param>
         /// <param name="rejectionReason">Motivo del rifiuto, vuoto per un file valido</param>
         private SubtitleTranslationDocument(SubtitleTranslationFormat format, string text, byte[] preamble, Encoding outputEncoding,
@@ -191,8 +173,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Una riga ASS/SSA prende il tipo riconosciuto della sua combinazione di stile, attore ed effetto
         /// e si esclude solo se è testo da non tradurre; una combinazione senza tipo vale come dialogo. Una battuta SRT prende il
         /// tipo della sua riga nella tratta riconosciuta di cui ripete almeno tre righe consecutive; fuori dalle righe da non
-        /// tradurre, una battuta SRT con ♪ o ♫ è una canzone. La riga Comment sorgente di un effetto
-        /// lettera per lettera è una battuta della sua combinazione e le righe Dialogue disegnate dall'effetto restano escluse
+        /// tradurre, una battuta SRT con ♪ o ♫ è una canzone. Di una frase animata, i cui pezzi mostrano a schermo una riga intera
+        /// della stessa combinazione (riga Comment o Dialogue), la riga intera è una battuta e i pezzi restano esclusi
         /// </summary>
         /// <param name="bytes">Byte del file</param>
         /// <param name="format">Formato del file</param>
@@ -375,11 +357,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         new HashSet<int>(), 0, REJECTION_ASS_INVALID_DIALOGUE);
                 }
 
-                // Format di [Events] in vigore su ogni riga, letto come ReadDialogues, per Style e Layer; le righe Comment valide con
-                // lo stesso Format sono le sorgenti possibili di un effetto disegnato lettera per lettera. Degli stili ([V4+ Styles], o
-                // [V4 Styles] di un SSA) servono allineamento e margini orizzontali, per la posizione della riga che prende il posto
-                // delle lettere, e lo stato per canale, per l'aspetto; l'allineamento SSA (1-3 in basso, +4 in alto, +8 al centro)
-                // passa alla numerazione ASS
+                // Format di [Events] in vigore su ogni riga, letto come ReadDialogues, per Style, Layer e margini; le righe Comment
+                // valide con lo stesso Format possono dare la frase di righe animate. Degli stili ([V4+ Styles], o [V4 Styles] di un
+                // SSA) servono allineamento e margini, per la riga a schermo delle righe e la posizione della riga che prende il posto
+                // delle righe disegnate da un Comment, e lo stato per canale, per la visibilità e l'aspetto; l'allineamento SSA (1-3
+                // in basso, +4 in alto, +8 al centro) passa alla numerazione ASS
                 string[] formatByLine = new string[lines.Count];
                 List<KeyValuePair<AssSubtitleDialogue, bool>> lineEvents = dialogues.ConvertAll(d => new KeyValuePair<AssSubtitleDialogue, bool>(d, false));
                 Dictionary<string, int[]> styleLayouts = new Dictionary<string, int[]>(StringComparer.Ordinal);
@@ -409,13 +391,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         int styleCount = AssSubtitleUtils.CountFields(styleFormat);
                         string[] styleFields = AssSubtitleUtils.SplitFields(trimmed.Substring("Style:".Length).TrimStart(), styleCount);
                         int[] columns = new int[] { AssSubtitleUtils.ResolveFieldIndex(styleFormat, "Alignment"), AssSubtitleUtils.ResolveFieldIndex(styleFormat, "MarginL"),
-                            AssSubtitleUtils.ResolveFieldIndex(styleFormat, "MarginR") };
+                            AssSubtitleUtils.ResolveFieldIndex(styleFormat, "MarginR"), AssSubtitleUtils.ResolveFieldIndex(styleFormat, "MarginV") };
                         int nameColumn = AssSubtitleUtils.ResolveFieldIndex(styleFormat, "Name");
-                        int[] layout = new int[3];
+                        int[] layout = new int[4];
                         if (styleCount > 0 && styleFields.Length == styleCount && nameColumn >= 0)
                             styleStates[styleFields[nameColumn].Trim()] = cleaner.ReadStyleState(styleFormat, styleFields, ssaStyles);
                         if (styleCount > 0 && styleFields.Length == styleCount && nameColumn >= 0
-                            && Array.TrueForAll(new int[] { 0, 1, 2 }, k => columns[k] >= 0 && AssSubtitleUtils.TryParseInt(styleFields[columns[k]], out layout[k])))
+                            && Array.TrueForAll(new int[] { 0, 1, 2, 3 }, k => columns[k] >= 0 && AssSubtitleUtils.TryParseInt(styleFields[columns[k]], out layout[k])))
                         {
                             if (ssaStyles)
                                 layout[0] = layout[0] >= 1 && layout[0] <= 3 ? layout[0] : layout[0] >= 5 && layout[0] <= 7 ? layout[0] + 2
@@ -471,271 +453,272 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         s_assBlock.Replace(raw, "").Replace("\\N", " ").Replace("\\n", " ").Replace("\\h", " ").Trim(), s_drawing.IsMatch(raw)));
                 }
 
-                // Effetti lettera per lettera, solo con la tabella degli stili: una riga Comment è la sorgente delle righe Dialogue
-                // della sua combinazione di stile e attore se su ogni layer con righe libere dentro i suoi tempi, allargati della
-                // tolleranza, una corsa di righe consecutive dà le sue lettere senza spazi, ognuna ripetuta lo stesso numero di volte
-                // (le fasi dell'effetto). Il legame vale solo se riesce su tutti quei layer
-                int[] sourceOf = new int[events.Count];
-                Array.Fill(sourceOf, -1);
-                Dictionary<int, List<int>> generatedBySource = new Dictionary<int, List<int>>();
-                Dictionary<string, List<int>> dialoguesByStyle = new Dictionary<string, List<int>>(StringComparer.Ordinal);
-                for (int d = 0; d < events.Count; d++)
+                // Frasi animate, solo con la tabella degli stili. Una combinazione di stile, attore ed effetto alla volta; un pezzo è una
+                // riga Dialogue animata o posizionata che mostra almeno un carattere, e la sua riga intera è un'altra riga della
+                // combinazione, o una riga Comment dello stesso stile e attore che non sia un modello del templater, che si sovrappone
+                // o si tocca nel tempo col pezzo, sta sulla stessa riga a schermo (per un Comment non si guarda) e ha un testo senza
+                // spazi più lungo dei caratteri mostrati dal pezzo, che contiene i suoi tratti visibili nell'ordine. Il pezzo va con la
+                // riga intera con più tempo in comune, poi con quella che comincia più vicino, poi con la prima nel file; a parità fra
+                // testi diversi va con quella i cui pezzi già assegnati stanno sulla sua riga a schermo, e se non è una sola i gruppi
+                // coinvolti non si formano. Un pezzo senza riga intera segue la scritta di cui è la continuazione (stesso testo
+                // mostrato, comincia dove l'altra finisce); le copie di una riga intera (stesso testo, stessa riga a schermo, tempi che
+                // si toccano) entrano nel suo gruppo. Il gruppo vale se ha una riga che contiene i tratti visibili di tutte, una riga che
+                // ne mostra solo una parte, due righe con testi mostrati diversi a schermo insieme (una serie di righe una dopo l'altra
+                // è una rivelazione) e, nell'insieme delle righe, tutti i caratteri della frase. La frase è la riga più lunga fra
+                // quelle che contengono tutti i tratti, una Dialogue prima di un Comment; la riga principale è la Dialogue con la frase,
+                // la più lunga nel tempo e poi sul layer più basso, o il Comment
+                int screenWidth = assDocument.TryGetScriptInfoInt("PlayResX", out int scriptWidth) ? scriptWidth : 0;
+                int screenHeight = assDocument.TryGetScriptInfoInt("PlayResY", out int scriptHeight) ? scriptHeight : 0;
+                if (screenWidth <= 0 && screenHeight <= 0)
                 {
-                    if (events[d].Comment)
-                        continue;
-                    if (!dialoguesByStyle.ContainsKey(events[d].Style + "\u0001" + events[d].Actor))
-                        dialoguesByStyle[events[d].Style + "\u0001" + events[d].Actor] = new List<int>();
-                    dialoguesByStyle[events[d].Style + "\u0001" + events[d].Actor].Add(d);
+                    screenWidth = 384;
+                    screenHeight = 288;
                 }
-                for (int c = 0; c < events.Count; c++)
+                else if (screenHeight <= 0)
                 {
-                    AssEvent source = events[c];
-                    if (!source.Comment || source.Drawing || !dialoguesByStyle.TryGetValue(source.Style + "\u0001" + source.Actor, out List<int> candidates))
-                        continue;
-
-                    List<string> letters = new List<string>();
-                    TextElementEnumerator elements = StringInfo.GetTextElementEnumerator(source.Readable);
-                    while (elements.MoveNext())
-                    {
-                        if (!string.IsNullOrWhiteSpace(elements.GetTextElement()))
-                            letters.Add(elements.GetTextElement());
-                    }
-                    if (letters.Count < 2)
-                        continue;
-
-                    SortedDictionary<int, List<int>> byLayer = new SortedDictionary<int, List<int>>();
-                    foreach (int d in candidates)
-                    {
-                        AssEvent candidate = events[d];
-                        if (sourceOf[d] >= 0 || candidate.Line.StartMs < source.Line.StartMs - LETTER_EFFECT_TOLERANCE_MS || candidate.Line.EndMs > source.Line.EndMs + LETTER_EFFECT_TOLERANCE_MS)
-                            continue;
-                        if (!byLayer.ContainsKey(candidate.Layer ?? 0))
-                            byLayer[candidate.Layer ?? 0] = new List<int>();
-                        byLayer[candidate.Layer ?? 0].Add(d);
-                    }
-
-                    List<int> generated = new List<int>();
-                    bool complete = byLayer.Count > 0;
-                    foreach (List<int> layerLines in byLayer.Values)
-                    {
-                        int matched = 0;
-                        for (int p = 0; p < layerLines.Count && matched == 0; p++)
-                        {
-                            for (int phases = 1; matched == 0 && p + phases * letters.Count <= layerLines.Count && events[layerLines[p + phases - 1]].Readable == letters[0]; phases++)
-                            {
-                                bool spelled = true;
-                                for (int q = 0; q < phases * letters.Count && spelled; q++)
-                                    spelled = !events[layerLines[p + q]].Drawing && events[layerLines[p + q]].Readable == letters[q / phases];
-                                if (spelled)
-                                {
-                                    matched = phases * letters.Count;
-                                    generated.AddRange(layerLines.GetRange(p, matched));
-                                }
-                            }
-                        }
-                        complete &= matched > 0;
-                    }
-                    if (!complete)
-                        continue;
-
-                    generated.Sort();
-                    generatedBySource[c] = generated;
-                    foreach (int g in generated)
-                        sourceOf[g] = c;
+                    screenHeight = screenWidth == 1280 ? 1024 : screenWidth * 3 / 4;
                 }
-
-                // Pezzi di parola animati, solo con la tabella degli stili: righe posizionate (\pos, \move o \org, come i fotogrammi
-                // di un'animazione) della stessa combinazione di stile, attore ed effetto di una riga intera, finite entro il suo
-                // inizio, che risalgono senza buchi nel tempo dall'inizio della riga intera (fotogrammi e copie su altri layer). Le
-                // battute di dialogo senza posizione non sono mai pezzi. I testi distinti, nell'ordine in cui compaiono, uniti senza
-                // spazi danno la riga intera senza spazi, e almeno uno ha più di un carattere: fatti di soli caratteri singoli sono un
-                // effetto lettera per lettera. Il legame vale solo se riesce per intero
-                int[] wholeOf = new int[events.Count];
-                Array.Fill(wholeOf, -1);
-                Dictionary<int, List<int>> piecesByWhole = new Dictionary<int, List<int>>();
+                else if (screenWidth <= 0)
+                {
+                    screenWidth = screenHeight == 1024 ? 1280 : screenHeight * 4 / 3;
+                }
                 string[] spaceless = events.ConvertAll(assEvent => string.Concat(assEvent.Readable.Where(c => !char.IsWhiteSpace(c)))).ToArray();
-                Dictionary<string, List<int>> eventsByUnit = new Dictionary<string, List<int>>(StringComparer.Ordinal);
-                for (int u = 0; u < events.Count; u++)
+                string[] shownOf = new string[events.Count];
+                List<string>[] fragmentsOf = new List<string>[events.Count];
+                List<double[]>[] boxesOf = new List<double[]>[events.Count];
+                Dictionary<string, List<int>> linesByUnit = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+                Dictionary<string, List<int>> commentsByStyle = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+                for (int e = 0; e < events.Count; e++)
                 {
-                    string unit = events[u].Style + "\u0001" + events[u].Actor + "\u0001" + events[u].Effect;
-                    if (!events[u].Comment && !events[u].Drawing && sourceOf[u] < 0)
+                    AssEvent assEvent = events[e];
+                    if (assEvent.Drawing || spaceless[e].Length == 0 || (assEvent.Comment && Array.Exists(new string[] { "template", "code", "mixin" },
+                        model => assEvent.Effect.StartsWith(model, StringComparison.OrdinalIgnoreCase))))
+                        continue;
+
+                    // Tratti visibili: caratteri senza spazi mostrati in qualche istante, divisi dai caratteri nascosti
+                    List<bool> visible = cleaner.ReadVisibleCharacters(assEvent.Raw, assEvent.Style, styleStates);
+                    StringBuilder shownCharacters = new StringBuilder();
+                    StringBuilder fragment = new StringBuilder();
+                    fragmentsOf[e] = new List<string>();
+                    for (int c = 0; c < spaceless[e].Length && c < visible.Count; c++)
                     {
-                        if (!eventsByUnit.ContainsKey(unit))
-                            eventsByUnit[unit] = new List<int>();
-                        eventsByUnit[unit].Add(u);
+                        if (visible[c])
+                        {
+                            shownCharacters.Append(spaceless[e][c]);
+                            fragment.Append(spaceless[e][c]);
+                        }
+                        else if (fragment.Length > 0)
+                        {
+                            fragmentsOf[e].Add(fragment.ToString());
+                            fragment.Clear();
+                        }
                     }
-                }
-                for (int w = 0; w < events.Count; w++)
-                {
-                    AssEvent whole = events[w];
-                    if (whole.Comment || whole.Drawing || sourceOf[w] >= 0 || wholeOf[w] >= 0 || new StringInfo(spaceless[w]).LengthInTextElements < 2)
-                        continue;
+                    if (fragment.Length > 0)
+                        fragmentsOf[e].Add(fragment.ToString());
+                    shownOf[e] = shownCharacters.ToString();
 
-                    List<int> candidates = eventsByUnit[whole.Style + "\u0001" + whole.Actor + "\u0001" + whole.Effect].FindAll(p => p != w && wholeOf[p] < 0
-                        && !piecesByWhole.ContainsKey(p) && s_position.IsMatch(events[p].Raw) && events[p].Line.StartMs < whole.Line.StartMs && events[p].Line.EndMs <= whole.Line.StartMs && spaceless[p].Length > 0 && spaceless[p] != spaceless[w]
-                        && spaceless[w].Contains(spaceless[p], StringComparison.Ordinal));
-
-                    // Il tratto coperto parte dall'inizio della riga intera e si allarga all'indietro con ogni riga che lo tocca
-                    List<int> chain = new List<int>();
-                    long edge = whole.Line.StartMs;
-                    List<int> reaching = candidates.FindAll(p => events[p].Line.EndMs >= edge);
-                    while (reaching.Count > 0)
+                    string group = assEvent.Style + "\u0001" + assEvent.Actor;
+                    if (assEvent.Comment)
                     {
-                        chain.AddRange(reaching);
-                        edge = Math.Min(edge, reaching.Min(p => events[p].Line.StartMs));
-                        reaching = candidates.FindAll(p => !chain.Contains(p) && events[p].Line.EndMs >= edge);
+                        if (!commentsByStyle.ContainsKey(group))
+                            commentsByStyle[group] = new List<int>();
+                        commentsByStyle[group].Add(e);
+                        continue;
                     }
-                    chain.Sort((a, b) => events[a].Line.StartMs != events[b].Line.StartMs ? events[a].Line.StartMs.CompareTo(events[b].Line.StartMs) : a.CompareTo(b));
-                    List<string> texts = new List<string>();
-                    foreach (int p in chain)
-                    {
-                        if (!texts.Contains(spaceless[p]))
-                            texts.Add(spaceless[p]);
-                    }
-                    if (chain.Count == 0 || string.Concat(texts) != spaceless[w] || texts.TrueForAll(pieceText => new StringInfo(pieceText).LengthInTextElements == 1))
-                        continue;
-
-                    chain.Sort();
-                    piecesByWhole[w] = chain;
-                    foreach (int p in chain)
-                        wholeOf[p] = w;
-                }
-
-                // Evidenziazioni sovrapposte, solo con la tabella degli stili: righe ritagliate (\clip o \iclip) e posizionate della
-                // stessa unità di una riga sotto, sovrapposte nel tempo, il cui testo è un tratto che la riga sotto nasconde e poi
-                // rimostra com'era (un tratto che copre tutta la riga non conta): lo ridisegnano sopra di essa, in un altro colore.
-                // Ognuna va con la prima riga sotto nell'ordine del file; ogni riga sotto, comprese le copie su altri layer, si legge
-                // coi tratti che le evidenziazioni coprono già visibili: tradotta, si scrive così e le evidenziazioni se ne vanno
-                int[] underOf = new int[events.Count];
-                Array.Fill(underOf, -1);
-                Dictionary<int, List<int>> overlaysByUnder = new Dictionary<int, List<int>>();
-                Dictionary<int, List<SubtitleHiddenSpan>> coveredByUnder = new Dictionary<int, List<SubtitleHiddenSpan>>();
-                for (int u = 0; u < events.Count; u++)
-                {
-                    AssEvent under = events[u];
-                    if (under.Comment || under.Drawing || sourceOf[u] >= 0 || wholeOf[u] >= 0 || underOf[u] >= 0)
-                        continue;
-                    List<SubtitleHiddenSpan> hidden = cleaner.ReadHiddenSpans(under.Raw, under.Style, styleStates).FindAll(span => span.Text != under.Readable);
-                    if (hidden.Count == 0)
-                        continue;
-                    List<int> overlays = eventsByUnit[under.Style + "\u0001" + under.Actor + "\u0001" + under.Effect].FindAll(o => o != u && wholeOf[o] < 0
-                        && !overlaysByUnder.ContainsKey(o) && !coveredByUnder.ContainsKey(o) && !piecesByWhole.ContainsKey(o) && s_clip.IsMatch(events[o].Raw)
-                        && s_position.IsMatch(events[o].Raw) && events[o].Line.StartMs < under.Line.EndMs && events[o].Line.EndMs > under.Line.StartMs
-                        && hidden.Exists(span => span.Text == events[o].Readable));
-                    if (overlays.Count == 0)
-                        continue;
-                    coveredByUnder[u] = hidden.FindAll(span => overlays.Exists(o => events[o].Readable == span.Text));
-                    overlays.RemoveAll(o => underOf[o] >= 0);
-                    if (overlays.Count == 0)
-                        continue;
-                    overlaysByUnder[u] = overlays;
-                    foreach (int o in overlays)
-                        underOf[o] = u;
+                    if (!linesByUnit.ContainsKey(group + "\u0001" + assEvent.Effect))
+                        linesByUnit[group + "\u0001" + assEvent.Effect] = new List<int>();
+                    linesByUnit[group + "\u0001" + assEvent.Effect].Add(e);
+                    string lineFormat = formatByLine[assEvent.Line.LineIndex];
+                    int[] marginColumns = new string[] { "MarginL", "MarginR", "MarginV" }.Select(name => AssSubtitleUtils.ResolveFieldIndex(lineFormat, name)).ToArray();
+                    int[] margins = marginColumns.Select(column => column >= 0 && AssSubtitleUtils.TryParseInt(assEvent.Line.Fields[column], out int margin) ? margin : 0).ToArray();
+                    if (styleLayouts.TryGetValue(assEvent.Style, out int[] styleLayout))
+                        boxesOf[e] = cleaner.ReadScreenBoxes(assEvent.Raw, styleStates.GetValueOrDefault(assEvent.Style), styleLayout, margins, screenWidth, screenHeight);
                 }
 
-                // Frasi rivelate a pezzi, solo con la tabella degli stili: righe libere della stessa unità con lo stesso testo
-                // leggibile, in una catena di tempi sovrapposti o contigui, che mostrano parti diverse della frase coi canali d'alpha.
-                // Una riga che si sovrappone nel tempo a un'altra della catena con più caratteri visibili ne mostra solo un pezzo
-                // (tendina, parola sola); senza pezzi la catena è una rivelazione in sequenza e resta com'è. Le altre righe si leggono
-                // con la frase intera visibile e l'aspetto del loro inizio; la primaria è quella col testo pulito con più segni (la
-                // prima nel file a parità), le altre ne sono copie e ne prendono la traduzione senza i segni: una traduzione per tutte, e
-                // i pezzi se ne vanno quando la frase è tradotta. Il legame vale solo se ogni riga base si può mostrare per intero, il
-                // suo testo pulito è quello della primaria o quello senza segni, due basi dello stesso layer non stanno a schermo insieme e le
-                // basi coprono i tempi dei pezzi a meno di un fotogramma
+                // Stessa riga di testo a schermo (riquadri sovrapposti in verticale), tempi che si toccano e tempo in comune
+                Func<int, int, bool> sameRow = (a, b) => boxesOf[a] != null && boxesOf[b] != null
+                    && boxesOf[a].Exists(boxA => boxesOf[b].Exists(boxB => Math.Min(boxA[3], boxB[3]) - Math.Max(boxA[2], boxB[2]) > 0));
+                Func<int, int, bool> touch = (a, b) => events[a].Line.StartMs <= events[b].Line.EndMs && events[b].Line.StartMs <= events[a].Line.EndMs;
+                Func<int, int, long> shared = (a, b) => Math.Max(0, Math.Min(events[a].Line.EndMs, events[b].Line.EndMs) - Math.Max(events[a].Line.StartMs, events[b].Line.StartMs));
+                Func<List<string>, string, bool> contains = (fragments, whole) =>
+                {
+                    int at = 0;
+                    foreach (string fragment in fragments)
+                    {
+                        int found = whole.IndexOf(fragment, at, StringComparison.Ordinal);
+                        if (found < 0)
+                            return false;
+                        at = found + fragment.Length;
+                    }
+                    return true;
+                };
+
+                // Per ogni riga di un gruppo che se ne va, la riga principale; le righe disegnate di ogni Comment principale; i pezzi
+                // tolti con la traduzione di ogni riga principale Dialogue; le righe intere lette con la frase visibile e le loro copie
+                int[] phraseOf = new int[events.Count];
+                Array.Fill(phraseOf, -1);
+                Dictionary<int, List<int>> generatedBySource = new Dictionary<int, List<int>>();
+                Dictionary<int, List<int>> piecesByPhrase = new Dictionary<int, List<int>>();
                 Dictionary<int, string> wholeShown = new Dictionary<int, string>();
                 Dictionary<int, int> copyOf = new Dictionary<int, int>();
                 Dictionary<int, int> basePositions = new Dictionary<int, int>();
-                // Un fotogramma come si scrive nei tempi dell'ASS: la sua durata arrotondata per eccesso ai 10 ms, perché agganciato ai
-                // fotogrammi un intervallo di un fotogramma si scrive coi centesimi a cavallo (a 23,976 fps 40 o 50 ms). La frequenza
-                // viene dal video finto di Aegisub se c'è; se no dai tempi dell'unità, agganciati ai fotogrammi delle frequenze per
-                // cui tutti cadono nella stessa fetta di un centesimo (tolte le doppie di un'altra che va), quando tutte danno lo
-                // stesso fotogramma arrotondato (23,976 e 24 non si separano su poche righe); 0 se non si ricava
-                long? dummyFrame = null;
-                foreach (string line in assDocument.Lines)
+                foreach (KeyValuePair<string, List<int>> unit in linesByUnit)
                 {
-                    Match dummy = s_dummyVideo.Match(line);
-                    if (dummy.Success && double.TryParse(dummy.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double dummyRate) && dummyRate > 0)
-                        dummyFrame = (long)Math.Ceiling(100 / dummyRate) * 10;
-                }
-                foreach (List<int> unitEvents in eventsByUnit.Values)
-                {
-                    List<long> unitTimes = unitEvents.SelectMany(u => new long[] { events[u].Line.StartMs, events[u].Line.EndMs }).Distinct().ToList();
-                    List<double> fitting = s_frameRates.Where(rate =>
+                    List<int> unitLines = unit.Value.OrderBy(l => events[l].Line.StartMs).ThenBy(l => l).ToList();
+                    List<int> candidates = unitLines.Concat(commentsByStyle.GetValueOrDefault(unit.Key.Substring(0, unit.Key.LastIndexOf('\u0001')), new List<int>())).ToList();
+                    List<int> pieces = unitLines.FindAll(l => s_animation.IsMatch(events[l].Raw) && fragmentsOf[l].Count > 0);
+                    Dictionary<int, int> owner = new Dictionary<int, int>();
+                    List<KeyValuePair<int, List<int>>> tied = new List<KeyValuePair<int, List<int>>>();
+                    foreach (int piece in pieces)
                     {
-                        List<double> residues = unitTimes.ConvertAll(time => time % (1000 / rate));
-                        residues.Sort();
-                        double widestGap = residues.Count == 0 ? 0 : residues[0] + 1000 / rate - residues[residues.Count - 1];
-                        for (int r = 1; r < residues.Count; r++)
-                            widestGap = Math.Max(widestGap, residues[r] - residues[r - 1]);
-                        return residues.Count > 0 && 1000 / rate - widestGap <= 10;
-                    }).ToList();
-                    fitting.RemoveAll(rate => fitting.Exists(other => Math.Abs(rate / other - 2) < 1e-9));
-                    List<long> frames = fitting.ConvertAll(rate => (long)Math.Ceiling(100 / rate) * 10).Distinct().ToList();
-                    long frame = dummyFrame ?? (frames.Count == 1 ? frames[0] : 0);
+                        List<int> wholes = candidates.FindAll(w => w != piece && touch(piece, w) && spaceless[w].Length > shownOf[piece].Length
+                            && contains(fragmentsOf[piece], spaceless[w]) && (events[w].Comment || sameRow(piece, w)))
+                            .OrderByDescending(w => shared(piece, w)).ThenBy(w => Math.Abs(events[w].Line.StartMs - events[piece].Line.StartMs)).ThenBy(w => w).ToList();
+                        if (wholes.Count == 0)
+                            continue;
+                        List<int> best = wholes.FindAll(w => shared(piece, w) == shared(piece, wholes[0])
+                            && Math.Abs(events[w].Line.StartMs - events[piece].Line.StartMs) == Math.Abs(events[wholes[0]].Line.StartMs - events[piece].Line.StartMs));
+                        if (best.Select(w => spaceless[w]).Distinct(StringComparer.Ordinal).Count() > 1)
+                            tied.Add(new KeyValuePair<int, List<int>>(piece, best));
+                        else
+                            owner[piece] = wholes[0];
+                    }
 
-                    List<int> free = unitEvents.FindAll(f => wholeOf[f] < 0 && underOf[f] < 0 && !piecesByWhole.ContainsKey(f) && !overlaysByUnder.ContainsKey(f)
-                        && !coveredByUnder.ContainsKey(f) && events[f].Readable.Trim().Length > 0 && styleStates.ContainsKey(events[f].Style));
-                    foreach (IGrouping<string, int> sameText in free.GroupBy(f => events[f].Readable, StringComparer.Ordinal))
+                    // Pareggi fra righe intere di testo diverso: un candidato che è a sua volta un pezzo conta come la sua riga intera
+                    Dictionary<int, int> firm = new Dictionary<int, int>(owner);
+                    Func<int, int> rootOf = w =>
                     {
-                        List<int> ordered = sameText.OrderBy(f => events[f].Line.StartMs).ThenBy(f => f).ToList();
-                        int first = 0;
-                        while (first < ordered.Count)
+                        HashSet<int> seen = new HashSet<int>();
+                        while (firm.TryGetValue(w, out int next) && seen.Add(w))
+                            w = next;
+                        return w;
+                    };
+                    HashSet<int> ambiguous = new HashSet<int>();
+                    foreach (KeyValuePair<int, List<int>> tie in tied)
+                    {
+                        List<int> roots = tie.Value.Select(rootOf).Distinct().ToList();
+                        List<int> hits = roots.FindAll(root => pieces.Exists(other => firm.TryGetValue(other, out int whole) && rootOf(whole) == root && sameRow(tie.Key, other)));
+                        if (roots.Count == 1)
+                            owner[tie.Key] = tie.Value[0];
+                        else if (hits.Count == 1)
+                            owner[tie.Key] = hits[0];
+                        else
+                            ambiguous.UnionWith(roots);
+                    }
+
+                    // Continuazioni: fotogrammi e fasi della stessa scritta, che comincia dove l'altra finisce
+                    Dictionary<int, List<int>> continuations = pieces.ToDictionary(p => p, p => new List<int>());
+                    for (int p = 0; p < pieces.Count; p++)
+                    {
+                        for (int q = p + 1; q < pieces.Count && events[pieces[q]].Line.StartMs <= events[pieces[p]].Line.EndMs; q++)
                         {
-                            long chainEnd = events[ordered[first]].Line.EndMs;
-                            int next = first + 1;
-                            while (next < ordered.Count && events[ordered[next]].Line.StartMs <= chainEnd)
-                                chainEnd = Math.Max(chainEnd, events[ordered[next++]].Line.EndMs);
-                            List<int> chain = ordered.GetRange(first, next - first);
-                            first = next;
-
-                            Dictionary<int, List<bool>> visible = chain.ToDictionary(c => c, c => cleaner.ReadVisibleCharacters(events[c].Raw, events[c].Style, styleStates));
-                            Func<int, int, bool> overlap = (a, b) => events[a].Line.StartMs < events[b].Line.EndMs && events[a].Line.EndMs > events[b].Line.StartMs;
-                            List<int> pieces = chain.FindAll(c => chain.Exists(o => o != c && overlap(c, o) && visible[o].Count(seen => seen) > visible[c].Count(seen => seen)));
-                            if (pieces.Count == 0)
+                            if (events[pieces[q]].Line.StartMs != events[pieces[p]].Line.EndMs || shownOf[pieces[q]] != shownOf[pieces[p]])
                                 continue;
-                            List<int> bases = chain.Except(pieces).OrderBy(c => c).ToList();
-                            Dictionary<int, string> wholeLines = bases.ToDictionary(c => c, c => cleaner.ShowWholeLine(events[c].Raw, events[c].Style, styleStates));
-                            if (bases.Count == 0 || wholeLines.Values.Any(line => line == null) || bases.Exists(b => bases.Exists(o => o != b && events[o].Layer == events[b].Layer && overlap(b, o))))
+                            continuations[pieces[p]].Add(pieces[q]);
+                            continuations[pieces[q]].Add(pieces[p]);
+                        }
+                    }
+                    for (bool changed = true; changed;)
+                    {
+                        changed = false;
+                        foreach (int piece in pieces.Where(p => !owner.ContainsKey(p)))
+                        {
+                            int followed = continuations[piece].FindIndex(next => owner.TryGetValue(next, out int whole) && contains(fragmentsOf[piece], spaceless[whole]));
+                            if (followed < 0)
                                 continue;
+                            owner[piece] = owner[continuations[piece][followed]];
+                            changed = true;
+                        }
+                    }
 
-                            // Le basi coprono i tempi dei pezzi, a meno di un fotogramma (di nulla se non si ricava): tolti i
-                            // pezzi la frase non manca
-                            bool covered = pieces.TrueForAll(p =>
-                            {
-                                long alone = 0;
-                                long reached = events[p].Line.StartMs;
-                                while (reached < events[p].Line.EndMs)
-                                {
-                                    long further = bases.Where(b => events[b].Line.StartMs <= reached && events[b].Line.EndMs > reached).Select(b => events[b].Line.EndMs).DefaultIfEmpty(reached).Max();
-                                    if (further == reached)
-                                    {
-                                        further = Math.Min(events[p].Line.EndMs, bases.Where(b => events[b].Line.StartMs > reached).Select(b => events[b].Line.StartMs).DefaultIfEmpty(events[p].Line.EndMs).Min());
-                                        alone += further - reached;
-                                    }
-                                    reached = further;
-                                }
-                                return alone <= frame;
-                            });
-                            if (!covered)
+                    // Gruppi: i pezzi con la loro riga intera, e le copie della riga intera
+                    Dictionary<int, int> parent = new Dictionary<int, int>();
+                    Func<int, int> find = n =>
+                    {
+                        parent.TryAdd(n, n);
+                        while (parent[n] != n)
+                            n = parent[n] = parent[parent[n]];
+                        return n;
+                    };
+                    foreach (KeyValuePair<int, int> link in owner)
+                        parent[find(link.Key)] = find(link.Value);
+                    HashSet<int> used = new HashSet<int>(owner.Values);
+                    foreach (int whole in candidates.Where(w => used.Contains(w) && !events[w].Comment))
+                    {
+                        foreach (int copy in unitLines.Where(c => c != whole && spaceless[c] == spaceless[whole] && touch(c, whole) && sameRow(c, whole)))
+                            parent[find(copy)] = find(whole);
+                    }
+
+                    foreach (List<int> members in parent.Keys.ToList().GroupBy(find).Select(g => g.OrderBy(m => events[m].Line.StartMs).ThenBy(m => m).ToList()).ToList())
+                    {
+                        List<int> phraseLines = members.FindAll(w => members.TrueForAll(m => contains(fragmentsOf[m], spaceless[w])));
+                        List<int> drawn = members.FindAll(m => !events[m].Comment);
+                        if (phraseLines.Count == 0 || !drawn.Exists(m => shownOf[m] != spaceless[phraseLines[0]])
+                            || !drawn.Exists(a => drawn.Exists(b => shared(a, b) > 0 && shownOf[a] != shownOf[b])) || members.Exists(ambiguous.Contains))
+                            continue;
+
+                        // Tutti i caratteri della frase mostrati, contando una volta le righe con lo stesso testo mostrato nello stesso punto
+                        Dictionary<char, int> missing = spaceless[phraseLines.OrderByDescending(w => spaceless[w].Length).First()].GroupBy(c => c).ToDictionary(g => g.Key, g => g.Count());
+                        foreach (int m in drawn.GroupBy(m => shownOf[m] + "\u0001" + (boxesOf[m] == null ? "" : Math.Round(boxesOf[m][boxesOf[m].Count - 1][0]).ToString(CultureInfo.InvariantCulture)
+                            + "," + Math.Round(boxesOf[m][boxesOf[m].Count - 1][1]).ToString(CultureInfo.InvariantCulture))).Select(g => g.First()))
+                        {
+                            foreach (char c in shownOf[m].Where(missing.ContainsKey))
+                                missing[c]--;
+                        }
+                        if (missing.Values.Any(count => count > 0))
+                            continue;
+
+                        int phraseLine = phraseLines.OrderByDescending(w => spaceless[w].Length).ThenBy(w => events[w].Comment).ThenByDescending(w => events[w].Line.EndMs - events[w].Line.StartMs)
+                            .ThenBy(w => events[w].Layer ?? 0).ThenBy(w => w).First();
+                        int principal = phraseLines.Where(w => !events[w].Comment && spaceless[w] == spaceless[phraseLine]).OrderByDescending(w => events[w].Line.EndMs - events[w].Line.StartMs)
+                            .ThenBy(w => events[w].Layer ?? 0).ThenBy(w => w).DefaultIfEmpty(phraseLine).First();
+                        // Frase da una riga Comment: la riga tradotta prende il posto delle lettere col loro aspetto a riposo e dove stanno
+                        // ferme, quindi il gruppo vale solo se in ogni layer le lettere hanno a riposo la stessa visibilità (alpha, bordo e
+                        // ombra), un solo allineamento e una sola altezza ferma
+                        if (events[principal].Comment)
+                        {
+                            if (!drawn.GroupBy(m => events[m].Layer).All(layer => cleaner.ReadLetterLook(layer.Select(m => events[m].Raw).ToList(), styleStates.GetValueOrDefault(events[principal].Style)) is SubtitleLetterLook look
+                                && look.VisibilityShared && look.Alignment.HasValue && look.PositionY != null))
                                 continue;
+                            if (!generatedBySource.ContainsKey(principal))
+                                generatedBySource[principal] = new List<int>();
+                            generatedBySource[principal].AddRange(drawn);
+                            generatedBySource[principal].Sort();
+                            foreach (int line in drawn)
+                                phraseOf[line] = principal;
+                            continue;
+                        }
 
-                            Dictionary<int, string> cleanTexts = bases.ToDictionary(c => c, c => cleaner.Clean(wholeLines[c], "").CleanText);
-                            int primary = bases.OrderByDescending(c => cleanTexts[c].Count(m => m == SubtitleCueCleaner.MARK_OPEN)).ThenBy(c => c).First();
+                        // Frase da una riga Dialogue: restano le righe intere, cioè le righe col testo della frase che non ne mostrano meno
+                        // di un'altra riga sovrapposta con lo stesso testo; gli altri pezzi se ne vanno con la traduzione. Se una riga intera
+                        // nasconde una parte della frase, la frase è rivelata a pezzi: ogni riga intera si legge con la frase visibile e
+                        // prende la traduzione della primaria, quella col testo pulito con più segni (la prima nel file a parità). Il
+                        // gruppo non vale se una riga intera non si può mostrare per intero o ha un testo pulito diverso da quello della
+                        // primaria, con o senza segni
+                        List<int> wholeLines = drawn.FindAll(m => spaceless[m] == spaceless[principal] && !drawn.Exists(o => o != m && spaceless[o] == spaceless[m]
+                            && events[o].Line.StartMs < events[m].Line.EndMs && events[o].Line.EndMs > events[m].Line.StartMs && shownOf[o].Length > shownOf[m].Length));
+                        if (!wholeLines.Contains(principal))
+                            continue;
+                        if (wholeLines.Exists(w => shownOf[w].Length < spaceless[w].Length))
+                        {
+                            Dictionary<int, string> wholeTexts = wholeLines.ToDictionary(w => w, w => cleaner.ShowWholeLine(events[w].Raw, events[w].Style, styleStates));
+                            if (wholeTexts.ContainsValue(null))
+                                continue;
+                            Dictionary<int, string> cleanTexts = wholeLines.ToDictionary(w => w, w => cleaner.Clean(wholeTexts[w], "").CleanText);
+                            int primary = wholeLines.OrderByDescending(w => cleanTexts[w].Count(m => m == SubtitleCueCleaner.MARK_OPEN)).ThenBy(w => w).First();
                             string unmarked = s_markSyntax.Replace(cleanTexts[primary], "");
-                            if (!bases.TrueForAll(c => cleanTexts[c] == cleanTexts[primary] || cleanTexts[c] == unmarked))
+                            if (!wholeLines.TrueForAll(w => cleanTexts[w] == cleanTexts[primary] || cleanTexts[w] == unmarked))
                                 continue;
-
-                            pieces.Sort();
-                            overlaysByUnder[primary] = pieces;
-                            foreach (int c in pieces)
-                                underOf[c] = primary;
-                            foreach (int c in bases)
+                            foreach (int w in wholeLines)
                             {
-                                wholeShown[c] = wholeLines[c];
-                                if (c != primary)
-                                    copyOf[c] = primary;
+                                wholeShown[w] = wholeTexts[w];
+                                if (w != primary)
+                                    copyOf[w] = primary;
                             }
                         }
+                        piecesByPhrase[principal] = drawn.Except(wholeLines).ToList();
+                        foreach (int piece in piecesByPhrase[principal])
+                            phraseOf[piece] = principal;
                     }
                 }
 
@@ -749,36 +732,19 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     string raw = assEvent.Raw;
                     string readable = assEvent.Readable;
 
-                    // Le righe Comment senza effetto legato restano fuori; le righe disegnate dall'effetto restano fuori anche dagli
-                    // indizi e lasciano il posto alla riga sorgente tradotta
+                    // Le righe Comment senza frase animata restano fuori; le altre righe di una frase animata restano fuori anche dagli
+                    // indizi: le righe disegnate da un Comment lasciano il posto alla riga Comment tradotta, i pezzi di una frase da
+                    // una riga Dialogue se ne vanno quando la riga principale è tradotta
                     if (assEvent.Comment && !generatedBySource.ContainsKey(e))
                         continue;
-                    if (sourceOf[e] >= 0)
+                    if (phraseOf[e] >= 0)
                     {
                         rawCues.Add(new RawCue(dialogue.StartMs, dialogue.EndMs, assEvent.TextStart, assEvent.TextLength, style, assEvent.Layer, SubtitleCueKind.Dialogue,
-                            SubtitleCue.EXCLUSION_LETTER_EFFECT, ""));
+                            SubtitleCue.EXCLUSION_ANIMATED_PIECE, ""));
                         continue;
                     }
-
-                    // I pezzi di parola restano fuori anche dagli indizi e se ne vanno quando la riga intera è tradotta
-                    if (wholeOf[e] >= 0)
-                    {
-                        rawCues.Add(new RawCue(dialogue.StartMs, dialogue.EndMs, assEvent.TextStart, assEvent.TextLength, style, assEvent.Layer, SubtitleCueKind.Dialogue,
-                            SubtitleCue.EXCLUSION_WORD_PIECE, ""));
-                        continue;
-                    }
-                    // Le evidenziazioni sovrapposte restano fuori anche dagli indizi e se ne vanno quando la riga sotto è tradotta
-                    if (underOf[e] >= 0)
-                    {
-                        rawCues.Add(new RawCue(dialogue.StartMs, dialogue.EndMs, assEvent.TextStart, assEvent.TextLength, style, assEvent.Layer, SubtitleCueKind.Dialogue,
-                            SubtitleCue.EXCLUSION_OVERLAY, ""));
-                        continue;
-                    }
-                    List<int> attached = piecesByWhole.GetValueOrDefault(e, new List<int>()).Concat(overlaysByUnder.GetValueOrDefault(e, new List<int>())).ToList();
-                    if (attached.Count > 0)
+                    if (piecesByPhrase.TryGetValue(e, out List<int> attached) && attached.Count > 0)
                         attachedLines[rawCues.Count + 1] = attached.ConvertAll(a => lines[events[a].Line.LineIndex]);
-                    if (coveredByUnder.TryGetValue(e, out List<SubtitleHiddenSpan> covered))
-                        shownTexts[rawCues.Count + 1] = cleaner.ShowHiddenSpans(raw, covered);
                     if (wholeShown.TryGetValue(e, out string whole))
                     {
                         shownTexts[rawCues.Count + 1] = whole;
@@ -1024,12 +990,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// Scrive il file sostituendo i soli campi Text delle battute tradotte e delle loro copie (su altri layer, o altre righe di una
-        /// frase rivelata a pezzi); la riga sorgente tradotta di un effetto lettera per lettera resta com'è e una riga Dialogue col
-        /// testo tradotto per layer delle lettere prende il posto delle righe disegnate; i pezzi di parola animati prima di una riga
-        /// intera tradotta se ne vanno, e così le evidenziazioni sovrapposte a una riga sotto tradotta, scritta coi tratti che
-        /// coprivano visibili, e i pezzi di una frase rivelata a pezzi tradotta, scritta con la frase intera visibile. Una traduzione
-        /// uguale al testo pulito del sorgente, a meno degli spazi e degli a capo come nelle tratte ripetute, lascia lettere, pezzi ed
-        /// evidenziazioni come sono
+        /// frase rivelata a pezzi); di una frase animata con la riga Comment tradotta la riga Comment resta com'è e una riga Dialogue
+        /// col testo tradotto per layer delle lettere prende il posto delle righe disegnate; di una frase animata con la riga Dialogue
+        /// tradotta i pezzi se ne vanno e la riga è scritta con la frase intera visibile. Una traduzione uguale al testo pulito del
+        /// sorgente, a meno degli spazi e degli a capo come nelle tratte ripetute, lascia i pezzi come sono
         /// </summary>
         /// <param name="translatedText">Testo pulito tradotto per id, già validato</param>
         /// <returns>Byte del file, con lo stesso BOM e la stessa codifica del sorgente (UTF-8 per una codifica scelta)</returns>
@@ -1045,7 +1009,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     continue;
 
                 // Un testo uguale al pulito del sorgente, a meno di spazi e a capo come la chiave delle tratte ripetute, lascia
-                // lettere, pezzi di parola ed evidenziazioni come sono in ogni file della tratta; per una copia si decide sulla battuta
+                // i pezzi delle frasi animate come sono in ogni file della tratta; per una copia si decide sulla battuta
                 // di cui è copia, così tutte le righe di una frase restano o cambiano insieme. Una copia senza segni di una battuta che
                 // li ha ne prende la traduzione senza segni
                 bool unchanged = SharedStretchDetector.Key(this.Format, translation ?? "") == SharedStretchDetector.Key(this.Format, sourceTexts[source.Value]);
@@ -1173,7 +1137,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             string Effect, string Raw, string Readable, bool Drawing);
 
         /// <summary>
-        /// Riga sorgente di un effetto lettera per lettera
+        /// Riga Comment di una frase animata
         /// </summary>
         /// <param name="Prefixes">Inizio delle righe Dialogue tradotte, una per layer, fino al testo tradotto</param>
         /// <param name="Lines">Righe fisiche disegnate dall'effetto nell'ordine del file; la prima lascia il posto alle righe tradotte</param>
