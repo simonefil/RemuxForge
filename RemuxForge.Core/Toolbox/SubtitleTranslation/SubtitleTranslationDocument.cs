@@ -39,6 +39,12 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Codifica predefinita, come in Aggiungi tracce</summary>
         public const string DEFAULT_ENCODING = "UTF-8";
 
+        /// <summary>
+        /// Margine in millisecondi attorno ai tempi di una riga Comment entro cui le righe disegnate dalle sue lettere le si legano: il
+        /// massimo misurato sugli ingressi e le uscite animati delle release
+        /// </summary>
+        public const long LETTER_EFFECT_TOLERANCE_MS = 1210;
+
         #endregion
 
         #region Variabili statiche
@@ -456,7 +462,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // Frasi animate, solo con la tabella degli stili. Una combinazione di stile, attore ed effetto alla volta; un pezzo è una
                 // riga Dialogue animata o posizionata che mostra almeno un carattere, e la sua riga intera è un'altra riga della
                 // combinazione, o una riga Comment dello stesso stile e attore che non sia un modello del templater, che si sovrappone
-                // o si tocca nel tempo col pezzo, sta sulla stessa riga a schermo (per un Comment non si guarda) e ha un testo senza
+                // o si tocca nel tempo col pezzo (un Comment coi tempi allargati della tolleranza delle lettere), sta sulla stessa riga a
+                // schermo (per un Comment non si guarda) e ha un testo senza
                 // spazi più lungo dei caratteri mostrati dal pezzo, che contiene i suoi tratti visibili nell'ordine. Il pezzo va con la
                 // riga intera con più tempo in comune, poi con quella che comincia più vicino, poi con la prima nel file; a parità fra
                 // testi diversi va con quella i cui pezzi già assegnati stanno sulla sua riga a schermo, e se non è una sola i gruppi
@@ -571,7 +578,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     List<KeyValuePair<int, List<int>>> tied = new List<KeyValuePair<int, List<int>>>();
                     foreach (int piece in pieces)
                     {
-                        List<int> wholes = candidates.FindAll(w => w != piece && touch(piece, w) && spaceless[w].Length > shownOf[piece].Length
+                        List<int> wholes = candidates.FindAll(w => w != piece && (events[w].Comment
+                            ? events[piece].Line.StartMs <= events[w].Line.EndMs + LETTER_EFFECT_TOLERANCE_MS && events[w].Line.StartMs - LETTER_EFFECT_TOLERANCE_MS <= events[piece].Line.EndMs
+                            : touch(piece, w)) && spaceless[w].Length > shownOf[piece].Length
                             && contains(fragmentsOf[piece], spaceless[w]) && (events[w].Comment || sameRow(piece, w)))
                             .OrderByDescending(w => shared(piece, w)).ThenBy(w => Math.Abs(events[w].Line.StartMs - events[piece].Line.StartMs)).ThenBy(w => w).ToList();
                         if (wholes.Count == 0)
