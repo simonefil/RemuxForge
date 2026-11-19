@@ -463,17 +463,18 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 // riga Dialogue animata o posizionata che mostra almeno un carattere, e la sua riga intera è un'altra riga della
                 // combinazione, o una riga Comment dello stesso stile e attore che non sia un modello del templater, che si sovrappone
                 // o si tocca nel tempo col pezzo (un Comment coi tempi allargati della tolleranza delle lettere), sta sulla stessa riga a
-                // schermo (per un Comment non si guarda) e ha un testo senza
-                // spazi più lungo dei caratteri mostrati dal pezzo, che contiene i suoi tratti visibili nell'ordine. Il pezzo va con la
+                // schermo (per un Comment non si guarda) e ha un testo senza spazi più lungo dei caratteri mostrati dal pezzo, che
+                // contiene i suoi tratti visibili nell'ordine. Il pezzo va con la
                 // riga intera con più tempo in comune, poi con quella che comincia più vicino, poi con la prima nel file; a parità fra
                 // testi diversi va con quella i cui pezzi già assegnati stanno sulla sua riga a schermo, e se non è una sola i gruppi
                 // coinvolti non si formano. Un pezzo senza riga intera segue la scritta di cui è la continuazione (stesso testo
                 // mostrato, comincia dove l'altra finisce); le copie di una riga intera (stesso testo, stessa riga a schermo, tempi che
                 // si toccano) entrano nel suo gruppo. Il gruppo vale se ha una riga che contiene i tratti visibili di tutte, una riga che
                 // ne mostra solo una parte, due righe con testi mostrati diversi a schermo insieme (una serie di righe una dopo l'altra
-                // è una rivelazione, salvo i pezzi di parola che in sequenza compongono la riga che segue) e, nell'insieme delle righe, tutti i caratteri della frase. La frase è la riga più lunga fra
-                // quelle che contengono tutti i tratti, una Dialogue prima di un Comment; la riga principale è la Dialogue con la frase,
-                // la più lunga nel tempo e poi sul layer più basso, o il Comment
+                // è una rivelazione, salvo i pezzi di parola che in sequenza compongono la riga che segue) e, nell'insieme delle righe,
+                // tutti i caratteri della frase. La frase è la riga più lunga fra quelle che contengono tutti i tratti, una Dialogue prima
+                // di un Comment; la riga principale è la Dialogue con la frase, la più lunga nel tempo e poi sul layer più basso, o il
+                // Comment
                 int screenWidth = assDocument.TryGetScriptInfoInt("PlayResX", out int scriptWidth) ? scriptWidth : 0;
                 int screenHeight = assDocument.TryGetScriptInfoInt("PlayResY", out int scriptHeight) ? scriptHeight : 0;
                 if (screenWidth <= 0 && screenHeight <= 0)
