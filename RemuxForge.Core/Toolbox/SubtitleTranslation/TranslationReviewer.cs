@@ -84,18 +84,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 foreach (TranslationRunFile file in files)
                 {
                     // Blocchi del piano finale, dimezzamenti compresi, senza le battute delle tratte; poi un blocco per ogni tratta di
-                    // cui il file ha la prima occorrenza. Nella mirata solo quelli con almeno una battuta segnalata
+                    // cui il file ha la prima occorrenza. Senza revisione nessuno
                     TranslationJobFileState state = file.State;
-                    Dictionary<int, SharedStretch> shared = SharedStretch.MapFile(job.SharedStretches, state.FileId);
                     if (state.ReviewBlocks == null)
                     {
                         state.ReviewBlocks = new List<TranslationReviewBlock>();
                         foreach (TranslationBlock block in state.Blocks)
                         {
-                            if (block.Status == TranslationBlockStatus.Split)
-                                continue;
-                            HashSet<int> span = new HashSet<int>(state.GetSpan(block.FirstId, block.LastId).ConvertAll(c => c.Id));
-                            if (job.ReviewMode == TranslationReviewMode.Full || state.Translations.Exists(t => span.Contains(t.Id) && !shared.ContainsKey(t.Id) && IsSignalled(t)))
+                            if (block.Status != TranslationBlockStatus.Split && job.ReviewMode == TranslationReviewMode.Full)
                                 state.ReviewBlocks.Add(new TranslationReviewBlock { BlockIndex = block.Index, FirstId = block.FirstId, LastId = block.LastId });
                         }
                     }
@@ -113,7 +109,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// Aggiunge al file i blocchi delle tratte di cui ha la prima occorrenza e che non hanno ancora il loro blocco: tutte nella
-        /// completa, nella mirata solo quelle con almeno una battuta segnalata. Una tratta passa a un altro file quando quello
+        /// completa, nessuna senza revisione. Una tratta passa a un altro file quando quello
         /// della prima occorrenza viene tolto; chiamato sotto il lock dello stato
         /// </summary>
         /// <param name="job">Testata del job</param>
@@ -126,7 +122,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 List<int> lines = stretch.Occurrences[0].Ids;
                 if (stretch.Occurrences[0].FileId == state.FileId && !state.ReviewBlocks.Exists(b => b.SharedStretch == stretch.Index)
-                    && (job.ReviewMode == TranslationReviewMode.Full || state.Translations.Exists(t => lines.Contains(t.Id) && IsSignalled(t))))
+                    && job.ReviewMode == TranslationReviewMode.Full)
                 {
                     state.ReviewBlocks.Add(new TranslationReviewBlock { SharedStretch = stretch.Index, FirstId = lines[0], LastId = lines[lines.Count - 1] });
                     added = true;
@@ -490,18 +486,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #endregion
 
         #region Metodi privati
-
-        /// <summary>
-        /// True per una battuta che la revisione mirata guarda: da rivedere, ritentata, coi termini del glossario mancanti, con
-        /// un termine nuovo o riscritta dai termini
-        /// </summary>
-        /// <param name="translation">Esito della battuta</param>
-        /// <returns>True se segnalata</returns>
-        private static bool IsSignalled(TranslatedCueState translation)
-        {
-            return translation.Status == TranslatedCueStatus.ToReview || translation.Signals.Contains(TranslationCueSignal.Retried) || translation.Signals.Contains(TranslationCueSignal.Glossary)
-                || translation.Signals.Contains(TranslationCueSignal.NewTerm) || translation.Signals.Contains(TranslationCueSignal.RewrittenByTerms);
-        }
 
         /// <summary>
         /// Avvisa dell'avanzamento coi blocchi conclusi, rivisti o non rivisti, sul totale di tutti i file

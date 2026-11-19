@@ -112,11 +112,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         private static readonly HashSet<string> s_assKaraokeTags = new HashSet<string>(StringComparer.Ordinal) { "k", "K", "kf", "ko" };
 
-        /// <summary>
-        /// Tag ASS animati: nel prefisso valgono per tutta la riga, a metà frase fanno una scritta a comparsa
-        /// </summary>
-        private static readonly HashSet<string> s_assTimedTags = new HashSet<string>(StringComparer.Ordinal) { "t", "move", "fad", "fade" };
-
         #endregion
 
         #region Variabili di classe
@@ -148,11 +143,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="text">Campo Text originale; in SRT le righe con i loro terminatori</param>
         /// <param name="fallbackLineBreak">A capo SRT per la traduzione di una battuta su una riga: il terminatore della riga dei tempi</param>
-        /// <param name="legacy">True nei progetti senza tabella degli stili, che restano come quando sono stati tradotti: karaoke,
-        /// animazioni a metà frase, blocchi ASS a metà di un SRT e tratti di soli spazi escludono la riga, e i blocchi dentro le
-        /// parole fanno segni</param>
         /// <returns>Testo pulito con la ricetta, oppure il motivo di esclusione</returns>
-        public SubtitleCleanResult Clean(string text, string fallbackLineBreak, bool legacy)
+        public SubtitleCleanResult Clean(string text, string fallbackLineBreak)
         {
             string source = text ?? "";
             bool isSrt = this._format == SubtitleTranslationFormat.Srt;
@@ -313,39 +305,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         return new SubtitleCleanResult("", null, SubtitleCue.EXCLUSION_DRAWING);
                 }
             }
-            for (int i = 0; legacy && i < items.Count; i++)
-            {
-                if (items[i].AssTags == null)
-                    continue;
-                foreach (AssTag tag in items[i].AssTags)
-                {
-                    if (s_assKaraokeTags.Contains(tag.Name))
-                        return new SubtitleCleanResult("", null, SubtitleCue.EXCLUSION_KARAOKE);
-                }
-            }
             if (first < 0)
                 return new SubtitleCleanResult("", null, SubtitleCue.EXCLUSION_EMPTY);
-            for (int i = first + 1; legacy && i < last; i++)
-            {
-                if (items[i].AssTags == null)
-                    continue;
-                foreach (AssTag tag in items[i].AssTags)
-                {
-                    if (s_assTimedTags.Contains(tag.Name))
-                        return new SubtitleCleanResult("", null, SubtitleCue.EXCLUSION_TIMED_EFFECT);
-                }
-            }
-            for (int i = first + 1; legacy && i < items.Count; i++)
-            {
-                if (items[i].IsSrtAssBlock)
-                    return new SubtitleCleanResult("", null, SubtitleCue.EXCLUSION_SRT_INLINE_ASS_TAG);
-            }
             if (mixedEntities)
                 return new SubtitleCleanResult("", null, SubtitleCue.EXCLUSION_MIXED_ENTITIES);
 
             // Battuta posizionale: un blocco a metà frase col karaoke, dentro una parola o, in SRT, un blocco ASS
             bool segmented = false;
-            for (int i = first + 1; !legacy && i < last; i++)
+            for (int i = first + 1; i < last; i++)
             {
                 if (items[i].Kind != CleanItemKind.Tag)
                     continue;
@@ -427,7 +394,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             if (!string.IsNullOrEmpty(tag.Arg.Trim()))
                                 channels[ASS_STYLE_CHANNEL] = new AssChannel(tag, tagOrder);
                         }
-                        else if (!legacy && tag.Name == ASS_TRANSFORM)
+                        else if (tag.Name == ASS_TRANSFORM)
                         {
                             channels[TRANSFORM_CHANNEL + tagOrder.ToString(CultureInfo.InvariantCulture)] = new AssChannel(tag, tagOrder);
                         }
@@ -564,7 +531,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                         // Un tag di formattazione che per il calcolo non cambia lo stato può cambiarlo rispetto allo stile, che il
                         // codice non legge: il blocco resta al suo posto fra le parole, come in una battuta posizionale
-                        for (int t = index; t <= groupEnd && !legacy && !isSrt; t++)
+                        for (int t = index; t <= groupEnd && !isSrt; t++)
                         {
                             foreach (AssTag tag in items[t].AssTags ?? new List<AssTag>())
                                 segmented |= this.SwitchBit(tag.Name) >= 0 || tag.Name == ASS_STYLE_CHANNEL || tag.Name == ASS_TRANSFORM || s_assStateChannels.ContainsKey(tag.Name);
@@ -586,8 +553,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 bool visible = false;
                 foreach (int itemIndex in piece.Items)
                     visible |= items[itemIndex].Kind == CleanItemKind.Char && !char.IsWhiteSpace(items[itemIndex].Clean);
-                if (piece.StateKey != baseKey && !visible && legacy)
-                    return new SubtitleCleanResult("", null, SubtitleCue.EXCLUSION_WHITESPACE_SPAN);
                 segmented |= piece.StateKey != baseKey && !visible;
             }
 

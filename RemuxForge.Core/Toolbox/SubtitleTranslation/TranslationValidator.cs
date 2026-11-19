@@ -215,7 +215,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             string deliveryMessage = "no " + SUBMIT_TOOL + " call was received.";
             List<TranslationValidationIssue> entryIssues = new List<TranslationValidationIssue>();
             Dictionary<int, List<string>> delivered = new Dictionary<int, List<string>>();
-            List<int> deliveryOrder = new List<int>();
             if (submissions != null && submissions.Count > 0)
             {
                 deliveryCode = ARGS_INVALID;
@@ -257,7 +256,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                                 {
                                     texts = new List<string>();
                                     delivered[id] = texts;
-                                    deliveryOrder.Add(id);
                                 }
                                 texts.Add(textElement.GetString());
                             }

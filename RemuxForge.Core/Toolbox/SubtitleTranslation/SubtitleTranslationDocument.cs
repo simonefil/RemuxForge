@@ -188,17 +188,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
         /// <summary>
         /// Legge un sottotitolo dai byte del file. Un file che non si può tradurre torna con RejectionReason e nessuna battuta.
-        /// Con la tabella degli stili una riga ASS/SSA prende il tipo riconosciuto della sua combinazione di stile, attore ed effetto
+        /// Una riga ASS/SSA prende il tipo riconosciuto della sua combinazione di stile, attore ed effetto
         /// e si esclude solo se è testo da non tradurre; una combinazione senza tipo vale come dialogo. Una battuta SRT prende il
         /// tipo della sua riga nella tratta riconosciuta di cui ripete almeno tre righe consecutive; fuori dalle righe da non
-        /// tradurre, una battuta SRT con ♪ o ♫ è una canzone. Con la tabella degli stili la riga Comment sorgente di un effetto
+        /// tradurre, una battuta SRT con ♪ o ♫ è una canzone. La riga Comment sorgente di un effetto
         /// lettera per lettera è una battuta della sua combinazione e le righe Dialogue disegnate dall'effetto restano escluse
         /// </summary>
         /// <param name="bytes">Byte del file</param>
         /// <param name="format">Formato del file</param>
         /// <param name="encoding">Codifica scelta per un file senza BOM che non è UTF-8, vuota o DEFAULT_ENCODING altrimenti</param>
-        /// <param name="styles">Tabella degli stili del progetto; null nei progetti salvati prima, dove le righe con Effect o
-        /// karaoke restano escluse, tutte le battute sono dialogo e la pulizia resta quella di allora</param>
+        /// <param name="styles">Tabella degli stili del progetto</param>
         /// <param name="stretches">Tratte SRT riconosciute del progetto, null prima del riconoscimento</param>
         /// <returns>Documento letto</returns>
         public static SubtitleTranslationDocument Read(byte[] bytes, SubtitleTranslationFormat format, string encoding, IReadOnlyList<TranslationProjectStyle> styles,
@@ -289,9 +288,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 lineStart = i + 1;
             }
 
-            bool legacy = styles == null;
             Dictionary<string, TranslationStyleKind?> kinds = new Dictionary<string, TranslationStyleKind?>(StringComparer.Ordinal);
-            foreach (TranslationProjectStyle style in styles ?? new List<TranslationProjectStyle>())
+            foreach (TranslationProjectStyle style in styles)
                 kinds[style.Name + "\u0001" + style.Actor + "\u0001" + style.Effect] = style.Kind;
 
             SubtitleCueCleaner cleaner = new SubtitleCueCleaner(format);
@@ -481,7 +479,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 Array.Fill(sourceOf, -1);
                 Dictionary<int, List<int>> generatedBySource = new Dictionary<int, List<int>>();
                 Dictionary<string, List<int>> dialoguesByStyle = new Dictionary<string, List<int>>(StringComparer.Ordinal);
-                for (int d = 0; d < events.Count && !legacy; d++)
+                for (int d = 0; d < events.Count; d++)
                 {
                     if (events[d].Comment)
                         continue;
@@ -489,7 +487,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         dialoguesByStyle[events[d].Style + "\u0001" + events[d].Actor] = new List<int>();
                     dialoguesByStyle[events[d].Style + "\u0001" + events[d].Actor].Add(d);
                 }
-                for (int c = 0; c < events.Count && !legacy; c++)
+                for (int c = 0; c < events.Count; c++)
                 {
                     AssEvent source = events[c];
                     if (!source.Comment || source.Drawing || !dialoguesByStyle.TryGetValue(source.Style + "\u0001" + source.Actor, out List<int> candidates))
@@ -557,7 +555,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 Dictionary<int, List<int>> piecesByWhole = new Dictionary<int, List<int>>();
                 string[] spaceless = events.ConvertAll(assEvent => string.Concat(assEvent.Readable.Where(c => !char.IsWhiteSpace(c)))).ToArray();
                 Dictionary<string, List<int>> eventsByUnit = new Dictionary<string, List<int>>(StringComparer.Ordinal);
-                for (int u = 0; u < events.Count && !legacy; u++)
+                for (int u = 0; u < events.Count; u++)
                 {
                     string unit = events[u].Style + "\u0001" + events[u].Actor + "\u0001" + events[u].Effect;
                     if (!events[u].Comment && !events[u].Drawing && sourceOf[u] < 0)
@@ -567,7 +565,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         eventsByUnit[unit].Add(u);
                     }
                 }
-                for (int w = 0; w < events.Count && !legacy; w++)
+                for (int w = 0; w < events.Count; w++)
                 {
                     AssEvent whole = events[w];
                     if (whole.Comment || whole.Drawing || sourceOf[w] >= 0 || wholeOf[w] >= 0 || new StringInfo(spaceless[w]).LengthInTextElements < 2)
@@ -612,7 +610,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 Array.Fill(underOf, -1);
                 Dictionary<int, List<int>> overlaysByUnder = new Dictionary<int, List<int>>();
                 Dictionary<int, List<SubtitleHiddenSpan>> coveredByUnder = new Dictionary<int, List<SubtitleHiddenSpan>>();
-                for (int u = 0; u < events.Count && !legacy; u++)
+                for (int u = 0; u < events.Count; u++)
                 {
                     AssEvent under = events[u];
                     if (under.Comment || under.Drawing || sourceOf[u] >= 0 || wholeOf[u] >= 0 || underOf[u] >= 0)
@@ -721,7 +719,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             if (!covered)
                                 continue;
 
-                            Dictionary<int, string> cleanTexts = bases.ToDictionary(c => c, c => cleaner.Clean(wholeLines[c], "", legacy).CleanText);
+                            Dictionary<int, string> cleanTexts = bases.ToDictionary(c => c, c => cleaner.Clean(wholeLines[c], "").CleanText);
                             int primary = bases.OrderByDescending(c => cleanTexts[c].Count(m => m == SubtitleCueCleaner.MARK_OPEN)).ThenBy(c => c).First();
                             string unmarked = s_markSyntax.Replace(cleanTexts[primary], "");
                             if (!bases.TrueForAll(c => cleanTexts[c] == cleanTexts[primary] || cleanTexts[c] == unmarked))
@@ -876,13 +874,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             usage.PositionLines++;
                     }
 
-                    // Senza tabella l'Effect esclude e tutto è dialogo; con la tabella esclude solo il testo da non tradurre: la
-                    // combinazione da non tradurre e la riga di un solo carattere, qualunque sia la sua combinazione
+                    // Si esclude solo il testo da non tradurre: la combinazione da non tradurre e la riga di un solo carattere,
+                    // qualunque sia la sua combinazione
                     TranslationStyleKind? styleKind;
                     kinds.TryGetValue(style + "\u0001" + actor + "\u0001" + effect, out styleKind);
-                    string exclusion = legacy && !string.IsNullOrEmpty(effect) ? SubtitleCue.EXCLUSION_EFFECT : "";
-                    if (styleKind == TranslationStyleKind.NotTranslatable || (!legacy && fragment))
-                        exclusion = SubtitleCue.EXCLUSION_NOT_TRANSLATABLE;
+                    string exclusion = styleKind == TranslationStyleKind.NotTranslatable || fragment ? SubtitleCue.EXCLUSION_NOT_TRANSLATABLE : "";
                     SubtitleCueKind kind = styleKind == TranslationStyleKind.Song ? SubtitleCueKind.Song : styleKind == TranslationStyleKind.Sign ? SubtitleCueKind.Sign : SubtitleCueKind.Dialogue;
                     rawCues.Add(new RawCue(dialogue.StartMs, dialogue.EndMs, assEvent.TextStart, assEvent.TextLength, style, assEvent.Layer, kind, exclusion, ""));
                 }
@@ -930,10 +926,10 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 RawCue raw = rawCues[i];
                 SubtitleCleanResult cleaned = !string.IsNullOrEmpty(raw.ExclusionReason)
                     ? new SubtitleCleanResult("", null, raw.ExclusionReason)
-                    : cleaner.Clean(shownTexts.GetValueOrDefault(i + 1, text.Substring(raw.TextStart, raw.TextLength)), raw.FallbackLineBreak, legacy);
+                    : cleaner.Clean(shownTexts.GetValueOrDefault(i + 1, text.Substring(raw.TextStart, raw.TextLength)), raw.FallbackLineBreak);
 
                 // Riga SRT di un solo carattere: da non tradurre, come quella ASS
-                if (!legacy && string.IsNullOrEmpty(cleaned.ExclusionReason) && new StringInfo(cleaned.CleanText).LengthInTextElements == 1)
+                if (string.IsNullOrEmpty(cleaned.ExclusionReason) && new StringInfo(cleaned.CleanText).LengthInTextElements == 1)
                     cleaned = new SubtitleCleanResult("", null, SubtitleCue.EXCLUSION_NOT_TRANSLATABLE);
                 cleanedCues.Add(cleaned);
             }
@@ -1016,7 +1012,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 int? duplicateOf = duplicates[i];
 
                 SubtitleCueKind kind = format == SubtitleTranslationFormat.Srt ? srtKinds[i] : raw.Kind;
-                if (!legacy && format == SubtitleTranslationFormat.Srt && cleaned.CleanText.IndexOfAny(s_songMarks) >= 0)
+                if (format == SubtitleTranslationFormat.Srt && cleaned.CleanText.IndexOfAny(s_songMarks) >= 0)
                     kind = SubtitleCueKind.Song;
                 SubtitleCue cue = new SubtitleCue(id, i + 1, raw.StartMs, raw.EndMs, cleaned.CleanText, cleaned.Recipe, raw.Style, kind, raw.Layer,
                     cleaned.ExclusionReason, duplicateOf, raw.TextStart, raw.TextLength);

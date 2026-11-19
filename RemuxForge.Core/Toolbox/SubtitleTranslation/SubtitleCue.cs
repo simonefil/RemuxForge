@@ -11,29 +11,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>Battuta senza testo, o con soli tag</summary>
         public const string EXCLUSION_EMPTY = "empty";
 
-        /// <summary>Campo Effect non vuoto, nei progetti senza tabella degli stili</summary>
-        public const string EXCLUSION_EFFECT = "effect";
-
         /// <summary>Riga ASS/SSA o tratto di tratta SRT riconosciuti come testo da non tradurre</summary>
         public const string EXCLUSION_NOT_TRANSLATABLE = "not-translatable";
 
         /// <summary>Drawing vettoriale</summary>
         public const string EXCLUSION_DRAWING = "drawing";
 
-        /// <summary>Karaoke, nei progetti senza tabella degli stili</summary>
-        public const string EXCLUSION_KARAOKE = "karaoke";
-
-        /// <summary>Effetto a tempo a metà frase (scritta a comparsa), nei progetti senza tabella degli stili</summary>
-        public const string EXCLUSION_TIMED_EFFECT = "timed-effect";
-
         /// <summary>Graffa aperta e mai chiusa</summary>
         public const string EXCLUSION_UNCLOSED_BRACE = "unclosed-brace";
-
-        /// <summary>Tratto formattato vuoto o di soli spazi, nei progetti senza tabella degli stili</summary>
-        public const string EXCLUSION_WHITESPACE_SPAN = "whitespace-span";
-
-        /// <summary>Blocco ASS in un SRT dopo l'inizio del testo, nei progetti senza tabella degli stili</summary>
-        public const string EXCLUSION_SRT_INLINE_ASS_TAG = "srt-inline-ass-tag";
 
         /// <summary>Stesso carattere scritto crudo e come entità, o con due entità diverse</summary>
         public const string EXCLUSION_MIXED_ENTITIES = "mixed-entities";

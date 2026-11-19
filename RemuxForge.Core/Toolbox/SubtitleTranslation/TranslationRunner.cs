@@ -733,17 +733,17 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public long OutputTokens { get; set; }
 
         /// <summary>
-        /// Token in ingresso della revisione AI completa, cache compresa; null per la mirata che dipende dai problemi trovati
+        /// Token in ingresso della revisione AI completa, cache compresa; null senza revisione
         /// </summary>
         public long? ReviewInputTokens { get; set; }
 
         /// <summary>
-        /// Token in ingresso della revisione AI completa serviti dalla cache, null per la mirata
+        /// Token in ingresso della revisione AI completa serviti dalla cache, null senza revisione
         /// </summary>
         public long? ReviewCachedTokens { get; set; }
 
         /// <summary>
-        /// Token in uscita della revisione AI completa, null per la mirata
+        /// Token in uscita della revisione AI completa, null senza revisione
         /// </summary>
         public long? ReviewOutputTokens { get; set; }
 

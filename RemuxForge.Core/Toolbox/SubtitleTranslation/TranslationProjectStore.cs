@@ -89,7 +89,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Legge un progetto; un file guasto o di una versione più recente dà InvalidDataException
+        /// Legge un progetto; un file guasto, di una versione più recente o di una precedente che non si apre più dà
+        /// InvalidDataException
         /// </summary>
         /// <param name="id">Identificativo del progetto</param>
         /// <returns>Progetto letto</returns>
@@ -100,11 +101,15 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
             lock (this._lock)
             {
+                // Versione letta prima del contenuto: un progetto di una versione precedente può avere valori che il formato di oggi
+                // non legge più, e si rifiuta col motivo invece che come file guasto
+                int version = File.Exists(path) ? TranslationJsonFile.ReadSchemaVersion(File.ReadAllBytes(path)) : 0;
+                if (version > TranslationProject.SCHEMA_VERSION)
+                    throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.projectTooNew", path));
+                if (version > 0 && version < TranslationProject.SCHEMA_VERSION)
+                    throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.projectOutdated", path));
                 project = TranslationJsonFile.Read<TranslationProject>(path, AppText.F("toolbox.subtitleTranslation.projectUnreadable", path));
             }
-
-            if (project.SchemaVersion > TranslationProject.SCHEMA_VERSION)
-                throw new InvalidDataException(AppText.F("toolbox.subtitleTranslation.projectTooNew", path));
 
             return project;
         }
@@ -117,7 +122,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         {
             TranslationProject project = new TranslationProject();
             project.Id = Guid.NewGuid().ToString("N");
-            project.Styles = new List<TranslationProjectStyle>();
             return project;
         }
 

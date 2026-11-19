@@ -273,9 +273,6 @@ namespace RemuxForge.Web.Services.Toolbox
                     this._jobFiles[state.Key] = state.Value;
                 this._jobCalls.AddRange(jobCalls);
 
-                // Un progetto salvato prima della tabella degli stili la prende finché l'analisi non è partita
-                if (project.Analysis == null && project.Styles == null)
-                    project.Styles = new List<TranslationProjectStyle>();
                 foreach (TranslationProjectFile file in project.Files)
                 {
                     this.Records.Add(new TranslationFileRecord(file));
@@ -408,7 +405,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <summary>
         /// Cambia la modalità della revisione AI, fino a «Avvia traduzione»
         /// </summary>
-        /// <param name="mode">Mirata o completa</param>
+        /// <param name="mode">Nessuna o completa</param>
         public void SetReviewMode(TranslationReviewMode mode)
         {
             lock (this.StateLock)
@@ -449,13 +446,13 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Righe della tabella degli stili: ogni combinazione di stile, attore ed effetto del progetto col tipo riconosciuto, le
         /// righe e un esempio dai file letti
         /// </summary>
-        /// <returns>Combinazioni nell'ordine della prima riga, vuoto per un progetto salvato prima della tabella</returns>
+        /// <returns>Combinazioni nell'ordine della prima riga</returns>
         public List<TranslationStyleRow> GetStyleRows()
         {
             List<TranslationStyleRow> rows = new List<TranslationStyleRow>();
             lock (this.StateLock)
             {
-                if (this._project == null || this._project.Styles == null)
+                if (this._project == null)
                     return rows;
 
                 List<SubtitleStyleUsage> usages = this.GetStyleUsages();
@@ -2006,7 +2003,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// Riconoscimento dei tipi del progetto, primo passo dell'analisi e dell'avvio di un progetto che non li ha: sui file letti
         /// senza tipi il codice decide le unità senza lettere nella scrittura del progetto e il modello dell'analisi le altre in una
         /// chiamata A0; poi stili e tratte prendono i tipi, i file si ripreparano e il glossario prende le «Maiuscole esatte» che
-        /// mancano. Un progetto salvato prima della tabella degli stili la prende qui, e i suoi file lasciano la pulizia di allora
+        /// mancano
         /// </summary>
         /// <param name="provider">Provider del modello</param>
         /// <param name="cancellation">Annullamento dell'operazione</param>
@@ -2017,14 +2014,6 @@ namespace RemuxForge.Web.Services.Toolbox
             SubtitleKindPlan plan;
             lock (this.StateLock)
             {
-                if (this._project.Styles == null)
-                {
-                    this._project.Styles = new List<TranslationProjectStyle>();
-                    foreach (TranslationProjectFile file in this._project.Files)
-                        this.PrepareFile(file, false);
-                    this.SyncStyles();
-                }
-
                 classifier = new SubtitleKindClassifier(this._project.SourceLanguage);
                 plan = classifier.Plan(this.GetDocuments(), this._project.Context);
                 this._phrase = AppText.T(TEXT_PREFIX + ".classificationProgress");
@@ -2776,7 +2765,7 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <returns>True se la tabella è cambiata</returns>
         private bool SyncStyles()
         {
-            if (this._project.Styles == null || this._project.Stretches != null)
+            if (this._project.Stretches != null)
                 return false;
 
             List<SubtitleStyleUsage> usages = this.GetStyleUsages();
@@ -2884,14 +2873,13 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// True con i tipi del progetto stabiliti: riconosciuti, o mai riconosciuti in un progetto salvato prima della tabella degli
-        /// stili che li tiene come allora; chiamato sotto StateLock
+        /// True con i tipi del progetto riconosciuti; chiamato sotto StateLock
         /// </summary>
         private bool KindsSettled
         {
             get
             {
-                return this._project.Styles == null || this._project.Stretches != null;
+                return this._project.Stretches != null;
             }
         }
 

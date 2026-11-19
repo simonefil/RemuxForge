@@ -32,8 +32,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// </summary>
     public enum TranslationReviewMode
     {
-        /// <summary>Solo i blocchi con avvisi</summary>
-        Targeted,
+        /// <summary>Nessuna revisione</summary>
+        None,
 
         /// <summary>Tutti i blocchi</summary>
         Full
@@ -69,7 +69,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Versione del formato di project.json
         /// </summary>
-        public const int SCHEMA_VERSION = 1;
+        public const int SCHEMA_VERSION = 2;
 
         #endregion
 
@@ -92,7 +92,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             this.ReasoningEfforts = new TranslationPhaseModels();
             this.Options = new TranslationProjectOptions();
             this.Files = new List<TranslationProjectFile>();
-            this.Styles = null;
+            this.Styles = new List<TranslationProjectStyle>();
             this.Stretches = null;
             this.NextFileNumber = 1;
             this.Glossary = null;
@@ -168,9 +168,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public List<TranslationProjectFile> Files { get; set; }
 
         /// <summary>
-        /// Combinazioni di stile, attore ed effetto delle righe ASS/SSA col tipo riconosciuto, senza tipo prima del riconoscimento.
-        /// Null nei progetti salvati prima della tabella: le loro righe con Effect o karaoke restano escluse e tutte le battute sono
-        /// dialogo
+        /// Combinazioni di stile, attore ed effetto delle righe ASS/SSA col tipo riconosciuto, senza tipo prima del riconoscimento
         /// </summary>
         public List<TranslationProjectStyle> Styles { get; set; }
 

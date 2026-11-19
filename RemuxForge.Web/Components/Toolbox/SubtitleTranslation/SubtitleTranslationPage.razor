@@ -137,7 +137,7 @@
                         <RadzenRadioButtonList TValue="TranslationReviewMode" Value="@project.Options.ReviewMode" Disabled="@(busy || Orchestrator.Job != null)" Orientation="Orientation.Horizontal"
                                                aria-labelledby="translation-review-label" Change="@((TranslationReviewMode value) => Orchestrator.SetReviewMode(value))">
                             <Items>
-                                <RadzenRadioButtonListItem Text="@AppText.T("web.toolbox.subtitleTranslation.reviewTargeted")" Value="@TranslationReviewMode.Targeted" />
+                                <RadzenRadioButtonListItem Text="@AppText.T("web.toolbox.subtitleTranslation.reviewNone")" Value="@TranslationReviewMode.None" />
                                 <RadzenRadioButtonListItem Text="@AppText.T("web.toolbox.subtitleTranslation.reviewFull")" Value="@TranslationReviewMode.Full" />
                             </Items>
                         </RadzenRadioButtonList>
@@ -297,11 +297,12 @@
                                 · @AppText.F("web.toolbox.subtitleTranslation.estimateInput", translationEstimate.InputTokens.ToString("N0", CultureInfo.CurrentCulture))
                                 @AppText.F("web.toolbox.subtitleTranslation.estimateUncached", (translationEstimate.InputTokens - translationEstimate.CachedTokens).ToString("N0", CultureInfo.CurrentCulture))
                                 · @AppText.F("web.toolbox.subtitleTranslation.estimateOutput", translationEstimate.OutputTokens.ToString("N0", CultureInfo.CurrentCulture))
-                                · @(translationEstimate.ReviewInputTokens.HasValue
-                                    ? AppText.F("web.toolbox.subtitleTranslation.estimateReview", translationEstimate.ReviewInputTokens.Value.ToString("N0", CultureInfo.CurrentCulture)) + " "
+                                @if (translationEstimate.ReviewInputTokens.HasValue)
+                                {
+                                    @(" · " + AppText.F("web.toolbox.subtitleTranslation.estimateReview", translationEstimate.ReviewInputTokens.Value.ToString("N0", CultureInfo.CurrentCulture)) + " "
                                         + AppText.F("web.toolbox.subtitleTranslation.estimateUncached", (translationEstimate.ReviewInputTokens.Value - translationEstimate.ReviewCachedTokens.Value).ToString("N0", CultureInfo.CurrentCulture))
-                                        + ", " + AppText.F("web.toolbox.subtitleTranslation.estimateOutput", translationEstimate.ReviewOutputTokens.Value.ToString("N0", CultureInfo.CurrentCulture))
-                                    : AppText.T("web.toolbox.subtitleTranslation.estimateReviewTargeted"))
+                                        + ", " + AppText.F("web.toolbox.subtitleTranslation.estimateOutput", translationEstimate.ReviewOutputTokens.Value.ToString("N0", CultureInfo.CurrentCulture)))
+                                }
                             </span>
                         </div>
                     </div>
