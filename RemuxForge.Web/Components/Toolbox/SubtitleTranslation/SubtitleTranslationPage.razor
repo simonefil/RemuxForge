@@ -974,9 +974,9 @@
         if (project == null)
         {
             TranslationProject selected = this.SelectedProject;
-            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.newProject"), "F5", "add", allSurfaces, UiCommandMenuSection.File, busy,
-                () => { this._step = 0; this.Orchestrator.NewProject(); })
+            commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.newProject"), "F5", "add", allSurfaces, UiCommandMenuSection.File, busy, null)
             {
+                AsyncCallback = async () => { this._step = 0; await this.Orchestrator.NewProjectAsync(); },
                 ToolbarOrder = 10
             });
             commands.Add(new UiCommandDefinition(AppText.T("web.toolbox.subtitleTranslation.openProject"), "", "folder_open", allSurfaces, UiCommandMenuSection.File, busy || selected == null,

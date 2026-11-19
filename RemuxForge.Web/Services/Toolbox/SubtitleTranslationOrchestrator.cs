@@ -215,10 +215,25 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Apre un progetto nuovo, salvato alla prima modifica
+        /// Apre un progetto nuovo, salvato alla prima modifica. Tutti i passi partono dal modello e dal livello predefiniti se
+        /// l'accesso offre il modello con quel livello; altrimenti, o se i modelli non si leggono, restano da scegliere
         /// </summary>
-        public void NewProject()
+        /// <returns>Task dell'apertura</returns>
+        public async Task NewProjectAsync()
         {
+            List<AiModelInfo> models;
+            try
+            {
+                models = await this.ListModelsAsync();
+            }
+            catch (AiServiceException)
+            {
+                models = new List<AiModelInfo>();
+            }
+
+            AiModelInfo model = models.Find(m => m.Id == TranslationPhaseModels.DEFAULT_MODEL);
+            bool defaultAvailable = model != null && model.SupportedReasoningLevels.Contains(TranslationPhaseModels.DEFAULT_REASONING_EFFORT);
+
             lock (this.StateLock)
             {
                 if (this.IsBusy)
@@ -229,6 +244,21 @@ namespace RemuxForge.Web.Services.Toolbox
                 this._calls.Clear();
                 this.ClearJob();
                 this._project = this._store.Create();
+                if (defaultAvailable)
+                {
+                    this._project.Models = new TranslationPhaseModels
+                    {
+                        Analysis = TranslationPhaseModels.DEFAULT_MODEL,
+                        Translation = TranslationPhaseModels.DEFAULT_MODEL,
+                        Review = TranslationPhaseModels.DEFAULT_MODEL
+                    };
+                    this._project.ReasoningEfforts = new TranslationPhaseModels
+                    {
+                        Analysis = TranslationPhaseModels.DEFAULT_REASONING_EFFORT,
+                        Translation = TranslationPhaseModels.DEFAULT_REASONING_EFFORT,
+                        Review = TranslationPhaseModels.DEFAULT_REASONING_EFFORT
+                    };
+                }
             }
 
             this.AppendLog(AppText.T(TEXT_PREFIX + ".projectCreated"));

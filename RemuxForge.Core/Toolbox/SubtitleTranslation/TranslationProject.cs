@@ -423,6 +423,20 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     /// </summary>
     public class TranslationPhaseModels
     {
+        #region Costanti
+
+        /// <summary>
+        /// Modello di tutti i passi di un progetto nuovo, se l'accesso lo offre
+        /// </summary>
+        public const string DEFAULT_MODEL = "gpt-6.1-sol";
+
+        /// <summary>
+        /// Livello di ragionamento di tutti i passi di un progetto nuovo, se il modello lo accetta
+        /// </summary>
+        public const string DEFAULT_REASONING_EFFORT = "medium";
+
+        #endregion
+
         #region Costruttore
 
         /// <summary>
