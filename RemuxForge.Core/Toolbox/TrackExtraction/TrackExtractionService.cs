@@ -281,24 +281,17 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
                         run = this.Run(source, staged, results, i, 1, percent => report((index * 100 + percent) / results.Count));
                     }
 
-                    if (ProcessRunner.IsStopRequested())
-                    {
-                        result.Status = ToolboxItemStatus.Stopped;
-                        result.Message = AppText.T("toolbox.output.stopped");
+                    if (result.StopIfRequested())
                         continue;
-                    }
 
                     // Vuoto anche un file con il solo BOM UTF-8: è ciò che mkvextract scrive per un SRT senza eventi
                     companion = FileHelper.GetCompanionPath(staged[i].TempPath);
                     size = File.Exists(staged[i].TempPath) ? new FileInfo(staged[i].TempPath).Length : 0;
                     if (size == s_utf8Bom.Length && File.ReadAllBytes(staged[i].TempPath).AsSpan().SequenceEqual(s_utf8Bom))
                         size = 0;
+                    // I percorsi completi li ha già tolti Run
                     if (!run.Succeeded)
-                    {
-                        result.Status = ToolboxItemStatus.Failed;
-                        result.Details = string.Join(Environment.NewLine, run.Errors);
-                        result.Message = string.Join(" ", run.Errors);
-                    }
+                        result.Fail(run.Errors, message => message);
                     else if (size == 0 || (companion.Length > 0 && (!File.Exists(companion) || new FileInfo(companion).Length == 0)))
                     {
                         result.Status = ToolboxItemStatus.Failed;
@@ -310,8 +303,7 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
                         try
                         {
                             staged[i].Commit();
-                            result.Status = result.Warnings.Count > 0 ? ToolboxItemStatus.DoneWithWarnings : ToolboxItemStatus.Done;
-                            result.OutputPath = result.ReservedPath;
+                            result.Complete(result.ReservedPath);
                         }
                         catch (IOException ex)
                         {
@@ -325,16 +317,7 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
             {
                 // Un temporaneo che non si cancella resta sul disco: la riga della sua traccia lo dice, con il percorso
                 for (int i = 0; i < staged.Count; i++)
-                {
-                    List<string> leftovers = staged[i].Discard();
-                    if (leftovers.Count > 0)
-                    {
-                        results[i].Message = (results[i].Message + " " + string.Join(" ", leftovers)).Trim();
-                        // Il dettaglio, quando c'è, prende il posto del messaggio nel log e nel suggerimento della riga
-                        if (results[i].Details.Length > 0)
-                            results[i].Details += Environment.NewLine + string.Join(Environment.NewLine, leftovers);
-                    }
-                }
+                    results[i].AddLeftovers(staged[i].Discard());
                 foreach (TrackExtractionResult result in results)
                 {
                     if (result.ReservedPath.Length > 0 && result.OutputPath.Length == 0)
@@ -396,7 +379,7 @@ namespace RemuxForge.Core.Toolbox.TrackExtraction
                     else
                         run.Warnings.Add(warning);
                 }, run.Errors);
-                run.Succeeded = process.ExitCode == 0 || process.ExitCode == MkvToolNixGuiMode.WARNING_EXIT_CODE;
+                run.Succeeded = MkvToolNixGuiMode.IsSuccess(process.ExitCode);
             }
             else
             {

@@ -15,7 +15,7 @@ namespace RemuxForge.Core.Toolbox.Common
         /// <summary>
         /// Exit code di mkvmerge e mkvextract per esecuzione riuscita con avvisi
         /// </summary>
-        public const int WARNING_EXIT_CODE = 1;
+        private const int WARNING_EXIT_CODE = 1;
 
         /// <summary>
         /// Prefisso delle righe di avanzamento
@@ -61,6 +61,34 @@ namespace RemuxForge.Core.Toolbox.Common
                 else if (line.StartsWith(ERROR_PREFIX, StringComparison.Ordinal))
                     errors?.Add(line.Substring(ERROR_PREFIX.Length).Trim());
             });
+        }
+
+        /// <summary>
+        /// True se lo strumento è terminato bene, anche con avvisi
+        /// </summary>
+        /// <param name="exitCode">Exit code di mkvmerge o mkvextract</param>
+        /// <returns>True per esecuzione riuscita</returns>
+        public static bool IsSuccess(int exitCode)
+        {
+            return exitCode == 0 || exitCode == WARNING_EXIT_CODE;
+        }
+
+        /// <summary>
+        /// True se mkvmerge non è riuscito; senza errori in --gui-mode il motivo diventa lo stderr, o in sua mancanza il testo
+        /// dell'exit code
+        /// </summary>
+        /// <param name="run">Esito del processo</param>
+        /// <param name="errors">Errori raccolti da Run, completati con il motivo</param>
+        /// <param name="exitCodeMessage">Motivo da usare senza errori né stderr</param>
+        /// <returns>True per esecuzione non riuscita</returns>
+        public static bool Failed(ProcessResult run, List<string> errors, string exitCodeMessage)
+        {
+            if (IsSuccess(run.ExitCode))
+                return false;
+
+            if (errors.Count == 0)
+                errors.Add(run.Stderr.Trim().Length > 0 ? run.Stderr.Trim() : exitCodeMessage);
+            return true;
         }
 
         #endregion

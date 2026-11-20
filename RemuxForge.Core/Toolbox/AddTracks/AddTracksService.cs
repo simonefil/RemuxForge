@@ -150,19 +150,6 @@ namespace RemuxForge.Core.Toolbox.AddTracks
         }
 
         /// <summary>
-        /// Percorso voluto del video con la traccia aggiunta: il nome del video con estensione .mkv, nella cartella indicata oppure
-        /// accanto al video. Il suffisso numerico di un nome occupato lo aggiunge l'allocatore del lotto
-        /// </summary>
-        /// <param name="videoPath">Video di partenza</param>
-        /// <param name="outputFolder">Cartella di uscita, vuota per scrivere accanto al video</param>
-        /// <returns>Percorso voluto</returns>
-        public static string GetDesiredPath(string videoPath, string outputFolder)
-        {
-            string folder = string.IsNullOrEmpty(outputFolder) ? Path.GetDirectoryName(Path.GetFullPath(videoPath)) : outputFolder;
-            return Path.Combine(folder, Path.GetFileNameWithoutExtension(videoPath) + MediaContainerFormats.OUTPUT_EXTENSION);
-        }
-
-        /// <summary>
         /// Aggiunge la traccia esterna al video. Con la cartella di uscita il Matroska nasce lì; senza, un Matroska si sostituisce
         /// (con backup e ripristino se la sostituzione fallisce) e un altro contenitore lascia l'originale e produce un .mkv accanto.
         /// Lo stop interrompe mkvmerge senza lasciare file, e un nome prenotato non usato torna al lotto
@@ -217,7 +204,7 @@ namespace RemuxForge.Core.Toolbox.AddTracks
 
             try
             {
-                finalPath = replace ? fullVideo : allocator.Reserve(GetDesiredPath(fullVideo, outputFolder));
+                finalPath = replace ? fullVideo : allocator.Reserve(OutputPathAllocator.GetMatroskaPath(fullVideo, outputFolder));
                 StagedOutputFile output = new StagedOutputFile(finalPath, false);
                 try
                 {
@@ -267,23 +254,13 @@ namespace RemuxForge.Core.Toolbox.AddTracks
 
                     run = MkvToolNixGuiMode.Run(this._mkvMergePath, command.ToArguments(), onProgress, result.Warnings.Add, errors);
 
-                    // Un mkvmerge ucciso dallo stop ha un exit code qualsiasi: lo stop si riconosce prima del codice
-                    if (ProcessRunner.IsStopRequested())
-                    {
-                        result.Status = ToolboxItemStatus.Stopped;
-                        result.Message = AppText.T("toolbox.output.stopped");
+                    if (result.StopIfRequested())
                         return result;
-                    }
 
-                    if (run.ExitCode != 0 && run.ExitCode != MkvToolNixGuiMode.WARNING_EXIT_CODE)
+                    // In riga il motivo senza percorsi: mkvmerge li cita completi, il dettaglio li conserva
+                    if (MkvToolNixGuiMode.Failed(run, errors, AppText.F("toolbox.addTracks.exitCode", run.ExitCode)))
                     {
-                        if (errors.Count == 0)
-                            errors.Add(run.Stderr.Trim().Length > 0 ? run.Stderr.Trim() : AppText.F("toolbox.addTracks.exitCode", run.ExitCode));
-
-                        // In riga il motivo senza percorsi: mkvmerge li cita completi, il dettaglio li conserva
-                        result.Status = ToolboxItemStatus.Failed;
-                        result.Details = string.Join(Environment.NewLine, errors);
-                        result.Message = string.Join(" ", errors).Replace(fullVideo, videoName).Replace(track.Path, Path.GetFileName(track.Path)).Replace(output.TempPath, Path.GetFileName(finalPath));
+                        result.Fail(errors, message => message.Replace(fullVideo, videoName).Replace(track.Path, Path.GetFileName(track.Path)).Replace(output.TempPath, Path.GetFileName(finalPath)));
                         return result;
                     }
 
@@ -334,21 +311,13 @@ namespace RemuxForge.Core.Toolbox.AddTracks
                         return result;
                     }
 
-                    result.Status = result.Warnings.Count > 0 ? ToolboxItemStatus.DoneWithWarnings : ToolboxItemStatus.Done;
-                    result.OutputPath = finalPath;
+                    result.Complete(finalPath);
                     result.Replaced = replace;
                 }
                 finally
                 {
                     // Un temporaneo che non si cancella resta sul disco: la riga lo dice, con il percorso
-                    List<string> leftovers = output.Discard();
-                    if (leftovers.Count > 0)
-                    {
-                        result.Message = (result.Message + " " + string.Join(" ", leftovers)).Trim();
-                        // Il dettaglio, quando c'è, prende il posto del messaggio nel log e nel suggerimento della riga
-                        if (result.Details.Length > 0)
-                            result.Details += Environment.NewLine + string.Join(Environment.NewLine, leftovers);
-                    }
+                    result.AddLeftovers(output.Discard());
                 }
             }
             catch (IOException ex)

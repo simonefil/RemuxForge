@@ -73,8 +73,7 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
 
             // Un file che mkvmerge non riconosce non ha tracce: l'errore chiaro lo dà la conversione, che fallisce
             List<TrackInfo> sourceTracks = this._mkvTools.GetFileInfoIsolated(inputPath, 0, cancellationToken, null)?.Tracks ?? new List<TrackInfo>();
-            string folder = string.IsNullOrEmpty(outputFolder) ? Path.GetDirectoryName(Path.GetFullPath(inputPath)) : outputFolder;
-            string finalPath = allocator.Reserve(Path.Combine(folder, Path.GetFileNameWithoutExtension(inputPath) + MediaContainerFormats.OUTPUT_EXTENSION));
+            string finalPath = allocator.Reserve(OutputPathAllocator.GetMatroskaPath(inputPath, outputFolder));
 
             try
             {
@@ -84,22 +83,12 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
                     ProcessResult run = MkvToolNixGuiMode.Run(this._mkvMergePath, MediaContainerNormalizer.BuildRemuxArguments(sourceTracks, inputPath, output.TempPath),
                         onProgress, result.Warnings.Add, errors);
 
-                    // Un mkvmerge ucciso dallo stop ha un exit code qualsiasi: lo stop si riconosce prima del codice
-                    if (ProcessRunner.IsStopRequested())
-                    {
-                        result.Status = ToolboxItemStatus.Stopped;
-                        result.Message = AppText.T("toolbox.output.stopped");
-                    }
-                    else if (run.ExitCode != 0 && run.ExitCode != MkvToolNixGuiMode.WARNING_EXIT_CODE)
-                    {
-                        if (errors.Count == 0)
-                            errors.Add(run.Stderr.Trim().Length > 0 ? run.Stderr.Trim() : AppText.F("toolbox.videoToMkv.exitCode", run.ExitCode));
+                    if (result.StopIfRequested())
+                        return result;
 
-                        // In riga il motivo senza percorsi: mkvmerge li cita completi, il dettaglio li conserva
-                        result.Status = ToolboxItemStatus.Failed;
-                        result.Details = string.Join(Environment.NewLine, errors);
-                        result.Message = string.Join(" ", errors).Replace(Path.GetFullPath(inputPath), Path.GetFileName(inputPath)).Replace(output.TempPath, Path.GetFileName(finalPath));
-                    }
+                    // In riga il motivo senza percorsi: mkvmerge li cita completi, il dettaglio li conserva
+                    if (MkvToolNixGuiMode.Failed(run, errors, AppText.F("toolbox.videoToMkv.exitCode", run.ExitCode)))
+                        result.Fail(errors, message => message.Replace(Path.GetFullPath(inputPath), Path.GetFileName(inputPath)).Replace(output.TempPath, Path.GetFileName(finalPath)));
                     else if (!MediaContainerNormalizer.KeepsTracks(sourceTracks, this._mkvTools.GetFileInfoIsolated(output.TempPath, 0, cancellationToken, null)?.Tracks ?? new List<TrackInfo>()))
                     {
                         result.Status = ToolboxItemStatus.Failed;
@@ -108,21 +97,13 @@ namespace RemuxForge.Core.Toolbox.VideoToMkv
                     else
                     {
                         output.Commit();
-                        result.Status = result.Warnings.Count > 0 ? ToolboxItemStatus.DoneWithWarnings : ToolboxItemStatus.Done;
-                        result.OutputPath = finalPath;
+                        result.Complete(finalPath);
                     }
                 }
                 finally
                 {
                     // Un temporaneo che non si cancella resta sul disco: la riga lo dice, con il percorso
-                    List<string> leftovers = output.Discard();
-                    if (leftovers.Count > 0)
-                    {
-                        result.Message = (result.Message + " " + string.Join(" ", leftovers)).Trim();
-                        // Il dettaglio, quando c'è, prende il posto del messaggio nel log e nel suggerimento della riga
-                        if (result.Details.Length > 0)
-                            result.Details += Environment.NewLine + string.Join(Environment.NewLine, leftovers);
-                    }
+                    result.AddLeftovers(output.Discard());
                 }
             }
             finally

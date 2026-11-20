@@ -1,5 +1,6 @@
 using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
+using RemuxForge.Core.Media;
 using System.Collections.Generic;
 using System.IO;
 
@@ -74,6 +75,19 @@ namespace RemuxForge.Core.Toolbox.Common
                 this._taken.Add(new PathIdentity(companion));
 
             return candidate;
+        }
+
+        /// <summary>
+        /// Percorso voluto del Matroska prodotto da un file: il nome del file con estensione .mkv, nella cartella indicata oppure
+        /// accanto al file. Il suffisso numerico di un nome occupato lo aggiunge Reserve
+        /// </summary>
+        /// <param name="inputPath">File di partenza</param>
+        /// <param name="outputFolder">Cartella di uscita, vuota per scrivere accanto al file</param>
+        /// <returns>Percorso voluto</returns>
+        public static string GetMatroskaPath(string inputPath, string outputFolder)
+        {
+            string folder = string.IsNullOrEmpty(outputFolder) ? Path.GetDirectoryName(Path.GetFullPath(inputPath)) : outputFolder;
+            return Path.Combine(folder, Path.GetFileNameWithoutExtension(inputPath) + MediaContainerFormats.OUTPUT_EXTENSION);
         }
 
         /// <summary>

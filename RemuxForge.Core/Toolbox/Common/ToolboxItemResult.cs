@@ -1,3 +1,6 @@
+using RemuxForge.Core.Infrastructure;
+using RemuxForge.Core.Localization;
+using System;
 using System.Collections.Generic;
 
 namespace RemuxForge.Core.Toolbox.Common
@@ -51,6 +54,62 @@ namespace RemuxForge.Core.Toolbox.Common
             this.Message = "";
             this.Details = "";
             this.Warnings = new List<string>();
+        }
+
+        #endregion
+
+        #region Metodi pubblici
+
+        /// <summary>
+        /// Segna l'elemento interrotto se lo stop è stato chiesto: uno strumento ucciso dallo stop ha un exit code qualsiasi, e lo
+        /// stop si riconosce prima del codice
+        /// </summary>
+        /// <returns>True se l'elemento è interrotto</returns>
+        public bool StopIfRequested()
+        {
+            if (!ProcessRunner.IsStopRequested())
+                return false;
+
+            this.Status = ToolboxItemStatus.Stopped;
+            this.Message = AppText.T("toolbox.output.stopped");
+            return true;
+        }
+
+        /// <summary>
+        /// Segna l'elemento non riuscito per gli errori dello strumento: interi nel dettaglio, in riga senza percorsi completi
+        /// </summary>
+        /// <param name="errors">Errori dello strumento</param>
+        /// <param name="shortenPaths">Sostituisce nel motivo in riga i percorsi completi con i nomi dei file</param>
+        public void Fail(List<string> errors, Func<string, string> shortenPaths)
+        {
+            this.Status = ToolboxItemStatus.Failed;
+            this.Details = string.Join(Environment.NewLine, errors);
+            this.Message = shortenPaths(string.Join(" ", errors));
+        }
+
+        /// <summary>
+        /// Segna l'elemento riuscito, con avvisi se lo strumento ne ha dati
+        /// </summary>
+        /// <param name="outputPath">File scritto</param>
+        public void Complete(string outputPath)
+        {
+            this.Status = this.Warnings.Count > 0 ? ToolboxItemStatus.DoneWithWarnings : ToolboxItemStatus.Done;
+            this.OutputPath = outputPath;
+        }
+
+        /// <summary>
+        /// Aggiunge al motivo i temporanei rimasti sul disco, con il percorso; il dettaglio, quando c'è, prende il posto del motivo
+        /// nel log e nel suggerimento della riga, e li riceve anche lui
+        /// </summary>
+        /// <param name="leftovers">Temporanei che non si sono cancellati</param>
+        public void AddLeftovers(List<string> leftovers)
+        {
+            if (leftovers.Count == 0)
+                return;
+
+            this.Message = (this.Message + " " + string.Join(" ", leftovers)).Trim();
+            if (this.Details.Length > 0)
+                this.Details += Environment.NewLine + string.Join(Environment.NewLine, leftovers);
         }
 
         #endregion

@@ -313,7 +313,7 @@ namespace RemuxForge.Web.Services.Toolbox
         public Dictionary<AddTracksVideo, string> PlanOutputs()
         {
             return this.GetPlan(() => this.Records, v => v.Result,
-                (video, outputFolder, allocator) => outputFolder.Length == 0 && MediaContainerFormats.IsMatroska(video.InputPath) ? video.InputPath : allocator.Reserve(AddTracksService.GetDesiredPath(video.InputPath, outputFolder)));
+                (video, outputFolder, allocator) => outputFolder.Length == 0 && MediaContainerFormats.IsMatroska(video.InputPath) ? video.InputPath : allocator.Reserve(OutputPathAllocator.GetMatroskaPath(video.InputPath, outputFolder)));
         }
 
         #endregion
