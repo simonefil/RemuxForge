@@ -1815,7 +1815,6 @@
   "web.toolbox.subtitleTranslation.blocks": "Blocks",
   "web.toolbox.subtitleTranslation.retried": "Retried",
   "web.toolbox.subtitleTranslation.toReview": "To review",
-  "web.toolbox.subtitleTranslation.unavailable": "n/a",
   "web.toolbox.subtitleTranslation.jobState.running": "Translating",
   "web.toolbox.subtitleTranslation.jobState.paused": "Paused",
   "web.toolbox.subtitleTranslation.jobState.interrupted": "Interrupted",

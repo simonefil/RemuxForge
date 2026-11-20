@@ -137,6 +137,20 @@
 
     #endregion
 
+    #region Metodi pubblici
+
+    /// <summary>
+    /// Token di una colonna, trattino se il servizio non li dichiara
+    /// </summary>
+    /// <param name="tokens">Token</param>
+    /// <returns>Testo</returns>
+    public static string FormatTokens(long? tokens)
+    {
+        return tokens.HasValue ? tokens.Value.ToString("N0", CultureInfo.CurrentCulture) : "—";
+    }
+
+    #endregion
+
     #region Metodi protected
 
     /// <inheritdoc />
@@ -144,20 +158,6 @@
     {
         this._rows = this.Calls.Concat(this.JobCalls).OrderBy(c => c.StartedAt).ToList();
         this._discarded = new HashSet<TranslationCallRecord>(this.JobCalls.Where(c => this.Discarded.Contains(c.CallSeq)), ReferenceEqualityComparer.Instance);
-    }
-
-    #endregion
-
-    #region Metodi privati
-
-    /// <summary>
-    /// Token di una colonna, trattino se il servizio non li dichiara
-    /// </summary>
-    /// <param name="tokens">Token</param>
-    /// <returns>Testo</returns>
-    private static string FormatTokens(long? tokens)
-    {
-        return tokens.HasValue ? tokens.Value.ToString("N0", CultureInfo.CurrentCulture) : "—";
     }
 
     #endregion

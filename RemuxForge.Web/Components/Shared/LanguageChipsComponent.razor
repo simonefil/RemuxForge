@@ -54,11 +54,21 @@ else
         _catalogExtraCodes = extraCodes;
         Catalog = selectable.Concat(extra).Select(code => new LanguageItem(code, Presentation(code))).ToList();
     }
-    private static string Presentation(string code)
+    /// <summary>
+    /// Nome di una lingua nella lingua dell'interfaccia
+    /// </summary>
+    /// <param name="code">Codice ISO 639-2</param>
+    /// <returns>Nome, null se la lingua non ha nome</returns>
+    public static string LocalizedName(string code)
     {
         string key = "web.remux.language." + code;
         string name = AppText.T(key);
-        return name == "[" + key + "]" ? code : name + " · " + code;
+        return name == "[" + key + "]" ? null : name;
+    }
+    private static string Presentation(string code)
+    {
+        string name = LocalizedName(code);
+        return name == null ? code : name + " · " + code;
     }
     private Task ChangeMultiple(object value)
     {
