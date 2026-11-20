@@ -9,7 +9,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -562,7 +561,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 this._project.ImportedGlossary = new ImportedGlossaryInfo
                 {
                     FileName = name,
-                    Sha256 = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant(),
+                    Sha256 = TranslationFilePreparer.ComputeSha256(bytes),
                     ImportedAt = DateTimeOffset.Now,
                     TermCount = result.Glossary.Terms.FindAll(t => t.Origin == GlossaryOrigin.Import).Count,
                     CharacterCount = result.Glossary.Characters.FindAll(c => c.Origin == GlossaryOrigin.Import).Count,
@@ -659,7 +658,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     if (this._job != null)
                     {
                         reopened = TranslationRunner.Reopen(this._job, this._jobFiles.Values, glossary);
-                        this._job.Glossary = TranslationJsonFile.Parse<Glossary>(TranslationJsonFile.Serialize(glossary), this._project.Id);
+                        this._job.Glossary = TranslationJsonFile.Clone(glossary);
                         foreach (string fileId in this._job.FileIds)
                             this._jobStore.SaveFile(this._job.Id, this._jobFiles[fileId]);
                         this._jobStore.Save(this._job);
@@ -1753,7 +1752,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 Translation = this._project.ReasoningEfforts.Translation,
                 Review = this._project.ReasoningEfforts.Review
             };
-            job.Glossary = TranslationJsonFile.Parse<Glossary>(TranslationJsonFile.Serialize(this._project.Glossary), this._project.Id);
+            job.Glossary = TranslationJsonFile.Clone(this._project.Glossary);
             job.GlossaryRevisionAtStart = this._project.Glossary.Revision;
             job.ReviewMode = this._project.Options.ReviewMode;
             job.Status = TranslationJobStatus.Idle;
@@ -2216,7 +2215,7 @@ namespace RemuxForge.Web.Services.Toolbox
             }
 
             foreach (string message in plan.Messages)
-                plan.Fingerprints.Add(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(builder.AnalysisInstructions + "\n" + message))).ToLowerInvariant());
+                plan.Fingerprints.Add(TranslationFilePreparer.ComputeSha256(Encoding.UTF8.GetBytes(builder.AnalysisInstructions + "\n" + message)));
 
             foreach (List<GlossaryEpisode> unit in plan.Units)
             {
@@ -2347,7 +2346,6 @@ namespace RemuxForge.Web.Services.Toolbox
 
             for (int round = 1; round <= TranslationRequestBuilder.MAX_ROUNDS; round++)
             {
-                TranslationTransportAttempt delivered = null;
                 int currentRound = round;
                 TranslationModelRequest request = new TranslationModelRequest();
                 request.Kind = kind;
@@ -2359,41 +2357,24 @@ namespace RemuxForge.Web.Services.Toolbox
                 request.Request.Input = input;
                 request.Request.Tools = tools.DeepClone().AsArray();
                 if (forceTool)
-                    request.Request.ToolChoice = new JsonObject { ["type"] = "function", ["name"] = tools[tools.Count - 1]["name"].DeepClone() };
+                    request.Request.ToolChoice = TranslationRequestBuilder.CreateForcedToolChoice(tools, tools.Count - 1);
 
                 // I tentativi falliti si registrano subito; quello riuscito dopo la validazione, con l'esito della consegna
                 // Anche il tentativo interrotto da Stop ha la sua riga, senza tipo d'errore: il consumo è reale
-                request.AttemptFinished = attempt =>
+                request.TrackAttempts(attempt =>
                 {
-                    if (attempt.Error == null && !attempt.Stopped)
-                    {
-                        delivered = attempt;
-                        return;
-                    }
-
                     TranslationCallRecord failed = this.CreateCallRecord(attempt, kind, fileId, cues, currentRound);
-                    failed.ResponseStatus = TranslationCallResponseStatus.Error;
-                    failed.Outcome = TranslationCallOutcome.Error;
-                    if (attempt.Error != null)
-                    {
-                        failed.HttpStatus = attempt.Error.HttpStatus;
-                        failed.ErrorKind = attempt.Error.Kind;
-                        failed.ServiceCode = string.IsNullOrEmpty(attempt.Error.ServiceCode) ? null : attempt.Error.ServiceCode;
-                        failed.Usage = attempt.Error.Usage != null ? new TranslationCallUsage(attempt.Error.Usage, 0) : null;
-                    }
+                    failed.MarkFailed(attempt.Error);
                     this.RecordCall(failed);
-                };
+                });
 
                 AiResponseResult response = await provider.SendAsync(request, cancellation);
-                TranslationCallRecord record = this.CreateCallRecord(delivered, kind, fileId, cues, round);
+                TranslationCallRecord record = this.CreateCallRecord(request.DeliveredAttempt, kind, fileId, cues, round);
                 record.HttpStatus = response.HttpStatus;
 
                 if (response.Status == AiResponseStatus.Incomplete)
                 {
-                    record.ResponseStatus = TranslationCallResponseStatus.Incomplete;
-                    record.IncompleteReason = response.IncompleteReason;
-                    record.Outcome = TranslationCallOutcome.Reduced;
-                    record.Usage = new TranslationCallUsage(response.Usage, 0);
+                    record.MarkIncomplete(response, TranslationCallOutcome.Reduced);
                     this.RecordCall(record);
                     throw new AiServiceException(AiErrorKind.InvalidResponse, AppText.T("ai.error.incomplete"));
                 }
@@ -2430,18 +2411,9 @@ namespace RemuxForge.Web.Services.Toolbox
         /// <returns>Riga da completare con l'esito</returns>
         private TranslationCallRecord CreateCallRecord(TranslationTransportAttempt attempt, TranslationCallKind kind, string fileId, int? cues, int round)
         {
-            TranslationCallRecord record = new TranslationCallRecord();
-            record.Kind = kind;
-            record.FileId = fileId == TranslationSessionKey.NO_FILE ? null : fileId;
+            TranslationCallRecord record = TranslationCallRecord.FromAttempt(attempt, kind, fileId == TranslationSessionKey.NO_FILE ? null : fileId);
             record.RequestedIds = cues;
             record.Round = round;
-            record.TransportAttempt = attempt.Number;
-            record.Model = attempt.Model;
-            record.ReasoningEffort = attempt.ReasoningEffort;
-            record.SessionId = attempt.SessionId;
-            record.ServerCacheKey = attempt.Result != null && !string.IsNullOrEmpty(attempt.Result.PromptCacheKey) ? attempt.Result.PromptCacheKey : null;
-            record.StartedAt = attempt.StartedAt;
-            record.DurationMs = attempt.DurationMs;
             return record;
         }
 
