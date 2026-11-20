@@ -69,7 +69,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Prefisso della chiave dei messaggi della UI
         /// </summary>
-        public const string UI_KEY_PREFIX = "toolbox.subtitleTranslation.validation.";
+        private const string UI_KEY_PREFIX = "toolbox.subtitleTranslation.validation.";
 
         /// <summary>
         /// Nome del tool di consegna

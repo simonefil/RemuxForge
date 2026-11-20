@@ -23,7 +23,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Pausa che separa due scene
         /// </summary>
-        public const long SCENE_PAUSE_MS = 2000;
+        private const long SCENE_PAUSE_MS = 2000;
 
         /// <summary>
         /// Pausa oltre la quale due tagli valgono uguale e decide la distanza dall'obiettivo

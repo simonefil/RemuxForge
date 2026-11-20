@@ -231,41 +231,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         #region Metodi pubblici
 
         /// <summary>
-        /// Scrive una battuta nel formato a record: testata con id e tipo, tab e testo su una riga, con gli a capo come \N
-        /// </summary>
-        /// <param name="cue">Battuta traducibile</param>
-        /// <returns>Record della battuta</returns>
-        public static string FormatRecord(SubtitleCue cue)
-        {
-            return FormatRecord(cue.Id.Value, cue.Kind, cue.CleanText);
-        }
-
-        /// <summary>
-        /// Scrive una battuta congelata nel formato a record
-        /// </summary>
-        /// <param name="id">Id della battuta</param>
-        /// <param name="kind">Tipo della battuta</param>
-        /// <param name="text">Testo pulito</param>
-        /// <returns>Record della battuta</returns>
-        public static string FormatRecord(int id, SubtitleCueKind kind, string text)
-        {
-            return FormatHeader(id, kind) + "\t" + text.Replace("\n", LINE_BREAK_MARK);
-        }
-
-        /// <summary>
-        /// Scrive un record di traduzione: testata seguita da « =>», poi tab e testo; senza testo resta la sola testata
-        /// </summary>
-        /// <param name="id">Id della battuta</param>
-        /// <param name="kind">Tipo della battuta</param>
-        /// <param name="text">Traduzione, null per una battuta senza traduzione accettata</param>
-        /// <returns>Record di traduzione</returns>
-        public static string FormatTranslationRecord(int id, SubtitleCueKind kind, string text)
-        {
-            string header = FormatHeader(id, kind) + " =>";
-            return text == null ? header : header + "\t" + text.Replace("\n", LINE_BREAK_MARK);
-        }
-
-        /// <summary>
         /// Scrive gli id come intervalli, per esempio 39-98 o 44,61-63
         /// </summary>
         /// <param name="ids">Id, in qualunque ordine</param>
@@ -302,7 +267,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
             {
                 if (source.Length > 0)
                     source.Append('\n');
-                source.Append(FormatRecord(cue));
+                source.Append(FormatRecord(cue.Id.Value, cue.Kind, cue.CleanText));
             }
 
             return source.ToString();
@@ -405,17 +370,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Scrive un record di segnali: testata «id !», tab e un segnale per riga
-        /// </summary>
-        /// <param name="id">Id della battuta</param>
-        /// <param name="signals">Segnali nella forma CODICE: dettaglio</param>
-        /// <returns>Record dei segnali</returns>
-        public static string FormatSignalRecord(int id, IReadOnlyList<string> signals)
-        {
-            return id.ToString(CultureInfo.InvariantCulture) + " !\t" + string.Join("\n\t", signals);
-        }
-
-        /// <summary>
         /// Tool offerti da traduzione, ritentativo e blocco ridotto, sempre nello stesso ordine
         /// </summary>
         /// <returns>Array nuovo con submit_translation</returns>
@@ -489,7 +443,8 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 message.Append('\n');
             if (requestedSigns.Count > 0)
                 AppendRequested(message, "TRANSLATE [sign]", requestedSigns).Append(" into signs.");
-            AppendRejected(message, rejected);
+            if (rejected.Count > 0)
+                message.Append("\n\nREJECTED in the previous delivery of these ids:\n").Append(string.Join("\n", rejected));
             return message.ToString();
         }
 
@@ -577,17 +532,6 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Aggiunge in fondo gli scarti della consegna precedente, se ce ne sono
-        /// </summary>
-        /// <param name="message">Coda in costruzione</param>
-        /// <param name="rejected">Righe del validatore</param>
-        private static void AppendRejected(StringBuilder message, IReadOnlyList<string> rejected)
-        {
-            if (rejected.Count > 0)
-                message.Append("\n\nREJECTED in the previous delivery of these ids:\n").Append(string.Join("\n", rejected));
-        }
-
-        /// <summary>
         /// Testata di un record: id e, per canzoni e cartelli, [song] o [sign]; il dialogo non ha segno
         /// </summary>
         /// <param name="id">Id della battuta</param>
@@ -602,6 +546,42 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 header += " [sign]";
 
             return header;
+        }
+
+        /// <summary>
+        /// Scrive una battuta nel formato a record: testata con id e tipo, tab e testo su una riga, con gli a capo come \N
+        /// </summary>
+        /// <param name="id">Id della battuta</param>
+        /// <param name="kind">Tipo della battuta</param>
+        /// <param name="text">Testo pulito</param>
+        /// <returns>Record della battuta</returns>
+        private static string FormatRecord(int id, SubtitleCueKind kind, string text)
+        {
+            return FormatHeader(id, kind) + "\t" + text.Replace("\n", LINE_BREAK_MARK);
+        }
+
+        /// <summary>
+        /// Scrive un record di traduzione: testata seguita da « =>», poi tab e testo; senza testo resta la sola testata
+        /// </summary>
+        /// <param name="id">Id della battuta</param>
+        /// <param name="kind">Tipo della battuta</param>
+        /// <param name="text">Traduzione, null per una battuta senza traduzione accettata</param>
+        /// <returns>Record di traduzione</returns>
+        private static string FormatTranslationRecord(int id, SubtitleCueKind kind, string text)
+        {
+            string header = FormatHeader(id, kind) + " =>";
+            return text == null ? header : header + "\t" + text.Replace("\n", LINE_BREAK_MARK);
+        }
+
+        /// <summary>
+        /// Scrive un record di segnali: testata «id !», tab e un segnale per riga
+        /// </summary>
+        /// <param name="id">Id della battuta</param>
+        /// <param name="signals">Segnali nella forma CODICE: dettaglio</param>
+        /// <returns>Record dei segnali</returns>
+        private static string FormatSignalRecord(int id, IReadOnlyList<string> signals)
+        {
+            return id.ToString(CultureInfo.InvariantCulture) + " !\t" + string.Join("\n\t", signals);
         }
 
         #endregion

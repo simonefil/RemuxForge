@@ -22,7 +22,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// <summary>
         /// Obiettivo minimo del blocco dopo i dimezzamenti
         /// </summary>
-        public const int MIN_BLOCK_SIZE = 18;
+        private const int MIN_BLOCK_SIZE = 18;
 
         /// <summary>
         /// Parte dell'ingresso servita dalla cache nella stima, nelle richieste che la trovano
