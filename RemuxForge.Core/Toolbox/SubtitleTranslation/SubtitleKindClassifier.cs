@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
@@ -36,6 +35,21 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// Messaggio di consegna mancante
         /// </summary>
         private const string MISSING_SUBMISSION = "This is not a chat: nobody will answer questions. Call submit_kinds with a kind for every unit.";
+
+        /// <summary>
+        /// Unità consegnata più di una volta
+        /// </summary>
+        private const string UNIT_DUPLICATE = "UNIT_DUPLICATE";
+
+        /// <summary>
+        /// Unità chiesta senza tipo
+        /// </summary>
+        private const string UNIT_MISSING = "UNIT_MISSING";
+
+        /// <summary>
+        /// Tratti di una tratta non validi
+        /// </summary>
+        private const string SEGMENTS_INVALID = "SEGMENTS_INVALID";
 
         /// <summary>
         /// Template delle instructions
@@ -430,51 +444,35 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         public TranslationDelivery ReadResponse(AiResponseResult response, JsonArray input, SubtitleKindPlan plan)
         {
             TranslationDelivery delivery = new TranslationDelivery();
-            List<JsonObject> calls = new List<JsonObject>();
-            foreach (JsonObject item in response.Items)
-            {
-                input.Add(item.DeepClone());
-                if (AiJson.GetString(item, "type") == "function_call")
-                    calls.Add(item);
-            }
-
+            List<JsonObject> calls = AiToolCallReader.Echo(response, input);
             if (calls.Count == 0)
             {
-                delivery.Errors.Add("NO_SUBMISSION: " + MISSING_SUBMISSION);
+                delivery.Errors.Add(TranslationValidator.NO_SUBMISSION + ": " + MISSING_SUBMISSION);
                 input.Add(TranslationRequestBuilder.CreateUserMessage(MISSING_SUBMISSION));
                 return delivery;
             }
 
             Dictionary<string, List<TranslationStyleKind>> accepted = null;
-            List<KeyValuePair<string, string>> outputs = new List<KeyValuePair<string, string>>();
+            List<JsonObject> outputs = new List<JsonObject>();
             foreach (JsonObject call in calls)
             {
                 List<string> errors = new List<string>();
                 Dictionary<string, List<TranslationStyleKind>> kinds = new Dictionary<string, List<TranslationStyleKind>>(StringComparer.Ordinal);
                 if (accepted != null)
                 {
-                    errors.Add("DUPLICATE_SUBMISSION: only one submission is used; this one was ignored.");
+                    errors.Add(TranslationValidator.DUPLICATE_SUBMISSION + ": only one submission is used; this one was ignored.");
                 }
                 else if (AiJson.GetString(call, "name") != SUBMIT_TOOL)
                 {
-                    errors.Add("ARGS_INVALID: unknown tool '" + AiJson.GetString(call, "name") + "'.");
+                    errors.Add(TranslationValidator.ARGS_INVALID + ": unknown tool '" + AiJson.GetString(call, "name") + "'.");
                 }
                 else
                 {
-                    JsonObject arguments = null;
-                    try
-                    {
-                        arguments = JsonNode.Parse(AiJson.GetString(call, "arguments") ?? "null") as JsonObject;
-                    }
-                    catch (JsonException)
-                    {
-                        arguments = null;
-                    }
-
+                    JsonObject arguments = AiToolCallReader.ParseArguments(call);
                     JsonArray styles = arguments?["styles"] as JsonArray ?? new JsonArray();
                     JsonArray stretches = arguments?["stretches"] as JsonArray ?? new JsonArray();
                     if (arguments == null)
-                        errors.Add("ARGS_INVALID: arguments are not an object with the units.");
+                        errors.Add(TranslationValidator.ARGS_INVALID + ": arguments are not an object with the units.");
                     for (int i = 0; i < styles.Count; i++)
                     {
                         JsonObject unit = styles[i] as JsonObject;
@@ -482,11 +480,11 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         int kind = Array.IndexOf(s_kinds, unit != null ? AiJson.GetString(unit, "kind") : null);
                         if (id == null || !plan.AskedIds.Contains(id) || plan.AskedStretchIds.Contains(id) || kind < 0)
                         {
-                            errors.Add("ARGS_INVALID styles[" + i.ToString(CultureInfo.InvariantCulture) + "]: unknown unit or kind.");
+                            errors.Add(TranslationValidator.ARGS_INVALID + " styles[" + i.ToString(CultureInfo.InvariantCulture) + "]: unknown unit or kind.");
                         }
                         else if (!kinds.TryAdd(id, new List<TranslationStyleKind> { (TranslationStyleKind)kind }))
                         {
-                            errors.Add("UNIT_DUPLICATE " + id + ": the unit has more than one kind; deliver it once.");
+                            errors.Add(UNIT_DUPLICATE + " " + id + ": the unit has more than one kind; deliver it once.");
                         }
                     }
                     for (int i = 0; i < stretches.Count; i++)
@@ -496,7 +494,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                         JsonArray segments = unit?["segments"] as JsonArray;
                         if (id == null || !plan.AskedStretchIds.Contains(id) || segments == null)
                         {
-                            errors.Add("ARGS_INVALID stretches[" + i.ToString(CultureInfo.InvariantCulture) + "]: unknown unit or segments.");
+                            errors.Add(TranslationValidator.ARGS_INVALID + " stretches[" + i.ToString(CultureInfo.InvariantCulture) + "]: unknown unit or segments.");
                             continue;
                         }
 
@@ -511,11 +509,17 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                             int first = 0;
                             bool numbered = segment?["first_line"] is JsonValue value && value.TryGetValue(out first);
                             if (!numbered || kind < 0)
+                            {
                                 invalid = "segment " + (s + 1).ToString(CultureInfo.InvariantCulture) + " has no valid first_line or kind";
+                            }
                             else if (first != lineKinds.Count + 1 && (s == 0 || first <= lineKinds.Count))
+                            {
                                 invalid = s == 0 ? "the first segment must start at line 1" : "segment " + (s + 1).ToString(CultureInfo.InvariantCulture) + " does not start after the previous one";
+                            }
                             else if (first > count)
+                            {
                                 invalid = "segment " + (s + 1).ToString(CultureInfo.InvariantCulture) + " starts after the last line " + count.ToString(CultureInfo.InvariantCulture);
+                            }
                             else
                             {
                                 while (lineKinds.Count < first - 1)
@@ -528,27 +532,30 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
                         if (invalid != null)
                         {
-                            errors.Add("SEGMENTS_INVALID " + id + ": " + invalid + ".");
+                            errors.Add(SEGMENTS_INVALID + " " + id + ": " + invalid + ".");
                         }
                         else if (!kinds.TryAdd(id, lineKinds))
                         {
-                            errors.Add("UNIT_DUPLICATE " + id + ": the stretch is delivered more than once; deliver it once.");
+                            errors.Add(UNIT_DUPLICATE + " " + id + ": the stretch is delivered more than once; deliver it once.");
                         }
                     }
                     foreach (string id in plan.AskedIds)
                     {
-                        if (arguments != null && !kinds.ContainsKey(id) && !errors.Exists(e => e.StartsWith("SEGMENTS_INVALID " + id + ":", StringComparison.Ordinal)))
-                            errors.Add("UNIT_MISSING " + id + ": no kind delivered for this unit.");
+                        if (arguments != null && !kinds.ContainsKey(id) && !errors.Exists(e => e.StartsWith(SEGMENTS_INVALID + " " + id + ":", StringComparison.Ordinal)))
+                            errors.Add(UNIT_MISSING + " " + id + ": no kind delivered for this unit.");
                     }
 
                     if (errors.Count == 0)
+                    {
                         accepted = kinds;
+                    }
                     else
+                    {
                         delivery.Errors = errors;
+                    }
                 }
 
-                outputs.Add(new KeyValuePair<string, string>(AiJson.GetString(call, "call_id"),
-                    new JsonObject { ["valid"] = errors.Count == 0, ["errors"] = TranslationRequestBuilder.CreateArray(errors) }.ToJsonString()));
+                outputs.Add(AiToolCallReader.CreateOutput(call, new JsonObject { ["valid"] = errors.Count == 0, ["errors"] = TranslationRequestBuilder.CreateArray(errors) }.ToJsonString()));
             }
 
             if (accepted != null)
@@ -560,15 +567,19 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     if (!accepted.TryGetValue(unit.Id, out kinds))
                         continue;
                     if (unit.IsStretch)
+                    {
                         unit.LineKinds = kinds;
+                    }
                     else
+                    {
                         unit.Kind = kinds[0];
+                    }
                 }
                 return delivery;
             }
 
-            foreach (KeyValuePair<string, string> output in outputs)
-                input.Add(new JsonObject { ["type"] = "function_call_output", ["call_id"] = output.Key, ["output"] = output.Value });
+            foreach (JsonObject output in outputs)
+                input.Add(output);
 
             return delivery;
         }

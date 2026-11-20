@@ -18,11 +18,14 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
     {
         #region Costanti
 
-        /// <summary>Nessuna chiamata submit_translation nella risposta</summary>
+        /// <summary>Nessuna chiamata al tool di consegna nella risposta</summary>
         public const string NO_SUBMISSION = "NO_SUBMISSION";
 
-        /// <summary>Argomenti non JSON, non oggetto o senza gli array translations e signs</summary>
+        /// <summary>Argomenti non JSON, non oggetto o senza i campi del tool, oppure tool sconosciuto</summary>
         public const string ARGS_INVALID = "ARGS_INVALID";
+
+        /// <summary>Consegna in più dopo quella usata</summary>
+        public const string DUPLICATE_SUBMISSION = "DUPLICATE_SUBMISSION";
 
         /// <summary>Elemento di translations o signs senza id intero o senza testo</summary>
         public const string ENTRY_INVALID = "ENTRY_INVALID";
