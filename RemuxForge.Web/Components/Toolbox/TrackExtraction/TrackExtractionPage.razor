@@ -17,10 +17,9 @@
 
     @if (files.Count == 0)
     {
-        <RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="1rem" class="rf-tool-empty">
-            <RadzenText TextStyle="TextStyle.H4" TagName="TagName.H2">@AppText.T("web.toolbox.trackExtraction.emptyTitle")</RadzenText>
+        <ToolboxEmptyState Title="@AppText.T("web.toolbox.trackExtraction.emptyTitle")">
             <RadzenButton Text="@AppText.T("web.toolbox.list.addFiles")" Icon="add" Disabled="@busy" Click="@AddFilesAsync" />
-        </RadzenStack>
+        </ToolboxEmptyState>
     }
     else
     {
@@ -202,10 +201,9 @@
                     </div>
                     @if (selection.Count == 0)
                     {
-                        <RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.5rem" class="rf-tool-empty">
-                            <RadzenText TextStyle="TextStyle.H6" TagName="TagName.H2">@AppText.T("web.toolbox.trackExtraction.noMatchTitle")</RadzenText>
+                        <ToolboxEmptyState Title="@AppText.T("web.toolbox.trackExtraction.noMatchTitle")" Compact="true">
                             <RadzenText>@AppText.T(files.Exists(f => f.Tracks.Exists(t => t.Track.IsExtractable)) ? "web.toolbox.trackExtraction.noMatchFilters" : "web.toolbox.trackExtraction.noMatchTracks")</RadzenText>
-                        </RadzenStack>
+                        </ToolboxEmptyState>
                     }
                     else
                     {
@@ -294,25 +292,7 @@
         @<span>
             @if (track.Result.Status != ToolboxItemStatus.Pending || _plan.ContainsKey(track))
             {
-                <RadzenBadge IsPill="true"
-                             Text="@AppText.T(track.Result.Status switch
-                             {
-                                 ToolboxItemStatus.Running => "web.toolbox.trackExtraction.statusRunning",
-                                 ToolboxItemStatus.Done => "web.toolbox.trackExtraction.statusDone",
-                                 ToolboxItemStatus.DoneWithWarnings => "web.toolbox.trackExtraction.statusDoneWithWarnings",
-                                 ToolboxItemStatus.Failed => "web.toolbox.trackExtraction.statusFailed",
-                                 ToolboxItemStatus.Stopped => "web.toolbox.trackExtraction.statusStopped",
-                                 _ => "web.toolbox.trackExtraction.statusPending"
-                             })"
-                             BadgeStyle="@(track.Result.Status switch
-                             {
-                                 ToolboxItemStatus.Running => BadgeStyle.Info,
-                                 ToolboxItemStatus.Done => BadgeStyle.Success,
-                                 ToolboxItemStatus.Failed => BadgeStyle.Danger,
-                                 ToolboxItemStatus.DoneWithWarnings => BadgeStyle.Warning,
-                                 ToolboxItemStatus.Stopped => BadgeStyle.Warning,
-                                 _ => BadgeStyle.Base
-                             })" />
+                <ToolboxStatusBadge Status="@track.Result.Status" TextPrefix="web.toolbox.trackExtraction" />
             }
         </span>;
 
@@ -326,17 +306,14 @@
             {
                 <span class="rf-tool-muted" title="@track.Track.UnavailableReason">@track.Track.UnavailableReason</span>
             }
-            else if (track.Result.OutputPath.Length > 0)
+            else
             {
-                <span title="@(track.Result.Details.Length > 0 ? track.Result.OutputPath + Environment.NewLine + track.Result.Details : track.Result.OutputPath)">@System.IO.Path.GetFileName(track.Result.OutputPath)</span>
-            }
-            else if (track.Result.Message.Length > 0)
-            {
-                <span title="@(track.Result.Details.Length > 0 ? track.Result.Details : track.Result.Message)">@track.Result.Message</span>
-            }
-            else if (_plan.TryGetValue(track, out string planned))
-            {
-                <span class="rf-tool-muted" title="@planned">@System.IO.Path.GetFileName(planned)</span>
+                <ToolboxResultCell Result="@track.Result">
+                    @if (_plan.TryGetValue(track, out string planned))
+                    {
+                        <span class="rf-tool-muted" title="@planned">@System.IO.Path.GetFileName(planned)</span>
+                    }
+                </ToolboxResultCell>
             }
         </span>;
 

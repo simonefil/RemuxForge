@@ -1,0 +1,24 @@
+@using RemuxForge.Core.Toolbox.Common
+
+<RadzenBadge IsPill="true" Text="@AppText.T(TextPrefix + ".status" + Status)"
+             BadgeStyle="@(Status switch
+             {
+                 ToolboxItemStatus.Running => BadgeStyle.Info,
+                 ToolboxItemStatus.Done => BadgeStyle.Success,
+                 ToolboxItemStatus.Failed => BadgeStyle.Danger,
+                 ToolboxItemStatus.DoneWithWarnings => BadgeStyle.Warning,
+                 ToolboxItemStatus.Stopped => BadgeStyle.Warning,
+                 _ => BadgeStyle.Base
+             })" />
+
+@code {
+    /// <summary>
+    /// Stato dell'elemento
+    /// </summary>
+    [Parameter] public ToolboxItemStatus Status { get; set; }
+
+    /// <summary>
+    /// Prefisso delle chiavi dei testi della card, con un testo status per ogni stato (statusPending, statusRunning, statusDone…)
+    /// </summary>
+    [Parameter] public string TextPrefix { get; set; }
+}

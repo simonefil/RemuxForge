@@ -1,4 +1,3 @@
-@using RemuxForge.Core.Toolbox.Common
 @inherits ToolboxBatchPageBase<VideoToMkvOrchestrator, VideoToMkvRecord>
 
 @{
@@ -10,10 +9,9 @@
 
     @if (records.Count == 0)
     {
-        <RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="1rem" class="rf-tool-empty">
-            <RadzenText TextStyle="TextStyle.H4" TagName="TagName.H2">@AppText.T("web.toolbox.videoToMkv.emptyTitle")</RadzenText>
+        <ToolboxEmptyState Title="@AppText.T("web.toolbox.videoToMkv.emptyTitle")">
             <RadzenButton Text="@AppText.T("web.toolbox.list.addFiles")" Icon="add" Disabled="@busy" Click="@AddFilesAsync" />
-        </RadzenStack>
+        </ToolboxEmptyState>
     }
     else
     {
@@ -38,31 +36,12 @@
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="VideoToMkvRecord" Title="@AppText.T("web.dashboard.status")" Width="13%" MinWidth="2.5rem">
                     <Template Context="record">
-                        <RadzenBadge IsPill="true"
-                                     Text="@AppText.T(record.Result.Status switch
-                                     {
-                                         ToolboxItemStatus.Running => "web.toolbox.videoToMkv.statusRunning",
-                                         ToolboxItemStatus.Done => "web.toolbox.videoToMkv.statusDone",
-                                         ToolboxItemStatus.DoneWithWarnings => "web.toolbox.videoToMkv.statusDoneWithWarnings",
-                                         ToolboxItemStatus.Failed => "web.toolbox.videoToMkv.statusFailed",
-                                         ToolboxItemStatus.Stopped => "web.toolbox.videoToMkv.statusStopped",
-                                         _ => "web.toolbox.videoToMkv.statusPending"
-                                     })"
-                                     BadgeStyle="@(record.Result.Status switch
-                                     {
-                                         ToolboxItemStatus.Running => BadgeStyle.Info,
-                                         ToolboxItemStatus.Done => BadgeStyle.Success,
-                                         ToolboxItemStatus.Failed => BadgeStyle.Danger,
-                                         ToolboxItemStatus.DoneWithWarnings => BadgeStyle.Warning,
-                                         ToolboxItemStatus.Stopped => BadgeStyle.Warning,
-                                         _ => BadgeStyle.Base
-                                     })" />
+                        <ToolboxStatusBadge Status="@record.Result.Status" TextPrefix="web.toolbox.videoToMkv" />
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="VideoToMkvRecord" Title="@AppText.T("web.toolbox.list.result")" Width="34%" MinWidth="2.5rem">
                     <Template Context="record">
-                        @* In riga il MKV scritto o il motivo breve; nel tooltip il percorso completo, gli avvisi o l'errore di mkvmerge per intero *@
-                        <span title="@(record.Result.OutputPath.Length > 0 ? (record.Result.Details.Length > 0 ? record.Result.OutputPath + Environment.NewLine + record.Result.Details : record.Result.OutputPath) : (record.Result.Details.Length > 0 ? record.Result.Details : record.Result.Message))">@(record.Result.OutputPath.Length > 0 ? System.IO.Path.GetFileName(record.Result.OutputPath) : record.Result.Message)</span>
+                        <ToolboxResultCell Result="@record.Result" />
                     </Template>
                 </RadzenDataGridColumn>
                 <RadzenDataGridColumn TItem="VideoToMkvRecord" Width="5%" MinWidth="3rem" TextAlign="TextAlign.Center">

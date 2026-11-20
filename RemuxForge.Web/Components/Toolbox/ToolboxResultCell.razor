@@ -1,0 +1,37 @@
+@using RemuxForge.Core.Toolbox.Common
+
+@* In riga il file scritto o il motivo breve; nel tooltip il percorso completo, gli avvisi o l'errore dello strumento per intero *@
+@if (Result.OutputPath.Length > 0)
+{
+    <span title="@(Result.Details.Length > 0 ? Result.OutputPath + Environment.NewLine + Result.Details : Result.OutputPath)">@(WrittenText ?? System.IO.Path.GetFileName(Result.OutputPath))</span>
+}
+else if (Result.Message.Length > 0)
+{
+    <span class="@MessageClass" title="@(Result.Details.Length > 0 ? Result.Details : Result.Message)">@Result.Message</span>
+}
+else
+{
+    @ChildContent
+}
+
+@code {
+    /// <summary>
+    /// Esito dell'elemento
+    /// </summary>
+    [Parameter] public ToolboxItemResult Result { get; set; }
+
+    /// <summary>
+    /// Testo in riga per il file scritto, null per il suo nome
+    /// </summary>
+    [Parameter] public string WrittenText { get; set; }
+
+    /// <summary>
+    /// Classe del motivo in riga, null per nessuna
+    /// </summary>
+    [Parameter] public string MessageClass { get; set; }
+
+    /// <summary>
+    /// Contenuto della cella quando l'elemento non ha né file scritto né motivo, ad esempio l'uscita prevista
+    /// </summary>
+    [Parameter] public RenderFragment ChildContent { get; set; }
+}

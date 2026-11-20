@@ -1,4 +1,3 @@
-@using RemuxForge.Core.Toolbox.Common
 @using RemuxForge.Core.Toolbox.AddTracks
 @inherits ToolboxBatchPageBase<AddTracksOrchestrator, AddTracksVideo>
 
@@ -86,9 +85,7 @@
         <section class="rf-addtracks-list rf-addtracks-videos" aria-labelledby="add-tracks-videos-title">
             @if (videos.Count == 0)
             {
-                <RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.5rem" class="rf-tool-empty">
-                    <RadzenText TextStyle="TextStyle.H6" TagName="TagName.H3">@AppText.T("web.toolbox.addTracks.videosEmptyTitle")</RadzenText>
-                </RadzenStack>
+                <ToolboxEmptyState Title="@AppText.T("web.toolbox.addTracks.videosEmptyTitle")" Compact="true" HeadingTag="TagName.H3" />
             }
             else
             {
@@ -113,51 +110,29 @@
                         </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="AddTracksVideo" Title="@AppText.T("web.dashboard.status")" Width="22%">
                             <Template Context="video">
-                                <RadzenBadge IsPill="true"
-                                             Text="@AppText.T(video.Result.Status switch
-                                             {
-                                                 ToolboxItemStatus.Running => "web.toolbox.addTracks.statusRunning",
-                                                 ToolboxItemStatus.Done => "web.toolbox.addTracks.statusDone",
-                                                 ToolboxItemStatus.DoneWithWarnings => "web.toolbox.addTracks.statusDoneWithWarnings",
-                                                 ToolboxItemStatus.Failed => "web.toolbox.addTracks.statusFailed",
-                                                 ToolboxItemStatus.Stopped => "web.toolbox.addTracks.statusStopped",
-                                                 _ => "web.toolbox.addTracks.statusPending"
-                                             })"
-                                             BadgeStyle="@(video.Result.Status switch
-                                             {
-                                                 ToolboxItemStatus.Running => BadgeStyle.Info,
-                                                 ToolboxItemStatus.Done => BadgeStyle.Success,
-                                                 ToolboxItemStatus.Failed => BadgeStyle.Danger,
-                                                 ToolboxItemStatus.DoneWithWarnings => BadgeStyle.Warning,
-                                                 ToolboxItemStatus.Stopped => BadgeStyle.Warning,
-                                                 _ => BadgeStyle.Base
-                                             })" />
+                                <ToolboxStatusBadge Status="@video.Result.Status" TextPrefix="web.toolbox.addTracks" />
                             </Template>
                         </RadzenDataGridColumn>
                         <RadzenDataGridColumn TItem="AddTracksVideo" Title="@AppText.T("web.toolbox.list.result")" Width="40%">
                             <Template Context="video">
-                                @* Il file scritto o il motivo; prima dell'avvio l'uscita prevista. Nel tooltip il percorso completo, gli avvisi o l'errore per intero *@
-                                @if (video.Result.OutputPath.Length > 0)
-                                {
-                                    string written = video.Replaced ? AppText.T("web.toolbox.addTracks.resultReplaced") : System.IO.Path.GetFileName(video.Result.OutputPath);
-                                    <span title="@(video.Result.Details.Length > 0 ? video.Result.OutputPath + Environment.NewLine + video.Result.Details : video.Result.OutputPath)">@written</span>
-                                }
-                                else if (video.BlockedReason.Length > 0)
+                                @* Il file scritto, perché il video è bloccato o il motivo; prima dell'avvio la traccia mancante o l'uscita prevista *@
+                                @if (video.Result.OutputPath.Length == 0 && video.BlockedReason.Length > 0)
                                 {
                                     <span class="rf-addtracks-wrap rf-addtracks-blocked-text" title="@video.BlockedReason">@video.BlockedReason</span>
                                 }
-                                else if (video.Result.Message.Length > 0)
+                                else
                                 {
-                                    <span class="rf-addtracks-wrap" title="@(video.Result.Details.Length > 0 ? video.Result.Details : video.Result.Message)">@video.Result.Message</span>
-                                }
-                                else if (videos.IndexOf(video) >= tracks.Count)
-                                {
-                                    <span class="rf-addtracks-unpaired-text">@AppText.T("web.toolbox.addTracks.missingTrack")</span>
-                                }
-                                else if (_plan.TryGetValue(video, out string planned))
-                                {
-                                    string plannedText = System.IO.Path.GetFullPath(planned) == video.InputPath ? AppText.T("web.toolbox.addTracks.plannedReplace") : AppText.F("web.toolbox.addTracks.plannedFile", System.IO.Path.GetFileName(planned));
-                                    <span class="rf-tool-muted" title="@planned">@plannedText</span>
+                                    <ToolboxResultCell Result="@video.Result" WrittenText="@(video.Replaced ? AppText.T("web.toolbox.addTracks.resultReplaced") : null)" MessageClass="rf-addtracks-wrap">
+                                        @if (videos.IndexOf(video) >= tracks.Count)
+                                        {
+                                            <span class="rf-addtracks-unpaired-text">@AppText.T("web.toolbox.addTracks.missingTrack")</span>
+                                        }
+                                        else if (_plan.TryGetValue(video, out string planned))
+                                        {
+                                            string plannedText = System.IO.Path.GetFullPath(planned) == video.InputPath ? AppText.T("web.toolbox.addTracks.plannedReplace") : AppText.F("web.toolbox.addTracks.plannedFile", System.IO.Path.GetFileName(planned));
+                                            <span class="rf-tool-muted" title="@planned">@plannedText</span>
+                                        }
+                                    </ToolboxResultCell>
                                 }
                             </Template>
                         </RadzenDataGridColumn>
@@ -172,9 +147,7 @@
         <section class="rf-addtracks-list rf-addtracks-tracks" aria-labelledby="add-tracks-tracks-title">
             @if (tracks.Count == 0)
             {
-                <RadzenStack AlignItems="AlignItems.Center" JustifyContent="JustifyContent.Center" Gap="0.5rem" class="rf-tool-empty">
-                    <RadzenText TextStyle="TextStyle.H6" TagName="TagName.H3">@AppText.T("web.toolbox.addTracks.tracksEmptyTitle")</RadzenText>
-                </RadzenStack>
+                <ToolboxEmptyState Title="@AppText.T("web.toolbox.addTracks.tracksEmptyTitle")" Compact="true" HeadingTag="TagName.H3" />
             }
             else
             {
