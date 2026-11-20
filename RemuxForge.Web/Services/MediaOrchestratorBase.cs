@@ -207,6 +207,28 @@ namespace RemuxForge.Web.Services
         }
 
         /// <summary>
+        /// Esegue sul thread chiamante un'operazione breve per cui il chiamante ha già riservato la card sotto StateLock con BusyState:
+        /// mostra l'operazione, poi libera la card e avvisa la pagina anche quando l'operazione fallisce
+        /// </summary>
+        /// <typeparam name="T">Esito dell'operazione</typeparam>
+        /// <param name="operation">Descrizione dell'operazione</param>
+        /// <param name="work">Operazione</param>
+        /// <returns>Esito dell'operazione</returns>
+        protected T RunReserved<T>(string operation, Func<T> work)
+        {
+            this.SetBusy(true, operation);
+            try
+            {
+                return work();
+            }
+            finally
+            {
+                this.SetBusy(false, "");
+                this.NotifyRecordsChanged();
+            }
+        }
+
+        /// <summary>
         /// Aggiorna il progresso globale sul file corrente
         /// </summary>
         /// <param name="index">Indice zero-based nel lotto</param>

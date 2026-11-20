@@ -1143,18 +1143,12 @@ namespace RemuxForge.Web.Services.Toolbox
                 this.BusyState = true;
             }
 
-            this.SetBusy(true, AppText.T(TEXT_PREFIX + ".archiveExporting"));
-            try
+            return this.RunReserved(AppText.T(TEXT_PREFIX + ".archiveExporting"), () =>
             {
                 string path = this._archive.Export(this._store.Load(project.Id), folder, DisplayName(project));
                 this.AppendLog(AppText.F(TEXT_PREFIX + ".projectExported", path));
                 return path;
-            }
-            finally
-            {
-                this.SetBusy(false, "");
-                this.NotifyRecordsChanged();
-            }
+            });
         }
 
         /// <summary>
@@ -1183,18 +1177,12 @@ namespace RemuxForge.Web.Services.Toolbox
                 this.BusyState = true;
             }
 
-            this.SetBusy(true, AppText.T(TEXT_PREFIX + ".archiveImporting"));
-            try
+            return this.RunReserved(AppText.T(TEXT_PREFIX + ".archiveImporting"), () =>
             {
                 TranslationProject project = this._archive.Import(zipPath, sourceFolder, replaceExisting);
                 this.AppendLog(AppText.F(TEXT_PREFIX + ".projectImported", DisplayName(project), sourceFolder));
                 return project;
-            }
-            finally
-            {
-                this.SetBusy(false, "");
-                this.NotifyRecordsChanged();
-            }
+            });
         }
 
         /// <summary>
