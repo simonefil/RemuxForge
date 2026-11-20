@@ -141,6 +141,7 @@ namespace RemuxForge.Core.MediaCatalog
         protected async Task<JsonNode> GetJsonOrNullAsync(string url, CancellationToken cancellationToken)
         {
             bool renewed = false;
+            bool renew = false;
             int retry = 0;
 
             while (true)
@@ -153,7 +154,8 @@ namespace RemuxForge.Core.MediaCatalog
                 using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, url))
                 {
                     request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-                    await this.AuthorizeAsync(request, renewed, cancellationToken);
+                    await this.AuthorizeAsync(request, renew, cancellationToken);
+                    renew = false;
                     try
                     {
                         using (HttpResponseMessage response = await this._httpClient.SendAsync(request, cancellationToken))
@@ -187,6 +189,7 @@ namespace RemuxForge.Core.MediaCatalog
                     if (!renewed && this.CanRenewAuthorization)
                     {
                         renewed = true;
+                        renew = true;
                         continue;
                     }
 

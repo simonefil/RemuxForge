@@ -60,7 +60,7 @@ namespace RemuxForge.Core.MediaCatalog
 
 
         /// <summary>
-        /// Serializza login e lettura delle lingue
+        /// Serializza il login
         /// </summary>
         private readonly SemaphoreSlim _sessionLock;
 
@@ -75,7 +75,7 @@ namespace RemuxForge.Core.MediaCatalog
         private string _tokenApiKey;
 
         /// <summary>
-        /// Codici lingua accettati da TVDB, null finché non letti
+        /// Codici lingua accettati da TVDB, null finché non letti; richieste concorrenti al primo uso possono leggerli più volte
         /// </summary>
         private HashSet<string> _languages;
 
