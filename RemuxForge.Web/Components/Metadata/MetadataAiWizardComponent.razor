@@ -292,7 +292,7 @@
     private AiCredentials _credentials = new AiCredentials();
 
     /// <summary>
-    /// Modelli dell'accesso, vuoto finché non si aggiorna l'elenco
+    /// Modelli dell'accesso, vuoto finché l'elenco non è letto
     /// </summary>
     private List<AiModelInfo> _models = new List<AiModelInfo>();
 
@@ -307,13 +307,16 @@
     private int _maxRoundsInputKey;
 
     /// <summary>
-    /// Legge la configurazione e si iscrive agli eventi dell'orchestrator
+    /// Legge la configurazione, si iscrive agli eventi dell'orchestrator e, con l'accesso configurato, legge l'elenco dei modelli
     /// </summary>
-    protected override void OnInitialized()
+    /// <returns>Task di inizializzazione</returns>
+    protected override async Task OnInitializedAsync()
     {
         this._credentials = this.LoadCredentials();
         this.Orchestrator.OnContainerDataLoaded += this.HandleContainerDataLoaded;
         this.Orchestrator.OnProgressChanged += this.HandleProgressChanged;
+        if (AiCredentialService.IsConfigured(this._credentials))
+            await this.RefreshModelsAsync();
     }
 
     /// <summary>
@@ -404,7 +407,7 @@
     }
 
     /// <summary>
-    /// Valori della tendina dei modelli: il modello salvato assente dall'elenco resta selezionabile
+    /// Valori della tendina dei modelli: col modello salvato finché l'elenco non è letto
     /// </summary>
     /// <returns>Identificativi dei modelli</returns>
     private List<string> GetModelValues()
@@ -429,7 +432,7 @@
     }
 
     /// <summary>
-    /// Livelli della tendina del ragionamento: quelli del modello scelto, e il livello salvato che l'elenco non conosce
+    /// Livelli della tendina del ragionamento: quelli del modello scelto, col livello salvato finché l'elenco non è letto
     /// </summary>
     /// <returns>Livelli di ragionamento</returns>
     private List<string> GetEffortValues()
@@ -444,7 +447,8 @@
     }
 
     /// <summary>
-    /// Aggiorna l'elenco dei modelli dell'accesso
+    /// Aggiorna l'elenco dei modelli dell'accesso: un modello salvato che l'elenco non offre si segnala e si toglie, un livello che
+    /// il modello salvato non supporta torna al suo predefinito
     /// </summary>
     /// <returns>Task della lettura</returns>
     private async Task RefreshModelsAsync()
@@ -463,10 +467,29 @@
         {
             this._modelsLoading = false;
         }
+
+        if (this._step != WizardStep.Request)
+            return;
+
+        if (AiModelChoice.IsUnknown(this._models, this._credentials.Model))
+        {
+            this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.metadata.ai.noModelTitle"), AppText.T("web.metadata.ai.noModel"), 8000);
+            this.CredentialService.SetModel("", "");
+            this._credentials = this.LoadCredentials();
+            return;
+        }
+
+        AiModelInfo model = this._models.Find(m => m.Id == this._credentials.Model);
+        string effort = AiModelChoice.EffortFor(model, this._credentials.ReasoningEffort);
+        if (effort != this._credentials.ReasoningEffort)
+        {
+            this.CredentialService.SetModel(this._credentials.Model, effort);
+            this._credentials = this.LoadCredentials();
+        }
     }
 
     /// <summary>
-    /// Salva il modello scelto: un livello che il nuovo modello non supporta si toglie, senza modello non resta livello
+    /// Salva il modello scelto: un livello che il nuovo modello non supporta torna al suo predefinito, senza modello non resta livello
     /// </summary>
     /// <param name="value">Modello scelto, null quando la scelta viene rimossa</param>
     private void OnModelChanged(object value)
@@ -476,8 +499,7 @@
         string effort = this._credentials.ReasoningEffort;
 
         // Il livello si manda solo se scelto: con la API key un modello senza ragionamento rifiuta il parametro
-        if (string.IsNullOrEmpty(modelId) || (model != null && !model.SupportedReasoningLevels.Contains(effort)))
-            effort = "";
+        effort = string.IsNullOrEmpty(modelId) ? "" : AiModelChoice.EffortFor(model, effort);
 
         this.CredentialService.SetModel(modelId, effort);
         this._credentials = this.LoadCredentials();

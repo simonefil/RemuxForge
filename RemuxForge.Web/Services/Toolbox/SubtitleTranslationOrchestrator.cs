@@ -414,15 +414,6 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Elenca i modelli dell'accesso
-        /// </summary>
-        /// <returns>Modelli con i livelli di ragionamento</returns>
-        public Task<List<AiModelInfo>> ListModelsAsync()
-        {
-            return this._providerFactory.Create(null).ListModelsAsync(CancellationToken.None);
-        }
-
-        /// <summary>
         /// Salva modelli e livelli di ragionamento dei passi e i file tradotti in parallelo. Col job i modelli e i livelli di
         /// traduzione e revisione restano quelli congelati nel job e non cambiano; l'analisi e i file in parallelo sì.
         /// Il log riporta i modelli solo quando uno cambia, con quelli che il giro usa davvero

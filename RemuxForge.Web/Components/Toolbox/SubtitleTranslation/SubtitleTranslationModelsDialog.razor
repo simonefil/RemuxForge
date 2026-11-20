@@ -1,7 +1,9 @@
+@using RemuxForge.Core.Ai
 @using RemuxForge.Core.Toolbox.SubtitleTranslation
 @using RemuxForge.Web.Services.Toolbox
 @inherits AppDialogContentBase
 @inject NotificationService NotificationService
+@inject OpenAiResponsesClient ResponsesClient
 
 @* Modelli e livelli di ragionamento per passo *@
 <div class="rf-dialog rf-translation-models" @ref="DialogContent">
@@ -136,7 +138,7 @@
     {
         try
         {
-            this._models = await this.Orchestrator.ListModelsAsync();
+            this._models = await this.ResponsesClient.ListModelsAsync(CancellationToken.None);
         }
         catch (AiServiceException ex)
         {
@@ -158,7 +160,7 @@
             AiModelInfo model = this._models.Find(m => m.Id == models[i]);
             this._locked[i] = job != null && i > 0;
             this._phaseModels[i] = this._models;
-            if (!this._locked[i] && this._models.Count > 0 && model == null && !string.IsNullOrEmpty(models[i]))
+            if (!this._locked[i] && AiModelChoice.IsUnknown(this._models, models[i]))
             {
                 this.NotificationService.Notify(NotificationSeverity.Error, AppText.T("web.toolbox.subtitleTranslation.notifyModelMissing"),
                     AppText.F("web.toolbox.subtitleTranslation.modelMissing", AppText.T("web.toolbox.subtitleTranslation.models.phase." + s_phases[i])), 8000);
@@ -166,7 +168,7 @@
                 efforts[i] = "";
             }
             this._selectedModels[i] = string.IsNullOrEmpty(models[i]) ? null : models[i];
-            this._selectedEfforts[i] = model == null || model.SupportedReasoningLevels.Contains(efforts[i] ?? "") ? efforts[i] : model.DefaultReasoningLevel;
+            this._selectedEfforts[i] = AiModelChoice.EffortFor(model, efforts[i]);
             if (this._locked[i])
             {
                 this._phaseModels[i] = new List<AiModelInfo>
@@ -196,8 +198,7 @@
             return;
 
         this._selectedModels[phase] = model.Id;
-        if (!model.SupportedReasoningLevels.Contains(this._selectedEfforts[phase] ?? ""))
-            this._selectedEfforts[phase] = model.DefaultReasoningLevel;
+        this._selectedEfforts[phase] = AiModelChoice.EffortFor(model, this._selectedEfforts[phase]);
     }
 
     /// <summary>
