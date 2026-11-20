@@ -3,6 +3,7 @@ using RemuxForge.Core.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 
 namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 {
@@ -133,13 +134,13 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         }
 
         /// <summary>
-        /// Legge un glossario dal file .xlsx: il primo problema ferma la lettura
+        /// Legge un glossario dal contenuto di un file .xlsx: il primo problema ferma la lettura
         /// </summary>
-        /// <param name="path">File da leggere</param>
+        /// <param name="content">Contenuto del file</param>
         /// <param name="sourceLanguage">Lingua d'origine del progetto</param>
         /// <param name="targetLanguage">Lingua d'arrivo del progetto</param>
         /// <returns>Voci con origine Import e testi del file, oppure il problema</returns>
-        public static GlossaryImportResult Import(string path, string sourceLanguage, string targetLanguage)
+        public static GlossaryImportResult Import(byte[] content, string sourceLanguage, string targetLanguage)
         {
             GlossaryImportResult result = new GlossaryImportResult();
             string projectSource = LanguageValidator.NormalizeToIso6392(sourceLanguage);
@@ -149,7 +150,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
 
             try
             {
-                workbook = new XLWorkbook(path);
+                workbook = new XLWorkbook(new MemoryStream(content));
             }
             catch (Exception ex)
             {

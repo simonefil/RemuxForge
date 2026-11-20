@@ -10,7 +10,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -459,7 +458,10 @@ namespace RemuxForge.Web.Services.Toolbox
                     efforts = new TranslationPhaseModels { Analysis = efforts.Analysis, Translation = currentEfforts.Translation, Review = currentEfforts.Review };
                 }
 
-                changed = JsonSerializer.Serialize(models) != JsonSerializer.Serialize(this._project.Models) || JsonSerializer.Serialize(efforts) != JsonSerializer.Serialize(this._project.ReasoningEfforts);
+                TranslationPhaseModels savedModels = this._project.Models;
+                TranslationPhaseModels savedEfforts = this._project.ReasoningEfforts;
+                changed = models.Analysis != savedModels.Analysis || models.Translation != savedModels.Translation || models.Review != savedModels.Review ||
+                    efforts.Analysis != savedEfforts.Analysis || efforts.Translation != savedEfforts.Translation || efforts.Review != savedEfforts.Review;
                 used = this._job == null ? models
                     : new TranslationPhaseModels { Analysis = models.Analysis, Translation = this._job.Models.Translation, Review = this._job.Models.Review };
                 this._project.Models = models;
@@ -515,7 +517,7 @@ namespace RemuxForge.Web.Services.Toolbox
                     return new GlossaryImportResult().Fail(GlossaryFile.FILE_INVALID, "", ex.Message);
                 }
 
-                result = GlossaryFile.Import(path, this._project.SourceLanguage, this._project.TargetLanguage);
+                result = GlossaryFile.Import(bytes, this._project.SourceLanguage, this._project.TargetLanguage);
                 if (result.Glossary == null)
                     return result;
 
@@ -694,7 +696,7 @@ namespace RemuxForge.Web.Services.Toolbox
                 if (this._project == null || this._project.Glossary == null)
                     return "";
 
-                glossary = JsonSerializer.Deserialize<Glossary>(JsonSerializer.Serialize(this._project.Glossary));
+                glossary = TranslationJsonFile.Clone(this._project.Glossary);
                 name = DisplayName(this._project);
             }
 
