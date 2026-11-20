@@ -1,3 +1,4 @@
+using RemuxForge.Core.Infrastructure;
 using RemuxForge.Core.Localization;
 using RemuxForge.Core.Metadata;
 using RemuxForge.Core.Models;
@@ -6,6 +7,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace RemuxForge.Core.MediaCatalog
 {
@@ -57,21 +60,122 @@ namespace RemuxForge.Core.MediaCatalog
         #region Metodi pubblici
 
         /// <summary>
-        /// Poster da allegare a un file della serie: quello della stagione, altrimenti quello della serie
+        /// File che ricevono dati: il file del film, oppure i file con almeno un episodio
         /// </summary>
-        /// <param name="series">Serie</param>
-        /// <param name="episodes">Episodi del file</param>
-        /// <returns>Indirizzo del poster, vuoto se il catalogo non ne ha</returns>
-        public static string GetCoverUrl(MediaCatalogSeries series, List<MediaCatalogEpisode> episodes)
+        /// <param name="match">Abbinamento</param>
+        /// <returns>File nell'ordine delle righe</returns>
+        public static List<string> GetWrittenFiles(MediaCatalogMatch match)
         {
-            foreach (MediaCatalogSeason season in series.Seasons)
+            if (match.Movie != null)
+                return new List<string> { match.MovieFile };
+
+            return match.Rows.Where(row => row.FilePath.Length > 0 && row.Episodes.Count > 0).Select(row => row.FilePath).ToList();
+        }
+
+        /// <summary>
+        /// Copertina di un file: poster della stagione, altrimenti della serie, oppure del film
+        /// </summary>
+        /// <param name="match">Abbinamento</param>
+        /// <param name="file">File</param>
+        /// <returns>Indirizzo del poster, vuoto se il catalogo non ne ha o il file non è abbinato</returns>
+        public static string GetCoverUrl(MediaCatalogMatch match, string file)
+        {
+            if (match.Movie != null)
+                return match.Movie.PosterUrl;
+
+            MediaCatalogMatchRow row = match.Rows.FirstOrDefault(item => item.FilePath == file);
+            if (row == null || row.Episodes.Count == 0)
+                return "";
+
+            foreach (MediaCatalogSeason season in match.Series.Seasons)
             {
-                if (season.Number == episodes[0].SeasonNumber && season.PosterUrl.Length > 0)
+                if (season.Number == row.Episodes[0].SeasonNumber && season.PosterUrl.Length > 0)
                     return season.PosterUrl;
             }
 
-            return series.PosterUrl;
+            return match.Series.PosterUrl;
         }
+
+        /// <summary>
+        /// Modifiche di un file abbinato
+        /// </summary>
+        /// <param name="match">Abbinamento</param>
+        /// <param name="records">Record dei file con tag e allegati letti</param>
+        /// <param name="file">File</param>
+        /// <param name="titleTemplate">Modello del titolo del segmento</param>
+        /// <param name="coverSource">Copertina: indirizzo nell'anteprima, file scaricato nella scrittura, vuoto per non scriverla</param>
+        /// <returns>Modifiche, vuota se il file non ha record o abbinamento</returns>
+        public static List<MkvMetadataChange> BuildFileChanges(MediaCatalogMatch match, List<MkvMetadataRecord> records, string file, string titleTemplate, string coverSource)
+        {
+            MkvMetadataRecord record = records.FirstOrDefault(item => item.InputFile == file);
+            if (record == null || record.FileInfo == null)
+                return new List<MkvMetadataChange>();
+
+            if (match.Movie != null)
+                return BuildMovieChanges(record.FileInfo, match.Provider, match.Movie, titleTemplate, coverSource);
+
+            MediaCatalogMatchRow row = match.Rows.FirstOrDefault(item => item.FilePath == file);
+            if (row == null || row.Episodes.Count == 0)
+                return new List<MkvMetadataChange>();
+
+            return BuildSeriesChanges(record.FileInfo, match.Provider, match.Series, row.Episodes, titleTemplate, coverSource);
+        }
+
+        /// <summary>
+        /// Scarica le copertine, una per poster, e compone le modifiche di tutti i file che ricevono dati.
+        /// Se lo scaricamento fallisce o si annulla, le copertine già scaricate si cancellano prima di rilanciare
+        /// </summary>
+        /// <param name="match">Abbinamento</param>
+        /// <param name="records">Record dei file con tag e allegati letti</param>
+        /// <param name="titleTemplate">Modello del titolo del segmento</param>
+        /// <param name="downloader">Scaricatore delle copertine</param>
+        /// <param name="cancellationToken">Token di annullamento</param>
+        /// <returns>Modifiche e copertine scaricate</returns>
+        public static async Task<MediaCatalogEdits> BuildEditsAsync(MediaCatalogMatch match, List<MkvMetadataRecord> records, string titleTemplate, MediaCatalogImageDownloader downloader, CancellationToken cancellationToken)
+        {
+            MediaCatalogEdits edits = new MediaCatalogEdits();
+            Dictionary<string, string> covers = new Dictionary<string, string>(StringComparer.Ordinal);
+            bool completed = false;
+
+            try
+            {
+                foreach (string file in GetWrittenFiles(match))
+                {
+                    string url = GetCoverUrl(match, file);
+                    string coverPath;
+
+                    if (url.Length > 0 && !covers.TryGetValue(url, out coverPath))
+                    {
+                        coverPath = await downloader.DownloadCoverAsync(url, cancellationToken);
+                        covers[url] = coverPath;
+                        if (coverPath.Length > 0)
+                            edits.TempFiles.Add(coverPath);
+                        else
+                            edits.CoverDiscarded = true;
+                    }
+
+                    List<MkvMetadataChange> changes = BuildFileChanges(match, records, file, titleTemplate, url.Length > 0 ? covers[url] : "");
+                    if (changes.Count > 0)
+                        edits.Files.Add(new MediaCatalogFileChanges(file, changes));
+                }
+
+                completed = true;
+            }
+            finally
+            {
+                if (!completed)
+                {
+                    foreach (string tempFile in edits.TempFiles)
+                        FileHelper.DeleteTempFile(tempFile);
+                }
+            }
+
+            return edits;
+        }
+
+        #endregion
+
+        #region Metodi privati
 
         /// <summary>
         /// Modifiche di un file abbinato a uno o più episodi consecutivi; numeri, ID e data sono quelli del primo episodio
@@ -83,7 +187,7 @@ namespace RemuxForge.Core.MediaCatalog
         /// <param name="titleTemplate">Modello del titolo del segmento</param>
         /// <param name="coverSource">File della copertina, vuoto per non scriverla</param>
         /// <returns>Modifiche</returns>
-        public static List<MkvMetadataChange> BuildSeriesChanges(MkvMetadataFileInfo fileInfo, MediaCatalogProvider provider, MediaCatalogSeries series, List<MediaCatalogEpisode> episodes, string titleTemplate, string coverSource)
+        private static List<MkvMetadataChange> BuildSeriesChanges(MkvMetadataFileInfo fileInfo, MediaCatalogProvider provider, MediaCatalogSeries series, List<MediaCatalogEpisode> episodes, string titleTemplate, string coverSource)
         {
             List<MkvMetadataChange> changes = new List<MkvMetadataChange>();
             string description = AppText.F("metadata.catalog.ruleDescription", series.Title);
@@ -123,7 +227,7 @@ namespace RemuxForge.Core.MediaCatalog
         /// <param name="titleTemplate">Modello del titolo del segmento</param>
         /// <param name="coverSource">File della copertina, vuoto per non scriverla</param>
         /// <returns>Modifiche</returns>
-        public static List<MkvMetadataChange> BuildMovieChanges(MkvMetadataFileInfo fileInfo, MediaCatalogProvider provider, MediaCatalogMovie movie, string titleTemplate, string coverSource)
+        private static List<MkvMetadataChange> BuildMovieChanges(MkvMetadataFileInfo fileInfo, MediaCatalogProvider provider, MediaCatalogMovie movie, string titleTemplate, string coverSource)
         {
             List<MkvMetadataChange> changes = new List<MkvMetadataChange>();
             string description = AppText.F("metadata.catalog.ruleDescription", movie.Title);
@@ -144,10 +248,6 @@ namespace RemuxForge.Core.MediaCatalog
             AddCover(changes, fileInfo, description, coverSource);
             return changes;
         }
-
-        #endregion
-
-        #region Metodi privati
 
         /// <summary>
         /// Aggiunge il titolo del segmento

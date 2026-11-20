@@ -366,6 +366,116 @@ namespace RemuxForge.Core.Models
     public record MediaCatalogProgress(int Completed, int Total);
 
     /// <summary>
+    /// Titolo del catalogo abbinato ai file da scrivere: una serie con le righe dell'abbinamento, oppure un film con il suo file
+    /// </summary>
+    public class MediaCatalogMatch
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore per una serie
+        /// </summary>
+        /// <param name="provider">Catalogo di provenienza</param>
+        /// <param name="series">Serie</param>
+        /// <param name="rows">Righe dell'abbinamento fra file ed episodi</param>
+        public MediaCatalogMatch(MediaCatalogProvider provider, MediaCatalogSeries series, List<MediaCatalogMatchRow> rows)
+        {
+            this.Provider = provider;
+            this.Series = series;
+            this.Rows = rows;
+            this.MovieFile = "";
+        }
+
+        /// <summary>
+        /// Costruttore per un film
+        /// </summary>
+        /// <param name="provider">Catalogo di provenienza</param>
+        /// <param name="movie">Film</param>
+        /// <param name="movieFile">File del film</param>
+        public MediaCatalogMatch(MediaCatalogProvider provider, MediaCatalogMovie movie, string movieFile)
+        {
+            this.Provider = provider;
+            this.Movie = movie;
+            this.MovieFile = movieFile;
+            this.Rows = new List<MediaCatalogMatchRow>();
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Catalogo di provenienza
+        /// </summary>
+        public MediaCatalogProvider Provider { get; }
+
+        /// <summary>
+        /// Serie, null per un film
+        /// </summary>
+        public MediaCatalogSeries Series { get; }
+
+        /// <summary>
+        /// Righe dell'abbinamento della serie, vuota per un film
+        /// </summary>
+        public List<MediaCatalogMatchRow> Rows { get; }
+
+        /// <summary>
+        /// Film, null per una serie
+        /// </summary>
+        public MediaCatalogMovie Movie { get; }
+
+        /// <summary>
+        /// File del film, vuoto per una serie
+        /// </summary>
+        public string MovieFile { get; }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Modifiche dal catalogo di un file
+    /// </summary>
+    public record MediaCatalogFileChanges(string InputFile, List<MkvMetadataChange> Changes);
+
+    /// <summary>
+    /// Modifiche dal catalogo pronte da scrivere, con le copertine scaricate in file temporanei
+    /// </summary>
+    public class MediaCatalogEdits
+    {
+        #region Costruttore
+
+        /// <summary>
+        /// Costruttore
+        /// </summary>
+        public MediaCatalogEdits()
+        {
+            this.Files = new List<MediaCatalogFileChanges>();
+            this.TempFiles = new List<string>();
+        }
+
+        #endregion
+
+        #region Proprietà
+
+        /// <summary>
+        /// Modifiche dei file che ne hanno, nell'ordine dei file
+        /// </summary>
+        public List<MediaCatalogFileChanges> Files { get; }
+
+        /// <summary>
+        /// Copertine scaricate, da cancellare dopo la scrittura
+        /// </summary>
+        public List<string> TempFiles { get; }
+
+        /// <summary>
+        /// True se almeno una copertina scaricata non era né JPEG né PNG ed è rimasta fuori
+        /// </summary>
+        public bool CoverDiscarded { get; set; }
+
+        #endregion
+    }
+
+    /// <summary>
     /// Unico errore che una fonte di catalogo lascia uscire, oltre alla cancellazione
     /// </summary>
     public class MediaCatalogException : Exception

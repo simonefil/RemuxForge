@@ -193,11 +193,11 @@
             <div class="form-stack">
                 <div class="form-row">
                     <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogMatch.titleTemplate")" Component="CatalogMatchTemplate" />
-                    <RadzenTextBox Name="CatalogMatchTemplate" @bind-Value="_titleTemplate" Immediate="true" />
+                    <RadzenTextBox Name="CatalogMatchTemplate" @bind-Value="_titleTemplate" @bind-Value:after="RefreshPreview" Immediate="true" />
                 </div>
                 <div class="form-row">
                     <RadzenLabel class="form-label" Text="@AppText.T("web.mediaCatalogMatch.fileLabel")" Component="CatalogMatchPreviewFile" />
-                    <RadzenDropDown TValue="string" Name="CatalogMatchPreviewFile" Data="@GetWrittenFiles()" @bind-Value="_previewFile">
+                    <RadzenDropDown TValue="string" Name="CatalogMatchPreviewFile" Data="@MediaCatalogChangeBuilder.GetWrittenFiles(GetMatch())" @bind-Value="_previewFile" @bind-Value:after="RefreshPreview">
                         <Template Context="file">@System.IO.Path.GetFileName((string)file)</Template>
                         <ValueTemplate Context="file">@System.IO.Path.GetFileName((string)file)</ValueTemplate>
                     </RadzenDropDown>
@@ -213,7 +213,7 @@
                     </RadzenTableHeaderRow>
                 </RadzenTableHeader>
                 <RadzenTableBody>
-                    @foreach (MkvMetadataChange change in BuildChanges(_previewFile, GetCoverUrl(_previewFile)))
+                    @foreach (MkvMetadataChange change in _previewChanges)
                     {
                         <RadzenTableRow>
                             <RadzenTableCell class="catalog-match-preview-field"><CellText Text="@GetFieldLabel(change)" /></RadzenTableCell>
@@ -249,11 +249,11 @@
             <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.back")" Variant="Variant.Outlined" ButtonStyle="ButtonStyle.Base" Click="@(() => _step = MatchStep.Episodes)" />
             @if (RenameMode)
             {
-                <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.confirm")" Icon="check" Disabled="@(GetWrittenFiles().Count == 0)" Click="@ConfirmRename" />
+                <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.confirm")" Icon="check" Disabled="@(MediaCatalogChangeBuilder.GetWrittenFiles(GetMatch()).Count == 0)" Click="@ConfirmRename" />
             }
             else
             {
-                <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.next")" Icon="arrow_forward" Disabled="@(GetWrittenFiles().Count == 0)" Click="@GoToPreview" />
+                <RadzenButton Text="@AppText.T("web.mediaCatalogMatch.next")" Icon="arrow_forward" Disabled="@(MediaCatalogChangeBuilder.GetWrittenFiles(GetMatch()).Count == 0)" Click="@GoToPreview" />
             }
         }
         else if (_step == MatchStep.Preview)
@@ -431,6 +431,11 @@
     private string _previewFile = "";
 
     /// <summary>
+    /// Modifiche del file mostrato nell'anteprima, ricalcolate quando cambiano file, modello o dati letti
+    /// </summary>
+    private List<MkvMetadataChange> _previewChanges = new List<MkvMetadataChange>();
+
+    /// <summary>
     /// True quando tag e allegati dei file sono stati letti
     /// </summary>
     private bool _containerDataLoaded;
@@ -473,6 +478,9 @@
         _ = this.InvokeAsync(() =>
         {
             this._containerDataLoaded = true;
+            if (this._step == MatchStep.Preview)
+                this.RefreshPreview();
+
             this.StateHasChanged();
         });
     }
@@ -613,6 +621,7 @@
                 this._titleTemplate = MediaCatalogChangeBuilder.MOVIE_TITLE_TEMPLATE;
                 this._previewFile = files[0];
                 this._step = MatchStep.Preview;
+                this.RefreshPreview();
                 return;
             }
 
@@ -774,15 +783,15 @@
     }
 
     /// <summary>
-    /// File che ricevono dati: il file del film, oppure i file con almeno un episodio
+    /// Abbinamento corrente: il film con il suo file, oppure la serie con le righe
     /// </summary>
-    /// <returns>File nell'ordine delle righe</returns>
-    private List<string> GetWrittenFiles()
+    /// <returns>Abbinamento</returns>
+    private MediaCatalogMatch GetMatch()
     {
         if (this._movie != null)
-            return new List<string> { this.GetSelectedFiles()[0] };
+            return new MediaCatalogMatch(this._source.Provider, this._movie, this.GetSelectedFiles()[0]);
 
-        return this._rows.Where(row => row.FilePath.Length > 0 && row.Episodes.Count > 0).Select(row => row.FilePath).ToList();
+        return new MediaCatalogMatch(this._source.Provider, this._series, this._rows);
     }
 
     /// <summary>
@@ -790,44 +799,18 @@
     /// </summary>
     private void GoToPreview()
     {
-        this._previewFile = this.GetWrittenFiles()[0];
+        this._previewFile = MediaCatalogChangeBuilder.GetWrittenFiles(this.GetMatch())[0];
         this._step = MatchStep.Preview;
+        this.RefreshPreview();
     }
 
     /// <summary>
-    /// Copertina del file: poster della stagione o della serie, oppure del film
+    /// Ricalcola le modifiche del file mostrato nell'anteprima, con l'indirizzo del poster al posto della copertina scaricata
     /// </summary>
-    /// <param name="file">File</param>
-    /// <returns>Indirizzo del poster, vuoto se assente</returns>
-    private string GetCoverUrl(string file)
+    private void RefreshPreview()
     {
-        if (this._movie != null)
-            return this._movie.PosterUrl;
-
-        MediaCatalogMatchRow row = this._rows.FirstOrDefault(item => item.FilePath == file);
-        return row != null && row.Episodes.Count > 0 ? MediaCatalogChangeBuilder.GetCoverUrl(this._series, row.Episodes) : "";
-    }
-
-    /// <summary>
-    /// Modifiche di un file
-    /// </summary>
-    /// <param name="file">File</param>
-    /// <param name="coverSource">Copertina: indirizzo nell'anteprima, file scaricato nella scrittura</param>
-    /// <returns>Modifiche, vuota se il file non ha record o abbinamento</returns>
-    private List<MkvMetadataChange> BuildChanges(string file, string coverSource)
-    {
-        MkvMetadataRecord record = this.Orchestrator.GetRecords().FirstOrDefault(item => item.InputFile == file);
-        if (record == null || record.FileInfo == null)
-            return new List<MkvMetadataChange>();
-
-        if (this._movie != null)
-            return MediaCatalogChangeBuilder.BuildMovieChanges(record.FileInfo, this._source.Provider, this._movie, this._titleTemplate, coverSource);
-
-        MediaCatalogMatchRow row = this._rows.FirstOrDefault(item => item.FilePath == file);
-        if (row == null || row.Episodes.Count == 0)
-            return new List<MkvMetadataChange>();
-
-        return MediaCatalogChangeBuilder.BuildSeriesChanges(record.FileInfo, this._source.Provider, this._series, row.Episodes, this._titleTemplate, coverSource);
+        MediaCatalogMatch match = this.GetMatch();
+        this._previewChanges = MediaCatalogChangeBuilder.BuildFileChanges(match, this.Orchestrator.GetRecords(), this._previewFile, this._titleTemplate, MediaCatalogChangeBuilder.GetCoverUrl(match, this._previewFile));
     }
 
     /// <summary>
@@ -849,50 +832,28 @@
     }
 
     /// <summary>
-    /// Scarica le copertine, una per poster, e passa le modifiche di tutti i file all'orchestratore, che da lì cancella i temporanei
+    /// Scarica le copertine e passa le modifiche di tutti i file all'orchestratore, che da lì cancella i temporanei
     /// </summary>
     private async Task ApplyAsync()
     {
-        Dictionary<string, string> covers = new Dictionary<string, string>(StringComparer.Ordinal);
-        List<string> tempFiles = new List<string>();
-        List<MetadataDirectEdit> edits = new List<MetadataDirectEdit>();
+        MediaCatalogEdits edits = null;
         bool handedOver = false;
-        bool coverDiscarded = false;
 
         this._busy = true;
         try
         {
-            foreach (string file in this.GetWrittenFiles())
-            {
-                string url = this.GetCoverUrl(file);
-                string coverPath;
-
-                if (url.Length > 0 && !covers.TryGetValue(url, out coverPath))
-                {
-                    coverPath = await this.ImageDownloader.DownloadCoverAsync(url, this._closing.Token);
-                    covers[url] = coverPath;
-                    if (coverPath.Length > 0)
-                        tempFiles.Add(coverPath);
-                    else
-                        coverDiscarded = true;
-                }
-
-                List<MkvMetadataChange> changes = this.BuildChanges(file, url.Length > 0 ? covers[url] : "");
-                if (changes.Count > 0)
-                    edits.Add(new MetadataDirectEdit(file, changes));
-            }
-
-            if (coverDiscarded)
+            edits = await MediaCatalogChangeBuilder.BuildEditsAsync(this.GetMatch(), this.Orchestrator.GetRecords(), this._titleTemplate, this.ImageDownloader, this._closing.Token);
+            if (edits.CoverDiscarded)
                 this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.mediaCatalogMatch.coverDiscarded"), "", 6000);
 
-            if (edits.Count == 0)
+            if (edits.Files.Count == 0)
             {
                 this.NotificationService.Notify(NotificationSeverity.Info, AppText.T("web.mediaCatalogMatch.noChanges"), "", 4000);
                 return;
             }
 
             handedOver = true;
-            if (!this.Orchestrator.ApplyDirectChanges(edits, tempFiles))
+            if (!this.Orchestrator.ApplyDirectChanges(edits.Files.ConvertAll(item => new MetadataDirectEdit(item.InputFile, item.Changes)), edits.TempFiles))
             {
                 this.NotificationService.Notify(NotificationSeverity.Warning, AppText.T("web.mediaCatalogMatch.orchestratorBusy"), "", 6000);
                 return;
@@ -911,9 +872,9 @@
         finally
         {
             this._busy = false;
-            if (!handedOver)
+            if (edits != null && !handedOver)
             {
-                foreach (string tempFile in tempFiles)
+                foreach (string tempFile in edits.TempFiles)
                     FileHelper.DeleteTempFile(tempFile);
             }
         }
@@ -928,13 +889,13 @@
 
         if (this._movie != null)
         {
-            result = new MediaCatalogRenameMatch(MediaCatalogKind.Movie, this._movie.Title + (this._movie.Year.HasValue ? " (" + this._movie.Year.Value.ToString() + ")" : ""));
+            result = new MediaCatalogRenameMatch(MediaCatalogKind.Movie, FormatTitleWithYear(this._movie.Title, this._movie.Year));
             result.Values[this.GetSelectedFiles()[0]] = MediaCatalogPlaceholders.FromMovie(this._movie);
             this.CloseDialog(result);
             return;
         }
 
-        result = new MediaCatalogRenameMatch(MediaCatalogKind.Series, this._series.Title + (this._series.Year.HasValue ? " (" + this._series.Year.Value.ToString() + ")" : ""));
+        result = new MediaCatalogRenameMatch(MediaCatalogKind.Series, FormatTitleWithYear(this._series.Title, this._series.Year));
         foreach (MediaCatalogMatchRow row in this._rows)
         {
             if (row.FilePath.Length > 0 && row.Episodes.Count > 0)
@@ -942,5 +903,16 @@
         }
 
         this.CloseDialog(result);
+    }
+
+    /// <summary>
+    /// Titolo seguito dall'anno fra parentesi, se noto
+    /// </summary>
+    /// <param name="title">Titolo</param>
+    /// <param name="year">Anno</param>
+    /// <returns>Titolo (Anno)</returns>
+    private static string FormatTitleWithYear(string title, int? year)
+    {
+        return title + (year.HasValue ? " (" + year.Value.ToString() + ")" : "");
     }
 }
