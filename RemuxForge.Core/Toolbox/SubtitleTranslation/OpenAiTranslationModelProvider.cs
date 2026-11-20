@@ -131,11 +131,16 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                     lock (this._lock)
                         this._pendingUsage[session] = primed.Usage;
                 }
-                catch (AiServiceException)
+                catch (AiServiceException ex)
                 {
-                    // Senza cache la richiesta vera parte lo stesso; la prossima della sessione riprova a prepararla
+                    // Senza cache la richiesta vera parte lo stesso; la prossima della sessione riprova a prepararla. Il consumo della
+                    // richiesta fallita va nel registro come quello di una riuscita
                     lock (this._lock)
+                    {
                         this._primed.Remove(session);
+                        if (ex.Usage != null)
+                            this._pendingUsage[session] = ex.Usage;
+                    }
                 }
             }
 
