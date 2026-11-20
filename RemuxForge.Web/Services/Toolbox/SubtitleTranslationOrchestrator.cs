@@ -278,22 +278,8 @@ namespace RemuxForge.Web.Services.Toolbox
                 }
                 if (this.SyncStyles())
                     this._store.Save(project);
-
-                // Progetti e job di prima di «Maiuscole esatte»: le voci senza il valore lo prendono dalle battute sorgenti, una volta,
-                // con i tipi riconosciuti
-                if (project.Glossary != null && this.KindsSettled && TranslationValidator.FillExactCase(project.Glossary, this.GetSourceTexts()))
-                    this._store.Save(project);
                 if (job != null)
                 {
-                    List<string> frozen = new List<string>();
-                    foreach (TranslationJobFileState state in jobFiles.Values)
-                    {
-                        foreach (FrozenCue cue in state.Cues)
-                            frozen.Add(cue.Text);
-                    }
-                    if (TranslationValidator.FillExactCase(job.Glossary, frozen))
-                        this._jobStore.Save(job);
-
                     // Una chiusura brusca fra il salvataggio dell'ultimo file e quello del job lascia in pausa un job già concluso
                     if (job.Phase == TranslationJobPhase.Translation && job.Status == TranslationJobStatus.Paused &&
                         job.FileIds.TrueForAll(fileId => this._jobFiles[fileId].TranslationStatus == TranslationFileStatus.Completed))
@@ -627,8 +613,6 @@ namespace RemuxForge.Web.Services.Toolbox
                 change(this._project.Glossary);
                 this._project.Glossary.Status = GlossaryStatus.Draft;
                 new GlossaryBuilder(this._project.SourceLanguage, this._project.TargetLanguage).SetEpisodes(this._project.Glossary, this.GetEpisodes(), this.KindsSettled);
-                if (this.KindsSettled)
-                    TranslationValidator.FillExactCase(this._project.Glossary, this.GetSourceTexts());
                 this._store.Save(this._project);
             }
 
@@ -776,12 +760,6 @@ namespace RemuxForge.Web.Services.Toolbox
 
                 if (this._job == null)
                 {
-                    // Un progetto senza i tipi riconosciuti, salvato prima del riconoscimento, li riconosce prima del job
-                    if (this._project.Stretches == null)
-                    {
-                        this.TryRunExclusive(() => this.ClassifyAndRunJobAsync().GetAwaiter().GetResult());
-                        return;
-                    }
                     this.CreateJob();
                 }
                 else
@@ -1779,48 +1757,7 @@ namespace RemuxForge.Web.Services.Toolbox
         }
 
         /// <summary>
-        /// Riconoscimento dei tipi e poi giro del job nuovo, nel thread dell'operazione, per un progetto salvato prima del
-        /// riconoscimento: senza tipi riconosciuti, o con un file che la nuova preparazione rifiuta, il job non nasce e la card si
-        /// libera. Nessuna eccezione ne esce
-        /// </summary>
-        /// <returns>Task del riconoscimento e del giro</returns>
-        private async Task ClassifyAndRunJobAsync()
-        {
-            bool created = false;
-            this.SetBusy(true, AppText.T(TEXT_PREFIX + ".classificationProgress"));
-            try
-            {
-                ITranslationModelProvider provider = this._providerFactory.Create(null);
-                provider.CallProgress += this.HandleCallProgress;
-                provider.CallFinished += this.HandleCallFinished;
-                await this.ClassifyAsync(provider, this.OperationCancellationToken);
-                lock (this.StateLock)
-                {
-                    if (this._documents.Count == this._project.Files.Count)
-                    {
-                        this.CreateJob();
-                        created = true;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                // Le eccezioni che non sono dell'accesso restano errori del servizio: il worker non deve chiudere l'app
-                TranslationStop stop = TranslationStop.Create(ex, this.StopRequested || this.OperationCancellationToken.IsCancellationRequested);
-                this.AppendLog(stop.Reason == TranslationStopReason.Stop ? AppText.T(TEXT_PREFIX + ".classificationStopped") : AppText.F(TEXT_PREFIX + ".classificationFailed", stop.Message));
-            }
-
-            if (!created)
-            {
-                this.SetBusy(false, "");
-                this.NotifyRecordsChanged();
-                return;
-            }
-            await this.RunJobAsync();
-        }
-
-        /// <summary>
-        /// Riconoscimento dei tipi del progetto, primo passo dell'analisi e dell'avvio di un progetto che non li ha: sui file letti
+        /// Riconoscimento dei tipi del progetto, primo passo dell'analisi: sui file letti
         /// senza tipi il codice decide le unità senza lettere nella scrittura del progetto e il modello dell'analisi le altre in una
         /// chiamata A0; poi stili e tratte prendono i tipi, i file si ripreparano e il glossario prende le «Maiuscole esatte» che
         /// mancano
@@ -2599,25 +2536,6 @@ namespace RemuxForge.Web.Services.Toolbox
             }
 
             return episodes;
-        }
-
-        /// <summary>
-        /// Testi puliti delle battute traducibili dei file del progetto, per le maiuscole esatte del glossario
-        /// </summary>
-        /// <returns>Testi in ordine di file e di id</returns>
-        private List<string> GetSourceTexts()
-        {
-            List<string> texts = new List<string>();
-            foreach (GlossaryEpisode episode in this.GetEpisodes())
-            {
-                foreach (SubtitleCue cue in episode.Cues)
-                {
-                    if (cue.Id.HasValue)
-                        texts.Add(cue.CleanText);
-                }
-            }
-
-            return texts;
         }
 
         #endregion

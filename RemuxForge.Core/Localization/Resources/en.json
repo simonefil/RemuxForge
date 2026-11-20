@@ -4233,8 +4233,6 @@
   "toolbox.subtitleTranslation.reason.UNIT_DUPLICATE": "Kind delivered more than once",
   "web.toolbox.subtitleTranslation.classificationProgress": "Recognizing dialogue, songs and signs",
   "web.toolbox.subtitleTranslation.classificationDone": "Kinds recognized: {0} dialogue, {1} song, {2} signs, {3} not to translate",
-  "web.toolbox.subtitleTranslation.classificationStopped": "Kind recognition stopped",
-  "web.toolbox.subtitleTranslation.classificationFailed": "Kind recognition stopped: {0}",
   "web.toolbox.subtitleTranslation.analysisEstimateAfterKinds": "Analysis after kind recognition: {0} calls, about {1} input tokens",
   "toolbox.subtitleTranslation.reason.SEGMENTS_INVALID": "Invalid stretch segments"
 }

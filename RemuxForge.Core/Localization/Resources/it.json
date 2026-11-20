@@ -4233,8 +4233,6 @@
   "toolbox.subtitleTranslation.reason.UNIT_DUPLICATE": "Tipo consegnato più volte",
   "web.toolbox.subtitleTranslation.classificationProgress": "Riconoscimento di dialoghi, canzoni e cartelli",
   "web.toolbox.subtitleTranslation.classificationDone": "Tipi riconosciuti: {0} dialogo, {1} canzone, {2} cartelli, {3} da non tradurre",
-  "web.toolbox.subtitleTranslation.classificationStopped": "Riconoscimento dei tipi fermato",
-  "web.toolbox.subtitleTranslation.classificationFailed": "Riconoscimento dei tipi fermato: {0}",
   "web.toolbox.subtitleTranslation.analysisEstimateAfterKinds": "Analisi dopo il riconoscimento dei tipi: {0} chiamate, circa {1} token in ingresso",
   "toolbox.subtitleTranslation.reason.SEGMENTS_INVALID": "Tratti della tratta non validi"
 }
