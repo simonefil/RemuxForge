@@ -105,10 +105,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="request">Chiamata della traduzione</param>
         /// <param name="prepared">Richiesta da mandare</param>
-        /// <param name="attempt">Tentativo del retry di trasporto, da 1</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Item di output, consumo ed esito</returns>
-        protected abstract Task<AiResponseResult> SendAttemptAsync(TranslationModelRequest request, AiResponseRequest prepared, int attempt, CancellationToken cancellationToken);
+        protected abstract Task<AiResponseResult> SendAttemptAsync(TranslationModelRequest request, AiResponseRequest prepared, CancellationToken cancellationToken);
 
         #endregion
 
@@ -130,7 +129,7 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
                 TranslationTransportAttempt tracked = new TranslationTransportAttempt(attempt, prepared);
                 try
                 {
-                    tracked.Result = await this.SendAttemptAsync(request, prepared, attempt, cancellationToken);
+                    tracked.Result = await this.SendAttemptAsync(request, prepared, cancellationToken);
                 }
                 catch (Exception ex)
                 {

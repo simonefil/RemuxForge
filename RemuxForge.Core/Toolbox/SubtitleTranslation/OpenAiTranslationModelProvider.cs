@@ -94,10 +94,9 @@ namespace RemuxForge.Core.Toolbox.SubtitleTranslation
         /// </summary>
         /// <param name="request">Chiamata della traduzione</param>
         /// <param name="prepared">Richiesta da mandare</param>
-        /// <param name="attempt">Tentativo del retry di trasporto, da 1</param>
         /// <param name="cancellationToken">Token di annullamento</param>
         /// <returns>Item di output, consumo ed esito</returns>
-        protected override async Task<AiResponseResult> SendAttemptAsync(TranslationModelRequest request, AiResponseRequest prepared, int attempt, CancellationToken cancellationToken)
+        protected override async Task<AiResponseResult> SendAttemptAsync(TranslationModelRequest request, AiResponseRequest prepared, CancellationToken cancellationToken)
         {
             string session = prepared.SessionId;
             bool prime = false;
